@@ -1,7 +1,15 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.2.4/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
-  "files": { "includes": ["**", "!**/storybook-static", "!**/node_modules", "!**/*.css"] },
+  "files": {
+    "includes": [
+      "**",
+      "!**/storybook-static",
+      "!**/node_modules",
+      "!**/*.css",
+      "!**/slack-manifest.json"
+    ]
+  },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
   "linter": {
     "enabled": true,

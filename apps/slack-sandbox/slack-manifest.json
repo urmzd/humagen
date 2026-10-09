@@ -37,7 +37,12 @@
   },
   "settings": {
     "event_subscriptions": {
-      "bot_events": ["agent_session_stopped", "app_home_opened", "app_mention", "message.im"]
+      "bot_events": [
+        "agent_session_stopped",
+        "app_home_opened",
+        "app_mention",
+        "message.im"
+      ]
     },
     "interactivity": {
       "is_enabled": true
