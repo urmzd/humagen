@@ -27,6 +27,7 @@ import {
   Context,
   Feedback,
   Fields,
+  File,
   Markdown,
   Only,
   Plan,
@@ -385,6 +386,10 @@ export function FailureAlert({
 
 /** Commands and code the agent ran or produced. */
 export function AttachmentView({ attachment }: { attachment: Attachment }) {
+  if (attachment.type === "artifact") {
+    const { type: _type, ...file } = attachment;
+    return <File {...file} />;
+  }
   if (attachment.type === "code") {
     return <Code text={attachment.code} language={attachment.language} title={attachment.path} />;
   }

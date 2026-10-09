@@ -1,4 +1,12 @@
-import type { ActionId, ActionPayload, Citation, TaskStatus, Tone } from "@agent-ui/core";
+import type {
+  ActionId,
+  ActionPayload,
+  ArtifactKind,
+  ArtifactPhase,
+  Citation,
+  TaskStatus,
+  Tone,
+} from "@agent-ui/core";
 import type { ComponentType, ReactNode } from "react";
 
 /**
@@ -93,6 +101,23 @@ export interface CheckboxesProps {
   selected: string[];
 }
 
+/** A file the agent produced, in any phase. Renderers own icons, previews, and download affordances. */
+export interface FileProps {
+  id: string;
+  title: string;
+  kind: ArtifactKind;
+  phase: ArtifactPhase;
+  mimeType?: string;
+  sizeBytes?: number;
+  version?: number;
+  url?: string;
+  downloadUrl?: string;
+  description?: string;
+  previewText?: string;
+  thumbnailUrl?: string;
+  error?: string;
+}
+
 export interface ActionsProps {
   children: ReactNode;
   /** Change it when the proposal changes so clicks on an older copy can be told apart. */
@@ -158,6 +183,7 @@ export interface PrimitiveProps {
   Summary: SummaryProps;
   Terminal: TerminalProps;
   Checkboxes: CheckboxesProps;
+  File: FileProps;
 }
 
 export type PrimitiveName = keyof PrimitiveProps;

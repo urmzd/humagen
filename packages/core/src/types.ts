@@ -243,7 +243,62 @@ export interface CodeSnippet {
   path?: string;
 }
 
-export type Attachment = CommandRun | CodeSnippet;
+export type ArtifactKind =
+  | "document"
+  | "spreadsheet"
+  | "presentation"
+  | "image"
+  | "pdf"
+  | "html"
+  | "code"
+  | "data"
+  | "archive";
+
+/**
+ * Lifecycle of a generated file. `waiting` is blocked on an approval and must
+ * not animate; `denied` means a person said no, so nothing was created.
+ */
+export type ArtifactPhase =
+  | "queued"
+  | "generating"
+  | "waiting"
+  | "finalizing"
+  | "ready"
+  | "failed"
+  | "denied";
+
+/** A file the agent created or changed. Surfaces show it, preview it, and offer a download. */
+export interface Artifact {
+  type: "artifact";
+  id: string;
+  /** File name as the user will save it: "refunds-q3.xlsx". */
+  title: string;
+  kind: ArtifactKind;
+  phase: ArtifactPhase;
+  mimeType?: string;
+  sizeBytes?: number;
+  version?: number;
+  /** Where to view it (web preview page, Slack permalink). */
+  url?: string;
+  /** Direct download. On Slack, hosts usually upload the file and use its permalink. */
+  downloadUrl?: string;
+  /** One or two lines describing the content: "3 sheets: Summary, Refunds, Disputes". */
+  description?: string;
+  /** Short text preview for documents and code. */
+  previewText?: string;
+  thumbnailUrl?: string;
+  /** Why it failed, in plain language. */
+  error?: string;
+}
+
+export type Attachment = CommandRun | CodeSnippet | Artifact;
+
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 ** 2) return `${Math.round(n / 1024)} KB`;
+  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  return `${(n / 1024 ** 3).toFixed(1)} GB`;
+}
 
 export type TurnStatus = "queued" | "working" | "waiting" | "done" | "failed" | "stopped";
 

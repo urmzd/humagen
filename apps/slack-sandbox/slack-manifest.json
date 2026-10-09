@@ -29,6 +29,7 @@
         "assistant:write",
         "channels:history",
         "chat:write",
+        "files:write",
         "groups:history",
         "im:history",
         "reactions:write"

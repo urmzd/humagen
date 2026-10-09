@@ -2,6 +2,7 @@ import { ActionId } from "./actions";
 import type { SessionState } from "./session";
 import {
   type Approval,
+  type Artifact,
   type Clarification,
   type CodeSnippet,
   type CommandRun,
@@ -580,4 +581,103 @@ export const sessions: Record<
     budget: { spentUsd: 49.58, limitUsd: 50, period: "month", nextTurnUsd: 0.6 },
     status: "idle",
   },
+};
+
+const artifactBase: Artifact = {
+  type: "artifact",
+  id: "f1",
+  title: "refunds-q3.xlsx",
+  kind: "spreadsheet",
+  mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  phase: "ready",
+  sizeBytes: 24_576,
+  version: 2,
+  url: "https://example.com/files/f1",
+  downloadUrl: "https://example.com/files/f1/download",
+  description: "3 sheets: Summary, Refunds by reason, Disputes",
+};
+
+/** One artifact per phase, plus other kinds, so every state has a rendering. */
+export const artifacts: Record<
+  | "queued"
+  | "generating"
+  | "waiting"
+  | "finalizing"
+  | "ready"
+  | "failed"
+  | "denied"
+  | "report"
+  | "image",
+  Artifact
+> = {
+  queued: {
+    ...artifactBase,
+    phase: "queued",
+    sizeBytes: undefined,
+    url: undefined,
+    downloadUrl: undefined,
+  },
+  generating: {
+    ...artifactBase,
+    phase: "generating",
+    sizeBytes: undefined,
+    url: undefined,
+    downloadUrl: undefined,
+  },
+  waiting: {
+    ...artifactBase,
+    phase: "waiting",
+    sizeBytes: undefined,
+    url: undefined,
+    downloadUrl: undefined,
+  },
+  finalizing: { ...artifactBase, phase: "finalizing", url: undefined, downloadUrl: undefined },
+  ready: artifactBase,
+  failed: {
+    ...artifactBase,
+    phase: "failed",
+    url: undefined,
+    downloadUrl: undefined,
+    error: "The refunds export timed out after 60s. Try a smaller date range.",
+  },
+  denied: { ...artifactBase, phase: "denied", url: undefined, downloadUrl: undefined },
+  report: {
+    type: "artifact",
+    id: "f2",
+    title: "incident-4812-postmortem.md",
+    kind: "document",
+    mimeType: "text/markdown",
+    phase: "ready",
+    sizeBytes: 6_200,
+    url: "https://example.com/files/f2",
+    downloadUrl: "https://example.com/files/f2/download",
+    previewText:
+      "## Summary\nA config change in deploy #4812 raised the 5xx rate to 4.2% for 14 minutes…",
+  },
+  image: {
+    type: "artifact",
+    id: "f3",
+    title: "error-rate.png",
+    kind: "image",
+    mimeType: "image/png",
+    phase: "ready",
+    sizeBytes: 182_000,
+    url: "https://example.com/files/f3",
+    downloadUrl: "https://example.com/files/f3/download",
+    thumbnailUrl: "https://placehold.co/640x320/png?text=error+rate",
+    description: "5xx rate, 14:30 to 15:30",
+  },
+};
+
+export const artifactTurn: Turn = {
+  ...doneTurn,
+  id: "turn-artifacts",
+  planTitle: undefined,
+  tasks: [
+    { id: "x1", title: "Exported Q3 refunds", status: "complete", output: "1,284 rows" },
+    { id: "x2", title: "Drafted the postmortem", status: "complete" },
+  ],
+  text: "Here's the Q3 refunds export and a first draft of the postmortem.",
+  citations: [],
+  attachments: [artifacts.ready, artifacts.report],
 };

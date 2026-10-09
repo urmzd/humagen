@@ -50,6 +50,9 @@ export function registry(): Postable[] {
   for (const [key, notice] of Object.entries(fx.runtimeNotices)) {
     out.push({ name: `runtimeNotices.${key}`, element: <NoticeView notice={notice} /> });
   }
+  for (const [key, artifact] of Object.entries(fx.artifacts)) {
+    out.push({ name: `artifacts.${key}`, element: <AttachmentView attachment={artifact} /> });
+  }
   for (const [key, session] of Object.entries(fx.sessions)) {
     out.push({ name: `sessions.${key}`, element: <SessionNotices session={session} /> });
   }

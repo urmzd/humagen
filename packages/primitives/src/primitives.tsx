@@ -69,3 +69,4 @@ export const Table = primitive("Table");
 export const Summary = primitive("Summary");
 export const Terminal = primitive("Terminal");
 export const Checkboxes = primitive("Checkboxes");
+export const File = primitive("File");

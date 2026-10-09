@@ -47,6 +47,11 @@ export const CAPABILITIES: Record<string, Capability> = {
     scopes: ["app_mentions:read", "im:history", "channels:history", "groups:history"],
     events: ["app_mention", "message.im"],
   },
+  files: {
+    why: "Upload artifacts so people download them natively in Slack.",
+    methods: ["files.getUploadURLExternal", "files.completeUploadExternal"],
+    scopes: ["files:write"],
+  },
   identity: {
     why: "Resolve the bot and team for stream recipients (auth.test).",
     methods: ["auth.test"],

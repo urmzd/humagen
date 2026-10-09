@@ -1,4 +1,4 @@
-import { type Citation, encodeAction, type Tone } from "@agent-ui/core";
+import { type Citation, encodeAction, formatBytes, type Tone } from "@agent-ui/core";
 import type { PrimitiveName, PrimitiveProps, TaskProps } from "@agent-ui/primitives";
 import { toMrkdwn, toPlain } from "./mrkdwn";
 import type { HostChild, HostNode } from "./reconciler";
@@ -158,6 +158,8 @@ class Serializer {
         return this.terminal(p);
       case "Checkboxes":
         return this.checkboxes(p);
+      case "File":
+        return this.file(p);
       case "Summary":
         // First summary wins: the outermost component states the point.
         this.summary ??= toPlain((p as PrimitiveProps["Summary"]).text);
@@ -272,6 +274,72 @@ class Serializer {
           ...(initial.length ? { initial_options: initial } : {}),
         },
       ],
+    });
+  }
+
+  /**
+   * Ready files become a card (title, type and size, description, Download/Open).
+   * Other phases are a single muted line, so a pending file never looks downloadable.
+   */
+  file(f: PrimitiveProps["File"]) {
+    const kind = f.kind.charAt(0).toUpperCase() + f.kind.slice(1);
+    const meta = [
+      kind,
+      f.sizeBytes !== undefined ? formatBytes(f.sizeBytes) : null,
+      f.version ? `v${f.version}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const name = `\`${f.title}\``;
+    const line: Record<Exclude<typeof f.phase, "ready" | "failed">, string> = {
+      queued: `Queued: ${name}`,
+      generating: `Creating ${name}…`,
+      waiting: `Waiting for approval to create ${name}`,
+      finalizing: `Finishing ${name}…`,
+      denied: `~~${f.title}~~ Not created: approval denied`,
+    };
+    if (f.phase === "failed") {
+      this.fallback.push(`Couldn't create ${f.title}`);
+      this.blocks.push({
+        type: "section",
+        text: this.mrkdwn(
+          `:x: **Couldn't create ${f.title}**${f.error ? `\n${f.error}` : ""}`,
+          LIMITS.sectionText,
+          "file error",
+        ),
+      });
+      return;
+    }
+    if (f.phase !== "ready") {
+      this.blocks.push({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: toMrkdwn(line[f.phase]) }],
+      });
+      return;
+    }
+    this.fallback.push(`${f.title} (${meta})`);
+    const actions = [
+      f.downloadUrl ? { label: "Download", url: f.downloadUrl } : null,
+      f.url ? { label: "Open", url: f.url } : null,
+    ].filter((a): a is { label: string; url: string } => a !== null);
+    this.blocks.push({
+      type: "card",
+      title: this.mrkdwn(`**${f.title}**`, 150, "card title"),
+      subtitle: this.mrkdwn(meta, 150, "card subtitle"),
+      ...(f.description || f.previewText
+        ? { body: this.mrkdwn(f.description ?? f.previewText ?? "", 200, "card body") }
+        : {}),
+      ...(actions.length
+        ? {
+            actions: actions.map((a, i) => ({
+              type: "button",
+              text: this.plain(a.label, LIMITS.buttonText, "button label"),
+              url: a.url,
+              action_id: this.actionId(`aui.file.${a.label.toLowerCase()}`, i),
+              accessibility_label: `${a.label} ${f.title}`,
+            })),
+          }
+        : {}),
     });
   }
 

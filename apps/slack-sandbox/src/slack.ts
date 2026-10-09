@@ -16,6 +16,36 @@ export class SlackError extends Error {
 
 export interface SlackClient {
   call<T = Record<string, unknown>>(method: string, args?: Record<string, unknown>): Promise<T>;
+  /** Form-encoded call, for methods that don't accept JSON (files.getUploadURLExternal). */
+  form<T = Record<string, unknown>>(method: string, args: Record<string, string>): Promise<T>;
+}
+
+/**
+ * Upload a file the way Slack recommends: reserve an upload URL, POST the
+ * bytes, then complete the upload into a channel or thread. Returns the file
+ * id and its permalink for an artifact's `url`.
+ */
+export async function uploadFile(
+  slack: SlackClient,
+  file: { name: string; bytes: Uint8Array; title?: string },
+  where: { channel: string; threadTs?: string; comment?: string },
+) {
+  const { upload_url, file_id } = await slack.form<{ upload_url: string; file_id: string }>(
+    "files.getUploadURLExternal",
+    { filename: file.name, length: String(file.bytes.byteLength) },
+  );
+  const put = await fetch(upload_url, { method: "POST", body: new Blob([file.bytes as Uint8Array<ArrayBuffer>]) });
+  if (!put.ok) throw new SlackError("upload", `http_${put.status}`);
+  const done = await slack.call<{ files: { id: string; permalink?: string }[] }>(
+    "files.completeUploadExternal",
+    {
+      files: [{ id: file_id, title: file.title ?? file.name }],
+      channel_id: where.channel,
+      ...(where.threadTs ? { thread_ts: where.threadTs } : {}),
+      ...(where.comment ? { initial_comment: where.comment } : {}),
+    },
+  );
+  return { id: file_id, permalink: done.files[0]?.permalink };
 }
 
 export function slackClient(token: string | undefined): SlackClient {
@@ -49,6 +79,16 @@ export function slackClient(token: string | undefined): SlackClient {
         if (body.warning) console.warn(`  ${method} warning: ${String(body.warning)}`);
         return body as never;
       }
+    },
+    async form(method, args) {
+      const res = await fetch(`https://slack.com/api/${method}`, {
+        method: "POST",
+        headers: token ? { authorization: `Bearer ${token}` } : {},
+        body: new URLSearchParams(args),
+      });
+      const body = (await res.json()) as { ok: boolean; error?: string } & Record<string, unknown>;
+      if (!body.ok) throw new SlackError(method, body.error ?? `http_${res.status}`);
+      return body as never;
     },
   };
 }

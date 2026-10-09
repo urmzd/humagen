@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { AttachmentView } from "@agent-ui/components";
 import type { Turn } from "@agent-ui/core";
 import * as fx from "@agent-ui/core/fixtures";
 import { renderToSlack } from "@agent-ui/render-slack";
@@ -7,7 +8,7 @@ import { eventsFor, registry } from "./fixtures";
 import { buildManifest, CAPABILITIES, createAppUrl } from "./manifest";
 import { streamTurn } from "./run";
 import { serve } from "./serve";
-import { readEnv, slackClient, validateBlocks } from "./slack";
+import { readEnv, slackClient, uploadFile, validateBlocks } from "./slack";
 
 const USAGE = `agent-ui Slack sandbox
 
@@ -16,6 +17,7 @@ const USAGE = `agent-ui Slack sandbox
   pnpm sandbox validate              blocks.validate every fixture (no token needed)
   pnpm sandbox post <name|all>       Post fixtures to $SLACK_CHANNEL
   pnpm sandbox stream [turnFixture]  Stream a turn for real (startStream/appendStream/stopStream)
+  pnpm sandbox upload                Upload a real file and post its artifact card
   pnpm sandbox serve                 Socket Mode: chat with the bot and click real buttons
 `;
 
@@ -112,6 +114,46 @@ async function main() {
         eventsFor(turn),
       );
       console.log(`streamed → ${final.status}`);
+      return;
+    }
+    case "upload": {
+      // A real file, so the artifact card's Download/Open point at Slack's own copy.
+      const env = readEnv();
+      const slack = slackClient(env.botToken);
+      const csv = [
+        "reason,count,amount_usd",
+        "duplicate,412,18240.10",
+        "fraud,97,9120.00",
+        "not_received,775,31008.55",
+      ].join("\n");
+      const root = await slack.call<{ ts: string }>("chat.postMessage", {
+        channel: env.channel,
+        text: "agent-ui sandbox · artifact upload",
+      });
+      const uploaded = await uploadFile(
+        slack,
+        {
+          name: "refunds-q3.csv",
+          bytes: new TextEncoder().encode(csv),
+          title: "Q3 refunds by reason",
+        },
+        { channel: env.channel, threadTs: root.ts },
+      );
+      const card = renderToSlack(
+        <AttachmentView
+          attachment={{
+            ...fx.artifacts.ready,
+            title: "refunds-q3.csv",
+            kind: "data",
+            sizeBytes: csv.length,
+            url: uploaded.permalink,
+            downloadUrl: uploaded.permalink,
+            description: "3 refund reasons, Q3 totals",
+          }}
+        />,
+      );
+      await slack.call("chat.postMessage", { channel: env.channel, thread_ts: root.ts, ...card });
+      console.log(`uploaded ${uploaded.id} ${uploaded.permalink ?? ""}`);
       return;
     }
     case "serve": {
