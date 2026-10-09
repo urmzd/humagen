@@ -1,0 +1,130 @@
+import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import type { Turn } from "@agent-ui/core";
+import * as fx from "@agent-ui/core/fixtures";
+import { renderToSlack } from "@agent-ui/render-slack";
+import { eventsFor, registry } from "./fixtures";
+import { buildManifest, CAPABILITIES, createAppUrl } from "./manifest";
+import { streamTurn } from "./run";
+import { serve } from "./serve";
+import { readEnv, slackClient, validateBlocks } from "./slack";
+
+const USAGE = `agent-ui Slack sandbox
+
+  pnpm sandbox manifest [out.json]   Generate the app manifest and a "create app" link
+  pnpm sandbox list                  List postable fixtures
+  pnpm sandbox validate              blocks.validate every fixture (no token needed)
+  pnpm sandbox post <name|all>       Post fixtures to $SLACK_CHANNEL
+  pnpm sandbox stream [turnFixture]  Stream a turn for real (startStream/appendStream/stopStream)
+  pnpm sandbox serve                 Socket Mode: chat with the bot and click real buttons
+`;
+
+async function main() {
+  const [command, arg] = process.argv.slice(2);
+  switch (command) {
+    case "manifest": {
+      const manifest = buildManifest();
+      // pnpm --filter runs in the package dir; resolve paths from where the user ran the command.
+      const out = resolve(process.env.INIT_CWD ?? process.cwd(), arg ?? "slack-manifest.json");
+      writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
+      console.log(`Wrote ${out}\n`);
+      for (const [name, cap] of Object.entries(CAPABILITIES)) {
+        console.log(`  ${name.padEnd(17)} ${cap.scopes.join(", ") || "(no scope)"}  ${cap.why}`);
+      }
+      console.log(`\nCreate the app from this manifest:\n${createAppUrl(manifest)}\n`);
+      console.log(
+        "Then: install to the workspace, copy the Bot token (xoxb-…), create an App-level token with connections:write (xapp-…), and put both in .envrc.local.",
+      );
+      return;
+    }
+    case "list":
+      for (const p of registry())
+        console.log(`${p.name}${p.placement ? `  (${p.placement})` : ""}`);
+      return;
+    case "validate": {
+      let failed = 0;
+      for (const p of registry()) {
+        const { blocks, warnings } = renderToSlack(p.element, { placement: p.placement });
+        const view =
+          p.placement === "modal"
+            ? { type: "modal", title: { type: "plain_text", text: "agent-ui" }, blocks }
+            : undefined;
+        const res = await validateBlocks(blocks, view);
+        if (!res.ok) failed++;
+        const detail = res.ok ? "" : ` ${JSON.stringify(res.errors ?? res)}`;
+        console.log(
+          `${res.ok ? "ok  " : "FAIL"} ${p.name}${warnings.length ? ` (${warnings.length} warnings)` : ""}${detail}`,
+        );
+      }
+      if (failed) process.exitCode = 1;
+      return;
+    }
+    case "post": {
+      const env = readEnv();
+      const slack = slackClient(env.botToken);
+      const wanted = registry().filter((p) => arg === "all" || p.name === arg);
+      if (wanted.length === 0) throw new Error(`No fixture "${arg}". Try: pnpm sandbox list`);
+      const header = await slack.call<{ ts: string }>("chat.postMessage", {
+        channel: env.channel,
+        text: `agent-ui sandbox · ${wanted.length} fixture${wanted.length > 1 ? "s" : ""} · ${new Date().toISOString()}`,
+      });
+      for (const p of wanted) {
+        if (p.placement === "modal") {
+          console.log(`skip ${p.name}: modals need a trigger_id (use serve)`);
+          continue;
+        }
+        const { blocks, text, warnings } = renderToSlack(p.element, { placement: p.placement });
+        await slack.call("chat.postMessage", {
+          channel: env.channel,
+          thread_ts: header.ts,
+          text,
+          blocks,
+          // Label each post so the thread reads as a catalog.
+          metadata: { event_type: "agent_ui_fixture", event_payload: { name: p.name } },
+        });
+        console.log(
+          `posted ${p.name}${warnings.length ? ` (warnings: ${warnings.join("; ")})` : ""}`,
+        );
+      }
+      return;
+    }
+    case "stream": {
+      const env = readEnv();
+      if (!env.testUser)
+        throw new Error("SLACK_TEST_USER (your member id, U…) is required to stream in a channel.");
+      const slack = slackClient(env.botToken);
+      const auth = await slack.call<{ team_id: string }>("auth.test");
+      const turn = (fx as Record<string, unknown>)[arg ?? "doneTurn"] as Turn | undefined;
+      if (!turn?.tasks) throw new Error(`"${arg}" is not a turn fixture`);
+      const root = await slack.call<{ ts: string }>("chat.postMessage", {
+        channel: env.channel,
+        text: `Streaming \`${arg ?? "doneTurn"}\` for <@${env.testUser}>`,
+      });
+      const { turn: final } = await streamTurn(
+        slack,
+        {
+          channel: env.channel,
+          threadTs: root.ts,
+          triggerTs: root.ts,
+          recipientUser: env.testUser,
+          recipientTeam: auth.team_id,
+        },
+        eventsFor(turn),
+      );
+      console.log(`streamed → ${final.status}`);
+      return;
+    }
+    case "serve": {
+      const env = readEnv();
+      await serve(slackClient(env.botToken), env);
+      return;
+    }
+    default:
+      console.log(USAGE);
+  }
+}
+
+main().catch((e: Error) => {
+  console.error(e.message);
+  process.exit(1);
+});

@@ -267,8 +267,15 @@ class Serializer {
     const line = title ? `${title}: ${text}` : text;
     this.fallback.push(line);
     // alert blocks exist only in modals; messages and Home get a framed section.
-    if (this.placement === "modal" && line.length <= LIMITS.alertText) {
-      this.blocks.push({ type: "alert", text: line, level: ALERT_LEVEL[tone] });
+    if (
+      this.placement === "modal" &&
+      toMrkdwn(title ? `**${title}**: ${text}` : text).length <= LIMITS.alertText
+    ) {
+      this.blocks.push({
+        type: "alert",
+        text: this.mrkdwn(title ? `**${title}**: ${text}` : text, LIMITS.alertText, "alert"),
+        level: ALERT_LEVEL[tone],
+      });
       return;
     }
     const prefix = TONE_PREFIX[tone];

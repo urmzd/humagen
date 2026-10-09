@@ -12,7 +12,6 @@
     "@agent-ui/components": "workspace:*",
     "@agent-ui/core": "workspace:*",
     "@agent-ui/primitives": "workspace:*",
-    "@agent-ui/render-slack": "workspace:*",
     "@agent-ui/render-web": "workspace:*",
     "@agent-ui/web": "workspace:*"
   },

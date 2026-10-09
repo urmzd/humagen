@@ -11,7 +11,8 @@
     "fmt": "biome check --write",
     "typecheck": "turbo run typecheck",
     "check": "pnpm run fmt && pnpm run lint && pnpm run typecheck && pnpm test",
-    "storybook": "pnpm --filter @agent-ui/storybook dev"
+    "storybook": "pnpm --filter @agent-ui/storybook dev",
+    "sandbox": "pnpm --silent --filter @agent-ui/slack-sandbox cli"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.4",

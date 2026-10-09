@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Web-only agent components: prompt bar, live turn hook. Slack has native equivalents.",
+  "description": "Web-only agent chat: message frame, reasoning, conversation, prompt bar, live turn hooks. Slack has native equivalents.",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -11,7 +11,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agent-ui/core": "workspace:*"
+    "@agent-ui/components": "workspace:*",
+    "@agent-ui/core": "workspace:*",
+    "@agent-ui/primitives": "workspace:*",
+    "@agent-ui/render-web": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19"

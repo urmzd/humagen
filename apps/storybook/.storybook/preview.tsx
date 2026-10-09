@@ -25,7 +25,7 @@ const preview: Preview = {
       },
     },
     shift: {
-      description: "Accent hue shift in degrees",
+      description: "Accent hue shift in degrees (--aui-accent-shift)",
       toolbar: {
         title: "Shift",
         icon: "transfer",
@@ -40,7 +40,7 @@ const preview: Preview = {
       },
     },
   },
-  initialGlobals: { theme: "light", accent: "purple", shift: "0" },
+  initialGlobals: { theme: "dark", accent: "purple", shift: "0" },
   decorators: [
     (Story, { globals }) => {
       const root = document.documentElement;
@@ -48,7 +48,7 @@ const preview: Preview = {
       root.dataset.accent = globals.accent;
       root.style.setProperty("--aui-accent-shift", globals.shift ?? "0");
       return (
-        <div className="min-h-screen bg-aui-bg p-6 text-aui-fg">
+        <div className="min-h-screen bg-aui-bg px-4 py-8 text-aui-fg sm:px-8">
           <Story />
         </div>
       );
@@ -57,6 +57,11 @@ const preview: Preview = {
   parameters: {
     layout: "fullscreen",
     controls: { expanded: true },
+    options: {
+      storySort: {
+        order: ["Foundations", "Primitives", "Agent", "Web-only"],
+      },
+    },
   },
 };
 

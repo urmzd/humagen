@@ -38,7 +38,7 @@ describe("renderToSlack", () => {
     expect(renderToSlack(callout).blocks[0]?.type).toBe("section");
     expect(renderToSlack(callout, { placement: "modal" }).blocks[0]).toEqual({
       type: "alert",
-      text: "Heads up: Read-only mode.",
+      text: { type: "mrkdwn", text: "*Heads up*: Read-only mode." },
       level: "warning",
     });
   });

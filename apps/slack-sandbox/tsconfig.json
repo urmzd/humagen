@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "types": ["node"], "jsx": "react-jsx" },
+  "include": ["src", "../../packages/*/src"],
+  "exclude": ["../../packages/*/src/**/*.test.*", "../../packages/render-slack/src/preview.tsx"]
+}
