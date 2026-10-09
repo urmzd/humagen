@@ -1,0 +1,20 @@
+git:
+  tag_prefix: "v"
+  floating_tag: true
+  v0_protection: true
+
+commit:
+  types:
+    minor: [feat]
+    patch: [fix, perf, refactor]
+    none: [docs, revert, chore, ci, test, build, style]
+
+changelog:
+  file: CHANGELOG.md
+
+packages:
+  - path: .
+    version_files:
+      - package.json
+    stage_files:
+      - pnpm-lock.yaml

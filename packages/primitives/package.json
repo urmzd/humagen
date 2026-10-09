@@ -1,0 +1,19 @@
+{
+  "name": "@agent-ui/primitives",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The primitive contract every agent-ui renderer implements, plus surface context.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-ui/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@agent-ui/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Surface-agnostic agent UI model: turns, tool calls, approvals, notices, stream events.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fixtures": "./src/fixtures.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

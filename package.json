@@ -1,0 +1,26 @@
+{
+  "name": "agent-ui",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "packageManager": "pnpm@11.6.0",
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "biome check",
+    "fmt": "biome check --write",
+    "typecheck": "turbo run typecheck",
+    "check": "pnpm run fmt && pnpm run lint && pnpm run typecheck && pnpm test",
+    "storybook": "pnpm --filter @agent-ui/storybook dev"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.2.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "turbo": "^2.11.7",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

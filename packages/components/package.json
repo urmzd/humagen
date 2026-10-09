@@ -1,0 +1,20 @@
+{
+  "name": "@agent-ui/components",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared agent components (turn, approval, clarification, notice) built only from primitives.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-ui/core": "workspace:*",
+    "@agent-ui/primitives": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  }
+}

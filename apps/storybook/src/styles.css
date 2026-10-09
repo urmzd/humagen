@@ -1,0 +1,13 @@
+@import "tailwindcss";
+@import "@agent-ui/render-web/theme.css";
+
+@source "../../../packages/render-web/src";
+@source "../../../packages/render-slack/src";
+@source "../../../packages/web/src";
+@source "./";
+
+body {
+  background: var(--aui-bg);
+  color: var(--aui-fg);
+  font-family: "Figtree", ui-sans-serif, system-ui, sans-serif;
+}

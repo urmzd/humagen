@@ -1,0 +1,165 @@
+import type { ActionId, ActionPayload, Citation, TaskStatus, Tone } from "@agent-ui/core";
+import type { ComponentType, ReactNode } from "react";
+
+/**
+ * The primitive contract: the intersection of what every surface can draw.
+ * Shared components are built only from these; each renderer implements all
+ * of them. Props are data, not DOM: no className, no style, no event handlers.
+ * Interaction goes through `action` and the renderer's ActionHandler.
+ */
+
+export interface ActionRef {
+  id: ActionId;
+  payload: ActionPayload;
+}
+
+export interface HeaderProps {
+  text: string;
+}
+
+/**
+ * Short formatted text. Standard markdown subset: bold, italic, strike, code,
+ * links, and `{{time:ISO}}` tokens (see core `timeToken`) that each surface localizes.
+ */
+export interface TextProps {
+  text: string;
+}
+
+/** Long-form model output in standard markdown. */
+export interface MarkdownProps {
+  text: string;
+  /** Still arriving. The web shows a caret; Slack streams it with chat.appendStream instead. */
+  streaming?: boolean;
+}
+
+export interface FieldsProps {
+  items: { label: string; value: string }[];
+}
+
+/** Small, muted secondary line(s). */
+export interface ContextProps {
+  items: string[];
+}
+
+export type DividerProps = Record<string, never>;
+
+export interface CodeProps {
+  text: string;
+  language?: string;
+  /** File path or label shown above the code. */
+  title?: string;
+}
+
+/** A shell command and its output. Surfaces keep the tail and say how much was cut. */
+export interface TerminalProps {
+  command: string;
+  cwd?: string;
+  status: TaskStatus;
+  exitCode?: number;
+  durationMs?: number;
+  output?: string;
+}
+
+/** Severity-framed note. Slack messages have no alert block; renderers degrade. */
+export interface CalloutProps {
+  tone: Tone;
+  title?: string;
+  text: string;
+}
+
+export interface ConfirmSpec {
+  title: string;
+  text: string;
+  confirm: string;
+  deny: string;
+}
+
+export interface ButtonProps {
+  label: string;
+  action?: ActionRef;
+  url?: string;
+  style?: "primary" | "danger";
+  confirm?: ConfirmSpec;
+  /** Read aloud instead of the label; required when the label is ambiguous out of context. */
+  accessibilityLabel?: string;
+}
+
+export interface ActionsProps {
+  children: ReactNode;
+  /** Change it when the proposal changes so clicks on an older copy can be told apart. */
+  blockId?: string;
+}
+
+/**
+ * The one-line point of the whole layout. Notifications and screen readers read
+ * this instead of the blocks. Renders nothing visible on the web.
+ */
+export interface SummaryProps {
+  text: string;
+}
+
+export interface TaskProps {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  details?: string;
+  output?: string;
+  sources?: Citation[];
+}
+
+/** Groups Tasks under a title. Children must be Task primitives. */
+export interface PlanProps {
+  title: string;
+  children: ReactNode;
+}
+
+export interface SourcesProps {
+  items: Citation[];
+}
+
+export interface FeedbackProps {
+  up: ActionRef;
+  down: ActionRef;
+  selected?: "up" | "down";
+  labels?: { up: string; down: string };
+  blockId?: string;
+}
+
+export interface TableProps {
+  columns: { key: string; label: string; align?: "left" | "center" | "right" }[];
+  rows: Record<string, string | number>[];
+}
+
+export interface PrimitiveProps {
+  Header: HeaderProps;
+  Text: TextProps;
+  Markdown: MarkdownProps;
+  Fields: FieldsProps;
+  Context: ContextProps;
+  Divider: DividerProps;
+  Code: CodeProps;
+  Callout: CalloutProps;
+  Button: ButtonProps;
+  Actions: ActionsProps;
+  Task: TaskProps;
+  Plan: PlanProps;
+  Sources: SourcesProps;
+  Feedback: FeedbackProps;
+  Table: TableProps;
+  Summary: SummaryProps;
+  Terminal: TerminalProps;
+}
+
+export type PrimitiveName = keyof PrimitiveProps;
+
+/** What a renderer supplies: one component per primitive. */
+export type PrimitiveImpls = { [K in PrimitiveName]: ComponentType<PrimitiveProps[K]> };
+
+export type SurfaceKind = "web" | "slack";
+
+export interface Renderer {
+  surface: SurfaceKind;
+  /** Narrower placement within a surface, e.g. Slack "message" vs "modal". */
+  placement?: string;
+  impls: PrimitiveImpls;
+}

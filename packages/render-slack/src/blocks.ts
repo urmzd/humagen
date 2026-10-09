@@ -1,0 +1,439 @@
+import { type Citation, encodeAction, type Tone } from "@agent-ui/core";
+import type { PrimitiveName, PrimitiveProps, TaskProps } from "@agent-ui/primitives";
+import { toMrkdwn, toPlain } from "./mrkdwn";
+import type { HostChild, HostNode } from "./reconciler";
+
+/** Block Kit JSON. Kept loose: Slack's schema moves faster than any typing of it. */
+export type Block = Record<string, unknown> & { type: string };
+
+export type Placement = "message" | "modal" | "home";
+
+/** Documented Block Kit limits (docs.slack.dev/reference/block-kit). */
+export const LIMITS = {
+  blocks: { message: 50, modal: 100, home: 100 },
+  header: 150,
+  sectionText: 3000,
+  field: 2000,
+  fields: 10,
+  contextElements: 10,
+  actionsElements: 25,
+  buttonText: 75,
+  actionId: 255,
+  markdownTotal: 12000,
+  alertText: 200,
+  planTasks: 50,
+  tableRows: 100,
+  tableCols: 20,
+  fallbackText: 4000,
+  blockId: 255,
+  terminalLines: 40,
+  terminalChars: 2500,
+  taskText: 256,
+} as const;
+
+export interface SerializeResult {
+  blocks: Block[];
+  /** Top-level fallback text: notifications and screen readers read this, not blocks. */
+  text: string;
+  /** Limits hit and degradations applied. Empty when the output is lossless. */
+  warnings: string[];
+}
+
+const TONE_PREFIX: Record<Tone, string> = {
+  ok: ":white_check_mark:",
+  warn: ":warning:",
+  bad: ":x:",
+  info: ":information_source:",
+  neutral: "",
+};
+
+const ALERT_LEVEL: Record<Tone, string> = {
+  ok: "success",
+  warn: "warning",
+  bad: "error",
+  info: "info",
+  neutral: "default",
+};
+
+class Serializer {
+  blocks: Block[] = [];
+  fallback: string[] = [];
+  warnings: string[] = [];
+  markdownUsed = 0;
+  tables = 0;
+  summary: string | null = null;
+
+  constructor(readonly placement: Placement) {}
+
+  clip(text: string, max: number, what: string): string {
+    if (text.length <= max) return text;
+    this.warnings.push(`${what} clipped from ${text.length} to ${max} chars`);
+    return `${text.slice(0, max - 1)}…`;
+  }
+
+  plain(text: string, max: number, what: string) {
+    return { type: "plain_text", text: this.clip(text, max, what), emoji: true };
+  }
+
+  mrkdwn(text: string, max: number, what: string) {
+    return { type: "mrkdwn", text: this.clip(toMrkdwn(text), max, what) };
+  }
+
+  /** Button action_ids must be unique per block; suffix the shared id with its index. */
+  actionId(base: string, index: number) {
+    return this.clip(`${base}#${index}`, LIMITS.actionId, "action_id");
+  }
+
+  richText(text: string): Block {
+    return {
+      type: "rich_text",
+      elements: [{ type: "rich_text_section", elements: [{ type: "text", text }] }],
+    };
+  }
+
+  task(t: TaskProps) {
+    return {
+      task_id: t.id,
+      title: this.clip(t.title, 256, "task title"),
+      status: t.status,
+      ...(t.details
+        ? { details: this.richText(this.clip(t.details, LIMITS.taskText, "task details")) }
+        : {}),
+      ...(t.output
+        ? { output: this.richText(this.clip(t.output, LIMITS.taskText, "task output")) }
+        : {}),
+      ...(t.sources?.length
+        ? {
+            sources: t.sources
+              .filter((s) => s.url)
+              .map((s) => ({ type: "url", url: s.url, text: s.title })),
+          }
+        : {}),
+    };
+  }
+
+  citationLine(c: Citation, n: number): string {
+    const title = c.url ? `<${c.url}|${c.title}>` : c.title;
+    return `[${n}] ${title}${c.source ? ` · ${c.source}` : ""}`;
+  }
+
+  node(node: HostNode) {
+    const name = node.type.replace(/^aui:/, "") as PrimitiveName;
+    const p = node.props as never;
+    switch (name) {
+      case "Header":
+        return this.header(p);
+      case "Text":
+        return this.text(p);
+      case "Markdown":
+        return this.markdown(p);
+      case "Fields":
+        return this.fields(p);
+      case "Context":
+        return this.context(p);
+      case "Divider":
+        return this.blocks.push({ type: "divider" });
+      case "Code":
+        return this.code(p);
+      case "Callout":
+        return this.callout(p);
+      case "Actions":
+        return this.actions(node);
+      case "Button":
+        return this.actions({ ...node, children: [node] });
+      case "Task":
+        return this.blocks.push({ type: "task_card", ...this.task(p) });
+      case "Plan":
+        return this.plan(node);
+      case "Sources":
+        return this.sources(p);
+      case "Feedback":
+        return this.feedback(p);
+      case "Table":
+        return this.table(p);
+      case "Terminal":
+        return this.terminal(p);
+      case "Summary":
+        // First summary wins: the outermost component states the point.
+        this.summary ??= toPlain((p as PrimitiveProps["Summary"]).text);
+        return;
+      default:
+        this.warnings.push(`unknown host node ${node.type} dropped`);
+    }
+  }
+
+  header({ text }: PrimitiveProps["Header"]) {
+    this.fallback.push(text);
+    this.blocks.push({ type: "header", text: this.plain(text, LIMITS.header, "header") });
+  }
+
+  text({ text }: PrimitiveProps["Text"]) {
+    this.fallback.push(toPlain(text));
+    this.blocks.push({
+      type: "section",
+      text: this.mrkdwn(text, LIMITS.sectionText, "section text"),
+    });
+  }
+
+  markdown({ text }: PrimitiveProps["Markdown"]) {
+    if (this.placement !== "message") {
+      // markdown blocks are message-only; degrade to section mrkdwn elsewhere.
+      return this.text({ text });
+    }
+    this.fallback.push(text);
+    const left = LIMITS.markdownTotal - this.markdownUsed;
+    const body = this.clip(text, left, "markdown (12k total per message)");
+    this.markdownUsed += body.length;
+    this.blocks.push({ type: "markdown", text: body });
+  }
+
+  fields({ items }: PrimitiveProps["Fields"]) {
+    for (let i = 0; i < items.length; i += LIMITS.fields) {
+      this.blocks.push({
+        type: "section",
+        fields: items
+          .slice(i, i + LIMITS.fields)
+          .map((f) => this.mrkdwn(`**${f.label}**\n${f.value}`, LIMITS.field, "field")),
+      });
+    }
+  }
+
+  context({ items }: PrimitiveProps["Context"]) {
+    for (let i = 0; i < items.length; i += LIMITS.contextElements) {
+      this.blocks.push({
+        type: "context",
+        elements: items
+          .slice(i, i + LIMITS.contextElements)
+          .map((t) => this.mrkdwn(t, LIMITS.sectionText, "context")),
+      });
+    }
+  }
+
+  terminal({ command, cwd, status, exitCode, durationMs, output }: PrimitiveProps["Terminal"]) {
+    const state =
+      status === "in_progress"
+        ? "Running"
+        : status === "pending"
+          ? "Queued"
+          : exitCode === undefined
+            ? status === "error"
+              ? "Failed"
+              : "Done"
+            : exitCode === 0
+              ? "Passed"
+              : "Failed";
+    const meta = [
+      `*${state}*`,
+      exitCode !== undefined ? `exit ${exitCode}` : null,
+      durationMs !== undefined ? `${(durationMs / 1000).toFixed(1)}s` : null,
+      cwd ? `\`${cwd}\`` : null,
+    ].filter(Boolean);
+    this.fallback.push(`$ ${command} (${state.toLowerCase()})`);
+    this.blocks.push({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: meta.join(" · ") }],
+    });
+    // Coding agents need the output, but only the end of it: keep the tail and say what was cut.
+    const lines = (output ?? "").split("\n");
+    let tail = lines.slice(-LIMITS.terminalLines).join("\n");
+    if (tail.length > LIMITS.terminalChars) tail = tail.slice(-LIMITS.terminalChars);
+    const cut = lines.length - tail.split("\n").length;
+    const body = [`$ ${command}`, cut > 0 ? `… ${cut} earlier lines` : null, tail || null]
+      .filter((x) => x !== null)
+      .join("\n");
+    this.blocks.push(this.preformatted(body));
+  }
+
+  preformatted(text: string): Block {
+    return {
+      type: "rich_text",
+      elements: [
+        {
+          type: "rich_text_preformatted",
+          elements: [{ type: "text", text: this.clip(text, LIMITS.sectionText, "code") }],
+        },
+      ],
+    };
+  }
+
+  code({ text, title }: PrimitiveProps["Code"]) {
+    if (title) {
+      this.blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `\`${title}\`` }] });
+    }
+    this.blocks.push(this.preformatted(text));
+  }
+
+  callout({ tone, title, text }: PrimitiveProps["Callout"]) {
+    const line = title ? `${title}: ${text}` : text;
+    this.fallback.push(line);
+    // alert blocks exist only in modals; messages and Home get a framed section.
+    if (this.placement === "modal" && line.length <= LIMITS.alertText) {
+      this.blocks.push({ type: "alert", text: line, level: ALERT_LEVEL[tone] });
+      return;
+    }
+    const prefix = TONE_PREFIX[tone];
+    const head = title ? `**${title}**\n` : "";
+    this.blocks.push({
+      type: "section",
+      text: this.mrkdwn(
+        `${prefix ? `${prefix} ` : ""}${head}${text}`,
+        LIMITS.sectionText,
+        "callout",
+      ),
+    });
+  }
+
+  button(p: PrimitiveProps["Button"], index: number): Block {
+    return {
+      type: "button",
+      text: this.plain(p.label, LIMITS.buttonText, "button label"),
+      ...(p.action
+        ? { action_id: this.actionId(p.action.id, index), value: encodeAction(p.action.payload) }
+        : { action_id: this.actionId("aui.link", index) }),
+      ...(p.url ? { url: p.url } : {}),
+      ...(p.style ? { style: p.style } : {}),
+      ...(p.accessibilityLabel ? { accessibility_label: p.accessibilityLabel } : {}),
+      ...(p.confirm
+        ? {
+            confirm: {
+              title: this.plain(p.confirm.title, 100, "confirm title"),
+              text: this.plain(p.confirm.text, 300, "confirm text"),
+              confirm: this.plain(p.confirm.confirm, 30, "confirm button"),
+              deny: this.plain(p.confirm.deny, 30, "deny button"),
+              ...(p.style === "danger" ? { style: "danger" } : {}),
+            },
+          }
+        : {}),
+    };
+  }
+
+  actions(node: HostNode) {
+    const buttons = flatten(node.children).filter((c) => c.type === "aui:Button");
+    if (buttons.length > LIMITS.actionsElements) {
+      this.warnings.push(
+        `${buttons.length} buttons exceed ${LIMITS.actionsElements} per actions block; extras dropped (use a modal with select options)`,
+      );
+    }
+    const { blockId } = node.props as { blockId?: string };
+    this.blocks.push({
+      type: "actions",
+      ...(blockId ? { block_id: this.clip(blockId, LIMITS.blockId, "block_id") } : {}),
+      elements: buttons
+        .slice(0, LIMITS.actionsElements)
+        .map((b, i) => this.button(b.props as unknown as PrimitiveProps["Button"], i)),
+    });
+  }
+
+  plan(node: HostNode) {
+    const { title } = node.props as unknown as Omit<PrimitiveProps["Plan"], "children">;
+    const tasks = flatten(node.children)
+      .filter((c) => c.type === "aui:Task")
+      .map((c) => this.task(c.props as unknown as TaskProps));
+    if (tasks.length > LIMITS.planTasks) {
+      this.warnings.push(`plan has ${tasks.length} tasks; Slack shows ${LIMITS.planTasks}`);
+    }
+    this.blocks.push({
+      type: "plan",
+      title: this.clip(title, 256, "plan title"),
+      tasks: tasks.slice(0, LIMITS.planTasks),
+    });
+  }
+
+  sources({ items }: PrimitiveProps["Sources"]) {
+    const lines = items.map((c, i) => this.citationLine(c, i + 1));
+    for (let i = 0; i < lines.length; i += LIMITS.contextElements) {
+      this.blocks.push({
+        type: "context",
+        elements: lines
+          .slice(i, i + LIMITS.contextElements)
+          .map((t) => ({ type: "mrkdwn", text: t })),
+      });
+    }
+  }
+
+  feedback({ up, down, labels, blockId }: PrimitiveProps["Feedback"]) {
+    this.blocks.push({
+      type: "context_actions",
+      ...(blockId ? { block_id: this.clip(blockId, LIMITS.blockId, "block_id") } : {}),
+      elements: [
+        {
+          type: "feedback_buttons",
+          action_id: this.actionId(up.id, 0),
+          positive_button: {
+            text: this.plain(labels?.up ?? "Helpful", LIMITS.buttonText, "feedback label"),
+            value: encodeAction(up.payload),
+          },
+          negative_button: {
+            text: this.plain(labels?.down ?? "Not helpful", LIMITS.buttonText, "feedback label"),
+            value: encodeAction(down.payload),
+          },
+        },
+      ],
+    });
+  }
+
+  table({ columns, rows }: PrimitiveProps["Table"]) {
+    this.tables += 1;
+    if (this.tables > 1 || this.placement === "modal") {
+      // One table per message; extras degrade to preformatted text.
+      this.warnings.push("extra table rendered as preformatted text");
+      const head = columns.map((c) => c.label).join(" | ");
+      const body = rows.map((r) => columns.map((c) => String(r[c.key] ?? "")).join(" | "));
+      return this.code({ text: [head, ...body].join("\n") });
+    }
+    const cols = columns.slice(0, LIMITS.tableCols);
+    const cell = (v: string | number) => ({ type: "raw_text", text: String(v) });
+    if (rows.length + 1 > LIMITS.tableRows) {
+      this.warnings.push(`table has ${rows.length} rows; truncated to ${LIMITS.tableRows - 1}`);
+    }
+    this.blocks.push({
+      type: "table",
+      column_settings: cols.map((c) => (c.align ? { align: c.align } : null)),
+      rows: [
+        cols.map((c) => cell(c.label)),
+        ...rows.slice(0, LIMITS.tableRows - 1).map((r) => cols.map((c) => cell(r[c.key] ?? ""))),
+      ],
+    });
+  }
+
+  finish(): SerializeResult {
+    const max = LIMITS.blocks[this.placement];
+    let blocks = this.blocks;
+    if (blocks.length > max) {
+      const dropped = blocks.length - (max - 1);
+      this.warnings.push(
+        `${blocks.length} blocks exceed ${max}; last ${dropped} replaced by a note`,
+      );
+      blocks = [
+        ...blocks.slice(0, max - 1),
+        {
+          type: "context",
+          elements: [{ type: "mrkdwn", text: `_${dropped} more blocks not shown_` }],
+        },
+      ];
+    }
+    const text = (this.summary ?? this.fallback.join("\n\n")).trim();
+    return {
+      blocks,
+      text: text.length > LIMITS.fallbackText ? `${text.slice(0, LIMITS.fallbackText - 1)}…` : text,
+      warnings: this.warnings,
+    };
+  }
+}
+
+/** Flatten through any non-primitive wrappers so containers find their children. */
+function flatten(children: HostChild[]): HostNode[] {
+  return children.flatMap((c) => (c.type === "#text" ? [] : [c as HostNode]));
+}
+
+export function serialize(tree: HostChild[], placement: Placement): SerializeResult {
+  const s = new Serializer(placement);
+  for (const child of tree) {
+    if (child.type === "#text") {
+      s.warnings.push("bare text outside a primitive dropped; wrap it in <Text>");
+      continue;
+    }
+    s.node(child as HostNode);
+  }
+  return s.finish();
+}

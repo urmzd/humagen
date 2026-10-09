@@ -1,0 +1,27 @@
+{
+  "name": "@agent-ui/render-slack",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Render agent-ui components to Slack Block Kit JSON via a custom React reconciler.",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./preview": "./src/preview.tsx"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-ui/core": "workspace:*",
+    "@agent-ui/primitives": "workspace:*",
+    "react-reconciler": "^0.34.0"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@agent-ui/components": "workspace:*",
+    "@types/react-reconciler": "^0.33.1"
+  }
+}
