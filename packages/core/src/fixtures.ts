@@ -1,4 +1,5 @@
 import { ActionId } from "./actions";
+import type { SessionState } from "./session";
 import {
   type Approval,
   type Clarification,
@@ -349,5 +350,234 @@ export const notices: Record<"slow" | "error" | "access" | "done", Notice> = {
     tone: "ok",
     title: "Rollback complete",
     body: "Error rate is back to baseline.",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Variants found in the upstream apps: gated tasks, batches, stop phases,
+// runtime notices, delegation, usage, and session-level state.
+
+export const secondApproval: Approval = {
+  type: "approval",
+  id: "a2",
+  summary: "Post the incident summary to #payments-oncall (38 members)?",
+  tool: "slack.post",
+  approveLabel: "Post Summary",
+  preview: [
+    { label: "Channel", value: "#payments-oncall" },
+    { label: "Mentions", value: "@payments-oncall" },
+  ],
+  actingAs: "you",
+  rememberable: true,
+  decision: { kind: "pending" },
+};
+
+export const askedApproval: Approval = {
+  ...pendingApproval,
+  decision: {
+    kind: "asked",
+    by: "Dana",
+    at,
+    question: "Will this also roll back the config change from #4812?",
+  },
+};
+
+/** Two gated calls at once: the web shows a batch with per-row choices. */
+export const batchTurn: Turn = {
+  ...doneTurn,
+  id: "turn-batch",
+  status: "waiting",
+  text: "Deploy `#4812` is the likely cause [[c2]]. I can roll it back and tell on-call.",
+  tasks: [
+    ...doneTurn.tasks,
+    {
+      id: "g1",
+      title: "Roll back payments-api",
+      status: "waiting",
+      tool: "deploys.rollback",
+      interruptId: "a1",
+    },
+    {
+      id: "g2",
+      title: "Post incident summary",
+      status: "waiting",
+      tool: "slack.post",
+      interruptId: "a2",
+    },
+  ],
+  interrupts: [
+    { ...pendingApproval, initiator: "dana" },
+    { ...secondApproval, initiator: "dana" },
+  ],
+};
+
+export const deniedTaskTurn: Turn = {
+  ...doneTurn,
+  id: "turn-denied",
+  tasks: [
+    ...doneTurn.tasks,
+    {
+      id: "g1",
+      title: "Roll back payments-api",
+      status: "denied",
+      interruptId: "a1",
+      output: "Dana said no",
+    },
+  ],
+  interrupts: [deniedApproval],
+};
+
+export const unsureClarification: Clarification = {
+  ...pendingClarification,
+  allowUnsure: true,
+  answer: { kind: "unsure", by: "Dana", at },
+};
+
+export const stoppingTurn: Turn = {
+  ...streamingTurn,
+  id: "turn-stop",
+  status: "stopped",
+  stop: "requested",
+};
+export const stopFailedTurn: Turn = { ...stoppingTurn, stop: "failed" };
+export const stopConfirmedTurn: Turn = { ...stoppingTurn, stop: "confirmed" };
+
+export const runtimeNotices: Record<"silence" | "fallback" | "retried" | "spend", Notice> = {
+  silence: {
+    id: "s1",
+    kind: "silence",
+    tone: "neutral",
+    title: "Still working",
+    body: "2m so far, nothing to show yet.",
+  },
+  fallback: {
+    id: "s2",
+    kind: "model_fallback",
+    tone: "neutral",
+    body: "Switched to the backup model after the primary timed out.",
+  },
+  retried: {
+    id: "s3",
+    kind: "retried",
+    tone: "neutral",
+    body: "Retried twice after an interrupted response.",
+  },
+  spend: {
+    id: "s4",
+    kind: "spend_blocked",
+    tone: "warn",
+    title: "Next turn would pass the spend cap",
+    body: "This workspace has $0.42 left of its $50 monthly cap. Add budget to keep going.",
+    actions: [
+      {
+        label: "Add Budget",
+        action: { id: ActionId.reconnect, payload: { turnId: "turn-1", target: "budget" } },
+      },
+    ],
+  },
+};
+
+export const delegatingTurn: Turn = {
+  ...streamingTurn,
+  id: "turn-sub",
+  activity: "delegating",
+  planTitle: "Delegating to the deploy agent",
+  tasks: [
+    ...(streamingTurn.tasks.slice(0, 2) as Turn["tasks"]),
+    {
+      id: "d1",
+      title: "Asked the deploy agent to compare #4811 and #4812",
+      status: "in_progress",
+      subagent: {
+        name: "Deploy agent",
+        steps: 6,
+        tokens: 12_400,
+        url: "https://example.com/runs/d1",
+      },
+    },
+  ],
+};
+
+export const handoffTurn: Turn = {
+  ...doneTurn,
+  id: "turn-handoff",
+  handoff: { to: "Billing agent", reason: "The question is about refunds, which billing owns." },
+};
+
+export const usageTurn: Turn = {
+  ...doneTurn,
+  id: "turn-usage",
+  usage: {
+    model: "claude-sonnet-5-5",
+    inputTokens: 18_240,
+    outputTokens: 912,
+    cacheReadTokens: 14_100,
+    costUsd: 0.071,
+    latencyMs: 12_400,
+  },
+};
+
+export const sessions: Record<
+  "fresh" | "busy" | "compacting" | "compacted" | "nearLimit" | "overBudget",
+  SessionState
+> = {
+  fresh: {
+    model: "claude-sonnet-5-5",
+    approvalMode: "ask",
+    context: { usedTokens: 4_200, limitTokens: 200_000, compactAt: 0.8 },
+    budget: { spentUsd: 3.1, limitUsd: 50, period: "month" },
+    status: "idle",
+    activity: "idle",
+  },
+  busy: {
+    model: "claude-sonnet-5-5",
+    approvalMode: "ask",
+    context: { usedTokens: 92_000, limitTokens: 200_000, compactAt: 0.8 },
+    budget: { spentUsd: 18.4, limitUsd: 50, period: "month", nextTurnUsd: 0.09 },
+    queued: 2,
+    status: "working",
+    activity: "searching",
+  },
+  compacting: {
+    model: "claude-sonnet-5-5",
+    approvalMode: "auto",
+    context: { usedTokens: 168_000, limitTokens: 200_000, compactAt: 0.8 },
+    compaction: { kind: "compacting", startedAt: at },
+    budget: { spentUsd: 22, limitUsd: 50, period: "month" },
+    status: "working",
+    activity: "thinking",
+  },
+  compacted: {
+    model: "claude-sonnet-5-5",
+    approvalMode: "ask",
+    context: { usedTokens: 41_000, limitTokens: 200_000, compactAt: 0.8 },
+    compaction: {
+      kind: "compacted",
+      at,
+      savedTokens: 127_000,
+      summary:
+        "Kept the incident timeline, decisions, and open questions; dropped raw tool output.",
+    },
+    budget: { spentUsd: 22.3, limitUsd: 50, period: "month" },
+    status: "idle",
+  },
+  nearLimit: {
+    model: "claude-sonnet-5-5",
+    approvalMode: "ask",
+    context: { usedTokens: 194_000, limitTokens: 200_000, compactAt: 0.8 },
+    compaction: {
+      kind: "failed",
+      at,
+      reason: "Nothing left to summarize without losing decisions.",
+    },
+    budget: { spentUsd: 31, limitUsd: 50, period: "month" },
+    status: "idle",
+  },
+  overBudget: {
+    model: "claude-sonnet-5-5",
+    approvalMode: "ask",
+    context: { usedTokens: 30_000, limitTokens: 200_000 },
+    budget: { spentUsd: 49.58, limitUsd: 50, period: "month", nextTurnUsd: 0.6 },
+    status: "idle",
   },
 };

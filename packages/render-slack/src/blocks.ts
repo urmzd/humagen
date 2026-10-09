@@ -2,6 +2,7 @@ import { type Citation, encodeAction, type Tone } from "@agent-ui/core";
 import type { PrimitiveName, PrimitiveProps, TaskProps } from "@agent-ui/primitives";
 import { toMrkdwn, toPlain } from "./mrkdwn";
 import type { HostChild, HostNode } from "./reconciler";
+import { slackTaskNote, slackTaskStatus } from "./status";
 
 /** Block Kit JSON. Kept loose: Slack's schema moves faster than any typing of it. */
 export type Block = Record<string, unknown> & { type: string };
@@ -91,16 +92,18 @@ class Serializer {
     };
   }
 
-  task(t: TaskProps) {
+  task(t: TaskProps, inPlan = false) {
+    const note = slackTaskNote(t.status);
+    const output = [note, t.output].filter(Boolean).join(" · ") || undefined;
     return {
       task_id: t.id,
       title: this.clip(t.title, 256, "task title"),
-      status: t.status,
+      status: slackTaskStatus(t.status, inPlan),
       ...(t.details
         ? { details: this.richText(this.clip(t.details, LIMITS.taskText, "task details")) }
         : {}),
-      ...(t.output
-        ? { output: this.richText(this.clip(t.output, LIMITS.taskText, "task output")) }
+      ...(output
+        ? { output: this.richText(this.clip(output, LIMITS.taskText, "task output")) }
         : {}),
       ...(t.sources?.length
         ? {
@@ -153,6 +156,8 @@ class Serializer {
         return this.table(p);
       case "Terminal":
         return this.terminal(p);
+      case "Checkboxes":
+        return this.checkboxes(p);
       case "Summary":
         // First summary wins: the outermost component states the point.
         this.summary ??= toPlain((p as PrimitiveProps["Summary"]).text);
@@ -242,6 +247,32 @@ class Serializer {
       .filter((x) => x !== null)
       .join("\n");
     this.blocks.push(this.preformatted(body));
+  }
+
+  /** Checkboxes live in an actions block; the host reads state.values when a button is clicked. */
+  checkboxes({ name, options, selected }: PrimitiveProps["Checkboxes"]) {
+    const option = (o: (typeof options)[number]) => ({
+      text: this.mrkdwn(`**${o.label}**`, 150, "checkbox label"),
+      ...(o.description
+        ? { description: this.plain(o.description, 150, "checkbox description") }
+        : {}),
+      value: o.id,
+    });
+    const enabled = options.filter((o) => !o.disabled).slice(0, 10);
+    if (options.length > 10) this.warnings.push(`${options.length} checkboxes; Slack shows 10`);
+    const initial = enabled.filter((o) => selected.includes(o.id)).map(option);
+    this.blocks.push({
+      type: "actions",
+      block_id: this.clip(`checkboxes:${name}`, LIMITS.blockId, "block_id"),
+      elements: [
+        {
+          type: "checkboxes",
+          action_id: this.clip(`aui.select#${name}`, LIMITS.actionId, "action_id"),
+          options: enabled.map(option),
+          ...(initial.length ? { initial_options: initial } : {}),
+        },
+      ],
+    });
   }
 
   preformatted(text: string): Block {
@@ -335,7 +366,7 @@ class Serializer {
     const { title } = node.props as unknown as Omit<PrimitiveProps["Plan"], "children">;
     const tasks = flatten(node.children)
       .filter((c) => c.type === "aui:Task")
-      .map((c) => this.task(c.props as unknown as TaskProps));
+      .map((c) => this.task(c.props as unknown as TaskProps, true));
     if (tasks.length > LIMITS.planTasks) {
       this.warnings.push(`plan has ${tasks.length} tasks; Slack shows ${LIMITS.planTasks}`);
     }

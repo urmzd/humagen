@@ -82,6 +82,15 @@ export interface ButtonProps {
   confirm?: ConfirmSpec;
   /** Read aloud instead of the label; required when the label is ambiguous out of context. */
   accessibilityLabel?: string;
+  /** Name of a Checkboxes group whose selection is sent with this action. */
+  collects?: string;
+}
+
+/** A group of checkboxes whose selection rides along with a Button that names it in `collects`. */
+export interface CheckboxesProps {
+  name: string;
+  options: { id: string; label: string; description?: string; disabled?: boolean }[];
+  selected: string[];
 }
 
 export interface ActionsProps {
@@ -148,6 +157,7 @@ export interface PrimitiveProps {
   Table: TableProps;
   Summary: SummaryProps;
   Terminal: TerminalProps;
+  Checkboxes: CheckboxesProps;
 }
 
 export type PrimitiveName = keyof PrimitiveProps;

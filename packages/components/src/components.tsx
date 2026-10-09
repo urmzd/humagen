@@ -1,13 +1,20 @@
 import {
   ActionId,
   type Approval,
+  type Approval as ApprovalT,
   type Attachment,
+  budgetPressure,
   type Citation,
   type Clarification,
+  canDecide,
+  contextPressure,
   type Failure,
   type Field,
+  formatTokens,
   type Interrupt,
+  isRetryable,
   type Notice,
+  type SessionState,
   type Turn,
   timeToken,
 } from "@agent-ui/core";
@@ -15,6 +22,7 @@ import {
   Actions,
   Button,
   Callout,
+  Checkboxes,
   Code,
   Context,
   Feedback,
@@ -53,11 +61,44 @@ function withReason(line: string, reason?: string) {
 export function ApprovalCard({
   turnId,
   approval,
+  viewer,
   copy = defaultCopy,
-}: { turnId: string; approval: Approval } & WithCopy) {
+}: {
+  turnId: string;
+  approval: Approval;
+  /** Who is looking. Non-initiators can ask but never approve. */
+  viewer?: string;
+} & WithCopy) {
   const { decision } = approval;
   const fields = previewFields(approval);
   const payload = { turnId, target: approval.id };
+  const allowed = viewer === undefined || canDecide(approval, viewer);
+
+  if (decision.kind === "asked") {
+    // Asking halts the call; the agent answers, then the gate is raised again.
+    return (
+      <>
+        <Text text={`**${approval.summary}**`} />
+        {fields.length > 0 && <Fields items={fields} />}
+        <Context
+          items={[`${copy.askedBy(decision.by, timeToken(decision.at))}: "${decision.question}"`]}
+        />
+      </>
+    );
+  }
+
+  if (decision.kind === "pending" && !allowed) {
+    return (
+      <>
+        <Text text={`**${approval.summary}**`} />
+        {fields.length > 0 && <Fields items={fields} />}
+        <Actions blockId={`approval:${approval.id}:r${approval.revision ?? 0}`}>
+          <Button label={copy.ask} action={{ id: ActionId.ask, payload }} />
+        </Actions>
+        <Context items={[copy.notYours]} />
+      </>
+    );
+  }
 
   if (decision.kind === "pending") {
     const meta = [
@@ -79,6 +120,13 @@ export function ApprovalCard({
           />
           {approval.editable && (
             <Button label={copy.edit} action={{ id: ActionId.edit, payload }} />
+          )}
+          <Button label={copy.ask} action={{ id: ActionId.ask, payload }} />
+          {approval.rememberable && (
+            <Button
+              label={copy.alwaysAllow(approval.tool)}
+              action={{ id: ActionId.remember, payload }}
+            />
           )}
           <Button
             label={copy.cancel}
@@ -126,6 +174,47 @@ export function ApprovalCard({
   );
 }
 
+/**
+ * Several gated calls at once: one message, every item listed, all checked by
+ * default, one "Approve Selected". Unchecked items are denied, never run.
+ */
+export function ApprovalBatch({
+  turnId,
+  approvals,
+  copy = defaultCopy,
+}: { turnId: string; approvals: ApprovalT[] } & WithCopy) {
+  const name = `batch:${turnId}`;
+  return (
+    <>
+      <Summary text={copy.approvalNeeded(copy.batchTitle(approvals.length))} />
+      <Text text={`**${copy.batchTitle(approvals.length)}**`} />
+      <Checkboxes
+        name={name}
+        options={approvals.map((a) => ({
+          id: a.id,
+          label: a.summary,
+          description: previewFields(a)
+            .map((f) => `${f.label}: ${f.value}`)
+            .join(" · "),
+        }))}
+        selected={approvals.map((a) => a.id)}
+      />
+      <Actions blockId={`${name}:actions`}>
+        <Button
+          label={copy.approveSelected}
+          style="primary"
+          collects={name}
+          action={{ id: ActionId.approveSelected, payload: { turnId, target: name } }}
+        />
+        <Button
+          label={copy.denyAll}
+          action={{ id: ActionId.denyAll, payload: { turnId, target: name } }}
+        />
+      </Actions>
+    </>
+  );
+}
+
 /** Clarifying choice: two to four unstyled options, each with a line of context, plus a way out. */
 export function ClarificationCard({
   turnId,
@@ -143,6 +232,14 @@ export function ClarificationCard({
       <>
         <Text text={clarification.question} />
         <Context items={[copy.answeredBy(answer.by, choice, timeToken(answer.at))]} />
+      </>
+    );
+  }
+  if (answer.kind === "unsure") {
+    return (
+      <>
+        <Text text={clarification.question} />
+        <Context items={[copy.unsureBy(answer.by, timeToken(answer.at))]} />
       </>
     );
   }
@@ -182,6 +279,12 @@ export function ClarificationCard({
             action={{ id: ActionId.clarifyOther, payload: { turnId, target: clarification.id } }}
           />
         )}
+        {clarification.allowUnsure && (
+          <Button
+            label={copy.unsure}
+            action={{ id: ActionId.unsure, payload: { turnId, target: clarification.id } }}
+          />
+        )}
       </Actions>
     </>
   );
@@ -190,10 +293,11 @@ export function ClarificationCard({
 export function InterruptCard({
   turnId,
   interrupt,
+  viewer,
   copy,
-}: { turnId: string; interrupt: Interrupt } & WithCopy) {
+}: { turnId: string; interrupt: Interrupt; viewer?: string } & WithCopy) {
   return interrupt.type === "approval" ? (
-    <ApprovalCard turnId={turnId} approval={interrupt} copy={copy} />
+    <ApprovalCard turnId={turnId} approval={interrupt} viewer={viewer} copy={copy} />
   ) : (
     <ClarificationCard turnId={turnId} clarification={interrupt} copy={copy} />
   );
@@ -201,6 +305,12 @@ export function InterruptCard({
 
 /** Severity stated in words, with recovery actions instead of a dead end. */
 export function NoticeView({ notice, copy = defaultCopy }: { notice: Notice } & WithCopy) {
+  // What the runtime did on its own is a quiet record, not an alert.
+  if (notice.kind === "silence" || notice.kind === "model_fallback" || notice.kind === "retried") {
+    return (
+      <Context items={[notice.title ? `**${notice.title}** · ${notice.body}` : notice.body]} />
+    );
+  }
   return (
     <>
       <Callout
@@ -250,6 +360,7 @@ export function FailureAlert({
               { label: copy.report, id: ActionId.report },
             ]
           : [{ label: copy.retry, id: ActionId.retry }];
+  const offered = isRetryable(failure) ? actions : actions.filter((a) => a.id !== ActionId.retry);
   return (
     <>
       <Callout
@@ -257,12 +368,15 @@ export function FailureAlert({
         title={failureTitle(failure, copy)}
         text={lines.join(" ")}
       />
-      {actions.length > 0 && (
+      {offered.length > 0 && (
         <Actions blockId={`failure:${turnId}`}>
-          {actions.map((a) => (
+          {offered.map((a) => (
             <Button key={a.id} label={a.label} action={{ id: a.id, payload }} />
           ))}
         </Actions>
+      )}
+      {!isRetryable(failure) && failure.kind !== "auth_required" && (
+        <Context items={[copy.cantRetry]} />
       )}
       {failure.reference && <Context items={[copy.reference(failure.reference)]} />}
     </>
@@ -297,7 +411,19 @@ export function planTitle(turn: Turn, copy: Copy = defaultCopy): string {
 /** Tasks as one plan when the run is plan-shaped, otherwise as a timeline of task cards. */
 export function TaskList({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy) {
   if (turn.tasks.length === 0) return null;
-  const tasks = turn.tasks.map((t) => <Task key={t.id} {...t} />);
+  const tasks = turn.tasks.map(({ subagent, interruptId: _i, ...t }) => (
+    <Task
+      key={t.id}
+      {...t}
+      details={
+        subagent
+          ? [copy.subagent(subagent.name, subagent.steps, subagent.tokens), t.details]
+              .filter(Boolean)
+              .join(" · ")
+          : t.details
+      }
+    />
+  ));
   return turn.planTitle ? <Plan title={planTitle(turn, copy)}>{tasks}</Plan> : tasks;
 }
 
@@ -339,8 +465,11 @@ export function TurnView({
   turn,
   copy = defaultCopy,
   streamed = false,
+  viewer,
 }: {
   turn: Turn;
+  /** Who is looking, for approval gating. */
+  viewer?: string;
   /**
    * The progress and answer were already streamed (Slack chat.appendStream), so
    * render only what belongs in the final chat.stopStream call.
@@ -348,6 +477,9 @@ export function TurnView({
   streamed?: boolean;
 } & WithCopy) {
   const final = turn.status === "done";
+  const pendingApprovals = turn.interrupts.filter(
+    (i): i is ApprovalT => i.type === "approval" && i.decision.kind === "pending",
+  );
   const footer = [
     turn.sessionUrl ? `[${copy.openSession}](${turn.sessionUrl})` : null,
     final ? turn.disclaimer : null,
@@ -360,6 +492,13 @@ export function TurnView({
       <Only surface="web">
         <Context items={[`**${turn.agent.name}** · ${copy.status[turn.status]}`]} />
       </Only>
+      {turn.handoff && (
+        <Context
+          items={[
+            [`→ ${copy.handoff(turn.handoff.to)}`, turn.handoff.reason].filter(Boolean).join(" · "),
+          ]}
+        />
+      )}
       {!streamed && <TaskList turn={turn} copy={copy} />}
       {!streamed && turn.text && (
         <Markdown
@@ -371,9 +510,26 @@ export function TurnView({
         <AttachmentView key={a.id} attachment={a} />
       ))}
       {turn.citations.length > 0 && <Sources items={turn.citations} />}
-      {turn.interrupts.map((i) => (
-        <InterruptCard key={i.id} turnId={turn.id} interrupt={i} copy={copy} />
-      ))}
+      {pendingApprovals.length > 1 ? (
+        <>
+          <ApprovalBatch turnId={turn.id} approvals={pendingApprovals} copy={copy} />
+          {turn.interrupts
+            .filter((i) => !pendingApprovals.includes(i as ApprovalT))
+            .map((i) => (
+              <InterruptCard
+                key={i.id}
+                turnId={turn.id}
+                interrupt={i}
+                viewer={viewer}
+                copy={copy}
+              />
+            ))}
+        </>
+      ) : (
+        turn.interrupts.map((i) => (
+          <InterruptCard key={i.id} turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
+        ))
+      )}
       {turn.notices.map((n) => (
         <NoticeView key={n.id} notice={n} copy={copy} />
       ))}
@@ -381,6 +537,15 @@ export function TurnView({
         <FailureAlert turnId={turn.id} failure={turn.failure} copy={copy} />
       )}
       {turn.status === "stopped" && <Text text={copy.stopped} />}
+      {turn.status === "stopped" && turn.stop && <Context items={[copy.stopPhase[turn.stop]]} />}
+      {turn.status === "stopped" && turn.stop === "confirmed" && (
+        <Actions blockId={`resume:${turn.id}`}>
+          <Button
+            label={copy.resume}
+            action={{ id: ActionId.resume, payload: { turnId: turn.id, target: turn.id } }}
+          />
+        </Actions>
+      )}
       {final && (
         <Feedback
           up={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "up" } }}
@@ -391,6 +556,73 @@ export function TurnView({
         />
       )}
       {footer.length > 0 && <Context items={footer} />}
+    </>
+  );
+}
+
+/**
+ * Conversation-level notices for surfaces without a status line (Slack).
+ * The web shows the same state continuously in its status line instead.
+ */
+export function SessionNotices({
+  session,
+  copy = defaultCopy,
+}: { session: SessionState } & WithCopy) {
+  const c = session.context ? contextPressure(session.context) : null;
+  const b = session.budget ? budgetPressure(session.budget) : null;
+  const compaction = session.compaction;
+  return (
+    <>
+      {compaction?.kind === "compacting" && <Context items={[copy.compacting]} />}
+      {compaction?.kind === "compacted" && (
+        <Context
+          items={[
+            [copy.compacted(formatTokens(compaction.savedTokens)), compaction.summary]
+              .filter(Boolean)
+              .join(" · "),
+          ]}
+        />
+      )}
+      {compaction?.kind === "failed" && (
+        <Callout
+          tone="warn"
+          title={copy.compactFailed(compaction.reason)}
+          text={c ? copy.contextNearlyFull(Math.round(c.ratio * 100)) : ""}
+        />
+      )}
+      {c &&
+        c.pressure !== "ok" &&
+        compaction?.kind !== "compacting" &&
+        compaction?.kind !== "failed" && (
+          <Callout
+            tone={c.pressure === "critical" ? "bad" : "warn"}
+            title={copy.contextNearlyFull(Math.round(c.ratio * 100))}
+            text="Older messages will be summarized to make room."
+          />
+        )}
+      {c && c.pressure !== "ok" && (
+        <Actions blockId="session:context">
+          <Button
+            label={copy.compactNow}
+            action={{ id: ActionId.compact, payload: { turnId: "session", target: "compact" } }}
+          />
+          <Button
+            label={copy.startFresh}
+            action={{ id: ActionId.retry, payload: { turnId: "session", target: "fresh" } }}
+          />
+        </Actions>
+      )}
+      {b?.blocked && session.budget && (
+        <Callout
+          tone="warn"
+          title={
+            session.budget.spentUsd >= session.budget.limitUsd
+              ? "Spend cap reached"
+              : "Next turn would pass the spend cap"
+          }
+          text={`$${session.budget.spentUsd.toFixed(2)} of $${session.budget.limitUsd.toFixed(2)} this ${session.budget.period}.`}
+        />
+      )}
     </>
   );
 }

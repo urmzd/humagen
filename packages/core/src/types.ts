@@ -8,8 +8,25 @@ import type { UiAction } from "./actions";
 /** Semantic color/severity. Maps to Slack alert levels and web tone tokens. */
 export type Tone = "ok" | "warn" | "bad" | "info" | "neutral";
 
-/** Lifecycle of a unit of work. Mirrors Slack task_card/plan statuses. */
-export type TaskStatus = "pending" | "in_progress" | "complete" | "error";
+/**
+ * Lifecycle of a unit of work. The first four mirror Slack task_card statuses;
+ * `waiting` (blocked on an approval) and `denied` (a person said no) are ours,
+ * and renderers map them onto what each surface supports.
+ */
+export type TaskStatus = "pending" | "in_progress" | "waiting" | "complete" | "denied" | "error";
+
+/**
+ * What the agent is doing right now, for ambient indicators (the web orb, the
+ * Slack status line). `waiting` means blocked on a person and must not animate.
+ */
+export type AgentActivity =
+  | "idle"
+  | "thinking"
+  | "searching"
+  | "calling"
+  | "delegating"
+  | "composing"
+  | "waiting";
 
 export interface Citation {
   id: string;
@@ -31,6 +48,10 @@ export interface Task {
   details?: string;
   output?: string;
   sources?: Citation[];
+  /** The approval gating this call, when status is `waiting` or `denied`. */
+  interruptId?: string;
+  /** A delegated run: another agent did this step. */
+  subagent?: { name: string; steps?: number; tokens?: number; url?: string };
 }
 
 /**
@@ -42,7 +63,9 @@ export type Decision =
   | { kind: "approved"; by: string; at: string; reason?: string }
   | { kind: "denied"; by: string; at: string; reason?: string }
   | { kind: "expired"; at: string }
-  | { kind: "cancelled"; at: string };
+  | { kind: "cancelled"; at: string }
+  /** The person asked a question instead of deciding; the call stays halted. */
+  | { kind: "asked"; by: string; at: string; question: string };
 
 export interface Field {
   label: string;
@@ -74,7 +97,18 @@ export interface Approval {
   expiresAt?: string;
   /** Bump when the proposal changes, so clicks on an older copy can be rejected. */
   revision?: number;
+  /** Who may decide. Others can see, ask, or stop, but never approve. */
+  initiator?: string;
+  /** Offer "Always allow {tool}" once trust is earned. */
+  rememberable?: boolean;
+  /** Set when a sub-agent raised the gate: "Raised by Deploy agent". */
+  origin?: string;
   decision: Decision;
+}
+
+/** True when `user` may approve or deny. Without an initiator, anyone may. */
+export function canDecide(approval: Approval, user: string): boolean {
+  return approval.initiator === undefined || approval.initiator === user;
 }
 
 export interface ClarificationOption {
@@ -88,7 +122,9 @@ export interface ClarificationOption {
 export type Answer =
   | { kind: "pending" }
   | { kind: "answered"; by: string; at: string; optionIds: string[]; other?: string }
-  | { kind: "declined"; by: string; at: string; reason?: string };
+  | { kind: "declined"; by: string; at: string; reason?: string }
+  /** "I'm not sure": the agent should proceed with its best judgment or ask differently. */
+  | { kind: "unsure"; by: string; at: string };
 
 /** The agent needs the human to pick or type something before continuing. */
 export interface Clarification {
@@ -98,14 +134,26 @@ export interface Clarification {
   options: ClarificationOption[];
   multiple?: boolean;
   allowOther?: boolean;
+  /** Offer "I'm not sure" as an answer. */
+  allowUnsure?: boolean;
   answer: Answer;
 }
 
 export type Interrupt = Approval | Clarification;
 
 /** Out-of-band message: errors, slow-progress notes, policy notes. Replaces ad-hoc ":warning:" text. */
+/**
+ * Notice kinds with their own rules:
+ * - silence: "Still working, 2m so far". Fires once per turn; never suggests retrying
+ *   (a retry would bill a duplicate turn).
+ * - model_fallback / retried: muted record of what the runtime did on its own.
+ * - spend_blocked: the next turn can't run until budget is added.
+ */
+export type NoticeKind = "general" | "silence" | "model_fallback" | "retried" | "spend_blocked";
+
 export interface Notice {
   id: string;
+  kind?: NoticeKind;
   tone: Tone;
   /** States the level in words ("Deploy failed"); color and emoji never carry it alone. */
   title?: string;
@@ -113,6 +161,9 @@ export interface Notice {
   body: string;
   /** Recovery options: two or three next steps, not a dead end. */
   actions?: NoticeAction[];
+  /** Who sees it. "requester" is ephemeral on Slack and hidden from other viewers on the web. */
+  audience?: "everyone" | "requester";
+  dismissible?: boolean;
 }
 
 export interface NoticeAction {
@@ -147,8 +198,26 @@ export interface Failure {
   /** System to name in copy: "Linear", "the model provider". */
   service?: string;
   retryAfterSeconds?: number;
-  /** Correlation id to quote when reporting a bug. */
+  /** Correlation id to quote when reporting a bug; surfaces offer it as a copy chip. */
   reference?: string;
+  /** Whether re-running the turn can work. Retry is only offered when true. Default by kind. */
+  retryable?: boolean;
+  /** HTTP status from the failing call, when there was one. */
+  httpStatus?: number;
+}
+
+const RETRYABLE: Record<FailureKind, boolean> = {
+  auth_required: false,
+  rate_limited: true,
+  unavailable: true,
+  timeout: true,
+  tool_error: true,
+  forbidden: false,
+  internal: true,
+};
+
+export function isRetryable(failure: Failure): boolean {
+  return failure.retryable ?? RETRYABLE[failure.kind];
 }
 
 /** A shell command the agent ran. Coding agents show these; others rarely need to. */
@@ -178,6 +247,29 @@ export type Attachment = CommandRun | CodeSnippet;
 
 export type TurnStatus = "queued" | "working" | "waiting" | "done" | "failed" | "stopped";
 
+/**
+ * Stop is two-phase: the UI stops locally at once, the runtime confirms later.
+ * Other viewers may still see the turn finish until it is confirmed.
+ */
+export type StopState = "requested" | "acknowledged" | "failed" | "confirmed";
+
+export interface Usage {
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /** Omitted when the model has no price; never shown as $0.00. */
+  costUsd?: number;
+  latencyMs?: number;
+}
+
+/** The turn moved to another agent. */
+export interface Handoff {
+  to: string;
+  reason?: string;
+}
+
 export type Rating = "up" | "down";
 
 export interface Agent {
@@ -204,6 +296,11 @@ export interface Turn {
   feedback?: Rating;
   /** Set when status is "failed". */
   failure?: Failure;
+  /** Set while or after a stop is in flight. */
+  stop?: StopState;
+  activity?: AgentActivity;
+  usage?: Usage;
+  handoff?: Handoff;
   /** Wall time so far; a finished plan is titled with it ("Worked for 12s"). */
   durationMs?: number;
   /** Deep link to the full session, if the host has one. */

@@ -23,10 +23,15 @@ describe("renderToSlack", () => {
     const actions = blocks.find((b) => b.type === "actions") as unknown as {
       elements: { action_id: string; value: string; confirm?: unknown; style?: string }[];
     };
-    const [approve, edit, cancel] = actions.elements;
-    expect(actionIdBase(approve?.action_id ?? "")).toBe(ActionId.approve);
-    expect(actionIdBase(edit?.action_id ?? "")).toBe(ActionId.edit);
-    expect(actionIdBase(cancel?.action_id ?? "")).toBe(ActionId.deny);
+    const byId = (id: string) => actions.elements.find((e) => actionIdBase(e.action_id) === id);
+    const approve = byId(ActionId.approve);
+    const cancel = byId(ActionId.deny);
+    expect(actions.elements.map((e) => actionIdBase(e.action_id))).toEqual([
+      ActionId.approve,
+      ActionId.edit,
+      ActionId.ask,
+      ActionId.deny,
+    ]);
     // Declining is the safe choice, so it stays unstyled.
     expect(cancel).not.toHaveProperty("style");
     expect(decodeAction(approve?.value ?? "")).toEqual({ turnId: "turn-1", target: "a1" });

@@ -11,6 +11,13 @@ export const ActionId = {
   clarifyOther: "aui.clarify.other",
   feedback: "aui.feedback",
   retry: "aui.retry",
+  approveSelected: "aui.approve.selected",
+  denyAll: "aui.deny.all",
+  ask: "aui.ask",
+  remember: "aui.remember",
+  unsure: "aui.clarify.unsure",
+  resume: "aui.resume",
+  compact: "aui.compact",
   reconnect: "aui.reconnect",
   report: "aui.report",
 } as const;
@@ -23,6 +30,11 @@ export interface ActionPayload {
   target: string;
   /** Present for clarification picks. */
   option?: string;
+  /**
+   * Checked ids from a Checkboxes group, filled in by the surface at click time
+   * (web: from the rendered group; Slack: from state.values in the payload).
+   */
+  selection?: string[];
 }
 
 /** Slack caps button values at 2000 chars; keep payloads to ids, never content. */

@@ -638,8 +638,18 @@ production",
           "value": "{"turnId":"turn-1","target":"a1"}",
         },
         {
+          "action_id": "aui.ask#2",
+          "text": {
+            "emoji": true,
+            "text": "Ask",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"turn-1","target":"a1"}",
+        },
+        {
           "accessibility_label": "Cancel: Roll back payments-api in production to deploy #4811?",
-          "action_id": "aui.deny#2",
+          "action_id": "aui.deny#3",
           "text": {
             "emoji": true,
             "text": "Cancel",

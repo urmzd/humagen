@@ -4,6 +4,7 @@ import {
   ClarificationCard,
   FailureAlert,
   NoticeView,
+  SessionNotices,
   TurnView,
 } from "@agent-ui/components";
 import type { Turn, TurnEvent } from "@agent-ui/core";
@@ -45,6 +46,12 @@ export function registry(): Postable[] {
   }
   for (const [key, notice] of Object.entries(fx.notices)) {
     out.push({ name: `notices.${key}`, element: <NoticeView notice={notice} /> });
+  }
+  for (const [key, notice] of Object.entries(fx.runtimeNotices)) {
+    out.push({ name: `runtimeNotices.${key}`, element: <NoticeView notice={notice} /> });
+  }
+  for (const [key, session] of Object.entries(fx.sessions)) {
+    out.push({ name: `sessions.${key}`, element: <SessionNotices session={session} /> });
   }
   for (const [key, failure] of Object.entries(fx.failures)) {
     out.push({

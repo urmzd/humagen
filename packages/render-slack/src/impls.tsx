@@ -26,4 +26,5 @@ export const slackImpls: PrimitiveImpls = {
   Table: host("Table"),
   Summary: host("Summary"),
   Terminal: host("Terminal"),
+  Checkboxes: host("Checkboxes"),
 };

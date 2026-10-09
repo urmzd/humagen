@@ -1,5 +1,6 @@
 import type { PromptConfig, Task, Turn } from "@agent-ui/core";
 import { toPlain } from "./mrkdwn";
+import { slackTaskStatus } from "./status";
 
 /**
  * Slack native streaming (chat.startStream → appendStream → stopStream) as a
@@ -40,7 +41,7 @@ function taskChunk(task: Task, prev: Task | undefined): StreamChunk {
     type: "task_update",
     id: task.id,
     title: clip(task.title),
-    status: task.status,
+    status: slackTaskStatus(task.status, false) as Task["status"],
     // Slack appends details on every update with the same id, so send each field once.
     ...(task.details && task.details !== prev?.details ? { details: clip(task.details) } : {}),
     ...(task.output && task.output !== prev?.output ? { output: clip(task.output) } : {}),

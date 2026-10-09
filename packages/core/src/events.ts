@@ -18,7 +18,11 @@ export type TurnEvent =
   | { type: "turn.completed" }
   | { type: "attachment.upserted"; attachment: Attachment }
   | { type: "turn.failed"; failure: Failure }
-  | { type: "turn.stopped" };
+  | { type: "turn.stopped" }
+  | { type: "stop.updated"; stop: Turn["stop"] }
+  | { type: "activity"; activity: NonNullable<Turn["activity"]> }
+  | { type: "usage"; usage: NonNullable<Turn["usage"]> }
+  | { type: "handoff"; handoff: NonNullable<Turn["handoff"]> };
 
 export function emptyTurn(id: string, agent: Turn["agent"]): Turn {
   return {
@@ -69,6 +73,7 @@ export function reduce(turn: Turn, event: TurnEvent): Turn {
         ...turn,
         interrupts,
         status: hasPendingInterrupt(interrupts) ? "waiting" : "working",
+        activity: hasPendingInterrupt(interrupts) ? "waiting" : "thinking",
       };
     }
     case "attachment.upserted":
@@ -82,7 +87,15 @@ export function reduce(turn: Turn, event: TurnEvent): Turn {
     case "turn.failed":
       return { ...turn, status: "failed", failure: event.failure };
     case "turn.stopped":
-      return { ...turn, status: "stopped" };
+      return { ...turn, status: "stopped", activity: "idle" };
+    case "stop.updated":
+      return { ...turn, stop: event.stop };
+    case "activity":
+      return { ...turn, activity: event.activity };
+    case "usage":
+      return { ...turn, usage: { ...turn.usage, ...event.usage } };
+    case "handoff":
+      return { ...turn, handoff: event.handoff };
   }
 }
 
