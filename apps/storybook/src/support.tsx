@@ -1,5 +1,6 @@
 import type { ActionHandler, Turn, TurnEvent } from "@agent-ui/core";
-import { WebSurface } from "@agent-ui/render-web";
+import { NowContext, WebSurface } from "@agent-ui/render-web";
+import { ArtifactPreviewProvider } from "@agent-ui/web";
 import type { ReactNode } from "react";
 
 /** Story args shared by everything that emits UiActions; `fn()` logs them in the Actions panel. */
@@ -7,7 +8,10 @@ export interface ActionArgs {
   onAction: ActionHandler;
 }
 
-/** The real web UI at chat width. `wide` is for galleries. */
+/** Fixture clock: approvals expire at 15:34, so countdowns read "30m left". */
+export const FIXTURE_NOW = Date.parse("2026-10-08T15:04:00Z");
+
+/** The real web UI at chat width. `wide` is for galleries. File tiles open the preview panel. */
 export function Canvas({
   children,
   width = "chat",
@@ -19,7 +23,11 @@ export function Canvas({
 }) {
   return (
     <div className={`mx-auto w-full ${width === "chat" ? "max-w-3xl" : "max-w-6xl"}`}>
-      <WebSurface onAction={onAction}>{children}</WebSurface>
+      <NowContext.Provider value={FIXTURE_NOW}>
+        <WebSurface onAction={onAction}>
+          <ArtifactPreviewProvider>{children}</ArtifactPreviewProvider>
+        </WebSurface>
+      </NowContext.Provider>
     </div>
   );
 }

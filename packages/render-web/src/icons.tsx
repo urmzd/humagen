@@ -128,6 +128,65 @@ export const SparkleIcon = icon(
   "SparkleIcon",
 );
 
+export const HourglassIcon = icon(
+  <path d="M6 2h12M6 22h12M7 2v4.5a5 5 0 0 0 2.2 4.1L12 12l2.8-1.4A5 5 0 0 0 17 6.5V2M7 22v-4.5a5 5 0 0 1 2.2-4.1L12 12l2.8 1.4a5 5 0 0 1 2.2 4.1V22" />,
+  "HourglassIcon",
+);
+export const PauseIcon = icon(<path d="M9 5v14M15 5v14" />, "PauseIcon");
+export const PlayIcon = icon(<path d="M7 4.5v15l12-7.5z" />, "PlayIcon");
+export const BanIcon = icon(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="m5.6 5.6 12.8 12.8" />
+  </>,
+  "BanIcon",
+);
+export const DownloadIcon = icon(<path d="M12 3v12M7 10l5 5 5-5M5 21h14" />, "DownloadIcon");
+export const GripIcon = icon(
+  <path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01" strokeWidth={3} />,
+  "GripIcon",
+);
+export const BotIcon = icon(
+  <>
+    <rect x="4" y="8" width="16" height="12" rx="3" />
+    <path d="M12 8V4M9 13v2M15 13v2" />
+  </>,
+  "BotIcon",
+);
+export const RefreshIcon = icon(
+  <path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5" />,
+  "RefreshIcon",
+);
+export const ClockIcon = icon(
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </>,
+  "ClockIcon",
+);
+export const GaugeIcon = icon(<path d="M12 14l4-4M3.3 19a10 10 0 1 1 17.4 0" />, "GaugeIcon");
+export const ShieldIcon = icon(
+  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />,
+  "ShieldIcon",
+);
+export const ZapIcon = icon(<path d="M13 2 3 14h9l-1 8 10-12h-9z" />, "ZapIcon");
+export const MessageIcon = icon(
+  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
+  "MessageIcon",
+);
+export const EyeIcon = icon(
+  <>
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12" />
+    <circle cx="12" cy="12" r="3" />
+  </>,
+  "EyeIcon",
+);
+export const ArrowUpDownIcon = icon(<path d="m7 15 5 5 5-5M7 9l5-5 5 5" />, "ArrowUpDownIcon");
+export const PencilIcon = icon(
+  <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />,
+  "PencilIcon",
+);
+
 /**
  * In-progress ring. The SVG box itself rotates, so the ring spins in place
  * around the center of a square box instead of orbiting a text baseline.

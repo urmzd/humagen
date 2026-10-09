@@ -1,27 +1,29 @@
 import { TIME_TOKEN, type Tone } from "@agent-ui/core";
 import type { PrimitiveImpls, PrimitiveProps } from "@agent-ui/primitives";
-import { Children, createContext, isValidElement, type ReactNode, useContext } from "react";
+import { Children, isValidElement, type ReactNode, useContext, useEffect, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Actions, Button, Feedback } from "./buttons";
-import { CitationChip, hostOf, SourceMark, useRegisterCitations } from "./citations";
+import { Actions, Button, Feedback, Menu } from "./buttons";
+import { CitationChip, Favicon, hostOf, useRegisterCitations } from "./citations";
 import { CodeBlock, Terminal } from "./code";
+import { FileTile } from "./file";
+import { Checkboxes } from "./form";
 import {
   AlertOctagonIcon,
   AlertTriangleIcon,
   CheckCircleIcon,
-  ExternalLinkIcon,
+  CheckIcon,
+  ClockIcon,
+  CopyIcon,
   InfoIcon,
 } from "./icons";
+import { SuppressContext, timeLeft, useNow, useTurnMeta } from "./meta";
+
+export { SuppressContext } from "./meta";
+
 import { Plan, TaskItem } from "./task";
 
 export { ActionContext } from "./buttons";
-
-/**
- * Context lines a surrounding web frame already shows (e.g. the agent name and
- * status that `AgentMessage` puts in its header). Matching lines are skipped.
- */
-export const SuppressContext = createContext<ReadonlySet<string>>(new Set());
 
 const toneLabel: Record<Tone, string> = {
   ok: "Success",
@@ -32,11 +34,11 @@ const toneLabel: Record<Tone, string> = {
 };
 
 const toneIcon: Record<Tone, ReactNode> = {
-  ok: <CheckCircleIcon size={16} />,
-  warn: <AlertTriangleIcon size={16} />,
-  bad: <AlertOctagonIcon size={16} />,
-  info: <InfoIcon size={16} />,
-  neutral: <InfoIcon size={16} />,
+  ok: <CheckCircleIcon size={14} />,
+  warn: <AlertTriangleIcon size={14} />,
+  bad: <AlertOctagonIcon size={14} />,
+  info: <InfoIcon size={14} />,
+  neutral: <InfoIcon size={14} />,
 };
 
 const toneText: Record<Tone, string> = {
@@ -117,6 +119,15 @@ function Inline({ text }: { text: string }) {
   );
 }
 
+function Text({ text }: PrimitiveProps["Text"]) {
+  if (useContext(SuppressContext).has(text)) return null;
+  return (
+    <p data-aui="text" className="aui-prose whitespace-pre-line">
+      <Inline text={text} />
+    </p>
+  );
+}
+
 function Markdown({ text, streaming }: PrimitiveProps["Markdown"]) {
   return (
     <div
@@ -131,27 +142,92 @@ function Markdown({ text, streaming }: PrimitiveProps["Markdown"]) {
   );
 }
 
+const EXPIRES = /^Expires \{\{time:([^}]+)\}\}$/;
+const REFERENCE = /^Reference: (\S+)$/;
+
+/** "42m left" countdown for an approval's expiry; warns inside the last hour. */
+function ExpiryChip({ iso }: { iso: string }) {
+  const now = useNow();
+  const left = timeLeft(iso, now);
+  const exact = localizeTimes(`{{time:${iso}}}`);
+  if (!left) return <span>Expired · {exact}</span>;
+  return (
+    <span
+      title={`Expires ${exact}`}
+      className={`inline-flex h-4.5 items-center gap-1 rounded-full px-1.5 font-medium tabular-nums ${left.soon ? "bg-aui-warn/15 text-aui-fg" : "bg-aui-subtle text-aui-muted"}`}
+    >
+      <ClockIcon size={11} className={left.soon ? "text-aui-warn" : ""} />
+      {left.text}
+    </span>
+  );
+}
+
+/** A failure reference to quote in a bug report: one click copies it. */
+function ReferenceChip({ reference }: { reference: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1200);
+    return () => clearTimeout(t);
+  }, [copied]);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(reference);
+        } catch {}
+        setCopied(true);
+      }}
+      aria-label={copied ? "Reference copied" : `Copy reference ${reference}`}
+      className="inline-flex h-5 items-center gap-1 rounded-aui-sm border border-aui-border px-1.5 font-aui-mono text-aui-2xs transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+    >
+      <span className="font-aui-sans text-aui-muted">Ref</span>
+      {reference}
+      {copied ? <CheckIcon size={11} className="text-aui-ok" /> : <CopyIcon size={11} />}
+      <span aria-live="polite" className="sr-only">
+        {copied ? "Copied" : ""}
+      </span>
+    </button>
+  );
+}
+
+function ContextItem({ text }: { text: string }) {
+  const expires = EXPIRES.exec(text);
+  if (expires?.[1]) return <ExpiryChip iso={expires[1]} />;
+  const ref = REFERENCE.exec(text);
+  if (ref?.[1]) return <ReferenceChip reference={ref[1]} />;
+  return <Inline text={text} />;
+}
+
 function Context({ items }: PrimitiveProps["Context"]) {
   const suppressed = useContext(SuppressContext);
+  const turn = useTurnMeta();
   const shown = items.filter((t) => !suppressed.has(t));
   if (shown.length === 0) return null;
+  const http = shown.some((t) => REFERENCE.test(t)) ? turn?.failure?.httpStatus : undefined;
   return (
     <p
       data-aui="context"
-      className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-aui-muted text-aui-xs [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-aui-fg [&_strong]:font-medium [&_strong]:text-aui-fg"
+      className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-aui-2xs text-aui-muted [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-aui-fg [&_strong]:font-medium [&_strong]:text-aui-fg"
     >
       {shown.map((t, i) => (
-        <span key={t} className="inline-flex items-center gap-1.5">
+        <span key={t} className="inline-flex min-w-0 items-center gap-1.5">
           {i > 0 && (
             <span aria-hidden className="opacity-50">
-              •
+              ·
             </span>
           )}
-          <span>
-            <Inline text={t} />
+          <span className="min-w-0">
+            <ContextItem text={t} />
           </span>
         </span>
       ))}
+      {http !== undefined && (
+        <span className="ml-auto font-aui-mono tabular-nums" title="HTTP status">
+          HTTP {http}
+        </span>
+      )}
     </p>
   );
 }
@@ -160,15 +236,12 @@ function Fields({ items }: PrimitiveProps["Fields"]) {
   return (
     <dl
       data-aui="fields"
-      className="grid grid-cols-[minmax(6rem,max-content)_1fr] gap-x-4 text-aui-sm"
+      className="grid grid-cols-[minmax(5rem,max-content)_1fr] gap-x-3 text-aui-xs"
     >
       {items.map((f) => (
-        <div
-          key={f.label}
-          className="col-span-2 grid grid-cols-subgrid border-aui-border border-b py-1.5 last:border-0"
-        >
+        <div key={f.label} className="col-span-2 grid grid-cols-subgrid py-0.5">
           <dt className="text-aui-muted">{f.label}</dt>
-          <dd className="min-w-0 break-words font-medium text-aui-fg">{f.value}</dd>
+          <dd className="min-w-0 break-words text-aui-fg">{f.value}</dd>
         </div>
       ))}
     </dl>
@@ -181,65 +254,66 @@ function Callout({ tone, title, text }: PrimitiveProps["Callout"]) {
       data-aui="callout"
       data-tone={tone}
       role={tone === "bad" ? "alert" : "status"}
-      className="flex gap-2.5 rounded-aui border border-[var(--aui-callout-border)] bg-[var(--aui-callout-bg)] px-3.5 py-3 text-aui-sm"
+      className="flex gap-2 rounded-aui border border-[var(--aui-callout-border)] bg-[var(--aui-callout-bg)] px-2.5 py-1.5 text-aui-sm"
     >
       <span className={`mt-0.5 ${toneText[tone]}`}>{toneIcon[tone]}</span>
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold text-aui-fg">{title ?? toneLabel[tone]}</p>
-        <p className="mt-0.5 text-aui-muted [&_a]:underline [&_code]:font-aui-mono [&_code]:text-[0.85em]">
-          <Inline text={text} />
-        </p>
-      </div>
+      <p className="min-w-0 flex-1 text-aui-muted [&_a]:underline [&_code]:font-aui-mono [&_code]:text-[0.85em]">
+        <span className="font-medium text-aui-fg">{title ?? toneLabel[tone]}</span>
+        {text && (
+          <>
+            <span aria-hidden className="mx-1.5 opacity-50">
+              ·
+            </span>
+            <Inline text={text} />
+          </>
+        )}
+      </p>
     </div>
   );
 }
 
+/**
+ * Sources, visible by default: one compact strip of numbered favicon + title
+ * chips under the answer. Hover shows the snippet; the number matches the
+ * inline citation.
+ */
 function Sources({ items }: PrimitiveProps["Sources"]) {
   useRegisterCitations(items);
   return (
-    <section data-aui="sources" aria-label="Sources" className="flex flex-col gap-2">
-      <h4 className="font-medium text-aui-muted text-aui-xs">
+    <section data-aui="sources" aria-label="Sources" className="flex flex-col gap-1">
+      <h4 className="font-medium text-aui-2xs text-aui-muted">
         {items.length === 1 ? "1 source" : `${items.length} sources`}
       </h4>
-      <ol className="grid gap-2 sm:grid-cols-2">
+      <ol className="flex flex-wrap gap-1">
         {items.map((c, i) => {
           const origin = c.source ?? hostOf(c.url);
           const inner = (
             <>
-              <span className="flex items-center gap-2 text-aui-muted text-aui-xs">
-                <span className="inline-flex size-4 items-center justify-center rounded-full bg-aui-subtle font-medium text-aui-2xs text-aui-fg tabular-nums">
-                  {i + 1}
-                </span>
-                <SourceMark label={origin} className="size-3.5 text-[0.55rem]" />
-                <span className="truncate">{origin}</span>
-                {c.url && (
-                  <ExternalLinkIcon
-                    size={12}
-                    className="ml-auto opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100"
-                  />
-                )}
-              </span>
-              <span className="line-clamp-1 font-medium text-aui-fg text-aui-sm">{c.title}</span>
-              {c.snippet && (
-                <span className="line-clamp-2 text-aui-muted text-aui-xs">{c.snippet}</span>
-              )}
+              <span className="text-aui-muted tabular-nums">{i + 1}</span>
+              <Favicon url={c.url} label={origin} className="size-3.5" />
+              <span className="min-w-0 max-w-[16rem] truncate text-aui-fg">{c.title}</span>
+              <span className="hidden truncate text-aui-muted sm:inline">{origin}</span>
             </>
           );
           const cls =
-            "group flex h-full flex-col gap-1 rounded-aui border border-aui-border bg-aui-surface px-3 py-2.5";
+            "inline-flex h-6 max-w-full items-center gap-1.5 rounded-full border border-aui-border px-2 text-aui-xs";
+          const tip = [c.title, origin, c.snippet].filter(Boolean).join("\n");
           return (
-            <li key={c.id} className="min-w-0">
+            <li key={c.id} className="min-w-0 max-w-full">
               {c.url ? (
                 <a
                   href={c.url}
                   target="_blank"
                   rel="noreferrer"
-                  className={`${cls} transition-colors hover:border-aui-accent/50 hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent`}
+                  title={tip}
+                  className={`${cls} transition-colors hover:border-aui-accent/60 hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent`}
                 >
                   {inner}
                 </a>
               ) : (
-                <div className={cls}>{inner}</div>
+                <span className={cls} title={tip}>
+                  {inner}
+                </span>
               )}
             </li>
           );
@@ -289,15 +363,11 @@ function Table({ columns, rows }: PrimitiveProps["Table"]) {
 
 export const webImpls: PrimitiveImpls = {
   Header: ({ text }) => (
-    <h3 data-aui="header" className="font-semibold text-aui-fg text-aui-lg">
+    <h3 data-aui="header" className="font-semibold text-aui-base text-aui-fg">
       {text}
     </h3>
   ),
-  Text: ({ text }) => (
-    <p data-aui="text" className="aui-prose whitespace-pre-line">
-      <Inline text={text} />
-    </p>
-  ),
+  Text,
   Markdown,
   Fields,
   Context,
@@ -315,4 +385,7 @@ export const webImpls: PrimitiveImpls = {
   // For notifications and screen readers on chat surfaces. The web shows the layout itself,
   // and a live region here would re-announce every streamed token.
   Summary: () => null,
+  Checkboxes,
+  File: FileTile,
+  Menu,
 };

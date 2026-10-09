@@ -90,3 +90,64 @@ export const Coding: Story = {
   },
   parameters: slack("codingTurn"),
 };
+
+export const DeniedTask: Story = {
+  name: "Denied task",
+  args: { turn: fx.deniedTaskTurn },
+  parameters: slack("deniedTaskTurn", "The denied row is struck and reads Not run"),
+};
+
+export const Delegating: Story = {
+  name: "Delegating to a sub-agent",
+  args: { turn: fx.delegatingTurn },
+  parameters: slack("delegatingTurn"),
+};
+
+export const Handoff: Story = {
+  args: { turn: fx.handoffTurn },
+  parameters: slack("handoffTurn"),
+};
+
+export const Usage: Story = {
+  name: "Done, with usage",
+  args: { turn: fx.usageTurn },
+  parameters: slack("usageTurn", "The usage tooltip is web only"),
+};
+
+export const Stopping: Story = {
+  name: "Stop requested",
+  args: { turn: fx.stoppingTurn },
+  parameters: slack("stoppingTurn"),
+};
+
+export const StopFailed: Story = {
+  name: "Stop not confirmed",
+  args: { turn: fx.stopFailedTurn },
+  parameters: slack("stopFailedTurn"),
+};
+
+export const StopConfirmed: Story = {
+  name: "Stop confirmed (Resume)",
+  args: { turn: fx.stopConfirmedTurn },
+  parameters: slack("stopConfirmedTurn"),
+};
+
+export const QuietNotices: Story = {
+  name: "Quiet runtime notices",
+  args: {
+    turn: {
+      ...fx.doneTurn,
+      notices: [fx.runtimeNotices.silence, fx.runtimeNotices.fallback, fx.runtimeNotices.retried],
+    },
+  },
+  parameters: slack(
+    "runtimeNotices.silence",
+    "Fallback and retried are `runtimeNotices.fallback` / `runtimeNotices.retried`",
+  ),
+};
+
+export const SpendBlocked: Story = {
+  name: "Spend blocked notice",
+  args: { turn: { ...fx.doneTurn, notices: [fx.runtimeNotices.spend] } },
+  parameters: slack("runtimeNotices.spend"),
+};

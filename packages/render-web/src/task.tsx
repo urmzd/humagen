@@ -1,4 +1,4 @@
-import type { Citation, TaskStatus } from "@agent-ui/core";
+import { type Citation, formatTokens, type TaskStatus, type Task as TaskT } from "@agent-ui/core";
 import type { PrimitiveProps } from "@agent-ui/primitives";
 import {
   Children,
@@ -9,14 +9,29 @@ import {
   useEffect,
   useRef,
 } from "react";
-import { hostOf, SourceMark } from "./citations";
-import { CheckIcon, CircleIcon, ListChecksIcon, Spinner, XIcon } from "./icons";
+import { Actions, Button, DenseContext, Menu } from "./buttons";
+import { Favicon, hostOf } from "./citations";
+import {
+  BanIcon,
+  BotIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CircleIcon,
+  HourglassIcon,
+  ListChecksIcon,
+  Spinner,
+  XIcon,
+} from "./icons";
+import { useTurnMeta } from "./meta";
 import { Collapse, Shimmer, useDisclosure } from "./motion";
 
 export const statusLabel: Record<TaskStatus, string> = {
   pending: "Pending",
   in_progress: "In progress",
+  waiting: "Waiting for approval",
   complete: "Complete",
+  denied: "Not run",
   error: "Error",
 };
 
@@ -59,13 +74,36 @@ export function StatusIcon({ status, size = 16 }: { status: TaskStatus; size?: n
       </span>
     );
   }
+  if (status === "waiting") {
+    // Blocked on a person: a static mark, never a spinner.
+    return (
+      <span
+        aria-hidden
+        style={box}
+        className="flex shrink-0 items-center justify-center text-aui-accent/70"
+      >
+        <HourglassIcon size={size - 3} />
+      </span>
+    );
+  }
+  if (status === "denied") {
+    return (
+      <span
+        aria-hidden
+        style={box}
+        className="flex shrink-0 items-center justify-center text-aui-muted"
+      >
+        <BanIcon size={size - 3} />
+      </span>
+    );
+  }
   return (
     <span
       aria-hidden
       style={box}
       className="flex shrink-0 items-center justify-center text-aui-muted"
     >
-      <CircleIcon size={size - 2} strokeDasharray="2.5 3" />
+      <CircleIcon size={size - 4} strokeDasharray="2.5 3" />
     </span>
   );
 }
@@ -77,12 +115,12 @@ function SourceChips({ sources }: { sources: Citation[] }) {
         const origin = c.source ?? hostOf(c.url);
         const inner = (
           <>
-            <SourceMark label={origin} className="size-3.5 text-[0.55rem]" />
+            <Favicon url={c.url} label={origin} className="size-3" />
             <span className="max-w-56 truncate">{c.title}</span>
           </>
         );
         const cls =
-          "inline-flex h-6 items-center gap-1.5 rounded-full border border-aui-border bg-aui-surface pr-2 pl-1 text-aui-2xs text-aui-muted";
+          "inline-flex h-5 items-center gap-1 rounded-full bg-aui-subtle/70 pr-2 pl-1 text-aui-2xs text-aui-muted";
         return (
           <li key={c.id}>
             {c.url ? (
@@ -104,69 +142,175 @@ function SourceChips({ sources }: { sources: Citation[] }) {
   );
 }
 
+/** Sub-agent chip: who did this step, and how much work it took. */
+function SubagentChip({ subagent }: { subagent: NonNullable<TaskT["subagent"]> }) {
+  const stats = [
+    subagent.steps ? `${subagent.steps} steps` : null,
+    subagent.tokens ? `${formatTokens(subagent.tokens)} tok` : null,
+  ].filter(Boolean);
+  const inner = (
+    <>
+      <BotIcon size={11} />
+      <span className="truncate">{subagent.name}</span>
+      {stats.length > 0 && <span className="opacity-70 tabular-nums">{stats.join(" · ")}</span>}
+    </>
+  );
+  const cls =
+    "inline-flex h-5 max-w-full shrink-0 items-center gap-1 rounded-full bg-aui-accent-soft px-1.5 text-aui-2xs text-aui-fg";
+  return subagent.url ? (
+    <a
+      href={subagent.url}
+      target="_blank"
+      rel="noreferrer"
+      className={`${cls} hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {inner}
+    </a>
+  ) : (
+    <span className={cls}>{inner}</span>
+  );
+}
+
 /**
- * One tool call as a row: status, title, and detail on demand. Errors open by
- * themselves (latched), so the reason is visible without a click.
+ * One tool call as a single line: status, title, and a muted one-line summary.
+ * Detail opens on demand. Errors open by themselves (latched).
  */
-export function TaskRow({ title, status, details, output, sources }: PrimitiveProps["Task"]) {
-  const hasBody = Boolean(details || output || (sources && sources.length > 0));
+/** A gated call's own controls, inline on its row: Approve (with a split menu) and Decline. */
+function DecisionControls({
+  id,
+  title,
+  decision,
+}: {
+  id: string;
+  title: string;
+  decision: NonNullable<PrimitiveProps["Task"]["decision"]>;
+}) {
+  return (
+    <DenseContext.Provider value={true}>
+      <span className="ml-auto flex shrink-0 items-center">
+        <Actions blockId={`decision:${id}`}>
+          <Button
+            label={decision.approve.label}
+            action={decision.approve.action}
+            style={decision.approve.style ?? "primary"}
+            confirm={decision.approve.confirm}
+            accessibilityLabel={`${decision.approve.label}: ${title}`}
+          />
+          {decision.menu && decision.menu.length > 0 && (
+            <Menu label={`More options for ${decision.approve.label}`} items={decision.menu} />
+          )}
+          <Button
+            label={decision.decline.label}
+            action={decision.decline.action}
+            accessibilityLabel={`${decision.decline.label}: ${title}`}
+          />
+        </Actions>
+      </span>
+    </DenseContext.Provider>
+  );
+}
+
+export function TaskRow({
+  id,
+  title,
+  status,
+  details,
+  output,
+  sources,
+  decision,
+}: PrimitiveProps["Task"]) {
+  const meta = useTurnMeta()?.tasks.find((t) => t.id === id);
+  const subagent = meta?.subagent;
+  // The shared component folds sub-agent stats into details; the chip says it better.
+  const shownDetails =
+    subagent && details?.startsWith(subagent.name)
+      ? details
+          .split(" · ")
+          .slice(1 + (subagent.steps ? 1 : 0) + (subagent.tokens ? 1 : 0))
+          .join(" · ") || undefined
+      : details;
+  const hasBody = Boolean(shownDetails || output || (sources && sources.length > 0));
   const { open, toggle } = useDisclosure({ auto: status === "error" });
   const titleNode =
     status === "in_progress" ? (
       <Shimmer>{title}</Shimmer>
     ) : (
-      <span className={status === "pending" ? "text-aui-muted" : "text-aui-fg"}>{title}</span>
+      <span
+        className={
+          status === "pending"
+            ? "text-aui-muted"
+            : status === "denied"
+              ? "text-aui-muted line-through decoration-aui-muted/60"
+              : "text-aui-fg"
+        }
+      >
+        {title}
+      </span>
     );
-  const summary = !open && (output || details);
+  const inline =
+    status === "denied"
+      ? (output ?? "Not run")
+      : status === "waiting"
+        ? "Waiting for approval"
+        : !open
+          ? (output ?? shownDetails)
+          : undefined;
 
   const head = (
     <>
-      <span className="mt-0.5">
-        <StatusIcon status={status} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate">
+      <StatusIcon status={status} size={14} />
+      <span className="flex min-w-0 flex-1 items-baseline gap-2">
+        <span className="min-w-0 shrink truncate">
           {titleNode}
           <span className="sr-only">, {statusLabel[status]}</span>
         </span>
-        {summary && <span className="block truncate text-aui-muted text-aui-xs">{summary}</span>}
+        {subagent && <SubagentChip subagent={subagent} />}
+        {inline && (
+          <span
+            className={`min-w-0 flex-1 truncate text-aui-2xs ${status === "waiting" ? "text-aui-accent" : "text-aui-muted"}`}
+          >
+            {inline}
+          </span>
+        )}
       </span>
     </>
   );
 
+  const controls = decision && status === "waiting" && (
+    <DecisionControls id={id} title={title} decision={decision} />
+  );
+
   return (
-    <li className="relative list-none" data-status={status}>
-      {hasBody ? (
+    <li
+      className="relative list-none"
+      data-status={status}
+      data-decision={controls ? "" : undefined}
+    >
+      {controls ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 py-0.5 text-aui-sm">
+          <span className="flex min-w-0 flex-1 items-center gap-2">{head}</span>
+          {controls}
+        </div>
+      ) : hasBody ? (
         <>
           <button
             type="button"
             aria-expanded={open}
             onClick={toggle}
-            className="group -mx-1.5 flex w-[calc(100%+0.75rem)] min-w-0 items-start gap-2.5 rounded-aui-sm px-1.5 py-1 text-left text-aui-sm transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+            title={shownDetails}
+            className="group -mx-1 flex w-[calc(100%+0.5rem)] min-w-0 items-center gap-2 rounded-aui-sm px-1 py-0.5 text-left text-aui-sm transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
           >
             {head}
-            <span
-              aria-hidden
-              className={`mt-1 text-aui-muted opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none ${open ? "rotate-90 opacity-100" : ""}`}
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="m9 18 6-6-6-6" />
-              </svg>
-            </span>
+            <ChevronRightIcon
+              size={12}
+              strokeWidth={2.5}
+              className={`text-aui-muted opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none ${open ? "rotate-90 opacity-100" : ""}`}
+            />
           </button>
           <Collapse open={open}>
-            <div className="ml-[0.4375rem] flex flex-col gap-1.5 border-aui-border border-l py-1 pr-1 pb-2 pl-[1.1875rem] text-aui-xs">
-              {details && <p className="text-aui-muted">{details}</p>}
+            <div className="ml-[0.4375rem] flex flex-col gap-1 border-aui-border border-l py-0.5 pr-1 pb-1.5 pl-[0.9375rem] text-aui-xs">
+              {shownDetails && <p className="text-aui-muted">{shownDetails}</p>}
               {output && (
                 <p
                   className={`whitespace-pre-wrap font-aui-mono text-aui-2xs ${status === "error" ? "text-aui-bad" : "text-aui-fg"}`}
@@ -179,7 +323,7 @@ export function TaskRow({ title, status, details, output, sources }: PrimitivePr
           </Collapse>
         </>
       ) : (
-        <div className="flex min-w-0 items-start gap-2.5 py-1 text-aui-sm">{head}</div>
+        <div className="flex min-w-0 items-center gap-2 py-0.5 text-aui-sm">{head}</div>
       )}
     </li>
   );
@@ -204,17 +348,18 @@ function statusesOf(children: ReactNode): TaskStatus[] {
 }
 
 /**
- * A plan: a collapsible card whose header carries the state. Its title already
- * says where the run is ("Checking recent deploys", "Worked for 12s"); the icon
- * and the "2 of 3" counter say it at a glance. Open while running; folds itself
- * once everything is complete, unless the viewer chose otherwise.
+ * A plan: one header line that carries the state, then one line per task.
+ * No card: a hairline progress rule under the header is the only chrome.
+ * Open while running; folds itself once everything is settled.
  */
 export function Plan({ title, children }: PrimitiveProps["Plan"]) {
   const statuses = statusesOf(children);
   const total = statuses.length;
-  const done = statuses.filter((s) => s === "complete").length;
+  const settled = (s: TaskStatus) => s === "complete" || s === "denied";
+  const done = statuses.filter(settled).length;
   const failed = statuses.some((s) => s === "error");
   const running = statuses.some((s) => s === "in_progress");
+  const waiting = !running && statuses.some((s) => s === "waiting");
   const allDone = total > 0 && done === total;
 
   const { open, setOpen, toggle } = useDisclosure({ defaultOpen: !allDone, auto: failed });
@@ -234,60 +379,46 @@ export function Plan({ title, children }: PrimitiveProps["Plan"]) {
     ? "error"
     : running
       ? "in_progress"
-      : allDone
-        ? "complete"
-        : "pending";
+      : waiting
+        ? "waiting"
+        : allDone
+          ? "complete"
+          : "pending";
 
   return (
-    <section
-      data-aui="plan"
-      aria-label={title}
-      className="overflow-hidden rounded-aui-lg border border-aui-border bg-aui-surface"
-    >
+    <section data-aui="plan" aria-label={title} className="flex flex-col">
       <button
         type="button"
         aria-expanded={open}
         onClick={toggle}
-        className="group flex w-full min-w-0 items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
+        className="group -mx-1 flex min-w-0 items-center gap-2 rounded-aui-sm px-1 py-0.5 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
       >
         {state === "pending" ? (
-          <ListChecksIcon size={16} className="text-aui-muted" />
+          <ListChecksIcon size={14} className="text-aui-muted" />
         ) : (
-          <StatusIcon status={state} />
+          <StatusIcon status={state} size={14} />
         )}
-        <span className="min-w-0 flex-1 truncate font-medium text-aui-sm">
+        <span className="min-w-0 truncate font-medium text-aui-sm">
           {running ? <Shimmer>{title}</Shimmer> : title}
         </span>
         {total > 0 && (
-          <span className="shrink-0 text-aui-muted text-aui-xs tabular-nums">
-            {done} of {total}
+          <span className="flex shrink-0 items-center gap-1.5 text-aui-2xs text-aui-muted tabular-nums">
+            <span aria-hidden className="h-0.5 w-10 overflow-hidden rounded-full bg-aui-subtle">
+              <span
+                className={`block h-full transition-[width] duration-500 motion-reduce:transition-none ${failed ? "bg-aui-bad" : allDone ? "bg-aui-ok" : "bg-aui-accent"}`}
+                style={{ width: `${(done / total) * 100}%` }}
+              />
+            </span>
+            {done}/{total}
           </span>
         )}
-        <svg
-          aria-hidden="true"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={`shrink-0 text-aui-muted transition-transform duration-200 group-hover:text-aui-fg motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        <ChevronDownIcon
+          size={13}
+          className={`ml-auto shrink-0 text-aui-muted opacity-60 transition-transform duration-200 group-hover:opacity-100 motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
+        />
       </button>
-      {total > 0 && (
-        <div className="h-0.5 bg-aui-subtle" aria-hidden>
-          <div
-            className={`h-full transition-[width] duration-500 motion-reduce:transition-none ${failed ? "bg-aui-bad" : allDone ? "bg-aui-ok" : "bg-aui-accent"}`}
-            style={{ width: `${(done / total) * 100}%` }}
-          />
-        </div>
-      )}
       <Collapse open={open}>
-        <ul className="flex flex-col px-3 pt-1.5 pb-2">
+        <ul className="ml-[0.4375rem] flex flex-col border-aui-border border-l pt-0.5 pl-2.5">
           <InPlan.Provider value={true}>{children}</InPlan.Provider>
         </ul>
       </Collapse>

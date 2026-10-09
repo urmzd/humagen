@@ -82,7 +82,7 @@ export function buildManifest(options: ManifestOptions = {}) {
     },
     features: {
       app_home: {
-        home_tab_enabled: false,
+        home_tab_enabled: true,
         messages_tab_enabled: true,
         messages_tab_read_only_enabled: false,
       },

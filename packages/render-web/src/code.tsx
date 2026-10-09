@@ -2,11 +2,13 @@ import type { TaskStatus } from "@agent-ui/core";
 import type { PrimitiveProps } from "@agent-ui/primitives";
 import { useEffect, useRef, useState } from "react";
 import {
+  BanIcon,
   CheckCircleIcon,
   CheckIcon,
   CircleIcon,
   CopyIcon,
   FileIcon,
+  HourglassIcon,
   Spinner,
   TerminalIcon,
   XCircleIcon,
@@ -73,7 +75,7 @@ export function CodeBlock({ text, language, title }: PrimitiveProps["Code"]) {
       data-aui="code"
       className="not-prose my-0 min-w-0 overflow-hidden rounded-aui border border-aui-border bg-aui-code"
     >
-      <figcaption className="flex h-9 items-center gap-2 border-aui-border border-b bg-aui-surface pr-1.5 pl-3 text-aui-xs">
+      <figcaption className="flex h-8 items-center gap-2 border-aui-border border-b bg-aui-surface pr-1.5 pl-3 text-aui-xs">
         {title ? (
           <>
             <FileIcon size={13} className="text-aui-muted" />
@@ -96,7 +98,7 @@ export function CodeBlock({ text, language, title }: PrimitiveProps["Code"]) {
       <pre
         // biome-ignore lint/a11y/noNoninteractiveTabindex: scrollable region must be keyboard reachable
         tabIndex={0}
-        className="overflow-x-auto px-0 py-3 font-aui-mono text-aui-xs leading-5 text-aui-fg outline-none focus-visible:ring-2 focus-visible:ring-aui-accent focus-visible:ring-inset"
+        className="overflow-x-auto px-0 py-2 font-aui-mono text-aui-xs leading-5 text-aui-fg outline-none focus-visible:ring-2 focus-visible:ring-aui-accent focus-visible:ring-inset"
       >
         <code className="grid">
           {shown.map((line, i) => (
@@ -135,6 +137,16 @@ function terminalState(status: TaskStatus, exitCode?: number) {
   }
   if (status === "in_progress") {
     return { label: "Running", icon: <Spinner size={13} />, className: "text-aui-accent" };
+  }
+  if (status === "waiting") {
+    return {
+      label: "Waiting for approval",
+      icon: <HourglassIcon size={13} />,
+      className: "text-aui-accent/80",
+    };
+  }
+  if (status === "denied") {
+    return { label: "Not run", icon: <BanIcon size={13} />, className: "text-aui-term-muted" };
   }
   if (status === "pending") {
     return { label: "Queued", icon: <CircleIcon size={13} />, className: "text-aui-term-muted" };
@@ -182,7 +194,7 @@ export function Terminal({
       data-aui="terminal"
       className="not-prose my-0 min-w-0 overflow-hidden rounded-aui border border-aui-border bg-aui-term text-aui-term-fg shadow-aui-sm"
     >
-      <figcaption className="flex h-9 items-center gap-2 border-aui-term-border border-b pr-1.5 pl-3 text-aui-xs">
+      <figcaption className="flex h-8 items-center gap-2 border-aui-term-border border-b pr-1.5 pl-3 text-aui-xs">
         <TerminalIcon size={13} className="text-aui-term-muted" />
         <span className={`inline-flex items-center gap-1.5 font-medium ${state.className}`}>
           {state.icon}

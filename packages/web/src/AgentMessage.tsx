@@ -1,13 +1,22 @@
 import { type Copy, defaultCopy, TurnView } from "@agent-ui/components";
-import type { Turn } from "@agent-ui/core";
+import { ActionId, formatTokens, formatUsd, type Turn, type Usage } from "@agent-ui/core";
 import {
+  ActionContext,
+  buttonClass,
+  CopyButton,
+  GaugeIcon,
+  RefreshIcon,
   ShimmerVerb,
-  SparkleIcon,
   SuppressContext,
   THINKING_VERBS,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
+  TurnMetaContext,
   useVerbSequence,
 } from "@agent-ui/render-web";
-import { useMemo } from "react";
+import { useContext, useMemo, useState } from "react";
+import { AgentOrb, type OrbState, turnOrbState } from "./AgentOrb";
+import { StopBanner } from "./Alerts";
 import { Reasoning } from "./Reasoning";
 
 function seconds(ms?: number) {
@@ -16,39 +25,15 @@ function seconds(ms?: number) {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
-/** Agent mark: the host's avatar, or the accent monogram. A ring turns while the agent works. */
-export function AgentAvatar({ agent, busy = false }: { agent: Turn["agent"]; busy?: boolean }) {
+/** Agent mark: the activity orb, or the host's avatar with a small orb while it works. */
+export function AgentAvatar({ agent, state = "idle" }: { agent: Turn["agent"]; state?: OrbState }) {
+  if (!agent.avatarUrl) return <AgentOrb state={state} size="md" label="" className="mt-px" />;
+  const live = state !== "idle" && state !== "done";
   return (
     <span aria-hidden className="relative flex size-7 shrink-0 items-center justify-center">
-      {busy && (
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 32 32"
-          className="aui-spinner absolute -inset-[3px] size-[calc(100%+6px)] text-aui-accent"
-          fill="none"
-        >
-          <circle
-            cx="16"
-            cy="16"
-            r="15"
-            stroke="currentColor"
-            strokeOpacity="0.15"
-            strokeWidth="1.5"
-          />
-          <path
-            d="M31 16A15 15 0 0 0 16 1"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
-      )}
-      {agent.avatarUrl ? (
-        <img src={agent.avatarUrl} alt="" className="size-7 rounded-full object-cover" />
-      ) : (
-        <span className="flex size-7 items-center justify-center rounded-full bg-aui-accent text-aui-accent-fg shadow-aui-sm">
-          <SparkleIcon size={14} fill="currentColor" strokeWidth={1.5} />
-        </span>
+      <img src={agent.avatarUrl} alt="" className="size-7 rounded-full object-cover" />
+      {live && (
+        <AgentOrb state={state} size="xs" label="" className="absolute -right-0.5 -bottom-0.5" />
       )}
     </span>
   );
@@ -76,16 +61,174 @@ function useActivity(turn: Turn): string | null {
   return verb;
 }
 
+function UsageChip({ usage }: { usage: Usage }) {
+  const [open, setOpen] = useState(false);
+  const rows: [string, string][] = [];
+  if (usage.model) rows.push(["Model", usage.model]);
+  if (usage.inputTokens !== undefined)
+    rows.push(["Input", `${formatTokens(usage.inputTokens)} tokens`]);
+  if (usage.outputTokens !== undefined)
+    rows.push(["Output", `${formatTokens(usage.outputTokens)} tokens`]);
+  if (usage.cacheReadTokens)
+    rows.push(["Cache read", `${formatTokens(usage.cacheReadTokens)} tokens`]);
+  if (usage.cacheWriteTokens)
+    rows.push(["Cache write", `${formatTokens(usage.cacheWriteTokens)} tokens`]);
+  // Unpriced models omit cost rather than show $0.00.
+  if (usage.costUsd !== undefined) rows.push(["Cost", formatUsd(usage.costUsd)]);
+  if (usage.latencyMs !== undefined) rows.push(["Latency", seconds(usage.latencyMs) ?? ""]);
+  if (rows.length === 0) return null;
+  return (
+    <span className="relative">
+      <button
+        type="button"
+        aria-label="Usage details"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onBlur={() => setOpen(false)}
+        className={actionBtn}
+      >
+        <GaugeIcon size={13} />
+      </button>
+      {open && (
+        <span
+          role="tooltip"
+          className="aui-pop-in aui-glass absolute bottom-full left-0 z-40 mb-1 grid w-52 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 rounded-aui p-2 text-aui-2xs"
+        >
+          {rows.map(([k, v]) => (
+            <span key={k} className="contents">
+              <span className="text-aui-muted">{k}</span>
+              <span className="text-right text-aui-fg tabular-nums">{v}</span>
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const actionBtn =
+  "inline-flex size-7 items-center justify-center rounded-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-accent";
+
+/** Copy, regenerate, rate (with a comment after thumbs-down), and usage. */
+function MessageActions({ turn, copy }: { turn: Turn; copy: Copy }) {
+  const onAction = useContext(ActionContext);
+  const [commenting, setCommenting] = useState(false);
+  const [comment, setComment] = useState("");
+  const [sent, setSent] = useState(false);
+  const text = turn.text.replace(/\[\[[^\]]+\]\]/g, "").trim();
+  const rate = (rating: "up" | "down") => {
+    onAction({ id: ActionId.feedback, payload: { turnId: turn.id, target: rating } });
+    setCommenting(rating === "down");
+    setSent(rating === "up");
+  };
+  return (
+    <div className="-ml-1.5 flex flex-col gap-1">
+      <div role="toolbar" aria-label="Message actions" className="flex items-center gap-0.5">
+        {text && <CopyButton text={text} label="Copy answer" />}
+        <button
+          type="button"
+          aria-label="Regenerate"
+          title="Regenerate"
+          className={actionBtn}
+          onClick={() =>
+            onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
+          }
+        >
+          <RefreshIcon size={13} />
+        </button>
+        <button
+          type="button"
+          aria-label={copy.helpful}
+          title={copy.helpful}
+          aria-pressed={turn.feedback === "up"}
+          className={actionBtn}
+          onClick={() => rate("up")}
+        >
+          <ThumbsUpIcon
+            size={13}
+            fill={turn.feedback === "up" ? "currentColor" : "none"}
+            fillOpacity={0.2}
+          />
+        </button>
+        <button
+          type="button"
+          aria-label={copy.notHelpful}
+          title={copy.notHelpful}
+          aria-pressed={turn.feedback === "down"}
+          className={actionBtn}
+          onClick={() => rate("down")}
+        >
+          <ThumbsDownIcon
+            size={13}
+            fill={turn.feedback === "down" ? "currentColor" : "none"}
+            fillOpacity={0.2}
+          />
+        </button>
+        {turn.usage && <UsageChip usage={turn.usage} />}
+        {sent && (
+          <output className="aui-fade-up ml-1 text-aui-2xs text-aui-muted">
+            Thanks for the feedback
+          </output>
+        )}
+      </div>
+      {commenting && (
+        <form
+          className="aui-pop-in ml-1.5 flex max-w-md items-center gap-1.5 rounded-aui border border-aui-border py-0.5 pr-0.5 pl-2 focus-within:border-aui-accent/60"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onAction({
+              id: ActionId.feedback,
+              payload: { turnId: turn.id, target: "down", option: comment.trim() },
+            });
+            setCommenting(false);
+            setComment("");
+            setSent(true);
+          }}
+        >
+          <input
+            // biome-ignore lint/a11y/noAutofocus: opened by the person's own click
+            autoFocus
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setCommenting(false);
+            }}
+            aria-label="What went wrong?"
+            placeholder="What went wrong? (optional)"
+            className="h-6 min-w-0 flex-1 bg-transparent text-aui-sm outline-none placeholder:text-aui-muted"
+          />
+          <button type="submit" className={`${buttonClass("primary")} h-6 px-2`}>
+            Send
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 /**
- * One agent turn in a web chat: avatar, name and live status in the header,
- * the reasoning trace, then the shared TurnView. Render inside a WebSurface.
+ * One agent turn in a web chat: the activity orb, name and live status in the
+ * header, the reasoning trace, then the shared TurnView. Render inside a WebSurface.
  *
  * The header replaces the "Name · Status" context line TurnView emits for the
  * web, so the status is said once. Slack shows status as a reaction instead.
+ * Finished turns get a compact action row (copy, regenerate, rate, usage).
  */
 export function AgentMessage({ turn, copy = defaultCopy }: { turn: Turn; copy?: Copy }) {
   const statusLine = `**${turn.agent.name}** · ${copy.status[turn.status]}`;
-  const suppressed = useMemo(() => new Set([statusLine]), [statusLine]);
+  const final = turn.status === "done";
+  const suppressed = useMemo(() => {
+    const set = new Set([statusLine]);
+    if (final) set.add("block:feedback");
+    if (turn.status === "stopped" && turn.stop) {
+      set.add(copy.stopped);
+      set.add(copy.stopPhase[turn.stop]);
+      set.add("block:resume");
+    }
+    return set;
+  }, [statusLine, final, turn.status, turn.stop, copy]);
   const activity = useActivity(turn);
   const busy = turn.status === "working" || turn.status === "queued";
   const reasoningLive = busy && !turn.text && !turn.tasks.some((t) => t.status !== "pending");
@@ -99,13 +242,14 @@ export function AgentMessage({ turn, copy = defaultCopy }: { turn: Turn; copy?: 
     <article
       aria-label={`${turn.agent.name} message`}
       aria-busy={busy || undefined}
-      className="aui-fade-up grid min-w-0 grid-cols-[1.75rem_minmax(0,1fr)] gap-x-3"
+      data-turn-id={turn.id}
+      className="aui-fade-up grid min-w-0 scroll-mt-4 grid-cols-[1.75rem_minmax(0,1fr)] gap-x-2.5"
     >
-      <AgentAvatar agent={turn.agent} busy={busy} />
-      <div className="flex min-w-0 flex-col gap-3">
+      <AgentAvatar agent={turn.agent} state={turnOrbState(turn)} />
+      <div className="flex min-w-0 flex-col gap-2">
         <header className="flex h-7 min-w-0 items-center gap-2 text-aui-sm">
           <span className="font-semibold text-aui-fg">{turn.agent.name}</span>
-          <span className="flex min-w-0 items-center gap-1.5 text-aui-muted text-aui-xs">
+          <span className="flex min-w-0 items-center gap-1.5 text-aui-2xs text-aui-muted">
             {activity ? (
               <ShimmerVerb className="truncate">{activity}</ShimmerVerb>
             ) : (
@@ -119,11 +263,17 @@ export function AgentMessage({ turn, copy = defaultCopy }: { turn: Turn; copy?: 
           <output className="sr-only">{copy.status[turn.status]}</output>
         </header>
         {turn.reasoning && <Reasoning text={turn.reasoning} streaming={reasoningLive} />}
-        <SuppressContext.Provider value={suppressed}>
-          <div className="aui-stack">
-            <TurnView turn={turn} copy={copy} />
-          </div>
-        </SuppressContext.Provider>
+        <TurnMetaContext.Provider value={turn}>
+          <SuppressContext.Provider value={suppressed}>
+            <div className="aui-stack">
+              <TurnView turn={turn} copy={copy} />
+              {turn.status === "stopped" && turn.stop && (
+                <StopBanner turnId={turn.id} stop={turn.stop} label={copy.stopPhase[turn.stop]} />
+              )}
+            </div>
+          </SuppressContext.Provider>
+        </TurnMetaContext.Provider>
+        {final && <MessageActions turn={turn} copy={copy} />}
       </div>
     </article>
   );

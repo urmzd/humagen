@@ -34,7 +34,10 @@ export async function uploadFile(
     "files.getUploadURLExternal",
     { filename: file.name, length: String(file.bytes.byteLength) },
   );
-  const put = await fetch(upload_url, { method: "POST", body: new Blob([file.bytes as Uint8Array<ArrayBuffer>]) });
+  const put = await fetch(upload_url, {
+    method: "POST",
+    body: new Blob([file.bytes as Uint8Array<ArrayBuffer>]),
+  });
   if (!put.ok) throw new SlackError("upload", `http_${put.status}`);
   const done = await slack.call<{ files: { id: string; permalink?: string }[] }>(
     "files.completeUploadExternal",

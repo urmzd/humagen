@@ -44,3 +44,32 @@ export const Answered: Story = {
   args: { clarification: fx.answeredClarification },
   parameters: slack("answeredClarification"),
 };
+
+export const WithUnsure: Story = {
+  name: "Pending, with I'm Not Sure",
+  args: { clarification: { ...fx.pendingClarification, allowUnsure: true } },
+  parameters: slack("pendingClarification"),
+};
+
+export const SomethingElse: Story = {
+  name: "Something Else (inline text)",
+  parameters: slack("pendingClarification", "Slack opens a modal"),
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Something Else" }));
+    await userEvent.type(
+      await canvas.findByRole("textbox", { name: /Tell me what you need/ }),
+      "Check canary{Enter}",
+    );
+    await expect(args.onAction).toHaveBeenCalledWith({
+      id: ActionId.clarifyOther,
+      payload: { turnId: "turn-1", target: "q1", option: "Check canary" },
+    });
+  },
+};
+
+export const Unsure: Story = {
+  name: "Answered: not sure",
+  args: { clarification: fx.unsureClarification },
+  parameters: slack("unsureClarification"),
+};

@@ -448,7 +448,15 @@ function taskDecision(turn: Turn, interruptId: string | undefined, copy: Copy) {
   ).length;
   const menu = [
     ...(pendingCount > 1
-      ? [{ label: copy.approveAll(pendingCount), action: { id: ActionId.approveAll, payload: { turnId: turn.id, target: `batch:${turn.id}` } } }]
+      ? [
+          {
+            label: copy.approveAll(pendingCount),
+            action: {
+              id: ActionId.approveAll,
+              payload: { turnId: turn.id, target: `batch:${turn.id}` },
+            },
+          },
+        ]
       : []),
     ...(approval.rememberable
       ? [{ label: copy.alwaysAllow(approval.tool), action: { id: ActionId.remember, payload } }]
@@ -720,7 +728,11 @@ export function SystemAlertView({ alert, copy = defaultCopy }: { alert: SystemAl
   return (
     <>
       <Summary text={`${alert.service} ${status.toLowerCase()}: ${alert.title}`} />
-      <Callout tone={SERVICE_TONE[alert.status]} title={`${alert.service} ${status.toLowerCase()}: ${alert.title}`} text={body} />
+      <Callout
+        tone={SERVICE_TONE[alert.status]}
+        title={`${alert.service} ${status.toLowerCase()}: ${alert.title}`}
+        text={body}
+      />
       <Context items={meta} />
     </>
   );
@@ -820,7 +832,12 @@ function InboxEntry({
   viewer,
   copy,
   from,
-}: { item: InboxItem; viewer?: string; copy: Copy; from: ReactNode }) {
+}: {
+  item: InboxItem;
+  viewer?: string;
+  copy: Copy;
+  from: ReactNode;
+}) {
   const turnId = item.source.turnId ?? "inbox";
   return (
     <>
@@ -830,7 +847,9 @@ function InboxEntry({
       {item.kind === "clarification" && (
         <ClarificationCard turnId={turnId} clarification={item.clarification} copy={copy} />
       )}
-      {item.kind === "failure" && <FailureAlert turnId={turnId} failure={item.failure} copy={copy} />}
+      {item.kind === "failure" && (
+        <FailureAlert turnId={turnId} failure={item.failure} copy={copy} />
+      )}
       {from}
       {itemActions(item, copy)}
     </>

@@ -122,3 +122,46 @@ export const TimedOut: Story = {
   args: { approval: fx.expiredApproval },
   parameters: slack("expiredApproval"),
 };
+
+export const AskInline: Story = {
+  name: "Ask a question inline",
+  parameters: slack("pendingApproval", "Slack opens a modal for the question"),
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Ask" }));
+    const box = await canvas.findByRole("textbox", { name: /Ask a question/ });
+    await userEvent.type(box, "Does this undo the config change?{Enter}");
+    await expect(args.onAction).toHaveBeenCalledWith({
+      id: ActionId.ask,
+      payload: { turnId: "turn-1", target: "a1", option: "Does this undo the config change?" },
+    });
+  },
+};
+
+export const AlwaysAllow: Story = {
+  name: "Rememberable (Always Allow)",
+  args: { approval: fx.secondApproval },
+  parameters: slack("secondApproval"),
+};
+
+export const Asked: Story = {
+  name: "Asked instead of deciding",
+  args: { approval: fx.askedApproval },
+  parameters: slack("askedApproval"),
+};
+
+export const NotInitiator: Story = {
+  name: "Viewer is not the initiator",
+  args: { approval: { ...fx.pendingApproval, initiator: "dana" } },
+  render: ({ onAction, approval }) => (
+    <Canvas onAction={onAction}>
+      <ApprovalCard turnId="turn-1" approval={approval} viewer="sam" />
+    </Canvas>
+  ),
+  parameters: slack("pendingApproval", "Others see Ask only"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: /^Roll Back/ })).toBeNull();
+    await expect(canvas.getByText(/Only the person who started this/)).toBeInTheDocument();
+  },
+};

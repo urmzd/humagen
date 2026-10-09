@@ -90,6 +90,39 @@ export function SourceMark({ label, className }: { label: string; className?: st
 }
 
 /**
+ * The source's own favicon, fetched from the cited site itself (no third-party
+ * favicon service), falling back to the letter mark.
+ */
+export function Favicon({
+  url,
+  label,
+  className = "size-3.5",
+}: {
+  url?: string;
+  label: string;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  let src: string | null = null;
+  try {
+    if (url) src = `${new URL(url).origin}/favicon.ico`;
+  } catch {
+    src = null;
+  }
+  if (!src || failed) return <SourceMark label={label} className={`${className} text-[0.55rem]`} />;
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className={`${className} shrink-0 rounded-[0.2rem] object-contain`}
+    />
+  );
+}
+
+/**
  * Inline citation chip: a superscript-height pill with the source number.
  * Hover or focus shows a card with the title, origin, and cited snippet.
  */
@@ -163,10 +196,10 @@ export function CitationChip({ href, label }: { href?: string; label: string }) 
         <span
           id={cardId}
           role="tooltip"
-          className={`aui-pop-in absolute top-full z-50 mt-1.5 flex w-80 max-w-[80vw] flex-col gap-1.5 rounded-aui border border-aui-border bg-aui-pop p-3 text-left font-normal text-aui-sm text-aui-fg not-italic shadow-aui-pop ${alignEnd ? "right-0" : "left-0"}`}
+          className={`aui-pop-in aui-glass absolute top-full z-50 mt-1.5 flex w-80 max-w-[80vw] flex-col gap-1.5 rounded-aui p-3 text-left font-normal text-aui-sm text-aui-fg not-italic shadow-aui-pop ${alignEnd ? "right-0" : "left-0"}`}
         >
           <span className="flex items-center gap-2 text-aui-muted text-aui-xs">
-            <SourceMark label={origin} />
+            <Favicon url={href} label={origin} />
             <span className="truncate">{origin}</span>
             <ExternalLinkIcon size={12} className="ml-auto" />
           </span>
