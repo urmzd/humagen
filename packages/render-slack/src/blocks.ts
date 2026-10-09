@@ -142,6 +142,8 @@ class Serializer {
         return this.callout(p);
       case "Actions":
         return this.actions(node);
+      case "Menu":
+        return this.actions({ ...node, props: {}, children: [node] });
       case "Button":
         return this.actions({ ...node, children: [node] });
       case "Task":
@@ -414,7 +416,9 @@ class Serializer {
   }
 
   actions(node: HostNode) {
-    const buttons = flatten(node.children).filter((c) => c.type === "aui:Button");
+    const children = flatten(node.children);
+    const buttons = children.filter((c) => c.type === "aui:Button");
+    const menus = children.filter((c) => c.type === "aui:Menu");
     if (buttons.length > LIMITS.actionsElements) {
       this.warnings.push(
         `${buttons.length} buttons exceed ${LIMITS.actionsElements} per actions block; extras dropped (use a modal with select options)`,
@@ -424,10 +428,38 @@ class Serializer {
     this.blocks.push({
       type: "actions",
       ...(blockId ? { block_id: this.clip(blockId, LIMITS.blockId, "block_id") } : {}),
-      elements: buttons
-        .slice(0, LIMITS.actionsElements)
-        .map((b, i) => this.button(b.props as unknown as PrimitiveProps["Button"], i)),
+      elements: [
+        ...buttons
+          .slice(0, LIMITS.actionsElements - menus.length)
+          .map((b, i) => this.button(b.props as unknown as PrimitiveProps["Button"], i)),
+        ...menus.map((m, i) => this.overflow(m.props as unknown as PrimitiveProps["Menu"], i)),
+      ],
     });
+  }
+
+  /**
+   * Slack's `overflow` has one action_id for the whole menu, so each option's
+   * value carries its own agent-ui action. Decode with `decodeSlackAction`.
+   */
+  overflow({ items }: PrimitiveProps["Menu"], index: number): Block {
+    if (items.length > 5)
+      this.warnings.push(`menu has ${items.length} items; Slack overflow shows 5`);
+    return {
+      type: "overflow",
+      action_id: this.actionId("aui.menu", index),
+      options: items.slice(0, 5).map((item) => {
+        const value = JSON.stringify({ id: item.action.id, p: item.action.payload });
+        if (value.length > 150)
+          this.warnings.push(`menu value for "${item.label}" exceeds 150 chars`);
+        return {
+          text: this.plain(item.label, 75, "menu label"),
+          ...(item.description
+            ? { description: this.plain(item.description, 75, "menu description") }
+            : {}),
+          value: value.slice(0, 150),
+        };
+      }),
+    };
   }
 
   plan(node: HostNode) {

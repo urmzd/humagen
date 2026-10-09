@@ -19,6 +19,10 @@ export const ActionId = {
   resume: "aui.resume",
   compact: "aui.compact",
   reconnect: "aui.reconnect",
+  approveAll: "aui.approve.all",
+  dismiss: "aui.inbox.dismiss",
+  snooze: "aui.inbox.snooze",
+  open: "aui.inbox.open",
   report: "aui.report",
 } as const;
 

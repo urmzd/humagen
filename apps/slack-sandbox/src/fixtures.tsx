@@ -3,8 +3,10 @@ import {
   AttachmentView,
   ClarificationCard,
   FailureAlert,
+  InboxView,
   NoticeView,
   SessionNotices,
+  SystemAlertView,
   TurnView,
 } from "@agent-ui/components";
 import type { Turn, TurnEvent } from "@agent-ui/core";
@@ -56,6 +58,10 @@ export function registry(): Postable[] {
   for (const [key, session] of Object.entries(fx.sessions)) {
     out.push({ name: `sessions.${key}`, element: <SessionNotices session={session} /> });
   }
+  for (const [key, alert] of Object.entries(fx.systemAlerts)) {
+    out.push({ name: `systemAlerts.${key}`, element: <SystemAlertView alert={alert} /> });
+  }
+  out.push({ name: "inbox@home", element: <InboxView items={fx.inboxItems} />, placement: "home" });
   for (const [key, failure] of Object.entries(fx.failures)) {
     out.push({
       name: `failures.${key}`,

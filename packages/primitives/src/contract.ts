@@ -118,6 +118,15 @@ export interface FileProps {
   error?: string;
 }
 
+/**
+ * Secondary choices behind a chevron, attached to the button before it (a split
+ * button on the web, an `overflow` menu on Slack). Keep the visible set to 2-3.
+ */
+export interface MenuProps {
+  label: string;
+  items: { label: string; action: ActionRef; description?: string; danger?: boolean }[];
+}
+
 export interface ActionsProps {
   children: ReactNode;
   /** Change it when the proposal changes so clicks on an older copy can be told apart. */
@@ -139,6 +148,20 @@ export interface TaskProps {
   details?: string;
   output?: string;
   sources?: Citation[];
+  /**
+   * Decision controls held by the task itself (a gated tool call). Surfaces that
+   * can't put controls in a task row (Slack plans) render the approval card instead.
+   */
+  decision?: {
+    approve: {
+      label: string;
+      action: ActionRef;
+      style?: "primary" | "danger";
+      confirm?: ConfirmSpec;
+    };
+    decline: { label: string; action: ActionRef };
+    menu?: MenuProps["items"];
+  };
 }
 
 /** Groups Tasks under a title. Children must be Task primitives. */
@@ -184,6 +207,7 @@ export interface PrimitiveProps {
   Terminal: TerminalProps;
   Checkboxes: CheckboxesProps;
   File: FileProps;
+  Menu: MenuProps;
 }
 
 export type PrimitiveName = keyof PrimitiveProps;

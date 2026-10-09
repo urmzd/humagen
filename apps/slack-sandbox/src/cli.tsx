@@ -50,7 +50,9 @@ async function main() {
         const view =
           p.placement === "modal"
             ? { type: "modal", title: { type: "plain_text", text: "agent-ui" }, blocks }
-            : undefined;
+            : p.placement === "home"
+              ? { type: "home", blocks }
+              : undefined;
         const res = await validateBlocks(blocks, view);
         if (!res.ok) failed++;
         const detail = res.ok ? "" : ` ${JSON.stringify(res.errors ?? res)}`;

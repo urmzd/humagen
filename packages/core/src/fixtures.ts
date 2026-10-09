@@ -1,4 +1,5 @@
 import { ActionId } from "./actions";
+import { type InboxItem, type SystemAlert, sortInbox } from "./inbox";
 import type { SessionState } from "./session";
 import {
   type Approval,
@@ -681,3 +682,105 @@ export const artifactTurn: Turn = {
   citations: [],
   attachments: [artifacts.ready, artifacts.report],
 };
+
+export const systemAlerts: Record<"degraded" | "down" | "maintenance" | "resolved", SystemAlert> = {
+  degraded: {
+    id: "inc-1",
+    service: "Model provider",
+    status: "degraded",
+    title: "Responses are slower than usual",
+    body: "Answers may take up to a minute. Nothing is lost; streams resume on their own.",
+    startedAt: "2026-10-08T14:40:00Z",
+    updatedAt: "2026-10-08T14:58:00Z",
+    url: "https://status.example.com/incidents/1",
+    affects: ["Streaming", "Long answers"],
+  },
+  down: {
+    id: "inc-2",
+    service: "Deploys API",
+    status: "down",
+    title: "Rollbacks and deploy history are unavailable",
+    body: "Approvals that roll back a deploy will wait until it recovers.",
+    startedAt: "2026-10-08T15:01:00Z",
+    updatedAt: "2026-10-08T15:01:00Z",
+    url: "https://status.example.com/incidents/2",
+    affects: ["deploys.rollback", "deploys.list"],
+  },
+  maintenance: {
+    id: "inc-3",
+    service: "Search index",
+    status: "maintenance",
+    title: "Reindexing runbooks until 16:00",
+    body: "New runbook pages may not show up in answers yet.",
+    startedAt: "2026-10-08T15:00:00Z",
+    updatedAt: "2026-10-08T15:00:00Z",
+  },
+  resolved: {
+    id: "inc-1",
+    service: "Model provider",
+    status: "resolved",
+    title: "Response times are back to normal",
+    startedAt: "2026-10-08T14:40:00Z",
+    updatedAt: "2026-10-08T15:20:00Z",
+    url: "https://status.example.com/incidents/1",
+  },
+};
+
+export const inboxItems: InboxItem[] = sortInbox([
+  {
+    id: "i1",
+    kind: "approval",
+    approval: pendingApproval,
+    state: "open",
+    source: { label: "#payments-incidents", turnId: "turn-1", url: "https://example.com/t/1" },
+    at: "2026-10-08T15:04:00Z",
+  },
+  {
+    id: "i2",
+    kind: "approval",
+    approval: secondApproval,
+    state: "open",
+    source: { label: "#payments-incidents", turnId: "turn-1", url: "https://example.com/t/1" },
+    at: "2026-10-08T15:05:00Z",
+  },
+  {
+    id: "i3",
+    kind: "clarification",
+    clarification: pendingClarification,
+    state: "open",
+    source: { label: "DM with Assistant", turnId: "turn-3", url: "https://example.com/t/3" },
+    at: "2026-10-08T14:50:00Z",
+  },
+  {
+    id: "i4",
+    kind: "failure",
+    failure: failures.auth_required,
+    state: "open",
+    source: { label: "Weekly triage", turnId: "turn-4", url: "https://example.com/t/4" },
+    at: "2026-10-08T13:00:00Z",
+  },
+  {
+    id: "i5",
+    kind: "alert",
+    alert: systemAlerts.down,
+    state: "open",
+    source: { label: "Status" },
+    at: "2026-10-08T15:01:00Z",
+  },
+  {
+    id: "i6",
+    kind: "alert",
+    alert: systemAlerts.degraded,
+    state: "open",
+    source: { label: "Status" },
+    at: "2026-10-08T14:58:00Z",
+  },
+  {
+    id: "i7",
+    kind: "approval",
+    approval: approvedApproval,
+    state: "resolved",
+    source: { label: "#payments-incidents", turnId: "turn-0" },
+    at: "2026-10-08T12:00:00Z",
+  },
+]);

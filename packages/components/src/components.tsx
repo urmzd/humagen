@@ -11,10 +11,13 @@ import {
   type Failure,
   type Field,
   formatTokens,
+  type InboxItem,
   type Interrupt,
   isRetryable,
   type Notice,
+  SERVICE_TONE,
   type SessionState,
+  type SystemAlert,
   type Turn,
   timeToken,
 } from "@agent-ui/core";
@@ -25,10 +28,13 @@ import {
   Checkboxes,
   Code,
   Context,
+  Divider,
   Feedback,
   Fields,
   File,
+  Header,
   Markdown,
+  Menu,
   Only,
   Plan,
   Sources,
@@ -37,6 +43,7 @@ import {
   Terminal,
   Text,
 } from "@agent-ui/primitives";
+import type { ReactNode } from "react";
 import { type Copy, defaultCopy } from "./copy";
 
 interface WithCopy {
@@ -207,9 +214,24 @@ export function ApprovalBatch({
           collects={name}
           action={{ id: ActionId.approveSelected, payload: { turnId, target: name } }}
         />
+        <Menu
+          label={copy.moreOptions}
+          items={[
+            {
+              label: copy.approveAll(approvals.length),
+              action: { id: ActionId.approveAll, payload: { turnId, target: name } },
+            },
+            {
+              label: copy.denyAll,
+              action: { id: ActionId.denyAll, payload: { turnId, target: name } },
+              danger: true,
+            },
+          ]}
+        />
         <Button
-          label={copy.denyAll}
-          action={{ id: ActionId.denyAll, payload: { turnId, target: name } }}
+          label={copy.decline}
+          collects={name}
+          action={{ id: ActionId.deny, payload: { turnId, target: name } }}
         />
       </Actions>
     </>
@@ -414,12 +436,49 @@ export function planTitle(turn: Turn, copy: Copy = defaultCopy): string {
 }
 
 /** Tasks as one plan when the run is plan-shaped, otherwise as a timeline of task cards. */
+/** Inline decision controls for a gated task, so the tool row holds its own options. */
+function taskDecision(turn: Turn, interruptId: string | undefined, copy: Copy) {
+  const approval = turn.interrupts.find(
+    (i): i is ApprovalT => i.type === "approval" && i.id === interruptId,
+  );
+  if (!approval || approval.decision.kind !== "pending") return undefined;
+  const payload = { turnId: turn.id, target: approval.id };
+  const pendingCount = turn.interrupts.filter(
+    (i) => i.type === "approval" && i.decision.kind === "pending",
+  ).length;
+  const menu = [
+    ...(pendingCount > 1
+      ? [{ label: copy.approveAll(pendingCount), action: { id: ActionId.approveAll, payload: { turnId: turn.id, target: `batch:${turn.id}` } } }]
+      : []),
+    ...(approval.rememberable
+      ? [{ label: copy.alwaysAllow(approval.tool), action: { id: ActionId.remember, payload } }]
+      : []),
+    { label: copy.ask, action: { id: ActionId.ask, payload } },
+  ];
+  return {
+    approve: {
+      label: approval.approveLabel ?? copy.approve,
+      action: { id: ActionId.approve, payload },
+      style: approval.destructive ? ("danger" as const) : ("primary" as const),
+      confirm: approval.destructive ? copy.confirmDestructive : undefined,
+    },
+    decline: { label: copy.decline, action: { id: ActionId.deny, payload } },
+    menu,
+  };
+}
+
+/** Approvals tied to a task get inline controls on the web; Slack can't, so it shows the card. */
+function taskOwned(turn: Turn): Set<string> {
+  return new Set(turn.tasks.map((t) => t.interruptId).filter((x): x is string => Boolean(x)));
+}
+
 export function TaskList({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy) {
   if (turn.tasks.length === 0) return null;
-  const tasks = turn.tasks.map(({ subagent, interruptId: _i, ...t }) => (
+  const tasks = turn.tasks.map(({ subagent, interruptId, ...t }) => (
     <Task
       key={t.id}
       {...t}
+      decision={taskDecision(turn, interruptId, copy)}
       details={
         subagent
           ? [copy.subagent(subagent.name, subagent.steps, subagent.tokens), t.details]
@@ -482,6 +541,7 @@ export function TurnView({
   streamed?: boolean;
 } & WithCopy) {
   const final = turn.status === "done";
+  const owned = taskOwned(turn);
   const pendingApprovals = turn.interrupts.filter(
     (i): i is ApprovalT => i.type === "approval" && i.decision.kind === "pending",
   );
@@ -515,7 +575,12 @@ export function TurnView({
         <AttachmentView key={a.id} attachment={a} />
       ))}
       {turn.citations.length > 0 && <Sources items={turn.citations} />}
-      {pendingApprovals.length > 1 ? (
+      {/* Gated tool rows hold their own controls on the web; Slack gets the cards. */}
+      {pendingApprovals.length > 1 && owned.size > 0 ? (
+        <Only surface="slack">
+          <ApprovalBatch turnId={turn.id} approvals={pendingApprovals} copy={copy} />
+        </Only>
+      ) : pendingApprovals.length > 1 ? (
         <>
           <ApprovalBatch turnId={turn.id} approvals={pendingApprovals} copy={copy} />
           {turn.interrupts
@@ -531,9 +596,15 @@ export function TurnView({
             ))}
         </>
       ) : (
-        turn.interrupts.map((i) => (
-          <InterruptCard key={i.id} turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
-        ))
+        turn.interrupts.map((i) =>
+          owned.has(i.id) && i.type === "approval" && i.decision.kind === "pending" ? (
+            <Only key={i.id} surface="slack">
+              <InterruptCard turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
+            </Only>
+          ) : (
+            <InterruptCard key={i.id} turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
+          ),
+        )
       )}
       {turn.notices.map((n) => (
         <NoticeView key={n.id} notice={n} copy={copy} />
@@ -628,6 +699,140 @@ export function SessionNotices({
           text={`$${session.budget.spentUsd.toFixed(2)} of $${session.budget.limitUsd.toFixed(2)} this ${session.budget.period}.`}
         />
       )}
+    </>
+  );
+}
+
+/** A dependency incident, stated in words, updated in place as it develops. */
+export function SystemAlertView({ alert, copy = defaultCopy }: { alert: SystemAlert } & WithCopy) {
+  const status = copy.serviceStatus[alert.status];
+  const meta = [
+    copy.started(timeToken(alert.startedAt)),
+    alert.updatedAt !== alert.startedAt ? copy.updated(timeToken(alert.updatedAt)) : null,
+    alert.url ? `[${copy.statusPage}](${alert.url})` : null,
+  ].filter((x): x is string => x !== null);
+  if (alert.status === "resolved" || alert.status === "operational") {
+    return <Context items={[`**${alert.service}** · ${status} · ${alert.title}`, ...meta]} />;
+  }
+  const body = [alert.body, alert.affects?.length ? copy.affects(alert.affects.join(", ")) : null]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <>
+      <Summary text={`${alert.service} ${status.toLowerCase()}: ${alert.title}`} />
+      <Callout tone={SERVICE_TONE[alert.status]} title={`${alert.service} ${status.toLowerCase()}: ${alert.title}`} text={body} />
+      <Context items={meta} />
+    </>
+  );
+}
+
+function itemActions(item: InboxItem, copy: Copy) {
+  const payload = { turnId: item.source.turnId ?? "inbox", target: item.id };
+  return (
+    <Actions blockId={`inbox:${item.id}`}>
+      {item.source.url && <Button label={copy.openConversation} url={item.source.url} />}
+      <Menu
+        label={copy.moreOptions}
+        items={[
+          { label: copy.snooze, action: { id: ActionId.snooze, payload } },
+          { label: copy.dismiss, action: { id: ActionId.dismiss, payload } },
+        ]}
+      />
+    </Actions>
+  );
+}
+
+/**
+ * Everything waiting on a person, across conversations. Slack publishes it as
+ * the App Home tab (placement "home"); the web wraps it in an inbox panel.
+ * Decisions resolve the item in place; the next refresh moves it to Resolved.
+ */
+export function InboxView({
+  items,
+  viewer,
+  copy = defaultCopy,
+}: { items: InboxItem[]; viewer?: string } & WithCopy) {
+  const open = items.filter((i) => i.state === "open");
+  const decisions = open.filter((i) => i.kind === "approval" || i.kind === "clarification");
+  const alerts = open.filter((i) => i.kind === "alert");
+  const failures = open.filter((i) => i.kind === "failure");
+  const resolved = items.filter((i) => i.state !== "open").slice(0, 10);
+  const from = (i: InboxItem) => <Context items={[copy.from(i.source.label)]} />;
+  return (
+    <>
+      <Summary text={`${copy.inbox}: ${copy.inboxCount(decisions.length + failures.length)}`} />
+      <Header text={copy.inbox} />
+      <Context items={[copy.inboxCount(decisions.length + failures.length)]} />
+      {alerts.length > 0 && (
+        <>
+          <Header text={copy.alerts} />
+          {alerts.map((i) =>
+            i.kind === "alert" ? <SystemAlertView key={i.id} alert={i.alert} copy={copy} /> : null,
+          )}
+        </>
+      )}
+      {decisions.length > 0 && (
+        <>
+          <Header text={copy.needsYou} />
+          {decisions.map((i) => (
+            <InboxEntry key={i.id} item={i} viewer={viewer} copy={copy} from={from(i)} />
+          ))}
+        </>
+      )}
+      {failures.length > 0 && (
+        <>
+          <Header text={copy.failures} />
+          {failures.map((i) => (
+            <InboxEntry key={i.id} item={i} viewer={viewer} copy={copy} from={from(i)} />
+          ))}
+        </>
+      )}
+      {resolved.length > 0 && (
+        <>
+          <Divider />
+          <Context
+            items={[
+              `**${copy.resolved}**`,
+              ...resolved.map((i) => `${inboxTitle(i)} · ${i.source.label}`),
+            ]}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
+function inboxTitle(i: InboxItem): string {
+  switch (i.kind) {
+    case "approval":
+      return i.approval.summary;
+    case "clarification":
+      return i.clarification.question;
+    case "failure":
+      return i.failure.message;
+    case "alert":
+      return `${i.alert.service}: ${i.alert.title}`;
+  }
+}
+
+function InboxEntry({
+  item,
+  viewer,
+  copy,
+  from,
+}: { item: InboxItem; viewer?: string; copy: Copy; from: ReactNode }) {
+  const turnId = item.source.turnId ?? "inbox";
+  return (
+    <>
+      {item.kind === "approval" && (
+        <ApprovalCard turnId={turnId} approval={item.approval} viewer={viewer} copy={copy} />
+      )}
+      {item.kind === "clarification" && (
+        <ClarificationCard turnId={turnId} clarification={item.clarification} copy={copy} />
+      )}
+      {item.kind === "failure" && <FailureAlert turnId={turnId} failure={item.failure} copy={copy} />}
+      {from}
+      {itemActions(item, copy)}
     </>
   );
 }
