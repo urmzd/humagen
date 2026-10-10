@@ -78,7 +78,16 @@ function words(text: string, type: "text.delta" | "reasoning.delta"): TurnEvent[
  * each task starting then settling, citations, then tokens.
  */
 export function scriptFor(turn: Turn, { reasoning = REASONING } = {}): TurnEvent[] {
-  const events: TurnEvent[] = [{ type: "turn.started", turnId: turn.id, agent: turn.agent }];
+  const events: TurnEvent[] = [
+    {
+      type: "turn.started",
+      turnId: turn.id,
+      agent: turn.agent,
+      sessionUrl: turn.sessionUrl,
+      source: turn.source,
+      disclaimer: turn.disclaimer,
+    },
+  ];
   if (reasoning) events.push(...words(reasoning, "reasoning.delta"));
   for (const task of turn.tasks) {
     const running = presentTense(task.title);

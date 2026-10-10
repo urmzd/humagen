@@ -15,8 +15,11 @@ export * from "./icons";
 export { localizeTimes, webImpls } from "./impls";
 export {
   ArtifactOpenContext,
+  type ItemActions,
+  ItemActionsContext,
   NowContext,
   SuppressContext,
+  type TurnItem,
   TurnMetaContext,
   timeLeft,
   useNow,

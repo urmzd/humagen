@@ -39,6 +39,7 @@ const ConfirmContext = createContext<((spec: ConfirmSpec, run: () => void) => vo
 const TEXT_ACTIONS: Partial<Record<string, string>> = {
   [ActionId.ask]: "Ask a question about this action",
   [ActionId.clarifyOther]: "Tell me what you need",
+  [ActionId.reply]: "Type your reply",
 };
 
 /** One-line free text that sends with the action; Enter sends, Escape backs out. */
@@ -172,7 +173,8 @@ export function Button({
           onCancel={() => setTyping(false)}
           onSend={(text) => {
             setTyping(false);
-            fire({ option: text });
+            // `text` is the field; `option` stays for handlers written before it existed.
+            fire({ option: text, text });
           }}
         />
       )}

@@ -1,7 +1,14 @@
-import { type Citation, formatTokens, type TaskStatus, type Task as TaskT } from "@agent-ui/core";
+import {
+  ActionId,
+  type Citation,
+  formatTokens,
+  type Subagent,
+  type TaskStatus,
+} from "@agent-ui/core";
 import type { PrimitiveProps } from "@agent-ui/primitives";
 import {
   Children,
+  type CSSProperties,
   createContext,
   isValidElement,
   type ReactNode,
@@ -9,7 +16,7 @@ import {
   useEffect,
   useRef,
 } from "react";
-import { Actions, Button, DenseContext, Menu } from "./buttons";
+import { ActionContext, Actions, Button, DenseContext, Menu } from "./buttons";
 import { Favicon, hostOf } from "./citations";
 import {
   BanIcon,
@@ -23,7 +30,7 @@ import {
   Spinner,
   XIcon,
 } from "./icons";
-import { useTurnMeta } from "./meta";
+import { ItemActionsContext, type TurnItem, useTurnMeta } from "./meta";
 import { Collapse, Shimmer, useDisclosure } from "./motion";
 
 export const statusLabel: Record<TaskStatus, string> = {
@@ -142,35 +149,142 @@ function SourceChips({ sources }: { sources: Citation[] }) {
   );
 }
 
-/** Sub-agent chip: who did this step, and how much work it took. */
-function SubagentChip({ subagent }: { subagent: NonNullable<TaskT["subagent"]> }) {
+/** The host's controls for this row, at its trailing edge. Hidden until hover or focus, never unreachable. */
+function ItemSlot({ item }: { item: TurnItem | null }) {
+  const actions = useContext(ItemActionsContext);
+  const node = actions && item ? actions(item) : null;
+  if (!node) return null;
+  return (
+    <span
+      data-aui="item-actions"
+      className="absolute top-0 right-0 flex h-6 items-center opacity-0 transition-opacity focus-within:opacity-100 group-hover/item:opacity-100 motion-reduce:transition-none"
+    >
+      {node}
+    </span>
+  );
+}
+
+/** Room for the slot, so it never sits on top of the row's own text. */
+const SLOT_ROOM = "group/item pr-7";
+
+function duration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+/**
+ * A step another agent did, drawn as that agent rather than as a tool call:
+ * its mark in its own hue, its name, where it stands, and one line of what it
+ * was asked or what it came back with. With a run id the whole item is a
+ * button that asks the host to open that run (`ActionId.openRun`).
+ */
+function AgentItem({
+  title,
+  status,
+  output,
+  subagent,
+  turnId,
+}: {
+  title: string;
+  status: TaskStatus;
+  output?: string;
+  subagent: Subagent;
+  turnId: string;
+}) {
+  const onAction = useContext(ActionContext);
+  const summary = subagent.summary ?? (status === "complete" && output ? output : title);
   const stats = [
     subagent.steps ? `${subagent.steps} steps` : null,
     subagent.tokens ? `${formatTokens(subagent.tokens)} tok` : null,
+    subagent.durationMs ? duration(subagent.durationMs) : null,
   ].filter(Boolean);
   const inner = (
     <>
-      <BotIcon size={11} />
-      <span className="truncate">{subagent.name}</span>
-      {stats.length > 0 && <span className="opacity-70 tabular-nums">{stats.join(" · ")}</span>}
+      <span
+        aria-hidden
+        className="flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-accent text-aui-accent-fg"
+      >
+        <BotIcon size={10} />
+      </span>
+      <span className="flex min-w-0 flex-1 items-baseline gap-2">
+        <span className="shrink-0 font-medium text-aui-fg">
+          {status === "in_progress" ? <Shimmer>{subagent.name}</Shimmer> : subagent.name}
+        </span>
+        {/* Settled and fine needs no word; anything else is said, not just colored. */}
+        {status !== "complete" && (
+          <span
+            className={`shrink-0 text-aui-2xs ${status === "error" ? "text-aui-bad" : "text-aui-accent"}`}
+          >
+            {agentStatus[status]}
+          </span>
+        )}
+        <span className="min-w-0 flex-1 truncate text-aui-2xs text-aui-muted">{summary}</span>
+        {stats.length > 0 && (
+          <span className="shrink-0 text-aui-2xs text-aui-muted tabular-nums">
+            {stats.join(" · ")}
+          </span>
+        )}
+      </span>
     </>
   );
+  const frame = {
+    "data-aui": "agent-task",
+    "data-status": status,
+    // The agent's own hue re-derives the accent for this item only.
+    ...(subagent.hue === undefined
+      ? {}
+      : { "data-accent": "agent", style: { "--aui-accent-h": subagent.hue } as CSSProperties }),
+  };
   const cls =
-    "inline-flex h-5 max-w-full shrink-0 items-center gap-1 rounded-full bg-aui-accent-soft px-1.5 text-aui-2xs text-aui-fg";
-  return subagent.url ? (
-    <a
-      href={subagent.url}
-      target="_blank"
-      rel="noreferrer"
-      className={`${cls} hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent`}
-      onClick={(e) => e.stopPropagation()}
-    >
+    "group -mx-1 flex w-[calc(100%+0.5rem)] min-w-0 items-center gap-2 rounded-aui-sm px-1 py-0.5 text-left text-aui-sm";
+  const live = `${cls} transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent`;
+  const label = `${subagent.name}, ${agentStatus[status]}: ${summary}`;
+  const open = (
+    <ChevronRightIcon
+      size={12}
+      strokeWidth={2.5}
+      className="shrink-0 text-aui-muted opacity-60 group-hover:opacity-100"
+    />
+  );
+  if (subagent.runId) {
+    const target = subagent.runId;
+    return (
+      <button
+        type="button"
+        {...frame}
+        aria-label={`Open ${label}`}
+        aria-haspopup="dialog"
+        onClick={() => onAction({ id: ActionId.openRun, payload: { turnId, target } })}
+        className={live}
+      >
+        {inner}
+        {open}
+      </button>
+    );
+  }
+  if (subagent.url) {
+    return (
+      <a {...frame} href={subagent.url} target="_blank" rel="noreferrer" className={live}>
+        {inner}
+        {open}
+      </a>
+    );
+  }
+  return (
+    <div {...frame} className={cls}>
       {inner}
-    </a>
-  ) : (
-    <span className={cls}>{inner}</span>
+    </div>
   );
 }
+
+const agentStatus: Record<TaskStatus, string> = {
+  pending: "Queued",
+  in_progress: "Working",
+  waiting: "Waiting for approval",
+  complete: "Done",
+  denied: "Not run",
+  error: "Failed",
+};
 
 /**
  * One tool call as a single line: status, title, and a muted one-line summary.
@@ -220,16 +334,14 @@ export function TaskRow({
   sources,
   decision,
 }: PrimitiveProps["Task"]) {
-  const meta = useTurnMeta()?.tasks.find((t) => t.id === id);
-  const subagent = meta?.subagent;
-  // The shared component folds sub-agent stats into details; the chip says it better.
-  const shownDetails =
-    subagent && details?.startsWith(subagent.name)
-      ? details
-          .split(" · ")
-          .slice(1 + (subagent.steps ? 1 : 0) + (subagent.tokens ? 1 : 0))
-          .join(" · ") || undefined
-      : details;
+  const turn = useTurnMeta();
+  const task = turn?.tasks.find((t) => t.id === id);
+  const subagent = task?.subagent;
+  const hasSlot = useContext(ItemActionsContext) !== null && Boolean(turn && task);
+  const item: TurnItem | null =
+    turn && task ? { kind: subagent ? "subagent" : "task", turn, task } : null;
+  const li = `relative list-none ${hasSlot ? SLOT_ROOM : ""}`;
+  const shownDetails = details;
   const hasBody = Boolean(shownDetails || output || (sources && sources.length > 0));
   const { open, toggle } = useDisclosure({ auto: status === "error" });
   const titleNode =
@@ -265,7 +377,6 @@ export function TaskRow({
           {titleNode}
           <span className="sr-only">, {statusLabel[status]}</span>
         </span>
-        {subagent && <SubagentChip subagent={subagent} />}
         {inline && (
           <span
             className={`min-w-0 flex-1 truncate text-aui-2xs ${status === "waiting" ? "text-aui-accent" : "text-aui-muted"}`}
@@ -281,12 +392,24 @@ export function TaskRow({
     <DecisionControls id={id} title={title} decision={decision} />
   );
 
+  // Another agent's step is that agent, not a tool row. A gated one keeps its controls.
+  if (subagent && !controls) {
+    return (
+      <li className={li} data-status={status}>
+        <AgentItem
+          title={title}
+          status={status}
+          output={output}
+          subagent={subagent}
+          turnId={turn?.id ?? ""}
+        />
+        <ItemSlot item={item} />
+      </li>
+    );
+  }
+
   return (
-    <li
-      className="relative list-none"
-      data-status={status}
-      data-decision={controls ? "" : undefined}
-    >
+    <li className={li} data-status={status} data-decision={controls ? "" : undefined}>
       {controls ? (
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 py-0.5 text-aui-sm">
           <span className="flex min-w-0 flex-1 items-center gap-2">{head}</span>
@@ -325,6 +448,7 @@ export function TaskRow({
       ) : (
         <div className="flex min-w-0 items-center gap-2 py-0.5 text-aui-sm">{head}</div>
       )}
+      <ItemSlot item={item} />
     </li>
   );
 }

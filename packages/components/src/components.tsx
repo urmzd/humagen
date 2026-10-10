@@ -42,6 +42,7 @@ import {
   Task,
   Terminal,
   Text,
+  useSurface,
 } from "@agent-ui/primitives";
 import type { ReactNode } from "react";
 import { type Copy, defaultCopy } from "./copy";
@@ -481,11 +482,14 @@ function taskOwned(turn: Turn): Set<string> {
 }
 
 export function TaskList({ turn, copy = defaultCopy }: { turn: Turn } & WithCopy) {
+  // The web draws a delegated step as the agent itself; Slack task rows all look alike.
+  const inWords = useSurface().surface === "slack";
   if (turn.tasks.length === 0) return null;
   const tasks = turn.tasks.map(({ subagent, interruptId, ...t }) => (
     <Task
       key={t.id}
       {...t}
+      title={subagent && inWords ? copy.delegated(subagent.name, t.title) : t.title}
       decision={taskDecision(turn, interruptId, copy)}
       details={
         subagent
@@ -553,10 +557,13 @@ export function TurnView({
   const pendingApprovals = turn.interrupts.filter(
     (i): i is ApprovalT => i.type === "approval" && i.decision.kind === "pending",
   );
-  const footer = [
-    turn.sessionUrl ? `[${copy.openSession}](${turn.sessionUrl})` : null,
-    final ? turn.disclaimer : null,
+  // Where the run comes from, then where to watch it: one line of provenance.
+  const provenance = [
+    turn.source ? copy.source(turn.source.label, turn.source.url) : null,
+    turn.sessionUrl ? copy.session(turn.sessionUrl) : null,
   ].filter((x): x is string => Boolean(x));
+  const session = provenance.length > 0 ? <Context items={provenance} /> : null;
+  const disclaimer = turn.disclaimer ?? copy.disclaimer(turn.agent.name);
 
   return (
     <>
@@ -583,6 +590,8 @@ export function TurnView({
         <AttachmentView key={a.id} attachment={a} />
       ))}
       {turn.citations.length > 0 && <Sources items={turn.citations} />}
+      {/* With the references in every outcome: a failed or stopped run needs the link most. */}
+      {session}
       {/* Gated tool rows hold their own controls on the web; Slack gets the cards. */}
       {pendingApprovals.length > 1 && owned.size > 0 ? (
         <Only surface="slack">
@@ -639,7 +648,10 @@ export function TurnView({
           blockId={`feedback:${turn.id}`}
         />
       )}
-      {footer.length > 0 && <Context items={footer} />}
+      {/* Always last, and on anything the agent wrote, not only clean finishes. */}
+      {disclaimer && turn.text && turn.status !== "working" && turn.status !== "queued" && (
+        <Context items={[disclaimer]} />
+      )}
     </>
   );
 }

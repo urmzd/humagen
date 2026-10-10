@@ -24,6 +24,16 @@ export const ActionId = {
   snooze: "aui.inbox.snooze",
   open: "aui.inbox.open",
   report: "aui.report",
+  /** Open a delegated run. `turnId` is the turn it was called from; `target` the child run id. */
+  openRun: "aui.run.open",
+  // Mailbox parts (see mailbox.ts). `turnId` carries the message id, `target` the part id.
+  read: "aui.inbox.read",
+  reply: "aui.inbox.reply",
+  acknowledge: "aui.alert.acknowledge",
+  keepMemories: "aui.memory.keep",
+  discardMemories: "aui.memory.discard",
+  allowOnce: "aui.budget.once",
+  raiseBudget: "aui.budget.raise",
 } as const;
 
 export type ActionId = (typeof ActionId)[keyof typeof ActionId];
@@ -39,6 +49,12 @@ export interface ActionPayload {
    * (web: from the rendered group; Slack: from state.values in the payload).
    */
   selection?: string[];
+  /**
+   * Words the person typed (a reply, a question, "something else"). The web
+   * sends it with the action; Slack collects it in a modal first, since a
+   * button value can't carry it.
+   */
+  text?: string;
 }
 
 /** Slack caps button values at 2000 chars; keep payloads to ids, never content. */

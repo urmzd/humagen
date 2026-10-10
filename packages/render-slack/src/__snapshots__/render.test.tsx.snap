@@ -132,6 +132,19 @@ The runbook says to roll back before paging the on-call [[1]](https://example.co
       "type": "context",
     },
     {
+      "elements": [
+        {
+          "text": "From Incident console: <https://example.com/console/payments|https://example.com/console/payments>",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "Session: <https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
       "block_id": "feedback:turn-1",
       "elements": [
         {
@@ -160,11 +173,7 @@ The runbook says to roll back before paging the on-call [[1]](https://example.co
     {
       "elements": [
         {
-          "text": "<https://example.com/sessions/turn-1|Open full session>",
-          "type": "mrkdwn",
-        },
-        {
-          "text": "AI-generated. Check important answers.",
+          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
           "type": "mrkdwn",
         },
       ],
@@ -288,6 +297,19 @@ exports[`renderToSlack > renders the failed turn 1`] = `
       "type": "markdown",
     },
     {
+      "elements": [
+        {
+          "text": "From Incident console: <https://example.com/console/payments|https://example.com/console/payments>",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "Session: <https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
       "text": {
         "text": ":x: *Timed out*
 The deploys service didn't answer within 30s.",
@@ -314,7 +336,7 @@ The deploys service didn't answer within 30s.",
     {
       "elements": [
         {
-          "text": "<https://example.com/sessions/turn-1|Open full session>",
+          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
           "type": "mrkdwn",
         },
       ],
@@ -420,7 +442,11 @@ exports[`renderToSlack > renders the streaming turn 1`] = `
     {
       "elements": [
         {
-          "text": "<https://example.com/sessions/turn-1|Open full session>",
+          "text": "From Incident console: <https://example.com/console/payments|https://example.com/console/payments>",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "Session: <https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
           "type": "mrkdwn",
         },
       ],
@@ -558,6 +584,19 @@ exports[`renderToSlack > renders the waiting turn 1`] = `
       "type": "context",
     },
     {
+      "elements": [
+        {
+          "text": "From Incident console: <https://example.com/console/payments|https://example.com/console/payments>",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "Session: <https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
       "text": {
         "text": "*Roll back payments-api in production to deploy #4811?*",
         "type": "mrkdwn",
@@ -677,7 +716,7 @@ production",
     {
       "elements": [
         {
-          "text": "<https://example.com/sessions/turn-1|Open full session>",
+          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
           "type": "mrkdwn",
         },
       ],

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   BanIcon,
   CheckCircleIcon,
-  CheckIcon,
   CircleIcon,
   CopyIcon,
   FileIcon,
@@ -14,15 +13,21 @@ import {
   XCircleIcon,
 } from "./icons";
 
-/** Copy to clipboard with a short "Copied" confirmation that screen readers hear. */
+/**
+ * Copy to clipboard. The control itself never changes: same icon, same label,
+ * same width. A short note appears beside it and is announced, then goes.
+ */
 export function CopyButton({
   text,
   label = "Copy",
   tone = "page",
+  note = "before",
 }: {
   text: string;
   label?: string;
   tone?: "page" | "terminal";
+  /** Where the note appears: before the button (at a right edge) or above it (in a toolbar). */
+  note?: "before" | "above";
 }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -46,19 +51,32 @@ export function CopyButton({
     tone === "terminal"
       ? "text-aui-term-muted hover:bg-aui-term-border hover:text-aui-term-fg"
       : "text-aui-muted hover:bg-aui-hover hover:text-aui-fg";
+  const place =
+    note === "above"
+      ? "bottom-full left-1/2 mb-1 -translate-x-1/2"
+      : "top-1/2 right-full mr-1 -translate-y-1/2";
   return (
-    <button
-      type="button"
-      onClick={copy}
-      aria-label={state === "copied" ? "Copied" : label}
-      title={label}
-      className={`inline-flex h-6 items-center gap-1 rounded-aui-sm px-1.5 text-aui-xs transition-colors focus-visible:outline-2 focus-visible:outline-aui-accent ${colors}`}
-    >
-      {state === "copied" ? <CheckIcon size={13} /> : <CopyIcon size={13} />}
-      <span aria-live="polite">
-        {state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : ""}
-      </span>
-    </button>
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={label}
+        title={label}
+        className={`inline-flex h-6 items-center gap-1 rounded-aui-sm px-1.5 text-aui-xs transition-colors focus-visible:outline-2 focus-visible:outline-aui-accent ${colors}`}
+      >
+        <CopyIcon size={13} />
+      </button>
+      {/* Always in the tree so the announcement is heard; out of flow so nothing shifts. */}
+      <output className={`pointer-events-none absolute z-10 ${place}`}>
+        {state !== "idle" && (
+          <span
+            className={`aui-pop-in block whitespace-nowrap rounded-aui-sm border border-aui-border bg-aui-bg px-1.5 py-0.5 text-aui-2xs shadow-sm ${state === "failed" ? "text-aui-bad" : "text-aui-fg"}`}
+          >
+            {state === "copied" ? "Copied" : "Couldn't copy"}
+          </span>
+        )}
+      </output>
+    </span>
   );
 }
 

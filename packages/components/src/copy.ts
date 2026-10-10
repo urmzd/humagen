@@ -4,6 +4,16 @@
  * everything else in sentence case, no end punctuation in headings, one
  * neutral voice, no emoji in buttons or headings.
  */
+const OUTCOMES: Record<string, string> = {
+  allowed_once: "Allowed once",
+  raised: "Limit raised",
+  kept: "Kept",
+  discarded: "Discarded",
+  replied: "Answered",
+  retried: "Retried",
+  handled: "Handled",
+};
+
 export const defaultCopy = {
   approve: "Approve",
   cancel: "Cancel",
@@ -34,7 +44,12 @@ export const defaultCopy = {
   stopped: "Okay, I stopped.",
   retry: "Retry",
   sources: "Sources",
-  openSession: "Open full session",
+  /** The address itself is the link text, so readers see where a click takes them. */
+  session: (url: string) => `Session: [${url}](${url})`,
+  source: (label: string, url?: string) =>
+    url ? `From ${label}: [${url}](${url})` : `From ${label}`,
+  disclaimer: (name: string) =>
+    `${name} is AI and can make mistakes. Double-check its answers before you rely on them.`,
   helpful: "Helpful",
   notHelpful: "Not helpful",
   status: {
@@ -63,6 +78,8 @@ export const defaultCopy = {
   },
   resume: "Resume",
   handoff: (to: string) => `Switched to ${to}`,
+  /** Where a row can't look different, the words say another agent did it. */
+  delegated: (name: string, title: string) => `${name}: ${title}`,
   subagent: (name: string, steps?: number, tokens?: number) =>
     [name, steps ? `${steps} steps` : null, tokens ? `${Math.round(tokens / 1000)}k tokens` : null]
       .filter(Boolean)
@@ -87,6 +104,55 @@ export const defaultCopy = {
   dismiss: "Dismiss",
   snooze: "Snooze 1 Hour",
   from: (label: string) => `From ${label}`,
+  acknowledge: "Acknowledge",
+  openRule: "Open Rule",
+  openSource: (label: string) => `Open ${label}`,
+  reply: "Reply",
+  send: "Send",
+  keepSelected: "Keep Selected",
+  discardAll: "Discard All",
+  memoryTitle: (n: number) => `${n} thing${n === 1 ? "" : "s"} to remember`,
+  allowOnce: "Allow This Run",
+  raiseTo: (amount: string) => `Raise to ${amount}`,
+  budgetTitle: "Limit reached",
+  budgetBody: (used: string, limit: string, period?: string, needs?: string) =>
+    `${used} of ${limit} used${period ? ` this ${period}` : ""}.${needs ? ` This run needs ${needs} more.` : ""}`,
+  noPermission: "You can read this, but you don't have permission to resolve it.",
+  mailbox: {
+    empty: "Nothing here",
+    emptyHint: "Approvals, questions and alerts arrive here, and are resolved here.",
+    pick: "Pick a message to read it",
+    back: "Back",
+    unread: "Unread",
+    readOnly: "Nothing to decide. Dismiss it when you're done.",
+    noRenderer: (name: string) => `This message has a ${name} part that this surface can't show.`,
+  },
+  /** How a settled part reads: "Acknowledged by Dana · 3:04 PM". */
+  outcome: (outcome: string, by: string, time: string, detail?: string) =>
+    [
+      `${OUTCOMES[outcome] ?? outcome.charAt(0).toUpperCase() + outcome.slice(1)}${by ? ` by ${by}` : ""}`,
+      detail,
+      time,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  /** Said next to the kind tag, so urgency never rests on color. */
+  severity: { bad: "Urgent", warn: "Warning" } as Partial<Record<string, string>>,
+  show: { label: "Show", open: "Open", resolved: "Resolved", all: "All" },
+  /** The tag every message carries, in the list and above its parts. */
+  partKind: {
+    text: "Note",
+    approval: "Approval",
+    choice: "Question",
+    reply: "Reply",
+    memory: "Memory",
+    budget: "Limit",
+    alert: "Alert",
+    failure: "Failed run",
+    reference: "Reference",
+    artifact: "File",
+    custom: "Message",
+  },
   serviceStatus: {
     operational: "Operational",
     degraded: "Degraded",

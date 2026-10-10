@@ -2,6 +2,7 @@ import { type Citation, encodeAction, formatBytes, type Tone } from "@agent-ui/c
 import type { PrimitiveName, PrimitiveProps, TaskProps } from "@agent-ui/primitives";
 import { toMrkdwn, toPlain } from "./mrkdwn";
 import type { HostChild, HostNode } from "./reconciler";
+import { nextBreak } from "./split";
 import { slackTaskNote, slackTaskStatus } from "./status";
 
 /** Block Kit JSON. Kept loose: Slack's schema moves faster than any typing of it. */
@@ -33,7 +34,13 @@ export const LIMITS = {
 } as const;
 
 export interface SerializeResult {
+  /** The first message. Complete on its own unless `pages` has more than one entry. */
   blocks: Block[];
+  /**
+   * Everything, split into messages Slack accepts. `pages[0]` is `blocks`; post the
+   * rest as follow-ups in the same thread, in order. Modals and Home have one page.
+   */
+  pages: Block[][];
   /** Top-level fallback text: notifications and screen readers read this, not blocks. */
   text: string;
   /** Limits hit and degradations applied. Empty when the output is lossless. */
@@ -63,6 +70,8 @@ class Serializer {
   markdownUsed = 0;
   tables = 0;
   summary: string | null = null;
+  /** Block indexes where a new message must start (the markdown budget ran out). */
+  breaks = new Set<number>();
 
   constructor(readonly placement: Placement) {}
 
@@ -190,10 +199,23 @@ class Serializer {
       return this.text({ text });
     }
     this.fallback.push(text);
-    const left = LIMITS.markdownTotal - this.markdownUsed;
-    const body = this.clip(text, left, "markdown (12k total per message)");
-    this.markdownUsed += body.length;
-    this.blocks.push({ type: "markdown", text: body });
+    // Markdown shares 12k per message: what doesn't fit continues in the next one.
+    let rest = text;
+    for (;;) {
+      const left = LIMITS.markdownTotal - this.markdownUsed;
+      // Too little room for more than a fragment: the whole text moves on.
+      const cut =
+        left < LIMITS.markdownTotal / 4 && rest.length > left
+          ? { head: "", tail: rest }
+          : nextBreak(rest, left);
+      if (!cut) break;
+      if (cut.head.trim()) this.blocks.push({ type: "markdown", text: cut.head });
+      rest = cut.tail;
+      this.breaks.add(this.blocks.length);
+      this.markdownUsed = 0;
+    }
+    this.markdownUsed += rest.length;
+    if (rest.trim()) this.blocks.push({ type: "markdown", text: rest });
   }
 
   fields({ items }: PrimitiveProps["Fields"]) {
@@ -534,9 +556,36 @@ class Serializer {
     });
   }
 
+  /** Messages can continue in a follow-up, so nothing is dropped: split, and say so. */
+  paginate(): Block[][] {
+    const max = LIMITS.blocks.message;
+    const pages: Block[][] = [[]];
+    this.blocks.forEach((block, i) => {
+      const page = pages[pages.length - 1] as Block[];
+      const last = i === this.blocks.length - 1;
+      // Keep one slot free for the continuation note unless this block ends the message.
+      const full = page.length >= (last ? max : max - 1);
+      if (page.length > 0 && (this.breaks.has(i) || full)) pages.push([block]);
+      else page.push(block);
+    });
+    if (pages.length > 1) {
+      this.warnings.push(
+        `${this.blocks.length} blocks${this.breaks.size ? " and over 12k of markdown" : ""} exceed ${max} per message; split into ${pages.length} messages (post pages[1..] as follow-ups)`,
+      );
+    }
+    for (const page of pages.slice(0, -1)) {
+      page.push({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: "_Continues in the next message_" }],
+      });
+    }
+    return pages;
+  }
+
   finish(): SerializeResult {
     const max = LIMITS.blocks[this.placement];
-    let blocks = this.blocks;
+    const pages = this.placement === "message" ? this.paginate() : null;
+    let blocks = pages?.[0] ?? this.blocks;
     if (blocks.length > max) {
       const dropped = blocks.length - (max - 1);
       this.warnings.push(
@@ -553,6 +602,7 @@ class Serializer {
     const text = (this.summary ?? this.fallback.join("\n\n")).trim();
     return {
       blocks,
+      pages: pages ?? [blocks],
       text: text.length > LIMITS.fallbackText ? `${text.slice(0, LIMITS.fallbackText - 1)}…` : text,
       warnings: this.warnings,
     };

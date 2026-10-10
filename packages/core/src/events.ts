@@ -5,7 +5,15 @@ import type { Attachment, Citation, Failure, Interrupt, Notice, Rating, Task, Tu
  * SSE feed) maps onto these; `reduce` folds them into a Turn.
  */
 export type TurnEvent =
-  | { type: "turn.started"; turnId: string; agent: Turn["agent"] }
+  | {
+      type: "turn.started";
+      turnId: string;
+      agent: Turn["agent"];
+      /** Known before the first token, so the link can lead a message that is still arriving. */
+      sessionUrl?: string;
+      source?: Turn["source"];
+      disclaimer?: string;
+    }
   | { type: "text.delta"; text: string }
   | { type: "reasoning.delta"; text: string }
   | { type: "plan.updated"; title: string }
@@ -55,7 +63,13 @@ function hasPendingInterrupt(interrupts: Interrupt[]): boolean {
 export function reduce(turn: Turn, event: TurnEvent): Turn {
   switch (event.type) {
     case "turn.started":
-      return { ...emptyTurn(event.turnId, event.agent), status: "working" };
+      return {
+        ...emptyTurn(event.turnId, event.agent),
+        status: "working",
+        ...(event.sessionUrl ? { sessionUrl: event.sessionUrl } : {}),
+        ...(event.source ? { source: event.source } : {}),
+        ...(event.disclaimer ? { disclaimer: event.disclaimer } : {}),
+      };
     case "text.delta":
       return { ...turn, status: "working", text: turn.text + event.text };
     case "reasoning.delta":

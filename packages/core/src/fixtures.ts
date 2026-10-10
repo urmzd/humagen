@@ -1,5 +1,6 @@
 import { ActionId } from "./actions";
 import { type InboxItem, type SystemAlert, sortInbox } from "./inbox";
+import { type InboxMessage, messageFromItem, sortMessages } from "./mailbox";
 import type { SessionState } from "./session";
 import {
   type Approval,
@@ -50,7 +51,7 @@ const base: Turn = {
   interrupts: [],
   notices: [],
   sessionUrl: "https://example.com/sessions/turn-1",
-  disclaimer: "AI-generated. Check important answers.",
+  source: { label: "Incident console", url: "https://example.com/console/payments" },
 };
 
 export const streamingTurn: Turn = {
@@ -285,6 +286,39 @@ export const snippet: CodeSnippet = {
   ].join("\n"),
 };
 
+/**
+ * A report long enough to outgrow one Slack message (about 22k characters): a
+ * wide table and a code block each straddle a message boundary.
+ */
+export const longTurn: Turn = {
+  ...doneTurn,
+  id: "turn-long",
+  durationMs: 48_000,
+  text: [
+    "Here is every payments-api deploy from the last quarter, then the replay log for `#4812`.",
+    "",
+    "| Deploy | Time | Owner | 5xx rate | Result |",
+    "| --- | --- | --- | --- | --- |",
+    ...Array.from(
+      { length: 240 },
+      (_, i) =>
+        `| #${4573 + i} | Day ${Math.floor(i / 3) + 1}, ${9 + (i % 3) * 4}:00 | team-${["ledger", "checkout", "risk"][i % 3]} | ${(0.04 + (i % 7) * 0.01).toFixed(2)}% | ${i === 239 ? "Rolled back" : "Healthy"} |`,
+    ),
+    "",
+    "Only the last deploy moved the error rate [[c2]]. Its replay log:",
+    "",
+    "```text",
+    ...Array.from(
+      { length: 150 },
+      (_, i) =>
+        `14:${String(50 + Math.floor(i / 30)).padStart(2, "0")}:${String((i * 2) % 60).padStart(2, "0")} payments-api pod-${i % 6} POST /v1/charges ${i > 60 && i % 4 === 0 ? "502 upstream reset" : "200 ok"}`,
+    ),
+    "```",
+    "",
+    "The runbook says to roll back before paging the on-call [[c1]].",
+  ].join("\n"),
+};
+
 export const codingTurn: Turn = {
   ...base,
   id: "turn-2",
@@ -487,14 +521,32 @@ export const delegatingTurn: Turn = {
   tasks: [
     ...(streamingTurn.tasks.slice(0, 2) as Turn["tasks"]),
     {
+      id: "d0",
+      title: "Asked the billing agent for refund volume",
+      status: "complete",
+      output: "1,284 refunds in Q3",
+      subagent: {
+        name: "Billing agent",
+        runId: "run-d0",
+        summary: "1,284 refunds in Q3, 212 of them disputed",
+        steps: 3,
+        tokens: 5_200,
+        durationMs: 8_000,
+        url: "https://example.com/runs/d0",
+        hue: 90,
+      },
+    },
+    {
       id: "d1",
       title: "Asked the deploy agent to compare #4811 and #4812",
       status: "in_progress",
       subagent: {
         name: "Deploy agent",
+        runId: "run-d1",
         steps: 6,
         tokens: 12_400,
         url: "https://example.com/runs/d1",
+        hue: 185,
       },
     },
   ],
@@ -784,3 +836,541 @@ export const inboxItems: InboxItem[] = sortInbox([
     at: "2026-10-08T12:00:00Z",
   },
 ]);
+
+// ---------------------------------------------------------------------------
+// Human-in-the-loop, artifact, reference and alert variants. Each is a whole
+// turn, so it posts, streams and replays the same way on every surface.
+
+/** The agent wants a new capability: the reviewer sees what it is, where it's from and what it can touch. */
+export const skillApproval: Approval = {
+  type: "approval",
+  id: "a-skill",
+  summary: "Add the Incident postmortem skill to Assistant?",
+  tool: "skills.install",
+  approveLabel: "Add Skill",
+  preview: [
+    { label: "Skill", value: "incident-postmortem 1.2.0" },
+    { label: "From", value: "[acme/agent-skills](https://example.com/acme/agent-skills)" },
+    { label: "Can use", value: "deploys.list, pagerduty.get, files.create" },
+    { label: "Applies to", value: "Assistant, in every conversation" },
+  ],
+  actingAs: "you, as a workspace admin",
+  decision: { kind: "pending" },
+};
+
+export const skillApprovalTurn: Turn = {
+  ...base,
+  id: "turn-skill",
+  status: "waiting",
+  tasks: [
+    { id: "k1", title: "Searched the skill catalog", status: "complete", output: "2 matches" },
+    {
+      id: "k2",
+      title: "Read the skill's instructions",
+      status: "complete",
+      details: "incident-postmortem/SKILL.md",
+    },
+  ],
+  text: "Postmortems are written by hand today. The **Incident postmortem** skill [[s1]] would let me draft one from the timeline as soon as an incident closes. It adds tools I don't have yet, so it needs your approval.",
+  citations: [
+    {
+      id: "s1",
+      title: "incident-postmortem",
+      url: "https://example.com/acme/agent-skills/incident-postmortem",
+      source: "Skill catalog",
+    },
+  ],
+  attachments: [
+    {
+      type: "code",
+      id: "skill-md",
+      path: "incident-postmortem/SKILL.md",
+      language: "markdown",
+      code: [
+        "---",
+        "name: incident-postmortem",
+        "description: Draft a postmortem from an incident timeline. Use when an incident closes.",
+        "allowed-tools: deploys.list, pagerduty.get, files.create",
+        "---",
+        "",
+        "1. Read the alert and every deploy in the incident window.",
+        "2. Write the summary, timeline, cause and follow-ups.",
+        "3. Save the draft as a file. Never post it without approval.",
+      ].join("\n"),
+    },
+  ],
+  interrupts: [skillApproval],
+};
+
+/** The agent proposes a change to its own instructions: editable, and shown as a diff. */
+export const promptApproval: Approval = {
+  type: "approval",
+  id: "a-prompt",
+  summary: "Update Assistant's instructions for incident replies?",
+  tool: "agent.update_prompt",
+  approveLabel: "Update Prompt",
+  preview: [
+    { label: "Agent", value: "Assistant" },
+    { label: "Section", value: "Incident replies" },
+    { label: "Takes effect", value: "New conversations only" },
+  ],
+  editable: true,
+  revision: 2,
+  actingAs: "you, as the agent's owner",
+  decision: { kind: "pending" },
+};
+
+export const promptApprovalTurn: Turn = {
+  ...base,
+  id: "turn-prompt",
+  status: "waiting",
+  tasks: [
+    {
+      id: "p1",
+      title: "Reviewed this week's incident threads",
+      status: "complete",
+      output: "3 people asked who owns the deploy",
+    },
+  ],
+  text: "Three people asked this week who owns a deploy after I reported an incident. I'd like to name the owner every time. Here is the change to my instructions.",
+  attachments: [
+    {
+      type: "code",
+      id: "prompt-diff",
+      path: "Assistant instructions: Incident replies",
+      language: "diff",
+      code: [
+        " When you report an incident, lead with the service and the time it started.",
+        "-Link the deploy that caused it.",
+        "+Link the deploy that caused it, and name its owner and their team.",
+        "+If the owner is unknown, say so instead of guessing.",
+      ].join("\n"),
+    },
+  ],
+  interrupts: [promptApproval],
+};
+
+/** The agent can't continue without a choice. */
+export const clarificationTurn: Turn = {
+  ...base,
+  id: "turn-clarify",
+  status: "waiting",
+  tasks: [
+    {
+      id: "q1",
+      title: "Read the PagerDuty alert",
+      status: "complete",
+      output: "No environment tag on the alert",
+    },
+  ],
+  text: "I can check the error rate, but the alert doesn't say which environment fired it.",
+  interrupts: [{ ...pendingClarification, allowUnsure: true }],
+};
+
+/** Creating the file is the gated action: nothing exists until someone approves. */
+export const artifactApproval: Approval = {
+  type: "approval",
+  id: "a-file",
+  summary: "Create refunds-q3.xlsx with 1,284 customer emails?",
+  tool: "files.create",
+  approveLabel: "Create File",
+  preview: [
+    { label: "Rows", value: "1,284 refunds" },
+    { label: "Includes", value: "Customer email, amount, reason" },
+    { label: "Shared with", value: "This thread (4 people)" },
+  ],
+  actingAs: "you",
+  decision: { kind: "pending" },
+};
+
+export const artifactApprovalTurn: Turn = {
+  ...base,
+  id: "turn-artifact-approval",
+  status: "waiting",
+  tasks: [{ id: "x1", title: "Queried Q3 refunds", status: "complete", output: "1,284 rows" }],
+  text: "The export is ready to write. It includes customer emails, so I need your go-ahead before I create the file.",
+  attachments: [artifacts.waiting],
+  interrupts: [artifactApproval],
+};
+
+/** Several files at different stages of the same run. */
+export const artifactProgressTurn: Turn = {
+  ...base,
+  id: "turn-artifact-progress",
+  tasks: [
+    { id: "x1", title: "Exported Q3 refunds", status: "complete", output: "1,284 rows" },
+    { id: "x2", title: "Drafting the postmortem", status: "in_progress" },
+  ],
+  text: "The export is done. I'm writing the postmortem now, and the chart comes after it.",
+  attachments: [
+    artifacts.ready,
+    {
+      ...artifacts.report,
+      phase: "generating",
+      sizeBytes: undefined,
+      url: undefined,
+      downloadUrl: undefined,
+    },
+    {
+      ...artifacts.image,
+      phase: "queued",
+      sizeBytes: undefined,
+      url: undefined,
+      downloadUrl: undefined,
+    },
+  ],
+};
+
+/** One file landed and one didn't: the answer still stands, and the failure says what to do. */
+export const artifactFailedTurn: Turn = {
+  ...base,
+  id: "turn-artifact-failed",
+  status: "done",
+  durationMs: 64_000,
+  tasks: [
+    { id: "x1", title: "Drafted the postmortem", status: "complete" },
+    {
+      id: "x2",
+      title: "Couldn't export Q3 refunds",
+      status: "error",
+      output: "Timed out after 60s",
+    },
+  ],
+  text: "The postmortem draft is ready. The refunds export timed out, so that file wasn't created.",
+  attachments: [artifacts.report, artifacts.failed],
+};
+
+/** A file that replaces an earlier one. */
+export const artifactRevisedTurn: Turn = {
+  ...base,
+  id: "turn-artifact-revised",
+  status: "done",
+  durationMs: 9_000,
+  tasks: [{ id: "x1", title: "Added the Disputes sheet", status: "complete", output: "212 rows" }],
+  text: "I added the disputes you asked for. This version replaces the earlier export.",
+  attachments: [
+    {
+      ...artifacts.ready,
+      version: 2,
+      description: "4 sheets: Summary, Refunds, Disputes, Notes. Replaces version 1.",
+    },
+  ],
+};
+
+/**
+ * Every kind of reference at once: web pages, a Slack message, a source with
+ * no link, one cited twice, some never cited, and more than fit on one line.
+ */
+export const referencesTurn: Turn = {
+  ...base,
+  id: "turn-references",
+  status: "done",
+  durationMs: 21_000,
+  tasks: [
+    {
+      id: "r1",
+      title: "Searched runbooks, deploys and Slack",
+      status: "complete",
+      output: "12 sources",
+    },
+  ],
+  text: [
+    "Deploy `#4812` changed the retry budget [[ref-pr]], and the 5xx rate rose two minutes later [[ref-dash]].",
+    "",
+    "On-call saw it first in Slack [[ref-slack]]. The runbook says to roll back before paging [[ref-runbook]], which matches the restricted postmortem template [[ref-template]].",
+    "",
+    "Rolling back is the documented first step [[ref-runbook]].",
+  ].join("\n"),
+  citations: [
+    {
+      id: "ref-runbook",
+      title: "Incident runbook: payments API",
+      url: "https://example.com/runbooks/payments",
+      source: "Runbooks",
+      snippet: "Roll back the last deploy before paging the on-call.",
+    },
+    {
+      id: "ref-pr",
+      title: "Lower the retry budget (#1931)",
+      url: "https://example.com/acme/payments-api/pull/1931",
+      source: "GitHub",
+    },
+    {
+      id: "ref-dash",
+      title: "payments-api 5xx rate",
+      url: "https://example.com/dashboards/payments?from=14:30&to=15:30",
+      source: "Dashboards",
+    },
+    {
+      id: "ref-slack",
+      title: "Dana in #payments-oncall",
+      url: "https://example.slack.com/archives/C0PAYMENTS/p1791600000000100",
+      source: "Slack",
+      snippet: "Seeing 502s on charges since the deploy.",
+    },
+    { id: "ref-template", title: "Postmortem template", source: "Drive, restricted" },
+    ...Array.from({ length: 7 }, (_, i) => ({
+      id: `ref-deploy-${i}`,
+      title: `Deploy #${4805 + i}`,
+      url: `https://example.com/deploys/${4805 + i}`,
+      source: "Deploys",
+    })),
+  ],
+};
+
+/** What the runtime did on its own, said quietly next to an answer that still stands. */
+export const noticesTurn: Turn = {
+  ...doneTurn,
+  id: "turn-notices",
+  notices: [runtimeNotices.fallback, runtimeNotices.retried, notices.slow],
+};
+
+/** A failure the reader can fix themselves. */
+export const reconnectTurn: Turn = {
+  ...failedTurn,
+  id: "turn-reconnect",
+  failure: failures.auth_required,
+};
+
+/** A failure that fixes itself: say when to try again. */
+export const rateLimitedTurn: Turn = {
+  ...failedTurn,
+  id: "turn-rate-limited",
+  failure: failures.rate_limited,
+};
+
+// ---------------------------------------------------------------------------
+// The mailbox: one message per way of resolving, plus the read-only ones.
+
+const assistant = { kind: "agent" as const, name: "Assistant" };
+
+export const mailMessages: InboxMessage[] = sortMessages([
+  {
+    id: "m-approval",
+    subject: "Roll back payments-api?",
+    from: assistant,
+    at: "2026-10-08T15:04:00Z",
+    unread: true,
+    severity: "warn",
+    source: {
+      kind: "turn",
+      label: "#payments-incidents",
+      id: "turn-1",
+      url: "https://example.com/t/1",
+    },
+    parts: [
+      {
+        type: "text",
+        id: "why",
+        text: "Deploy `#4812` is the likely cause of the 5xx rate. Rolling back is the runbook's first step.",
+      },
+      { type: "approval", id: pendingApproval.id, approval: pendingApproval },
+      { type: "reference", id: "refs", citations },
+    ],
+  },
+  {
+    id: "m-skill",
+    subject: "Add the Incident postmortem skill?",
+    from: assistant,
+    at: "2026-10-08T14:58:00Z",
+    unread: true,
+    source: {
+      kind: "project",
+      label: "Payments on-call",
+      url: "https://example.com/projects/payments",
+    },
+    parts: [
+      {
+        type: "text",
+        id: "why",
+        text: "It would let me draft a postmortem as soon as an incident closes. It adds tools I don't have yet.",
+      },
+      { type: "approval", id: skillApproval.id, approval: skillApproval },
+    ],
+  },
+  {
+    id: "m-choice",
+    subject: "Which environment should I check?",
+    from: assistant,
+    at: "2026-10-08T14:50:00Z",
+    unread: true,
+    source: {
+      kind: "turn",
+      label: "DM with Assistant",
+      id: "turn-3",
+      url: "https://example.com/t/3",
+    },
+    parts: [
+      {
+        type: "choice",
+        id: pendingClarification.id,
+        clarification: { ...pendingClarification, allowUnsure: true },
+      },
+    ],
+  },
+  {
+    id: "m-reply",
+    subject: "Who should own the follow-up?",
+    from: assistant,
+    at: "2026-10-08T14:40:00Z",
+    source: { kind: "run", label: "Postmortem draft", url: "https://example.com/runs/71" },
+    parts: [
+      {
+        type: "text",
+        id: "why",
+        text: "The postmortem has one open follow-up: add an alert on the retry budget.",
+      },
+      {
+        type: "reply",
+        id: "owner",
+        prompt: "Who should own it?",
+        placeholder: "A person or a team",
+      },
+      { type: "artifact", id: "draft", artifact: artifacts.report },
+    ],
+  },
+  {
+    id: "m-memory",
+    subject: "3 things worth remembering from this incident",
+    from: assistant,
+    at: "2026-10-08T14:30:00Z",
+    source: {
+      kind: "project",
+      label: "Payments on-call",
+      url: "https://example.com/projects/payments",
+    },
+    parts: [
+      {
+        type: "memory",
+        id: "memories",
+        proposals: [
+          {
+            id: "mem1",
+            text: "Roll back before paging for payments-api incidents",
+            scope: "This project",
+          },
+          { id: "mem2", text: "Dana owns deploys to payments-api", scope: "This project" },
+          { id: "mem3", text: "Report times in UTC", scope: "All conversations" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "m-budget",
+    subject: "Nightly eval is over its budget",
+    from: { kind: "rule", name: "Spend limit" },
+    at: "2026-10-08T14:20:00Z",
+    unread: true,
+    severity: "warn",
+    source: { kind: "policy", label: "Evals budget", url: "https://example.com/policies/evals" },
+    parts: [
+      {
+        type: "budget",
+        id: "limit",
+        meter: { used: 48.2, limit: 50, unit: "usd", period: "month", needs: 6.4 },
+        raiseTo: [75, 100],
+      },
+    ],
+  },
+  {
+    id: "m-runs",
+    subject: "Support triage hit its daily run limit",
+    from: { kind: "rule", name: "Run limit" },
+    at: "2026-10-08T13:40:00Z",
+    severity: "warn",
+    source: { kind: "policy", label: "Triage limits", url: "https://example.com/policies/triage" },
+    parts: [
+      {
+        type: "budget",
+        id: "runs",
+        meter: { used: 200, limit: 200, unit: "runs", period: "day", needs: 1 },
+        raiseTo: [300, 500],
+      },
+    ],
+  },
+  {
+    id: "m-alert",
+    subject: "5xx rate above 2% on payments-api",
+    from: { kind: "rule", name: "Error rate watch" },
+    at: "2026-10-08T14:54:00Z",
+    unread: true,
+    severity: "bad",
+    source: { kind: "rule", label: "Error rate watch", url: "https://example.com/rules/5xx" },
+    parts: [
+      {
+        type: "alert",
+        id: "a-5xx",
+        ruleUrl: "https://example.com/rules/5xx",
+        alert: {
+          id: "a-5xx",
+          service: "payments-api",
+          status: "down",
+          title: "5xx rate is 4.2%",
+          body: "The rule fires above 2% for 2 minutes.",
+          startedAt: "2026-10-08T14:52:00Z",
+          updatedAt: "2026-10-08T14:54:00Z",
+          affects: ["Charges", "Refunds"],
+        },
+      },
+    ],
+  },
+  {
+    id: "m-failure",
+    subject: "Weekly report didn't run",
+    from: { kind: "system", name: "Scheduler" },
+    at: "2026-10-08T13:00:00Z",
+    severity: "bad",
+    source: { kind: "run", label: "Weekly report", url: "https://example.com/runs/64" },
+    parts: [{ type: "failure", id: "failure", failure: failures.auth_required }],
+  },
+  {
+    id: "m-fyi",
+    subject: "Q3 refunds export is ready",
+    from: assistant,
+    at: "2026-10-08T12:10:00Z",
+    source: { kind: "run", label: "Refunds export", url: "https://example.com/runs/58" },
+    parts: [
+      { type: "text", id: "note", text: "1,284 rows across 3 sheets. Nothing needs a decision." },
+      { type: "artifact", id: "file", artifact: artifacts.ready },
+    ],
+  },
+  {
+    id: "m-custom",
+    subject: "Review the eval regression",
+    from: { kind: "rule", name: "Eval gate" },
+    at: "2026-10-08T11:30:00Z",
+    source: { kind: "run", label: "Nightly eval", url: "https://example.com/runs/51" },
+    parts: [
+      {
+        type: "custom",
+        id: "eval",
+        name: "eval-diff",
+        fallback: "Groundedness fell from 0.91 to 0.84 on 12 cases.",
+        data: { metric: "groundedness", before: 0.91, after: 0.84, cases: 12 },
+        resolvable: true,
+      },
+    ],
+  },
+  {
+    id: "m-done",
+    subject: "Post the incident summary to #payments-oncall?",
+    from: assistant,
+    at: "2026-10-08T10:00:00Z",
+    source: {
+      kind: "turn",
+      label: "#payments-incidents",
+      id: "turn-1",
+      url: "https://example.com/t/1",
+    },
+    parts: [
+      {
+        type: "approval",
+        id: secondApproval.id,
+        approval: { ...secondApproval, decision: { kind: "approved", by: "Dana", at } },
+      },
+    ],
+  },
+]);
+
+/** The older item list, read as messages: what `inboxFromTurns` producers get for free. */
+export const mailFromItems: InboxMessage[] = inboxItems.map((item) => messageFromItem(item));

@@ -1,6 +1,6 @@
-import type { Turn } from "@agent-ui/core";
+import type { Task, Turn } from "@agent-ui/core";
 import type { FileProps } from "@agent-ui/primitives";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 
 /**
  * The turn a web frame is drawing, when there is one. Primitives only get
@@ -12,6 +12,24 @@ export const TurnMetaContext = createContext<Turn | null>(null);
 export function useTurnMeta() {
   return useContext(TurnMetaContext);
 }
+
+/** One thing a turn draws that a reader might want to act on by itself. */
+export interface TurnItem {
+  /** The answer text, a tool call, or a step another agent did. */
+  kind: "answer" | "task" | "subagent";
+  turn: Turn;
+  /** Set for "task" and "subagent". */
+  task?: Task;
+}
+
+/**
+ * A host's own controls for each item of a turn (a "Copy as" menu, a pin).
+ * What it returns sits at the item's trailing edge: shown on hover and on
+ * focus, and always reachable by keyboard.
+ */
+export type ItemActions = (item: TurnItem) => ReactNode;
+
+export const ItemActionsContext = createContext<ItemActions | null>(null);
 
 /** Clock for countdowns. Stories pin it; apps leave it to the real time. */
 export const NowContext = createContext<number | null>(null);

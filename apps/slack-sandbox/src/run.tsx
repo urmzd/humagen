@@ -1,19 +1,27 @@
 import { TurnView } from "@agent-ui/components";
 import { emptyTurn, reduce, type Turn, type TurnEvent, type TurnStatus } from "@agent-ui/core";
 import {
+  type Block,
+  emptyBudget,
+  LIMITS,
   lifecycle,
   reactionChanges,
   renderToSlack,
+  type StreamChunk,
+  streamHeader,
+  streamPages,
   streamStart,
   streamStopTitle,
+  streamTrailer,
   streamUpdate,
 } from "@agent-ui/render-slack";
-import type { SlackClient } from "./slack";
+import { type SlackClient, SlackError } from "./slack";
 
 /**
  * Drive one turn through real Slack exactly as a host would:
  * reactions on the trigger, session status, chat.startStream, ordered
- * appendStream calls, and chat.stopStream with the final blocks.
+ * appendStream calls, and chat.stopStream with the final blocks. A turn that
+ * outgrows one message continues in the next one, in the same thread.
  */
 
 export interface StreamTarget {
@@ -28,8 +36,10 @@ export interface StreamTarget {
 
 export interface StreamResult {
   turn: Turn;
-  /** ts of the streamed message, for later chat.update (e.g. approval decisions). */
+  /** ts of the message holding the final blocks, for later chat.update (e.g. approval decisions). */
   ts: string;
+  /** Every message the turn used, in order. More than one when it overflowed. */
+  messages: string[];
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -73,6 +83,9 @@ export async function streamTurn(
   let turn: Turn = emptyTurn("", { name: "" });
   let sent: Turn | null = null;
   let ts = "";
+  const messages: string[] = [];
+  let page = 1;
+  let budget = emptyBudget();
   // Status already reflected in reactions and the session, so each change is sent once.
   let shown: TurnStatus | null = null;
   const sync = async () => {
@@ -80,6 +93,80 @@ export async function streamTurn(
     await react(slack, target, shown, turn.status);
     await setStatus(slack, target, turn);
     shown = turn.status;
+  };
+
+  const open = async () => {
+    const args = {
+      channel: target.channel,
+      thread_ts: target.threadTs,
+      recipient_user_id: target.recipientUser,
+      recipient_team_id: target.recipientTeam,
+      ...streamStart(turn),
+    };
+    const header = streamHeader(turn, { page });
+    let started: { ts: string };
+    try {
+      started = await slack.call("chat.startStream", {
+        ...args,
+        ...(header.length > 0 ? { chunks: header } : {}),
+      });
+    } catch (e) {
+      const rejected = e instanceof SlackError && /^invalid_(chunks|blocks)$/.test(e.code);
+      if (!rejected || header.length === 0) throw e;
+      // The workspace doesn't take blocks chunks yet: say the same thing as a line of text.
+      console.warn(`  header sent as text: ${e.message}`);
+      const line = [
+        page > 1 ? `Part ${page}` : null,
+        turn.source ? `From ${turn.source.label}: ${turn.source.url ?? ""}` : null,
+        turn.sessionUrl ? `Session: ${turn.sessionUrl}` : null,
+      ].filter(Boolean);
+      started = await slack.call("chat.startStream", {
+        ...args,
+        markdown_text: `_${line.join(" · ")}_\n\n`,
+      });
+    }
+    ts = started.ts;
+    messages.push(ts);
+  };
+  /** Close the current message and continue in a new one. */
+  const turnPage = async (trailer: boolean) => {
+    if (trailer) {
+      await slack
+        .call("chat.appendStream", { channel: target.channel, ts, chunks: [streamTrailer()] })
+        .catch(() => {});
+    }
+    await slack.call("chat.stopStream", { channel: target.channel, ts });
+    page += 1;
+    await open();
+  };
+  const send = async (chunks: StreamChunk[]) => {
+    const plan = streamPages(budget, chunks);
+    for (const [i, part] of plan.pages.entries()) {
+      if (i > 0) await turnPage(true);
+      if (part.length === 0) continue;
+      if (!ts) await open();
+      try {
+        // Await each append in order, so no task finishes after the stream stops.
+        await slack.call("chat.appendStream", { channel: target.channel, ts, chunks: part });
+      } catch (e) {
+        if (!(e instanceof SlackError) || e.code !== "msg_too_long") throw e;
+        // The estimate was off and the message is full: it can't take a trailer either.
+        await turnPage(false);
+        await slack.call("chat.appendStream", { channel: target.channel, ts, chunks: part });
+        plan.budget = streamPages(emptyBudget(), part).budget;
+      }
+    }
+    budget = plan.budget;
+  };
+  const post = async (blocks: Block[], text: string) => {
+    const posted = await slack.call<{ ts: string }>("chat.postMessage", {
+      channel: target.channel,
+      thread_ts: target.threadTs,
+      text: text.slice(0, LIMITS.fallbackText),
+      blocks,
+    });
+    ts = posted.ts;
+    messages.push(ts);
   };
 
   for (let i = 0; i < events.length; i++) {
@@ -97,20 +184,10 @@ export async function streamTurn(
     const next = events[i + 1];
     if (next?.type === "text.delta" && event.type === "text.delta" && i % 6 !== 0) continue;
 
-    if (!ts) {
-      const started = await slack.call<{ ts: string }>("chat.startStream", {
-        channel: target.channel,
-        thread_ts: target.threadTs,
-        recipient_user_id: target.recipientUser,
-        recipient_team_id: target.recipientTeam,
-        ...streamStart(turn),
-      });
-      ts = started.ts;
-    }
+    if (!ts) await open();
     const { chunks } = streamUpdate(sent, turn);
     if (chunks.length > 0) {
-      // Await each append in order, so no task finishes after the stream stops.
-      await slack.call("chat.appendStream", { channel: target.channel, ts, chunks });
+      await send(chunks);
       sent = turn;
     }
     await sleep(tickMs);
@@ -120,23 +197,23 @@ export async function streamTurn(
   const { chunks } = streamUpdate(sent, turn);
   const title = streamStopTitle(turn);
   const final = renderToSlack(<TurnView turn={turn} streamed />);
+  const [first = [], ...rest] = final.pages;
   if (!ts) {
-    const posted = await slack.call<{ ts: string }>("chat.postMessage", {
-      channel: target.channel,
-      thread_ts: target.threadTs,
-      text: final.text,
-      blocks: final.blocks,
-    });
-    ts = posted.ts;
+    await post(first, final.text);
   } else {
+    if (chunks.length > 0) await send(chunks);
     await slack.call("chat.stopStream", {
       channel: target.channel,
       ts,
-      chunks: [...chunks, ...(title ? [{ type: "plan_update", title }] : [])],
-      blocks: final.blocks,
+      ...(title ? { chunks: [{ type: "plan_update", title }] } : {}),
+      blocks: first,
     });
+  }
+  // Final blocks that outgrew one message follow it; each needs its own fallback text.
+  for (const [i, blocks] of rest.entries()) {
+    await post(blocks, `(${i + 2}/${final.pages.length}) ${final.text}`);
   }
   for (const w of final.warnings) console.warn(`  render warning: ${w}`);
   await sync();
-  return { turn, ts };
+  return { turn, ts, messages };
 }

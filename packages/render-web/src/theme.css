@@ -17,6 +17,16 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 :root {
+  /*
+   * Motion. Three durations and two curves, shared with host apps so a turn
+   * moves the way the page around it does. Only transform and opacity travel,
+   * everything plays once, and nothing that waits on a person moves.
+   */
+  --aui-dur-press: 110ms; /* press, hover */
+  --aui-dur-row: 180ms; /* menus, rows, notes */
+  --aui-dur-page: 260ms; /* drawers, pages, arriving messages */
+  --aui-ease-arrive: cubic-bezier(0.16, 1, 0.3, 1);
+  --aui-ease-leave: cubic-bezier(0.4, 0, 1, 1);
   --aui-accent-h: 305;
   --aui-accent-shift: 0;
   --aui-mode-accent-l: 0.54;
@@ -539,7 +549,7 @@
 }
 
 .aui-pop-in {
-  animation: aui-pop-in 140ms ease-out both;
+  animation: aui-pop-in var(--aui-dur-row) var(--aui-ease-arrive) both;
 }
 
 @keyframes aui-pop-in {
@@ -550,7 +560,7 @@
 }
 
 .aui-fade-up {
-  animation: aui-fade-up 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: aui-fade-up var(--aui-dur-page) var(--aui-ease-arrive) both;
 }
 
 @keyframes aui-fade-up {
@@ -563,10 +573,18 @@
 @media (prefers-reduced-motion: reduce) {
   .aui-spinner,
   .aui-streaming > :last-child::after,
-  .aui-verb-in,
+  .aui-verb-in {
+    animation: none;
+  }
+  /* Travel becomes a short fade: the thing still arrives, it just doesn't move. */
   .aui-pop-in,
   .aui-fade-up {
-    animation: none;
+    animation: aui-fade var(--aui-dur-press) linear both;
+  }
+  @keyframes aui-fade {
+    from {
+      opacity: 0;
+    }
   }
   /* Keep the "busy" meaning without movement: a static, slightly brighter label. */
   .aui-shimmer {

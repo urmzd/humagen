@@ -15,7 +15,9 @@ describe("renderToSlack", () => {
     const out = renderToSlack(<TurnView turn={turn} />);
     expect(out.warnings).toEqual([]);
     expect(out.text.length).toBeGreaterThan(0);
-    expect(out).toMatchSnapshot();
+    const { pages, ...message } = out;
+    expect(pages).toEqual([out.blocks]);
+    expect(message).toMatchSnapshot();
   });
 
   it("emits approval buttons that decode to the shared action contract", () => {
@@ -55,6 +57,55 @@ describe("renderToSlack", () => {
     const out = renderToSlack(many);
     expect(out.blocks).toHaveLength(LIMITS.blocks.message);
     expect(out.warnings[0]).toMatch(/exceed 50/);
+  });
+
+  it("continues in follow-up messages instead of dropping blocks", () => {
+    const many = Array.from({ length: 120 }, (_, i) => `line ${i}`).map((line) => (
+      <Text key={line} text={line} />
+    ));
+    const out = renderToSlack(many);
+    expect(out.pages).toHaveLength(3);
+    expect(out.pages[0]).toBe(out.blocks);
+    for (const page of out.pages) expect(page.length).toBeLessThanOrEqual(LIMITS.blocks.message);
+    const sections = out.pages.flat().filter((b) => b.type === "section");
+    expect(sections).toHaveLength(120);
+    expect(renderToSlack(many.slice(0, 50)).pages).toHaveLength(1);
+  });
+
+  it("keeps the session link with the references and the disclaimer last", () => {
+    const origin = "https://example.com/console/payments";
+    const session = "https://example.com/sessions/turn-1";
+    const { pages, warnings } = renderToSlack(<TurnView turn={fx.longTurn} />);
+    expect(pages.length).toBeGreaterThan(1);
+    expect(warnings).toHaveLength(1);
+    const last = pages.at(-1) ?? [];
+    expect(last[last.findIndex((b) => b.type === "context_actions") - 1]).toEqual({
+      type: "context",
+      elements: [
+        { type: "mrkdwn", text: `From Incident console: <${origin}|${origin}>` },
+        { type: "mrkdwn", text: `Session: <${session}|${session}>` },
+      ],
+    });
+    expect(pages.at(-1)?.at(-1)).toEqual({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
+        },
+      ],
+    });
+    // Streamed or not, finished or failed: the link is always there.
+    const streamed = renderToSlack(<TurnView turn={fx.doneTurn} streamed />).blocks;
+    expect(JSON.stringify(streamed)).toContain(`Session: <${session}|${session}>`);
+    for (const turn of [fx.failedTurn, fx.stoppedTurn, fx.waitingTurn]) {
+      const out = renderToSlack(<TurnView turn={turn} streamed />);
+      expect(JSON.stringify(out.blocks)).toContain(`Session: <${session}|${session}>`);
+    }
+    expect(JSON.stringify(streamed.at(-1))).toContain("Assistant is AI");
+    // A host's own wording replaces the default.
+    const custom = renderToSlack(<TurnView turn={{ ...fx.doneTurn, disclaimer: "Beta." }} />);
+    expect(JSON.stringify(custom.blocks.at(-1))).toContain("Beta.");
   });
 
   it("shares the markdown budget across blocks", () => {

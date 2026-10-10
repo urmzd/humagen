@@ -46,19 +46,23 @@ async function main() {
     case "validate": {
       let failed = 0;
       for (const p of registry()) {
-        const { blocks, warnings } = renderToSlack(p.element, { placement: p.placement });
-        const view =
-          p.placement === "modal"
-            ? { type: "modal", title: { type: "plain_text", text: "agent-ui" }, blocks }
-            : p.placement === "home"
-              ? { type: "home", blocks }
-              : undefined;
-        const res = await validateBlocks(blocks, view);
-        if (!res.ok) failed++;
-        const detail = res.ok ? "" : ` ${JSON.stringify(res.errors ?? res)}`;
-        console.log(
-          `${res.ok ? "ok  " : "FAIL"} ${p.name}${warnings.length ? ` (${warnings.length} warnings)` : ""}${detail}`,
-        );
+        const { pages, warnings } = renderToSlack(p.element, { placement: p.placement });
+        // A fixture that continues across messages is only valid if every message is.
+        for (const [i, blocks] of pages.entries()) {
+          const view =
+            p.placement === "modal"
+              ? { type: "modal", title: { type: "plain_text", text: "agent-ui" }, blocks }
+              : p.placement === "home"
+                ? { type: "home", blocks }
+                : undefined;
+          const res = await validateBlocks(blocks, view);
+          if (!res.ok) failed++;
+          const detail = res.ok ? "" : ` ${JSON.stringify(res.errors ?? res)}`;
+          const part = pages.length > 1 ? ` [${i + 1}/${pages.length}]` : "";
+          console.log(
+            `${res.ok ? "ok  " : "FAIL"} ${p.name}${part}${warnings.length ? ` (${warnings.length} warnings)` : ""}${detail}`,
+          );
+        }
       }
       if (failed) process.exitCode = 1;
       return;
@@ -77,21 +81,25 @@ async function main() {
           console.log(`skip ${p.name}: modals need a trigger_id (use serve)`);
           continue;
         }
-        const { blocks, text, warnings } = renderToSlack(p.element, { placement: p.placement });
+        const { blocks, pages, text, warnings } = renderToSlack(p.element, {
+          placement: p.placement,
+        });
         if (blocks.length === 0) {
           // Nothing to show is a valid render (a fresh session has no notices), but Slack rejects it.
           console.log(`skip ${p.name}: renders no blocks`);
           continue;
         }
         try {
-          await slack.call("chat.postMessage", {
-            channel: env.channel,
-            thread_ts: header.ts,
-            text,
-            blocks,
-            // Label each post so the thread reads as a catalog.
-            metadata: { event_type: "agent_ui_fixture", event_payload: { name: p.name } },
-          });
+          for (const [i, page] of pages.entries()) {
+            await slack.call("chat.postMessage", {
+              channel: env.channel,
+              thread_ts: header.ts,
+              text: pages.length > 1 ? `(${i + 1}/${pages.length}) ${text}`.slice(0, 4000) : text,
+              blocks: page,
+              // Label each post so the thread reads as a catalog.
+              metadata: { event_type: "agent_ui_fixture", event_payload: { name: p.name } },
+            });
+          }
         } catch (e) {
           // One bad fixture shouldn't hide the rest of the catalog.
           console.log(`FAIL ${p.name}: ${(e as Error).message}`);

@@ -1,8 +1,9 @@
 import { emptyTurn, type Turn } from "@agent-ui/core";
 import * as fx from "@agent-ui/core/fixtures";
+import { CopyIcon, type TurnItem } from "@agent-ui/render-web";
 import { AgentMessage, UserMessage } from "@agent-ui/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { fn } from "storybook/test";
+import { expect, fn, within } from "storybook/test";
 import { type ActionArgs, Canvas, reasoningText, slack } from "../../support";
 
 type Args = ActionArgs & { turn: Turn; question: string };
@@ -91,6 +92,78 @@ export const Coding: Story = {
   parameters: slack("codingTurn"),
 };
 
+export const Long: Story = {
+  name: "Long answer",
+  args: { turn: fx.longTurn, question: "List every payments-api deploy this quarter." },
+  parameters: slack("longTurn", "Continues across messages when it outgrows one"),
+};
+
+export const SkillApproval: Story = {
+  name: "Approve a skill",
+  args: { turn: fx.skillApprovalTurn },
+  parameters: slack("skillApprovalTurn"),
+};
+
+export const PromptApproval: Story = {
+  name: "Approve a prompt change",
+  args: { turn: fx.promptApprovalTurn },
+  parameters: slack("promptApprovalTurn"),
+};
+
+export const Clarification: Story = {
+  name: "Clarification",
+  args: { turn: fx.clarificationTurn },
+  parameters: slack("clarificationTurn"),
+};
+
+export const ArtifactApproval: Story = {
+  name: "Approve a file",
+  args: { turn: fx.artifactApprovalTurn },
+  parameters: slack("artifactApprovalTurn"),
+};
+
+export const ArtifactProgress: Story = {
+  name: "Files in progress",
+  args: { turn: fx.artifactProgressTurn },
+  parameters: slack("artifactProgressTurn"),
+};
+
+export const ArtifactFailed: Story = {
+  name: "File failed",
+  args: { turn: fx.artifactFailedTurn },
+  parameters: slack("artifactFailedTurn"),
+};
+
+export const ArtifactRevised: Story = {
+  name: "File revised",
+  args: { turn: fx.artifactRevisedTurn },
+  parameters: slack("artifactRevisedTurn"),
+};
+
+export const References: Story = {
+  name: "References",
+  args: { turn: fx.referencesTurn },
+  parameters: slack("referencesTurn"),
+};
+
+export const RuntimeNotices: Story = {
+  name: "Runtime notices",
+  args: { turn: fx.noticesTurn },
+  parameters: slack("noticesTurn"),
+};
+
+export const Reconnect: Story = {
+  name: "Reconnect needed",
+  args: { turn: fx.reconnectTurn },
+  parameters: slack("reconnectTurn"),
+};
+
+export const RateLimited: Story = {
+  name: "Rate limited",
+  args: { turn: fx.rateLimitedTurn },
+  parameters: slack("rateLimitedTurn"),
+};
+
 export const DeniedTask: Story = {
   name: "Denied task",
   args: { turn: fx.deniedTaskTurn },
@@ -101,6 +174,41 @@ export const Delegating: Story = {
   name: "Delegating to a sub-agent",
   args: { turn: fx.delegatingTurn },
   parameters: slack("delegatingTurn"),
+};
+
+/** Stands in for a host's "Copy as" menu: one control per item, told which item it is on. */
+function CopyAs({ item }: { item: TurnItem }) {
+  const what = item.kind === "answer" ? "answer" : (item.task?.title ?? item.kind);
+  return (
+    <button
+      type="button"
+      aria-label={`Copy as, ${what}`}
+      title="Copy as"
+      className="inline-flex size-6 items-center justify-center rounded-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+      onClick={() => navigator.clipboard?.writeText(JSON.stringify(item.task ?? item.turn.text))}
+    >
+      <CopyIcon size={13} />
+    </button>
+  );
+}
+
+export const ItemActions: Story = {
+  name: "Host controls on each item",
+  args: { turn: { ...fx.delegatingTurn, status: "done" } },
+  render: ({ onAction, turn, question }) => (
+    <Canvas onAction={onAction}>
+      <div className="flex flex-col gap-6">
+        {question && <UserMessage text={question} />}
+        <AgentMessage turn={turn} itemActions={(item) => <CopyAs item={item} />} />
+      </div>
+    </Canvas>
+  ),
+  parameters: slack("delegatingTurn", "Web only: Slack has no clipboard to offer"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // One control per tool call and per agent step, plus the answer's; all reachable without hover.
+    await expect(canvas.getAllByRole("button", { name: /^Copy as, / })).toHaveLength(5);
+  },
 };
 
 export const Handoff: Story = {

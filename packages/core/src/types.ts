@@ -37,6 +37,22 @@ export interface Citation {
   source?: string;
 }
 
+/** The agent a step was handed to, and the run it did the work in. */
+export interface Subagent {
+  name: string;
+  /** The child run. With it the step is clickable: `openRun` carries it as the target. */
+  runId?: string;
+  /** One line: what it was asked, then what it returned once done. */
+  summary?: string;
+  steps?: number;
+  tokens?: number;
+  durationMs?: number;
+  /** A plain link to the run, for surfaces or hosts with no drawer. */
+  url?: string;
+  /** The agent's own hue (0 to 360), so it reads as someone else inside this turn. */
+  hue?: number;
+}
+
 /** A tool call, shown to people as a task. Never carries raw tool JSON for display. */
 export interface Task {
   id: string;
@@ -50,8 +66,11 @@ export interface Task {
   sources?: Citation[];
   /** The approval gating this call, when status is `waiting` or `denied`. */
   interruptId?: string;
-  /** A delegated run: another agent did this step. */
-  subagent?: { name: string; steps?: number; tokens?: number; url?: string };
+  /**
+   * A delegated run: another agent did this step. Surfaces draw it as that
+   * agent, not as a tool call, and opening it emits `ActionId.openRun`.
+   */
+  subagent?: Subagent;
 }
 
 /**
@@ -360,7 +379,12 @@ export interface Turn {
   durationMs?: number;
   /** Deep link to the full session, if the host has one. */
   sessionUrl?: string;
-  /** Footer disclaimer, owned by the host so copy lives in one place. */
+  /**
+   * Where the run is coming from: the app, environment or trigger that started
+   * it ("Incident console", "Nightly eval"). Shown next to the session link.
+   */
+  source?: { label: string; url?: string };
+  /** Replaces the default footer ("<agent name> is AI…") when the host needs its own wording. */
   disclaimer?: string;
 }
 

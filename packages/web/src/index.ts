@@ -3,6 +3,7 @@ export * from "./AgentOrb";
 export * from "./Alerts";
 export * from "./ArtifactPreview";
 export * from "./Inbox";
+export * from "./Mailbox";
 export * from "./PromptInput";
 export * from "./QueueStrip";
 export * from "./Reasoning";

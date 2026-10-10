@@ -5,6 +5,8 @@ import {
   buttonClass,
   CopyButton,
   GaugeIcon,
+  type ItemActions,
+  ItemActionsContext,
   RefreshIcon,
   ShimmerVerb,
   SuppressContext,
@@ -114,10 +116,12 @@ const actionBtn =
 /** Copy, regenerate, rate (with a comment after thumbs-down), and usage. */
 function MessageActions({ turn, copy }: { turn: Turn; copy: Copy }) {
   const onAction = useContext(ActionContext);
+  const itemActions = useContext(ItemActionsContext);
   const [commenting, setCommenting] = useState(false);
   const [comment, setComment] = useState("");
   const [sent, setSent] = useState(false);
   const text = turn.text.replace(/\[\[[^\]]+\]\]/g, "").trim();
+  const hostCopy = text ? (itemActions?.({ kind: "answer", turn }) ?? null) : null;
   const rate = (rating: "up" | "down") => {
     onAction({ id: ActionId.feedback, payload: { turnId: turn.id, target: rating } });
     setCommenting(rating === "down");
@@ -126,7 +130,8 @@ function MessageActions({ turn, copy }: { turn: Turn; copy: Copy }) {
   return (
     <div className="-ml-1.5 flex flex-col gap-1">
       <div role="toolbar" aria-label="Message actions" className="flex items-center gap-0.5">
-        {text && <CopyButton text={text} label="Copy answer" />}
+        {/* One copy control, never two: the host's replaces the built-in when it draws one. */}
+        {text && (hostCopy ?? <CopyButton text={text} label="Copy answer" note="above" />)}
         <button
           type="button"
           aria-label="Regenerate"
@@ -216,7 +221,23 @@ function MessageActions({ turn, copy }: { turn: Turn; copy: Copy }) {
  * web, so the status is said once. Slack shows status as a reaction instead.
  * Finished turns get a compact action row (copy, regenerate, rate, usage).
  */
-export function AgentMessage({ turn, copy = defaultCopy }: { turn: Turn; copy?: Copy }) {
+export function AgentMessage({
+  turn,
+  copy = defaultCopy,
+  itemActions,
+}: {
+  turn: Turn;
+  copy?: Copy;
+  /**
+   * The host's own controls for each item this turn draws: every tool call,
+   * every step another agent did, and the answer. Use it for a "Copy as" menu.
+   * What it returns for the answer replaces the built-in Copy answer button;
+   * return null there to keep the built-in one.
+   * Leave it out to inherit one from an `ItemActionsContext` further up.
+   */
+  itemActions?: ItemActions;
+}) {
+  const inherited = useContext(ItemActionsContext);
   const statusLine = `**${turn.agent.name}** · ${copy.status[turn.status]}`;
   const final = turn.status === "done";
   const suppressed = useMemo(() => {
@@ -263,17 +284,19 @@ export function AgentMessage({ turn, copy = defaultCopy }: { turn: Turn; copy?: 
           <output className="sr-only">{copy.status[turn.status]}</output>
         </header>
         {turn.reasoning && <Reasoning text={turn.reasoning} streaming={reasoningLive} />}
-        <TurnMetaContext.Provider value={turn}>
-          <SuppressContext.Provider value={suppressed}>
-            <div className="aui-stack">
-              <TurnView turn={turn} copy={copy} />
-              {turn.status === "stopped" && turn.stop && (
-                <StopBanner turnId={turn.id} stop={turn.stop} label={copy.stopPhase[turn.stop]} />
-              )}
-            </div>
-          </SuppressContext.Provider>
-        </TurnMetaContext.Provider>
-        {final && <MessageActions turn={turn} copy={copy} />}
+        <ItemActionsContext.Provider value={itemActions ?? inherited}>
+          <TurnMetaContext.Provider value={turn}>
+            <SuppressContext.Provider value={suppressed}>
+              <div className="aui-stack">
+                <TurnView turn={turn} copy={copy} />
+                {turn.status === "stopped" && turn.stop && (
+                  <StopBanner turnId={turn.id} stop={turn.stop} label={copy.stopPhase[turn.stop]} />
+                )}
+              </div>
+            </SuppressContext.Provider>
+          </TurnMetaContext.Provider>
+          {final && <MessageActions turn={turn} copy={copy} />}
+        </ItemActionsContext.Provider>
       </div>
     </article>
   );
