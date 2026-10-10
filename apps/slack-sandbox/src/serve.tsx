@@ -1,6 +1,11 @@
 import { TurnView } from "@agent-ui/components";
 import { ActionId, decodeAction, type Turn, type TurnEvent } from "@agent-ui/core";
-import { actionIdBase, renderToSlack, suggestedPrompts } from "@agent-ui/render-slack";
+import {
+  actionIdBase,
+  reactionChanges,
+  renderToSlack,
+  suggestedPrompts,
+} from "@agent-ui/render-slack";
 import { eventsFor, scenarioFor } from "./fixtures";
 import { streamTurn } from "./run";
 import type { SandboxEnv, SlackClient } from "./slack";
@@ -94,7 +99,7 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
   const onAction = async (payload: {
     user: { id: string };
     channel: { id: string };
-    message?: { ts: string };
+    message?: { ts: string; thread_ts?: string };
     actions: { action_id: string; value?: string }[];
   }) => {
     const action = payload.actions[0];
@@ -106,6 +111,8 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
       slack.call("chat.postEphemeral", {
         channel: payload.channel.id,
         user: payload.user.id,
+        // Reply where the button was clicked, not in the channel above the thread.
+        ...(payload.message?.thread_ts ? { thread_ts: payload.message.thread_ts } : {}),
         text,
       });
 
@@ -141,6 +148,19 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
         blocks: view.blocks,
       });
       live.set(turnId, { ...state, turn });
+      // The turn no longer needs a person: clear the waiting reaction. An approval's
+      // follow-up run adds its own; a denial ends here, so it gets the final one now.
+      const { add, remove } = reactionChanges("waiting", turn.status);
+      for (const [method, names] of [
+        ["reactions.remove", remove],
+        ["reactions.add", id === ActionId.deny ? add : []],
+      ] as const) {
+        for (const name of names) {
+          await slack
+            .call(method, { channel: state.channel, timestamp: state.triggerTs, name })
+            .catch(() => {});
+        }
+      }
       if (id === ActionId.approve) {
         await run({ ...state, triggerTs: state.triggerTs }, followUp(turnId));
       }

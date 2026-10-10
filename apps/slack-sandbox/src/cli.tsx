@@ -78,14 +78,26 @@ async function main() {
           continue;
         }
         const { blocks, text, warnings } = renderToSlack(p.element, { placement: p.placement });
-        await slack.call("chat.postMessage", {
-          channel: env.channel,
-          thread_ts: header.ts,
-          text,
-          blocks,
-          // Label each post so the thread reads as a catalog.
-          metadata: { event_type: "agent_ui_fixture", event_payload: { name: p.name } },
-        });
+        if (blocks.length === 0) {
+          // Nothing to show is a valid render (a fresh session has no notices), but Slack rejects it.
+          console.log(`skip ${p.name}: renders no blocks`);
+          continue;
+        }
+        try {
+          await slack.call("chat.postMessage", {
+            channel: env.channel,
+            thread_ts: header.ts,
+            text,
+            blocks,
+            // Label each post so the thread reads as a catalog.
+            metadata: { event_type: "agent_ui_fixture", event_payload: { name: p.name } },
+          });
+        } catch (e) {
+          // One bad fixture shouldn't hide the rest of the catalog.
+          console.log(`FAIL ${p.name}: ${(e as Error).message}`);
+          process.exitCode = 1;
+          continue;
+        }
         console.log(
           `posted ${p.name}${warnings.length ? ` (warnings: ${warnings.join("; ")})` : ""}`,
         );
