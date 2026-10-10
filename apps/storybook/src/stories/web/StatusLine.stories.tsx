@@ -1,8 +1,8 @@
-import { SessionNotices } from "@agent-ui/components";
-import type { ApprovalMode, SessionState } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { PromptInput, StatusLine } from "@agent-ui/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { SessionNotices } from "@vultus/components";
+import type { ApprovalMode, SessionState } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { PromptInput, StatusLine } from "@vultus/web";
 import { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { Canvas, webOnly } from "../../support";

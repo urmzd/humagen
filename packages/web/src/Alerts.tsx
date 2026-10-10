@@ -1,4 +1,4 @@
-import { SystemAlertView } from "@agent-ui/components";
+import { SystemAlertView } from "@vultus/components";
 import {
   type ActionHandler,
   ActionId,
@@ -7,7 +7,7 @@ import {
   formatUsd,
   type StopState,
   type SystemAlert,
-} from "@agent-ui/core";
+} from "@vultus/core";
 import {
   ActionContext,
   AlertOctagonIcon,
@@ -19,7 +19,7 @@ import {
   Spinner,
   WebSurface,
   XIcon,
-} from "@agent-ui/render-web";
+} from "@vultus/render-web";
 import {
   type ReactNode,
   useContext,

@@ -1,6 +1,6 @@
-import { InboxView } from "@agent-ui/components";
-import { type ActionHandler, type InboxItem, openCount } from "@agent-ui/core";
-import { CheckCircleIcon, WebSurface } from "@agent-ui/render-web";
+import { InboxView } from "@vultus/components";
+import { type ActionHandler, type InboxItem, openCount } from "@vultus/core";
+import { CheckCircleIcon, WebSurface } from "@vultus/render-web";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 
 export type InboxFilter = "all" | "needs" | "alerts" | "resolved";

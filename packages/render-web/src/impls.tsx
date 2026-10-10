@@ -1,5 +1,5 @@
-import { TIME_TOKEN, type Tone } from "@agent-ui/core";
-import type { PrimitiveImpls, PrimitiveProps } from "@agent-ui/primitives";
+import { TIME_TOKEN, type Tone } from "@vultus/core";
+import type { PrimitiveImpls, PrimitiveProps } from "@vultus/primitives";
 import { Children, isValidElement, type ReactNode, useContext, useEffect, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";

@@ -1,9 +1,9 @@
 {
-  "name": "@agent-ui/render-slack",
+  "name": "@vultus/render-slack",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Render agent-ui components to Slack Block Kit JSON via a custom React reconciler.",
+  "description": "Render vultus components to Slack Block Kit JSON via a custom React reconciler.",
   "exports": {
     ".": "./src/index.tsx",
     "./preview": "./src/preview.tsx"
@@ -13,15 +13,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agent-ui/core": "workspace:*",
-    "@agent-ui/primitives": "workspace:*",
+    "@vultus/core": "workspace:*",
+    "@vultus/primitives": "workspace:*",
     "react-reconciler": "^0.34.0"
   },
   "peerDependencies": {
     "react": "^19"
   },
   "devDependencies": {
-    "@agent-ui/components": "workspace:*",
+    "@vultus/components": "workspace:*",
     "@types/react-reconciler": "^0.33.1"
   }
 }

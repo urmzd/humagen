@@ -1,5 +1,5 @@
 {
-  "name": "@agent-ui/web",
+  "name": "@vultus/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,10 +11,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agent-ui/components": "workspace:*",
-    "@agent-ui/core": "workspace:*",
-    "@agent-ui/primitives": "workspace:*",
-    "@agent-ui/render-web": "workspace:*"
+    "@vultus/components": "workspace:*",
+    "@vultus/core": "workspace:*",
+    "@vultus/primitives": "workspace:*",
+    "@vultus/render-web": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19"

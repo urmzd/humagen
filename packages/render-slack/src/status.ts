@@ -1,7 +1,7 @@
-import type { TaskStatus } from "@agent-ui/core";
+import type { TaskStatus } from "@vultus/core";
 
 /**
- * Slack has fewer task states than agent-ui. Plans accept `pending`; task cards
+ * Slack has fewer task states than vultus. Plans accept `pending`; task cards
  * and stream task_update chunks accept only in_progress/complete/error
  * (verified with blocks.validate). `waiting` is blocked on a person, so in a
  * plan it shows as pending (no spinner); `denied` is an outcome, shown as error

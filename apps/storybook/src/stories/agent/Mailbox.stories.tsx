@@ -1,8 +1,8 @@
-import { type InboxMessage, resolveMessage } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { NowContext } from "@agent-ui/render-web";
-import { Mailbox, type PartRenderer } from "@agent-ui/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { type InboxMessage, resolveMessage } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { NowContext } from "@vultus/render-web";
+import { Mailbox, type PartRenderer } from "@vultus/web";
 import { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, FIXTURE_NOW, slack } from "../../support";

@@ -1,4 +1,4 @@
-import type { Citation } from "@agent-ui/core";
+import type { Citation } from "@vultus/core";
 import {
   createContext,
   type ReactNode,

@@ -1,4 +1,4 @@
-import type { PrimitiveImpls, PrimitiveName, PrimitiveProps } from "@agent-ui/primitives";
+import type { PrimitiveImpls, PrimitiveName, PrimitiveProps } from "@vultus/primitives";
 import { createElement } from "react";
 
 /** Host element type for a primitive. The serializer switches on these. */

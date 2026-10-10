@@ -1,6 +1,6 @@
-import { Markdown } from "@agent-ui/primitives";
-import { Shimmer, ShimmerVerb, Spinner, StatusIcon, useVerbSequence } from "@agent-ui/render-web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { Markdown } from "@vultus/primitives";
+import { Shimmer, ShimmerVerb, Spinner, StatusIcon, useVerbSequence } from "@vultus/render-web";
 import { Canvas } from "../../support";
 
 const meta = {

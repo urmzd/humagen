@@ -27,7 +27,7 @@ Prefix with `eval "$(fnm env)" && fnm use 24` when node isn't on PATH.
 
 ## Conventions
 
-- When you add a fixture to `@agent-ui/core/fixtures`, it is picked up by the sandbox registry and should get a story. Fixture names appear in the docs as `pnpm sandbox post <name>`.
+- When you add a fixture to `@vultus/core/fixtures`, it is picked up by the sandbox registry and should get a story. Fixture names appear in the docs as `pnpm sandbox post <name>`.
 - Every Slack-facing change must pass `pnpm sandbox validate`. Don't guess Block Kit shapes: check them against docs.slack.dev or `blocks.validate`.
 - Copy lives in `packages/components/src/copy.ts`. Buttons use Title Case, everything else sentence case, and there are no emoji in buttons or headers.
 - Anything blocked on a person (`waiting`) must not animate.

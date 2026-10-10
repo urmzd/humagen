@@ -1,7 +1,7 @@
-import { TurnView } from "@agent-ui/components";
-import { replay } from "@agent-ui/core";
-import { renderToSlack } from "@agent-ui/render-slack";
-import { WebSurface } from "@agent-ui/render-web";
+import { TurnView } from "@vultus/components";
+import { replay } from "@vultus/core";
+import { renderToSlack } from "@vultus/render-slack";
+import { WebSurface } from "@vultus/render-web";
 
 // One stream of events from any runtime...
 const turn = replay([

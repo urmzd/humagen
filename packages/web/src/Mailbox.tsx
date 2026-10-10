@@ -1,4 +1,4 @@
-import { defaultCopy, MessagePartView, messageByline } from "@agent-ui/components";
+import { defaultCopy, MessagePartView, messageByline } from "@vultus/components";
 import {
   type ActionHandler,
   ActionId,
@@ -14,9 +14,9 @@ import {
   openParts,
   sortMessages,
   type Tone,
-} from "@agent-ui/core";
-import { Context } from "@agent-ui/primitives";
-import { buttonClass, CheckCircleIcon, WebSurface } from "@agent-ui/render-web";
+} from "@vultus/core";
+import { Context } from "@vultus/primitives";
+import { buttonClass, CheckCircleIcon, WebSurface } from "@vultus/render-web";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 /** Draws one part of a message. Runs inside the reading pane, so primitives and actions work. */

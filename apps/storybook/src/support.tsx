@@ -1,6 +1,6 @@
-import type { ActionHandler, Turn, TurnEvent } from "@agent-ui/core";
-import { NowContext, WebSurface } from "@agent-ui/render-web";
-import { ArtifactPreviewProvider } from "@agent-ui/web";
+import type { ActionHandler, Turn, TurnEvent } from "@vultus/core";
+import { NowContext, WebSurface } from "@vultus/render-web";
+import { ArtifactPreviewProvider } from "@vultus/web";
 import type { ReactNode } from "react";
 
 /** Story args shared by everything that emits UiActions; `fn()` logs them in the Actions panel. */

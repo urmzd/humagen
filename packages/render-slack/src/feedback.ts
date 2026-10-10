@@ -1,4 +1,4 @@
-import { ActionId, type UiAction } from "@agent-ui/core";
+import { ActionId, type UiAction } from "@vultus/core";
 
 /**
  * The comment prompt that follows a rating on Slack. Feedback buttons can't

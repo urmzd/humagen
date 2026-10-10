@@ -1,5 +1,5 @@
-import type { ActionHandler } from "@agent-ui/core";
-import { RendererProvider } from "@agent-ui/primitives";
+import type { ActionHandler } from "@vultus/core";
+import { RendererProvider } from "@vultus/primitives";
 import { type ReactNode, useState } from "react";
 import { ActionContext } from "./buttons";
 import { CitationContext, CitationRegistry } from "./citations";
@@ -38,7 +38,7 @@ export {
 export { StatusIcon, statusLabel } from "./task";
 
 /**
- * Render agent-ui components to the DOM. Clicks surface as the same
+ * Render vultus components to the DOM. Clicks surface as the same
  * `UiAction` a Slack interaction decodes to, so one handler serves both.
  *
  * Holds one form store, so a Button's `collects` reads the Checkboxes group

@@ -6,7 +6,7 @@ import type {
   Citation,
   TaskStatus,
   Tone,
-} from "@agent-ui/core";
+} from "@vultus/core";
 import type { ComponentType, ReactNode } from "react";
 
 /**

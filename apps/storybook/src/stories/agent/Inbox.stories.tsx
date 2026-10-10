@@ -1,8 +1,8 @@
-import { ActionId, type InboxItem, openCount, type UiAction } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { NowContext } from "@agent-ui/render-web";
-import { Inbox, InboxButton } from "@agent-ui/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { ActionId, type InboxItem, openCount, type UiAction } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { NowContext } from "@vultus/render-web";
+import { Inbox, InboxButton } from "@vultus/web";
 import { useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { type ActionArgs, FIXTURE_NOW, slack } from "../../support";

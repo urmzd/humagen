@@ -1,6 +1,6 @@
-import type { PromptConfig } from "@agent-ui/core";
-import { type PromptAttachment, PromptInput } from "@agent-ui/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { PromptConfig } from "@vultus/core";
+import { type PromptAttachment, PromptInput } from "@vultus/web";
 import { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { SLACK_COMPOSER, webOnly } from "../../support";

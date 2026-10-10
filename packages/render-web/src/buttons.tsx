@@ -1,5 +1,5 @@
-import { type ActionHandler, ActionId, type ActionPayload } from "@agent-ui/core";
-import type { ButtonProps, ConfirmSpec, PrimitiveProps } from "@agent-ui/primitives";
+import { type ActionHandler, ActionId, type ActionPayload } from "@vultus/core";
+import type { ButtonProps, ConfirmSpec, PrimitiveProps } from "@vultus/primitives";
 import {
   createContext,
   useContext,

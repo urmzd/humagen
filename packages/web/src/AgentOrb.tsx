@@ -1,4 +1,4 @@
-import type { AgentActivity, Turn, TurnStatus } from "@agent-ui/core";
+import type { AgentActivity, Turn, TurnStatus } from "@vultus/core";
 import type { CSSProperties } from "react";
 
 /**

@@ -1,5 +1,5 @@
-import type { QueuedMessage } from "@agent-ui/core";
-import { GripIcon, PencilIcon, PlayIcon, XIcon, ZapIcon } from "@agent-ui/render-web";
+import type { QueuedMessage } from "@vultus/core";
+import { GripIcon, PencilIcon, PlayIcon, XIcon, ZapIcon } from "@vultus/render-web";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import type { QueueControls } from "./useQueue";
 

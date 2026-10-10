@@ -1,5 +1,5 @@
 /**
- * Slack app manifest, generated from what agent-ui actually uses. Each
+ * Slack app manifest, generated from what vultus actually uses. Each
  * capability lists the scopes and events it needs, so the manifest never
  * drifts from the code: add a capability, regenerate, reinstall.
  *
@@ -113,10 +113,10 @@ export function buildManifest(options: ManifestOptions = {}) {
   return {
     _metadata: { major_version: 2, minor_version: 1 },
     display_information: {
-      name: options.name ?? "agent-ui sandbox",
+      name: options.name ?? "vultus sandbox",
       description:
         options.description ??
-        "Renders agent-ui fixtures in real Slack: streaming, approvals, failures.",
+        "Renders vultus fixtures in real Slack: streaming, approvals, failures.",
       background_color: "#111111",
     },
     features: {
@@ -125,7 +125,7 @@ export function buildManifest(options: ManifestOptions = {}) {
         messages_tab_enabled: true,
         messages_tab_read_only_enabled: false,
       },
-      bot_user: { display_name: options.botName ?? "agent-ui-sandbox", always_online: true },
+      bot_user: { display_name: options.botName ?? "vultus-sandbox", always_online: true },
       ...(has("shortcuts")
         ? {
             shortcuts: [
@@ -155,7 +155,7 @@ export function buildManifest(options: ManifestOptions = {}) {
       // Prompts are set at runtime (setSuggestedPrompts); static ones here would block that.
       agent_view: {
         agent_description:
-          "Test bench for agent-ui. Ask anything to see streaming, plans, approvals, and failures rendered by the real Slack client.",
+          "Test bench for vultus. Ask anything to see streaming, plans, approvals, and failures rendered by the real Slack client.",
       },
     },
     oauth_config: { scopes: { bot: unique(caps.flatMap((c) => c.scopes)) } },

@@ -1,6 +1,6 @@
-import { ActionId, type TaskStatus, type UiAction } from "@agent-ui/core";
-import { Plan, Task } from "@agent-ui/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { ActionId, type TaskStatus, type UiAction } from "@vultus/core";
+import { Plan, Task } from "@vultus/primitives";
 import { useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { type ActionArgs, Canvas } from "../../support";

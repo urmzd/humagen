@@ -1,4 +1,4 @@
-import { InboxView, SystemAlertView, TurnView } from "@agent-ui/components";
+import { InboxView, SystemAlertView, TurnView } from "@vultus/components";
 import {
   ActionId,
   type Approval,
@@ -8,8 +8,8 @@ import {
   sortInbox,
   type Turn,
   type TurnEvent,
-} from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
+} from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
 import {
   decodeFeedbackModal,
   decodeSlackAction,
@@ -18,7 +18,7 @@ import {
   reactionChanges,
   renderToSlack,
   suggestedPrompts,
-} from "@agent-ui/render-slack";
+} from "@vultus/render-slack";
 import { eventsFor, SCENARIOS, scenarioFor } from "./fixtures";
 import { ENTRY } from "./manifest";
 import { streamTurn } from "./run";

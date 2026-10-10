@@ -1,5 +1,5 @@
-import type { TaskStatus } from "@agent-ui/core";
-import type { PrimitiveProps } from "@agent-ui/primitives";
+import type { TaskStatus } from "@vultus/core";
+import type { PrimitiveProps } from "@vultus/primitives";
 import { useEffect, useRef, useState } from "react";
 import {
   BanIcon,

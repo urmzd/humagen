@@ -1,4 +1,4 @@
-import type { PromptConfig, Task, Turn } from "@agent-ui/core";
+import type { PromptConfig, Task, Turn } from "@vultus/core";
 import type { Block } from "./blocks";
 import { toMrkdwn, toPlain } from "./mrkdwn";
 import { nextBreak } from "./split";

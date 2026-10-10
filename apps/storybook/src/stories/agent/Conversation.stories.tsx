@@ -1,3 +1,4 @@
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
   ActionId,
   emptyTurn,
@@ -5,11 +6,10 @@ import {
   type PromptConfig,
   type TurnEvent,
   type UiAction,
-} from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { WebSurface } from "@agent-ui/render-web";
-import { AgentMessage, PromptInput, Thread, tokenize, UserMessage, useReplay } from "@agent-ui/web";
-import type { Meta, StoryObj } from "@storybook/react-vite";
+} from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { WebSurface } from "@vultus/render-web";
+import { AgentMessage, PromptInput, Thread, tokenize, UserMessage, useReplay } from "@vultus/web";
 import { useMemo, useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { type ActionArgs, scriptFor, slack } from "../../support";

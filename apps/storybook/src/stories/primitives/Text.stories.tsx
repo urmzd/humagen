@@ -1,5 +1,5 @@
-import { Context, Divider, Header, Text } from "@agent-ui/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { Context, Divider, Header, Text } from "@vultus/primitives";
 import { Canvas, slackPrimitive } from "../../support";
 
 const meta = {

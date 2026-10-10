@@ -1,7 +1,7 @@
-import { AttachmentView } from "@agent-ui/components";
-import type { Attachment, CommandRun } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { AttachmentView } from "@vultus/components";
+import type { Attachment, CommandRun } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
 import { useEffect, useState } from "react";
 import { expect, userEvent, within } from "storybook/test";
 import { Canvas, slack } from "../../support";

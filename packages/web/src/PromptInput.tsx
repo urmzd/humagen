@@ -1,4 +1,4 @@
-import type { PromptConfig } from "@agent-ui/core";
+import type { PromptConfig } from "@vultus/core";
 import {
   ArrowUpIcon,
   ChevronDownIcon,
@@ -7,7 +7,7 @@ import {
   PaperclipIcon,
   XIcon,
   ZapIcon,
-} from "@agent-ui/render-web";
+} from "@vultus/render-web";
 import {
   type FormEvent,
   type KeyboardEvent,

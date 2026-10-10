@@ -1,6 +1,6 @@
 # Slack sandbox
 
-Test agent-ui in the real Slack client, not a lookalike. The same fixtures that Storybook renders on the web get posted, streamed, and clicked in a sandbox workspace.
+Test vultus in the real Slack client, not a lookalike. The same fixtures that Storybook renders on the web get posted, streamed, and clicked in a sandbox workspace.
 
 ## Setup (once)
 
@@ -12,7 +12,7 @@ Test agent-ui in the real Slack client, not a lookalike. The same fixtures that 
 
    The command prints a link that opens Slack's "Create app from manifest" flow, already filled in.
 
-2. Install the app to the sandbox workspace and invite it to the test channel (`/invite @agent-ui-sandbox`).
+2. Install the app to the sandbox workspace and invite it to the test channel (`/invite @vultus-sandbox`).
 3. Create an app-level token with `connections:write` (Basic Information → App-Level Tokens). Socket Mode uses it, so no public URL is needed.
 4. Copy `.envrc.local.example` to the repo root as `.envrc.local`, fill it in, and run `direnv allow`.
 
@@ -43,4 +43,4 @@ The workflow step finishes when the turn does, so a turn that waits on an approv
 
 Opening the agent's Messages tab sets the suggested prompts. Opening its Home tab publishes what is waiting on you.
 
-Fixture names match the exports in `@agent-ui/core/fixtures` and the Storybook docs.
+Fixture names match the exports in `@vultus/core/fixtures` and the Storybook docs.

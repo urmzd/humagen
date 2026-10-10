@@ -1,6 +1,6 @@
-import { ActionId, type Rating } from "@agent-ui/core";
-import { Feedback } from "@agent-ui/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { ActionId, type Rating } from "@vultus/core";
+import { Feedback } from "@vultus/primitives";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slackPrimitive } from "../../support";
 

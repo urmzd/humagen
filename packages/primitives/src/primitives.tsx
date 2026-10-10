@@ -16,9 +16,7 @@ export function RendererProvider({
 export function useRenderer(): Renderer {
   const renderer = useContext(RendererContext);
   if (!renderer) {
-    throw new Error(
-      "agent-ui primitives need a renderer: wrap in <WebSurface> or use renderToSlack",
-    );
+    throw new Error("vultus primitives need a renderer: wrap in <WebSurface> or use renderToSlack");
   }
   return renderer;
 }

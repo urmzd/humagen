@@ -1,5 +1,5 @@
 {
-  "name": "agent-ui",
+  "name": "vultus",
   "private": true,
   "type": "module",
   "version": "0.0.0",
@@ -11,8 +11,8 @@
     "fmt": "biome check --write",
     "typecheck": "turbo run typecheck",
     "check": "pnpm run fmt && pnpm run lint && pnpm run typecheck && pnpm test",
-    "storybook": "pnpm --filter @agent-ui/storybook dev",
-    "sandbox": "pnpm --silent --filter @agent-ui/slack-sandbox cli"
+    "storybook": "pnpm --filter @vultus/storybook dev",
+    "sandbox": "pnpm --silent --filter @vultus/slack-sandbox cli"
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.4",

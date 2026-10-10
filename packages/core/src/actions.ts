@@ -92,7 +92,7 @@ export function decodeAction(value: string): ActionPayload {
     typeof (parsed as ActionPayload).turnId !== "string" ||
     typeof (parsed as ActionPayload).target !== "string"
   ) {
-    throw new TypeError("not an agent-ui action payload");
+    throw new TypeError("not an vultus action payload");
   }
   return parsed as ActionPayload;
 }

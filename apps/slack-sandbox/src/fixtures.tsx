@@ -10,14 +10,14 @@ import {
   SessionNotices,
   SystemAlertView,
   TurnView,
-} from "@agent-ui/components";
-import type { Turn, TurnEvent } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { feedbackModal, type Placement } from "@agent-ui/render-slack";
+} from "@vultus/components";
+import type { Turn, TurnEvent } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { feedbackModal, type Placement } from "@vultus/render-slack";
 import type { ReactElement } from "react";
 
 /**
- * Every fixture in @agent-ui/core/fixtures, as something postable. Names match
+ * Every fixture in @vultus/core/fixtures, as something postable. Names match
  * the fixture exports (and Storybook docs): `pnpm sandbox post waitingTurn`.
  */
 export interface Postable {

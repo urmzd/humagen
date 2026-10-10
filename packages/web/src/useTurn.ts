@@ -1,4 +1,4 @@
-import { emptyTurn, reduce, type Turn, type TurnEvent } from "@agent-ui/core";
+import { emptyTurn, reduce, type Turn, type TurnEvent } from "@vultus/core";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 type Input = TurnEvent | { type: "@reset"; seed: Turn };

@@ -1,5 +1,5 @@
 {
-  "name": "@agent-ui/slack-sandbox",
+  "name": "@vultus/slack-sandbox",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,9 +9,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agent-ui/components": "workspace:*",
-    "@agent-ui/core": "workspace:*",
-    "@agent-ui/render-slack": "workspace:*",
+    "@vultus/components": "workspace:*",
+    "@vultus/core": "workspace:*",
+    "@vultus/render-slack": "workspace:*",
     "react": "^19.3.0"
   },
   "devDependencies": {

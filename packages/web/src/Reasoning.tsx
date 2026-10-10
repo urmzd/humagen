@@ -1,4 +1,4 @@
-import { Markdown } from "@agent-ui/primitives";
+import { Markdown } from "@vultus/primitives";
 import {
   BrainIcon,
   Collapse,
@@ -6,7 +6,7 @@ import {
   Spinner,
   useDisclosure,
   useVerbSequence,
-} from "@agent-ui/render-web";
+} from "@vultus/render-web";
 import { useEffect, useId, useRef, useState } from "react";
 
 const REASONING_VERBS = ["Thinking…", "Weighing options…", "Planning next steps…"] as const;

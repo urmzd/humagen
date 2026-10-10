@@ -1,7 +1,7 @@
-import { ApprovalCard } from "@agent-ui/components";
-import { ActionId, type Approval, type UiAction } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { ApprovalCard } from "@vultus/components";
+import { ActionId, type Approval, type UiAction } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
 import { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";

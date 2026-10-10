@@ -1,5 +1,5 @@
-import { type Citation, encodeAction, formatBytes, type Tone } from "@agent-ui/core";
-import type { PrimitiveName, PrimitiveProps, TaskProps } from "@agent-ui/primitives";
+import { type Citation, encodeAction, formatBytes, type Tone } from "@vultus/core";
+import type { PrimitiveName, PrimitiveProps, TaskProps } from "@vultus/primitives";
 import { toMrkdwn, toPlain } from "./mrkdwn";
 import type { HostChild, HostNode } from "./reconciler";
 import { nextBreak } from "./split";
@@ -461,7 +461,7 @@ class Serializer {
 
   /**
    * Slack's `overflow` has one action_id for the whole menu, so each option's
-   * value carries its own agent-ui action. Decode with `decodeSlackAction`.
+   * value carries its own vultus action. Decode with `decodeSlackAction`.
    */
   overflow({ items }: PrimitiveProps["Menu"], index: number): Block {
     if (items.length > 5)

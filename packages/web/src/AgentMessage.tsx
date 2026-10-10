@@ -1,5 +1,5 @@
-import { type Copy, defaultCopy, TurnView } from "@agent-ui/components";
-import { ActionId, formatTokens, formatUsd, type Turn, type Usage } from "@agent-ui/core";
+import { type Copy, defaultCopy, TurnView } from "@vultus/components";
+import { ActionId, formatTokens, formatUsd, type Turn, type Usage } from "@vultus/core";
 import {
   ActionContext,
   CopyButton,
@@ -14,7 +14,7 @@ import {
   THINKING_VERBS,
   TurnMetaContext,
   useVerbSequence,
-} from "@agent-ui/render-web";
+} from "@vultus/render-web";
 import { useContext, useMemo, useState } from "react";
 import { AgentOrb, type OrbState, turnOrbState } from "./AgentOrb";
 import { StopBanner } from "./Alerts";

@@ -1,8 +1,8 @@
-import type { Turn } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { WebSurface } from "@agent-ui/render-web";
-import { AgentMessage, railEntry, Thread, UserMessage } from "@agent-ui/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Turn } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { WebSurface } from "@vultus/render-web";
+import { AgentMessage, railEntry, Thread, UserMessage } from "@vultus/web";
 import { expect, userEvent, within } from "storybook/test";
 import { webOnly } from "../../support";
 

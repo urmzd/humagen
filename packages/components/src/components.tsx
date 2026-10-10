@@ -20,7 +20,7 @@ import {
   type SystemAlert,
   type Turn,
   timeToken,
-} from "@agent-ui/core";
+} from "@vultus/core";
 import {
   Actions,
   Button,
@@ -43,7 +43,7 @@ import {
   Terminal,
   Text,
   useSurface,
-} from "@agent-ui/primitives";
+} from "@vultus/primitives";
 import type { ReactNode } from "react";
 import { type Copy, defaultCopy } from "./copy";
 

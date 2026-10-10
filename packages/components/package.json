@@ -1,5 +1,5 @@
 {
-  "name": "@agent-ui/components",
+  "name": "@vultus/components",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,8 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agent-ui/core": "workspace:*",
-    "@agent-ui/primitives": "workspace:*"
+    "@vultus/core": "workspace:*",
+    "@vultus/primitives": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19"

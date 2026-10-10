@@ -1,6 +1,6 @@
-import type { Tone } from "@agent-ui/core";
-import { Callout } from "@agent-ui/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Tone } from "@vultus/core";
+import { Callout } from "@vultus/primitives";
 import { Canvas, slackPrimitive } from "../../support";
 
 const meta = {

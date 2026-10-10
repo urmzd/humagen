@@ -1,7 +1,7 @@
-import { linkCitations } from "@agent-ui/components";
-import * as fx from "@agent-ui/core/fixtures";
-import { Markdown, Sources } from "@agent-ui/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { linkCitations } from "@vultus/components";
+import * as fx from "@vultus/core/fixtures";
+import { Markdown, Sources } from "@vultus/primitives";
 import { expect, userEvent, within } from "storybook/test";
 import { Canvas, slackPrimitive } from "../../support";
 

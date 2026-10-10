@@ -35,13 +35,13 @@ importers:
 
   apps/slack-sandbox:
     dependencies:
-      '@agent-ui/components':
+      '@vultus/components':
         specifier: workspace:*
         version: link:../../packages/components
-      '@agent-ui/core':
+      '@vultus/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@agent-ui/render-slack':
+      '@vultus/render-slack':
         specifier: workspace:*
         version: link:../../packages/render-slack
       react:
@@ -57,19 +57,19 @@ importers:
 
   apps/storybook:
     dependencies:
-      '@agent-ui/components':
+      '@vultus/components':
         specifier: workspace:*
         version: link:../../packages/components
-      '@agent-ui/core':
+      '@vultus/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@agent-ui/primitives':
+      '@vultus/primitives':
         specifier: workspace:*
         version: link:../../packages/primitives
-      '@agent-ui/render-web':
+      '@vultus/render-web':
         specifier: workspace:*
         version: link:../../packages/render-web
-      '@agent-ui/web':
+      '@vultus/web':
         specifier: workspace:*
         version: link:../../packages/web
     devDependencies:
@@ -106,10 +106,10 @@ importers:
 
   packages/components:
     dependencies:
-      '@agent-ui/core':
+      '@vultus/core':
         specifier: workspace:*
         version: link:../core
-      '@agent-ui/primitives':
+      '@vultus/primitives':
         specifier: workspace:*
         version: link:../primitives
       react:
@@ -120,7 +120,7 @@ importers:
 
   packages/primitives:
     dependencies:
-      '@agent-ui/core':
+      '@vultus/core':
         specifier: workspace:*
         version: link:../core
       react:
@@ -129,10 +129,10 @@ importers:
 
   packages/render-slack:
     dependencies:
-      '@agent-ui/core':
+      '@vultus/core':
         specifier: workspace:*
         version: link:../core
-      '@agent-ui/primitives':
+      '@vultus/primitives':
         specifier: workspace:*
         version: link:../primitives
       react:
@@ -142,19 +142,19 @@ importers:
         specifier: ^0.34.0
         version: 0.34.0(react@19.3.0)
     devDependencies:
-      '@agent-ui/components':
-        specifier: workspace:*
-        version: link:../components
       '@types/react-reconciler':
         specifier: ^0.33.1
         version: 0.33.1(@types/react@19.3.0)
+      '@vultus/components':
+        specifier: workspace:*
+        version: link:../components
 
   packages/render-web:
     dependencies:
-      '@agent-ui/core':
+      '@vultus/core':
         specifier: workspace:*
         version: link:../core
-      '@agent-ui/primitives':
+      '@vultus/primitives':
         specifier: workspace:*
         version: link:../primitives
       react:
@@ -172,16 +172,16 @@ importers:
 
   packages/web:
     dependencies:
-      '@agent-ui/components':
+      '@vultus/components':
         specifier: workspace:*
         version: link:../components
-      '@agent-ui/core':
+      '@vultus/core':
         specifier: workspace:*
         version: link:../core
-      '@agent-ui/primitives':
+      '@vultus/primitives':
         specifier: workspace:*
         version: link:../primitives
-      '@agent-ui/render-web':
+      '@vultus/render-web':
         specifier: workspace:*
         version: link:../render-web
       react:

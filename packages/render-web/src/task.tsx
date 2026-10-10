@@ -4,8 +4,8 @@ import {
   formatTokens,
   type Subagent,
   type TaskStatus,
-} from "@agent-ui/core";
-import type { PrimitiveProps } from "@agent-ui/primitives";
+} from "@vultus/core";
+import type { PrimitiveProps } from "@vultus/primitives";
 import {
   Children,
   type CSSProperties,

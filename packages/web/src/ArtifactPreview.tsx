@@ -1,5 +1,5 @@
-import { formatBytes } from "@agent-ui/core";
-import { type FileProps, Markdown } from "@agent-ui/primitives";
+import { formatBytes } from "@vultus/core";
+import { type FileProps, Markdown } from "@vultus/primitives";
 import {
   ArtifactIcon,
   ArtifactOpenContext,
@@ -8,7 +8,7 @@ import {
   ExternalLinkIcon,
   phaseLabel,
   XIcon,
-} from "@agent-ui/render-web";
+} from "@vultus/render-web";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 function Body({ file }: { file: FileProps }) {

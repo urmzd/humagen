@@ -1,7 +1,7 @@
-import type { TaskStatus } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { Plan, Task } from "@agent-ui/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { TaskStatus } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { Plan, Task } from "@vultus/primitives";
 import { useEffect, useState } from "react";
 import { Canvas, slackPrimitive } from "../../support";
 

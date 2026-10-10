@@ -1,4 +1,4 @@
-import type { PrimitiveProps } from "@agent-ui/primitives";
+import type { PrimitiveProps } from "@vultus/primitives";
 import { createContext, useContext, useId, useState, useSyncExternalStore } from "react";
 
 interface Group {

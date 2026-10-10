@@ -1,8 +1,8 @@
-import { AttachmentView } from "@agent-ui/components";
-import type { Artifact } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { AgentMessage } from "@agent-ui/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { AttachmentView } from "@vultus/components";
+import type { Artifact } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { AgentMessage } from "@vultus/web";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";
 

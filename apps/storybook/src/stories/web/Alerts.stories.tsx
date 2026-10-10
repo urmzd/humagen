@@ -1,14 +1,14 @@
-import { FailureAlert } from "@agent-ui/components";
-import * as fx from "@agent-ui/core/fixtures";
-import { WebSurface } from "@agent-ui/render-web";
+import type { Meta, StoryObj } from "@storybook/react-vite";
+import { FailureAlert } from "@vultus/components";
+import * as fx from "@vultus/core/fixtures";
+import { WebSurface } from "@vultus/render-web";
 import {
   SpendBlockedBanner,
   StopBanner,
   SystemStatusBanner,
   Toaster,
   useToasts,
-} from "@agent-ui/web";
-import type { Meta, StoryObj } from "@storybook/react-vite";
+} from "@vultus/web";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, webOnly } from "../../support";
 

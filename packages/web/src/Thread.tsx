@@ -1,4 +1,4 @@
-import { ArrowDownIcon } from "@agent-ui/render-web";
+import { ArrowDownIcon } from "@vultus/render-web";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { TurnRail, type TurnRailEntry } from "./TurnRail";
 

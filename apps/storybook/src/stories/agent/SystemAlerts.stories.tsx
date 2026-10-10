@@ -1,8 +1,8 @@
-import { SystemAlertView } from "@agent-ui/components";
-import type { SystemAlert } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { SystemStatusBanner } from "@agent-ui/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { SystemAlertView } from "@vultus/components";
+import type { SystemAlert } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { SystemStatusBanner } from "@vultus/web";
 import { useEffect, useState } from "react";
 import { fn } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";

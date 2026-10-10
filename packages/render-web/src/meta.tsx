@@ -1,5 +1,5 @@
-import type { Task, Turn } from "@agent-ui/core";
-import type { FileProps } from "@agent-ui/primitives";
+import type { Task, Turn } from "@vultus/core";
+import type { FileProps } from "@vultus/primitives";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 
 /**

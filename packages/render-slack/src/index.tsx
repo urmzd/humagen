@@ -1,5 +1,5 @@
-import { decodeAction, type UiAction } from "@agent-ui/core";
-import { RendererProvider } from "@agent-ui/primitives";
+import { decodeAction, type UiAction } from "@vultus/core";
+import { RendererProvider } from "@vultus/primitives";
 import type { ReactNode } from "react";
 import { type Placement, type SerializeResult, serialize } from "./blocks";
 import { slackImpls } from "./impls";
@@ -18,7 +18,7 @@ export interface RenderOptions {
 }
 
 /**
- * Render agent-ui components to Block Kit. Synchronous and side-effect free:
+ * Render vultus components to Block Kit. Synchronous and side-effect free:
  * no hooks with effects, no async. Post the result with chat.postMessage,
  * chat.update, chat.stopStream (blocks), views.open, or views.publish.
  */
@@ -32,14 +32,14 @@ export function renderToSlack(element: ReactNode, options: RenderOptions = {}): 
   return serialize(tree, placement);
 }
 
-/** Slack sends action_id back as "<base>#<index>"; recover the shared agent-ui ActionId. */
+/** Slack sends action_id back as "<base>#<index>"; recover the shared vultus ActionId. */
 export function actionIdBase(actionId: string): string {
   const i = actionId.lastIndexOf("#");
   return i === -1 ? actionId : actionId.slice(0, i);
 }
 
 /**
- * Decode any agent-ui interaction from a Slack block_actions payload: buttons
+ * Decode any vultus interaction from a Slack block_actions payload: buttons
  * carry the payload in `value`; overflow menus in `selected_option.value`;
  * checkbox groups contribute `selection` from state.values.
  */

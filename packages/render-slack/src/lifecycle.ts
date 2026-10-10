@@ -1,4 +1,4 @@
-import type { Turn, TurnStatus } from "@agent-ui/core";
+import type { Turn, TurnStatus } from "@vultus/core";
 
 /**
  * Signals that live outside the message on Slack: a reaction on the user's

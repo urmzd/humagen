@@ -1,5 +1,5 @@
-import { ActionId, FEEDBACK_CLEAR } from "@agent-ui/core";
-import type { FeedbackPromptLabels, PrimitiveProps } from "@agent-ui/primitives";
+import { ActionId, FEEDBACK_CLEAR } from "@vultus/core";
+import type { FeedbackPromptLabels, PrimitiveProps } from "@vultus/primitives";
 import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 import { ActionContext, buttonClass } from "./buttons";
 import { ThumbsDownIcon, ThumbsUpIcon } from "./icons";

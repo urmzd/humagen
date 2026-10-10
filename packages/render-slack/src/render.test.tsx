@@ -1,7 +1,7 @@
-import { TurnView } from "@agent-ui/components";
-import { ActionId, decodeAction, type Turn } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { Callout, Markdown, Only, Text, useSurface } from "@agent-ui/primitives";
+import { TurnView } from "@vultus/components";
+import { ActionId, decodeAction, type Turn } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { Callout, Markdown, Only, Text, useSurface } from "@vultus/primitives";
 import { describe, expect, it } from "vitest";
 import {
   actionIdBase,

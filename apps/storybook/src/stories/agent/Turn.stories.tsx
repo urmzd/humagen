@@ -1,8 +1,8 @@
-import { emptyTurn, type Turn } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { CopyIcon, type TurnItem } from "@agent-ui/render-web";
-import { AgentMessage, UserMessage } from "@agent-ui/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { emptyTurn, type Turn } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { CopyIcon, type TurnItem } from "@vultus/render-web";
+import { AgentMessage, UserMessage } from "@vultus/web";
 import { expect, fn, within } from "storybook/test";
 import { type ActionArgs, Canvas, reasoningText, slack } from "../../support";
 

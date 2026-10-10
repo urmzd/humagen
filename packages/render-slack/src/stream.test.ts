@@ -1,5 +1,5 @@
-import { emptyTurn, reduce, type Turn } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
+import { emptyTurn, reduce, type Turn } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
 import { describe, expect, it } from "vitest";
 import { lifecycle, reactionChanges } from "./lifecycle";
 import {

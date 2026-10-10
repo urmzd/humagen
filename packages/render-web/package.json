@@ -1,9 +1,9 @@
 {
-  "name": "@agent-ui/render-web",
+  "name": "@vultus/render-web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "DOM implementations of the agent-ui primitives, plus theme tokens.",
+  "description": "DOM implementations of the vultus primitives, plus theme tokens.",
   "exports": {
     ".": "./src/index.tsx",
     "./theme.css": "./src/theme.css"
@@ -12,8 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agent-ui/core": "workspace:*",
-    "@agent-ui/primitives": "workspace:*",
+    "@vultus/core": "workspace:*",
+    "@vultus/primitives": "workspace:*",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"
   },

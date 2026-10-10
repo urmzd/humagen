@@ -1,5 +1,5 @@
-import { TurnView } from "@agent-ui/components";
-import { emptyTurn, reduce, type Turn, type TurnEvent, type TurnStatus } from "@agent-ui/core";
+import { TurnView } from "@vultus/components";
+import { emptyTurn, reduce, type Turn, type TurnEvent, type TurnStatus } from "@vultus/core";
 import {
   type Block,
   emptyBudget,
@@ -14,7 +14,7 @@ import {
   streamStopTitle,
   streamTrailer,
   streamUpdate,
-} from "@agent-ui/render-slack";
+} from "@vultus/render-slack";
 import { type SlackClient, SlackError } from "./slack";
 
 /**

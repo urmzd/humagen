@@ -6,8 +6,8 @@ import {
   formatUsd,
   type Pressure,
   type SessionState,
-} from "@agent-ui/core";
-import { AlertTriangleIcon, ListChecksIcon, ShieldIcon, ZapIcon } from "@agent-ui/render-web";
+} from "@vultus/core";
+import { AlertTriangleIcon, ListChecksIcon, ShieldIcon, ZapIcon } from "@vultus/render-web";
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { AgentOrb, orbLabel, orbStateOf } from "./AgentOrb";
 

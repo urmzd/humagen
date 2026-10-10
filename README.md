@@ -1,25 +1,27 @@
 <p align="center">
-  <h1 align="center">agent-ui</h1>
+  <h1 align="center">vultus</h1>
   <p align="center">
     One agent UI model, rendered to the web and to Slack Block Kit from the same React components.
     <br /><br />
     <a href="#installation">Install</a>
     &middot;
-    <a href="https://github.com/urmzd/agent-ui/issues">Report Bug</a>
+    <a href="https://github.com/urmzd/vultus/issues">Report Bug</a>
     &middot;
     <a href="docs/surfaces.md">Surface Map</a>
   </p>
 </p>
 
 <p align="center">
-  <a href="https://github.com/urmzd/agent-ui/actions/workflows/ci.yml"><img src="https://github.com/urmzd/agent-ui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/urmzd/vultus/actions/workflows/ci.yml"><img src="https://github.com/urmzd/vultus/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   &nbsp;
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/urmzd/agent-ui" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/urmzd/vultus" alt="License"></a>
 </p>
+
+Formerly `agent-ui`.
 
 ## Features
 
-- **One model.** Turns, tasks, approvals, clarifications, failures, artifacts, inbox items and session state are defined once in `@agent-ui/core`, with a pure event reducer that any runtime can feed.
+- **One model.** Turns, tasks, approvals, clarifications, failures, artifacts, inbox items and session state are defined once in `@vultus/core`, with a pure event reducer that any runtime can feed.
 - **One component, two renderers.** Shared components are built only from primitives. `render-web` draws them in the DOM, and `render-slack` serializes the same React tree to Block Kit through a custom reconciler.
 - **Slack done properly.** The Slack renderer enforces limits, supplies fallback text and time tokens, streams with `chat.startStream`, `appendStream` and `stopStream`, and maps statuses to what Slack accepts. Every fixture is checked against Slack's `blocks.validate`.
 - **Human-in-the-loop.** Approval gates, batch approvals, Ask, Always Allow and clarifications, with decisions that update in place. Every gate settles exactly once and never defaults to yes.
@@ -39,8 +41,8 @@
 The packages are private and not published yet. Work from the workspace:
 
 ```sh
-git clone git@github.com:urmzd/agent-ui.git
-cd agent-ui
+git clone git@github.com:urmzd/vultus.git
+cd vultus
 pnpm install
 ```
 
@@ -53,10 +55,10 @@ pnpm sandbox validate    # check every fixture with Slack's blocks.validate (no 
 
 <!-- fsrc src="examples/basic/render.tsx" fence="auto" -->
 ```
-import { TurnView } from "@agent-ui/components";
-import { replay } from "@agent-ui/core";
-import { renderToSlack } from "@agent-ui/render-slack";
-import { WebSurface } from "@agent-ui/render-web";
+import { TurnView } from "@vultus/components";
+import { replay } from "@vultus/core";
+import { renderToSlack } from "@vultus/render-slack";
+import { WebSurface } from "@vultus/render-web";
 
 // One stream of events from any runtime...
 const turn = replay([
@@ -102,7 +104,7 @@ A turn that outgrows one message continues in the next. `streamPages` returns on
 
 | Command | Does |
 |---------|------|
-| `pnpm sandbox manifest` | Generate the Slack app manifest from the capabilities agent-ui uses |
+| `pnpm sandbox manifest` | Generate the Slack app manifest from the capabilities vultus uses |
 | `pnpm sandbox validate` | `blocks.validate` every fixture |
 | `pnpm sandbox post <name\|all>` | Post fixtures to your test channel |
 | `pnpm sandbox stream [turn]` | Stream a turn for real |

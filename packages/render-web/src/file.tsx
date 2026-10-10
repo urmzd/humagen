@@ -1,5 +1,5 @@
-import { type ArtifactKind, type ArtifactPhase, formatBytes } from "@agent-ui/core";
-import type { FileProps } from "@agent-ui/primitives";
+import { type ArtifactKind, type ArtifactPhase, formatBytes } from "@vultus/core";
+import type { FileProps } from "@vultus/primitives";
 import { type CSSProperties, useContext, useId } from "react";
 import { DownloadIcon, EyeIcon } from "./icons";
 import { ArtifactOpenContext } from "./meta";

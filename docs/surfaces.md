@@ -1,10 +1,10 @@
 # One model, two surfaces
 
-agent-ui defines each agent concept once, in `@agent-ui/core`, and draws it on the web and in Slack. This page maps every concept to both surfaces and lists the gaps that are still open.
+vultus defines each agent concept once, in `@vultus/core`, and draws it on the web and in Slack. This page maps every concept to both surfaces and lists the gaps that are still open.
 
-- **Web**: `@agent-ui/render-web` (primitives), `@agent-ui/web` (web-only: composer, orb, status line, rail, preview)
-- **Slack**: `@agent-ui/render-slack` (Block Kit, streaming, lifecycle), tested in a real workspace with `apps/slack-sandbox`
-- **Check either one**: Storybook for the web; `pnpm sandbox post <fixture>` for Slack, where fixture names match `@agent-ui/core/fixtures`
+- **Web**: `@vultus/render-web` (primitives), `@vultus/web` (web-only: composer, orb, status line, rail, preview)
+- **Slack**: `@vultus/render-slack` (Block Kit, streaming, lifecycle), tested in a real workspace with `apps/slack-sandbox`
+- **Check either one**: Storybook for the web; `pnpm sandbox post <fixture>` for Slack, where fixture names match `@vultus/core/fixtures`
 
 ## How a concept reaches each surface
 

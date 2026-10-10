@@ -1,4 +1,4 @@
-import type { Turn, TurnStatus } from "@agent-ui/core";
+import type { Turn, TurnStatus } from "@vultus/core";
 import { type KeyboardEvent, type RefObject, useEffect, useRef, useState } from "react";
 
 export interface TurnRailEntry {

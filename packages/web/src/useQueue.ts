@@ -5,7 +5,7 @@ import {
   type QueueMode,
   type QueueState,
   queueReduce,
-} from "@agent-ui/core";
+} from "@vultus/core";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 let seq = 0;

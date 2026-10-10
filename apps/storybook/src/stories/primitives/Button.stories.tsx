@@ -1,6 +1,6 @@
-import { ActionId } from "@agent-ui/core";
-import { Actions, Button } from "@agent-ui/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { ActionId } from "@vultus/core";
+import { Actions, Button } from "@vultus/primitives";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slackPrimitive } from "../../support";
 

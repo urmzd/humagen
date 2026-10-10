@@ -1,6 +1,6 @@
-import * as fx from "@agent-ui/core/fixtures";
-import { Sources } from "@agent-ui/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import * as fx from "@vultus/core/fixtures";
+import { Sources } from "@vultus/primitives";
 import { Canvas, slackPrimitive } from "../../support";
 
 const meta = {

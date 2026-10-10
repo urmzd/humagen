@@ -1,7 +1,7 @@
-import { NoticeView } from "@agent-ui/components";
-import type { Notice } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { NoticeView } from "@vultus/components";
+import type { Notice } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
 import { fn } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";
 

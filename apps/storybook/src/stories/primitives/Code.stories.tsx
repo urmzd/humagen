@@ -1,7 +1,7 @@
-import type { TaskStatus } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { Code, Terminal } from "@agent-ui/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { TaskStatus } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { Code, Terminal } from "@vultus/primitives";
 import { Canvas, slackPrimitive } from "../../support";
 
 type Args = { command: string; status: TaskStatus; exitCode?: number; output: string };

@@ -1,7 +1,7 @@
-import { FailureAlert } from "@agent-ui/components";
-import { ActionId, type Failure } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { FailureAlert } from "@vultus/components";
+import { ActionId, type Failure } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";
 

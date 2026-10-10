@@ -1,7 +1,7 @@
-import { ClarificationCard } from "@agent-ui/components";
-import { ActionId, type Clarification } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { ClarificationCard } from "@vultus/components";
+import { ActionId, type Clarification } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";
 

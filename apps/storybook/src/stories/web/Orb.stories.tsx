@@ -1,5 +1,5 @@
-import { AgentOrb, type OrbSize, type OrbState, type OrbVariant, orbLabel } from "@agent-ui/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { AgentOrb, type OrbSize, type OrbState, type OrbVariant, orbLabel } from "@vultus/web";
 import { expect } from "storybook/test";
 import { webOnly } from "../../support";
 

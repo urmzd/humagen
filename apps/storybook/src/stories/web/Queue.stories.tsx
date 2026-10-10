@@ -1,15 +1,8 @@
-import { emptyTurn, type QueuedMessage, type Turn } from "@agent-ui/core";
-import * as fx from "@agent-ui/core/fixtures";
-import { WebSurface } from "@agent-ui/render-web";
-import {
-  AgentMessage,
-  PromptInput,
-  StatusLine,
-  Thread,
-  UserMessage,
-  useQueue,
-} from "@agent-ui/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { emptyTurn, type QueuedMessage, type Turn } from "@vultus/core";
+import * as fx from "@vultus/core/fixtures";
+import { WebSurface } from "@vultus/render-web";
+import { AgentMessage, PromptInput, StatusLine, Thread, UserMessage, useQueue } from "@vultus/web";
 import { useRef, useState } from "react";
 import { expect, userEvent, waitFor, within } from "storybook/test";
 import { webOnly } from "../../support";

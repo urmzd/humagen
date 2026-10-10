@@ -1,5 +1,5 @@
 {
-  "name": "@agent-ui/storybook",
+  "name": "@vultus/storybook",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,11 +9,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agent-ui/components": "workspace:*",
-    "@agent-ui/core": "workspace:*",
-    "@agent-ui/primitives": "workspace:*",
-    "@agent-ui/render-web": "workspace:*",
-    "@agent-ui/web": "workspace:*"
+    "@vultus/components": "workspace:*",
+    "@vultus/core": "workspace:*",
+    "@vultus/primitives": "workspace:*",
+    "@vultus/render-web": "workspace:*",
+    "@vultus/web": "workspace:*"
   },
   "devDependencies": {
     "@storybook/addon-a11y": "^10.6.1",

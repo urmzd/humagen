@@ -12,7 +12,7 @@ import {
   partTarget,
   sortMessages,
   timeToken,
-} from "@agent-ui/core";
+} from "@vultus/core";
 import {
   Actions,
   Button,
@@ -26,7 +26,7 @@ import {
   Sources,
   Summary,
   Text,
-} from "@agent-ui/primitives";
+} from "@vultus/primitives";
 import { Fragment } from "react";
 import {
   ApprovalCard,
@@ -284,7 +284,7 @@ const HOME_MESSAGES = 8;
 /**
  * The mailbox as one scroll: open messages in full, most urgent first, then a
  * record of what was resolved. Slack publishes it as the App Home tab; the web
- * uses the two-pane `Mailbox` from `@agent-ui/web` instead.
+ * uses the two-pane `Mailbox` from `@vultus/web` instead.
  */
 export function MailboxView({
   messages,
