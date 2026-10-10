@@ -3,9 +3,10 @@ import type { PrimitiveImpls, PrimitiveProps } from "@agent-ui/primitives";
 import { Children, isValidElement, type ReactNode, useContext, useEffect, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Actions, Button, Feedback, Menu } from "./buttons";
+import { Actions, Button, Menu } from "./buttons";
 import { CitationChip, Favicon, hostOf, useRegisterCitations } from "./citations";
 import { CodeBlock, Terminal } from "./code";
+import { Feedback } from "./feedback";
 import { FileTile } from "./file";
 import { Checkboxes } from "./form";
 import {

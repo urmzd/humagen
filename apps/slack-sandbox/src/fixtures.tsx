@@ -13,7 +13,7 @@ import {
 } from "@agent-ui/components";
 import type { Turn, TurnEvent } from "@agent-ui/core";
 import * as fx from "@agent-ui/core/fixtures";
-import type { Placement } from "@agent-ui/render-slack";
+import { feedbackModal, type Placement } from "@agent-ui/render-slack";
 import type { ReactElement } from "react";
 
 /**
@@ -85,6 +85,14 @@ export function registry(): Postable[] {
     placement: "modal",
   });
   return out;
+}
+
+/** Views built outside the component tree (modals a host opens itself), validated like any fixture. */
+export function views(): { name: string; view: object }[] {
+  return [
+    { name: "feedback.up@modal", view: feedbackModal({ turnId: "turn-1", rating: "up" }) },
+    { name: "feedback.down@modal", view: feedbackModal({ turnId: "turn-1", rating: "down" }) },
+  ];
 }
 
 /**

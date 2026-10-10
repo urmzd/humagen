@@ -1,3 +1,4 @@
+import { ActionId, FEEDBACK_CLEAR, type UiAction } from "./actions";
 import type { Attachment, Citation, Failure, Interrupt, Notice, Rating, Task, Turn } from "./types";
 
 /**
@@ -22,7 +23,8 @@ export type TurnEvent =
   | { type: "interrupt.raised"; interrupt: Interrupt }
   | { type: "interrupt.resolved"; interrupt: Interrupt }
   | { type: "notice"; notice: Notice }
-  | { type: "feedback"; rating: Rating }
+  /** `rating: null` takes the rating back. A comment or reason attaches to the rating it names. */
+  | { type: "feedback"; rating: Rating | null; comment?: string; reason?: string }
   | { type: "turn.completed" }
   | { type: "attachment.upserted"; attachment: Attachment }
   | { type: "turn.failed"; failure: Failure }
@@ -31,6 +33,30 @@ export type TurnEvent =
   | { type: "activity"; activity: NonNullable<Turn["activity"]> }
   | { type: "usage"; usage: NonNullable<Turn["usage"]> }
   | { type: "handoff"; handoff: NonNullable<Turn["handoff"]> };
+
+/**
+ * The event a feedback click means, or null for any other action. The rating
+ * is its own event, sent on the click; the comment is a second one that only
+ * adds to it, so closing the prompt can never lose the rating.
+ */
+export function feedbackEvent(action: UiAction): TurnEvent | null {
+  const { target, text, option } = action.payload;
+  if (action.id === ActionId.feedback) {
+    if (target === FEEDBACK_CLEAR) return { type: "feedback", rating: null };
+    if (target !== "up" && target !== "down") return null;
+    // Older web builds sent the comment as `option` on the rating action itself.
+    return { type: "feedback", rating: target, ...(option ? { comment: option } : {}) };
+  }
+  if (action.id === ActionId.feedbackComment && (target === "up" || target === "down")) {
+    return {
+      type: "feedback",
+      rating: target,
+      ...(text?.trim() ? { comment: text.trim() } : {}),
+      ...(option ? { reason: option } : {}),
+    };
+  }
+  return null;
+}
 
 export function emptyTurn(id: string, agent: Turn["agent"]): Turn {
   return {
@@ -94,8 +120,20 @@ export function reduce(turn: Turn, event: TurnEvent): Turn {
       return { ...turn, attachments: upsert(turn.attachments ?? [], event.attachment) };
     case "notice":
       return { ...turn, notices: upsert(turn.notices, event.notice) };
-    case "feedback":
-      return { ...turn, feedback: event.rating };
+    case "feedback": {
+      const { feedback: _f, feedbackComment: _c, feedbackReason: _r, ...rest } = turn;
+      if (event.rating === null) return rest;
+      // A comment arrives after its rating; a different rating starts over without the old words.
+      const same = turn.feedback === event.rating;
+      const comment = event.comment ?? (same ? turn.feedbackComment : undefined);
+      const reason = event.reason ?? (same ? turn.feedbackReason : undefined);
+      return {
+        ...rest,
+        feedback: event.rating,
+        ...(comment ? { feedbackComment: comment } : {}),
+        ...(reason ? { feedbackReason: reason } : {}),
+      };
+    }
     case "turn.completed":
       return { ...turn, status: "done" };
     case "turn.failed":

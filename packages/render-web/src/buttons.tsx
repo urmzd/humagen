@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { useGroup } from "./form";
-import { AlertTriangleIcon, ChevronDownIcon, ThumbsDownIcon, ThumbsUpIcon } from "./icons";
+import { AlertTriangleIcon, ChevronDownIcon } from "./icons";
 import { SuppressContext } from "./meta";
 
 export const ActionContext = createContext<ActionHandler>(() => {});
@@ -266,60 +266,6 @@ export function Actions({ children, blockId }: PrimitiveProps["Actions"]) {
         <ConfirmContext.Provider value={(spec, run) => setPending({ spec, run })}>
           {children}
         </ConfirmContext.Provider>
-      )}
-    </fieldset>
-  );
-}
-
-export function Feedback({ up, down, selected, labels }: PrimitiveProps["Feedback"]) {
-  const onAction = useContext(ActionContext);
-  if (useContext(SuppressContext).has("block:feedback")) return null;
-  const btn = (on: boolean) =>
-    `inline-flex size-7 items-center justify-center rounded-aui-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-aui-accent ${
-      on
-        ? "bg-aui-accent-soft text-aui-accent"
-        : "text-aui-muted hover:bg-aui-hover hover:text-aui-fg"
-    }`;
-  const upLabel = labels?.up ?? "Helpful";
-  const downLabel = labels?.down ?? "Not helpful";
-  return (
-    <fieldset
-      data-aui="feedback"
-      aria-label="Rate this answer"
-      className="m-0 -ml-1 flex min-w-0 items-center gap-0.5 border-0 p-0"
-    >
-      <button
-        type="button"
-        aria-pressed={selected === "up"}
-        aria-label={upLabel}
-        title={upLabel}
-        className={btn(selected === "up")}
-        onClick={() => onAction(up)}
-      >
-        <ThumbsUpIcon
-          size={14}
-          fill={selected === "up" ? "currentColor" : "none"}
-          fillOpacity={0.2}
-        />
-      </button>
-      <button
-        type="button"
-        aria-pressed={selected === "down"}
-        aria-label={downLabel}
-        title={downLabel}
-        className={btn(selected === "down")}
-        onClick={() => onAction(down)}
-      >
-        <ThumbsDownIcon
-          size={14}
-          fill={selected === "down" ? "currentColor" : "none"}
-          fillOpacity={0.2}
-        />
-      </button>
-      {selected && (
-        <output className="aui-fade-up ml-1.5 text-aui-muted text-aui-xs">
-          Thanks for the feedback
-        </output>
       )}
     </fieldset>
   );

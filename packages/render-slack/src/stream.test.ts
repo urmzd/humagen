@@ -222,12 +222,12 @@ describe("streamPages", () => {
 });
 
 describe("streamHeader", () => {
-  it("links the session, and numbers continuations", () => {
+  it("numbers continuations and never carries the session link", () => {
     const context = (chunks: StreamChunk[]) => JSON.stringify(chunks);
-    const session = "https://example.com/sessions/turn-1";
-    expect(context(streamHeader(fx.doneTurn))).toContain(`Session: <${session}|${session}>`);
+    // The first message opens with nothing: the session link belongs at the end, once.
+    expect(streamHeader(fx.doneTurn)).toEqual([]);
     expect(context(streamHeader(fx.doneTurn, { page: 2 }))).toContain('"text":"Part 2"');
-    expect(streamHeader({ ...fx.doneTurn, sessionUrl: undefined, source: undefined })).toEqual([]);
+    expect(context(streamHeader(fx.doneTurn, { page: 2 }))).not.toContain("example.com");
   });
 });
 

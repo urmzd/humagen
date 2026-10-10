@@ -44,14 +44,27 @@ export const defaultCopy = {
   stopped: "Okay, I stopped.",
   retry: "Retry",
   sources: "Sources",
-  /** The address itself is the link text, so readers see where a click takes them. */
-  session: (url: string) => `Session: [${url}](${url})`,
-  source: (label: string, url?: string) =>
-    url ? `From ${label}: [${url}](${url})` : `From ${label}`,
+  /** The one link a message closes with: the address itself, and nothing around it. */
+  runLink: (url: string) => `[${url}](${url})`,
   disclaimer: (name: string) =>
     `${name} is AI and can make mistakes. Double-check its answers before you rely on them.`,
   helpful: "Helpful",
   notHelpful: "Not helpful",
+  /** Asked after a rating. Answering is optional; the rating is already recorded. */
+  feedbackPrompt: {
+    askUp: "What was helpful?",
+    askDown: "What went wrong?",
+    placeholder: "Add a comment (optional)",
+    send: "Send",
+    skip: "Skip",
+    thanks: "Thanks for the feedback",
+    reasons: [
+      { id: "wrong", label: "Wrong" },
+      { id: "incomplete", label: "Incomplete" },
+      { id: "slow", label: "Too slow" },
+      { id: "other", label: "Other" },
+    ],
+  },
   status: {
     queued: "Queued",
     working: "Working",

@@ -2,14 +2,19 @@ import { InboxView, SystemAlertView, TurnView } from "@agent-ui/components";
 import {
   ActionId,
   type Approval,
+  feedbackEvent,
   inboxFromTurns,
+  reduce,
   sortInbox,
   type Turn,
   type TurnEvent,
 } from "@agent-ui/core";
 import * as fx from "@agent-ui/core/fixtures";
 import {
+  decodeFeedbackModal,
   decodeSlackAction,
+  FEEDBACK_MODAL,
+  feedbackModal,
   reactionChanges,
   renderToSlack,
   suggestedPrompts,
@@ -299,7 +304,17 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
         text,
       });
 
-    if (id === ActionId.feedback) return whisper("Thanks, feedback recorded.");
+    if (id === ActionId.feedback && (target === "up" || target === "down")) {
+      // The rating is kept first, in memory, so nothing slow sits before views.open:
+      // the trigger lasts about three seconds. Skipping the modal leaves the rating as it is.
+      if (state) live.set(turnId, { ...state, turn: { ...state.turn, feedback: target } });
+      await slack.call("views.open", {
+        trigger_id: payload.trigger_id,
+        view: feedbackModal({ turnId, rating: target }),
+      });
+      console.log(`  feedback ${turnId} → ${target}`);
+      return;
+    }
     if (id === ActionId.reconnect) return whisper("In a real app this opens the reconnect flow.");
     if (id === ActionId.report) return whisper("Reported. Reference copied to the incident log.");
     if (!state) return whisper("This sandbox restarted, so that turn is gone. Ask again.");
@@ -443,7 +458,12 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
     view?: {
       callback_id: string;
       private_metadata: string;
-      state: { values: Record<string, Record<string, { value?: string }>> };
+      state: {
+        values: Record<
+          string,
+          Record<string, { value?: string; selected_option?: { value: string } | null }>
+        >;
+      };
     };
   }) => {
     if (payload.type === "shortcut" && payload.callback_id === ENTRY.ask) {
@@ -471,6 +491,23 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
         ),
         payload.response_url,
       );
+      return;
+    }
+    if (payload.type === "view_submission" && payload.view?.callback_id === FEEDBACK_MODAL) {
+      // Only adds to a rating that already exists; an empty submit decodes to nothing.
+      const comment = decodeFeedbackModal(payload.view);
+      const event = comment ? feedbackEvent(comment) : null;
+      const rated = comment ? live.get(comment.payload.turnId) : undefined;
+      if (!comment || !event) return;
+      console.log(`  feedback ${comment.payload.turnId} → ${JSON.stringify(comment.payload)}`);
+      if (!rated) return;
+      live.set(rated.turn.id, { ...rated, turn: reduce(rated.turn, event) });
+      await slack.call("chat.postEphemeral", {
+        channel: rated.channel,
+        user: payload.user.id,
+        thread_ts: rated.threadTs,
+        text: "Thanks, your comment was added to your rating.",
+      });
       return;
     }
     if (payload.type !== "view_submission" || payload.view?.callback_id !== ENTRY.form) return;

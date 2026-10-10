@@ -557,12 +557,10 @@ export function TurnView({
   const pendingApprovals = turn.interrupts.filter(
     (i): i is ApprovalT => i.type === "approval" && i.decision.kind === "pending",
   );
-  // Where the run comes from, then where to watch it: one line of provenance.
-  const provenance = [
-    turn.source ? copy.source(turn.source.label, turn.source.url) : null,
-    turn.sessionUrl ? copy.session(turn.sessionUrl) : null,
-  ].filter((x): x is string => Boolean(x));
-  const session = provenance.length > 0 ? <Context items={provenance} /> : null;
+  // One link: the session, where a person goes to see the run. The source's own page
+  // stands in only when there is no session.
+  const runUrl = turn.sessionUrl ?? turn.source?.url;
+  const session = runUrl ? <Context items={[copy.runLink(runUrl)]} /> : null;
   const disclaimer = turn.disclaimer ?? copy.disclaimer(turn.agent.name);
 
   return (
@@ -589,9 +587,6 @@ export function TurnView({
       {turn.attachments?.map((a) => (
         <AttachmentView key={a.id} attachment={a} />
       ))}
-      {turn.citations.length > 0 && <Sources items={turn.citations} />}
-      {/* With the references in every outcome: a failed or stopped run needs the link most. */}
-      {session}
       {/* Gated tool rows hold their own controls on the web; Slack gets the cards. */}
       {pendingApprovals.length > 1 && owned.size > 0 ? (
         <Only surface="slack">
@@ -645,13 +640,18 @@ export function TurnView({
           down={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "down" } }}
           selected={turn.feedback}
           labels={{ up: copy.helpful, down: copy.notHelpful }}
+          prompt={copy.feedbackPrompt}
           blockId={`feedback:${turn.id}`}
         />
       )}
-      {/* Always last, and on anything the agent wrote, not only clean finishes. */}
-      {disclaimer && turn.text && turn.status !== "working" && turn.status !== "queued" && (
-        <Context items={[disclaimer]} />
-      )}
+      {/*
+        Every message ends the same way, whatever happened in it: the references, then one
+        line with the one link to the run, then the disclaimer. Nothing sits between them
+        and nothing comes after, so cards, notices and feedback all go above.
+      */}
+      {turn.citations.length > 0 && <Sources items={turn.citations} />}
+      {session}
+      {disclaimer && turn.status !== "queued" && <Context items={[disclaimer]} />}
     </>
   );
 }

@@ -88,13 +88,13 @@ Wrap shared components in `WebSurface`. Clicks arrive as the same `UiAction` tha
 
 `renderToSlack(element, { placement })` returns `{ blocks, pages, text, warnings }`, where placement is `message`, `modal` or `home`. For streaming:
 
-1. Pass `streamStart` and `streamHeader` (the session link) to `chat.startStream`.
+1. Pass `streamStart` to `chat.startStream`.
 2. Run each `streamUpdate(prev, next)` result through `streamPages`, and send it with `chat.appendStream`.
 3. Finish with `chat.stopStream`, using `renderToSlack(<TurnView streamed />)` for the final blocks.
 
 A turn that outgrows one message continues in the next. `streamPages` returns one entry per message: for each entry after the first, append `streamTrailer()`, stop the stream, and start a new one with `streamHeader(turn, { page })`. Code fences and tables are carried across the cut. `pages` does the same for blocks: `pages[0]` is `blocks`, and the rest are follow-up messages. See `apps/slack-sandbox/src/run.tsx`.
 
-`TurnView` puts where the run comes from (`turn.source`) and the session link (`turn.sessionUrl`) with the references, in every outcome including failures. A streamed message also opens with them (`streamHeader`), so they are there while it is still arriving. It closes with the disclaimer, which names the agent ("Assistant is AI…") unless `turn.disclaimer` replaces it.
+`TurnView` closes every message the same way, in every outcome including failures: the references, one context line holding only the session address (`turn.sessionUrl`, or the source's page when there is no session) as a plain link, then the disclaimer, which names the agent ("Assistant is AI…") unless `turn.disclaimer` replaces it. Neither appears at the top, and a long answer carries them on its last message only. `streamHeader` only labels continuation messages ("Part 2").
 
 `lifecycle(turn)` returns the reaction for the user's message and the agent session status. `decodeSlackAction` turns any `block_actions` payload back into a `UiAction`.
 

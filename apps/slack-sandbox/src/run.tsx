@@ -115,14 +115,9 @@ export async function streamTurn(
       if (!rejected || header.length === 0) throw e;
       // The workspace doesn't take blocks chunks yet: say the same thing as a line of text.
       console.warn(`  header sent as text: ${e.message}`);
-      const line = [
-        page > 1 ? `Part ${page}` : null,
-        turn.source ? `From ${turn.source.label}: ${turn.source.url ?? ""}` : null,
-        turn.sessionUrl ? `Session: ${turn.sessionUrl}` : null,
-      ].filter(Boolean);
       started = await slack.call("chat.startStream", {
         ...args,
-        markdown_text: `_${line.join(" · ")}_\n\n`,
+        markdown_text: `_Part ${page}_\n\n`,
       });
     }
     ts = started.ts;

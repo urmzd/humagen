@@ -1,9 +1,16 @@
 import { TurnView } from "@agent-ui/components";
-import { ActionId, decodeAction } from "@agent-ui/core";
+import { ActionId, decodeAction, type Turn } from "@agent-ui/core";
 import * as fx from "@agent-ui/core/fixtures";
 import { Callout, Markdown, Only, Text, useSurface } from "@agent-ui/primitives";
 import { describe, expect, it } from "vitest";
-import { actionIdBase, LIMITS, renderToSlack, toMrkdwn } from "./index";
+import {
+  actionIdBase,
+  decodeFeedbackModal,
+  feedbackModal,
+  LIMITS,
+  renderToSlack,
+  toMrkdwn,
+} from "./index";
 
 describe("renderToSlack", () => {
   it.each([
@@ -18,6 +25,51 @@ describe("renderToSlack", () => {
     const { pages, ...message } = out;
     expect(pages).toEqual([out.blocks]);
     expect(message).toMatchSnapshot();
+  });
+
+  it("ends every turn with references, the one link, then the disclaimer", () => {
+    const isTurn = (v: unknown): v is Turn =>
+      typeof v === "object" && v !== null && "tasks" in v && "agent" in v;
+    const turns = Object.entries(fx).filter((e): e is [string, Turn] => isTurn(e[1]));
+    expect(turns.length).toBeGreaterThan(20);
+    for (const [name, turn] of turns) {
+      for (const streamed of [false, true]) {
+        const blocks =
+          renderToSlack(<TurnView turn={turn} streamed={streamed} />).pages.at(-1) ?? [];
+        const [link, disclaimer] = blocks.slice(-2) as {
+          type: string;
+          elements: { text: string }[];
+        }[];
+        const where = `${name}${streamed ? " (streamed)" : ""}`;
+        expect(disclaimer, where).toEqual({
+          type: "context",
+          elements: [{ type: "mrkdwn", text: expect.stringContaining("is AI") }],
+        });
+        expect(link?.type, where).toBe("context");
+        expect(link?.elements, where).toHaveLength(1);
+        // The block is the session link and nothing else: no label, no prefix.
+        expect(link?.elements[0]?.text, where).toBe(`<${turn.sessionUrl}|${turn.sessionUrl}>`);
+        // The link appears nowhere else in the message.
+        expect(JSON.stringify(blocks).split(`|${turn.sessionUrl}>`), where).toHaveLength(2);
+        if (turn.citations.length > 0) {
+          expect(JSON.stringify(blocks.at(-3)), where).toMatch(/"\[\d+\] /);
+        }
+      }
+    }
+  });
+
+  it("falls back to the source's page when there is no session, and to nothing when there is neither", () => {
+    const page = "https://example.com/console/payments";
+    const sourceOnly = renderToSlack(<TurnView turn={{ ...fx.doneTurn, sessionUrl: undefined }} />);
+    expect(sourceOnly.blocks.at(-2)).toEqual({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `<${page}|${page}>` }],
+    });
+    const neither = renderToSlack(
+      <TurnView turn={{ ...fx.doneTurn, sessionUrl: undefined, source: undefined }} />,
+    );
+    expect(JSON.stringify(neither.blocks.at(-1))).toContain("is AI");
+    expect(JSON.stringify(neither.blocks.at(-2))).toContain("[1] ");
   });
 
   it("emits approval buttons that decode to the shared action contract", () => {
@@ -72,19 +124,18 @@ describe("renderToSlack", () => {
     expect(renderToSlack(many.slice(0, 50)).pages).toHaveLength(1);
   });
 
-  it("keeps the session link with the references and the disclaimer last", () => {
-    const origin = "https://example.com/console/payments";
+  it("closes with the source and session once, then the disclaimer", () => {
     const session = "https://example.com/sessions/turn-1";
     const { pages, warnings } = renderToSlack(<TurnView turn={fx.longTurn} />);
     expect(pages.length).toBeGreaterThan(1);
     expect(warnings).toHaveLength(1);
-    const last = pages.at(-1) ?? [];
-    expect(last[last.findIndex((b) => b.type === "context_actions") - 1]).toEqual({
+    // Once, on the last page only, directly above the disclaimer.
+    const link = `<${session}|${session}>`;
+    expect(JSON.stringify(pages).split(link)).toHaveLength(2);
+    expect(JSON.stringify(pages.slice(0, -1))).not.toContain(link);
+    expect(pages.at(-1)?.at(-2)).toEqual({
       type: "context",
-      elements: [
-        { type: "mrkdwn", text: `From Incident console: <${origin}|${origin}>` },
-        { type: "mrkdwn", text: `Session: <${session}|${session}>` },
-      ],
+      elements: [{ type: "mrkdwn", text: link }],
     });
     expect(pages.at(-1)?.at(-1)).toEqual({
       type: "context",
@@ -95,12 +146,14 @@ describe("renderToSlack", () => {
         },
       ],
     });
-    // Streamed or not, finished or failed: the link is always there.
+    // Streamed or not, finished or failed: the link is there, after everything but the disclaimer.
     const streamed = renderToSlack(<TurnView turn={fx.doneTurn} streamed />).blocks;
-    expect(JSON.stringify(streamed)).toContain(`Session: <${session}|${session}>`);
+    expect(JSON.stringify(streamed.at(-2))).toContain(link);
     for (const turn of [fx.failedTurn, fx.stoppedTurn, fx.waitingTurn]) {
-      const out = renderToSlack(<TurnView turn={turn} streamed />);
-      expect(JSON.stringify(out.blocks)).toContain(`Session: <${session}|${session}>`);
+      const { blocks } = renderToSlack(<TurnView turn={turn} streamed />);
+      const at = blocks.findIndex((b) => JSON.stringify(b).includes(link));
+      expect(at).toBeGreaterThanOrEqual(blocks.length - 2);
+      expect(JSON.stringify(blocks).split(link)).toHaveLength(2);
     }
     expect(JSON.stringify(streamed.at(-1))).toContain("Assistant is AI");
     // A host's own wording replaces the default.
@@ -134,6 +187,43 @@ describe("renderToSlack", () => {
       </>,
     );
     expect(out.blocks).toEqual([{ type: "section", text: { type: "mrkdwn", text: "on slack" } }]);
+  });
+});
+
+describe("feedbackModal", () => {
+  it("carries the turn and rating, and asks only optional questions", () => {
+    const view = feedbackModal({ turnId: "turn-1", rating: "down" });
+    expect(JSON.parse(view.private_metadata)).toEqual({ turnId: "turn-1", rating: "down" });
+    expect(view.title.text).toBe("What went wrong?");
+    expect(view.close.text).toBe("Skip");
+    expect(view.blocks.map((b) => [b.block_id, b.optional])).toEqual([
+      ["reason", true],
+      ["comment", true],
+    ]);
+    // A thumbs-up has nothing to choose a reason for.
+    expect(feedbackModal({ turnId: "t", rating: "up" }).blocks.map((b) => b.block_id)).toEqual([
+      "comment",
+    ]);
+  });
+
+  it("decodes a submission into the comment action, and an empty one into nothing", () => {
+    const view = feedbackModal({ turnId: "turn-1", rating: "down" });
+    const submitted = {
+      ...view,
+      state: {
+        values: {
+          reason: { value: { selected_option: { value: "wrong" } } },
+          comment: { value: { value: " Wrong deploy " } },
+        },
+      },
+    };
+    expect(decodeFeedbackModal(submitted)).toEqual({
+      id: ActionId.feedbackComment,
+      payload: { turnId: "turn-1", target: "down", text: "Wrong deploy", option: "wrong" },
+    });
+    const empty = { ...view, state: { values: { comment: { value: { value: null } } } } };
+    expect(decodeFeedbackModal(empty)).toBeNull();
+    expect(decodeFeedbackModal({ callback_id: "something.else" })).toBeNull();
   });
 });
 

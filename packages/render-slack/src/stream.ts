@@ -125,44 +125,21 @@ export function streamUpdate(
 }
 
 /**
- * What a streamed message opens with: a context line saying where the run
- * comes from and linking to the full session, so readers can follow along while the rest of the message is still
- * arriving. Continuation messages (`page` 2 and up) say which part they are.
- * Send it as the first chunks of chat.startStream; empty when there is nothing to say.
+ * What a continuation message opens with: which part it is. The first message
+ * opens with nothing, and the source and session link appear once, with the
+ * final blocks at the very end (see `TurnView`), never at the top.
+ * Send it as the first chunks of chat.startStream; empty for the first message.
  */
 export function streamHeader(
-  turn: Turn,
-  {
-    page = 1,
-    labels = {},
-  }: {
-    page?: number;
-    labels?: {
-      part?: (n: number) => string;
-      session?: (url: string) => string;
-      source?: (label: string, url?: string) => string;
-    };
-  } = {},
+  _turn: Turn,
+  { page = 1, labels = {} }: { page?: number; labels?: { part?: (n: number) => string } } = {},
 ): StreamChunk[] {
-  // Full addresses as the link text: readers see where a click takes them.
-  const session = labels.session ?? ((url) => `Session: [${url}](${url})`);
-  const source =
-    labels.source ?? ((label, url) => (url ? `From ${label}: [${url}](${url})` : `From ${label}`));
-  const items = [
-    page > 1 ? (labels.part ?? ((n) => `Part ${n}`))(page) : null,
-    turn.source ? source(turn.source.label, turn.source.url) : null,
-    turn.sessionUrl ? session(turn.sessionUrl) : null,
-  ].filter((x): x is string => Boolean(x));
-  if (items.length === 0) return [];
+  if (page <= 1) return [];
+  const part = (labels.part ?? ((n) => `Part ${n}`))(page);
   return [
     {
       type: "blocks",
-      blocks: [
-        {
-          type: "context",
-          elements: items.map((text) => ({ type: "mrkdwn", text: toMrkdwn(text) })),
-        },
-      ],
+      blocks: [{ type: "context", elements: [{ type: "mrkdwn", text: toMrkdwn(part) }] }],
     },
   ];
 }

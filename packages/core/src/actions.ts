@@ -9,7 +9,14 @@ export const ActionId = {
   edit: "aui.edit",
   clarify: "aui.clarify",
   clarifyOther: "aui.clarify.other",
+  /** A rating. `target` is "up" or "down", or `FEEDBACK_CLEAR` to take it back. Sent on the click itself. */
   feedback: "aui.feedback",
+  /**
+   * A comment on a rating that was already sent. `target` repeats the rating,
+   * `text` is the comment and `option` an optional reason (see FEEDBACK_REASONS).
+   * It only ever adds: a host that ignores it still has the rating.
+   */
+  feedbackComment: "aui.feedback.comment",
   retry: "aui.retry",
   approveSelected: "aui.approve.selected",
   denyAll: "aui.deny.all",
@@ -37,6 +44,13 @@ export const ActionId = {
 } as const;
 
 export type ActionId = (typeof ActionId)[keyof typeof ActionId];
+
+/** `target` of a feedback action that removes the rating (clicking the selected one again). */
+export const FEEDBACK_CLEAR = "clear";
+
+/** Quick reasons offered with "Not helpful": a tap is likelier than typing. */
+export const FEEDBACK_REASONS = ["wrong", "incomplete", "slow", "other"] as const;
+export type FeedbackReason = (typeof FEEDBACK_REASONS)[number];
 
 export interface ActionPayload {
   turnId: string;

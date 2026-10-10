@@ -119,32 +119,6 @@ The runbook says to roll back before paging the on-call [[1]](https://example.co
       "type": "markdown",
     },
     {
-      "elements": [
-        {
-          "text": "[1] <https://example.com/runbooks/payments|Incident runbook: payments API> · Runbooks",
-          "type": "mrkdwn",
-        },
-        {
-          "text": "[2] <https://example.com/deploys/4812|Deploy #4812> · Deploys",
-          "type": "mrkdwn",
-        },
-      ],
-      "type": "context",
-    },
-    {
-      "elements": [
-        {
-          "text": "From Incident console: <https://example.com/console/payments|https://example.com/console/payments>",
-          "type": "mrkdwn",
-        },
-        {
-          "text": "Session: <https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
-          "type": "mrkdwn",
-        },
-      ],
-      "type": "context",
-    },
-    {
       "block_id": "feedback:turn-1",
       "elements": [
         {
@@ -169,6 +143,28 @@ The runbook says to roll back before paging the on-call [[1]](https://example.co
         },
       ],
       "type": "context_actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "[1] <https://example.com/runbooks/payments|Incident runbook: payments API> · Runbooks",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "[2] <https://example.com/deploys/4812|Deploy #4812> · Deploys",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "elements": [
+        {
+          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
     },
     {
       "elements": [
@@ -297,19 +293,6 @@ exports[`renderToSlack > renders the failed turn 1`] = `
       "type": "markdown",
     },
     {
-      "elements": [
-        {
-          "text": "From Incident console: <https://example.com/console/payments|https://example.com/console/payments>",
-          "type": "mrkdwn",
-        },
-        {
-          "text": "Session: <https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
-          "type": "mrkdwn",
-        },
-      ],
-      "type": "context",
-    },
-    {
       "text": {
         "text": ":x: *Timed out*
 The deploys service didn't answer within 30s.",
@@ -332,6 +315,15 @@ The deploys service didn't answer within 30s.",
         },
       ],
       "type": "actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
     },
     {
       "elements": [
@@ -442,11 +434,16 @@ exports[`renderToSlack > renders the streaming turn 1`] = `
     {
       "elements": [
         {
-          "text": "From Incident console: <https://example.com/console/payments|https://example.com/console/payments>",
+          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
           "type": "mrkdwn",
         },
+      ],
+      "type": "context",
+    },
+    {
+      "elements": [
         {
-          "text": "Session: <https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
           "type": "mrkdwn",
         },
       ],
@@ -571,32 +568,6 @@ exports[`renderToSlack > renders the waiting turn 1`] = `
       "type": "markdown",
     },
     {
-      "elements": [
-        {
-          "text": "[1] <https://example.com/runbooks/payments|Incident runbook: payments API> · Runbooks",
-          "type": "mrkdwn",
-        },
-        {
-          "text": "[2] <https://example.com/deploys/4812|Deploy #4812> · Deploys",
-          "type": "mrkdwn",
-        },
-      ],
-      "type": "context",
-    },
-    {
-      "elements": [
-        {
-          "text": "From Incident console: <https://example.com/console/payments|https://example.com/console/payments>",
-          "type": "mrkdwn",
-        },
-        {
-          "text": "Session: <https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
-          "type": "mrkdwn",
-        },
-      ],
-      "type": "context",
-    },
-    {
       "text": {
         "text": "*Roll back payments-api in production to deploy #4811?*",
         "type": "mrkdwn",
@@ -708,6 +679,28 @@ production",
         },
         {
           "text": "Expires <!date^1791473640^{date_short_pretty} at {time}|2026-10-08 15:34 UTC>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "elements": [
+        {
+          "text": "[1] <https://example.com/runbooks/payments|Incident runbook: payments API> · Runbooks",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "[2] <https://example.com/deploys/4812|Deploy #4812> · Deploys",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "elements": [
+        {
+          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
           "type": "mrkdwn",
         },
       ],

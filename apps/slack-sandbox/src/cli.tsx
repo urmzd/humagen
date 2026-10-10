@@ -4,7 +4,7 @@ import { AttachmentView } from "@agent-ui/components";
 import type { Turn } from "@agent-ui/core";
 import * as fx from "@agent-ui/core/fixtures";
 import { renderToSlack } from "@agent-ui/render-slack";
-import { eventsFor, registry } from "./fixtures";
+import { eventsFor, registry, views } from "./fixtures";
 import { buildManifest, CAPABILITIES, createAppUrl } from "./manifest";
 import { streamTurn } from "./run";
 import { serve } from "./serve";
@@ -63,6 +63,13 @@ async function main() {
             `${res.ok ? "ok  " : "FAIL"} ${p.name}${part}${warnings.length ? ` (${warnings.length} warnings)` : ""}${detail}`,
           );
         }
+      }
+      for (const v of views()) {
+        const res = await validateBlocks([], v.view);
+        if (!res.ok) failed++;
+        console.log(
+          `${res.ok ? "ok  " : "FAIL"} ${v.name}${res.ok ? "" : ` ${JSON.stringify(res.errors ?? res)}`}`,
+        );
       }
       if (failed) process.exitCode = 1;
       return;

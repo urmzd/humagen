@@ -174,11 +174,29 @@ export interface SourcesProps {
   items: Citation[];
 }
 
+/** Words for the optional comment prompt that follows a rating. */
+export interface FeedbackPromptLabels {
+  askUp: string;
+  askDown: string;
+  placeholder: string;
+  send: string;
+  skip: string;
+  thanks: string;
+  /** Quick reasons offered with a thumbs-down, in order. */
+  reasons: { id: string; label: string }[];
+}
+
 export interface FeedbackProps {
   up: ActionRef;
   down: ActionRef;
   selected?: "up" | "down";
   labels?: { up: string; down: string };
+  /**
+   * The comment prompt shown after a rating, or `false` for none. The rating is
+   * sent on the click; the prompt only adds a comment (`ActionId.feedbackComment`).
+   * The web asks in place. Slack buttons can't, so the host opens `feedbackModal`.
+   */
+  prompt?: FeedbackPromptLabels | false;
   blockId?: string;
 }
 

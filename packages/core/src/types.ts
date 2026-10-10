@@ -368,6 +368,10 @@ export interface Turn {
   /** Commands and code shown after the answer. */
   attachments?: Attachment[];
   feedback?: Rating;
+  /** What the person added after rating. Optional: the rating stands without it. */
+  feedbackComment?: string;
+  /** A quick reason picked with "Not helpful" (see FEEDBACK_REASONS). */
+  feedbackReason?: string;
   /** Set when status is "failed". */
   failure?: Failure;
   /** Set while or after a stop is in flight. */

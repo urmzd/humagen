@@ -2,17 +2,16 @@ import { type Copy, defaultCopy, TurnView } from "@agent-ui/components";
 import { ActionId, formatTokens, formatUsd, type Turn, type Usage } from "@agent-ui/core";
 import {
   ActionContext,
-  buttonClass,
   CopyButton,
+  FeedbackPromptContext,
   GaugeIcon,
   type ItemActions,
   ItemActionsContext,
+  Rating,
   RefreshIcon,
   ShimmerVerb,
   SuppressContext,
   THINKING_VERBS,
-  ThumbsDownIcon,
-  ThumbsUpIcon,
   TurnMetaContext,
   useVerbSequence,
 } from "@agent-ui/render-web";
@@ -113,102 +112,35 @@ function UsageChip({ usage }: { usage: Usage }) {
 const actionBtn =
   "inline-flex size-7 items-center justify-center rounded-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-accent";
 
-/** Copy, regenerate, rate (with a comment after thumbs-down), and usage. */
+/** Copy, regenerate, rate (then an optional comment), and usage. */
 function MessageActions({ turn, copy }: { turn: Turn; copy: Copy }) {
   const onAction = useContext(ActionContext);
   const itemActions = useContext(ItemActionsContext);
-  const [commenting, setCommenting] = useState(false);
-  const [comment, setComment] = useState("");
-  const [sent, setSent] = useState(false);
   const text = turn.text.replace(/\[\[[^\]]+\]\]/g, "").trim();
   const hostCopy = text ? (itemActions?.({ kind: "answer", turn }) ?? null) : null;
-  const rate = (rating: "up" | "down") => {
-    onAction({ id: ActionId.feedback, payload: { turnId: turn.id, target: rating } });
-    setCommenting(rating === "down");
-    setSent(rating === "up");
-  };
   return (
-    <div className="-ml-1.5 flex flex-col gap-1">
-      <div role="toolbar" aria-label="Message actions" className="flex items-center gap-0.5">
-        {/* One copy control, never two: the host's replaces the built-in when it draws one. */}
-        {text && (hostCopy ?? <CopyButton text={text} label="Copy answer" note="above" />)}
-        <button
-          type="button"
-          aria-label="Regenerate"
-          title="Regenerate"
-          className={actionBtn}
-          onClick={() =>
-            onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
-          }
-        >
-          <RefreshIcon size={13} />
-        </button>
-        <button
-          type="button"
-          aria-label={copy.helpful}
-          title={copy.helpful}
-          aria-pressed={turn.feedback === "up"}
-          className={actionBtn}
-          onClick={() => rate("up")}
-        >
-          <ThumbsUpIcon
-            size={13}
-            fill={turn.feedback === "up" ? "currentColor" : "none"}
-            fillOpacity={0.2}
-          />
-        </button>
-        <button
-          type="button"
-          aria-label={copy.notHelpful}
-          title={copy.notHelpful}
-          aria-pressed={turn.feedback === "down"}
-          className={actionBtn}
-          onClick={() => rate("down")}
-        >
-          <ThumbsDownIcon
-            size={13}
-            fill={turn.feedback === "down" ? "currentColor" : "none"}
-            fillOpacity={0.2}
-          />
-        </button>
-        {turn.usage && <UsageChip usage={turn.usage} />}
-        {sent && (
-          <output className="aui-fade-up ml-1 text-aui-2xs text-aui-muted">
-            Thanks for the feedback
-          </output>
-        )}
-      </div>
-      {commenting && (
-        <form
-          className="aui-pop-in ml-1.5 flex max-w-md items-center gap-1.5 rounded-aui border border-aui-border py-0.5 pr-0.5 pl-2 focus-within:border-aui-accent/60"
-          onSubmit={(e) => {
-            e.preventDefault();
-            onAction({
-              id: ActionId.feedback,
-              payload: { turnId: turn.id, target: "down", option: comment.trim() },
-            });
-            setCommenting(false);
-            setComment("");
-            setSent(true);
-          }}
-        >
-          <input
-            // biome-ignore lint/a11y/noAutofocus: opened by the person's own click
-            autoFocus
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setCommenting(false);
-            }}
-            aria-label="What went wrong?"
-            placeholder="What went wrong? (optional)"
-            className="h-6 min-w-0 flex-1 bg-transparent text-aui-sm outline-none placeholder:text-aui-muted"
-          />
-          <button type="submit" className={`${buttonClass("primary")} h-6 px-2`}>
-            Send
-          </button>
-        </form>
-      )}
+    <div role="toolbar" aria-label="Message actions" className="-ml-1.5 flex items-center gap-0.5">
+      {/* One copy control, never two: the host's replaces the built-in when it draws one. */}
+      {text && (hostCopy ?? <CopyButton text={text} label="Copy answer" note="above" />)}
+      <button
+        type="button"
+        aria-label="Regenerate"
+        title="Regenerate"
+        className={actionBtn}
+        onClick={() =>
+          onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
+        }
+      >
+        <RefreshIcon size={13} />
+      </button>
+      <Rating
+        up={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "up" } }}
+        down={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "down" } }}
+        selected={turn.feedback}
+        labels={{ up: copy.helpful, down: copy.notHelpful }}
+        prompt={copy.feedbackPrompt}
+      />
+      {turn.usage && <UsageChip usage={turn.usage} />}
     </div>
   );
 }
@@ -225,6 +157,7 @@ export function AgentMessage({
   turn,
   copy = defaultCopy,
   itemActions,
+  feedbackPrompt = true,
 }: {
   turn: Turn;
   copy?: Copy;
@@ -236,6 +169,11 @@ export function AgentMessage({
    * Leave it out to inherit one from an `ItemActionsContext` further up.
    */
   itemActions?: ItemActions;
+  /**
+   * Ask for an optional comment after a rating. On by default. The rating is
+   * always sent on the click; turning this off only skips the question.
+   */
+  feedbackPrompt?: boolean;
 }) {
   const inherited = useContext(ItemActionsContext);
   const statusLine = `**${turn.agent.name}** · ${copy.status[turn.status]}`;
@@ -295,7 +233,11 @@ export function AgentMessage({
               </div>
             </SuppressContext.Provider>
           </TurnMetaContext.Provider>
-          {final && <MessageActions turn={turn} copy={copy} />}
+          {final && (
+            <FeedbackPromptContext.Provider value={feedbackPrompt}>
+              <MessageActions turn={turn} copy={copy} />
+            </FeedbackPromptContext.Provider>
+          )}
         </ItemActionsContext.Provider>
       </div>
     </article>

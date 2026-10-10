@@ -1,6 +1,7 @@
 import {
   ActionId,
   emptyTurn,
+  feedbackEvent,
   type PromptConfig,
   type TurnEvent,
   type UiAction,
@@ -71,8 +72,10 @@ function Conversation({ onAction, intervalMs, withApproval }: Args) {
       ))
         push(e);
       push({ type: "turn.completed" });
-    } else if (action.id === ActionId.feedback) {
-      push({ type: "feedback", rating: action.payload.target === "up" ? "up" : "down" });
+    } else {
+      // The rating and the later comment are separate actions; both fold into the turn.
+      const feedback = feedbackEvent(action);
+      if (feedback) push(feedback);
     }
   };
 
