@@ -12,12 +12,18 @@
 </p>
 
 <p align="center">
+  <a href="#status"><img src="https://img.shields.io/badge/status-v0%20alpha-orange" alt="Status: v0 alpha"></a>
+  &nbsp;
   <a href="https://github.com/urmzd/vultus/actions/workflows/ci.yml"><img src="https://github.com/urmzd/vultus/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/github/license/urmzd/vultus" alt="License"></a>
 </p>
 
-Formerly `agent-ui`.
+> ## Status
+>
+> **vultus is v0 alpha software.** Nothing is published to npm yet, the
+> packages and their APIs will change without notice, and it is not recommended
+> for production.
 
 ## Features
 

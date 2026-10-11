@@ -5,3 +5,14 @@ storybook-static/
 *.log
 .DS_Store
 .envrc.local
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.local
+*.pem
+*.key
+
+# Git worktrees
+.worktrees/
