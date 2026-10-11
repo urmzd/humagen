@@ -1,10 +1,9 @@
-# Copy to the repo root as .envrc.local (gitignored), then `direnv allow`.
-# Prefer 1Password references over pasting tokens: op read resolves them at load time.
+# Copy to the repo root as .envrc.local (gitignored), fill it in, then `direnv allow`.
 
-# Bot token from OAuth & Permissions after installing the app (xoxb-…)
-export SLACK_BOT_TOKEN="$(op read 'op://Private/vultus sandbox/bot token')"
-# App-level token with connections:write, for Socket Mode (xapp-…)
-export SLACK_APP_TOKEN="$(op read 'op://Private/vultus sandbox/app token')"
+# Bot token from OAuth & Permissions after installing the app
+export SLACK_BOT_TOKEN="xoxb-…"
+# App-level token with connections:write, for Socket Mode
+export SLACK_APP_TOKEN="xapp-…"
 # Sandbox channel the bot is invited to
 export SLACK_CHANNEL="C…"
 # Your member id (profile → ⋯ → Copy member ID). Streams in channels need a recipient.
