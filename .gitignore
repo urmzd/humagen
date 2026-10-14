@@ -16,3 +16,9 @@ storybook-static/
 
 # Git worktrees
 .worktrees/
+
+# Slack CLI: app, team and user ids are local to each developer
+**/.slack/apps.json
+**/.slack/apps.dev.json
+**/.slack/config.json
+**/.slack/cache/

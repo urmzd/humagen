@@ -25,13 +25,29 @@ async function main() {
   const [command, arg] = process.argv.slice(2);
   switch (command) {
     case "manifest": {
-      const manifest = buildManifest();
+      // A free workspace refuses custom functions: SLACK_SANDBOX_SKIP=workflowStep leaves them out.
+      const skip = (process.env.SLACK_SANDBOX_SKIP ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const unknown = skip.filter((k) => !(k in CAPABILITIES));
+      if (unknown.length > 0) {
+        throw new Error(
+          `SLACK_SANDBOX_SKIP names unknown capabilities: ${unknown.join(", ")}. Known: ${Object.keys(CAPABILITIES).join(", ")}`,
+        );
+      }
+      const manifest = buildManifest({
+        capabilities: Object.keys(CAPABILITIES).filter((k) => !skip.includes(k)),
+      });
       // pnpm --filter runs in the package dir; resolve paths from where the user ran the command.
       const out = resolve(process.env.INIT_CWD ?? process.cwd(), arg ?? "slack-manifest.json");
       writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
       console.log(`Wrote ${out}\n`);
       for (const [name, cap] of Object.entries(CAPABILITIES)) {
-        console.log(`  ${name.padEnd(17)} ${cap.scopes.join(", ") || "(no scope)"}  ${cap.why}`);
+        const mark = skip.includes(name) ? "(skipped) " : "";
+        console.log(
+          `  ${name.padEnd(17)} ${mark}${cap.scopes.join(", ") || "(no scope)"}  ${cap.why}`,
+        );
       }
       console.log(`\nCreate the app from this manifest:\n${createAppUrl(manifest)}\n`);
       console.log(
