@@ -151,6 +151,14 @@ See [apps/slack-sandbox/README.md](apps/slack-sandbox/README.md) for setup.
 
 See [docs/surfaces.md](docs/surfaces.md) for every concept mapped to both surfaces, and for the open questions.
 
+### Go module
+
+`go/` is a separate Go module, `github.com/urmzd/vultus/go`, for a surface that has no React tree: GitHub comments. Its `github` package renders a structured, evidence-backed review and a pull request guide as GitHub Markdown, and escapes model text so a finding cannot inject markup, links or mentions. It takes [mandatum](https://github.com/urmzd/mandatum)'s GitHub connector types as input and is consumed by [collegium](https://github.com/urmzd/collegium). It is versioned with its own tags, in the form `go/vX.Y.Z`.
+
+```sh
+go get github.com/urmzd/vultus/go@latest
+```
+
 ## License
 
 [Apache-2.0](LICENSE)
