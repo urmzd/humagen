@@ -104,12 +104,39 @@ export interface ManifestOptions {
   capabilities?: (keyof typeof CAPABILITIES)[];
 }
 
+/** Names that are not capabilities. Own keys only: `toString` and `__proto__` are not capabilities. */
+function unknownCapabilities(names: string[]): string[] {
+  return names.filter((k) => !Object.hasOwn(CAPABILITIES, k));
+}
+
+/**
+ * Every capability except the ones named in a comma-separated list, which is
+ * what `SLACK_SANDBOX_SKIP` holds. An unknown name is an error, so a typo
+ * can't quietly produce the full manifest.
+ */
+export function capabilitiesExcept(list = ""): string[] {
+  const skip = list
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const unknown = unknownCapabilities(skip);
+  if (unknown.length > 0) {
+    throw new Error(
+      `SLACK_SANDBOX_SKIP names unknown capabilities: ${unknown.join(", ")}. Known: ${Object.keys(CAPABILITIES).join(", ")}`,
+    );
+  }
+  return Object.keys(CAPABILITIES).filter((k) => !skip.includes(k));
+}
+
 export function buildManifest(options: ManifestOptions = {}) {
-  const caps = (options.capabilities ?? Object.keys(CAPABILITIES)).map(
-    (k) => CAPABILITIES[k] as Capability,
-  );
+  const names = options.capabilities ?? Object.keys(CAPABILITIES);
+  const unknown = unknownCapabilities(names);
+  if (unknown.length > 0) {
+    throw new Error(`Unknown capabilities: ${unknown.join(", ")}`);
+  }
+  const caps = names.map((k) => CAPABILITIES[k] as Capability);
   const unique = (xs: string[]) => [...new Set(xs)].sort();
-  const has = (name: string) => caps.includes(CAPABILITIES[name] as Capability);
+  const has = (name: string) => names.includes(name);
   return {
     _metadata: { major_version: 2, minor_version: 1 },
     display_information: {

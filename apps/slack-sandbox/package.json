@@ -6,6 +6,7 @@
   "description": "Real-Slack test bench: app manifest generator, fixture poster, live streaming, and an interactive Socket Mode handler.",
   "scripts": {
     "cli": "tsx src/cli.tsx",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

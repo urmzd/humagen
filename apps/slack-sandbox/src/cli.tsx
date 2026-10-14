@@ -5,7 +5,7 @@ import type { Turn } from "@vultus/core";
 import * as fx from "@vultus/core/fixtures";
 import { renderToSlack } from "@vultus/render-slack";
 import { eventsFor, registry, views } from "./fixtures";
-import { buildManifest, CAPABILITIES, createAppUrl } from "./manifest";
+import { buildManifest, CAPABILITIES, capabilitiesExcept, createAppUrl } from "./manifest";
 import { streamTurn } from "./run";
 import { serve } from "./serve";
 import { readEnv, slackClient, uploadFile, validateBlocks } from "./slack";
@@ -26,25 +26,15 @@ async function main() {
   switch (command) {
     case "manifest": {
       // A free workspace refuses custom functions: SLACK_SANDBOX_SKIP=workflowStep leaves them out.
-      const skip = (process.env.SLACK_SANDBOX_SKIP ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const unknown = skip.filter((k) => !(k in CAPABILITIES));
-      if (unknown.length > 0) {
-        throw new Error(
-          `SLACK_SANDBOX_SKIP names unknown capabilities: ${unknown.join(", ")}. Known: ${Object.keys(CAPABILITIES).join(", ")}`,
-        );
-      }
-      const manifest = buildManifest({
-        capabilities: Object.keys(CAPABILITIES).filter((k) => !skip.includes(k)),
-      });
+      // A free workspace refuses custom functions: SLACK_SANDBOX_SKIP=workflowStep leaves them out.
+      const capabilities = capabilitiesExcept(process.env.SLACK_SANDBOX_SKIP);
+      const manifest = buildManifest({ capabilities });
       // pnpm --filter runs in the package dir; resolve paths from where the user ran the command.
       const out = resolve(process.env.INIT_CWD ?? process.cwd(), arg ?? "slack-manifest.json");
       writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
       console.log(`Wrote ${out}\n`);
       for (const [name, cap] of Object.entries(CAPABILITIES)) {
-        const mark = skip.includes(name) ? "(skipped) " : "";
+        const mark = capabilities.includes(name) ? "" : "(skipped) ";
         console.log(
           `  ${name.padEnd(17)} ${mark}${cap.scopes.join(", ") || "(no scope)"}  ${cap.why}`,
         );
