@@ -73,3 +73,5 @@ export const Select = primitive("Select");
 export const Row = primitive("Row");
 export const Prompt = primitive("Prompt");
 export const Tiles = primitive("Tiles");
+export const Amount = primitive("Amount");
+export const Request = primitive("Request");

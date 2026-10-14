@@ -191,6 +191,60 @@ export const defaultCopy = {
     forbidden: () => "Not allowed",
     internal: () => "Something broke on my end",
   },
+  /**
+   * What to say under each failure's title, for a host that has no words of its
+   * own to put in `Failure.message`. It never repeats the title.
+   */
+  failureBody: {
+    auth_required: (service = "the app") => `Reconnect ${service}, then try again.`,
+    rate_limited: () => "Too many requests at once. Wait a moment, then try again.",
+    unavailable: (service = "It") => `${service} isn't answering right now. Try again shortly.`,
+    timeout: () => "It took too long, so it was stopped.",
+    tool_error: (service = "A tool") => `${service} returned an error, so the run stopped.`,
+    forbidden: () => "You don't have access to do this here.",
+    internal: () => "The run stopped on an error. Retry, or report it if it happens again.",
+  },
+  /** Nobody can answer: say how to name an agent. `example` is a name to show. */
+  noAgent: (example?: string) =>
+    `No agent answers here yet. Name one at the start of your message, such as @${example ?? "name"}.`,
+  /** Fallback text for a message that continues a longer one: "(2/3) …". */
+  continued: (page: number, of: number, text: string) => `(${page}/${of}) ${text}`,
+  /** The one-field form for asking from somewhere with nowhere to type (a Slack shortcut). */
+  askForm: {
+    title: "Ask the agent",
+    label: "What do you need?",
+    send: "Send",
+    cancel: "Cancel",
+  },
+  notInChannel: "I'm not in this channel yet. Invite me with `/invite`, then try again.",
+  /** A Retry refused because someone else asked for the run. */
+  retryNotYours: "Only the person who asked for this can retry it. You can ask again yourself.",
+  /** A Retry refused because it can't run here anymore, such as when the agent was removed. */
+  retryNotHere: "This can't be retried here anymore. Send a new message instead.",
+  /** The agents a person can ask, with how to ask one. */
+  agentList: {
+    title: "Agents you can ask",
+    hint: "Start a message with an agent's name, such as @name, to ask it.",
+    noDescription: "No description",
+    empty: "No agent can be asked here yet.",
+    handle: (name: string) => `@${name}`,
+  },
+  /** Raising a limit to an amount the reader types. */
+  raiseLimit: "Raise Limit",
+  raiseLimitTitle: "Raise the limit",
+  newLimit: "New limit",
+  /** A number field's label with its unit: "New limit ($)", "New limit (runs)". */
+  amountLabel: (label: string, unit: string) =>
+    unit === "usd" ? `${label} ($)` : `${label} (${unit})`,
+  /** Labels a message that continues a longer one. */
+  part: (n: number) => `Part ${n}`,
+  /** Under the field: the new limit must be more than the current one. */
+  moreThan: (amount: string) => `More than ${amount}`,
+  /** A turn still running after its live output was closed. Said once, in words, never animated. */
+  stillWorking: (name: string) =>
+    `${name} is still working on this. The answer will appear here when it's ready.`,
+  /** What Slack says under the rating buttons, which can't show which one was pressed. */
+  rated: { up: "Rated helpful", down: "Rated not helpful" },
   home: {
     greeting: (first: string, assistant: string) => `Hi ${first}, I'm ${assistant}.`,
     /** Follows the host's intro: how to reach the assistant from here. */

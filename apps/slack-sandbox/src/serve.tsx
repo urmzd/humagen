@@ -1,4 +1,4 @@
-import { Home, SystemAlertView, TurnView } from "@vultus/components";
+import { defaultCopy, Home, RequestView, SystemAlertView, TurnView } from "@vultus/components";
 import {
   ActionId,
   type Approval,
@@ -9,9 +9,16 @@ import {
   type TurnEvent,
 } from "@vultus/core";
 import * as fx from "@vultus/core/fixtures";
+import { Context } from "@vultus/primitives";
 import {
+  AMOUNT_MODAL,
+  amountModal,
+  askForm,
+  decodeAmountModal,
+  decodeAskForm,
   decodeFeedbackModal,
   decodeSlackAction,
+  ENTRY,
   FEEDBACK_MODAL,
   feedbackModal,
   homeView,
@@ -19,9 +26,8 @@ import {
   renderToSlack,
   suggestedPrompts,
 } from "@vultus/render-slack";
+import { streamTurn } from "@vultus/slack-host";
 import { eventsFor, SCENARIOS, scenarioFor } from "./fixtures";
-import { ENTRY } from "./manifest";
-import { streamTurn } from "./run";
 import { type SandboxEnv, type SlackClient, SlackError, slackClient } from "./slack";
 
 /**
@@ -46,34 +52,11 @@ interface Live {
   step?: { id: string; token?: string };
 }
 
-/** A one-field modal. `meta` comes back on submit, so the handler knows what the text is for. */
-function form(
-  title: string,
-  label: string,
-  meta: { kind: "ask" | "question" | "other" | "edit"; turnId?: string; target?: string },
-  initial?: string,
-) {
-  return {
-    type: "modal",
-    callback_id: ENTRY.form,
-    private_metadata: JSON.stringify(meta),
-    title: { type: "plain_text", text: title },
-    submit: { type: "plain_text", text: "Send" },
-    close: { type: "plain_text", text: "Cancel" },
-    blocks: [
-      {
-        type: "input",
-        block_id: "text",
-        label: { type: "plain_text", text: label },
-        element: {
-          type: "plain_text_input",
-          action_id: "value",
-          multiline: true,
-          ...(initial ? { initial_value: initial.slice(0, 3000) } : {}),
-        },
-      },
-    ],
-  };
+type FormMeta = { kind: "ask" | "question" | "other" | "edit"; turnId?: string; target?: string };
+
+/** The shared ask form, titled for this app, with what the words are for in `meta`. */
+function form(title: string, label: string, meta: FormMeta, initial?: string) {
+  return askForm({ title, label, meta, ...(initial ? { initial } : {}) });
 }
 
 /** Slack shows four: one per kind of thing worth trying first. */
@@ -90,6 +73,11 @@ const HELP = [
   "• `status`: a system alert that resolves in place",
   "Anything else gets a plain answer.",
 ].join("\n");
+
+/** Slack's encoded message text back to what the person typed: `&lt;` `&gt;` `&amp;` decoded. */
+function fromSlack(text: string): string {
+  return text.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -133,7 +121,7 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
           recipientTeam: target.team,
         },
         events,
-        { signal: abort.signal },
+        { signal: abort.signal, log: (line) => console.warn(`  ${line}`) },
       );
       live.set(turn.id, { ...target, turn, ts });
       console.log(`  turn ${turn.id} → ${turn.status}`);
@@ -156,9 +144,18 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
     text: string,
     via: string,
   ) => {
+    // The thread hangs from what was asked, in the same component the web draws as a bubble.
+    // Said under it: where the question came from ("Asked with `/agent`").
+    const asked = renderToSlack(
+      <>
+        <RequestView by={`<@${where.user}>`} text={text} />
+        <Context items={[`Asked ${via}`]} />
+      </>,
+    );
     const root = await slack.call<{ ts: string; channel: string }>("chat.postMessage", {
       channel: where.channel,
-      text: `<@${where.user}> asked ${via}: ${text}`,
+      text: asked.text,
+      blocks: asked.blocks,
     });
     const scenario = scenarioFor(text);
     await run(
@@ -173,13 +170,9 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
     } catch (e) {
       const away = e instanceof SlackError && /not_in_channel|channel_not_found/.test(e.code);
       if (!away || !responseUrl) throw e;
-      await fetch(responseUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          response_type: "ephemeral",
-          text: "I'm not in this channel yet. Invite me with `/invite`, then try again.",
-        }),
+      await slack.respond(responseUrl, {
+        response_type: "ephemeral",
+        text: defaultCopy.notInChannel,
       });
     }
   };
@@ -378,6 +371,22 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
       console.log(`  feedback ${turnId} → ${target}`);
       return;
     }
+    if (id === ActionId.raiseBudget && !option) {
+      // Raise Limit carries no amount: collect it, bounded by the limit in force.
+      const part = fx.mailMessages.find((m) => m.id === turnId)?.parts.find((p) => p.id === target);
+      if (part?.type !== "budget") return whisper("That limit isn't in the sandbox's fixtures.");
+      await slack.call("views.open", {
+        trigger_id: payload.trigger_id,
+        // Its words default to vultus copy (raiseLimitTitle, newLimit, raiseLimit, cancel).
+        view: amountModal({
+          action: ui,
+          unit: part.meter.unit,
+          above: part.meter.limit,
+          ...(part.raiseMax !== undefined ? { max: part.raiseMax } : {}),
+        }),
+      });
+      return;
+    }
     if (id === ActionId.reconnect) return whisper("In a real app this opens the reconnect flow.");
     if (id === ActionId.report) return whisper("Reported. Reference copied to the incident log.");
     if (!state) return whisper("This sandbox restarted, so that turn is gone. Ask again.");
@@ -573,14 +582,15 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
       });
       return;
     }
-    if (payload.type !== "view_submission" || payload.view?.callback_id !== ENTRY.form) return;
-    const meta = JSON.parse(payload.view.private_metadata) as {
-      kind: "ask" | "question" | "other" | "edit";
-      turnId?: string;
-      target?: string;
-    };
-    const text = payload.view.state.values.text?.value?.value?.trim() ?? "";
-    if (!text) return;
+    if (payload.type === "view_submission" && payload.view?.callback_id === AMOUNT_MODAL) {
+      const raised = decodeAmountModal(payload.view);
+      console.log(`  ${raised ? JSON.stringify(raised) : "amount not taken"}`);
+      return;
+    }
+    if (payload.type !== "view_submission" || !payload.view) return;
+    const submitted = decodeAskForm<FormMeta>(payload.view);
+    if (!submitted) return;
+    const { text, meta } = submitted;
     if (meta.kind === "ask") {
       // A global shortcut has no channel: answer in the app's own messages with this person.
       await start(
@@ -638,13 +648,10 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
     team_id: string;
     response_url: string;
   }) => {
-    const text = command.text.trim();
+    // A command's text arrives entity-encoded; RequestView takes the words as typed.
+    const text = fromSlack(command.text).trim();
     if (!text || text === "help") {
-      await fetch(command.response_url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ response_type: "ephemeral", text: HELP }),
-      });
+      await slack.respond(command.response_url, { response_type: "ephemeral", text: HELP });
       return;
     }
     await orExplain(

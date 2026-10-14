@@ -100,12 +100,21 @@ export type MessagePart =
       kept?: string[];
       resolution?: Resolution;
     })
-  /** A run blocked on a limit (spend, runs, concurrency): allow it once, or raise the limit. */
+  /**
+   * A run blocked on a limit (spend, runs, concurrency): allow it once, or
+   * raise the limit. Acknowledge is offered only when `allowed` lists it
+   * explicitly, never when `allowed` is left out.
+   */
   | (PartBase & {
       type: "budget";
       meter: Meter;
-      /** Limits offered, in the meter's unit. */
+      /**
+       * Limits offered, in the meter's unit. When given, these are the only
+       * amounts a raise takes; leave out to let the reader type one.
+       */
       raiseTo?: number[];
+      /** The most a typed raise may be, in the meter's unit. */
+      raiseMax?: number;
       resolution?: Resolution;
     })
   /** Something a rule is watching: acknowledge it, snooze it, or open the rule. */
@@ -411,6 +420,36 @@ export function messageFromItem(item: InboxItem, from?: Sender): InboxMessage {
   };
 }
 
+/**
+ * A typed amount in a unit, or undefined when it isn't one: plain digits,
+ * with at most two decimals for money ("usd") and none for counts. Signs,
+ * exponents, hex and separators are refused.
+ */
+export function parseAmount(text: string, unit: string): number | undefined {
+  const t = text.trim();
+  if (!(unit === "usd" ? /^\d+(\.\d{1,2})?$/ : /^\d+$/).test(t)) return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * The new limit a raise asks for, or undefined when the part can't take it:
+ * one of `raiseTo` when it offers amounts, otherwise a plain number in the
+ * meter's unit (cents at most for money, whole for counts) above the limit
+ * and no more than `raiseMax`.
+ */
+export function raiseAmount(
+  part: { meter: Meter; raiseTo?: number[]; raiseMax?: number },
+  option: string,
+): number | undefined {
+  const to = parseAmount(option, part.meter.unit);
+  if (to === undefined) return undefined;
+  if (part.raiseTo && part.raiseTo.length > 0) return part.raiseTo.includes(to) ? to : undefined;
+  if (to <= part.meter.limit) return undefined;
+  if (part.raiseMax !== undefined && to > part.raiseMax) return undefined;
+  return to;
+}
+
 /** The action a part's control emits. `turnId` carries the message id; `target` the part id. */
 export function partAction(
   message: InboxMessage,
@@ -499,11 +538,12 @@ export function resolveMessage(
       case "budget":
         if (id === ActionId.allowOnce) return { ...part, resolution: done("allowed_once") };
         if (id === ActionId.raiseBudget && payload.option) {
-          return {
-            ...part,
-            resolution: done("raised", formatAmount(Number(payload.option), part.meter.unit)),
-          };
+          const to = raiseAmount(part, payload.option);
+          return to === undefined
+            ? part
+            : { ...part, resolution: done("raised", formatAmount(to, part.meter.unit)) };
         }
+        if (id === ActionId.acknowledge) return { ...part, resolution: done("acknowledged") };
         return part;
       case "alert":
         if (id === ActionId.acknowledge) return { ...part, resolution: done("acknowledged") };

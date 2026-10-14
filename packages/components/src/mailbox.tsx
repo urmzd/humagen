@@ -33,6 +33,7 @@ import {
   AttachmentView,
   ClarificationCard,
   FailureAlert,
+  RaiseLimit,
   SystemAlertView,
 } from "./components";
 import { type Copy, defaultCopy } from "./copy";
@@ -148,6 +149,10 @@ export function MessagePartView({
       const amount = (n: number) => formatAmount(n, meter.unit);
       // Whole dollars read better on a button than "$75.00".
       const short = (n: number) => (meter.unit === "usd" ? `$${n}` : amount(n));
+      const once = may(ActionId.allowOnce);
+      const raise = may(ActionId.raiseBudget);
+      // Acknowledging a limit is offered only when the host lists it.
+      const ack = part.allowed?.includes(ActionId.acknowledge) ?? false;
       return (
         <>
           <Callout
@@ -161,19 +166,36 @@ export function MessagePartView({
             )}
           />
           {record ??
-            (may(ActionId.allowOnce) || may(ActionId.raiseBudget) ? (
-              <Actions blockId={`budget:${part.id}`}>
-                {may(ActionId.allowOnce) && (
-                  <Button label={copy.allowOnce} style="primary" action={act(ActionId.allowOnce)} />
-                )}
-                {(may(ActionId.raiseBudget) ? (part.raiseTo ?? []) : []).map((limit) => (
-                  <Button
-                    key={limit}
-                    label={copy.raiseTo(short(limit))}
-                    action={act(ActionId.raiseBudget, { option: String(limit) })}
+            (once || raise || ack ? (
+              <>
+                <Actions blockId={`budget:${part.id}`}>
+                  {once && (
+                    <Button
+                      label={copy.allowOnce}
+                      style="primary"
+                      action={act(ActionId.allowOnce)}
+                    />
+                  )}
+                  {(raise ? (part.raiseTo ?? []) : []).map((limit) => (
+                    <Button
+                      key={limit}
+                      label={copy.raiseTo(short(limit))}
+                      action={act(ActionId.raiseBudget, { option: String(limit) })}
+                    />
+                  ))}
+                  {ack && <Button label={copy.acknowledge} action={act(ActionId.acknowledge)} />}
+                </Actions>
+                {/* Offered amounts are the only ones the platform takes: no field beside them. */}
+                {raise && !part.raiseTo?.length && (
+                  <RaiseLimit
+                    unit={meter.unit}
+                    limit={meter.limit}
+                    {...(part.raiseMax !== undefined ? { max: part.raiseMax } : {})}
+                    action={act(ActionId.raiseBudget)}
+                    copy={copy}
                   />
-                ))}
-              </Actions>
+                )}
+              </>
             ) : (
               <Context items={[copy.noPermission]} />
             ))}

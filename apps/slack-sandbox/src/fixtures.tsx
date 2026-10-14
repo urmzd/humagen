@@ -1,4 +1,5 @@
 import {
+  AgentList,
   ApprovalCard,
   AttachmentView,
   ClarificationCard,
@@ -8,13 +9,15 @@ import {
   MailboxView,
   MessageView,
   NoticeView,
+  RequestView,
   SessionNotices,
   SystemAlertView,
   TurnView,
 } from "@vultus/components";
 import type { Turn, TurnEvent } from "@vultus/core";
+import { ActionId } from "@vultus/core";
 import * as fx from "@vultus/core/fixtures";
-import { feedbackModal, type Placement } from "@vultus/render-slack";
+import { amountModal, askForm, feedbackModal, type Placement } from "@vultus/render-slack";
 import type { ReactElement } from "react";
 
 /**
@@ -84,6 +87,23 @@ export function registry(): Postable[] {
       element: <FailureAlert turnId="sandbox" failure={failure} />,
     });
   }
+  // A host with nowhere to send a report or keep a rating leaves those controls out.
+  out.push({
+    name: "failedTurn.noReport",
+    element: <TurnView turn={fx.failedTurn} capabilities={{ report: false }} />,
+  });
+  out.push({
+    name: "doneTurn.noFeedback",
+    element: <TurnView turn={fx.doneTurn} capabilities={{ feedback: false }} />,
+  });
+  // The message a thread hangs from: a name, then a Slack mention.
+  out.push({ name: "request", element: <RequestView {...fx.request} /> });
+  out.push({
+    name: "request.mention",
+    element: <RequestView by="<@U0SANDBOX>" text="what is <@U0SANDBOX> doing & why?" />,
+  });
+  out.push({ name: "agentList", element: <AgentList agents={fx.agentList} /> });
+  out.push({ name: "agentList.empty", element: <AgentList agents={[]} /> });
   out.push({
     name: "failures.rate_limited@modal",
     element: <FailureAlert turnId="sandbox" failure={fx.failures.rate_limited} />,
@@ -97,6 +117,24 @@ export function views(): { name: string; view: object }[] {
   return [
     { name: "feedback.up@modal", view: feedbackModal({ turnId: "turn-1", rating: "up" }) },
     { name: "feedback.down@modal", view: feedbackModal({ turnId: "turn-1", rating: "down" }) },
+    { name: "ask@modal", view: askForm() },
+    {
+      name: "amount.usd@modal",
+      view: amountModal({
+        action: { id: ActionId.raiseBudget, payload: { turnId: "m-limit", target: "spend" } },
+        unit: "usd",
+        above: 250,
+      }),
+    },
+    {
+      name: "amount.runs@modal",
+      view: amountModal({
+        action: { id: ActionId.raiseBudget, payload: { turnId: "m-runs", target: "runs" } },
+        unit: "runs",
+        above: 200,
+        initial: 300,
+      }),
+    },
   ];
 }
 

@@ -73,6 +73,50 @@ export const Done: Story = {
   parameters: slack("doneTurn", "Reasoning is web only"),
 };
 
+export const StillWorking: Story = {
+  name: "Still working, live output closed",
+  args: { turn: fx.quietTurn },
+  parameters: slack(
+    "quietTurn",
+    "The host closed the stream on a long-quiet run and keeps following it. Nothing moves on either surface",
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(/is still working on this/)).toBeVisible();
+    await expect(canvasElement.querySelector("[data-aui-still]")).not.toBeNull();
+  },
+};
+
+export const Rated: Story = {
+  name: "Done, already rated",
+  args: { turn: fx.ratedTurn },
+  parameters: slack(
+    "ratedTurn",
+    "Slack's rating buttons keep no pressed state, so a line under them says the rating",
+  ),
+  play: async ({ canvasElement }) => {
+    const pressed = within(canvasElement).getByRole("button", { name: "Helpful" });
+    await expect(pressed).toHaveAttribute("aria-pressed", "true");
+  },
+};
+
+export const NoFeedback: Story = {
+  name: "Done, host keeps no ratings",
+  args: { turn: fx.doneTurn },
+  render: ({ onAction, turn, question }) => (
+    <Canvas onAction={onAction}>
+      <div className="flex flex-col gap-6">
+        {question && <UserMessage text={question} />}
+        <AgentMessage turn={turn} capabilities={{ feedback: false }} />
+      </div>
+    </Canvas>
+  ),
+  parameters: slack("doneTurn.noFeedback", "`capabilities={{ feedback: false }}` on both surfaces"),
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("button", { name: "Helpful" })).toBeNull();
+  },
+};
+
 export const Failed: Story = {
   args: { turn: fx.failedTurn },
   parameters: slack("failedTurn"),

@@ -1,99 +1,15 @@
-/**
- * Minimal Slack Web API client. JSON bodies, typed errors, and Retry-After
- * handling for 429s. No SDK: the sandbox exercises exactly the calls a host
- * would make.
- */
-
-export class SlackError extends Error {
-  constructor(
-    readonly method: string,
-    readonly code: string,
-    readonly detail?: unknown,
-  ) {
-    super(`${method}: ${code}${detail ? ` ${JSON.stringify(detail)}` : ""}`);
-  }
-}
-
-export interface SlackClient {
-  call<T = Record<string, unknown>>(method: string, args?: Record<string, unknown>): Promise<T>;
-  /** Form-encoded call, for methods that don't accept JSON (files.getUploadURLExternal). */
-  form<T = Record<string, unknown>>(method: string, args: Record<string, string>): Promise<T>;
-}
+import { slackClient as hostClient, type SlackClient } from "@vultus/slack-host";
 
 /**
- * Upload a file the way Slack recommends: reserve an upload URL, POST the
- * bytes, then complete the upload into a channel or thread. Returns the file
- * id and its permalink for an artifact's `url`.
+ * The sandbox's Slack: the shared host client from `@vultus/slack-host`, with
+ * Slack's warnings printed, plus what only a test bench needs.
  */
-export async function uploadFile(
-  slack: SlackClient,
-  file: { name: string; bytes: Uint8Array; title?: string },
-  where: { channel: string; threadTs?: string; comment?: string },
-) {
-  const { upload_url, file_id } = await slack.form<{ upload_url: string; file_id: string }>(
-    "files.getUploadURLExternal",
-    { filename: file.name, length: String(file.bytes.byteLength) },
-  );
-  const put = await fetch(upload_url, {
-    method: "POST",
-    body: new Blob([file.bytes as Uint8Array<ArrayBuffer>]),
-  });
-  if (!put.ok) throw new SlackError("upload", `http_${put.status}`);
-  const done = await slack.call<{ files: { id: string; permalink?: string }[] }>(
-    "files.completeUploadExternal",
-    {
-      files: [{ id: file_id, title: file.title ?? file.name }],
-      channel_id: where.channel,
-      ...(where.threadTs ? { thread_ts: where.threadTs } : {}),
-      ...(where.comment ? { initial_comment: where.comment } : {}),
-    },
-  );
-  return { id: file_id, permalink: done.files[0]?.permalink };
-}
 
+export { type SlackClient, SlackError, uploadFile } from "@vultus/slack-host";
+
+/** A client for one token that prints Slack's warnings. */
 export function slackClient(token: string | undefined): SlackClient {
-  return {
-    async call(method, args = {}) {
-      for (let attempt = 0; ; attempt++) {
-        const res = await fetch(`https://slack.com/api/${method}`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json; charset=utf-8",
-            ...(token ? { authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(args),
-        });
-        if (res.status === 429 && attempt < 3) {
-          const wait = Number(res.headers.get("retry-after") ?? "1");
-          await new Promise((r) => setTimeout(r, wait * 1000));
-          continue;
-        }
-        const body = (await res.json()) as { ok: boolean; error?: string } & Record<
-          string,
-          unknown
-        >;
-        if (!body.ok) {
-          throw new SlackError(
-            method,
-            body.error ?? `http_${res.status}`,
-            body.response_metadata ?? body.errors,
-          );
-        }
-        if (body.warning) console.warn(`  ${method} warning: ${String(body.warning)}`);
-        return body as never;
-      }
-    },
-    async form(method, args) {
-      const res = await fetch(`https://slack.com/api/${method}`, {
-        method: "POST",
-        headers: token ? { authorization: `Bearer ${token}` } : {},
-        body: new URLSearchParams(args),
-      });
-      const body = (await res.json()) as { ok: boolean; error?: string } & Record<string, unknown>;
-      if (!body.ok) throw new SlackError(method, body.error ?? `http_${res.status}`);
-      return body as never;
-    },
-  };
+  return hostClient(token, { log: (line) => console.warn(`  ${line}`) });
 }
 
 /** blocks.validate is public: no token. Form-encoded, per the docs. */

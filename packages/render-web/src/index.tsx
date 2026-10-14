@@ -6,6 +6,7 @@ import { CitationContext, CitationRegistry } from "./citations";
 import { FormContext, FormStore } from "./form";
 import { webImpls } from "./impls";
 
+export { Amount } from "./amount";
 export { ActionContext, buttonClass, DenseContext, Menu } from "./buttons";
 export { CitationChip, CitationRegistry, Favicon, hostOf, SourceMark } from "./citations";
 export { CodeBlock, CopyButton, Terminal } from "./code";
@@ -35,6 +36,7 @@ export {
   useDisclosure,
   useVerbSequence,
 } from "./motion";
+export { RequestBubble, readableMentions } from "./request";
 export { StatusIcon, statusLabel } from "./task";
 
 /**

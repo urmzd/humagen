@@ -1,3 +1,5 @@
+import { ENTRY } from "@vultus/render-slack";
+
 /**
  * Slack app manifest, generated from what vultus actually uses. Each
  * capability lists the scopes and events it needs, so the manifest never
@@ -14,20 +16,11 @@ export interface Capability {
 }
 
 /**
- * Ways into the agent besides a DM or a mention. The ids live here so the
- * manifest and the handlers that answer them can't drift apart.
+ * Ways into the agent besides a DM or a mention. The ids live in
+ * `@vultus/render-slack` with the forms that use them, so this manifest, the
+ * handlers and every other host share them.
  */
-export const ENTRY = {
-  /** Global shortcut: ask from anywhere, answered in the app's DM. */
-  ask: "aui_ask",
-  /** Message shortcut: ask about one message, answered in its thread. */
-  askAbout: "aui_ask_about",
-  command: "/agent",
-  /** Workflow Builder step: a workflow asks, and waits for the turn (and any approval) to end. */
-  step: "aui_ask_step",
-  /** The one text form behind the shortcut, Edit, Ask and Something Else. */
-  form: "aui_form",
-} as const;
+export { ENTRY } from "@vultus/render-slack";
 
 export const CAPABILITIES: Record<string, Capability> = {
   messages: {

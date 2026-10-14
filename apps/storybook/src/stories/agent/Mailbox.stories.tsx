@@ -113,6 +113,23 @@ export const ResolveInPlace: Story = {
   },
 };
 
+export const RaiseToAmount: Story = {
+  name: "Raise a limit to a typed amount",
+  render: (args) => <Demo {...args} open="m-limit" />,
+  parameters: slack("mail.m-limit", "Slack shows Raise Limit; the click opens `amountModal`"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const raise = canvas.getByRole("button", { name: "Raise Limit" });
+    await expect(raise).toBeDisabled();
+    await userEvent.type(canvas.getByLabelText("New limit"), "200");
+    await expect(raise).toBeDisabled();
+    await userEvent.clear(canvas.getByLabelText("New limit"));
+    await userEvent.type(canvas.getByLabelText("New limit"), "400");
+    await userEvent.click(raise);
+    await expect(await canvas.findByText(/Limit raised by You/)).toBeInTheDocument();
+  },
+};
+
 export const Narrow: Story = {
   name: "Narrow: list and pane are separate views",
   render: (args) => <Demo {...args} width="max-w-sm" />,

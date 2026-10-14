@@ -19,6 +19,40 @@ export function plainDate(iso: string): string {
   return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
+/** A user or channel mention exactly as Slack writes it. Nothing else in angle brackets is kept. */
+const SAFE_TOKEN = /(<@[UW][A-Z0-9]+(?:\|[^<>]*)?>|<#C[A-Z0-9]+(?:\|[^<>]*)?>)/;
+
+/**
+ * Text for Slack, escaped so it can't ping or link: `&`, `<` and `>` become
+ * entities, which also defuses `<!channel>`, `<!here>`, `<!everyone>`,
+ * `<!subteam^…>` and `<url|label>` links. Only user mentions (`<@U123>`) and
+ * channel links (`<#C123>`) are kept. Use it for words a person typed, and for
+ * every fallback `text`, which Slack parses the same way.
+ */
+export function escapeSlackText(text: string): string {
+  return text
+    .split(SAFE_TOKEN)
+    .map((piece, i) => (i % 2 === 1 ? piece : escapeHtml(piece)))
+    .join("");
+}
+
+/** Whether the whole string is one user mention, such as `<@U123>`. */
+export function isMention(text: string): boolean {
+  return /^<@[UW][A-Z0-9]+(?:\|[^<>]*)?>$/.test(text);
+}
+
+/**
+ * A name made safe to show in bold: escaped like any typed text, and with the
+ * characters that would end or start formatting swapped for look-alikes.
+ */
+export function plainName(text: string): string {
+  return escapeSlackText(text)
+    .replaceAll("*", "\u2217")
+    .replaceAll("_", "\uFF3F")
+    .replaceAll("~", "\u223C")
+    .replaceAll("`", "\u02CB");
+}
+
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

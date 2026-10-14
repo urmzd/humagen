@@ -34,7 +34,9 @@ Shared components use only primitives, never DOM or Block Kit. When a concept ca
 | Code | Code block with path, language and copy | `context` line with the path, then `rich_text_preformatted` | |
 | Terminal | Dark panel with a tail and "N earlier lines" | Exit/time/cwd line, then the last 40 lines preformatted | |
 | Artifact (file) | A tile for each phase with an animated icon, Download and Open, and a preview panel | `card` (title, type · size, body, Download/Open) when ready; a muted line in other phases | The sandbox uploads a real file (`files.getUploadURLExternal`) |
-| Feedback | Thumbs; a comment box opens after 👎 | `feedback_buttons` in `context_actions` | Only after the final answer |
+| Request | The person's bubble (`RequestView`, `UserMessage`) | The message the answer threads under | On Slack `by` is a mention such as `<@U123>` |
+| Feedback | Thumbs; a comment box opens after 👎; the chosen one stays pressed | `feedback_buttons` in `context_actions`, then "Rated helpful" once rated | Only after the final answer. `capabilities={{ feedback: false }}` leaves it out on both |
+| Agents | `AgentList`: each agent's handle and what it is for | Same rows, for `/agent help` | |
 | Usage | Tooltip: tokens, cache, cost, latency | Not shown | Cost is left out when there's no price, never shown as $0.00 |
 
 ### Asking a person
@@ -46,12 +48,14 @@ Shared components use only primitives, never DOM or Block Kit. When a concept ca
 | Not the initiator | Ask only, plus "Only the person who started this…" | Same; the host answers other clickers with an ephemeral message | `canDecide(approval, user)` |
 | Decision record | Buttons are replaced by "Approved by Dana · time" | `chat.update` to the same record | Rejected, timed out and cancelled all mean the action did not run |
 | Clarification | Option buttons, an inline "Something Else" text field, "I'm Not Sure" | Unstyled buttons | |
+| Raise a limit | Raise to fixed amounts, a number field with Raise Limit, Acknowledge when allowed | Same buttons; Raise Limit opens `amountModal` (`number_input`) | `number_input` is modal-only per the docs, so a message carries the button |
+| Ask from a shortcut | The composer | `askForm` on the shortcut's trigger, `ENTRY.form` | |
 
 ### When things go wrong
 
 | Concept | Web | Slack | Notes |
 |---|---|---|---|
-| Failure | Callout titled by who can fix it, with a recovery button, a copyable reference chip and the HTTP status | Section that states the level in words, plus action buttons | Retry is offered only when `isRetryable` is true |
+| Failure | Callout titled by who can fix it, with a recovery button, a copyable reference chip and the HTTP status | Section that states the level in words, plus action buttons | Retry is offered only when `isRetryable` is true. Report Issue only when the host can take a report (`capabilities.report`) |
 | Alert in a modal | Callout | Native `alert` block (`text` is a text object) | Messages have no `alert` block |
 | Silence | Muted "Still working, 2m so far" | `context` line | Sent once; never suggests retrying, because a retry would bill the turn twice |
 | Fallback or retry by the runtime | Muted line | `context` line | |

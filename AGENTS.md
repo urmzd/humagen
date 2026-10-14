@@ -11,6 +11,7 @@ A pnpm + turbo monorepo of React 19 packages that render one agent UI model to t
 - `packages/components`: shared components built **only** from primitives. No DOM, no Block Kit, no hooks with effects (Slack renders synchronously).
 - `packages/render-web`, `packages/render-slack`: one implementation per surface.
 - `packages/web`: components that exist only on the web (composer, orb, statusline, rail, preview, inbox panel).
+- `packages/slack-host`: the Slack host loop (Web API client, one turn kept in step with Slack). Takes vultus state and a Slack client; knows nothing of any one platform.
 - `apps/storybook`: the web UI. `apps/slack-sandbox`: the real Slack test bench.
 - `go`: a separate Go module (`github.com/urmzd/vultus/go`), outside the pnpm workspace. `go/github` renders structured reviews and pull request guides as GitHub Markdown. It imports mandatum's GitHub connector types and is consumed by collegium. Presentation only: no API calls.
 

@@ -68,6 +68,8 @@ export function Checkboxes({ name, options, selected }: PrimitiveProps["Checkbox
   };
   const labelId = useId();
   const all = enabledIds.length > 0 && enabledIds.every((id) => current.includes(id));
+  // Same as Slack: with nothing that can be ticked, there is no group to show.
+  if (enabledIds.length === 0) return null;
 
   return (
     <fieldset

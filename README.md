@@ -126,11 +126,15 @@ Wrap shared components in `WebSurface`. Clicks arrive as the same `UiAction` tha
 2. Run each `streamUpdate(prev, next)` result through `streamPages`, and send it with `chat.appendStream`.
 3. Finish with `chat.stopStream`, using `renderToSlack(<TurnView streamed />)` for the final blocks.
 
-A turn that outgrows one message continues in the next. `streamPages` returns one entry per message: for each entry after the first, append `streamTrailer()`, stop the stream, and start a new one with `streamHeader(turn, { page })`. Code fences and tables are carried across the cut. `pages` does the same for blocks: `pages[0]` is `blocks`, and the rest are follow-up messages. See `apps/slack-sandbox/src/run.tsx`.
+A turn that outgrows one message continues in the next. `streamPages` returns one entry per message: for each entry after the first, append `streamTrailer()`, stop the stream, and start a new one with `streamHeader(turn, { page })`. Code fences and tables are carried across the cut. `pages` does the same for blocks: `pages[0]` is `blocks`, and the rest are follow-up messages.
+
+`@vultus/slack-host` does all of this for a host: `new TurnStream(slack, target, options)` keeps one live turn in step with Slack through `update(turn)` and `finish(turn)` (reactions, session status, native streaming with a post-and-edit fallback, overflow), `streamTurn` drives it from a list of events, and `slackClient(token)` is the Web API client it expects. The sandbox and every Slack app built on vultus share it.
 
 `TurnView` closes every message the same way, in every outcome including failures: the references, one context line holding only the session address (`turn.sessionUrl`, or the source's page when there is no session) as a plain link, then the disclaimer, which names the agent ("Assistant is AI…") unless `turn.disclaimer` replaces it. Neither appears at the top, and a long answer carries them on its last message only. `streamHeader` only labels continuation messages ("Part 2").
 
 `lifecycle(turn)` returns the reaction for the user's message and the agent session status. `decodeSlackAction` turns any `block_actions` payload back into a `UiAction`.
+
+Some clicks need words or a number a button can't carry. The host opens a form on the click's `trigger_id` and decodes the submission into the same `UiAction` the web sends: `feedbackModal` and `decodeFeedbackModal` for a rating's comment, `askForm` and `decodeAskForm` for a question (the shortcut, `ENTRY.form`), and `amountModal` and `decodeAmountModal` for an `Amount` such as Raise Limit. `ENTRY` holds the shortcut, command and form ids a manifest declares.
 
 ### Sandbox
 
@@ -147,7 +151,7 @@ See [apps/slack-sandbox/README.md](apps/slack-sandbox/README.md) for setup.
 
 ## Architecture
 
-`core` (model, events, queue, session, inbox) feeds `components` (shared, primitives only). The primitives are implemented by `render-web` (DOM) and by `render-slack` (Block Kit). `web` holds the components that only exist on the web.
+`core` (model, events, queue, session, inbox) feeds `components` (shared, primitives only). The primitives are implemented by `render-web` (DOM) and by `render-slack` (Block Kit). `web` holds the components that only exist on the web, and `slack-host` the Slack host loop.
 
 See [docs/surfaces.md](docs/surfaces.md) for every concept mapped to both surfaces, and for the open questions.
 

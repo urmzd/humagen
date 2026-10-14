@@ -1,6 +1,7 @@
 import { type ActionHandler, ActionId, type ActionPayload } from "@vultus/core";
 import type { ButtonProps, ConfirmSpec, PrimitiveProps } from "@vultus/primitives";
 import {
+  Children,
   createContext,
   useContext,
   useEffect,
@@ -245,6 +246,8 @@ export function Actions({ children, blockId }: PrimitiveProps["Actions"]) {
   };
 
   if (kind && suppressed.has(`block:${kind}`)) return null;
+  // Same as Slack: a row with nothing in it is left out.
+  if (Children.toArray(children).length === 0) return null;
   return (
     <fieldset
       ref={row}

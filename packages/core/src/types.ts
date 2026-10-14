@@ -377,6 +377,12 @@ export interface Turn {
   /** Set while or after a stop is in flight. */
   stop?: StopState;
   activity?: AgentActivity;
+  /**
+   * The live output was closed while the run keeps going (a run quiet for a
+   * long time): the host still follows it and shows the end when it comes.
+   * Surfaces say so in words and show no motion, since nothing is happening to show.
+   */
+  detached?: boolean;
   usage?: Usage;
   handoff?: Handoff;
   /** Wall time so far; a finished plan is titled with it ("Worked for 12s"). */

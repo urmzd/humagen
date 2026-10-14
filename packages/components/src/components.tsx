@@ -10,6 +10,7 @@ import {
   contextPressure,
   type Failure,
   type Field,
+  formatAmount,
   formatTokens,
   type InboxItem,
   type Interrupt,
@@ -22,7 +23,9 @@ import {
   timeToken,
 } from "@vultus/core";
 import {
+  type ActionRef,
   Actions,
+  Amount,
   Button,
   Callout,
   Checkboxes,
@@ -37,6 +40,8 @@ import {
   Menu,
   Only,
   Plan,
+  Request,
+  Row,
   Sources,
   Summary,
   Task,
@@ -49,6 +54,17 @@ import { type Copy, defaultCopy } from "./copy";
 
 interface WithCopy {
   copy?: Copy;
+}
+
+/**
+ * What the host can act on, so a surface never offers a control that leads
+ * nowhere. Leave a key out (or true) to offer it; false hides it on every surface.
+ */
+export interface TurnCapabilities {
+  /** Rating the answer (Helpful / Not helpful) and commenting on it. */
+  feedback?: boolean;
+  /** Report Issue on an internal failure. */
+  report?: boolean;
 }
 
 /** Fallback preview when a tool supplies none: scalar args as fields, never a JSON dump. */
@@ -368,8 +384,14 @@ export function failureTitle(failure: Failure, copy: Copy = defaultCopy): string
 export function FailureAlert({
   turnId,
   failure,
+  report = true,
   copy = defaultCopy,
-}: { turnId: string; failure: Failure } & WithCopy) {
+}: {
+  turnId: string;
+  failure: Failure;
+  /** Offer Report Issue. False when the host has nowhere to send a report. */
+  report?: boolean;
+} & WithCopy) {
   const lines = [failure.message];
   if (failure.retryAfterSeconds) lines.push(copy.retryIn(failure.retryAfterSeconds));
   const payload = { turnId, target: failure.kind };
@@ -384,7 +406,10 @@ export function FailureAlert({
               { label: copy.report, id: ActionId.report },
             ]
           : [{ label: copy.retry, id: ActionId.retry }];
-  const offered = isRetryable(failure) ? actions : actions.filter((a) => a.id !== ActionId.retry);
+  const offered = actions.filter(
+    (a) =>
+      (a.id !== ActionId.retry || isRetryable(failure)) && (a.id !== ActionId.report || report),
+  );
   return (
     <>
       <Callout
@@ -542,8 +567,11 @@ export function TurnView({
   copy = defaultCopy,
   streamed = false,
   viewer,
+  capabilities,
 }: {
   turn: Turn;
+  /** What the host can act on. Controls it can't act on are left out. */
+  capabilities?: TurnCapabilities;
   /** Who is looking, for approval gating. */
   viewer?: string;
   /**
@@ -581,7 +609,7 @@ export function TurnView({
       {!streamed && turn.text && (
         <Markdown
           text={linkCitations(turn.text, turn.citations)}
-          streaming={turn.status === "working"}
+          streaming={turn.status === "working" && !turn.detached}
         />
       )}
       {turn.attachments?.map((a) => (
@@ -621,8 +649,16 @@ export function TurnView({
       {turn.notices.map((n) => (
         <NoticeView key={n.id} notice={n} copy={copy} />
       ))}
+      {turn.detached && (turn.status === "working" || turn.status === "queued") && (
+        <Context items={[copy.stillWorking(turn.agent.name)]} />
+      )}
       {turn.status === "failed" && turn.failure && (
-        <FailureAlert turnId={turn.id} failure={turn.failure} copy={copy} />
+        <FailureAlert
+          turnId={turn.id}
+          failure={turn.failure}
+          report={capabilities?.report !== false}
+          copy={copy}
+        />
       )}
       {turn.status === "stopped" && <Text text={copy.stopped} />}
       {turn.status === "stopped" && turn.stop && <Context items={[copy.stopPhase[turn.stop]]} />}
@@ -634,12 +670,12 @@ export function TurnView({
           />
         </Actions>
       )}
-      {final && (
+      {final && capabilities?.feedback !== false && (
         <Feedback
           up={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "up" } }}
           down={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "down" } }}
           selected={turn.feedback}
-          labels={{ up: copy.helpful, down: copy.notHelpful }}
+          labels={{ up: copy.helpful, down: copy.notHelpful, rated: copy.rated }}
           prompt={copy.feedbackPrompt}
           blockId={`feedback:${turn.id}`}
         />
@@ -653,6 +689,80 @@ export function TurnView({
       {session}
       {disclaimer && turn.status !== "queued" && <Context items={[disclaimer]} />}
     </>
+  );
+}
+
+/**
+ * What a person asked, in their own words. The web draws it as their chat
+ * bubble; on Slack it is the message a turn's thread hangs from (post it,
+ * then answer in its thread). `by` is a name, or on Slack a mention (`<@U123>`).
+ */
+export function RequestView({ by, text }: { by: string; text: string }) {
+  return <Request by={by} text={text} />;
+}
+
+/**
+ * The agents a person can ask, the same list the web's agent menu shows:
+ * each one's handle and what it is for. Slack sends it for `/agent help`.
+ */
+export function AgentList({
+  agents,
+  copy = defaultCopy,
+}: { agents: { name: string; description?: string }[] } & WithCopy) {
+  if (agents.length === 0) {
+    return (
+      <>
+        <Summary text={copy.agentList.empty} />
+        <Text text={copy.agentList.empty} />
+      </>
+    );
+  }
+  return (
+    <>
+      <Summary text={copy.agentList.title} />
+      <Text text={`**${copy.agentList.title}**`} />
+      {agents.map((a) => (
+        <Row
+          key={a.name}
+          text={`\`${copy.agentList.handle(a.name)}\``}
+          detail={a.description || copy.agentList.noDescription}
+        />
+      ))}
+      <Context items={[copy.agentList.hint]} />
+    </>
+  );
+}
+
+/**
+ * Raise a limit to an amount the reader types, in the meter's unit. Sends
+ * `ActionId.raiseBudget` (the `action` given) with the new limit as `option`.
+ * The web draws a number field; Slack a button whose click opens `amountModal`.
+ */
+export function RaiseLimit({
+  unit,
+  limit,
+  max,
+  action,
+  copy = defaultCopy,
+}: {
+  /** The meter's unit: "usd" for money, otherwise what is counted ("runs"). */
+  unit: string;
+  /** The limit in force. The new one must be more. */
+  limit: number;
+  /** The most it may be raised to. */
+  max?: number;
+  /** Usually `partAction(message, part, ActionId.raiseBudget)`. */
+  action: ActionRef;
+} & WithCopy) {
+  return (
+    <Amount
+      label={copy.newLimit}
+      unit={unit}
+      above={limit}
+      {...(max !== undefined ? { max } : {})}
+      hint={copy.moreThan(formatAmount(limit, unit))}
+      submit={{ label: copy.raiseLimit, action }}
+    />
   );
 }
 

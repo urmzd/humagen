@@ -41,9 +41,15 @@ importers:
       '@vultus/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@vultus/primitives':
+        specifier: workspace:*
+        version: link:../../packages/primitives
       '@vultus/render-slack':
         specifier: workspace:*
         version: link:../../packages/render-slack
+      '@vultus/slack-host':
+        specifier: workspace:*
+        version: link:../../packages/slack-host
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -129,6 +135,9 @@ importers:
 
   packages/render-slack:
     dependencies:
+      '@vultus/components':
+        specifier: workspace:*
+        version: link:../components
       '@vultus/core':
         specifier: workspace:*
         version: link:../core
@@ -145,9 +154,6 @@ importers:
       '@types/react-reconciler':
         specifier: ^0.33.1
         version: 0.33.1(@types/react@19.3.0)
-      '@vultus/components':
-        specifier: workspace:*
-        version: link:../components
 
   packages/render-web:
     dependencies:
@@ -169,6 +175,21 @@ importers:
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
+
+  packages/slack-host:
+    dependencies:
+      '@vultus/components':
+        specifier: workspace:*
+        version: link:../components
+      '@vultus/core':
+        specifier: workspace:*
+        version: link:../core
+      '@vultus/render-slack':
+        specifier: workspace:*
+        version: link:../render-slack
+      react:
+        specifier: ^19
+        version: 19.3.0
 
   packages/web:
     dependencies:

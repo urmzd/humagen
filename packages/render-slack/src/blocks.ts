@@ -1,6 +1,7 @@
+import { defaultCopy } from "@vultus/components";
 import { type Citation, encodeAction, formatBytes, type Tone } from "@vultus/core";
 import type { PrimitiveName, PrimitiveProps, TaskProps } from "@vultus/primitives";
-import { toMrkdwn, toPlain } from "./mrkdwn";
+import { escapeSlackText, isMention, plainName, toMrkdwn, toPlain } from "./mrkdwn";
 import type { HostChild, HostNode } from "./reconciler";
 import { nextBreak } from "./split";
 import { slackTaskNote, slackTaskStatus } from "./status";
@@ -35,6 +36,14 @@ export const LIMITS = {
   optionText: 75,
   optionValue: 150,
 } as const;
+
+export interface SerializeOptions {
+  /**
+   * The host opens `amountModal` when an `Amount` button is clicked. Without
+   * it an `Amount` renders nothing on Slack, since its button would lead nowhere.
+   */
+  amountForm?: boolean;
+}
 
 export interface SerializeResult {
   /** The first message. Complete on its own unless `pages` has more than one entry. */
@@ -78,7 +87,10 @@ class Serializer {
   /** Accessories each sit in their own block; number them across the layout so no two match. */
   accessories = 0;
 
-  constructor(readonly placement: Placement) {}
+  constructor(
+    readonly placement: Placement,
+    readonly options: SerializeOptions = {},
+  ) {}
 
   clip(text: string, max: number, what: string): string {
     if (text.length <= max) return text;
@@ -130,8 +142,10 @@ class Serializer {
   }
 
   citationLine(c: Citation, n: number): string {
-    const title = c.url ? `<${c.url}|${c.title}>` : c.title;
-    return `[${n}] ${title}${c.source ? ` · ${c.source}` : ""}`;
+    // Titles and sources come from documents: escaped, so a title can't ping or end the link.
+    const name = escapeSlackText(c.title);
+    const title = c.url ? `<${escapeSlackText(c.url).replaceAll("|", "%7C")}|${name}>` : name;
+    return `[${n}] ${title}${c.source ? ` · ${escapeSlackText(c.source)}` : ""}`;
   }
 
   node(node: HostNode) {
@@ -184,6 +198,10 @@ class Serializer {
         return this.prompt(node);
       case "Tiles":
         return this.tiles(p);
+      case "Amount":
+        return this.amount(p);
+      case "Request":
+        return this.request(p);
       case "Summary":
         // First summary wins: the outermost component states the point.
         this.summary ??= toPlain((p as PrimitiveProps["Summary"]).text);
@@ -270,7 +288,7 @@ class Serializer {
       `*${state}*`,
       exitCode !== undefined ? `exit ${exitCode}` : null,
       durationMs !== undefined ? `${(durationMs / 1000).toFixed(1)}s` : null,
-      cwd ? `\`${cwd}\`` : null,
+      cwd ? `\`${escapeSlackText(cwd)}\`` : null,
     ].filter(Boolean);
     this.fallback.push(`$ ${command} (${state.toLowerCase()})`);
     this.blocks.push({
@@ -299,6 +317,8 @@ class Serializer {
     });
     const enabled = options.filter((o) => !o.disabled).slice(0, 10);
     if (options.length > 10) this.warnings.push(`${options.length} checkboxes; Slack shows 10`);
+    // Nothing to tick: Slack refuses a checkboxes element with no options.
+    if (enabled.length === 0) return;
     const initial = enabled.filter((o) => selected.includes(o.id)).map(option);
     this.blocks.push({
       type: "actions",
@@ -394,7 +414,10 @@ class Serializer {
 
   code({ text, title }: PrimitiveProps["Code"]) {
     if (title) {
-      this.blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `\`${title}\`` }] });
+      this.blocks.push({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: `\`${escapeSlackText(title)}\`` }],
+      });
     }
     this.blocks.push(this.preformatted(text));
   }
@@ -460,15 +483,18 @@ class Serializer {
       );
     }
     const { blockId } = node.props as { blockId?: string };
+    const elements = [
+      ...buttons
+        .slice(0, LIMITS.actionsElements - menus.length)
+        .map((b, i) => this.button(b.props as unknown as PrimitiveProps["Button"], i)),
+      ...menus.map((m, i) => this.overflow(m.props as unknown as PrimitiveProps["Menu"], i)),
+    ];
+    // Slack refuses an actions block with no elements: a row with nothing to offer is left out.
+    if (elements.length === 0) return;
     this.blocks.push({
       type: "actions",
       ...(blockId ? { block_id: this.clip(blockId, LIMITS.blockId, "block_id") } : {}),
-      elements: [
-        ...buttons
-          .slice(0, LIMITS.actionsElements - menus.length)
-          .map((b, i) => this.button(b.props as unknown as PrimitiveProps["Button"], i)),
-        ...menus.map((m, i) => this.overflow(m.props as unknown as PrimitiveProps["Menu"], i)),
-      ],
+      elements,
     });
   }
 
@@ -630,7 +656,40 @@ class Serializer {
     }
   }
 
-  feedback({ up, down, labels, blockId }: PrimitiveProps["Feedback"]) {
+  /**
+   * Slack has no number field in a message: the button asks the host to open
+   * `amountModal`, which collects the number and sends the same action.
+   */
+  amount({ label, hint, submit }: PrimitiveProps["Amount"]) {
+    if (!this.options.amountForm) return;
+    const button: HostNode = {
+      type: "aui:Button",
+      props: {
+        label: submit.label,
+        action: submit.action,
+        ...(submit.style ? { style: submit.style } : {}),
+      },
+      children: [],
+    };
+    const text = [`**${label}**`, hint].filter(Boolean).join("\n");
+    this.blocks.push(this.section(text, { type: "aui:Amount", props: {}, children: [button] }));
+  }
+
+  /** What a person asked, as the message a thread hangs from: who, then their words. */
+  request({ by, text }: PrimitiveProps["Request"]) {
+    // The fallback text is escaped once, with all the rest, in finish().
+    const who = isMention(by) ? by : `*${plainName(by)}*`;
+    this.fallback.push(`${by}: ${text}`);
+    this.blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: this.clip(`${who}: ${escapeSlackText(text)}`, LIMITS.sectionText, "request"),
+      },
+    });
+  }
+
+  feedback({ up, down, selected, labels, blockId }: PrimitiveProps["Feedback"]) {
     this.blocks.push({
       type: "context_actions",
       ...(blockId ? { block_id: this.clip(blockId, LIMITS.blockId, "block_id") } : {}),
@@ -649,6 +708,11 @@ class Serializer {
         },
       ],
     });
+    // The buttons keep no pressed state, so a rating already given is said in words.
+    if (selected) {
+      const said = labels?.rated?.[selected] ?? defaultCopy.rated[selected];
+      this.blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: toMrkdwn(said) }] });
+    }
   }
 
   table({ columns, rows }: PrimitiveProps["Table"]) {
@@ -718,7 +782,8 @@ class Serializer {
         },
       ];
     }
-    const text = (this.summary ?? this.fallback.join("\n\n")).trim();
+    // Slack parses fallback text like mrkdwn: escaped, so nothing in it can ping or link.
+    const text = escapeSlackText((this.summary ?? this.fallback.join("\n\n")).trim());
     return {
       blocks,
       pages: pages ?? [blocks],
@@ -733,8 +798,12 @@ function flatten(children: HostChild[]): HostNode[] {
   return children.flatMap((c) => (c.type === "#text" ? [] : [c as HostNode]));
 }
 
-export function serialize(tree: HostChild[], placement: Placement): SerializeResult {
-  const s = new Serializer(placement);
+export function serialize(
+  tree: HostChild[],
+  placement: Placement,
+  options: SerializeOptions = {},
+): SerializeResult {
+  const s = new Serializer(placement, options);
   for (const child of tree) {
     if (child.type === "#text") {
       s.warnings.push("bare text outside a primitive dropped; wrap it in <Text>");

@@ -1290,6 +1290,23 @@ export const mailMessages: InboxMessage[] = sortMessages([
     ],
   },
   {
+    id: "m-limit",
+    subject: "Support triage reached its monthly spend limit",
+    from: { kind: "rule", name: "Spend limit" },
+    at: "2026-10-08T13:20:00Z",
+    severity: "warn",
+    source: { kind: "policy", label: "Triage spend", url: "https://example.com/policies/triage" },
+    parts: [
+      {
+        type: "budget",
+        id: "spend",
+        meter: { used: 250, limit: 250, unit: "usd", period: "month" },
+        // The platform names no amounts: the reader types one, or only acknowledges it.
+        allowed: [ActionId.raiseBudget, ActionId.acknowledge],
+      },
+    ],
+  },
+  {
     id: "m-alert",
     subject: "5xx rate above 2% on payments-api",
     from: { kind: "rule", name: "Error rate watch" },
@@ -1372,6 +1389,23 @@ export const mailMessages: InboxMessage[] = sortMessages([
     ],
   },
 ]);
+
+/** What a person asked, in their own words: the web's bubble, Slack's thread root. */
+export const request = { by: "Dana", text: "Why is payments-api returning 5xx since 14:52?" };
+
+/** The agents a person can ask, as `/agent help` and the web's agent menu list them. */
+export const agentList: { name: string; description?: string }[] = [
+  { name: "oncall", description: "Investigates alerts and incidents, and proposes fixes." },
+  { name: "author", description: "Builds and changes agents. You approve every change." },
+  { name: "researcher", description: "Searches docs and the wiki, and cites what it used." },
+  { name: "scratch" },
+];
+
+/** A run still going after its live output was closed: followed quietly, shown without motion. */
+export const quietTurn: Turn = { ...streamingTurn, id: "turn-quiet", detached: true };
+
+/** A finished turn the reader already rated. */
+export const ratedTurn: Turn = { ...doneTurn, id: "turn-rated", feedback: "up" };
 
 /** The older item list, read as messages: what `inboxFromTurns` producers get for free. */
 export const mailFromItems: InboxMessage[] = inboxItems.map((item) => messageFromItem(item));

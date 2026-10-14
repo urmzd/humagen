@@ -11,6 +11,7 @@ import {
 } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Amount } from "./amount";
 import { ActionContext, Actions, Button, buttonClass, Menu } from "./buttons";
 import { CitationChip, Favicon, hostOf, useRegisterCitations } from "./citations";
 import { CodeBlock, Terminal } from "./code";
@@ -27,6 +28,7 @@ import {
   InfoIcon,
 } from "./icons";
 import { SuppressContext, timeLeft, useNow, useTurnMeta } from "./meta";
+import { RequestBubble } from "./request";
 
 export { SuppressContext } from "./meta";
 
@@ -624,4 +626,6 @@ export const webImpls: PrimitiveImpls = {
   Row,
   Prompt,
   Tiles,
+  Amount,
+  Request: RequestBubble,
 };

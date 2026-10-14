@@ -73,3 +73,18 @@ export const Internal: Story = {
   args: { failure: fx.failures.internal },
   parameters: slack("failures.internal"),
 };
+
+export const InternalNoReport: Story = {
+  name: "Internal, host has nowhere to report",
+  args: { failure: fx.failures.internal },
+  render: ({ onAction, failure }) => (
+    <Canvas onAction={onAction}>
+      <FailureAlert turnId="turn-1" failure={failure} report={false} />
+    </Canvas>
+  ),
+  parameters: slack("failedTurn.noReport", "TurnView takes `capabilities={{ report: false }}`"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Report Issue" })).toBeNull();
+  },
+};

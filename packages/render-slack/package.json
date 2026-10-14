@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vultus/components": "workspace:*",
     "@vultus/core": "workspace:*",
     "@vultus/primitives": "workspace:*",
     "react-reconciler": "^0.34.0"
@@ -21,7 +22,6 @@
     "react": "^19"
   },
   "devDependencies": {
-    "@vultus/components": "workspace:*",
     "@types/react-reconciler": "^0.33.1"
   }
 }

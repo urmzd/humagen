@@ -4,9 +4,9 @@ import { AttachmentView } from "@vultus/components";
 import type { Turn } from "@vultus/core";
 import * as fx from "@vultus/core/fixtures";
 import { renderToSlack } from "@vultus/render-slack";
+import { streamTurn } from "@vultus/slack-host";
 import { eventsFor, registry, views } from "./fixtures";
 import { buildManifest, CAPABILITIES, capabilitiesExcept, createAppUrl } from "./manifest";
-import { streamTurn } from "./run";
 import { serve } from "./serve";
 import { readEnv, slackClient, uploadFile, validateBlocks } from "./slack";
 
@@ -52,7 +52,11 @@ async function main() {
     case "validate": {
       let failed = 0;
       for (const p of registry()) {
-        const { pages, warnings } = renderToSlack(p.element, { placement: p.placement });
+        const { pages, warnings } = renderToSlack(p.element, {
+          placement: p.placement,
+          // The sandbox opens amountModal for Raise Limit (see serve.tsx).
+          amountForm: true,
+        });
         // A fixture that continues across messages is only valid if every message is.
         for (const [i, blocks] of pages.entries()) {
           const view =
@@ -96,6 +100,7 @@ async function main() {
         }
         const { blocks, pages, text, warnings } = renderToSlack(p.element, {
           placement: p.placement,
+          amountForm: true,
         });
         if (blocks.length === 0) {
           // Nothing to show is a valid render (a fresh session has no notices), but Slack rejects it.
@@ -147,6 +152,7 @@ async function main() {
           recipientTeam: auth.team_id,
         },
         eventsFor(turn),
+        { log: (line) => console.warn(`  ${line}`) },
       );
       console.log(`streamed → ${final.status}`);
       return;

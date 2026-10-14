@@ -1,18 +1,31 @@
 import { decodeAction, type UiAction } from "@vultus/core";
 import { RendererProvider } from "@vultus/primitives";
 import type { ReactNode } from "react";
-import { type Block, type Placement, type SerializeResult, serialize } from "./blocks";
+import {
+  type Block,
+  type Placement,
+  type SerializeOptions,
+  type SerializeResult,
+  serialize,
+} from "./blocks";
 import { slackImpls } from "./impls";
 import { renderToHostTree } from "./reconciler";
 
-export { type Block, LIMITS, type Placement, type SerializeResult } from "./blocks";
+export {
+  type Block,
+  LIMITS,
+  type Placement,
+  type SerializeOptions,
+  type SerializeResult,
+} from "./blocks";
 export * from "./feedback";
+export * from "./forms";
 export * from "./lifecycle";
-export { plainDate, toMrkdwn, toPlain } from "./mrkdwn";
+export { escapeSlackText, plainDate, toMrkdwn, toPlain } from "./mrkdwn";
 export { breakMarkdown, nextBreak } from "./split";
 export * from "./stream";
 
-export interface RenderOptions {
+export interface RenderOptions extends SerializeOptions {
   /** Where the blocks will be posted. Changes which blocks are legal. Default "message". */
   placement?: Placement;
 }
@@ -29,7 +42,7 @@ export function renderToSlack(element: ReactNode, options: RenderOptions = {}): 
       {element}
     </RendererProvider>,
   );
-  return serialize(tree, placement);
+  return serialize(tree, placement, { amountForm: options.amountForm });
 }
 
 /** A Home tab view, ready for `views.publish` as `{ user_id, view }`. */
@@ -46,9 +59,12 @@ export interface HomeView {
  */
 export function homeView(
   element: ReactNode,
-  options: { privateMetadata?: string; callbackId?: string } = {},
+  options: { privateMetadata?: string; callbackId?: string } & SerializeOptions = {},
 ): HomeView {
-  const { blocks, warnings } = renderToSlack(element, { placement: "home" });
+  const { blocks, warnings } = renderToSlack(element, {
+    placement: "home",
+    amountForm: options.amountForm,
+  });
   if (options.privateMetadata && options.privateMetadata.length > 3000) {
     throw new RangeError("private_metadata is limited to 3000 characters");
   }

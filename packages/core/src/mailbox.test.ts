@@ -11,8 +11,10 @@ import {
   messageState,
   openMessageCount,
   openParts,
+  parseAmount,
   partAction,
   partResolution,
+  raiseAmount,
   resolveMessage,
   sortMessages,
   unreadCount,
@@ -161,9 +163,54 @@ describe("mailbox", () => {
     expect(order.at(-1)).toBe("m-done");
   });
 
+  it("acknowledges a limit, or raises it to a typed amount, when the host allows it", () => {
+    const limit = get("m-limit");
+    const who = { by: "Dana", at: "2026-10-08T15:10:00Z" };
+    const payload = { turnId: limit.id, target: "spend" };
+    const acked = resolveMessage(limit, { id: ActionId.acknowledge, payload }, who);
+    expect(acked.parts[0]).toMatchObject({ resolution: { outcome: "acknowledged", by: "Dana" } });
+    const raised = resolveMessage(
+      limit,
+      { id: ActionId.raiseBudget, payload: { ...payload, option: "400.5" } },
+      who,
+    );
+    expect(raised.parts[0]).toMatchObject({ resolution: { outcome: "raised", detail: "$400.50" } });
+    // Allow This Run isn't in its list, so it does nothing.
+    expect(resolveMessage(limit, { id: ActionId.allowOnce, payload }, who)).toBe(limit);
+  });
+
+  it("raises only to an amount the part can take", () => {
+    const limit = get("m-limit");
+    const who = { by: "Dana", at: "2026-10-08T15:10:00Z" };
+    const raise = (m: InboxMessage, target: string, option: string) =>
+      resolveMessage(
+        m,
+        { id: ActionId.raiseBudget, payload: { turnId: m.id, target, option } },
+        who,
+      );
+    for (const bad of ["250", "100", "abc", "1e3", "-300", "400.555", "Infinity"]) {
+      expect(raise(limit, "spend", bad), bad).toBe(limit);
+    }
+    const capped: InboxMessage = {
+      ...limit,
+      parts: limit.parts.map((p) => (p.type === "budget" ? { ...p, raiseMax: 500 } : p)),
+    };
+    expect(raise(capped, "spend", "501")).toBe(capped);
+    expect(raise(capped, "spend", "500")).not.toBe(capped);
+    // A part that offers amounts takes only those.
+    const offered = get("m-budget");
+    expect(raise(offered, "limit", "80")).toBe(offered);
+    expect(raise(offered, "limit", "75").parts[0]).toMatchObject({
+      resolution: { detail: "$75.00" },
+    });
+    expect(raiseAmount({ meter: { used: 1, limit: 5, unit: "runs" } }, "6.5")).toBeUndefined();
+    expect(parseAmount(" 12.50 ", "usd")).toBe(12.5);
+    expect(parseAmount("0x10", "runs")).toBeUndefined();
+  });
+
   it("counts and filters", () => {
     expect(unreadCount(fx.mailMessages)).toBe(5);
-    expect(openMessageCount(fx.mailMessages)).toBe(10);
+    expect(openMessageCount(fx.mailMessages)).toBe(11);
     expect(filterMessages(fx.mailMessages, { kind: "approval", state: "open" })).toHaveLength(2);
     expect(filterMessages(fx.mailMessages, { state: "resolved" }).map((m) => m.id)).toEqual([
       "m-done",
