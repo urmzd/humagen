@@ -314,6 +314,12 @@
   padding-inline: 0.75rem;
 }
 
+/* Consecutive rows read as one list: a hairline between them, no gap. */
+.aui-stack > [data-aui="row"] + [data-aui="row"] {
+  margin-top: calc(-1 * var(--aui-gap));
+  border-top: 1px solid var(--aui-border);
+}
+
 /* Recovery actions sit inside the callout they recover from. */
 .aui-stack > [data-aui="callout"]:has(+ [data-aui="actions"]) {
   border-bottom-left-radius: 0;

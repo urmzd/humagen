@@ -1,0 +1,816 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`homeView > renders the default Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Collegium.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I run this workspace's agents. Mention *@Collegium* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Build an Agent",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"build"}",
+        },
+        {
+          "action_id": "aui.home.start#2",
+          "text": {
+            "emoji": true,
+            "text": "Search Knowledge",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"search"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Needs you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Review: docs-bot wants to post a reply in #support.",
+        "action_id": "aui.inbox.open#0",
+        "text": {
+          "emoji": true,
+          "text": "Review",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"msg-docs-reply","target":"approval-docs-reply"}",
+      },
+      "text": {
+        "text": "*docs-bot* wants to post a reply in #support.
+Waiting for your approval.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Review: author drafted a change to the triage agent.",
+        "action_id": "aui.inbox.open#1",
+        "text": {
+          "emoji": true,
+          "text": "Review",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"msg-triage-revision","target":"approval-triage-revision"}",
+      },
+      "text": {
+        "text": "*author* drafted a change to the triage agent.
+Approve it to save the new revision.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Who answers you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.answered_by#2",
+        "initial_option": {
+          "text": {
+            "emoji": true,
+            "text": "Whoever fits best",
+            "type": "plain_text",
+          },
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+        },
+        "options": [
+          {
+            "text": {
+              "emoji": true,
+              "text": "Whoever fits best",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "docs-bot",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"docs-bot"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "triage",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"triage"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "author",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"author"}}",
+          },
+        ],
+        "placeholder": {
+          "emoji": true,
+          "text": "In direct messages, send my questions to",
+          "type": "plain_text",
+        },
+        "type": "static_select",
+      },
+      "text": {
+        "text": "In direct messages, send my questions to",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Connections",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*GitHub*
+Connected for this workspace.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Connect Jira",
+        "action_id": "aui.home.connect#3",
+        "text": {
+          "emoji": true,
+          "text": "Connect",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"jira"}",
+      },
+      "text": {
+        "text": "*Jira*
+Not connected.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.connect#4",
+        "text": {
+          "emoji": true,
+          "text": "Connect an Account",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"personal"}",
+      },
+      "text": {
+        "text": "*Your own accounts*
+Agents act as you only where you have connected one.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "Signed in as Ada Lovelace, operator. <https://example.com/console|Open the console> for runs, schedules and access.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;
+
+exports[`homeView > renders the empty Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Collegium.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I run this workspace's agents. Mention *@Collegium* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Build an Agent",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"build"}",
+        },
+        {
+          "action_id": "aui.home.start#2",
+          "text": {
+            "emoji": true,
+            "text": "Search Knowledge",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"search"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Needs you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "elements": [
+        {
+          "text": "Nothing needs you right now.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Who answers you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.answered_by#0",
+        "initial_option": {
+          "text": {
+            "emoji": true,
+            "text": "Whoever fits best",
+            "type": "plain_text",
+          },
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+        },
+        "options": [
+          {
+            "text": {
+              "emoji": true,
+              "text": "Whoever fits best",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "docs-bot",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"docs-bot"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "triage",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"triage"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "author",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"author"}}",
+          },
+        ],
+        "placeholder": {
+          "emoji": true,
+          "text": "In direct messages, send my questions to",
+          "type": "plain_text",
+        },
+        "type": "static_select",
+      },
+      "text": {
+        "text": "In direct messages, send my questions to",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Connections",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*GitHub*
+Connected for this workspace.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Connect Jira",
+        "action_id": "aui.home.connect#1",
+        "text": {
+          "emoji": true,
+          "text": "Connect",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"jira"}",
+      },
+      "text": {
+        "text": "*Jira*
+Not connected.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.connect#2",
+        "text": {
+          "emoji": true,
+          "text": "Connect an Account",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"personal"}",
+      },
+      "text": {
+        "text": "*Your own accounts*
+Agents act as you only where you have connected one.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "Signed in as Ada Lovelace, operator. <https://example.com/console|Open the console> for runs, schedules and access.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;
+
+exports[`homeView > renders the noConnect Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Collegium.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I run this workspace's agents. Mention *@Collegium* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Build an Agent",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"build"}",
+        },
+        {
+          "action_id": "aui.home.start#2",
+          "text": {
+            "emoji": true,
+            "text": "Search Knowledge",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"search"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Needs you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Review: docs-bot wants to post a reply in #support.",
+        "action_id": "aui.inbox.open#0",
+        "text": {
+          "emoji": true,
+          "text": "Review",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"msg-docs-reply","target":"approval-docs-reply"}",
+      },
+      "text": {
+        "text": "*docs-bot* wants to post a reply in #support.
+Waiting for your approval.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Review: author drafted a change to the triage agent.",
+        "action_id": "aui.inbox.open#1",
+        "text": {
+          "emoji": true,
+          "text": "Review",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"msg-triage-revision","target":"approval-triage-revision"}",
+      },
+      "text": {
+        "text": "*author* drafted a change to the triage agent.
+Approve it to save the new revision.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Who answers you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.answered_by#2",
+        "initial_option": {
+          "text": {
+            "emoji": true,
+            "text": "Whoever fits best",
+            "type": "plain_text",
+          },
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+        },
+        "options": [
+          {
+            "text": {
+              "emoji": true,
+              "text": "Whoever fits best",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "docs-bot",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"docs-bot"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "triage",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"triage"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "author",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"author"}}",
+          },
+        ],
+        "placeholder": {
+          "emoji": true,
+          "text": "In direct messages, send my questions to",
+          "type": "plain_text",
+        },
+        "type": "static_select",
+      },
+      "text": {
+        "text": "In direct messages, send my questions to",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Connections",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*GitHub*
+Connected for this workspace.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*Jira*
+Not connected. An admin can add it.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.connect#3",
+        "text": {
+          "emoji": true,
+          "text": "Connect an Account",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"personal"}",
+      },
+      "text": {
+        "text": "*Your own accounts*
+Agents act as you only where you have connected one.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "Signed in as Ada Lovelace, operator. <https://example.com/console|Open the console> for runs, schedules and access.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;
+
+exports[`homeView > renders the noGrants Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Collegium.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I run this workspace's agents. Mention *@Collegium* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Search Knowledge",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"search"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Needs you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "elements": [
+        {
+          "text": "Nothing needs you right now.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Connections",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*GitHub*
+Connected for this workspace.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*Jira*
+Not connected. An admin can add it.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*Your own accounts*
+Agents act as you only where you have connected one.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "Signed in as Ada Lovelace, with no role yet. <https://example.com/console|Open the console> for runs, schedules and access.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;

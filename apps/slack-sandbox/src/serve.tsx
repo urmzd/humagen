@@ -1,11 +1,10 @@
-import { InboxView, SystemAlertView, TurnView } from "@vultus/components";
+import { Home, SystemAlertView, TurnView } from "@vultus/components";
 import {
   ActionId,
   type Approval,
   feedbackEvent,
-  inboxFromTurns,
+  type HomeModel,
   reduce,
-  sortInbox,
   type Turn,
   type TurnEvent,
 } from "@vultus/core";
@@ -15,6 +14,7 @@ import {
   decodeSlackAction,
   FEEDBACK_MODAL,
   feedbackModal,
+  homeView,
   reactionChanges,
   renderToSlack,
   suggestedPrompts,
@@ -30,8 +30,8 @@ import { type SandboxEnv, type SlackClient, SlackError, slackClient } from "./sl
  * say "help"). "status" posts a system alert and resolves it in place.
  *
  * The same turns also start from the shortcuts menu, a message's menu, /agent
- * and a Workflow Builder step (see ENTRY), and the Home tab lists what is
- * waiting on you.
+ * and a Workflow Builder step (see ENTRY), and the Home tab publishes the
+ * `Home` fixture for whoever opens it.
  */
 
 interface Live {
@@ -184,18 +184,79 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
     }
   };
 
+  /** Who answers each person's DMs, as picked on their Home tab. In memory, like everything here. */
+  const answeredBy = new Map<string, string>();
+
+  /** The Home fixture, addressed to whoever opened the tab. */
   const publishHome = async (user: string) => {
-    const waiting = [...live.values()].map((l) => ({
-      turn: l.turn,
-      label: `<#${l.channel}>`,
-    }));
-    const view = renderToSlack(<InboxView items={sortInbox(inboxFromTurns(waiting))} />, {
-      placement: "home",
+    const model: HomeModel = {
+      ...fx.home,
+      person: { ...fx.home.person, id: user },
+      ...(fx.home.answeredBy
+        ? { answeredBy: { ...fx.home.answeredBy, selected: answeredBy.get(user) } }
+        : {}),
+    };
+    const { view, warnings } = homeView(<Home home={model} />);
+    if (warnings.length > 0) console.warn(`  home: ${warnings.join("; ")}`);
+    await slack.call("views.publish", { user_id: user, view });
+  };
+
+  /** A Home click the sandbox has no real flow for: say what a host would do, in a modal. */
+  const explain = (triggerId: string, title: string, text: string) =>
+    slack.call("views.open", {
+      trigger_id: triggerId,
+      view: {
+        type: "modal",
+        title: { type: "plain_text", text: title },
+        close: { type: "plain_text", text: "Close" },
+        blocks: [{ type: "section", text: { type: "mrkdwn", text } }],
+      },
     });
-    await slack.call("views.publish", {
-      user_id: user,
-      view: { type: "home", blocks: view.blocks },
-    });
+
+  /** Home actions arrive from the Home tab, which has no channel to answer in. */
+  const onHomeAction = async (
+    ui: { id: ActionId; payload: { target: string; option?: string; turnId: string } },
+    payload: { user: { id: string }; trigger_id: string },
+  ): Promise<boolean> => {
+    const { id, payload: p } = ui;
+    console.log(`  home ${id} → ${p.target}${p.option ? ` (${p.option})` : ""}`);
+    if (id === ActionId.homeAsk) {
+      await slack.call("views.open", {
+        trigger_id: payload.trigger_id,
+        view: form("Ask Collegium", "What do you need?", { kind: "ask" }),
+      });
+      return true;
+    }
+    if (id === ActionId.homeAnsweredBy) {
+      if (p.option) answeredBy.set(payload.user.id, p.option);
+      await publishHome(payload.user.id);
+      return true;
+    }
+    if (id === ActionId.homeStart) {
+      await explain(
+        payload.trigger_id,
+        "Start",
+        `A host opens the \`${p.target}\` flow here. The sandbox only shows that the click arrived.`,
+      );
+      return true;
+    }
+    if (id === ActionId.homeConnect) {
+      await explain(
+        payload.trigger_id,
+        "Connect",
+        `A host starts the OAuth flow for \`${p.target}\` here. The sandbox doesn't connect anything.`,
+      );
+      return true;
+    }
+    if (id === ActionId.open && !live.has(p.turnId)) {
+      await explain(
+        payload.trigger_id,
+        "Review",
+        `A host opens \`${p.target}\` from message \`${p.turnId}\` here, to approve or answer it.`,
+      );
+      return true;
+    }
+    return false;
   };
 
   const onEvent = async (event: Record<string, string>, teamId: string) => {
@@ -282,6 +343,7 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
 
   const onAction = async (payload: {
     user: { id: string };
+    /** Absent for clicks on the Home tab. */
     channel: { id: string };
     trigger_id: string;
     message?: { ts: string; thread_ts?: string };
@@ -292,6 +354,7 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
     const ui = action ? decodeSlackAction(action, payload.state) : null;
     // Ticking a checkbox is not a decision; the batch buttons read the ticks.
     if (!ui) return;
+    if (await onHomeAction(ui, payload)) return;
     const { id } = ui;
     const { turnId, target, option } = ui.payload;
     const state = live.get(turnId);
@@ -469,7 +532,7 @@ export async function serve(slack: SlackClient, env: SandboxEnv) {
     if (payload.type === "shortcut" && payload.callback_id === ENTRY.ask) {
       await slack.call("views.open", {
         trigger_id: payload.trigger_id,
-        view: form("Ask the agent", "What do you need?", { kind: "ask" }),
+        view: form("Ask Collegium", "What do you need?", { kind: "ask" }),
       });
       return;
     }

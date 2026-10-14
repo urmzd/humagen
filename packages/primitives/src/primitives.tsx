@@ -69,3 +69,7 @@ export const Terminal = primitive("Terminal");
 export const Checkboxes = primitive("Checkboxes");
 export const File = primitive("File");
 export const Menu = primitive("Menu");
+export const Select = primitive("Select");
+export const Row = primitive("Row");
+export const Prompt = primitive("Prompt");
+export const Tiles = primitive("Tiles");

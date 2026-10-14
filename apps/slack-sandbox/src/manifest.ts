@@ -79,7 +79,7 @@ export const CAPABILITIES: Record<string, Capability> = {
     scopes: [],
   },
   home: {
-    why: "Publish what is waiting on the viewer to the App Home tab.",
+    why: "Publish the Home view (greeting, ways to start, what needs you, connections, access) to the App Home tab.",
     methods: ["views.publish"],
     scopes: [],
     events: ["app_home_opened"],
@@ -97,9 +97,26 @@ export const CAPABILITIES: Record<string, Capability> = {
   },
 };
 
+/**
+ * The App Directory's About text. Slack rejects one under 175 characters in
+ * App Settings and caps it at 4000. Plain text: say only what exists.
+ */
+export const LONG_DESCRIPTION = [
+  "Collegium brings your workspace's agents into Slack.",
+  "Mention @Collegium in a channel, or send it a direct message, and the agent that fits the question answers.",
+  "Answers cite the documents they came from.",
+  "Before an agent posts a message, changes something or remembers something, it asks a person first.",
+  "The Home tab shows what needs you, which agent answers your direct messages, and your connections.",
+  "Agents only act as you through accounts you connected yourself.",
+].join(" ");
+
+export const AGENT_DESCRIPTION =
+  "Your workspace's agents in Slack. Mention @Collegium or message it, and the agent that fits answers, with the documents it used. Agents ask a person before they post, change or remember anything.";
+
 export interface ManifestOptions {
   name?: string;
   description?: string;
+  longDescription?: string;
   botName?: string;
   capabilities?: (keyof typeof CAPABILITIES)[];
 }
@@ -140,11 +157,12 @@ export function buildManifest(options: ManifestOptions = {}) {
   return {
     _metadata: { major_version: 2, minor_version: 1 },
     display_information: {
-      name: options.name ?? "vultus sandbox",
+      name: options.name ?? "Collegium",
       description:
         options.description ??
-        "Renders vultus fixtures in real Slack: streaming, approvals, failures.",
-      background_color: "#111111",
+        "Your workspace's agents in Slack. Ask a question, build an agent, or review what one is waiting on.",
+      long_description: options.longDescription ?? LONG_DESCRIPTION,
+      background_color: "#2b50c8",
     },
     features: {
       app_home: {
@@ -152,18 +170,18 @@ export function buildManifest(options: ManifestOptions = {}) {
         messages_tab_enabled: true,
         messages_tab_read_only_enabled: false,
       },
-      bot_user: { display_name: options.botName ?? "vultus-sandbox", always_online: true },
+      bot_user: { display_name: options.botName ?? "collegium", always_online: true },
       ...(has("shortcuts")
         ? {
             shortcuts: [
               {
-                name: "Ask the agent",
+                name: "Ask Collegium",
                 type: "global",
                 callback_id: ENTRY.ask,
                 description: "Ask from anywhere. The answer arrives in the app's messages.",
               },
               {
-                name: "Ask agent about this",
+                name: "Ask Collegium about this",
                 type: "message",
                 callback_id: ENTRY.askAbout,
                 description: "Answer in this message's thread, using the message as the question.",
@@ -172,7 +190,7 @@ export function buildManifest(options: ManifestOptions = {}) {
             slash_commands: [
               {
                 command: ENTRY.command,
-                description: "Ask the agent in this channel",
+                description: "Ask Collegium in this channel",
                 usage_hint: "[question] or help",
                 should_escape: false,
               },
@@ -180,10 +198,7 @@ export function buildManifest(options: ManifestOptions = {}) {
           }
         : {}),
       // Prompts are set at runtime (setSuggestedPrompts); static ones here would block that.
-      agent_view: {
-        agent_description:
-          "Test bench for vultus. Ask anything to see streaming, plans, approvals, and failures rendered by the real Slack client.",
-      },
+      agent_view: { agent_description: AGENT_DESCRIPTION },
     },
     oauth_config: { scopes: { bot: unique(caps.flatMap((c) => c.scopes)) } },
     ...(has("workflowStep")

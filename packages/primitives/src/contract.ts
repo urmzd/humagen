@@ -200,6 +200,60 @@ export interface FeedbackProps {
   blockId?: string;
 }
 
+/**
+ * One choice from a short list, sent the moment it changes. The renderer puts
+ * the chosen option's id in the action's `option`. A Slack `static_select`.
+ */
+export interface SelectProps {
+  label: string;
+  options: { id: string; label: string }[];
+  /** The option shown as chosen. Defaults to the first. */
+  selected?: string;
+  action: ActionRef;
+}
+
+/**
+ * One line item: what it is, an optional muted line under it, and at most one
+ * control at its end (a Button or a Select child). A Slack section with an accessory.
+ */
+export interface RowProps {
+  /** Short formatted text, like Text. */
+  text: string;
+  detail?: string;
+  /** Shown at the end when there is no control: "Connected to acme-corp". */
+  status?: { tone: Tone; text: string };
+  children?: ReactNode;
+  /** Unique within the layout, for hosts that update one row. */
+  blockId?: string;
+}
+
+/**
+ * A free-text question with its send button. The web sends the typed words as
+ * the action's `text`. Slack has nowhere to type outside a modal, so it shows
+ * the button and the host collects the words in a form. Children (a Select, a
+ * Button) sit under the field.
+ */
+export interface PromptProps {
+  label: string;
+  placeholder?: string;
+  submit: { label: string; action: ActionRef };
+  children?: ReactNode;
+}
+
+/** A small grid of places to go, each with a line saying what it is for. */
+export interface TilesProps {
+  label?: string;
+  items: {
+    id: string;
+    label: string;
+    description?: string;
+    /** A count beside the label. */
+    badge?: number;
+    action?: ActionRef;
+    url?: string;
+  }[];
+}
+
 export interface TableProps {
   columns: { key: string; label: string; align?: "left" | "center" | "right" }[];
   rows: Record<string, string | number>[];
@@ -226,6 +280,10 @@ export interface PrimitiveProps {
   Checkboxes: CheckboxesProps;
   File: FileProps;
   Menu: MenuProps;
+  Select: SelectProps;
+  Row: RowProps;
+  Prompt: PromptProps;
+  Tiles: TilesProps;
 }
 
 export type PrimitiveName = keyof PrimitiveProps;

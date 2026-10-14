@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildManifest, CAPABILITIES, capabilitiesExcept } from "./manifest";
+import { buildManifest, CAPABILITIES, capabilitiesExcept, ENTRY } from "./manifest";
 
 const all = Object.keys(CAPABILITIES);
 
@@ -47,5 +47,42 @@ describe("buildManifest", () => {
 
   it.each(["toString", "constructor", "__proto__", "nope"])("rejects the capability %s", (name) => {
     expect(() => buildManifest({ capabilities: [name] })).toThrow(`Unknown capabilities: ${name}`);
+  });
+});
+
+describe("app identity", () => {
+  const manifest = buildManifest({ capabilities: capabilitiesExcept("workflowStep") });
+
+  it("is Collegium, within Slack's limits", () => {
+    const info = manifest.display_information;
+    expect(info.name).toBe("Collegium");
+    expect(info.name.length).toBeLessThanOrEqual(35);
+    expect(info.description.length).toBeLessThanOrEqual(140);
+    // App Settings rejects an About text under 175 characters.
+    expect(info.long_description.length).toBeGreaterThanOrEqual(175);
+    expect(info.long_description.length).toBeLessThanOrEqual(4000);
+    expect(info.background_color).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(manifest.features.agent_view.agent_description.length).toBeLessThanOrEqual(300);
+  });
+
+  it("uses a bot name Slack accepts", () => {
+    expect(manifest.features.bot_user.display_name).toMatch(/^[a-z0-9._-]{1,80}$/);
+  });
+
+  it("renames the shortcuts without changing what they call", () => {
+    const shortcuts = manifest.features.shortcuts ?? [];
+    expect(shortcuts.map((s) => [s.name, s.callback_id])).toEqual([
+      ["Ask Collegium", ENTRY.ask],
+      ["Ask Collegium about this", ENTRY.askAbout],
+    ]);
+    expect(manifest.features.slash_commands?.[0]).toMatchObject({
+      command: "/agent",
+      description: "Ask Collegium in this channel",
+    });
+  });
+
+  it("enables the Home tab and listens for it opening", () => {
+    expect(manifest.features.app_home.home_tab_enabled).toBe(true);
+    expect(manifest.settings.event_subscriptions.bot_events).toContain("app_home_opened");
   });
 });

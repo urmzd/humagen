@@ -191,6 +191,86 @@ export const defaultCopy = {
     forbidden: () => "Not allowed",
     internal: () => "Something broke on my end",
   },
+  home: {
+    greeting: (first: string, assistant: string) => `Hi ${first}, I'm ${assistant}.`,
+    /** Follows the host's intro: how to reach the assistant from here. */
+    reachWeb: "Ask me something and I'll hand it to the right one, or pick where to start below.",
+    reachSlack: (handle: string) =>
+      `Mention **@${handle}** in a channel, send me a message, or start from here.`,
+    askLabel: "What should we work on?",
+    askPlaceholder: "Ask anything",
+    ask: "Ask",
+    attach: "Attach a File",
+    answeredBy: "Answered by",
+    anyAgent: "Whoever fits best",
+    startHere: "Start here",
+    /** Each way to start. `slack` is its button on the Slack Home tab, where it has one. */
+    starts: {
+      talk: {
+        label: "Talk to an agent",
+        description: "Pick one by name or let the router choose.",
+        slack: "Ask a Question",
+      },
+      build: {
+        label: "Build or change an agent",
+        description: "Describe it. The author drafts it and you approve the change.",
+        slack: "Build an Agent",
+      },
+      search: {
+        label: "Search what agents know",
+        description: "Docs and wiki pages, with the passage each answer came from.",
+        slack: "Search Knowledge",
+      },
+      review: {
+        label: "Review what needs you",
+        description: "Approvals and questions agents are waiting on.",
+      },
+      runs: {
+        label: "See what is running",
+        description: "Runs in flight, what they cost, and how to stop one.",
+      },
+      schedule: {
+        label: "Schedule recurring work",
+        description: "A nightly digest, a weekly review, a check every hour.",
+      },
+    } as Record<string, { label: string; description: string; slack?: string }>,
+    needsYou: "Needs you",
+    nothingWaiting: "Nothing needs you right now.",
+    moreWaiting: (n: number) => `${n} more in the inbox`,
+    review: "Review",
+    whoAnswers: "Who answers you",
+    dmRouting: "In direct messages, send my questions to",
+    connections: "Connections",
+    manageAll: "Manage all",
+    connectedTo: (account: string) => `Connected to ${account}`,
+    connectedHere: "Connected for this workspace.",
+    connected: "Connected",
+    notConnected: "Not connected.",
+    adminCanAdd: "Not connected. An admin can add it.",
+    connect: "Connect",
+    personal: "Your own accounts",
+    personalWeb: "Agents act as you only where you have connected an account. Nothing is shared.",
+    personalSlack: "Agents act as you only where you have connected one.",
+    personalCount: (n: number) => `${n} connected`,
+    connectAccount: "Connect an Account",
+    access: "Your access",
+    /** "You are signed in through X as an **operator**, because you are in the group `eng-oncall`." */
+    signedIn: (via: string | undefined, role: string, group?: string) => {
+      const article = /^[aeiou]/i.test(role) ? "an" : "a";
+      return `You are signed in${via ? ` through ${via}` : ""} as ${article} **${role}**${group ? `, because you are in the group \`${group}\`` : ""}.`;
+    },
+    noRole: (via: string | undefined) =>
+      `You are signed in${via ? ` through ${via}` : ""}, but no rule grants you a role yet. An admin can add one to the access policy.`,
+    allows: (what: string) => `You can ${what}.`,
+    denies: (what: string) => `You cannot ${what}.`,
+    why: "Why can I do this?",
+    whyNot: "Why can't I do more?",
+    policy: "Read the access policy",
+    /** The Slack tab's one line about access. */
+    signedInAs: (name: string, role?: string) =>
+      role ? `Signed in as ${name}, ${role}.` : `Signed in as ${name}, with no role yet.`,
+    openConsole: (url: string) => `[Open the console](${url}) for runs, schedules and access.`,
+  },
 };
 
 export type Copy = typeof defaultCopy;

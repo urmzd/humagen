@@ -31,6 +31,9 @@ export const LIMITS = {
   terminalLines: 40,
   terminalChars: 2500,
   taskText: 256,
+  selectOptions: 100,
+  optionText: 75,
+  optionValue: 150,
 } as const;
 
 export interface SerializeResult {
@@ -72,6 +75,8 @@ class Serializer {
   summary: string | null = null;
   /** Block indexes where a new message must start (the markdown budget ran out). */
   breaks = new Set<number>();
+  /** Accessories each sit in their own block; number them across the layout so no two match. */
+  accessories = 0;
 
   constructor(readonly placement: Placement) {}
 
@@ -171,6 +176,14 @@ class Serializer {
         return this.checkboxes(p);
       case "File":
         return this.file(p);
+      case "Select":
+        return this.blocks.push(this.section((p as PrimitiveProps["Select"]).label, node));
+      case "Row":
+        return this.row(node);
+      case "Prompt":
+        return this.prompt(node);
+      case "Tiles":
+        return this.tiles(p);
       case "Summary":
         // First summary wins: the outermost component states the point.
         this.summary ??= toPlain((p as PrimitiveProps["Summary"]).text);
@@ -482,6 +495,106 @@ class Serializer {
         };
       }),
     };
+  }
+
+  /**
+   * Slack's `static_select` has one action_id, so each option's value carries
+   * the whole action with `option` filled in, like an overflow menu. Decode
+   * with `decodeSlackAction`.
+   */
+  select({ label, options, selected, action }: PrimitiveProps["Select"]): Block {
+    if (options.length > LIMITS.selectOptions) {
+      this.warnings.push(
+        `select has ${options.length} options; Slack shows ${LIMITS.selectOptions}`,
+      );
+    }
+    const option = (o: (typeof options)[number]) => {
+      const value = JSON.stringify({ id: action.id, p: { ...action.payload, option: o.id } });
+      if (value.length > LIMITS.optionValue) {
+        this.warnings.push(`select value for "${o.label}" exceeds ${LIMITS.optionValue} chars`);
+      }
+      return {
+        text: this.plain(o.label, LIMITS.optionText, "option label"),
+        value: value.slice(0, LIMITS.optionValue),
+      };
+    };
+    const shown = options.slice(0, LIMITS.selectOptions);
+    const initial = shown.find((o) => o.id === selected) ?? shown[0];
+    return {
+      type: "static_select",
+      action_id: this.actionId(action.id, this.accessories++),
+      placeholder: this.plain(label, 150, "select placeholder"),
+      options: shown.map(option),
+      ...(initial ? { initial_option: option(initial) } : {}),
+    };
+  }
+
+  /** A section whose accessory is the node's first Button or Select child. */
+  section(text: string, node: HostNode, blockId?: string): Block {
+    this.fallback.push(toPlain(text));
+    const control =
+      node.type === "aui:Select"
+        ? node
+        : flatten(node.children).find((c) => c.type !== "aui:Summary");
+    const accessory =
+      control?.type === "aui:Select"
+        ? this.select(control.props as unknown as PrimitiveProps["Select"])
+        : control?.type === "aui:Button"
+          ? this.button(control.props as unknown as PrimitiveProps["Button"], this.accessories++)
+          : null;
+    if (control && !accessory) this.warnings.push(`${control.type} can't be a section accessory`);
+    return {
+      type: "section",
+      ...(blockId ? { block_id: this.clip(blockId, LIMITS.blockId, "block_id") } : {}),
+      text: this.mrkdwn(text, LIMITS.sectionText, "section text"),
+      ...(accessory ? { accessory } : {}),
+    };
+  }
+
+  row(node: HostNode) {
+    const { text, detail, status, blockId } = node.props as unknown as PrimitiveProps["Row"];
+    const controls = flatten(node.children);
+    if (controls.length > 1)
+      this.warnings.push(`row has ${controls.length} controls; Slack shows 1`);
+    // Slack can't put a status beside the text, so it reads as the last line.
+    const lines = [text, detail, status?.text].filter(Boolean).join("\n");
+    this.blocks.push(this.section(lines, node, blockId));
+  }
+
+  /** Slack can't take typed words outside a modal: the button asks the host to open one. */
+  prompt(node: HostNode) {
+    const { label, submit } = node.props as unknown as PrimitiveProps["Prompt"];
+    const button: HostNode = {
+      type: "aui:Button",
+      props: { label: submit.label, action: submit.action },
+      children: [],
+    };
+    this.blocks.push(this.section(`**${label}**`, { ...node, children: [button] }));
+    for (const child of flatten(node.children)) this.node(child);
+  }
+
+  tiles({ label, items }: PrimitiveProps["Tiles"]) {
+    if (label) this.text({ text: `**${label}**` });
+    for (const item of items) {
+      const head = `**${item.label}**${item.badge !== undefined ? ` (${item.badge})` : ""}`;
+      const open: HostNode = {
+        type: "aui:Button",
+        props: {
+          label: "Open",
+          accessibilityLabel: `Open ${item.label}`,
+          ...(item.action ? { action: item.action } : {}),
+          ...(item.url ? { url: item.url } : {}),
+        },
+        children: [],
+      };
+      this.blocks.push(
+        this.section([head, item.description].filter(Boolean).join("\n"), {
+          type: "aui:Tile",
+          props: {},
+          children: item.action || item.url ? [open] : [],
+        }),
+      );
+    }
   }
 
   plan(node: HostNode) {

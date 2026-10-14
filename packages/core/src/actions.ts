@@ -41,6 +41,17 @@ export const ActionId = {
   discardMemories: "aui.memory.discard",
   allowOnce: "aui.budget.once",
   raiseBudget: "aui.budget.raise",
+  // Home (see home.ts). `turnId` is HOME_ID; Review reuses `open` with the item's ids.
+  /** Ask the assistant from Home. `text` is the question; Slack sends none, so collect it in a form. */
+  homeAsk: "aui.home.ask",
+  /** A way to start. `target` is a HomeStartId. */
+  homeStart: "aui.home.start",
+  /** Attach a file to the next question. */
+  homeAttach: "aui.home.attach",
+  /** Who answers the person's DMs. `option` is the agent id, or ANY_AGENT. */
+  homeAnsweredBy: "aui.home.answered_by",
+  /** Connect an account. `target` is a connection id, or PERSONAL_ACCOUNT. */
+  homeConnect: "aui.home.connect",
 } as const;
 
 export type ActionId = (typeof ActionId)[keyof typeof ActionId];

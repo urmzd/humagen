@@ -3,6 +3,7 @@ import {
   AttachmentView,
   ClarificationCard,
   FailureAlert,
+  Home,
   InboxView,
   MailboxView,
   MessageView,
@@ -62,6 +63,10 @@ export function registry(): Postable[] {
   }
   for (const [key, alert] of Object.entries(fx.systemAlerts)) {
     out.push({ name: `systemAlerts.${key}`, element: <SystemAlertView alert={alert} /> });
+  }
+  // The Home tab, as views.publish sends it: one per fixture variant.
+  for (const [key, model] of Object.entries(fx.homes)) {
+    out.push({ name: `homes.${key}@home`, element: <Home home={model} />, placement: "home" });
   }
   out.push({ name: "inbox@home", element: <InboxView items={fx.inboxItems} />, placement: "home" });
   out.push({

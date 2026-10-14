@@ -1,4 +1,5 @@
 import { ActionId } from "./actions";
+import type { HomeModel } from "./home";
 import { type InboxItem, type SystemAlert, sortInbox } from "./inbox";
 import { type InboxMessage, messageFromItem, sortMessages } from "./mailbox";
 import type { SessionState } from "./session";
@@ -1374,3 +1375,116 @@ export const mailMessages: InboxMessage[] = sortMessages([
 
 /** The older item list, read as messages: what `inboxFromTurns` producers get for free. */
 export const mailFromItems: InboxMessage[] = inboxItems.map((item) => messageFromItem(item));
+
+/**
+ * Home, as Ada sees it: an operator through eng-oncall, with two things waiting
+ * on her, GitHub connected and Jira not. The variants change one thing each.
+ */
+export const home: HomeModel = {
+  person: { id: "U0ADA", name: "Ada Lovelace" },
+  assistant: { name: "Collegium" },
+  intro: "I run this workspace's agents.",
+  ask: { placeholder: "Why did last night's deploy fail?", attach: true },
+  starts: [
+    { id: "talk" },
+    { id: "build" },
+    { id: "search" },
+    { id: "review", count: 2 },
+    { id: "runs" },
+    { id: "schedule" },
+  ],
+  waiting: [
+    {
+      id: "approval-docs-reply",
+      messageId: "msg-docs-reply",
+      from: "docs-bot",
+      summary: "wants to post a reply in #support.",
+      detail: "Waiting for your approval.",
+    },
+    {
+      id: "approval-triage-revision",
+      messageId: "msg-triage-revision",
+      from: "author",
+      summary: "drafted a change to the triage agent.",
+      detail: "Approve it to save the new revision.",
+    },
+  ],
+  answeredBy: {
+    agents: [
+      { id: "docs-bot", name: "docs-bot" },
+      { id: "triage", name: "triage" },
+      { id: "author", name: "author" },
+    ],
+  },
+  connections: [
+    {
+      id: "slack",
+      name: "Slack",
+      description: "Mention an agent in any channel it has been added to.",
+      connected: true,
+      account: "Acme",
+      canConnect: true,
+    },
+    {
+      id: "github",
+      name: "GitHub",
+      description: "Agents answer on issues and review pull requests.",
+      connected: true,
+      account: "acme-corp",
+      canConnect: true,
+    },
+    {
+      id: "jira",
+      name: "Jira",
+      connected: false,
+      canConnect: true,
+    },
+  ],
+  personal: { connected: 0, canConnect: true },
+  connectionsUrl: "https://example.com/console/connections",
+  access: {
+    role: "operator",
+    group: "eng-oncall",
+    via: "your company's identity provider",
+    allows: "run agents and manage schedules",
+    denies: "change what an agent is",
+    explainUrl: "https://example.com/console/access/why",
+    policyUrl: "https://example.com/console/access/policy",
+  },
+  consoleUrl: "https://example.com/console",
+  links: [
+    { label: "Documentation", url: "https://example.com/docs" },
+    { label: "API reference", url: "https://example.com/docs/api" },
+    { label: "Command line", url: "https://example.com/docs/cli" },
+    { label: "Open in Slack", url: "https://slack.com/app_redirect?app=A0C8T98JWJC" },
+  ],
+};
+
+export const homes: Record<"default" | "empty" | "noConnect" | "noGrants", HomeModel> = {
+  default: home,
+  /** Nothing is waiting: the section stays and says so. */
+  empty: {
+    ...home,
+    starts: home.starts.map((s) => (s.id === "review" ? { id: s.id } : s)),
+    waiting: [],
+  },
+  /** A viewer who may not connect workspace accounts: no Connect, and an admin is named instead. */
+  noConnect: {
+    ...home,
+    connections: home.connections.map((c) => ({ ...c, canConnect: false })),
+  },
+  /** Signed in, but no rule grants a role: no choices to make, and the way to get one. */
+  noGrants: {
+    ...home,
+    starts: [{ id: "talk" }, { id: "search" }],
+    waiting: [],
+    answeredBy: undefined,
+    connections: home.connections.map((c) => ({ ...c, canConnect: false })),
+    personal: { connected: 0, canConnect: false },
+    access: {
+      via: home.access.via,
+      explainUrl: home.access.explainUrl,
+      policyUrl: home.access.policyUrl,
+    },
+  },
+};

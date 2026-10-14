@@ -1,5 +1,6 @@
 export * from "./actions";
 export * from "./events";
+export * from "./home";
 export * from "./inbox";
 export * from "./mailbox";
 export * from "./queue";

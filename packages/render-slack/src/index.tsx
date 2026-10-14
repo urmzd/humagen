@@ -1,7 +1,7 @@
 import { decodeAction, type UiAction } from "@vultus/core";
 import { RendererProvider } from "@vultus/primitives";
 import type { ReactNode } from "react";
-import { type Placement, type SerializeResult, serialize } from "./blocks";
+import { type Block, type Placement, type SerializeResult, serialize } from "./blocks";
 import { slackImpls } from "./impls";
 import { renderToHostTree } from "./reconciler";
 
@@ -32,6 +32,37 @@ export function renderToSlack(element: ReactNode, options: RenderOptions = {}): 
   return serialize(tree, placement);
 }
 
+/** A Home tab view, ready for `views.publish` as `{ user_id, view }`. */
+export interface HomeView {
+  view: { type: "home"; blocks: Block[]; private_metadata?: string; callback_id?: string };
+  /** Limits hit and degradations applied. Empty when the output is lossless. */
+  warnings: string[];
+}
+
+/**
+ * Render a layout (usually `<Home home={model} />`) as an App Home tab view.
+ * Home allows 100 blocks and has one page: anything past the limit is
+ * replaced by a note and reported in `warnings`.
+ */
+export function homeView(
+  element: ReactNode,
+  options: { privateMetadata?: string; callbackId?: string } = {},
+): HomeView {
+  const { blocks, warnings } = renderToSlack(element, { placement: "home" });
+  if (options.privateMetadata && options.privateMetadata.length > 3000) {
+    throw new RangeError("private_metadata is limited to 3000 characters");
+  }
+  return {
+    view: {
+      type: "home",
+      blocks,
+      ...(options.privateMetadata ? { private_metadata: options.privateMetadata } : {}),
+      ...(options.callbackId ? { callback_id: options.callbackId } : {}),
+    },
+    warnings,
+  };
+}
+
 /** Slack sends action_id back as "<base>#<index>"; recover the shared vultus ActionId. */
 export function actionIdBase(actionId: string): string {
   const i = actionId.lastIndexOf("#");
@@ -40,7 +71,7 @@ export function actionIdBase(actionId: string): string {
 
 /**
  * Decode any vultus interaction from a Slack block_actions payload: buttons
- * carry the payload in `value`; overflow menus in `selected_option.value`;
+ * carry the payload in `value`; overflow and select menus in `selected_option.value`;
  * checkbox groups contribute `selection` from state.values.
  */
 export function decodeSlackAction(

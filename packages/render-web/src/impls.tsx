@@ -1,9 +1,17 @@
 import { TIME_TOKEN, type Tone } from "@vultus/core";
 import type { PrimitiveImpls, PrimitiveProps } from "@vultus/primitives";
-import { Children, isValidElement, type ReactNode, useContext, useEffect, useState } from "react";
+import {
+  Children,
+  isValidElement,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useId,
+  useState,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Actions, Button, Menu } from "./buttons";
+import { ActionContext, Actions, Button, buttonClass, Menu } from "./buttons";
 import { CitationChip, Favicon, hostOf, useRegisterCitations } from "./citations";
 import { CodeBlock, Terminal } from "./code";
 import { Feedback } from "./feedback";
@@ -362,6 +370,165 @@ function Table({ columns, rows }: PrimitiveProps["Table"]) {
   );
 }
 
+const toneDot: Record<Tone, string> = {
+  ok: "bg-aui-ok",
+  warn: "bg-aui-warn",
+  bad: "bg-aui-bad",
+  info: "bg-aui-info",
+  neutral: "bg-aui-muted",
+};
+
+/** A native select: it fires on change, with the chosen id as `option`. */
+function Select({ label, options, selected, action }: PrimitiveProps["Select"]) {
+  const onAction = useContext(ActionContext);
+  const [value, setValue] = useState(selected ?? options[0]?.id ?? "");
+  const id = useId();
+  return (
+    <span data-aui="select" className="inline-flex min-w-0 items-center gap-1.5 text-aui-xs">
+      <label htmlFor={id} className="text-aui-muted">
+        {label}
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value);
+          onAction({ id: action.id, payload: { ...action.payload, option: e.target.value } });
+        }}
+        className="h-7 min-w-0 rounded-aui border border-aui-border bg-aui-surface px-1.5 font-medium text-aui-fg text-aui-xs outline-none hover:bg-aui-hover focus-visible:ring-2 focus-visible:ring-aui-accent"
+      >
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
+function Row({ text, detail, status, children }: PrimitiveProps["Row"]) {
+  return (
+    <div data-aui="row" className="flex min-w-0 items-center gap-3 py-2">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <p className="text-aui-fg text-aui-sm [&_a]:underline [&_strong]:font-semibold">
+          <Inline text={text} />
+        </p>
+        {detail && (
+          <p className="text-aui-muted text-aui-xs">
+            <Inline text={detail} />
+          </p>
+        )}
+      </div>
+      {Children.toArray(children).length > 0
+        ? children
+        : status && (
+            <span className="inline-flex shrink-0 items-center gap-1.5 text-aui-muted text-aui-xs">
+              <span aria-hidden className={`size-1.5 rounded-full ${toneDot[status.tone]}`} />
+              {status.text}
+            </span>
+          )}
+    </div>
+  );
+}
+
+/** The ask box: Enter or the button sends the words as the action's `text`. */
+function Prompt({ label, placeholder, submit, children }: PrimitiveProps["Prompt"]) {
+  const onAction = useContext(ActionContext);
+  const [value, setValue] = useState("");
+  const id = useId();
+  const send = () => {
+    const text = value.trim();
+    if (!text) return;
+    onAction({ id: submit.action.id, payload: { ...submit.action.payload, text } });
+    setValue("");
+  };
+  return (
+    <form
+      data-aui="prompt"
+      onSubmit={(e) => {
+        e.preventDefault();
+        send();
+      }}
+      className="flex flex-col gap-2 rounded-aui-lg border border-aui-border bg-aui-surface p-3 shadow-aui-sm focus-within:border-aui-accent/60"
+    >
+      <label htmlFor={id} className="font-medium text-aui-fg text-aui-sm">
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          id={id}
+          type="text"
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => setValue(e.target.value)}
+          className="h-8 min-w-0 flex-1 bg-transparent text-aui-base outline-none placeholder:text-aui-muted"
+        />
+        <button type="submit" disabled={!value.trim()} className={buttonClass("primary")}>
+          {submit.label}
+        </button>
+      </div>
+      {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
+    </form>
+  );
+}
+
+function Tiles({ label, items }: PrimitiveProps["Tiles"]) {
+  const onAction = useContext(ActionContext);
+  const labelId = useId();
+  const cls =
+    "flex min-w-0 flex-col gap-0.5 rounded-aui border border-aui-border bg-aui-surface px-3 py-2.5 text-left transition-colors hover:border-aui-accent/60 hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent";
+  return (
+    <section
+      data-aui="tiles"
+      aria-labelledby={label ? labelId : undefined}
+      className="flex flex-col gap-2"
+    >
+      {label && (
+        <h4 id={labelId} className="font-semibold text-aui-fg text-aui-sm">
+          {label}
+        </h4>
+      )}
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((item) => {
+          const inner = (
+            <>
+              <span className="flex items-center gap-1.5 font-medium text-aui-fg text-aui-sm">
+                {item.label}
+                {item.badge !== undefined && (
+                  <span className="rounded-full bg-aui-accent px-1.5 text-aui-2xs text-aui-accent-fg tabular-nums">
+                    {item.badge}
+                  </span>
+                )}
+              </span>
+              {item.description && (
+                <span className="text-aui-muted text-aui-xs">{item.description}</span>
+              )}
+            </>
+          );
+          return (
+            <li key={item.id} className="flex">
+              {item.url ? (
+                <a href={item.url} className={`${cls} flex-1`}>
+                  {inner}
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  className={`${cls} flex-1`}
+                  onClick={() => item.action && onAction(item.action)}
+                >
+                  {inner}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 export const webImpls: PrimitiveImpls = {
   Header: ({ text }) => (
     <h3 data-aui="header" className="font-semibold text-aui-base text-aui-fg">
@@ -389,4 +556,8 @@ export const webImpls: PrimitiveImpls = {
   Checkboxes,
   File: FileTile,
   Menu,
+  Select,
+  Row,
+  Prompt,
+  Tiles,
 };
