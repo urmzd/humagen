@@ -12,11 +12,13 @@
 </p>
 
 <p align="center">
-  <a href="#status"><img src="https://img.shields.io/badge/status-v0%20alpha-orange" alt="Status: v0 alpha"></a>
-  &nbsp;
   <a href="https://github.com/urmzd/vultus/actions/workflows/ci.yml"><img src="https://github.com/urmzd/vultus/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   &nbsp;
   <a href="LICENSE"><img src="https://img.shields.io/github/license/urmzd/vultus" alt="License"></a>
+</p>
+
+<p align="center">
+  <a href="showcase/agent-turn.png"><img src="showcase/agent-turn.png" alt="Vultus web renderer showing a completed incident investigation, tool results, sources, and feedback controls" width="80%"></a>
 </p>
 
 > ## Status
@@ -47,17 +49,28 @@
 The packages are private and not published yet. Work from the workspace:
 
 ```sh
-git clone git@github.com:urmzd/vultus.git
+git clone https://github.com/urmzd/vultus.git
 cd vultus
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
 ## Quick Start
 
 ```sh
-pnpm storybook           # web components at http://localhost:6006
-pnpm sandbox validate    # check every fixture with Slack's blocks.validate (no token needed)
+pnpm storybook
 ```
+
+Open [Storybook](http://localhost:6006) and select **Agent → Turn states** to inspect completed answers, approvals, failures, and artifacts. The stories use bundled fixtures; starting the web demo requires no Slack account or API keys.
+
+In a second terminal, validate the Slack renderer:
+
+```sh
+pnpm sandbox validate
+```
+
+This checks fixtures against Slack's `blocks.validate` endpoint and requires network access, but no token. Posting messages and running Socket Mode require a Slack test app; follow the [sandbox setup](apps/slack-sandbox/README.md).
+
+The same event model feeds both renderers:
 
 <!-- fsrc src="examples/basic/render.tsx" fence="auto" -->
 ```
@@ -85,6 +98,19 @@ export const Web = () => (
 export const slack = renderToSlack(<TurnView turn={turn} />);
 ```
 <!-- /fsrc -->
+
+## Examples
+
+See [`examples/basic/render.tsx`](examples/basic/render.tsx) for the shared web and Slack rendering example.
+
+The [approval screenshot](showcase/approval.png) shows a turn waiting for a human decision. Recreate both screenshots from the bundled Storybook fixtures with [teasr](https://github.com/urmzd/teasr):
+
+```sh
+# Keep pnpm storybook running in another terminal.
+teasr run
+```
+
+Capture settings live in [`teasr.toml`](teasr.toml).
 
 ## Usage
 

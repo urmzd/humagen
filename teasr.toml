@@ -1,0 +1,32 @@
+# Run `pnpm storybook` before capturing. Uses public demo fixtures only.
+[output]
+dir = "./showcase"
+formats = [{ output_type = "png" }]
+
+[[scenes]]
+type = "web"
+name = "agent-turn"
+uri = "http://localhost:6006/iframe.html?id=agent-turn-states--done&viewMode=story"
+viewport = { width = 1120, height = 560 }
+
+[[scenes.interactions]]
+type = "wait"
+duration = 3000
+
+[[scenes.interactions]]
+type = "snapshot"
+name = "agent-turn"
+
+[[scenes]]
+type = "web"
+name = "approval"
+uri = "http://localhost:6006/iframe.html?id=agent-turn-states--waiting&viewMode=story"
+viewport = { width = 1120, height = 560 }
+
+[[scenes.interactions]]
+type = "wait"
+duration = 3000
+
+[[scenes.interactions]]
+type = "snapshot"
+name = "approval"
