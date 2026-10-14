@@ -563,13 +563,19 @@ class Serializer {
 
   /** Slack can't take typed words outside a modal: the button asks the host to open one. */
   prompt(node: HostNode) {
-    const { label, submit } = node.props as unknown as PrimitiveProps["Prompt"];
+    const { label, submit, notices } = node.props as unknown as PrimitiveProps["Prompt"];
     const button: HostNode = {
       type: "aui:Button",
       props: { label: submit.label, action: submit.action },
       children: [],
     };
     this.blocks.push(this.section(`**${label}**`, { ...node, children: [button] }));
+    // No color to lean on: an error says so in words.
+    if (notices?.length) {
+      this.context({
+        items: notices.map((n) => (n.tone === "bad" ? `**Error:** ${n.text}` : n.text)),
+      });
+    }
     for (const child of flatten(node.children)) this.node(child);
   }
 

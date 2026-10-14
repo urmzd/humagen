@@ -23,6 +23,12 @@ export interface ActionRef {
 
 export interface HeaderProps {
   text: string;
+  /**
+   * Where it sits in the page outline. 1 is the screen's one title, 2 a section,
+   * 3 (the default) a heading inside a message or card. The web draws the
+   * matching heading element; Slack has one header block for all of them.
+   */
+  level?: 1 | 2 | 3;
 }
 
 /**
@@ -237,6 +243,11 @@ export interface PromptProps {
   label: string;
   placeholder?: string;
   submit: { label: string; action: ActionRef };
+  /**
+   * Lines under the field, read out when they change: what went wrong with the
+   * last question (tone "bad"), the files that go with the next one.
+   */
+  notices?: { tone: Tone; text: string }[];
   children?: ReactNode;
 }
 

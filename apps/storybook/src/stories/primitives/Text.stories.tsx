@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Context, Divider, Header, Text } from "@vultus/primitives";
+import { expect, within } from "storybook/test";
 import { Canvas, slackPrimitive } from "../../support";
 
 const meta = {
@@ -32,6 +33,39 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Playground: Story = {};
+
+/** `level` sets the heading element on the web: 1 is the screen's one title. Slack keeps one header block. */
+export const HeaderLevels: Story = {
+  render: () => (
+    <Canvas>
+      <Header text="Hi Ada, I'm Collegium." level={1} />
+      <Header text="Notifications" level={2} />
+      <Header text="Inside a card" />
+    </Canvas>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("heading", { level: 1 })).toHaveTextContent("Hi Ada");
+    await expect(canvas.getByRole("heading", { level: 2 })).toHaveTextContent("Notifications");
+    await expect(canvas.getByRole("heading", { level: 3 })).toHaveTextContent("Inside a card");
+  },
+};
+
+/** Links on the same site stay in the tab; links elsewhere open a new one. */
+export const Links: Story = {
+  render: () => (
+    <Canvas>
+      <Context items={["[The inbox](/?view=inbox)", "[Slack status](https://slack-status.com)"]} />
+    </Canvas>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("link", { name: "The inbox" })).not.toHaveAttribute("target");
+    const away = canvas.getByRole("link", { name: "Slack status" });
+    await expect(away).toHaveAttribute("target", "_blank");
+    await expect(away).toHaveAttribute("rel", "noopener noreferrer");
+  },
+};
 
 export const ContextLine: Story = {
   name: "Context",

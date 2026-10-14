@@ -234,9 +234,22 @@ export const defaultCopy = {
         description: "A nightly digest, a weekly review, a check every hour.",
       },
     } as Record<string, { label: string; description: string; slack?: string }>,
-    needsYou: "Needs you",
-    nothingWaiting: "Nothing needs you right now.",
+    needsYou: "Notifications",
+    nothingWaiting: "Nothing needs you right now, and no alerts are open.",
+    /** The page's one-line point, after the greeting. */
+    notificationCount: (n: number) =>
+      n === 0 ? "Nothing needs you" : `${n} notification${n === 1 ? "" : "s"}`,
+    /** The tag before when it arrived, so severity is said in words. */
+    notificationTag: (kind: string, severity?: string) =>
+      kind === "alert"
+        ? severity === "critical"
+          ? "Critical alert"
+          : severity === "warning"
+            ? "Warning alert"
+            : "Alert"
+        : "Inbox",
     moreWaiting: (n: number) => `${n} more in the inbox`,
+    moreAlerts: (n: number) => `${n} more open alert${n === 1 ? "" : "s"}`,
     review: "Review",
     whoAnswers: "Who answers you",
     dmRouting: "In direct messages, send my questions to",

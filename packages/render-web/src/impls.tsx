@@ -82,15 +82,38 @@ function textOf(node: ReactNode): string {
 
 const CITE = /^\[?(\d{1,3})\]?$/;
 
-/** Links whose text is a bare `[n]` are citation markers from `linkCitations`. */
+/**
+ * True when a link leaves the page's site: an absolute URL on another origin.
+ * Relative links, fragments and same-origin URLs stay in the tab.
+ */
+export function isExternal(href: string | undefined, origin?: string): boolean {
+  if (!href) return false;
+  const here =
+    origin ?? (typeof window === "undefined" ? undefined : window.location?.origin) ?? "";
+  // A scheme ("https:", "mailto:") or a protocol-relative "//host" names somewhere else; anything else is a path.
+  if (!/^([a-z][a-z\d+.-]*:|\/\/)/i.test(href)) return false;
+  try {
+    const url = new URL(href, here || undefined);
+    return !here || url.origin !== here;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Links whose text is a bare `[n]` are citation markers from `linkCitations`.
+ * Links on the same site stay in the tab; links elsewhere open a new one.
+ */
 const linkRenderer: Components["a"] = ({ href, children }) => {
   const label = textOf(children);
   const cite = CITE.exec(label);
   if (cite?.[1]) return <CitationChip href={href} label={cite[1]} />;
-  return (
-    <a href={href} target="_blank" rel="noreferrer">
+  return isExternal(href) ? (
+    <a href={href} target="_blank" rel="noopener noreferrer">
       {children}
     </a>
+  ) : (
+    <a href={href}>{children}</a>
   );
 };
 
@@ -433,7 +456,7 @@ function Row({ text, detail, status, children }: PrimitiveProps["Row"]) {
 }
 
 /** The ask box: Enter or the button sends the words as the action's `text`. */
-function Prompt({ label, placeholder, submit, children }: PrimitiveProps["Prompt"]) {
+function Prompt({ label, placeholder, submit, notices, children }: PrimitiveProps["Prompt"]) {
   const onAction = useContext(ActionContext);
   const [value, setValue] = useState("");
   const id = useId();
@@ -469,7 +492,52 @@ function Prompt({ label, placeholder, submit, children }: PrimitiveProps["Prompt
         </button>
       </div>
       {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
+      {/* Always present, so a notice that appears is read out. An error interrupts; the rest wait. */}
+      <div role="alert" className="empty:hidden">
+        {notices
+          ?.filter((n) => n.tone === "bad")
+          .map((n) => (
+            <PromptNotice key={n.text} {...n} />
+          ))}
+      </div>
+      <div aria-live="polite" className="empty:hidden">
+        {notices
+          ?.filter((n) => n.tone !== "bad")
+          .map((n) => (
+            <PromptNotice key={n.text} {...n} />
+          ))}
+      </div>
     </form>
+  );
+}
+
+function PromptNotice({ tone, text }: { tone: Tone; text: string }) {
+  return (
+    <p data-aui="prompt-notice" data-tone={tone} className="flex items-start gap-1.5 text-aui-xs">
+      <span className={`mt-px ${toneText[tone]}`} aria-hidden>
+        {toneIcon[tone]}
+      </span>
+      <span className={tone === "bad" ? "text-aui-fg" : "text-aui-muted"}>
+        <span className="sr-only">{toneLabel[tone]}: </span>
+        <Inline text={text} />
+      </span>
+    </p>
+  );
+}
+
+const headerClass = {
+  1: "font-semibold text-aui-xl text-aui-fg tracking-tight",
+  2: "font-semibold text-aui-base text-aui-fg",
+  3: "font-semibold text-aui-base text-aui-fg",
+} as const;
+
+/** The heading element follows `level`, so a page can have its one title. */
+function Header({ text, level = 3 }: PrimitiveProps["Header"]) {
+  const Tag = `h${level}` as const;
+  return (
+    <Tag data-aui="header" data-level={level} className={headerClass[level]}>
+      {text}
+    </Tag>
   );
 }
 
@@ -530,11 +598,7 @@ function Tiles({ label, items }: PrimitiveProps["Tiles"]) {
 }
 
 export const webImpls: PrimitiveImpls = {
-  Header: ({ text }) => (
-    <h3 data-aui="header" className="font-semibold text-aui-base text-aui-fg">
-      {text}
-    </h3>
-  ),
+  Header,
   Text,
   Markdown,
   Fields,

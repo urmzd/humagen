@@ -1,5 +1,5 @@
 import { ActionId } from "./actions";
-import type { HomeModel } from "./home";
+import type { HomeModel, HomeNotification } from "./home";
 import { type InboxItem, type SystemAlert, sortInbox } from "./inbox";
 import { type InboxMessage, messageFromItem, sortMessages } from "./mailbox";
 import type { SessionState } from "./session";
@@ -1377,8 +1377,9 @@ export const mailMessages: InboxMessage[] = sortMessages([
 export const mailFromItems: InboxMessage[] = inboxItems.map((item) => messageFromItem(item));
 
 /**
- * Home, as Ada sees it: an operator through eng-oncall, with two things waiting
- * on her, GitHub connected and Jira not. The variants change one thing each.
+ * Home, as Ada sees it: an operator through eng-oncall, with two inbox items
+ * waiting on her and two open alerts, GitHub connected and Jira not. Each
+ * notification links to its own page. The variants change one thing each.
  */
 export const home: HomeModel = {
   person: { id: "U0ADA", name: "Ada Lovelace" },
@@ -1393,22 +1394,50 @@ export const home: HomeModel = {
     { id: "runs" },
     { id: "schedule" },
   ],
-  waiting: [
-    {
-      id: "approval-docs-reply",
-      messageId: "msg-docs-reply",
-      from: "docs-bot",
-      summary: "wants to post a reply in #support.",
-      detail: "Waiting for your approval.",
-    },
-    {
-      id: "approval-triage-revision",
-      messageId: "msg-triage-revision",
-      from: "author",
-      summary: "drafted a change to the triage agent.",
-      detail: "Approve it to save the new revision.",
-    },
-  ],
+  notifications: {
+    items: [
+      {
+        kind: "inbox",
+        id: "msg-docs-reply",
+        from: "docs-bot",
+        summary: "wants to post a reply in #support.",
+        detail: "Waiting for your approval.",
+        at: "2026-10-13T14:05:00Z",
+        url: "https://example.com/console/?view=inbox&message=msg-docs-reply",
+      },
+      {
+        kind: "alert",
+        id: "al-deploy-failed",
+        from: "deploy-failures",
+        summary: "fired: a run of deployer failed.",
+        detail: "The deploy to production stopped at the migration step.",
+        at: "2026-10-13T13:58:00Z",
+        severity: "critical",
+        url: "https://example.com/console/?view=alerts&alert=al-deploy-failed",
+      },
+      {
+        kind: "inbox",
+        id: "msg-triage-revision",
+        from: "author",
+        summary: "drafted a change to the triage agent.",
+        detail: "Approve it to save the new revision.",
+        at: "2026-10-13T12:40:00Z",
+        url: "https://example.com/console/?view=inbox&message=msg-triage-revision",
+      },
+      {
+        kind: "alert",
+        id: "al-slow-triage",
+        from: "slow-runs",
+        summary: "fired: a run of triage took 94s.",
+        detail: "The limit is 60s.",
+        at: "2026-10-13T11:15:00Z",
+        severity: "warning",
+        url: "https://example.com/console/?view=alerts&alert=al-slow-triage",
+      },
+    ],
+    inbox: { total: 2, url: "https://example.com/console/?view=inbox" },
+    alerts: { total: 2, url: "https://example.com/console/?view=alerts" },
+  },
   answeredBy: {
     agents: [
       { id: "docs-bot", name: "docs-bot" },
@@ -1460,24 +1489,85 @@ export const home: HomeModel = {
   ],
 };
 
-export const homes: Record<"default" | "empty" | "noConnect" | "noGrants", HomeModel> = {
+const alertsOnly = (h: HomeModel) => h.notifications.items.filter((n) => n.kind === "alert");
+
+/** Twelve inbox items and six alerts, more than Home shows: the rest are counted and linked. */
+const many: HomeNotification[] = [
+  ...Array.from({ length: 12 }, (_, i) => ({
+    kind: "inbox" as const,
+    id: `msg-${i + 1}`,
+    from: i % 2 ? "triage" : "docs-bot",
+    summary:
+      i % 2 ? "asked which queue a ticket belongs in." : "wants to post a reply in #support.",
+    at: new Date(Date.parse("2026-10-13T14:00:00Z") - i * 600_000).toISOString(),
+    url: `https://example.com/console/?view=inbox&message=msg-${i + 1}`,
+  })),
+  ...Array.from({ length: 6 }, (_, i) => ({
+    kind: "alert" as const,
+    id: `al-${i + 1}`,
+    from: "failure-rate",
+    summary: `fired: ${40 + i * 5}% of runs of deployer failed.`,
+    at: new Date(Date.parse("2026-10-13T14:03:00Z") - i * 900_000).toISOString(),
+    severity: i < 2 ? ("critical" as const) : ("warning" as const),
+    url: `https://example.com/console/?view=alerts&alert=al-${i + 1}`,
+  })),
+];
+
+export const homes: Record<
+  "default" | "empty" | "alertsOnly" | "overflow" | "unlinked" | "noConnect" | "noGrants",
+  HomeModel
+> = {
+  /** Inbox items and alerts together: a critical alert first, then what waits on Ada, then a warning. */
   default: home,
-  /** Nothing is waiting: the section stays and says so. */
+  /** Nothing waiting and no alert open: the section stays and says so. */
   empty: {
     ...home,
     starts: home.starts.map((s) => (s.id === "review" ? { id: s.id } : s)),
-    waiting: [],
+    notifications: {
+      items: [],
+      inbox: { total: 0, url: home.notifications.inbox?.url },
+      alerts: { total: 0, url: home.notifications.alerts?.url },
+    },
+  },
+  /** Only alerts are open; the inbox is clear. */
+  alertsOnly: {
+    ...home,
+    starts: home.starts.map((s) => (s.id === "review" ? { id: s.id } : s)),
+    notifications: {
+      items: alertsOnly(home),
+      inbox: { total: 0, url: home.notifications.inbox?.url },
+      alerts: home.notifications.alerts,
+    },
+  },
+  /** More than Home shows: the first eight, then how many more of each kind, linked to their pages. */
+  overflow: {
+    ...home,
+    starts: home.starts.map((s) => (s.id === "review" ? { id: s.id, count: 14 } : s)),
+    notifications: {
+      items: many,
+      inbox: { total: 14, url: home.notifications.inbox?.url },
+      alerts: { total: 6, url: home.notifications.alerts?.url },
+    },
+  },
+  /** A host with no public console address: Slack shows each item without a link, and Review stays for inbox items. */
+  unlinked: {
+    ...home,
+    consoleUrl: undefined,
+    notifications: {
+      items: home.notifications.items.map(({ url: _url, ...n }) => n),
+    },
   },
   /** A viewer who may not connect workspace accounts: no Connect, and an admin is named instead. */
   noConnect: {
     ...home,
     connections: home.connections.map((c) => ({ ...c, canConnect: false })),
   },
-  /** Signed in, but no rule grants a role: no choices to make, and the way to get one. */
+  /** Signed in, but no rule grants a role: no ask box, no alerts, and the way to get one. */
   noGrants: {
     ...home,
+    ask: undefined,
     starts: [{ id: "talk" }, { id: "search" }],
-    waiting: [],
+    notifications: { items: [] },
     answeredBy: undefined,
     connections: home.connections.map((c) => ({ ...c, canConnect: false })),
     personal: { connected: 0, canConnect: false },

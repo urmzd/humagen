@@ -1,4 +1,5 @@
 import { ActionId, type UiAction } from "./actions";
+import type { Tone } from "./types";
 
 /**
  * The Home surface: where a person lands in the console and in the Slack App
@@ -8,7 +9,7 @@ import { ActionId, type UiAction } from "./actions";
  * this holds only what the host knows: who, what is waiting, what is connected.
  *
  * Every control raises a `UiAction` (see `homeAction`). `turnId` is `HOME_ID`
- * for everything except Review, which names the waiting item instead.
+ * for everything except Review, which names the inbox item instead.
  */
 
 /** `turnId` of every Home action that isn't about one waiting item. */
@@ -29,7 +30,11 @@ export interface HomeStart {
   url?: string;
 }
 
-/** Something an agent is waiting on this person for. */
+/**
+ * Something an agent is waiting on this person for.
+ * @deprecated Use `HomeNotification` with `kind: "inbox"`. Kept so hosts built
+ * before notifications still render; `Home` reads it when `notifications` is absent.
+ */
 export interface HomeWaiting {
   /** The item's id: the interrupt, part or message id the host resolves. */
   id: string;
@@ -41,6 +46,88 @@ export interface HomeWaiting {
   summary: string;
   /** What happens next, in a sentence: "Waiting for your approval." */
   detail?: string;
+}
+
+/** What a notification is: something in the inbox, or an alert a rule raised. */
+export type HomeNotificationKind = "inbox" | "alert";
+
+/** How serious an alert is. Inbox items leave it out. */
+export type HomeSeverity = "critical" | "warning" | "info";
+
+/** One thing for this person to look at: an inbox item waiting on them, or an open alert. */
+export interface HomeNotification {
+  kind: HomeNotificationKind;
+  /** Stable within its kind: the inbox message id, or the alert id. */
+  id: string;
+  /** For inbox items, the message or turn Review opens. Defaults to `id`. */
+  messageId?: string;
+  /** Who or what raised it: an agent's name, or an alert rule. */
+  from: string;
+  /** One line, starting with a verb: "wants to post a reply in #support." */
+  summary: string;
+  /** What happens next, or more about it, in a sentence. */
+  detail?: string;
+  /** When it arrived or fired, as ISO 8601. */
+  at: string;
+  /** Alerts only. Said in words, never by color alone. */
+  severity?: HomeSeverity;
+  /**
+   * Where exactly this item opens in the console. Relative on the web; for
+   * Slack it must be absolute (the host's public console URL), and a relative
+   * or missing one shows the item without a link rather than a broken one.
+   */
+  url?: string;
+}
+
+/** The whole list a kind of notification comes from, for "N more". */
+export interface HomeNotificationSource {
+  /** How many are open in all, including those not in `items`. Defaults to how many `items` holds. */
+  total?: number;
+  /** The full list in the console: the inbox, or the alerts page. */
+  url?: string;
+}
+
+export interface HomeNotifications {
+  /** Any order: `Home` orders them (see `orderNotifications`) and shows the first `HOME_NOTIFICATIONS`. */
+  items: HomeNotification[];
+  inbox?: HomeNotificationSource;
+  /** Leave out when the person may not read alerts. */
+  alerts?: HomeNotificationSource;
+}
+
+/** How many notifications Home shows in full; the rest are counted and linked. */
+export const HOME_NOTIFICATIONS = 8;
+
+/** 0 for critical alerts, 1 for inbox items, 2 for every other alert. */
+export function notificationGroup(n: HomeNotification): number {
+  if (n.kind === "inbox") return 1;
+  return n.severity === "critical" ? 0 : 2;
+}
+
+/**
+ * The order Home shows notifications in: critical alerts (something is
+ * broken), then inbox items (an agent is blocked on this person), then other
+ * alerts; newest first within each group, and by id when two arrive together.
+ */
+export function orderNotifications(items: HomeNotification[]): HomeNotification[] {
+  const time = (n: HomeNotification) => {
+    const t = Date.parse(n.at);
+    return Number.isNaN(t) ? 0 : t;
+  };
+  return [...items].sort(
+    (a, b) =>
+      notificationGroup(a) - notificationGroup(b) ||
+      time(b) - time(a) ||
+      a.kind.localeCompare(b.kind) ||
+      a.id.localeCompare(b.id),
+  );
+}
+
+/** Notifications from the older `waiting` list: inbox items, with no time or link. */
+export function notificationsFromWaiting(waiting: HomeWaiting[]): HomeNotifications {
+  return {
+    items: waiting.map((w) => ({ kind: "inbox" as const, at: "", ...w })),
+  };
 }
 
 /** Which agent answers the person's direct messages. */
@@ -106,10 +193,18 @@ export interface HomeModel {
   };
   /** One sentence about what the assistant does. The surface adds how to reach it. */
   intro: string;
-  /** The ask box on the web. */
-  ask?: { placeholder?: string; attach?: boolean };
+  /** The ask box on the web. Leave out to hide it. */
+  ask?: {
+    placeholder?: string;
+    attach?: boolean;
+    /** Lines under the field: an error from the last question, the files attached to the next. */
+    notices?: { tone: Tone; text: string }[];
+  };
   starts: HomeStart[];
-  waiting: HomeWaiting[];
+  /** What needs this person: inbox items and open alerts. */
+  notifications: HomeNotifications;
+  /** @deprecated Use `notifications`. Read only when `notifications` is absent. */
+  waiting?: HomeWaiting[];
   /** Leave out when the person can't choose. */
   answeredBy?: HomeAnsweredBy;
   connections: HomeConnection[];
@@ -145,8 +240,8 @@ export const homeAction = {
     id: ActionId.homeAttach,
     payload: { turnId: HOME_ID, target: "ask" },
   }),
-  /** Review a waiting item: the same action that opens it from the inbox. */
-  review: (item: HomeWaiting): UiAction => ({
+  /** Review an inbox item: the same action that opens it from the inbox. */
+  review: (item: Pick<HomeNotification, "id" | "messageId">): UiAction => ({
     id: ActionId.open,
     payload: { turnId: item.messageId ?? item.id, target: item.id },
   }),

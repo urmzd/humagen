@@ -39,11 +39,15 @@ describe("homeView", () => {
     const long: HomeModel = {
       ...fx.home,
       person: { id: "U1", name: "A".repeat(200) },
-      waiting: Array.from({ length: 60 }, (_, i) => ({
-        id: `w${i}`,
-        from: "docs-bot",
-        summary: "wants to post a reply in #support.",
-      })),
+      notifications: {
+        items: Array.from({ length: 60 }, (_, i) => ({
+          kind: "inbox" as const,
+          id: `w${i}`,
+          from: "docs-bot",
+          summary: "wants to post a reply in #support.",
+          at: "2026-10-13T12:00:00Z",
+        })),
+      },
     };
     const { view, warnings } = homeView(<Home home={long} />);
     expect(view.blocks.length).toBeLessThanOrEqual(LIMITS.blocks.home);
@@ -53,8 +57,8 @@ describe("homeView", () => {
     for (const e of elements(view.blocks).filter((e) => e.type === "button")) {
       expect(e.text?.text.length).toBeLessThanOrEqual(LIMITS.buttonText);
     }
-    // Ten rows, then a count: the rest live in the inbox.
-    expect(JSON.stringify(view.blocks)).toContain("50 more in the inbox");
+    // Eight rows, then a count: the rest live in the inbox.
+    expect(JSON.stringify(view.blocks)).toContain("52 more in the inbox");
     expect(warnings).toEqual(["header clipped from 219 to 150 chars"]);
   });
 
@@ -101,7 +105,100 @@ describe("homeView", () => {
 
   it("says when nothing needs the person", () => {
     const { view } = homeView(<Home home={fx.homes.empty} />);
-    expect(JSON.stringify(view.blocks)).toContain("Nothing needs you right now.");
+    expect(JSON.stringify(view.blocks)).toContain("Nothing needs you right now");
     expect(elements(view.blocks).some((e) => e.action_id?.startsWith(ActionId.open))).toBe(false);
+  });
+});
+
+/** The section text of each notification row, in order. */
+function notificationRows(blocks: Block[]): string[] {
+  const start = blocks.findIndex(
+    (b) => b.type === "header" && (b.text as { text: string }).text === "Notifications",
+  );
+  const rows: string[] = [];
+  for (const b of blocks.slice(start + 1)) {
+    if (b.type !== "section") break;
+    rows.push((b.text as { text: string }).text);
+  }
+  return rows;
+}
+
+describe("Home notifications on Slack", () => {
+  it("orders critical alerts, then the inbox, then other alerts, newest first", () => {
+    const rows = notificationRows(homeView(<Home home={fx.homes.default} />).view.blocks);
+    expect(rows.map((r) => r.split("\n")[0])).toEqual([
+      "*deploy-failures* fired: a run of deployer failed.",
+      "*docs-bot* wants to post a reply in #support.",
+      "*author* drafted a change to the triage agent.",
+      "*slow-runs* fired: a run of triage took 94s.",
+    ]);
+  });
+
+  it("gives each row the item's console address, written out, and says severity in words", () => {
+    const [alert, inbox] = notificationRows(homeView(<Home home={fx.homes.default} />).view.blocks);
+    expect(alert).toContain("Critical alert · <!date^");
+    // Slack escapes "&" in what it shows, and shows it as "&".
+    const url = "https://example.com/console/?view=alerts&alert=al-deploy-failed";
+    expect(alert).toContain(`<${url}|${url.replace("&", "&amp;")}>`);
+    expect(inbox).toContain(
+      "<https://example.com/console/?view=inbox&message=msg-docs-reply|https://example.com/console/?view=inbox&amp;message=msg-docs-reply>",
+    );
+    // A linked row needs no button: the address is the way in.
+    expect(
+      elements(homeView(<Home home={fx.homes.default} />).view.blocks).some((e) =>
+        e.action_id?.startsWith(ActionId.open),
+      ),
+    ).toBe(false);
+  });
+
+  it("shows items without a link when the host has no public address, and Review stays for the inbox", () => {
+    const { view } = homeView(<Home home={fx.homes.unlinked} />);
+    const rows = notificationRows(view.blocks);
+    expect(rows).toHaveLength(4);
+    for (const r of rows) expect(r).not.toContain("<http");
+    const reviews = elements(view.blocks).filter((e) => e.action_id?.startsWith(ActionId.open));
+    expect(
+      reviews.map(
+        (e) => decodeSlackAction(e as { action_id: string; value: string })?.payload.target,
+      ),
+    ).toEqual(["msg-docs-reply", "msg-triage-revision"]);
+  });
+
+  it("never links a relative address, which Slack could not open", () => {
+    const relative: HomeModel = {
+      ...fx.home,
+      notifications: {
+        items: fx.home.notifications.items.map((n) => ({
+          ...n,
+          url: `/?view=inbox&message=${n.id}`,
+        })),
+        inbox: { total: 20, url: "/?view=inbox" },
+      },
+    };
+    const text = JSON.stringify(homeView(<Home home={relative} />).view.blocks);
+    expect(text).not.toContain("/?view=");
+    expect(text).toContain("18 more in the inbox");
+  });
+
+  it("caps the list and links the rest of each kind to its page", () => {
+    const { view, warnings } = homeView(<Home home={fx.homes.overflow} />);
+    expect(warnings).toEqual([]);
+    expect(notificationRows(view.blocks)).toHaveLength(8);
+    const text = JSON.stringify(view.blocks);
+    expect(text).toContain("<https://example.com/console/?view=inbox|8 more in the inbox>");
+    expect(text).toContain("<https://example.com/console/?view=alerts|4 more open alerts>");
+  });
+
+  it("shows only alerts when the inbox is clear", () => {
+    const rows = notificationRows(homeView(<Home home={fx.homes.alertsOnly} />).view.blocks);
+    expect(rows.every((r) => r.includes("alert ·"))).toBe(true);
+    expect(rows).toHaveLength(2);
+  });
+
+  it("keeps the greeting as Slack's header block", () => {
+    const [first] = homeView(<Home home={fx.home} />).view.blocks.filter(
+      (b) => b.type === "header",
+    );
+    expect((first?.text as { text: string }).text).toBe("Hi Ada, I'm Collegium.");
   });
 });
