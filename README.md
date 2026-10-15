@@ -166,3 +166,9 @@ go get github.com/urmzd/vultus/go@latest
 ## License
 
 [Apache-2.0](LICENSE)
+
+### Source releases
+
+Pushes to `main` run CI before creating a GitHub source release. All pnpm
+workspace manifests share the release version; packages remain private and are
+not published to npm. The Go module retains its separate `go/vX.Y.Z` tags.

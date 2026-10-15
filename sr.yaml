@@ -16,5 +16,14 @@ packages:
   - path: .
     version_files:
       - package.json
+      - packages/components/package.json
+      - packages/core/package.json
+      - packages/primitives/package.json
+      - packages/render-slack/package.json
+      - packages/render-web/package.json
+      - packages/slack-host/package.json
+      - packages/web/package.json
+      - apps/slack-sandbox/package.json
+      - apps/storybook/package.json
     stage_files:
       - pnpm-lock.yaml
