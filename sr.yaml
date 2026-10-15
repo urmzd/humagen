@@ -14,6 +14,7 @@ changelog:
 
 packages:
   - path: .
+    version_files_strict: true
     version_files:
       - package.json
       - packages/components/package.json

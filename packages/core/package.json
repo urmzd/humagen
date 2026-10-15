@@ -1,6 +1,6 @@
 {
   "name": "@vultus/core",
-  "version": "0.0.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Surface-agnostic agent UI model: turns, tool calls, approvals, notices, stream events.",
