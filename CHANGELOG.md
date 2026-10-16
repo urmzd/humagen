@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2 (2026-10-16)
+
+### Bug Fixes
+
+- keep orb effects within their layout footprint ([bd4b308](https://github.com/urmzd/vultus/commit/bd4b3084cb7981e2d10caaa2bab0a673882b2fa4))
+
+[Full Changelog](https://github.com/urmzd/vultus/compare/v0.1.1...v0.1.2)
+
+
 ## 0.1.1 (2026-10-15)
 
 ### Bug Fixes
