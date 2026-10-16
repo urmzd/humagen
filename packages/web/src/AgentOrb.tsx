@@ -10,9 +10,9 @@ import type { CSSProperties } from "react";
 export type OrbState = AgentActivity | "done" | "error" | "stopped";
 
 export type OrbVariant = "orb" | "ring" | "dots" | "wave";
-export type OrbSize = "xs" | "sm" | "md" | "lg";
+export type OrbSize = "xs" | "sm" | "md" | "lg" | number;
 
-const PX: Record<OrbSize, number> = { xs: 12, sm: 18, md: 28, lg: 48 };
+const PX = { xs: 12, sm: 18, md: 28, lg: 48 } as const;
 
 export const orbLabel: Record<OrbState, string> = {
   idle: "Idle",
@@ -70,6 +70,7 @@ const tone = (s: OrbState) => (s === "error" ? "bad" : s === "stopped" ? "muted"
  * holds still. Reduced motion shows one static frame per state.
  *
  * `label` defaults to the state; pass "" when visible text already says it.
+ * `size` is the full footprint in pixels, including room for motion and glow.
  */
 export function AgentOrb({
   state,
@@ -85,7 +86,9 @@ export function AgentOrb({
   className?: string;
 }) {
   const name = label ?? orbLabel[state];
-  const style = { "--s": `${PX[size]}px` } as CSSProperties;
+  const style = {
+    "--orb-size": `${typeof size === "number" ? size : PX[size]}px`,
+  } as CSSProperties;
   const bars = variant === "dots" ? 3 : 4;
   return (
     <span

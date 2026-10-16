@@ -92,6 +92,72 @@ export const Sizes: Story = {
   ),
 };
 
+export const ClippedRows: Story = {
+  name: "Fits clipped rows at exact pixel sizes",
+  render: () => (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+      {STATES.map((state) => (
+        <div key={state} className="flex flex-col gap-2">
+          <span className="text-aui-xs text-aui-muted">{orbLabel[state]}</span>
+          {[12, 14, 16, 18, 24, 32, 48].map((size) => (
+            <div
+              key={size}
+              className="flex items-center gap-2 overflow-hidden"
+              style={{ height: size }}
+            >
+              <AgentOrb state={state} size={size} />
+              <span className="text-aui-xs">{size}px</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    for (const orb of canvasElement.querySelectorAll<HTMLElement>(".aui-orb")) {
+      const size = Number.parseFloat(orb.style.getPropertyValue("--orb-size"));
+      const frame = orb.getBoundingClientRect();
+      await expect(frame.width).toBe(size);
+      await expect(frame.height).toBe(size);
+      const animations = orb.getAnimations({ subtree: true });
+      for (const animation of animations) animation.pause();
+      try {
+        const outside: string[] = [];
+        // Sample a complete cycle, including the ripple's largest frame.
+        for (const phase of [0, 0.25, 0.5, 0.75, 0.999]) {
+          for (const animation of animations) {
+            animation.currentTime = Number(animation.effect?.getTiming().duration) * phase;
+          }
+          for (const effect of orb.querySelectorAll<HTMLElement>(
+            ".aui-orb-sphere, .aui-orb-halo",
+          )) {
+            const bounds = effect.getBoundingClientRect();
+            if (
+              bounds.left < frame.left - 0.1 ||
+              bounds.top < frame.top - 0.1 ||
+              bounds.right > frame.right + 0.1 ||
+              bounds.bottom > frame.bottom + 0.1
+            ) {
+              outside.push(`${orb.dataset.state} ${size}px: ${effect.className} at ${phase}`);
+            }
+          }
+        }
+        await expect(outside).toEqual([]);
+        // The satellite's full circular path, including its own diameter.
+        const satellite = orb.querySelector<HTMLElement>(".aui-orb-sat");
+        if (satellite) {
+          const orbit = Number.parseFloat(getComputedStyle(satellite).width);
+          const dot = Number.parseFloat(getComputedStyle(satellite, "::before").width);
+          await expect(orbit + dot).toBeLessThanOrEqual(size);
+        }
+        if (orb.dataset.state === "waiting") await expect(animations).toHaveLength(0);
+      } finally {
+        for (const animation of animations) animation.play();
+      }
+    }
+  },
+};
+
 export const WaitingIsStatic: Story = {
   name: "Waiting is static",
   args: { state: "waiting" },

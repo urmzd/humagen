@@ -806,6 +806,7 @@
 
   /* ---------- Agent orb ---------- */
   .aui-orb {
+    --s: var(--orb-size);
     --c: var(--aui-accent);
     --dur: 1.2s;
     position: relative;
@@ -813,8 +814,28 @@
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    width: var(--s);
-    height: var(--s);
+    width: var(--orb-size);
+    height: var(--orb-size);
+    vertical-align: middle;
+  }
+  /* Size includes the entire effect, so clipped rows need no overflow escape. */
+  .aui-orb[data-variant="orb"] {
+    --s: calc(var(--orb-size) / 1.8);
+  }
+  .aui-orb[data-variant="orb"]::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, color-mix(in oklab, var(--c) 30%, transparent), transparent);
+    opacity: 1;
+    transition: opacity 400ms ease-out;
+  }
+  .aui-orb:is([data-state="idle"], [data-state="done"], [data-state="stopped"])::before {
+    opacity: 0;
+  }
+  .aui-orb[data-state="waiting"]::before {
+    opacity: 0.4;
   }
   .aui-orb[data-tone="bad"] {
     --c: var(--aui-bad);
@@ -838,7 +859,7 @@
   /* orb: a lit sphere with a soft glow */
   .aui-orb-sphere {
     position: absolute;
-    inset: 0;
+    inset: calc((var(--orb-size) - var(--s)) / 2);
     overflow: hidden;
     border-radius: 50%;
     background: radial-gradient(
@@ -847,9 +868,7 @@
       var(--c) 46%,
       color-mix(in oklab, black 45%, var(--c)) 100%
     );
-    box-shadow:
-      0 0 calc(var(--s) * 0.45) calc(var(--s) * -0.08) color-mix(in oklab, var(--c) 60%, transparent),
-      inset 0 calc(var(--s) * -0.06) calc(var(--s) * 0.18) oklch(0 0 0 / 0.25);
+    box-shadow: inset 0 calc(var(--s) * -0.06) calc(var(--s) * 0.18) oklch(0 0 0 / 0.25);
     transition:
       box-shadow 400ms ease-out,
       filter 400ms ease-out;
@@ -874,14 +893,14 @@
   }
   .aui-orb-halo {
     position: absolute;
-    inset: 0;
+    inset: calc((var(--orb-size) - var(--s)) / 2);
     border-radius: 50%;
     border: max(1px, calc(var(--s) * 0.05)) solid var(--c);
     opacity: 0;
   }
   .aui-orb-sat {
     position: absolute;
-    inset: calc(var(--s) * -0.22);
+    inset: calc((var(--orb-size) - var(--s) * 1.44) / 2);
     opacity: 0;
     transition: opacity 400ms ease-out;
   }
@@ -894,7 +913,6 @@
     height: calc(var(--s) * 0.24);
     border-radius: 50%;
     background: var(--c);
-    box-shadow: 0 0 calc(var(--s) * 0.2) var(--c);
     transform: translateX(-50%);
   }
 
@@ -924,7 +942,6 @@
   /* Waiting on a person: still, with a held ring. Never animated. */
   .aui-orb[data-state="waiting"] .aui-orb-sphere {
     filter: saturate(0.7);
-    box-shadow: 0 0 calc(var(--s) * 0.2) calc(var(--s) * -0.1) color-mix(in oklab, var(--c) 40%, transparent);
   }
   .aui-orb[data-state="waiting"] .aui-orb-halo {
     opacity: 0.55;
