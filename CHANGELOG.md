@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 (2026-10-16)
+
+### Features
+
+- add project navigation icons and accessible tooltips (#13) ([fa6f744](https://github.com/urmzd/vultus/commit/fa6f7441e5b92cad6e2e61a7b2501cfc1c1d3ae1))
+
+[Full Changelog](https://github.com/urmzd/vultus/compare/v0.1.2...v0.2.0)
+
+
 ## 0.1.2 (2026-10-16)
 
 ### Bug Fixes
