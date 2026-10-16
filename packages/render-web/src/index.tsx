@@ -37,6 +37,7 @@ export {
   useVerbSequence,
 } from "./motion";
 export { RequestBubble, readableMentions } from "./request";
+export * from "./Tooltip";
 export { StatusIcon, statusLabel } from "./task";
 
 /**

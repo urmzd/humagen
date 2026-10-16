@@ -187,6 +187,57 @@ export const PencilIcon = icon(
   "PencilIcon",
 );
 
+export const FolderIcon = icon(
+  <path d="M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z" />,
+  "FolderIcon",
+);
+export const FolderOpenIcon = icon(
+  <path d="M6 20h14l3-10H9L6 20Zm0 0H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v1" />,
+  "FolderOpenIcon",
+);
+export const FolderPlusIcon = icon(
+  <>
+    <path d="M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z" />
+    <path d="M12 10v7m-3.5-3.5h7" />
+  </>,
+  "FolderPlusIcon",
+);
+export const ComposeIcon = icon(
+  <>
+    <path d="M12 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-7" />
+    <path d="m16 3 5 5M10 14l-1 4 4-1L22 8a2.12 2.12 0 0 0-5-5Z" />
+  </>,
+  "ComposeIcon",
+);
+export const HistoryIcon = icon(
+  <>
+    <path d="M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7" />
+    <path d="M12 7v5l3 2" />
+  </>,
+  "HistoryIcon",
+);
+export const PanelLeftOpenIcon = icon(
+  <>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M9 3v18m4-12 3 3-3 3" />
+  </>,
+  "PanelLeftOpenIcon",
+);
+export const PanelLeftCloseIcon = icon(
+  <>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M9 3v18m7-12-3 3 3 3" />
+  </>,
+  "PanelLeftCloseIcon",
+);
+export const SettingsIcon = icon(
+  <>
+    <path d="m9 3-.6 2.4-2.1 1.2L4 6l-2 3 1.8 1.8v2.4L2 15l2 3 2.3-.6 2.1 1.2L9 21h6l.6-2.4 2.1-1.2L20 18l2-3-1.8-1.8v-2.4L22 9l-2-3-2.3.6-2.1-1.2L15 3Z" />
+    <circle cx="12" cy="12" r="3" />
+  </>,
+  "SettingsIcon",
+);
+
 /**
  * In-progress ring. The SVG box itself rotates, so the ring spins in place
  * around the center of a square box instead of orbiting a text baseline.
