@@ -93,6 +93,9 @@ type Config struct {
 	// Workspace is the directory agents write artifacts under. Empty takes a
 	// directory under the user's cache.
 	Workspace string
+	// Blobs holds the bytes of published files. Nil means a disk store in
+	// the workspace directory.
+	Blobs blob.Store
 	// Limits bounds every tree of calls.
 	Limits call.Limits
 	// Concurrency is how many runs execute at once. Zero means one.
@@ -227,6 +230,7 @@ func New(cfg Config) (*Platform, error) {
 		Usage:     usage.NewLedger(),
 		Inbox:     inbox.NewStore(),
 		Artifacts: artifacts.NewIndex(),
+		Blobs:     cfg.Blobs,
 		broker:    bus.NewMemory(),
 		sinks:     connector.NewRegistry(),
 		ledger:    ledger.NewMemory(),
