@@ -12,6 +12,8 @@ export SLACK_TEAM_ID=""
 export SLACK_OPERATORS=""
 # Optional: a branding file (see apps/slack/branding.example.json). A bad file stops startup.
 export SLACK_BRANDING=""
+# Optional: where open streams are recorded so the next start can close them
+export SLACK_STREAM_JOURNAL=""
 
 # Warp
 export WARP_URL="http://127.0.0.1:8080"

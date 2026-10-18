@@ -1,5 +1,6 @@
 import { App } from "./app.tsx";
 import { readConfig } from "./config.ts";
+import { fileJournal, journaled, recoverStreams } from "./journal.ts";
 import { slackClient, socketMode } from "./slack.ts";
 import { httpWarp } from "./warp.ts";
 
@@ -34,13 +35,19 @@ async function main() {
   }
 
   // The bot token decides the team in the same way.
-  const slack = slackClient(config.slack.botToken);
-  const who = await slack.call<{ team_id: string; user_id: string }>("auth.test");
+  const bot = slackClient(config.slack.botToken);
+  const who = await bot.call<{ team_id: string; user_id: string }>("auth.test");
   if (who.team_id !== config.slack.team) {
     throw new Error(
       "The Slack bot token is for another team than SLACK_TEAM_ID. Refusing to start.",
     );
   }
+
+  // Streams the last process left open are closed before any new one opens.
+  const journal = fileJournal(config.slack.streamJournal, log);
+  const recovered = await recoverStreams(bot, journal, log);
+  if (recovered > 0) log(`closed ${recovered} stream(s) the last run of the app left open`);
+  const slack = journaled(bot, journal);
 
   const app = new App(slack, warp, {
     team: config.slack.team,
