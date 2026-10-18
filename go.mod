@@ -6,9 +6,9 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/urmzd/anchor v0.2.0
-	github.com/urmzd/fiber v0.12.1-0.20261018023055-288d30576c62
+	github.com/urmzd/fiber v0.13.0
 	github.com/urmzd/playscape v0.3.0
-	github.com/urmzd/saige v0.37.1-0.20261018021915-827a48ba78d9
+	github.com/urmzd/saige v0.38.0
 	golang.org/x/oauth2 v0.37.0
 )
 
