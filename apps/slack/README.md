@@ -45,6 +45,24 @@ message sent while a turn is running waits for it, as in the console.
 Bot messages, the app's own messages, edits and joins never start a run.
 Deliveries from any team but `SLACK_TEAM_ID` are ignored.
 
+## Branding
+
+`SLACK_BRANDING` names a JSON file that renames and rewords the app without a
+fork. Every key is optional, and without the file the app reads as it always has.
+
+| Key | What it changes | Limit |
+|-----|-----------------|-------|
+| `name` | The ask form's title (`Ask <name>`), and the name in the default disclaimer | 20 characters |
+| `tagline` | The title over the suggested prompts | 150 characters |
+| `disclaimer` | The line under every answer. `{name}` becomes the agent that answered | 500 characters |
+| `prompts` | `{title, message}` pairs offered in the app's messages and each new assistant thread (`assistant.threads.setSuggestedPrompts`) | 4 prompts, 75-character titles |
+
+The file is checked at startup: an unknown key, a wrong type or a value over
+its limit stops the app with every problem listed. See
+[`branding.example.json`](branding.example.json). Suggested prompts need the
+`assistant:write` scope and the `app_home_opened` and `assistant_thread_started`
+events.
+
 ## Who answers
 
 1. An agent named as `@name` in the message, when it exists and the app may

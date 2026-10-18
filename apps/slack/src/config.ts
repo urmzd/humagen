@@ -1,3 +1,4 @@
+import { type Branding, DEFAULT_BRANDING, readBranding } from "./branding.ts";
 import { clientCredentials, staticToken, type TokenSource } from "./warp.ts";
 
 export interface Config {
@@ -8,6 +9,8 @@ export interface Config {
     team: string;
     /** Slack user ids who may settle any inbox item from Slack, and see the whole inbox on Home. */
     operators: string[];
+    /** Name, tagline, disclaimer and suggested prompts, from the file `SLACK_BRANDING` names. */
+    branding: Branding;
   };
   warp: {
     url: string;
@@ -42,6 +45,8 @@ export function readConfig(env: Record<string, string | undefined> = process.env
     team: need("SLACK_TEAM_ID"),
     operators: list(env.SLACK_OPERATORS),
   };
+  // A branding file that is named but cannot be used stops the app here, before it connects.
+  const brandingPath = env.SLACK_BRANDING?.trim();
   const tenant = need("WARP_TENANT");
   const tokenUrl = env.WARP_OIDC_TOKEN_URL?.trim();
   let token: TokenSource = staticToken(env.WARP_TOKEN?.trim());
@@ -60,7 +65,7 @@ export function readConfig(env: Record<string, string | undefined> = process.env
     );
   }
   return {
-    slack,
+    slack: { ...slack, branding: brandingPath ? readBranding(brandingPath) : DEFAULT_BRANDING },
     warp: {
       url: env.WARP_URL?.trim() || "http://127.0.0.1:8080",
       tenant,

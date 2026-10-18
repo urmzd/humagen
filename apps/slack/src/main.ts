@@ -51,6 +51,7 @@ async function main() {
     clientId: config.warp.client,
     defaultAgent: config.warp.defaultAgent,
     publicUrl: config.warp.publicUrl,
+    branding: config.slack.branding,
     log,
   });
 

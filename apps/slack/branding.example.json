@@ -1,0 +1,9 @@
+{
+  "name": "Acme Help",
+  "tagline": "Ask about deploys, on-call and the runbook",
+  "disclaimer": "{name} is AI and can make mistakes. Check anything that matters with the team.",
+  "prompts": [
+    { "title": "What changed today?", "message": "What changed in the last deploy?" },
+    { "title": "Who is on call?", "message": "Who is on call this week?" }
+  ]
+}
