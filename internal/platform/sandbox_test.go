@@ -2,6 +2,8 @@ package platform_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/artifacts"
+	"github.com/urmzd/warp/pkg/blob"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/policy"
@@ -398,5 +401,39 @@ func TestBuiltinWriter(t *testing.T) {
 	back, _ := p.Agents.Get(ctx, tenant, platform.BuiltinWriter, 0)
 	if back.Rev != 3 || back.Spec.SystemPrompt == drifted.SystemPrompt || len(back.Spec.Tools) != 4 {
 		t.Fatalf("after drifting the built-in is rev %d with %d tools", back.Rev, len(back.Spec.Tools))
+	}
+}
+
+// A store given in the configuration is where published bytes go, and where
+// downloads and deletes find them.
+func TestPublishingUsesTheConfiguredStore(t *testing.T) {
+	store := blob.NewMemory()
+	p := startWith(t, platform.Config{Blobs: store})
+	// The tenant's name is hashed into the store's tenant, as for its sandboxes.
+	h := sha256.Sum256([]byte(tenant))
+	bucket := hex.EncodeToString(h[:16])
+	_, req := turn(t, p, "api-1", "")
+	if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "a.txt", "content": "kept elsewhere"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := use(t, p, req, platform.ToolPublish, map[string]any{"path": "a.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	page, _, _ := p.Artifacts.Page(tenant, artifacts.Query{})
+	if len(page) != 1 {
+		t.Fatalf("published %d", len(page))
+	}
+	list, err := store.List(t.Context(), bucket, "")
+	if err != nil || len(list) != 1 || list[0].SHA256 != page[0].SHA256 {
+		t.Fatalf("the configured store holds %+v, %v", list, err)
+	}
+	if _, body, err := p.OpenArtifact(t.Context(), admin, page[0].ID); err != nil || string(body) != "kept elsewhere" {
+		t.Fatalf("download = %q, %v", body, err)
+	}
+	if err := p.DeleteArtifact(t.Context(), admin, page[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := store.List(t.Context(), bucket, ""); len(list) != 0 {
+		t.Fatalf("a delete left %+v", list)
 	}
 }

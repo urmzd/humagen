@@ -508,6 +508,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               stats={agentName ? stats.get(agentName) : undefined}
               baseline={workspace?.baseline ?? ""}
               canWrite={can("agents:write")}
+              builtin={agentName ? builtin.includes(agentName) : false}
               canEval={can("evals:write")}
               canAlert={can("alerts:write")}
               onBack={() => setView("agents")}

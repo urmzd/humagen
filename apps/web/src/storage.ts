@@ -90,7 +90,22 @@ export function matches(file: Stored, query: string): boolean {
   return file.title.toLowerCase().includes(query.trim().toLowerCase());
 }
 
-const PAGE = 30;
+/** True when a workspace holds more than its limit. No limit is never over. */
+export const overLimit = (use: StorageUse) => use.limit_bytes !== null && use.limit_bytes > 0 && use.used_bytes > use.limit_bytes;
+
+export const OVER_LIMIT = "Storage is over its limit. Agents cannot publish new files until some are deleted or the limit is raised in Settings.";
+
+/** What a failed delete says, with the platform's reason when it gave one. */
+export const deleteProblem = (e: unknown) =>
+  e instanceof Error && e.message ? `The file could not be deleted. ${e.message}` : "The file could not be deleted.";
+
+/** A later page added to what is loaded. A file already shown is not shown twice. */
+export function appendPage(old: Stored[], page: Stored[]): Stored[] {
+  const seen = new Set(old.map((f) => f.id));
+  return [...old, ...page.filter((f) => !seen.has(f.id))];
+}
+
+export const PAGE = 30;
 
 /**
  * Stored files, a page at a time, newest first. The filters are the
@@ -147,10 +162,7 @@ export function useStorage(filter: Filter, signal: unknown, via: StorageTranspor
     within(via.list({ ...filter, limit: PAGE, before: next }))
       .then((page) => {
         if (current.current !== key) return;
-        setFiles((old) => {
-          const seen = new Set(old.map((f) => f.id));
-          return [...old, ...page.artifacts.filter((f) => !seen.has(f.id))];
-        });
+        setFiles((old) => appendPage(old, page.artifacts));
         setNext(page.next);
       })
       .catch(() => {

@@ -6,6 +6,7 @@
 package artifacts
 
 import (
+	"cmp"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -117,6 +118,20 @@ type Index struct {
 // NewIndex returns an empty index.
 func NewIndex() *Index { return &Index{tenants: map[string]*tenant{}} }
 
+// empty stands in for a tenant with nothing published, for readers. It is
+// never written to.
+var empty = &tenant{byID: map[string]*Artifact{}}
+
+// peek returns a tenant for reading. It does not add one, so it is safe under
+// the read lock.
+func (x *Index) peek(name string) *tenant {
+	if t, ok := x.tenants[name]; ok {
+		return t
+	}
+	return empty
+}
+
+// of returns a tenant for writing, adding it if needed. It needs the write lock.
 func (x *Index) of(name string) *tenant {
 	t, ok := x.tenants[name]
 	if !ok {
@@ -166,7 +181,7 @@ func (x *Index) Publish(tenantName string, a Artifact) (Artifact, error) {
 func (x *Index) Get(tenantName, id string) (Artifact, error) {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
-	a := x.of(tenantName).byID[id]
+	a := x.peek(tenantName).byID[id]
 	if a == nil {
 		return Artifact{}, fmt.Errorf("%w: artifact %q", ErrNotFound, id)
 	}
@@ -178,7 +193,7 @@ func (x *Index) Get(tenantName, id string) (Artifact, error) {
 func (x *Index) Versions(tenantName, id string) ([]Artifact, error) {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
-	t := x.of(tenantName)
+	t := x.peek(tenantName)
 	a := t.byID[id]
 	if a == nil {
 		return nil, fmt.Errorf("%w: artifact %q", ErrNotFound, id)
@@ -196,7 +211,7 @@ func (x *Index) Versions(tenantName, id string) ([]Artifact, error) {
 func (x *Index) Delete(tenantName, id string) (Artifact, error) {
 	x.mu.Lock()
 	defer x.mu.Unlock()
-	t := x.of(tenantName)
+	t := x.peek(tenantName)
 	a := t.byID[id]
 	if a == nil {
 		return Artifact{}, fmt.Errorf("%w: artifact %q", ErrNotFound, id)
@@ -261,7 +276,7 @@ func (x *Index) Page(tenantName string, q Query) ([]Artifact, string, error) {
 	}
 	x.mu.RLock()
 	defer x.mu.RUnlock()
-	t := x.of(tenantName)
+	t := x.peek(tenantName)
 	// A newer version of the same file hides the older ones.
 	latest := map[string]bool{}
 	out := []Artifact{}
@@ -319,7 +334,7 @@ func (x *Index) Usage(tenantName string) Usage {
 		m[name].Bytes += size
 		m[name].Count++
 	}
-	for _, a := range x.of(tenantName).items {
+	for _, a := range x.peek(tenantName).items {
 		u.Bytes += a.Size
 		u.Count++
 		add(projects, a.Project, a.Size)
@@ -331,8 +346,8 @@ func (x *Index) Usage(tenantName string) Usage {
 			out = append(out, *s)
 		}
 		slices.SortFunc(out, func(a, b Share) int {
-			if a.Bytes != b.Bytes {
-				return int(b.Bytes - a.Bytes)
+			if c := cmp.Compare(b.Bytes, a.Bytes); c != 0 {
+				return c
 			}
 			return strings.Compare(a.Name, b.Name)
 		})
@@ -347,7 +362,7 @@ func (x *Index) Used(tenantName, project string) int64 {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
 	var n int64
-	for _, a := range x.of(tenantName).items {
+	for _, a := range x.peek(tenantName).items {
 		if project == "" || a.Project == project {
 			n += a.Size
 		}
