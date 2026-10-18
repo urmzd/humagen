@@ -80,10 +80,13 @@ async function main() {
     }
   })();
 
+  // Resolves on shutdown. Rejects when Slack cannot be reached again, and the
+  // process exits non-zero so its supervisor restarts it.
   log(`serving workspace ${me.tenant} as ${me.subject}`);
   await socketMode(slackClient(config.slack.appToken), (envelope) => app.handle(envelope), {
     log,
     signal: stop.signal,
+    ...config.slack.socket,
   });
 }
 
