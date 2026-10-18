@@ -10,6 +10,8 @@ export SLACK_APP_TOKEN=""
 export SLACK_TEAM_ID=""
 # Optional: Slack member ids, comma separated, who may settle any inbox item and see the whole inbox on Home
 export SLACK_OPERATORS=""
+# Optional: a branding file (see apps/slack/branding.example.json). A bad file stops startup.
+export SLACK_BRANDING=""
 
 # Warp
 export WARP_URL="http://127.0.0.1:8080"

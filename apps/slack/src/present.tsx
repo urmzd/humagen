@@ -1,5 +1,5 @@
 import "./react.ts";
-import { TurnView } from "@warp/components";
+import { type Copy, defaultCopy, TurnView } from "@warp/components";
 import type { Turn, TurnStatus } from "@warp/core";
 import {
   type Block,
@@ -87,6 +87,8 @@ export class Presenter {
       log?: (line: string) => void;
       /** A status the message that asked already shows, such as the reaction for a queued message. */
       shown?: TurnStatus;
+      /** The copy a turn is rendered with, for a branded disclaimer. */
+      copy?: Copy;
     } = {},
   ) {
     this.native = opts.native ?? true;
@@ -95,6 +97,10 @@ export class Presenter {
 
   private log(line: string) {
     this.opts.log?.(line);
+  }
+
+  private get copy(): Copy {
+    return this.opts.copy ?? defaultCopy;
   }
 
   /** Whether native streaming was still in use, so the caller can remember a refusal. */
@@ -264,7 +270,7 @@ export class Presenter {
           if (!this.refused(e)) throw e;
         }
       }
-      const view = renderToSlack(<TurnView turn={turn} />);
+      const view = renderToSlack(<TurnView copy={this.copy} turn={turn} />);
       const [first = []] = view.pages;
       if (first.length === 0) return;
       if (!this.ts) await this.post(first, view.text);
@@ -289,7 +295,7 @@ export class Presenter {
     // A posted message is edited with the whole turn, buttons included.
     if (!this.native || !this.ts || this.degraded) return;
     try {
-      const final = renderToSlack(<TurnView turn={turn} streamed />);
+      const final = renderToSlack(<TurnView copy={this.copy} turn={turn} streamed />);
       await this.slack.call("chat.stopStream", {
         channel: this.target.channel,
         ts: this.ts,
@@ -318,7 +324,7 @@ export class Presenter {
       interrupts: paused.turn.interrupts.map((i) => now.get(i.id) ?? i),
     };
     if (JSON.stringify(shown.interrupts) === JSON.stringify(paused.turn.interrupts)) return;
-    const view = renderToSlack(<TurnView turn={shown} streamed={this.native} />);
+    const view = renderToSlack(<TurnView copy={this.copy} turn={shown} streamed={this.native} />);
     await this.slack
       .call("chat.update", {
         channel: this.target.channel,
@@ -356,7 +362,7 @@ export class Presenter {
         if (rewritten) throw new Error("the answer was rewritten after it streamed");
         if (chunks.length > 0) await this.append(turn, chunks);
         const title = streamStopTitle(turn);
-        const final = renderToSlack(<TurnView turn={turn} streamed />);
+        const final = renderToSlack(<TurnView copy={this.copy} turn={turn} streamed />);
         const [first = [], ...rest] = final.pages;
         await this.slack.call("chat.stopStream", {
           channel: this.target.channel,
@@ -369,7 +375,7 @@ export class Presenter {
         for (const w of final.warnings) this.log(`render warning: ${w}`);
       } else {
         // Nothing was streamed, so the message carries the whole turn.
-        const final = renderToSlack(<TurnView turn={turn} />);
+        const final = renderToSlack(<TurnView copy={this.copy} turn={turn} />);
         const [first = [], ...rest] = final.pages;
         if (!this.ts) await this.post(first, final.text);
         else await this.edit(first, final.text);
@@ -378,7 +384,7 @@ export class Presenter {
       }
     } catch (e) {
       this.log(`ending the turn as streamed failed: ${(e as Error).message}`);
-      const final = renderToSlack(<TurnView turn={turn} />);
+      const final = renderToSlack(<TurnView copy={this.copy} turn={turn} />);
       const [first = [], ...rest] = final.pages;
       // The streamed message is closed with the whole turn as its final layout, so the
       // answer and its controls stay in one message.
@@ -415,7 +421,7 @@ export class Presenter {
    * reaction and the session settle.
    */
   async conclude(turn: Turn): Promise<void> {
-    const final = renderToSlack(<TurnView turn={turn} />);
+    const final = renderToSlack(<TurnView copy={this.copy} turn={turn} />);
     try {
       const [first = [], ...rest] = final.pages;
       await this.post(first, final.text);

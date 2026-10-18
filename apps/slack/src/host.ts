@@ -32,19 +32,19 @@ export const words = {
 };
 
 /** The form the global shortcut opens. Its text comes back on submit. */
-export function askForm() {
+export function askForm(w: typeof words = words) {
   return {
     type: "modal",
     callback_id: ENTRY.form,
     private_metadata: JSON.stringify({ kind: "ask" }),
-    title: { type: "plain_text", text: words.askTitle },
-    submit: { type: "plain_text", text: words.send },
-    close: { type: "plain_text", text: words.cancel },
+    title: { type: "plain_text", text: w.askTitle },
+    submit: { type: "plain_text", text: w.send },
+    close: { type: "plain_text", text: w.cancel },
     blocks: [
       {
         type: "input",
         block_id: "text",
-        label: { type: "plain_text", text: words.askLabel },
+        label: { type: "plain_text", text: w.askLabel },
         element: { type: "plain_text_input", action_id: "value", multiline: true },
       },
     ],

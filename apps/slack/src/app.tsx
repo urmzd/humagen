@@ -10,7 +10,7 @@ import {
   retryOf,
   toRequest,
 } from "@warp/adapter";
-import { defaultCopy, MailboxView, MessageView, TurnView } from "@warp/components";
+import { type Copy, defaultCopy, MailboxView, MessageView, TurnView } from "@warp/components";
 import {
   ActionId,
   emptyQueue,
@@ -31,9 +31,11 @@ import {
   reactionChanges,
   renderToSlack,
   type SerializeResult,
+  suggestedPrompts,
 } from "@warp/render-slack";
 import { choose, mayRoute, type Routing } from "./agents.ts";
-import { askForm, ENTRY, words } from "./host.ts";
+import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
+import { askForm, ENTRY, type words } from "./host.ts";
 import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
 import { Presenter } from "./present.tsx";
 import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
@@ -74,6 +76,8 @@ export interface AppOptions {
   defaultAgent?: string;
   /** Where people reach the console, for links to files. */
   publicUrl?: string;
+  /** Name, tagline, disclaimer and suggested prompts. Left out, the defaults. */
+  branding?: Branding;
   /** The least time between two writes of one turn to Slack. */
   flushMs?: number;
   /** How often a run's record is read while it is being followed. */
@@ -298,6 +302,11 @@ export class App {
   private readonly confirmed = new Recent<true>(10_000);
   /** Runs followed slowly right now, and how to make each one look again at once. */
   private readonly slow = new Map<string, () => void>();
+  private readonly branding: Branding;
+  /** The shared copy, with this deployment's disclaimer. */
+  private readonly copy: Copy;
+  /** The host's own words, with this deployment's name. */
+  private readonly words: typeof words;
 
   constructor(
     private readonly slack: SlackApi,
@@ -309,6 +318,9 @@ export class App {
     this.stallMs = opts.stallMs ?? 15 * 60_000;
     this.slowPollMs = opts.slowPollMs ?? 3 * 60_000;
     this.stopWaitMs = opts.stopWaitMs ?? 30_000;
+    this.branding = opts.branding ?? DEFAULT_BRANDING;
+    this.copy = brandedCopy(this.branding);
+    this.words = brandedWords(this.branding);
   }
 
   private log(line: string) {
@@ -397,6 +409,13 @@ export class App {
     if (!event) return;
     if (event.type === "app_home_opened") {
       if (event.tab === "home" && event.user) await this.publishHome(event.user);
+      // The app's messages: Slack offers the suggested prompts above the composer.
+      if (event.tab === "messages" && event.channel) await this.suggest(event.channel);
+      return;
+    }
+    if (event.type === "assistant_thread_started") {
+      const at = event.assistant_thread;
+      if (at?.channel_id) await this.suggest(at.channel_id, at.thread_ts);
       return;
     }
     if (event.type === "agent_session_stopped") {
@@ -424,6 +443,18 @@ export class App {
       user: event.user,
       key: eventKey(session, event.ts),
     });
+  }
+
+  /** Offer this deployment's suggested prompts. Without any, Slack is not asked. */
+  private async suggest(channel: string, threadTs?: string): Promise<void> {
+    if (this.branding.prompts.length === 0) return;
+    await this.slack
+      .call("assistant.threads.setSuggestedPrompts", {
+        channel_id: channel,
+        ...(threadTs ? { thread_ts: threadTs } : {}),
+        ...suggestedPrompts({ suggestions: this.branding.prompts }, this.branding.tagline),
+      })
+      .catch((e: Error) => this.log(`suggested prompts skipped: ${e.message}`));
   }
 
   // The queue: one turn at a time per thread, as in the console's composer.
@@ -547,6 +578,7 @@ export class App {
     thread.live = live;
     const presenter = new Presenter(this.slack, this.target(job), {
       native: this.native,
+      copy: this.copy,
       log: (line) => this.log(line),
       ...(queued ? { shown: "queued" as const } : {}),
     });
@@ -855,8 +887,8 @@ export class App {
     if (run.status !== "stopped")
       this.log(`run ${run.id} ended ${run.status} before the stop reached it`);
     const turn = follow(run, { href: this.href }).settle(run);
-    await this.postView(session, renderToSlack(<TurnView turn={turn} />)).catch((e: Error) =>
-      this.log(`the end of run ${run.id} was not posted: ${e.message}`),
+    await this.postView(session, renderToSlack(<TurnView copy={this.copy} turn={turn} />)).catch(
+      (e: Error) => this.log(`the end of run ${run.id} was not posted: ${e.message}`),
     );
   }
 
@@ -1019,7 +1051,7 @@ export class App {
     if (!answer) {
       // warp: a modal that collects a reply to a question (as feedbackModal does for a
       // rating), for Something Else and Reply. Until then a reply is typed in the console.
-      if (ui.id === ActionId.clarifyOther) return this.whisper(p, words.replyInConsole);
+      if (ui.id === ActionId.clarifyOther) return this.whisper(p, this.words.replyInConsole);
       return;
     }
     const as = await this.actAs(p.user.id);
@@ -1060,7 +1092,7 @@ export class App {
       return this.whisper(p, defaultCopy.notYours);
     }
     if (part?.type === "reply" && ui.id === ActionId.reply && !ui.payload.text) {
-      return this.whisper(p, words.replyInConsole);
+      return this.whisper(p, this.words.replyInConsole);
     }
     // A failed turn is asked again here, where its answer can be shown, when the thread is this app's.
     let request = toRequest(message, ui);
@@ -1214,7 +1246,7 @@ export class App {
       // The app can only post where it is a member. Say so instead of failing silently.
       await this.slack.respond(responseUrl, {
         response_type: "ephemeral",
-        text: words.notInChannel,
+        text: this.words.notInChannel,
       });
       return;
     }
@@ -1254,7 +1286,7 @@ export class App {
       this.seen.set(once, true);
     }
     if (p.type === "shortcut" && p.callback_id === ENTRY.ask) {
-      await this.slack.call("views.open", { trigger_id: p.trigger_id, view: askForm() });
+      await this.slack.call("views.open", { trigger_id: p.trigger_id, view: askForm(this.words) });
       return;
     }
     if (p.type === "message_action" && p.callback_id === ENTRY.askAbout) {
@@ -1307,6 +1339,7 @@ interface SlackEvent {
   ts?: string;
   thread_ts?: string;
   tab?: string;
+  assistant_thread?: { channel_id?: string; thread_ts?: string };
 }
 
 interface ActionPayload {
