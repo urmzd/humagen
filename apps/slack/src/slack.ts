@@ -34,6 +34,17 @@ function slackHook(url: string): boolean {
   }
 }
 
+/** Read methods that take a form, not JSON. */
+const FORM = new Set(["conversations.replies", "users.info"]);
+
+function formOf(args: Record<string, unknown>): URLSearchParams {
+  const form = new URLSearchParams();
+  for (const [k, v] of Object.entries(args)) {
+    if (v !== undefined) form.set(k, typeof v === "string" ? v : JSON.stringify(v));
+  }
+  return form;
+}
+
 export function slackClient(
   token: string,
   opts: { fetch?: typeof fetch; retries?: number } = {},
@@ -42,14 +53,17 @@ export function slackClient(
   return {
     async call(method, args = {}) {
       for (let attempt = 0; ; attempt++) {
-        const res = await call(`https://slack.com/api/${method}`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json; charset=utf-8",
-            authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(args),
-        });
+        const authorization = `Bearer ${token}`;
+        const res = await call(
+          `https://slack.com/api/${method}`,
+          FORM.has(method)
+            ? { method: "POST", headers: { authorization }, body: formOf(args) }
+            : {
+                method: "POST",
+                headers: { "content-type": "application/json; charset=utf-8", authorization },
+                body: JSON.stringify(args),
+              },
+        );
         if (res.status === 429 && attempt < (opts.retries ?? 3)) {
           await wait(Number(res.headers.get("retry-after") ?? "1") * 1000);
           continue;
