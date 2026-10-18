@@ -45,6 +45,17 @@ message sent while a turn is running waits for it, as in the console.
 Bot messages, the app's own messages, edits and joins never start a run.
 Deliveries from any team but `SLACK_TEAM_ID` are ignored.
 
+## Staying connected
+
+Socket Mode is reopened on a close or a `disconnect`. A connection can also
+die without closing, after the machine sleeps or the network drops, so a
+watchdog replaces it when nothing has arrived for `SLACK_SOCKET_IDLE_MS`
+(default 120000), or when its own timer fires far too late, which means the
+process was asleep. The new connection opens before the old one closes.
+Failed attempts back off from one second to a minute, with jitter. After
+`SLACK_SOCKET_MAX_ATTEMPTS` failures in a row (default 10) the app exits with
+status 1, so a supervisor can restart it.
+
 ## Branding
 
 `SLACK_BRANDING` names a JSON file that renames and rewords the app without a
