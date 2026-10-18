@@ -1,6 +1,7 @@
 package platform_test
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"slices"
@@ -592,6 +593,43 @@ func TestPublishingWaitsForApproval(t *testing.T) {
 		if page, _, _ := p.Artifacts.Page(tenant, artifacts.Query{Thread: run.Thread}); len(page) != c.published {
 			t.Fatalf("after %s, %d files were published", c.action, len(page))
 		}
+	}
+}
+
+// An approver may change what is published: the file is stored under the
+// arguments they approved, not the model's, and the inbox message they
+// answered names the call they were asked about.
+func TestAnApproverCanChangeWhatIsPublished(t *testing.T) {
+	p := stage(t, &cast{continues: true,
+		says: map[string][][]saigetypes.Delta{"writer": {
+			agenttest.ToolCallResponse("w", platform.ToolFileWrite, map[string]any{"path": "plan.md", "content": "# Plan"}),
+			agenttest.ToolCallResponse("p", platform.ToolPublish, map[string]any{"path": "plan.md", "title": "draft.md"}),
+			say("Done."),
+		}},
+		tools: map[string][]string{"writer": {platform.ToolFileWrite, platform.ToolPublish}},
+		shape: map[string]func(*agentspec.AgentSpec){"writer": func(s *agentspec.AgentSpec) {
+			s.Approvals, s.Approvers = []string{platform.ToolPublish}, []string{"olu"}
+		}},
+	}, platform.Config{})
+	ctx := t.Context()
+	run := ask(t, p, "api-edit", "writer")
+	if run.Question == nil || run.Question.Tool == nil || run.Question.Tool.Name != platform.ToolPublish {
+		t.Fatalf("parked on %+v", run.Question)
+	}
+	if !strings.Contains(string(run.Question.Tool.Arguments), "draft.md") {
+		t.Fatalf("the question shows %s, not the model's arguments", run.Question.Tool.Arguments)
+	}
+	if u := p.Artifacts.Usage(tenant); u.Count != 0 {
+		t.Fatalf("stored before approval: %+v", u)
+	}
+	edited := json.RawMessage(`{"path":"plan.md","title":"Launch plan.md","description":"Approved by olu"}`)
+	if _, err := p.AnswerQuestion(ctx, olu, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove, Arguments: edited}); err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, run.ID, runs.Completed)
+	page, _, _ := p.Artifacts.Page(tenant, artifacts.Query{Thread: run.Thread})
+	if len(page) != 1 || page[0].Title != "Launch plan.md" || page[0].Description != "Approved by olu" {
+		t.Fatalf("published %+v", page)
 	}
 }
 
