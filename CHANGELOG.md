@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.5.0 (2026-10-18)
+
+### Breaking
+
+- combine the platform and presentation as warp ([621d86c](https://github.com/urmzd/warp/commit/621d86c6bc45dbddcf422e2d806c9bd31f6fcff3))
+- rename project from agent-ui to vultus (#3) ([8d263bd](https://github.com/urmzd/warp/commit/8d263bd5ce580dfa3c7d4dff91b5f833b0f22eae))
+
+### Features
+
+- add project navigation icons and accessible tooltips (#13) ([fa6f744](https://github.com/urmzd/warp/commit/fa6f7441e5b92cad6e2e61a7b2501cfc1c1d3ae1))
+- Slack parity components, copy and a shared Slack host (#8) ([89ee84b](https://github.com/urmzd/warp/commit/89ee84bb4b9263838245a34b125ee2a62e938ecd))
+- **home**: notifications with direct links, page title levels, and in-tab links (#9) ([7799303](https://github.com/urmzd/warp/commit/77993030cfda27faa00846681295a1bc63fa1ddf))
+- **home**: a Home surface for the web and the Slack Home tab, and rename the Slack app to Collegium (#7) ([688a9fa](https://github.com/urmzd/warp/commit/688a9fabcea99e6341ee1f73458e6256f4f9af00))
+- **go**: add the Go module with GitHub Markdown presentation (#6) ([8e3f506](https://github.com/urmzd/warp/commit/8e3f506b3410fc3d7b88cf54f8f973e38488d27f))
+- **sandbox**: free-workspace manifest via SLACK_SANDBOX_SKIP, plus the Slack CLI hook (#3) ([76bda56](https://github.com/urmzd/warp/commit/76bda56da9750c87649231b4524a5e52338b1fdf))
+- one run link above the disclaimer, and a comment prompt after a rating ([3dc700a](https://github.com/urmzd/warp/commit/3dc700a10f1827913699f000b136fcdc7d5550b9))
+- mailbox with typed parts, agent items, a per-item slot, and Slack paging with source and disclaimer ([64b0049](https://github.com/urmzd/warp/commit/64b0049df319a8a7136caecf80a0ec3d4f487e74))
+- **web**: orb, queue, status line, turn rail, artifacts, inbox, alerts, split buttons, and denser layout ([854d2c8](https://github.com/urmzd/warp/commit/854d2c85a25104c54dd01f07056f7777d2b889bb))
+- inbox, system alerts, inline task decisions, and split-button menus ([b4d61c4](https://github.com/urmzd/warp/commit/b4d61c48f7a4bdb2b0764dd5e103baee5d62f92a))
+- artifacts across core, Slack cards, and sandbox file upload ([6074998](https://github.com/urmzd/warp/commit/60749987a606518a563b9fdd955050092be83a06))
+- queue, session state, batch approvals, stop phases, runtime notices, and Slack status mapping ([6c42a0c](https://github.com/urmzd/warp/commit/6c42a0c5bea9bbb2d20dc30c1d13095e2fd7934e))
+- real Slack sandbox with manifest generator, and rebuilt web UI with web-only Storybook ([b496b6a](https://github.com/urmzd/warp/commit/b496b6ada8e405863fd8f6b6865068a8f8fe9a9a))
+- agent-ui scaffold with shared components rendered to web and Slack Block Kit ([1858510](https://github.com/urmzd/warp/commit/18585103d844ee05d7f5979c02dde064c65d5a12))
+
+### Bug Fixes
+
+- keep orb effects within their layout footprint ([bd4b308](https://github.com/urmzd/warp/commit/bd4b3084cb7981e2d10caaa2bab0a673882b2fa4))
+- **release**: align workspace manifests for the corrective patch (#11) ([80264f0](https://github.com/urmzd/warp/commit/80264f02a83b7fe5e628e8de0fd6e8ddee3f49f2))
+- **sandbox**: reject inherited property names in SLACK_SANDBOX_SKIP (#4) ([9d358f3](https://github.com/urmzd/warp/commit/9d358f3daf100015b31e62db9e44f325ea16b1de))
+- **sandbox**: skip fixtures with no blocks, thread ephemerals, and clear the waiting reaction ([4929be6](https://github.com/urmzd/warp/commit/4929be651bea09823044fb75d9ecfb60a46ee0ee))
+
+### Misc
+
+- pin Fiber and Saige migration releases ([572258b](https://github.com/urmzd/warp/commit/572258bcdda0bdd0cb5097ca6e16fcf310395553))
+- publish versioned source releases after CI (#10) ([afcc776](https://github.com/urmzd/warp/commit/afcc7764478718efda5b1db7937e5e6e844b652a))
+- **sandbox**: drop stale 1Password references from the env example (#2) ([a426378](https://github.com/urmzd/warp/commit/a42637885820c4341df8d8c45e7e30e7b700b173))
+- keep generated slack manifest out of the formatter ([11f49ec](https://github.com/urmzd/warp/commit/11f49ec3f7e12108194446b0519e40daec8b266b))
+- format slack manifest ([f879fea](https://github.com/urmzd/warp/commit/f879fead61e10e096efed4e07def5202082fa5a9))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.4.0...v0.5.0)
+
+
 ## 0.4.0 (2026-10-16)
 
 ### Features
