@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { bytes, contentUrl, type Filter, kindWord, type Stored, type StorageTransport, type StorageUse, showsInline, transport as platform, useStorage } from "./storage.ts";
+import { bytes, contentUrl, deleteProblem, type Filter, kindWord, type Stored, type StorageTransport, type StorageUse, OVER_LIMIT, overLimit, showsInline, transport as platform, useStorage } from "./storage.ts";
 import { AgentMark, agentOptions, ago, button, Chip, Empty, Menu, Page, Problem, primary, rows, SearchField, SkeletonRows, UsageMeter } from "./ui.tsx";
 
 const linkish =
@@ -31,6 +31,41 @@ export function StorageUsed({ use }: { use: StorageUse }) {
         </ul>
       )}
     </section>
+  );
+}
+
+/** Deleting one version, asked twice: once to start, once to confirm. */
+export function DeleteVersion({
+  version,
+  confirming,
+  onAsk,
+  onDelete,
+  onKeep,
+}: {
+  version: number;
+  confirming: boolean;
+  onAsk: () => void;
+  onDelete: () => void;
+  onKeep: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-[var(--warp-rule)] border-t pt-3">
+      {confirming ? (
+        <>
+          <span className="text-aui-sm text-aui-fg">Delete version {version} of this file? This cannot be undone.</span>
+          <button type="button" className={button} onClick={onDelete}>
+            Delete Version
+          </button>
+          <button type="button" className={button} onClick={onKeep}>
+            Keep It
+          </button>
+        </>
+      ) : (
+        <button type="button" className={button} onClick={onAsk}>
+          Delete
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -137,26 +172,25 @@ export function StoredDetail({
         )}
       </div>
 
-      {canDelete && (
-        <div className="flex flex-wrap items-center gap-3 border-[var(--warp-rule)] border-t pt-3">
-          {confirming ? (
-            <>
-              <span className="text-aui-sm text-aui-fg">Delete version {file.version} of this file? This cannot be undone.</span>
-              <button type="button" className={button} onClick={() => onDelete(file)}>
-                Delete Version
-              </button>
-              <button type="button" className={button} onClick={() => setConfirming(false)}>
-                Keep It
-              </button>
-            </>
-          ) : (
-            <button type="button" className={button} onClick={() => setConfirming(true)}>
-              Delete
-            </button>
-          )}
-        </div>
-      )}
+      {canDelete && <DeleteVersion version={file.version} confirming={confirming} onAsk={() => setConfirming(true)} onDelete={() => onDelete(file)} onKeep={() => setConfirming(false)} />}
     </section>
+  );
+}
+
+/** The button under the list that loads the next page, while there is one. */
+export function StorageMore({ hasMore, loading, failed, onMore }: { hasMore: boolean; loading: boolean; failed: boolean; onMore: () => void }) {
+  if (!hasMore && !loading) return null;
+  return (
+    <div className="flex justify-center">
+      <button
+        type="button"
+        onClick={onMore}
+        disabled={loading}
+        className="inline-flex h-6 items-center rounded-full border border-[var(--warp-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
+      >
+        {loading ? "Loading" : failed ? "Could not load. Try again" : "See more"}
+      </button>
+    </div>
   );
 }
 
@@ -253,7 +287,7 @@ export function Storage({
   const shown = store.files;
   const file = store.files.find((f) => f.id === selected) ?? null;
   const narrowed = query.trim() !== "" || filter.project !== "" || filter.agent !== "" || filter.kind !== "";
-  const over = store.use?.limit_bytes ? store.use.used_bytes > store.use.limit_bytes : false;
+  const over = store.use ? overLimit(store.use) : false;
 
   useEffect(() => {
     setVersions(null);
@@ -276,13 +310,13 @@ export function Storage({
         setSelected(null);
         store.reload();
       })
-      .catch((e: unknown) => setProblem(e instanceof Error && e.message ? `The file could not be deleted. ${e.message}` : "The file could not be deleted."));
+      .catch((e: unknown) => setProblem(deleteProblem(e)));
   };
 
   return (
     <Page title="Storage" lede="Files agents have published from their sandboxes. Each keeps its versions, and what made it.">
       {store.use && <StorageUsed use={store.use} />}
-      {over && <Problem message="Storage is over its limit. Agents cannot publish new files until some are deleted or the limit is raised in Settings." />}
+      {over && <Problem message={OVER_LIMIT} />}
       <Problem message={problem} />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -324,18 +358,7 @@ export function Storage({
         onSelect={setSelected}
       />
 
-      {(store.hasMore || store.loading === "more") && (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={store.more}
-            disabled={store.loading === "more"}
-            className="inline-flex h-6 items-center rounded-full border border-[var(--warp-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
-          >
-            {store.loading === "more" ? "Loading" : store.moreFailed ? "Could not load. Try again" : "See more"}
-          </button>
-        </div>
-      )}
+      <StorageMore hasMore={store.hasMore} loading={store.loading === "more"} failed={store.moreFailed} onMore={store.more} />
     </Page>
   );
 }

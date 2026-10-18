@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -8,6 +10,7 @@ import (
 	"time"
 
 	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/policy"
 )
 
 func (f *fixture) raw(t *testing.T, path, bearer string) (*http.Response, string) {
@@ -169,6 +172,132 @@ func TestArtifactsAreServedSafely(t *testing.T) {
 	}
 	if res, _ := f.do(t, nil, "PUT", "/api/agents/warp-writer", admin, `{"spec":`+spec+`,"expected_rev":1}`); res.StatusCode != http.StatusForbidden {
 		t.Fatalf("revising a built-in = %d", res.StatusCode)
+	}
+}
+
+// What the storage page does, through the API: preview an image, delete a
+// version, show a workspace over its limit, and page with See more. These are
+// the server's half; the console's half is in apps/web/src/storage.test.tsx.
+// Neither has been checked in a browser.
+func TestStoragePageFlows(t *testing.T) {
+	f := newFixture(t)
+	admin := f.machine(t, "acme", everything...)
+	publish := func(thread, name, content string) string {
+		t.Helper()
+		if err := f.p.PutFile("acme", thread, name, content); err != nil {
+			t.Fatal(err)
+		}
+		a, err := f.p.Publish(t.Context(), platform.Publication{Tenant: "acme", Thread: thread, Run: thread, Agent: "helper", By: "agent:helper", Path: name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a.ID
+	}
+
+	// Image preview: a PNG is served inline as itself when asked, and is an
+	// image to the index, so the console shows it.
+	png := "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+	chart := publish("t1", "chart.png", png)
+	_, got := f.do(t, nil, "GET", "/api/artifacts/"+chart, admin, "")
+	if got["mime"] != "image/png" || got["kind"] != "image" {
+		t.Fatalf("a png is indexed as %v, %v", got["mime"], got["kind"])
+	}
+	res, body := f.raw(t, "/api/artifacts/"+chart+"/content?inline=1", admin)
+	if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != "image/png" || !strings.HasPrefix(res.Header.Get("Content-Disposition"), "inline;") || body != png {
+		t.Fatalf("inline png = %d, %q, %q, %d bytes", res.StatusCode, res.Header.Get("Content-Type"), res.Header.Get("Content-Disposition"), len(body))
+	}
+	if res.Header.Get("Content-Security-Policy") == "" || res.Header.Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("inline png headers = %v", res.Header)
+	}
+
+	// Delete: removing the latest version lists the one before it again,
+	// and the totals drop by what was removed.
+	v1 := publish("t1", "plan.md", "one")
+	v2 := publish("t1", "plan.md", "version two")
+	_, before := f.do(t, nil, "GET", "/api/storage", admin, "")
+	if res, _ := f.do(t, nil, "DELETE", "/api/artifacts/"+v2, admin, ""); res.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete = %d", res.StatusCode)
+	}
+	_, after := f.do(t, nil, "GET", "/api/storage", admin, "")
+	if before["used_bytes"].(float64)-after["used_bytes"].(float64) != float64(len("version two")) || after["count"].(float64) != before["count"].(float64)-1 {
+		t.Fatalf("storage %v then %v", before, after)
+	}
+	_, list := f.do(t, nil, "GET", "/api/artifacts?q=plan", admin, "")
+	if l := list["artifacts"].([]any); len(l) != 1 || l[0].(map[string]any)["id"] != v1 {
+		t.Fatalf("after deleting the latest, the list shows %v", l)
+	}
+	if res, _ := f.do(t, nil, "GET", "/api/artifacts/"+v2+"/versions", admin, ""); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("versions of a deleted file = %d", res.StatusCode)
+	}
+	if res, _ := f.do(t, nil, "DELETE", "/api/artifacts/"+v2, admin, ""); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("deleting twice = %d", res.StatusCode)
+	}
+
+	// Over quota: with a limit below what is stored, the storage read says
+	// so, a publish is refused, and deleting brings it back under.
+	_, now := f.do(t, nil, "GET", "/api/storage", admin, "")
+	used := int64(now["used_bytes"].(float64))
+	if _, err := f.p.Policies.Put("acme", policy.Policy{Scope: policy.Scope{Kind: policy.Tenant}, Period: policy.Day, MaxStorage: used - 1, Action: policy.Block}, "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	_, over := f.do(t, nil, "GET", "/api/storage", admin, "")
+	if over["limit_bytes"] == nil || over["used_bytes"].(float64) <= over["limit_bytes"].(float64) {
+		t.Fatalf("over quota reads %v", over)
+	}
+	if err := f.p.PutFile("acme", "t1", "more.md", "more"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Publish(t.Context(), platform.Publication{Tenant: "acme", Thread: "t1", Run: "t1", Agent: "helper", By: "agent:helper", Path: "more.md"}); !errors.Is(err, platform.ErrStorage) {
+		t.Fatalf("a publish over quota = %v", err)
+	}
+	if res, _ := f.do(t, nil, "DELETE", "/api/artifacts/"+v1, admin, ""); res.StatusCode != http.StatusNoContent {
+		t.Fatal("a delete over quota was refused")
+	}
+	if _, under := f.do(t, nil, "GET", "/api/storage", admin, ""); under["used_bytes"].(float64) > under["limit_bytes"].(float64) {
+		t.Fatalf("after deleting, still over: %v", under)
+	}
+	if _, err := f.p.Policies.Put("acme", policy.Policy{Scope: policy.Scope{Kind: policy.Tenant}, Period: policy.Day, MaxStorage: 1 << 30, Action: policy.Block}, "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	// See more: the console asks for 30 at a time and follows next. Every
+	// file comes once, newest first, even when one is published and one
+	// deleted between pages.
+	var all []string
+	for i := range 64 {
+		all = append(all, publish("t2", fmt.Sprintf("f%02d.md", i), "x"))
+	}
+	var seen []string
+	next, pages := "", 0
+	for {
+		path := "/api/artifacts?thread=t2&limit=30"
+		if next != "" {
+			path += "&before=" + next
+		}
+		_, out := f.do(t, nil, "GET", path, admin, "")
+		for _, a := range out["artifacts"].([]any) {
+			seen = append(seen, a.(map[string]any)["id"].(string))
+		}
+		pages++
+		if pages == 1 {
+			publish("t2", "late.md", "x")
+			if res, _ := f.do(t, nil, "DELETE", "/api/artifacts/"+all[10], admin, ""); res.StatusCode != http.StatusNoContent {
+				t.Fatal("delete between pages")
+			}
+		}
+		if out["next"] == nil {
+			break
+		}
+		next = out["next"].(string)
+	}
+	var want []string
+	for i := len(all) - 1; i >= 0; i-- {
+		if i != 10 {
+			want = append(want, all[i])
+		}
+	}
+	if pages != 3 || strings.Join(seen, " ") != strings.Join(want, " ") {
+		t.Fatalf("%d pages, %d files: %v", pages, len(seen), seen)
 	}
 }
 
