@@ -150,7 +150,7 @@ func (s SecretInput) GoString() string { return s.String() }
 // EnvPrefix is what the name in an "env:NAME" reference must start with. A
 // reference is sent to the surface as a credential, so it may not name an
 // arbitrary variable of the server's, such as a model key.
-const EnvPrefix = "COLLEGIUM_"
+const EnvPrefix = "WARP_"
 
 var envName = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
 

@@ -1,4 +1,4 @@
-import { type AnswerRequest, answerPath } from "@collegium/adapter/question";
+import { type AnswerRequest, answerPath } from "@warp/adapter/question";
 import type { BusEvent, Run } from "./adapter.ts";
 
 export class ApiError extends Error {

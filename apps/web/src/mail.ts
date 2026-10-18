@@ -1,11 +1,11 @@
 /**
  * The console's inbox transport. The model, the wire mapping and the routes are
- * shared with every other surface in `@collegium/adapter`. What is the
+ * shared with every other surface in `@warp/adapter`. What is the
  * console's own is how it calls: same origin, with the session cookie.
  */
-import { type Http, MailError, mailTransport, type Transport } from "@collegium/adapter";
+import { type Http, MailError, mailTransport, type Transport } from "@warp/adapter";
 
-export * from "@collegium/adapter/mail";
+export * from "@warp/adapter/mail";
 
 const http: Http = async <T>(method: string, path: string, json?: unknown): Promise<T> => {
   const res = await fetch(path, {

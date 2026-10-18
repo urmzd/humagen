@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fromServer } from "@collegium/adapter";
-import { defaultCopy, MessageView } from "@vultus/components";
-import { renderToSlack } from "@vultus/render-slack";
+import { fromServer } from "@warp/adapter";
+import { defaultCopy, MessageView } from "@warp/components";
+import { renderToSlack } from "@warp/render-slack";
 import { echoed, forSlack } from "./app.tsx";
-import { CollegiumError } from "./collegium.ts";
 import {
   alertMail,
   BOT,
@@ -35,6 +34,7 @@ import {
 import { words } from "./host.ts";
 import { runId, tagId } from "./keys.ts";
 import { validateBlocks } from "./validate.ts";
+import { WarpError } from "./warp.ts";
 
 const TS = "1700000000.000100";
 const KEY = `slack-${TEAM}-${CHANNEL}-1700000000-000100`;
@@ -57,8 +57,8 @@ async function deliver(w: World, envelope: Parameters<World["app"]["handle"]>[0]
 }
 
 /** Run one event of a run through and let Slack catch up. */
-async function emit(w: World, kind: string, payload?: unknown, run = w.collegium.last.id) {
-  w.collegium.emit(run, kind, payload);
+async function emit(w: World, kind: string, payload?: unknown, run = w.warp.last.id) {
+  w.warp.emit(run, kind, payload);
   await settle();
 }
 
@@ -70,14 +70,14 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
   await deliver(w, mention("what changed in the last deploy?", TS));
 
   // The run: a new conversation named by the thread, the default agent, the Slack person as actor.
-  assert.equal(w.collegium.started.length, 1);
-  const asked = w.collegium.started[0];
+  assert.equal(w.warp.started.length, 1);
+  const asked = w.warp.started[0];
   assert.equal(asked?.idempotencyKey, KEY);
   assert.equal(asked?.agent, "lead");
   assert.equal(asked?.text, "what changed in the last deploy?");
   assert.equal(asked?.after, undefined);
-  assert.equal(w.collegium.last.id, runId("acme", SUBJECT, KEY));
-  assert.equal(w.collegium.last.tag_id, tagId(SUBJECT, KEY));
+  assert.equal(w.warp.last.id, runId("acme", SUBJECT, KEY));
+  assert.equal(w.warp.last.tag_id, tagId(SUBJECT, KEY));
 
   // Before any event: seen, processing, and a stream opened in the mention's thread.
   assert.deepEqual(w.slack.methods, [
@@ -159,14 +159,14 @@ test("a redelivery of the same Slack event starts no second run, before or after
 
   await deliver(w, mention("ping", TS, { retry: 1 }));
   await w.app.idle();
-  assert.equal(w.collegium.asked.length, 1, "the same process remembers the event");
+  assert.equal(w.warp.asked.length, 1, "the same process remembers the event");
 
-  // A new process remembers nothing, so it asks collegium, which has the run.
+  // A new process remembers nothing, so it asks warp, which has the run.
   const again = w.restart();
   await deliver(w, mention("ping", TS), again);
   await again.idle();
-  assert.equal(w.collegium.asked.length, 1, "collegium is not asked to start it again");
-  assert.equal(w.collegium.runs.size, 1);
+  assert.equal(w.warp.asked.length, 1, "warp is not asked to start it again");
+  assert.equal(w.warp.runs.size, 1);
   assert.equal(w.slack.calls.length, calls, "and nothing more is written to Slack");
 });
 
@@ -176,14 +176,14 @@ test("a reply in the thread continues the conversation, also after a restart", a
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "one" });
   await w.app.idle();
-  const first = w.collegium.last.id;
+  const first = w.warp.last.id;
 
   const app = w.restart();
   await deliver(w, mention("second", "1700000050.000200", { thread_ts: TS }), app);
-  const second = w.collegium.started[1];
+  const second = w.warp.started[1];
   assert.equal(second?.after, first);
   assert.equal(second?.idempotencyKey, `slack-${TEAM}-${CHANNEL}-1700000050-000200`);
-  assert.equal(w.collegium.last.thread, first, "one Slack thread is one conversation");
+  assert.equal(w.warp.last.thread, first, "one Slack thread is one conversation");
   assert.equal(w.slack.of("chat.startStream").at(-1)?.thread_ts, TS);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "two" });
@@ -193,7 +193,7 @@ test("a reply in the thread continues the conversation, also after a restart", a
 test("a direct message is a conversation per thread", async () => {
   const w = world();
   await deliver(w, direct("hello", "1700000100.000100"));
-  assert.equal(w.collegium.started[0]?.idempotencyKey, `slack-${TEAM}-${DM}-1700000100-000100`);
+  assert.equal(w.warp.started[0]?.idempotencyKey, `slack-${TEAM}-${DM}-1700000100-000100`);
   assert.equal(w.slack.of("chat.startStream")[0]?.thread_ts, "1700000100.000100");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "hi" });
@@ -201,7 +201,7 @@ test("a direct message is a conversation per thread", async () => {
 
   // A new top-level message is a new conversation.
   await deliver(w, direct("something else", "1700000200.000100"));
-  assert.equal(w.collegium.started[1]?.after, undefined);
+  assert.equal(w.warp.started[1]?.after, undefined);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await w.app.idle();
@@ -221,7 +221,7 @@ test("an event from another team is ignored", async () => {
   });
   await deliver(w, command("hello", { team_id: OTHER_TEAM }));
   await w.app.idle();
-  assert.equal(w.collegium.asked.length, 0);
+  assert.equal(w.warp.asked.length, 0);
   assert.equal(w.slack.calls.length, 0);
   assert.equal(w.logs.filter((l) => /another team/.test(l)).length, 3);
 });
@@ -234,20 +234,20 @@ test("a bot's message, the app's own and an edit never start a run", async () =>
   await deliver(w, direct("loop", "1700000003.000100", { subtype: "message_changed" }));
   await deliver(w, direct("loop", "1700000004.000100", { subtype: "bot_message" }));
   await w.app.idle();
-  assert.equal(w.collegium.asked.length, 0);
+  assert.equal(w.warp.asked.length, 0);
   assert.equal(w.slack.calls.length, 0);
 });
 
 test("stop mid-run stops the run, confirms in the thread, settles the session and renders nothing more", async () => {
   const w = world();
   await deliver(w, mention("write a long report", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "delta.text", { text: "Part one. " });
 
   await deliver(w, stopPressed(TS));
   await w.app.idle();
-  assert.deepEqual(w.collegium.stops, [run]);
+  assert.deepEqual(w.warp.stops, [run]);
   const stopped = w.slack.of("chat.stopStream")[0];
   assert.match(textIn(blocksOf(stopped)), new RegExp(defaultCopy.stopped));
   assert.match(textIn(blocksOf(stopped)), new RegExp(defaultCopy.stopPhase.confirmed));
@@ -259,8 +259,8 @@ test("stop mid-run stops the run, confirms in the thread, settles the session an
 
   // The run ended stopped with what it had said. Nothing it publishes later moves the turn.
   const before = w.slack.calls.length;
-  w.collegium.emit(run, "delta.text", { text: "Part two." });
-  w.collegium.emit(run, "lifecycle.completed", { text: "Part one. Part two." });
+  w.warp.emit(run, "delta.text", { text: "Part two." });
+  w.warp.emit(run, "lifecycle.completed", { text: "Part one. Part two." });
   await settle();
   assert.equal(w.slack.calls.length, before);
   assert.equal(w.slack.streamed, "Part one.");
@@ -272,21 +272,21 @@ test("a stop that loses the race to the answer shows the answer, and is not call
   await deliver(w, mention("quick question", TS));
   await emit(w, "lifecycle.accepted");
   await emit(w, "delta.text", { text: "The whole answer." });
-  w.collegium.stopsFinishFirst = true;
+  w.warp.stopsFinishFirst = true;
   await deliver(w, stopPressed(TS));
   await w.app.idle();
   await settle();
   const ended = w.slack.of("chat.stopStream").at(-1);
   assert.doesNotMatch(textIn(blocksOf(ended)), new RegExp(defaultCopy.stopPhase.failed));
-  assert.equal((await w.collegium.getRun(w.collegium.last.id))?.status, "completed");
+  assert.equal((await w.warp.getRun(w.warp.last.id))?.status, "completed");
   assert.equal(w.slack.statuses.at(-1), "active");
 });
 
 test("a stopped run this process does not follow is confirmed with what it had said", async () => {
   const w = world();
-  const run = (await w.collegium.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
-  w.collegium.emit(run, "lifecycle.started");
-  w.collegium.emit(run, "delta.text", { text: "Half an answer" });
+  const run = (await w.warp.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
+  w.warp.emit(run, "lifecycle.started");
+  w.warp.emit(run, "delta.text", { text: "Half an answer" });
   await deliver(w, stopPressed(TS), w.app);
   await w.app.idle();
   const posted = w.slack.of("chat.postMessage").at(-1);
@@ -294,18 +294,18 @@ test("a stopped run this process does not follow is confirmed with what it had s
   assert.match(textIn(blocksOf(posted)), new RegExp(defaultCopy.stopped));
 });
 
-test("stop after a restart still finds the run, through collegium", async () => {
+test("stop after a restart still finds the run, through warp", async () => {
   const w = world();
   // A run an earlier process started and is no longer there to follow.
-  const run = (await w.collegium.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
-  w.collegium.emit(run, "lifecycle.started");
+  const run = (await w.warp.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
+  w.warp.emit(run, "lifecycle.started");
 
   // This process follows nothing. The session still names the conversation.
   const app = w.app;
   const before = w.slack.calls.length;
   await deliver(w, stopPressed(TS), app);
   await app.idle();
-  assert.deepEqual(w.collegium.stops, [run]);
+  assert.deepEqual(w.warp.stops, [run]);
   const after = w.slack.calls.slice(before);
   assert.deepEqual(
     after.map((c) => c.method),
@@ -316,23 +316,23 @@ test("stop after a restart still finds the run, through collegium", async () => 
   assert.equal(after[1]?.args.status, "active");
   collect("stopped after restart", w.slack);
 
-  // The confirmation carries what the run had said when collegium stopped it.
-  assert.equal((await w.collegium.getRun(run))?.status, "stopped");
+  // The confirmation carries what the run had said when warp stopped it.
+  assert.equal((await w.warp.getRun(run))?.status, "stopped");
 
   // With nothing left to stop, the button still settles the session.
   const idle = w.restart();
   await deliver(w, stopPressed(TS), idle);
   await idle.idle();
-  assert.deepEqual(w.collegium.stops, [run], "an ended run is not stopped again");
+  assert.deepEqual(w.warp.stops, [run], "an ended run is not stopped again");
   assert.equal(w.slack.calls.at(-1)?.method, "agents.sessions.setStatus");
   await w.app.idle();
 });
 
-test("a stop collegium does not confirm says so, and still renders nothing more", async () => {
+test("a stop warp does not confirm says so, and still renders nothing more", async () => {
   const w = world();
   await deliver(w, mention("question", TS));
   await emit(w, "lifecycle.accepted");
-  w.collegium.stopFails = true;
+  w.warp.stopFails = true;
   await deliver(w, stopPressed(TS));
   await w.app.idle();
   assert.match(
@@ -345,9 +345,9 @@ test("a stop collegium does not confirm says so, and still renders nothing more"
 test("a run stopped from the console ends in Slack, though it publishes no final event", async () => {
   const w = world();
   await deliver(w, mention("question", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
-  w.collegium.set(run, { status: "stopped", cause: "Stopped by dana" });
+  w.warp.set(run, { status: "stopped", cause: "Stopped by dana" });
   await w.app.idle();
   assert.match(textIn(blocksOf(w.slack.of("chat.stopStream")[0])), new RegExp(defaultCopy.stopped));
   assert.deepEqual(w.slack.statuses, ["processing", "active"]);
@@ -369,7 +369,7 @@ test("a stopped event on the stream ends the turn, once the platform publishes o
 test("a failed run shows why, and Retry asks again in the same conversation", async () => {
   const w = world();
   await deliver(w, mention("deploy it", TS));
-  const failedRun = w.collegium.last.id;
+  const failedRun = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   // An attempt the engine will retry is not the end of the turn.
   await emit(w, "lifecycle.failed", { error: "timeout", terminal: false });
@@ -387,12 +387,12 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
 
   const ts = String(w.slack.calls.find((c) => c.method === "chat.stopStream")?.args.ts);
   await deliver(w, click(blocksOf(final), defaultCopy.retry, { ts, threadTs: TS }));
-  assert.equal(w.collegium.started.length, 2);
-  const retry = w.collegium.started[1];
+  assert.equal(w.warp.started.length, 2);
+  const retry = w.warp.started[1];
   assert.equal(retry?.text, "deploy it");
   assert.equal(retry?.agent, "lead");
   assert.equal(retry?.after, failedRun, "the retry stays in the thread's conversation");
-  assert.equal(w.collegium.last.thread, failedRun);
+  assert.equal(w.warp.last.thread, failedRun);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Deployed." });
   await w.app.idle();
@@ -400,22 +400,22 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
   // A second click joins the first retry.
   await deliver(w, click(blocksOf(final), defaultCopy.retry, { ts, threadTs: TS }));
   await w.app.idle();
-  assert.equal(w.collegium.started.length, 2);
+  assert.equal(w.warp.started.length, 2);
 });
 
 test("a run whose retries ran out is ended by its record, as the ledger decides", async () => {
   const w = world();
   await deliver(w, mention("deploy it", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   // Each attempt reports a failure, and none says it was the last.
   await emit(w, "lifecycle.failed", { error: "connection refused", attempt: 1 });
   await emit(w, "lifecycle.resumed", { attempt: 2 });
   await emit(w, "lifecycle.failed", { error: "connection refused", attempt: 2 });
   assert.ok(!w.slack.methods.includes("chat.stopStream"));
-  w.collegium.set(run, {
+  w.warp.set(run, {
     status: "failed",
-    error: "duraturo: max attempts exhausted\nconnection refused",
+    error: "anchor: max attempts exhausted\nconnection refused",
   });
   await w.app.idle();
   const final = w.slack.of("chat.stopStream")[0];
@@ -427,7 +427,7 @@ test("a run whose retries ran out is ended by its record, as the ledger decides"
 /** A failed turn in the thread, and the message holding its Retry button. */
 async function failedTurn(w: World) {
   await deliver(w, mention("deploy it", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
   await w.app.idle();
@@ -442,7 +442,7 @@ test("only the person who asked, or an operator, may ask a turn again", async ()
   // Someone else in the channel is told no, and nothing starts.
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: OTHER_USER }));
   await w.app.idle();
-  assert.equal(w.collegium.started.length, 1);
+  assert.equal(w.warp.started.length, 1);
   assert.equal(
     w.slack.of("chat.postEphemeral").at(-1)?.text,
     "Only the person who asked can retry this.",
@@ -451,9 +451,9 @@ test("only the person who asked, or an operator, may ask a turn again", async ()
 
   // An operator may. The new run stays the first asker's.
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }));
-  assert.equal(w.collegium.started.length, 2);
-  const retried = w.collegium.last.id;
-  assert.equal(w.collegium.last.prev ?? w.collegium.last.thread, run);
+  assert.equal(w.warp.started.length, 2);
+  const retried = w.warp.last.id;
+  assert.equal(w.warp.last.prev ?? w.warp.last.thread, run);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Deployed." });
   await w.app.idle();
@@ -461,7 +461,7 @@ test("only the person who asked, or an operator, may ask a turn again", async ()
   // So the person who asked can settle what the retried run raises, and the clicker who is not an operator cannot.
   const watching = new AbortController();
   const watch = w.app.watchInbox(watching.signal);
-  w.collegium.raise(memoryMail(retried));
+  w.warp.raise(memoryMail(retried));
   await settle();
   await w.app.idle();
   const posted = w.slack.of("chat.postMessage").at(-1);
@@ -473,13 +473,13 @@ test("only the person who asked, or an operator, may ask a turn again", async ()
       user: OTHER_USER,
     }),
   );
-  assert.equal(w.collegium.resolved.length, 0);
+  assert.equal(w.warp.resolved.length, 0);
   await deliver(
     w,
     click(blocksOf(posted), defaultCopy.discardAll, { ts: "1800000009.000100", threadTs: TS }),
   );
   await w.app.idle();
-  assert.equal(w.collegium.resolved.length, 1);
+  assert.equal(w.warp.resolved.length, 1);
   watching.abort();
   await watch;
 });
@@ -490,13 +490,13 @@ test("after a restart, who asked is not known, so only an operator may ask again
   const app = w.restart();
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }), app);
   await app.idle();
-  assert.equal(w.collegium.started.length, 1, "fails closed for the person who asked, too");
+  assert.equal(w.warp.started.length, 1, "fails closed for the person who asked, too");
   assert.equal(
     w.slack.of("chat.postEphemeral").at(-1)?.text,
     "Only the person who asked can retry this.",
   );
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }), app);
-  assert.equal(w.collegium.started.length, 2);
+  assert.equal(w.warp.started.length, 2);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await app.idle();
@@ -511,11 +511,11 @@ test("asking again is refused once the agent may no longer be reached", async ()
     default_agent: "lead",
     identity: { team: TEAM },
   };
-  w.collegium.clients.set("docs-bot", client);
+  w.warp.clients.set("docs-bot", client);
   const { blocks, ts } = await failedTurn(w);
   // The client is changed: lead is no longer its agent. Its record is read again after 30s.
-  w.collegium.clients.set("docs-bot", { ...client, default_agent: "helper" });
-  const app = new (w.app.constructor as typeof import("./app.tsx").App)(w.slack, w.collegium, {
+  w.warp.clients.set("docs-bot", { ...client, default_agent: "helper" });
+  const app = new (w.app.constructor as typeof import("./app.tsx").App)(w.slack, w.warp, {
     team: TEAM,
     botUser: BOT,
     subject: SUBJECT,
@@ -527,7 +527,7 @@ test("asking again is refused once the agent may no longer be reached", async ()
   });
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }), app);
   await app.idle();
-  assert.equal(w.collegium.started.length, 1);
+  assert.equal(w.warp.started.length, 1);
   assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.cantRetry);
 });
 
@@ -547,25 +547,25 @@ function failureCard(run: string, where: "home" | "thread", user: string) {
 }
 
 for (const where of ["home", "thread"] as const) {
-  test(`Retry on an inbox failure card from ${where} never asks collegium to retry on its own`, async () => {
+  test(`Retry on an inbox failure card from ${where} never asks warp to retry on its own`, async () => {
     const w = world({ operators: ["U03ABCDEF"] });
     const { run } = await failedTurn(w);
-    w.collegium.mailbox.set("m-failure", failureMail(run));
+    w.warp.mailbox.set("m-failure", failureMail(run));
 
     // Someone who did not ask: told no, nothing sent.
     await deliver(w, failureCard(run, where, OTHER_USER));
     await w.app.idle();
-    assert.equal(w.collegium.started.length, 1);
-    assert.deepEqual(w.collegium.resolved, []);
+    assert.equal(w.warp.started.length, 1);
+    assert.deepEqual(w.warp.resolved, []);
     assert.ok(w.slack.of("chat.postEphemeral").at(-1));
 
     // A run that is not in one of this app's threads: an operator is told it cannot be retried here.
-    w.collegium.mailbox.set("m-console", {
+    w.warp.mailbox.set("m-console", {
       ...failureMail("api-dana-console-run"),
       id: "m-console",
     });
-    w.collegium.runs.set("api-dana-console-run", {
-      ...w.collegium.last,
+    w.warp.runs.set("api-dana-console-run", {
+      ...w.warp.last,
       id: "api-dana-console-run",
       tag_id: "api-dana-console-run",
       thread: "api-dana-console-run",
@@ -580,15 +580,15 @@ for (const where of ["home", "thread"] as const) {
     } as { action_id: string; value: string };
     await deliver(w, elsewhere);
     await w.app.idle();
-    assert.deepEqual(w.collegium.resolved, []);
+    assert.deepEqual(w.warp.resolved, []);
     assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.cantRetry);
 
     // The agent is no longer one the app may reach: told no, nothing sent.
     const gated = world(
       { operators: ["U03ABCDEF"], clientId: "docs-bot", defaultAgent: undefined },
-      { slack: w.slack, collegium: w.collegium },
+      { slack: w.slack, warp: w.warp },
     );
-    w.collegium.clients.set("docs-bot", {
+    w.warp.clients.set("docs-bot", {
       id: "docs-bot",
       surface: "slack",
       enabled: true,
@@ -597,14 +597,14 @@ for (const where of ["home", "thread"] as const) {
     });
     await deliver(w, failureCard(run, where, "U03ABCDEF"), gated.app);
     await gated.app.idle();
-    assert.equal(w.collegium.started.length, 1);
-    assert.deepEqual(w.collegium.resolved, []);
+    assert.equal(w.warp.started.length, 1);
+    assert.deepEqual(w.warp.resolved, []);
     assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.cantRetry);
 
     // The person who asked: the app asks again in the thread and only acknowledges the card.
     await deliver(w, failureCard(run, where, USER));
-    assert.equal(w.collegium.started.length, 2);
-    assert.deepEqual((w.collegium.resolved as { body: unknown }[]).at(-1)?.body, {
+    assert.equal(w.warp.started.length, 2);
+    assert.deepEqual((w.warp.resolved as { body: unknown }[]).at(-1)?.body, {
       action: "acknowledge",
     });
     await emit(w, "lifecycle.accepted");
@@ -615,8 +615,8 @@ for (const where of ["home", "thread"] as const) {
 
 test("a forged Retry on an inbox part that is not a failure is refused, and nothing is sent", async () => {
   const w = world({ operators: [USER] });
-  w.collegium.mailbox.set("m-memory", memoryMail("api-svc-slack-any"));
-  w.collegium.mailbox.set("m-alert", alertMail());
+  w.warp.mailbox.set("m-memory", memoryMail("api-svc-slack-any"));
+  w.warp.mailbox.set("m-alert", alertMail());
   for (const [id, target] of [
     ["m-memory", "p1"],
     ["m-alert", "p1"],
@@ -631,10 +631,10 @@ test("a forged Retry on an inbox part that is not a failure is refused, and noth
     });
     await deliver(w, env);
     await w.app.idle();
-    assert.deepEqual(w.collegium.resolved, [], `${id}/${target}`);
+    assert.deepEqual(w.warp.resolved, [], `${id}/${target}`);
     assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.cantRetry);
   }
-  assert.equal(w.collegium.started.length, 0);
+  assert.equal(w.warp.started.length, 0);
 });
 
 test("a Slack write that fails mid-turn still ends the turn: whole, and off processing", async () => {
@@ -705,7 +705,7 @@ const finals = (w: World, text: string) =>
 test("a long, silent tool call is not a failure: the stream closes and the answer follows once", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("rebuild the index", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "delta.tool.call", { id: "t1", name: "index.rebuild", phase: "requested" });
   await pause(120);
@@ -715,9 +715,9 @@ test("a long, silent tool call is not a failure: the stream closes and the answe
   assert.ok(!textIn(blocksOf(closed)).includes(defaultCopy.failedTitle));
   assert.ok(!textIn(blocksOf(closed)).includes(defaultCopy.failure.timeout()));
   assert.deepEqual(w.slack.statuses, ["processing"]);
-  assert.deepEqual(w.collegium.stops, []);
+  assert.deepEqual(w.warp.stops, []);
 
-  w.collegium.set(run, { status: "completed", answer: "The index is rebuilt." });
+  w.warp.set(run, { status: "completed", answer: "The index is rebuilt." });
   await w.app.idle();
   await pause(100);
   assert.equal(finals(w, "The index is rebuilt.").length, 1, "the answer is posted once");
@@ -730,33 +730,33 @@ test("a long, silent tool call is not a failure: the stream closes and the answe
 test("a parked run is only waiting, and its end is posted when it comes", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("ask the helper", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.parked", { reason: "waiting on helper" });
   await pause(120);
   assert.equal(w.slack.of("chat.stopStream").length, 1);
   assert.deepEqual(w.slack.statuses, ["processing"]);
-  w.collegium.set(run, { status: "completed", answer: "The helper found it." });
+  w.warp.set(run, { status: "completed", answer: "The helper found it." });
   await w.app.idle();
   assert.equal(finals(w, "The helper found it.").length, 1);
   assert.deepEqual(w.slack.statuses, ["processing", "active"]);
 });
 
-test("a quiet run does not hold the thread, and the next message follows it as collegium orders turns", async () => {
+test("a quiet run does not hold the thread, and the next message follows it as warp orders turns", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
-  const first = w.collegium.last.id;
+  const first = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await pause(120);
 
   await deliver(w, mention("meanwhile, a quick one", "1700000070.000100", { thread_ts: TS }));
-  assert.equal(w.collegium.started.length, 2, "the queue was released");
-  // Collegium takes a turn after one that is still running; its transcript says so.
-  assert.equal(w.collegium.started[1]?.after, first);
+  assert.equal(w.warp.started.length, 2, "the queue was released");
+  // Warp takes a turn after one that is still running; its transcript says so.
+  assert.equal(w.warp.started[1]?.after, first);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Quick answer." });
 
-  w.collegium.set(first, { status: "completed", answer: "Long job done." });
+  w.warp.set(first, { status: "completed", answer: "Long job done." });
   await w.app.idle();
   assert.equal(finals(w, "Long job done.").length, 1);
 });
@@ -764,12 +764,12 @@ test("a quiet run does not hold the thread, and the next message follows it as c
 test("stop on a quiet run confirms it once, and its end is not posted again", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await pause(120);
   await deliver(w, stopPressed(TS));
   await w.app.idle();
-  assert.deepEqual(w.collegium.stops, [run]);
+  assert.deepEqual(w.warp.stops, [run]);
   const confirmations = w.slack
     .of("chat.postMessage")
     .filter((a) => textIn(blocksOf(a)).includes(defaultCopy.stopped));
@@ -780,16 +780,16 @@ test("stop on a quiet run confirms it once, and its end is not posted again", as
 test("a quiet run whose stop loses the race posts its answer, once", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "delta.text", { text: "Long job done." });
   await pause(120);
-  w.collegium.stopsFinishFirst = true;
+  w.warp.stopsFinishFirst = true;
   await deliver(w, stopPressed(TS));
   await w.app.idle();
   await pause(100);
-  assert.deepEqual(w.collegium.stops, [run]);
-  assert.equal((await w.collegium.getRun(run))?.status, "completed");
+  assert.deepEqual(w.warp.stops, [run]);
+  assert.equal((await w.warp.getRun(run))?.status, "completed");
   assert.equal(finals(w, "Long job done.").length, 1, "the answer is posted once");
   assert.ok(
     !w.slack.of("chat.postMessage").some((a) => textIn(blocksOf(a)).includes(defaultCopy.stopped)),
@@ -799,17 +799,17 @@ test("a quiet run whose stop loses the race posts its answer, once", async () =>
 
 test("a stop slower than the wait is confirmed when it lands, and the session waits for it", async () => {
   const w = world({ stopWaitMs: 100 });
-  const run = (await w.collegium.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
-  w.collegium.emit(run, "lifecycle.started");
-  w.collegium.emit(run, "delta.text", { text: "Half an answer" });
-  w.collegium.stopDelayMs = 400;
+  const run = (await w.warp.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
+  w.warp.emit(run, "lifecycle.started");
+  w.warp.emit(run, "delta.text", { text: "Half an answer" });
+  w.warp.stopDelayMs = 400;
   await deliver(w, stopPressed(TS), w.app);
   await pause(200);
   // The wait is over and the run has not ended: nothing is posted, and the session is not settled yet.
   assert.equal(finals(w, "Half an answer").length, 0);
   assert.ok(!w.slack.statuses.includes("active"), "the session is not settled before the run ends");
   await w.app.idle();
-  assert.equal((await w.collegium.getRun(run))?.status, "stopped");
+  assert.equal((await w.warp.getRun(run))?.status, "stopped");
   const posted = finals(w, "Half an answer");
   assert.equal(posted.length, 1, "the stopped run is confirmed with what it had said, once");
   assert.match(textIn(blocksOf(posted[0])), new RegExp(defaultCopy.stopped));
@@ -819,7 +819,7 @@ test("a stop slower than the wait is confirmed when it lands, and the session wa
 test("a slow follow and a late lifecycle.stopped post a quiet run's stopped end once", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "delta.text", { text: "Partway there" });
   await pause(120);
@@ -828,10 +828,10 @@ test("a slow follow and a late lifecycle.stopped post a quiet run's stopped end 
   await pause(150);
   // A second press, and the event again: nothing more is posted.
   await deliver(w, stopPressed(TS));
-  w.collegium.emit(run, "lifecycle.stopped", { text: "Partway there", reason: "again" });
+  w.warp.emit(run, "lifecycle.stopped", { text: "Partway there", reason: "again" });
   await w.app.idle();
   await pause(150);
-  assert.equal((await w.collegium.getRun(run))?.status, "stopped");
+  assert.equal((await w.warp.getRun(run))?.status, "stopped");
   const ends = w.slack
     .of("chat.postMessage")
     .filter((a) => textIn(blocksOf(a)).includes("Partway there"));
@@ -846,24 +846,24 @@ test("on shutdown a quiet run stops being followed", async () => {
   await pause(120);
   w.app.close();
   await w.app.idle();
-  assert.deepEqual(w.collegium.stops, [], "the run is left running");
+  assert.deepEqual(w.warp.stops, [], "the run is left running");
 });
 
-test("an inbox decision collegium refuses is explained in vultus's words, not the platform's", async () => {
+test("an inbox decision warp refuses is explained in warp's words, not the platform's", async () => {
   const w = world();
   const watching = new AbortController();
   const watch = w.app.watchInbox(watching.signal);
   await deliver(w, mention("remember this", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Noted." });
   await w.app.idle();
-  w.collegium.raise(memoryMail(run));
+  w.warp.raise(memoryMail(run));
   await settle();
   await w.app.idle();
   const posted = w.slack.of("chat.postMessage").at(-1);
-  w.collegium.inbox.send = async () => {
-    throw new CollegiumError(403, "platform: forbidden: keep needs agents:write");
+  w.warp.inbox.send = async () => {
+    throw new WarpError(403, "platform: forbidden: keep needs agents:write");
   };
   await deliver(
     w,
@@ -917,16 +917,16 @@ test("where native streaming is refused, the turn is posted once and edited", as
 test("an agent named in the message answers, when it exists and may be reached", async () => {
   const w = world();
   await deliver(w, mention("@helper summarize this", TS));
-  assert.equal(w.collegium.started[0]?.agent, "helper");
-  assert.equal(w.collegium.started[0]?.text, "summarize this");
+  assert.equal(w.warp.started[0]?.agent, "helper");
+  assert.equal(w.warp.started[0]?.text, "summarize this");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await w.app.idle();
 
   // A name that is not an agent is only a word.
   await deliver(w, mention("@nobody summarize this", "1700000400.000100"));
-  assert.equal(w.collegium.started[1]?.agent, "lead");
-  assert.equal(w.collegium.started[1]?.text, "@nobody summarize this");
+  assert.equal(w.warp.started[1]?.agent, "lead");
+  assert.equal(w.warp.started[1]?.text, "@nobody summarize this");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await w.app.idle();
@@ -934,7 +934,7 @@ test("an agent named in the message answers, when it exists and may be reached",
 
 test("as a client, the app routes only to its default agent and its list", async () => {
   const w = world({ clientId: "docs-bot", defaultAgent: undefined });
-  w.collegium.clients.set("docs-bot", {
+  w.warp.clients.set("docs-bot", {
     id: "docs-bot",
     surface: "slack",
     enabled: true,
@@ -944,7 +944,7 @@ test("as a client, the app routes only to its default agent and its list", async
   });
   await deliver(w, mention("@lead take this", TS));
   assert.equal(
-    w.collegium.started[0]?.agent,
+    w.warp.started[0]?.agent,
     "helper",
     "a name outside the list is not read as an agent",
   );
@@ -955,7 +955,7 @@ test("as a client, the app routes only to its default agent and its list", async
 
 test("a client for another team, or one that is gone, routes to nothing", async () => {
   const w = world({ clientId: "docs-bot", defaultAgent: undefined });
-  w.collegium.clients.set("docs-bot", {
+  w.warp.clients.set("docs-bot", {
     id: "docs-bot",
     surface: "slack",
     enabled: true,
@@ -964,7 +964,7 @@ test("a client for another team, or one that is gone, routes to nothing", async 
   });
   await deliver(w, mention("hello", TS));
   await w.app.idle();
-  assert.equal(w.collegium.asked.length, 0);
+  assert.equal(w.warp.asked.length, 0);
   const said = w.slack.of("chat.postMessage")[0];
   assert.match(textIn(blocksOf(said)), /No agent answers here yet/);
   assert.deepEqual(w.slack.statuses, ["active"]);
@@ -972,7 +972,7 @@ test("a client for another team, or one that is gone, routes to nothing", async 
 
   // A client that does not say which team it serves is not taken for this one.
   const v = world({ clientId: "docs-bot", defaultAgent: undefined });
-  v.collegium.clients.set("docs-bot", {
+  v.warp.clients.set("docs-bot", {
     id: "docs-bot",
     surface: "slack",
     enabled: true,
@@ -980,18 +980,18 @@ test("a client for another team, or one that is gone, routes to nothing", async 
   });
   await deliver(v, mention("hello", TS));
   await v.app.idle();
-  assert.equal(v.collegium.asked.length, 0);
+  assert.equal(v.warp.asked.length, 0);
 });
 
-test("a run a limit refuses is shown in vultus's words, and collegium's are kept in the log", async () => {
+test("a run a limit refuses is shown in warp's words, and warp's are kept in the log", async () => {
   const w = world();
-  w.collegium.refuse = new CollegiumError(429, "the workspace reached 200 runs today", {
+  w.warp.refuse = new WarpError(429, "the workspace reached 200 runs today", {
     limit: "runs",
     resets_at: new Date(Date.now() + 3_600_000).toISOString(),
   });
   await deliver(w, mention("one more", TS));
   await w.app.idle();
-  assert.equal(w.collegium.runs.size, 0);
+  assert.equal(w.warp.runs.size, 0);
   const said = w.slack.of("chat.postMessage")[0];
   assert.equal(said?.thread_ts, TS);
   assert.match(textIn(blocksOf(said)), new RegExp(defaultCopy.budgetTitle));
@@ -1008,16 +1008,16 @@ test("a run a limit refuses is shown in vultus's words, and collegium's are kept
 test("a message sent while a turn is running waits its turn", async () => {
   const w = world();
   await deliver(w, mention("first", TS));
-  const first = w.collegium.last.id;
+  const first = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await deliver(w, mention("second", "1700000060.000100", { thread_ts: TS }));
-  assert.equal(w.collegium.started.length, 1, "one turn at a time per thread");
+  assert.equal(w.warp.started.length, 1, "one turn at a time per thread");
   assert.equal(w.slack.of("reactions.add").at(-1)?.timestamp, "1700000060.000100");
 
   await emit(w, "lifecycle.completed", { text: "one" }, first);
   await settle();
-  assert.equal(w.collegium.started.length, 2);
-  assert.equal(w.collegium.started[1]?.after, first);
+  assert.equal(w.warp.started.length, 2);
+  assert.equal(w.warp.started[1]?.after, first);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "two" });
   await w.app.idle();
@@ -1030,7 +1030,7 @@ test("stop also drops what was waiting behind the stopped turn", async () => {
   await deliver(w, mention("second", "1700000060.000100", { thread_ts: TS }));
   await deliver(w, stopPressed(TS));
   await w.app.idle();
-  assert.equal(w.collegium.started.length, 1);
+  assert.equal(w.warp.started.length, 1);
   const marks = w.slack.of("reactions.add").filter((a) => a.timestamp === "1700000060.000100");
   assert.deepEqual(
     marks.map((a) => a.name),
@@ -1045,17 +1045,14 @@ test("/agent asks in a new thread, and /agent help lists who can be asked", asyn
   assert.equal(root?.channel, CHANNEL);
   assert.equal(root?.text, `<@${USER}>: what is on call this week?`);
   const rootTs = "1800000001.000100";
-  assert.equal(
-    w.collegium.started[0]?.idempotencyKey,
-    `slack-${TEAM}-${CHANNEL}-1800000001-000100`,
-  );
+  assert.equal(w.warp.started[0]?.idempotencyKey, `slack-${TEAM}-${CHANNEL}-1800000001-000100`);
   assert.equal(w.slack.of("chat.startStream")[0]?.thread_ts, rootTs);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Dana." });
   await w.app.idle();
 
   await deliver(w, command("help"));
-  assert.equal(w.collegium.started.length, 1);
+  assert.equal(w.warp.started.length, 1);
   assert.match(String(w.slack.responses[0]?.body.text), /`@lead`: Takes a request/);
   assert.equal(w.slack.responses[0]?.body.response_type, "ephemeral");
 
@@ -1063,7 +1060,7 @@ test("/agent asks in a new thread, and /agent help lists who can be asked", asyn
   w.slack.failing["chat.postMessage"] = "not_in_channel";
   await deliver(w, command("hello"));
   await w.app.idle();
-  assert.equal(w.collegium.started.length, 1);
+  assert.equal(w.warp.started.length, 1);
   assert.match(String(w.slack.responses[1]?.body.text), /not in this channel/);
 });
 
@@ -1087,8 +1084,8 @@ test("the shortcuts: a form for asking from anywhere, and a message as the quest
   );
   // No channel: the answer goes to the app's messages with this person.
   assert.equal(w.slack.of("chat.postMessage")[0]?.channel, USER);
-  assert.equal(w.collegium.started[0]?.text, "summarize my week");
-  assert.match(String(w.collegium.started[0]?.idempotencyKey), new RegExp(`^slack-${TEAM}-${DM}-`));
+  assert.equal(w.warp.started[0]?.text, "summarize my week");
+  assert.match(String(w.warp.started[0]?.idempotencyKey), new RegExp(`^slack-${TEAM}-${DM}-`));
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Busy." });
   await w.app.idle();
@@ -1102,24 +1099,24 @@ test("the shortcuts: a form for asking from anywhere, and a message as the quest
       message: { ts: "1700000500.000100", text: "is the deploy safe to ship?" },
     }),
   );
-  assert.equal(w.collegium.started[1]?.text, "is the deploy safe to ship?");
+  assert.equal(w.warp.started[1]?.text, "is the deploy safe to ship?");
   assert.equal(w.slack.of("chat.startStream").at(-1)?.thread_ts, "1700000500.000100");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Yes." });
   await w.app.idle();
 });
 
-test("an inbox item about a run lands in its thread, and the button resolves it in collegium", async () => {
+test("an inbox item about a run lands in its thread, and the button resolves it in warp", async () => {
   const w = world();
   const watching = new AbortController();
   const watch = w.app.watchInbox(watching.signal);
   await deliver(w, mention("remember how we deploy", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Noted." });
   await w.app.idle();
 
-  w.collegium.raise(memoryMail(run));
+  w.warp.raise(memoryMail(run));
   await settle();
   await w.app.idle();
   const posted = w.slack.of("chat.postMessage").at(-1);
@@ -1142,7 +1139,7 @@ test("an inbox item about a run lands in its thread, and the button resolves it 
       state: picked,
     }),
   );
-  assert.equal(w.collegium.resolved.length, 0);
+  assert.equal(w.warp.resolved.length, 0);
   assert.equal(w.slack.of("chat.postEphemeral")[0]?.text, defaultCopy.notYours);
 
   // The person who asked can: the ticked note is kept, the rest are not.
@@ -1151,7 +1148,7 @@ test("an inbox item about a run lands in its thread, and the button resolves it 
     click(blocksOf(posted), defaultCopy.keepSelected, { ts, threadTs: TS, state: picked }),
   );
   await w.app.idle();
-  assert.deepEqual(w.collegium.resolved, [
+  assert.deepEqual(w.warp.resolved, [
     { id: "m-memory", path: "parts/p1/resolve", body: { action: "keep", ids: ["n1"] } },
   ]);
   const updated = w.slack.of("chat.update").at(-1);
@@ -1170,12 +1167,12 @@ test("an inbox item about a run lands in its thread, and the button resolves it 
 test("the Home tab shows a person what waits on them, and an operator the whole inbox", async () => {
   const w = world({ operators: [OTHER_USER] });
   await deliver(w, mention("deploy it", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
   await w.app.idle();
-  w.collegium.mailbox.set("m-failure", failureMail(run));
-  w.collegium.mailbox.set("m-other", {
+  w.warp.mailbox.set("m-failure", failureMail(run));
+  w.warp.mailbox.set("m-other", {
     ...failureMail("api-someone-else"),
     id: "m-other",
     subject: "releaser failed",
@@ -1190,8 +1187,8 @@ test("the Home tab shows a person what waits on them, and an operator the whole 
   assert.ok(!/releaser failed/.test(textIn(view.blocks)), "another person's run is not shown");
 
   // An operator sees everything the app may read, and can settle it there.
-  w.collegium.mailbox.set("m-alert", alertMail());
-  w.collegium.mailbox.set("m-budget", budgetMail());
+  w.warp.mailbox.set("m-alert", alertMail());
+  w.warp.mailbox.set("m-budget", budgetMail());
   await deliver(w, homeOpened(OTHER_USER));
   const all = w.slack.of("views.publish")[1]?.view as { blocks: unknown[] };
   assert.match(textIn(all.blocks), /releaser failed/);
@@ -1204,7 +1201,7 @@ test("the Home tab shows a person what waits on them, and an operator the whole 
   delete (home.payload as Record<string, unknown>).message;
   await deliver(w, home);
   await w.app.idle();
-  assert.deepEqual(w.collegium.resolved.at(-1), {
+  assert.deepEqual(w.warp.resolved.at(-1), {
     id: "m-alert",
     path: "parts/p1/resolve",
     body: { action: "acknowledge" },
@@ -1219,7 +1216,7 @@ test("the Home tab shows a person what waits on them, and an operator the whole 
   collect("home", w.slack);
 });
 
-test("a rating is kept in the log until collegium can store one", async () => {
+test("a rating is kept in the log until warp can store one", async () => {
   const w = world();
   await deliver(w, mention("quick", TS));
   await emit(w, "lifecycle.accepted");
@@ -1300,7 +1297,7 @@ const CLIENT = "app";
 /** A world whose app is a client that maps USER to ana and OTHER_USER to olu. */
 function mapped(): World {
   const w = world({ clientId: CLIENT });
-  w.collegium.clients.set(CLIENT, {
+  w.warp.clients.set(CLIENT, {
     id: CLIENT,
     surface: "slack",
     enabled: true,
@@ -1314,7 +1311,7 @@ function mapped(): World {
 /** Start a run that parks on a question, and return the message that shows it. */
 async function parkOn(w: World, kind: keyof typeof QUESTIONS) {
   await deliver(w, mention("deploy the web service", TS));
-  const run = w.collegium.last.id;
+  const run = w.warp.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.started", { attempt: 1 });
   await emit(w, "delta.text", { text: "Checking first. " });
@@ -1327,10 +1324,10 @@ async function parkOn(w: World, kind: keyof typeof QUESTIONS) {
 test("a person the client maps asks as themselves, so their run is theirs", async () => {
   const w = mapped();
   await deliver(w, mention("hello", TS));
-  assert.deepEqual(w.collegium.asked[0]?.act_as, { client: CLIENT, user: USER });
+  assert.deepEqual(w.warp.asked[0]?.act_as, { client: CLIENT, user: USER });
   const other = world();
   await deliver(other, mention("hello", TS));
-  assert.equal(other.collegium.asked[0]?.act_as, undefined, "without a client nobody is mapped");
+  assert.equal(other.warp.asked[0]?.act_as, undefined, "without a client nobody is mapped");
   await emit(w, "lifecycle.completed", { text: "Hi." });
   await emit(other, "lifecycle.completed", { text: "Hi." });
   await w.app.idle();
@@ -1348,7 +1345,7 @@ test("an approval waits in the run's thread with live buttons, and a mapped pers
     w,
     click(blocksOf(shown), defaultCopy.approve, { ts, threadTs: TS, user: OTHER_USER }),
   );
-  assert.deepEqual(w.collegium.answered, [
+  assert.deepEqual(w.warp.answered, [
     {
       answer: { run, question: "q-approve", body: { action: "approve" } },
       as: { client: CLIENT, user: OTHER_USER },
@@ -1374,7 +1371,7 @@ test("a choice is answered with the option clicked, and a reply is sent to the c
   const w = mapped();
   const { run, shown, ts } = await parkOn(w, "choice");
   await deliver(w, click(blocksOf(shown), "eu-west", { ts, threadTs: TS, user: OTHER_USER }));
-  assert.deepEqual(w.collegium.answered.at(-1)?.answer, {
+  assert.deepEqual(w.warp.answered.at(-1)?.answer, {
     run,
     question: "q-choose",
     body: { action: "choose", choice: "eu-west" },
@@ -1397,40 +1394,37 @@ test("a choice is answered with the option clicked, and a reply is sent to the c
       user: OTHER_USER,
     }),
   );
-  assert.equal(r.collegium.answered.length, 0);
+  assert.equal(r.warp.answered.length, 0);
   assert.equal(r.slack.of("chat.postEphemeral").at(-1)?.text, words.replyInConsole);
   await deliver(r, stopPressed(TS));
   await r.app.idle();
 });
 
-test("a Slack person the client does not map cannot answer, and collegium is never asked", async () => {
+test("a Slack person the client does not map cannot answer, and warp is never asked", async () => {
   const w = mapped();
   const { shown, ts } = await parkOn(w, "approval");
   await deliver(
     w,
     click(blocksOf(shown), defaultCopy.approve, { ts, threadTs: TS, user: "U0NOBODY1" }),
   );
-  assert.equal(w.collegium.answered.length, 0);
+  assert.equal(w.warp.answered.length, 0);
   assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.noPermission);
   // Without a client, nobody is mapped, so nobody answers from Slack.
   const bare = world();
   const b = await parkOn(bare, "approval");
   await deliver(bare, click(blocksOf(b.shown), defaultCopy.approve, { ts: b.ts, threadTs: TS }));
-  assert.equal(bare.collegium.answered.length, 0);
+  assert.equal(bare.warp.answered.length, 0);
   for (const x of [w, bare]) {
     await deliver(x, stopPressed(TS));
     await x.app.idle();
   }
 });
 
-test("an answer collegium refuses is shown in vultus's words, and the card keeps its buttons", async () => {
+test("an answer warp refuses is shown in warp's words, and the card keeps its buttons", async () => {
   const w = mapped();
   const { shown, ts } = await parkOn(w, "approval");
   // ana asked for the run, so she may not approve its call.
-  w.collegium.refuseAnswer = new CollegiumError(
-    403,
-    "platform: forbidden: ana may not answer this question",
-  );
+  w.warp.refuseAnswer = new WarpError(403, "platform: forbidden: ana may not answer this question");
   await deliver(w, click(blocksOf(shown), defaultCopy.approve, { ts, threadTs: TS, user: USER }));
   assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.noPermission);
   assert.ok(w.logs.some((l) => l.includes("may not answer")));
@@ -1445,7 +1439,7 @@ test("a question in the inbox is not posted again in the thread: the run already
   const watch = w.app.watchInbox(watching.signal);
   const { run } = await parkOn(w, "approval");
   const posts = w.slack.of("chat.postMessage").length;
-  w.collegium.raise(questionMail(run, "approval"));
+  w.warp.raise(questionMail(run, "approval"));
   await settle();
   assert.equal(w.slack.of("chat.postMessage").length, posts);
   await deliver(w, stopPressed(TS));

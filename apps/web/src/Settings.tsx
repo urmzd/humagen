@@ -105,7 +105,7 @@ export function Settings({
   ];
 
   return (
-    <div className="collegium-fade flex min-h-0 flex-1 flex-col md:flex-row">
+    <div className="warp-fade flex min-h-0 flex-1 flex-col md:flex-row">
       <nav aria-label="Settings sections" className="flex shrink-0 gap-0.5 overflow-x-auto border-aui-border border-b p-2 md:w-52 md:flex-col md:border-r md:border-b-0 md:p-3">
         {sections.map((s) => (
           <button

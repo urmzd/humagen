@@ -116,7 +116,7 @@ of two ways:
 | Written as | Where the secret lives | What a read shows |
 |------------|------------------------|-------------------|
 | `{"value": "xoxb-..."}` | In the server's secret store, in memory | `{"set": true}` |
-| `{"ref": "env:COLLEGIUM_SLACK_TOKEN_DOCS"}` | In the server's environment | `{"set": true, "ref": "env:..."}` |
+| `{"ref": "env:WARP_SLACK_TOKEN_DOCS"}` | In the server's environment | `{"set": true, "ref": "env:..."}` |
 
 ### Which variables a workspace may reference
 
@@ -125,14 +125,14 @@ without knowing its value. So a reference is default deny: a variable is read
 for a workspace only if the operator gave that exact name to that workspace.
 
 ```sh
-collegium serve -secret-refs 'acme=COLLEGIUM_SLACK_TOKEN_DOCS,COLLEGIUM_SLACK_SECRET_DOCS;globex=COLLEGIUM_GH_GLOBEX'
+warp serve -secret-refs 'acme=WARP_SLACK_TOKEN_DOCS,WARP_SLACK_SECRET_DOCS;globex=WARP_GH_GLOBEX'
 ```
 
 | Rule | Detail |
 |------|--------|
 | Who sets it | The operator, with `-secret-refs` at startup. Nothing in the API can read or change it. |
 | A workspace not listed | May reference nothing. It can still write its secrets as values. |
-| Names | Must start with `COLLEGIUM_`, and not `COLLEGIUM_OIDC_`. Anything else fails startup. |
+| Names | Must start with `WARP_`, and not `WARP_OIDC_`. Anything else fails startup. |
 | The default clients | Their variables are given to the server's `-tenant` and to no other workspace. |
 | Where it is checked | Where the secret is read, which every create, every update and every restart goes through. |
 
@@ -166,13 +166,13 @@ one client's grant is worth nothing to another.
 
 With nothing configured, no client exists and the webhook routes answer 404.
 
-The `COLLEGIUM_SLACK_*` and `COLLEGIUM_GITHUB_*` variables that used to
+The `WARP_SLACK_*` and `WARP_GITHUB_*` variables that used to
 configure the one installation per surface now create one default client per
 surface, `default-slack` and `default-github`, in the server's `-tenant`. It
 behaves as that installation did: any agent in the workspace (`"*"`), the same
 options, its secrets left in the environment. It is marked `managed: env` and
-is changed in the environment, not through the API. `COLLEGIUM_SLACK_APP`,
-`COLLEGIUM_GITHUB_APP` and `COLLEGIUM_GITHUB_INSTALLATION` state its identity
+is changed in the environment, not through the API. `WARP_SLACK_APP`,
+`WARP_GITHUB_APP` and `WARP_GITHUB_INSTALLATION` state its identity
 more exactly and are optional.
 
 ## Limits
@@ -210,17 +210,17 @@ per client. Published files are not counted by client.
 The console shows what a run used on its Activity page, the context gauge and
 Analytics, and not on the turn in the conversation. The Slack app shows none.
 The rule is that a surface shows usage on a turn only if every surface the
-shared adapter feeds can, and vultus has no usage summary for Slack:
-`@vultus/web` renders `Turn.usage` as a chip, `@vultus/components` renders
+shared adapter feeds can, and warp has no usage summary for Slack:
+`@warp/web` renders `Turn.usage` as a chip, `@warp/components` renders
 nothing. So the adapter leaves `Turn.usage` unset and the two agree. The run's
 `usage` is on the API for any client that wants it.
 
-What vultus should have for this:
+What warp should have for this:
 
-- A `RunUsage` summary in `@vultus/components` (Slack context line and web)
+- A `RunUsage` summary in `@warp/components` (Slack context line and web)
   taking integer micros, a currency and an unpriced count, so neither surface
   formats money itself. `Turn.usage.costUsd` is a float of dollars today.
-- A context gauge (`ContextWindow` exists in `@vultus/core` session state,
+- A context gauge (`ContextWindow` exists in `@warp/core` session state,
   with no component that renders it from a run).
 - A limit meter with a lower-bound state, for spend that left calls out.
 
@@ -241,16 +241,16 @@ clients and never more than 100, with the caps beside it.
 
 ```sh
 # The server was started with
-#   -secret-refs '<tenant>=COLLEGIUM_SLACK_TOKEN_DOCS,COLLEGIUM_SLACK_SECRET_DOCS'
-curl -X POST "$COLLEGIUM/api/clients" -H "Authorization: Bearer $TOKEN" -d '{
+#   -secret-refs '<tenant>=WARP_SLACK_TOKEN_DOCS,WARP_SLACK_SECRET_DOCS'
+curl -X POST "$WARP/api/clients" -H "Authorization: Bearer $TOKEN" -d '{
   "name": "Docs bot",
   "surface": "slack",
   "identity": {"team": "T01ABCDEF", "app_id": "A0DOCS"},
   "default_agent": "docs-bot",
   "slack": {"sessions": true},
   "credentials": {
-    "token": {"ref": "env:COLLEGIUM_SLACK_TOKEN_DOCS"},
-    "signing_secret": {"ref": "env:COLLEGIUM_SLACK_SECRET_DOCS"}
+    "token": {"ref": "env:WARP_SLACK_TOKEN_DOCS"},
+    "signing_secret": {"ref": "env:WARP_SLACK_SECRET_DOCS"}
   }
 }'
 ```
@@ -259,7 +259,7 @@ A second Slack app in the same team, answering as another agent, is the same
 call with another `app_id`, agent and secrets. Limit what it may raise:
 
 ```sh
-curl -X PUT "$COLLEGIUM/api/policies" -H "Authorization: Bearer $TOKEN" -d '{
+curl -X PUT "$WARP/api/policies" -H "Authorization: Bearer $TOKEN" -d '{
   "scope": {"kind": "client", "name": "docs-bot"},
   "period": "day", "max_runs": 200, "max_concurrent": 2
 }'

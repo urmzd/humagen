@@ -5,9 +5,9 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/urmzd/mandatum/pkg/address"
-	transport "github.com/urmzd/mandatum/pkg/connectors/slack"
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/address"
+	transport "github.com/urmzd/fiber/pkg/connectors/slack"
+	"github.com/urmzd/fiber/pkg/envelope"
 )
 
 // StopFunc asks one run to stop at the request of the Slack user who pressed

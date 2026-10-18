@@ -1,4 +1,4 @@
-// Package slack composes mandatum's Slack transport with collegium's session
+// Package slack composes fiber's Slack transport with warp's session
 // lifecycle and command-discovery policy. Wire APIs and signed decoding stay upstream.
 package slack
 
@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/address"
-	"github.com/urmzd/mandatum/pkg/connectors/mention"
-	transport "github.com/urmzd/mandatum/pkg/connectors/slack"
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/address"
+	"github.com/urmzd/fiber/pkg/connectors/mention"
+	transport "github.com/urmzd/fiber/pkg/connectors/slack"
+	"github.com/urmzd/fiber/pkg/envelope"
 )
 
 type Config struct {

@@ -1,0 +1,20 @@
+{
+  "name": "@warp/components",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared agent components (turn, approval, clarification, notice) built only from primitives.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@warp/core": "workspace:*",
+    "@warp/primitives": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  }
+}

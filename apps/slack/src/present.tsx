@@ -1,6 +1,6 @@
 import "./react.ts";
-import { TurnView } from "@vultus/components";
-import type { Turn, TurnStatus } from "@vultus/core";
+import { TurnView } from "@warp/components";
+import type { Turn, TurnStatus } from "@warp/core";
 import {
   type Block,
   emptyBudget,
@@ -15,18 +15,18 @@ import {
   streamStopTitle,
   streamTrailer,
   streamUpdate,
-} from "@vultus/render-slack";
+} from "@warp/render-slack";
 import { type SlackApi, SlackError } from "./slack.ts";
 
 /**
  * One turn on Slack, kept in step with the turn's state as it changes.
  *
- * This is the host loop from vultus's Slack sandbox (`apps/slack-sandbox`,
+ * This is the host loop from warp's Slack sandbox (`apps/slack-sandbox`,
  * `run.tsx`), driven by a live turn instead of a recorded one: a reaction on
  * the message that asked, the session's status, `chat.startStream`, ordered
  * `chat.appendStream` calls, and `chat.stopStream` with the final blocks. A
  * turn that outgrows one message continues in the next, in the same thread.
- * Every block and every chunk comes from `@vultus/render-slack`.
+ * Every block and every chunk comes from `@warp/render-slack`.
  *
  * Where native streaming is not available the turn is posted once and edited
  * in place, from the same components.
@@ -429,7 +429,7 @@ export class Presenter {
   /** Final blocks that outgrew one message follow it. Each needs its own fallback text. */
   private async overflow(rest: Block[][], text: string, total: number) {
     for (const [i, blocks] of rest.entries()) {
-      // vultus: needs a fallback-text helper for continued pages, such as copy.continued(page, of, text).
+      // warp: needs a fallback-text helper for continued pages, such as copy.continued(page, of, text).
       await this.post(blocks, `(${i + 2}/${total}) ${text}`);
     }
   }

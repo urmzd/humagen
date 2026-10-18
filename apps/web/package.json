@@ -1,6 +1,6 @@
 {
-  "name": "@collegium/web",
-  "version": "0.0.0",
+  "name": "@warp/console",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,12 +10,12 @@
     "test": "node --test --experimental-strip-types src/*.test.ts"
   },
   "dependencies": {
-    "@collegium/adapter": "link:../../packages/adapter",
-    "@vultus/components": "link:../../../vultus/packages/components",
-    "@vultus/core": "link:../../../vultus/packages/core",
-    "@vultus/primitives": "link:../../../vultus/packages/primitives",
-    "@vultus/render-web": "link:../../../vultus/packages/render-web",
-    "@vultus/web": "link:../../../vultus/packages/web",
+    "@warp/adapter": "workspace:*",
+    "@warp/components": "workspace:*",
+    "@warp/core": "workspace:*",
+    "@warp/primitives": "workspace:*",
+    "@warp/render-web": "workspace:*",
+    "@warp/web": "workspace:*",
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
     "@fontsource-variable/figtree": "^5.3.0",
     "react": "^19.3.0",

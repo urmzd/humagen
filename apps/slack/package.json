@@ -1,24 +1,24 @@
 {
-  "name": "@collegium/slack",
-  "version": "0.0.0",
+  "name": "@warp/slack",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Socket Mode Slack app: collegium runs rendered with vultus, streamed natively, with a stop button and an inbox.",
+  "description": "Socket Mode Slack app: Warp runs rendered with shared components, streamed natively, with a stop button and an inbox.",
   "scripts": {
     "start": "tsx src/main.ts",
     "check": "biome check",
     "fmt": "biome check --write",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/*.test.ts src/*.test.tsx",
-    "test:server": "COLLEGIUM_SERVER_TEST=1 node --import tsx --test src/collegium.server.test.ts",
+    "test:server": "WARP_SERVER_TEST=1 node --import tsx --test src/warp.server.test.ts",
     "validate": "SLACK_VALIDATE=1 node --import tsx --test src/app.test.tsx"
   },
   "dependencies": {
-    "@collegium/adapter": "link:../../packages/adapter",
-    "@vultus/components": "link:../../../vultus/packages/components",
-    "@vultus/core": "link:../../../vultus/packages/core",
-    "@vultus/render-slack": "link:../../../vultus/packages/render-slack",
-    "react": "link:../../../vultus/node_modules/react",
+    "@warp/adapter": "workspace:*",
+    "@warp/components": "workspace:*",
+    "@warp/core": "workspace:*",
+    "@warp/render-slack": "workspace:*",
+    "react": "^19.3.0",
     "tsx": "^4.23.15"
   },
   "devDependencies": {
@@ -26,8 +26,8 @@
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vultus/render-web": "link:../../../vultus/packages/render-web",
-    "react-dom": "link:../../../vultus/node_modules/react-dom",
+    "@warp/render-web": "workspace:*",
+    "react-dom": "^19.3.0",
     "typescript": "^6.0.0"
   }
 }

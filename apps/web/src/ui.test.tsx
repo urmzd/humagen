@@ -20,11 +20,11 @@ import { memoryStorage, sampleFiles, sampleUse } from "./storage.fixtures.ts";
 import { RunItem, runManifest, runMarkdown, statusOf } from "./RunItem.tsx";
 import { CopyAs } from "./CopyAs.tsx";
 import { itemActions, itemOf } from "./itemActions.tsx";
-import { AgentMessage } from "@vultus/web";
-import { WebSurface } from "@vultus/render-web";
+import { AgentMessage } from "@warp/web";
+import { WebSurface } from "@warp/render-web";
 import { replay } from "./Runs.tsx";
 import { formats } from "./copyas.ts";
-import { emptyTurn } from "@vultus/core";
+import { emptyTurn } from "@warp/core";
 
 test("collapsed navigation keeps an accessible Projects entry; creation follows permission", () => {
   const props = { projects: [], current: null, onOpen: () => {}, onCreated: () => {} };
@@ -54,7 +54,7 @@ test("project selection: an empty workspace still offers projectless work and cr
   assert.match(projectless, /aria-label="Select project: Projectless"/);
 });
 import type { Alert, AlertRule } from "./api.ts";
-import { ActionId, messageState, partTarget, type UiAction } from "@vultus/core";
+import { ActionId, messageState, partTarget, type UiAction } from "@warp/core";
 import { after, merge } from "./inbox.ts";
 import { edgeOf, MailboxView } from "./InboxPage.tsx";
 import { fromServer, type PlatformMessage, reached, toRequest } from "./mail.ts";
@@ -123,19 +123,19 @@ test("UsageMeter: a row shows its label only when asked", () => {
 test("UsageMeter: over the limit, the value stops at the limit and the limit line is drawn", () => {
   const out = html(<UsageMeter label="x" spent={12 * M} limit={10 * M} />);
   assert.equal(attr(out, "aria-valuenow"), String(10 * M));
-  assert.match(out, /collegium-meter-limit/);
+  assert.match(out, /warp-meter-limit/);
   assert.match(attr(out, "aria-valuetext") ?? "", /Over limit by .*2\.00/);
 });
 
 test("UsageMeter: no limit draws no fill", () => {
-  assert.doesNotMatch(html(<UsageMeter label="x" spent={3 * M} />), /collegium-meter-fill/);
+  assert.doesNotMatch(html(<UsageMeter label="x" spent={3 * M} />), /warp-meter-fill/);
 });
 
 test("UsageMeter: a projected value is drawn and read out only when it is ahead of what is spent", () => {
   const ahead = html(<UsageMeter label="x" spent={40 * M} limit={50 * M} projected={58 * M} />);
   assert.match(ahead, /data-testid="usage-meter-projected"/);
   assert.match(attr(ahead, "aria-valuetext") ?? "", /Heading for .*58\.00/);
-  assert.match(ahead, /collegium-meter-limit/);
+  assert.match(ahead, /warp-meter-limit/);
   const behind = html(<UsageMeter label="x" spent={40 * M} limit={50 * M} projected={30 * M} />);
   assert.doesNotMatch(behind, /usage-meter-projected/);
 });
@@ -168,12 +168,12 @@ test("Stroke: an agent's stroke carries its hue and state", () => {
   assert.equal(attr(out, "data-agent"), "oncall");
   assert.equal(attr(out, "data-state"), "waiting");
   assert.equal(attr(out, "data-edge"), "around");
-  assert.match(out, /--collegium-hue:\d+/);
+  assert.match(out, /--warp-hue:\d+/);
 });
 
 test("Stroke: without an agent it is neutral and has no state", () => {
   const out = html(<Stroke state="working">x</Stroke>);
-  assert.doesNotMatch(out, /data-agent|data-state|--collegium-hue/);
+  assert.doesNotMatch(out, /data-agent|data-state|--warp-hue/);
   assert.equal(attr(out, "data-edge"), "start");
 });
 
@@ -185,13 +185,13 @@ test("Stroke: waiting never animates, in markup or in the stylesheet", () => {
   );
   assert.doesNotMatch(out, /animate|aui-shimmer|aui-spinner/);
   const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
-  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selector]) => selector?.includes(".collegium-stroke"));
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, selector]) => selector?.includes(".warp-stroke"));
   assert.ok(rules.length > 5, "the stroke rules were found");
   for (const [, selector = "", body = ""] of rules) {
     if (selector.includes('"waiting"')) assert.doesNotMatch(body, /animation/, `waiting animates in: ${selector.trim()}`);
   }
   assert.ok(
-    rules.some(([, selector = "", body = ""]) => selector.includes('"working"') && /animation:\s*collegium-stroke-work/.test(body)),
+    rules.some(([, selector = "", body = ""]) => selector.includes('"working"') && /animation:\s*warp-stroke-work/.test(body)),
     "working is the state that animates",
   );
 });
@@ -448,7 +448,7 @@ test("edgeOf: an agent's message carries its edge, a rule's and the platform's s
   assert.equal(edgeOf(mailOf("m-done")).state, "done");
 });
 
-test("MailboxView: hosts vultus's mailbox with every message listed", () => {
+test("MailboxView: hosts warp's mailbox with every message listed", () => {
   const out = mailbox(null);
   for (const m of sampleMail().filter((x) => messageState(x) === "open")) assert.ok(out.includes(m.subject), m.subject);
   assert.equal(out.match(/data-message="/g)?.length, 4, "one row per open message");
@@ -484,7 +484,7 @@ test("MailboxView: the platform draws a reached limit with the meter and a way t
   assert.match(out, /value="200"/, "the new limit starts at double");
 });
 
-test("MailboxView: failures and memory to review are vultus's own parts", () => {
+test("MailboxView: failures and memory to review are warp's own parts", () => {
   const failure = mailbox("m-failure");
   assert.match(failure, /data-aui-part="text"/);
   assert.match(failure, /data-aui-part="failure"/);
@@ -860,17 +860,17 @@ test("StoredDetail: delete is offered only to those who may, and asks first", ()
 
 test("motion: every class moves only transform and opacity, and reduced motion removes the travel", () => {
   const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
-  const frames = [...css.matchAll(/@keyframes (collegium-[a-z-]+) \{((?:[^{}]|\{[^{}]*\})*)\}/g)];
+  const frames = [...css.matchAll(/@keyframes (warp-[a-z-]+) \{((?:[^{}]|\{[^{}]*\})*)\}/g)];
   assert.ok(frames.length >= 7, "the motion keyframes were found");
   for (const [, name, body = ""] of frames) {
     const props = [...body.matchAll(/([a-z-]+)\s*:/g)].map((m) => m[1]);
     for (const prop of props) assert.ok(prop === "opacity" || prop === "transform", `${name} animates ${prop}`);
   }
   const reduced = css.slice(css.indexOf("/* With motion reduced, nothing travels."));
-  for (const cls of [".collegium-enter", ".collegium-pop", ".collegium-drawer", ".collegium-note"]) assert.ok(reduced.includes(cls), `${cls} is covered when motion is reduced`);
-  assert.match(reduced, /animation: collegium-fade /, "what arrives only fades");
-  assert.doesNotMatch(css, /animation:[^;]*infinite[^;]*;[^}]*\}\s*(?=[^]*\.collegium-(enter|pop|drawer|note|fade)\b)(?!)/, "no motion class loops");
-  for (const cls of ["collegium-enter", "collegium-fade", "collegium-pop", "collegium-drawer", "collegium-note"]) {
+  for (const cls of [".warp-enter", ".warp-pop", ".warp-drawer", ".warp-note"]) assert.ok(reduced.includes(cls), `${cls} is covered when motion is reduced`);
+  assert.match(reduced, /animation: warp-fade /, "what arrives only fades");
+  assert.doesNotMatch(css, /animation:[^;]*infinite[^;]*;[^}]*\}\s*(?=[^]*\.warp-(enter|pop|drawer|note|fade)\b)(?!)/, "no motion class loops");
+  for (const cls of ["warp-enter", "warp-fade", "warp-pop", "warp-drawer", "warp-note"]) {
     const rule = css.match(new RegExp(`\\.${cls} \\{([^}]*)\\}`))?.[1] ?? "";
     assert.doesNotMatch(rule, /infinite/, `${cls} plays once`);
   }
@@ -894,7 +894,7 @@ test("motion: loading lists are skeletons that still say Loading to a screen rea
   assert.ok((out.match(/aui-skeleton/g)?.length ?? 0) >= 3);
 });
 
-test("an answer has exactly one copy control: the console's Copy as, in place of vultus's button", () => {
+test("an answer has exactly one copy control: the console's Copy as, in place of warp's button", () => {
   const run = runOf({ answer: "2.4 could not be tagged." });
   const turn = { ...emptyTurn(run.id, { name: run.agent }), status: "done" as const, text: "2.4 could not be tagged." };
   const draw = (withSlot: boolean) =>
@@ -905,14 +905,14 @@ test("an answer has exactly one copy control: the console's Copy as, in place of
     );
   const hosted = draw(true);
   assert.equal(hosted.match(/data-testid="item-copy"/g)?.length, 1, "the console's control is there once");
-  assert.doesNotMatch(hosted, /aria-label="Copy answer"/, "vultus's own button is not drawn beside it");
+  assert.doesNotMatch(hosted, /aria-label="Copy answer"/, "warp's own button is not drawn beside it");
   assert.match(hosted, /aria-label="Copy answer as: none"/, "it is an icon with a name, opened on click");
   assert.match(hosted, /aria-haspopup="listbox"/);
   assert.match(hosted, /role="status"[^>]*aria-live="polite"/, "the confirmation is announced");
   assert.doesNotMatch(hosted, />Copied</);
 
   const plain = draw(false);
-  assert.equal(plain.match(/aria-label="Copy answer"/g)?.length, 1, "with no host control, vultus's button is the one");
+  assert.equal(plain.match(/aria-label="Copy answer"/g)?.length, 1, "with no host control, warp's button is the one");
   assert.doesNotMatch(plain, /data-testid="item-copy"/);
 });
 
@@ -1052,7 +1052,7 @@ test("every custom property the console reads is one it defines", () => {
   // Defined in the stylesheet, or set inline on an element as a custom property.
   const defined = new Set([...css.matchAll(/(--[a-z][a-z0-9-]*)\s*:/g), ...code.matchAll(/"(--[a-z][a-z0-9-]*)"\s*:/g)].map((m) => m[1]));
   const read = new Set([...code.matchAll(/var\((--[a-z][a-z0-9-]*)/g), ...css.matchAll(/var\((--[a-z][a-z0-9-]*)/g)].map((m) => m[1]));
-  // vultus owns these: its theme defines the --aui-* tokens and Tailwind the --tw-* ones.
+  // warp owns these: its theme defines the --aui-* tokens and Tailwind the --tw-* ones.
   const missing = [...read].filter((name) => name && !defined.has(name) && !/^--(aui|tw|color|radius|text|font|shadow)-/.test(name));
   assert.deepEqual(missing, [], "read but never defined");
   assert.doesNotMatch(code, /\boap-/, "the old prefix is gone");

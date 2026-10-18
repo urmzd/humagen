@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/collegium/pkg/authz"
+	"github.com/urmzd/warp/pkg/authz"
 )
 
 // auth depends on authz and not the other way round. authz is a language and

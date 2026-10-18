@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/envelope"
-	"github.com/urmzd/mandatum/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/collegium/pkg/alerts"
-	"github.com/urmzd/collegium/pkg/call"
-	"github.com/urmzd/collegium/pkg/inbox"
-	"github.com/urmzd/collegium/pkg/policy"
-	"github.com/urmzd/collegium/pkg/runs"
-	"github.com/urmzd/collegium/pkg/usage"
+	"github.com/urmzd/warp/pkg/alerts"
+	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 // Denied reports a run a billing policy refused. It carries the decision, so a

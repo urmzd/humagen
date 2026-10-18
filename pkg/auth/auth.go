@@ -21,7 +21,7 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/urmzd/collegium/pkg/authz"
+	"github.com/urmzd/warp/pkg/authz"
 )
 
 // Sentinel errors. Handlers map ErrUnauthenticated to 401 and ErrForbidden to 403.

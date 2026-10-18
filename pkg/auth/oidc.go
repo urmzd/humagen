@@ -8,13 +8,13 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
-	"github.com/urmzd/collegium/pkg/authz"
+	"github.com/urmzd/warp/pkg/authz"
 )
 
 // ScopePrefix namespaces this platform's scopes at the identity provider, so a
-// machine is issued "collegium:runs:write" rather than a bare "runs:write" that
+// machine is issued "warp:runs:write" rather than a bare "runs:write" that
 // another API on the same authorization server might also define.
-const ScopePrefix = "collegium:"
+const ScopePrefix = "warp:"
 
 // OIDCConfig describes the identity provider. It works with any OpenID Connect
 // provider. For Okta, Issuer is the authorization server, for example

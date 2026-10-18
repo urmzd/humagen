@@ -1,14 +1,14 @@
-module github.com/urmzd/collegium
+module github.com/urmzd/warp
 
 go 1.26.9
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-jose/go-jose/v4 v4.1.5
-	github.com/urmzd/duraturo v0.1.1
-	github.com/urmzd/legatus v0.2.0
-	github.com/urmzd/mandatum v0.11.1-0.20261016195836-799b78eb1277
-	github.com/urmzd/saige v0.37.0
+	github.com/urmzd/anchor v0.2.0
+	github.com/urmzd/fiber v0.13.0
+	github.com/urmzd/playscape v0.3.0
+	github.com/urmzd/saige v0.38.0
 	golang.org/x/oauth2 v0.37.0
 )
 
@@ -41,6 +41,5 @@ require (
 
 require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
-	github.com/urmzd/vultus/go v0.1.0
 	go.yaml.in/yaml/v4 v4.0.0-rc.2
 )

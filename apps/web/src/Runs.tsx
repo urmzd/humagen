@@ -1,6 +1,6 @@
-import { emptyTurn, reduce, type Turn } from "@vultus/core";
+import { emptyTurn, reduce, type Turn } from "@warp/core";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { replay as fold } from "@collegium/adapter";
+import { replay as fold } from "@warp/adapter";
 import { adapter, type BusEvent, type Run, turnOf } from "./adapter.ts";
 import { api, subscribe } from "./api.ts";
 import { AgentMark, agentOptions, ago, Chip, elapsed, Empty, hueOf, isEnded, Menu, Page, rows, SearchField, Segmented, Status, Tape, took } from "./ui.tsx";
@@ -188,7 +188,7 @@ export function RunList({ runs: all, onSelect }: { runs: Run[]; onSelect: (id: s
           ) : (
             <ul className={`${rows} -mt-3`}>
               {runs.map((r) => (
-                <li key={r.id} className="collegium-enter">
+                <li key={r.id} className="warp-enter">
                   <button
                     type="button"
                     onClick={() => onSelect(r.id)}

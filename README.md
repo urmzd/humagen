@@ -1,21 +1,21 @@
 <p align="center">
-  <h1 align="center">collegium</h1>
+  <h1 align="center">warp</h1>
   <p align="center">
-    A shared runtime and console for agents, conversations, governed calls and integrations.
+    A shared workspace for humans and agents: create agents, hire them into projects, and coordinate governed work with shared knowledge.
     <br /><br />
     <a href="#installation">Install</a> &middot;
-    <a href="https://github.com/urmzd/collegium/issues">Report Bug</a> &middot;
+    <a href="https://github.com/urmzd/warp/issues">Report Bug</a> &middot;
     <a href="docs/architecture.md">Architecture</a>
   </p>
 </p>
 
 <p align="center">
-  <a href="https://github.com/urmzd/collegium/actions/workflows/ci.yml"><img src="https://github.com/urmzd/collegium/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/urmzd/collegium" alt="License"></a>
+  <a href="https://github.com/urmzd/warp/actions/workflows/ci.yml"><img src="https://github.com/urmzd/warp/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/urmzd/warp" alt="License"></a>
 </p>
 
 <p align="center">
-  <img src="showcase/agents.png" alt="Collegium agent console with the two seeded offline example agents" width="80%">
+  <img src="showcase/agents.png" alt="Warp agent console with the two seeded offline example agents" width="80%">
 </p>
 <p align="center"><em>Local development preview with seeded example data, captured with teasr. No model calls.</em></p>
 
@@ -38,18 +38,15 @@
 |-------------|---------|
 | Go version from [`go.mod`](go.mod) | Build the server |
 | Node.js 22.12+ or 24+, pnpm | Build the Vite console |
-| Sibling `vultus` checkout | The console links its web packages, which are not published to npm |
 | Chrome/Chromium and [teasr](https://github.com/urmzd/teasr) | Optional screenshot capture |
 
-The Go modules are published and need no sibling checkout. The console does: keep `vultus` beside `collegium`.
+The platform, console, shared UI and Slack renderers live in this repository. The Go libraries are published separately.
 
 ```sh
-git clone https://github.com/urmzd/vultus.git
-git clone https://github.com/urmzd/collegium.git
-cd collegium
+git clone https://github.com/urmzd/warp.git
+cd warp
 go mod download
-(cd packages/adapter && pnpm install)
-(cd apps/web && pnpm install)
+pnpm install
 ```
 
 A workspace answers through one or more [clients](docs/clients.md): a Slack app
@@ -71,7 +68,7 @@ Run the console in another terminal, from the repository root:
 make web
 ```
 
-Open <http://127.0.0.1:5173>, complete the first-run workspace form and select an example agent. The backend listens on `127.0.0.1:8080`. Seeded agents use mandatum's offline provider, so the preview requires no model key.
+Open <http://127.0.0.1:5173>, complete the first-run workspace form and select an example agent. The backend listens on `127.0.0.1:8080`. Seeded agents use fiber's offline provider, so the preview requires no model key.
 
 Development auth grants admin access on loopback. For real sign-in, roles and machine tokens, follow [the security guide](docs/security.md). To use Anthropic, set `ANTHROPIC_API_KEY` before starting the server and configure an agent with provider `anthropic`.
 
@@ -139,11 +136,26 @@ generated from it. See [the API guide](docs/api.md).
 | Client typecheck and tests | `make client-check` |
 | Lint the API spec | `make spec-lint` |
 
+## Product direction
+
+Warp is a shared place for people and agents to organize projects and tasks, maintain a living knowledge base, and improve how they work together. Agents can be created and hired into scoped project roles. Policies govern capabilities, access, budgets and approvals; connectors bring work in and send updates out. People participate through assignments, questions, approvals and notifications. Shared abilities and agent instructions improve through evaluated, reviewed changes.
+
+This is the direction, not a claim that every workflow exists today. See the [roadmap](docs/roadmap.md) and [implementation status](docs/architecture.md#status).
+
 ## Architecture
 
-Collegium composes [mandatum](https://github.com/urmzd/mandatum) for the bus and connectors, [saige](https://github.com/urmzd/saige) for agent execution and evals, [legatus](https://github.com/urmzd/legatus) for workspace isolation and [duraturo](https://github.com/urmzd/duraturo) for durability primitives. [vultus](https://github.com/urmzd/vultus) supplies web and Slack presentation.
+| Part | Responsibility |
+|------|----------------|
+| **Warp** | Shared workspace, project orchestration, API, console and presentation |
+| [Saige](https://github.com/urmzd/saige) | Agent execution, tools, retrieval and evaluations |
+| [Fiber](https://github.com/urmzd/fiber) | Messaging, connectors and request routing |
+| [Playscape](https://github.com/urmzd/playscape) | Governed execution environments and workspace isolation |
+| [Anchor](https://github.com/urmzd/anchor) | Durable execution, replay and recovery |
 
-An agent-to-agent call creates a run through `pkg/call`; its edge determines access, budget, depth and delegation mode. The platform owns identity, storage and orchestration; vultus owns rendering. Read the [architecture and implementation status](docs/architecture.md) before relying on planned persistence or governance features.
+The `@warp/*` packages supply web and Slack presentation; `internal/presentation/github` renders GitHub Markdown. They live with the platform in this repository.
+
+
+An agent-to-agent call creates a run through `pkg/call`; its edge determines access, budget, depth and delegation mode. The platform owns identity, storage and orchestration; warp owns rendering. Read the [architecture and implementation status](docs/architecture.md) before relying on planned persistence or governance features.
 
 ## License
 

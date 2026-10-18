@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/envelope"
 
-	"github.com/urmzd/collegium/pkg/memory"
-	"github.com/urmzd/collegium/pkg/runs"
-	"github.com/urmzd/collegium/pkg/usage"
+	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 // Housekeeping the platform does around a conversation, by asking an agent.
@@ -23,8 +23,8 @@ import (
 // Both are off until a workspace chooses an agent for them, and neither runs on
 // the offline provider, whose answer is a notice and not a title or a fact.
 const (
-	metaHook = "collegium.hook"
-	metaFor  = "collegium.for"
+	metaHook = "warp.hook"
+	metaFor  = "warp.for"
 
 	hookTitle  = "title"
 	hookMemory = "memory"

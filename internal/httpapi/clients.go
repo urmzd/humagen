@@ -3,10 +3,10 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/urmzd/collegium/internal/platform"
-	"github.com/urmzd/collegium/pkg/auth"
-	"github.com/urmzd/collegium/pkg/clients"
-	"github.com/urmzd/collegium/pkg/policy"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/policy"
 )
 
 // A client is one Slack app or GitHub installation the workspace answers

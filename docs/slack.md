@@ -4,13 +4,13 @@
 
 | | Webhook connector | Slack app |
 |---|---|---|
-| Where | Go, in `collegium serve` (`pkg/integrations/slack`) | TypeScript, `apps/slack`, a separate process |
+| Where | Go, in `warp serve` (`pkg/integrations/slack`) | TypeScript, `apps/slack`, a separate process |
 | How Slack reaches it | Signed webhooks to a public URL | Socket Mode, no public URL |
-| How it reaches collegium | In process | The HTTP API, as a machine |
-| A run looks like | One plain message per run, edited with `chat.update` | vultus components: native streaming, plans, tool steps, failures with Retry, files |
+| How it reaches warp | In process | The HTTP API, as a machine |
+| A run looks like | One plain message per run, edited with `chat.update` | warp components: native streaming, plans, tool steps, failures with Retry, files |
 | Agent session status and the stop button | Yes | Yes |
 | Code channel slash commands | Yes | No |
-| `/agent`, shortcuts, Home tab | No | Yes, from vultus's sandbox manifest |
+| `/agent`, shortcuts, Home tab | No | Yes, from warp's sandbox manifest |
 | Inbox items about a run | No | In the run's thread, and on Home |
 | Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list. Its runs are not yet recorded as the client's, see below |
 | Who asked | Recorded on the run | Recorded as the person, when the app's client maps them (`act_as`); else as the app |
@@ -38,16 +38,16 @@ The app works around each of these and says where in its README.
 | The run a retry started, in the resolve response | Retry from Slack starts its own run and acknowledges the inbox part | Return `{message, run}` from `POST /api/inbox/{id}/parts/{part}/resolve` |
 | A stream of inbox notices alone | The app subscribes to a topic no agent can have | `GET /api/inbox/events` |
 | A route for feedback | A rating is written to the app's log | `POST /api/runs/{id}/feedback` |
-| A modal to type a reply to a question | A reply is answered in the console | vultus: a reply modal in `@vultus/render-slack`, as for feedback |
+| A modal to type a reply to a question | A reply is answered in the console | warp: a reply modal in `@warp/render-slack`, as for feedback |
 
 ### Questions a run waits on
 
 The Slack app shows a run's question in the run's thread: the streamed message
-is closed with vultus's approval or choice card, so its buttons can be pressed.
-A click answers through collegium (`answerQuestion`) as the person the app's
-client maps the Slack user to; a Slack user it does not map is told in vultus's
-words that they cannot, and collegium is not asked. Collegium decides the rest:
-who may answer is the run's spec's to say, and a refusal is shown with vultus's
+is closed with warp's approval or choice card, so its buttons can be pressed.
+A click answers through warp (`answerQuestion`) as the person the app's
+client maps the Slack user to; a Slack user it does not map is told in warp's
+words that they cannot, and warp is not asked. Warp decides the rest:
+who may answer is the run's spec's to say, and a refusal is shown with warp's
 `noPermission` copy. The card settles in place from the run's own events,
 whoever answered, and the answer continues in a new message. A question's inbox
 message is not posted in the thread again. Configure the client with the app's
@@ -67,7 +67,7 @@ slash commands. Responses use one message per run, edited as events arrive.
 
 [`examples/slack/manifest.json`](../examples/slack/manifest.json) declares
 the app: an agent view, a bot user, code channels, and the scopes and events the
-connector uses. Replace `YOUR_HOST` with the public address of `collegium serve`,
+connector uses. Replace `YOUR_HOST` with the public address of `warp serve`,
 then create the app from the manifest at <https://api.slack.com/apps>.
 
 | Manifest entry | Why the connector needs it |
@@ -95,18 +95,18 @@ For a single app, these variables create the default client, `default-slack`:
 
 | Variable | Meaning |
 |----------|---------|
-| `COLLEGIUM_SLACK_TOKEN` | Bot token (`xoxb-`). Required with the signing secret. |
-| `COLLEGIUM_SLACK_SIGNING_SECRET` | Authenticates every inbound request. |
-| `COLLEGIUM_SLACK_TEAM` | Team id the client serves. A request for another team is a 404. |
-| `COLLEGIUM_SLACK_APP` | App id. Optional for one app, required of each when a team has several. |
-| `COLLEGIUM_SLACK_BOTS` | `U08BOT=docs-bot` pairs: which agent a bot user id stands for. |
-| `COLLEGIUM_SLACK_DEFAULT_AGENT` | Answers a mention or command that named no agent. |
-| `COLLEGIUM_SLACK_SESSIONS` | `true` reports run lifecycle as session status. |
-| `COLLEGIUM_SLACK_COMMANDS` | JSON array of commands to offer in code channels. |
+| `WARP_SLACK_TOKEN` | Bot token (`xoxb-`). Required with the signing secret. |
+| `WARP_SLACK_SIGNING_SECRET` | Authenticates every inbound request. |
+| `WARP_SLACK_TEAM` | Team id the client serves. A request for another team is a 404. |
+| `WARP_SLACK_APP` | App id. Optional for one app, required of each when a team has several. |
+| `WARP_SLACK_BOTS` | `U08BOT=docs-bot` pairs: which agent a bot user id stands for. |
+| `WARP_SLACK_DEFAULT_AGENT` | Answers a mention or command that named no agent. |
+| `WARP_SLACK_SESSIONS` | `true` reports run lifecycle as session status. |
+| `WARP_SLACK_COMMANDS` | JSON array of commands to offer in code channels. |
 
 ```sh
-export COLLEGIUM_SLACK_SESSIONS=true
-export COLLEGIUM_SLACK_COMMANDS='[{"name":"create-pr","description":"Open a pull request","argument_hint":"[title]"}]'
+export WARP_SLACK_SESSIONS=true
+export WARP_SLACK_COMMANDS='[{"name":"create-pr","description":"Open a pull request","argument_hint":"[title]"}]'
 ```
 
 Malformed values fail startup. So do commands Slack would refuse: more than 10,
@@ -115,11 +115,11 @@ The same values on a client created through the API are refused with a 400.
 
 | Variable | Client field |
 |----------|--------------|
-| `COLLEGIUM_SLACK_TOKEN`, `COLLEGIUM_SLACK_SIGNING_SECRET` | `credentials.token`, `credentials.signing_secret` |
-| `COLLEGIUM_SLACK_TEAM`, `COLLEGIUM_SLACK_APP` | `identity.team`, `identity.app_id` |
-| `COLLEGIUM_SLACK_BOTS` | `bots` |
-| `COLLEGIUM_SLACK_DEFAULT_AGENT` | `default_agent` |
-| `COLLEGIUM_SLACK_SESSIONS`, `COLLEGIUM_SLACK_COMMANDS` | `slack.sessions`, `slack.commands` |
+| `WARP_SLACK_TOKEN`, `WARP_SLACK_SIGNING_SECRET` | `credentials.token`, `credentials.signing_secret` |
+| `WARP_SLACK_TEAM`, `WARP_SLACK_APP` | `identity.team`, `identity.app_id` |
+| `WARP_SLACK_BOTS` | `bots` |
+| `WARP_SLACK_DEFAULT_AGENT` | `default_agent` |
+| `WARP_SLACK_SESSIONS`, `WARP_SLACK_COMMANDS` | `slack.sessions`, `slack.commands` |
 
 The default client may route to any agent. One created through the API routes
 to its default agent and its `agents` list, and to nothing else.
@@ -156,7 +156,7 @@ asks for:
 3. The session is set to `active`.
 
 The model call in flight is cancelled. The run ends with `lifecycle.stopped`,
-and mandatum's sink edits the run's message to keep what the agent had said,
+and fiber's sink edits the run's message to keep what the agent had said,
 marked stopped with the reason underneath. From the press until that event,
 nothing the run still publishes sets the session back to working, and the
 `active` it reports on ending is where the session stays. A run whose turn
@@ -168,10 +168,10 @@ console role, is the authority. If the runtime cannot carry the request, the
 press is answered with an error so Slack redelivers it, and nothing is posted.
 
 A follow-up mention in the thread is answered by a new run. Slack mentions do
-not carry the thread's history in collegium today, so that run is not sent the
+not carry the thread's history in warp today, so that run is not sent the
 stopped turn. A conversation in the console is: see
 [Stopping a run](architecture.md#stopping-a-run). Carrying a Slack thread's
-history needs mandatum's thread journal (`runtime.WithThreads`), which records a
+history needs fiber's thread journal (`runtime.WithThreads`), which records a
 stopped turn with its partial answer and a fixed marker.
 
 A press reaches only the runs its own client raised. Two apps answering in one
@@ -204,7 +204,7 @@ message saying so.
 ## Errors
 
 Slack reports failures as `ok: false` with a code. For status and command
-calls collegium logs permanent refusal codes as warnings and still treats the event as
+calls warp logs permanent refusal codes as warnings and still treats the event as
 delivered: the answer is already on the surface, and retrying a refusal would
 never succeed. Transport failures and transient Slack server/rate-limit errors
 are returned, so the router retries them with its bounded backoff.

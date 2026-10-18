@@ -11,17 +11,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/agentspec"
-	"github.com/urmzd/mandatum/pkg/connectors/cron"
-	"github.com/urmzd/mandatum/pkg/envelope"
-	"github.com/urmzd/mandatum/pkg/topic"
+	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/topic"
 
-	"github.com/urmzd/collegium/internal/platform"
-	"github.com/urmzd/collegium/pkg/alerts"
-	"github.com/urmzd/collegium/pkg/call"
-	"github.com/urmzd/collegium/pkg/policy"
-	"github.com/urmzd/collegium/pkg/runs"
-	"github.com/urmzd/collegium/pkg/usage"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/alerts"
+	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 const tenant = "acme"
@@ -246,7 +246,7 @@ func TestTriggerTagCannotClaimAgentOrigin(t *testing.T) {
 }
 
 // A run whose every attempt fails must end as failed and raise its alert, even
-// though mandatum publishes no final event once the retries run out.
+// though fiber publishes no final event once the retries run out.
 func TestARunThatExhaustsItsRetriesEnds(t *testing.T) {
 	// Nothing listens here, so every attempt fails the same way.
 	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:1")

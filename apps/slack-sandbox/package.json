@@ -1,0 +1,24 @@
+{
+  "name": "@warp/slack-sandbox",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "Real-Slack test bench: app manifest generator, fixture poster, live streaming, and an interactive Socket Mode handler.",
+  "scripts": {
+    "cli": "tsx --tsconfig ../../tsconfig.base.json src/cli.tsx",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@warp/components": "workspace:*",
+    "@warp/core": "workspace:*",
+    "@warp/primitives": "workspace:*",
+    "@warp/render-slack": "workspace:*",
+    "@warp/slack-host": "workspace:*",
+    "react": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15"
+  }
+}

@@ -213,7 +213,7 @@ function buildFormData(body: Record<string, unknown>): FormData {
   return formData;
 }
 
-/** API client for Collegium API. */
+/** API client for Warp API. */
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
@@ -418,7 +418,7 @@ export class ApiClient {
   }
 
   /** Redirects to the identity provider (authorization code flow with
-PKCE) and sets a short-lived `collegium_login` cookie. Under
+PKCE) and sets a short-lived `warp_login` cookie. Under
 development auth it redirects straight to `/`. A browser navigates
 here; a script has no use for it.
  */
@@ -445,7 +445,7 @@ here; a script has no use for it.
   }
 
   /** The identity provider redirects here. On success it sets the
-`collegium_session` cookie (`__Host-collegium_session` over https),
+`warp_session` cookie (`__Host-warp_session` over https),
 HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
 `return_to` path. Errors are plain text, not JSON.
  */
@@ -740,7 +740,7 @@ topic `agent:<agent>:<id>`, or poll `getRun`.
 Send `Idempotency-Key` to make a retry safe. The run's `tag_id` is
 then `api-<length of subject in bytes>-<subject>-<key>`, its `id` is
 derived from that and the workspace (`r` and 32 hex digits, as
-mandatum's `runtime.RunID`), and a second request with the same key
+fiber's `runtime.RunID`), and a second request with the same key
 from the same caller joins the run the first one started instead of
 starting another. Without it the ids are random.
 

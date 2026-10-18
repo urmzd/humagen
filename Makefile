@@ -1,6 +1,6 @@
 .PHONY: all init build test lint fmt check dev dev-signin web client client-check spec-lint oag-install
 
-BIN := collegium
+BIN := warp
 
 # The generator that writes packages/client from api/openapi.yaml, and the one
 # version of it whose output is committed. CI regenerates with the same version
@@ -49,8 +49,8 @@ dev-signin: build
 
 # The web console, proxying /api and /auth to the server from `make dev`.
 web:
-	cd packages/adapter && pnpm install
-	cd apps/web && pnpm install && pnpm dev
+	pnpm install
+	pnpm --filter @warp/console dev
 
 # Regenerate the TypeScript client from the API contract. The output under
 # packages/client/src/generated is committed.
@@ -63,7 +63,9 @@ client:
 
 # Build, typecheck and test the client package.
 client-check:
-	cd packages/client && pnpm install --frozen-lockfile && pnpm typecheck && pnpm test
+	pnpm install --frozen-lockfile
+	pnpm --filter @warp/client typecheck
+	pnpm --filter @warp/client test
 
 # Lint the API contract.
 spec-lint:

@@ -46,9 +46,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
 
-	"github.com/urmzd/collegium/pkg/policy"
+	"github.com/urmzd/warp/pkg/policy"
 )
 
 // Kind is what a ledger entry records.

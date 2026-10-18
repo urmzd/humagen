@@ -1,4 +1,4 @@
-import { BotIcon, CheckIcon, ClockIcon, ComposeIcon, HistoryIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SettingsIcon, Tooltip } from "@vultus/render-web";
+import { BotIcon, CheckIcon, ClockIcon, ComposeIcon, HistoryIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SettingsIcon, Tooltip } from "@warp/render-web";
 import { type MouseEvent, type ReactNode, type SVGProps, useId, useState } from "react";
 import type { Me, Preferences, ThreadSummary } from "./api.ts";
 import { Avatar, type Section } from "./Settings.tsx";
@@ -21,7 +21,7 @@ export type View =
   | "evals"
   | "settings";
 
-// Glyphs vultus does not ship. Same grid and stroke as its set.
+// Glyphs outside the shared icon set. Same grid and stroke.
 function glyph(d: ReactNode) {
   return function Glyph({ size = 18, ...rest }: SVGProps<SVGSVGElement> & { size?: number }) {
     return (
@@ -356,12 +356,12 @@ export function Sidebar({
     {open && <button type="button" tabIndex={-1} aria-label="Dismiss navigation" onClick={onToggle} className="fixed inset-0 z-40 bg-black/40 md:hidden" />}
     <aside
       aria-label="Navigation"
-      className={`collegium-glass-bar flex shrink-0 flex-col border-[var(--collegium-rule)] border-r transition-[width] duration-200 motion-reduce:transition-none ${
+      className={`warp-glass-bar flex shrink-0 flex-col border-[var(--warp-rule)] border-r transition-[width] duration-200 motion-reduce:transition-none ${
         open ? "w-64 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50" : "w-12"
       }`}
     >
       <div className={`flex h-12 items-center ${open ? "justify-between pr-2 pl-3.5" : "justify-center"}`}>
-        {open && <span className="collegium-display truncate text-aui-base font-semibold text-aui-fg">Collegium</span>}
+        {open && <span className="warp-display truncate text-aui-base font-semibold text-aui-fg">Warp</span>}
         <button
           type="button"
           onClick={onToggle}
@@ -385,7 +385,7 @@ export function Sidebar({
       {open && can("runs:read") && (
         <div className="flex shrink-0 flex-col pt-3">
           {/* The label stays in reach while the list scrolls under it. */}
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-1 bg-[var(--collegium-plane)] py-1 pr-2 pl-2">
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-1 bg-[var(--warp-plane)] py-1 pr-2 pl-2">
             <p className="px-2 text-aui-xs text-aui-muted">Tasks</p>
             <Popover
               narrow
@@ -426,7 +426,7 @@ export function Sidebar({
                     <button
                       type="button"
                       onClick={clear}
-                      className="mt-1 rounded-aui border-[var(--collegium-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      className="mt-1 rounded-aui border-[var(--warp-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                     >
                       Clear filters
                     </button>
@@ -447,7 +447,7 @@ export function Sidebar({
                 <button
                   type="button"
                   onClick={retry}
-                  className="collegium-press inline-flex h-6 items-center rounded-full border border-[var(--collegium-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  className="warp-press inline-flex h-6 items-center rounded-full border border-[var(--warp-rule)] px-2.5 text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   Try Again
                 </button>
@@ -461,7 +461,7 @@ export function Sidebar({
               </li>
             )}
             {recents.map((t) => (
-              <li key={t.id} className="collegium-enter">
+              <li key={t.id} className="warp-enter">
                 <button
                   type="button"
                   onClick={() => onSelect(t.id)}
@@ -490,7 +490,7 @@ export function Sidebar({
                   type="button"
                   onClick={more}
                   disabled={loading === "more"}
-                  className="inline-flex h-6 items-center rounded-full border border-[var(--collegium-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
+                  className="inline-flex h-6 items-center rounded-full border border-[var(--warp-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
                 >
                   {loading === "more" ? <span className="aui-shimmer">Loading</span> : failed ? "Could not load. Try again" : "See more"}
                 </button>

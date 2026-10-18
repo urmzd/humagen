@@ -1,6 +1,6 @@
 // Package runs is the platform's index of runs and the tree they form.
 //
-// mandatum's ledger knows whether a run survived. This index knows how runs
+// fiber's ledger knows whether a run survived. This index knows how runs
 // relate: which run called which, how many calls each has made, and how much
 // budget each has handed out. It is a projection of two inputs, the tag a run
 // was accepted with and the lifecycle events that run later publishes.
@@ -20,11 +20,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/agentrt/payload"
-	"github.com/urmzd/mandatum/pkg/envelope"
-	"github.com/urmzd/mandatum/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/collegium/pkg/call"
+	"github.com/urmzd/warp/pkg/call"
 )
 
 // ErrNotFound reports a run that does not exist in the caller's tenant. A run
@@ -46,18 +46,18 @@ const OriginAPI = "api"
 // Keys the platform's API writes into a tag's Meta to place a run in a
 // conversation. A tag from any other origin carrying them is ignored.
 const (
-	MetaThread  = "collegium.thread"
-	MetaPrev    = "collegium.prev"
-	MetaAsk     = "collegium.ask"
-	MetaPicked  = "collegium.picked"
-	MetaProject = "collegium.project"
+	MetaThread  = "warp.thread"
+	MetaPrev    = "warp.prev"
+	MetaAsk     = "warp.ask"
+	MetaPicked  = "warp.picked"
+	MetaProject = "warp.project"
 )
 
 // MetaClient is the key the platform's ingress writes into a tag's Meta to
 // say which external client raised it. Ingress overwrites whatever a
 // connector put there, and only a tag whose origin is a client surface is
 // believed.
-const MetaClient = "collegium.client"
+const MetaClient = "warp.client"
 
 // ClientOf returns the external client that raised a tag, or "".
 func ClientOf(tag envelope.Tag) string {
@@ -298,7 +298,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	if _, ok := x.runs[runID]; ok {
 		return nil
 	}
-	// The edge names tags. Runs are indexed by run id, which mandatum derives
+	// The edge names tags. Runs are indexed by run id, which fiber derives
 	// from the tenant and the tag id together, so the links are translated
 	// once, here. A call never leaves its caller's tenant, so the tag's own
 	// tenant is the one its root and its parent were accepted under.

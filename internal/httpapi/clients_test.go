@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/collegium/internal/platform"
-	"github.com/urmzd/collegium/pkg/clients"
-	slackflow "github.com/urmzd/collegium/pkg/integrations/slack"
-	"github.com/urmzd/mandatum/pkg/signature"
+	"github.com/urmzd/fiber/pkg/signature"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/clients"
+	slackflow "github.com/urmzd/warp/pkg/integrations/slack"
 )
 
 // The secrets a test writes. Nothing the server says or logs may contain them.
@@ -100,7 +100,7 @@ func TestClientSecretsNeverAppearInAResponseOrALog(t *testing.T) {
 	// Refusals echo what was wrong, never what was sent.
 	keep(f.do(t, nil, "POST", "/api/clients", admin, slackBody("docs", "A0DOCS", "helper")))
 	keep(f.do(t, nil, "POST", "/api/clients", admin, slackBody("Bad Id", "A0BAD", "helper")))
-	keep(f.do(t, nil, "POST", "/api/clients", admin, strings.Replace(slackBody("x", "A0X", "helper"), `"value":"`+botToken+`"`, `"value":"`+botToken+`","ref":"env:COLLEGIUM_X"`, 1)))
+	keep(f.do(t, nil, "POST", "/api/clients", admin, strings.Replace(slackBody("x", "A0X", "helper"), `"value":"`+botToken+`"`, `"value":"`+botToken+`","ref":"env:WARP_X"`, 1)))
 	keep(f.do(t, nil, "PUT", "/api/policies", admin, `{"scope":{"kind":"client","name":"docs"},"period":"day","max_concurrent":2}`))
 	keep(f.do(t, nil, "GET", "/api/policies", admin, ""))
 	keep(f.do(t, nil, "GET", "/api/policies/history", admin, ""))
@@ -192,9 +192,9 @@ func TestAnotherTenantsClientIsNotFound(t *testing.T) {
 // an admin's.
 func TestClientRoutesEachNeedTheirPermission(t *testing.T) {
 	f, _, _ := clientFixture(t)
-	reader := f.machine(t, "acme", "collegium:clients:read")
-	writer := f.machine(t, "acme", "collegium:clients:write")
-	other := f.machine(t, "acme", "collegium:agents:write", "collegium:runs:write", "collegium:billing:write")
+	reader := f.machine(t, "acme", "warp:clients:read")
+	writer := f.machine(t, "acme", "warp:clients:write")
+	other := f.machine(t, "acme", "warp:agents:write", "warp:runs:write", "warp:billing:write")
 	body := slackBody("docs", "A0DOCS", "helper")
 	for _, tc := range []struct {
 		method, path, body, bearer string
@@ -217,7 +217,7 @@ func TestClientRoutesEachNeedTheirPermission(t *testing.T) {
 		}
 	}
 	// A viewer sees clients and an admin changes them; a viewer does not.
-	viewer, admin := f.signIn(t, "collegium-viewers"), f.signIn(t, "collegium-admins")
+	viewer, admin := f.signIn(t, "warp-viewers"), f.signIn(t, "warp-admins")
 	if res, _ := f.do(t, viewer, "GET", "/api/clients", "", ""); res.StatusCode != http.StatusOK {
 		t.Errorf("viewer list = %d", res.StatusCode)
 	}
@@ -326,15 +326,15 @@ func TestAClientBodyCannotClaimWhatTheServerDecides(t *testing.T) {
 // same body: unset, set, another tenant's, or the default client's.
 func TestTheAPIRefusesASecretReferenceItsTenantWasNotGiven(t *testing.T) {
 	env := map[string]string{
-		"COLLEGIUM_SLACK_TOKEN": "xoxb-default", "COLLEGIUM_SLACK_SIGNING_SECRET": "default-signing",
-		"COLLEGIUM_SLACK_TOKEN_ACME": botToken, "COLLEGIUM_SLACK_SECRET_ACME": signingSecret,
+		"WARP_SLACK_TOKEN": "xoxb-default", "WARP_SLACK_SIGNING_SECRET": "default-signing",
+		"WARP_SLACK_TOKEN_ACME": botToken, "WARP_SLACK_SECRET_ACME": signingSecret,
 	}
 	fake := slackflow.NewFake()
 	f := newFixtureWith(t, platform.Config{
 		SlackAPI: func(string) slackflow.API { return fake }, ClientInterval: -1,
 		Env: func(name string) (string, bool) { v, ok := env[name]; return v, ok },
 		SecretRefs: map[string][]string{
-			"acme": {"COLLEGIUM_SLACK_TOKEN", "COLLEGIUM_SLACK_SIGNING_SECRET", "COLLEGIUM_SLACK_TOKEN_ACME", "COLLEGIUM_SLACK_SECRET_ACME"},
+			"acme": {"WARP_SLACK_TOKEN", "WARP_SLACK_SIGNING_SECRET", "WARP_SLACK_TOKEN_ACME", "WARP_SLACK_SECRET_ACME"},
 		},
 	})
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
@@ -343,7 +343,7 @@ func TestTheAPIRefusesASecretReferenceItsTenantWasNotGiven(t *testing.T) {
 			`"credentials":{"token":{"ref":"` + token + `"},"signing_secret":{"ref":"` + signing + `"}}}`
 	}
 	// The tenant the variables were given to may reference them.
-	if res, out := f.do(t, nil, "POST", "/api/clients", acme, withRefs("mine", "A0MINE", "env:COLLEGIUM_SLACK_TOKEN_ACME", "env:COLLEGIUM_SLACK_SECRET_ACME")); res.StatusCode != http.StatusCreated {
+	if res, out := f.do(t, nil, "POST", "/api/clients", acme, withRefs("mine", "A0MINE", "env:WARP_SLACK_TOKEN_ACME", "env:WARP_SLACK_SECRET_ACME")); res.StatusCode != http.StatusCreated {
 		t.Fatalf("acme create = %d %v", res.StatusCode, out)
 	}
 	f.do(t, nil, "POST", "/api/agents", acme, helperSpec)
@@ -355,9 +355,9 @@ func TestTheAPIRefusesASecretReferenceItsTenantWasNotGiven(t *testing.T) {
 	// Nobody else may, whatever the variable is.
 	bodies := map[string]bool{}
 	for name, ref := range map[string]string{
-		"another tenant's variable":     "env:COLLEGIUM_SLACK_TOKEN_ACME",
-		"the default client's variable": "env:COLLEGIUM_SLACK_TOKEN",
-		"a variable that is not set":    "env:COLLEGIUM_NOT_SET",
+		"another tenant's variable":     "env:WARP_SLACK_TOKEN_ACME",
+		"the default client's variable": "env:WARP_SLACK_TOKEN",
+		"a variable that is not set":    "env:WARP_NOT_SET",
 		"a variable outside the prefix": "env:PATH",
 	} {
 		res, out := f.do(t, nil, "POST", "/api/clients", globex, withRefs("probe", "A0PROBE", ref, ref))
@@ -374,7 +374,7 @@ func TestTheAPIRefusesASecretReferenceItsTenantWasNotGiven(t *testing.T) {
 	if res, out := f.do(t, nil, "POST", "/api/clients", globex, slackBody("theirs", "A0THEIRS", "helper")); res.StatusCode != http.StatusCreated {
 		t.Fatalf("globex create = %d %v", res.StatusCode, out)
 	}
-	update := strings.Replace(withRefs("theirs", "A0THEIRS", "env:COLLEGIUM_SLACK_TOKEN", "env:COLLEGIUM_SLACK_SIGNING_SECRET"), `"id":"theirs",`, "", 1)
+	update := strings.Replace(withRefs("theirs", "A0THEIRS", "env:WARP_SLACK_TOKEN", "env:WARP_SLACK_SIGNING_SECRET"), `"id":"theirs",`, "", 1)
 	res, out := f.do(t, nil, "PUT", "/api/clients/theirs", globex, update)
 	raw, _ := json.Marshal(out)
 	if res.StatusCode != http.StatusBadRequest || !bodies[string(raw)] {

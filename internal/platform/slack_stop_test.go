@@ -13,11 +13,11 @@ import (
 
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/collegium/internal/platform"
-	"github.com/urmzd/collegium/pkg/integrations/slack"
-	"github.com/urmzd/collegium/pkg/runs"
-	"github.com/urmzd/mandatum/pkg/registry"
-	"github.com/urmzd/mandatum/pkg/signature"
+	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/fiber/pkg/signature"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/integrations/slack"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 const slackSecret = "8f742231b10e8888abcd99yyyzzz85a5"
@@ -165,7 +165,7 @@ func TestStoppingASlackSessionStopsItsRun(t *testing.T) {
 	}
 
 	// The thread is still a conversation: a follow-up mention is answered.
-	// Slack mentions carry no history in collegium today, so the follow-up is
+	// Slack mentions carry no history in warp today, so the follow-up is
 	// a run of its own that is not sent the stopped turn.
 	if code := slackPost(t, ingress, mention("Ev3", "1700000095.001300")); code != http.StatusOK {
 		t.Fatalf("follow-up answered %d", code)

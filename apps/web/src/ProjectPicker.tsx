@@ -1,4 +1,4 @@
-import { CheckIcon, ChevronDownIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, MessageIcon } from "@vultus/render-web";
+import { CheckIcon, ChevronDownIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, MessageIcon } from "@warp/render-web";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api, type Project } from "./api.ts";
 import { button, field, Label, Popover, primary, Problem, SearchField } from "./ui.tsx";
@@ -109,7 +109,7 @@ export function ProjectPicker({ projects, value, onChange, onCreated }: {
   onCreated: (project: Project) => void;
 }) {
   const label = value === null ? "Select project" : value || "Projectless";
-  return <div className="collegium-project-picker min-w-0"><Popover label={value === null ? "Select project" : `Select project: ${label}`} up
+  return <div className="warp-project-picker min-w-0"><Popover label={value === null ? "Select project" : `Select project: ${label}`} up
     className="inline-flex h-8 max-w-32 items-center gap-1 rounded-aui px-1.5 text-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent sm:max-w-40"
     button={<>{value === "" ? <MessageIcon size={16} /> : value ? <FolderOpenIcon size={16} /> : <FolderIcon size={16} />}<span className="truncate">{label}</span><ChevronDownIcon size={14} className="hidden shrink-0 sm:block" /></>}>
     {(close) => <ProjectChoices projects={projects} value={value} onChange={onChange} onCreated={onCreated} close={close} />}

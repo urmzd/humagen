@@ -1,8 +1,8 @@
-import { answerOfAction, answers } from "@collegium/adapter/question";
-import { defaultCopy } from "@vultus/components";
-import { ActionId, type UiAction } from "@vultus/core";
-import { CheckIcon, ChevronDownIcon, WebSurface } from "@vultus/render-web";
-import { AgentMessage, Thread, useQueue } from "@vultus/web";
+import { answerOfAction, answers } from "@warp/adapter/question";
+import { defaultCopy } from "@warp/components";
+import { ActionId, type UiAction } from "@warp/core";
+import { CheckIcon, ChevronDownIcon, WebSurface } from "@warp/render-web";
+import { AgentMessage, Thread, useQueue } from "@warp/web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import type { Run } from "./adapter.ts";
@@ -76,7 +76,7 @@ function TurnView({
   return (
     <article id={`turn-${run.id}`} className="flex flex-col gap-3" aria-label={`Turn answered by ${run.agent}`}>
       <div className="flex flex-col items-end gap-1">
-        <p className="collegium-glass max-w-[80%] whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
+        <p className="warp-glass max-w-[80%] whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
         <p className="flex flex-wrap items-center justify-end gap-x-2 text-aui-2xs text-aui-muted">
           <span className="inline-flex items-center gap-1">
             <AgentMark name={run.agent} size={14} />
@@ -325,7 +325,7 @@ export function Chat({
                     {settings?.baseline ? `, or ${settings.baseline} when none does.` : "."}
                   </span>
                 </span>
-                <input type="checkbox" className="collegium-switch" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+                <input type="checkbox" className="warp-switch" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
               </label>
               <div className="my-1 h-px bg-aui-border" />
               <ul className="aui-scroll max-h-72 overflow-y-auto" aria-label="Agents">

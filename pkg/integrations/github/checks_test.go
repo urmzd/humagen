@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/collegium/pkg/integrations/github"
-	"github.com/urmzd/mandatum/pkg/address"
-	"github.com/urmzd/mandatum/pkg/connectors/mention"
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/address"
+	"github.com/urmzd/fiber/pkg/connectors/mention"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/warp/pkg/integrations/github"
 )
 
 var commitSHA = strings.Repeat("a", 40)
@@ -71,7 +71,7 @@ func TestCheckRecoveryUsesExternalIDAndNeverPatchesTheHead(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
-			fmt.Fprintf(w, `{"check_runs":[{"id":17,"external_id":"run-1","name":"mandatum/reviewer","head_sha":%q}]}`, commitSHA)
+			fmt.Fprintf(w, `{"check_runs":[{"id":17,"external_id":"run-1","name":"fiber/reviewer","head_sha":%q}]}`, commitSHA)
 		case "PATCH":
 			patches++
 			var patch map[string]any
@@ -87,7 +87,7 @@ func TestCheckRecoveryUsesExternalIDAndNeverPatchesTheHead(t *testing.T) {
 	}))
 	defer server.Close()
 	api := github.NewHTTPAPIAt(server.URL, "token", server.Client())
-	id, err := api.EnsureCheck(context.Background(), github.Ref{Owner: "acme", Repo: "repo", Number: 1}, github.Check{Name: "mandatum/reviewer", ExternalID: "run-1", HeadSHA: commitSHA, Status: "in_progress"})
+	id, err := api.EnsureCheck(context.Background(), github.Ref{Owner: "acme", Repo: "repo", Number: 1}, github.Check{Name: "fiber/reviewer", ExternalID: "run-1", HeadSHA: commitSHA, Status: "in_progress"})
 	if err != nil || id != 17 || posts != 0 || patches != 1 {
 		t.Fatalf("id=%d posts=%d patches=%d err=%v", id, posts, patches, err)
 	}
@@ -135,11 +135,11 @@ func TestPRCommentPinsTheHeadBeforeAcceptance(t *testing.T) {
 	fake := github.NewFake()
 	evidence := github.Context{Subject: github.ContextSubject{Number: 42}}
 	evidence.Subject.Head.SHA = commitSHA
-	if err := fake.SeedContext(github.Ref{Owner: "urmzd", Repo: "mandatum", Number: 42}, evidence); err != nil {
+	if err := fake.SeedContext(github.Ref{Owner: "urmzd", Repo: "fiber", Number: 42}, evidence); err != nil {
 		t.Fatal(err)
 	}
 	c, tags := start(t, github.Config{API: fake, Checks: true, Agents: mention.NewNames("docs-bot")})
-	raw := strings.Replace(issueComment, `"number": 42,`, `"number": 42, "pull_request":{"url":"https://api.github.com/repos/urmzd/mandatum/pulls/42"},`, 1)
+	raw := strings.Replace(issueComment, `"number": 42,`, `"number": 42, "pull_request":{"url":"https://api.github.com/repos/urmzd/fiber/pulls/42"},`, 1)
 	w := httptest.NewRecorder()
 	c.ServeHTTP(w, deliver(t, "issue_comment", "pin-comment", raw))
 	if w.Code != 200 {

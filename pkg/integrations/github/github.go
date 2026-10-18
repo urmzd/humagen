@@ -1,16 +1,16 @@
 // Package github composes transport capabilities with review and fix policy.
-// API calls stay in mandatum; presentation is supplied by vultus.
+// API calls stay in fiber; presentation is supplied by warp.
 package github
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/urmzd/mandatum/pkg/connector"
-	transport "github.com/urmzd/mandatum/pkg/connectors/github"
-	"github.com/urmzd/mandatum/pkg/connectors/mention"
-	"github.com/urmzd/mandatum/pkg/envelope"
-	presentation "github.com/urmzd/vultus/go/github"
+	"github.com/urmzd/fiber/pkg/connector"
+	transport "github.com/urmzd/fiber/pkg/connectors/github"
+	"github.com/urmzd/fiber/pkg/connectors/mention"
+	"github.com/urmzd/fiber/pkg/envelope"
+	presentation "github.com/urmzd/warp/internal/presentation/github"
 	"sort"
 	"strings"
 	"sync"

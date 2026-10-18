@@ -1,8 +1,8 @@
-import { ActionId, type Approval, type Clarification, type Interrupt, type UiAction } from "@vultus/core";
+import { ActionId, type Approval, type Clarification, type Interrupt, type UiAction } from "@warp/core";
 
 /**
  * A question a run is parked on, as one shape for every surface: on the run
- * it is an interrupt (vultus's approval or clarification card), in the inbox
+ * it is an interrupt (warp's approval or clarification card), in the inbox
  * it is the same card inside a message part. Both are built here, so a
  * question looks and answers the same in the console and in Slack, whether
  * it is read on the run or in the inbox.
@@ -84,7 +84,7 @@ function decisionOf(s: Settled | undefined): Approval["decision"] {
   }
 }
 
-// vultus: Clarification.answer has no state for "nobody answered in time" or
+// warp: Clarification.answer has no state for "nobody answered in time" or
 // "the run was stopped", so both read as declined, with the reason in words.
 function answerOf(s: Settled | undefined, options: readonly string[]): Clarification["answer"] {
   if (!s) return { kind: "pending" };
@@ -107,7 +107,7 @@ function argsOf(q: WireQuestion): Record<string, unknown> | undefined {
 }
 
 /**
- * The question as vultus's interrupt. An approval is an approval card with the
+ * The question as warp's interrupt. An approval is an approval card with the
  * call's arguments; a choice is a clarification with its options; a reply is
  * a clarification that takes words. A question a person does not answer (a
  * delegation) is null.
@@ -124,7 +124,7 @@ export function interruptOf(q: WireQuestion, settled?: Settled): Interrupt | nul
         tool: q.tool?.name ?? "",
         ...(args ? { args } : {}),
         ...(q.expires_at ? { expiresAt: q.expires_at } : {}),
-        // vultus: an editor for a tool's arguments from its schema, on web and in a Slack modal,
+        // warp: an editor for a tool's arguments from its schema, on web and in a Slack modal,
         // before `editable` can be offered. The API takes edited arguments already.
         decision: decisionOf(settled),
       };

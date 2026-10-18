@@ -1,0 +1,19 @@
+{
+  "name": "@warp/primitives",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "The primitive contract every warp renderer implements, plus surface context.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@warp/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  }
+}

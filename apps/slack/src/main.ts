@@ -1,7 +1,7 @@
 import { App } from "./app.tsx";
-import { httpCollegium } from "./collegium.ts";
 import { readConfig } from "./config.ts";
 import { slackClient, socketMode } from "./slack.ts";
+import { httpWarp } from "./warp.ts";
 
 /** The permissions the app cannot work without. Others unlock more of the inbox, see the README. */
 const NEEDED = ["runs:read", "runs:write", "agents:read"];
@@ -12,27 +12,25 @@ const log = (line: string) => console.log(`${new Date().toISOString()} ${line}`)
 
 async function main() {
   const config = readConfig();
-  const collegium = httpCollegium({ baseUrl: config.collegium.url, token: config.collegium.token });
+  const warp = httpWarp({ baseUrl: config.warp.url, token: config.warp.token });
 
   // The credential decides the workspace. The configured name only has to agree with it.
-  const { principal: me, permissions } = await collegium.getMe();
-  if (me.tenant !== config.collegium.tenant) {
+  const { principal: me, permissions } = await warp.getMe();
+  if (me.tenant !== config.warp.tenant) {
     throw new Error(
-      "The collegium credential is for another workspace than COLLEGIUM_TENANT. Refusing to start.",
+      "The warp credential is for another workspace than WARP_TENANT. Refusing to start.",
     );
   }
-  const lacking = [...NEEDED, ...(config.collegium.client ? ["clients:read"] : [])].filter(
+  const lacking = [...NEEDED, ...(config.warp.client ? ["clients:read"] : [])].filter(
     (p) => !permissions.includes(p),
   );
   if (lacking.length > 0) {
-    throw new Error(`The collegium credential lacks ${lacking.join(", ")}.`);
+    throw new Error(`The warp credential lacks ${lacking.join(", ")}.`);
   }
   // More than the app can use is allowed, but every button in Slack acts with it.
   const extra = permissions.filter((p) => !USEFUL.includes(p));
   if (extra.length > 0) {
-    log(
-      `warning: the collegium credential also grants ${extra.join(", ")}, which this app never uses`,
-    );
+    log(`warning: the warp credential also grants ${extra.join(", ")}, which this app never uses`);
   }
 
   // The bot token decides the team in the same way.
@@ -44,15 +42,15 @@ async function main() {
     );
   }
 
-  const app = new App(slack, collegium, {
+  const app = new App(slack, warp, {
     team: config.slack.team,
     botUser: who.user_id,
     subject: me.subject,
     tenant: me.tenant,
     operators: config.slack.operators,
-    clientId: config.collegium.client,
-    defaultAgent: config.collegium.defaultAgent,
-    publicUrl: config.collegium.publicUrl,
+    clientId: config.warp.client,
+    defaultAgent: config.warp.defaultAgent,
+    publicUrl: config.warp.publicUrl,
     log,
   });
 
@@ -66,7 +64,7 @@ async function main() {
     Promise.race([app.idle(), patience]).finally(() => process.exit(0));
   });
 
-  // The inbox is followed beside the socket. If collegium goes away it is followed again.
+  // The inbox is followed beside the socket. If warp goes away it is followed again.
   (async () => {
     while (!stop.signal.aborted) {
       await app.watchInbox(stop.signal).catch((e: Error) => log(`inbox watch ended: ${e.message}`));

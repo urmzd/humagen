@@ -1,0 +1,722 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderToSlack > renders the done turn 1`] = `
+{
+  "blocks": [
+    {
+      "tasks": [
+        {
+          "output": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "5xx rate 4.2% on payments-api since 14:52",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "status": "complete",
+          "task_id": "t1",
+          "title": "Read the PagerDuty alert",
+        },
+        {
+          "details": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "Runbooks space, "payments"",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "output": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "1 match",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "sources": [
+            {
+              "text": "Incident runbook: payments API",
+              "type": "url",
+              "url": "https://example.com/runbooks/payments",
+            },
+          ],
+          "status": "complete",
+          "task_id": "t2",
+          "title": "Searched runbooks",
+        },
+        {
+          "details": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "payments-api, last 24 hours",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "output": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "3 deploys: #4810, #4811, #4812",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "sources": [
+            {
+              "text": "Deploy #4812",
+              "type": "url",
+              "url": "https://example.com/deploys/4812",
+            },
+          ],
+          "status": "complete",
+          "task_id": "t3",
+          "title": "Checked recent deploys",
+        },
+      ],
+      "title": "Worked for 12s",
+      "type": "plan",
+    },
+    {
+      "text": "The error rate on **payments-api** started climbing at 14:52, two minutes after deploy \`#4812\` [[2]](https://example.com/deploys/4812).
+
+The runbook says to roll back before paging the on-call [[1]](https://example.com/runbooks/payments):
+
+1. Roll back \`#4812\`.
+2. Watch the 5xx rate for 10 minutes.
+3. If it holds, open a ticket against the deploy owner.",
+      "type": "markdown",
+    },
+    {
+      "block_id": "feedback:turn-1",
+      "elements": [
+        {
+          "action_id": "aui.feedback#0",
+          "negative_button": {
+            "text": {
+              "emoji": true,
+              "text": "Not helpful",
+              "type": "plain_text",
+            },
+            "value": "{"turnId":"turn-1","target":"down"}",
+          },
+          "positive_button": {
+            "text": {
+              "emoji": true,
+              "text": "Helpful",
+              "type": "plain_text",
+            },
+            "value": "{"turnId":"turn-1","target":"up"}",
+          },
+          "type": "feedback_buttons",
+        },
+      ],
+      "type": "context_actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "[1] <https://example.com/runbooks/payments|Incident runbook: payments API> · Runbooks",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "[2] <https://example.com/deploys/4812|Deploy #4812> · Deploys",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "elements": [
+        {
+          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "elements": [
+        {
+          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": "The error rate on payments-api started climbing at 14:52, two minutes after deploy #4812 .
+
+The runbook says to roll back before paging the on-call :
+
+1. Roll back #4812.
+2. Watch the 5xx rate for 10 minutes.
+3. If it holds, open a ticket against the deploy owner.",
+  "warnings": [],
+}
+`;
+
+exports[`renderToSlack > renders the failed turn 1`] = `
+{
+  "blocks": [
+    {
+      "tasks": [
+        {
+          "output": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "5xx rate 4.2% on payments-api since 14:52",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "status": "complete",
+          "task_id": "t1",
+          "title": "Read the PagerDuty alert",
+        },
+        {
+          "details": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "Runbooks space, "payments"",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "output": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "1 match",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "sources": [
+            {
+              "text": "Incident runbook: payments API",
+              "type": "url",
+              "url": "https://example.com/runbooks/payments",
+            },
+          ],
+          "status": "complete",
+          "task_id": "t2",
+          "title": "Searched runbooks",
+        },
+        {
+          "details": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "payments-api, last 24 hours",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "output": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "The deploys service timed out after 30s",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "status": "error",
+          "task_id": "t3",
+          "title": "Couldn't check recent deploys",
+        },
+      ],
+      "title": "Error",
+      "type": "plan",
+    },
+    {
+      "text": "The error rate on **payments-api** started climbing at 14:52, two minutes after deploy",
+      "type": "markdown",
+    },
+    {
+      "text": {
+        "text": ":x: *Timed out*
+The deploys service didn't answer within 30s.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "failure:turn-1",
+      "elements": [
+        {
+          "action_id": "aui.retry#0",
+          "text": {
+            "emoji": true,
+            "text": "Retry",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"turn-1","target":"timeout"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "elements": [
+        {
+          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": "Timed out: The deploys service didn't answer within 30s.",
+  "warnings": [],
+}
+`;
+
+exports[`renderToSlack > renders the streaming turn 1`] = `
+{
+  "blocks": [
+    {
+      "tasks": [
+        {
+          "output": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "5xx rate 4.2% on payments-api since 14:52",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "status": "complete",
+          "task_id": "t1",
+          "title": "Read the PagerDuty alert",
+        },
+        {
+          "details": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "Runbooks space, "payments"",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "output": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "1 match",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "sources": [
+            {
+              "text": "Incident runbook: payments API",
+              "type": "url",
+              "url": "https://example.com/runbooks/payments",
+            },
+          ],
+          "status": "complete",
+          "task_id": "t2",
+          "title": "Searched runbooks",
+        },
+        {
+          "details": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "payments-api, last 24 hours",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "status": "in_progress",
+          "task_id": "t3",
+          "title": "Checking recent deploys",
+        },
+      ],
+      "title": "Checking recent deploys",
+      "type": "plan",
+    },
+    {
+      "text": "The error rate on **payments-api** started climbing at 14:52, two minutes after deploy",
+      "type": "markdown",
+    },
+    {
+      "elements": [
+        {
+          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "elements": [
+        {
+          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": "The error rate on payments-api started climbing at 14:52, two minutes after deploy",
+  "warnings": [],
+}
+`;
+
+exports[`renderToSlack > renders the waiting turn 1`] = `
+{
+  "blocks": [
+    {
+      "tasks": [
+        {
+          "output": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "5xx rate 4.2% on payments-api since 14:52",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "status": "complete",
+          "task_id": "t1",
+          "title": "Read the PagerDuty alert",
+        },
+        {
+          "details": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "Runbooks space, "payments"",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "output": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "1 match",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "sources": [
+            {
+              "text": "Incident runbook: payments API",
+              "type": "url",
+              "url": "https://example.com/runbooks/payments",
+            },
+          ],
+          "status": "complete",
+          "task_id": "t2",
+          "title": "Searched runbooks",
+        },
+        {
+          "details": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "payments-api, last 24 hours",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "output": {
+            "elements": [
+              {
+                "elements": [
+                  {
+                    "text": "3 deploys: #4810, #4811, #4812",
+                    "type": "text",
+                  },
+                ],
+                "type": "rich_text_section",
+              },
+            ],
+            "type": "rich_text",
+          },
+          "sources": [
+            {
+              "text": "Deploy #4812",
+              "type": "url",
+              "url": "https://example.com/deploys/4812",
+            },
+          ],
+          "status": "complete",
+          "task_id": "t3",
+          "title": "Checked recent deploys",
+        },
+      ],
+      "title": "Checking recent deploys",
+      "type": "plan",
+    },
+    {
+      "text": "Deploy \`#4812\` is the likely cause [[2]](https://example.com/deploys/4812). I can roll it back.",
+      "type": "markdown",
+    },
+    {
+      "text": {
+        "text": "*Roll back payments-api in production to deploy #4811?*",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "fields": [
+        {
+          "text": "*Service*
+payments-api",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*Environment*
+production",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*From*
+#4812 (14:50)",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "*To*
+#4811 (yesterday 17:20)",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "section",
+    },
+    {
+      "block_id": "approval:a1:r1",
+      "elements": [
+        {
+          "accessibility_label": "Roll Back: Roll back payments-api in production to deploy #4811?",
+          "action_id": "aui.approve#0",
+          "confirm": {
+            "confirm": {
+              "emoji": true,
+              "text": "Yes, Continue",
+              "type": "plain_text",
+            },
+            "deny": {
+              "emoji": true,
+              "text": "Go Back",
+              "type": "plain_text",
+            },
+            "style": "danger",
+            "text": {
+              "emoji": true,
+              "text": "This can't be undone.",
+              "type": "plain_text",
+            },
+            "title": {
+              "emoji": true,
+              "text": "Are you sure?",
+              "type": "plain_text",
+            },
+          },
+          "style": "danger",
+          "text": {
+            "emoji": true,
+            "text": "Roll Back",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"turn-1","target":"a1"}",
+        },
+        {
+          "action_id": "aui.edit#1",
+          "text": {
+            "emoji": true,
+            "text": "Edit",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"turn-1","target":"a1"}",
+        },
+        {
+          "action_id": "aui.ask#2",
+          "text": {
+            "emoji": true,
+            "text": "Ask",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"turn-1","target":"a1"}",
+        },
+        {
+          "accessibility_label": "Cancel: Roll back payments-api in production to deploy #4811?",
+          "action_id": "aui.deny#3",
+          "text": {
+            "emoji": true,
+            "text": "Cancel",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"turn-1","target":"a1"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "elements": [
+        {
+          "text": "Will run as the deploy bot, on behalf of Dana",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "Expires <!date^1791473640^{date_short_pretty} at {time}|2026-10-08 15:34 UTC>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "elements": [
+        {
+          "text": "[1] <https://example.com/runbooks/payments|Incident runbook: payments API> · Runbooks",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "[2] <https://example.com/deploys/4812|Deploy #4812> · Deploys",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "elements": [
+        {
+          "text": "<https://example.com/sessions/turn-1|https://example.com/sessions/turn-1>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "elements": [
+        {
+          "text": "Assistant is AI and can make mistakes. Double-check its answers before you rely on them.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "text": "Approval needed: Roll back payments-api in production to deploy #4811?",
+  "warnings": [],
+}
+`;

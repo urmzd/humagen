@@ -3,9 +3,9 @@ package platform
 import (
 	"testing"
 
-	githubflow "github.com/urmzd/collegium/pkg/integrations/github"
-	"github.com/urmzd/mandatum/pkg/registry"
-	"github.com/urmzd/mandatum/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/fiber/pkg/runtime"
+	githubflow "github.com/urmzd/warp/pkg/integrations/github"
 )
 
 func TestConnectorToolsBelongOnlyToTheirInstallationTenant(t *testing.T) {

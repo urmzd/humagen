@@ -132,7 +132,7 @@ export function Alerts({
               <li key={r.name} data-testid="alert-rule" className="grid grid-cols-1 gap-x-8 gap-y-3 py-4 @3xl:grid-cols-[minmax(0,5fr)_minmax(0,6fr)_auto]">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <h2 className="collegium-display text-aui-lg font-semibold text-aui-fg">{r.name}</h2>
+                    <h2 className="warp-display text-aui-lg font-semibold text-aui-fg">{r.name}</h2>
                     <Severity level={r.severity} />
                   </div>
                   <p className="pt-0.5 text-aui-sm text-aui-muted">{describe(r)}</p>
@@ -202,7 +202,7 @@ function AlertCard({ alert, onClose, onOpenInbox }: { alert: Alert; onClose: () 
   return (
     <section data-testid="alert-open" aria-labelledby={`alert-${alert.id}`} className={`${card} flex flex-col gap-2`}>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h2 id={`alert-${alert.id}`} ref={heading} tabIndex={-1} className="collegium-display text-aui-lg font-semibold text-aui-fg outline-none">
+        <h2 id={`alert-${alert.id}`} ref={heading} tabIndex={-1} className="warp-display text-aui-lg font-semibold text-aui-fg outline-none">
           {alert.title}
         </h2>
         <Severity level={alert.severity} />

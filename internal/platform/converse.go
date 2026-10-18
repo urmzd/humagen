@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/envelope"
-	"github.com/urmzd/mandatum/pkg/registry"
-	"github.com/urmzd/mandatum/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/collegium/pkg/memory"
-	"github.com/urmzd/collegium/pkg/pick"
-	"github.com/urmzd/collegium/pkg/runs"
+	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/pick"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // Auto asks the platform to pick the agent.

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/urmzd/mandatum/pkg/agentspec"
-	"github.com/urmzd/mandatum/pkg/registry"
+	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/registry"
 )
 
 // Agents the platform provides.
@@ -22,7 +22,7 @@ import (
 // is told which provider and model to give them.
 
 // BuiltinWriter writes a document and publishes it.
-const BuiltinWriter = "collegium-writer"
+const BuiltinWriter = "warp-writer"
 
 const writerPrompt = `You write documents and publish them as files.
 

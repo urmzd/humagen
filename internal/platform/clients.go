@@ -7,14 +7,14 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/urmzd/mandatum/pkg/connectors/mention"
-	"github.com/urmzd/mandatum/pkg/registry"
-	"github.com/urmzd/mandatum/pkg/signature"
+	"github.com/urmzd/fiber/pkg/connectors/mention"
+	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/fiber/pkg/signature"
 
-	"github.com/urmzd/collegium/pkg/clients"
-	"github.com/urmzd/collegium/pkg/integrations/github"
-	"github.com/urmzd/collegium/pkg/integrations/slack"
-	"github.com/urmzd/collegium/pkg/policy"
+	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/integrations/github"
+	"github.com/urmzd/warp/pkg/integrations/slack"
+	"github.com/urmzd/warp/pkg/policy"
 )
 
 // ClientInput is a client as someone writes it: the record, and the two

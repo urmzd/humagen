@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/envelope"
 
-	"github.com/urmzd/collegium/pkg/evals"
-	"github.com/urmzd/collegium/pkg/runs"
+	"github.com/urmzd/warp/pkg/evals"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // OriginEval marks a run raised by an eval, so it can be told apart from work

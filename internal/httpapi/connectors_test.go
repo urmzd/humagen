@@ -12,19 +12,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/collegium/internal/platform"
-	"github.com/urmzd/collegium/pkg/auth"
-	githubflow "github.com/urmzd/collegium/pkg/integrations/github"
-	slackflow "github.com/urmzd/collegium/pkg/integrations/slack"
-	"github.com/urmzd/mandatum/pkg/agentspec"
-	"github.com/urmzd/mandatum/pkg/registry"
-	"github.com/urmzd/mandatum/pkg/signature"
+	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/fiber/pkg/signature"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/auth"
+	githubflow "github.com/urmzd/warp/pkg/integrations/github"
+	slackflow "github.com/urmzd/warp/pkg/integrations/slack"
 )
 
 func TestSignedIntegrationsRunThroughThePlatformAndAppearInItsConsoleAPI(t *testing.T) {
 	for _, surface := range []string{"github", "slack"} {
 		t.Run(surface, func(t *testing.T) {
-			const secret = "collegium-integration-secret"
+			const secret = "warp-integration-secret"
 			var peer platform.Peer
 			var replies func() int
 			var body, path string

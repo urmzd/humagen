@@ -1,8 +1,8 @@
 package github
 
 import (
-	"github.com/urmzd/mandatum/pkg/address"
-	transport "github.com/urmzd/mandatum/pkg/connectors/github"
+	"github.com/urmzd/fiber/pkg/address"
+	transport "github.com/urmzd/fiber/pkg/connectors/github"
 	"strconv"
 )
 

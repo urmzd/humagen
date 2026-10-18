@@ -6,13 +6,13 @@ combines source inspection, a live local preview, and official product reference
 
 ## Reference patterns
 
-| Reference | Documented behavior | Application to Collegium |
+| Reference | Documented behavior | Application to Warp |
 |---|---|---|
 | [ChatGPT projects](https://openai.com/academy/projects/) | Projects collect related chats, files and instructions; creation starts from Projects in the sidebar | Use one name for the concept throughout the console; make the selected context visible before sending |
 | [Claude projects](https://support.claude.com/en/articles/9519177-how-can-i-create-and-manage-projects) | Projects have names and descriptions; standalone chats can be moved into or out of projects | Treat projectless work as a valid choice, show descriptions when choosing context, and keep project identity distinct from presentation |
 
-These are documented reference flows, not claims that Collegium duplicates their
-interfaces. Collegium's useful difference is choosing an answering agent alongside
+These are documented reference flows, not claims that Warp duplicates their
+interfaces. Warp's useful difference is choosing an answering agent alongside
 the project in the composer. Both controls should remain quiet and readable.
 
 ## Findings and changes
@@ -67,7 +67,7 @@ ChatGPT's live page presented a browser check. The comparison therefore uses
 official documentation and the published ChatGPT screenshot, without claiming
 to have inspected either signed-in interface.
 
-Collegium now uses shared vultus folder, open-folder and folder-plus icons in
+Warp now uses shared warp folder, open-folder and folder-plus icons in
 project navigation and the composer. Projectless work uses a conversation icon.
 A folder remains in the collapsed rail and opens a named project list, including
 creation when permitted. Opening a project closes the flyout and highlights its
@@ -78,7 +78,7 @@ Navigation links reveal text labels on hover and keyboard focus. New conversatio
 uses a compose symbol, execution history uses a history symbol, the sidebar
 toggle shows its opening or closing direction, and collapsed Settings uses a
 gear. Home remains directly reachable in both sidebar states. The shared icons
-and tooltip live in `vultus/packages/render-web`.
+and tooltip live in `packages/render-web`.
 
 Verified in the local browser: collapsed project navigation, selection and active
 state, keyboard opening and Escape focus restoration, keyboard tooltip labels,

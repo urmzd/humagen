@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/urmzd/collegium/internal/platform"
-	"github.com/urmzd/collegium/pkg/auth"
-	"github.com/urmzd/collegium/pkg/memory"
-	"github.com/urmzd/collegium/pkg/runs"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // A project gathers what belongs together: conversations, the schedules that

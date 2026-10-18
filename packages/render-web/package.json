@@ -1,0 +1,24 @@
+{
+  "name": "@warp/render-web",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "DOM implementations of the warp primitives, plus theme tokens.",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./theme.css": "./src/theme.css"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@warp/core": "workspace:*",
+    "@warp/primitives": "workspace:*",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
+  }
+}

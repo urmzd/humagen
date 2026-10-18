@@ -14,18 +14,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/agentrt"
-	"github.com/urmzd/mandatum/pkg/agentspec"
-	"github.com/urmzd/mandatum/pkg/runtime"
-	"github.com/urmzd/mandatum/pkg/signature"
+	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/signature"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/collegium/internal/platform"
-	"github.com/urmzd/collegium/pkg/clients"
-	"github.com/urmzd/collegium/pkg/integrations/github"
-	"github.com/urmzd/collegium/pkg/integrations/slack"
-	"github.com/urmzd/collegium/pkg/policy"
-	"github.com/urmzd/collegium/pkg/runs"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/integrations/github"
+	"github.com/urmzd/warp/pkg/integrations/slack"
+	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // fakes hands each client the fake Slack or GitHub its token names, the way
@@ -674,8 +674,8 @@ func TestASlackStopReachesOnlyTheRunsOfItsOwnClient(t *testing.T) {
 // two more the operator gave acme, one given to initech that is not set, and
 // the model key.
 var testEnv = map[string]string{
-	"COLLEGIUM_SLACK_TOKEN": "token-default", "COLLEGIUM_SLACK_SIGNING_SECRET": "secret-default",
-	"COLLEGIUM_SLACK_TOKEN_DOCS": "token-docs", "COLLEGIUM_SLACK_SECRET_DOCS": "secret-docs",
+	"WARP_SLACK_TOKEN": "token-default", "WARP_SLACK_SIGNING_SECRET": "secret-default",
+	"WARP_SLACK_TOKEN_DOCS": "token-docs", "WARP_SLACK_SECRET_DOCS": "secret-docs",
 	"ANTHROPIC_API_KEY": "sk-model",
 }
 
@@ -683,8 +683,8 @@ func refConfig(f *fakes) platform.Config {
 	cfg := f.config()
 	cfg.Env = func(name string) (string, bool) { v, ok := testEnv[name]; return v, ok }
 	cfg.SecretRefs = map[string][]string{
-		tenant:    {"COLLEGIUM_SLACK_TOKEN", "COLLEGIUM_SLACK_SIGNING_SECRET", "COLLEGIUM_SLACK_TOKEN_DOCS", "COLLEGIUM_SLACK_SECRET_DOCS"},
-		"initech": {"COLLEGIUM_SLACK_TOKEN_INITECH"},
+		tenant:    {"WARP_SLACK_TOKEN", "WARP_SLACK_SIGNING_SECRET", "WARP_SLACK_TOKEN_DOCS", "WARP_SLACK_SECRET_DOCS"},
+		"initech": {"WARP_SLACK_TOKEN_INITECH"},
 	}
 	return cfg
 }
@@ -700,8 +700,8 @@ func TestAnAllowlistedSecretReferenceWorksForItsTenant(t *testing.T) {
 	f := &fakes{}
 	c := &cast{says: map[string][][]saigetypes.Delta{"lead": {say("By reference.")}}}
 	p := stage(t, c, refConfig(f))
-	saved := create(t, p, tenant, byRef(slackClient("docs", "A0DOCS", team, "lead"), "env:COLLEGIUM_SLACK_TOKEN_DOCS", "env:COLLEGIUM_SLACK_SECRET_DOCS"))
-	if saved.Credentials.Token != (clients.SecretRef{Set: true, Ref: "env:COLLEGIUM_SLACK_TOKEN_DOCS"}) {
+	saved := create(t, p, tenant, byRef(slackClient("docs", "A0DOCS", team, "lead"), "env:WARP_SLACK_TOKEN_DOCS", "env:WARP_SLACK_SECRET_DOCS"))
+	if saved.Credentials.Token != (clients.SecretRef{Set: true, Ref: "env:WARP_SLACK_TOKEN_DOCS"}) {
 		t.Fatalf("credentials = %+v", saved.Credentials)
 	}
 	if code := signedSlack(p.IngressHandler(), "secret-docs", mentionOf("A0DOCS", team, "Ev1", "C01", "1700000000.000100")); code != http.StatusOK {
@@ -718,17 +718,17 @@ func TestATenantCannotReferenceASecretItWasNotGiven(t *testing.T) {
 	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"lead": nil}}, refConfig(f))
 	agent(t, p, "globex", "helper")
 	// acme holds both: its default client's variables and its own.
-	create(t, p, tenant, byRef(slackClient("default-slack", "", team, "lead"), "env:COLLEGIUM_SLACK_TOKEN", "env:COLLEGIUM_SLACK_SIGNING_SECRET"))
+	create(t, p, tenant, byRef(slackClient("default-slack", "", team, "lead"), "env:WARP_SLACK_TOKEN", "env:WARP_SLACK_SIGNING_SECRET"))
 
 	theirs := slackClient("theirs", "A0THEIRS", "T02OTHER", "helper")
 	for name, in := range map[string]platform.ClientInput{
-		"the variables behind another tenant's default client": byRef(theirs, "env:COLLEGIUM_SLACK_TOKEN", "env:COLLEGIUM_SLACK_SIGNING_SECRET"),
-		"another tenant's variables":                           byRef(theirs, "env:COLLEGIUM_SLACK_TOKEN_DOCS", "env:COLLEGIUM_SLACK_SECRET_DOCS"),
+		"the variables behind another tenant's default client": byRef(theirs, "env:WARP_SLACK_TOKEN", "env:WARP_SLACK_SIGNING_SECRET"),
+		"another tenant's variables":                           byRef(theirs, "env:WARP_SLACK_TOKEN_DOCS", "env:WARP_SLACK_SECRET_DOCS"),
 		"only the token by reference": {
-			Client: theirs.Client, Token: clients.SecretInput{Ref: "env:COLLEGIUM_SLACK_TOKEN_DOCS"}, SigningSecret: clients.SecretInput{Value: "mine"},
+			Client: theirs.Client, Token: clients.SecretInput{Ref: "env:WARP_SLACK_TOKEN_DOCS"}, SigningSecret: clients.SecretInput{Value: "mine"},
 		},
 		"only the signing secret by reference": {
-			Client: theirs.Client, Token: clients.SecretInput{Value: "mine"}, SigningSecret: clients.SecretInput{Ref: "env:COLLEGIUM_SLACK_SECRET_DOCS"},
+			Client: theirs.Client, Token: clients.SecretInput{Value: "mine"}, SigningSecret: clients.SecretInput{Ref: "env:WARP_SLACK_SECRET_DOCS"},
 		},
 	} {
 		if _, err := p.CreateClient(context.Background(), "globex", "mallory", in); !errors.Is(err, clients.ErrInvalid) {
@@ -739,13 +739,13 @@ func TestATenantCannotReferenceASecretItWasNotGiven(t *testing.T) {
 		t.Fatalf("a refused client was kept: %+v", got)
 	}
 	// A reference given to acme is refused for initech, which has its own list.
-	if _, err := p.CreateClient(context.Background(), "initech", "mallory", byRef(theirs, "env:COLLEGIUM_SLACK_TOKEN_DOCS", "env:COLLEGIUM_SLACK_SECRET_DOCS")); !errors.Is(err, clients.ErrInvalid) {
+	if _, err := p.CreateClient(context.Background(), "initech", "mallory", byRef(theirs, "env:WARP_SLACK_TOKEN_DOCS", "env:WARP_SLACK_SECRET_DOCS")); !errors.Is(err, clients.ErrInvalid) {
 		t.Fatalf("a reference given to acme was read for initech: %v", err)
 	}
 
 	// An update is held to the same rule, and a refused one changes nothing.
 	create(t, p, "globex", theirs)
-	if _, err := p.UpdateClient(context.Background(), "globex", "theirs", "mallory", byRef(theirs, "env:COLLEGIUM_SLACK_TOKEN", "env:COLLEGIUM_SLACK_SIGNING_SECRET")); !errors.Is(err, clients.ErrInvalid) {
+	if _, err := p.UpdateClient(context.Background(), "globex", "theirs", "mallory", byRef(theirs, "env:WARP_SLACK_TOKEN", "env:WARP_SLACK_SIGNING_SECRET")); !errors.Is(err, clients.ErrInvalid) {
 		t.Fatalf("globex moved its client onto acme's secrets: %v", err)
 	}
 	kept, _ := p.Clients.Get("globex", "theirs")
@@ -789,14 +789,14 @@ func TestARefusedSecretReferenceLooksTheSameWhateverTheReason(t *testing.T) {
 		}
 		said[err.Error()] = true
 	}
-	try("globex", "env:COLLEGIUM_SLACK_TOKEN")          // set, another tenant's default
-	try("globex", "env:COLLEGIUM_SLACK_TOKEN_DOCS")     // set, given to another tenant
-	try("globex", "env:COLLEGIUM_NOT_A_VARIABLE")       // unset, given to nobody
-	try("globex", "env:COLLEGIUM_SLACK_TOKEN_INITECH")  // unset, given to another tenant
-	try("initech", "env:COLLEGIUM_SLACK_TOKEN_INITECH") // given to this tenant, and unset
-	try("globex", "env:ANTHROPIC_API_KEY")              // set, outside the prefix
-	try("globex", "file:/etc/passwd")                   // not a reference at all
-	try("nobody", "env:COLLEGIUM_SLACK_TOKEN")          // a tenant with no entry
+	try("globex", "env:WARP_SLACK_TOKEN")          // set, another tenant's default
+	try("globex", "env:WARP_SLACK_TOKEN_DOCS")     // set, given to another tenant
+	try("globex", "env:WARP_NOT_A_VARIABLE")       // unset, given to nobody
+	try("globex", "env:WARP_SLACK_TOKEN_INITECH")  // unset, given to another tenant
+	try("initech", "env:WARP_SLACK_TOKEN_INITECH") // given to this tenant, and unset
+	try("globex", "env:ANTHROPIC_API_KEY")         // set, outside the prefix
+	try("globex", "file:/etc/passwd")              // not a reference at all
+	try("nobody", "env:WARP_SLACK_TOKEN")          // a tenant with no entry
 	if len(said) != 1 {
 		t.Fatalf("refusals differ: %v", said)
 	}
@@ -811,15 +811,15 @@ func TestAStoredReferenceOutsideTheAllowlistFailsClosed(t *testing.T) {
 	store := clients.NewMemory()
 	stolen := slackClient("stolen", "A0STOLEN", team, "helper").Client
 	stolen.Credentials = clients.Credentials{
-		Token:         clients.SecretRef{Set: true, Ref: "env:COLLEGIUM_SLACK_TOKEN_DOCS"},
-		SigningSecret: clients.SecretRef{Set: true, Ref: "env:COLLEGIUM_SLACK_SECRET_DOCS"},
+		Token:         clients.SecretRef{Set: true, Ref: "env:WARP_SLACK_TOKEN_DOCS"},
+		SigningSecret: clients.SecretRef{Set: true, Ref: "env:WARP_SLACK_SECRET_DOCS"},
 	}
 	// Claiming to be the server's own default client earns nothing either.
 	forged := slackClient("default-slack", "A0FORGED", "T02OTHER", "helper").Client
 	forged.Managed = clients.ManagedEnv
 	forged.Credentials = clients.Credentials{
-		Token:         clients.SecretRef{Set: true, Ref: "env:COLLEGIUM_SLACK_TOKEN"},
-		SigningSecret: clients.SecretRef{Set: true, Ref: "env:COLLEGIUM_SLACK_SIGNING_SECRET"},
+		Token:         clients.SecretRef{Set: true, Ref: "env:WARP_SLACK_TOKEN"},
+		SigningSecret: clients.SecretRef{Set: true, Ref: "env:WARP_SLACK_SIGNING_SECRET"},
 	}
 	for _, c := range []clients.Client{stolen, forged} {
 		if _, err := store.Create("globex", c, clients.DefaultCaps(), time.Now()); err != nil {
@@ -831,7 +831,7 @@ func TestAStoredReferenceOutsideTheAllowlistFailsClosed(t *testing.T) {
 	p := stage(t, &cast{says: map[string][][]saigetypes.Delta{"lead": nil}}, cfg)
 	agent(t, p, "globex", "helper")
 	// Something has to be ingesting for a refusal to mean anything.
-	create(t, p, tenant, byRef(slackClient("docs", "A0DOCS", "T03THIRD", "lead"), "env:COLLEGIUM_SLACK_TOKEN_DOCS", "env:COLLEGIUM_SLACK_SECRET_DOCS"))
+	create(t, p, tenant, byRef(slackClient("docs", "A0DOCS", "T03THIRD", "lead"), "env:WARP_SLACK_TOKEN_DOCS", "env:WARP_SLACK_SECRET_DOCS"))
 
 	ingress := p.IngressHandler()
 	for secret, body := range map[string]string{

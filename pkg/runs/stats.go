@@ -5,9 +5,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
 
-	"github.com/urmzd/collegium/pkg/usage"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 // Bucket is the runs that started in one interval, by how they ended.

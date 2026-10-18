@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ActionId, type UiAction } from "@vultus/core";
+import { ActionId, type UiAction } from "@warp/core";
 import { follow } from "./fold.ts";
 import { fromServer, toRequest } from "./mail.ts";
 import { answerOfAction, interruptOf } from "./question.ts";
@@ -141,7 +141,7 @@ test("a click on a question asks for the answer it means, on the run and in the 
     action: "reply",
     values: { text: "OPS-42" },
   });
-  // What the reader may do comes from the platform, in vultus's ids.
+  // What the reader may do comes from the platform, in warp's ids.
   assert.deepEqual(approval.parts[0]?.allowed, [ActionId.approve, ActionId.deny]);
   assert.deepEqual(part("choice").parts[0]?.allowed, [ActionId.clarify]);
 });

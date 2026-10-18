@@ -1,14 +1,14 @@
-import type { ArtifactKind, Interrupt, Task, Turn, TurnEvent } from "@vultus/core";
+import type { ArtifactKind, Interrupt, Task, Turn, TurnEvent } from "@warp/core";
 import { interruptOf, settledOf, type WireQuestion } from "./question.ts";
 
 /**
- * The one place mandatum's wire format meets vultus's event model, for every
+ * The one place fiber's wire format meets warp's event model, for every
  * surface: the console and the Slack app both read runs through this file, so
  * the same run is the same turn in both. Everything above it speaks TurnEvent,
  * and everything below it speaks envelopes.
  */
 
-/** An mandatum envelope.Event as the platform's event stream sends it. */
+/** An fiber envelope.Event as the platform's event stream sends it. */
 export interface BusEvent {
   seq: number;
   topic: string;
@@ -174,7 +174,7 @@ const PUBLISH = "publish_artifact";
 /** The tool an agent hands work to another agent with, without waiting for it. */
 const HAND_ON = "delegate_task";
 const CALL_AGENT = "call_agent";
-/** mandatum names the tool that hands work to another agent after that agent. */
+/** fiber names the tool that hands work to another agent after that agent. */
 const DELEGATE = /^tag_(.+)$/;
 
 /** The agent a tool call hands work to, when the tool is a call to another agent. */
@@ -282,16 +282,16 @@ export function adapter(
         return out;
       }
       case "lifecycle.parked": {
-        // Blocked on a person. vultus does not animate waiting.
+        // Blocked on a person. warp does not animate waiting.
         const q = body<Lifecycle>(e).question;
         const interrupt = q?.id ? interruptOf(q, undefined) : null;
         if (!q || !interrupt) return [{ type: "activity", activity: "waiting" }];
         asked.set(q.id, { question: q, interrupt });
         const out: TurnEvent[] = [{ type: "interrupt.raised", interrupt }];
         // The call an approval holds reads "waiting", not "running". It is not
-        // tied to the approval (`interruptId`): vultus then gives the web inline
+        // tied to the approval (`interruptId`): warp then gives the web inline
         // row controls and Slack the card, and the two surfaces would differ.
-        // vultus: one rendering of a task-owned approval on both surfaces.
+        // warp: one rendering of a task-owned approval on both surfaces.
         const call = q.tool?.call_id;
         if (call && q.kind === "approval") {
           tools.set(call, q.tool?.name ?? "tool");

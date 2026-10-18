@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/urmzd/collegium/pkg/integrations/github"
+	"github.com/urmzd/warp/pkg/integrations/github"
 )
 
 func TestAutomaticLabelsAreExplicitAndRepositoryScoped(t *testing.T) {

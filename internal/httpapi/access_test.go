@@ -10,7 +10,7 @@ import (
 // themselves.
 func TestExplainNamesTheCallersGrant(t *testing.T) {
 	f := newFixture(t)
-	viewer := f.signIn(t, "collegium-viewers")
+	viewer := f.signIn(t, "warp-viewers")
 
 	res, got := f.do(t, viewer, "GET", "/api/access/explain?permission=runs:read", "", "")
 	if res.StatusCode != http.StatusOK {
@@ -19,11 +19,11 @@ func TestExplainNamesTheCallersGrant(t *testing.T) {
 	if got["allowed"] != true || got["outcome"] != "allowed" || got["role"] != "viewer" {
 		t.Fatalf("got %v", got)
 	}
-	if got["rule"] != "allow read on *" || got["grant"] != `grant viewer to group "collegium-viewers"` {
+	if got["rule"] != "allow read on *" || got["grant"] != `grant viewer to group "warp-viewers"` {
 		t.Fatalf("rule %v, grant %v", got["rule"], got["grant"])
 	}
 	held, _ := got["held"].([]any)
-	if len(held) != 1 || held[0].(map[string]any)["group"] != "collegium-viewers" {
+	if len(held) != 1 || held[0].(map[string]any)["group"] != "warp-viewers" {
 		t.Fatalf("held %v", got["held"])
 	}
 
@@ -34,7 +34,7 @@ func TestExplainNamesTheCallersGrant(t *testing.T) {
 
 	// There is no way to ask about someone else: a subject is ignored, and
 	// the answer is still the caller's own.
-	admin := f.signIn(t, "collegium-admins")
+	admin := f.signIn(t, "warp-admins")
 	_, mine := f.do(t, admin, "GET", "/api/access/explain?permission=agents:write&subject=00u-other", "", "")
 	if mine["allowed"] != true || mine["role"] != "admin" {
 		t.Fatalf("got %v", mine)
@@ -48,7 +48,7 @@ func TestExplainNamesTheCallersGrant(t *testing.T) {
 	}
 
 	// A machine is decided by its token's scopes, and is told so.
-	_, m := f.do(t, nil, "GET", "/api/access/explain?permission=runs:read", f.machine(t, "acme", "collegium:runs:read"), "")
+	_, m := f.do(t, nil, "GET", "/api/access/explain?permission=runs:read", f.machine(t, "acme", "warp:runs:read"), "")
 	if m["allowed"] != true || m["outcome"] != "scope" {
 		t.Fatalf("machine got %v", m)
 	}

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/urmzd/collegium/pkg/call"
-	"github.com/urmzd/collegium/pkg/runs"
-	"github.com/urmzd/duraturo"
-	"github.com/urmzd/mandatum/pkg/agentrt"
-	"github.com/urmzd/mandatum/pkg/envelope"
-	"github.com/urmzd/mandatum/pkg/runtime"
+	"github.com/urmzd/anchor"
+	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // prepareCall resolves references once, before accepting the child. The tag
@@ -117,7 +117,7 @@ func (p *Platform) resolveCallPart(ctx context.Context, tenant string, part call
 	}
 }
 
-// callExecutor adapts explicit helper messages to mandatum's existing history
+// callExecutor adapts explicit helper messages to fiber's existing history
 // and request fields. It composes the sandbox; it never owns an agent loop.
 type callExecutor struct{ inner runtime.Executor }
 
@@ -181,10 +181,10 @@ func (e callExecutor) Execute(ctx context.Context, req runtime.Request, emit fun
 	}
 	if format != nil {
 		if utf8.RuneCountInString(out.Text) > call.MaxOutputChars {
-			return runtime.Outcome{}, duraturo.NonRetryable(fmt.Errorf("%w: helper output exceeds limit", call.ErrInvalid))
+			return runtime.Outcome{}, anchor.NonRetryable(fmt.Errorf("%w: helper output exceeds limit", call.ErrInvalid))
 		}
 		if err := format.ValidateOutput(out.Text); err != nil {
-			return runtime.Outcome{}, duraturo.NonRetryable(err)
+			return runtime.Outcome{}, anchor.NonRetryable(err)
 		}
 		for _, c := range buffered {
 			if emit != nil {

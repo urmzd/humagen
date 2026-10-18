@@ -1,3 +1,0 @@
-# Settings only: this package installs on its own, like apps/web.
-allowBuilds:
-  esbuild: true

@@ -1,4 +1,4 @@
-import type { Agent, ClientRecord } from "./collegium.ts";
+import type { Agent, ClientRecord } from "./warp.ts";
 
 /**
  * Who answers a message. In order:

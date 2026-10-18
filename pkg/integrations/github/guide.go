@@ -3,9 +3,9 @@ package github
 import (
 	"context"
 	"fmt"
-	transport "github.com/urmzd/mandatum/pkg/connectors/github"
-	"github.com/urmzd/mandatum/pkg/envelope"
-	presentation "github.com/urmzd/vultus/go/github"
+	transport "github.com/urmzd/fiber/pkg/connectors/github"
+	"github.com/urmzd/fiber/pkg/envelope"
+	presentation "github.com/urmzd/warp/internal/presentation/github"
 	"sort"
 	"strings"
 )
