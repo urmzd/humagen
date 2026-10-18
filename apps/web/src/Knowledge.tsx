@@ -353,7 +353,7 @@ function SourceDetail({
                       Searchable
                       <input
                         type="checkbox"
-                        className="collegium-switch"
+                        className="warp-switch"
                         checked={!d.excluded}
                         onChange={(e) =>
                           api

@@ -1,4 +1,4 @@
-// Package platform assembles the system: mandatum's registry, bus, router and
+// Package platform assembles the system: fiber's registry, bus, router and
 // durable runtime, the cron trigger, and this repo's run index and call path.
 //
 //	trigger or API  →  Invoke  →  runtime  →  bus  →  router  →  sinks
@@ -21,42 +21,42 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/urmzd/duraturo"
-	"github.com/urmzd/duraturo/pkg/ledger"
-	dqueue "github.com/urmzd/duraturo/pkg/queue"
-	drun "github.com/urmzd/duraturo/pkg/run"
-	"github.com/urmzd/duraturo/pkg/worker"
-	"github.com/urmzd/legatus/pkg/controlplane"
-	"github.com/urmzd/legatus/pkg/metrics"
-	"github.com/urmzd/legatus/pkg/node/inproc"
-	"github.com/urmzd/legatus/pkg/tool"
-	"github.com/urmzd/legatus/pkg/workspace"
-	"github.com/urmzd/mandatum/pkg/agentrt"
-	"github.com/urmzd/mandatum/pkg/bus"
-	"github.com/urmzd/mandatum/pkg/connector"
-	"github.com/urmzd/mandatum/pkg/connectors/cron"
-	"github.com/urmzd/mandatum/pkg/envelope"
-	"github.com/urmzd/mandatum/pkg/registry"
-	"github.com/urmzd/mandatum/pkg/router"
-	"github.com/urmzd/mandatum/pkg/runtime"
-	"github.com/urmzd/mandatum/pkg/topic"
+	"github.com/urmzd/anchor"
+	"github.com/urmzd/anchor/pkg/ledger"
+	dqueue "github.com/urmzd/anchor/pkg/queue"
+	drun "github.com/urmzd/anchor/pkg/run"
+	"github.com/urmzd/anchor/pkg/worker"
+	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/bus"
+	"github.com/urmzd/fiber/pkg/connector"
+	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/fiber/pkg/router"
+	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/topic"
+	"github.com/urmzd/playscape/pkg/controlplane"
+	"github.com/urmzd/playscape/pkg/metrics"
+	"github.com/urmzd/playscape/pkg/node/inproc"
+	"github.com/urmzd/playscape/pkg/tool"
+	"github.com/urmzd/playscape/pkg/workspace"
 
-	"github.com/urmzd/collegium/pkg/alerts"
-	"github.com/urmzd/collegium/pkg/artifacts"
-	"github.com/urmzd/collegium/pkg/blob"
-	"github.com/urmzd/collegium/pkg/call"
-	"github.com/urmzd/collegium/pkg/clients"
-	"github.com/urmzd/collegium/pkg/evals"
-	"github.com/urmzd/collegium/pkg/inbox"
-	"github.com/urmzd/collegium/pkg/integrations/github"
-	"github.com/urmzd/collegium/pkg/integrations/slack"
-	"github.com/urmzd/collegium/pkg/journal"
-	"github.com/urmzd/collegium/pkg/knowledge"
-	"github.com/urmzd/collegium/pkg/memory"
-	"github.com/urmzd/collegium/pkg/policy"
-	"github.com/urmzd/collegium/pkg/prefs"
-	"github.com/urmzd/collegium/pkg/runs"
-	"github.com/urmzd/collegium/pkg/usage"
+	"github.com/urmzd/warp/pkg/alerts"
+	"github.com/urmzd/warp/pkg/artifacts"
+	"github.com/urmzd/warp/pkg/blob"
+	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/evals"
+	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/integrations/github"
+	"github.com/urmzd/warp/pkg/integrations/slack"
+	"github.com/urmzd/warp/pkg/journal"
+	"github.com/urmzd/warp/pkg/knowledge"
+	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/prefs"
+	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 // ErrForbidden reports a call the caller's agent spec does not allow.
@@ -105,7 +105,7 @@ type Config struct {
 	// interrupt a run, and a server never sets it.
 	Stops func(context.Context, runtime.StopRequest) error
 	// Backoff replaces how long a failed attempt waits before it is tried
-	// again. Nil means duraturo's, which doubles from a quarter second. For
+	// again. Nil means anchor's, which doubles from a quarter second. For
 	// tests only: it lets a test fail a run through all its attempts quickly.
 	Backoff func(attempt int) time.Duration
 	// QuestionTTL is how long a question a run parks on waits for an answer
@@ -281,7 +281,7 @@ func New(cfg Config) (*Platform, error) {
 		return nil, err
 	}
 	rt, err := runtime.New(
-		duraturo.New(p.ledger, p.queue),
+		anchor.New(p.ledger, p.queue),
 		registry.NewSpecs(p.Agents),
 		p.broker,
 		exec,
@@ -309,7 +309,7 @@ func New(cfg Config) (*Platform, error) {
 	return p, nil
 }
 
-// executor builds the sandbox every turn runs in: a legatus task under the
+// executor builds the sandbox every turn runs in: a playscape task under the
 // NGAC policy compiled from the pinned revision's access grant.
 func (p *Platform) executor() (runtime.Executor, error) {
 	dir := p.cfg.Workspace
@@ -318,7 +318,7 @@ func (p *Platform) executor() (runtime.Executor, error) {
 		if err != nil {
 			base = os.TempDir()
 		}
-		dir = filepath.Join(base, "collegium", "workspace")
+		dir = filepath.Join(base, "warp", "workspace")
 	}
 	p.dir = dir
 	ws, err := workspace.NewLocal(dir)

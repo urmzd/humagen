@@ -23,3 +23,14 @@ examples/slack/.slack/*
 # Local Go workspace overrides
 go.work
 go.work.sum
+
+# Unified UI workspace
+node_modules/
+dist/
+storybook-static/
+.turbo/
+*.log
+**/.slack/apps.json
+**/.slack/apps.dev.json
+**/.slack/config.json
+**/.slack/cache/

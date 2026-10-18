@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/envelope"
 	saigeeval "github.com/urmzd/saige/eval"
 )
 
@@ -23,7 +23,7 @@ const (
 
 // MetaInput is written only by the platform on an agent-origin tag. It holds
 // both the original references and the exact resolved messages used on replay.
-const MetaInput = "collegium.call_input"
+const MetaInput = "warp.call_input"
 
 // ResponseFormat is a closed union. A format controls instructions and output
 // validation, never delivery, lifecycle, tools or permissions.

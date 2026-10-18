@@ -1,6 +1,4 @@
-# Screenshots of the web console, written to ./showcase.
-# Needs `make dev` and `make web` running, then `teasr run`.
-# The console opens directly, including on a fresh server.
+# Screenshots of the web console. Start `make dev` and `make web`, then run `teasr run`.
 
 [output]
 dir = "./showcase"
@@ -24,21 +22,12 @@ type = "snapshot"
 [[scenes]]
 type = "web"
 name = "runs"
-uri = "http://127.0.0.1:5173/"
+uri = "http://127.0.0.1:5173/?view=runs"
 viewport = { width = 1440, height = 900 }
 
 [[scenes.interactions]]
 type = "wait"
-duration = 1200
-
-[[scenes.interactions]]
-type = "click"
-selector = 'nav[aria-label="Sections"] button[aria-label="Runs"]'
-hidden = true
-
-[[scenes.interactions]]
-type = "wait"
-duration = 800
+duration = 1500
 
 [[scenes.interactions]]
 type = "snapshot"
@@ -46,21 +35,12 @@ type = "snapshot"
 [[scenes]]
 type = "web"
 name = "agents"
-uri = "http://127.0.0.1:5173/"
+uri = "http://127.0.0.1:5173/?view=agents"
 viewport = { width = 1440, height = 900 }
 
 [[scenes.interactions]]
 type = "wait"
-duration = 1200
-
-[[scenes.interactions]]
-type = "click"
-selector = 'nav[aria-label="Sections"] button[aria-label="Agents"]'
-hidden = true
-
-[[scenes.interactions]]
-type = "wait"
-duration = 800
+duration = 1500
 
 [[scenes.interactions]]
 type = "snapshot"
@@ -68,26 +48,16 @@ type = "snapshot"
 [[scenes]]
 type = "web"
 name = "analytics"
-uri = "http://127.0.0.1:5173/"
+uri = "http://127.0.0.1:5173/?view=analytics"
 viewport = { width = 1440, height = 900 }
 
 [[scenes.interactions]]
 type = "wait"
-duration = 1200
-
-[[scenes.interactions]]
-type = "click"
-selector = 'nav[aria-label="Sections"] button[aria-label="Analytics"]'
-hidden = true
-
-[[scenes.interactions]]
-type = "wait"
-duration = 1000
+duration = 1500
 
 [[scenes.interactions]]
 type = "snapshot"
 
-# Every state of the console's own primitives, drawn without the server.
 [[scenes]]
 type = "web"
 name = "primitives"

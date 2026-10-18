@@ -1,8 +1,8 @@
-import { emptyTurn, reduce, type Turn, type TurnEvent } from "@vultus/core";
+import { emptyTurn, reduce, type Turn, type TurnEvent } from "@warp/core";
 import { adapter, type BusEvent, type Run, turnOf } from "./run.ts";
 
 /**
- * A run as one vultus turn, kept current. This is the state every surface
+ * A run as one shared UI turn, kept current. This is the state every surface
  * renders from: the console hands it to its web components and the Slack app
  * hands the same object to the Block Kit renderer.
  */
@@ -11,7 +11,7 @@ export interface Follower {
   readonly turn: Turn;
   /** Fold one of the run's events in. */
   apply(e: BusEvent): Turn;
-  /** Fold vultus events in directly, for what a surface itself knows, such as a stop it asked for. */
+  /** Fold warp events in directly, for what a surface itself knows, such as a stop it asked for. */
   push(...events: TurnEvent[]): Turn;
   /**
    * Bring the turn in line with the run's record. The ledger decides whether a

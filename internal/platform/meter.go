@@ -5,16 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 
-	drun "github.com/urmzd/duraturo/pkg/run"
-	"github.com/urmzd/mandatum/pkg/agentrt/payload"
-	"github.com/urmzd/mandatum/pkg/envelope"
-	"github.com/urmzd/mandatum/pkg/runtime"
+	drun "github.com/urmzd/anchor/pkg/run"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/collegium/pkg/alerts"
-	"github.com/urmzd/collegium/pkg/inbox"
-	"github.com/urmzd/collegium/pkg/policy"
-	"github.com/urmzd/collegium/pkg/runs"
-	"github.com/urmzd/collegium/pkg/usage"
+	"github.com/urmzd/warp/pkg/alerts"
+	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 // What runs spend, and what happens when they spend too much.

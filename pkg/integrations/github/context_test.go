@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/collegium/pkg/integrations/github"
-	"github.com/urmzd/mandatum/pkg/address"
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/address"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/warp/pkg/integrations/github"
 )
 
 func TestContextReadsPRSourcesAndExposesPagination(t *testing.T) {

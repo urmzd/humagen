@@ -4,12 +4,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/connectors/cron"
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/fiber/pkg/envelope"
 
-	"github.com/urmzd/collegium/internal/platform"
-	"github.com/urmzd/collegium/pkg/auth"
-	"github.com/urmzd/collegium/pkg/runs"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // schedule is the wire form of a cron schedule. Tenant is absent on purpose.

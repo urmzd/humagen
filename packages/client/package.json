@@ -1,8 +1,8 @@
 {
-  "name": "@collegium/client",
-  "version": "0.0.0",
+  "name": "@warp/client",
+  "version": "0.4.0",
   "private": true,
-  "description": "TypeScript client for the collegium HTTP API, generated from api/openapi.yaml by oag.",
+  "description": "TypeScript client for the warp HTTP API, generated from api/openapi.yaml by oag.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,

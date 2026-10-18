@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	transport "github.com/urmzd/mandatum/pkg/connectors/slack"
+	transport "github.com/urmzd/fiber/pkg/connectors/slack"
 	"strings"
 	"sync"
 
-	"github.com/urmzd/mandatum/pkg/address"
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/address"
+	"github.com/urmzd/fiber/pkg/envelope"
 )
 
 // MaxCommands is Slack's limit on commands in one code channel. The limit is

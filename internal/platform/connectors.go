@@ -15,20 +15,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/address"
-	"github.com/urmzd/mandatum/pkg/agentrt"
-	"github.com/urmzd/mandatum/pkg/agentrt/payload"
-	"github.com/urmzd/mandatum/pkg/connector"
-	"github.com/urmzd/mandatum/pkg/envelope"
-	"github.com/urmzd/mandatum/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/address"
+	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/connector"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/collegium/pkg/clients"
-	"github.com/urmzd/collegium/pkg/runs"
+	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // Clients on a surface.
 //
-// mandatum's connector registry holds one connector per address scheme, and a
+// fiber's connector registry holds one connector per address scheme, and a
 // workspace may have several Slack apps or GitHub installations, as may every
 // other workspace in the process. So the platform registers one surface per
 // scheme and keeps the clients behind it:
@@ -74,7 +74,7 @@ type verifier interface {
 }
 
 // maxWebhookBody bounds a request before anything has verified it. It matches
-// mandatum's own bound, which the client's connector applies again.
+// fiber's own bound, which the client's connector applies again.
 const maxWebhookBody = 4 << 20
 
 // seat is one client on a surface: its record as it was when the connector was
@@ -90,7 +90,7 @@ type seat struct {
 }
 
 // surface is every client of one address scheme, in every tenant. It is the
-// one connector mandatum's registry and router see for that scheme.
+// one connector fiber's registry and router see for that scheme.
 type surface struct {
 	name string
 	p    *Platform

@@ -1,0 +1,27 @@
+{
+  "name": "@warp/render-slack",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "Render warp components to Slack Block Kit JSON via a custom React reconciler.",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./preview": "./src/preview.tsx"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@warp/components": "workspace:*",
+    "@warp/core": "workspace:*",
+    "@warp/primitives": "workspace:*",
+    "react-reconciler": "^0.34.0"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@types/react-reconciler": "^0.33.1"
+  }
+}

@@ -9,8 +9,8 @@ import {
   type PlatformMessage,
   retryOf,
   toRequest,
-} from "@collegium/adapter";
-import { defaultCopy, MailboxView, MessageView, TurnView } from "@vultus/components";
+} from "@warp/adapter";
+import { defaultCopy, MailboxView, MessageView, TurnView } from "@warp/components";
 import {
   ActionId,
   emptyQueue,
@@ -24,38 +24,38 @@ import {
   reduce,
   type Turn,
   type UiAction,
-} from "@vultus/core";
+} from "@warp/core";
 import {
   decodeSlackAction,
   LIMITS,
   reactionChanges,
   renderToSlack,
   type SerializeResult,
-} from "@vultus/render-slack";
+} from "@warp/render-slack";
 import { choose, mayRoute, type Routing } from "./agents.ts";
-import {
-  type ActAs,
-  type Agent,
-  type ClientRecord,
-  type Collegium,
-  CollegiumError,
-  type InboxNotice,
-  type Run,
-  type StreamItem,
-} from "./collegium.ts";
 import { askForm, ENTRY, words } from "./host.ts";
 import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
 import { Presenter } from "./present.tsx";
 import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
+import {
+  type ActAs,
+  type Agent,
+  type ClientRecord,
+  type InboxNotice,
+  type Run,
+  type StreamItem,
+  type Warp,
+  WarpError,
+} from "./warp.ts";
 
 /**
- * The Slack app: Slack deliveries in, collegium calls and Slack calls out.
+ * The Slack app: Slack deliveries in, warp calls and Slack calls out.
  *
  * It holds no rendering of its own. A run's events go through
- * `@collegium/adapter` into one vultus turn, and that turn goes through
- * `@vultus/render-slack`. It holds no record of its own either: which
+ * `@warp/adapter` into one shared UI turn, and that turn goes through
+ * `@warp/render-slack`. It holds no record of its own either: which
  * conversation a thread is, and whether a message was already answered, are
- * asked of collegium. What it keeps in memory is listed in the README, with
+ * asked of warp. What it keeps in memory is listed in the README, with
  * what a restart costs.
  */
 
@@ -64,9 +64,9 @@ export interface AppOptions {
   team: string;
   /** This app's own bot user, whose messages never start a run. */
   botUser: string;
-  /** Who collegium says this app is. Run ids are made from it. */
+  /** Who warp says this app is. Run ids are made from it. */
   subject: string;
-  /** The workspace collegium says this app is in. Run ids are made from it too. */
+  /** The workspace warp says this app is in. Run ids are made from it too. */
   tenant: string;
   operators?: string[];
   /** The client record this app is, when it is one. */
@@ -118,7 +118,7 @@ type Item =
 /** A run being followed right now. */
 interface Live {
   run?: Run;
-  /** Stop was pressed. The run is followed until collegium says how it ended. */
+  /** Stop was pressed. The run is followed until warp says how it ended. */
   stopped: boolean;
   wake(item: Item): void;
 }
@@ -175,11 +175,11 @@ class Recent<V> extends Map<string, V> {
 }
 
 /**
- * An inbox message as Slack can show it. vultus's shared budget part offers
+ * An inbox message as Slack can show it. warp's shared budget part offers
  * only fixed amounts to raise a limit to, and the platform names none, so on
  * Slack a reached limit is something to read: it is raised in the console.
  */
-// vultus: MessagePartView's budget part needs a raise control that takes an amount (not only
+// warp: MessagePartView's budget part needs a raise control that takes an amount (not only
 // fixed `raiseTo` buttons) and an Acknowledge button, and render-slack must drop an empty actions
 // block. Until then a limit is read-only here.
 /**
@@ -215,13 +215,13 @@ export function forSlack(message: PlatformMessage): PlatformMessage {
 }
 
 /**
- * A refusal or an error from collegium, as vultus's failure copy. The
+ * A refusal or an error from warp, as warp's failure copy. The
  * platform's own words go to the log, never to Slack: they can name internals.
  */
 function publicFailure(e: unknown): Failure {
-  const status = e instanceof CollegiumError ? e.status : 0;
+  const status = e instanceof WarpError ? e.status : 0;
   if (status === 429 || status === 402) {
-    const resets = e instanceof CollegiumError ? e.refusal?.resets_at : undefined;
+    const resets = e instanceof WarpError ? e.refusal?.resets_at : undefined;
     const wait = resets ? Math.max(0, Math.round((Date.parse(resets) - Date.now()) / 1000)) : 0;
     return {
       kind: "rate_limited",
@@ -230,7 +230,7 @@ function publicFailure(e: unknown): Failure {
       ...(wait ? { retryAfterSeconds: wait } : {}),
     };
   }
-  // vultus: failure copy has titles only (copy.failure[kind]); a body per kind, such as
+  // warp: failure copy has titles only (copy.failure[kind]); a body per kind, such as
   // copy.failureBody[kind], would stop the title being repeated as the message here.
   if (status === 401 || status === 403) {
     return { kind: "forbidden", message: defaultCopy.failure.forbidden(), httpStatus: status };
@@ -238,8 +238,8 @@ function publicFailure(e: unknown): Failure {
   if (status === 0 || status >= 500) {
     return {
       kind: "unavailable",
-      service: "collegium",
-      message: defaultCopy.failure.unavailable("collegium"),
+      service: "warp",
+      message: defaultCopy.failure.unavailable("warp"),
       ...(status ? { httpStatus: status } : {}),
     };
   }
@@ -247,14 +247,14 @@ function publicFailure(e: unknown): Failure {
 }
 
 /** Nobody this app may reach can answer. */
-// vultus: needs copy for this, such as copy.noAgent(how to name one).
+// warp: needs copy for this, such as copy.noAgent(how to name one).
 const NO_AGENT: Failure = {
   kind: "forbidden",
   message: "No agent answers here yet. Name one this app may reach, as @name.",
 };
 
 /** A retry by someone who did not ask, and is not an operator. */
-// vultus: needs copy for this, such as copy.notYoursRetry; copy.notYours speaks of approving.
+// warp: needs copy for this, such as copy.notYoursRetry; copy.notYours speaks of approving.
 const RETRY_NOT_YOURS = "Only the person who asked can retry this.";
 
 /** Wait, or stop waiting when the signal aborts. */
@@ -301,7 +301,7 @@ export class App {
 
   constructor(
     private readonly slack: SlackApi,
-    private readonly collegium: Collegium,
+    private readonly warp: Warp,
     private readonly opts: AppOptions,
   ) {
     this.flushMs = opts.flushMs ?? 700;
@@ -355,7 +355,7 @@ export class App {
 
   /** Follow the inbox for as long as the signal allows, and show what concerns this app's threads. */
   async watchInbox(signal: AbortSignal): Promise<void> {
-    for await (const notice of this.collegium.notices({ signal })) {
+    for await (const notice of this.warp.notices({ signal })) {
       await this.track(
         this.onNotice(notice).catch((e: Error) => this.log(`inbox notice failed: ${e.message}`)),
       );
@@ -366,7 +366,7 @@ export class App {
 
   private async agents(): Promise<Agent[]> {
     if (this.agentList && Date.now() - this.agentList.at < 30_000) return this.agentList.agents;
-    const agents = (await this.collegium.listAgents()).agents.map((r) => r.spec);
+    const agents = (await this.warp.listAgents()).agents.map((r) => r.spec);
     this.agentList = { at: Date.now(), agents };
     return agents;
   }
@@ -375,7 +375,7 @@ export class App {
   private async routing(): Promise<Routing> {
     if (!this.opts.clientId) return { defaultAgent: this.opts.defaultAgent };
     if (!this.clientRecord || Date.now() - this.clientRecord.at >= 30_000) {
-      const found = await this.collegium.getClient(this.opts.clientId);
+      const found = await this.warp.getClient(this.opts.clientId);
       // A client that is gone, is for another surface, or does not name this team routes to nothing.
       const ours = found && found.surface === "slack" && found.identity?.team === this.opts.team;
       this.clientRecord = {
@@ -501,13 +501,12 @@ export class App {
 
   /**
    * Where a message sits in its conversation. The conversation's id follows
-   * from the thread, so collegium is asked rather than a local record.
+   * from the thread, so warp is asked rather than a local record.
    */
   private async place(job: Job): Promise<{ key: string; after?: string } | "duplicate"> {
     const first = threadKey(job.session);
-    const turns = (
-      await this.collegium.getThread(runId(this.opts.tenant, this.opts.subject, first))
-    )?.turns;
+    const turns = (await this.warp.getThread(runId(this.opts.tenant, this.opts.subject, first)))
+      ?.turns;
     // The first run in a thread is keyed by the thread, which is what names the conversation.
     if (!turns || turns.length === 0) return { key: first };
     if (job.key === first) return "duplicate";
@@ -533,7 +532,7 @@ export class App {
 
   /** A turn that ended before any run existed: nothing to retry, only something to read. */
   private async refuse(job: Job, presenter: Presenter, agent: string, failure: Failure) {
-    const turn = reduce(emptyTurn(job.key, { name: agent || "collegium" }), {
+    const turn = reduce(emptyTurn(job.key, { name: agent || "warp" }), {
       type: "turn.failed",
       failure: { ...failure, retryable: false },
     });
@@ -558,7 +557,7 @@ export class App {
     let run: Run;
     try {
       placed = await this.place(job);
-      // Collegium already has a run for this Slack event: it was answered before a restart.
+      // Warp already has a run for this Slack event: it was answered before a restart.
       if (placed === "duplicate") return "done" as const;
       const routing = await this.routing();
       if (!job.again) {
@@ -573,7 +572,7 @@ export class App {
       // Stop was pressed before there was a run to stop: say so and settle the session.
       if (live.stopped) {
         await presenter.finish(
-          reduce(emptyTurn(job.key, { name: agent || "collegium" }), { type: "turn.stopped" }),
+          reduce(emptyTurn(job.key, { name: agent || "warp" }), { type: "turn.stopped" }),
         );
         return "stopped" as const;
       }
@@ -582,7 +581,7 @@ export class App {
       // A person the client maps asks as themselves, so they do not approve
       // their own run's calls. Anyone else asks through the app.
       const asking = await this.actAs(job.requester ?? job.user);
-      run = await this.collegium.createRun(
+      run = await this.warp.createRun(
         {
           agent,
           text,
@@ -592,14 +591,14 @@ export class App {
         placed.key,
       );
     } catch (e) {
-      this.log(`collegium refused the turn: ${(e as Error).message}`);
+      this.log(`warp refused the turn: ${(e as Error).message}`);
       return this.refuse(job, presenter, agent, publicFailure(e));
     }
 
     live.run = run;
     if (live.stopped) {
       // Stop was pressed while the run was being started, so it is told now.
-      const told = await this.collegium.stopRun(run.id).catch(() => undefined);
+      const told = await this.warp.stopRun(run.id).catch(() => undefined);
       items.push({ type: "stopped", run: told });
     }
     const owner = job.requester === undefined ? job.user : job.requester;
@@ -622,7 +621,7 @@ export class App {
     if (stalled) {
       this.track(this.later(run, following, presenter));
       // The thread is not held for it. A later message follows it in the conversation,
-      // as collegium orders any turn sent after one that is still running.
+      // as warp orders any turn sent after one that is still running.
       return "done" as const;
     }
     this.log(`run ${run.id} ended ${turn.status}`);
@@ -641,7 +640,7 @@ export class App {
         // A stop was pressed: the run will end soon, so it is read often again.
         wait = nudged ? Math.min(this.pollMs, 500) : Math.min(wait * 2, this.slowPollMs);
         if (this.closing.signal.aborted) return;
-        const record = await this.collegium.getRun(run.id).catch(() => null);
+        const record = await this.warp.getRun(run.id).catch(() => null);
         if (!record || !terminal(record.status)) continue;
         if (!this.claim(run.id)) return;
         following.settle(record);
@@ -693,13 +692,13 @@ export class App {
   ): Promise<{ turn: Turn; stalled: boolean }> {
     (async () => {
       try {
-        for await (const item of this.collegium.runEvents(run, { signal })) items.push(item);
+        for await (const item of this.warp.runEvents(run, { signal })) items.push(item);
       } catch (e) {
         if (!signal.aborted) items.push({ type: "broken", error: e as Error });
       }
     })();
     const read = async () => {
-      const record = await this.collegium.getRun(run.id).catch(() => null);
+      const record = await this.warp.getRun(run.id).catch(() => null);
       if (record && !signal.aborted) items.push({ type: "record", run: record });
     };
     const poll = setInterval(read, this.pollMs);
@@ -724,13 +723,13 @@ export class App {
           return { turn: following.turn, stalled: false };
         }
         if (!item.run) {
-          // Collegium did not take the stop: the turn stops here, and says it may still finish elsewhere.
+          // Warp did not take the stop: the turn stops here, and says it may still finish elsewhere.
           if (!ended(following.turn)) {
             following.push({ type: "turn.stopped" }, { type: "stop.updated", stop: "failed" });
           }
           return { turn: following.turn, stalled: false };
         }
-        // Collegium took it and the run is stopping. It is followed on until
+        // Warp took it and the run is stopping. It is followed on until
         // lifecycle.stopped, or its record, says how it ended: stopped with
         // what it had said, or completed if it finished first.
         following.push({ type: "stop.updated", stop: "acknowledged" });
@@ -787,7 +786,7 @@ export class App {
   /**
    * The stop button, in the order Slack asks for: stop the work, confirm in
    * the thread, then move the session off processing. Slack changes nothing by
-   * itself. Which runs to stop is asked of collegium as well as remembered, so
+   * itself. Which runs to stop is asked of warp as well as remembered, so
    * the button works after a restart.
    */
   private async stop(session: Session): Promise<void> {
@@ -799,13 +798,13 @@ export class App {
     const ids = new Set<string>();
     if (following) ids.add(following.id);
     const conversation = runId(this.opts.tenant, this.opts.subject, threadKey(session));
-    const turns = (await this.collegium.getThread(conversation).catch(() => null))?.turns;
+    const turns = (await this.warp.getThread(conversation).catch(() => null))?.turns;
     for (const t of turns ?? []) if (!t.parent && !terminal(t.status)) ids.add(t.id);
 
     const stopped: Run[] = [];
     for (const id of ids) {
       try {
-        stopped.push(await this.collegium.stopRun(id));
+        stopped.push(await this.warp.stopRun(id));
       } catch (e) {
         this.log(`stop of ${id} failed: ${(e as Error).message}`);
       }
@@ -877,7 +876,7 @@ export class App {
     ) {
       await sleep(Math.min(wait, Math.max(deadline - Date.now(), 0)), this.closing.signal);
       wait = Math.min(wait * 2, 5_000);
-      record = await this.collegium.getRun(run.id).catch(() => null);
+      record = await this.warp.getRun(run.id).catch(() => null);
     }
     if (record && terminal(record.status)) {
       await this.postEnd(session, record);
@@ -898,7 +897,7 @@ export class App {
       await sleep(wait, this.closing.signal);
       wait = Math.min(wait * 2, this.slowPollMs);
       if (this.closing.signal.aborted) return;
-      const record = await this.collegium.getRun(run.id).catch(() => null);
+      const record = await this.warp.getRun(run.id).catch(() => null);
       if (!record || !terminal(record.status)) continue;
       await this.postEnd(session, record);
       if (!this.threads.get(sessionName(session))?.live) await this.settleSession(session);
@@ -933,11 +932,11 @@ export class App {
 
     if (ui.id === ActionId.feedback) return this.onFeedback(ui, p.user.id);
     // A click on an inbox message names the message. Anything else names a run.
-    const message = await this.collegium.inbox.get(ui.payload.turnId).catch(() => null);
+    const message = await this.warp.inbox.get(ui.payload.turnId).catch(() => null);
     if (message) return this.onMail(p, ui, message);
     if (answers(ui)) return this.onAnswer(p, ui);
     if (ui.id === ActionId.retry || ui.id === ActionId.resume) {
-      const run = await this.collegium.getRun(ui.payload.turnId);
+      const run = await this.warp.getRun(ui.payload.turnId);
       const outcome = run ? await this.again(run, p.user.id, p.message?.ts) : "elsewhere";
       if (outcome !== "started") await this.refuseRetry(p, outcome);
     }
@@ -982,7 +981,7 @@ export class App {
   }
 
   /**
-   * A rating has nowhere to be stored yet: collegium has no route for one, and
+   * A rating has nowhere to be stored yet: warp has no route for one, and
    * Slack's rating control shows no selection to redraw. It is written to the
    * log, so it is not lost while that is built.
    */
@@ -1010,7 +1009,7 @@ export class App {
   }
 
   /**
-   * Answer a question shown on a run, for the person who clicked. Collegium
+   * Answer a question shown on a run, for the person who clicked. Warp
    * decides whether they may: it is asked as them, through the client that
    * maps them, and a person it does not map is never asked for at all. The
    * card settles from the run's own events.
@@ -1018,7 +1017,7 @@ export class App {
   private async onAnswer(p: ActionPayload, ui: UiAction): Promise<void> {
     const answer = answerOfAction(ui);
     if (!answer) {
-      // vultus: a modal that collects a reply to a question (as feedbackModal does for a
+      // warp: a modal that collects a reply to a question (as feedbackModal does for a
       // rating), for Something Else and Reply. Until then a reply is typed in the console.
       if (ui.id === ActionId.clarifyOther) return this.whisper(p, words.replyInConsole);
       return;
@@ -1029,13 +1028,13 @@ export class App {
       return this.whisper(p, defaultCopy.noPermission);
     }
     try {
-      await this.collegium.answerQuestion(answer, as);
+      await this.warp.answerQuestion(answer, as);
       this.log(`question ${answer.question} on ${answer.run} answered for ${p.user.id}`);
     } catch (e) {
       this.log(
         `question ${answer.question} on ${answer.run} was not answered: ${(e as Error).message}`,
       );
-      const status = e instanceof CollegiumError ? e.status : 0;
+      const status = e instanceof WarpError ? e.status : 0;
       return this.whisper(
         p,
         status === 403 ? defaultCopy.noPermission : defaultCopy.failure.internal(),
@@ -1054,7 +1053,7 @@ export class App {
   private async onMail(p: ActionPayload, ui: UiAction, message: PlatformMessage) {
     const part = message.parts.find((x) => partMatches(x, ui.payload.target));
     const question = part?.type === "approval" || part?.type === "choice" || part?.type === "reply";
-    // Who may answer a question is collegium's to decide, for the person as it knows them.
+    // Who may answer a question is warp's to decide, for the person as it knows them.
     const as = question ? await this.actAs(p.user.id) : null;
     if (question && !as) return this.whisper(p, defaultCopy.noPermission);
     if (!question && !this.maySettle(p.user.id, message)) {
@@ -1071,10 +1070,8 @@ export class App {
       // Only a failed run can be asked again. A Retry on anything else is refused.
       if (part?.type !== "failure") return this.refuseRetry(p, "elsewhere");
       // A retry is always this app's, so its answer shows where it was asked and the
-      // client's agents are checked. Collegium is never asked to retry on its own.
-      const run = part.failure.reference
-        ? await this.collegium.getRun(part.failure.reference)
-        : null;
+      // client's agents are checked. Warp is never asked to retry on its own.
+      const run = part.failure.reference ? await this.warp.getRun(part.failure.reference) : null;
       const outcome = run ? await this.again(run, p.user.id, p.message?.ts) : "elsewhere";
       if (outcome !== "started") return this.refuseRetry(p, outcome);
       request = { call: "resolve", partId: part.id, action: "acknowledge" };
@@ -1082,11 +1079,11 @@ export class App {
     if (!request) return;
     let updated: PlatformMessage;
     try {
-      updated = await this.collegium.inbox.send(message, request);
+      updated = await this.warp.inbox.send(message, request);
     } catch (e) {
-      // The platform's words stay in the log. The person is told in vultus's.
+      // The platform's words stay in the log. The person is told in warp's.
       this.log(`inbox ${message.id} was not settled: ${(e as Error).message}`);
-      const status = e instanceof CollegiumError ? e.status : 0;
+      const status = e instanceof WarpError ? e.status : 0;
       return this.whisper(
         p,
         status === 403 ? defaultCopy.noPermission : defaultCopy.failure.internal(),
@@ -1114,7 +1111,7 @@ export class App {
       const sent = await this.slack.call<{ ts: string }>("chat.postMessage", {
         channel: at.channel,
         thread_ts: at.threadTs,
-        // vultus: needs a fallback-text helper for continued pages, as for turns.
+        // warp: needs a fallback-text helper for continued pages, as for turns.
         text: (i === 0 ? view.text : `(${i + 1}/${view.pages.length}) ${view.text}`).slice(
           0,
           LIMITS.fallbackText,
@@ -1150,13 +1147,13 @@ export class App {
   /** The Slack thread a run's conversation lives in, read from its first run's trigger id. */
   private async sessionOfRun(run: Run): Promise<Session | null> {
     const first =
-      run.id === run.thread ? run : await this.collegium.getRun(run.thread).catch(() => null);
+      run.id === run.thread ? run : await this.warp.getRun(run.thread).catch(() => null);
     return first?.tag_id ? sessionOf(this.opts.subject, first.tag_id) : null;
   }
 
   /** An inbox message changed. One about a run in this app's thread is shown there, once, and kept current. */
   private async onNotice(notice: InboxNotice): Promise<void> {
-    const message = await this.collegium.inbox.get(notice.id).catch(() => null);
+    const message = await this.warp.inbox.get(notice.id).catch(() => null);
     if (!message) return;
     const posted = this.mail.get(message.id);
     if (posted) return this.showMail(message, posted);
@@ -1166,7 +1163,7 @@ export class App {
     if (message.kind === "failure" || message.parts.some((p) => p.type === "failure")) return;
     if (message.kind === "approval" || message.kind === "clarification") return;
     const about = message.about.find((s) => s.kind === "run");
-    const run = about ? await this.collegium.getRun(about.id) : null;
+    const run = about ? await this.warp.getRun(about.id) : null;
     const session = run ? await this.sessionOfRun(run) : null;
     if (!session || session.team !== this.opts.team) return;
     const ts = await this.postView(
@@ -1178,7 +1175,7 @@ export class App {
 
   /** The Home tab: what is waiting on this person. An operator sees the whole inbox the app may read. */
   private async publishHome(user: string): Promise<void> {
-    const page = await this.collegium.inbox.list({ limit: 30, state: "open" });
+    const page = await this.warp.inbox.list({ limit: 30, state: "open" });
     const operator = (this.opts.operators ?? []).includes(user);
     const messages = operator
       ? page.messages
@@ -1207,7 +1204,7 @@ export class App {
     try {
       root = await this.slack.call("chat.postMessage", {
         channel: where.channel,
-        // vultus: needs a component for the asking message itself, such as RequestView({by, text}),
+        // warp: needs a component for the asking message itself, such as RequestView({by, text}),
         // which the web shows as the user's bubble. Until then it is the person and their words.
         text: `<@${where.user}>: ${echoed(text)}`,
       });
@@ -1234,7 +1231,7 @@ export class App {
     const text = (c.text ?? "").trim();
     if (!text || text === "help") {
       // Who can be asked, in the platform's own words.
-      // vultus: needs an AgentList component (name, description), as the console's agent menu shows.
+      // warp: needs an AgentList component (name, description), as the console's agent menu shows.
       const routing = await this.routing();
       const lines = (await this.agents())
         .filter((a) => choose(`@${a.name}`, [a], routing).how === "named")

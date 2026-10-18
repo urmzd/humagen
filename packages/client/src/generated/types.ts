@@ -1023,7 +1023,7 @@ export interface SecretRef {
   ref?: string;
 }
 
-/** A secret as a caller writes it, as a value or as an `env:COLLEGIUM_*` reference. Leave both out to keep the one held. */
+/** A secret as a caller writes it, as a value or as an `env:WARP_*` reference. Leave both out to keep the one held. */
 export interface SecretInput {
   value?: string;
   ref?: string;

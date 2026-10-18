@@ -16,7 +16,7 @@ with `go test ./...` and fail when the two disagree:
 |------|------------|
 | `TestSpecListsExactlyTheRegisteredRoutes` | A route is registered and not in the spec, or the reverse. An operation has no `operationId` or tag, or its `x-permission` is not the permission `Server.Handler` names for the route. Routes are read with `go/types`, so any call of `(*http.ServeMux).Handle` or `HandleFunc` counts, whatever its receiver is called, and one the reader cannot resolve to a constant pattern and permission fails the test. |
 | `TestSpecPermissionsAreTheOnesTheServerEnforces` | The running server enforces a different permission than `x-permission` says. |
-| `TestSpecSchemasHaveTheFieldsTheGoTypesMarshal` | For the named Go types it lists (about 75), the type marshals a field the schema lacks, or the schema has one the type lacks, or `required` disagrees with `omitempty`. The event kinds differ from mandatum's. |
+| `TestSpecSchemasHaveTheFieldsTheGoTypesMarshal` | For the named Go types it lists (about 75), the type marshals a field the schema lacks, or the schema has one the type lacks, or `required` disagrees with `omitempty`. The event kinds differ from fiber's. |
 | `TestResponsesMatchTheSpec`, `TestEventStreamMatchesTheSpec` | A real response, including 4xx and the event stream, does not validate against its schema, or answers with a status the spec does not list. Every JSON operation must be exercised. |
 | `TestResponsesMatchTheSpec` | A documented status code is never produced by a test, unless it is in `unexercised` with the reason. `401`, `403`, `413` and `500` are covered once for every route. |
 
@@ -54,9 +54,9 @@ differs from what is committed.
 
 ## The generated client
 
-`packages/client` is `@collegium/client`: private, ESM, typed, no runtime
+`packages/client` is `@warp/client`: private, ESM, typed, no runtime
 dependencies, for Node 22.12 or later and browsers. Consumers in this repository
-depend on it with `"@collegium/client": "link:../../packages/client"` and run
+depend on it with `"@warp/client": "link:../../packages/client"` and run
 `pnpm build` in `packages/client` first, because the package exports its built
 `dist/`.
 
@@ -65,9 +65,9 @@ depend on it with `"@collegium/client": "link:../../packages/client"` and run
 | `packages/client/oag.yaml` | The generator's configuration. |
 | `packages/client/.oag/packs/node-client` | oag's `node-client` template pack, copied unchanged from oag v0.20.6. Without it oag fetches the pack from oag's main branch. |
 | `packages/client/src/generated/` | oag's output. Committed, never edited. |
-| `packages/client/src/collegium.ts` | The hand-written layer over it. |
+| `packages/client/src/warp.ts` | The hand-written layer over it. |
 
-The generated output is committed, as mandatum commits `gen/`: a change to the
+The generated output is committed, as fiber commits `gen/`: a change to the
 contract shows up as a reviewable diff in the client, consumers need no
 generator to build, and CI can prove the two match.
 
@@ -76,7 +76,7 @@ first, then the body, then query and header parameters in the order the spec
 lists them, then `RequestOptions` (`signal`, `headers`, `timeout`, `retry`).
 Each also has a `...Raw` form that returns the status and headers.
 
-The layer in `collegium.ts` adds what the generator does not do:
+The layer in `warp.ts` adds what the generator does not do:
 
 - `createClient({ baseUrl, token, credentials })`: `token` is a string or a
   function that returns one, sent as a bearer. `credentials: "include"` uses a
@@ -101,11 +101,11 @@ The layer in `collegium.ts` adds what the generator does not do:
 
 A machine sends an OIDC access token issued for the API audience by
 client credentials: `Authorization: Bearer <token>`. It has no role. It may do
-exactly what the `collegium:<permission>` scopes on its token allow, and its
+exactly what the `warp:<permission>` scopes on its token allow, and its
 workspace comes from the token's tenant claim. Each operation's `x-permission`
 names the scope it needs. A Slack surface needs at least
-`collegium:agents:read`, `collegium:runs:read`, `collegium:runs:write` and
-`collegium:billing:read`, plus the write scope for each inbox action it offers.
+`warp:agents:read`, `warp:runs:read`, `warp:runs:write` and
+`warp:billing:read`, plus the write scope for each inbox action it offers.
 See [security](security.md) for setting up the identity provider.
 
 Under `make dev` the server runs with development auth: every request is the
@@ -117,9 +117,9 @@ Start a run under the caller's own idempotency key, stream its answer, and
 stop it if it takes longer than a minute:
 
 ```ts
-import { createClient, failureOf, StreamEndedError } from "@collegium/client";
+import { createClient, failureOf, StreamEndedError } from "@warp/client";
 
-const client = createClient({ baseUrl: "http://127.0.0.1:8080", token: process.env.COLLEGIUM_TOKEN });
+const client = createClient({ baseUrl: "http://127.0.0.1:8080", token: process.env.WARP_TOKEN });
 const run = await client.createRun({ agent: "helper", text: "Say hello" }, "slack-event-Ev01");
 const giveUp = AbortSignal.timeout(60_000);
 try {

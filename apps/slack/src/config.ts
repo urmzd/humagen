@@ -1,4 +1,4 @@
-import { clientCredentials, staticToken, type TokenSource } from "./collegium.ts";
+import { clientCredentials, staticToken, type TokenSource } from "./warp.ts";
 
 export interface Config {
   slack: {
@@ -9,7 +9,7 @@ export interface Config {
     /** Slack user ids who may settle any inbox item from Slack, and see the whole inbox on Home. */
     operators: string[];
   };
-  collegium: {
+  warp: {
     url: string;
     /** The one workspace this instance serves. Startup fails if the credential is for another. */
     tenant: string;
@@ -42,16 +42,16 @@ export function readConfig(env: Record<string, string | undefined> = process.env
     team: need("SLACK_TEAM_ID"),
     operators: list(env.SLACK_OPERATORS),
   };
-  const tenant = need("COLLEGIUM_TENANT");
-  const tokenUrl = env.COLLEGIUM_OIDC_TOKEN_URL?.trim();
-  let token: TokenSource = staticToken(env.COLLEGIUM_TOKEN?.trim());
+  const tenant = need("WARP_TENANT");
+  const tokenUrl = env.WARP_OIDC_TOKEN_URL?.trim();
+  let token: TokenSource = staticToken(env.WARP_TOKEN?.trim());
   if (tokenUrl) {
     token = clientCredentials({
       tokenUrl,
-      clientId: need("COLLEGIUM_OIDC_CLIENT_ID"),
-      clientSecret: need("COLLEGIUM_OIDC_CLIENT_SECRET"),
-      scopes: list(env.COLLEGIUM_OIDC_SCOPES),
-      audience: env.COLLEGIUM_OIDC_AUDIENCE?.trim() || undefined,
+      clientId: need("WARP_OIDC_CLIENT_ID"),
+      clientSecret: need("WARP_OIDC_CLIENT_SECRET"),
+      scopes: list(env.WARP_OIDC_SCOPES),
+      audience: env.WARP_OIDC_AUDIENCE?.trim() || undefined,
     });
   }
   if (missing.length > 0) {
@@ -61,13 +61,13 @@ export function readConfig(env: Record<string, string | undefined> = process.env
   }
   return {
     slack,
-    collegium: {
-      url: env.COLLEGIUM_URL?.trim() || "http://127.0.0.1:8080",
+    warp: {
+      url: env.WARP_URL?.trim() || "http://127.0.0.1:8080",
       tenant,
       token,
-      client: env.COLLEGIUM_CLIENT?.trim() || undefined,
-      defaultAgent: env.COLLEGIUM_DEFAULT_AGENT?.trim() || undefined,
-      publicUrl: env.COLLEGIUM_PUBLIC_URL?.trim().replace(/\/+$/, "") || undefined,
+      client: env.WARP_CLIENT?.trim() || undefined,
+      defaultAgent: env.WARP_DEFAULT_AGENT?.trim() || undefined,
+      publicUrl: env.WARP_PUBLIC_URL?.trim().replace(/\/+$/, "") || undefined,
     },
   };
 }

@@ -1,6 +1,6 @@
 /**
  * Slack's own check of a Block Kit payload. `blocks.validate` is public, so it
- * needs no token, but it does need the network. It is the check vultus's
+ * needs no token, but it does need the network. It is the check warp's
  * sandbox runs (`pnpm sandbox validate`).
  */
 export async function validateBlocks(blocks: unknown[], view?: object) {

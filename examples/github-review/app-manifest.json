@@ -1,7 +1,7 @@
 {
-  "name": "collegium-trial",
-  "url": "https://github.com/urmzd/collegium",
-  "description": "Evidence-backed PR reviews and issue conversations powered by collegium.",
+  "name": "warp-trial",
+  "url": "https://github.com/urmzd/warp",
+  "description": "Evidence-backed PR reviews and issue conversations powered by warp.",
   "public": false,
   "hook_attributes": {
     "url": "https://YOUR_FORWARDER/connectors/github",

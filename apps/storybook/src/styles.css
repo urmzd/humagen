@@ -1,0 +1,20 @@
+@import "tailwindcss";
+@import "@warp/render-web/theme.css";
+
+@source "../../../packages/render-web/src";
+@source "../../../packages/web/src";
+@source "./";
+
+html {
+  color-scheme: light;
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--aui-bg);
+  color: var(--aui-fg);
+  font-family: var(--font-aui-sans);
+  -webkit-font-smoothing: antialiased;
+}

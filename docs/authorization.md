@@ -73,8 +73,8 @@ admin and auditor, and cannot read billing: the auditor's deny wins.
 ## Configure
 
 ```sh
-export COLLEGIUM_AUTHZ_POLICY=/etc/collegium/policy.authz
-collegium serve ...
+export WARP_AUTHZ_POLICY=/etc/warp/policy.authz
+warp serve ...
 ```
 
 Without it, the built-in policy (`pkg/auth/default.authz`) declares `viewer`,
@@ -104,9 +104,9 @@ this?" on the home page.
 From the command line, with the same environment and flags as `serve`:
 
 ```sh
-collegium authz check policy.authz
-COLLEGIUM_AUTHZ_POLICY=policy.authz \
-  collegium authz explain -claims id-token-claims.json billing:read
+warp authz check policy.authz
+WARP_AUTHZ_POLICY=policy.authz \
+  warp authz explain -claims id-token-claims.json billing:read
 ```
 
 ```
@@ -128,7 +128,7 @@ provider on `127.0.0.1:8081` with a page of personas and no passwords. Sign-in
 goes through the same flow, verifier and policy as a real provider. The
 built-in personas are a viewer, an operator, an admin and someone in no
 mapped group, and a machine `mock-ci` (secret `mock-ci-secret`) with
-`collegium:runs:read` and `collegium:runs:write`:
+`warp:runs:read` and `warp:runs:write`:
 
 ```sh
 curl -s -u mock-ci:mock-ci-secret -d grant_type=client_credentials http://127.0.0.1:8081/token

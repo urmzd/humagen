@@ -1,4 +1,4 @@
-import { messageState, openParts } from "@vultus/core";
+import { messageState, openParts } from "@warp/core";
 import { fromServer, type PlatformMessage, type Transport } from "./mail.ts";
 
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();

@@ -8,19 +8,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/agentrt"
-	"github.com/urmzd/mandatum/pkg/agentrt/payload"
-	"github.com/urmzd/mandatum/pkg/agentspec"
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/collegium/internal/platform"
-	"github.com/urmzd/collegium/pkg/call"
-	"github.com/urmzd/collegium/pkg/inbox"
-	"github.com/urmzd/collegium/pkg/policy"
-	"github.com/urmzd/collegium/pkg/runs"
-	"github.com/urmzd/collegium/pkg/usage"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 // The price card every priced test model declares, as saige's catalog would
@@ -34,7 +34,7 @@ const window = 200_000
 func cost(in, out int64) int64 { return in*3 + out*15 }
 
 // priced is a model that declares a price card and a context window, which is
-// how mandatum learns what a call cost.
+// how fiber learns what a call cost.
 type priced struct {
 	saigetypes.Provider
 	pricing saigetypes.Pricing

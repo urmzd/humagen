@@ -247,7 +247,7 @@ func TestOnListsOnlyEnabledClientsOldestFirst(t *testing.T) {
 func TestSecretsHaveNowhereToLeak(t *testing.T) {
 	c := slackOf("docs", "A0DOCS", "T01ABCDEF")
 	c.Tenant = "acme"
-	c.Credentials = Credentials{Token: SecretRef{Set: true}, SigningSecret: SecretRef{Set: true, Ref: "env:COLLEGIUM_SLACK_SIGNING_SECRET"}}
+	c.Credentials = Credentials{Token: SecretRef{Set: true}, SigningSecret: SecretRef{Set: true, Ref: "env:WARP_SLACK_SIGNING_SECRET"}}
 	raw, err := json.Marshal(c)
 	if err != nil {
 		t.Fatal(err)
@@ -275,13 +275,13 @@ func TestSecretsHaveNowhereToLeak(t *testing.T) {
 	}
 }
 
-// A reference may name only a variable set aside for collegium, so a client
+// A reference may name only a variable set aside for warp, so a client
 // cannot be pointed at the server's other secrets.
-func TestAnEnvReferenceNamesOnlyCollegiumVariables(t *testing.T) {
-	if name, err := EnvRef("env:COLLEGIUM_SLACK_TOKEN_DOCS"); err != nil || name != "COLLEGIUM_SLACK_TOKEN_DOCS" {
+func TestAnEnvReferenceNamesOnlyWarpVariables(t *testing.T) {
+	if name, err := EnvRef("env:WARP_SLACK_TOKEN_DOCS"); err != nil || name != "WARP_SLACK_TOKEN_DOCS" {
 		t.Fatalf("%q, %v", name, err)
 	}
-	for _, ref := range []string{"env:ANTHROPIC_API_KEY", "env:PATH", "env:", "COLLEGIUM_SLACK_TOKEN", "file:/etc/passwd", "env:collegium_x", "env:COLLEGIUM_A B"} {
+	for _, ref := range []string{"env:ANTHROPIC_API_KEY", "env:PATH", "env:", "WARP_SLACK_TOKEN", "file:/etc/passwd", "env:warp_x", "env:WARP_A B"} {
 		if _, err := EnvRef(ref); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%q was accepted: %v", ref, err)
 		}

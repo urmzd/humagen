@@ -1,0 +1,22 @@
+{
+  "name": "@warp/slack-host",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "The Slack host loop: a Web API client and one turn kept in step with Slack (reactions, session status, native streaming, overflow), shared by every Slack app built on warp.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@warp/components": "workspace:*",
+    "@warp/core": "workspace:*",
+    "@warp/render-slack": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19"
+  }
+}

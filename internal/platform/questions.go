@@ -10,21 +10,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/agentrt/payload"
-	"github.com/urmzd/mandatum/pkg/envelope"
-	"github.com/urmzd/mandatum/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/collegium/pkg/auth"
-	"github.com/urmzd/collegium/pkg/authz"
-	"github.com/urmzd/collegium/pkg/clients"
-	"github.com/urmzd/collegium/pkg/inbox"
-	"github.com/urmzd/collegium/pkg/runs"
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/authz"
+	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // People in the loop.
 //
 // A run parks on a person when its agent calls a tool its spec lists under
-// approvals, or asks with ask_person. mandatum owns the waiting: the question
+// approvals, or asks with ask_person. fiber owns the waiting: the question
 // is recorded on the run in the ledger, the run holds no worker while it
 // waits, and the first answer recorded is the answer. The platform owns who
 // is asked and where: each question becomes one inbox message, addressed to
@@ -129,7 +129,7 @@ func (p *Platform) rolesOf(ctx context.Context, _ string, principal string) ([]s
 // says. The names are pinned when the run is accepted, and joined with the
 // current ones, so removing a mapping later reopens nothing.
 //
-// The runtime knows nothing of these maps (mandatum's AnswerRequest has no
+// The runtime knows nothing of these maps (fiber's AnswerRequest has no
 // requester alias), so the platform holds this rule itself, before it asks
 // the runtime. A GitHub connector's actor is a GitHub login, which no client
 // maps to a principal, so a person approving a call their own GitHub event

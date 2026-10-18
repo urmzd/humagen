@@ -7,7 +7,7 @@ import { AgentMark, card } from "./ui.tsx";
  */
 export function EvalsPage({ suites, onOpen }: { suites: SuiteView[]; onOpen: (suite: SuiteView) => void }) {
   return (
-    <div className="aui-scroll collegium-fade min-h-0 flex-1 overflow-y-auto">
+    <div className="aui-scroll warp-fade min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-5 pt-8 pb-6 md:px-8">
         <header>
           <h1 className="text-aui-xl font-semibold text-aui-fg">Evals</h1>

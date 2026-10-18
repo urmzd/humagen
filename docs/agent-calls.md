@@ -62,7 +62,7 @@ results must consist of one JSON value, with no surrounding prose or fences.
 Schemas use saige's compiled JSON Schema validator; unsupported keywords fail
 before execution instead of being ignored.
 
-mandatum's current provider boundary has a system channel, without a separate
+fiber's current provider boundary has a system channel, without a separate
 developer channel. The host appends the bounded return contract to the helper's
 system instructions, explicitly subject to its pinned rules. The caller cannot
 supply arbitrary privileged instruction text. JSON schemas are identified as
@@ -103,14 +103,14 @@ different input is an error. Tool call IDs also correlate parallel helper
 steps with their runs, independent of start order.
 
 `Access.Spawn` makes the unified tool available automatically. Per-target
-`tag_<agent>` tools are replaced in Collegium. The explicitly configured
+`tag_<agent>` tools are replaced in Warp. The explicitly configured
 `delegate_task` tool and the calls HTTP endpoint retain their legacy `text`
 shorthand, normalized to a user message and a text return contract. The HTTP
 endpoint also accepts the structured contract under `input`.
 
 ## Runtime dependency
 
-Collegium pins the runtime extension to mandatum commit
+Warp pins the runtime extension to fiber commit
 `799b78eb12773400f08323034e9af2c754197124`, merged into
 `main` through PR #17. The Go pseudo-version in `go.mod` resolves that exact
 commit, so builds do not require a local worktree or an upstream release tag.
@@ -118,7 +118,7 @@ commit, so builds do not require a local worktree or an upstream release tag.
 For runtime development, an ignored `go.work` can link the matching worktree:
 
 ```sh
-go work init . ../mandatum/.worktrees/helper-call-input
+go work init . ../fiber/.worktrees/helper-call-input
 make test
 ```
 

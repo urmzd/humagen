@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/envelope"
 
-	"github.com/urmzd/collegium/pkg/alerts"
-	"github.com/urmzd/collegium/pkg/auth"
-	"github.com/urmzd/collegium/pkg/inbox"
-	"github.com/urmzd/collegium/pkg/memory"
-	"github.com/urmzd/collegium/pkg/policy"
-	"github.com/urmzd/collegium/pkg/runs"
+	"github.com/urmzd/warp/pkg/alerts"
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // The inbox is one state seen from two sides. An alert and the message about

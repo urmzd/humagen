@@ -1,8 +1,8 @@
 openapi: 3.2.0
 info:
-  title: Collegium API
+  title: Warp API
   version: 0.1.0
-  summary: The HTTP contract of the collegium agent platform.
+  summary: The HTTP contract of the warp agent platform.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -99,7 +99,7 @@ paths:
       summary: Start a browser sign-in
       description: |
         Redirects to the identity provider (authorization code flow with
-        PKCE) and sets a short-lived `collegium_login` cookie. Under
+        PKCE) and sets a short-lived `warp_login` cookie. Under
         development auth it redirects straight to `/`. A browser navigates
         here; a script has no use for it.
       x-permission: public
@@ -119,7 +119,7 @@ paths:
       summary: Finish a browser sign-in
       description: |
         The identity provider redirects here. On success it sets the
-        `collegium_session` cookie (`__Host-collegium_session` over https),
+        `warp_session` cookie (`__Host-warp_session` over https),
         HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
         `return_to` path. Errors are plain text, not JSON.
       x-permission: public
@@ -450,7 +450,7 @@ paths:
         Send `Idempotency-Key` to make a retry safe. The run's `tag_id` is
         then `api-<length of subject in bytes>-<subject>-<key>`, its `id` is
         derived from that and the workspace (`r` and 32 hex digits, as
-        mandatum's `runtime.RunID`), and a second request with the same key
+        fiber's `runtime.RunID`), and a second request with the same key
         from the same caller joins the run the first one started instead of
         starting another. Without it the ids are random.
 
@@ -2394,17 +2394,17 @@ components:
         An OIDC access token issued for the API audience, sent as
         `Authorization: Bearer <token>`. A machine uses a client-credentials
         token and is granted exactly the scopes on it that are named
-        `collegium:<permission>`, for example `collegium:runs:write`. A person
+        `warp:<permission>`, for example `warp:runs:write`. A person
         using a CLI sends an access token too, and gets roles from its groups
         claim. An ID token is not an API credential and is refused. There is
         no revocation check beyond expiry.
     sessionCookie:
       type: apiKey
       in: cookie
-      name: collegium_session
+      name: warp_session
       description: |
         The opaque, HttpOnly cookie a browser is given by `/auth/callback`. It
-        is named `__Host-collegium_session` when the server is reached over
+        is named `__Host-warp_session` when the server is reached over
         https. A browser never holds a token. Under development auth
         (`-auth=dev`, loopback only) every request is the same admin and no
         credential is needed.
@@ -4001,7 +4001,7 @@ components:
           description: "`env:NAME` when the secret lives in the server's environment."
           type: string
     SecretInput:
-      description: A secret as a caller writes it, as a value or as an `env:COLLEGIUM_*` reference. Leave both out to keep the one held.
+      description: A secret as a caller writes it, as a value or as an `env:WARP_*` reference. Leave both out to keep the one held.
       type: object
       properties:
         value: {type: string}

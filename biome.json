@@ -1,0 +1,50 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.2.4/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "packages/**",
+      "apps/**",
+      "examples/ui/**",
+      "package.json",
+      "tsconfig.base.json",
+      "turbo.json",
+      "!**/src/generated",
+      "!**/.oag",
+      "!**/dist",
+      "!**/storybook-static",
+      "!**/node_modules",
+      "!**/*.css",
+      "!**/slack-manifest.json",
+      "!apps/web",
+      "!packages/adapter",
+      "!packages/client"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noUnknownAtRules": "off"
+      }
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  }
+}

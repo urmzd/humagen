@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/urmzd/collegium/pkg/artifacts"
-	"github.com/urmzd/collegium/pkg/auth"
-	"github.com/urmzd/collegium/pkg/policy"
+	"github.com/urmzd/warp/pkg/artifacts"
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/policy"
 )
 
 func (s *Server) artifactRoutes(mux *http.ServeMux) {

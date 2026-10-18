@@ -1,0 +1,30 @@
+{
+  "name": "@warp/storybook",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "storybook dev -p 6006",
+    "build": "storybook build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@warp/components": "workspace:*",
+    "@warp/core": "workspace:*",
+    "@warp/primitives": "workspace:*",
+    "@warp/render-web": "workspace:*",
+    "@warp/web": "workspace:*"
+  },
+  "devDependencies": {
+    "@storybook/addon-a11y": "^10.6.1",
+    "@storybook/addon-docs": "^10.6.1",
+    "@storybook/react-vite": "^10.6.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "storybook": "^10.6.1",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.3.3"
+  }
+}

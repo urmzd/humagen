@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/collegium/pkg/evals"
-	"github.com/urmzd/collegium/pkg/runs"
+	"github.com/urmzd/warp/pkg/evals"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // Errors.

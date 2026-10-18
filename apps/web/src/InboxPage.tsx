@@ -1,5 +1,5 @@
-import { ActionId, type InboxMessage, messageState, openParts, type UiAction } from "@vultus/core";
-import { Mailbox, type MailboxShow } from "@vultus/web";
+import { ActionId, type InboxMessage, messageState, openParts, type UiAction } from "@warp/core";
+import { Mailbox, type MailboxShow } from "@warp/web";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useInbox } from "./inbox.ts";
 import { platformParts } from "./MailParts.tsx";
@@ -36,7 +36,7 @@ export function edgeOf(message: InboxMessage): { agent?: string; state: StrokeSt
 }
 
 /**
- * vultus's mailbox with the platform's own pieces on it: the parts it draws
+ * warp's mailbox with the platform's own pieces on it: the parts it draws
  * itself, the agent's edge on what an agent sent, and everything a message is
  * about as things to open.
  */
@@ -89,7 +89,7 @@ export function MailboxView({
           <Stroke agent={edge.agent} state={edge.state} testId="mail-frame" className="flex min-h-0 flex-1 flex-col pl-4">
             {children}
             {sources.length > 0 && (
-              <ul className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-[var(--collegium-rule)] border-t pt-2 text-aui-xs" aria-label="About">
+              <ul className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-[var(--warp-rule)] border-t pt-2 text-aui-xs" aria-label="About">
                 {sources.map((s) => (
                   <li key={`${s.kind}:${s.id}`}>
                     <button
@@ -113,7 +113,7 @@ export function MailboxView({
 /**
  * The inbox. Alerts, failed runs, memory to review and limits that were
  * reached all arrive here as messages, and are resolved here where they can
- * be. The mailbox is vultus's. This page loads it from the platform, keeps
+ * be. The mailbox is warp's. This page loads it from the platform, keeps
  * it current, and sends each click back.
  */
 export function InboxPage({
@@ -193,7 +193,7 @@ export function InboxPage({
   }
 
   return (
-    <div data-testid="inbox" className="collegium-fade flex min-h-0 flex-1 flex-col gap-3 px-5 pt-8 pb-4 md:px-10">
+    <div data-testid="inbox" className="warp-fade flex min-h-0 flex-1 flex-col gap-3 px-5 pt-8 pb-4 md:px-10">
       <p className="sr-only" aria-live="polite">
         {open === 0 ? "Nothing is waiting on you." : `${open} open, ${unread} unread.`}
       </p>
@@ -231,7 +231,7 @@ export function InboxPage({
                   type="button"
                   onClick={inbox.more}
                   disabled={inbox.loading === "more"}
-                  className="inline-flex h-6 items-center rounded-full border border-[var(--collegium-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
+                  className="inline-flex h-6 items-center rounded-full border border-[var(--warp-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
                 >
                   {inbox.loading === "more" ? "Loading" : inbox.moreFailed ? "Could not load. Try again" : "See more"}
                 </button>

@@ -1,0 +1,1593 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`homeView > renders the alertsOnly Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Warp.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Build an Agent",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"build"}",
+        },
+        {
+          "action_id": "aui.home.start#2",
+          "text": {
+            "emoji": true,
+            "text": "Search Knowledge",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"search"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Notifications",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*deploy-failures* fired: a run of deployer failed.
+Critical alert · <!date^1791899880^{date_short_pretty} at {time}|2026-10-13 13:58 UTC> · The deploy to production stopped at the migration step.
+<https://example.com/console/?view=alerts&alert=al-deploy-failed|https://example.com/console/?view=alerts&amp;alert=al-deploy-failed>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*slow-runs* fired: a run of triage took 94s.
+Warning alert · <!date^1791890100^{date_short_pretty} at {time}|2026-10-13 11:15 UTC> · The limit is 60s.
+<https://example.com/console/?view=alerts&alert=al-slow-triage|https://example.com/console/?view=alerts&amp;alert=al-slow-triage>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Who answers you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.answered_by#0",
+        "initial_option": {
+          "text": {
+            "emoji": true,
+            "text": "Whoever fits best",
+            "type": "plain_text",
+          },
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+        },
+        "options": [
+          {
+            "text": {
+              "emoji": true,
+              "text": "Whoever fits best",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "docs-bot",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"docs-bot"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "triage",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"triage"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "author",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"author"}}",
+          },
+        ],
+        "placeholder": {
+          "emoji": true,
+          "text": "In direct messages, send my questions to",
+          "type": "plain_text",
+        },
+        "type": "static_select",
+      },
+      "text": {
+        "text": "In direct messages, send my questions to",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Connections",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*GitHub*
+Connected for this workspace.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Connect Jira",
+        "action_id": "aui.home.connect#1",
+        "text": {
+          "emoji": true,
+          "text": "Connect",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"jira"}",
+      },
+      "text": {
+        "text": "*Jira*
+Not connected.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.connect#2",
+        "text": {
+          "emoji": true,
+          "text": "Connect an Account",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"personal"}",
+      },
+      "text": {
+        "text": "*Your own accounts*
+Agents act as you only where you have connected one.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "Signed in as Ada Lovelace, operator. <https://example.com/console|Open the console> for runs, schedules and access.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;
+
+exports[`homeView > renders the default Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Warp.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Build an Agent",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"build"}",
+        },
+        {
+          "action_id": "aui.home.start#2",
+          "text": {
+            "emoji": true,
+            "text": "Search Knowledge",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"search"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Notifications",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*deploy-failures* fired: a run of deployer failed.
+Critical alert · <!date^1791899880^{date_short_pretty} at {time}|2026-10-13 13:58 UTC> · The deploy to production stopped at the migration step.
+<https://example.com/console/?view=alerts&alert=al-deploy-failed|https://example.com/console/?view=alerts&amp;alert=al-deploy-failed>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*docs-bot* wants to post a reply in #support.
+Inbox · <!date^1791900300^{date_short_pretty} at {time}|2026-10-13 14:05 UTC> · Waiting for your approval.
+<https://example.com/console/?view=inbox&message=msg-docs-reply|https://example.com/console/?view=inbox&amp;message=msg-docs-reply>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*author* drafted a change to the triage agent.
+Inbox · <!date^1791895200^{date_short_pretty} at {time}|2026-10-13 12:40 UTC> · Approve it to save the new revision.
+<https://example.com/console/?view=inbox&message=msg-triage-revision|https://example.com/console/?view=inbox&amp;message=msg-triage-revision>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*slow-runs* fired: a run of triage took 94s.
+Warning alert · <!date^1791890100^{date_short_pretty} at {time}|2026-10-13 11:15 UTC> · The limit is 60s.
+<https://example.com/console/?view=alerts&alert=al-slow-triage|https://example.com/console/?view=alerts&amp;alert=al-slow-triage>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Who answers you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.answered_by#0",
+        "initial_option": {
+          "text": {
+            "emoji": true,
+            "text": "Whoever fits best",
+            "type": "plain_text",
+          },
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+        },
+        "options": [
+          {
+            "text": {
+              "emoji": true,
+              "text": "Whoever fits best",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "docs-bot",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"docs-bot"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "triage",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"triage"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "author",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"author"}}",
+          },
+        ],
+        "placeholder": {
+          "emoji": true,
+          "text": "In direct messages, send my questions to",
+          "type": "plain_text",
+        },
+        "type": "static_select",
+      },
+      "text": {
+        "text": "In direct messages, send my questions to",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Connections",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*GitHub*
+Connected for this workspace.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Connect Jira",
+        "action_id": "aui.home.connect#1",
+        "text": {
+          "emoji": true,
+          "text": "Connect",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"jira"}",
+      },
+      "text": {
+        "text": "*Jira*
+Not connected.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.connect#2",
+        "text": {
+          "emoji": true,
+          "text": "Connect an Account",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"personal"}",
+      },
+      "text": {
+        "text": "*Your own accounts*
+Agents act as you only where you have connected one.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "Signed in as Ada Lovelace, operator. <https://example.com/console|Open the console> for runs, schedules and access.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;
+
+exports[`homeView > renders the empty Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Warp.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Build an Agent",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"build"}",
+        },
+        {
+          "action_id": "aui.home.start#2",
+          "text": {
+            "emoji": true,
+            "text": "Search Knowledge",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"search"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Notifications",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "elements": [
+        {
+          "text": "Nothing needs you right now, and no alerts are open.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Who answers you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.answered_by#0",
+        "initial_option": {
+          "text": {
+            "emoji": true,
+            "text": "Whoever fits best",
+            "type": "plain_text",
+          },
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+        },
+        "options": [
+          {
+            "text": {
+              "emoji": true,
+              "text": "Whoever fits best",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "docs-bot",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"docs-bot"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "triage",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"triage"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "author",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"author"}}",
+          },
+        ],
+        "placeholder": {
+          "emoji": true,
+          "text": "In direct messages, send my questions to",
+          "type": "plain_text",
+        },
+        "type": "static_select",
+      },
+      "text": {
+        "text": "In direct messages, send my questions to",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Connections",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*GitHub*
+Connected for this workspace.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Connect Jira",
+        "action_id": "aui.home.connect#1",
+        "text": {
+          "emoji": true,
+          "text": "Connect",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"jira"}",
+      },
+      "text": {
+        "text": "*Jira*
+Not connected.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.connect#2",
+        "text": {
+          "emoji": true,
+          "text": "Connect an Account",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"personal"}",
+      },
+      "text": {
+        "text": "*Your own accounts*
+Agents act as you only where you have connected one.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "Signed in as Ada Lovelace, operator. <https://example.com/console|Open the console> for runs, schedules and access.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;
+
+exports[`homeView > renders the noConnect Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Warp.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Build an Agent",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"build"}",
+        },
+        {
+          "action_id": "aui.home.start#2",
+          "text": {
+            "emoji": true,
+            "text": "Search Knowledge",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"search"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Notifications",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*deploy-failures* fired: a run of deployer failed.
+Critical alert · <!date^1791899880^{date_short_pretty} at {time}|2026-10-13 13:58 UTC> · The deploy to production stopped at the migration step.
+<https://example.com/console/?view=alerts&alert=al-deploy-failed|https://example.com/console/?view=alerts&amp;alert=al-deploy-failed>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*docs-bot* wants to post a reply in #support.
+Inbox · <!date^1791900300^{date_short_pretty} at {time}|2026-10-13 14:05 UTC> · Waiting for your approval.
+<https://example.com/console/?view=inbox&message=msg-docs-reply|https://example.com/console/?view=inbox&amp;message=msg-docs-reply>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*author* drafted a change to the triage agent.
+Inbox · <!date^1791895200^{date_short_pretty} at {time}|2026-10-13 12:40 UTC> · Approve it to save the new revision.
+<https://example.com/console/?view=inbox&message=msg-triage-revision|https://example.com/console/?view=inbox&amp;message=msg-triage-revision>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*slow-runs* fired: a run of triage took 94s.
+Warning alert · <!date^1791890100^{date_short_pretty} at {time}|2026-10-13 11:15 UTC> · The limit is 60s.
+<https://example.com/console/?view=alerts&alert=al-slow-triage|https://example.com/console/?view=alerts&amp;alert=al-slow-triage>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Who answers you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.answered_by#0",
+        "initial_option": {
+          "text": {
+            "emoji": true,
+            "text": "Whoever fits best",
+            "type": "plain_text",
+          },
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+        },
+        "options": [
+          {
+            "text": {
+              "emoji": true,
+              "text": "Whoever fits best",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "docs-bot",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"docs-bot"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "triage",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"triage"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "author",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"author"}}",
+          },
+        ],
+        "placeholder": {
+          "emoji": true,
+          "text": "In direct messages, send my questions to",
+          "type": "plain_text",
+        },
+        "type": "static_select",
+      },
+      "text": {
+        "text": "In direct messages, send my questions to",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Connections",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*GitHub*
+Connected for this workspace.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*Jira*
+Not connected. An admin can add it.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.connect#1",
+        "text": {
+          "emoji": true,
+          "text": "Connect an Account",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"personal"}",
+      },
+      "text": {
+        "text": "*Your own accounts*
+Agents act as you only where you have connected one.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "Signed in as Ada Lovelace, operator. <https://example.com/console|Open the console> for runs, schedules and access.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;
+
+exports[`homeView > renders the noGrants Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Warp.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Search Knowledge",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"search"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Notifications",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "elements": [
+        {
+          "text": "Nothing needs you right now, and no alerts are open.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Connections",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*GitHub*
+Connected for this workspace.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*Jira*
+Not connected. An admin can add it.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*Your own accounts*
+Agents act as you only where you have connected one.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "Signed in as Ada Lovelace, with no role yet. <https://example.com/console|Open the console> for runs, schedules and access.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;
+
+exports[`homeView > renders the overflow Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Warp.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Build an Agent",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"build"}",
+        },
+        {
+          "action_id": "aui.home.start#2",
+          "text": {
+            "emoji": true,
+            "text": "Search Knowledge",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"search"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Notifications",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*failure-rate* fired: 40% of runs of deployer failed.
+Critical alert · <!date^1791900180^{date_short_pretty} at {time}|2026-10-13 14:03 UTC>
+<https://example.com/console/?view=alerts&alert=al-1|https://example.com/console/?view=alerts&amp;alert=al-1>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*failure-rate* fired: 45% of runs of deployer failed.
+Critical alert · <!date^1791899280^{date_short_pretty} at {time}|2026-10-13 13:48 UTC>
+<https://example.com/console/?view=alerts&alert=al-2|https://example.com/console/?view=alerts&amp;alert=al-2>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*docs-bot* wants to post a reply in #support.
+Inbox · <!date^1791900000^{date_short_pretty} at {time}|2026-10-13 14:00 UTC>
+<https://example.com/console/?view=inbox&message=msg-1|https://example.com/console/?view=inbox&amp;message=msg-1>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*triage* asked which queue a ticket belongs in.
+Inbox · <!date^1791899400^{date_short_pretty} at {time}|2026-10-13 13:50 UTC>
+<https://example.com/console/?view=inbox&message=msg-2|https://example.com/console/?view=inbox&amp;message=msg-2>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*docs-bot* wants to post a reply in #support.
+Inbox · <!date^1791898800^{date_short_pretty} at {time}|2026-10-13 13:40 UTC>
+<https://example.com/console/?view=inbox&message=msg-3|https://example.com/console/?view=inbox&amp;message=msg-3>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*triage* asked which queue a ticket belongs in.
+Inbox · <!date^1791898200^{date_short_pretty} at {time}|2026-10-13 13:30 UTC>
+<https://example.com/console/?view=inbox&message=msg-4|https://example.com/console/?view=inbox&amp;message=msg-4>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*docs-bot* wants to post a reply in #support.
+Inbox · <!date^1791897600^{date_short_pretty} at {time}|2026-10-13 13:20 UTC>
+<https://example.com/console/?view=inbox&message=msg-5|https://example.com/console/?view=inbox&amp;message=msg-5>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*triage* asked which queue a ticket belongs in.
+Inbox · <!date^1791897000^{date_short_pretty} at {time}|2026-10-13 13:10 UTC>
+<https://example.com/console/?view=inbox&message=msg-6|https://example.com/console/?view=inbox&amp;message=msg-6>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "elements": [
+        {
+          "text": "<https://example.com/console/?view=inbox|8 more in the inbox>",
+          "type": "mrkdwn",
+        },
+        {
+          "text": "<https://example.com/console/?view=alerts|4 more open alerts>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Who answers you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.answered_by#0",
+        "initial_option": {
+          "text": {
+            "emoji": true,
+            "text": "Whoever fits best",
+            "type": "plain_text",
+          },
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+        },
+        "options": [
+          {
+            "text": {
+              "emoji": true,
+              "text": "Whoever fits best",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "docs-bot",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"docs-bot"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "triage",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"triage"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "author",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"author"}}",
+          },
+        ],
+        "placeholder": {
+          "emoji": true,
+          "text": "In direct messages, send my questions to",
+          "type": "plain_text",
+        },
+        "type": "static_select",
+      },
+      "text": {
+        "text": "In direct messages, send my questions to",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Connections",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*GitHub*
+Connected for this workspace.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Connect Jira",
+        "action_id": "aui.home.connect#1",
+        "text": {
+          "emoji": true,
+          "text": "Connect",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"jira"}",
+      },
+      "text": {
+        "text": "*Jira*
+Not connected.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.connect#2",
+        "text": {
+          "emoji": true,
+          "text": "Connect an Account",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"personal"}",
+      },
+      "text": {
+        "text": "*Your own accounts*
+Agents act as you only where you have connected one.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "Signed in as Ada Lovelace, operator. <https://example.com/console|Open the console> for runs, schedules and access.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;
+
+exports[`homeView > renders the unlinked Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Warp.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Build an Agent",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"build"}",
+        },
+        {
+          "action_id": "aui.home.start#2",
+          "text": {
+            "emoji": true,
+            "text": "Search Knowledge",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"search"}",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Notifications",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*deploy-failures* fired: a run of deployer failed.
+Critical alert · <!date^1791899880^{date_short_pretty} at {time}|2026-10-13 13:58 UTC> · The deploy to production stopped at the migration step.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Review: docs-bot wants to post a reply in #support.",
+        "action_id": "aui.inbox.open#0",
+        "text": {
+          "emoji": true,
+          "text": "Review",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"msg-docs-reply","target":"msg-docs-reply"}",
+      },
+      "text": {
+        "text": "*docs-bot* wants to post a reply in #support.
+Inbox · <!date^1791900300^{date_short_pretty} at {time}|2026-10-13 14:05 UTC> · Waiting for your approval.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Review: author drafted a change to the triage agent.",
+        "action_id": "aui.inbox.open#1",
+        "text": {
+          "emoji": true,
+          "text": "Review",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"msg-triage-revision","target":"msg-triage-revision"}",
+      },
+      "text": {
+        "text": "*author* drafted a change to the triage agent.
+Inbox · <!date^1791895200^{date_short_pretty} at {time}|2026-10-13 12:40 UTC> · Approve it to save the new revision.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*slow-runs* fired: a run of triage took 94s.
+Warning alert · <!date^1791890100^{date_short_pretty} at {time}|2026-10-13 11:15 UTC> · The limit is 60s.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Who answers you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.answered_by#2",
+        "initial_option": {
+          "text": {
+            "emoji": true,
+            "text": "Whoever fits best",
+            "type": "plain_text",
+          },
+          "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+        },
+        "options": [
+          {
+            "text": {
+              "emoji": true,
+              "text": "Whoever fits best",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"auto"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "docs-bot",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"docs-bot"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "triage",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"triage"}}",
+          },
+          {
+            "text": {
+              "emoji": true,
+              "text": "author",
+              "type": "plain_text",
+            },
+            "value": "{"id":"aui.home.answered_by","p":{"turnId":"home","target":"answered_by","option":"author"}}",
+          },
+        ],
+        "placeholder": {
+          "emoji": true,
+          "text": "In direct messages, send my questions to",
+          "type": "plain_text",
+        },
+        "type": "static_select",
+      },
+      "text": {
+        "text": "In direct messages, send my questions to",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Connections",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*GitHub*
+Connected for this workspace.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Connect Jira",
+        "action_id": "aui.home.connect#3",
+        "text": {
+          "emoji": true,
+          "text": "Connect",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"jira"}",
+      },
+      "text": {
+        "text": "*Jira*
+Not connected.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "action_id": "aui.home.connect#4",
+        "text": {
+          "emoji": true,
+          "text": "Connect an Account",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "value": "{"turnId":"home","target":"personal"}",
+      },
+      "text": {
+        "text": "*Your own accounts*
+Agents act as you only where you have connected one.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "Signed in as Ada Lovelace, operator.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;

@@ -2,20 +2,20 @@
 
 ## What this is
 
-A Go module that composes mandatum, saige, legatus and duraturo into one agent
-platform. vultus supplies the components. The design is in
+A Go module that composes fiber, saige, playscape and anchor into one agent
+platform and its web and Slack presentation in one repository. The design is in
 [docs/architecture.md](docs/architecture.md).
 
 ## Rules
 
-- **Compose, don't reimplement.** If mandatum, saige, legatus or duraturo owns
+- **Compose, don't reimplement.** If fiber, saige, playscape or anchor owns
   a concern, use it or change it upstream.
 - **One way to call an agent.** Subagents, handoffs and delegations all go
   through `pkg/call`. Do not add a second path.
 - **Default deny.** A zero value grants nothing: no calls, no budget, no access.
 - **Fail closed.** A missing or malformed edge on an agent's tag is an error.
-- **Nothing presentational here.** Rendering belongs in vultus. Anything that
-  needs a network call, a database or an identity belongs here.
+- **Keep presentation separate.** Shared UI packages render data and emit actions.
+  API calls, persistence and identity belong in the platform and surface hosts.
 - **Tenant comes from the Principal.** Never read it from a request, and return 404 for another tenant's objects.
 - **Every route checks one permission.** Add it in `Server.Handler`, next to the route.
 - **The ledger decides whether a run is over.** Events report attempts. Do not infer an ending from silence.
@@ -37,8 +37,8 @@ platform. vultus supplies the components. The design is in
 - `pkg/clients`: the Slack apps and GitHub installations a workspace answers through. `internal/platform/connectors.go`: one surface per scheme, fanning in and out to them.
 - `pkg/evals`: suites and runs, scored by saige. `pkg/pick`: who answers a message. `pkg/prefs`: a person's own settings.
 - `internal/platform`: the composition root. `internal/httpapi`: routes, sessions, event stream.
-- `cmd/collegium`: the binary. `apps/web`: the console, built on vultus. `apps/slack`: the Slack app, a client of the API.
-- `packages/adapter`: the one adapter between the platform's wire shapes and vultus's model. The console and the Slack app both use it; nothing surface-specific goes in it.
+- `cmd/warp`: the binary. `apps/web`: the console, built on the shared UI packages. `apps/slack`: the Slack app, a client of the API.
+- `packages/adapter`: the one adapter between the platform's wire shapes and the shared UI model. The console and the Slack app both use it; nothing surface-specific goes in it.
 - `api/openapi.yaml`: the API contract, checked by `internal/httpapi/openapi_test.go`. `packages/client`: the TypeScript client generated from it by oag.
 
 ## Commands
@@ -63,3 +63,17 @@ platform. vultus supplies the components. The design is in
 - Money is an `int64` of micro-USD. No floats.
 - Tests run with `-race`.
 - No em dashes in docs or comments.
+
+## Shared presentation
+
+- `packages/core`: UI types, reducers, actions, queue, session, inbox and fixtures. No React.
+- `packages/primitives`: the primitive contract implemented by every renderer.
+- `packages/components`: shared components built only from primitives. No DOM, Block Kit or effects.
+- `packages/render-web`, `packages/render-slack`: one renderer per surface.
+- `packages/web`: web-only components. `packages/slack-host`: the generic Slack host loop.
+- `internal/presentation/github`: pure GitHub Markdown rendering, without API calls.
+- `apps/storybook`: component stories. `apps/slack-sandbox`: the real Slack fixture bench.
+- Copy lives in `packages/components/src/copy.ts`. Buttons use Title Case; other copy uses sentence case.
+- Anything waiting on a person must not animate.
+- Every Slack-facing change must pass `pnpm validate:slack`.
+- Install once at the root with `pnpm install`; all internal dependencies use `workspace:*`.

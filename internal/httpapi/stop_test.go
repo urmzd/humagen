@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/agentrt"
-	"github.com/urmzd/mandatum/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/collegium/internal/platform"
+	"github.com/urmzd/warp/internal/platform"
 )
 
 // holding is a model that says something and then holds its call open until
@@ -44,7 +44,7 @@ func TestStoppingARunIsAcceptedThenConfirmed(t *testing.T) {
 	f := newFixtureWith(t, platform.Config{AgentOptions: []agentrt.Option{
 		agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return holding{}, nil }),
 	}})
-	all := []string{"collegium:agents:write", "collegium:runs:read", "collegium:runs:write"}
+	all := []string{"warp:agents:write", "warp:runs:read", "warp:runs:write"}
 	acme, globex := f.machine(t, "acme", all...), f.machine(t, "globex", all...)
 	if res, _ := f.do(t, nil, "POST", "/api/agents", acme, helperSpec); res.StatusCode != http.StatusCreated {
 		t.Fatalf("create agent = %d", res.StatusCode)
@@ -100,7 +100,7 @@ func TestAStopTheRuntimeCannotCarryIsA503(t *testing.T) {
 		},
 		Stops: func(context.Context, runtime.StopRequest) error { return runtime.ErrStopUnavailable },
 	})
-	all := []string{"collegium:agents:write", "collegium:runs:read", "collegium:runs:write"}
+	all := []string{"warp:agents:write", "warp:runs:read", "warp:runs:write"}
 	acme := f.machine(t, "acme", all...)
 	if res, _ := f.do(t, nil, "POST", "/api/agents", acme, helperSpec); res.StatusCode != http.StatusCreated {
 		t.Fatalf("create agent = %d", res.StatusCode)

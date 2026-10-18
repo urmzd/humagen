@@ -41,8 +41,8 @@ for a tenant only if the operator listed that variable for that tenant with
 where the secret is read, and a refusal is the same whatever the reason. See
 [clients](clients.md#which-variables-a-workspace-may-reference).
 
-A machine has no role. It is issued scopes named `collegium:<permission>`, for
-example `collegium:runs:write`. A scope without the `collegium:` prefix, or one that names
+A machine has no role. It is issued scopes named `warp:<permission>`, for
+example `warp:runs:write`. A scope without the `warp:` prefix, or one that names
 no permission, grants nothing.
 
 ## Rules the code holds
@@ -161,38 +161,38 @@ else. It logs a warning at start and its page says what it is. See
 1. Create an **OIDC web application**. Sign-in redirect URI:
    `<public-url>/auth/callback`. Note the client ID and secret.
 2. On the **authorization server** (for example `default`), set the audience
-   to a value of your choice, such as `api://collegium`.
+   to a value of your choice, such as `api://warp`.
 3. Add a **groups claim** named `groups` to both ID and access tokens, filtered
    to the platform's groups.
-4. Create the groups `collegium-admins`, `collegium-operators` and `collegium-viewers`, and
+4. Create the groups `warp-admins`, `warp-operators` and `warp-viewers`, and
    assign people.
 5. For each machine, create an **API services application** and grant it only
-   the `collegium:` scopes it needs. Add those scopes to the authorization server.
+   the `warp:` scopes it needs. Add those scopes to the authorization server.
 
 ```sh
-export COLLEGIUM_OIDC_ISSUER="https://<org>.okta.com/oauth2/default"
-export COLLEGIUM_OIDC_CLIENT_ID="<web app client id>"
-export COLLEGIUM_OIDC_CLIENT_SECRET="<from your secret store>"
-export COLLEGIUM_OIDC_AUDIENCE="api://collegium"
-collegium serve -public-url https://collegium.example.com
+export WARP_OIDC_ISSUER="https://<org>.okta.com/oauth2/default"
+export WARP_OIDC_CLIENT_ID="<web app client id>"
+export WARP_OIDC_CLIENT_SECRET="<from your secret store>"
+export WARP_OIDC_AUDIENCE="api://warp"
+warp serve -public-url https://warp.example.com
 ```
 
 Any OpenID Connect provider works the same way. Group names, the groups claim
 and a per-caller tenant claim are flags: see `serve -h`.
 
 `-auth=okta` is an alias for `-auth=oidc` and uses the same environment variables.
-Opening the console automatically starts sign-in. Collegium does not send
+Opening the console automatically starts sign-in. Warp does not send
 `prompt=login` or `max_age`, so an existing Okta session can satisfy the flow
 without another password prompt, subject to the organization's Okta policy.
 See [Okta session cookies](https://developer.okta.com/docs/guides/session-cookie/main/).
 
 ## Tailscale: no application sign-in
 
-Run Collegium behind [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).
+Run Warp behind [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).
 Serve authenticates the tailnet user on every request. No OIDC application or
-Collegium session cookie is needed.
+Warp session cookie is needed.
 
-Create `/etc/collegium/tailnet.authz`, granting specific login names:
+Create `/etc/warp/tailnet.authz`, granting specific login names:
 
 ```text
 role viewer { allow read on * }
@@ -202,9 +202,9 @@ grant admin to subject "tailscale:operator@example.com"
 ```
 
 ```sh
-export COLLEGIUM_AUTHZ_POLICY=/etc/collegium/tailnet.authz
-collegium serve -auth=tailscale -addr 127.0.0.1:8080 \
-  -public-url https://collegium.your-tailnet.ts.net -tenant acme \
+export WARP_AUTHZ_POLICY=/etc/warp/tailnet.authz
+warp serve -auth=tailscale -addr 127.0.0.1:8080 \
+  -public-url https://warp.your-tailnet.ts.net -tenant acme \
   -web apps/web/dist
 # In another terminal on the same host:
 tailscale serve --bg http://127.0.0.1:8080
@@ -223,7 +223,7 @@ peers, to another host, with bearer credentials, or without a user identity
 are refused. Funnel traffic and tagged devices carry no Serve user identity
 and cannot sign in. Display names support Serve's RFC 2047 encoding.
 
-Signing out clears Collegium cookies but cannot end the device's Tailscale
+Signing out clears Warp cookies but cannot end the device's Tailscale
 identity. Reloading the console signs the user in again. Remove the policy
 grant or tailnet access to revoke access. This mode does not accept OIDC
 machine tokens; use OIDC mode for those deployments.
@@ -277,7 +277,7 @@ trigger's actor id, and for a run a Slack connector raised, every principal
 any Slack client of the run's team maps that Slack user to. The team is the one
 the run was accepted from, and the names are pinned when it starts, so a
 mapping removed later still counts. The platform checks this itself before
-it asks the runtime, because mandatum's `AnswerRequest` takes no requester
+it asks the runtime, because fiber's `AnswerRequest` takes no requester
 alias. A GitHub connector's actor is a login no client maps, so a person
 approving a call their own GitHub event raised is not detected. The right is checked before saying whether a part is still open. A
 change is pushed to the browser as an id only, and only to callers who may see

@@ -122,7 +122,7 @@ export function LimitsPanel({
               <span
                 key={a.agent}
                 title={`${a.agent}: ${amount(measure, a.used)}`}
-                style={{ width: `${(100 * a.used) / total}%`, background: `oklch(var(--collegium-stroke-l) var(--collegium-stroke-c) ${hueOf(a.agent)})` }}
+                style={{ width: `${(100 * a.used) / total}%`, background: `oklch(var(--warp-stroke-l) var(--warp-stroke-c) ${hueOf(a.agent)})` }}
               />
             ))}
           </div>

@@ -40,7 +40,7 @@ export function AccessExplain({ name, permission, onPermission }: { name: string
       {shown && (
         <>
           <div className="flex flex-col gap-1">
-            <h2 id="why-title" className="collegium-display text-aui-lg font-semibold text-aui-fg">
+            <h2 id="why-title" className="warp-display text-aui-lg font-semibold text-aui-fg">
               {shown.question}
             </h2>
             <p className="text-aui-sm text-aui-muted">{shown.answer}</p>
@@ -60,7 +60,7 @@ export function AccessExplain({ name, permission, onPermission }: { name: string
               {shown.fix}{" "}
               <a
                 className="text-aui-fg underline"
-                href="https://github.com/urmzd/collegium/blob/main/docs/authorization.md"
+                href="https://github.com/urmzd/warp/blob/main/docs/authorization.md"
                 target="_blank"
                 rel="noreferrer"
               >

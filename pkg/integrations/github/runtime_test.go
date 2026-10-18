@@ -18,29 +18,29 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/duraturo"
-	"github.com/urmzd/duraturo/pkg/ledger"
-	dqueue "github.com/urmzd/duraturo/pkg/queue"
-	"github.com/urmzd/duraturo/pkg/worker"
-	"github.com/urmzd/legatus/pkg/controlplane"
-	"github.com/urmzd/legatus/pkg/metrics"
-	"github.com/urmzd/legatus/pkg/node/inproc"
-	"github.com/urmzd/legatus/pkg/tool"
-	"github.com/urmzd/legatus/pkg/workspace"
+	"github.com/urmzd/anchor"
+	"github.com/urmzd/anchor/pkg/ledger"
+	dqueue "github.com/urmzd/anchor/pkg/queue"
+	"github.com/urmzd/anchor/pkg/worker"
+	"github.com/urmzd/playscape/pkg/controlplane"
+	"github.com/urmzd/playscape/pkg/metrics"
+	"github.com/urmzd/playscape/pkg/node/inproc"
+	"github.com/urmzd/playscape/pkg/tool"
+	"github.com/urmzd/playscape/pkg/workspace"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/collegium/pkg/integrations/github"
-	"github.com/urmzd/mandatum/pkg/agentrt"
-	"github.com/urmzd/mandatum/pkg/agentrt/payload"
-	"github.com/urmzd/mandatum/pkg/agentspec"
-	"github.com/urmzd/mandatum/pkg/bus"
-	"github.com/urmzd/mandatum/pkg/connector"
-	"github.com/urmzd/mandatum/pkg/envelope"
-	"github.com/urmzd/mandatum/pkg/registry"
-	"github.com/urmzd/mandatum/pkg/router"
-	"github.com/urmzd/mandatum/pkg/runtime"
-	"github.com/urmzd/mandatum/pkg/signature"
+	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/bus"
+	"github.com/urmzd/fiber/pkg/connector"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/fiber/pkg/router"
+	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/signature"
+	"github.com/urmzd/warp/pkg/integrations/github"
 )
 
 // githubIntegrationBus preserves the real bus and records the runtime's output.
@@ -149,7 +149,7 @@ func TestGitHubCollaborationFlowsThroughDurableSandboxAndRouter(t *testing.T) {
 	}
 	broker := &githubIntegrationBus{Bus: bus.NewMemory(), subscribed: make(chan struct{})}
 	lgr, q := ledger.NewMemory(), dqueue.NewMemory()
-	durable, err := runtime.New(duraturo.New(lgr, q), history, broker, sandbox, runtime.WithLogger(quiet))
+	durable, err := runtime.New(anchor.New(lgr, q), history, broker, sandbox, runtime.WithLogger(quiet))
 	if err != nil {
 		t.Fatal(err)
 	}

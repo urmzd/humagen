@@ -65,7 +65,7 @@ export function App() {
   if (session.state === "signed-out") {
     return (
       <Centered>
-        <h1 className="text-aui-lg font-medium text-aui-fg">Collegium</h1>
+        <h1 className="text-aui-lg font-medium text-aui-fg">Warp</h1>
         <p className="text-aui-sm text-aui-muted">You are signed out.</p>
         <a className={primary} href={signInUrl()}>
           Sign In
@@ -84,7 +84,7 @@ function Centered({ children }: { children: React.ReactNode }) {
   );
 }
 
-const SIDEBAR_KEY = "collegium.sidebar";
+const SIDEBAR_KEY = "warp.sidebar";
 
 /** A per-viewer convenience, so it lives in the browser and must never throw. */
 function stored(key: string, fallback: boolean): boolean {

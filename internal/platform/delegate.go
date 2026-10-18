@@ -10,14 +10,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/agentrt/payload"
-	"github.com/urmzd/mandatum/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/collegium/pkg/auth"
-	"github.com/urmzd/collegium/pkg/call"
-	"github.com/urmzd/collegium/pkg/inbox"
-	"github.com/urmzd/collegium/pkg/runs"
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // Agents calling agents.

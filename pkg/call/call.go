@@ -41,14 +41,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/envelope"
 )
 
 // Origin marks a tag raised by an agent rather than by a trigger.
 const Origin = "agent"
 
 // metaPrefix namespaces the edge inside Tag.Meta.
-const metaPrefix = "collegium."
+const metaPrefix = "warp."
 
 const (
 	metaRoot   = metaPrefix + "root"

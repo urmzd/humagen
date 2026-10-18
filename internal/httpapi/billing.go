@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/urmzd/collegium/internal/platform"
-	"github.com/urmzd/collegium/pkg/auth"
-	"github.com/urmzd/collegium/pkg/policy"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/policy"
 )
 
 // Billing policies are a workspace's limits. Anyone in the workspace can read

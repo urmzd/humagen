@@ -8,11 +8,11 @@ import {
   type PlatformMessage,
   type Run,
   replay,
-} from "@collegium/adapter";
-import { defaultCopy, MessageView, TurnView } from "@vultus/components";
-import { type MessagePart, partResolution, type Turn } from "@vultus/core";
-import { renderToSlack } from "@vultus/render-slack";
-import { WebSurface } from "@vultus/render-web";
+} from "@warp/adapter";
+import { defaultCopy, MessageView, TurnView } from "@warp/components";
+import { type MessagePart, partResolution, type Turn } from "@warp/core";
+import { renderToSlack } from "@warp/render-slack";
+import { WebSurface } from "@warp/render-web";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { forSlack } from "./app.tsx";
@@ -28,7 +28,7 @@ import {
 /**
  * One state, two renderers. A recorded run goes through the shared adapter
  * once. The console and the Slack app both render that one turn with the same
- * vultus components, so what a person reads is the same in both places.
+ * warp components, so what a person reads is the same in both places.
  */
 
 const RUN = "api-svc-slack-slack-T01ABCDEF-C01ABCDEF-1700000000-000100";
@@ -405,7 +405,10 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     ]);
     assert.notEqual(settled.status, "waiting");
     const decided = fromServer(questionMail(RUN, kind, answer[kind].inbox));
-    for (const el of [<TurnView turn={settled} />, <MessageView message={decided} />]) {
+    for (const el of [
+      <TurnView key="turn" turn={settled} />,
+      <MessageView key="message" message={decided} />,
+    ]) {
       bothSay(el, answer[kind].says);
       assert.ok(!slack(el).includes(`"${defaultCopy.approve}"`), "no button is left to press");
     }

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/collegium/pkg/integrations/github"
+	"github.com/urmzd/warp/pkg/integrations/github"
 )
 
 func TestPRGuideUpdatesAcrossCommitsWithoutDuplicateActivationComments(t *testing.T) {
@@ -62,7 +62,7 @@ func TestGuideRecoveryOnlyEditsTheConfiguredBotComment(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case r.Method == "GET" && strings.Contains(r.URL.Path, "/issues/"):
-					_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 17, "body": "<!-- mandatum:pr-guide:reviewer -->\nold guide", "user": map[string]string{"login": login}}})
+					_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 17, "body": "<!-- fiber:pr-guide:reviewer -->\nold guide", "user": map[string]string{"login": login}}})
 				case r.Method == "GET":
 					fmt.Fprintf(w, `{"head":{"sha":%q}}`, commitSHA)
 				case r.Method == "POST":

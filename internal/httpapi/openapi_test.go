@@ -25,30 +25,30 @@ import (
 	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
-	"github.com/urmzd/mandatum/pkg/agentrt"
-	"github.com/urmzd/mandatum/pkg/agentrt/payload"
-	"github.com/urmzd/mandatum/pkg/agentspec"
-	"github.com/urmzd/mandatum/pkg/envelope"
-	"github.com/urmzd/mandatum/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 	"go.yaml.in/yaml/v4"
 
-	"github.com/urmzd/collegium/internal/platform"
-	"github.com/urmzd/collegium/pkg/alerts"
-	"github.com/urmzd/collegium/pkg/artifacts"
-	"github.com/urmzd/collegium/pkg/auth"
-	"github.com/urmzd/collegium/pkg/clients"
-	"github.com/urmzd/collegium/pkg/evals"
-	"github.com/urmzd/collegium/pkg/inbox"
-	"github.com/urmzd/collegium/pkg/journal"
-	"github.com/urmzd/collegium/pkg/knowledge"
-	"github.com/urmzd/collegium/pkg/memory"
-	"github.com/urmzd/collegium/pkg/pick"
-	"github.com/urmzd/collegium/pkg/policy"
-	"github.com/urmzd/collegium/pkg/prefs"
-	"github.com/urmzd/collegium/pkg/runs"
-	"github.com/urmzd/collegium/pkg/usage"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/alerts"
+	"github.com/urmzd/warp/pkg/artifacts"
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/evals"
+	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/journal"
+	"github.com/urmzd/warp/pkg/knowledge"
+	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/pick"
+	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/prefs"
+	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 // The API contract is api/openapi.yaml. These tests are what keep it true:
@@ -246,7 +246,7 @@ func registeredRoutes(t *testing.T) []route {
 	}
 	info := &types.Info{Types: map[ast.Expr]types.TypeAndValue{}, Uses: map[*ast.Ident]types.Object{}, Selections: map[*ast.SelectorExpr]*types.Selection{}}
 	conf := types.Config{Importer: exportImporter(t, fset)}
-	if _, err := conf.Check("github.com/urmzd/collegium/internal/httpapi", fset, files, info); err != nil {
+	if _, err := conf.Check("github.com/urmzd/warp/internal/httpapi", fset, files, info); err != nil {
 		t.Fatalf("type-checking the package: %v", err)
 	}
 
@@ -255,7 +255,7 @@ func registeredRoutes(t *testing.T) []route {
 		return ok && slices.Contains(names, fn.FullName())
 	}
 	register := []string{"(*net/http.ServeMux).Handle", "(*net/http.ServeMux).HandleFunc", "net/http.Handle", "net/http.HandleFunc"}
-	authed := "(*github.com/urmzd/collegium/internal/httpapi.Server).authed"
+	authed := "(*github.com/urmzd/warp/internal/httpapi.Server).authed"
 	constant := func(e ast.Expr) (string, bool) {
 		tv := info.Types[e]
 		if tv.Value == nil || tv.Value.Kind() != gotypesconst.String {
@@ -1000,7 +1000,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/inbox/{id}/read", inboxPath+"/read", ``, http.StatusBadRequest)
 	c.call(acme, "POST", "/api/inbox/{id}/snooze", inboxPath+"/snooze", `{"until":"2999-01-01T00:00:00Z"}`, http.StatusOK)
 	resolve := "/api/inbox/{id}/parts/{part}/resolve"
-	reader := f.machine(t, "acme", "collegium:runs:read", "collegium:alerts:read")
+	reader := f.machine(t, "acme", "warp:runs:read", "warp:alerts:read")
 	c.call(reader, "POST", resolve, inboxPath+"/parts/"+parts["alert"]+"/resolve", `{"action":"acknowledge"}`, http.StatusForbidden)
 	c.call(acme, "POST", resolve, inboxPath+"/parts/"+parts["budget"]+"/resolve", `{"action":"approve"}`, http.StatusBadRequest)
 	c.call(acme, "POST", resolve, inboxPath+"/parts/p99/resolve", `{"action":"acknowledge"}`, http.StatusNotFound)
@@ -1278,7 +1278,7 @@ var unexercised = map[string]string{
 	// answers 503 from a server whose runtime cannot.
 	"POST /api/runs/{id}/stop 503": "stop unavailable",
 	// A client the server's configuration owns cannot be changed through the
-	// API. Making one needs COLLEGIUM_SLACK_* in the environment, which
+	// API. Making one needs WARP_SLACK_* in the environment, which
 	// pkg/clients and internal/platform test.
 	"PUT /api/clients/{id} 409":    "managed client",
 	"DELETE /api/clients/{id} 409": "managed client",

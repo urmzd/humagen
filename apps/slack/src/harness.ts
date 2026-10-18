@@ -1,6 +1,6 @@
 /**
  * Test doubles for both sides of the app: a Slack that records every call and
- * a collegium whose runs the test drives one event at a time. Every id here is
+ * a warp whose runs the test drives one event at a time. Every id here is
  * made up.
  */
 import {
@@ -9,19 +9,19 @@ import {
   type Http,
   mailTransport,
   type Run,
-} from "@collegium/adapter";
+} from "@warp/adapter";
 import { App, type AppOptions } from "./app.tsx";
+import { runId, tagId } from "./keys.ts";
 import {
   type ActAs,
   type Agent,
   type ClientRecord,
-  type Collegium,
-  CollegiumError,
   type InboxNotice,
   type RunRequest,
   type StreamItem,
-} from "./collegium.ts";
-import { runId, tagId } from "./keys.ts";
+  type Warp,
+  WarpError,
+} from "./warp.ts";
 
 /** A run asked for: the body and the key, as `createRun` takes them. */
 export interface Asked extends RunRequest {
@@ -118,8 +118,8 @@ const terminalStatus = (s: Run["status"]) => s === "completed" || s === "failed"
 
 const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64");
 
-/** A collegium that keeps runs, conversations and an inbox in memory, shaped like the real API. */
-export class FakeCollegium implements Collegium {
+/** A warp that keeps runs, conversations and an inbox in memory, shaped like the real API. */
+export class FakeWarp implements Warp {
   readonly runs = new Map<string, Run>();
   /** Every turn asked for, including ones that joined an existing run. */
   readonly asked: Asked[] = [];
@@ -135,13 +135,13 @@ export class FakeCollegium implements Collegium {
   /** Inbox messages as the platform sends them. */
   readonly mailbox = new Map<string, Record<string, unknown>>();
   /** Set to refuse the next turn, as a limit would. */
-  refuse: CollegiumError | null = null;
+  refuse: WarpError | null = null;
   /** Set to make stop fail. */
   stopFails = false;
   /** Every answer asked for, and for whom. */
   readonly answered: { answer: AnswerRequest; as: ActAs }[] = [];
-  /** Set to refuse the next answer, as collegium does someone who may not answer. */
-  refuseAnswer: CollegiumError | null = null;
+  /** Set to refuse the next answer, as warp does someone who may not answer. */
+  refuseAnswer: WarpError | null = null;
   private readonly feeds = new Map<string, Feed<StreamItem>>();
   private readonly notes = new Feed<InboxNotice>();
   private seq = new Map<string, number>();
@@ -186,7 +186,7 @@ export class FakeCollegium implements Collegium {
     const existing = this.runs.get(id);
     if (existing) return existing;
     const prev = t.after ? this.runs.get(t.after) : undefined;
-    if (t.after && !prev) throw new CollegiumError(404, "not found");
+    if (t.after && !prev) throw new WarpError(404, "not found");
     const now = this.at();
     const run: Run = {
       id,
@@ -239,9 +239,9 @@ export class FakeCollegium implements Collegium {
    */
   async stopRun(id: string): Promise<Run> {
     this.stops.push(id);
-    if (this.stopFails) throw new CollegiumError(500, "something went wrong on our side");
+    if (this.stopFails) throw new WarpError(500, "something went wrong on our side");
     const run = this.runs.get(id);
-    if (!run) throw new CollegiumError(404, "not found");
+    if (!run) throw new WarpError(404, "not found");
     if (terminalStatus(run.status)) return run;
     if (!run.stopping) {
       this.set(id, { stopping: true, stop_requested_at: this.at() });
@@ -307,14 +307,14 @@ export class FakeCollegium implements Collegium {
 
   /** The inbox routes, over the real mapping, so the wire shapes are the ones exercised. */
   private http: Http = async <T>(method: string, path: string, json?: unknown): Promise<T> => {
-    const url = new URL(path, "http://collegium.test");
+    const url = new URL(path, "http://warp.test");
     const [, , , id, ...rest] = url.pathname.split("/");
     if (method === "GET" && !id) {
       const messages = [...this.mailbox.values()].filter((m) => m.state === "open");
       return { messages, next: null, open: messages.length, unread: 0 } as T;
     }
     const message = id ? this.mailbox.get(decodeURIComponent(id)) : undefined;
-    if (!message) throw new CollegiumError(404, "not found");
+    if (!message) throw new WarpError(404, "not found");
     if (method === "GET") return { message, history: [] } as T;
     this.resolved.push({ id: String(message.id), path: rest.join("/"), body: json });
     if (rest[0] === "parts") {
@@ -402,22 +402,19 @@ export async function settle(rounds = 8): Promise<void> {
 
 export interface World {
   slack: FakeSlack;
-  collegium: FakeCollegium;
+  warp: FakeWarp;
   app: App;
   logs: string[];
-  /** A second app over the same Slack and collegium, as after a restart. */
+  /** A second app over the same Slack and warp, as after a restart. */
   restart(): App;
 }
 
-export function world(
-  opts: Partial<AppOptions> = {},
-  from?: Pick<World, "slack" | "collegium">,
-): World {
+export function world(opts: Partial<AppOptions> = {}, from?: Pick<World, "slack" | "warp">): World {
   const slack = from?.slack ?? new FakeSlack();
-  const collegium = from?.collegium ?? new FakeCollegium();
+  const warp = from?.warp ?? new FakeWarp();
   const logs: string[] = [];
   const make = () =>
-    new App(slack, collegium, {
+    new App(slack, warp, {
       team: TEAM,
       botUser: BOT,
       subject: SUBJECT,
@@ -428,7 +425,7 @@ export function world(
       log: (line) => logs.push(line),
       ...opts,
     });
-  return { slack, collegium, app: make(), logs, restart: make };
+  return { slack, warp, app: make(), logs, restart: make };
 }
 
 // Slack deliveries, as Socket Mode hands them over.

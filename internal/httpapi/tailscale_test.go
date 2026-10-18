@@ -7,10 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/urmzd/collegium/pkg/auth"
+	"github.com/urmzd/warp/pkg/auth"
 )
 
-const serveOrigin = "https://collegium.example.ts.net"
+const serveOrigin = "https://warp.example.ts.net"
 
 func tailnetRequest(path, login string) *http.Request {
 	r := httptest.NewRequest("GET", serveOrigin+path, nil)
@@ -26,7 +26,7 @@ func TestTailscaleIdentityAndPolicy(t *testing.T) {
 role viewer { allow read on * }
 role admin { allow * on * }
 grant viewer to subject "tailscale:alice@example.com"
-grant admin to group "collegium-admins"
+grant admin to group "warp-admins"
 grant admin to email domain "example.com"
 `)
 	if err != nil {
@@ -38,7 +38,7 @@ grant admin to email domain "example.com"
 	}
 	r := tailnetRequest("/api/me", "alice@example.com")
 	r.Header.Set("Tailscale-User-Name", "=?utf-8?q?Alice_B=C3=BCller?=")
-	r.Header.Set("Tailscale-User-Groups", "collegium-admins")
+	r.Header.Set("Tailscale-User-Groups", "warp-admins")
 	r.Header.Set("X-Tenant", "evil")
 	who, err := a.Authenticate(r)
 	if err != nil || who.Subject != "tailscale:alice@example.com" || who.Tenant != "acme" || who.Name != "Alice Büller" || !who.Can(auth.RunsRead) || who.Can(auth.RunsWrite) {
@@ -117,7 +117,7 @@ func TestTailscaleConfiguration(t *testing.T) {
 	for _, tc := range []struct{ addr, origin, tenant string }{
 		{"0.0.0.0:8080", serveOrigin, "acme"},
 		{"100.64.0.1:8080", serveOrigin, "acme"},
-		{"127.0.0.1:8080", "http://collegium.example.ts.net", "acme"},
+		{"127.0.0.1:8080", "http://warp.example.ts.net", "acme"},
 		{"127.0.0.1:8080", serveOrigin + "/path", "acme"},
 		{"127.0.0.1:8080", serveOrigin, ""},
 	} {

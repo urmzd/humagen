@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 /**
- * How a Slack thread names a collegium conversation, and how one Slack event
+ * How a Slack thread names a warp conversation, and how one Slack event
  * names one run. Both are derived, never stored, so a restart loses neither.
  *
  * The platform makes a run's id from the workspace, the caller and the
@@ -49,7 +49,7 @@ export function tagId(subject: string, key: string): string {
 
 /**
  * The id the platform gives a run this caller starts with a key. The runtime
- * derives it from the workspace and the trigger id together (mandatum's
+ * derives it from the workspace and the trigger id together (fiber's
  * runtime.RunID): a sha256 over each, length-prefixed, cut to 16 bytes.
  */
 export function runId(tenant: string, subject: string, key: string): string {

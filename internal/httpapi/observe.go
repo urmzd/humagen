@@ -7,15 +7,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/mandatum/pkg/agentrt/payload"
-	"github.com/urmzd/mandatum/pkg/agentspec"
-	"github.com/urmzd/mandatum/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/envelope"
 
-	"github.com/urmzd/collegium/pkg/alerts"
-	"github.com/urmzd/collegium/pkg/auth"
-	"github.com/urmzd/collegium/pkg/evals"
-	"github.com/urmzd/collegium/pkg/journal"
-	"github.com/urmzd/collegium/pkg/runs"
+	"github.com/urmzd/warp/pkg/alerts"
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/evals"
+	"github.com/urmzd/warp/pkg/journal"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // maxWindow bounds how far back analytics and the journal may be asked for.

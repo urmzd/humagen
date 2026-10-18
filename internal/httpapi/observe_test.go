@@ -6,16 +6,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/collegium/pkg/policy"
-	"github.com/urmzd/collegium/pkg/usage"
+	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 var everything = []string{
-	"collegium:agents:read", "collegium:agents:write", "collegium:runs:read", "collegium:runs:write",
-	"collegium:schedules:read", "collegium:schedules:write", "collegium:alerts:read", "collegium:alerts:write",
-	"collegium:knowledge:read", "collegium:knowledge:write", "collegium:evals:read", "collegium:evals:write",
-	"collegium:billing:read", "collegium:billing:write", "collegium:artifacts:read", "collegium:artifacts:write",
-	"collegium:clients:read", "collegium:clients:write",
+	"warp:agents:read", "warp:agents:write", "warp:runs:read", "warp:runs:write",
+	"warp:schedules:read", "warp:schedules:write", "warp:alerts:read", "warp:alerts:write",
+	"warp:knowledge:read", "warp:knowledge:write", "warp:evals:read", "warp:evals:write",
+	"warp:billing:read", "warp:billing:write", "warp:artifacts:read", "warp:artifacts:write",
+	"warp:clients:read", "warp:clients:write",
 }
 
 func TestObservabilityIsConfinedToATenant(t *testing.T) {
@@ -98,7 +98,7 @@ func TestObservabilityIsConfinedToATenant(t *testing.T) {
 
 func TestObservabilityPermissions(t *testing.T) {
 	f := newFixture(t)
-	viewer := f.signIn(t, "collegium-viewers")
+	viewer := f.signIn(t, "warp-viewers")
 	for _, tc := range []struct{ path, body string }{
 		{"/api/alert-rules", `{"name":"any","kind":"run_failed","severity":"critical"}`},
 		{"/api/knowledge", `{"name":"handbook"}`},
@@ -262,7 +262,7 @@ func TestEvalsAreConfinedAndGuarded(t *testing.T) {
 			t.Errorf("other tenant %s %s = %d, want 404", tc.method, tc.path, res.StatusCode)
 		}
 	}
-	viewer := f.signIn(t, "collegium-viewers")
+	viewer := f.signIn(t, "warp-viewers")
 	if res, _ := f.do(t, viewer, "POST", "/api/evals/smoke/run", "", ""); res.StatusCode != http.StatusForbidden {
 		t.Errorf("a viewer ran an eval: %d", res.StatusCode)
 	}
@@ -365,7 +365,7 @@ func TestConversationsBranchAndPick(t *testing.T) {
 
 func TestPreferencesAreTheCallersOwn(t *testing.T) {
 	f := newFixture(t)
-	ada := f.signIn(t, "collegium-viewers")
+	ada := f.signIn(t, "warp-viewers")
 	png := "\x89PNG\r\n\x1a\n" + strings.Repeat("\x00", 32)
 
 	res, out := f.do(t, ada, "PUT", "/api/preferences", "", `{"display_name":"Ada","theme":"light","accent":"teal"}`)
@@ -437,7 +437,7 @@ func TestAgentMemory(t *testing.T) {
 	if res, _ := f.do(t, nil, "POST", "/api/agents/helper/memory/approve", globex, `{"ids":["m1"]}`); res.StatusCode != http.StatusNotFound {
 		t.Errorf("other tenant approved memory: %d", res.StatusCode)
 	}
-	reader := f.machine(t, "acme", "collegium:agents:read")
+	reader := f.machine(t, "acme", "warp:agents:read")
 	if res, _ := f.do(t, nil, "POST", "/api/agents/helper/memory/approve", reader, `{"ids":["m1"]}`); res.StatusCode != http.StatusForbidden {
 		t.Errorf("a reader approved memory: %d", res.StatusCode)
 	}
@@ -525,7 +525,7 @@ func TestProjects(t *testing.T) {
 			t.Errorf("other tenant %s %s = %d, want 404", tc.method, tc.path, res.StatusCode)
 		}
 	}
-	viewer := f.signIn(t, "collegium-viewers")
+	viewer := f.signIn(t, "warp-viewers")
 	if res, _ := f.do(t, viewer, "POST", "/api/projects", "", `{"name":"Mine"}`); res.StatusCode != http.StatusForbidden {
 		t.Errorf("a viewer made a project: %d", res.StatusCode)
 	}
@@ -673,7 +673,7 @@ func TestBillingPolicies(t *testing.T) {
 	if res, _ := f.do(t, nil, "DELETE", "/api/policies?kind=project&name=Launch", globex, ""); res.StatusCode != http.StatusNotFound {
 		t.Errorf("other tenant deleted the policy: %d", res.StatusCode)
 	}
-	viewer := f.signIn(t, "collegium-viewers")
+	viewer := f.signIn(t, "warp-viewers")
 	if res, _ := f.do(t, viewer, "GET", "/api/usage", "", ""); res.StatusCode != http.StatusOK {
 		t.Errorf("a viewer cannot read usage: %d", res.StatusCode)
 	}
@@ -687,7 +687,7 @@ func TestBillingPolicies(t *testing.T) {
 
 func TestOnboardingFlags(t *testing.T) {
 	f := newFixture(t)
-	admin, viewer := f.signIn(t, "collegium-admins"), f.signIn(t, "collegium-viewers")
+	admin, viewer := f.signIn(t, "warp-admins"), f.signIn(t, "warp-viewers")
 
 	_, me := f.do(t, admin, "GET", "/api/me", "", "")
 	if me["first_admin"] != true {

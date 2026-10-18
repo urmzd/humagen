@@ -1,12 +1,12 @@
 /**
- * What a Slack host needs that vultus does not export yet. The entry ids and
- * the wording below are copied from vultus's Slack sandbox
+ * What a Slack host needs that warp does not export yet. The entry ids and
+ * the wording below are copied from warp's Slack sandbox
  * (`apps/slack-sandbox/src/manifest.ts` and `serve.tsx`), where they are
- * private to that app. They belong in a vultus package: until they move, this
+ * private to that app. They belong in a warp package: until they move, this
  * file is the copy, and it holds nothing else.
  *
- * vultus: export ENTRY (with the manifest), the ask form as askForm() in
- * @vultus/render-slack (like feedbackModal), and these words in copy.ts as
+ * warp: export ENTRY (with the manifest), the ask form as askForm() in
+ * @warp/render-slack (like feedbackModal), and these words in copy.ts as
  * copy.ask.{title,label,send,cancel} and copy.notInChannel.
  */
 
@@ -27,7 +27,7 @@ export const words = {
   send: "Send",
   cancel: "Cancel",
   notInChannel: "I'm not in this channel yet. Invite me with `/invite`, then try again.",
-  // vultus: needs a reply modal for questions; until then this says where to answer.
+  // warp: needs a reply modal for questions; until then this says where to answer.
   replyInConsole: "Replies to this question are typed in the console for now.",
 };
 
