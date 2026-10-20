@@ -31,6 +31,9 @@ export const words = {
   replyInConsole: "Replies to this question are typed in the console for now.",
   // warp: belongs in copy.ts, as copy.interrupted.
   interrupted: "This answer was cut off when the app restarted. Please ask again.",
+  // What the agent is told about a thread's messages that were not addressed to it.
+  historyOpen: "Messages in this Slack thread since you were last asked, oldest first:",
+  historyClose: "End of thread messages. The message for you follows.",
 };
 
 /** The form the global shortcut opens. Its text comes back on submit. */

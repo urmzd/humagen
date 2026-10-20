@@ -12,9 +12,10 @@ webhook connector, see [Slack](../../docs/slack.md#two-ways-to-answer-in-slack).
 
 ## Run it
 
-You need the Slack app created from the sandbox manifest
-(`SLACK_SANDBOX_SKIP=workflowStep pnpm sandbox manifest` in warp), installed
-to one team, and a warp server.
+You need a Slack app created from [`manifest.json`](manifest.json), which
+asks for what this app uses and nothing more (or from the sandbox manifest,
+`SLACK_SANDBOX_SKIP=workflowStep pnpm sandbox manifest` in warp, which lacks
+`mpim:history` and `users:read`), installed to one team, and a warp server.
 
 ```sh
 cd apps/slack
@@ -44,6 +45,22 @@ message sent while a turn is running waits for it, as in the console.
 
 Bot messages, the app's own messages, edits and joins never start a run.
 Deliveries from any team but `SLACK_TEAM_ID` are ignored.
+
+## Thread history
+
+A mention in a channel thread carries what people said in that thread since
+the app was last asked there: the messages after the previous mention of the
+app (or its own post that opened the thread), up to the one asking, read with
+`conversations.replies`. Bots, the app's own answers, joins and other events
+are left out. Each message goes ahead of the question with who wrote it, by
+display name when the app has `users:read`, else as a mention. At most the
+newest 30 messages and 6000 characters go with one turn. A direct message is
+always addressed to the app, so it reads no history.
+
+The run takes only text, so the history travels in the question and shows as
+part of it in the console. Reading a thread needs `channels:history`,
+`groups:history` or `mpim:history` for the kind of conversation it is in. A
+thread Slack will not give is logged and the question goes alone.
 
 ## Staying connected
 

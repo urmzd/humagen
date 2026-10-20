@@ -35,6 +35,7 @@ import {
 } from "@warp/render-slack";
 import { choose, mayRoute, type Routing } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
+import { Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
 import { askForm, ENTRY, type words } from "./host.ts";
 import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
 import { Presenter } from "./present.tsx";
@@ -110,6 +111,8 @@ interface Job {
    * asked again stays its first asker's; null when nobody is known.
    */
   requester?: string | null;
+  /** A mention in a channel thread: what people said there since the app was last asked goes with it. */
+  history?: boolean;
 }
 
 type Item =
@@ -307,6 +310,8 @@ export class App {
   private readonly copy: Copy;
   /** The host's own words, with this deployment's name. */
   private readonly words: typeof words;
+  /** Display names for thread history, when the app may read them. */
+  private readonly names: Names;
 
   constructor(
     private readonly slack: SlackApi,
@@ -321,6 +326,7 @@ export class App {
     this.branding = opts.branding ?? DEFAULT_BRANDING;
     this.copy = brandedCopy(this.branding);
     this.words = brandedWords(this.branding);
+    this.names = new Names(slack, (line) => this.log(line));
   }
 
   private log(line: string) {
@@ -442,6 +448,8 @@ export class App {
       triggerTs: event.ts,
       user: event.user,
       key: eventKey(session, event.ts),
+      // A direct message is always addressed to the app, so only a channel thread has more to read.
+      history: event.type === "app_mention" && session.threadTs !== event.ts,
     });
   }
 
@@ -601,6 +609,7 @@ export class App {
         // Asked again after the client was disabled or the agent left its list.
         return this.refuse(job, presenter, agent, NO_AGENT);
       }
+      if (job.history) text = await this.withThread(job, text);
       // Stop was pressed before there was a run to stop: say so and settle the session.
       if (live.stopped) {
         await presenter.finish(
@@ -658,6 +667,32 @@ export class App {
     }
     this.log(`run ${run.id} ended ${turn.status}`);
     return turn.status === "done" ? "done" : turn.status === "stopped" ? "stopped" : "failed";
+  }
+
+  /**
+   * The question with what people said in its thread since the app was last
+   * asked there. The run takes only text, so the messages go ahead of it, each
+   * with who wrote it. A thread Slack will not give is no reason to fail the
+   * turn: the question goes alone.
+   */
+  private async withThread(job: Job, text: string): Promise<string> {
+    const at = {
+      channel: job.session.channel,
+      threadTs: job.session.threadTs,
+      triggerTs: job.triggerTs,
+    };
+    try {
+      const said = sinceLastTurn(await readThread(this.slack, at), {
+        botUser: this.opts.botUser,
+        ...at,
+      });
+      if (said.length === 0) return text;
+      const names = await this.names.of(said.map((m) => m.user ?? ""));
+      return withHistory(text, said, names);
+    } catch (e) {
+      this.log(`thread history skipped: ${(e as Error).message}`);
+      return text;
+    }
   }
 
   /**
