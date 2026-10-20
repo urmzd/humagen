@@ -7,7 +7,7 @@ import { memoryStorage, sampleFiles, sampleUse } from "./storage.fixtures.ts";
 import { appendPage, deleteProblem, OVER_LIMIT, overLimit, PAGE, type Stored, showsInline } from "./storage.ts";
 
 // These render the storage page's parts to markup and drive the in-memory
-// transport the way the page does. They do not click anything in a browser.
+// transport the way the page does. The clicks are in storage.dom.test.tsx.
 
 const html = (el: ReactElement) => renderToStaticMarkup(el);
 const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
