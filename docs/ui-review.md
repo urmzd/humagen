@@ -112,3 +112,35 @@ Warp now follows the same shape:
 
 Verified in the local browser with `make dev`: pinning, a pin surviving a
 reload, More open and folded, the Projects page, and the collapsed rail.
+
+## One console for agents across systems
+
+Second pass, after the first one above. Warp is a place to run work with agents,
+project by project, so the navigation follows the work rather than the
+platform's parts.
+
+- **Sidebar order:** New, Projects, Schedules, Alerts, Inbox, Knowledge,
+  Agents, Artifacts, then Pinned and Tasks. There is no More menu.
+  - Execution history leaves the sidebar: each task already holds the history
+    of every run in it, and a run anywhere opens its task.
+  - Evals live on the agent or knowledge source they test.
+  - Analytics is the Overview tab of Alerts, next to the rules that watch it.
+  - Storage is named Artifacts.
+- **Deep links:** every page, tab and selection is a path, such as
+  `/agents/lead/access` or `/knowledge/handbook/evals`, and back and forward work.
+- **One page layout:** one centered column with a back link, a title and meta
+  line, actions on the right, and tabs that stay in view while scrolling.
+- **Agents:** Prompt, Model, Access, Knowledge, Memory, Evals, Alerts and
+  Revisions tabs.
+  - The model is a policy: a primary and ordered fallbacks.
+  - Agents it may call, and sources it reads, are picked from a searchable list.
+    A switch per agent did not scale.
+  - Approving a call to another agent is no longer offered. Agents call through
+    one host tool, so that approval named a tool the agent never held, and the
+    agent could not start.
+- **Alerts:**
+  - Rules can be edited and paused.
+  - They can be scoped to a project, notify chosen people and roles, wait out a
+    cooldown, and watch spend.
+- **Schedules:** each one has a page with its upcoming times and recent runs,
+  and it can be edited without losing either.

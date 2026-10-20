@@ -106,7 +106,14 @@ function ScheduleForm({
 }) {
   const [draft, setDraft] = useState<Schedule>(
     editing
-      ? { name: editing.name, expression: editing.expression, agent: editing.agent, text: editing.text, project: editing.project }
+      ? {
+          name: editing.name,
+          expression: editing.expression,
+          agent: editing.agent,
+          text: editing.text,
+          project: editing.project,
+          description: editing.description,
+        }
       : { name: "", expression: "0 9 * * 1-5", agent: "", text: "" },
   );
   const [problem, setProblem] = useState<string | null>(null);
@@ -118,7 +125,7 @@ function ScheduleForm({
     e.preventDefault();
     setProblem(null);
     setSaving(true);
-    const body = { ...draft, agent, project: draft.project || undefined };
+    const body = { ...draft, agent, project: draft.project || undefined, description: draft.description?.trim() || undefined };
     (editing ? saveSchedule(editing.name, body) : api.createSchedule(body))
       .then(() => onSaved(body.name))
       .catch((err) => setProblem(err instanceof ApiError ? err.message : "The schedule could not be saved."))
@@ -163,6 +170,9 @@ function ScheduleForm({
       <Label text="What to ask" hint="Nobody is typing when a schedule fires, so this is the whole message the agent gets.">
         <textarea className={`${field} min-h-20`} value={draft.text} required onChange={(e) => set({ text: e.target.value })} />
       </Label>
+      <Label text="Description" hint="Why it exists, for the people reading this page. The agent is not shown it.">
+        <input className={field} maxLength={500} value={draft.description ?? ""} onChange={(e) => set({ description: e.target.value })} />
+      </Label>
       <Problem message={problem} />
       <div className="flex justify-end gap-2">
         <button type="button" className={button} onClick={onClose}>
@@ -178,8 +188,8 @@ function ScheduleForm({
 
 /** Change a schedule in place, keeping its history and whether it is paused. */
 function saveSchedule(name: string, body: Schedule): Promise<unknown> {
-  const update = (api as unknown as { updateSchedule?: (name: string, s: Schedule) => Promise<unknown> }).updateSchedule;
-  return update ? update(name, body) : Promise.reject(new ApiError(501, "Editing a schedule is not available on this server."));
+  const { name: _, ...edit } = body;
+  return api.updateSchedule(name, edit);
 }
 
 /**
@@ -254,6 +264,7 @@ export function Schedules({
       <Page
         back={{ label: "All schedules", onClick: () => select(null) }}
         title={s.name}
+        lede={s.description || undefined}
         meta={
           <>
             <Chip>{s.paused ? "Paused" : "Active"}</Chip>

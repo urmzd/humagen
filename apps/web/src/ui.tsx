@@ -271,7 +271,7 @@ export function Page({
             {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
           </div>
         </header>
-        {tabs && <div className="sticky top-0 z-10 -mx-1 bg-[var(--warp-plane)] px-1">{tabs}</div>}
+        {tabs && <div className="sticky top-0 z-10 -mx-1 bg-[var(--aui-bg)] px-1">{tabs}</div>}
         {children}
       </div>
     </div>

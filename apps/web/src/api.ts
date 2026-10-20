@@ -161,14 +161,10 @@ export interface Span {
 /** Every kind a rule can have. `budget` alerts come from billing policies, never from a rule. */
 export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend";
 
-/**
- * A rule as the console renders it today. Its kind leaves out `spend`, which
- * the current screens do not draw yet; `AlertRuleConfig` is the whole rule.
- * Fold the two together once the screens handle every `AlertKind`.
- */
+/** A rule: what it watches, how serious it is, and who hears about it. */
 export interface AlertRule {
   name: string;
-  kind: Exclude<AlertKind, "spend">;
+  kind: AlertKind;
   /** What the rule is for, at most 500 characters. */
   description?: string;
   /** Only this agent's runs. Absent means every agent. */
@@ -199,10 +195,8 @@ export interface AlertRule {
   updated_at?: string;
 }
 
-/** A rule of any kind, as the server stores and returns it. */
-export interface AlertRuleConfig extends Omit<AlertRule, "kind"> {
-  kind: AlertKind;
-}
+/** Kept for callers: a rule of any kind is an AlertRule. */
+export type AlertRuleConfig = AlertRule;
 
 /**
  * The body of PUT /api/alert-rules/{name}: the whole rule but its name, which
