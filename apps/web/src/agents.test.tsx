@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { policyWords } from "./Governance.tsx";
 import { AgentDetail, BUILTIN_LOCKED, type Tab } from "./AgentDetail.tsx";
 import type { Note, Revision } from "./api.ts";
 
@@ -92,7 +93,7 @@ test("A built-in's spec is locked, but the workspace baseline is not", () => {
 
 test("Access: calls are picked from a list, and approving a call to another agent is not offered", () => {
   const html = text(render(false, true, "access"));
-  assert.match(html, /May call/);
+  assert.match(html, /Agents it may call/);
   assert.doesNotMatch(html, /Approve calls to/);
 });
 
@@ -115,4 +116,17 @@ test("Memory: a writer keeps a built-in's memory, as the server allows; a reader
   const reader = render(false, false, "memory");
   assert.doesNotMatch(text(reader), /Remember|Forget|Discard All/);
   assert.match(/<input type="checkbox" class="mt-1"[^>]*>/.exec(reader)?.[0] ?? "", /disabled=""/);
+});
+
+test("a call policy reads as a sentence about who may call and who approves", () => {
+  assert.equal(policyWords({ callers: "anyone", approval: "never" }), "Any agent that lists it may call it. Calls run without asking anyone.");
+  assert.equal(policyWords({ callers: "none", approval: "always" }), "No agent may call it. Calls run without asking anyone.");
+  assert.equal(
+    policyWords({ callers: "listed", allow: ["lead"], approval: "always", approvers: ["role:manager", "ada"], expires_seconds: 14400 }),
+    "Only lead may call it. Every call waits for Managers, ada to approve it, for up to 4 hours.",
+  );
+  assert.equal(
+    policyWords({ callers: "anyone", approval: "unlisted", trusted: ["lead"], approvers: [], expires_seconds: 86400 }),
+    "Any agent that lists it may call it. A call from anyone but lead waits for a manager or an admin to approve it, for up to 1 day.",
+  );
 });

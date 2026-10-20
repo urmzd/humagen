@@ -5,6 +5,7 @@ import {
   type AlertRule,
   ApiError,
   api,
+  callGovernance,
   type Group,
   type ModelPolicy,
   type ModelRef,
@@ -15,6 +16,7 @@ import {
 } from "./api.ts";
 import { Evals } from "./Evals.tsx";
 import { ASK_PERSON, approvable, withApproval, withAsking, withNames } from "./people.ts";
+import { ApprovalQueue, CallPolicyEditor, useReach } from "./Governance.tsx";
 import { ModelChain, POLICY, chainProblem, chainWords, defaultModel } from "./ModelChain.tsx";
 import type { AgentTab } from "./route.ts";
 import { AgentMark, ago, button, card, Chip, field, Label, Menu, Page, PickMany, Problem, primary, Section, Switch, Tabs, took } from "./ui.tsx";
@@ -272,6 +274,7 @@ export function AgentDetail({
   onOpenRun,
   onOpenSource,
   onOpenAlerts,
+  onOpenTask,
   onBaseline,
   policies = [],
   onManagePolicies,
@@ -306,6 +309,8 @@ export function AgentDetail({
   onOpenRun: (id: string) => void;
   onOpenSource?: (name: string) => void;
   onOpenAlerts?: () => void;
+  /** Open a task, from an approval waiting in it. */
+  onOpenTask?: (thread: string) => void;
   onBaseline: (name: string) => void;
   /** The workspace's model policies an agent can follow. */
   policies?: ModelPolicy[];
@@ -374,7 +379,24 @@ export function AgentDetail({
   const mySuites = suites.filter((s) => s.target === "agent" && s.subject === name);
   const spawn = spec.access?.spawn ?? [];
   const reads = spec.sources ?? [];
-  const callable = agents.filter((a) => a.spec.name !== spec.name);
+  // A caller is only offered the agents whose own policy would take its call.
+  const reach = useReach(revision ? name : null, revision?.rev);
+  const reachOf = new Map((reach ?? []).map((r) => [r.agent, r]));
+  const callable = agents.filter((a) => a.spec.name !== spec.name && (reach === null || reachOf.get(a.spec.name)?.admits !== false));
+  const refusing = reach === null ? [] : agents.filter((a) => a.spec.name !== spec.name && reachOf.get(a.spec.name)?.admits === false);
+  const [waiting, setWaiting] = useState(0);
+  // The queue's count shows on its tab before the tab is opened.
+  useEffect(() => {
+    if (!name) return;
+    let live = true;
+    callGovernance
+      .approvalQueue(name, "open")
+      .then((r) => live && setWaiting(r.messages.length))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [name]);
   const broken = callApprovals(spec);
 
   const save = async () => {
@@ -415,6 +437,7 @@ export function AgentDetail({
     { id: "prompt", label: "Prompt" },
     { id: "model", label: "Model" },
     { id: "access", label: "Access", count: spawn.length },
+    ...(revision ? [{ id: "queue" as const, label: "Queue", count: waiting }] : []),
     { id: "knowledge", label: "Knowledge", count: reads.length },
     ...(revision
       ? ([
@@ -583,8 +606,8 @@ export function AgentDetail({
         {tab === "access" && (
           <div className="flex flex-col gap-8">
             <Section
-              title="May call"
-              hint="The agents this one may hand work to. Nobody is callable unless they are listed here. Depth, fan-out and budget limits still apply to every call."
+              title="Agents it may call"
+              hint="The agents this one may hand work to. Only agents whose own policy takes its calls are offered. Depth, fan-out and budget limits still apply to every call."
             >
               <PickMany
                 label="Agents it may call"
@@ -595,12 +618,29 @@ export function AgentDetail({
                 options={callable.map((a) => ({
                   value: a.spec.name,
                   label: a.spec.name,
-                  hint: a.spec.description || undefined,
+                  hint:
+                    reachOf.get(a.spec.name)?.approval === "required"
+                      ? `Each call waits for approval. ${a.spec.description ?? ""}`.trim()
+                      : a.spec.description || undefined,
                   mark: <AgentMark name={a.spec.name} size={14} />,
                 }))}
                 onChange={(next) => set({ access: { ...spec.access, spawn: next } })}
               />
+              {refusing.length > 0 && (
+                <p className="text-aui-xs text-aui-muted">
+                  Not open to {name}: {refusing.map((a) => a.spec.name).join(", ")}. Their own call policy decides.
+                </p>
+              )}
             </Section>
+
+            {revision && (
+              <Section
+                title="Who may call it"
+                hint="This agent decides who may hand it work and when a call waits for a person. It applies from the moment it is saved, not with the next revision."
+              >
+                <CallPolicyEditor agent={name} agents={agents} canWrite={canWrite} />
+              </Section>
+            )}
 
             <Section
               title="People in the loop"
@@ -652,6 +692,10 @@ export function AgentDetail({
               </div>
             </Section>
           </div>
+        )}
+
+        {tab === "queue" && revision && (
+          <ApprovalQueue agent={name} onOpenTask={onOpenTask} onCount={setWaiting} />
         )}
 
         {tab === "knowledge" && (

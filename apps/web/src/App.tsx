@@ -496,6 +496,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               onOpenRun={openRun}
               onOpenSource={(source) => go({ page: "knowledge", source })}
               onOpenAlerts={() => go({ page: "alerts", tab: "rules" })}
+              onOpenTask={openThread}
               onBaseline={setBaseline}
               policies={workspace?.model_policies ?? []}
               onManagePolicies={() => openSettings("models")}

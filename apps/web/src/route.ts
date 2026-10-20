@@ -9,8 +9,8 @@ import { useCallback, useEffect, useState } from "react";
  * query parameter. Old `?view=` links still open the page they named.
  */
 
-export type AgentTab = "prompt" | "model" | "access" | "knowledge" | "memory" | "evals" | "alerts" | "revisions";
-export const AGENT_TABS: AgentTab[] = ["prompt", "model", "access", "knowledge", "memory", "evals", "alerts", "revisions"];
+export type AgentTab = "prompt" | "model" | "access" | "queue" | "knowledge" | "memory" | "evals" | "alerts" | "revisions";
+export const AGENT_TABS: AgentTab[] = ["prompt", "model", "access", "queue", "knowledge", "memory", "evals", "alerts", "revisions"];
 
 export type SourceTab = "documents" | "search" | "variants" | "evals";
 export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "evals"];
