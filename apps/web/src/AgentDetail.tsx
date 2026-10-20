@@ -102,6 +102,10 @@ const presets: { label: string; rule: (agent: string) => AlertRule }[] = [
   { label: "An eval passes under 80%", rule: (a) => ({ name: `${a}-quality`, kind: "eval_below", agent: a, severity: "warning", threshold: 80 }) },
 ];
 
+/** Why a built-in agent's editor is read only. */
+export const BUILTIN_LOCKED =
+  "This agent is built in. The platform provides it, so its prompt and setup cannot be changed. Create a new agent to make your own.";
+
 /** One agent: its prompt, its setup, how it is measured, and its history. */
 export function AgentDetail({
   revision,
@@ -114,6 +118,7 @@ export function AgentDetail({
   stats,
   baseline,
   canWrite,
+  builtin = false,
   canEval,
   canAlert,
   onBack,
@@ -135,6 +140,8 @@ export function AgentDetail({
   stats: Group | undefined;
   baseline: string;
   canWrite: boolean;
+  /** Provided by the platform. It can be read and run, and its memory kept, but its spec is not saved here. */
+  builtin?: boolean;
   canEval: boolean;
   canAlert: boolean;
   onBack: () => void;
@@ -162,6 +169,8 @@ export function AgentDetail({
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
   const set = (patch: Partial<AgentSpec>) => setSpec((s) => ({ ...s, ...patch }));
   const name = revision?.spec.name ?? "";
+  // The server refuses a built-in's revision, so the editor does not offer one.
+  const editable = canWrite && !(builtin && revision);
 
   // A new revision of the same agent replaces the draft with what was saved.
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the saved revision changes
@@ -267,7 +276,7 @@ export function AgentDetail({
               </p>
             </div>
           </div>
-          {canWrite && (
+          {editable && (
             <div className="flex shrink-0 items-center gap-2">
               {dirty && <span className="text-aui-xs text-aui-muted">Unsaved changes</span>}
               {dirty && revision && (
@@ -297,6 +306,12 @@ export function AgentDetail({
               </div>
             ))}
           </dl>
+        )}
+
+        {builtin && revision && (
+          <p data-testid="agent-locked" className={`${card} text-aui-sm text-aui-muted`}>
+            {BUILTIN_LOCKED}
+          </p>
         )}
 
         <Problem message={problem} />
@@ -333,7 +348,7 @@ export function AgentDetail({
               <textarea
                 className={`${field} min-h-14`}
                 value={spec.description ?? ""}
-                disabled={!canWrite}
+                disabled={!editable}
                 maxLength={400}
                 onChange={(e) => set({ description: e.target.value })}
               />
@@ -352,7 +367,7 @@ export function AgentDetail({
                 id="agent-prompt"
                 className={`${field} warp-glass min-h-[22rem] resize-y font-aui-mono text-aui-sm leading-relaxed`}
                 value={spec.system_prompt}
-                disabled={!canWrite}
+                disabled={!editable}
                 spellCheck={false}
                 placeholder="Who the agent is, what it is for, how it should answer, and what it must never do."
                 onChange={(e) => set({ system_prompt: e.target.value })}
@@ -382,7 +397,7 @@ export function AgentDetail({
                 <Menu
                   label="Provider"
                   value={spec.provider}
-                  disabled={!canWrite}
+                  disabled={!editable}
                   options={[
                     { value: "offline", label: "offline", hint: "Calls no model. For trying the platform out." },
                     { value: "anthropic", label: "anthropic" },
@@ -392,7 +407,7 @@ export function AgentDetail({
                 />
               </Label>
               <Label text="Model">
-                <input className={field} value={spec.model} disabled={!canWrite} onChange={(e) => set({ model: e.target.value })} />
+                <input className={field} value={spec.model} disabled={!editable} onChange={(e) => set({ model: e.target.value })} />
               </Label>
             </div>
 
@@ -407,7 +422,7 @@ export function AgentDetail({
                     label={n}
                     hint={agents.find((a) => a.spec.name === n)?.spec.description || undefined}
                     checked={spawn.includes(n)}
-                    disabled={!canWrite}
+                    disabled={!editable}
                     onChange={(on) => set({ access: { ...spec.access, spawn: on ? [...spawn, n] : spawn.filter((s) => s !== n) } })}
                   />
                 ))
@@ -425,7 +440,7 @@ export function AgentDetail({
                     label={k.name}
                     hint={k.description || `${k.documents} documents`}
                     checked={reads.some((r) => r.name === k.name)}
-                    disabled={!canWrite}
+                    disabled={!editable}
                     onChange={(on) =>
                       set({
                         sources: on ? [...reads, { name: k.name, uri: `knowledge://${k.name}` }] : reads.filter((r) => r.name !== k.name),
@@ -445,7 +460,7 @@ export function AgentDetail({
                 label="May ask a person"
                 hint="The agent can ask someone to choose or reply, and waits for the answer."
                 checked={(spec.tools ?? []).includes(ASK_PERSON)}
-                disabled={!canWrite}
+                disabled={!editable}
                 onChange={(on) => setSpec((s) => withAsking(s, on))}
               />
               {approvable(spec).map((tool) => (
@@ -454,7 +469,7 @@ export function AgentDetail({
                   label={`Approve ${tool.startsWith("tag_") ? `calls to ${tool.slice(4)}` : tool} first`}
                   hint="Each call waits until a person approves it. Nobody answering in time denies it."
                   checked={(spec.approvals ?? []).includes(tool)}
-                  disabled={!canWrite}
+                  disabled={!editable}
                   onChange={(on) => setSpec((s) => withApproval(s, tool, on))}
                 />
               ))}
@@ -462,7 +477,7 @@ export function AgentDetail({
                 <NamesField
                   key={`approvers-${revision?.rev ?? 0}`}
                   names={spec.approvers}
-                  disabled={!canWrite}
+                  disabled={!editable}
                   onChange={(text) => setSpec((s) => withNames(s, "approvers", text))}
                 />
               </Label>
@@ -470,14 +485,14 @@ export function AgentDetail({
                 label="The person who asked may approve"
                 hint="Off, an approval is always someone else's."
                 checked={spec.self_approval === true}
-                disabled={!canWrite}
+                disabled={!editable}
                 onChange={(on) => set({ self_approval: on || undefined })}
               />
               <Label text="Who may answer its questions" hint="People and roles, one per line. Empty means anyone in the workspace.">
                 <NamesField
                   key={`answerers-${revision?.rev ?? 0}`}
                   names={spec.answerers}
-                  disabled={!canWrite}
+                  disabled={!editable}
                   onChange={(text) => setSpec((s) => withNames(s, "answerers", text))}
                 />
               </Label>
@@ -493,7 +508,7 @@ export function AgentDetail({
                   label="Baseline agent"
                   hint="Answers when Auto finds no agent that fits. One agent holds this at a time."
                   checked={baseline === name}
-                  disabled={!canWrite}
+                  disabled={!editable}
                   onChange={(on) => onBaseline(on ? name : "")}
                 />
               </div>
@@ -717,7 +732,7 @@ export function AgentDetail({
                         {h.spec.provider} / {h.spec.model}
                       </span>
                     </div>
-                    {canWrite && h.rev !== revision.rev && (
+                    {editable && h.rev !== revision.rev && (
                       <button type="button" className={button} onClick={() => restore(h)}>
                         Restore as Revision {revision.rev + 1}
                       </button>

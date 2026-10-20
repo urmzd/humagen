@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0 (2026-10-20)
+
+### Features
+
+- S3 blob store, artifacts unit tests and a locked built-in agent page (#28) ([20e4d18](https://github.com/urmzd/warp/commit/20e4d18a7b7376dd22369d4abae13bb5893787b7))
+- **slack**: brand the app from a checked file and offer suggested prompts (#27) ([ccab5ad](https://github.com/urmzd/warp/commit/ccab5ad7e4e01369de42b74680e6ff81d96968a1))
+
+### Bug Fixes
+
+- **slack**: replace a dead Socket Mode connection and give up loudly (#30) ([f21c2bb](https://github.com/urmzd/warp/commit/f21c2bbc226900eee768cfc5d136e34d36614d2c))
+- **slack**: close streams a previous process left open (#29) ([d9132c9](https://github.com/urmzd/warp/commit/d9132c93d93bd8561abe9f18bb884ae71d7e9a82))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.5.0...v0.6.0)
+
+
 ## 0.5.0 (2026-10-18)
 
 ### Breaking

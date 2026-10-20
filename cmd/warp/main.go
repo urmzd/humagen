@@ -61,6 +61,7 @@ func run(args []string) error {
 	tenantClaim := fs.String("tenant-claim", "", "token claim that carries the caller's tenant")
 	groupsClaim := fs.String("groups-claim", "groups", "token claim that lists a person's groups")
 	groups := addGroupFlags(fs)
+	storage := addStorageFlags(fs)
 	mockAddr := fs.String("mock-idp-addr", "127.0.0.1:8081", "with -auth=mock, the loopback address the development identity provider listens on")
 	mockPersonas := fs.String("mock-personas", "", `with -auth=mock, a JSON file of {"people": [...], "machines": [...]} to sign in as. Empty means the built-in set`)
 	publicURL := fs.String("public-url", "http://localhost:8080", "where browsers reach this server")
@@ -102,6 +103,10 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	blobs, err := openBlobs(ctx, storage, os.Getenv)
+	if err != nil {
+		return err
+	}
 	p, err := platform.New(platform.Config{
 		// A client may keep its secrets in this process's environment, under
 		// the names the operator gave its tenant.
@@ -111,6 +116,7 @@ func run(args []string) error {
 		Log:             log,
 		BuiltinProvider: *builtinProvider,
 		BuiltinModel:    *builtinModel,
+		Blobs:           blobs,
 	})
 	if err != nil {
 		return err
