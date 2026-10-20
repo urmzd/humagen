@@ -120,6 +120,7 @@ validates results. See [Agent calls](agent-calls.md) for the contract and lifecy
 |---------|------|
 | Cost | A child leases budget from its caller and settles when it completes: the lease is released and what the child spent, priced by the runtime, becomes the caller's. Limits apply to the whole tree: every run counts against its root's project and client. See [Usage and spend](#usage-and-spend). |
 | Access | A child gets the intersection of its spec's access and its caller's grant. It is never wider. |
+| Consent | Both sides agree to a call. The caller's spec names the callee in its spawn allowlist, and the callee's call policy (`pkg/callpolicy`) admits the caller: `anyone`, only the agents it `listed`, or `none`. The policy also says which admitted calls wait for a person (`never`, `always`, or callers not `trusted` when `unlisted`), who approves them, and how long they wait. A refusal names the side that refused. The `call_agent` tool offers only the agents both sides agree to. |
 | Shape | Depth and fan-out are capped. The zero limits allow no calls. |
 | Tracking | Root, parent, depth and trace context travel with the tag, so telemetry shows one tree. |
 | Stopping | Stopping a run stops everything attached beneath it, through the runtime. What it delegated carries on. |
@@ -290,6 +291,17 @@ new attached calls (`ErrBusy`), never hang.
 A budget request is not an approval yet: a run at a limit is stopped or
 refused, not parked. See the status table.
 
+A call the callee's policy holds for a person is decided by `callApproval` in
+`internal/platform/call_policy.go`. The `call_agent` tool is an
+`agentrt.Approving` tool built on it: the runtime parks the caller on an
+approval addressed to the policy's approvers (`role:manager` and `role:admin`
+when it names nobody, so a held call is never open to the whole workspace).
+The call goes through only when a person approved that very tool call;
+otherwise the callee refuses it. fiber's host call tool wrapper does not yet
+forward `Approving`, so today such a call is refused rather than parked. The
+question's wait is the runtime's question TTL, not the policy's
+`expires_seconds`, which fiber's `ApprovalRequest` cannot carry yet.
+
 ## Decentralized
 
 A peer node is a connector. One node addresses an agent on another the same way
@@ -321,6 +333,7 @@ Admission is one process holding one lock, reading counts from memory. That is c
 | The live spend tally is per process, so two servers each see half a scope's calls between reads | The spend counter in the same shared store as the admission counter |
 | Policy history grows without bound | Paging, as for conversations |
 | The inbox record grows without bound, and open counts are a scan | A durable log, with counters per reader |
+| Call policies are in memory and lost on restart | A durable store behind `callpolicy.Store` |
 | The artifact index is in memory while the bytes are on disk, so a restart orphans stored files | The index in the same durable store as everything else |
 | A download reads the whole file into memory, which the 2 MB cap makes safe | Streaming, before the cap is raised |
 | The journal is a ring of 100,000 events | An event store, or OTel export |
@@ -444,3 +457,8 @@ and GitHub release from `main`, using the main-only `release` environment.
 | Email connector, MCP server and Jira wiring | Not built |
 | Remote execution nodes, peer connector | Not built |
 | Postgres stores | Not built. Everything above is lost on restart |
+| Call policies: each agent says which agents may call it (`anyone`, `listed`, `none`) and which calls wait for a person. `GET`/`PUT /api/agents/{name}/call-policy` (`agents:read`/`agents:write`), enforced in the call path beside the caller's spawn allowlist, and the `call_agent` tool offers only callees that admit the caller | Built, tested. In memory per tenant, at most 1,000 policies and 100 names per list. No console screen yet |
+| Discoverability: `GET /api/agents/{name}/reachable` says, for that agent as a caller, whether each other agent admits it, is in its spawn allowlist, and needs approval, with a reason | Built, tested. One page of up to 500 agents, with `truncated` |
+| Per-call approval held by the callee's policy: `call_agent` implements `agentrt.Approving`, the question carries the policy's approvers and self-approval, the inbox addresses it to them, and only a call a person approved goes through | Built, unit tested. End to end it waits on fiber's host call tool wrapper forwarding `Approving`; until then the call is refused (fail closed), which the end-to-end test checks and then skips. `expires_seconds` is not applied yet |
+| An agent's approval queue: approval questions about calling an agent carry it as `source.target`, and `GET /api/inbox?kind=approval&agent=X&state=open` lists what was raised by or would call `X` | Built, tested |
+| Built-in `manager` role: everything an operator has, and writing agents (their call policies among them) and knowledge. Granted by `-manager-group` (`warp-managers`); mock persona `mock-manager` | Built, tested |

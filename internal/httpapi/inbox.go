@@ -28,12 +28,13 @@ func (s *Server) inboxRoutes(mux *http.ServeMux) {
 // listInbox pages the caller's inbox, newest first.
 //
 // state is open (the default), resolved, dismissed, snoozed or all. kind,
-// unread, alert, limit and before are optional. alert finds the message about
-// one alert, in any state. The answer carries next, the cursor
+// unread, alert, agent, limit and before are optional. alert finds the message
+// about one alert, in any state. agent keeps the messages an agent raised or
+// whose call would reach it: with kind=approval, that agent's approval queue. The answer carries next, the cursor
 // for the page after this one, or null at the end.
 func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
-	query := inbox.Query{State: inbox.State(q.Get("state")), Kind: inbox.Kind(q.Get("kind")), Before: q.Get("before"), Unread: q.Get("unread") == "true", Alert: q.Get("alert")}
+	query := inbox.Query{State: inbox.State(q.Get("state")), Kind: inbox.Kind(q.Get("kind")), Before: q.Get("before"), Unread: q.Get("unread") == "true", Alert: q.Get("alert"), Agent: q.Get("agent")}
 	// Asking after one alert means its message, wherever it stands.
 	if query.Alert != "" && query.State == "" {
 		query.State = inbox.All

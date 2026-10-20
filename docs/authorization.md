@@ -78,10 +78,10 @@ warp serve ...
 ```
 
 Without it, the built-in policy (`pkg/auth/default.authz`) declares `viewer`,
-`operator` and `admin` with exactly the permissions in
+`operator`, `manager` and `admin` with exactly the permissions in
 [security](security.md#roles-and-scopes), and grants nothing itself. The
-`-admin-group`, `-operator-group` and `-viewer-group` flags become grants of
-those roles. With a policy file, the file decides, and a group flag is added
+`-admin-group`, `-manager-group`, `-operator-group` and `-viewer-group` flags
+become grants of those roles. With a policy file, the file decides, and a group flag is added
 as a grant only if it is set on the command line.
 
 ## Debug with Explain
@@ -126,7 +126,7 @@ payload.
 `make dev-signin` runs the server with `-auth=mock`: a development identity
 provider on `127.0.0.1:8081` with a page of personas and no passwords. Sign-in
 goes through the same flow, verifier and policy as a real provider. The
-built-in personas are a viewer, an operator, an admin and someone in no
+built-in personas are a viewer, an operator, a manager, an admin and someone in no
 mapped group, and a machine `mock-ci` (secret `mock-ci-secret`) with
 `warp:runs:read` and `warp:runs:write`:
 

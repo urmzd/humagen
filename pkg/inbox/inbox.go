@@ -111,6 +111,9 @@ type Source struct {
 	Thread  string `json:"thread,omitempty"`
 	Agent   string `json:"agent,omitempty"`
 	Project string `json:"project,omitempty"`
+	// Target is the agent a question's tool call would call, when the
+	// question is about calling one: the callee whose queue it is in.
+	Target string `json:"target,omitempty"`
 }
 
 // AlertPart is an alert to acknowledge.
@@ -175,6 +178,8 @@ type BudgetPart struct {
 // QuestionTool is the call an approval is about.
 type QuestionTool struct {
 	Name string `json:"name"`
+	// CallID is the model's id for the call.
+	CallID string `json:"call_id,omitempty"`
 	// Arguments are what the model asked to call it with, as a JSON object.
 	Arguments json.RawMessage `json:"arguments,omitempty"`
 	// Schema is the tool's parameter schema. Edited arguments must satisfy it.
@@ -206,6 +211,11 @@ type QuestionPart struct {
 	// Via is the run the question was raised through, when a run waiting on
 	// another shows its question: the caller of the run that asked.
 	Via string `json:"via,omitempty"`
+	// Approvers, when set, are who may answer this one approval in place of
+	// the spec's: the callee's call policy's approvers, for a call to an
+	// agent. SelfApproval goes with them.
+	Approvers    []string `json:"approvers,omitempty"`
+	SelfApproval bool     `json:"self_approval,omitempty"`
 }
 
 // Outcome is what was decided about a part, and by whom.
@@ -645,6 +655,9 @@ type Query struct {
 	Kind  Kind
 	// Alert keeps the messages about one alert.
 	Alert string
+	// Agent keeps the messages about one agent: the one that raised them,
+	// or the one a call they ask about would call.
+	Agent string
 	// Unread keeps only what the reader has not read.
 	Unread bool
 	// Visible reports whether the reader may see a kind. Nil means all.
@@ -668,6 +681,9 @@ func (t *tenant) match(m *Message, q Query) bool {
 		return false
 	}
 	if q.Alert != "" && m.Source.Alert != q.Alert {
+		return false
+	}
+	if q.Agent != "" && m.Source.Agent != q.Agent && m.Source.Target != q.Agent {
 		return false
 	}
 	want := q.State
@@ -761,7 +777,7 @@ func (s *Store) Count(tenantName string, q Query) (open, unread int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := s.of(tenantName)
-	q.State, q.Kind, q.Alert, q.Unread = Open, "", "", false
+	q.State, q.Kind, q.Alert, q.Agent, q.Unread = Open, "", "", "", false
 	for _, m := range t.messages {
 		if !t.match(m, q) {
 			continue

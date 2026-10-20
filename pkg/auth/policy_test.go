@@ -23,6 +23,10 @@ var legacyRolePermissions = map[auth.Role][]auth.Permission{
 	auth.Admin: auth.Permissions(),
 }
 
+// managerPermissions is the manager role, added after the legacy table:
+// everything an operator has, and writing agents and knowledge.
+var managerPermissions = append(slices.Clone(legacyRolePermissions[auth.Operator]), auth.AgentsWrite, auth.KnowledgeWrite)
+
 func sorted(ps []auth.Permission) []auth.Permission {
 	out := slices.Clone(ps)
 	slices.Sort(out)
@@ -40,8 +44,8 @@ func TestDefaultPolicyReproducesTheLegacyRoles(t *testing.T) {
 			t.Errorf("%s: Granted %v, legacy table %v", role, got, want)
 		}
 	}
-	if got := pol.Compiled().RoleNames(); !slices.Equal(got, []string{"viewer", "operator", "admin"}) {
-		t.Errorf("roles %v: the built-in policy must declare exactly the three roles", got)
+	if got := pol.Compiled().RoleNames(); !slices.Equal(got, []string{"viewer", "operator", "manager", "admin"}) {
+		t.Errorf("roles %v: the built-in policy must declare exactly the four roles", got)
 	}
 	if len(pol.Compiled().Grants()) != 0 {
 		t.Error("the built-in policy grants a role by itself; roles must come from configuration")
@@ -209,5 +213,27 @@ func TestIdentityFromClaims(t *testing.T) {
 	}
 	if _, err := cfg.Identity("u", map[string]any{}); err == nil {
 		t.Fatal("an identity with no tenant claim was accepted")
+	}
+}
+
+func TestManagerIsAnOperatorWhoWritesAgentsAndKnowledge(t *testing.T) {
+	pol := auth.DefaultPolicy()
+	if r, ok := auth.ParseRole("manager"); !ok || r != auth.Manager {
+		t.Fatalf("manager is not a built-in role: %v %v", r, ok)
+	}
+	got := pol.Permissions([]auth.Role{auth.Manager})
+	if !slices.Equal(sorted(got), sorted(managerPermissions)) {
+		t.Fatalf("manager grants %v, want %v", got, managerPermissions)
+	}
+	who := auth.Principal{Subject: "m", Tenant: "acme", Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	for _, p := range []auth.Permission{auth.AgentsWrite, auth.KnowledgeWrite, auth.RunsWrite, auth.SchedulesWrite} {
+		if !who.Can(p) {
+			t.Errorf("a manager cannot %s", p)
+		}
+	}
+	for _, p := range []auth.Permission{auth.BillingWrite, auth.ClientsWrite} {
+		if who.Can(p) {
+			t.Errorf("a manager can %s, which stays an admin's", p)
+		}
 	}
 }

@@ -208,16 +208,24 @@ func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Questi
 		p.log.Warn("platform: a question's rules could not be read, so it is addressed to nobody", "run", run.ID, "question", q.ID, "error", err)
 		return []string{nobody}, nil
 	}
-	var allowed []string
-	switch q.Kind {
-	case payload.QuestionApproval:
-		allowed = rev.Spec.Approvers
-		// Whoever asked for the call does not approve it, and neither does
-		// whoever asked for the work it is part of.
-		excluded = p.selfApprovers(run, rev.Spec.SelfApproval)
-	default:
-		allowed = rev.Spec.Answerers
+	if q.Kind != payload.QuestionApproval {
+		return audienceOf(rev.Spec.Answerers, q), nil
 	}
+	// A call held by the callee's policy names its own approvers, which
+	// replace the caller spec's for this one question, as the runtime
+	// decides who may answer it.
+	allowed, self := rev.Spec.Approvers, rev.Spec.SelfApproval
+	if len(q.Approvers) > 0 {
+		allowed, self = q.Approvers, q.SelfApproval
+	}
+	// Whoever asked for the call does not approve it, and neither does
+	// whoever asked for the work it is part of.
+	return audienceOf(allowed, q), p.selfApprovers(run, self)
+}
+
+// audienceOf is who a question is addressed to: allowed, narrowed to whom
+// the agent asked when that is one of them, or whom it asked when anyone may.
+func audienceOf(allowed []string, q payload.Question) (audience []string) {
 	var hint []string
 	if who := strings.TrimSpace(q.AskedOf); who != "" {
 		hint = []string{who}
@@ -240,7 +248,7 @@ func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Questi
 	default:
 		audience = slices.Clone(allowed)
 	}
-	return audience, excluded
+	return audience
 }
 
 // raiseQuestion puts a question a run is parked on in the inbox, once. via is
@@ -257,12 +265,13 @@ func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Qu
 	part := &inbox.QuestionPart{
 		Run: run.ID, ID: q.ID, Kind: q.Kind, Agent: run.Agent, Prompt: q.Prompt, Options: slices.Clone(q.Options),
 		AskedOf: q.AskedOf, ExpiresAt: q.ExpiresAt, AskedAt: q.At, Via: via,
+		Approvers: slices.Clone(q.Approvers), SelfApproval: q.SelfApproval,
 	}
 	if q.Agent != "" {
 		part.Agent = q.Agent
 	}
 	if q.Tool != nil {
-		part.Tool = &inbox.QuestionTool{Name: q.Tool.Name, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema}
+		part.Tool = &inbox.QuestionTool{Name: q.Tool.Name, CallID: q.Tool.CallID, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema}
 	}
 	switch {
 	case q.Kind == payload.QuestionApproval:
@@ -288,7 +297,7 @@ func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Qu
 	m, raised := p.Inbox.Raise(run.Tenant, key, inbox.Message{
 		Kind: kind, Subject: subject, From: inbox.From{Kind: "agent", Name: part.Agent}, Severity: severity,
 		Audience: audience, Excluded: excluded,
-		Source: inbox.Source{Run: run.ID, Thread: run.Thread, Agent: run.Agent, Project: run.Project},
+		Source: inbox.Source{Run: run.ID, Thread: run.Thread, Agent: run.Agent, Project: run.Project, Target: questionTarget(q)},
 		Parts:  []inbox.Part{{Type: partType, Question: part}},
 	}, at)
 	if raised {
@@ -549,8 +558,8 @@ func mayResume(who auth.Principal, person inbox.Reader) bool {
 // isSelfApproval reports whether the person answering, or the credential
 // answering for them, asked for the run or the tree it is in, unless the
 // run's pinned spec allows self-approval. A spec that cannot be read refuses.
-func (p *Platform) isSelfApproval(ctx context.Context, tenant, runID, by, via string) (bool, error) {
-	run, err := p.Runs.Get(tenant, runID)
+func (p *Platform) isSelfApproval(ctx context.Context, tenant string, q inbox.QuestionPart, by, via string) (bool, error) {
+	run, err := p.Runs.Get(tenant, q.Run)
 	if err != nil {
 		return false, err
 	}
@@ -558,7 +567,13 @@ func (p *Platform) isSelfApproval(ctx context.Context, tenant, runID, by, via st
 	if err != nil {
 		return false, fmt.Errorf("%w: the rules of this run cannot be read, so nobody approves its calls", ErrForbidden)
 	}
-	names := p.selfApprovers(run, rev.Spec.SelfApproval)
+	// A question naming its own approvers carries its own self-approval
+	// rule, as the runtime reads it.
+	self := rev.Spec.SelfApproval
+	if len(q.Approvers) > 0 {
+		self = q.SelfApproval
+	}
+	names := p.selfApprovers(run, self)
 	return slices.Contains(names, by) || slices.Contains(names, via), nil
 }
 
@@ -629,7 +644,7 @@ func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Messa
 		// message was addressed to when it was raised: the runtime does not
 		// know a requester by the names a client maps them to, nor who
 		// started the tree.
-		if self, err := p.isSelfApproval(ctx, who.Tenant, q.Run, reader.Subject, who.Subject); err != nil {
+		if self, err := p.isSelfApproval(ctx, who.Tenant, q, reader.Subject, who.Subject); err != nil {
 			return inbox.Message{}, err
 		} else if self {
 			p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "self-approval")
@@ -657,7 +672,15 @@ func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Messa
 	// must not settle the message ahead of the surface attribution below.
 	p.answers.Lock()
 	defer p.answers.Unlock()
+	// An approved call to an agent is noted before the runtime is told,
+	// because the runtime wakes the run, and the call it lets through checks
+	// for the note. It is dropped again unless this approval is the one
+	// recorded.
+	approved := ans.Decision == payload.DecisionApprove && p.noteApprovedCall(who.Tenant, q, ans)
 	got, first, err := p.rt.Answer(actx, req)
+	if approved && (err != nil || got.Decision != payload.DecisionApprove) {
+		p.dropApprovedCall(who.Tenant, q)
+	}
 	// A question answered the moment it is announced may not be recorded yet.
 	// It is asked again for a short while, never past the request.
 	for deadline := time.Now().Add(recordWait); errors.Is(err, runtime.ErrNoQuestion) && time.Now().Before(deadline); {

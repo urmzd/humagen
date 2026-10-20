@@ -87,8 +87,12 @@ const (
 	// Operator runs agents, manages schedules, and acknowledges alerts and
 	// sets their rules.
 	Operator Role = "operator"
-	// Admin also defines and revises agents, and decides what they may be
-	// grounded in.
+	// Manager is an operator who also defines and revises agents, their call
+	// policies among them, and decides what they may be grounded in. It is
+	// the natural approver of calls between agents.
+	Manager Role = "manager"
+	// Admin also sets limits and billing, and manages the workspace's
+	// clients.
 	Admin Role = "admin"
 )
 

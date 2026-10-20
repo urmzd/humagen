@@ -18,13 +18,14 @@ Every caller becomes a `Principal`, and every route asks it one question:
 ## Roles and scopes
 
 Roles and who holds them are set by an [authorization policy](authorization.md).
-The built-in one declares these three, and the group flags grant them:
+The built-in one declares these four, and the group flags grant them:
 
 | Role | Permissions |
 |------|-------------|
 | `viewer` | `agents:read`, `runs:read`, `schedules:read`, `alerts:read`, `knowledge:read`, `evals:read`, `billing:read`, `artifacts:read`, `clients:read` |
 | `operator` | viewer, plus `runs:write`, `schedules:write`, `alerts:write`, `evals:write`, `artifacts:write` |
-| `admin` | operator, plus `agents:write`, `knowledge:write`, `billing:write`, `clients:write` |
+| `manager` | operator, plus `agents:write`, `knowledge:write`. Writing agents covers their call policies, so a manager is the natural approver of calls between agents |
+| `admin` | manager, plus `billing:write`, `clients:write` |
 
 Writing knowledge is an admin permission because a document an agent is grounded
 in changes what that agent says. Writing clients is one because a client hands
@@ -164,7 +165,8 @@ else. It logs a warning at start and its page says what it is. See
    to a value of your choice, such as `api://warp`.
 3. Add a **groups claim** named `groups` to both ID and access tokens, filtered
    to the platform's groups.
-4. Create the groups `warp-admins`, `warp-operators` and `warp-viewers`, and
+4. Create the groups `warp-admins`, `warp-managers`, `warp-operators` and
+   `warp-viewers`, and
    assign people.
 5. For each machine, create an **API services application** and grant it only
    the `warp:` scopes it needs. Add those scopes to the authorization server.
