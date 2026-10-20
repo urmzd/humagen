@@ -1,4 +1,5 @@
 import { type Branding, DEFAULT_BRANDING, readBranding } from "./branding.ts";
+import { defaultJournalPath } from "./journal.ts";
 import { clientCredentials, staticToken, type TokenSource } from "./warp.ts";
 
 export interface Config {
@@ -11,6 +12,8 @@ export interface Config {
     operators: string[];
     /** Name, tagline, disclaimer and suggested prompts, from the file `SLACK_BRANDING` names. */
     branding: Branding;
+    /** The file that records open streams, so the next start can close them. */
+    streamJournal: string;
   };
   warp: {
     url: string;
@@ -65,7 +68,11 @@ export function readConfig(env: Record<string, string | undefined> = process.env
     );
   }
   return {
-    slack: { ...slack, branding: brandingPath ? readBranding(brandingPath) : DEFAULT_BRANDING },
+    slack: {
+      ...slack,
+      branding: brandingPath ? readBranding(brandingPath) : DEFAULT_BRANDING,
+      streamJournal: env.SLACK_STREAM_JOURNAL?.trim() || defaultJournalPath(slack.team, env),
+    },
     warp: {
       url: env.WARP_URL?.trim() || "http://127.0.0.1:8080",
       tenant,

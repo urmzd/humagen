@@ -127,6 +127,15 @@ Slack redelivery joins the run it started, and the app asks warp before
 starting it. The stop button asks warp which runs in the thread are still
 going.
 
+One thing is kept on disk: the Slack streams this process has open (channel,
+message and thread, nothing else), in `SLACK_STREAM_JOURNAL`, by default
+`$XDG_STATE_HOME/warp-slack/streams-<team>.json` (`~/.local/state` when
+unset). A process that crashes or is killed mid-turn leaves its streams open;
+the next one closes each with a note that the answer was cut off and asks
+again, and sets the thread's session to active, before it connects. A close
+that fails for want of the network is tried again at the next start. One
+journal file serves one process.
+
 Kept in memory, and lost on restart:
 
 - Who asked for each run. After a restart only operators can settle that run's
