@@ -396,6 +396,8 @@ export interface Schedule {
   text: string;
   /** Files every run the schedule raises under a project. */
   project?: string;
+  /** What the schedule is for, at most 500 characters. The agent is not shown it. */
+  description?: string;
 }
 
 /** A schedule with whether it is running, when it fires next, and how its recent occurrences went. */
@@ -405,8 +407,12 @@ export interface ScheduleView {
   agent: string;
   text: string;
   project?: string;
+  description?: string;
   paused: boolean;
   created_by?: string;
+  /** Who last changed the schedule. Absent until it is changed. */
+  updated_by?: string;
+  updated_at?: string;
   /** The next three fires. Empty while paused. */
   next: string[];
   /** Up to 20 recent runs. */
@@ -722,20 +728,59 @@ export interface Span {
   error?: string;
 }
 
-export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "budget";
+/** `budget` is raised by a billing policy, never by a rule, and a rule
+cannot be created with it.
+ */
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget";
 
 export type AlertSeverity = "warning" | "critical";
 
+/** A condition on runs that raises an alert. Every field but `name`,
+`kind` and `severity` is optional, and leaving one out keeps the
+behaviour rules had before it existed: every agent and project,
+enabled, no cooldown, and a message for everyone who may read alerts.
+ */
 export interface AlertRule {
   name: string;
   kind: AlertKind;
+  /** What the rule is for, at most 500 characters. */
+  description?: string;
   /** Only this agent's runs. Empty means every agent. */
   agent?: string;
+  /** Only runs filed under this project. Empty means every run, in a
+project or not. With `agent`, both must match. An `eval_below`
+rule cannot name a project.
+ */
+  project?: string;
   severity: AlertSeverity;
+  /** A percentage for `failure_rate` and `eval_below`, seconds for `slow_run`. Not used by `spend`. */
   threshold?: number;
+  /** For `spend` only, and required by it. The cost, in micro-USD, of the runs in scope over the window at which the rule fires. */
+  threshold_micros?: number;
+  /** How far back `failure_rate` and `spend` look, up to 30 days. */
   window_seconds?: number;
   min_runs?: number;
+  /** After the rule raises an alert it raises no other for this long,
+acknowledged or not, up to 30 days. Zero or absent means no
+cooldown. `failure_rate` and `spend` also stay quiet while their
+last alert is open.
+ */
+  cooldown_seconds?: number;
+  /** A paused rule is not evaluated. Absent or false means the rule is enabled. */
+  paused?: boolean;
+  /** Who the inbox message about an alert is for: people by subject, as
+agent approvers are written, and roles as `role:<name>`. A reader
+sees the message if their subject is listed or they hold a role
+listed. Empty or absent means everyone who may read alerts. Either
+way only people with `alerts:read` see it, and `GET /api/alerts`
+lists every alert to them. At most 20 entries.
+ */
+  notify?: string[];
   created_by?: string;
+  created_at?: string;
+  /** Who last replaced the rule. Absent until it is replaced. */
+  updated_by?: string;
+  updated_at?: string;
 }
 
 export interface Alert {
@@ -744,6 +789,8 @@ export interface Alert {
   kind: AlertKind;
   severity: AlertSeverity;
   agent?: string;
+  /** The project of the run that raised the alert, if any. */
+  project?: string;
   run_id?: string;
   suite?: string;
   title: string;

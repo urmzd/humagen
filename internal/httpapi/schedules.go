@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"maps"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/urmzd/fiber/pkg/connectors/cron"
@@ -20,6 +22,8 @@ type schedule struct {
 	Text       string `json:"text"`
 	// Project files every run the schedule raises under a project.
 	Project string `json:"project,omitempty"`
+	// Description says what the schedule is for. The agent is not shown it.
+	Description string `json:"description,omitempty"`
 }
 
 // scheduleView is a schedule with what a person needs to trust it: whether it
@@ -28,18 +32,23 @@ type scheduleView struct {
 	schedule
 	Paused    bool        `json:"paused"`
 	CreatedBy string      `json:"created_by,omitempty"`
+	UpdatedBy string      `json:"updated_by,omitempty"`
+	UpdatedAt time.Time   `json:"updated_at,omitzero"`
 	Next      []time.Time `json:"next"`
 	Recent    []runs.Run  `json:"recent"`
 }
 
 func (s *Server) viewOf(sc cron.Schedule, now time.Time) scheduleView {
+	about := s.P.Schedules.About(sc.Name)
 	v := scheduleView{
 		schedule: schedule{
 			Name: sc.Name, Expression: sc.Expression, Agent: sc.Agent, Text: sc.Text,
-			Project: sc.Meta[runs.MetaProject],
+			Project: sc.Meta[runs.MetaProject], Description: about.Description,
 		},
 		Paused:    s.P.Schedules.Paused(sc.Name),
 		CreatedBy: sc.Meta["created_by"],
+		UpdatedBy: about.UpdatedBy,
+		UpdatedAt: about.UpdatedAt,
 		Next:      []time.Time{},
 		Recent:    orEmpty(s.P.Runs.ForSchedule(sc.Tenant, sc.Name, 20)),
 	}
@@ -63,30 +72,83 @@ func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request, who auth
 	if !decode(w, r, &body) {
 		return
 	}
-	// A schedule runs an agent with nobody present, so the agent must exist
-	// in the caller's tenant now rather than fail every occurrence later.
-	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, body.Agent, 0); err != nil {
-		s.problem(w, err)
+	meta, valid := s.scheduleMeta(w, r, who, body, map[string]string{"created_by": who.Subject})
+	if !valid {
 		return
-	}
-	meta := map[string]string{"created_by": who.Subject}
-	if body.Project != "" {
-		if !s.P.HasProject(who.Tenant, body.Project) {
-			s.problem(w, platform.ErrProjectNotFound)
-			return
-		}
-		meta[runs.MetaProject] = body.Project
 	}
 	sc := cron.Schedule{
 		Name: body.Name, Expression: body.Expression, Agent: body.Agent, Text: body.Text,
 		Tenant: who.Tenant,
 		Meta:   meta,
 	}
-	if err := s.P.Schedules.Add(sc); err != nil {
+	if err := s.P.Schedules.Add(sc, platform.About{Description: strings.TrimSpace(body.Description)}); err != nil {
 		s.problem(w, err)
 		return
 	}
 	ok(w, http.StatusCreated, s.viewOf(sc, time.Now()))
+}
+
+// updateSchedule changes what a schedule runs and when. Its name cannot
+// change. Whether it is paused, who created it and the runs it raised are
+// kept: they are found by its name.
+func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	name := r.PathValue("name")
+	var body schedule
+	if !decode(w, r, &body) {
+		return
+	}
+	// Another workspace's schedule, or one that does not exist, is not
+	// found before what the body names is looked up.
+	old, _, err := s.P.Schedules.Get(who.Tenant, name)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	if body.Name == "" {
+		body.Name = name
+	}
+	if body.Name != name {
+		fail(w, http.StatusBadRequest, "a schedule's name cannot change; delete it and create another")
+		return
+	}
+	meta, valid := s.scheduleMeta(w, r, who, body, maps.Clone(old.Meta))
+	if !valid {
+		return
+	}
+	sc := cron.Schedule{
+		Name: name, Expression: body.Expression, Agent: body.Agent, Text: body.Text,
+		Tenant: who.Tenant, Routes: old.Routes,
+		Meta: meta,
+	}
+	about := platform.About{Description: strings.TrimSpace(body.Description), UpdatedBy: who.Subject, UpdatedAt: time.Now().UTC()}
+	if err := s.P.Schedules.Replace(sc, about); err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, s.viewOf(sc, time.Now()))
+}
+
+// scheduleMeta checks that what a schedule names exists in the caller's
+// tenant now, and returns meta with its project set. A schedule runs an agent
+// with nobody present, so a missing agent is refused now rather than failing
+// every occurrence later.
+func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.Principal, body schedule, meta map[string]string) (map[string]string, bool) {
+	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, body.Agent, 0); err != nil {
+		s.problem(w, err)
+		return nil, false
+	}
+	if meta == nil {
+		meta = map[string]string{}
+	}
+	delete(meta, runs.MetaProject)
+	if body.Project != "" {
+		if !s.P.HasProject(who.Tenant, body.Project) {
+			s.problem(w, platform.ErrProjectNotFound)
+			return nil, false
+		}
+		meta[runs.MetaProject] = body.Project
+	}
+	return meta, true
 }
 
 func (s *Server) deleteSchedule(w http.ResponseWriter, r *http.Request, who auth.Principal) {

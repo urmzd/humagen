@@ -82,12 +82,23 @@ export interface Schedule {
   text: string;
   /** Files every run the schedule raises under a project. */
   project?: string;
+  /** What the schedule is for, at most 500 characters. The agent is not shown it. */
+  description?: string;
 }
+
+/**
+ * The body of PUT /api/schedules/{name}: everything but the name, which
+ * cannot change. Fields left out are cleared, not kept.
+ */
+export type ScheduleEdit = Omit<Schedule, "name">;
 
 /** A schedule plus what makes it trustworthy: state, next fires, recent runs. */
 export interface ScheduleView extends Schedule {
   paused: boolean;
   created_by?: string;
+  /** Who last edited the schedule, and when. Absent until it is edited. */
+  updated_by?: string;
+  updated_at?: string;
   next: string[];
   recent: Run[];
 }
@@ -147,16 +158,58 @@ export interface Span {
   error?: string;
 }
 
+/** Every kind a rule can have. `budget` alerts come from billing policies, never from a rule. */
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend";
+
+/**
+ * A rule as the console renders it today. Its kind leaves out `spend`, which
+ * the current screens do not draw yet; `AlertRuleConfig` is the whole rule.
+ * Fold the two together once the screens handle every `AlertKind`.
+ */
 export interface AlertRule {
   name: string;
-  kind: "run_failed" | "failure_rate" | "slow_run" | "eval_below";
+  kind: Exclude<AlertKind, "spend">;
+  /** What the rule is for, at most 500 characters. */
+  description?: string;
+  /** Only this agent's runs. Absent means every agent. */
   agent?: string;
+  /** Only runs filed under this project. Narrows together with agent. Not for eval_below. */
+  project?: string;
   severity: "warning" | "critical";
+  /** A percentage for failure_rate and eval_below, seconds for slow_run. Not for spend. */
   threshold?: number;
+  /** For spend only, and required by it: the cost in micro-USD at which it fires. */
+  threshold_micros?: number;
+  /** How far back failure_rate and spend look, up to 30 days. */
   window_seconds?: number;
   min_runs?: number;
+  /** Quiet for this long after raising, acknowledged or not, up to 30 days. */
+  cooldown_seconds?: number;
+  /** A paused rule is not evaluated. Absent means enabled. */
+  paused?: boolean;
+  /**
+   * Who the inbox message is for: subjects, and roles as "role:<name>".
+   * Absent or empty means everyone who may read alerts.
+   */
+  notify?: string[];
   created_by?: string;
+  created_at?: string;
+  /** Who last replaced the rule, and when. Absent until it is replaced. */
+  updated_by?: string;
+  updated_at?: string;
 }
+
+/** A rule of any kind, as the server stores and returns it. */
+export interface AlertRuleConfig extends Omit<AlertRule, "kind"> {
+  kind: AlertKind;
+}
+
+/**
+ * The body of PUT /api/alert-rules/{name}: the whole rule but its name, which
+ * cannot change. Fields left out are cleared, not kept. The server sets who
+ * created and updated it.
+ */
+export type AlertRuleEdit = Omit<AlertRuleConfig, "name" | "created_by" | "created_at" | "updated_by" | "updated_at">;
 
 export interface Alert {
   id: string;
@@ -164,6 +217,8 @@ export interface Alert {
   kind: AlertRule["kind"];
   severity: AlertRule["severity"];
   agent?: string;
+  /** The project of the run that raised the alert, if any. */
+  project?: string;
   run_id?: string;
   suite?: string;
   title: string;
@@ -453,6 +508,17 @@ async function call<T>(method: string, path: string, json?: unknown): Promise<T>
   return data as T;
 }
 
+/** The editable part of a rule, for sending back with PUT /api/alert-rules/{name}. */
+export function alertRuleEdit(rule: AlertRuleConfig): AlertRuleEdit {
+  const edit: AlertRuleEdit & Partial<AlertRuleConfig> = { ...rule };
+  delete edit.name;
+  delete edit.created_by;
+  delete edit.created_at;
+  delete edit.updated_by;
+  delete edit.updated_at;
+  return edit;
+}
+
 export const api = {
   me: () => call<Me>("GET", "/api/me"),
   explain: (permission: string) =>
@@ -562,6 +628,9 @@ export const api = {
   runSuite: (name: string) => call<EvalRun>("POST", `/api/evals/${encodeURIComponent(name)}/run`),
   schedules: () => call<{ schedules: ScheduleView[] }>("GET", "/api/schedules").then((r) => r.schedules),
   createSchedule: (s: Schedule) => call<ScheduleView>("POST", "/api/schedules", s),
+  /** Change a schedule. Its pause state, creator and recent runs are kept. */
+  updateSchedule: (name: string, s: ScheduleEdit) =>
+    call<ScheduleView>("PUT", `/api/schedules/${encodeURIComponent(name)}`, s),
   deleteSchedule: (name: string) => call<void>("DELETE", `/api/schedules/${encodeURIComponent(name)}`),
   pauseSchedule: (name: string, paused: boolean) =>
     call<ScheduleView>("POST", `/api/schedules/${encodeURIComponent(name)}/${paused ? "pause" : "resume"}`),
@@ -576,6 +645,19 @@ export const api = {
   ackAlert: (id: string) => call<Alert>("POST", `/api/alerts/${encodeURIComponent(id)}/ack`),
   alertRules: () => call<{ rules: AlertRule[] }>("GET", "/api/alert-rules").then((r) => r.rules),
   createAlertRule: (r: AlertRule) => call<AlertRule>("POST", "/api/alert-rules", r),
+  /** Every rule, of every kind, spend included. */
+  alertRuleConfigs: () => call<{ rules: AlertRuleConfig[] }>("GET", "/api/alert-rules").then((r) => r.rules),
+  /** Create a rule of any kind, spend included. */
+  createAlertRuleConfig: (r: AlertRuleConfig) => call<AlertRuleConfig>("POST", "/api/alert-rules", r),
+  /** Replace a rule. Its creator, its alerts and its cooldown are kept. */
+  updateAlertRule: (name: string, r: AlertRuleEdit) =>
+    call<AlertRuleConfig>("PUT", `/api/alert-rules/${encodeURIComponent(name)}`, r),
+  /** Pause or resume a rule, keeping everything else about it. */
+  setAlertRulePaused: (rule: AlertRuleConfig, paused: boolean) =>
+    call<AlertRuleConfig>("PUT", `/api/alert-rules/${encodeURIComponent(rule.name)}`, {
+      ...alertRuleEdit(rule),
+      paused,
+    }),
   deleteAlertRule: (name: string) => call<void>("DELETE", `/api/alert-rules/${encodeURIComponent(name)}`),
 
   sources: () => call<{ sources: Source[] }>("GET", "/api/knowledge").then((r) => r.sources),

@@ -1124,6 +1124,35 @@ each message's `data` field, which is how the oag generator reads
     });
   }
 
+  /** Replaces the schedule's expression, agent, text, project and
+description. The name cannot change: a `name` in the body must match
+the path, or be left out. Whether the schedule is paused, who created
+it and the runs it raised are kept. The agent, and the project if one
+is named, must exist now. The whole edit is checked before anything
+changes, so a refused edit leaves the schedule as it was. An edited
+schedule starts afresh from the time of the edit: it does not catch up
+on occurrences of its new expression that fell before it.
+ */
+  async updateSchedule(name: string, body: Schedule, options?: RequestOptions): Promise<ScheduleView> {
+    let path = "/api/schedules/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ScheduleView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateScheduleRaw(name: string, body: Schedule, options?: RequestOptions): Promise<ApiResponse<ScheduleView>> {
+    let path = "/api/schedules/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ScheduleView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** Delete a schedule */
   async deleteSchedule(name: string, options?: RequestOptions): Promise<void> {
     let path = "/api/schedules/{name}";
@@ -1605,7 +1634,10 @@ the file's SHA-256.
     });
   }
 
-  /** `created_by` is set by the server, whatever the body says. */
+  /** `created_by` and `created_at` are set by the server, and `updated_by`
+and `updated_at` are cleared, whatever the body says. The agent and
+the project a rule is scoped to must exist now.
+ */
   async createAlertRule(body: AlertRule, options?: RequestOptions): Promise<AlertRule> {
     const path = "/api/alert-rules";
     return this.request<AlertRule>("POST", path, {
@@ -1618,6 +1650,32 @@ the file's SHA-256.
   async createAlertRuleRaw(body: AlertRule, options?: RequestOptions): Promise<ApiResponse<AlertRule>> {
     const path = "/api/alert-rules";
     return this.rawRequest<AlertRule>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The body is checked exactly as a new rule is. The name cannot change:
+a `name` in the body must match the path, or be left out.
+`created_by` and `created_at` are kept from the rule replaced, and
+`updated_by` and `updated_at` are set by the server. Alerts the rule
+already raised stay, and so does its cooldown.
+ */
+  async updateAlertRule(name: string, body: AlertRule, options?: RequestOptions): Promise<AlertRule> {
+    let path = "/api/alert-rules/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AlertRule>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateAlertRuleRaw(name: string, body: AlertRule, options?: RequestOptions): Promise<ApiResponse<AlertRule>> {
+    let path = "/api/alert-rules/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AlertRule>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,

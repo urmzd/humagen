@@ -493,15 +493,15 @@ func TestAConcurrencyLimitFreesUp(t *testing.T) {
 func TestSchedules(t *testing.T) {
 	var s platform.Schedules
 	every := cron.Schedule{Name: "nightly", Expression: "0 2 * * *", Agent: "lead", Text: "report", Tenant: tenant}
-	if err := s.Add(every); err != nil {
+	if err := s.Add(every, platform.About{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Add(every); !errors.Is(err, platform.ErrScheduleExists) {
+	if err := s.Add(every, platform.About{}); !errors.Is(err, platform.ErrScheduleExists) {
 		t.Fatalf("duplicate: got %v", err)
 	}
 	bad := every
 	bad.Name, bad.Expression = "bad", "not cron"
-	if err := s.Add(bad); err == nil {
+	if err := s.Add(bad, platform.About{}); err == nil {
 		t.Fatal("an invalid expression was stored")
 	}
 	if got := s.List("globex"); len(got) != 0 {
@@ -515,5 +515,58 @@ func TestSchedules(t *testing.T) {
 	}
 	if got := s.List(tenant); len(got) != 0 {
 		t.Fatalf("still listed: %v", got)
+	}
+}
+
+func TestReplacingAScheduleKeepsItsPlaceAndStartsAfresh(t *testing.T) {
+	ctx := context.Background()
+	var s platform.Schedules
+	daily := cron.Schedule{Name: "nightly", Expression: "0 2 * * *", Agent: "lead", Text: "report", Tenant: tenant, Meta: map[string]string{"created_by": "ada"}}
+	if err := s.Add(daily, platform.About{Description: "The nightly report"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetPaused(tenant, "nightly", true); err != nil {
+		t.Fatal(err)
+	}
+
+	// A refused edit changes nothing.
+	bad := daily
+	bad.Expression = "whenever"
+	if err := s.Replace(bad, platform.About{}); !errors.Is(err, cron.ErrSchedule) {
+		t.Fatalf("an invalid expression: %v", err)
+	}
+	if err := s.Replace(daily, platform.About{Description: strings.Repeat("a", platform.MaxScheduleDescription+1)}); !errors.Is(err, cron.ErrSchedule) {
+		t.Fatalf("a long description: %v", err)
+	}
+	other := daily
+	other.Tenant = "globex"
+	if err := s.Replace(other, platform.About{}); !errors.Is(err, platform.ErrScheduleNotFound) {
+		t.Fatalf("another tenant's schedule: %v", err)
+	}
+	if got, _, _ := s.Get(tenant, "nightly"); got.Expression != "0 2 * * *" || s.About("nightly").Description != "The nightly report" {
+		t.Fatalf("a refused edit changed the schedule: %+v %+v", got, s.About("nightly"))
+	}
+
+	minutely := daily
+	minutely.Expression, minutely.Text = "* * * * *", "status"
+	if err := s.Replace(minutely, platform.About{UpdatedBy: "bob"}); err != nil {
+		t.Fatal(err)
+	}
+	got, paused, _ := s.Get(tenant, "nightly")
+	if got.Expression != "* * * * *" || got.Text != "status" || !paused || got.Meta["created_by"] != "ada" {
+		t.Fatalf("after the edit: %+v, paused %v", got, paused)
+	}
+	if a := s.About("nightly"); a.UpdatedBy != "bob" || a.Description != "" {
+		t.Fatalf("about = %+v", a)
+	}
+
+	// Resumed, the edited schedule is left out of one read, so the
+	// connector starts it fresh rather than catching up the new expression.
+	_ = s.SetPaused(tenant, "nightly", false)
+	if first, _ := s.Schedules(ctx); len(first) != 0 {
+		t.Fatalf("the first read after an edit showed %v", first)
+	}
+	if second, _ := s.Schedules(ctx); len(second) != 1 || second[0].Expression != "* * * * *" {
+		t.Fatalf("the second read showed %v", second)
 	}
 }

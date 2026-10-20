@@ -257,4 +257,42 @@ func TestInboxHoldsFailures(t *testing.T) {
 	if open, _ := p.InboxCount(admin); open != 0 {
 		t.Fatalf("%d still open", open)
 	}
+	// A rule that names whom to notify addresses its message to them alone,
+	// and still only to people who may read alerts.
+	if err := p.Alerts.RemoveRule(tenant, "any"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Alerts.AddRule(tenant, alerts.Rule{
+		Name: "ops", Kind: alerts.RunFailed, Severity: alerts.Critical, Notify: []string{"role:operator", "vi", "nell"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fourth := fail("run-4")
+	nobody := auth.Principal{Subject: "nell", Tenant: tenant, Kind: auth.User}
+	for _, c := range []struct {
+		who  auth.Principal
+		sees int
+	}{{operator, 1}, {viewer, 1}, {admin, 0}, {nobody, 0}} {
+		if page, _, _ := p.InboxPage(c.who, inbox.Query{}); len(page) != c.sees {
+			t.Fatalf("%s sees %d messages, want %d: %+v", c.who.Subject, len(page), c.sees, page)
+		}
+	}
+	page, _, _ = p.InboxPage(operator, inbox.Query{})
+	if _, err := p.InboxGet(admin, page[0].ID); !errors.Is(err, inbox.ErrNotFound) {
+		t.Fatalf("someone not notified read the message: %v", err)
+	}
+	// Anyone who may acknowledge alerts can still acknowledge it from the
+	// alert's side, and its message is settled though they were not notified.
+	var opsAlert alerts.Alert
+	for _, a := range p.Alerts.Alerts(tenant) {
+		if a.RunID == fourth.ID {
+			opsAlert = a
+		}
+	}
+	if _, err := p.AckAlert(tenant, opsAlert.ID, admin.Subject); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := p.InboxGet(operator, page[0].ID); got.State != inbox.Resolved || got.Parts[0].Outcome.By != admin.Subject {
+		t.Fatalf("after an ack by someone not notified the message is %+v", got)
+	}
 }
