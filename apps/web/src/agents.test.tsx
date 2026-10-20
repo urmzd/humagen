@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AgentDetail, BUILTIN_LOCKED } from "./AgentDetail.tsx";
-import type { Revision } from "./api.ts";
+import { AgentDetail, BUILTIN_LOCKED, type Tab } from "./AgentDetail.tsx";
+import type { Note, Revision } from "./api.ts";
 
 const writer: Revision = {
   rev: 2,
@@ -12,8 +12,14 @@ const writer: Revision = {
   hash: "h2",
 };
 
+const older: Revision = { ...writer, rev: 1, hash: "h1", spec: { ...writer.spec, system_prompt: "Write." } };
+const notes: Note[] = [
+  { id: "n1", text: "Releases go out on Tuesdays.", source: "person", status: "approved", by: "ada", at: new Date().toISOString() },
+  { id: "n2", text: "Ada prefers short plans.", source: "consolidated", status: "pending", at: new Date().toISOString() },
+];
+
 const noop = () => {};
-const render = (builtin: boolean, canWrite = true) =>
+const render = (builtin: boolean, canWrite = true, startOn: Tab = "prompt") =>
   renderToStaticMarkup(
     <AgentDetail
       revision={writer}
@@ -34,6 +40,8 @@ const render = (builtin: boolean, canWrite = true) =>
       onSuitesChanged={noop}
       onOpenRun={noop}
       onBaseline={noop}
+      startOn={startOn}
+      seed={{ history: [writer, older], notes }}
     />,
   );
 
@@ -56,4 +64,51 @@ test("the same agent, not built in, is editable by a writer", () => {
 test("someone who may not write sees no save, with or without the lock", () => {
   assert.doesNotMatch(render(false, false), /Save as Revision/);
   assert.doesNotMatch(render(false, false), /agent-locked/);
+});
+
+const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+// The setup tab's controls, by what they hold.
+const model = (html: string) => /<input[^>]*value="offline"[^>]*>/.exec(html)?.[0] ?? "";
+const baselineSwitch = (html: string) => {
+  // The baseline is the last switch on the tab, after the spec's own.
+  const at = html.indexOf("Baseline agent");
+  return at < 0 ? "" : (/<input type="checkbox" class="warp-switch[^>]*>/.exec(html.slice(at))?.[0] ?? "");
+};
+
+test("Setup: a built-in's spec is locked, but the workspace baseline is not", () => {
+  const locked = render(true, true, "setup");
+  assert.match(model(locked), /disabled=""/);
+  // Every spec switch is locked.
+  const specSwitches = locked.slice(0, locked.indexOf("Baseline agent")).match(/<input type="checkbox" class="warp-switch[^>]*>/g) ?? [];
+  assert.ok(specSwitches.length > 0 && specSwitches.every((s) => s.includes('disabled=""')), "the spec's switches are locked");
+  assert.ok(baselineSwitch(locked), "the baseline switch is on the page");
+  assert.doesNotMatch(baselineSwitch(locked), /disabled/);
+  const open = render(false, true, "setup");
+  assert.doesNotMatch(model(open), /disabled/);
+  assert.doesNotMatch(baselineSwitch(open), /disabled/);
+  // Without the right to write, neither changes.
+  const reader = render(false, false, "setup");
+  assert.match(model(reader), /disabled=""/);
+  assert.match(baselineSwitch(reader), /disabled=""/);
+});
+
+test("Revisions: restore is offered for an older revision, never for a built-in", () => {
+  assert.match(text(render(false, true, "revisions")), /Restore as Revision 3/);
+  assert.match(text(render(true, true, "revisions")), /Revision 1/);
+  assert.doesNotMatch(text(render(true, true, "revisions")), /Restore as Revision/);
+  assert.doesNotMatch(text(render(false, false, "revisions")), /Restore as Revision/);
+});
+
+test("Memory: a writer keeps a built-in's memory, as the server allows; a reader cannot", () => {
+  for (const builtin of [true, false]) {
+    const html = render(builtin, true, "memory");
+    const words = text(html);
+    assert.match(words, /Remember/, `builtin ${builtin}`);
+    assert.match(words, /Forget/, `builtin ${builtin}`);
+    assert.match(words, /Discard All/, `builtin ${builtin}`);
+    assert.doesNotMatch(/<input type="checkbox" class="mt-1"[^>]*>/.exec(html)?.[0] ?? "", /disabled/);
+  }
+  const reader = render(false, false, "memory");
+  assert.doesNotMatch(text(reader), /Remember|Forget|Discard All/);
+  assert.match(/<input type="checkbox" class="mt-1"[^>]*>/.exec(reader)?.[0] ?? "", /disabled=""/);
 });
