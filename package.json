@@ -2,7 +2,7 @@
   "name": "warp",
   "private": true,
   "type": "module",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "packageManager": "pnpm@11.6.0",
   "scripts": {
     "build": "turbo run build",

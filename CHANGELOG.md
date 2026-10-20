@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0 (2026-10-20)
+
+### Features
+
+- a console organized around work, with model policies and governed agent calls (#33) ([34d92b0](https://github.com/urmzd/warp/commit/34d92b0e1f521ffd606e163e86cbdc6b1484017c))
+
+### Misc
+
+- **deps**: fiber v0.20.0 (#34) ([1abd413](https://github.com/urmzd/warp/commit/1abd413e65c87dcd4399623bac0b832722f259d8))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.7.0...v0.8.0)
+
+
 ## 0.7.0 (2026-10-20)
 
 ### Features
