@@ -187,6 +187,8 @@ export interface Actor {
   id: string;
   display?: string;
   bot?: boolean;
+  /** The person's own account in the product that sent the request, next to the connector's id for them. */
+  user?: string;
 }
 
 /** Where a run stands. `completed`, `failed` and `stopped` are final. */
