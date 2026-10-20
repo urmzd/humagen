@@ -2992,6 +2992,9 @@ components:
         id: {type: string}
         display: {type: string}
         bot: {type: boolean}
+        user:
+          description: The person's own account in the product that sent the request, next to the connector's id for them.
+          type: string
     RunStatus:
       description: Where a run stands. `completed`, `failed` and `stopped` are final.
       type: string

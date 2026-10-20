@@ -110,9 +110,15 @@ endpoint also accepts the structured contract under `input`.
 
 ## Runtime dependency
 
-Warp depends on the fiber release `v0.17.0`, which carries the call
-extension (PR #17), model fallbacks with `fallback_on`, and per-call approvals
-(`agentrt.Approving`, PRs #32 and #33). Builds need no local worktree.
+Warp depends on the fiber release `v0.20.0`. It carries:
+- the call extension (PR #17);
+- model fallbacks with `fallback_on`, and per-call approvals
+  (`agentrt.Approving`, PRs #32 and #33);
+- `mcp:<provider>[:write]` grants from the tool provider store (PR #35);
+- unavailable tools and tool groups dropped with a warning rather than
+  failing the run (PRs #27 and #37).
+
+Builds need no local worktree.
 
 For runtime development, an ignored `go.work` can link the matching worktree:
 
