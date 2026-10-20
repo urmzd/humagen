@@ -85,6 +85,12 @@ export interface AgentSpec {
   description?: string;
   model: string;
   provider: string;
+  /** Models tried in order when the primary fails with an error another
+model could get past (an outage, a rate limit, an exhausted retry).
+An invalid request or a cancellation is not retried elsewhere. At
+most 4, none repeating the primary or each other.
+ */
+  fallbacks?: ModelRef[];
   system_prompt: string;
   tools?: string[];
   sources?: AgentSource[];
@@ -103,6 +109,12 @@ anyone in the workspace approve, except the person who asked.
   self_approval?: boolean;
   /** When set, the only people who may answer a choice or a reply, named as approvers are. */
   answerers?: string[];
+}
+
+/** One model, named by its provider. */
+export interface ModelRef {
+  provider: string;
+  model: string;
 }
 
 /** One immutable revision of an agent. */
@@ -1130,6 +1142,10 @@ export interface ToolCallPayload {
   name: string;
   /** `requested` while the model writes the call, `executing` once it runs. */
   phase: "requested" | "executing";
+  /** The call's arguments as a JSON object. Absent while the model is still writing the call, and when they were too large to carry. */
+  arguments?: Record<string, unknown>;
+  /** The size of arguments left out for being too large, so "left out" reads apart from "none". */
+  arguments_bytes?: number;
 }
 
 /** A tool execution finished. */
@@ -1139,6 +1155,10 @@ export interface ToolDonePayload {
   result?: string;
   /** Set when the tool failed. `result` is then the failure text the model was shown. */
   error?: string;
+  /** The call's arguments as a JSON object. Absent while the model is still writing the call, and when they were too large to carry. */
+  arguments?: Record<string, unknown>;
+  /** The size of arguments left out for being too large, so "left out" reads apart from "none". */
+  arguments_bytes?: number;
 }
 
 /** Where a cited passage came from. */

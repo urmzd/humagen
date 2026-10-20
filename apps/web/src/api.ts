@@ -41,11 +41,18 @@ export interface AccessDecision {
   unknown?: string[];
 }
 
+export interface ModelRef {
+  provider: string;
+  model: string;
+}
+
 export interface AgentSpec {
   name: string;
   description?: string;
   model: string;
   provider: string;
+  /** Tried in order when the primary model fails with an error another model could get past. */
+  fallbacks?: ModelRef[];
   system_prompt: string;
   tools?: string[];
   sources?: { name: string; uri: string }[];
