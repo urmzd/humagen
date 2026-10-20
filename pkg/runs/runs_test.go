@@ -111,16 +111,42 @@ func TestSummarizeBoundsItsBuckets(t *testing.T) {
 func TestRecent(t *testing.T) {
 	x := NewIndex()
 	record(t, x, "acme", "a", "lead", "api", 0, nil)
-	record(t, x, "acme", "b", "helper", "api", time.Minute, nil)
+	record(t, x, "acme", "b", "helper", "api", time.Minute, map[string]string{MetaProject: "Launch"})
 	end(t, x, "acme", "b", 2*time.Minute, envelope.KindFailed, payload.Lifecycle{Terminal: true})
-	if total, failed := x.Recent("acme", "", t0); total != 2 || failed != 1 {
-		t.Fatalf("all = %d, %d", total, failed)
+	if w := x.Recent("acme", "", "", t0); w.Total != 2 || w.Failed != 1 {
+		t.Fatalf("all = %+v", w)
 	}
-	if total, failed := x.Recent("acme", "lead", t0); total != 1 || failed != 0 {
-		t.Fatalf("lead = %d, %d", total, failed)
+	if w := x.Recent("acme", "lead", "", t0); w.Total != 1 || w.Failed != 0 {
+		t.Fatalf("lead = %+v", w)
 	}
-	if total, _ := x.Recent("acme", "", t0.Add(30*time.Second)); total != 1 {
-		t.Fatalf("since = %d", total)
+	if w := x.Recent("acme", "", "", t0.Add(30*time.Second)); w.Total != 1 {
+		t.Fatalf("since = %+v", w)
+	}
+	if w := x.Recent("acme", "", "Launch", t0); w.Total != 1 || w.Failed != 1 {
+		t.Fatalf("project = %+v", w)
+	}
+	if w := x.Recent("acme", "lead", "Launch", t0); w.Total != 0 {
+		t.Fatalf("agent and project = %+v", w)
+	}
+	if w := x.Recent("globex", "", "", t0); w.Total != 0 {
+		t.Fatalf("another tenant = %+v", w)
+	}
+}
+
+func TestRecentSpendCountsEachRunsOwnCalls(t *testing.T) {
+	x := NewIndex()
+	record(t, x, "acme", "a", "lead", "api", 0, nil)
+	record(t, x, "acme", "b", "lead", "api", time.Second, nil)
+	own := func(micros int64, currency string) *payload.RunUsage {
+		return &payload.RunUsage{
+			Own:   payload.Usage{ModelCalls: 1, Cost: &payload.Cost{Micros: micros, Currency: currency}},
+			Total: payload.Usage{ModelCalls: 2, Cost: &payload.Cost{Micros: 10 * micros, Currency: currency}},
+		}
+	}
+	x.SetUsage("a", own(1500, "USD"), 0)
+	x.SetUsage("b", own(900, "EUR"), 0)
+	if w := x.Recent("acme", "", "", t0); w.Spent != 1500 {
+		t.Fatalf("spent = %d, want only a's own dollars", w.Spent)
 	}
 }
 

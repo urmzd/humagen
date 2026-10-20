@@ -808,3 +808,173 @@ func TestASpendRefusalNamesTheLimitPolicyAndReset(t *testing.T) {
 		t.Fatalf("resets_at = %v (%v)", refused["resets_at"], err)
 	}
 }
+
+// alertsFor polls until a rule has raised an alert for a run, and returns
+// every alert raised for that run by then.
+func (f *fixture) alertsFor(t *testing.T, tok, runID, rule string) map[string]bool {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		_, out := f.do(t, nil, "GET", "/api/alerts", tok, "")
+		raised := map[string]bool{}
+		for _, a := range out["alerts"].([]any) {
+			if a := a.(map[string]any); a["run_id"] == runID {
+				raised[a["rule"].(string)] = true
+			}
+		}
+		if raised[rule] {
+			return raised
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("rule %s never raised an alert for %s: %v", rule, runID, out)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestAlertRuleConfiguration(t *testing.T) {
+	f := newFixture(t)
+	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
+	f.do(t, nil, "POST", "/api/agents", acme, helperSpec)
+	f.do(t, nil, "POST", "/api/projects", acme, `{"name":"Launch"}`)
+
+	// Every run is slower than a nanosecond, so "control" speaks for every
+	// run, and a rule that stays quiet beside it is known to have been asked.
+	if res, _ := f.do(t, nil, "POST", "/api/alert-rules", acme, `{"name":"control","kind":"slow_run","threshold":1e-9,"severity":"warning"}`); res.StatusCode != http.StatusCreated {
+		t.Fatalf("control = %d", res.StatusCode)
+	}
+	res, rule := f.do(t, nil, "POST", "/api/alert-rules", acme, `{"name":"slow","kind":"slow_run","threshold":1e-9,"severity":"warning",
+		"description":"Anything slow in the launch","project":"Launch","agent":"helper","paused":true,"cooldown_seconds":3600,
+		"notify":["role:operator"," ada "],"created_by":"mallory","updated_by":"mallory"}`)
+	if res.StatusCode != http.StatusCreated || rule["created_by"] == "mallory" || rule["created_at"] == nil || rule["updated_by"] != nil ||
+		rule["paused"] != true || rule["project"] != "Launch" || rule["notify"].([]any)[1] != "ada" {
+		t.Fatalf("create = %d %v", res.StatusCode, rule)
+	}
+	creator := rule["created_by"]
+
+	run := func(body string) string {
+		t.Helper()
+		_, r := f.do(t, nil, "POST", "/api/runs", acme, body)
+		return r["id"].(string)
+	}
+
+	// Paused, the rule says nothing.
+	id := run(`{"agent":"helper","text":"hi","project":"Launch"}`)
+	if raised := f.alertsFor(t, acme, id, "control"); raised["slow"] {
+		t.Fatalf("a paused rule fired: %v", raised)
+	}
+
+	// Refusals: who may change a rule, which rule, and what it may become.
+	viewer := f.signIn(t, "warp-viewers")
+	enabled := `{"kind":"slow_run","threshold":1e-9,"severity":"critical","project":"Launch","cooldown_seconds":3600}`
+	if res, _ := f.do(t, viewer, "PUT", "/api/alert-rules/slow", "", enabled); res.StatusCode != http.StatusForbidden {
+		t.Errorf("viewer PUT = %d, want 403", res.StatusCode)
+	}
+	for _, tc := range []struct {
+		tok, path, body string
+		want            int
+	}{
+		{globex, "/api/alert-rules/slow", enabled, http.StatusNotFound},
+		{acme, "/api/alert-rules/ghost", enabled, http.StatusNotFound},
+		{acme, "/api/alert-rules/slow", `{"name":"renamed","kind":"run_failed","severity":"critical"}`, http.StatusBadRequest},
+		{acme, "/api/alert-rules/slow", `{"kind":"spend","window_seconds":60,"severity":"critical"}`, http.StatusBadRequest},
+		{acme, "/api/alert-rules/slow", `{"kind":"run_failed","severity":"critical","cooldown_seconds":99999999}`, http.StatusBadRequest},
+		{acme, "/api/alert-rules/slow", `{"kind":"run_failed","severity":"critical","notify":["role:"]}`, http.StatusBadRequest},
+		{acme, "/api/alert-rules/slow", `{"kind":"run_failed","severity":"critical","agent":"ghost"}`, http.StatusNotFound},
+		{acme, "/api/alert-rules/slow", `{"kind":"run_failed","severity":"critical","project":"Ghost"}`, http.StatusNotFound},
+		{acme, "/api/alert-rules", `{"name":"lost","kind":"run_failed","severity":"critical","project":"Ghost"}`, http.StatusNotFound},
+	} {
+		method := "PUT"
+		if tc.path == "/api/alert-rules" {
+			method = "POST"
+		}
+		if res, out := f.do(t, nil, method, tc.path, tc.tok, tc.body); res.StatusCode != tc.want {
+			t.Errorf("%s %s %s = %d %v, want %d", method, tc.path, tc.body, res.StatusCode, out, tc.want)
+		}
+	}
+	_, list := f.do(t, nil, "GET", "/api/alert-rules", acme, "")
+	for _, r := range list["rules"].([]any) {
+		if r := r.(map[string]any); r["name"] == "slow" && (r["paused"] != true || r["agent"] != "helper") {
+			t.Fatalf("a refused edit changed the rule: %v", r)
+		}
+	}
+
+	// Enabled and widened to every agent in the project.
+	res, rule = f.do(t, nil, "PUT", "/api/alert-rules/slow", acme, enabled)
+	if res.StatusCode != http.StatusOK || rule["paused"] != nil || rule["severity"] != "critical" || rule["agent"] != nil ||
+		rule["created_by"] != creator || rule["updated_by"] == nil || rule["updated_at"] == nil || rule["description"] != nil {
+		t.Fatalf("update = %d %v", res.StatusCode, rule)
+	}
+
+	// Outside the project, the rule says nothing.
+	id = run(`{"agent":"helper","text":"hi"}`)
+	if raised := f.alertsFor(t, acme, id, "control"); raised["slow"] {
+		t.Fatalf("a run outside the project fired the project's rule: %v", raised)
+	}
+	// In it, the rule fires once, and its cooldown holds the next.
+	id = run(`{"agent":"helper","text":"hi","project":"Launch"}`)
+	f.alertsFor(t, acme, id, "slow")
+	id = run(`{"agent":"helper","text":"hi again","project":"Launch"}`)
+	if raised := f.alertsFor(t, acme, id, "control"); raised["slow"] {
+		t.Fatalf("a rule cooling down fired: %v", raised)
+	}
+}
+
+func TestScheduleEdit(t *testing.T) {
+	f := newFixture(t)
+	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
+	f.do(t, nil, "POST", "/api/agents", acme, helperSpec)
+	f.do(t, nil, "POST", "/api/projects", acme, `{"name":"Launch"}`)
+	res, sc := f.do(t, nil, "POST", "/api/schedules", acme, `{"name":"nightly","expression":"0 2 * * *","agent":"helper","text":"report","description":"The nightly report"}`)
+	if res.StatusCode != http.StatusCreated || sc["description"] != "The nightly report" || sc["updated_by"] != nil {
+		t.Fatalf("create = %d %v", res.StatusCode, sc)
+	}
+	creator := sc["created_by"]
+	f.do(t, nil, "POST", "/api/schedules/nightly/pause", acme, "")
+	if res, _ := f.do(t, nil, "POST", "/api/schedules/nightly/run", acme, ""); res.StatusCode != http.StatusAccepted {
+		t.Fatalf("run now = %d", res.StatusCode)
+	}
+
+	edit := `{"expression":"30 6 * * 1-5","agent":"helper","text":"weekday report","project":"Launch","description":"Weekdays"}`
+	viewer := f.signIn(t, "warp-viewers")
+	if res, _ := f.do(t, viewer, "PUT", "/api/schedules/nightly", "", edit); res.StatusCode != http.StatusForbidden {
+		t.Errorf("viewer PUT = %d, want 403", res.StatusCode)
+	}
+	for _, tc := range []struct {
+		tok, path, body string
+		want            int
+	}{
+		{globex, "/api/schedules/nightly", edit, http.StatusNotFound},
+		{acme, "/api/schedules/ghost", edit, http.StatusNotFound},
+		{acme, "/api/schedules/nightly", `{"name":"daily","expression":"0 2 * * *","agent":"helper","text":"r"}`, http.StatusBadRequest},
+		{acme, "/api/schedules/nightly", `{"expression":"whenever","agent":"helper","text":"r"}`, http.StatusBadRequest},
+		{acme, "/api/schedules/nightly", `{"expression":"0 2 * * *","agent":"helper","text":"r","description":"` + strings.Repeat("a", 501) + `"}`, http.StatusBadRequest},
+		{acme, "/api/schedules/nightly", `{"expression":"0 2 * * *","agent":"ghost","text":"r"}`, http.StatusNotFound},
+		{acme, "/api/schedules/nightly", `{"expression":"0 2 * * *","agent":"helper","text":"r","project":"Ghost"}`, http.StatusNotFound},
+	} {
+		if res, out := f.do(t, nil, "PUT", tc.path, tc.tok, tc.body); res.StatusCode != tc.want {
+			t.Errorf("PUT %s %s = %d %v, want %d", tc.path, tc.body, res.StatusCode, out, tc.want)
+		}
+	}
+	_, list := f.do(t, nil, "GET", "/api/schedules", acme, "")
+	if got := list["schedules"].([]any)[0].(map[string]any); got["expression"] != "0 2 * * *" || got["text"] != "report" || got["description"] != "The nightly report" {
+		t.Fatalf("a refused edit changed the schedule: %v", got)
+	}
+
+	res, sc = f.do(t, nil, "PUT", "/api/schedules/nightly", acme, edit)
+	if res.StatusCode != http.StatusOK || sc["expression"] != "30 6 * * 1-5" || sc["text"] != "weekday report" ||
+		sc["project"] != "Launch" || sc["description"] != "Weekdays" || sc["paused"] != true || len(sc["next"].([]any)) != 0 ||
+		sc["created_by"] != creator || sc["updated_by"] == nil || sc["updated_at"] == nil || len(sc["recent"].([]any)) != 1 {
+		t.Fatalf("edit = %d %v", res.StatusCode, sc)
+	}
+	_, resumed := f.do(t, nil, "POST", "/api/schedules/nightly/resume", acme, "")
+	next := resumed["next"].([]any)
+	if len(next) != 3 || !strings.HasSuffix(next[0].(string), "T06:30:00Z") {
+		t.Fatalf("resumed = %v", resumed)
+	}
+	// Leaving the project out takes the schedule out of it.
+	_, sc = f.do(t, nil, "PUT", "/api/schedules/nightly", acme, `{"name":"nightly","expression":"0 2 * * *","agent":"helper","text":"report"}`)
+	if sc["project"] != nil || sc["description"] != nil || sc["paused"] != false {
+		t.Fatalf("edit back = %v", sc)
+	}
+}

@@ -931,6 +931,39 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/schedules/{name}:
+    put:
+      operationId: updateSchedule
+      tags: [schedules]
+      summary: Change a schedule
+      description: |
+        Replaces the schedule's expression, agent, text, project and
+        description. The name cannot change: a `name` in the body must match
+        the path, or be left out. Whether the schedule is paused, who created
+        it and the runs it raised are kept. The agent, and the project if one
+        is named, must exist now. The whole edit is checked before anything
+        changes, so a refused edit leaves the schedule as it was. An edited
+        schedule starts afresh from the time of the edit: it does not catch up
+        on occurrences of its new expression that fell before it.
+      x-permission: schedules:write
+      parameters:
+        - {$ref: "#/components/parameters/ScheduleName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Schedule"}
+      responses:
+        "200":
+          description: The schedule, as it now stands.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ScheduleView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
     delete:
       operationId: deleteSchedule
       tags: [schedules]
@@ -1497,7 +1530,10 @@ paths:
       operationId: createAlertRule
       tags: [alerts]
       summary: Create an alert rule
-      description: "`created_by` is set by the server, whatever the body says."
+      description: |
+        `created_by` and `created_at` are set by the server, and `updated_by`
+        and `updated_at` are cleared, whatever the body says. The agent and
+        the project a rule is scoped to must exist now.
       x-permission: alerts:write
       requestBody:
         required: true
@@ -1518,6 +1554,36 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/alert-rules/{name}:
+    put:
+      operationId: updateAlertRule
+      tags: [alerts]
+      summary: Replace an alert rule
+      description: |
+        The body is checked exactly as a new rule is. The name cannot change:
+        a `name` in the body must match the path, or be left out.
+        `created_by` and `created_at` are kept from the rule replaced, and
+        `updated_by` and `updated_at` are set by the server. Alerts the rule
+        already raised stay, and so does its cooldown.
+      x-permission: alerts:write
+      parameters:
+        - {name: name, in: path, required: true, description: The rule's name., schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AlertRule"}
+      responses:
+        "200":
+          description: The rule, as it now stands.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AlertRule"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
     delete:
       operationId: deleteAlertRule
       tags: [alerts]
@@ -3163,6 +3229,10 @@ components:
         project:
           description: Files every run the schedule raises under a project.
           type: string
+        description:
+          description: What the schedule is for, at most 500 characters. The agent is not shown it.
+          type: string
+          maxLength: 500
     ScheduleView:
       description: A schedule with whether it is running, when it fires next, and how its recent occurrences went.
       type: object
@@ -3173,8 +3243,13 @@ components:
         agent: {type: string}
         text: {type: string}
         project: {type: string}
+        description: {type: string}
         paused: {type: boolean}
         created_by: {type: string}
+        updated_by:
+          description: Who last changed the schedule. Absent until it is changed.
+          type: string
+        updated_at: {type: string, format: date-time}
         next:
           description: The next three fires. Empty while paused.
           type: array
@@ -3600,24 +3675,81 @@ components:
 
     AlertKind:
       type: string
-      enum: [run_failed, failure_rate, slow_run, eval_below, budget]
+      description: |
+        `budget` is raised by a billing policy, never by a rule, and a rule
+        cannot be created with it.
+      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget]
     AlertSeverity:
       type: string
       enum: [warning, critical]
     AlertRule:
+      description: |
+        A condition on runs that raises an alert. Every field but `name`,
+        `kind` and `severity` is optional, and leaving one out keeps the
+        behaviour rules had before it existed: every agent and project,
+        enabled, no cooldown, and a message for everyone who may read alerts.
       type: object
       required: [name, kind, severity]
       properties:
         name: {type: string}
         kind: {$ref: "#/components/schemas/AlertKind"}
+        description:
+          description: What the rule is for, at most 500 characters.
+          type: string
+          maxLength: 500
         agent:
           description: Only this agent's runs. Empty means every agent.
           type: string
+        project:
+          description: |
+            Only runs filed under this project. Empty means every run, in a
+            project or not. With `agent`, both must match. An `eval_below`
+            rule cannot name a project.
+          type: string
         severity: {$ref: "#/components/schemas/AlertSeverity"}
-        threshold: {type: number}
-        window_seconds: {type: integer}
+        threshold:
+          description: A percentage for `failure_rate` and `eval_below`, seconds for `slow_run`. Not used by `spend`.
+          type: number
+        threshold_micros:
+          description: For `spend` only, and required by it. The cost, in micro-USD, of the runs in scope over the window at which the rule fires.
+          type: integer
+          format: int64
+          minimum: 1
+        window_seconds:
+          description: How far back `failure_rate` and `spend` look, up to 30 days.
+          type: integer
+          minimum: 1
+          maximum: 2592000
         min_runs: {type: integer}
+        cooldown_seconds:
+          description: |
+            After the rule raises an alert it raises no other for this long,
+            acknowledged or not, up to 30 days. Zero or absent means no
+            cooldown. `failure_rate` and `spend` also stay quiet while their
+            last alert is open.
+          type: integer
+          minimum: 0
+          maximum: 2592000
+        paused:
+          description: A paused rule is not evaluated. Absent or false means the rule is enabled.
+          type: boolean
+        notify:
+          description: |
+            Who the inbox message about an alert is for: people by subject, as
+            agent approvers are written, and roles as `role:<name>`. A reader
+            sees the message if their subject is listed or they hold a role
+            listed. Empty or absent means everyone who may read alerts. Either
+            way only people with `alerts:read` see it, and `GET /api/alerts`
+            lists every alert to them. At most 20 entries.
+          type: array
+          maxItems: 20
+          items: {type: string, minLength: 1, maxLength: 254}
         created_by: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_by:
+          description: Who last replaced the rule. Absent until it is replaced.
+          type: string
+        updated_at: {type: string, format: date-time}
     Alert:
       type: object
       required: [id, rule, kind, severity, title, at]
@@ -3627,6 +3759,9 @@ components:
         kind: {$ref: "#/components/schemas/AlertKind"}
         severity: {$ref: "#/components/schemas/AlertSeverity"}
         agent: {type: string}
+        project:
+          description: The project of the run that raised the alert, if any.
+          type: string
         run_id: {type: string}
         suite: {type: string}
         title: {type: string}

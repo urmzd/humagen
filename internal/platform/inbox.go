@@ -357,6 +357,13 @@ func (p *Platform) settle(tenant, id, by string) {
 	if err != nil {
 		return
 	}
+	p.settleParts(tenant, m, by)
+}
+
+// settleParts closes whatever is still open in a message, whoever it is
+// addressed to.
+func (p *Platform) settleParts(tenant string, m inbox.Message, by string) {
+	id := m.ID
 	for _, part := range m.Parts {
 		if part.State == inbox.PartOpen {
 			_, _, _ = p.Inbox.Resolve(tenant, id, part.ID, inbox.Outcome{Action: ActAcknowledge, By: by, At: p.now()})
@@ -373,7 +380,9 @@ func (p *Platform) AckAlert(tenant, id, by string) (alerts.Alert, error) {
 	}
 	if m, ok := p.Inbox.ByKey(tenant, alertKey(id)); ok {
 		// The first to acknowledge is who the alert says, whoever asked now.
-		p.settle(tenant, m.ID, a.AckedBy)
+		// They may not be among the people the message is addressed to, so
+		// it is settled as it stands, not as they would see it.
+		p.settleParts(tenant, m, a.AckedBy)
 	}
 	return a, nil
 }
@@ -386,7 +395,10 @@ func (p *Platform) inboxAlert(tenant string, a alerts.Alert, extra ...inbox.Part
 	}
 	m := inbox.Message{
 		Kind: kind, Subject: a.Title, From: from, Severity: severityOf(a.Severity),
-		Source: inbox.Source{Alert: a.ID, Rule: a.Rule, Run: a.RunID, Agent: a.Agent},
+		// A rule that names whom to notify addresses its message to them.
+		// Who may read alerts at all is still checked for every reader.
+		Audience: slices.Clone(a.Notify),
+		Source:   inbox.Source{Alert: a.ID, Rule: a.Rule, Run: a.RunID, Agent: a.Agent, Project: a.Project},
 		Parts: []inbox.Part{{Type: inbox.PartAlert, Alert: &inbox.AlertPart{
 			ID: a.ID, Rule: a.Rule, Kind: string(a.Kind), Severity: string(a.Severity), Title: a.Title, Body: a.Body,
 		}}},

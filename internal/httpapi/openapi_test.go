@@ -1036,11 +1036,18 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/schedules/{name}/resume", "/api/schedules/nightly/resume", "", http.StatusOK)
 	c.call(acme, "POST", "/api/schedules/{name}/run", "/api/schedules/nightly/run", "", http.StatusAccepted)
 	c.call(globex, "POST", "/api/schedules/{name}/run", "/api/schedules/nightly/run", "", http.StatusNotFound)
+	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/nightly", `{"expression":"0 4 * * 1-5","agent":"helper","text":"Report again.","project":"Launch","description":"Weekday report"}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/nightly", `{"expression":"whenever","agent":"helper","text":"Report."}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/ghost", `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`, http.StatusNotFound)
 
 	// Alerts, knowledge and evals.
 	c.call(acme, "POST", "/api/alert-rules", "/api/alert-rules", `{"name":"any","kind":"run_failed","severity":"critical"}`, http.StatusCreated)
 	c.call(acme, "POST", "/api/alert-rules", "/api/alert-rules", `{"name":"any","kind":"run_failed","severity":"critical"}`, http.StatusConflict)
 	c.call(acme, "POST", "/api/alert-rules", "/api/alert-rules", `{"name":"odd","kind":"nonsense","severity":"critical"}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/alert-rules", "/api/alert-rules", `{"name":"spend","kind":"spend","project":"Launch","threshold_micros":5000000,"window_seconds":86400,"severity":"warning","notify":["role:admin"],"cooldown_seconds":3600,"description":"Launch spend"}`, http.StatusCreated)
+	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/spend", `{"kind":"spend","threshold_micros":9000000,"window_seconds":86400,"severity":"critical","paused":true}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/spend", `{"kind":"spend","window_seconds":86400,"severity":"critical"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/ghost", `{"kind":"run_failed","severity":"critical"}`, http.StatusNotFound)
 	alertList := c.call(acme, "GET", "/api/alerts", "/api/alerts", "", http.StatusOK)
 	if fired := sliceOf(alertList.field("alerts")); len(fired) > 0 {
 		c.call(acme, "POST", "/api/alerts/{id}/ack", "/api/alerts/"+obj(fired[0])["id"].(string)+"/ack", "", http.StatusOK)
@@ -1192,7 +1199,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
 		"/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
-		"/api/runs/{id}/calls": `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
+		"/api/runs/{id}/calls":    `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
+		"/api/alert-rules/{name}": `{"kind":"run_failed","severity":"critical"}`,
+		"/api/schedules/{name}":   `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)

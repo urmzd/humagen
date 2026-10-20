@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
 
+	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/evals"
@@ -32,6 +33,7 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/alerts/{id}/ack", s.authed(auth.AlertsWrite, s.ackAlert))
 	mux.HandleFunc("GET /api/alert-rules", s.authed(auth.AlertsRead, s.listRules))
 	mux.HandleFunc("POST /api/alert-rules", s.authed(auth.AlertsWrite, s.createRule))
+	mux.HandleFunc("PUT /api/alert-rules/{name}", s.authed(auth.AlertsWrite, s.updateRule))
 	mux.HandleFunc("DELETE /api/alert-rules/{name}", s.authed(auth.AlertsWrite, s.deleteRule))
 
 	mux.HandleFunc("GET /api/evals", s.authed(auth.EvalsRead, s.listSuites))
@@ -242,18 +244,70 @@ func (s *Server) createRule(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !decode(w, r, &rule) {
 		return
 	}
-	rule.CreatedBy = who.Subject
-	if rule.Agent != "" {
-		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, rule.Agent, 0); err != nil {
-			s.problem(w, err)
-			return
-		}
+	if !s.ruleScopeExists(w, r, who, rule) {
+		return
 	}
+	rule.CreatedBy, rule.CreatedAt = who.Subject, time.Now().UTC()
+	rule.UpdatedBy, rule.UpdatedAt = "", time.Time{}
 	if err := s.P.Alerts.AddRule(who.Tenant, rule); err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, rule)
+	stored, err := s.P.Alerts.Rule(who.Tenant, rule.Name)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusCreated, stored)
+}
+
+// updateRule replaces a rule. Its name cannot change, and who created it is
+// kept. The body is checked exactly as a new rule is.
+func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	name := r.PathValue("name")
+	var rule alerts.Rule
+	if !decode(w, r, &rule) {
+		return
+	}
+	// Another workspace's rule, or one that does not exist, is not found
+	// before what the body names is looked up.
+	if _, err := s.P.Alerts.Rule(who.Tenant, name); err != nil {
+		s.problem(w, err)
+		return
+	}
+	if rule.Name == "" {
+		rule.Name = name
+	}
+	if rule.Name != name {
+		fail(w, http.StatusBadRequest, "a rule's name cannot change; delete it and create another")
+		return
+	}
+	if !s.ruleScopeExists(w, r, who, rule) {
+		return
+	}
+	rule.UpdatedBy, rule.UpdatedAt = who.Subject, time.Now().UTC()
+	stored, err := s.P.Alerts.ReplaceRule(who.Tenant, rule)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, stored)
+}
+
+// ruleScopeExists checks that the agent and the project a rule is scoped to
+// exist in the caller's tenant now, and answers 404 when one does not.
+func (s *Server) ruleScopeExists(w http.ResponseWriter, r *http.Request, who auth.Principal, rule alerts.Rule) bool {
+	if rule.Agent != "" {
+		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, rule.Agent, 0); err != nil {
+			s.problem(w, err)
+			return false
+		}
+	}
+	if rule.Project != "" && !s.P.HasProject(who.Tenant, rule.Project) {
+		s.problem(w, platform.ErrProjectNotFound)
+		return false
+	}
+	return true
 }
 
 func (s *Server) deleteRule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
