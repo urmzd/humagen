@@ -18,8 +18,8 @@ export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "eva
 export type AlertsTab = "open" | "rules" | "overview";
 export const ALERTS_TABS: AlertsTab[] = ["open", "rules", "overview"];
 
-export type SettingsSection = "profile" | "appearance" | "workspace" | "routing" | "limits" | "connections" | "access";
-export const SETTINGS_SECTIONS: SettingsSection[] = ["profile", "appearance", "workspace", "routing", "limits", "connections", "access"];
+export type SettingsSection = "profile" | "appearance" | "workspace" | "routing" | "models" | "limits" | "connections" | "access";
+export const SETTINGS_SECTIONS: SettingsSection[] = ["profile", "appearance", "workspace", "routing", "models", "limits", "connections", "access"];
 
 export type Route =
   | { page: "new"; project?: string }

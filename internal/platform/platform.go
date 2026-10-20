@@ -217,7 +217,7 @@ func New(cfg Config) (*Platform, error) {
 	}
 	p := &Platform{
 		cfg: cfg, log: log, now: now,
-		Agents:    registry.NewMemory(),
+		Agents:    registry.NewMemory(registry.WithProviders(providers()...)),
 		Runs:      runs.NewIndex(),
 		Schedules: &Schedules{},
 		Journal:   journal.New(0),
@@ -351,7 +351,7 @@ func (p *Platform) executor() (runtime.Executor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec}, nil
+	return callExecutor{inner: exec, resolve: p.resolveModel}, nil
 }
 
 // Invoke accepts a tag and starts its run. Routes are registered before the run

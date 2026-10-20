@@ -202,6 +202,10 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		fail(w, http.StatusForbidden, "that name belongs to an agent the platform provides")
 		return
 	}
+	if err := s.P.CheckAgentModel(who.Tenant, spec); err != nil {
+		s.problem(w, err)
+		return
+	}
 	rev, err := s.P.Agents.Create(r.Context(), who.Tenant, spec, who.Subject)
 	if err != nil {
 		s.problem(w, err)
@@ -224,6 +228,10 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	if platform.IsBuiltin(body.Spec.Name) {
 		fail(w, http.StatusForbidden, "this agent is provided by the platform and cannot be edited")
+		return
+	}
+	if err := s.P.CheckAgentModel(who.Tenant, body.Spec); err != nil {
+		s.problem(w, err)
 		return
 	}
 	rev, err := s.P.Agents.Revise(r.Context(), who.Tenant, body.Spec, body.ExpectedRev, who.Subject)
@@ -632,8 +640,10 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, pick.ErrNoAgent):
 		fail(w, http.StatusBadRequest, "no agent matched this message and no baseline agent is set, so choose an agent")
-	case errors.Is(err, platform.ErrSettings):
+	case errors.Is(err, platform.ErrSettings), errors.Is(err, platform.ErrModelPolicy):
 		fail(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, platform.ErrModelPolicyInUse):
+		fail(w, http.StatusConflict, err.Error())
 	case errors.Is(err, platform.ErrNoBaseline):
 		fail(w, http.StatusBadRequest, "that setting names an agent that does not exist")
 	case errors.Is(err, evals.ErrBusy):

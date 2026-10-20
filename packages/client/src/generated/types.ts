@@ -84,6 +84,7 @@ export interface AgentSpec {
   name: string;
   description?: string;
   model: string;
+  /** A model provider, or `policy` to run on the workspace model policy named by `model`. */
   provider: string;
   /** Models tried in order when the primary fails with an error another
 model could get past (an outage, a rate limit, an exhausted retry).
@@ -91,6 +92,8 @@ An invalid request or a cancellation is not retried elsewhere. At
 most 4, none repeating the primary or each other.
  */
   fallbacks?: ModelRef[];
+  /** When a call moves to the next fallback. Empty means any error another model could get past. Needs at least one fallback. */
+  fallback_on?: FallbackCondition[];
   system_prompt: string;
   tools?: string[];
   sources?: AgentSource[];
@@ -109,6 +112,18 @@ anyone in the workspace approve, except the person who asked.
   self_approval?: boolean;
   /** When set, the only people who may answer a choice or a reply, named as approvers are. */
   answerers?: string[];
+}
+
+/** A class of model error that moves a call on to the next model. `any` cannot be combined with another. */
+export type FallbackCondition = "any" | "unavailable" | "rate_limit" | "transient" | "auth" | "context_length" | "content_filter";
+
+/** A workspace's named, ordered list of models. The first answers; the rest are fallbacks. */
+export interface ModelPolicy {
+  name: string;
+  description?: string;
+  models: ModelRef[];
+  /** When a call moves to the next model. Empty means any error another model could get past. */
+  fallback_on?: FallbackCondition[];
 }
 
 /** One model, named by its provider. */
@@ -367,6 +382,13 @@ export interface Settings {
   memory_agent: string;
   memory_auto_approve: boolean;
   workspace_name: string;
+  /** Named, ordered lists of models with the errors that move a call from
+one to the next. An agent runs on one by naming the provider
+`policy` and the policy's name as its model; the policy is read as
+it stands when each call starts. A policy an agent still runs on
+cannot be removed (409).
+ */
+  model_policies: ModelPolicy[];
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -1265,6 +1287,10 @@ admits nobody. `default` is what applies when it expires.
 export interface Question {
   id: string;
   kind: "approval" | "choice" | "reply" | "delegation";
+  /** When set on an approval, only these people and `role:<name>` holders may answer it, in place of the agent's own approvers. */
+  approvers?: string[];
+  /** With `approvers`, lets the person whose request raised the call approve it. */
+  self_approval?: boolean;
   agent?: string;
   prompt: string;
   options?: string[];

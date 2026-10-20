@@ -1,7 +1,8 @@
 import { type FormEvent, useRef, useState } from "react";
 import { AccessExplain } from "./AccessExplain.tsx";
 import type { SettingsSection } from "./route.ts";
-import { ApiError, api, type Me, type Preferences, type Revision, type Settings as Workspace } from "./api.ts";
+import { ApiError, api, type Me, type ModelPolicy, type Preferences, type Revision, type Settings as Workspace } from "./api.ts";
+import { ModelChain, POLICY, chainProblem, starterPolicy } from "./ModelChain.tsx";
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
 import { agentOptions, button, card, field, Label, Menu, Problem, primary, Segmented, Switch, pageLede, pageTitle } from "./ui.tsx";
@@ -97,6 +98,7 @@ export function Settings({
     { id: "appearance", label: "Appearance" },
     { id: "workspace", label: "Workspace" },
     { id: "routing", label: "Agent routing" },
+    { id: "models", label: "Models" },
     { id: "limits", label: "Limits" },
     { id: "connections", label: "Connections" },
     { id: "access", label: "Access" },
@@ -254,6 +256,28 @@ export function Settings({
                   <Segmented label="Accent" value={prefs.accent} onChange={(accent) => savePrefs({ accent })} options={accents} />
                 </div>
               </section>
+            </>
+          )}
+
+          {section === "models" && (
+            <>
+              <header className="pb-2">
+                <h1 className={pageTitle}>Models</h1>
+                <p className={pageLede}>
+                  Policies say which models agents run on, in order, and which errors move a call to the next. An agent
+                  that follows a policy picks up a change at its next call, so one edit moves every agent on it off a
+                  failing provider. {canAdmin ? "" : "Only an admin can change these."}
+                </p>
+              </header>
+              {workspace && (
+                <ModelPolicies
+                  key={JSON.stringify(workspace.model_policies ?? [])}
+                  saved={workspace.model_policies ?? []}
+                  agents={agents}
+                  canEdit={canAdmin}
+                  onSave={(model_policies) => saveWorkspace({ model_policies })}
+                />
+              )}
             </>
           )}
 
@@ -435,6 +459,85 @@ export function Settings({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Every model policy in the workspace, edited together and saved at once. */
+function ModelPolicies({
+  saved,
+  agents,
+  canEdit,
+  onSave,
+}: {
+  saved: ModelPolicy[];
+  agents: Revision[];
+  canEdit: boolean;
+  onSave: (next: ModelPolicy[]) => void;
+}) {
+  const [draft, setDraft] = useState<ModelPolicy[]>(saved);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const users = (name: string) => agents.filter((a) => a.spec.provider === POLICY && a.spec.model === name).map((a) => a.spec.name);
+  const edit = (i: number, patch: Partial<ModelPolicy>) => setDraft((d) => d.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const problem =
+    draft.map((p) => (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(p.name) ? `"${p.name}" is not a valid name: lowercase letters, digits and dashes.` : chainProblem(p.models, p.fallback_on ?? []))).find(Boolean) ??
+    (new Set(draft.map((p) => p.name)).size !== draft.length ? "Two policies share a name." : null);
+
+  return (
+    <div className="flex flex-col gap-6">
+      {draft.length === 0 && <p className={`${card} text-aui-sm text-aui-muted`}>No policies yet. Agents each name their own models.</p>}
+      {draft.map((p, i) => {
+        const by = users(saved[i]?.name ?? p.name);
+        return (
+          <section key={i} className="flex flex-col gap-3 border-aui-border border-t pt-5 first:border-t-0 first:pt-0">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[14rem_1fr_auto] sm:items-end">
+              <Label text="Name" hint={by.length > 0 ? "Agents follow it by name, so it cannot change while they do." : undefined}>
+                <input className={field} value={p.name} disabled={!canEdit || by.length > 0} onChange={(e) => edit(i, { name: e.target.value })} />
+              </Label>
+              <Label text="Description">
+                <input className={field} maxLength={300} value={p.description ?? ""} disabled={!canEdit} onChange={(e) => edit(i, { description: e.target.value })} />
+              </Label>
+              {canEdit && (
+                <button
+                  type="button"
+                  className={button}
+                  disabled={by.length > 0}
+                  title={by.length > 0 ? `Used by ${by.join(", ")}` : undefined}
+                  onClick={() => setDraft((d) => d.filter((_, j) => j !== i))}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            <p className="text-aui-xs text-aui-muted">{by.length === 0 ? "No agent follows it yet." : `Followed by ${by.join(", ")}.`}</p>
+            <ModelChain
+              label={`Models of ${p.name}`}
+              models={p.models}
+              fallbackOn={p.fallback_on ?? []}
+              editable={canEdit}
+              onChange={(models, fallback_on) => edit(i, { models, fallback_on: fallback_on.length > 0 ? fallback_on : undefined })}
+            />
+          </section>
+        );
+      })}
+      {canEdit && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-aui-border border-t pt-4">
+          <button type="button" className={button} onClick={() => setDraft((d) => [...d, starterPolicy(d.map((p) => p.name))])}>
+            Add Policy
+          </button>
+          <span className="flex items-center gap-2">
+            {problem && <span className="text-aui-xs text-aui-bad">{problem}</span>}
+            {dirty && (
+              <button type="button" className={button} onClick={() => setDraft(saved)}>
+                Discard
+              </button>
+            )}
+            <button type="button" className={primary} disabled={!dirty || problem !== null} onClick={() => onSave(draft)}>
+              Save Policies
+            </button>
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -46,6 +46,14 @@ export interface ModelRef {
   model: string;
 }
 
+/** A workspace's named, ordered list of models and when a call moves down it. */
+export interface ModelPolicy {
+  name: string;
+  description?: string;
+  models: ModelRef[];
+  fallback_on?: string[];
+}
+
 export interface AgentSpec {
   name: string;
   description?: string;
@@ -53,6 +61,8 @@ export interface AgentSpec {
   provider: string;
   /** Tried in order when the primary model fails with an error another model could get past. */
   fallbacks?: ModelRef[];
+  /** Which errors move a call to the next fallback. Absent means any recoverable error. */
+  fallback_on?: string[];
   system_prompt: string;
   tools?: string[];
   sources?: { name: string; uri: string }[];
@@ -290,6 +300,8 @@ export interface Settings {
   memory_agent: string;
   memory_auto_approve: boolean;
   workspace_name?: string;
+  /** Named model lists agents run on with provider "policy". */
+  model_policies?: ModelPolicy[];
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;

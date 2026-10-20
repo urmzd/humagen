@@ -6,6 +6,7 @@ import {
   ApiError,
   api,
   type Group,
+  type ModelPolicy,
   type ModelRef,
   type Note,
   type Revision,
@@ -14,6 +15,7 @@ import {
 } from "./api.ts";
 import { Evals } from "./Evals.tsx";
 import { ASK_PERSON, approvable, withApproval, withAsking, withNames } from "./people.ts";
+import { ModelChain, POLICY, chainProblem, chainWords, defaultModel } from "./ModelChain.tsx";
 import type { AgentTab } from "./route.ts";
 import { AgentMark, ago, button, card, Chip, field, Label, Menu, Page, PickMany, Problem, primary, Section, Switch, Tabs, took } from "./ui.tsx";
 
@@ -22,11 +24,6 @@ export type Tab = AgentTab;
 /** Approvals on calls to other agents. Calls go through one host tool, so these name a tool the agent never holds, and the agent cannot start. */
 const callApprovals = (spec: AgentSpec) => (spec.approvals ?? []).filter((t) => t.startsWith("tag_"));
 
-const models: Record<string, string> = {
-  offline: "offline",
-  anthropic: "claude-sonnet-5-5",
-  ollama: "llama3.2",
-};
 
 /** People and roles, typed freely: the draft keeps what is typed, the spec keeps the names in it. */
 function NamesField({ names, disabled, onChange }: { names?: string[]; disabled: boolean; onChange: (text: string) => void }) {
@@ -107,146 +104,129 @@ const presets: { label: string; rule: (agent: string) => AlertRule }[] = [
   { label: "An eval passes under 80%", rule: (a) => ({ name: `${a}-quality`, kind: "eval_below", agent: a, severity: "warning", threshold: 80 }) },
 ];
 
-const providers = [
-  { value: "anthropic", label: "anthropic" },
-  { value: "ollama", label: "ollama", hint: "A model running on this machine." },
-  { value: "offline", label: "offline", hint: "Calls no model. For trying the platform out." },
-];
-
-/** The most fallbacks a spec may name. The platform refuses more. */
-export const MAX_FALLBACKS = 4;
-
-const same = (a: ModelRef, b: ModelRef) => a.provider.toLowerCase() === b.provider.toLowerCase() && a.model.trim() === b.model.trim();
-
-/** What is wrong with a policy, before the server says so. */
-export function policyProblem(spec: Pick<AgentSpec, "provider" | "model" | "fallbacks">): string | null {
-  const chain: ModelRef[] = [{ provider: spec.provider, model: spec.model }, ...(spec.fallbacks ?? [])];
-  for (const [i, m] of chain.entries()) {
-    if (!m.model.trim()) return i === 0 ? "The primary model needs a name." : `Fallback ${i} needs a model.`;
-    if (chain.slice(0, i).some((x) => same(x, m))) return `Fallback ${i} repeats a model above it.`;
-  }
-  return chain.length - 1 > MAX_FALLBACKS ? `At most ${MAX_FALLBACKS} fallbacks.` : null;
-}
-
 /**
- * Which models an agent runs on, in order. The first answers; when it fails
- * with an error another model could get past (an outage, a rate limit, an
- * exhausted retry), the next is tried, and so on. The order is part of the
- * revision, so a run always uses the policy it started with.
+ * Which models an agent runs on, and when it moves to the next. It either
+ * follows one of the workspace's policies, so the workspace can move every
+ * such agent off a failing provider at once, or sets its own chain.
  */
-function ModelPolicy({
+function ModelTab({
   spec,
   editable,
+  policies,
   others,
   onChange,
+  onManage,
 }: {
   spec: AgentSpec;
   editable: boolean;
+  policies: ModelPolicy[];
   others: Revision[];
   onChange: (patch: Partial<AgentSpec>) => void;
+  onManage?: () => void;
 }) {
-  const chain: ModelRef[] = [{ provider: spec.provider, model: spec.model }, ...(spec.fallbacks ?? [])];
-  const write = (next: ModelRef[]) => {
-    const [primary, ...rest] = next;
+  const onPolicy = spec.provider === POLICY;
+  const current = onPolicy ? policies.find((p) => p.name === spec.model) : undefined;
+  const chain: ModelRef[] = onPolicy ? [] : [{ provider: spec.provider, model: spec.model }, ...(spec.fallbacks ?? [])];
+  const writeChain = (models: ModelRef[], fallbackOn: string[]) => {
+    const [primary, ...rest] = models;
     if (!primary) return;
-    onChange({ provider: primary.provider, model: primary.model, fallbacks: rest.length > 0 ? rest : undefined });
+    onChange({
+      provider: primary.provider,
+      model: primary.model,
+      fallbacks: rest.length > 0 ? rest : undefined,
+      fallback_on: rest.length > 0 && fallbackOn.length > 0 ? fallbackOn : undefined,
+    });
   };
-  const edit = (i: number, patch: Partial<ModelRef>) => write(chain.map((m, j) => (j === i ? { ...m, ...patch } : m)));
-  const move = (i: number, by: -1 | 1) => {
-    const next = chain.slice();
-    const [m] = next.splice(i, 1);
-    if (m) next.splice(i + by, 0, m);
-    write(next);
+  const usePolicy = (name: string) => onChange({ provider: POLICY, model: name, fallbacks: undefined, fallback_on: undefined });
+  const useOwn = () => {
+    const from = current?.models ?? [{ provider: "anthropic", model: defaultModel.anthropic ?? "" }];
+    writeChain(from, current?.fallback_on ?? []);
   };
-  const problem = policyProblem(spec);
-  const copyable = others.filter((a) => a.spec.provider !== "offline" || (a.spec.fallbacks ?? []).length > 0);
+  const copyable = others.filter((a) => a.spec.provider !== POLICY);
 
   return (
     <div className="flex flex-col gap-6">
       <Section
         title="Model policy"
-        hint="The first model answers. If it fails with an outage, a rate limit or an exhausted retry, the next is tried, in order. A bad request is not retried elsewhere."
+        hint="Which models answer, in order, and which errors move a call to the next. A run keeps answering when one provider does not."
         actions={
-          editable && copyable.length > 0 ? (
-            <Menu
-              label="Copy from"
-              className="w-52"
-              value=""
-              options={[
-                { value: "", label: "Copy from an agent" },
-                ...copyable.map((a) => ({
-                  value: a.spec.name,
-                  label: a.spec.name,
-                  hint: [a.spec, ...(a.spec.fallbacks ?? [])].map((m) => m.model).join(", then "),
-                })),
-              ]}
-              onChange={(name) => {
-                const from = others.find((a) => a.spec.name === name)?.spec;
-                if (from) onChange({ provider: from.provider, model: from.model, fallbacks: from.fallbacks?.length ? from.fallbacks : undefined });
-              }}
-            />
+          onManage ? (
+            <button type="button" className={button} onClick={onManage}>
+              Workspace Policies
+            </button>
           ) : undefined
         }
       >
-        <ol className="flex flex-col gap-2" aria-label="Models, in the order they are tried">
-          {chain.map((m, i) => (
-            <li key={`${i}:${m.provider}`} className={`${card} grid grid-cols-1 items-end gap-3 sm:grid-cols-[6rem_12rem_minmax(0,1fr)_auto]`}>
-              <span className="text-aui-sm font-medium text-aui-fg sm:pb-2">{i === 0 ? "Primary" : `Fallback ${i}`}</span>
-              <Label text="Provider">
-                <Menu
-                  label={`Provider, ${i === 0 ? "primary" : `fallback ${i}`}`}
-                  value={m.provider}
-                  disabled={!editable}
-                  options={providers}
-                  onChange={(provider) => edit(i, { provider, model: models[provider] ?? m.model })}
-                />
-              </Label>
-              <Label text="Model">
-                <input
-                  aria-label={`Model, ${i === 0 ? "primary" : `fallback ${i}`}`}
-                  className={field}
-                  value={m.model}
-                  disabled={!editable}
-                  onChange={(e) => edit(i, { model: e.target.value })}
-                />
-              </Label>
-              {editable && (
-                <span className="flex gap-1">
-                  <button type="button" className={button} disabled={i === 0} aria-label={`Move ${m.model} up`} onClick={() => move(i, -1)}>
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    className={button}
-                    disabled={i === chain.length - 1}
-                    aria-label={`Move ${m.model} down`}
-                    onClick={() => move(i, 1)}
-                  >
-                    ↓
-                  </button>
-                  {i > 0 && (
-                    <button type="button" className={button} onClick={() => write(chain.filter((_, j) => j !== i))}>
-                      Remove
-                    </button>
+        <fieldset className={`${card} flex flex-col gap-3`}>
+          <legend className="sr-only">Where the models come from</legend>
+          <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
+            <input
+              type="radio"
+              className="mt-1"
+              disabled={!editable || policies.length === 0}
+              checked={onPolicy}
+              onChange={() => policies[0] && usePolicy(policies[0].name)}
+            />
+            <span className="min-w-0 flex-1">
+              Follow a workspace policy
+              <span className="block text-aui-xs text-aui-muted">
+                {policies.length === 0
+                  ? "The workspace has no policies yet. An admin adds them under Settings, Models."
+                  : "Changes to the policy apply from each agent's next call, so one change moves every agent on it."}
+              </span>
+              {onPolicy && (
+                <span className="flex flex-col gap-1 pt-2">
+                  <Menu
+                    label="Workspace policy"
+                    className="max-w-sm"
+                    value={spec.model}
+                    disabled={!editable}
+                    options={policies.map((p) => ({ value: p.name, label: p.name, hint: chainWords(p.models, p.fallback_on) }))}
+                    onChange={usePolicy}
+                  />
+                  {current ? (
+                    <span className="text-aui-xs text-aui-muted">{current.description || chainWords(current.models, current.fallback_on)}</span>
+                  ) : (
+                    <span role="alert" className="text-aui-xs text-aui-bad">
+                      The workspace has no policy named {spec.model}.
+                    </span>
                   )}
                 </span>
               )}
-            </li>
-          ))}
-        </ol>
-        {problem && (
-          <p role="alert" className="text-aui-xs text-aui-bad">
-            {problem}
-          </p>
-        )}
-        {editable && chain.length - 1 < MAX_FALLBACKS && (
-          <button
-            type="button"
-            className={`${button} self-start`}
-            onClick={() => write([...chain, { provider: "anthropic", model: chain.some((m) => m.model === "claude-haiku-5-5") ? "" : "claude-haiku-5-5" }])}
-          >
-            Add Fallback
-          </button>
+            </span>
+          </label>
+          <label className="flex items-start gap-2.5 text-aui-sm text-aui-fg">
+            <input type="radio" className="mt-1" disabled={!editable} checked={!onPolicy} onChange={useOwn} />
+            <span>
+              Set its own models
+              <span className="block text-aui-xs text-aui-muted">For an agent that needs something the workspace policies do not give it.</span>
+            </span>
+          </label>
+        </fieldset>
+
+        {!onPolicy && (
+          <>
+            {editable && copyable.length > 0 && (
+              <Menu
+                label="Copy from an agent"
+                className="w-64"
+                value=""
+                options={[
+                  { value: "", label: "Copy from an agent" },
+                  ...copyable.map((a) => ({
+                    value: a.spec.name,
+                    label: a.spec.name,
+                    hint: chainWords([a.spec, ...(a.spec.fallbacks ?? [])], a.spec.fallback_on),
+                  })),
+                ]}
+                onChange={(name) => {
+                  const from = others.find((a) => a.spec.name === name)?.spec;
+                  if (from) writeChain([from, ...(from.fallbacks ?? [])], from.fallback_on ?? []);
+                }}
+              />
+            )}
+            <ModelChain models={chain} fallbackOn={spec.fallback_on ?? []} editable={editable} onChange={writeChain} />
+          </>
         )}
       </Section>
       <p className="text-aui-xs text-aui-muted">
@@ -255,6 +235,12 @@ function ModelPolicy({
       </p>
     </div>
   );
+}
+
+/** What is wrong with an agent's models, before the server says so. */
+export function policyProblem(spec: AgentSpec, policies: ModelPolicy[] = []): string | null {
+  if (spec.provider === POLICY) return policies.some((p) => p.name === spec.model) ? null : `The workspace has no policy named ${spec.model}.`;
+  return chainProblem([{ provider: spec.provider, model: spec.model }, ...(spec.fallbacks ?? [])], spec.fallback_on ?? []);
 }
 
 /** Why a built-in agent's editor is read only. */
@@ -287,6 +273,8 @@ export function AgentDetail({
   onOpenSource,
   onOpenAlerts,
   onBaseline,
+  policies = [],
+  onManagePolicies,
   seed,
 }: {
   /** null creates a new agent. */
@@ -319,6 +307,9 @@ export function AgentDetail({
   onOpenSource?: (name: string) => void;
   onOpenAlerts?: () => void;
   onBaseline: (name: string) => void;
+  /** The workspace's model policies an agent can follow. */
+  policies?: ModelPolicy[];
+  onManagePolicies?: () => void;
   /** What to show before the revisions and memory are fetched, for the gallery and tests. */
   seed?: { history?: Revision[]; notes?: Note[] };
 }) {
@@ -465,7 +456,7 @@ export function AgentDetail({
                 Discard
               </button>
             )}
-            <button type="button" className={primary} disabled={!dirty || saving || policyProblem(spec) !== null} onClick={save}>
+            <button type="button" className={primary} disabled={!dirty || saving || policyProblem(spec, policies) !== null} onClick={save}>
               {revision ? `Save as Revision ${revision.rev + 1}` : "Create Agent"}
             </button>
           </>
@@ -579,11 +570,13 @@ export function AgentDetail({
         )}
 
         {tab === "model" && (
-          <ModelPolicy
+          <ModelTab
             spec={spec}
             editable={editable}
+            policies={policies}
             others={agents.filter((a) => a.spec.name !== spec.name)}
             onChange={(patch) => set(patch)}
+            onManage={onManagePolicies}
           />
         )}
 

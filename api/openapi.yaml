@@ -2754,7 +2754,9 @@ components:
         name: {type: string}
         description: {type: string}
         model: {type: string}
-        provider: {type: string}
+        provider:
+          description: A model provider, or `policy` to run on the workspace model policy named by `model`.
+          type: string
         fallbacks:
           description: |
             Models tried in order when the primary fails with an error another
@@ -2764,6 +2766,10 @@ components:
           type: array
           maxItems: 4
           items: {$ref: "#/components/schemas/ModelRef"}
+        fallback_on:
+          description: When a call moves to the next fallback. Empty means any error another model could get past. Needs at least one fallback.
+          type: array
+          items: {$ref: "#/components/schemas/FallbackCondition"}
         system_prompt: {type: string}
         tools:
           type: array
@@ -2793,6 +2799,26 @@ components:
           description: When set, the only people who may answer a choice or a reply, named as approvers are.
           type: array
           items: {type: string}
+    FallbackCondition:
+      description: A class of model error that moves a call on to the next model. `any` cannot be combined with another.
+      type: string
+      enum: [any, unavailable, rate_limit, transient, auth, context_length, content_filter]
+    ModelPolicy:
+      description: A workspace's named, ordered list of models. The first answers; the rest are fallbacks.
+      type: object
+      required: [name, models]
+      properties:
+        name: {type: string}
+        description: {type: string}
+        models:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items: {$ref: "#/components/schemas/ModelRef"}
+        fallback_on:
+          description: When a call moves to the next model. Empty means any error another model could get past.
+          type: array
+          items: {$ref: "#/components/schemas/FallbackCondition"}
     ModelRef:
       description: One model, named by its provider.
       type: object
@@ -3187,7 +3213,7 @@ components:
     Settings:
       description: Workspace settings.
       type: object
-      required: [baseline, history, history_limit, projects, title_agent, memory_agent, memory_auto_approve, workspace_name]
+      required: [baseline, history, history_limit, projects, title_agent, memory_agent, memory_auto_approve, workspace_name, model_policies]
       properties:
         baseline:
           description: The agent that answers when the picker matches none.
@@ -3204,6 +3230,16 @@ components:
         memory_agent: {type: string}
         memory_auto_approve: {type: boolean}
         workspace_name: {type: string}
+        model_policies:
+          description: |
+            Named, ordered lists of models with the errors that move a call from
+            one to the next. An agent runs on one by naming the provider
+            `policy` and the policy's name as its model; the policy is read as
+            it stands when each call starts. A policy an agent still runs on
+            cannot be removed (409).
+          type: array
+          maxItems: 32
+          items: {$ref: "#/components/schemas/ModelPolicy"}
         setup_at:
           description: Set once by the server when an admin first saves settings.
           type: string
@@ -4439,6 +4475,13 @@ components:
         kind:
           type: string
           enum: [approval, choice, reply, delegation]
+        approvers:
+          description: When set on an approval, only these people and `role:<name>` holders may answer it, in place of the agent's own approvers.
+          type: array
+          items: {type: string}
+        self_approval:
+          description: With `approvers`, lets the person whose request raised the call approve it.
+          type: boolean
         agent: {type: string}
         prompt: {type: string}
         options:

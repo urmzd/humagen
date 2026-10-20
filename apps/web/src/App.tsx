@@ -497,6 +497,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               onOpenSource={(source) => go({ page: "knowledge", source })}
               onOpenAlerts={() => go({ page: "alerts", tab: "rules" })}
               onBaseline={setBaseline}
+              policies={workspace?.model_policies ?? []}
+              onManagePolicies={() => openSettings("models")}
             />
           ))}
         {route.page === "artifacts" && (
