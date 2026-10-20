@@ -293,15 +293,7 @@ func TestACallTheCalleeHoldsWaitsForItsApprovers(t *testing.T) {
 				return run.Status == runs.Parked || run.Status.Terminal()
 			})
 			if run.Status != runs.Parked {
-				// The runtime never asked the call tool whether the call
-				// needs approval. The call must still not have happened.
-				if tree, _ := p.Runs.Tree(tenant, run.ID); len(tree) != 1 {
-					t.Fatalf("an unapproved call started the callee: %+v", tree)
-				}
-				if sent := strings.Join(c.requests("lead"), "\n"); !strings.Contains(sent, "requires a person to approve") {
-					t.Fatalf("the caller was not told why: %s", sent)
-				}
-				t.Skip("fiber's host call tool wrapper does not forward agentrt.Approving, so the call was refused rather than parked")
+				t.Fatalf("a call the callee holds did not wait for approval: %+v", run)
 			}
 			m := questionFor(t, p, run.ID)
 			q := m.Parts[0].Question
@@ -365,9 +357,17 @@ func TestTheCallToolAsksTheCalleesApprovers(t *testing.T) {
 	if !needed || got.Prompt != "Allow lead to call helper? It asks: Check the build." || !slices.Equal(got.Approvers, []string{"role:manager", "role:admin"}) || !got.SelfApproval {
 		t.Fatalf("approval = %+v, %v", got, needed)
 	}
+	if got.ExpiresIn != callpolicy.DefaultExpiry {
+		t.Fatalf("waits %v, want the default %v", got.ExpiresIn, callpolicy.DefaultExpiry)
+	}
 	again, _ := p.CallToolApproval(req, args)
 	if !reflect.DeepEqual(again, got) {
 		t.Fatal("the same call is described differently")
+	}
+	// A policy's own wait is what the question waits.
+	setPolicy(t, p, "helper", callpolicy.Policy{Callers: callpolicy.Anyone, Approval: callpolicy.Always, ExpiresSeconds: 4 * 3600})
+	if got, _ := p.CallToolApproval(req, args); got.ExpiresIn != 4*time.Hour {
+		t.Fatalf("waits %v, want 4h", got.ExpiresIn)
 	}
 	// A caller the callee does not admit is refused when it runs, not asked about.
 	setPolicy(t, p, "helper", callpolicy.Policy{Callers: callpolicy.Nobody, Approval: callpolicy.Always})

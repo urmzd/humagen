@@ -153,7 +153,7 @@ func (t *callTool) Approval(c saigetypes.ToolCallPart) (agentrt.ApprovalRequest,
 		// about a call that cannot happen.
 		return agentrt.ApprovalRequest{}, false
 	}
-	needed, approvers, self, _ := t.p.callApproval(t.tenant, t.caller, callee)
+	needed, approvers, self, expires := t.p.callApproval(t.tenant, t.caller, callee)
 	if !needed {
 		return agentrt.ApprovalRequest{}, false
 	}
@@ -161,7 +161,8 @@ func (t *callTool) Approval(c saigetypes.ToolCallPart) (agentrt.ApprovalRequest,
 	if excerpt := requestExcerpt(c.Arguments); excerpt != "" {
 		prompt += " It asks: " + excerpt
 	}
-	return agentrt.ApprovalRequest{Prompt: prompt, Approvers: approvers, SelfApproval: self}, true
+	// The callee's policy says how long a held call waits before it is denied.
+	return agentrt.ApprovalRequest{Prompt: prompt, Approvers: approvers, SelfApproval: self, ExpiresIn: expires}, true
 }
 
 // requestExcerpt is the last text the call sends, on one line and clipped.

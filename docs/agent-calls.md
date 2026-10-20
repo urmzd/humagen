@@ -110,10 +110,9 @@ endpoint also accepts the structured contract under `input`.
 
 ## Runtime dependency
 
-Warp pins the runtime extension to fiber commit
-`799b78eb12773400f08323034e9af2c754197124`, merged into
-`main` through PR #17. The Go pseudo-version in `go.mod` resolves that exact
-commit, so builds do not require a local worktree or an upstream release tag.
+Warp depends on the fiber release `v0.17.0`, which carries the call
+extension (PR #17), model fallbacks with `fallback_on`, and per-call approvals
+(`agentrt.Approving`, PRs #32 and #33). Builds need no local worktree.
 
 For runtime development, an ignored `go.work` can link the matching worktree:
 
