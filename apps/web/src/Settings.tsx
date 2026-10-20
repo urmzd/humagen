@@ -1,11 +1,12 @@
 import { type FormEvent, useRef, useState } from "react";
 import { AccessExplain } from "./AccessExplain.tsx";
+import type { SettingsSection } from "./route.ts";
 import { ApiError, api, type Me, type Preferences, type Revision, type Settings as Workspace } from "./api.ts";
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
-import { agentOptions, button, card, field, Label, Menu, Problem, primary, Segmented, Switch } from "./ui.tsx";
+import { agentOptions, button, card, field, Label, Menu, Problem, primary, Segmented, Switch, pageLede, pageTitle } from "./ui.tsx";
 
-export type Section = "configuration" | "routing" | "profile" | "appearance" | "workspace" | "limits" | "connections" | "access";
+export type Section = SettingsSection;
 
 const accents: { id: string; label: string }[] = [
   { id: "purple", label: "Purple" },
@@ -51,9 +52,7 @@ export function Settings({
   onExplain,
   onPrefs,
   onWorkspace,
-  overview,
 }: {
-  overview: React.ReactNode;
   me: Me;
   prefs: Preferences;
   workspace: Workspace | null;
@@ -94,11 +93,10 @@ export function Settings({
   };
 
   const sections: { id: Section; label: string }[] = [
-    { id: "configuration", label: "Configuration" },
-    { id: "routing", label: "Agent routing" },
     { id: "profile", label: "Profile" },
     { id: "appearance", label: "Appearance" },
     { id: "workspace", label: "Workspace" },
+    { id: "routing", label: "Agent routing" },
     { id: "limits", label: "Limits" },
     { id: "connections", label: "Connections" },
     { id: "access", label: "Access" },
@@ -124,23 +122,14 @@ export function Settings({
       </nav>
 
       <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
-        <div className="flex w-full max-w-2xl flex-col gap-4 px-5 pt-8 pb-6 md:px-10">
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-5 pt-8 pb-12 md:px-10">
           <Problem message={problem} />
 
-          {section === "configuration" && (
-            <>
-              <header>
-                <h1 className="text-aui-xl font-semibold text-aui-fg">Configuration</h1>
-                <p className="text-aui-sm text-aui-muted">Your workspace overview and tools.</p>
-              </header>
-              {overview}
-            </>
-          )}
           {section === "routing" && (
             <>
-              <header>
-                <h1 className="text-aui-xl font-semibold text-aui-fg">Agent routing</h1>
-                <p className="text-aui-sm text-aui-muted">New requests use the automatic router. You can also choose an agent in the prompt.</p>
+              <header className="pb-2">
+                <h1 className={pageTitle}>Agent routing</h1>
+                <p className={pageLede}>New requests use the automatic router. You can also choose an agent in the prompt.</p>
               </header>
               <section className={`${card} flex flex-col gap-3`}>
                 <h2 className="text-aui-sm font-medium text-aui-fg">Automatic router</h2>
@@ -176,9 +165,9 @@ export function Settings({
 
           {section === "profile" && (
             <>
-              <header>
-                <h1 className="text-aui-xl font-semibold text-aui-fg">Profile</h1>
-                <p className="text-aui-sm text-aui-muted">How you appear to yourself in this console. Only you see these.</p>
+              <header className="pb-2">
+                <h1 className={pageTitle}>Profile</h1>
+                <p className={pageLede}>How you appear to yourself in this console. Only you see these.</p>
               </header>
               <section className={`${card} flex flex-wrap items-center gap-4`}>
                 <Avatar name={shown} prefs={prefs} size={72} />
@@ -236,9 +225,9 @@ export function Settings({
 
           {section === "appearance" && (
             <>
-              <header>
-                <h1 className="text-aui-xl font-semibold text-aui-fg">Appearance</h1>
-                <p className="text-aui-sm text-aui-muted">These follow you to any browser you sign in from.</p>
+              <header className="pb-2">
+                <h1 className={pageTitle}>Appearance</h1>
+                <p className={pageLede}>These follow you to any browser you sign in from.</p>
               </header>
               <section className={`${card} flex flex-col gap-4`}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -270,9 +259,9 @@ export function Settings({
 
           {section === "workspace" && (
             <>
-              <header>
-                <h1 className="text-aui-xl font-semibold text-aui-fg">Workspace</h1>
-                <p className="text-aui-sm text-aui-muted">
+              <header className="pb-2">
+                <h1 className={pageTitle}>Workspace</h1>
+                <p className={pageLede}>
                   Shared by everyone in {who.tenant}. {canAdmin ? "" : "Only an admin can change these."}
                 </p>
               </header>
@@ -413,9 +402,9 @@ export function Settings({
 
           {section === "access" && (
             <>
-              <header>
-                <h1 className="text-aui-xl font-semibold text-aui-fg">Access</h1>
-                <p className="text-aui-sm text-aui-muted">What you are signed in as and what you may do. Your identity provider decides this.</p>
+              <header className="pb-2">
+                <h1 className={pageTitle}>Access</h1>
+                <p className={pageLede}>What you are signed in as and what you may do. Your identity provider decides this.</p>
               </header>
               <section className={`${card} flex flex-col gap-2`}>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-aui-sm">

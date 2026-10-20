@@ -1,6 +1,7 @@
+import { useState } from "react";
 import type { Run } from "./adapter.ts";
 import type { Group, Revision } from "./api.ts";
-import { AgentMark, Chip, Empty, longest, Page, primary, rows, Stroke, Tape, took } from "./ui.tsx";
+import { AgentMark, Chip, Empty, field, longest, Page, primary, rows, Stroke, Tape, took } from "./ui.tsx";
 
 /**
  * Every agent in the tenant, one lane each: who it is, its recent runs on a
@@ -30,10 +31,15 @@ export function Agents({
   onNew: () => void;
 }) {
   const scale = longest(runs);
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? agents.filter((a) => `${a.spec.name} ${a.spec.description ?? ""} ${a.spec.model}`.toLowerCase().includes(q))
+    : agents;
   return (
     <Page
       title="Agents"
-      lede="An agent is a prompt with a setup around it. Open one to edit its prompt, measure it, and watch it."
+      lede="An agent is a prompt with a model, the agents it may call, and the knowledge it reads. Open one to change it, test it, and watch it."
       actions={
         canWrite ? (
           <button type="button" className={primary} onClick={onNew}>
@@ -42,11 +48,24 @@ export function Agents({
         ) : undefined
       }
     >
+      {/* A long list is found by name, not by scrolling. */}
+      {agents.length > 6 && (
+        <input
+          type="search"
+          aria-label="Find an agent"
+          placeholder={`Find among ${agents.length} agents`}
+          className={`${field} h-9 max-w-sm`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      )}
       {agents.length === 0 ? (
         <Empty title="No agents yet">{canWrite ? "Create one to start running work." : "Ask an admin to define one."}</Empty>
+      ) : shown.length === 0 ? (
+        <p className="text-aui-sm text-aui-muted">No agent matches “{query}”.</p>
       ) : (
         <ul className={rows}>
-          {agents.map((a) => {
+          {shown.map((a) => {
             const name = a.spec.name;
             const g = stats.get(name);
             const ended = g ? g.completed + g.failed : 0;

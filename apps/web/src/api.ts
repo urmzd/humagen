@@ -460,6 +460,7 @@ export const api = {
       expected_rev: expectedRev,
     }),
   runs: () => call<{ runs: Run[] }>("GET", "/api/runs").then((r) => r.runs),
+  run: (id: string) => call<Run>("GET", `/api/runs/${encodeURIComponent(id)}`),
   tree: (id: string) =>
     call<{ runs: Run[] }>("GET", `/api/runs/${encodeURIComponent(id)}/tree`).then((r) => r.runs),
   createRun: (agent: string, text: string, opts: { after?: string; project?: string } = {}) =>

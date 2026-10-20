@@ -1,7 +1,9 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { type Alert, type AlertRule, ApiError, api, type Revision } from "./api.ts";
+import { Analytics } from "./Analytics.tsx";
 import { alertNamed } from "./links.ts";
-import { agentOptions, ago, button, card, Empty, field, Label, Menu, Page, Problem, primary, rows } from "./ui.tsx";
+import type { AlertsTab } from "./route.ts";
+import { agentOptions, ago, button, card, Empty, field, Label, Menu, Page, Problem, primary, rows, Tabs } from "./ui.tsx";
 
 const kindLabel: Record<AlertRule["kind"], string> = {
   run_failed: "A run fails",
@@ -44,6 +46,8 @@ function Severity({ level }: { level: AlertRule["severity"] }) {
  * in the inbox, so there is one place for it.
  */
 export function Alerts({
+  tab: wanted = "rules",
+  onTab,
   alerts,
   loaded = true,
   selected = null,
@@ -51,9 +55,21 @@ export function Alerts({
   rules,
   agents,
   canWrite,
+  canAnalytics = false,
+  tick = 0,
   onChanged,
   onOpenInbox,
+  onOpenRun,
 }: {
+  /** Open: what fired. Rules: what is watched. Overview: how runs are going. */
+  tab?: AlertsTab;
+  onTab?: (next: AlertsTab) => void;
+  /** Kept for callers; project scope arrives with configurable rules. */
+  projects?: string[];
+  /** May read run statistics, for the Overview tab. */
+  canAnalytics?: boolean;
+  /** Changes when runs do, so the overview reads again. */
+  tick?: number;
   alerts: Alert[];
   /** False until the first list is in, so a linked alert is not called missing too early. */
   loaded?: boolean;
@@ -67,9 +83,12 @@ export function Alerts({
   onChanged: () => void;
   /** Open the inbox, at the message an alert raised when one is given. */
   onOpenInbox?: (alert?: Alert) => void;
-  /** No longer used: an alert's run is opened from its message in the inbox. */
+  /** Open the task a run belongs to, from the overview. */
   onOpenRun?: (id: string) => void;
 }) {
+  const [own, setOwn] = useState<AlertsTab>(wanted);
+  const tab = onTab ? wanted : own;
+  const setTab = (next: AlertsTab) => (onTab ? onTab(next) : setOwn(next));
   const [adding, setAdding] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const open = alerts.filter((a) => !a.acked_by).length;
@@ -84,16 +103,31 @@ export function Alerts({
   return (
     <Page
       title="Alerts"
-      lede="Rules decide what to watch for. When one holds, it raises a message in the inbox, and that is where it gets resolved."
+      lede="Rules watch runs, evals and spend. When one holds, it raises a message in the inbox for the people it names, and that is where it gets resolved."
       actions={
-        canWrite && !adding ? (
+        canWrite && !adding && tab === "rules" ? (
           <button type="button" className={primary} onClick={() => setAdding(true)}>
             New Rule
           </button>
         ) : undefined
       }
+      tabs={
+        <Tabs
+          label="Alerts sections"
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { id: "open", label: "Fired", count: open },
+            { id: "rules", label: "Rules", count: rules.length },
+            ...(canAnalytics ? [{ id: "overview" as const, label: "Overview" }] : []),
+          ]}
+        />
+      }
     >
       <Problem message={problem} />
+      {tab === "overview" && canAnalytics && <Analytics embedded agents={agents} openAlerts={open} tick={tick} onOpenRun={onOpenRun ?? (() => {})} />}
+      {tab === "open" && (
+        <>
       {selected && loaded && !shown && (
         <Problem message="That alert is not here. It may have aged out, or you may not have access to it." />
       )}
@@ -107,6 +141,34 @@ export function Alerts({
           </button>
         )}
       </p>
+      {newest.length === 0 ? (
+        <Empty title="Nothing has fired">When a rule holds, what it raised is listed here, newest first.</Empty>
+      ) : (
+        <ul className={rows} aria-label="Fired alerts">
+          {newest.slice(0, 100).map((a) => (
+            <li key={a.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3">
+              <Severity level={a.severity} />
+              <button
+                type="button"
+                className={`${linkish} min-w-0 flex-1 truncate text-left`}
+                aria-current={a.id === selected ? "true" : undefined}
+                onClick={() => onSelect?.(a.id)}
+              >
+                {a.title}
+              </button>
+              <span className="shrink-0 text-aui-xs text-aui-muted">
+                {a.rule || "Limits"}
+                {a.agent ? ` on ${a.agent}` : ""}, {ago(a.at)}, {a.acked_by ? `acknowledged by ${a.acked_by}` : "open"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+        </>
+      )}
+
+      {tab === "rules" && (
+        <>
 
       {adding && (
         <RuleForm
@@ -186,6 +248,8 @@ export function Alerts({
             );
           })}
         </ul>
+      )}
+        </>
       )}
     </Page>
   );

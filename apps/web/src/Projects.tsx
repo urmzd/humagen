@@ -284,6 +284,7 @@ export function ProjectPage({
   canSchedule,
   canLimit,
   tick,
+  onBack,
   onNewChat,
   onOpenThread,
   onChanged,
@@ -300,6 +301,7 @@ export function ProjectPage({
   canLimit: boolean;
   /** Changes when runs do, so usage is read again. */
   tick?: number;
+  onBack: () => void;
   onNewChat: () => void;
   onOpenThread: (id: string) => void;
   onChanged: () => void;
@@ -316,6 +318,8 @@ export function ProjectPage({
 
   return (
     <Page
+      back={{ label: "All projects", onClick: onBack }}
+      icon={<FolderIcon size={28} />}
       title={project.name}
       lede={project.description || "Tasks, shared memory and schedules that belong together."}
       actions={
@@ -326,10 +330,10 @@ export function ProjectPage({
               className={button}
               onClick={() => api.deleteProject(project.name).then(onDeleted).catch(fail("The project could not be deleted."))}
             >
-              Delete project
+              Delete Project
             </button>
             <button type="button" className={primary} onClick={onNewChat}>
-              New conversation
+              New Task
             </button>
           </>
         ) : undefined
@@ -337,7 +341,9 @@ export function ProjectPage({
     >
       <Problem message={problem} />
 
-      <section className={section}>
+      {/* Tasks are the project's history and take the wide column; what every task shares sits beside them. */}
+      <div className="grid grid-cols-1 items-start gap-8 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <section className="flex flex-col gap-2">
         <h2 className={heading}>Tasks ({mine.length})</h2>
         {mine.length === 0 ? (
           <p className="text-aui-sm text-aui-muted">Start a task here to keep its conversation, execution history and shared context in this project.</p>
@@ -367,6 +373,7 @@ export function ProjectPage({
         )}
       </section>
 
+      <aside className="flex flex-col gap-8">
       <SharedMemory project={project.name} canWrite={canWrite} onChanged={onChanged} />
 
       <section className={section}>
@@ -468,6 +475,8 @@ export function ProjectPage({
           </ul>
         )}
       </section>
+      </aside>
+      </div>
     </Page>
   );
 }

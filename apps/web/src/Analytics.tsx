@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { api, type Bucket, type Entry, type Group, type Revision, type Summary } from "./api.ts";
 import { Burn } from "./Billing.tsx";
 import { agentOptions, button, card, Chip, Empty, field, figures, Menu, Page, SkeletonRows, Stat, took } from "./ui.tsx";
@@ -353,12 +353,15 @@ export function Analytics({
   openAlerts,
   tick,
   onOpenRun,
+  embedded = false,
 }: {
   agents: Revision[];
   openAlerts: number;
   /** Changes whenever a run starts or ends, so the page stays current. */
   tick: number;
   onOpenRun: (id: string) => void;
+  /** Drawn inside another page, which already has the title. */
+  embedded?: boolean;
 }) {
   const [win, setWin] = useState("1h");
   const [agent, setAgent] = useState("");
@@ -380,9 +383,9 @@ export function Analytics({
   const wide = win === "168h";
   const t = summary?.total;
 
+  const Shell = embedded ? Inline : Page;
   return (
-    <Page
-      wide
+    <Shell
       title="Analytics"
       lede="How runs are going: volume, outcomes and duration, then the events behind them."
       actions={
@@ -491,6 +494,16 @@ export function Analytics({
           <Journal window={win} agents={agents} agent={agent} onAgent={setAgent} onOpenRun={onOpenRun} />
         </>
       )}
-    </Page>
+    </Shell>
+  );
+}
+
+/** The page's parts without its header, for when another page holds it. */
+function Inline({ actions, children }: { title: string; lede?: string; actions?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-6">
+      {actions && <div className="flex justify-end">{actions}</div>}
+      {children}
+    </div>
   );
 }

@@ -40,7 +40,7 @@ const render = (builtin: boolean, canWrite = true, startOn: Tab = "prompt") =>
       onSuitesChanged={noop}
       onOpenRun={noop}
       onBaseline={noop}
-      startOn={startOn}
+      tab={startOn}
       seed={{ history: [writer, older], notes }}
     />,
   );
@@ -67,29 +67,33 @@ test("someone who may not write sees no save, with or without the lock", () => {
 });
 
 const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-// The setup tab's controls, by what they hold.
+// The controls, by what they hold: the model on the Model tab, the baseline on the Prompt tab.
 const model = (html: string) => /<input[^>]*value="offline"[^>]*>/.exec(html)?.[0] ?? "";
 const baselineSwitch = (html: string) => {
-  // The baseline is the last switch on the tab, after the spec's own.
   const at = html.indexOf("Baseline agent");
   return at < 0 ? "" : (/<input type="checkbox" class="warp-switch[^>]*>/.exec(html.slice(at))?.[0] ?? "");
 };
 
-test("Setup: a built-in's spec is locked, but the workspace baseline is not", () => {
-  const locked = render(true, true, "setup");
-  assert.match(model(locked), /disabled=""/);
-  // Every spec switch is locked.
-  const specSwitches = locked.slice(0, locked.indexOf("Baseline agent")).match(/<input type="checkbox" class="warp-switch[^>]*>/g) ?? [];
+test("A built-in's spec is locked, but the workspace baseline is not", () => {
+  assert.match(model(render(true, true, "model")), /disabled=""/);
+  // Every switch of the spec's own is locked.
+  const access = render(true, true, "access");
+  const specSwitches = access.match(/<input type="checkbox" class="warp-switch[^>]*>/g) ?? [];
   assert.ok(specSwitches.length > 0 && specSwitches.every((s) => s.includes('disabled=""')), "the spec's switches are locked");
+  const locked = render(true, true, "prompt");
   assert.ok(baselineSwitch(locked), "the baseline switch is on the page");
   assert.doesNotMatch(baselineSwitch(locked), /disabled/);
-  const open = render(false, true, "setup");
-  assert.doesNotMatch(model(open), /disabled/);
-  assert.doesNotMatch(baselineSwitch(open), /disabled/);
+  assert.doesNotMatch(model(render(false, true, "model")), /disabled/);
+  assert.doesNotMatch(baselineSwitch(render(false, true, "prompt")), /disabled/);
   // Without the right to write, neither changes.
-  const reader = render(false, false, "setup");
-  assert.match(model(reader), /disabled=""/);
-  assert.match(baselineSwitch(reader), /disabled=""/);
+  assert.match(model(render(false, false, "model")), /disabled=""/);
+  assert.match(baselineSwitch(render(false, false, "prompt")), /disabled=""/);
+});
+
+test("Access: calls are picked from a list, and approving a call to another agent is not offered", () => {
+  const html = text(render(false, true, "access"));
+  assert.match(html, /May call/);
+  assert.doesNotMatch(html, /Approve calls to/);
 });
 
 test("Revisions: restore is offered for an older revision, never for a built-in", () => {

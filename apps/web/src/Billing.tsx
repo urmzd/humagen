@@ -1,6 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type Policy, type PolicyChange, type PolicyScope, type ScopeUsage } from "./api.ts";
-import { ago, button, card, dollars, field, FlashNote, Label, LimitField, Menu, PolicyBadge, primary, Problem, SkeletonRows, UsageMeter, useFlash } from "./ui.tsx";
+import { ago, button, card, dollars, field, FlashNote, Label, LimitField, Menu, PolicyBadge, primary, Problem, SkeletonRows, UsageMeter, useFlash, pageLede, pageTitle } from "./ui.tsx";
 import { money } from "./usage.ts";
 
 const kindWord: Record<PolicyScope["kind"], string> = {
@@ -366,9 +366,9 @@ export function BillingSettings({ projects, agents, canWrite }: { projects: stri
 
   return (
     <div className="@container flex flex-col gap-4">
-      <header>
-        <h1 className="text-aui-xl font-semibold text-aui-fg">Limits</h1>
-        <p className="text-aui-sm text-aui-muted">
+      <header className="pb-2">
+        <h1 className={pageTitle}>Limits</h1>
+        <p className={pageLede}>
           A run that would pass a limit is refused. {canWrite ? "" : "Only an admin can change these."}
         </p>
       </header>

@@ -63,16 +63,12 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
     <Sidebar
       open
       onToggle={() => {}}
-      view="home"
-      onView={() => {}}
-      onSettings={() => {}}
-      onNewChat={() => {}}
+      route={{ page: "new" }}
+      go={() => {}}
       me={sidebarMe}
       prefs={null}
       can={(p) => all.includes(p)}
       threads={[task("t1", "Quarterly report"), task("t2", "Fix the build")]}
-      selected={null}
-      onSelect={() => {}}
       pinned={[]}
       onPin={() => {}}
       inboxCount={0}
@@ -84,29 +80,27 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
   );
 }
 
-test("the sidebar is a short flat list: New is home, the tools fold under More", () => {
+test("the sidebar is one flat list in working order, with New as home", () => {
   const out = sidebar();
-  for (const label of ["New", "Projects", "Inbox", "Scheduled", "More"]) assert.match(out, new RegExp(`>${label}<`));
-  // Home and New are one entry, current on the empty conversation.
-  assert.doesNotMatch(out, />Home</);
-  assert.doesNotMatch(out, />New conversation</);
+  const order = ["New", "Projects", "Schedules", "Alerts", "Inbox", "Knowledge", "Agents", "Artifacts"];
+  const at = order.map((label) => out.indexOf(`>${label}<`));
+  assert.ok(at.every((i) => i >= 0), `every page is listed: ${at}`);
+  assert.deepEqual([...at].sort((x, y) => x - y), at, "in this order");
+  // Home and New are one entry; runs, evals and analytics live where they belong.
+  for (const gone of ["Home", "New conversation", "More", "Execution history", "Evals", "Analytics", "Storage"]) {
+    assert.doesNotMatch(out, new RegExp(`>${gone}<`));
+  }
   assert.match(out, /href="\/" aria-current="page"/);
-  // More starts folded, so the tools are not listed.
-  assert.match(out, /aria-expanded="false" aria-controls="warp-more"/);
-  assert.doesNotMatch(out, />Knowledge</);
-  // On one of its pages, More is open and shows it as current.
-  const onAgents = sidebar({ view: "agents" });
-  assert.match(onAgents, /aria-expanded="true"/);
-  assert.match(onAgents, /href="\/\?view=agents" aria-current="page"/);
+  assert.match(sidebar({ route: { page: "agent", name: "lead", tab: "model" } }), /href="\/agents" aria-current="page"/);
 });
 
-test("the sidebar hides More, Projects and Scheduled from someone who may not read them", () => {
+test("the sidebar hides pages from someone who may not read them", () => {
   const out = sidebar({ can: (p) => p === "runs:write" });
   assert.match(out, />New</);
-  for (const label of ["Projects", "Inbox", "Scheduled", "More"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
+  for (const label of ["Projects", "Inbox", "Schedules", "Knowledge", "Agents", "Artifacts"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
 });
 
-test("pinned conversations sit in their own section, ahead of the rest", () => {
+test("pinned tasks sit in their own section, ahead of the rest", () => {
   const none = sidebar();
   assert.doesNotMatch(none, /aria-label="Pinned"/);
   const out = sidebar({ pinned: ["t2", "gone"] });
@@ -622,11 +616,13 @@ test("Alerts: recent firings are listed newest first, as links into the inbox", 
 });
 
 test("Alerts: open alerts are counted and linked, not acknowledged here", () => {
-  const out = alertsPage();
+  const out = alertsPage({ tab: "open" });
   assert.match(out, /1 message a rule raised is open\./);
   assert.match(out, />Open the inbox</);
   assert.doesNotMatch(out, />Acknowledge</);
-  assert.match(alertsPage({ alerts: [] }), /Nothing a rule raised is open\./);
+  assert.match(alertsPage({ tab: "open", alerts: [] }), /Nothing a rule raised is open\./);
+  // The Fired tab lists every firing, newest first.
+  assert.ok(out.indexOf("oncall failed") < out.indexOf("lead failed"));
 });
 
 test("Alerts: with no rules, it says nothing is watched, and who can change that", () => {

@@ -1,11 +1,9 @@
 import {
   BotIcon,
   CheckIcon,
-  ChevronRightIcon,
   ClockIcon,
   ComposeIcon,
   FolderIcon,
-  HistoryIcon,
   PanelLeftCloseIcon,
   PanelLeftOpenIcon,
   SettingsIcon,
@@ -13,26 +11,10 @@ import {
 } from "@warp/render-web";
 import { type MouseEvent, type ReactNode, type SVGProps, useState } from "react";
 import type { Me, Preferences, ThreadSummary } from "./api.ts";
-import { Avatar, type Section } from "./Settings.tsx";
+import { type Page as RoutePage, type Route, href } from "./route.ts";
+import { Avatar } from "./Settings.tsx";
 import { type Standing, useRecents } from "./recents.ts";
 import { AgentMark, Popover, SkeletonRows } from "./ui.tsx";
-
-export type View =
-  | "home"
-  | "chat"
-  | "inbox"
-  | "runs"
-  | "agents"
-  | "agent"
-  | "knowledge"
-  | "schedules"
-  | "analytics"
-  | "alerts"
-  | "projects"
-  | "project"
-  | "storage"
-  | "evals"
-  | "settings";
 
 // Glyphs outside the shared icon set. Same grid and stroke.
 function glyph(d: ReactNode) {
@@ -64,7 +46,6 @@ const InboxIcon = glyph(
   </>,
 );
 const BookIcon = glyph(<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />);
-const ChartIcon = glyph(<path d="M3 3v18h18M8 17v-5M13 17V8M18 17v-8" />);
 const BellIcon = glyph(
   <>
     <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
@@ -84,14 +65,6 @@ const PinIcon = glyph(
     <path d="M9 10.76V6h6v4.76a2 2 0 0 0 1.11 1.79l1.78.9A2 2 0 0 1 19 15.24V17H5v-1.76a2 2 0 0 1 1.11-1.79l1.78-.9A2 2 0 0 0 9 10.76zM8 2h8" />
   </>,
 );
-const MoreIcon = glyph(
-  <>
-    <circle cx="5" cy="12" r="1" />
-    <circle cx="12" cy="12" r="1" />
-    <circle cx="19" cy="12" r="1" />
-  </>,
-);
-const CheckListIcon = glyph(<path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 6h8M13 12h8M13 18h8" />);
 const LogOutIcon = glyph(
   <>
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -180,27 +153,6 @@ function Choices<T extends string>({
   );
 }
 
-const STORE_MORE = "warp.sidebar.more";
-
-/** A per-browser memory of whether More is open. Nothing breaks without it. */
-function remembered(): boolean {
-  try {
-    return window.localStorage.getItem(STORE_MORE) === "1";
-  } catch {
-    return false;
-  }
-}
-
-/** One page under More. Hidden pages are ones the person may not read. */
-interface Page {
-  view: View;
-  label: string;
-  icon: ReactNode;
-  show: boolean;
-  badge?: number;
-  active?: boolean;
-}
-
 /** One conversation in the Pinned or Tasks list. The pin sits beside it, shown on hover or focus. */
 function TaskRow({
   task,
@@ -262,23 +214,18 @@ function Label({ children, action }: { children: ReactNode; action?: ReactNode }
 }
 
 /**
- * The console's navigation, laid out like Claude's: a short flat list (New,
- * Projects, Inbox, Scheduled, More), then pinned conversations, then recent
- * ones. Closed, it is a rail of icons. The open state is the caller's to persist.
+ * The console's navigation, laid out like Claude's: one flat list of pages,
+ * then pinned tasks, then recent ones. Closed, it is a rail of icons. The open state is the caller's to persist.
  */
 export function Sidebar({
   open,
   onToggle,
-  view,
-  onView,
-  onSettings,
-  onNewChat,
+  route,
+  go,
   me,
   prefs,
   can,
   threads,
-  selected,
-  onSelect,
   pinned,
   onPin,
   inboxCount,
@@ -288,17 +235,13 @@ export function Sidebar({
 }: {
   open: boolean;
   onToggle: () => void;
-  view: View;
-  onView: (v: View) => void;
-  onSettings: (s: Section) => void;
-  onNewChat: () => void;
+  route: Route;
+  go: (next: Route) => void;
   me: Me;
   prefs: Preferences | null;
   can: (permission: string) => boolean;
   threads: ThreadSummary[];
-  selected: string | null;
-  onSelect: (id: string) => void;
-  /** Pinned conversation ids, most recently pinned first. */
+  /** Pinned task ids, most recently pinned first. */
   pinned: string[];
   onPin: (id: string, pin: boolean) => void;
   inboxCount: number;
@@ -321,33 +264,28 @@ export function Sidebar({
   const filters = (agent ? 1 : 0) + (standing ? 1 : 0);
 
   // Every page is hidden from someone who may not read it, so nothing in the
-  // menu answers with a refusal. The tools and the pages that watch them sit
-  // under More, so the list people use every day stays short.
-  const all: Page[] = [
-    { view: "agents", label: "Agents", icon: <BotIcon />, show: can("agents:read"), active: view === "agents" || view === "agent" },
-    { view: "knowledge", label: "Knowledge", icon: <BookIcon />, show: can("knowledge:read") },
-    { view: "storage", label: "Storage", icon: <BoxIcon />, show: can("artifacts:read") },
-    { view: "evals", label: "Evals", icon: <CheckListIcon />, show: can("evals:read") },
-    { view: "runs", label: "Execution history", icon: <HistoryIcon />, show: can("runs:read") },
-    { view: "analytics", label: "Analytics", icon: <ChartIcon />, show: can("runs:read") },
-    { view: "alerts", label: "Alerts", icon: <BellIcon />, show: can("alerts:read"), badge: alertCount },
+  // menu answers with a refusal. Work comes first, then what watches it, then
+  // what it is built from. A task keeps its own runs, evals live on what they
+  // test, and trends live with alerts, so none of those needs a page here.
+  const selected = route.page === "task" ? route.id : null;
+  const here = (...pages: RoutePage[]) => pages.includes(route.page);
+  const entries: { to: Route; label: string; icon: ReactNode; show: boolean; active: boolean; badge?: number }[] = [
+    { to: { page: "new" }, label: "New", icon: <ComposeIcon />, show: can("runs:write"), active: here("new") },
+    { to: { page: "projects" }, label: "Projects", icon: <FolderIcon />, show: can("runs:read"), active: here("projects", "project") },
+    { to: { page: "schedules" }, label: "Schedules", icon: <ClockIcon />, show: can("schedules:read"), active: here("schedules") },
+    {
+      to: { page: "alerts", tab: "open" },
+      label: "Alerts",
+      icon: <BellIcon />,
+      show: can("alerts:read") || can("runs:read"),
+      active: here("alerts"),
+      badge: alertCount,
+    },
+    { to: { page: "inbox" }, label: "Inbox", icon: <InboxIcon />, show: can("runs:read"), active: here("inbox"), badge: inboxCount },
+    { to: { page: "knowledge" }, label: "Knowledge", icon: <BookIcon />, show: can("knowledge:read"), active: here("knowledge") },
+    { to: { page: "agents" }, label: "Agents", icon: <BotIcon />, show: can("agents:read"), active: here("agents", "agent") },
+    { to: { page: "artifacts" }, label: "Artifacts", icon: <BoxIcon />, show: can("artifacts:read"), active: here("artifacts") },
   ];
-  const pages = all.filter((p) => p.show);
-  const isActive = (p: Page) => p.active ?? view === p.view;
-  const inMore = pages.some(isActive);
-  const [moreOpen, setMoreOpen] = useState(remembered);
-  // What is on screen is never hidden: More stays open while one of its pages is.
-  const expanded = moreOpen || inMore;
-  const toggleMore = () => {
-    const next = !expanded;
-    setMoreOpen(next);
-    try {
-      window.localStorage.setItem(STORE_MORE, next ? "1" : "0");
-    } catch {
-      // The choice just does not persist.
-    }
-  };
-  const moreBadge = pages.reduce((n, p) => n + (p.badge ?? 0), 0);
 
   // Pinned conversations come from whatever is loaded. One that cannot be found
   // (deleted, or no longer readable) is not shown.
@@ -355,7 +293,7 @@ export function Sidebar({
   const pinnedRows = pinned.map((id) => known.get(id)).filter((t): t is ThreadSummary => t !== undefined);
   const pinnedSet = new Set(pinned);
   const unpinned = recents.filter((t) => !pinnedSet.has(t.id));
-  const isCurrent = (t: ThreadSummary) => view === "chat" && t.id === selected;
+  const isCurrent = (t: ThreadSummary) => t.id === selected;
   const canPin = can("runs:read");
 
   const clear = () => {
@@ -389,104 +327,13 @@ export function Sidebar({
       <div className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
       <nav aria-label="Sections" className={`flex shrink-0 flex-col ${open ? "px-2" : "items-center"}`}>
         <ul className={`flex flex-col gap-0.5 ${open ? "" : "items-center"}`}>
-          {/* New is home: an empty conversation, ready for a message. */}
-          {can("runs:write") && (
-            <li>
-              <Item
-                icon={<ComposeIcon />}
-                label="New"
-                href="/"
-                open={open}
-                active={view === "home" || (view === "chat" && !selected)}
-                onClick={onNewChat}
-              />
-            </li>
-          )}
-          {can("runs:read") && (
-            <li>
-              <Item
-                icon={<FolderIcon />}
-                label="Projects"
-                href="/?view=projects"
-                open={open}
-                active={view === "projects" || view === "project"}
-                onClick={() => onView("projects")}
-              />
-            </li>
-          )}
-          {can("runs:read") && (
-            <li>
-              <Item icon={<InboxIcon />} label="Inbox" href="/?view=inbox" open={open} active={view === "inbox"} badge={inboxCount} onClick={() => onView("inbox")} />
-            </li>
-          )}
-          {can("schedules:read") && (
-            <li>
-              <Item icon={<ClockIcon />} label="Scheduled" href="/?view=schedules" open={open} active={view === "schedules"} onClick={() => onView("schedules")} />
-            </li>
-          )}
-          {pages.length > 0 && open && (
-            <li>
-              <button
-                type="button"
-                onClick={toggleMore}
-                aria-expanded={expanded}
-                aria-controls="warp-more"
-                aria-label={moreBadge > 0 && !expanded ? `More, ${moreBadge} need you` : undefined}
-                className="flex h-9 w-full items-center gap-2.5 rounded-aui px-2.5 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-              >
-                <ChevronRightIcon size={18} className={`shrink-0 transition-transform motion-reduce:transition-none ${expanded ? "rotate-90" : ""}`} />
-                <span className="flex-1 text-left">More</span>
-                {moreBadge > 0 && !expanded && <span aria-hidden className="size-1.5 rounded-full bg-aui-accent" />}
-              </button>
-              {expanded && (
-                <ul id="warp-more" className="flex flex-col gap-0.5 pt-0.5">
-                  {pages.map((p) => (
-                    <li key={p.view}>
-                      <Item icon={p.icon} label={p.label} href={`/?view=${p.view}`} open active={isActive(p)} badge={p.badge} onClick={() => onView(p.view)} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          )}
-          {pages.length > 0 && !open && (
-            <li>
-              {/* As a rail, More is a flyout beside the icon. */}
-              <Popover
-                label="More"
-                tooltip="More"
-                side="right"
-                className={`relative inline-flex size-9 items-center justify-center rounded-aui hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg ${inMore ? "bg-aui-hover text-aui-fg" : "text-aui-muted"}`}
-                button={
-                  <>
-                    <MoreIcon size={18} />
-                    {moreBadge > 0 && <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-aui-accent" />}
-                  </>
-                }
-              >
-                {(close) => (
-                  <ul className="flex flex-col gap-0.5 p-1">
-                    {pages.map((p) => (
-                      <li key={p.view}>
-                        <Item
-                          icon={p.icon}
-                          label={p.label}
-                          href={`/?view=${p.view}`}
-                          open
-                          active={isActive(p)}
-                          badge={p.badge}
-                          onClick={() => {
-                            close();
-                            onView(p.view);
-                          }}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Popover>
-            </li>
-          )}
+          {entries
+            .filter((e) => e.show)
+            .map((e) => (
+              <li key={e.label}>
+                <Item icon={e.icon} label={e.label} href={href(e.to)} open={open} active={e.active} badge={e.badge} onClick={() => go(e.to)} />
+              </li>
+            ))}
         </ul>
       </nav>
 
@@ -495,7 +342,7 @@ export function Sidebar({
           <Label>Pinned</Label>
           <ul className="px-2">
             {pinnedRows.map((t) => (
-              <TaskRow key={t.id} task={t} current={isCurrent(t)} pinned onSelect={() => onSelect(t.id)} onPin={() => onPin(t.id, false)} />
+              <TaskRow key={t.id} task={t} current={isCurrent(t)} pinned onSelect={() => go({ page: "task", id: t.id })} onPin={() => onPin(t.id, false)} />
             ))}
           </ul>
         </section>
@@ -586,7 +433,7 @@ export function Sidebar({
                 task={t}
                 current={isCurrent(t)}
                 pinned={false}
-                onSelect={() => onSelect(t.id)}
+                onSelect={() => go({ page: "task", id: t.id })}
                 onPin={canPin ? () => onPin(t.id, true) : undefined}
               />
             ))}
@@ -612,8 +459,8 @@ export function Sidebar({
       <div className={`flex items-center gap-1 border-aui-border border-t p-1.5 ${open ? "" : "flex-col"}`}>
         <button
           type="button"
-          onClick={() => onSettings("profile")}
-          aria-current={view === "settings" ? "page" : undefined}
+          onClick={() => go({ page: "settings", section: "profile" })}
+          aria-current={route.page === "settings" ? "page" : undefined}
           aria-label={`Settings for ${name}`}
           title={open ? undefined : "Settings"}
           className={`flex min-w-0 items-center gap-2 rounded-aui p-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover ${
