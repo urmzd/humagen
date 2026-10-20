@@ -95,3 +95,31 @@ func TestPhotoVersionChanges(t *testing.T) {
 		t.Fatalf("a cleared photo is still served: %v", err)
 	}
 }
+
+func TestPinned(t *testing.T) {
+	s := NewStore()
+	if got := s.Get("acme", "ada"); got.Pinned == nil || len(got.Pinned) != 0 {
+		t.Fatalf("default pins: %#v", got.Pinned)
+	}
+	got, err := s.SetPinned("acme", "ada", []string{"t2", "t1", "t2"})
+	if err != nil || len(got.Pinned) != 2 || got.Pinned[0] != "t2" || got.Pinned[1] != "t1" {
+		t.Fatalf("got %v, %v", got.Pinned, err)
+	}
+	// Choosing a theme leaves the pins alone.
+	if got, _ := s.Set("acme", "ada", Preferences{Theme: Dark, Accent: "teal"}); len(got.Pinned) != 2 {
+		t.Fatalf("set dropped pins: %v", got.Pinned)
+	}
+	for name, ids := range map[string][]string{
+		"empty":    {""},
+		"markup":   {"<b>"},
+		"too long": {string(make([]byte, 200))},
+		"too many": make([]string, MaxPinned+1),
+	} {
+		if _, err := s.SetPinned("acme", "ada", ids); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: got %v", name, err)
+		}
+	}
+	if got := s.Get("acme", "bob"); len(got.Pinned) != 0 {
+		t.Fatalf("another person sees pins: %v", got.Pinned)
+	}
+}

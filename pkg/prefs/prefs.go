@@ -29,6 +29,12 @@ const MaxPhoto = 512 << 10
 // maxName bounds a display name, in bytes.
 const maxName = 80
 
+// MaxPinned bounds how many conversations a person can pin.
+const MaxPinned = 50
+
+// maxPinID bounds one pinned conversation's id, in bytes.
+const maxPinID = 128
+
 // Theme is how the console is drawn.
 type Theme string
 
@@ -56,10 +62,16 @@ type Preferences struct {
 	// OnboardedAt is when the person finished or skipped the first-run
 	// questions. Zero means they have not been through them.
 	OnboardedAt time.Time `json:"onboarded_at,omitzero"`
+	// Pinned is the conversations kept at the top of the person's sidebar,
+	// most recently pinned first. Only ids are kept: a conversation the
+	// person can no longer read is simply not shown.
+	Pinned []string `json:"pinned"`
 }
 
 // Defaults is what a person has before they choose anything.
-func Defaults() Preferences { return Preferences{Theme: System, Accent: Accents[0]} }
+func Defaults() Preferences {
+	return Preferences{Theme: System, Accent: Accents[0], Pinned: []string{}}
+}
 
 type photo struct {
 	data []byte
@@ -123,6 +135,39 @@ func (s *Store) Set(tenant, subject string, next Preferences) (Preferences, erro
 	defer s.mu.Unlock()
 	e := s.of(tenant, subject)
 	e.DisplayName, e.Theme, e.Accent = next.DisplayName, next.Theme, next.Accent
+	return e.Preferences, nil
+}
+
+// CleanPinned checks a list of pinned conversations and drops repeats,
+// keeping the first.
+func CleanPinned(ids []string) ([]string, error) {
+	if len(ids) > MaxPinned {
+		return nil, fmt.Errorf("%w: at most %d conversations can be pinned", ErrInvalid, MaxPinned)
+	}
+	seen := make(map[string]bool, len(ids))
+	next := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id == "" || len(id) > maxPinID || strings.ContainsAny(id, "\r\n\t<>") {
+			return nil, fmt.Errorf("%w: a pinned conversation is named by its id", ErrInvalid)
+		}
+		if !seen[id] {
+			seen[id] = true
+			next = append(next, id)
+		}
+	}
+	return next, nil
+}
+
+// SetPinned replaces the conversations a person has pinned.
+func (s *Store) SetPinned(tenant, subject string, ids []string) (Preferences, error) {
+	next, err := CleanPinned(ids)
+	if err != nil {
+		return Preferences{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e := s.of(tenant, subject)
+	e.Pinned = next
 	return e.Preferences, nil
 }
 

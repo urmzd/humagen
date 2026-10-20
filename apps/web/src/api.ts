@@ -370,6 +370,8 @@ export interface Preferences {
   photo_version: number;
   /** When the person finished or skipped the first-run questions. Absent means not yet. */
   onboarded_at?: string;
+  /** Conversations kept at the top of the sidebar, most recently pinned first. */
+  pinned: string[];
 }
 
 export interface Check {
@@ -534,7 +536,7 @@ export const api = {
     call<void>("DELETE", `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`),
 
   preferences: () => call<Preferences>("GET", "/api/preferences"),
-  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean }) =>
+  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[] }) =>
     call<Preferences>("PUT", "/api/preferences", p),
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.

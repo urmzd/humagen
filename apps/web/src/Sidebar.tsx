@@ -1,5 +1,17 @@
-import { BotIcon, CheckIcon, ClockIcon, ComposeIcon, HistoryIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, SettingsIcon, Tooltip } from "@warp/render-web";
-import { type MouseEvent, type ReactNode, type SVGProps, useId, useState } from "react";
+import {
+  BotIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  ComposeIcon,
+  FolderIcon,
+  HistoryIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+  SettingsIcon,
+  Tooltip,
+} from "@warp/render-web";
+import { type MouseEvent, type ReactNode, type SVGProps, useState } from "react";
 import type { Me, Preferences, ThreadSummary } from "./api.ts";
 import { Avatar, type Section } from "./Settings.tsx";
 import { type Standing, useRecents } from "./recents.ts";
@@ -16,6 +28,7 @@ export type View =
   | "schedules"
   | "analytics"
   | "alerts"
+  | "projects"
   | "project"
   | "storage"
   | "evals"
@@ -65,25 +78,20 @@ const BoxIcon = glyph(
   </>,
 );
 const FilterIcon = glyph(<path d="M3 5h18M7 12h10M10 19h4" />);
-const HomeIcon = glyph(
+const PinIcon = glyph(
   <>
-    <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z" />
+    <path d="M12 17v5" />
+    <path d="M9 10.76V6h6v4.76a2 2 0 0 0 1.11 1.79l1.78.9A2 2 0 0 1 19 15.24V17H5v-1.76a2 2 0 0 1 1.11-1.79l1.78-.9A2 2 0 0 0 9 10.76zM8 2h8" />
+  </>,
+);
+const MoreIcon = glyph(
+  <>
+    <circle cx="5" cy="12" r="1" />
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="19" cy="12" r="1" />
   </>,
 );
 const CheckListIcon = glyph(<path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 6h8M13 12h8M13 18h8" />);
-const PlugIcon = glyph(
-  <>
-    <path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0z" />
-    <path d="M12 18v4" />
-  </>,
-);
-const KeyIcon = glyph(
-  <>
-    <circle cx="7.5" cy="15.5" r="4.5" />
-    <path d="m10.7 12.3 9.3-9.3M17 6l3 3M14 9l2 2" />
-  </>,
-);
-const GaugeIcon = glyph(<path d="M12 14l4-4M3.3 19a10 10 0 1 1 17.4 0" />);
 const LogOutIcon = glyph(
   <>
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -172,70 +180,96 @@ function Choices<T extends string>({
   );
 }
 
-/** One entry of the menu. Hidden entries are ones the person may not read. */
-interface Entry {
-  key: string;
-  label: string;
-  icon: ReactNode;
-  href: string;
-  active: boolean;
-  badge?: number;
-  show: boolean;
-  go: () => void;
+const STORE_MORE = "warp.sidebar.more";
+
+/** A per-browser memory of whether More is open. Nothing breaks without it. */
+function remembered(): boolean {
+  try {
+    return window.localStorage.getItem(STORE_MORE) === "1";
+  } catch {
+    return false;
+  }
 }
 
-/** A labelled group of entries. The label is small text when open, a hairline (and still read out) as a rail. */
-function Group({ label, entries, open }: { label?: string; entries: Entry[]; open: boolean }) {
-  const id = useId();
-  const shown = entries.filter((e) => e.show);
-  if (shown.length === 0) return null;
-  const list = (
-    <ul className={`flex flex-col gap-0.5 ${open ? "" : "items-center"}`} aria-labelledby={label ? id : undefined}>
-      {shown.map((e) => (
-        <li key={e.key}>
-          <Item icon={e.icon} label={e.label} href={e.href} open={open} active={e.active} badge={e.badge} onClick={e.go} />
-        </li>
-      ))}
-    </ul>
-  );
-  if (!label) return list;
+/** One page under More. Hidden pages are ones the person may not read. */
+interface Page {
+  view: View;
+  label: string;
+  icon: ReactNode;
+  show: boolean;
+  badge?: number;
+  active?: boolean;
+}
+
+/** One conversation in the Pinned or Tasks list. The pin sits beside it, shown on hover or focus. */
+function TaskRow({
+  task,
+  current,
+  pinned,
+  onSelect,
+  onPin,
+}: {
+  task: ThreadSummary;
+  current: boolean;
+  pinned: boolean;
+  onSelect: () => void;
+  onPin?: () => void;
+}) {
+  const title = task.title || "Untitled task";
+  const state = task.active > 0 ? "In progress" : task.failed > 0 ? "Needs attention" : "Finished";
   return (
-    <div className={`flex flex-col ${open ? "" : "items-center"}`}>
-      {open ? (
-        <p id={id} className="px-2.5 pt-4 pb-1 text-aui-xs text-aui-muted">
-          {label}
-        </p>
-      ) : (
-        <>
-          <span id={id} className="sr-only">
-            {label}
-          </span>
-          <span aria-hidden className="my-2 h-px w-5 bg-aui-border" />
-        </>
+    <li className="group relative warp-enter">
+      <button
+        type="button"
+        onClick={onSelect}
+        title={`${title}\n${state}${task.project ? ` · ${task.project}` : ""}`}
+        aria-current={current ? "page" : undefined}
+        className="flex h-8 w-full items-center gap-2 rounded-aui pr-8 pl-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
+      >
+        {/* The orb of the agent that last answered: moving while it works, red when a reply failed. */}
+        <AgentMark
+          name={task.agents[task.agents.length - 1] ?? "?"}
+          size={10}
+          state={task.active > 0 ? "thinking" : task.failed > 0 ? "error" : "idle"}
+        />
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        {task.active > 0 && <span className="sr-only">, running</span>}
+        {task.active === 0 && task.failed > 0 && <span className="sr-only">, a reply failed</span>}
+      </button>
+      {onPin && (
+        <button
+          type="button"
+          onClick={onPin}
+          aria-label={pinned ? `Unpin ${title}` : `Pin ${title}`}
+          title={pinned ? "Unpin" : "Pin"}
+          className="absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded-aui text-aui-muted opacity-0 transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent group-hover:opacity-100 max-md:opacity-100"
+        >
+          <PinIcon size={14} fill={pinned ? "currentColor" : "none"} />
+        </button>
       )}
-      {list}
+    </li>
+  );
+}
+
+/** A small section label, as Claude's sidebar draws Pinned and Recents. */
+function Label({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="sticky top-0 z-10 flex h-8 items-center justify-between gap-1 bg-[var(--warp-plane)] pr-2 pl-2">
+      <p className="px-2 text-aui-xs text-aui-muted">{children}</p>
+      {action}
     </div>
   );
 }
 
 /**
- * The console's navigation. Open, it shows labels and recent conversations.
- * Closed, it is a rail of icons. The choice is the caller's to persist.
+ * The console's navigation, laid out like Claude's: a short flat list (New,
+ * Projects, Inbox, Scheduled, More), then pinned conversations, then recent
+ * ones. Closed, it is a rail of icons. The open state is the caller's to persist.
  */
-/** A group label when open, a hairline when the sidebar is a rail. */
-function Heading({ open, children }: { open: boolean; children: ReactNode }) {
-  return open ? (
-    <p className="px-2.5 pt-4 pb-1 text-aui-xs text-aui-muted">{children}</p>
-  ) : (
-    <span aria-hidden className="my-2 h-px w-5 bg-aui-border" />
-  );
-}
-
 export function Sidebar({
   open,
   onToggle,
   view,
-  section,
   onView,
   onSettings,
   onNewChat,
@@ -245,17 +279,16 @@ export function Sidebar({
   threads,
   selected,
   onSelect,
+  pinned,
+  onPin,
   inboxCount,
   alertCount,
   live,
   onSignOut,
-  projectsSlot,
 }: {
   open: boolean;
   onToggle: () => void;
   view: View;
-  /** The Settings section on screen, for the menu entries that open one. */
-  section: Section;
   onView: (v: View) => void;
   onSettings: (s: Section) => void;
   onNewChat: () => void;
@@ -265,13 +298,14 @@ export function Sidebar({
   threads: ThreadSummary[];
   selected: string | null;
   onSelect: (id: string) => void;
+  /** Pinned conversation ids, most recently pinned first. */
+  pinned: string[];
+  onPin: (id: string, pin: boolean) => void;
   inboxCount: number;
   alertCount: number;
   /** Updates are arriving. When false, the sidebar says so. */
   live: boolean;
   onSignOut: () => void;
-  /** Drawn between the sections and Recents, in both the open and the rail state. It handles its own collapsed look. */
-  projectsSlot?: ReactNode;
 }) {
   const who = me.principal;
   const dev = who.subject === "dev";
@@ -285,67 +319,45 @@ export function Sidebar({
   // ends, which is the signal to fetch the first page again.
   const { threads: recents, hasMore, loading, failed, stalled, retry, more } = useRecents(agent, standing, threads);
   const filters = (agent ? 1 : 0) + (standing ? 1 : 0);
-  const inSettings = (s: Section) => view === "settings" && section === s;
-  const to = (v: View, label: string, icon: ReactNode, show: boolean, extra: Partial<Entry> = {}): Entry => ({
-    key: v,
-    label,
-    icon,
-    href: `/?view=${v}`,
-    active: view === v,
-    show,
-    go: () => onView(v),
-    ...extra,
-  });
-  const setting = (s: Section, label: string, icon: ReactNode, show: boolean): Entry => ({
-    key: s,
-    label,
-    icon,
-    href: `/?view=${s}`,
-    active: inSettings(s),
-    show,
-    go: () => onSettings(s),
-  });
-  // Every entry is hidden from someone who may not read what it opens, so
-  // nothing in the menu answers with a refusal.
-  const top: Entry[] = [
-    to("home", "Home", <HomeIcon />, true),
-    to("chat", "New conversation", <ComposeIcon />, can("runs:write"), { active: view === "chat" && !selected, go: onNewChat }),
-    to("inbox", "Inbox", <InboxIcon />, can("runs:read"), { badge: inboxCount }),
+
+  // Every page is hidden from someone who may not read it, so nothing in the
+  // menu answers with a refusal. The tools and the pages that watch them sit
+  // under More, so the list people use every day stays short.
+  const all: Page[] = [
+    { view: "agents", label: "Agents", icon: <BotIcon />, show: can("agents:read"), active: view === "agents" || view === "agent" },
+    { view: "knowledge", label: "Knowledge", icon: <BookIcon />, show: can("knowledge:read") },
+    { view: "storage", label: "Storage", icon: <BoxIcon />, show: can("artifacts:read") },
+    { view: "evals", label: "Evals", icon: <CheckListIcon />, show: can("evals:read") },
+    { view: "runs", label: "Execution history", icon: <HistoryIcon />, show: can("runs:read") },
+    { view: "analytics", label: "Analytics", icon: <ChartIcon />, show: can("runs:read") },
+    { view: "alerts", label: "Alerts", icon: <BellIcon />, show: can("alerts:read"), badge: alertCount },
   ];
-  const groups: { label: string; entries: Entry[] }[] = [
-    {
-      label: "Work",
-      entries: [
-        to("runs", "Runs", <HistoryIcon />, can("runs:read")),
-        to("schedules", "Schedules", <ClockIcon />, can("schedules:read")),
-      ],
-    },
-    {
-      label: "Build",
-      entries: [
-        to("agents", "Agents", <BotIcon />, can("agents:read"), { active: view === "agents" || view === "agent" }),
-        to("knowledge", "Knowledge", <BookIcon />, can("knowledge:read")),
-        to("evals", "Evals", <CheckListIcon />, can("evals:read")),
-      ],
-    },
-    {
-      label: "Watch",
-      entries: [
-        to("analytics", "Analytics", <ChartIcon />, can("runs:read")),
-        to("alerts", "Alerts", <BellIcon />, can("alerts:read"), { badge: alertCount }),
-      ],
-    },
-    {
-      label: "Workspace",
-      entries: [
-        setting("connections", "Connections", <PlugIcon />, can("clients:read")),
-        // Anyone signed in may see their own access.
-        setting("access", "Access", <KeyIcon />, true),
-        setting("limits", "Limits and billing", <GaugeIcon />, can("billing:read")),
-        to("storage", "Storage", <BoxIcon />, can("artifacts:read")),
-      ],
-    },
-  ];
+  const pages = all.filter((p) => p.show);
+  const isActive = (p: Page) => p.active ?? view === p.view;
+  const inMore = pages.some(isActive);
+  const [moreOpen, setMoreOpen] = useState(remembered);
+  // What is on screen is never hidden: More stays open while one of its pages is.
+  const expanded = moreOpen || inMore;
+  const toggleMore = () => {
+    const next = !expanded;
+    setMoreOpen(next);
+    try {
+      window.localStorage.setItem(STORE_MORE, next ? "1" : "0");
+    } catch {
+      // The choice just does not persist.
+    }
+  };
+  const moreBadge = pages.reduce((n, p) => n + (p.badge ?? 0), 0);
+
+  // Pinned conversations come from whatever is loaded. One that cannot be found
+  // (deleted, or no longer readable) is not shown.
+  const known = new Map([...threads, ...recents].map((t) => [t.id, t]));
+  const pinnedRows = pinned.map((id) => known.get(id)).filter((t): t is ThreadSummary => t !== undefined);
+  const pinnedSet = new Set(pinned);
+  const unpinned = recents.filter((t) => !pinnedSet.has(t.id));
+  const isCurrent = (t: ThreadSummary) => view === "chat" && t.id === selected;
+  const canPin = can("runs:read");
+
   const clear = () => {
     setStanding("");
     setAgent("");
@@ -373,68 +385,178 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Everything between the top row and the account scrolls as one, so a short window never squeezes Recents into a sliver. */}
+      {/* Everything between the top row and the account scrolls as one, so a short window never squeezes the lists into a sliver. */}
       <div className="aui-scroll flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
-      <nav aria-label="Sections" className={`flex shrink-0 flex-col gap-0.5 ${open ? "px-2" : "items-center"}`}>
-        <Group entries={top} open={open} />
-
+      <nav aria-label="Sections" className={`flex shrink-0 flex-col ${open ? "px-2" : "items-center"}`}>
+        <ul className={`flex flex-col gap-0.5 ${open ? "" : "items-center"}`}>
+          {/* New is home: an empty conversation, ready for a message. */}
+          {can("runs:write") && (
+            <li>
+              <Item
+                icon={<ComposeIcon />}
+                label="New"
+                href="/"
+                open={open}
+                active={view === "home" || (view === "chat" && !selected)}
+                onClick={onNewChat}
+              />
+            </li>
+          )}
+          {can("runs:read") && (
+            <li>
+              <Item
+                icon={<FolderIcon />}
+                label="Projects"
+                href="/?view=projects"
+                open={open}
+                active={view === "projects" || view === "project"}
+                onClick={() => onView("projects")}
+              />
+            </li>
+          )}
+          {can("runs:read") && (
+            <li>
+              <Item icon={<InboxIcon />} label="Inbox" href="/?view=inbox" open={open} active={view === "inbox"} badge={inboxCount} onClick={() => onView("inbox")} />
+            </li>
+          )}
+          {can("schedules:read") && (
+            <li>
+              <Item icon={<ClockIcon />} label="Scheduled" href="/?view=schedules" open={open} active={view === "schedules"} onClick={() => onView("schedules")} />
+            </li>
+          )}
+          {pages.length > 0 && open && (
+            <li>
+              <button
+                type="button"
+                onClick={toggleMore}
+                aria-expanded={expanded}
+                aria-controls="warp-more"
+                aria-label={moreBadge > 0 && !expanded ? `More, ${moreBadge} need you` : undefined}
+                className="flex h-9 w-full items-center gap-2.5 rounded-aui px-2.5 text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+              >
+                <ChevronRightIcon size={18} className={`shrink-0 transition-transform motion-reduce:transition-none ${expanded ? "rotate-90" : ""}`} />
+                <span className="flex-1 text-left">More</span>
+                {moreBadge > 0 && !expanded && <span aria-hidden className="size-1.5 rounded-full bg-aui-accent" />}
+              </button>
+              {expanded && (
+                <ul id="warp-more" className="flex flex-col gap-0.5 pt-0.5">
+                  {pages.map((p) => (
+                    <li key={p.view}>
+                      <Item icon={p.icon} label={p.label} href={`/?view=${p.view}`} open active={isActive(p)} badge={p.badge} onClick={() => onView(p.view)} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          )}
+          {pages.length > 0 && !open && (
+            <li>
+              {/* As a rail, More is a flyout beside the icon. */}
+              <Popover
+                label="More"
+                tooltip="More"
+                side="right"
+                className={`relative inline-flex size-9 items-center justify-center rounded-aui hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg ${inMore ? "bg-aui-hover text-aui-fg" : "text-aui-muted"}`}
+                button={
+                  <>
+                    <MoreIcon size={18} />
+                    {moreBadge > 0 && <span aria-hidden className="absolute top-1 right-1 size-1.5 rounded-full bg-aui-accent" />}
+                  </>
+                }
+              >
+                {(close) => (
+                  <ul className="flex flex-col gap-0.5 p-1">
+                    {pages.map((p) => (
+                      <li key={p.view}>
+                        <Item
+                          icon={p.icon}
+                          label={p.label}
+                          href={`/?view=${p.view}`}
+                          open
+                          active={isActive(p)}
+                          badge={p.badge}
+                          onClick={() => {
+                            close();
+                            onView(p.view);
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Popover>
+            </li>
+          )}
+        </ul>
       </nav>
 
-      {projectsSlot}
+      {open && pinnedRows.length > 0 && (
+        <section aria-label="Pinned" className="flex shrink-0 flex-col pt-4">
+          <Label>Pinned</Label>
+          <ul className="px-2">
+            {pinnedRows.map((t) => (
+              <TaskRow key={t.id} task={t} current={isCurrent(t)} pinned onSelect={() => onSelect(t.id)} onPin={() => onPin(t.id, false)} />
+            ))}
+          </ul>
+        </section>
+      )}
 
       {open && can("runs:read") && (
-        <div className="flex shrink-0 flex-col pt-3">
+        <section aria-label="Tasks" className="flex shrink-0 flex-col pt-4">
           {/* The label stays in reach while the list scrolls under it. */}
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-1 bg-[var(--warp-plane)] py-1 pr-2 pl-2">
-            <p className="px-2 text-aui-xs text-aui-muted">Tasks</p>
-            <Popover
-              narrow
-              align="right"
-              label={filters > 0 ? `Filter tasks, ${filters} on` : "Filter tasks"}
-              className="relative inline-flex size-6 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
-              button={
-                <>
-                  <FilterIcon size={14} />
-                  {filters > 0 && <span aria-hidden className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-aui-accent" />}
-                </>
-              }
-            >
-              {() => (
-                <div className="aui-scroll flex max-h-[60vh] flex-col overflow-y-auto">
-                  <Choices
-                    title="Show"
-                    value={standing}
-                    options={[
-                      { value: "", label: "Every task" },
-                      { value: "running", label: "Running now" },
-                      { value: "failed", label: "Needs attention" },
-                    ]}
-                    onChange={setStanding}
-                  />
-                  {answering.length > 1 && (
+          <Label
+            action={
+              <Popover
+                narrow
+                align="right"
+                label={filters > 0 ? `Filter tasks, ${filters} on` : "Filter tasks"}
+                className="relative inline-flex size-6 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
+                button={
+                  <>
+                    <FilterIcon size={14} />
+                    {filters > 0 && <span aria-hidden className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-aui-accent" />}
+                  </>
+                }
+              >
+                {() => (
+                  <div className="aui-scroll flex max-h-[60vh] flex-col overflow-y-auto">
                     <Choices
-                      title="Answered by"
-                      value={agent}
+                      title="Show"
+                      value={standing}
                       options={[
-                        { value: "", label: "Any agent" },
-                        ...answering.map((a) => ({ value: a, label: a, mark: <AgentMark name={a} size={12} /> })),
+                        { value: "", label: "Every task" },
+                        { value: "running", label: "Running now" },
+                        { value: "failed", label: "Needs attention" },
                       ]}
-                      onChange={setAgent}
+                      onChange={setStanding}
                     />
-                  )}
-                  {filters > 0 && (
-                    <button
-                      type="button"
-                      onClick={clear}
-                      className="mt-1 rounded-aui border-[var(--warp-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-                    >
-                      Clear filters
-                    </button>
-                  )}
-                </div>
-              )}
-            </Popover>
-          </div>
+                    {answering.length > 1 && (
+                      <Choices
+                        title="Answered by"
+                        value={agent}
+                        options={[
+                          { value: "", label: "Any agent" },
+                          ...answering.map((a) => ({ value: a, label: a, mark: <AgentMark name={a} size={12} /> })),
+                        ]}
+                        onChange={setAgent}
+                      />
+                    )}
+                    {filters > 0 && (
+                      <button
+                        type="button"
+                        onClick={clear}
+                        className="mt-1 rounded-aui border-[var(--warp-rule)] border-t px-2.5 py-2 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      >
+                        Clear filters
+                      </button>
+                    )}
+                  </div>
+                )}
+              </Popover>
+            }
+          >
+            Tasks
+          </Label>
           <ul className="px-2 pb-3" aria-label="Tasks" aria-busy={loading !== null}>
             {recents.length === 0 && loading === "first" && (
               <li className="px-2.5">
@@ -455,33 +577,18 @@ export function Sidebar({
             )}
             {recents.length === 0 && loading !== "first" && !stalled && (
               <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
-                {filters > 0
-                    ? "No task matches these filters."
-                    : "Your tasks appear here. Start with + New."}
+                {filters > 0 ? "No task matches these filters." : "Your tasks appear here. Start with New."}
               </li>
             )}
-            {recents.map((t) => (
-              <li key={t.id} className="warp-enter">
-                <button
-                  type="button"
-                  onClick={() => onSelect(t.id)}
-                  aria-current={view === "chat" && t.id === selected ? "page" : undefined}
-                  className="flex min-h-14 w-full items-center gap-2 rounded-aui px-2 py-2 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
-                >
-                  {/* The orb of the agent that last answered: moving while it works, red when a reply failed. */}
-                  <AgentMark
-                    name={t.agents[t.agents.length - 1] ?? "?"}
-                    size={12}
-                    state={t.active > 0 ? "thinking" : t.failed > 0 ? "error" : "idle"}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block line-clamp-2 text-aui-fg">{t.title || "Untitled task"}</span>
-                    <span className="block text-aui-2xs text-aui-muted">{t.active > 0 ? "In progress" : t.failed > 0 ? "Needs attention" : "Finished"}{t.project ? ` · ${t.project}` : ""} · {t.turns} {t.turns === 1 ? "turn" : "turns"}</span>
-                  </span>
-                  {t.active > 0 && <span className="sr-only">, running</span>}
-                  {t.active === 0 && t.failed > 0 && <span className="sr-only">, a reply failed</span>}
-                </button>
-              </li>
+            {unpinned.map((t) => (
+              <TaskRow
+                key={t.id}
+                task={t}
+                current={isCurrent(t)}
+                pinned={false}
+                onSelect={() => onSelect(t.id)}
+                onPin={canPin ? () => onPin(t.id, true) : undefined}
+              />
             ))}
             {/* Older conversations arrive a page at a time, when asked for. */}
             {(hasMore || loading === "more") && (
@@ -497,65 +604,8 @@ export function Sidebar({
               </li>
             )}
           </ul>
-        </div>
+        </section>
       )}
-      <nav aria-label="Tools and configuration" className={`flex shrink-0 flex-col gap-0.5 pb-3 ${open ? "px-2" : "items-center"}`}>
-        <Heading open={open}>Tools</Heading>
-        {can("agents:read") && (
-          <Item
-            icon={<BotIcon />}
-            href="/?view=agents" label="Agents"
-            open={open}
-            active={view === "agents" || view === "agent"}
-            onClick={() => onView("agents")}
-          />
-        )}
-        {can("knowledge:read") && (
-          <Item
-            icon={<BookIcon />}
-            href="/?view=knowledge" label="Knowledge"
-            open={open}
-            active={view === "knowledge"}
-            onClick={() => onView("knowledge")}
-          />
-        )}
-        {can("artifacts:read") && (
-          <Item icon={<BoxIcon />} href="/?view=storage" label="Storage" open={open} active={view === "storage"} onClick={() => onView("storage")} />
-        )}
-        {can("schedules:read") && (
-          <Item
-            icon={<ClockIcon />}
-            href="/?view=schedules" label="Schedules"
-            open={open}
-            active={view === "schedules"}
-            onClick={() => onView("schedules")}
-          />
-        )}
-
-        {can("evals:read") && <Item icon={<CheckListIcon />} href="/?view=evals" label="Evals" open={open} active={view === "evals"} onClick={() => onView("evals")} />}
-
-        <Heading open={open}>Observe</Heading>
-        {can("runs:read") && <Item icon={<HistoryIcon />} href="/?view=runs" label="Execution history" open={open} active={view === "runs"} onClick={() => onView("runs")} />}
-        {can("runs:read") && (
-          <Item
-            icon={<ChartIcon />}
-            href="/?view=analytics" label="Analytics"
-            open={open}
-            active={view === "analytics"}
-            onClick={() => onView("analytics")}
-          />
-        )}
-        {can("alerts:read") && (
-          <Item
-            icon={<BellIcon />}
-            href="/?view=alerts" label="Alerts"
-            open={open}
-            active={view === "alerts"}
-            badge={alertCount}
-            onClick={() => onView("alerts")}
-          />
-        )}
-      </nav>
       </div>
 
       {!live && open && <p className="px-4 pb-2 text-aui-2xs text-aui-muted">Reconnecting. What you see may be out of date.</p>}
@@ -563,7 +613,7 @@ export function Sidebar({
         <button
           type="button"
           onClick={() => onSettings("profile")}
-          aria-current={view === "settings" && !["connections", "access", "limits"].includes(section) ? "page" : undefined}
+          aria-current={view === "settings" ? "page" : undefined}
           aria-label={`Settings for ${name}`}
           title={open ? undefined : "Settings"}
           className={`flex min-w-0 items-center gap-2 rounded-aui p-1 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover ${

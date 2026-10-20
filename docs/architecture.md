@@ -390,6 +390,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 | Recents: conversations paged by an opaque keyset cursor, 200 a page | Built |
 | Project membership and per-project access | Not built. Everyone in the workspace sees every project |
 | Web console on warp: chat, inbox, agent editor with revisions, evals, knowledge, schedules, analytics, alerts, settings | Built |
+| Console navigation laid out like Claude's desktop app: New (which is home), Projects, Inbox, Scheduled, and More holding the tools and the pages that watch them; then Pinned and Tasks. Pins are kept in a person's preferences | Built, checked in a browser. Preferences, pins included, are in memory and lost on restart |
 | Agent marks: exact pixel footprints with room for the shared orb's halo and satellite, aligned in compact rows | Built on warp `AgentOrb` numeric sizes. The console gallery covers every activity at 12, 14, 16, 18, 24 and 32 pixels in clipped rows |
 | Console landing: a prompt-first Home page using the conversation composer, with optional attachments, project selection and agent selection before sending. The former overview is removed. The root opens Home; chat has its own explicit address | Built. Home and new conversation share the same submission flow; sending opens the conversation. Run permissions are enforced |
 | Console menu: Home, New conversation, Inbox, then Work, Build, Watch and Workspace. An entry is hidden from someone who may not read what it opens | Built. Connections, Access and Limits open their Settings sections |

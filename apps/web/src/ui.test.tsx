@@ -10,7 +10,9 @@ import { sampleTrees } from "./activity.fixtures.ts";
 import { Alerts } from "./Alerts.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
-import { ProjectNav } from "./Projects.tsx";
+import { ProjectsPage } from "./Projects.tsx";
+import { Sidebar } from "./Sidebar.tsx";
+import type { Me, ThreadSummary } from "./api.ts";
 import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
 import { bindingWords, SessionGauge } from "./SessionGauge.tsx";
@@ -26,16 +28,93 @@ import { replay } from "./Runs.tsx";
 import { formats } from "./copyas.ts";
 import { emptyTurn } from "@warp/core";
 
-test("collapsed navigation keeps an accessible Projects entry; creation follows permission", () => {
-  const props = { projects: [], current: null, onOpen: () => {}, onCreated: () => {} };
-  const collapsed = renderToStaticMarkup(<ProjectNav {...props} open={false} canCreate={false} />);
-  assert.match(collapsed, /aria-label="Projects"/);
-  assert.match(collapsed, /aria-haspopup="dialog"/);
-  assert.match(collapsed, /<svg/);
-  const readOnly = renderToStaticMarkup(<ProjectNav {...props} open canCreate={false} />);
-  assert.doesNotMatch(readOnly, /aria-label="New project"/);
-  const writable = renderToStaticMarkup(<ProjectNav {...props} open canCreate />);
-  assert.match(writable, /aria-label="New project"/);
+test("the projects page lists projects; creation follows permission", () => {
+  const project = { name: "launch", conversations: 3, active: 1, schedules: 0, notes: 0, proposed: 0 };
+  const props = { projects: [project], onOpen: () => {}, onCreated: () => {} };
+  const readOnly = renderToStaticMarkup(<ProjectsPage {...props} canCreate={false} />);
+  assert.match(readOnly, />Projects</);
+  assert.match(readOnly, /launch/);
+  assert.match(readOnly, /1 running · 3 tasks/);
+  assert.doesNotMatch(readOnly, /New Project/);
+  assert.match(renderToStaticMarkup(<ProjectsPage {...props} canCreate />), /New Project/);
+  assert.match(renderToStaticMarkup(<ProjectsPage {...props} projects={[]} canCreate />), /No projects yet/);
+});
+
+const sidebarMe: Me = {
+  principal: { subject: "ada", tenant: "acme", name: "Ada", roles: ["member"] },
+  permissions: [],
+} as unknown as Me;
+const task = (id: string, title: string): ThreadSummary => ({
+  id,
+  title,
+  named: true,
+  origin: "api",
+  agents: ["lead"],
+  turns: 1,
+  branches: 1,
+  active: 0,
+  failed: 0,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+});
+function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
+  const all = ["runs:read", "runs:write", "schedules:read", "agents:read", "knowledge:read", "evals:read", "alerts:read", "artifacts:read"];
+  return renderToStaticMarkup(
+    <Sidebar
+      open
+      onToggle={() => {}}
+      view="home"
+      onView={() => {}}
+      onSettings={() => {}}
+      onNewChat={() => {}}
+      me={sidebarMe}
+      prefs={null}
+      can={(p) => all.includes(p)}
+      threads={[task("t1", "Quarterly report"), task("t2", "Fix the build")]}
+      selected={null}
+      onSelect={() => {}}
+      pinned={[]}
+      onPin={() => {}}
+      inboxCount={0}
+      alertCount={0}
+      live
+      onSignOut={() => {}}
+      {...over}
+    />,
+  );
+}
+
+test("the sidebar is a short flat list: New is home, the tools fold under More", () => {
+  const out = sidebar();
+  for (const label of ["New", "Projects", "Inbox", "Scheduled", "More"]) assert.match(out, new RegExp(`>${label}<`));
+  // Home and New are one entry, current on the empty conversation.
+  assert.doesNotMatch(out, />Home</);
+  assert.doesNotMatch(out, />New conversation</);
+  assert.match(out, /href="\/" aria-current="page"/);
+  // More starts folded, so the tools are not listed.
+  assert.match(out, /aria-expanded="false" aria-controls="warp-more"/);
+  assert.doesNotMatch(out, />Knowledge</);
+  // On one of its pages, More is open and shows it as current.
+  const onAgents = sidebar({ view: "agents" });
+  assert.match(onAgents, /aria-expanded="true"/);
+  assert.match(onAgents, /href="\/\?view=agents" aria-current="page"/);
+});
+
+test("the sidebar hides More, Projects and Scheduled from someone who may not read them", () => {
+  const out = sidebar({ can: (p) => p === "runs:write" });
+  assert.match(out, />New</);
+  for (const label of ["Projects", "Inbox", "Scheduled", "More"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
+});
+
+test("pinned conversations sit in their own section, ahead of the rest", () => {
+  const none = sidebar();
+  assert.doesNotMatch(none, /aria-label="Pinned"/);
+  const out = sidebar({ pinned: ["t2", "gone"] });
+  assert.match(out, /aria-label="Pinned"/);
+  assert.match(out, /aria-label="Unpin Fix the build"/);
+  // An id that is not loaded is not drawn, and nothing is listed twice.
+  assert.equal(out.match(/Fix the build</g)?.length, 1);
+  assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Tasks<"));
 });
 
 test("project selection: an empty workspace still offers projectless work and creation inside the composer", () => {

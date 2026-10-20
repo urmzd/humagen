@@ -371,6 +371,8 @@ export interface Preferences {
   photo_version: number;
   /** When the person finished or skipped the first-run questions. */
   onboarded_at?: string;
+  /** Conversations kept at the top of the person's sidebar, most recently pinned first. */
+  pinned: string[];
 }
 
 /** A cron schedule as a caller writes it. */
@@ -1646,6 +1648,7 @@ export interface UpdatePreferencesBody {
   theme?: Theme;
   accent?: string;
   onboarded?: boolean;
+  pinned?: string[];
 }
 
 export interface ListProjectsResponse {

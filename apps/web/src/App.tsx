@@ -25,7 +25,7 @@ import { Chat } from "./Chat.tsx";
 import { EvalsPage } from "./EvalsPage.tsx";
 import { InboxPage } from "./InboxPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
-import { ProjectNav, ProjectPage } from "./Projects.tsx";
+import { ProjectPage, ProjectsPage } from "./Projects.tsx";
 import { RunList } from "./Runs.tsx";
 import { Schedules } from "./Schedules.tsx";
 import { type Section, Settings } from "./Settings.tsx";
@@ -121,7 +121,7 @@ function useAppearance(prefs: Preferences | null) {
 // The views a link can name with `?view=`. Connections, Access and Limits
 // are sections of Settings, named on their own so the menu can link to them.
 const SECTIONS: Section[] = ["connections", "access", "limits"];
-const LINKABLE: View[] = ["home", "chat", "inbox", "runs", "schedules", "agents", "knowledge", "evals", "analytics", "alerts", "storage", "settings"];
+const LINKABLE: View[] = ["home", "chat", "inbox", "projects", "runs", "schedules", "agents", "knowledge", "evals", "analytics", "alerts", "storage", "settings"];
 
 /** The view, Settings section and explained permission a console address names. */
 function fromAddress(params: URLSearchParams): { view: View; section?: Section; permission?: string } | null {
@@ -210,6 +210,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     accent: "purple",
     has_photo: false,
     photo_version: 0,
+    pinned: [],
   });
   const [day, setDay] = useState<Summary | null>(null);
   const [live, setLive] = useState(false);
@@ -329,10 +330,22 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     const run = runs.find((r) => r.id === id);
     openThread(run?.thread ?? id);
   };
+  // A new conversation is home: the same empty composer, at the bare address.
   const newChat = (inProject?: string) => {
     setThread(null);
     setStartIn(inProject);
-    setView("chat");
+    setView("home");
+  };
+  // Pinning shows at once and is saved with the person's preferences. If the
+  // save fails, the sidebar goes back to what the server has.
+  const pin = (id: string, on: boolean) => {
+    const next = on ? [id, ...prefs.pinned.filter((p) => p !== id)] : prefs.pinned.filter((p) => p !== id);
+    const before = prefs;
+    setPrefs({ ...prefs, pinned: next });
+    api
+      .savePreferences({ display_name: prefs.display_name, theme: prefs.theme, accent: prefs.accent, pinned: next })
+      .then(setPrefs)
+      .catch(() => setPrefs(before));
   };
   const openProject = (name: string) => {
     setProjectName(name);
@@ -368,36 +381,17 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         open={open}
         onToggle={toggle}
         view={view}
-        section={section}
-        onView={(next) => {
-          if (next === "home") {
-            setThread(null);
-            setStartIn(undefined);
-          }
-          setView(next);
-        }}
+        onView={setView}
         onSettings={openSettings}
         onNewChat={() => newChat()}
-        projectsSlot={
-          <ProjectNav
-            open={open}
-            projects={projects}
-            current={view === "project" ? projectName : null}
-            canCreate={can("runs:write")}
-            onOpen={openProject}
-            onCreated={(name) => {
-              loadProjects();
-              loadAgents();
-              openProject(name);
-            }}
-          />
-        }
         me={me}
         prefs={prefs}
         can={can}
         threads={threads}
         selected={view === "chat" ? thread : null}
         onSelect={openThread}
+        pinned={prefs.pinned}
+        onPin={pin}
         inboxCount={inboxCounts.open}
         alertCount={openAlerts}
         live={live}
@@ -443,6 +437,18 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               }
             />
           )}
+          {view === "projects" && (
+            <ProjectsPage
+              projects={projects}
+              canCreate={can("runs:write")}
+              onOpen={openProject}
+              onCreated={(name) => {
+                loadProjects();
+                loadAgents();
+                openProject(name);
+              }}
+            />
+          )}
           {view === "project" &&
             (() => {
               const current = projects.find((p) => p.name === projectName);
@@ -467,7 +473,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
                   onDeleted={() => {
                     loadProjects();
                     loadAgents();
-                    setView("chat");
+                    setView("projects");
                   }}
                 />
               ) : null;
@@ -576,7 +582,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
                   {([
                     ["agents", "Agents", "agents:read"],
                     ["knowledge", "Knowledge", "knowledge:read"],
-                    ["schedules", "Schedules", "schedules:read"],
+                    ["schedules", "Scheduled", "schedules:read"],
                     ["runs", "Execution history", "runs:read"],
                     ["analytics", "Analytics", "runs:read"],
                     ["alerts", "Alerts", "alerts:read"],

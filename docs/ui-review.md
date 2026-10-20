@@ -84,3 +84,31 @@ Verified in the local browser: collapsed project navigation, selection and activ
 state, keyboard opening and Escape focus restoration, keyboard tooltip labels,
 and a 390-pixel viewport with no horizontal overflow. A regression covers the
 collapsed Projects entry and project-creation permission.
+
+## A flatter sidebar, after Claude's desktop app
+
+Follow-up review against Claude's desktop app, from a screenshot of its signed-in
+sidebar: a short flat list (New, Projects, Artifacts, Scheduled, Customize,
+More), then Pinned, then Chats and tasks. Warp's sidebar had Home and New
+conversation side by side, though both open the same empty conversation, and two
+labelled groups of eight tools under the task list.
+
+Warp now follows the same shape:
+
+- **New** is home. The separate Home entry is gone, and New is current on the
+  empty conversation at the bare address.
+- **Projects** opens a page of project cards with a New Project button, instead
+  of an expanding list in the sidebar. Deleting a project returns to it.
+- **Inbox** and **Scheduled** stay at the top level, since people use them daily.
+- **More** folds Agents, Knowledge, Storage, Evals, Execution history, Analytics
+  and Alerts. It stays open while one of its pages is on screen, shows a dot when
+  an alert is waiting, remembers its state per browser, and is a flyout in the
+  collapsed rail.
+- **Pinned** holds conversations a person pins from the pin beside each task.
+  Pins are saved with their preferences (`pinned` on `PUT /api/preferences`), so
+  they follow the person to another browser.
+- **Tasks** rows are one line: the agent's orb and the title, with the state and
+  project in the row's tooltip and read out to screen readers.
+
+Verified in the local browser with `make dev`: pinning, a pin surviving a
+reload, More open and folded, the Projects page, and the collapsed rail.

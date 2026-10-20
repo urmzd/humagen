@@ -1934,6 +1934,11 @@ paths:
                 onboarded:
                   description: Marks the first-run questions as done. It can be set and never unset.
                   type: boolean
+                pinned:
+                  description: Replaces the pinned conversations, at most 50. Absent leaves them as they are.
+                  type: array
+                  maxItems: 50
+                  items: {type: string}
       responses:
         "200":
           description: The preferences as saved.
@@ -3128,7 +3133,7 @@ components:
     Preferences:
       description: A person's own settings.
       type: object
-      required: [display_name, theme, accent, has_photo, photo_version]
+      required: [display_name, theme, accent, has_photo, photo_version, pinned]
       properties:
         display_name: {type: string}
         theme: {$ref: "#/components/schemas/Theme"}
@@ -3139,6 +3144,10 @@ components:
           description: When the person finished or skipped the first-run questions.
           type: string
           format: date-time
+        pinned:
+          description: Conversations kept at the top of the person's sidebar, most recently pinned first.
+          type: array
+          items: {type: string}
 
     Schedule:
       description: A cron schedule as a caller writes it.
