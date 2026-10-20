@@ -33,9 +33,21 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 		// Onboarded marks the first-run questions as done. It can be set
 		// and never unset, and the time recorded is the server's.
 		Onboarded bool `json:"onboarded"`
+		// Pinned replaces the pinned conversations when present. Absent
+		// leaves them as they are.
+		Pinned *[]string `json:"pinned"`
 	}
 	if !decode(w, r, &body) {
 		return
+	}
+	// Everything is checked before anything is saved.
+	var pinned []string
+	if body.Pinned != nil {
+		var err error
+		if pinned, err = prefs.CleanPinned(*body.Pinned); err != nil {
+			s.problem(w, err)
+			return
+		}
 	}
 	next, err := s.P.Prefs.Set(who.Tenant, who.Subject, prefs.Preferences{
 		DisplayName: body.DisplayName, Theme: body.Theme, Accent: body.Accent,
@@ -43,6 +55,9 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 	if err != nil {
 		s.problem(w, err)
 		return
+	}
+	if body.Pinned != nil {
+		next, _ = s.P.Prefs.SetPinned(who.Tenant, who.Subject, pinned)
 	}
 	if body.Onboarded {
 		next = s.P.Prefs.MarkOnboarded(who.Tenant, who.Subject, time.Now())

@@ -52,6 +52,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 	p.raise(run)
 	// A question nobody answered is not waiting any more.
 	p.settleQuestionsOf(run)
+	p.forgetApprovedCalls(run.Tenant, run.ID)
 	p.cascade(ctx, run)
 	switch {
 	case run.Origin == runs.OriginSystem:

@@ -100,33 +100,207 @@ export { cause, elapsed, isEnded, took, usd } from "./format.ts";
  * Every page sits in the same left-aligned column, so the title and the first
  * row of content start at the same place wherever a person goes.
  */
+/** One choice offered by PickMany. */
+export interface Pickable {
+  value: string;
+  label: string;
+  hint?: string;
+  mark?: ReactNode;
+}
+
+/**
+ * A set picked from a list that may be long: what is picked shows as chips, and
+ * more are added from a searchable list. It stays usable at five options or five
+ * hundred, where a switch per option does not.
+ */
+export function PickMany({
+  label,
+  add = "Add",
+  options,
+  value,
+  disabled,
+  empty,
+  onChange,
+}: {
+  label: string;
+  /** The add button's words. */
+  add?: string;
+  options: Pickable[];
+  value: string[];
+  disabled?: boolean;
+  /** What to say when nothing is picked. */
+  empty?: string;
+  onChange: (next: string[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const byValue = new Map(options.map((o) => [o.value, o]));
+  const q = query.trim().toLowerCase();
+  const rest = options.filter((o) => !value.includes(o.value) && (!q || `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(q)));
+  return (
+    <div className="flex flex-col gap-2">
+      {value.length === 0 ? (
+        <p className="text-aui-sm text-aui-muted">{empty ?? "None yet."}</p>
+      ) : (
+        <ul aria-label={label} className="flex flex-col">
+          {value.map((v) => {
+            const o = byValue.get(v);
+            return (
+              <li key={v} className="flex items-center gap-3 border-aui-border border-t py-2 first:border-t-0">
+                {o?.mark}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-aui-sm text-aui-fg">{o?.label ?? v}</span>
+                  {o?.hint && <span className="block truncate text-aui-xs text-aui-muted">{o.hint}</span>}
+                  {!o && <span className="block text-aui-xs text-aui-muted">No longer exists.</span>}
+                </span>
+                {!disabled && (
+                  <button type="button" className={button} aria-label={`Remove ${o?.label ?? v}`} onClick={() => onChange(value.filter((x) => x !== v))}>
+                    Remove
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {!disabled && options.some((o) => !value.includes(o.value)) && (
+        <Popover
+          label={`${add}: ${label}`}
+          className={`${button} self-start`}
+          button={<>{add}</>}
+        >
+          {(close) => (
+            <div className="flex max-h-[min(24rem,60vh)] flex-col gap-1">
+              <input
+                // biome-ignore lint/a11y/noAutofocus: the list opened because the person asked to pick
+                autoFocus
+                type="search"
+                aria-label={`Find: ${label}`}
+                placeholder="Find"
+                className={`${field} h-8`}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <ul className="aui-scroll flex flex-col overflow-y-auto">
+                {rest.length === 0 && <li className="px-2.5 py-2 text-aui-xs text-aui-muted">Nothing matches.</li>}
+                {rest.map((o) => (
+                  <li key={o.value}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange([...value, o.value]);
+                        setQuery("");
+                        close();
+                      }}
+                      className="flex w-full items-center gap-2 rounded-aui px-2.5 py-1.5 text-left hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+                    >
+                      {o.mark}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-aui-sm text-aui-fg">{o.label}</span>
+                        {o.hint && <span className="block truncate text-aui-xs text-aui-muted">{o.hint}</span>}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Popover>
+      )}
+    </div>
+  );
+}
+
+/** The one style for a page's title and the line under it, wherever a page draws its own header. */
+export const pageTitle = "warp-display truncate text-[1.875rem] leading-[1.15] font-semibold text-aui-fg";
+export const pageLede = "max-w-[62ch] pt-1.5 text-aui-sm text-aui-muted";
+
 export function Page({
   title,
   lede,
+  icon,
+  meta,
+  back,
   actions,
+  tabs,
+  narrow,
   children,
 }: {
-  title: string;
-  lede: string;
+  title: ReactNode;
+  /** One or two lines on what the page is for. */
+  lede?: ReactNode;
+  /** Drawn before the title: an agent's orb, a folder. */
+  icon?: ReactNode;
+  /** A short line under the title: a revision, a status, who made it. */
+  meta?: ReactNode;
+  /** Where the page sits: a link back to the list it came from. */
+  back?: { label: string; onClick: () => void };
+  /** The page's own actions. The primary one goes last. */
   actions?: ReactNode;
+  /** Tabs under the header, sticking to the top while the page scrolls. */
+  tabs?: ReactNode;
+  /** A reading width, for forms and settings. */
+  narrow?: boolean;
   /** Kept for callers. Pages share one width now. */
   wide?: boolean;
   children: ReactNode;
 }) {
+  const width = narrow ? "max-w-3xl" : "max-w-[68rem]";
   return (
     <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
-      {/* A container, so rows lay themselves out by the room the page has, not by the window. */}
-      <div className="@container warp-fade flex w-full max-w-[68rem] flex-col gap-6 px-5 pt-8 pb-12 md:px-10">
-        <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-          <div className="min-w-0">
-            <h1 className="warp-display text-[1.875rem] leading-[1.15] font-semibold text-aui-fg">{title}</h1>
-            <p className="max-w-[62ch] pt-1.5 text-aui-sm text-aui-muted">{lede}</p>
+      {/* Every page is one centered column, so a wide window never strands the content against the sidebar. */}
+      <div className={`@container warp-fade mx-auto flex w-full ${width} flex-col gap-6 px-5 pt-8 pb-12 md:px-10`}>
+        <header className="flex flex-col gap-3">
+          {back && (
+            <button
+              type="button"
+              onClick={back.onClick}
+              className="self-start rounded-aui text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+            >
+              ‹ {back.label}
+            </button>
+          )}
+          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {icon}
+              <div className="min-w-0">
+                <h1 className={pageTitle}>{title}</h1>
+                {meta && <div className="flex flex-wrap items-center gap-x-3 pt-1 text-aui-xs text-aui-muted">{meta}</div>}
+                {lede && <p className={pageLede}>{lede}</p>}
+              </div>
+            </div>
+            {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
           </div>
-          {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
         </header>
+        {tabs && <div className="sticky top-0 z-10 -mx-1 bg-[var(--aui-bg)] px-1">{tabs}</div>}
         {children}
       </div>
     </div>
+  );
+}
+
+/** A titled part of a page: a heading, an optional line on it, and its own actions. */
+export function Section({
+  title,
+  hint,
+  actions,
+  children,
+}: {
+  title: ReactNode;
+  hint?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <h2 className="text-aui-base font-medium text-aui-fg">{title}</h2>
+          {hint && <p className="max-w-[62ch] text-aui-xs text-aui-muted">{hint}</p>}
+        </div>
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      </div>
+      {children}
+    </section>
   );
 }
 
@@ -335,7 +509,7 @@ export function Tabs<T extends string>({
   onChange: (next: T) => void;
 }) {
   return (
-    <div role="tablist" aria-label={label} className="flex gap-1 border-aui-border border-b">
+    <div role="tablist" aria-label={label} className="aui-scroll flex gap-1 overflow-x-auto border-aui-border border-b">
       {tabs.map((t) => (
         <button
           key={t.id}
@@ -343,7 +517,7 @@ export function Tabs<T extends string>({
           role="tab"
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
-          className="-mb-px inline-flex h-9 items-center gap-1.5 border-transparent border-b-2 px-3 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-selected:border-aui-accent aria-selected:text-aui-fg"
+          className="-mb-px inline-flex h-9 shrink-0 items-center gap-1.5 border-transparent border-b-2 px-3 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-selected:border-aui-accent aria-selected:text-aui-fg"
         >
           {t.label}
           {t.count !== undefined && t.count > 0 && (

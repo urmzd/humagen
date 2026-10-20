@@ -25,6 +25,7 @@ import (
 	"github.com/urmzd/fiber/pkg/runtime"
 
 	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 // ErrNotFound reports a run that does not exist in the caller's tenant. A run
@@ -665,22 +666,37 @@ func (x *Index) AttachedTo(runID string) []Run {
 	return out
 }
 
-// Recent counts an agent's runs that started since a time, and how many of
-// those failed. An empty agent counts every agent.
-func (x *Index) Recent(tenant, agent string, since time.Time) (total, failed int) {
+// Window is what the runs in a scope did since a time.
+type Window struct {
+	// Total is how many runs started, and Failed how many of those failed.
+	Total, Failed int
+	// Spent is what those runs' own model calls cost, in micro-USD. Each run
+	// counts only its own calls, so a tree of runs is not counted twice.
+	// Calls with no price, or priced in another currency, add nothing.
+	Spent int64
+}
+
+// Recent sums a tenant's runs that started since a time. An empty agent or
+// project matches every agent or project; both narrow when set.
+func (x *Index) Recent(tenant, agent, project string, since time.Time) Window {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
+	var w Window
 	for _, id := range x.order {
 		r := x.runs[id]
-		if r.Tenant != tenant || r.CreatedAt.Before(since) || (agent != "" && r.Agent != agent) {
+		if r.Tenant != tenant || r.CreatedAt.Before(since) ||
+			(agent != "" && r.Agent != agent) || (project != "" && r.Project != project) {
 			continue
 		}
-		total++
+		w.Total++
 		if r.Status == Failed {
-			failed++
+			w.Failed++
+		}
+		if r.Usage != nil {
+			w.Spent += usage.Of(r.Usage.Own).Micros
 		}
 	}
-	return total, failed
+	return w
 }
 
 // Get returns one run in a tenant.

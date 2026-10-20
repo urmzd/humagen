@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentDetail } from "./AgentDetail.tsx";
 import { Agents } from "./Agents.tsx";
 import { Alerts } from "./Alerts.tsx";
-import { Analytics } from "./Analytics.tsx";
-import type { Run } from "./adapter.ts";
 import {
   type Alert,
   type AlertRule,
@@ -21,17 +19,17 @@ import {
   subscribe,
   type ThreadSummary,
 } from "./api.ts";
+import type { Run } from "./adapter.ts";
 import { Chat } from "./Chat.tsx";
-import { EvalsPage } from "./EvalsPage.tsx";
 import { InboxPage } from "./InboxPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
-import { ProjectNav, ProjectPage } from "./Projects.tsx";
-import { RunList } from "./Runs.tsx";
+import { ProjectPage, ProjectsPage } from "./Projects.tsx";
 import { Schedules } from "./Schedules.tsx";
-import { type Section, Settings } from "./Settings.tsx";
+import { Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
-import { Sidebar, type View } from "./Sidebar.tsx";
-import { primary } from "./ui.tsx";
+import { Sidebar } from "./Sidebar.tsx";
+import { type AgentTab, type SettingsSection, useRoute } from "./route.ts";
+import { Page, primary } from "./ui.tsx";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "error"; message: string } | { state: "ready"; me: Me };
 
@@ -118,77 +116,16 @@ function useAppearance(prefs: Preferences | null) {
   }, [prefs?.theme, prefs?.accent]);
 }
 
-// The views a link can name with `?view=`. Connections, Access and Limits
-// are sections of Settings, named on their own so the menu can link to them.
-const SECTIONS: Section[] = ["connections", "access", "limits"];
-const LINKABLE: View[] = ["home", "chat", "inbox", "runs", "schedules", "agents", "knowledge", "evals", "analytics", "alerts", "storage", "settings"];
-
-/** The view, Settings section and explained permission a console address names. */
-function fromAddress(params: URLSearchParams): { view: View; section?: Section; permission?: string } | null {
-  const v = params.get("view") ?? "";
-  if ((SECTIONS as string[]).includes(v)) {
-    return { view: "settings", section: v as Section, permission: params.get("permission") ?? undefined };
-  }
-  return (LINKABLE as string[]).includes(v) ? { view: v as View } : null;
-}
-
-function initial(): ReturnType<typeof fromAddress> {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    // A link to one message, from before views were in the address.
-    if (!params.has("view") && params.has("message")) return { view: "inbox" };
-    return fromAddress(params);
-  } catch {
-    return null;
-  }
-}
-
-/** The alert an address names, as `?view=alerts&alert=<id>`. */
-function linkedAlert(): string | null {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("view") === "alerts" ? params.get("alert") : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Keep the address naming the view on screen, so a reload or a copied link comes back to it. */
-function address(view: View, section: Section, permission: string, alert: string | null) {
-  try {
-    const url = new URL(window.location.href);
-    const named = view === "settings" && SECTIONS.includes(section) ? section : LINKABLE.includes(view) ? view : null;
-    if (named && named !== "home") url.searchParams.set("view", named);
-    else url.searchParams.delete("view");
-    if (named === "access") url.searchParams.set("permission", permission);
-    else url.searchParams.delete("permission");
-    if (view !== "inbox") url.searchParams.delete("message");
-    if (view === "alerts" && alert) url.searchParams.set("alert", alert);
-    else url.searchParams.delete("alert");
-    if (url.href !== window.location.href) window.history.replaceState(null, "", url);
-  } catch {
-    // The address just does not follow.
-  }
-}
-
 function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const can = useCallback((p: string) => me.permissions.includes(p), [me]);
-  const [start] = useState(initial);
-  const [view, setView] = useState<View>(start?.view ?? "home");
-  const [section, setSection] = useState<Section>(start?.section ?? "configuration");
-  const [explain, setExplain] = useState(start?.permission ?? "runs:read");
-  const [thread, setThread] = useState<string | null>(null);
-  const [agentName, setAgentName] = useState<string | null>(null);
-  const [agentTab, setAgentTab] = useState<"memory" | "evals" | undefined>(undefined);
+  const [route, go] = useRoute();
+  const page = route.page;
+  const thread = route.page === "task" ? route.id : null;
   // The inbox is the server's. This holds only its totals for the badge, a
   // counter that tells the page to look again, and a message to open first.
   const [inboxCounts, setInboxCounts] = useState({ open: 0, unread: 0 });
   const [inboxTick, setInboxTick] = useState(0);
-  const [inboxMessage, setInboxMessage] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectView[]>([]);
-  const [projectName, setProjectName] = useState<string | null>(null);
-  // The project a new chat was started from, so it is filed there.
-  const [startIn, setStartIn] = useState<string | undefined>(undefined);
   const [open, setOpen] = useState(() => stored(SIDEBAR_KEY, window.innerWidth >= 768));
   const [runs, setRuns] = useState<Run[]>([]);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -199,7 +136,6 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   // Set once the first list of alerts is in, so a linked alert that is not in it can be called missing.
   const [alertsLoaded, setAlertsLoaded] = useState(false);
-  const [alertId, setAlertId] = useState<string | null>(linkedAlert);
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [suites, setSuites] = useState<SuiteView[]>([]);
@@ -210,6 +146,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     accent: "purple",
     has_photo: false,
     photo_version: 0,
+    pinned: [],
   });
   const [day, setDay] = useState<Summary | null>(null);
   const [live, setLive] = useState(false);
@@ -320,40 +257,33 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     return () => window.clearInterval(timer);
   }, [evalRunning, loadSuites]);
 
-  const openThread = (id: string) => {
-    setThread(id);
-    setView("chat");
-  };
-  // Opening a run opens the conversation it belongs to.
+  const openThread = (id: string) => go({ page: "task", id });
+  // Opening a run opens the task it belongs to, where its history is kept.
   const openRun = (id: string) => {
-    const run = runs.find((r) => r.id === id);
-    openThread(run?.thread ?? id);
+    api
+      .run(id)
+      .then((r) => openThread(r.thread ?? id))
+      .catch(() => openThread(id));
   };
-  const newChat = (inProject?: string) => {
-    setThread(null);
-    setStartIn(inProject);
-    setView("chat");
+  // A new conversation is home: the same empty composer, at the bare address.
+  const newChat = (inProject?: string) => go({ page: "new", project: inProject });
+  const openProject = (name: string) => go({ page: "project", name });
+  const openAgent = (name: string | null, tab: AgentTab = "prompt") => go({ page: "agent", name, tab });
+  const openSettings = (section: SettingsSection) => go({ page: "settings", section });
+  // Pinning shows at once and is saved with the person's preferences. If the
+  // save fails, the sidebar goes back to what the server has.
+  const pin = (id: string, on: boolean) => {
+    const next = on ? [id, ...prefs.pinned.filter((p) => p !== id)] : prefs.pinned.filter((p) => p !== id);
+    const before = prefs;
+    setPrefs({ ...prefs, pinned: next });
+    api
+      .savePreferences({ display_name: prefs.display_name, theme: prefs.theme, accent: prefs.accent, pinned: next })
+      .then(setPrefs)
+      .catch(() => setPrefs(before));
   };
-  const openProject = (name: string) => {
-    setProjectName(name);
-    setView("project");
-  };
-  const openAgent = (name: string | null, tab?: "memory" | "evals") => {
-    setAgentName(name);
-    setAgentTab(tab);
-    setView("agent");
-  };
-  const openSettings = (next: Section) => {
-    setSection(next);
-    setView("settings");
-  };
-  useEffect(() => address(view, section, explain, alertId), [view, section, explain, alertId]);
-  // An alert is open only on the Alerts page; leaving it closes the alert.
-  useEffect(() => {
-    if (view !== "alerts") setAlertId(null);
-  }, [view]);
   const openAlerts = alerts.filter((a) => !a.acked_by).length;
   const stats = useMemo(() => new Map((day?.by_agent ?? []).map((g) => [g.name, g])), [day]);
+  const agentName = route.page === "agent" ? route.name : null;
   const editing = agents.find((a) => a.spec.name === agentName) ?? null;
   const shownName = prefs?.display_name || me.principal.name || "";
 
@@ -367,22 +297,45 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       <Sidebar
         open={open}
         onToggle={toggle}
-        view={view}
-        section={section}
-        onView={(next) => {
-          if (next === "home") {
-            setThread(null);
-            setStartIn(undefined);
-          }
-          setView(next);
-        }}
-        onSettings={openSettings}
-        onNewChat={() => newChat()}
-        projectsSlot={
-          <ProjectNav
-            open={open}
+        route={route}
+        go={go}
+        me={me}
+        prefs={prefs}
+        can={can}
+        threads={threads}
+        pinned={prefs.pinned}
+        onPin={pin}
+        inboxCount={inboxCounts.open}
+        alertCount={openAlerts}
+        live={live}
+        onSignOut={() => api.logout().then(onSignedOut).catch(onSignedOut)}
+      />
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {(page === "new" || page === "task") && (
+          <Chat
+            key={thread ?? `new:${route.page === "new" ? (route.project ?? "") : ""}`}
+            threadId={thread}
+            startIn={route.page === "new" ? route.project : undefined}
+            summary={threads.find((t) => t.id === thread)}
+            tick={tick}
+            agents={agents}
+            settings={workspace}
+            canRun={can("runs:write")}
+            greeting={greeting(shownName)}
+            onProjectCreated={(project) => {
+              setWorkspace((current) =>
+                current ? { ...current, projects: [...current.projects.filter((p) => p.name !== project.name), project] } : current,
+              );
+              loadProjects();
+              loadAgents();
+            }}
+            onThread={(id) => go({ page: "task", id }, { replace: route.page === "new" })}
+            onChanged={loadRuns}
+          />
+        )}
+        {route.page === "projects" && (
+          <ProjectsPage
             projects={projects}
-            current={view === "project" ? projectName : null}
             canCreate={can("runs:write")}
             onOpen={openProject}
             onCreated={(name) => {
@@ -391,222 +344,199 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               openProject(name);
             }}
           />
-        }
-        me={me}
-        prefs={prefs}
-        can={can}
-        threads={threads}
-        selected={view === "chat" ? thread : null}
-        onSelect={openThread}
-        inboxCount={inboxCounts.open}
-        alertCount={openAlerts}
-        live={live}
-        onSignOut={() => api.logout().then(onSignedOut).catch(onSignedOut)}
-      />
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {(view === "home" || view === "chat") && (
-            <Chat
-              key={thread ?? `new:${startIn ?? ""}`}
-              threadId={thread}
-              startIn={startIn}
-              summary={threads.find((t) => t.id === thread)}
-              tick={tick}
-              agents={agents}
-              settings={workspace}
-              canRun={can("runs:write")}
-              greeting={greeting(shownName)}
-              onProjectCreated={(project) => {
-                setWorkspace((current) => current ? { ...current, projects: [...current.projects.filter((p) => p.name !== project.name), project] } : current);
-                loadProjects();
-                loadAgents();
-              }}
-              onThread={openThread}
-              onChanged={loadRuns}
-            />
-          )}
-          {view === "inbox" && (
-            <InboxPage
-              signal={inboxTick}
-              viewer={shownName}
-              openId={inboxMessage}
-              onCounts={setInboxCounts}
-              onOpen={(source) =>
-                source.kind === "run"
-                  ? openRun(source.id)
-                  : source.kind === "thread"
-                    ? openThread(source.id)
-                    : source.kind === "agent"
-                      ? openAgent(source.id)
-                      : source.kind === "project"
-                        ? openProject(source.id)
-                        : setView("alerts")
-              }
-            />
-          )}
-          {view === "project" &&
-            (() => {
-              const current = projects.find((p) => p.name === projectName);
-              return current ? (
-                <ProjectPage
-                  key={current.name}
-                  project={current}
-                  threads={threads}
-                  schedules={schedules}
-                  agents={agents}
-                  canWrite={can("runs:write")}
-                  canSchedule={can("schedules:write")}
-                  canLimit={can("billing:write")}
-                  tick={tick}
-                  onNewChat={() => newChat(current.name)}
-                  onOpenThread={openThread}
-                  onChanged={() => {
-                    loadProjects();
-                    loadInbox();
-                  }}
-                  onSchedulesChanged={loadSchedules}
-                  onDeleted={() => {
-                    loadProjects();
-                    loadAgents();
-                    setView("chat");
-                  }}
-                />
-              ) : null;
-            })()}
-          {view === "runs" && <RunList runs={runs} onSelect={openRun} />}
-          {view === "storage" && (
-            <Storage
-              signal={tick}
-              agents={agents.map((a) => a.spec.name)}
-              projects={projects.map((p) => p.name)}
-              canDelete={can("artifacts:write")}
-              onOpenRun={openRun}
-              onOpenThread={openThread}
-            />
-          )}
-          {view === "agents" && (
-            <Agents
-              builtin={builtin}
-              agents={agents}
-              runs={runs}
-              stats={stats}
-              baseline={workspace?.baseline ?? ""}
-              canWrite={can("agents:write")}
-              onOpen={openAgent}
-              onNew={() => openAgent(null)}
-            />
-          )}
-          {view === "agent" && (
+        )}
+        {route.page === "project" &&
+          (() => {
+            const current = projects.find((p) => p.name === route.name);
+            return current ? (
+              <ProjectPage
+                key={current.name}
+                project={current}
+                threads={threads}
+                schedules={schedules}
+                agents={agents}
+                canWrite={can("runs:write")}
+                canSchedule={can("schedules:write")}
+                canLimit={can("billing:write")}
+                tick={tick}
+                onBack={() => go({ page: "projects" })}
+                onNewChat={() => newChat(current.name)}
+                onOpenThread={openThread}
+                onChanged={() => {
+                  loadProjects();
+                  loadInbox();
+                }}
+                onSchedulesChanged={loadSchedules}
+                onDeleted={() => {
+                  loadProjects();
+                  loadAgents();
+                  go({ page: "projects" }, { replace: true });
+                }}
+              />
+            ) : (
+              <Missing what="project" name={route.name} onBack={() => go({ page: "projects" })} />
+            );
+          })()}
+        {route.page === "schedules" && (
+          <Schedules
+            schedules={schedules}
+            agents={agents}
+            projects={projects.map((p) => p.name)}
+            selected={route.name ?? null}
+            onSelect={(name) => go({ page: "schedules", name: name ?? undefined })}
+            canWrite={can("schedules:write")}
+            onChanged={loadSchedules}
+            onOpenRun={openRun}
+            onOpenAgent={(name) => openAgent(name)}
+          />
+        )}
+        {route.page === "alerts" && (
+          <Alerts
+            tab={route.tab}
+            onTab={(tab) => go({ page: "alerts", tab })}
+            alerts={alerts}
+            // Someone who may not read alerts has none to wait for.
+            loaded={alertsLoaded || !can("alerts:read")}
+            selected={route.alert ?? null}
+            onSelect={(id) => go({ page: "alerts", tab: "open", alert: id ?? undefined }, { replace: true })}
+            rules={rules}
+            agents={agents}
+            projects={projects.map((p) => p.name)}
+            canWrite={can("alerts:write")}
+            canAnalytics={can("runs:read")}
+            tick={tick}
+            onChanged={loadAlerts}
+            onOpenRun={openRun}
+            onOpenInbox={(alert) => {
+              if (!alert) return go({ page: "inbox" });
+              // The message about an alert is found by the alert, in whatever state it is.
+              api
+                .inboxFor(alert.id)
+                .then((message) => go({ page: "inbox", message: message ?? undefined }))
+                .catch(() => go({ page: "inbox" }));
+            }}
+          />
+        )}
+        {route.page === "inbox" && (
+          <InboxPage
+            signal={inboxTick}
+            viewer={shownName}
+            openId={route.message ?? null}
+            onCounts={setInboxCounts}
+            onOpen={(source) =>
+              source.kind === "run"
+                ? openRun(source.id)
+                : source.kind === "thread"
+                  ? openThread(source.id)
+                  : source.kind === "agent"
+                    ? openAgent(source.id)
+                    : source.kind === "project"
+                      ? openProject(source.id)
+                      : go({ page: "alerts", tab: "open" })
+            }
+          />
+        )}
+        {route.page === "knowledge" && (
+          <Knowledge
+            sources={sources}
+            agents={agents}
+            suites={suites}
+            selected={route.source ?? null}
+            tab={route.tab ?? "documents"}
+            onSelect={(source, tab) => go({ page: "knowledge", source: source ?? undefined, tab })}
+            canWrite={can("knowledge:write")}
+            canEval={can("evals:write")}
+            onChanged={loadSources}
+            onSuitesChanged={loadSuites}
+            onOpenAgent={(name) => openAgent(name, "knowledge")}
+          />
+        )}
+        {route.page === "agents" && (
+          <Agents
+            builtin={builtin}
+            agents={agents}
+            runs={runs}
+            stats={stats}
+            baseline={workspace?.baseline ?? ""}
+            canWrite={can("agents:write")}
+            onOpen={(name) => openAgent(name)}
+            onNew={() => openAgent(null)}
+          />
+        )}
+        {route.page === "agent" &&
+          (route.name !== null && agents.length > 0 && !editing ? (
+            <Missing what="agent" name={route.name} onBack={() => go({ page: "agents" })} />
+          ) : (
             <AgentDetail
-              key={`${agentName ?? "new"}:${agentTab ?? ""}`}
+              key={route.name ?? "new"}
               revision={editing}
-              startOn={agentTab}
+              tab={route.tab}
+              onTab={(tab) => go({ page: "agent", name: route.name, tab }, { replace: true })}
               agents={agents}
               sources={sources}
               suites={suites}
               rules={rules}
               alerts={alerts}
-              stats={agentName ? stats.get(agentName) : undefined}
+              projects={projects.map((p) => p.name)}
+              stats={route.name ? stats.get(route.name) : undefined}
               baseline={workspace?.baseline ?? ""}
               canWrite={can("agents:write")}
-              builtin={agentName ? builtin.includes(agentName) : false}
+              builtin={route.name ? builtin.includes(route.name) : false}
               canEval={can("evals:write")}
               canAlert={can("alerts:write")}
-              onBack={() => setView("agents")}
+              canKnowledge={can("knowledge:write")}
+              onBack={() => go({ page: "agents" })}
               onChanged={(name) => {
                 loadAgents();
-                setAgentName(name);
+                go({ page: "agent", name, tab: route.tab }, { replace: true });
               }}
               onRulesChanged={loadAlerts}
               onSuitesChanged={loadSuites}
+              onSourcesChanged={loadSources}
               onOpenRun={openRun}
+              onOpenSource={(source) => go({ page: "knowledge", source })}
+              onOpenAlerts={() => go({ page: "alerts", tab: "rules" })}
+              onOpenTask={openThread}
               onBaseline={setBaseline}
+              policies={workspace?.model_policies ?? []}
+              onManagePolicies={() => openSettings("models")}
             />
-          )}
-          {view === "knowledge" && (
-            <Knowledge
-              sources={sources}
-              agents={agents}
-              suites={suites}
-              canWrite={can("knowledge:write")}
-              canEval={can("evals:write")}
-              onChanged={loadSources}
-              onSuitesChanged={loadSuites}
-            />
-          )}
-          {view === "schedules" && (
-            <Schedules
-              schedules={schedules}
-              agents={agents}
-              canWrite={can("schedules:write")}
-              onChanged={loadSchedules}
-              onOpenRun={openRun}
-            />
-          )}
-          {view === "evals" && (
-            <EvalsPage
-              suites={suites}
-              onOpen={(suite) => (suite.target === "agent" ? openAgent(suite.subject, "evals") : setView("knowledge"))}
-            />
-          )}
-          {view === "analytics" && <Analytics agents={agents} openAlerts={openAlerts} tick={tick} onOpenRun={openRun} />}
-          {view === "alerts" && (
-            <Alerts
-              alerts={alerts}
-              // Someone who may not read alerts has none to wait for.
-              loaded={alertsLoaded || !can("alerts:read")}
-              selected={alertId}
-              onSelect={setAlertId}
-              rules={rules}
-              agents={agents}
-              canWrite={can("alerts:write")}
-              onChanged={loadAlerts}
-              onOpenInbox={(alert) => {
-                setInboxMessage(null);
-                setView("inbox");
-                // The message about an alert is found by the alert, in whatever state it is.
-                if (alert) api.inboxFor(alert.id).then(setInboxMessage).catch(() => {});
-              }}
-            />
-          )}
-          {view === "settings" && prefs && (
-            <Settings
-              overview={
-                <div className="flex flex-col gap-3">
-                  <p className="text-aui-sm text-aui-muted">{agents.length} agents · {projects.length} projects · {threads.length} recent tasks</p>
-                  {([
-                    ["agents", "Agents", "agents:read"],
-                    ["knowledge", "Knowledge", "knowledge:read"],
-                    ["schedules", "Schedules", "schedules:read"],
-                    ["runs", "Execution history", "runs:read"],
-                    ["analytics", "Analytics", "runs:read"],
-                    ["alerts", "Alerts", "alerts:read"],
-                    ["storage", "Storage", "artifacts:read"],
-                  ] as const).filter(([, , permission]) => can(permission)).map(([target, label]) => (
-                    <button
-                      type="button"
-                      key={target}
-                      className="rounded-aui border border-aui-border px-4 py-3 text-left text-aui-sm hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-                      onClick={() => setView(target)}
-                    >
-                      {label} →
-                    </button>
-                  ))}
-                </div>
-              }
-              me={me}
-              prefs={prefs}
-              workspace={workspace}
-              agents={agents}
-              canAdmin={can("agents:write")}
-              section={section}
-              onSection={setSection}
-              explain={explain}
-              onExplain={setExplain}
-              onPrefs={setPrefs}
-              onWorkspace={setWorkspace}
-            />
-          )}
-        </main>
+          ))}
+        {route.page === "artifacts" && (
+          <Storage
+            signal={tick}
+            agents={agents.map((a) => a.spec.name)}
+            projects={projects.map((p) => p.name)}
+            canDelete={can("artifacts:write")}
+            onOpenRun={openRun}
+            onOpenThread={openThread}
+          />
+        )}
+        {route.page === "settings" && (
+          <Settings
+            me={me}
+            prefs={prefs}
+            workspace={workspace}
+            agents={agents}
+            canAdmin={can("agents:write")}
+            section={route.section}
+            onSection={openSettings}
+            explain={route.permission ?? "runs:read"}
+            onExplain={(permission) => go({ page: "settings", section: "access", permission }, { replace: true })}
+            onPrefs={setPrefs}
+            onWorkspace={setWorkspace}
+          />
+        )}
+      </main>
     </div>
+  );
+}
+
+/** A link to something that is not there: deleted, renamed, or never readable. */
+function Missing({ what, name, onBack }: { what: string; name: string; onBack: () => void }) {
+  return (
+    <Page title={`No ${what} named ${name}`} lede={`It may have been deleted, or you may not be allowed to see it.`} back={{ label: `All ${what === "agent" ? "agents" : "projects"}`, onClick: onBack }}>
+      {null}
+    </Page>
   );
 }

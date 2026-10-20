@@ -38,6 +38,7 @@ import (
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/callpolicy"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/inbox"
@@ -583,7 +584,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"InboxFailurePart": {typ: inbox.FailurePart{}}, "InboxNoteRef": {typ: inbox.NoteRef{}}, "InboxMemoryPart": {typ: inbox.MemoryPart{}},
 		"InboxBudgetPart": {typ: inbox.BudgetPart{}}, "InboxPart": {typ: inbox.Part{}}, "InboxQuestionPart": {typ: inbox.QuestionPart{}}, "InboxQuestionTool": {typ: inbox.QuestionTool{}}, "InboxMessage": {typ: inbox.Message{}},
 		"InboxChange": {typ: inbox.Change{}},
-		"Artifact":    {typ: artifacts.Artifact{}}, "StorageShare": {typ: artifacts.Share{}},
+		"CallPolicy":  {typ: callpolicy.Policy{}}, "CallPolicyInput": {typ: callPolicyBody{}, written: true}, "Reach": {typ: platform.Reach{}},
+		"Artifact": {typ: artifacts.Artifact{}}, "StorageShare": {typ: artifacts.Share{}},
 		"AnalyticsGroup": {typ: runs.Group{}}, "AnalyticsBucket": {typ: runs.Bucket{}}, "Summary": {typ: runs.Summary{}},
 		"JournalEntry": {typ: journal.Entry{}}, "Span": {typ: journal.Span{}},
 		"AlertRule": {typ: alerts.Rule{}}, "Alert": {typ: alerts.Alert{}},
@@ -854,6 +856,13 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/agents/{name}", "/api/agents/ghost", strings.ReplaceAll(revised, "helper", "ghost"), http.StatusNotFound)
 	c.call(acme, "GET", "/api/agents/{name}/history", "/api/agents/helper/history", "", http.StatusOK)
 	c.call(globex, "GET", "/api/agents/{name}/history", "/api/agents/helper/history", "", http.StatusNotFound)
+	// Who may call it, and whom it may call.
+	c.call(acme, "GET", "/api/agents/{name}/call-policy", "/api/agents/helper/call-policy", "", http.StatusOK)
+	c.call(acme, "PUT", "/api/agents/{name}/call-policy", "/api/agents/helper/call-policy",
+		`{"callers":"listed","allow":["helper"],"approval":"unlisted","trusted":["helper"],"approvers":["role:manager"],"expires_seconds":3600}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/agents/{name}/call-policy", "/api/agents/helper/call-policy", `{"callers":"listed","allow":["ghost"],"approval":"never"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/agents/{name}/call-policy", "/api/agents/helper/call-policy", `{"callers":"anyone","approval":"never"}`, http.StatusOK)
+	c.call(acme, "GET", "/api/agents/{name}/reachable", "/api/agents/helper/reachable", "", http.StatusOK)
 	note := c.call(acme, "POST", "/api/agents/{name}/memory", "/api/agents/helper/memory", `{"text":"Answer briefly."}`, http.StatusCreated)
 	c.call(acme, "GET", "/api/agents/{name}/memory", "/api/agents/helper/memory", "", http.StatusOK)
 	c.call(acme, "POST", "/api/agents/{name}/memory/approve", "/api/agents/helper/memory/approve", `{"ids":[]}`, http.StatusOK)
@@ -992,6 +1001,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	inboxPath := "/api/inbox/" + mid
 	c.call(acme, "GET", "/api/inbox", "/api/inbox?state=nonsense", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/inbox", "/api/inbox?kind=approval&agent=helper&state=open", "", http.StatusOK)
 	c.call(acme, "GET", "/api/inbox", "/api/inbox?alert="+obj(msg["source"])["alert"].(string), "", http.StatusOK)
 	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count", "", http.StatusOK)
 	c.call(acme, "GET", "/api/inbox/{id}", inboxPath, "", http.StatusOK)
@@ -1036,11 +1046,18 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/schedules/{name}/resume", "/api/schedules/nightly/resume", "", http.StatusOK)
 	c.call(acme, "POST", "/api/schedules/{name}/run", "/api/schedules/nightly/run", "", http.StatusAccepted)
 	c.call(globex, "POST", "/api/schedules/{name}/run", "/api/schedules/nightly/run", "", http.StatusNotFound)
+	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/nightly", `{"expression":"0 4 * * 1-5","agent":"helper","text":"Report again.","project":"Launch","description":"Weekday report"}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/nightly", `{"expression":"whenever","agent":"helper","text":"Report."}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/ghost", `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`, http.StatusNotFound)
 
 	// Alerts, knowledge and evals.
 	c.call(acme, "POST", "/api/alert-rules", "/api/alert-rules", `{"name":"any","kind":"run_failed","severity":"critical"}`, http.StatusCreated)
 	c.call(acme, "POST", "/api/alert-rules", "/api/alert-rules", `{"name":"any","kind":"run_failed","severity":"critical"}`, http.StatusConflict)
 	c.call(acme, "POST", "/api/alert-rules", "/api/alert-rules", `{"name":"odd","kind":"nonsense","severity":"critical"}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/alert-rules", "/api/alert-rules", `{"name":"spend","kind":"spend","project":"Launch","threshold_micros":5000000,"window_seconds":86400,"severity":"warning","notify":["role:admin"],"cooldown_seconds":3600,"description":"Launch spend"}`, http.StatusCreated)
+	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/spend", `{"kind":"spend","threshold_micros":9000000,"window_seconds":86400,"severity":"critical","paused":true}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/spend", `{"kind":"spend","window_seconds":86400,"severity":"critical"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/alert-rules/{name}", "/api/alert-rules/ghost", `{"kind":"run_failed","severity":"critical"}`, http.StatusNotFound)
 	alertList := c.call(acme, "GET", "/api/alerts", "/api/alerts", "", http.StatusOK)
 	if fired := sliceOf(alertList.field("alerts")); len(fired) > 0 {
 		c.call(acme, "POST", "/api/alerts/{id}/ack", "/api/alerts/"+obj(fired[0])["id"].(string)+"/ack", "", http.StatusOK)
@@ -1186,13 +1203,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
 	}
 	valid := map[string]string{
-		"/api/agents/{name}": revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
+		"/api/agents/{name}": revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
 		"/api/clients/{id}": `{"name":"Support","surface":"slack","identity":{"team":"T01ABCDEF"}}`, "/api/evals/{name}": `{"name":"smoke","target":"agent","subject":"helper","cases":[]}`,
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
 		"/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
-		"/api/runs/{id}/calls": `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
+		"/api/runs/{id}/calls":    `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
+		"/api/alert-rules/{name}": `{"kind":"run_failed","severity":"critical"}`,
+		"/api/schedules/{name}":   `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
@@ -1273,6 +1292,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	// A workspace holds at most 1,000 call policies, one per agent. Making
+	// that many agents here would only test a counter, which
+	// pkg/callpolicy's tests do.
+	"PUT /api/agents/{name}/call-policy 429": "call policy cap",
 	// The runtime here always has a bus to subscribe to and a ledger to
 	// record in, so it can always carry a stop. TestAStopTheRuntimeCannotCarryIsA503
 	// answers 503 from a server whose runtime cannot.

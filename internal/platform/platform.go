@@ -45,6 +45,7 @@ import (
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/blob"
 	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/callpolicy"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/inbox"
@@ -145,9 +146,11 @@ type Platform struct {
 	Prefs     *prefs.Store
 	Memory    *memory.Store
 	Policies  *policy.Store
-	Usage     *usage.Ledger
-	Inbox     *inbox.Store
-	Artifacts *artifacts.Index
+	// CallPolicies is what each agent says about being called.
+	CallPolicies *callpolicy.Store
+	Usage        *usage.Ledger
+	Inbox        *inbox.Store
+	Artifacts    *artifacts.Index
 	// Clients is the external clients each tenant answers through.
 	Clients clients.Store
 	// Blobs holds the bytes of published files.
@@ -200,6 +203,11 @@ type Platform struct {
 	// fan-out or budget check that only one of them fits under.
 	calls sync.Mutex
 
+	// approved notes the calls to agents a person approved, until their run
+	// ends, so the call path can tell an approved call from one nobody was
+	// asked about.
+	approved approvals
+
 	// answers keeps a recorded decision and its surface provenance together
 	// before resumed or terminal events can settle the inbox question.
 	answers sync.Mutex
@@ -217,24 +225,25 @@ func New(cfg Config) (*Platform, error) {
 	}
 	p := &Platform{
 		cfg: cfg, log: log, now: now,
-		Agents:    registry.NewMemory(),
-		Runs:      runs.NewIndex(),
-		Schedules: &Schedules{},
-		Journal:   journal.New(0),
-		Alerts:    alerts.NewEngine(),
-		Knowledge: knowledge.NewStore(),
-		Evals:     evals.NewStore(),
-		Prefs:     prefs.NewStore(),
-		Memory:    memory.NewStore(),
-		Policies:  policy.NewStore(),
-		Usage:     usage.NewLedger(),
-		Inbox:     inbox.NewStore(),
-		Artifacts: artifacts.NewIndex(),
-		Blobs:     cfg.Blobs,
-		broker:    bus.NewMemory(),
-		sinks:     connector.NewRegistry(),
-		ledger:    ledger.NewMemory(),
-		queue:     dqueue.NewMemory(),
+		Agents:       registry.NewMemory(registry.WithProviders(providers()...)),
+		Runs:         runs.NewIndex(),
+		Schedules:    &Schedules{},
+		Journal:      journal.New(0),
+		Alerts:       alerts.NewEngine(),
+		Knowledge:    knowledge.NewStore(),
+		Evals:        evals.NewStore(),
+		Prefs:        prefs.NewStore(),
+		Memory:       memory.NewStore(),
+		Policies:     policy.NewStore(),
+		CallPolicies: callpolicy.NewStore(),
+		Usage:        usage.NewLedger(),
+		Inbox:        inbox.NewStore(),
+		Artifacts:    artifacts.NewIndex(),
+		Blobs:        cfg.Blobs,
+		broker:       bus.NewMemory(),
+		sinks:        connector.NewRegistry(),
+		ledger:       ledger.NewMemory(),
+		queue:        dqueue.NewMemory(),
 	}
 
 	// Schedules are a trigger like any other: the cron connector raises tags
@@ -351,7 +360,7 @@ func (p *Platform) executor() (runtime.Executor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec}, nil
+	return callExecutor{inner: exec, resolve: p.resolveModel}, nil
 }
 
 // Invoke accepts a tag and starts its run. Routes are registered before the run
@@ -413,9 +422,10 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 // Call has one run call another agent. It is the only path by which an agent
 // starts another agent's run.
 //
-// Three things are checked, in this order: the caller's pinned spec must name
-// the target in its spawn allowlist, the tree's limits must allow the call, and
-// the caller's remaining budget must cover the lease.
+// Four things are checked, in this order: the caller's pinned spec must name
+// the target in its spawn allowlist, the target's call policy must admit the
+// caller, the tree's limits must allow the call, and the caller's remaining
+// budget must cover the lease.
 func (p *Platform) Call(ctx context.Context, tenant, runID string, req call.Request) (runs.Run, error) {
 	return p.call(ctx, tenant, runID, req, false)
 }
@@ -442,7 +452,11 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 		return runs.Run{}, fmt.Errorf("platform: caller's spec: %w", err)
 	}
 	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) {
-		return runs.Run{}, fmt.Errorf("%w: %q may not call %q", ErrForbidden, parent.Agent, req.Agent)
+		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
+	}
+	// The callee agrees too: its call policy must admit the caller.
+	if err := p.admitCall(ctx, tenant, parent.Agent, req.Agent); err != nil {
+		return runs.Run{}, err
 	}
 
 	input := req.Input

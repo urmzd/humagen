@@ -10,7 +10,9 @@ import { sampleTrees } from "./activity.fixtures.ts";
 import { Alerts } from "./Alerts.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
-import { ProjectNav } from "./Projects.tsx";
+import { ProjectsPage } from "./Projects.tsx";
+import { Sidebar } from "./Sidebar.tsx";
+import type { Me, ThreadSummary } from "./api.ts";
 import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
 import { bindingWords, SessionGauge } from "./SessionGauge.tsx";
@@ -26,16 +28,87 @@ import { replay } from "./Runs.tsx";
 import { formats } from "./copyas.ts";
 import { emptyTurn } from "@warp/core";
 
-test("collapsed navigation keeps an accessible Projects entry; creation follows permission", () => {
-  const props = { projects: [], current: null, onOpen: () => {}, onCreated: () => {} };
-  const collapsed = renderToStaticMarkup(<ProjectNav {...props} open={false} canCreate={false} />);
-  assert.match(collapsed, /aria-label="Projects"/);
-  assert.match(collapsed, /aria-haspopup="dialog"/);
-  assert.match(collapsed, /<svg/);
-  const readOnly = renderToStaticMarkup(<ProjectNav {...props} open canCreate={false} />);
-  assert.doesNotMatch(readOnly, /aria-label="New project"/);
-  const writable = renderToStaticMarkup(<ProjectNav {...props} open canCreate />);
-  assert.match(writable, /aria-label="New project"/);
+test("the projects page lists projects; creation follows permission", () => {
+  const project = { name: "launch", conversations: 3, active: 1, schedules: 0, notes: 0, proposed: 0 };
+  const props = { projects: [project], onOpen: () => {}, onCreated: () => {} };
+  const readOnly = renderToStaticMarkup(<ProjectsPage {...props} canCreate={false} />);
+  assert.match(readOnly, />Projects</);
+  assert.match(readOnly, /launch/);
+  assert.match(readOnly, /1 running · 3 tasks/);
+  assert.doesNotMatch(readOnly, /New Project/);
+  assert.match(renderToStaticMarkup(<ProjectsPage {...props} canCreate />), /New Project/);
+  assert.match(renderToStaticMarkup(<ProjectsPage {...props} projects={[]} canCreate />), /No projects yet/);
+});
+
+const sidebarMe: Me = {
+  principal: { subject: "ada", tenant: "acme", name: "Ada", roles: ["member"] },
+  permissions: [],
+} as unknown as Me;
+const task = (id: string, title: string): ThreadSummary => ({
+  id,
+  title,
+  named: true,
+  origin: "api",
+  agents: ["lead"],
+  turns: 1,
+  branches: 1,
+  active: 0,
+  failed: 0,
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+});
+function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
+  const all = ["runs:read", "runs:write", "schedules:read", "agents:read", "knowledge:read", "evals:read", "alerts:read", "artifacts:read"];
+  return renderToStaticMarkup(
+    <Sidebar
+      open
+      onToggle={() => {}}
+      route={{ page: "new" }}
+      go={() => {}}
+      me={sidebarMe}
+      prefs={null}
+      can={(p) => all.includes(p)}
+      threads={[task("t1", "Quarterly report"), task("t2", "Fix the build")]}
+      pinned={[]}
+      onPin={() => {}}
+      inboxCount={0}
+      alertCount={0}
+      live
+      onSignOut={() => {}}
+      {...over}
+    />,
+  );
+}
+
+test("the sidebar is one flat list in working order, with New as home", () => {
+  const out = sidebar();
+  const order = ["New", "Projects", "Schedules", "Alerts", "Inbox", "Knowledge", "Agents", "Artifacts"];
+  const at = order.map((label) => out.indexOf(`>${label}<`));
+  assert.ok(at.every((i) => i >= 0), `every page is listed: ${at}`);
+  assert.deepEqual([...at].sort((x, y) => x - y), at, "in this order");
+  // Home and New are one entry; runs, evals and analytics live where they belong.
+  for (const gone of ["Home", "New conversation", "More", "Execution history", "Evals", "Analytics", "Storage"]) {
+    assert.doesNotMatch(out, new RegExp(`>${gone}<`));
+  }
+  assert.match(out, /href="\/" aria-current="page"/);
+  assert.match(sidebar({ route: { page: "agent", name: "lead", tab: "model" } }), /href="\/agents" aria-current="page"/);
+});
+
+test("the sidebar hides pages from someone who may not read them", () => {
+  const out = sidebar({ can: (p) => p === "runs:write" });
+  assert.match(out, />New</);
+  for (const label of ["Projects", "Inbox", "Schedules", "Knowledge", "Agents", "Artifacts"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
+});
+
+test("pinned tasks sit in their own section, ahead of the rest", () => {
+  const none = sidebar();
+  assert.doesNotMatch(none, /aria-label="Pinned"/);
+  const out = sidebar({ pinned: ["t2", "gone"] });
+  assert.match(out, /aria-label="Pinned"/);
+  assert.match(out, /aria-label="Unpin Fix the build"/);
+  // An id that is not loaded is not drawn, and nothing is listed twice.
+  assert.equal(out.match(/Fix the build</g)?.length, 1);
+  assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Tasks<"));
 });
 
 test("project selection: an empty workspace still offers projectless work and creation inside the composer", () => {
@@ -543,11 +616,13 @@ test("Alerts: recent firings are listed newest first, as links into the inbox", 
 });
 
 test("Alerts: open alerts are counted and linked, not acknowledged here", () => {
-  const out = alertsPage();
+  const out = alertsPage({ tab: "open" });
   assert.match(out, /1 message a rule raised is open\./);
   assert.match(out, />Open the inbox</);
   assert.doesNotMatch(out, />Acknowledge</);
-  assert.match(alertsPage({ alerts: [] }), /Nothing a rule raised is open\./);
+  assert.match(alertsPage({ tab: "open", alerts: [] }), /Nothing a rule raised is open\./);
+  // The Fired tab lists every firing, newest first.
+  assert.ok(out.indexOf("oncall failed") < out.indexOf("lead failed"));
 });
 
 test("Alerts: with no rules, it says nothing is watched, and who can change that", () => {

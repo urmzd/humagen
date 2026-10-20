@@ -63,13 +63,14 @@ test("a built-in agent: the spec cannot be changed or saved, the baseline and me
   const prompt = screen.getByLabelText("System prompt") as HTMLTextAreaElement;
   assert.ok(prompt.disabled);
 
-  tab("Setup");
-  const model = screen.getByDisplayValue("offline") as HTMLInputElement;
-  assert.ok(model.disabled);
   const baseline = screen.getByRole("checkbox", { name: /Baseline agent/ }) as HTMLInputElement;
   assert.ok(!baseline.disabled);
   fireEvent.click(baseline);
   assert.deepEqual(chose, ["warp-writer"]);
+
+  tab("Model");
+  const model = screen.getByDisplayValue("offline") as HTMLInputElement;
+  assert.ok(model.disabled);
 
   tab("Revisions");
   await screen.findByText("Revision 1");
@@ -93,7 +94,7 @@ test("the same agent, not built in: editing makes a save, and an older revision 
   fireEvent.change(screen.getByLabelText("System prompt"), { target: { value: "Write it well." } });
   assert.ok(!save.disabled);
 
-  tab("Setup");
+  tab("Model");
   assert.ok(!(screen.getByDisplayValue("offline") as HTMLInputElement).disabled);
   tab("Revisions");
   assert.ok(await screen.findByRole("button", { name: "Restore as Revision 3" }));

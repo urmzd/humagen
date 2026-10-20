@@ -297,6 +297,89 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/call-policy:
+    get:
+      operationId: getCallPolicy
+      tags: [agents]
+      summary: Read which agents may call an agent
+      description: |
+        The agent's stored call policy, or the default an agent with none has
+        (`version` 0): any caller its own spec allows, without approval. 404
+        for an agent that does not exist in the caller's workspace.
+      x-permission: agents:read
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: The call policy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallPolicy"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: putCallPolicy
+      tags: [agents]
+      summary: Set which agents may call an agent, and which calls a person approves
+      description: |
+        Replaces the agent's call policy. The callee decides: a caller also
+        needs the callee in its own spawn allowlist, so a policy can only
+        narrow what callers' specs allow. An unknown mode, an agent name that
+        does not exist, more than 100 callers or 32 approvers, or a field that does not
+        apply to the chosen mode is 400.
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CallPolicyInput"}
+      responses:
+        "200":
+          description: The stored policy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallPolicy"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/reachable:
+    get:
+      operationId: listReachableAgents
+      tags: [agents]
+      summary: List which agents an agent may call, and why
+      description: |
+        For the agent in the path as a caller, every other agent in the
+        workspace: whether its call policy admits the caller, whether the
+        caller's spec lists it, and whether a call needs a person's approval.
+        At most 500 agents; `truncated` says there are more.
+      x-permission: agents:read
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: One entry per other agent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [agents, truncated]
+                properties:
+                  agents:
+                    type: array
+                    items: {$ref: "#/components/schemas/Reach"}
+                  truncated: {type: boolean}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/memory:
     get:
       operationId: listAgentMemory
@@ -931,6 +1014,39 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/schedules/{name}:
+    put:
+      operationId: updateSchedule
+      tags: [schedules]
+      summary: Change a schedule
+      description: |
+        Replaces the schedule's expression, agent, text, project and
+        description. The name cannot change: a `name` in the body must match
+        the path, or be left out. Whether the schedule is paused, who created
+        it and the runs it raised are kept. The agent, and the project if one
+        is named, must exist now. The whole edit is checked before anything
+        changes, so a refused edit leaves the schedule as it was. An edited
+        schedule starts afresh from the time of the edit: it does not catch up
+        on occurrences of its new expression that fell before it.
+      x-permission: schedules:write
+      parameters:
+        - {$ref: "#/components/parameters/ScheduleName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Schedule"}
+      responses:
+        "200":
+          description: The schedule, as it now stands.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ScheduleView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
     delete:
       operationId: deleteSchedule
       tags: [schedules]
@@ -1039,6 +1155,13 @@ paths:
         - name: before
           in: query
           description: The `next` cursor of the previous page.
+          schema: {type: string}
+        - name: agent
+          in: query
+          description: |
+            Only messages about this agent: raised by it, or asking to call
+            it (`source.target`). With `kind=approval` and `state=open`, the
+            agent's queue of calls waiting for approval.
           schema: {type: string}
       responses:
         "200":
@@ -1497,7 +1620,10 @@ paths:
       operationId: createAlertRule
       tags: [alerts]
       summary: Create an alert rule
-      description: "`created_by` is set by the server, whatever the body says."
+      description: |
+        `created_by` and `created_at` are set by the server, and `updated_by`
+        and `updated_at` are cleared, whatever the body says. The agent and
+        the project a rule is scoped to must exist now.
       x-permission: alerts:write
       requestBody:
         required: true
@@ -1518,6 +1644,36 @@ paths:
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/alert-rules/{name}:
+    put:
+      operationId: updateAlertRule
+      tags: [alerts]
+      summary: Replace an alert rule
+      description: |
+        The body is checked exactly as a new rule is. The name cannot change:
+        a `name` in the body must match the path, or be left out.
+        `created_by` and `created_at` are kept from the rule replaced, and
+        `updated_by` and `updated_at` are set by the server. Alerts the rule
+        already raised stay, and so does its cooldown.
+      x-permission: alerts:write
+      parameters:
+        - {name: name, in: path, required: true, description: The rule's name., schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AlertRule"}
+      responses:
+        "200":
+          description: The rule, as it now stands.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AlertRule"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
     delete:
       operationId: deleteAlertRule
       tags: [alerts]
@@ -1934,6 +2090,11 @@ paths:
                 onboarded:
                   description: Marks the first-run questions as done. It can be set and never unset.
                   type: boolean
+                pinned:
+                  description: Replaces the pinned conversations, at most 50. Absent leaves them as they are.
+                  type: array
+                  maxItems: 50
+                  items: {type: string}
       responses:
         "200":
           description: The preferences as saved.
@@ -2592,7 +2753,7 @@ components:
         email: {type: string}
         roles:
           type: array
-          items: {type: string, enum: [viewer, operator, admin]}
+          items: {type: string, enum: [viewer, operator, manager, admin]}
         scopes:
           description: A machine's permissions, from its token.
           type: array
@@ -2683,7 +2844,22 @@ components:
         name: {type: string}
         description: {type: string}
         model: {type: string}
-        provider: {type: string}
+        provider:
+          description: A model provider, or `policy` to run on the workspace model policy named by `model`.
+          type: string
+        fallbacks:
+          description: |
+            Models tried in order when the primary fails with an error another
+            model could get past (an outage, a rate limit, an exhausted retry).
+            An invalid request or a cancellation is not retried elsewhere. At
+            most 4, none repeating the primary or each other.
+          type: array
+          maxItems: 4
+          items: {$ref: "#/components/schemas/ModelRef"}
+        fallback_on:
+          description: When a call moves to the next fallback. Empty means any error another model could get past. Needs at least one fallback.
+          type: array
+          items: {$ref: "#/components/schemas/FallbackCondition"}
         system_prompt: {type: string}
         tools:
           type: array
@@ -2713,6 +2889,33 @@ components:
           description: When set, the only people who may answer a choice or a reply, named as approvers are.
           type: array
           items: {type: string}
+    FallbackCondition:
+      description: A class of model error that moves a call on to the next model. `any` cannot be combined with another.
+      type: string
+      enum: [any, unavailable, rate_limit, transient, auth, context_length, content_filter]
+    ModelPolicy:
+      description: A workspace's named, ordered list of models. The first answers; the rest are fallbacks.
+      type: object
+      required: [name, models]
+      properties:
+        name: {type: string}
+        description: {type: string}
+        models:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items: {$ref: "#/components/schemas/ModelRef"}
+        fallback_on:
+          description: When a call moves to the next model. Empty means any error another model could get past.
+          type: array
+          items: {$ref: "#/components/schemas/FallbackCondition"}
+    ModelRef:
+      description: One model, named by its provider.
+      type: object
+      required: [provider, model]
+      properties:
+        provider: {type: string}
+        model: {type: string}
     Revision:
       description: One immutable revision of an agent.
       type: object
@@ -3100,7 +3303,7 @@ components:
     Settings:
       description: Workspace settings.
       type: object
-      required: [baseline, history, history_limit, projects, title_agent, memory_agent, memory_auto_approve, workspace_name]
+      required: [baseline, history, history_limit, projects, title_agent, memory_agent, memory_auto_approve, workspace_name, model_policies]
       properties:
         baseline:
           description: The agent that answers when the picker matches none.
@@ -3117,6 +3320,16 @@ components:
         memory_agent: {type: string}
         memory_auto_approve: {type: boolean}
         workspace_name: {type: string}
+        model_policies:
+          description: |
+            Named, ordered lists of models with the errors that move a call from
+            one to the next. An agent runs on one by naming the provider
+            `policy` and the policy's name as its model; the policy is read as
+            it stands when each call starts. A policy an agent still runs on
+            cannot be removed (409).
+          type: array
+          maxItems: 32
+          items: {$ref: "#/components/schemas/ModelPolicy"}
         setup_at:
           description: Set once by the server when an admin first saves settings.
           type: string
@@ -3128,7 +3341,7 @@ components:
     Preferences:
       description: A person's own settings.
       type: object
-      required: [display_name, theme, accent, has_photo, photo_version]
+      required: [display_name, theme, accent, has_photo, photo_version, pinned]
       properties:
         display_name: {type: string}
         theme: {$ref: "#/components/schemas/Theme"}
@@ -3139,6 +3352,10 @@ components:
           description: When the person finished or skipped the first-run questions.
           type: string
           format: date-time
+        pinned:
+          description: Conversations kept at the top of the person's sidebar, most recently pinned first.
+          type: array
+          items: {type: string}
 
     Schedule:
       description: A cron schedule as a caller writes it.
@@ -3154,6 +3371,10 @@ components:
         project:
           description: Files every run the schedule raises under a project.
           type: string
+        description:
+          description: What the schedule is for, at most 500 characters. The agent is not shown it.
+          type: string
+          maxLength: 500
     ScheduleView:
       description: A schedule with whether it is running, when it fires next, and how its recent occurrences went.
       type: object
@@ -3164,8 +3385,13 @@ components:
         agent: {type: string}
         text: {type: string}
         project: {type: string}
+        description: {type: string}
         paused: {type: boolean}
         created_by: {type: string}
+        updated_by:
+          description: Who last changed the schedule. Absent until it is changed.
+          type: string
+        updated_at: {type: string, format: date-time}
         next:
           description: The next three fires. Empty while paused.
           type: array
@@ -3202,6 +3428,85 @@ components:
           description: What sent the message, such as `agent`, `rule` or `system`.
           type: string
         name: {type: string}
+    CallPolicyInput:
+      description: Which agents may call an agent, and which of those calls a person approves.
+      type: object
+      additionalProperties: false
+      required: [callers, approval]
+      properties:
+        callers:
+          description: "`anyone` its spec allows, only the `listed` agents in `allow`, or `none`."
+          type: string
+          enum: [anyone, listed, none]
+        allow:
+          description: The callers admitted when `callers` is `listed`.
+          type: array
+          maxItems: 100
+          items: {type: string}
+        approval:
+          description: "`never`, `always`, or for every caller not in `trusted` when `unlisted`."
+          type: string
+          enum: [never, always, unlisted]
+        trusted:
+          description: Callers whose calls skip approval when `approval` is `unlisted`.
+          type: array
+          maxItems: 100
+          items: {type: string}
+        approvers:
+          description: |
+            Who may approve a held call: subjects, and this workspace's roles
+            as `role:<name>`, at most 32. Empty means `role:manager` and
+            `role:admin`, so a held call is never open to the whole workspace.
+          type: array
+          maxItems: 32
+          items: {type: string}
+        self_approval:
+          description: Lets the person whose request led to a call approve it.
+          type: boolean
+        expires_seconds:
+          description: How long a held call waits before it is denied. 0 means a day.
+          type: integer
+          minimum: 0
+          maximum: 604800
+    CallPolicy:
+      description: An agent's call policy. Version 0 is the default of an agent with none stored.
+      type: object
+      required: [agent, callers, allow, approval, trusted, approvers, self_approval, expires_seconds, version]
+      properties:
+        agent: {type: string}
+        callers: {type: string, enum: [anyone, listed, none]}
+        allow:
+          type: array
+          items: {type: string}
+        approval: {type: string, enum: [never, always, unlisted]}
+        trusted:
+          type: array
+          items: {type: string}
+        approvers:
+          type: array
+          items: {type: string}
+        self_approval: {type: boolean}
+        expires_seconds: {type: integer}
+        version: {type: integer}
+        updated_by: {type: string}
+        updated_at: {type: string, format: date-time}
+    Reach:
+      description: Whether one agent may call another.
+      type: object
+      required: [agent, admits, in_spawn, approval, reason]
+      properties:
+        agent: {type: string}
+        admits:
+          description: The callee's call policy accepts calls from the caller.
+          type: boolean
+        in_spawn:
+          description: The caller's spec lists the callee in its spawn allowlist.
+          type: boolean
+        approval:
+          description: Whether a call waits for a person.
+          type: string
+          enum: [never, required]
+        reason: {type: string}
     InboxSource:
       description: What the message is about, as ids a reader can follow.
       type: object
@@ -3212,6 +3517,9 @@ components:
         thread: {type: string}
         agent: {type: string}
         project: {type: string}
+        target:
+          description: The agent a question's tool call would call, when it calls one.
+          type: string
     InboxOutcome:
       type: object
       required: [action, by, at]
@@ -3282,6 +3590,9 @@ components:
       required: [name]
       properties:
         name: {type: string}
+        call_id:
+          description: The model's id for the call.
+          type: string
         arguments:
           description: What the model asked to call the tool with, as a JSON object.
           type: object
@@ -3318,6 +3629,15 @@ components:
         via:
           description: The run whose stream showed the question, when that is a run waiting on the one that asked.
           type: string
+        approvers:
+          description: |
+            Who may answer this one approval, in place of the agent spec's:
+            the callee's call policy's approvers, for a call to an agent.
+          type: array
+          items: {type: string}
+        self_approval:
+          description: Goes with `approvers`.
+          type: boolean
     InboxPart:
       description: |
         One typed part of a message. `type` says which of `text`, `alert`,
@@ -3591,24 +3911,81 @@ components:
 
     AlertKind:
       type: string
-      enum: [run_failed, failure_rate, slow_run, eval_below, budget]
+      description: |
+        `budget` is raised by a billing policy, never by a rule, and a rule
+        cannot be created with it.
+      enum: [run_failed, failure_rate, slow_run, eval_below, spend, budget]
     AlertSeverity:
       type: string
       enum: [warning, critical]
     AlertRule:
+      description: |
+        A condition on runs that raises an alert. Every field but `name`,
+        `kind` and `severity` is optional, and leaving one out keeps the
+        behaviour rules had before it existed: every agent and project,
+        enabled, no cooldown, and a message for everyone who may read alerts.
       type: object
       required: [name, kind, severity]
       properties:
         name: {type: string}
         kind: {$ref: "#/components/schemas/AlertKind"}
+        description:
+          description: What the rule is for, at most 500 characters.
+          type: string
+          maxLength: 500
         agent:
           description: Only this agent's runs. Empty means every agent.
           type: string
+        project:
+          description: |
+            Only runs filed under this project. Empty means every run, in a
+            project or not. With `agent`, both must match. An `eval_below`
+            rule cannot name a project.
+          type: string
         severity: {$ref: "#/components/schemas/AlertSeverity"}
-        threshold: {type: number}
-        window_seconds: {type: integer}
+        threshold:
+          description: A percentage for `failure_rate` and `eval_below`, seconds for `slow_run`. Not used by `spend`.
+          type: number
+        threshold_micros:
+          description: For `spend` only, and required by it. The cost, in micro-USD, of the runs in scope over the window at which the rule fires.
+          type: integer
+          format: int64
+          minimum: 1
+        window_seconds:
+          description: How far back `failure_rate` and `spend` look, up to 30 days.
+          type: integer
+          minimum: 1
+          maximum: 2592000
         min_runs: {type: integer}
+        cooldown_seconds:
+          description: |
+            After the rule raises an alert it raises no other for this long,
+            acknowledged or not, up to 30 days. Zero or absent means no
+            cooldown. `failure_rate` and `spend` also stay quiet while their
+            last alert is open.
+          type: integer
+          minimum: 0
+          maximum: 2592000
+        paused:
+          description: A paused rule is not evaluated. Absent or false means the rule is enabled.
+          type: boolean
+        notify:
+          description: |
+            Who the inbox message about an alert is for: people by subject, as
+            agent approvers are written, and roles as `role:<name>`. A reader
+            sees the message if their subject is listed or they hold a role
+            listed. Empty or absent means everyone who may read alerts. Either
+            way only people with `alerts:read` see it, and `GET /api/alerts`
+            lists every alert to them. At most 20 entries.
+          type: array
+          maxItems: 20
+          items: {type: string, minLength: 1, maxLength: 254}
         created_by: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_by:
+          description: Who last replaced the rule. Absent until it is replaced.
+          type: string
+        updated_at: {type: string, format: date-time}
     Alert:
       type: object
       required: [id, rule, kind, severity, title, at]
@@ -3618,6 +3995,9 @@ components:
         kind: {$ref: "#/components/schemas/AlertKind"}
         severity: {$ref: "#/components/schemas/AlertSeverity"}
         agent: {type: string}
+        project:
+          description: The project of the run that raised the alert, if any.
+          type: string
         run_id: {type: string}
         suite: {type: string}
         title: {type: string}
@@ -4175,6 +4555,13 @@ components:
           description: "`requested` while the model writes the call, `executing` once it runs."
           type: string
           enum: [requested, executing]
+        arguments:
+          description: The call's arguments as a JSON object. Absent while the model is still writing the call, and when they were too large to carry.
+          type: object
+          additionalProperties: true
+        arguments_bytes:
+          description: The size of arguments left out for being too large, so "left out" reads apart from "none".
+          type: integer
     ToolDonePayload:
       description: A tool execution finished.
       type: object
@@ -4186,6 +4573,13 @@ components:
         error:
           description: Set when the tool failed. `result` is then the failure text the model was shown.
           type: string
+        arguments:
+          description: The call's arguments as a JSON object. Absent while the model is still writing the call, and when they were too large to carry.
+          type: object
+          additionalProperties: true
+        arguments_bytes:
+          description: The size of arguments left out for being too large, so "left out" reads apart from "none".
+          type: integer
     Provenance:
       description: Where a cited passage came from.
       type: object
@@ -4265,6 +4659,13 @@ components:
         kind:
           type: string
           enum: [approval, choice, reply, delegation]
+        approvers:
+          description: When set on an approval, only these people and `role:<name>` holders may answer it, in place of the agent's own approvers.
+          type: array
+          items: {type: string}
+        self_approval:
+          description: With `approvers`, lets the person whose request raised the call approve it.
+          type: boolean
         agent: {type: string}
         prompt: {type: string}
         options:

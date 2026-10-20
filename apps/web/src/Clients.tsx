@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, type Client, type ClientCaps } from "./api.ts";
-import { button, card, Problem, Switch } from "./ui.tsx";
+import { button, card, Problem, Switch, pageLede, pageTitle } from "./ui.tsx";
 
 const surfaces: Record<Client["surface"], string> = { slack: "Slack", github: "GitHub" };
 
@@ -58,9 +58,9 @@ export function ClientSettings({ canWrite }: { canWrite: boolean }) {
 
   return (
     <>
-      <header>
-        <h1 className="text-aui-xl font-semibold text-aui-fg">Connections</h1>
-        <p className="text-aui-sm text-aui-muted">
+      <header className="pb-2">
+        <h1 className={pageTitle}>Connections</h1>
+        <p className={pageLede}>
           The Slack apps and GitHub installations this workspace answers through. Each one reaches only the agents it is given.
         </p>
       </header>

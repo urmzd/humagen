@@ -31,6 +31,7 @@ import (
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/callpolicy"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/inbox"
@@ -80,6 +81,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, s.reviseAgent))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, s.agentHistory))
+	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, s.getCallPolicy))
+	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, s.putCallPolicy))
+	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, s.reachable))
 	mux.HandleFunc("GET /api/agents/{name}/memory", s.authed(auth.AgentsRead, s.listMemory))
 	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, s.addMemory))
 	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, s.removeMemory))
@@ -99,6 +103,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/runs/{id}/questions/{question}/answer", s.authed(auth.RunsWrite, s.answerQuestion))
 	mux.HandleFunc("GET /api/schedules", s.authed(auth.SchedulesRead, s.listSchedules))
 	mux.HandleFunc("POST /api/schedules", s.authed(auth.SchedulesWrite, s.createSchedule))
+	mux.HandleFunc("PUT /api/schedules/{name}", s.authed(auth.SchedulesWrite, s.updateSchedule))
 	mux.HandleFunc("DELETE /api/schedules/{name}", s.authed(auth.SchedulesWrite, s.deleteSchedule))
 	mux.HandleFunc("POST /api/schedules/{name}/pause", s.authed(auth.SchedulesWrite, s.pauseSchedule(true)))
 	mux.HandleFunc("POST /api/schedules/{name}/resume", s.authed(auth.SchedulesWrite, s.pauseSchedule(false)))
@@ -201,6 +206,10 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		fail(w, http.StatusForbidden, "that name belongs to an agent the platform provides")
 		return
 	}
+	if err := s.P.CheckAgentModel(who.Tenant, spec); err != nil {
+		s.problem(w, err)
+		return
+	}
 	rev, err := s.P.Agents.Create(r.Context(), who.Tenant, spec, who.Subject)
 	if err != nil {
 		s.problem(w, err)
@@ -223,6 +232,10 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	if platform.IsBuiltin(body.Spec.Name) {
 		fail(w, http.StatusForbidden, "this agent is provided by the platform and cannot be edited")
+		return
+	}
+	if err := s.P.CheckAgentModel(who.Tenant, body.Spec); err != nil {
+		s.problem(w, err)
 		return
 	}
 	rev, err := s.P.Agents.Revise(r.Context(), who.Tenant, body.Spec, body.ExpectedRev, who.Subject)
@@ -627,12 +640,16 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, clients.ErrManaged):
 		fail(w, http.StatusConflict, "that client is configured by the server and cannot be changed here")
-	case errors.Is(err, clients.ErrInvalid):
+	case errors.Is(err, clients.ErrInvalid), errors.Is(err, callpolicy.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, callpolicy.ErrLimit):
+		fail(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, pick.ErrNoAgent):
 		fail(w, http.StatusBadRequest, "no agent matched this message and no baseline agent is set, so choose an agent")
-	case errors.Is(err, platform.ErrSettings):
+	case errors.Is(err, platform.ErrSettings), errors.Is(err, platform.ErrModelPolicy):
 		fail(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, platform.ErrModelPolicyInUse):
+		fail(w, http.StatusConflict, err.Error())
 	case errors.Is(err, platform.ErrNoBaseline):
 		fail(w, http.StatusBadRequest, "that setting names an agent that does not exist")
 	case errors.Is(err, evals.ErrBusy):

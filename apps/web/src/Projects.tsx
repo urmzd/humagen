@@ -1,31 +1,20 @@
-import { FolderIcon, FolderOpenIcon, FolderPlusIcon } from "@warp/render-web";
+import { FolderIcon, FolderPlusIcon } from "@warp/render-web";
 import { type FormEvent, useEffect, useState } from "react";
 import { ApiError, api, type Note, type ProjectView, type Revision, type ScheduleView, type ThreadSummary } from "./api.ts";
 import { ScopeLimits } from "./Billing.tsx";
 import { AgentMark, agentOptions, ago, button, field, Label, Menu, Page, Popover, Problem, primary } from "./ui.tsx";
 
-const iconButton =
-  "inline-flex size-6 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
-const row =
-  "flex h-8 w-full items-center gap-2 rounded-aui px-2 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg";
-
-
 /**
- * The sidebar's list of projects. A project is opened from here, and made from
- * here: the plus turns the heading into a one-line form.
+ * Every project, as cards. A project is opened from here, and made from here:
+ * the button turns into a one-line form.
  */
-export function ProjectNav({
-  open,
+export function ProjectsPage({
   projects,
-  current,
   canCreate,
   onOpen,
   onCreated,
 }: {
-  /** Collapsed, a folder opens the same list in a flyout. */
-  open: boolean;
   projects: ProjectView[];
-  current: string | null;
   canCreate: boolean;
   onOpen: (name: string) => void;
   onCreated: (name: string) => void;
@@ -35,16 +24,16 @@ export function ProjectNav({
   const [name, setName] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
 
-  const create = (e: FormEvent, close?: () => void) => {
+  const create = (e: FormEvent) => {
     e.preventDefault();
     if (saving) return;
+    const chosen = name.trim();
     setSaving(true);
     setProblem(null);
     api
-      .createProject(name.trim(), "")
+      .createProject(chosen, "")
       .then(() => {
-        close?.();
-        onCreated(name.trim());
+        onCreated(chosen);
         setName("");
         setAdding(false);
       })
@@ -52,23 +41,25 @@ export function ProjectNav({
       .finally(() => setSaving(false));
   };
 
-  const contents = (close?: () => void) => (
-    <>
-      <div className={`flex items-center justify-between gap-1 pr-2 pb-1 pl-2 ${open ? "pt-4" : "pt-1"}`}>
-        <p className="px-2 text-aui-xs text-aui-muted">Projects</p>
-        {canCreate && (
-          <button type="button" className={iconButton} aria-label="New project" aria-expanded={adding} onClick={() => setAdding(!adding)}>
-            <FolderPlusIcon size={16} />
+  return (
+    <Page
+      title="Projects"
+      lede="Tasks, shared memory and schedules that belong together."
+      actions={
+        canCreate && !adding ? (
+          <button type="button" className={primary} onClick={() => setAdding(true)}>
+            <FolderPlusIcon size={16} /> New Project
           </button>
-        )}
-      </div>
+        ) : undefined
+      }
+    >
       {adding && (
-        <form onSubmit={(e) => create(e, close)} className="flex flex-col gap-1 px-2 pb-1">
+        <form onSubmit={create} className="flex flex-wrap items-center gap-2">
           <input
             // biome-ignore lint/a11y/noAutofocus: the form appears because the person asked to type a name
             autoFocus
             aria-label="Project name"
-            className={`${field} h-8`}
+            className={`${field} h-9 max-w-xs flex-1`}
             placeholder="Project name"
             value={name}
             required
@@ -79,40 +70,53 @@ export function ProjectNav({
               if (e.key === "Escape") setAdding(false);
             }}
           />
-          <button type="submit" className={button} disabled={saving || !name.trim()}>{saving ? "Creating…" : "Create project"}</button>
-          {problem && <p role="alert" className="px-1 text-aui-2xs text-aui-muted">{problem}</p>}
+          <button type="submit" className={primary} disabled={saving || !name.trim()}>
+            {saving ? "Creating…" : "Create Project"}
+          </button>
+          <button type="button" className={button} onClick={() => setAdding(false)}>
+            Cancel
+          </button>
+          {problem && (
+            <p role="alert" className="w-full text-aui-xs text-aui-muted">
+              {problem}
+            </p>
+          )}
         </form>
       )}
-      <ul className={`aui-scroll overflow-y-auto px-2 ${open ? "" : "max-h-[50vh]"}`}>
-        {projects.length === 0 && !adding && <li className="px-2 py-1.5 text-aui-xs text-aui-muted">No projects yet.</li>}
-        {projects.map((p) => (
-          <li key={p.name}>
-            <button type="button" className={row} aria-current={current === p.name ? "page" : undefined} onClick={() => { close?.(); onOpen(p.name); }}>
-              {current === p.name ? <FolderOpenIcon size={18} /> : <FolderIcon size={18} />}
-              <span className="min-w-0 flex-1 truncate">{p.name}</span>
-              {/* A count only when something is happening or waiting. */}
-              {p.active > 0 ? (
-                <span className="shrink-0 text-aui-2xs tabular-nums">{p.active} running</span>
-              ) : p.proposed > 0 ? (
-                <span className="shrink-0 text-aui-2xs tabular-nums">{p.proposed} to review</span>
-              ) : null}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </>
+      {projects.length === 0 ? (
+        <p className="text-aui-sm text-aui-muted">No projects yet.{canCreate ? " Make one to keep related tasks together." : ""}</p>
+      ) : (
+        <ul className="grid gap-3 @2xl:grid-cols-2 @5xl:grid-cols-3">
+          {projects.map((p) => (
+            <li key={p.name}>
+              <button
+                type="button"
+                onClick={() => onOpen(p.name)}
+                className="warp-glass flex h-full w-full flex-col gap-1.5 rounded-aui-lg p-4 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
+              >
+                <span className="flex items-center gap-2 text-aui-base font-medium text-aui-fg">
+                  <FolderIcon size={18} />
+                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                </span>
+                {p.description && <span className="line-clamp-2 text-aui-sm text-aui-muted">{p.description}</span>}
+                <span className="text-aui-2xs text-aui-muted tabular-nums">
+                  {/* What is happening or waiting comes first. */}
+                  {[
+                    p.active > 0 && `${p.active} running`,
+                    p.proposed > 0 && `${p.proposed} to review`,
+                    `${p.conversations} ${p.conversations === 1 ? "task" : "tasks"}`,
+                    p.updated_at && `updated ${ago(p.updated_at)}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Page>
   );
-
-  if (!open) return (
-    <section aria-label="Projects" className="warp-project-nav flex shrink-0 justify-center py-2">
-      <Popover label="Projects" tooltip={current ? `Projects: ${current}` : "Projects"} side="right"
-        className={`relative inline-flex size-9 items-center justify-center rounded-aui hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg ${current ? "bg-aui-hover text-aui-fg" : "text-aui-muted"}`}
-        button={current ? <FolderOpenIcon size={18} /> : <FolderIcon size={18} />}>
-        {(close) => contents(close)}
-      </Popover>
-    </section>
-  );
-  return <section aria-label="Projects" className="shrink-0">{contents()}</section>;
 }
 
 const section = "flex flex-col gap-2 border-aui-border border-t pt-5";
@@ -280,6 +284,7 @@ export function ProjectPage({
   canSchedule,
   canLimit,
   tick,
+  onBack,
   onNewChat,
   onOpenThread,
   onChanged,
@@ -296,6 +301,7 @@ export function ProjectPage({
   canLimit: boolean;
   /** Changes when runs do, so usage is read again. */
   tick?: number;
+  onBack: () => void;
   onNewChat: () => void;
   onOpenThread: (id: string) => void;
   onChanged: () => void;
@@ -312,6 +318,8 @@ export function ProjectPage({
 
   return (
     <Page
+      back={{ label: "All projects", onClick: onBack }}
+      icon={<FolderIcon size={28} />}
       title={project.name}
       lede={project.description || "Tasks, shared memory and schedules that belong together."}
       actions={
@@ -322,10 +330,10 @@ export function ProjectPage({
               className={button}
               onClick={() => api.deleteProject(project.name).then(onDeleted).catch(fail("The project could not be deleted."))}
             >
-              Delete project
+              Delete Project
             </button>
             <button type="button" className={primary} onClick={onNewChat}>
-              New conversation
+              New Task
             </button>
           </>
         ) : undefined
@@ -333,7 +341,9 @@ export function ProjectPage({
     >
       <Problem message={problem} />
 
-      <section className={section}>
+      {/* Tasks are the project's history and take the wide column; what every task shares sits beside them. */}
+      <div className="grid grid-cols-1 items-start gap-8 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <section className="flex flex-col gap-2">
         <h2 className={heading}>Tasks ({mine.length})</h2>
         {mine.length === 0 ? (
           <p className="text-aui-sm text-aui-muted">Start a task here to keep its conversation, execution history and shared context in this project.</p>
@@ -363,6 +373,7 @@ export function ProjectPage({
         )}
       </section>
 
+      <aside className="flex flex-col gap-8">
       <SharedMemory project={project.name} canWrite={canWrite} onChanged={onChanged} />
 
       <section className={section}>
@@ -464,6 +475,8 @@ export function ProjectPage({
           </ul>
         )}
       </section>
+      </aside>
+      </div>
     </Page>
   );
 }

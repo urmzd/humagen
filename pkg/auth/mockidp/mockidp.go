@@ -106,11 +106,12 @@ type Config struct {
 }
 
 // DefaultPeople exercise the built-in policy with the default group names:
-// a viewer, an operator, an admin, and someone in no mapped group.
+// a viewer, an operator, a manager, an admin, and someone in no mapped group.
 func DefaultPeople() []Person {
 	return []Person{
 		{Subject: "mock-viewer", Name: "Vera Viewer", Email: "vera@example.test", Groups: []string{"warp-viewers"}},
 		{Subject: "mock-operator", Name: "Otto Operator", Email: "otto@example.test", Groups: []string{"warp-operators"}},
+		{Subject: "mock-manager", Name: "Mo Manager", Email: "mo@example.test", Groups: []string{"warp-managers"}},
 		{Subject: "mock-admin", Name: "Ada Admin", Email: "ada@example.test", Groups: []string{"warp-admins"}},
 		{Subject: "mock-nobody", Name: "Nell Nobody", Email: "nell@example.test", Groups: []string{"everyone"}},
 	}

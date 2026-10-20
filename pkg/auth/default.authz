@@ -1,5 +1,5 @@
 # The built-in policy, used when no policy file is configured. It declares the
-# three roles and grants nothing: groups are mapped to roles by configuration,
+# four roles and grants nothing: groups are mapped to roles by configuration,
 # and a person in no mapped group holds no role.
 #
 # A test in policy_test.go holds these roles to the permissions they had
@@ -12,6 +12,13 @@ role viewer { allow read on * }
 # runs evals and deletes published files.
 role operator extends viewer {
   allow write on runs, schedules, alerts, evals, artifacts
+}
+
+# Everything an operator does, and also defines and revises agents (their
+# call policies among them) and what they are grounded in. The natural
+# approver of calls between agents.
+role manager extends operator {
+  allow write on agents, knowledge
 }
 
 # Also defines and revises agents, decides what they are grounded in, sets

@@ -1,30 +1,73 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, api, type Doc, type Hit, type Revision, type Source, type SuiteView } from "./api.ts";
 import { Evals } from "./Evals.tsx";
-import { ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary } from "./ui.tsx";
+import type { SourceTab } from "./route.ts";
+import { ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Tabs } from "./ui.tsx";
 
+/**
+ * Every knowledge source, and one source at a time. A source is shared by the
+ * agents that read it; its own page holds its documents, a search to try, its
+ * variants and the evals that check what it retrieves.
+ */
 export function Knowledge({
   sources,
   agents,
   suites,
+  selected,
+  tab = "documents",
+  onSelect,
   canWrite,
   canEval,
   onChanged,
   onSuitesChanged,
+  onOpenAgent,
 }: {
   sources: Source[];
   agents: Revision[];
   suites: SuiteView[];
+  /** The open source, by name. null lists them all. */
+  selected: string | null;
+  tab?: SourceTab;
+  onSelect: (source: string | null, tab?: SourceTab) => void;
   canWrite: boolean;
   canEval: boolean;
   onChanged: () => void;
   onSuitesChanged: () => void;
+  onOpenAgent?: (name: string) => void;
 }) {
-  const [selected, setSelected] = useState<string | null>(null);
+  const setSelected = (name: string) => onSelect(name);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState({ name: "", description: "" });
   const [problem, setProblem] = useState<string | null>(null);
-  const current = sources.find((s) => s.name === selected) ?? sources[0];
+  const current = sources.find((s) => s.name === selected);
+  const readers = (name: string) => agents.filter((a) => (a.spec.sources ?? []).some((x) => x.name === name)).map((a) => a.spec.name);
+
+  if (selected) {
+    return current ? (
+      <SourceDetail
+        key={current.name}
+        source={current}
+        tab={tab}
+        onTab={(next) => onSelect(current.name, next)}
+        onBack={() => onSelect(null)}
+        usedBy={readers(current.name)}
+        suites={suites}
+        canWrite={canWrite}
+        canEval={canEval}
+        onChanged={onChanged}
+        onDeleted={() => {
+          onChanged();
+          onSelect(null);
+        }}
+        onSuitesChanged={onSuitesChanged}
+        onOpenAgent={onOpenAgent}
+      />
+    ) : (
+      <Page title={`No source named ${selected}`} lede="It may have been deleted." back={{ label: "All sources", onClick: () => onSelect(null) }}>
+        {null}
+      </Page>
+    );
+  }
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
@@ -42,9 +85,8 @@ export function Knowledge({
 
   return (
     <Page
-      wide
       title="Knowledge"
-      lede="Sources are collections of documents an agent can be grounded in. Add documents, check what a question retrieves, then assign the source to an agent."
+      lede="Sources are collections of documents agents are grounded in. Each is shared: attach it to any agent from the agent's Knowledge tab."
       actions={
         canWrite && !creating ? (
           <button type="button" className={primary} onClick={() => setCreating(true)}>
@@ -88,37 +130,31 @@ export function Knowledge({
           <Empty title="No sources">{canWrite ? "Create one, then add documents to it." : "Ask an admin to add one."}</Empty>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[16rem_1fr]">
-          <ul className="flex flex-col gap-1">
-            {sources.map((s) => (
-              <li key={s.name}>
+        <ul className={rows}>
+          {sources.map((s) => {
+            const by = readers(s.name);
+            return (
+              <li key={s.name} className="warp-enter">
                 <button
                   type="button"
                   onClick={() => setSelected(s.name)}
-                  aria-current={s.name === current?.name}
-                  className="flex w-full flex-col gap-0.5 rounded-aui border border-transparent px-3 py-2 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=true]:border-aui-border aria-[current=true]:bg-aui-surface"
+                  className="grid w-full grid-cols-1 items-center gap-x-6 gap-y-1 px-1 py-3 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent @3xl:grid-cols-[minmax(0,1fr)_14rem_12rem]"
                 >
-                  <span className="text-aui-sm font-medium text-aui-fg">{s.name}</span>
-                  <span className="text-aui-xs text-aui-muted">
+                  <span className="min-w-0">
+                    <span className="block truncate text-aui-base font-medium text-aui-fg">{s.name}</span>
+                    <span className="block truncate text-aui-sm text-aui-muted">{s.description || "No description."}</span>
+                  </span>
+                  <span className="text-aui-xs text-aui-muted tabular-nums">
                     {s.documents} {s.documents === 1 ? "document" : "documents"}, {s.passages} passages
+                  </span>
+                  <span className="truncate text-aui-xs text-aui-muted">
+                    {by.length === 0 ? "Read by no agent" : `Read by ${by.join(", ")}`}
                   </span>
                 </button>
               </li>
-            ))}
-          </ul>
-          {current && (
-            <SourceDetail
-              key={current.name}
-              source={current}
-              usedBy={agents.filter((a) => (a.spec.sources ?? []).some((x) => x.name === current.name)).map((a) => a.spec.name)}
-              suites={suites}
-              canWrite={canWrite}
-              canEval={canEval}
-              onChanged={onChanged}
-              onSuitesChanged={onSuitesChanged}
-            />
-          )}
-        </div>
+            );
+          })}
+        </ul>
       )}
     </Page>
   );
@@ -126,20 +162,30 @@ export function Knowledge({
 
 function SourceDetail({
   source,
+  tab,
+  onTab,
+  onBack,
   usedBy,
   suites,
   canWrite,
   canEval,
   onChanged,
+  onDeleted,
   onSuitesChanged,
+  onOpenAgent,
 }: {
   source: Source;
+  tab: SourceTab;
+  onTab: (next: SourceTab) => void;
+  onBack: () => void;
   usedBy: string[];
   suites: SuiteView[];
   canWrite: boolean;
   canEval: boolean;
   onChanged: () => void;
+  onDeleted: () => void;
   onSuitesChanged: () => void;
+  onOpenAgent?: (name: string) => void;
 }) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [draft, setDraft] = useState({ title: "", uri: "", text: "" });
@@ -204,34 +250,63 @@ function SourceDetail({
     if (skipped.length > 0) setProblem(skipped.join(". "));
   };
 
+  const mine = suites.filter((x) => x.target === "knowledge" && x.subject === source.name);
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <section className={`${card} flex flex-col gap-2`}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-aui-base font-medium text-aui-fg">{source.name}</h2>
-            {source.description && <p className="text-aui-sm text-aui-muted">{source.description}</p>}
-          </div>
-          {canWrite && (
-            <button
-              type="button"
-              className={button}
-              onClick={() => api.deleteSource(source.name).then(onChanged).catch(fail("The source could not be deleted."))}
-            >
-              Delete Source
-            </button>
+    <Page
+      back={{ label: "All sources", onClick: onBack }}
+      title={source.name}
+      lede={source.description || undefined}
+      meta={
+        <>
+          <span>Updated {ago(source.updated_at)}</span>
+          <span>
+            {source.documents} {source.documents === 1 ? "document" : "documents"}, {source.passages} passages
+          </span>
+          {usedBy.length === 0 ? (
+            <Chip>Read by no agent</Chip>
+          ) : (
+            usedBy.map((a) =>
+              onOpenAgent ? (
+                <button key={a} type="button" className="underline hover:text-aui-fg" onClick={() => onOpenAgent(a)}>
+                  Read by {a}
+                </button>
+              ) : (
+                <Chip key={a}>Read by {a}</Chip>
+              ),
+            )
           )}
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Chip>Updated {ago(source.updated_at)}</Chip>
-          {usedBy.length === 0 ? <Chip>Assigned to no agent</Chip> : usedBy.map((a) => <Chip key={a}>Assigned to {a}</Chip>)}
-        </div>
-      </section>
-
+        </>
+      }
+      actions={
+        canWrite ? (
+          <button
+            type="button"
+            className={button}
+            onClick={() => api.deleteSource(source.name).then(onDeleted).catch(fail("The source could not be deleted."))}
+          >
+            Delete Source
+          </button>
+        ) : undefined
+      }
+      tabs={
+        <Tabs
+          label="Source sections"
+          value={tab}
+          onChange={onTab}
+          tabs={[
+            { id: "documents", label: "Documents", count: docs.length },
+            { id: "search", label: "Try a Question" },
+            { id: "variants", label: "Variants", count: source.variants.length },
+            { id: "evals", label: "Evals", count: mine.length },
+          ]}
+        />
+      }
+    >
       <Problem message={problem} />
 
+      {tab === "search" && (
       <section className={`${card} flex flex-col gap-2`}>
-        <h3 className="text-aui-sm font-medium text-aui-fg">Try a question</h3>
+        <p className="text-aui-sm text-aui-muted">What an agent asking this would get back, best match first.</p>
         <form onSubmit={search} className="flex gap-2">
           <input
             aria-label="Question"
@@ -279,7 +354,9 @@ function SourceDetail({
             </ol>
           ))}
       </section>
+      )}
 
+      {tab === "documents" && (
       <section className={`${card} flex flex-col gap-2`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-aui-sm font-medium text-aui-fg">
@@ -379,9 +456,10 @@ function SourceDetail({
           </ul>
         )}
       </section>
+      )}
 
+      {tab === "variants" && (
       <section className={`${card} flex flex-col gap-2`}>
-        <h3 className="text-aui-sm font-medium text-aui-fg">Variants</h3>
         <p className="text-aui-xs text-aui-muted">
           A variant saves which documents are searchable right now, so you can search two ways of curating this source
           side by side.
@@ -441,11 +519,11 @@ function SourceDetail({
           </form>
         )}
       </section>
+      )}
 
-      <section className="flex flex-col gap-2">
-        <h3 className="text-aui-sm font-medium text-aui-fg">Retrieval evals</h3>
+      {tab === "evals" && (
         <Evals target="knowledge" subject={source.name} suites={suites} canWrite={canEval} onChanged={onSuitesChanged} />
-      </section>
-    </div>
+      )}
+    </Page>
   );
 }

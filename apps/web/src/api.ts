@@ -41,11 +41,28 @@ export interface AccessDecision {
   unknown?: string[];
 }
 
+export interface ModelRef {
+  provider: string;
+  model: string;
+}
+
+/** A workspace's named, ordered list of models and when a call moves down it. */
+export interface ModelPolicy {
+  name: string;
+  description?: string;
+  models: ModelRef[];
+  fallback_on?: string[];
+}
+
 export interface AgentSpec {
   name: string;
   description?: string;
   model: string;
   provider: string;
+  /** Tried in order when the primary model fails with an error another model could get past. */
+  fallbacks?: ModelRef[];
+  /** Which errors move a call to the next fallback. Absent means any recoverable error. */
+  fallback_on?: string[];
   system_prompt: string;
   tools?: string[];
   sources?: { name: string; uri: string }[];
@@ -75,12 +92,23 @@ export interface Schedule {
   text: string;
   /** Files every run the schedule raises under a project. */
   project?: string;
+  /** What the schedule is for, at most 500 characters. The agent is not shown it. */
+  description?: string;
 }
+
+/**
+ * The body of PUT /api/schedules/{name}: everything but the name, which
+ * cannot change. Fields left out are cleared, not kept.
+ */
+export type ScheduleEdit = Omit<Schedule, "name">;
 
 /** A schedule plus what makes it trustworthy: state, next fires, recent runs. */
 export interface ScheduleView extends Schedule {
   paused: boolean;
   created_by?: string;
+  /** Who last edited the schedule, and when. Absent until it is edited. */
+  updated_by?: string;
+  updated_at?: string;
   next: string[];
   recent: Run[];
 }
@@ -140,16 +168,52 @@ export interface Span {
   error?: string;
 }
 
+/** Every kind a rule can have. `budget` alerts come from billing policies, never from a rule. */
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend";
+
+/** A rule: what it watches, how serious it is, and who hears about it. */
 export interface AlertRule {
   name: string;
-  kind: "run_failed" | "failure_rate" | "slow_run" | "eval_below";
+  kind: AlertKind;
+  /** What the rule is for, at most 500 characters. */
+  description?: string;
+  /** Only this agent's runs. Absent means every agent. */
   agent?: string;
+  /** Only runs filed under this project. Narrows together with agent. Not for eval_below. */
+  project?: string;
   severity: "warning" | "critical";
+  /** A percentage for failure_rate and eval_below, seconds for slow_run. Not for spend. */
   threshold?: number;
+  /** For spend only, and required by it: the cost in micro-USD at which it fires. */
+  threshold_micros?: number;
+  /** How far back failure_rate and spend look, up to 30 days. */
   window_seconds?: number;
   min_runs?: number;
+  /** Quiet for this long after raising, acknowledged or not, up to 30 days. */
+  cooldown_seconds?: number;
+  /** A paused rule is not evaluated. Absent means enabled. */
+  paused?: boolean;
+  /**
+   * Who the inbox message is for: subjects, and roles as "role:<name>".
+   * Absent or empty means everyone who may read alerts.
+   */
+  notify?: string[];
   created_by?: string;
+  created_at?: string;
+  /** Who last replaced the rule, and when. Absent until it is replaced. */
+  updated_by?: string;
+  updated_at?: string;
 }
+
+/** Kept for callers: a rule of any kind is an AlertRule. */
+export type AlertRuleConfig = AlertRule;
+
+/**
+ * The body of PUT /api/alert-rules/{name}: the whole rule but its name, which
+ * cannot change. Fields left out are cleared, not kept. The server sets who
+ * created and updated it.
+ */
+export type AlertRuleEdit = Omit<AlertRuleConfig, "name" | "created_by" | "created_at" | "updated_by" | "updated_at">;
 
 export interface Alert {
   id: string;
@@ -157,6 +221,8 @@ export interface Alert {
   kind: AlertRule["kind"];
   severity: AlertRule["severity"];
   agent?: string;
+  /** The project of the run that raised the alert, if any. */
+  project?: string;
   run_id?: string;
   suite?: string;
   title: string;
@@ -234,6 +300,8 @@ export interface Settings {
   memory_agent: string;
   memory_auto_approve: boolean;
   workspace_name?: string;
+  /** Named model lists agents run on with provider "policy". */
+  model_policies?: ModelPolicy[];
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -370,6 +438,8 @@ export interface Preferences {
   photo_version: number;
   /** When the person finished or skipped the first-run questions. Absent means not yet. */
   onboarded_at?: string;
+  /** Conversations kept at the top of the sidebar, most recently pinned first. */
+  pinned: string[];
 }
 
 export interface Check {
@@ -444,6 +514,17 @@ async function call<T>(method: string, path: string, json?: unknown): Promise<T>
   return data as T;
 }
 
+/** The editable part of a rule, for sending back with PUT /api/alert-rules/{name}. */
+export function alertRuleEdit(rule: AlertRuleConfig): AlertRuleEdit {
+  const edit: AlertRuleEdit & Partial<AlertRuleConfig> = { ...rule };
+  delete edit.name;
+  delete edit.created_by;
+  delete edit.created_at;
+  delete edit.updated_by;
+  delete edit.updated_at;
+  return edit;
+}
+
 export const api = {
   me: () => call<Me>("GET", "/api/me"),
   explain: (permission: string) =>
@@ -458,6 +539,7 @@ export const api = {
       expected_rev: expectedRev,
     }),
   runs: () => call<{ runs: Run[] }>("GET", "/api/runs").then((r) => r.runs),
+  run: (id: string) => call<Run>("GET", `/api/runs/${encodeURIComponent(id)}`),
   tree: (id: string) =>
     call<{ runs: Run[] }>("GET", `/api/runs/${encodeURIComponent(id)}/tree`).then((r) => r.runs),
   createRun: (agent: string, text: string, opts: { after?: string; project?: string } = {}) =>
@@ -534,7 +616,7 @@ export const api = {
     call<void>("DELETE", `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`),
 
   preferences: () => call<Preferences>("GET", "/api/preferences"),
-  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean }) =>
+  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[] }) =>
     call<Preferences>("PUT", "/api/preferences", p),
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.
@@ -552,6 +634,9 @@ export const api = {
   runSuite: (name: string) => call<EvalRun>("POST", `/api/evals/${encodeURIComponent(name)}/run`),
   schedules: () => call<{ schedules: ScheduleView[] }>("GET", "/api/schedules").then((r) => r.schedules),
   createSchedule: (s: Schedule) => call<ScheduleView>("POST", "/api/schedules", s),
+  /** Change a schedule. Its pause state, creator and recent runs are kept. */
+  updateSchedule: (name: string, s: ScheduleEdit) =>
+    call<ScheduleView>("PUT", `/api/schedules/${encodeURIComponent(name)}`, s),
   deleteSchedule: (name: string) => call<void>("DELETE", `/api/schedules/${encodeURIComponent(name)}`),
   pauseSchedule: (name: string, paused: boolean) =>
     call<ScheduleView>("POST", `/api/schedules/${encodeURIComponent(name)}/${paused ? "pause" : "resume"}`),
@@ -566,6 +651,19 @@ export const api = {
   ackAlert: (id: string) => call<Alert>("POST", `/api/alerts/${encodeURIComponent(id)}/ack`),
   alertRules: () => call<{ rules: AlertRule[] }>("GET", "/api/alert-rules").then((r) => r.rules),
   createAlertRule: (r: AlertRule) => call<AlertRule>("POST", "/api/alert-rules", r),
+  /** Every rule, of every kind, spend included. */
+  alertRuleConfigs: () => call<{ rules: AlertRuleConfig[] }>("GET", "/api/alert-rules").then((r) => r.rules),
+  /** Create a rule of any kind, spend included. */
+  createAlertRuleConfig: (r: AlertRuleConfig) => call<AlertRuleConfig>("POST", "/api/alert-rules", r),
+  /** Replace a rule. Its creator, its alerts and its cooldown are kept. */
+  updateAlertRule: (name: string, r: AlertRuleEdit) =>
+    call<AlertRuleConfig>("PUT", `/api/alert-rules/${encodeURIComponent(name)}`, r),
+  /** Pause or resume a rule, keeping everything else about it. */
+  setAlertRulePaused: (rule: AlertRuleConfig, paused: boolean) =>
+    call<AlertRuleConfig>("PUT", `/api/alert-rules/${encodeURIComponent(rule.name)}`, {
+      ...alertRuleEdit(rule),
+      paused,
+    }),
   deleteAlertRule: (name: string) => call<void>("DELETE", `/api/alert-rules/${encodeURIComponent(name)}`),
 
   sources: () => call<{ sources: Source[] }>("GET", "/api/knowledge").then((r) => r.sources),
@@ -622,3 +720,80 @@ export function subscribe(
   source.addEventListener("inbox", () => handlers.onInbox?.());
   return () => source.close();
 }
+
+// ---------------------------------------------------------------------------
+// Call governance: which agents may call an agent, and its approval queue.
+// The callee decides. These mirror CallPolicy, CallPolicyInput and Reach in
+// api/openapi.yaml.
+// ---------------------------------------------------------------------------
+
+/** Which agents may call an agent: anyone its spec allows, only those listed, or none. */
+export type CallCallers = "anyone" | "listed" | "none";
+/** Which admitted calls wait for a person. `unlisted` holds every caller not in `trusted`. */
+export type CallApproval = "never" | "always" | "unlisted";
+
+export interface CallPolicyInput {
+  callers: CallCallers;
+  /** The callers admitted when `callers` is `listed`. */
+  allow?: string[];
+  approval: CallApproval;
+  /** Callers whose calls skip approval when `approval` is `unlisted`. */
+  trusted?: string[];
+  /** Subjects, and roles as "role:<name>". Empty means managers and admins. */
+  approvers?: string[];
+  self_approval?: boolean;
+  /** How long a held call waits before it is denied. 0 means a day. */
+  expires_seconds?: number;
+}
+
+export interface CallPolicy extends Required<CallPolicyInput> {
+  agent: string;
+  /** 0 is the default of an agent with no stored policy. */
+  version: number;
+  updated_by?: string;
+  updated_at?: string;
+}
+
+/** Whether one agent (the caller in the path) may call another. */
+export interface Reach {
+  agent: string;
+  /** The callee's policy accepts calls from the caller. */
+  admits: boolean;
+  /** The caller's spec lists the callee in its spawn allowlist. */
+  in_spawn: boolean;
+  approval: "never" | "required";
+  reason: string;
+}
+
+/** One message of an approval queue, with the fields the queue needs. */
+export interface QueuedApproval {
+  id: string;
+  subject: string;
+  state: string;
+  source: { run?: string; agent?: string; target?: string; thread?: string; project?: string };
+  parts: {
+    id: string;
+    question?: { run: string; id: string; prompt: string; approvers?: string[]; expires_at?: string };
+  }[];
+}
+
+const agentPath = (name: string) => `/api/agents/${encodeURIComponent(name)}`;
+
+export const callGovernance = {
+  /** An agent's call policy, or its default (version 0). Needs agents:read. */
+  policy: (agent: string) => call<CallPolicy>("GET", `${agentPath(agent)}/call-policy`),
+  /** Replace an agent's call policy. Needs agents:write. */
+  setPolicy: (agent: string, policy: CallPolicyInput) =>
+    call<CallPolicy>("PUT", `${agentPath(agent)}/call-policy`, policy),
+  /** For an agent as a caller, every other agent and whether it may call it. Needs agents:read. */
+  reachable: (agent: string) => call<{ agents: Reach[]; truncated: boolean }>("GET", `${agentPath(agent)}/reachable`),
+  /**
+   * An agent's queue of calls waiting for approval: approvals it raised, or
+   * that would call it. Only what the caller may see and answer is listed.
+   */
+  approvalQueue: (agent: string, state: "open" | "resolved" | "all" = "open") =>
+    call<{ messages: QueuedApproval[]; next: string | null }>(
+      "GET",
+      `/api/inbox?${new URLSearchParams({ kind: "approval", agent, state })}`,
+    ),
+};

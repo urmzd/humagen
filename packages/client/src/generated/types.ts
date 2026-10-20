@@ -26,7 +26,7 @@ export interface Principal {
   kind: "user" | "machine";
   name?: string;
   email?: string;
-  roles?: ("viewer" | "operator" | "admin")[];
+  roles?: ("viewer" | "operator" | "manager" | "admin")[];
   /** A machine's permissions, from its token. */
   scopes?: Permission[];
 }
@@ -84,7 +84,16 @@ export interface AgentSpec {
   name: string;
   description?: string;
   model: string;
+  /** A model provider, or `policy` to run on the workspace model policy named by `model`. */
   provider: string;
+  /** Models tried in order when the primary fails with an error another
+model could get past (an outage, a rate limit, an exhausted retry).
+An invalid request or a cancellation is not retried elsewhere. At
+most 4, none repeating the primary or each other.
+ */
+  fallbacks?: ModelRef[];
+  /** When a call moves to the next fallback. Empty means any error another model could get past. Needs at least one fallback. */
+  fallback_on?: FallbackCondition[];
   system_prompt: string;
   tools?: string[];
   sources?: AgentSource[];
@@ -103,6 +112,24 @@ anyone in the workspace approve, except the person who asked.
   self_approval?: boolean;
   /** When set, the only people who may answer a choice or a reply, named as approvers are. */
   answerers?: string[];
+}
+
+/** A class of model error that moves a call on to the next model. `any` cannot be combined with another. */
+export type FallbackCondition = "any" | "unavailable" | "rate_limit" | "transient" | "auth" | "context_length" | "content_filter";
+
+/** A workspace's named, ordered list of models. The first answers; the rest are fallbacks. */
+export interface ModelPolicy {
+  name: string;
+  description?: string;
+  models: ModelRef[];
+  /** When a call moves to the next model. Empty means any error another model could get past. */
+  fallback_on?: FallbackCondition[];
+}
+
+/** One model, named by its provider. */
+export interface ModelRef {
+  provider: string;
+  model: string;
 }
 
 /** One immutable revision of an agent. */
@@ -355,6 +382,13 @@ export interface Settings {
   memory_agent: string;
   memory_auto_approve: boolean;
   workspace_name: string;
+  /** Named, ordered lists of models with the errors that move a call from
+one to the next. An agent runs on one by naming the provider
+`policy` and the policy's name as its model; the policy is read as
+it stands when each call starts. A policy an agent still runs on
+cannot be removed (409).
+ */
+  model_policies: ModelPolicy[];
   /** Set once by the server when an admin first saves settings. */
   setup_at?: string;
   setup_by?: string;
@@ -371,6 +405,8 @@ export interface Preferences {
   photo_version: number;
   /** When the person finished or skipped the first-run questions. */
   onboarded_at?: string;
+  /** Conversations kept at the top of the person's sidebar, most recently pinned first. */
+  pinned: string[];
 }
 
 /** A cron schedule as a caller writes it. */
@@ -382,6 +418,8 @@ export interface Schedule {
   text: string;
   /** Files every run the schedule raises under a project. */
   project?: string;
+  /** What the schedule is for, at most 500 characters. The agent is not shown it. */
+  description?: string;
 }
 
 /** A schedule with whether it is running, when it fires next, and how its recent occurrences went. */
@@ -391,8 +429,12 @@ export interface ScheduleView {
   agent: string;
   text: string;
   project?: string;
+  description?: string;
   paused: boolean;
   created_by?: string;
+  /** Who last changed the schedule. Absent until it is changed. */
+  updated_by?: string;
+  updated_at?: string;
   /** The next three fires. Empty while paused. */
   next: string[];
   /** Up to 20 recent runs. */
@@ -420,6 +462,54 @@ export interface InboxFrom {
   name: string;
 }
 
+/** Which agents may call an agent, and which of those calls a person approves. */
+export interface CallPolicyInput {
+  /** `anyone` its spec allows, only the `listed` agents in `allow`, or `none`. */
+  callers: "anyone" | "listed" | "none";
+  /** The callers admitted when `callers` is `listed`. */
+  allow?: string[];
+  /** `never`, `always`, or for every caller not in `trusted` when `unlisted`. */
+  approval: "never" | "always" | "unlisted";
+  /** Callers whose calls skip approval when `approval` is `unlisted`. */
+  trusted?: string[];
+  /** Who may approve a held call: subjects, and this workspace's roles
+as `role:<name>`, at most 32. Empty means `role:manager` and
+`role:admin`, so a held call is never open to the whole workspace.
+ */
+  approvers?: string[];
+  /** Lets the person whose request led to a call approve it. */
+  self_approval?: boolean;
+  /** How long a held call waits before it is denied. 0 means a day. */
+  expires_seconds?: number;
+}
+
+/** An agent's call policy. Version 0 is the default of an agent with none stored. */
+export interface CallPolicy {
+  agent: string;
+  callers: "anyone" | "listed" | "none";
+  allow: string[];
+  approval: "never" | "always" | "unlisted";
+  trusted: string[];
+  approvers: string[];
+  self_approval: boolean;
+  expires_seconds: number;
+  version: number;
+  updated_by?: string;
+  updated_at?: string;
+}
+
+/** Whether one agent may call another. */
+export interface Reach {
+  agent: string;
+  /** The callee's call policy accepts calls from the caller. */
+  admits: boolean;
+  /** The caller's spec lists the callee in its spawn allowlist. */
+  in_spawn: boolean;
+  /** Whether a call waits for a person. */
+  approval: "never" | "required";
+  reason: string;
+}
+
 /** What the message is about, as ids a reader can follow. */
 export interface InboxSource {
   alert?: string;
@@ -428,6 +518,8 @@ export interface InboxSource {
   thread?: string;
   agent?: string;
   project?: string;
+  /** The agent a question's tool call would call, when it calls one. */
+  target?: string;
 }
 
 export interface InboxOutcome {
@@ -488,6 +580,8 @@ export interface InboxBudgetPart {
 
 export interface InboxQuestionTool {
   name: string;
+  /** The model's id for the call. */
+  call_id?: string;
   /** What the model asked to call the tool with, as a JSON object. */
   arguments?: unknown;
   /** The tool's parameter schema. Edited arguments must satisfy it. */
@@ -512,6 +606,12 @@ export interface InboxQuestionPart {
   asked_at?: string;
   /** The run whose stream showed the question, when that is a run waiting on the one that asked. */
   via?: string;
+  /** Who may answer this one approval, in place of the agent spec's:
+the callee's call policy's approvers, for a call to an agent.
+ */
+  approvers?: string[];
+  /** Goes with `approvers`. */
+  self_approval?: boolean;
 }
 
 /** One typed part of a message. `type` says which of `text`, `alert`,
@@ -708,20 +808,59 @@ export interface Span {
   error?: string;
 }
 
-export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "budget";
+/** `budget` is raised by a billing policy, never by a rule, and a rule
+cannot be created with it.
+ */
+export type AlertKind = "run_failed" | "failure_rate" | "slow_run" | "eval_below" | "spend" | "budget";
 
 export type AlertSeverity = "warning" | "critical";
 
+/** A condition on runs that raises an alert. Every field but `name`,
+`kind` and `severity` is optional, and leaving one out keeps the
+behaviour rules had before it existed: every agent and project,
+enabled, no cooldown, and a message for everyone who may read alerts.
+ */
 export interface AlertRule {
   name: string;
   kind: AlertKind;
+  /** What the rule is for, at most 500 characters. */
+  description?: string;
   /** Only this agent's runs. Empty means every agent. */
   agent?: string;
+  /** Only runs filed under this project. Empty means every run, in a
+project or not. With `agent`, both must match. An `eval_below`
+rule cannot name a project.
+ */
+  project?: string;
   severity: AlertSeverity;
+  /** A percentage for `failure_rate` and `eval_below`, seconds for `slow_run`. Not used by `spend`. */
   threshold?: number;
+  /** For `spend` only, and required by it. The cost, in micro-USD, of the runs in scope over the window at which the rule fires. */
+  threshold_micros?: number;
+  /** How far back `failure_rate` and `spend` look, up to 30 days. */
   window_seconds?: number;
   min_runs?: number;
+  /** After the rule raises an alert it raises no other for this long,
+acknowledged or not, up to 30 days. Zero or absent means no
+cooldown. `failure_rate` and `spend` also stay quiet while their
+last alert is open.
+ */
+  cooldown_seconds?: number;
+  /** A paused rule is not evaluated. Absent or false means the rule is enabled. */
+  paused?: boolean;
+  /** Who the inbox message about an alert is for: people by subject, as
+agent approvers are written, and roles as `role:<name>`. A reader
+sees the message if their subject is listed or they hold a role
+listed. Empty or absent means everyone who may read alerts. Either
+way only people with `alerts:read` see it, and `GET /api/alerts`
+lists every alert to them. At most 20 entries.
+ */
+  notify?: string[];
   created_by?: string;
+  created_at?: string;
+  /** Who last replaced the rule. Absent until it is replaced. */
+  updated_by?: string;
+  updated_at?: string;
 }
 
 export interface Alert {
@@ -730,6 +869,8 @@ export interface Alert {
   kind: AlertKind;
   severity: AlertSeverity;
   agent?: string;
+  /** The project of the run that raised the alert, if any. */
+  project?: string;
   run_id?: string;
   suite?: string;
   title: string;
@@ -1128,6 +1269,10 @@ export interface ToolCallPayload {
   name: string;
   /** `requested` while the model writes the call, `executing` once it runs. */
   phase: "requested" | "executing";
+  /** The call's arguments as a JSON object. Absent while the model is still writing the call, and when they were too large to carry. */
+  arguments?: Record<string, unknown>;
+  /** The size of arguments left out for being too large, so "left out" reads apart from "none". */
+  arguments_bytes?: number;
 }
 
 /** A tool execution finished. */
@@ -1137,6 +1282,10 @@ export interface ToolDonePayload {
   result?: string;
   /** Set when the tool failed. `result` is then the failure text the model was shown. */
   error?: string;
+  /** The call's arguments as a JSON object. Absent while the model is still writing the call, and when they were too large to carry. */
+  arguments?: Record<string, unknown>;
+  /** The size of arguments left out for being too large, so "left out" reads apart from "none". */
+  arguments_bytes?: number;
 }
 
 /** Where a cited passage came from. */
@@ -1196,6 +1345,10 @@ admits nobody. `default` is what applies when it expires.
 export interface Question {
   id: string;
   kind: "approval" | "choice" | "reply" | "delegation";
+  /** When set on an approval, only these people and `role:<name>` holders may answer it, in place of the agent's own approvers. */
+  approvers?: string[];
+  /** With `approvers`, lets the person whose request raised the call approve it. */
+  self_approval?: boolean;
   agent?: string;
   prompt: string;
   options?: string[];
@@ -1529,6 +1682,11 @@ export interface ListAgentRevisionsResponse {
   revisions: Revision[];
 }
 
+export interface ListReachableAgentsResponse {
+  agents: Reach[];
+  truncated: boolean;
+}
+
 export interface ListPendingMemoryResponse {
   proposals: MemoryProposal[];
 }
@@ -1646,6 +1804,7 @@ export interface UpdatePreferencesBody {
   theme?: Theme;
   accent?: string;
   onboarded?: boolean;
+  pinned?: string[];
 }
 
 export interface ListProjectsResponse {
