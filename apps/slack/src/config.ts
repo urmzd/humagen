@@ -14,6 +14,8 @@ export interface Config {
     branding: Branding;
     /** The file that records open streams, so the next start can close them. */
     streamJournal: string;
+    /** Socket Mode liveness: replace a silent connection, and how many failures in a row end the app. */
+    socket: { idleMs?: number; maxAttempts?: number };
   };
   warp: {
     url: string;
@@ -62,6 +64,18 @@ export function readConfig(env: Record<string, string | undefined> = process.env
       audience: env.WARP_OIDC_AUDIENCE?.trim() || undefined,
     });
   }
+  const bad: string[] = [];
+  const count = (name: string, min: number): number | undefined => {
+    const v = env[name]?.trim();
+    if (!v) return undefined;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < min)
+      bad.push(`${name} must be a whole number of at least ${min}`);
+    return n;
+  };
+  const idleMs = count("SLACK_SOCKET_IDLE_MS", 10_000);
+  const maxAttempts = count("SLACK_SOCKET_MAX_ATTEMPTS", 1);
+  if (bad.length > 0) throw new Error(bad.join("; "));
   if (missing.length > 0) {
     throw new Error(
       `Missing ${missing.join(", ")}. Copy apps/slack/.envrc.local.example to the repository root as .envrc.local, fill it in and run direnv allow.`,
@@ -72,6 +86,10 @@ export function readConfig(env: Record<string, string | undefined> = process.env
       ...slack,
       branding: brandingPath ? readBranding(brandingPath) : DEFAULT_BRANDING,
       streamJournal: env.SLACK_STREAM_JOURNAL?.trim() || defaultJournalPath(slack.team, env),
+      socket: {
+        ...(idleMs !== undefined ? { idleMs } : {}),
+        ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+      },
     },
     warp: {
       url: env.WARP_URL?.trim() || "http://127.0.0.1:8080",
