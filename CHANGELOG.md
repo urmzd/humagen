@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0 (2026-10-20)
+
+### Features
+
+- **slack**: bring people's thread messages into a mention's turn (#31) ([e065929](https://github.com/urmzd/warp/commit/e065929701924916e9ab5ff465bf302fd439310f))
+
+### Bug Fixes
+
+- S3 Stat from one read, built-in baseline switch, and DOM interaction tests (#32) ([bbc719d](https://github.com/urmzd/warp/commit/bbc719dced79de40b3e891ead2d9856b63a7f0e5))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.6.0...v0.7.0)
+
+
 ## 0.6.0 (2026-10-20)
 
 ### Features
