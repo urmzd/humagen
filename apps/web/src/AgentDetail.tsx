@@ -15,7 +15,7 @@ import { Evals } from "./Evals.tsx";
 import { ASK_PERSON, approvable, withApproval, withAsking, withNames } from "./people.ts";
 import { AgentMark, ago, button, card, Chip, field, Label, Menu, Problem, primary, Switch, Tabs, took } from "./ui.tsx";
 
-type Tab = "prompt" | "setup" | "memory" | "evals" | "alerts" | "revisions";
+export type Tab = "prompt" | "setup" | "memory" | "evals" | "alerts" | "revisions";
 
 const models: Record<string, string> = {
   offline: "offline",
@@ -127,11 +127,12 @@ export function AgentDetail({
   onSuitesChanged,
   onOpenRun,
   onBaseline,
+  seed,
 }: {
   /** null creates a new agent. */
   revision: Revision | null;
   /** Open on the Memory tab, for someone arriving to review proposals, or on Evals. */
-  startOn?: "memory" | "evals";
+  startOn?: Tab;
   agents: Revision[];
   sources: Source[];
   suites: SuiteView[];
@@ -150,6 +151,8 @@ export function AgentDetail({
   onSuitesChanged: () => void;
   onOpenRun: (id: string) => void;
   onBaseline: (name: string) => void;
+  /** What to show before the revisions and memory are fetched, for the gallery and tests. */
+  seed?: { history?: Revision[]; notes?: Note[] };
 }) {
   const saved: AgentSpec = revision?.spec ?? {
     name: "",
@@ -163,8 +166,8 @@ export function AgentDetail({
   const [tab, setTab] = useState<Tab>(startOn && revision ? startOn : "prompt");
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [history, setHistory] = useState<Revision[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [history, setHistory] = useState<Revision[]>(seed?.history ?? []);
+  const [notes, setNotes] = useState<Note[]>(seed?.notes ?? []);
   const [note, setNote] = useState("");
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
   const set = (patch: Partial<AgentSpec>) => setSpec((s) => ({ ...s, ...patch }));
@@ -508,7 +511,8 @@ export function AgentDetail({
                   label="Baseline agent"
                   hint="Answers when Auto finds no agent that fits. One agent holds this at a time."
                   checked={baseline === name}
-                  disabled={!editable}
+                  // The baseline is the workspace's setting, not the agent's spec, so a built-in can hold it.
+                  disabled={!canWrite}
                   onChange={(on) => onBaseline(on ? name : "")}
                 />
               </div>
