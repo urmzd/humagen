@@ -195,12 +195,14 @@ func (s *S3) Stat(ctx context.Context, tenant, key string) (Info, error) {
 	info := Info{Key: key, Size: aws.ToInt64(out.ContentLength), SHA256: out.Metadata[metaSHA256], At: aws.ToTime(out.LastModified)}
 	if info.SHA256 == "" {
 		// Put there by something other than this store: hash what is there.
+		// Everything comes from the one read, so an overwrite between the
+		// two requests cannot pair one version's size with another's hash.
 		r, got, err := s.Get(ctx, tenant, key)
 		if err != nil {
 			return Info{}, err
 		}
 		_ = r.Close()
-		info.SHA256 = got.SHA256
+		return got, nil
 	}
 	return info, nil
 }
