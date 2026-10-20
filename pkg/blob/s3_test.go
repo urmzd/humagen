@@ -30,6 +30,8 @@ type fakeS3 struct {
 	objs   map[string]fakeObject
 	// unsigned counts requests without a SigV4 signature.
 	unsigned int
+	// afterHead, when set, runs after a HEAD is answered, with the lock held.
+	afterHead func(key string)
 }
 
 type fakeObject struct {
@@ -103,6 +105,8 @@ func (f *fakeS3) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if r.Method == http.MethodGet {
 			_, _ = w.Write(o.body)
+		} else if f.afterHead != nil {
+			f.afterHead(key)
 		}
 	case r.Method == http.MethodDelete:
 		delete(f.objs, key)
@@ -240,6 +244,28 @@ func TestS3HashesAnObjectItDidNotWrite(t *testing.T) {
 	info, err := s.Stat(context.Background(), "acme", "imported")
 	if err != nil || info.SHA256 != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" || info.Size != 3 {
 		t.Fatalf("stat = %+v, %v", info, err)
+	}
+}
+
+// An object without a hash that is overwritten between the store's HEAD and
+// its GET is described wholly by what the GET read: never one version's size
+// with another's hash.
+func TestS3StatOfAnOverwrittenObjectIsConsistent(t *testing.T) {
+	f, srv := newFakeS3(t)
+	s := openFake(t, srv, "")
+	f.mu.Lock()
+	f.objs["acme/imported"] = fakeObject{body: []byte("abc"), meta: map[string]string{}, at: time.Now()}
+	f.afterHead = func(key string) {
+		f.objs[key] = fakeObject{body: []byte("abcdef"), meta: map[string]string{}, at: time.Now()}
+		f.afterHead = nil
+	}
+	f.mu.Unlock()
+	info, err := s.Stat(context.Background(), "acme", "imported")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size != 6 || info.SHA256 != "bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721" {
+		t.Fatalf("stat after an overwrite = %+v", info)
 	}
 }
 
