@@ -185,6 +185,7 @@ func TestMockSignInForEachDefaultPersona(t *testing.T) {
 	}{
 		{"mock-viewer", []auth.Role{auth.Viewer}, viewer},
 		{"mock-operator", []auth.Role{auth.Operator}, auth.DefaultPolicy().Permissions([]auth.Role{auth.Operator})},
+		{"mock-manager", []auth.Role{auth.Manager}, auth.DefaultPolicy().Permissions([]auth.Role{auth.Manager})},
 		{"mock-admin", []auth.Role{auth.Admin}, auth.Permissions()},
 		{"mock-nobody", nil, nil},
 	} {
@@ -248,7 +249,7 @@ func TestGroupFlagsWithAPolicyFile(t *testing.T) {
 		want    int
 		wantErr bool
 	}{
-		"without a file, the defaults apply": {"", nil, 3, false},
+		"without a file, the defaults apply": {"", nil, 4, false},
 		"with a file, the defaults do not":   {path, nil, 0, false},
 		"with a file, an explicit flag does": {path, []string{"-viewer-group", "readers"}, 1, false},
 		"and must name a declared role":      {path, []string{"-admin-group", "ops"}, 1, true},

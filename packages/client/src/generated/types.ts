@@ -26,7 +26,7 @@ export interface Principal {
   kind: "user" | "machine";
   name?: string;
   email?: string;
-  roles?: ("viewer" | "operator" | "admin")[];
+  roles?: ("viewer" | "operator" | "manager" | "admin")[];
   /** A machine's permissions, from its token. */
   scopes?: Permission[];
 }
@@ -462,6 +462,54 @@ export interface InboxFrom {
   name: string;
 }
 
+/** Which agents may call an agent, and which of those calls a person approves. */
+export interface CallPolicyInput {
+  /** `anyone` its spec allows, only the `listed` agents in `allow`, or `none`. */
+  callers: "anyone" | "listed" | "none";
+  /** The callers admitted when `callers` is `listed`. */
+  allow?: string[];
+  /** `never`, `always`, or for every caller not in `trusted` when `unlisted`. */
+  approval: "never" | "always" | "unlisted";
+  /** Callers whose calls skip approval when `approval` is `unlisted`. */
+  trusted?: string[];
+  /** Who may approve a held call: subjects, and this workspace's roles
+as `role:<name>`, at most 32. Empty means `role:manager` and
+`role:admin`, so a held call is never open to the whole workspace.
+ */
+  approvers?: string[];
+  /** Lets the person whose request led to a call approve it. */
+  self_approval?: boolean;
+  /** How long a held call waits before it is denied. 0 means a day. */
+  expires_seconds?: number;
+}
+
+/** An agent's call policy. Version 0 is the default of an agent with none stored. */
+export interface CallPolicy {
+  agent: string;
+  callers: "anyone" | "listed" | "none";
+  allow: string[];
+  approval: "never" | "always" | "unlisted";
+  trusted: string[];
+  approvers: string[];
+  self_approval: boolean;
+  expires_seconds: number;
+  version: number;
+  updated_by?: string;
+  updated_at?: string;
+}
+
+/** Whether one agent may call another. */
+export interface Reach {
+  agent: string;
+  /** The callee's call policy accepts calls from the caller. */
+  admits: boolean;
+  /** The caller's spec lists the callee in its spawn allowlist. */
+  in_spawn: boolean;
+  /** Whether a call waits for a person. */
+  approval: "never" | "required";
+  reason: string;
+}
+
 /** What the message is about, as ids a reader can follow. */
 export interface InboxSource {
   alert?: string;
@@ -470,6 +518,8 @@ export interface InboxSource {
   thread?: string;
   agent?: string;
   project?: string;
+  /** The agent a question's tool call would call, when it calls one. */
+  target?: string;
 }
 
 export interface InboxOutcome {
@@ -530,6 +580,8 @@ export interface InboxBudgetPart {
 
 export interface InboxQuestionTool {
   name: string;
+  /** The model's id for the call. */
+  call_id?: string;
   /** What the model asked to call the tool with, as a JSON object. */
   arguments?: unknown;
   /** The tool's parameter schema. Edited arguments must satisfy it. */
@@ -554,6 +606,12 @@ export interface InboxQuestionPart {
   asked_at?: string;
   /** The run whose stream showed the question, when that is a run waiting on the one that asked. */
   via?: string;
+  /** Who may answer this one approval, in place of the agent spec's:
+the callee's call policy's approvers, for a call to an agent.
+ */
+  approvers?: string[];
+  /** Goes with `approvers`. */
+  self_approval?: boolean;
 }
 
 /** One typed part of a message. `type` says which of `text`, `alert`,
@@ -1622,6 +1680,11 @@ export interface ReviseAgentBody {
 
 export interface ListAgentRevisionsResponse {
   revisions: Revision[];
+}
+
+export interface ListReachableAgentsResponse {
+  agents: Reach[];
+  truncated: boolean;
 }
 
 export interface ListPendingMemoryResponse {

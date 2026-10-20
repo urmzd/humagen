@@ -720,3 +720,80 @@ export function subscribe(
   source.addEventListener("inbox", () => handlers.onInbox?.());
   return () => source.close();
 }
+
+// ---------------------------------------------------------------------------
+// Call governance: which agents may call an agent, and its approval queue.
+// The callee decides. These mirror CallPolicy, CallPolicyInput and Reach in
+// api/openapi.yaml.
+// ---------------------------------------------------------------------------
+
+/** Which agents may call an agent: anyone its spec allows, only those listed, or none. */
+export type CallCallers = "anyone" | "listed" | "none";
+/** Which admitted calls wait for a person. `unlisted` holds every caller not in `trusted`. */
+export type CallApproval = "never" | "always" | "unlisted";
+
+export interface CallPolicyInput {
+  callers: CallCallers;
+  /** The callers admitted when `callers` is `listed`. */
+  allow?: string[];
+  approval: CallApproval;
+  /** Callers whose calls skip approval when `approval` is `unlisted`. */
+  trusted?: string[];
+  /** Subjects, and roles as "role:<name>". Empty means managers and admins. */
+  approvers?: string[];
+  self_approval?: boolean;
+  /** How long a held call waits before it is denied. 0 means a day. */
+  expires_seconds?: number;
+}
+
+export interface CallPolicy extends Required<CallPolicyInput> {
+  agent: string;
+  /** 0 is the default of an agent with no stored policy. */
+  version: number;
+  updated_by?: string;
+  updated_at?: string;
+}
+
+/** Whether one agent (the caller in the path) may call another. */
+export interface Reach {
+  agent: string;
+  /** The callee's policy accepts calls from the caller. */
+  admits: boolean;
+  /** The caller's spec lists the callee in its spawn allowlist. */
+  in_spawn: boolean;
+  approval: "never" | "required";
+  reason: string;
+}
+
+/** One message of an approval queue, with the fields the queue needs. */
+export interface QueuedApproval {
+  id: string;
+  subject: string;
+  state: string;
+  source: { run?: string; agent?: string; target?: string; thread?: string; project?: string };
+  parts: {
+    id: string;
+    question?: { run: string; id: string; prompt: string; approvers?: string[]; expires_at?: string };
+  }[];
+}
+
+const agentPath = (name: string) => `/api/agents/${encodeURIComponent(name)}`;
+
+export const callGovernance = {
+  /** An agent's call policy, or its default (version 0). Needs agents:read. */
+  policy: (agent: string) => call<CallPolicy>("GET", `${agentPath(agent)}/call-policy`),
+  /** Replace an agent's call policy. Needs agents:write. */
+  setPolicy: (agent: string, policy: CallPolicyInput) =>
+    call<CallPolicy>("PUT", `${agentPath(agent)}/call-policy`, policy),
+  /** For an agent as a caller, every other agent and whether it may call it. Needs agents:read. */
+  reachable: (agent: string) => call<{ agents: Reach[]; truncated: boolean }>("GET", `${agentPath(agent)}/reachable`),
+  /**
+   * An agent's queue of calls waiting for approval: approvals it raised, or
+   * that would call it. Only what the caller may see and answer is listed.
+   */
+  approvalQueue: (agent: string, state: "open" | "resolved" | "all" = "open") =>
+    call<{ messages: QueuedApproval[]; next: string | null }>(
+      "GET",
+      `/api/inbox?${new URLSearchParams({ kind: "approval", agent, state })}`,
+    ),
+};

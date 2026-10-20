@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 )
@@ -264,5 +265,33 @@ func TestWatchersHearChanges(t *testing.T) {
 	case n := <-ch:
 		t.Fatalf("a cancelled watcher heard %+v", n)
 	default:
+	}
+}
+
+// An agent's queue is what it raised and what would call it.
+func TestTheAgentFilterMatchesTheAgentOrTheTarget(t *testing.T) {
+	s := NewStore()
+	at := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
+	raised, _ := s.Raise(acme, "q1", Message{Kind: KindApproval, Source: Source{Agent: "lead", Target: "helper"}, Parts: []Part{{Type: PartApproval}}}, at)
+	other, _ := s.Raise(acme, "q2", Message{Kind: KindApproval, Source: Source{Agent: "ops"}, Parts: []Part{{Type: PartApproval}}}, at.Add(time.Second))
+	ids := func(agent string) []string {
+		page, _, err := s.Page(acme, Query{Kind: KindApproval, Agent: agent, Now: at.Add(time.Minute)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, m := range page {
+			out = append(out, m.ID)
+		}
+		return out
+	}
+	for agent, want := range map[string][]string{"lead": {raised.ID}, "helper": {raised.ID}, "ops": {other.ID}, "nobody": nil, "": {other.ID, raised.ID}} {
+		if got := ids(agent); !slices.Equal(got, want) {
+			t.Errorf("agent %q: %v, want %v", agent, got, want)
+		}
+	}
+	// The count is the reader's whole inbox, whatever the filter.
+	if open, _ := s.Count(acme, Query{Agent: "nobody", Now: at.Add(time.Minute)}); open != 2 {
+		t.Errorf("count %d", open)
 	}
 }

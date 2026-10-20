@@ -24,15 +24,17 @@ const policyEnv = "WARP_AUTHZ_POLICY"
 // mockAudience is the API audience the mock provider issues access tokens for.
 const mockAudience = "api://warp-dev"
 
-// groupFlags are the -admin-group, -operator-group and -viewer-group flags,
+// groupFlags are the -admin-group, -manager-group, -operator-group and
+// -viewer-group flags,
 // which predate the policy language and become grants.
 type groupFlags struct {
-	admin, operator, viewer *string
+	admin, manager, operator, viewer *string
 }
 
 func addGroupFlags(fs *flag.FlagSet) groupFlags {
 	return groupFlags{
 		admin:    fs.String("admin-group", "warp-admins", "identity provider group granted the admin role"),
+		manager:  fs.String("manager-group", "warp-managers", "identity provider group granted the manager role"),
 		operator: fs.String("operator-group", "warp-operators", "identity provider group granted the operator role"),
 		viewer:   fs.String("viewer-group", "warp-viewers", "identity provider group granted the viewer role"),
 	}
@@ -44,7 +46,7 @@ func addGroupFlags(fs *flag.FlagSet) groupFlags {
 // says who gets what, and a group flag applies only if it was set on the
 // command line. Any problem stops the server.
 func loadPolicy(fs *flag.FlagSet, g groupFlags, getenv func(string) string) (*auth.Policy, map[string]auth.Role, error) {
-	all := map[string]auth.Role{*g.admin: auth.Admin, *g.operator: auth.Operator, *g.viewer: auth.Viewer}
+	all := map[string]auth.Role{*g.admin: auth.Admin, *g.manager: auth.Manager, *g.operator: auth.Operator, *g.viewer: auth.Viewer}
 	path := strings.TrimSpace(getenv(policyEnv))
 	if path == "" {
 		return auth.DefaultPolicy(), all, nil
@@ -58,6 +60,8 @@ func loadPolicy(fs *flag.FlagSet, g groupFlags, getenv func(string) string) (*au
 		switch f.Name {
 		case "admin-group":
 			set[*g.admin] = auth.Admin
+		case "manager-group":
+			set[*g.manager] = auth.Manager
 		case "operator-group":
 			set[*g.operator] = auth.Operator
 		case "viewer-group":

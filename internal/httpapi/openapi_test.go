@@ -38,6 +38,7 @@ import (
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/callpolicy"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/inbox"
@@ -583,7 +584,8 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"InboxFailurePart": {typ: inbox.FailurePart{}}, "InboxNoteRef": {typ: inbox.NoteRef{}}, "InboxMemoryPart": {typ: inbox.MemoryPart{}},
 		"InboxBudgetPart": {typ: inbox.BudgetPart{}}, "InboxPart": {typ: inbox.Part{}}, "InboxQuestionPart": {typ: inbox.QuestionPart{}}, "InboxQuestionTool": {typ: inbox.QuestionTool{}}, "InboxMessage": {typ: inbox.Message{}},
 		"InboxChange": {typ: inbox.Change{}},
-		"Artifact":    {typ: artifacts.Artifact{}}, "StorageShare": {typ: artifacts.Share{}},
+		"CallPolicy":  {typ: callpolicy.Policy{}}, "CallPolicyInput": {typ: callPolicyBody{}, written: true}, "Reach": {typ: platform.Reach{}},
+		"Artifact": {typ: artifacts.Artifact{}}, "StorageShare": {typ: artifacts.Share{}},
 		"AnalyticsGroup": {typ: runs.Group{}}, "AnalyticsBucket": {typ: runs.Bucket{}}, "Summary": {typ: runs.Summary{}},
 		"JournalEntry": {typ: journal.Entry{}}, "Span": {typ: journal.Span{}},
 		"AlertRule": {typ: alerts.Rule{}}, "Alert": {typ: alerts.Alert{}},
@@ -854,6 +856,13 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/agents/{name}", "/api/agents/ghost", strings.ReplaceAll(revised, "helper", "ghost"), http.StatusNotFound)
 	c.call(acme, "GET", "/api/agents/{name}/history", "/api/agents/helper/history", "", http.StatusOK)
 	c.call(globex, "GET", "/api/agents/{name}/history", "/api/agents/helper/history", "", http.StatusNotFound)
+	// Who may call it, and whom it may call.
+	c.call(acme, "GET", "/api/agents/{name}/call-policy", "/api/agents/helper/call-policy", "", http.StatusOK)
+	c.call(acme, "PUT", "/api/agents/{name}/call-policy", "/api/agents/helper/call-policy",
+		`{"callers":"listed","allow":["helper"],"approval":"unlisted","trusted":["helper"],"approvers":["role:manager"],"expires_seconds":3600}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/agents/{name}/call-policy", "/api/agents/helper/call-policy", `{"callers":"listed","allow":["ghost"],"approval":"never"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/agents/{name}/call-policy", "/api/agents/helper/call-policy", `{"callers":"anyone","approval":"never"}`, http.StatusOK)
+	c.call(acme, "GET", "/api/agents/{name}/reachable", "/api/agents/helper/reachable", "", http.StatusOK)
 	note := c.call(acme, "POST", "/api/agents/{name}/memory", "/api/agents/helper/memory", `{"text":"Answer briefly."}`, http.StatusCreated)
 	c.call(acme, "GET", "/api/agents/{name}/memory", "/api/agents/helper/memory", "", http.StatusOK)
 	c.call(acme, "POST", "/api/agents/{name}/memory/approve", "/api/agents/helper/memory/approve", `{"ids":[]}`, http.StatusOK)
@@ -992,6 +1001,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	inboxPath := "/api/inbox/" + mid
 	c.call(acme, "GET", "/api/inbox", "/api/inbox?state=nonsense", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/inbox", "/api/inbox?kind=approval&agent=helper&state=open", "", http.StatusOK)
 	c.call(acme, "GET", "/api/inbox", "/api/inbox?alert="+obj(msg["source"])["alert"].(string), "", http.StatusOK)
 	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count", "", http.StatusOK)
 	c.call(acme, "GET", "/api/inbox/{id}", inboxPath, "", http.StatusOK)
@@ -1193,7 +1203,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
 	}
 	valid := map[string]string{
-		"/api/agents/{name}": revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
+		"/api/agents/{name}": revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
 		"/api/clients/{id}": `{"name":"Support","surface":"slack","identity":{"team":"T01ABCDEF"}}`, "/api/evals/{name}": `{"name":"smoke","target":"agent","subject":"helper","cases":[]}`,
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
@@ -1282,6 +1292,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 // it is documented anyway. Keep it short: an entry is a code the server can
 // send that is hard to provoke in a test, never a guess.
 var unexercised = map[string]string{
+	// A workspace holds at most 1,000 call policies, one per agent. Making
+	// that many agents here would only test a counter, which
+	// pkg/callpolicy's tests do.
+	"PUT /api/agents/{name}/call-policy 429": "call policy cap",
 	// The runtime here always has a bus to subscribe to and a ledger to
 	// record in, so it can always carry a stop. TestAStopTheRuntimeCannotCarryIsA503
 	// answers 503 from a server whose runtime cannot.

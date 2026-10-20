@@ -9,7 +9,9 @@ import (
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
+	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -56,3 +58,26 @@ func (p *Platform) Reconcile(ctx context.Context) { p.reconcile(ctx) }
 
 // Ended acts on a run's ending again, as a second report of it would.
 func (p *Platform) Ended(ctx context.Context, run runs.Run) { p.ended(ctx, run) }
+
+// CallApproval is callApproval, the decision the call tool will ask fiber to
+// hold a call on.
+func (p *Platform) CallApproval(tenant, caller, callee string) (bool, []string, bool, time.Duration) {
+	return p.callApproval(tenant, caller, callee)
+}
+
+// CallApproved makes a call as the call tool will once a person approved it.
+func (p *Platform) CallApproved(ctx context.Context, tenant, runID string, req call.Request) (runs.Run, error) {
+	return p.call(withApprovedCall(ctx, req.Agent), tenant, runID, req, false)
+}
+
+// CallTargets is what the call_agent tool offers a caller.
+func (p *Platform) CallTargets(tenant, caller string, spawn []string) []string {
+	return p.callTargets(tenant, caller, spawn)
+}
+
+// CallToolApproval asks the call tool a turn would get whether a call needs
+// approval, as the runtime's approval gate does.
+func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (agentrt.ApprovalRequest, bool) {
+	t := p.callAgentTool(req, func(payload.Action) error { return nil })
+	return t.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: ToolCallAgent, Arguments: args})
+}

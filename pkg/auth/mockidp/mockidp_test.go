@@ -59,7 +59,7 @@ func verifier(t *testing.T, s *mockidp.Server) *auth.Verifier {
 	v, err := auth.NewVerifier(context.Background(), auth.OIDCConfig{
 		Issuer: s.Issuer(), ClientID: mockidp.DevClientID, Audience: audience, TenantClaim: "tenant",
 		GroupRoles: map[string]auth.Role{
-			"warp-admins": auth.Admin, "warp-operators": auth.Operator, "warp-viewers": auth.Viewer,
+			"warp-admins": auth.Admin, "warp-managers": auth.Manager, "warp-operators": auth.Operator, "warp-viewers": auth.Viewer,
 		},
 	})
 	if err != nil {
@@ -162,6 +162,7 @@ func TestDefaultPersonasUnderTheDefaultPolicy(t *testing.T) {
 	}{
 		{"mock-viewer", viewer},
 		{"mock-operator", operator},
+		{"mock-manager", []auth.Permission{auth.AgentsRead, auth.AgentsWrite, auth.RunsRead, auth.RunsWrite, auth.SchedulesRead, auth.SchedulesWrite, auth.AlertsRead, auth.AlertsWrite, auth.KnowledgeRead, auth.KnowledgeWrite, auth.EvalsRead, auth.EvalsWrite, auth.BillingRead, auth.ArtifactsRead, auth.ArtifactsWrite, auth.ClientsRead}},
 		{"mock-admin", auth.Permissions()},
 		{"mock-nobody", nil},
 	} {
@@ -172,7 +173,7 @@ func TestDefaultPersonasUnderTheDefaultPolicy(t *testing.T) {
 			}
 		})
 	}
-	if len(mockidp.DefaultPeople()) != 4 {
+	if len(mockidp.DefaultPeople()) != 5 {
 		t.Fatal("a default persona has no case here")
 	}
 }

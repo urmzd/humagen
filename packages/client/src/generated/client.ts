@@ -7,6 +7,8 @@ import type {
   AlertRule,
   Approved,
   Artifact,
+  CallPolicy,
+  CallPolicyInput,
   Choice,
   ClientInput,
   ClientView,
@@ -40,6 +42,7 @@ import type {
   ListPoliciesResponse,
   ListPolicyHistoryResponse,
   ListProjectsResponse,
+  ListReachableAgentsResponse,
   ListRunEventsResponse,
   ListSchedulesResponse,
   ListThreadsResponse,
@@ -598,6 +601,73 @@ edited from: if someone else revised the agent since, the answer is 409.
     let path = "/api/agents/{name}/history";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<ListAgentRevisionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The agent's stored call policy, or the default an agent with none has
+(`version` 0): any caller its own spec allows, without approval. 404
+for an agent that does not exist in the caller's workspace.
+ */
+  async getCallPolicy(name: string, options?: RequestOptions): Promise<CallPolicy> {
+    let path = "/api/agents/{name}/call-policy";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<CallPolicy>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getCallPolicyRaw(name: string, options?: RequestOptions): Promise<ApiResponse<CallPolicy>> {
+    let path = "/api/agents/{name}/call-policy";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<CallPolicy>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Replaces the agent's call policy. The callee decides: a caller also
+needs the callee in its own spawn allowlist, so a policy can only
+narrow what callers' specs allow. An unknown mode, an agent name that
+does not exist, more than 100 callers or 32 approvers, or a field that does not
+apply to the chosen mode is 400.
+ */
+  async putCallPolicy(name: string, body: CallPolicyInput, options?: RequestOptions): Promise<CallPolicy> {
+    let path = "/api/agents/{name}/call-policy";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<CallPolicy>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putCallPolicyRaw(name: string, body: CallPolicyInput, options?: RequestOptions): Promise<ApiResponse<CallPolicy>> {
+    let path = "/api/agents/{name}/call-policy";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<CallPolicy>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** For the agent in the path as a caller, every other agent in the
+workspace: whether its call policy admits the caller, whether the
+caller's spec lists it, and whether a call needs a person's approval.
+At most 500 agents; `truncated` says there are more.
+ */
+  async listReachableAgents(name: string, options?: RequestOptions): Promise<ListReachableAgentsResponse> {
+    let path = "/api/agents/{name}/reachable";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ListReachableAgentsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listReachableAgentsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ListReachableAgentsResponse>> {
+    let path = "/api/agents/{name}/reachable";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ListReachableAgentsResponse>("GET", path, {
       ...options,
     });
   }
@@ -1227,7 +1297,7 @@ may do with each part, is decided per message: a memory proposal needs
 `alerts:read`. `next` is the cursor for the page after this one, or
 null at the end.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result", unread?: "true", alert?: string, limit?: number, before?: string, options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1236,6 +1306,7 @@ null at the end.
     if (alert !== undefined && alert !== null) _q.set("alert", String(alert));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListInboxResponse>("GET", path, {
@@ -1243,7 +1314,7 @@ null at the end.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result", unread?: "true", alert?: string, limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1252,6 +1323,7 @@ null at the end.
     if (alert !== undefined && alert !== null) _q.set("alert", String(alert));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListInboxResponse>("GET", path, {

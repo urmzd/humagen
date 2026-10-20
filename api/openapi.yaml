@@ -297,6 +297,89 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/call-policy:
+    get:
+      operationId: getCallPolicy
+      tags: [agents]
+      summary: Read which agents may call an agent
+      description: |
+        The agent's stored call policy, or the default an agent with none has
+        (`version` 0): any caller its own spec allows, without approval. 404
+        for an agent that does not exist in the caller's workspace.
+      x-permission: agents:read
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: The call policy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallPolicy"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: putCallPolicy
+      tags: [agents]
+      summary: Set which agents may call an agent, and which calls a person approves
+      description: |
+        Replaces the agent's call policy. The callee decides: a caller also
+        needs the callee in its own spawn allowlist, so a policy can only
+        narrow what callers' specs allow. An unknown mode, an agent name that
+        does not exist, more than 100 callers or 32 approvers, or a field that does not
+        apply to the chosen mode is 400.
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CallPolicyInput"}
+      responses:
+        "200":
+          description: The stored policy.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallPolicy"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/reachable:
+    get:
+      operationId: listReachableAgents
+      tags: [agents]
+      summary: List which agents an agent may call, and why
+      description: |
+        For the agent in the path as a caller, every other agent in the
+        workspace: whether its call policy admits the caller, whether the
+        caller's spec lists it, and whether a call needs a person's approval.
+        At most 500 agents; `truncated` says there are more.
+      x-permission: agents:read
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      responses:
+        "200":
+          description: One entry per other agent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [agents, truncated]
+                properties:
+                  agents:
+                    type: array
+                    items: {$ref: "#/components/schemas/Reach"}
+                  truncated: {type: boolean}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/agents/{name}/memory:
     get:
       operationId: listAgentMemory
@@ -1072,6 +1155,13 @@ paths:
         - name: before
           in: query
           description: The `next` cursor of the previous page.
+          schema: {type: string}
+        - name: agent
+          in: query
+          description: |
+            Only messages about this agent: raised by it, or asking to call
+            it (`source.target`). With `kind=approval` and `state=open`, the
+            agent's queue of calls waiting for approval.
           schema: {type: string}
       responses:
         "200":
@@ -2663,7 +2753,7 @@ components:
         email: {type: string}
         roles:
           type: array
-          items: {type: string, enum: [viewer, operator, admin]}
+          items: {type: string, enum: [viewer, operator, manager, admin]}
         scopes:
           description: A machine's permissions, from its token.
           type: array
@@ -3338,6 +3428,85 @@ components:
           description: What sent the message, such as `agent`, `rule` or `system`.
           type: string
         name: {type: string}
+    CallPolicyInput:
+      description: Which agents may call an agent, and which of those calls a person approves.
+      type: object
+      additionalProperties: false
+      required: [callers, approval]
+      properties:
+        callers:
+          description: "`anyone` its spec allows, only the `listed` agents in `allow`, or `none`."
+          type: string
+          enum: [anyone, listed, none]
+        allow:
+          description: The callers admitted when `callers` is `listed`.
+          type: array
+          maxItems: 100
+          items: {type: string}
+        approval:
+          description: "`never`, `always`, or for every caller not in `trusted` when `unlisted`."
+          type: string
+          enum: [never, always, unlisted]
+        trusted:
+          description: Callers whose calls skip approval when `approval` is `unlisted`.
+          type: array
+          maxItems: 100
+          items: {type: string}
+        approvers:
+          description: |
+            Who may approve a held call: subjects, and this workspace's roles
+            as `role:<name>`, at most 32. Empty means `role:manager` and
+            `role:admin`, so a held call is never open to the whole workspace.
+          type: array
+          maxItems: 32
+          items: {type: string}
+        self_approval:
+          description: Lets the person whose request led to a call approve it.
+          type: boolean
+        expires_seconds:
+          description: How long a held call waits before it is denied. 0 means a day.
+          type: integer
+          minimum: 0
+          maximum: 604800
+    CallPolicy:
+      description: An agent's call policy. Version 0 is the default of an agent with none stored.
+      type: object
+      required: [agent, callers, allow, approval, trusted, approvers, self_approval, expires_seconds, version]
+      properties:
+        agent: {type: string}
+        callers: {type: string, enum: [anyone, listed, none]}
+        allow:
+          type: array
+          items: {type: string}
+        approval: {type: string, enum: [never, always, unlisted]}
+        trusted:
+          type: array
+          items: {type: string}
+        approvers:
+          type: array
+          items: {type: string}
+        self_approval: {type: boolean}
+        expires_seconds: {type: integer}
+        version: {type: integer}
+        updated_by: {type: string}
+        updated_at: {type: string, format: date-time}
+    Reach:
+      description: Whether one agent may call another.
+      type: object
+      required: [agent, admits, in_spawn, approval, reason]
+      properties:
+        agent: {type: string}
+        admits:
+          description: The callee's call policy accepts calls from the caller.
+          type: boolean
+        in_spawn:
+          description: The caller's spec lists the callee in its spawn allowlist.
+          type: boolean
+        approval:
+          description: Whether a call waits for a person.
+          type: string
+          enum: [never, required]
+        reason: {type: string}
     InboxSource:
       description: What the message is about, as ids a reader can follow.
       type: object
@@ -3348,6 +3517,9 @@ components:
         thread: {type: string}
         agent: {type: string}
         project: {type: string}
+        target:
+          description: The agent a question's tool call would call, when it calls one.
+          type: string
     InboxOutcome:
       type: object
       required: [action, by, at]
@@ -3418,6 +3590,9 @@ components:
       required: [name]
       properties:
         name: {type: string}
+        call_id:
+          description: The model's id for the call.
+          type: string
         arguments:
           description: What the model asked to call the tool with, as a JSON object.
           type: object
@@ -3454,6 +3629,15 @@ components:
         via:
           description: The run whose stream showed the question, when that is a run waiting on the one that asked.
           type: string
+        approvers:
+          description: |
+            Who may answer this one approval, in place of the agent spec's:
+            the callee's call policy's approvers, for a call to an agent.
+          type: array
+          items: {type: string}
+        self_approval:
+          description: Goes with `approvers`.
+          type: boolean
     InboxPart:
       description: |
         One typed part of a message. `type` says which of `text`, `alert`,
