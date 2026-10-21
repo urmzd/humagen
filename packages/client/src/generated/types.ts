@@ -771,6 +771,10 @@ export interface InboxNoteRef {
 }
 
 export interface InboxMemoryPart {
+  /** Who would remember them, as the memory store names it: an
+agent's name, or `project:<name>` for a project's notes, with
+`project:` alone for the workspace's own.
+ */
   owner: string;
   agent?: string;
   project?: string;

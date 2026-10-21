@@ -72,3 +72,36 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 		t.Fatalf("after failed writes = %+v", v)
 	}
 }
+
+// The projects a file counts toward besides its own are kept with it, so a
+// project's use still holds what was published below it once a project in
+// between is deleted, across a restart too.
+func TestWhatAFileCountsTowardSurvivesARestart(t *testing.T) {
+	at := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		x, err := artifacts.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		within := []string{"Globex", "Field"}
+		a := put(t, x, "acme", artifacts.Artifact{Title: "a.md", Thread: "t1", Size: 10, Project: "Renewals", Within: within, CreatedAt: at})
+		within[0] = "changed"
+		put(t, x, "acme", artifacts.Artifact{Title: "b.md", Thread: "t2", Size: 3, Project: "Initech", CreatedAt: at})
+		again, err := artifacts.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := again.Get("acme", a.ID)
+		if err != nil || !reflect.DeepEqual(got.Within, []string{"Globex", "Field"}) {
+			t.Fatalf("after restart the file is within %q (%v)", got.Within, err)
+		}
+		// Renewals and Globex are gone from the tree; Field still holds the file.
+		if n := again.UsedUnder("acme", "Field", []string{"Field", "Initech"}); n != 13 {
+			t.Fatalf("Field holds %d bytes, want 13", n)
+		}
+		if n := again.UsedUnder("acme", "Initech", []string{"Initech"}); n != 3 {
+			t.Fatalf("Initech holds %d bytes, want 3", n)
+		}
+	})
+}
