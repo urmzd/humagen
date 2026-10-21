@@ -67,7 +67,7 @@ func TestTighterNamesTheScopeThatBinds(t *testing.T) {
 	}{
 		"more runs":    {func(p *Policy) { p.MaxRuns = 60 }, "project Field"},
 		"more spend":   {func(p *Policy) { p.SpendLimit = 20_000_000 }, "project Field"},
-		"more storage": {func(p *Policy) { p.Period, p.MaxStorage = Month, 2 << 20 }, "project Field"},
+		"more storage": {func(p *Policy) { p.Period, p.MaxStorage = Month, 2<<20 }, "project Field"},
 	} {
 		q := p
 		c.edit(&q)
