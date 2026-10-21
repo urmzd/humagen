@@ -29,7 +29,7 @@
 - Connect GitHub and Slack through signed webhook ingress and tenant-bound connector capabilities.
 - Answer in Slack with the console's own components through a Socket Mode app that streams natively.
 
-**Early development:** platform records are in memory unless the server runs with `-state=postgres` (`WARP_POSTGRES_URL`). Spend limits are recorded but not enforced. Approvals are tool calls and questions a run parks on; a run cannot yet park at a limit. Local accounts and per-project access are unfinished. GitHub and Slack integrations have simulated-API coverage; see the [integration trial guide](docs/integrations.md) and [status table](docs/architecture.md#status) for validation boundaries.
+**Early development:** pre-1.0, one replica per database, sessions in memory, Slack and GitHub tested against simulated APIs. The full, current list is in [the ecosystem's limitations](docs/ecosystem.md#limitations-in-one-place); what each piece has been tested against is in the [status table](docs/architecture.md#status).
 
 ## Installation
 
@@ -171,6 +171,10 @@ Warp is a shared place for people and agents to organize projects and tasks, mai
 This is the direction, not a claim that every workflow exists today. See the [roadmap](docs/roadmap.md) and [implementation status](docs/architecture.md#status).
 
 ## Architecture
+
+warp is the top of five layers (warp, fiber, saige, playscape, anchor), each
+building on the one below. [The ecosystem](docs/ecosystem.md) says who owns
+what and the order the remaining duplication is being removed in.
 
 | Part | Responsibility |
 |------|----------------|
