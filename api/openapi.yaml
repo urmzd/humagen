@@ -1403,7 +1403,7 @@ paths:
         - name: kind
           in: query
           description: Only messages of this kind. An unknown kind matches nothing.
-          schema: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result]}
+          schema: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, announcement]}
         - name: unread
           in: query
           description: Only `true` narrows to messages the caller has not read.
@@ -1427,14 +1427,21 @@ paths:
             it (`source.target`). With `kind=approval` and `state=open`, the
             agent's queue of calls waiting for approval.
           schema: {type: string}
+        - name: project
+          in: query
+          description: |
+            Only what the caller's own inbox holds about this project
+            (`source.project`), `~` for the workspace. A project the caller
+            cannot see is 404.
+          schema: {type: string, maxLength: 63}
       responses:
         "200":
-          description: One page, with the caller's open and unread counts.
+          description: One page, with the caller's counts.
           content:
             application/json:
               schema:
                 type: object
-                required: [messages, next, open, unread]
+                required: [messages, next, open, unread, updates]
                 properties:
                   messages:
                     type: array
@@ -1442,6 +1449,9 @@ paths:
                   next: {type: [string, "null"]}
                   open: {type: integer}
                   unread: {type: integer}
+                  updates:
+                    description: Announcements the caller has not read. They never count in `open` or `unread`.
+                    type: integer
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -1450,19 +1460,17 @@ paths:
     get:
       operationId: getInboxCount
       tags: [inbox]
-      summary: Count the caller's open and unread messages
+      summary: Count the caller's open and unread messages, and the announcements they have not read
+      description: |
+        Announcements count only in `updates`, so the badge, which counts
+        `open`, never grows from them.
       x-permission: runs:read
       responses:
         "200":
           description: The counts.
           content:
             application/json:
-              schema:
-                type: object
-                required: [open, unread]
-                properties:
-                  open: {type: integer}
-                  unread: {type: integer}
+              schema: {$ref: "#/components/schemas/InboxCounts"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -2455,11 +2463,17 @@ paths:
     get:
       operationId: listProjects
       tags: [projects]
-      summary: List the workspace's projects in tree order, and what is in each
+      summary: Page the workspace's projects in tree order, and what is in each
       description: |
         Each project comes before its sub-projects, and siblings are ordered by
         name ignoring case. The workspace itself is not in the list:
-        `GET /api/projects/~` reads it. A workspace has at most 100 projects.
+        `GET /api/projects/~` reads it. Only the projects the caller has a
+        role in are listed; until reads are confined to members, that is
+        every project. A workspace has at most 500 projects. Each view says
+        the caller's role (`access`) and what they may do (`actions`).
+        `next` is the cursor for the page after this one, or null at the
+        end; a cursor is where its last row sat in the tree, so a project
+        deleted between pages neither breaks nor shifts the paging.
       x-permission: projects:read
       parameters:
         - name: parent
@@ -2470,19 +2484,37 @@ paths:
           in: query
           description: Only this project and every project below it. `~` keeps them all.
           schema: {type: string, maxLength: 63}
+        - name: q
+          in: query
+          description: Only projects whose name, title, description or customer holds this, ignoring case.
+          schema: {type: string, maxLength: 200}
+        - name: kind
+          in: query
+          description: Only projects of this kind, built in or the workspace's own.
+          schema: {type: string, maxLength: 32}
+        - name: limit
+          in: query
+          description: Page size, 100 when left out.
+          schema: {type: integer, minimum: 1, maximum: 200}
+        - name: before
+          in: query
+          description: The `next` cursor of the previous page.
+          schema: {type: string}
       responses:
         "200":
-          description: The projects.
+          description: One page of projects.
           content:
             application/json:
               schema:
                 type: object
-                required: [projects]
+                required: [projects, next]
                 properties:
                   projects:
                     type: array
-                    maxItems: 100
+                    maxItems: 200
                     items: {$ref: "#/components/schemas/ProjectView"}
+                  next: {type: [string, "null"]}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -2493,12 +2525,16 @@ paths:
       summary: Create a project
       description: |
         A project's name is its identity: it is unique in the workspace
-        ignoring case, and never changes. Its parent is fixed too. A company
-        project needs `projects:govern`, and so does reusing the name of a
-        deleted project, which adopts its old conversations. 400 for a kind
-        that cannot sit under its parent or a fifth level; 404 for a parent
-        the workspace does not have; 409 for a name taken; 429 at the
-        workspace's cap of 100 projects or 10 company projects.
+        ignoring case, and never changes. The caller must be a member of the
+        parent (the workspace when none is named), and is the new project's
+        owner when it names no members: everyone is a member of it, or a
+        viewer of an account, and no more open than the parent allows. A
+        company project needs `projects:govern`, and so does reusing the name
+        of a deleted project, which adopts its old conversations. 400 for a
+        kind that cannot sit under its parent, a fifth level, or an archived
+        parent; 403 for a parent the caller is only a viewer of; 404 for a
+        parent the workspace does not have; 409 for a name taken; 429 at the
+        workspace's cap of 500 projects or 10 company projects.
       x-permission: projects:write
       requestBody:
         required: true
@@ -2540,14 +2576,18 @@ paths:
     put:
       operationId: updateProject
       tags: [projects]
-      summary: Change a project's title, description, account and instructions
+      summary: Change a project's title, description, account, instructions, kind and archiving
       description: |
-        The body replaces those four as a whole: one left out is cleared.
-        `version` is the one the caller read, so a change made since answers
-        409 instead of being overwritten. A project's `name`, `kind` and
-        `parent` are fixed when it is created, and naming any of them is 400.
-        The workspace and company projects need `projects:govern`. A field
-        the platform file sets answers 409.
+        It needs ownership of the project. The body replaces title,
+        description, account and instructions as a whole: one left out is
+        cleared. `kind`, `archived`, `announce` and, on the workspace,
+        `kinds` change only when they are given. `version` is the one the
+        caller read, so a change made since answers 409 instead of being
+        overwritten. A project's `name` is fixed and its `parent` changes by
+        moving, so naming either is 400. The workspace and company projects,
+        and making a project company, need `projects:govern`. A field the
+        platform file sets answers 409, and so does a kind of the workspace's
+        that a project still has.
       x-permission: projects:write
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -2574,8 +2614,9 @@ paths:
       tags: [projects]
       summary: Delete a project and its shared notes
       description: |
-        Refused with 409, naming them, while sub-projects, schedules, alert
-        rules or limits point at the project. A delete never drops a limit.
+        It needs ownership of the project; archiving is the alternative that
+        keeps everything. Refused with 409, naming them, while sub-projects,
+        schedules, alert rules or limits point at the project. A delete never drops a limit.
         Its conversations keep its name, and are adopted only if someone
         holding `projects:govern` creates it again. The workspace cannot be
         deleted (400), a company project needs `projects:govern`, and a
@@ -2710,10 +2751,11 @@ paths:
     post:
       operationId: addProjectMemory
       tags: [projects]
-      summary: Write a note shared by every agent in a project
+      summary: Write or propose a note shared by every agent in a project
       description: |
-        A person writing a note is its approval. The notes of the workspace
-        and of company projects are changed with `projects:govern` as well.
+        An owner writing a note is its approval. A member's note is a
+        proposal: it waits, and the project's owners are asked in their
+        inbox to keep or discard it. A viewer is 403.
       x-permission: projects:write
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -2739,7 +2781,7 @@ paths:
       operationId: approveProjectMemory
       tags: [projects]
       summary: Approve notes proposed for a project
-      description: The notes of the workspace and of company projects are changed with `projects:govern` as well.
+      description: It needs ownership of the project.
       x-permission: projects:write
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -2765,7 +2807,7 @@ paths:
       operationId: removeProjectMemory
       tags: [projects]
       summary: Remove a project note
-      description: The notes of the workspace and of company projects are changed with `projects:govern` as well.
+      description: It needs ownership of the project.
       x-permission: projects:write
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -2776,6 +2818,140 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/projects/{name}/members:
+    get:
+      operationId: getProjectMembers
+      tags: [projects]
+      summary: Read who holds a role in a project, and who owns it from above
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "200":
+          description: The project's members.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectMembers"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: setProjectMembers
+      tags: [projects]
+      summary: Replace who holds a role in a project
+      description: |
+        It needs ownership of the project. Every project keeps an entry for
+        everyone (`*`) of at least viewer, a company project one of at least
+        member, and no project is more open than its parent or less open
+        than a child (400). A list with no `*` entry is 409: members-only
+        projects need read confinement, which is not built. The workspace
+        and company projects need `projects:govern`; a list the platform
+        file sets answers 409.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectMembersInput"}
+      responses:
+        "200":
+          description: The project's members as they now stand.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectMembers"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/move:
+    post:
+      operationId: moveProject
+      tags: [projects]
+      summary: Put a project, and everything under it, under another parent
+      description: |
+        It needs ownership of the project and membership of the new parent.
+        400 for a parent inside the project, past four levels, archived, or
+        one that breaks a kind or openness rule; 403 for leaving a project
+        that holds a limit without `billing:write`, since a move never
+        escapes a limit; 409 for a stale version, a parent the platform file
+        sets, or a default below it that would stop being available. The
+        workspace cannot move.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectMove"}
+      responses:
+        "200":
+          description: The project where it now sits.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/limits:
+    put:
+      operationId: setProjectLimit
+      tags: [projects]
+      summary: Set a tighten-only limit on a project, as an owner of a project above it
+      description: |
+        For an owner of a project above this one, without `billing:write`.
+        The limit is written with `authority: owner`. It only tightens: one
+        looser than any limit over it is 400, naming the scope that binds. A
+        limit an admin set is 409, and changes with `billing:write` on
+        `PUT /api/policies`. The workspace's own limits are 403 here.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectLimitInput"}
+      responses:
+        "200":
+          description: The limit as it now stands.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Policy"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteProjectLimit
+      tags: [projects]
+      summary: Remove a limit an owner of a project above set
+      description: A limit an admin set is 409; a project with none is 404.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "204":
+          description: Removed.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/ServerError"}
 
   /api/projects/{name}/channels:
@@ -4384,9 +4560,12 @@ components:
         workspace or another company project, and is created and changed only
         with `projects:govern`; a workspace has at most 10. `team` is the
         default and sits anywhere. `account` is a customer account, never
-        under another account. The workspace itself is `company`.
+        under another account. The workspace itself is `company`. Any other
+        value is one of the workspace's own kinds, which behaves as `team`
+        or `account`.
       type: string
-      enum: [company, team, account]
+      pattern: "^[a-z][a-z0-9-]{0,31}$"
+      maxLength: 32
     ProjectRole:
       description: |
         What a member may do in a project, each including the one before:
@@ -4525,7 +4704,7 @@ components:
       allOf:
         - {$ref: "#/components/schemas/Project"}
         - type: object
-          required: [depth, path, children, conversations, active, schedules, notes, proposed]
+          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions]
           properties:
             depth:
               description: How many levels below the workspace it sits, 1 to 4. The workspace itself is 0.
@@ -4559,6 +4738,18 @@ components:
             proposed:
               description: How many notes wait for someone to approve them.
               type: integer
+            access: {$ref: "#/components/schemas/ProjectAccess"}
+            actions:
+              description: |
+                What the caller may do here, their permission and their role
+                together: `create` a project under it, `propose` a note,
+                decide its `notes`, `edit` it (its record, members and who
+                may announce), `move`, `archive` or `delete` it, and set
+                tighten-only `limits` on it as an owner above.
+              type: array
+              items:
+                type: string
+                enum: [create, propose, notes, edit, move, archive, delete, limits]
     ProjectLimit:
       description: |
         A limit a run filed in the project falls under for being there, and
@@ -4611,8 +4802,19 @@ components:
           maxLength: 63
         account: {$ref: "#/components/schemas/ProjectAccount"}
         instructions: {type: string, maxLength: 4000}
+        members:
+          description: |
+            Who holds a role in it. Left out, everyone (`*`) is a member, or
+            a viewer of an account, and the creator its owner, no more open
+            than the parent allows.
+          type: array
+          maxItems: 100
+          items: {$ref: "#/components/schemas/ProjectEntry"}
     ProjectUpdate:
-      description: What a person may change on a project, as a whole. A field left out is cleared.
+      description: |
+        What an owner may change on a project. Title, description, account
+        and instructions are replaced as a whole: one left out is cleared.
+        `kind`, `archived`, `announce` and `kinds` change only when given.
       type: object
       required: [version]
       properties:
@@ -4623,6 +4825,113 @@ components:
         description: {type: string, maxLength: 500}
         account: {$ref: "#/components/schemas/ProjectAccount"}
         instructions: {type: string, maxLength: 4000}
+        kind:
+          description: A built-in kind or one the workspace defines. To or from `company` needs `projects:govern`.
+          type: string
+          maxLength: 32
+        archived:
+          description: Archives the project, or brings it back. An archived project takes no new sub-projects.
+          type: boolean
+        announce:
+          description: The lowest role that may post an announcement. Empty reads as owner.
+          type: string
+          enum: ["", viewer, member, owner]
+        kinds:
+          description: The workspace's own kinds, on the workspace only. A kind a project still has cannot be removed (409).
+          type: array
+          maxItems: 16
+          items: {$ref: "#/components/schemas/ProjectKindSpec"}
+    ProjectAccess:
+      description: A caller's role in a project, where it comes from, and the entry or rule that gave it.
+      type: object
+      required: [role, from, via]
+      properties:
+        role:
+          description: Empty is no role.
+          type: string
+          enum: ["", viewer, member, owner]
+        from:
+          description: The project whose entry gave it, `""` for the workspace.
+          type: string
+        via:
+          description: The entry's `who`, `owner above` for owning a project above, or `projects:govern`.
+          type: string
+    ProjectInheritedOwner:
+      description: An owner entry of a project above, which owns this one too.
+      type: object
+      required: [who, from]
+      properties:
+        who: {type: string}
+        from:
+          description: The project above whose entry it is, `""` for the workspace.
+          type: string
+    ProjectMembers:
+      description: Who holds a role in a project, and who owns it from above.
+      type: object
+      required: [version, members, inherited]
+      properties:
+        version:
+          description: The project's version, to name when changing them.
+          type: integer
+        members:
+          type: array
+          maxItems: 100
+          items: {$ref: "#/components/schemas/ProjectEntry"}
+        inherited:
+          description: The owner entries of the projects above, nearest first.
+          type: array
+          items: {$ref: "#/components/schemas/ProjectInheritedOwner"}
+    ProjectMembersInput:
+      description: A project's new members, as a whole.
+      type: object
+      required: [version, members]
+      properties:
+        version:
+          description: The version the caller read.
+          type: integer
+        members:
+          type: array
+          maxItems: 100
+          items: {$ref: "#/components/schemas/ProjectEntry"}
+    ProjectMove:
+      description: Where a project goes.
+      type: object
+      required: [version, parent]
+      properties:
+        version:
+          description: The version the caller read.
+          type: integer
+        parent:
+          description: The new parent. Empty or `~` is the top level.
+          type: string
+          maxLength: 63
+    ProjectLimitInput:
+      description: A tighten-only limit an owner of a project above sets. A zero limit sets none.
+      type: object
+      required: [period]
+      properties:
+        period: {type: string, enum: [day, month]}
+        max_runs: {type: integer, minimum: 0}
+        max_concurrent: {type: integer, minimum: 0}
+        spend_limit:
+          description: Micro-USD a period.
+          type: integer
+          format: int64
+          minimum: 0
+        max_lease:
+          type: integer
+          format: int64
+          minimum: 0
+        max_storage:
+          type: integer
+          format: int64
+          minimum: 0
+        max_tokens:
+          type: integer
+          format: int64
+          minimum: 0
+        warn_at: {type: integer, minimum: 0, maximum: 100}
+        action: {type: string, enum: [block]}
     ProjectChange:
       description: One entry of the record of what changed on a project.
       type: object
@@ -4935,14 +5244,31 @@ components:
           type: array
           items: {$ref: "#/components/schemas/Run"}
 
+    InboxCounts:
+      description: What a reader's inbox holds open.
+      type: object
+      required: [open, unread, updates]
+      properties:
+        open:
+          description: Open messages that may need the reader.
+          type: integer
+        unread:
+          description: Of those, the ones the reader has not read.
+          type: integer
+        updates:
+          description: Announcements open for the reader that they have not read.
+          type: integer
     InboxKind:
       description: |
         What a message is about. `approval` and `clarification` are questions
         a run is waiting on. `result` is the answer of a run nobody was
-        waiting on, and `artifact` a file that was published or revised.
-        `mention` is a message in a shared thread that tags the reader.
+        waiting on, `artifact` a file that was published or revised,
+        `mention` a message in a shared thread that tags the reader, and
+        `announcement` news posted in a project, which reaches the members
+        of that project and of every project below it, or an agent's post
+        held as a draft for the project's owners.
       type: string
-      enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention]
+      enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement]
     InboxState:
       type: string
       enum: [open, resolved, dismissed, snoozed]

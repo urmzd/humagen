@@ -978,9 +978,12 @@ type Query struct {
 	// Kinds keeps messages of any of these kinds.
 	Kinds []Kind
 	// Projects keeps messages about these projects (Source.Project), the
-	// root's "" too when it is given. It is a project's inbox, so there a
-	// project audience entry naming one of them reaches any reader.
+	// root's "" too when it is given.
 	Projects []string
+	// Shared reads Projects as the projects' own inbox, which everyone who
+	// can see them reads: there a project audience entry naming one of them
+	// reaches any reader. Without it, the reader's own inbox is narrowed.
+	Shared bool
 	// Alert keeps the messages about one alert.
 	Alert string
 	// Agent keeps the messages about one agent: the one that raised them,
@@ -1012,7 +1015,9 @@ func (q Query) filter() filter {
 		for _, p := range q.Projects {
 			f.projects[p] = true
 		}
-		f.reader.Projects = append(slices.Clone(q.ReaderProjects), q.Projects...)
+		if q.Shared {
+			f.reader.Projects = append(slices.Clone(q.ReaderProjects), q.Projects...)
+		}
 	}
 	return f
 }
@@ -1135,7 +1140,7 @@ type Counts struct {
 // Count returns what is open for a reader across their whole inbox: the
 // narrowing fields of q are ignored, and who is reading is kept.
 func (s *Store) Count(tenantName string, q Query) Counts {
-	q.State, q.Kind, q.Kinds, q.Projects, q.Alert, q.Agent, q.Unread = Open, "", nil, nil, "", "", false
+	q.State, q.Kind, q.Kinds, q.Projects, q.Shared, q.Alert, q.Agent, q.Unread = Open, "", nil, nil, false, "", "", false
 	f := q.filter()
 	s.mu.Lock()
 	defer s.mu.Unlock()

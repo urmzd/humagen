@@ -84,3 +84,55 @@ func TestTighterNamesTheScopeThatBinds(t *testing.T) {
 		t.Fatalf("nothing in force: %v", err)
 	}
 }
+
+// An owner's limit only tightens what is over it, and never takes the place
+// of an admin's: both are decided under the store's lock, so a racing admin
+// write is never overwritten by an owner.
+func TestAnOwnersLimitOnlyTightensAndNeverReplacesAnAdmins(t *testing.T) {
+	at := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
+	s := NewStore()
+	if _, err := s.Put("acme", Policy{Scope: Scope{Project, "Field"}, Period: Day, MaxRuns: 50, Action: Block}, "root", at); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Put("acme", Policy{Scope: Scope{Kind: Tenant}, Period: Day, SpendLimit: 9_000_000, Action: Block}, "root", at); err != nil {
+		t.Fatal(err)
+	}
+	looser := Policy{Scope: Scope{Project, "Globex"}, Period: Day, MaxRuns: 60, Action: Block}
+	if _, err := s.PutOwned("acme", looser, []string{"Field"}, "ada", at); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "project Field") {
+		t.Fatalf("looser than Field = %v", err)
+	}
+	spend := Policy{Scope: Scope{Project, "Globex"}, Period: Day, SpendLimit: 10_000_000, Action: Block}
+	if _, err := s.PutOwned("acme", spend, []string{"Field"}, "ada", at); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "the workspace") {
+		t.Fatalf("looser than the tenant = %v", err)
+	}
+	tight := Policy{Scope: Scope{Project, "Globex"}, Period: Day, MaxRuns: 5, Action: Block}
+	saved, err := s.PutOwned("acme", tight, []string{"Field"}, "ada", at)
+	if err != nil || !saved.ByOwner() || saved.UpdatedBy != "ada" {
+		t.Fatalf("a tighter limit = %+v, %v", saved, err)
+	}
+	// An admin may replace it; then the owner may not.
+	if _, err := s.Put("acme", Policy{Scope: Scope{Project, "Globex"}, Period: Day, MaxRuns: 8, Action: Block}, "root", at); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PutOwned("acme", tight, []string{"Field"}, "ada", at); !errors.Is(err, ErrAdmin) {
+		t.Fatalf("an owner over an admin's limit = %v", err)
+	}
+	if err := s.DeleteOwned("acme", Scope{Project, "Globex"}, "ada", at); !errors.Is(err, ErrAdmin) {
+		t.Fatalf("an owner removing an admin's limit = %v", err)
+	}
+	if err := s.DeleteOwned("acme", Scope{Project, "Initech"}, "ada", at); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("removing a limit nobody set = %v", err)
+	}
+	if err := s.Delete("acme", Scope{Project, "Globex"}, "root", at); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PutOwned("acme", tight, []string{"Field"}, "ada", at); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteOwned("acme", Scope{Project, "Globex"}, "ada", at); err != nil {
+		t.Fatalf("an owner removing their own limit = %v", err)
+	}
+	if got := s.List("acme"); len(got) != 2 {
+		t.Fatalf("left = %+v", got)
+	}
+}

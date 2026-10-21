@@ -33,6 +33,12 @@ const (
 	generalChannel   = "general"
 	autoDefault      = "auto"
 	expertRolePrefix = "role:"
+	maxMembers    = 100
+	maxKinds      = 16
+	maxKindTitle  = 40
+	maxSubject    = 255
+	everyoneEntry = "*"
+	roleEntry     = "role:"
 )
 
 var (
@@ -42,7 +48,9 @@ var (
 	// defaultName is an agent's name, as a client's agent list holds it,
 	// or auto.
 	defaultName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
-	roleName    = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+	expertRole  = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+	kindName    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+	roleName    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,63}$`)
 )
 
 // checkProjects holds the workspace's instructions and project tree to what
@@ -53,7 +61,14 @@ var (
 //  3. no cycle, depth at most 4, at most 10 company projects, company only
 //     under the workspace or company, account never under account, and an
 //     account only on an account project;
-//  4. a kind is company, team or account.
+//  4. a kind is company, team, account or one of project_kinds, and each of
+//     those behaves as team or account;
+//  5. members are "*", "role:<name>" or a subject, each with viewer, member
+//     or owner, at most 100 and no one twice; until reads are confined to
+//     members, every list the file sets has an entry for everyone of at
+//     least viewer, a company project's (the workspace's too) of at least
+//     member, and no project is more open than a parent the file also gives
+//     members.
 //
 // The fields' bounds are checked as well. A project the console made cannot
 // be seen from here, so the store checks again when the file is applied.
@@ -68,6 +83,15 @@ func checkProjects(w Workspace) error {
 	}
 	if err := checkExperts(w.Experts); err != nil {
 		return fmt.Errorf("workspace.%w", err)
+	}
+	likes, err := checkKinds(w.ProjectKinds)
+	if err != nil {
+		return err
+	}
+	if w.Members != nil {
+		if err := checkMembers(w.Members, ProjectCompany); err != nil {
+			return fmt.Errorf("workspace.members%w", err)
+		}
 	}
 	ps := w.Projects
 	if len(ps) > maxProjects {
@@ -84,11 +108,16 @@ func checkProjects(w Workspace) error {
 			return fmt.Errorf("%s.name: %q is %s's name again; names are unique ignoring case", at(i), p.Name, at(j))
 		}
 		exact[p.Name], folded[strings.ToLower(p.Name)] = i, i
-		if p.Kind != "" && p.Kind != ProjectCompany && p.Kind != ProjectTeam && p.Kind != ProjectAccount {
-			return fmt.Errorf("%s.kind: %q is not a kind: company, team or account", at(i), p.Kind)
+		if likes[KindOf(p)] == "" {
+			return fmt.Errorf("%s.kind: %q is not a kind: company, team, account or one of workspace.project_kinds", at(i), p.Kind)
 		}
-		if err := checkProjectFields(p); err != nil {
+		if err := checkProjectFields(p, likes[KindOf(p)]); err != nil {
 			return fmt.Errorf("%s.%w", at(i), err)
+		}
+		if p.Members != nil {
+			if err := checkMembers(p.Members, likes[KindOf(p)]); err != nil {
+				return fmt.Errorf("%s.members%w", at(i), err)
+			}
 		}
 	}
 	// parent[i] is the index of i's parent, or -1 for the workspace.
@@ -131,9 +160,9 @@ func checkProjects(w Workspace) error {
 		if depth > maxProjectDepth {
 			return fmt.Errorf("%s.parent: %q would sit %d levels below the workspace; at most %d", at(i), p.Name, depth, maxProjectDepth)
 		}
-		kind, up := KindOf(p), ProjectCompany
+		kind, up := likes[KindOf(p)], ProjectCompany
 		if parent[i] >= 0 {
-			up = KindOf(ps[parent[i]])
+			up = likes[KindOf(ps[parent[i]])]
 		}
 		switch {
 		case kind == ProjectCompany && up != ProjectCompany:
@@ -146,8 +175,98 @@ func checkProjects(w Workspace) error {
 				return fmt.Errorf("%s.kind: a workspace has at most %d company projects", at(i), maxCompany)
 			}
 		}
+		// A child is never more open than its parent, where the file sets
+		// both lists; a list the console keeps is checked at start.
+		above := w.Members
+		if parent[i] >= 0 {
+			above = ps[parent[i]].Members
+		}
+		if p.Members != nil && above != nil && openness(p.Members) > openness(above) {
+			name := "the workspace"
+			if parent[i] >= 0 {
+				name = fmt.Sprintf("%q", ps[parent[i]].Name)
+			}
+			return fmt.Errorf("%s.members: %q would be more open than %s; a project is never more open than its parent", at(i), p.Name, name)
+		}
 	}
 	return nil
+}
+
+// checkKinds checks the workspace's own kinds, and returns what every kind
+// the file may name behaves as.
+func checkKinds(ks []ProjectKind) (map[string]string, error) {
+	likes := map[string]string{ProjectCompany: ProjectCompany, ProjectTeam: ProjectTeam, ProjectAccount: ProjectAccount}
+	if len(ks) > maxKinds {
+		return nil, fmt.Errorf("workspace.project_kinds: a workspace defines at most %d kinds, not %d", maxKinds, len(ks))
+	}
+	for i, k := range ks {
+		at := fmt.Sprintf("workspace.project_kinds[%d]", i)
+		switch {
+		case !kindName.MatchString(k.Name):
+			return nil, fmt.Errorf("%s.name: %q is not a kind's name: lower case letters, digits and dashes, starting with a letter, at most 32", at, k.Name)
+		case k.Name == ProjectCompany || k.Name == ProjectTeam || k.Name == ProjectAccount:
+			return nil, fmt.Errorf("%s.name: %q is a kind warp defines", at, k.Name)
+		case likes[k.Name] != "":
+			return nil, fmt.Errorf("%s.name: %q is defined twice", at, k.Name)
+		case k.Like != ProjectTeam && k.Like != ProjectAccount:
+			return nil, fmt.Errorf("%s.like: %q is not team or account", at, k.Like)
+		}
+		if err := checkText(k.Title, maxKindTitle, false); err != nil {
+			return nil, fmt.Errorf("%s.title: %w", at, err)
+		}
+		likes[k.Name] = k.Like
+	}
+	return likes, nil
+}
+
+// checkMembers checks one list of members for a project that behaves as
+// like. Its error starts with what follows the list's path.
+func checkMembers(ms []Member, like string) error {
+	if len(ms) > maxMembers {
+		return fmt.Errorf(": a project has at most %d members, not %d", maxMembers, len(ms))
+	}
+	seen := map[string]bool{}
+	star := ""
+	for i, m := range ms {
+		switch {
+		case m.Who == everyoneEntry:
+			star = m.Role
+		case strings.HasPrefix(m.Who, roleEntry):
+			if !roleName.MatchString(strings.TrimPrefix(m.Who, roleEntry)) {
+				return fmt.Errorf("[%d].who: %q names no role: a role is letters, digits, dashes and underscores", i, m.Who)
+			}
+		case m.Who == "" || len(m.Who) > maxSubject || strings.TrimSpace(m.Who) != m.Who || checkText(m.Who, maxSubject, false) != nil:
+			return fmt.Errorf("[%d].who: a member is *, role:<name> or a subject of at most %d bytes", i, maxSubject)
+		}
+		if m.Role != RoleViewer && m.Role != RoleMember && m.Role != RoleOwner {
+			return fmt.Errorf("[%d].role: %q is not a role: viewer, member or owner", i, m.Role)
+		}
+		if seen[m.Who] {
+			return fmt.Errorf("[%d].who: %q is listed twice", i, m.Who)
+		}
+		seen[m.Who] = true
+	}
+	switch {
+	case star == "":
+		return fmt.Errorf(`: an entry for everyone ("*") of at least viewer is needed: members-only projects need read confinement, which is not built`)
+	case like == ProjectCompany && star == RoleViewer:
+		return fmt.Errorf(`: a company project is open to everyone ("*") as a member at least`)
+	}
+	return nil
+}
+
+// openness ranks how widely a list opens a project: its entry for everyone,
+// where an owner opens no wider than a member.
+func openness(ms []Member) int {
+	for _, m := range ms {
+		if m.Who == everyoneEntry {
+			if m.Role == RoleViewer {
+				return 1
+			}
+			return 2
+		}
+	}
+	return 0
 }
 
 // aKind is a kind in words, with its article.
@@ -161,7 +280,7 @@ func aKind(k string) string {
 // checkProjectFields checks one project's fields on their own. Its error
 // starts with the field's name, for the caller to put after the project's
 // path.
-func checkProjectFields(p Project) error {
+func checkProjectFields(p Project, like string) error {
 	if err := checkText(p.Title, maxProjectTitle, false); err != nil {
 		return fmt.Errorf("title: %w", err)
 	}
@@ -181,8 +300,8 @@ func checkProjectFields(p Project) error {
 	if a == nil {
 		return nil
 	}
-	if k := KindOf(p); k != ProjectAccount {
-		return fmt.Errorf("account: only an account project carries an account, and %q is %s", p.Name, aKind(k))
+	if like != ProjectAccount {
+		return fmt.Errorf("account: only an account project carries an account, and %q is %s", p.Name, aKind(KindOf(p)))
 	}
 	if err := checkText(a.Customer, maxAccountCustomer, false); err != nil {
 		return fmt.Errorf("account.customer: %w", err)
@@ -265,7 +384,7 @@ func checkExperts(es []Expert) error {
 		switch {
 		case who == "" || who == "*" || who != e.Who || utf8.RuneCountInString(who) > maxExpertWho || checkText(who, maxExpertWho, false) != nil:
 			return fmt.Errorf("%s.who: a person's subject or role:<name>, on one line of at most %d characters", at, maxExpertWho)
-		case strings.HasPrefix(who, expertRolePrefix) && !roleName.MatchString(strings.TrimPrefix(who, expertRolePrefix)):
+		case strings.HasPrefix(who, expertRolePrefix) && !expertRole.MatchString(strings.TrimPrefix(who, expertRolePrefix)):
 			return fmt.Errorf("%s.who: %q is not a role: role:<name>, lower case letters, digits, dashes and underscores", at, who)
 		case len(e.Topics) == 0 || len(e.Topics) > maxExpertTopics:
 			return fmt.Errorf("%s.topics: from 1 to %d topics, not %d", at, maxExpertTopics, len(e.Topics))

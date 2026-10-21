@@ -21,10 +21,10 @@ import type {
   CreateRunRequest,
   EvalRun,
   EvalSuite,
-  GetInboxCountResponse,
   GetInboxMessageResponse,
   GetRunTraceResponse,
   GetUsageResponse,
+  InboxCounts,
   InboxDeliveryInput,
   InboxMessage,
   KnowledgeDocument,
@@ -69,6 +69,10 @@ import type {
   ProjectDetail,
   ProjectExperts,
   ProjectInput,
+  ProjectLimitInput,
+  ProjectMembers,
+  ProjectMembersInput,
+  ProjectMove,
   ProjectUpdate,
   ProjectView,
   QueryJournalResponse,
@@ -1506,7 +1510,7 @@ may do with each part, is decided per message: a memory proposal needs
 `alerts:read`. `next` is the cursor for the page after this one, or
 null at the end.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1516,6 +1520,7 @@ null at the end.
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListInboxResponse>("GET", path, {
@@ -1523,7 +1528,7 @@ null at the end.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1533,6 +1538,7 @@ null at the end.
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListInboxResponse>("GET", path, {
@@ -1540,17 +1546,19 @@ null at the end.
     });
   }
 
-  /** Count the caller's open and unread messages */
-  async getInboxCount(options?: RequestOptions): Promise<GetInboxCountResponse> {
+  /** Announcements count only in `updates`, so the badge, which counts
+`open`, never grows from them.
+ */
+  async getInboxCount(options?: RequestOptions): Promise<InboxCounts> {
     const path = "/api/inbox/count";
-    return this.request<GetInboxCountResponse>("GET", path, {
+    return this.request<InboxCounts>("GET", path, {
       ...options,
     });
   }
 
-  async getInboxCountRaw(options?: RequestOptions): Promise<ApiResponse<GetInboxCountResponse>> {
+  async getInboxCountRaw(options?: RequestOptions): Promise<ApiResponse<InboxCounts>> {
     const path = "/api/inbox/count";
-    return this.rawRequest<GetInboxCountResponse>("GET", path, {
+    return this.rawRequest<InboxCounts>("GET", path, {
       ...options,
     });
   }
@@ -2399,13 +2407,23 @@ already raised stay, and so does its cooldown.
 
   /** Each project comes before its sub-projects, and siblings are ordered by
 name ignoring case. The workspace itself is not in the list:
-`GET /api/projects/~` reads it. A workspace has at most 100 projects.
+`GET /api/projects/~` reads it. Only the projects the caller has a
+role in are listed; until reads are confined to members, that is
+every project. A workspace has at most 500 projects. Each view says
+the caller's role (`access`) and what they may do (`actions`).
+`next` is the cursor for the page after this one, or null at the
+end; a cursor is where its last row sat in the tree, so a project
+deleted between pages neither breaks nor shifts the paging.
  */
-  async listProjects(parent?: string, within?: string, options?: RequestOptions): Promise<ListProjectsResponse> {
+  async listProjects(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, options?: RequestOptions): Promise<ListProjectsResponse> {
     let path = "/api/projects";
     const _q = new URLSearchParams();
     if (parent !== undefined && parent !== null) _q.set("parent", String(parent));
     if (within !== undefined && within !== null) _q.set("within", String(within));
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListProjectsResponse>("GET", path, {
@@ -2413,11 +2431,15 @@ name ignoring case. The workspace itself is not in the list:
     });
   }
 
-  async listProjectsRaw(parent?: string, within?: string, options?: RequestOptions): Promise<ApiResponse<ListProjectsResponse>> {
+  async listProjectsRaw(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<ListProjectsResponse>> {
     let path = "/api/projects";
     const _q = new URLSearchParams();
     if (parent !== undefined && parent !== null) _q.set("parent", String(parent));
     if (within !== undefined && within !== null) _q.set("within", String(within));
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListProjectsResponse>("GET", path, {
@@ -2426,12 +2448,16 @@ name ignoring case. The workspace itself is not in the list:
   }
 
   /** A project's name is its identity: it is unique in the workspace
-ignoring case, and never changes. Its parent is fixed too. A company
-project needs `projects:govern`, and so does reusing the name of a
-deleted project, which adopts its old conversations. 400 for a kind
-that cannot sit under its parent or a fifth level; 404 for a parent
-the workspace does not have; 409 for a name taken; 429 at the
-workspace's cap of 100 projects or 10 company projects.
+ignoring case, and never changes. The caller must be a member of the
+parent (the workspace when none is named), and is the new project's
+owner when it names no members: everyone is a member of it, or a
+viewer of an account, and no more open than the parent allows. A
+company project needs `projects:govern`, and so does reusing the name
+of a deleted project, which adopts its old conversations. 400 for a
+kind that cannot sit under its parent, a fifth level, or an archived
+parent; 403 for a parent the caller is only a viewer of; 404 for a
+parent the workspace does not have; 409 for a name taken; 429 at the
+workspace's cap of 500 projects or 10 company projects.
  */
   async createProject(body: ProjectInput, options?: RequestOptions): Promise<ProjectView> {
     const path = "/api/projects";
@@ -2468,12 +2494,16 @@ workspace's cap of 100 projects or 10 company projects.
     });
   }
 
-  /** The body replaces those four as a whole: one left out is cleared.
-`version` is the one the caller read, so a change made since answers
-409 instead of being overwritten. A project's `name`, `kind` and
-`parent` are fixed when it is created, and naming any of them is 400.
-The workspace and company projects need `projects:govern`. A field
-the platform file sets answers 409.
+  /** It needs ownership of the project. The body replaces title,
+description, account and instructions as a whole: one left out is
+cleared. `kind`, `archived`, `announce` and, on the workspace,
+`kinds` change only when they are given. `version` is the one the
+caller read, so a change made since answers 409 instead of being
+overwritten. A project's `name` is fixed and its `parent` changes by
+moving, so naming either is 400. The workspace and company projects,
+and making a project company, need `projects:govern`. A field the
+platform file sets answers 409, and so does a kind of the workspace's
+that a project still has.
  */
   async updateProject(name: string, body: ProjectUpdate, options?: RequestOptions): Promise<ProjectView> {
     let path = "/api/projects/{name}";
@@ -2495,8 +2525,9 @@ the platform file sets answers 409.
     });
   }
 
-  /** Refused with 409, naming them, while sub-projects, schedules, alert
-rules or limits point at the project. A delete never drops a limit.
+  /** It needs ownership of the project; archiving is the alternative that
+keeps everything. Refused with 409, naming them, while sub-projects,
+schedules, alert rules or limits point at the project. A delete never drops a limit.
 Its conversations keep its name, and are adopted only if someone
 holding `projects:govern` creates it again. The workspace cannot be
 deleted (400), a company project needs `projects:govern`, and a
@@ -2616,8 +2647,9 @@ it.
     });
   }
 
-  /** A person writing a note is its approval. The notes of the workspace
-and of company projects are changed with `projects:govern` as well.
+  /** An owner writing a note is its approval. A member's note is a
+proposal: it waits, and the project's owners are asked in their
+inbox to keep or discard it. A viewer is 403.
  */
   async addProjectMemory(name: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
     let path = "/api/projects/{name}/memory";
@@ -2639,7 +2671,7 @@ and of company projects are changed with `projects:govern` as well.
     });
   }
 
-  /** The notes of the workspace and of company projects are changed with `projects:govern` as well. */
+  /** It needs ownership of the project. */
   async approveProjectMemory(name: string, body: NoteSelection, options?: RequestOptions): Promise<Approved> {
     let path = "/api/projects/{name}/memory/approve";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2660,7 +2692,7 @@ and of company projects are changed with `projects:govern` as well.
     });
   }
 
-  /** The notes of the workspace and of company projects are changed with `projects:govern` as well. */
+  /** It needs ownership of the project. */
   async removeProjectMemory(name: string, id: string, options?: RequestOptions): Promise<void> {
     let path = "/api/projects/{name}/memory/{id}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2674,6 +2706,122 @@ and of company projects are changed with `projects:govern` as well.
     let path = "/api/projects/{name}/memory/{id}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Read who holds a role in a project, and who owns it from above */
+  async getProjectMembers(name: string, options?: RequestOptions): Promise<ProjectMembers> {
+    let path = "/api/projects/{name}/members";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectMembers>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectMembersRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectMembers>> {
+    let path = "/api/projects/{name}/members";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectMembers>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** It needs ownership of the project. Every project keeps an entry for
+everyone (`*`) of at least viewer, a company project one of at least
+member, and no project is more open than its parent or less open
+than a child (400). A list with no `*` entry is 409: members-only
+projects need read confinement, which is not built. The workspace
+and company projects need `projects:govern`; a list the platform
+file sets answers 409.
+ */
+  async setProjectMembers(name: string, body: ProjectMembersInput, options?: RequestOptions): Promise<ProjectMembers> {
+    let path = "/api/projects/{name}/members";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectMembers>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setProjectMembersRaw(name: string, body: ProjectMembersInput, options?: RequestOptions): Promise<ApiResponse<ProjectMembers>> {
+    let path = "/api/projects/{name}/members";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectMembers>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** It needs ownership of the project and membership of the new parent.
+400 for a parent inside the project, past four levels, archived, or
+one that breaks a kind or openness rule; 403 for leaving a project
+that holds a limit without `billing:write`, since a move never
+escapes a limit; 409 for a stale version, a parent the platform file
+sets, or a default below it that would stop being available. The
+workspace cannot move.
+ */
+  async moveProject(name: string, body: ProjectMove, options?: RequestOptions): Promise<ProjectView> {
+    let path = "/api/projects/{name}/move";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectView>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async moveProjectRaw(name: string, body: ProjectMove, options?: RequestOptions): Promise<ApiResponse<ProjectView>> {
+    let path = "/api/projects/{name}/move";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectView>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** For an owner of a project above this one, without `billing:write`.
+The limit is written with `authority: owner`. It only tightens: one
+looser than any limit over it is 400, naming the scope that binds. A
+limit an admin set is 409, and changes with `billing:write` on
+`PUT /api/policies`. The workspace's own limits are 403 here.
+ */
+  async setProjectLimit(name: string, body: ProjectLimitInput, options?: RequestOptions): Promise<Policy> {
+    let path = "/api/projects/{name}/limits";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<Policy>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setProjectLimitRaw(name: string, body: ProjectLimitInput, options?: RequestOptions): Promise<ApiResponse<Policy>> {
+    let path = "/api/projects/{name}/limits";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<Policy>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** A limit an admin set is 409; a project with none is 404. */
+  async deleteProjectLimit(name: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/projects/{name}/limits";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteProjectLimitRaw(name: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/projects/{name}/limits";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<void>("DELETE", path, {
       ...options,
     });

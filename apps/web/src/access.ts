@@ -25,10 +25,10 @@ export const PERMISSIONS = [
   "artifacts:write",
   "clients:read",
   "clients:write",
-  "people:read",
   "projects:read",
   "projects:write",
   "projects:govern",
+  "people:read",
 ] as const;
 
 /** What each permission lets a person do, after "can". */

@@ -46,6 +46,8 @@ export function view(
     schedules: 0,
     notes: 0,
     proposed: 0,
+    access: { role: "owner", from: "", via: "*" },
+    actions: ["create", "propose", "notes", "edit", "move", "archive", "delete", "limits"],
   };
 }
 

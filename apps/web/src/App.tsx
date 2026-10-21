@@ -28,7 +28,7 @@ import { Schedules } from "./Schedules.tsx";
 import { Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
-import { type AgentTab, type Route, type SettingsSection, useRoute } from "./route.ts";
+import { type AgentTab, PROJECT_KINDS, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { Page, primary } from "./ui.tsx";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "error"; message: string } | { state: "ready"; me: Me };
@@ -371,7 +371,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             workspaceName={workspaceName}
             q={route.q ?? ""}
             kind={route.kind}
-            onFilter={(q, kind) => go({ page: "projects", q: q || undefined, kind }, { replace: true })}
+            onFilter={(q, kind) => go({ page: "projects", q: q || undefined, kind: PROJECT_KINDS.find((k) => k === kind) }, { replace: true })}
             canCreate={can("projects:write")}
             canGovern={can("projects:govern")}
             onOpen={openProject}

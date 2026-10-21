@@ -19,6 +19,9 @@ type Query struct {
 	Limit int
 	// After is the cursor a page returned as next: the page starts after it.
 	After string
+	// Keep, when set, keeps only the projects it accepts, such as the ones
+	// a reader may see or the ones below a project.
+	Keep func(Project) bool
 }
 
 // path is a project's names from the top level down to it, the root left
@@ -109,7 +112,7 @@ func (t *Tree) Page(q Query) ([]Project, string, error) {
 	var last []string
 	for _, name := range t.order[1:] {
 		p := t.nodes[name].p
-		if q.Kind != "" && p.Kind != q.Kind || !p.matches(search) {
+		if q.Kind != "" && p.Kind != q.Kind || !p.matches(search) || q.Keep != nil && !q.Keep(p) {
 			continue
 		}
 		at := t.path(name)

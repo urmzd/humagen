@@ -594,7 +594,10 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
 		"ProjectAgentsInput": {typ: platform.AgentsInput{}, written: true}, "AgentPlace": {typ: platform.AgentPlace{}}, "AgentHome": {typ: agentHome{}},
-		"Person":   {typ: personView{}},
+		"Person":       {typ: personView{}},
+		"ProjectEntry": {typ: projects.Entry{}}, "ProjectKindSpec": {typ: projects.KindSpec{}}, "ProjectAccess": {typ: projects.Access{}},
+		"ProjectInheritedOwner": {typ: projects.InheritedOwner{}}, "ProjectMembers": {typ: projectMembersView{}},
+		"ProjectLimitInput": {typ: projectLimitBody{}, written: true}, "InboxCounts": {typ: inbox.Counts{}},
 		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
 		"InboxNotice": {typ: inbox.Notice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
@@ -1151,6 +1154,44 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(acme, "GET", "/api/people/{handle}/photo", "/api/people/fox/photo", "", http.StatusNotFound)
 	c.call(acme, "GET", "/api/people/{handle}/photo", "/api/people/ghost/photo", "", http.StatusNotFound)
+	c.call(acme, "GET", "/api/projects", "/api/projects?q=globex%20inc&kind=account&limit=1", "", http.StatusOK)
+	c.call(acme, "GET", "/api/projects", "/api/projects?before=nonsense", "", http.StatusBadRequest)
+
+	// Who holds a role, a move, and an owner's tighten-only limit.
+	members := c.call(acme, "GET", "/api/projects/{name}/members", "/api/projects/Globex/members", "", http.StatusOK)
+	version := func(r reply) int { n, _ := strconv.Atoi(string(r.field("version").(json.Number))); return n }
+	mv := version(members)
+	c.call(acme, "GET", "/api/projects/{name}/members", "/api/projects/Ghost/members", "", http.StatusNotFound)
+	mset := c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members",
+		fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"viewer"},{"who":"okta|ana","role":"owner"}]}`, mv), http.StatusOK)
+	c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"viewer"}]}`, mv), http.StatusConflict)
+	c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"okta|ana","role":"owner"}]}`, version(mset)), http.StatusConflict)
+	c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"ruler"}]}`, version(mset)), http.StatusBadRequest)
+	ops := c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Ops"}`, http.StatusCreated)
+	moved := c.call(acme, "POST", "/api/projects/{name}/move", "/api/projects/Ops/move", fmt.Sprintf(`{"version":%d,"parent":"Field"}`, version(ops)), http.StatusOK)
+	if moved.str("parent") != "Field" || moved.field("depth") != json.Number("2") {
+		t.Errorf("Ops moved under Field = %s", moved.raw)
+	}
+	c.call(acme, "POST", "/api/projects/{name}/move", "/api/projects/Ops/move", fmt.Sprintf(`{"version":%d,"parent":""}`, version(ops)), http.StatusConflict)
+	field := c.call(acme, "GET", "/api/projects/{name}", "/api/projects/Field", "", http.StatusOK)
+	c.call(acme, "POST", "/api/projects/{name}/move", "/api/projects/Field/move",
+		fmt.Sprintf(`{"version":%s,"parent":"Ops"}`, obj(field.field("project"))["version"].(json.Number)), http.StatusBadRequest)
+	c.call(acme, "POST", "/api/projects/{name}/move", "/api/projects/Ops/move", fmt.Sprintf(`{"version":%d,"parent":"Ghost"}`, version(moved)), http.StatusNotFound)
+	c.call(acme, "PUT", "/api/projects/{name}/limits", "/api/projects/Field/limits", `{"period":"day","max_runs":50}`, http.StatusOK)
+	if limit := c.call(acme, "PUT", "/api/projects/{name}/limits", "/api/projects/Globex/limits", `{"period":"day","max_runs":5}`, http.StatusOK); limit.str("authority") != "owner" {
+		t.Errorf("an owner's limit = %s", limit.raw)
+	}
+	c.call(acme, "PUT", "/api/projects/{name}/limits", "/api/projects/Globex/limits", `{"period":"day","max_runs":60}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/projects/{name}/limits", "/api/projects/~/limits", `{"period":"day","max_runs":5}`, http.StatusForbidden)
+	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Vault"}`, http.StatusCreated)
+	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"project","name":"Vault"},"period":"day","max_runs":9}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/projects/{name}/limits", "/api/projects/Vault/limits", `{"period":"day","max_runs":5}`, http.StatusConflict)
+	c.call(acme, "DELETE", "/api/projects/{name}/limits", "/api/projects/Vault/limits", "", http.StatusConflict)
+	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=project&name=Vault", "", http.StatusNoContent)
+	c.call(acme, "DELETE", "/api/projects/{name}/limits", "/api/projects/Vault/limits", "", http.StatusNotFound)
+	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Vault", "", http.StatusNoContent)
+	c.call(acme, "DELETE", "/api/projects/{name}/limits", "/api/projects/Globex/limits", "", http.StatusNoContent)
+	c.call(acme, "DELETE", "/api/projects/{name}/limits", "/api/projects/Field/limits", "", http.StatusNoContent)
 
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Field", "", http.StatusConflict)
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/~", "", http.StatusBadRequest)
@@ -1270,10 +1311,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", channel, "/api/projects/Crowded/channels/c0", "", http.StatusNoContent)
 	experts := "/api/projects/{name}/experts"
 	got := c.call(acme, "GET", experts, "/api/projects/Field/experts", "", http.StatusOK)
-	version, _ := strconv.Atoi(fmt.Sprint(got.field("version")))
-	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[{"who":"00u-vic","topics":["billing"]}]}`, version), http.StatusOK)
-	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[]}`, version), http.StatusConflict)
-	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[{"who":"00u-vic","topics":["Not a topic"]}]}`, version+1), http.StatusBadRequest)
+	ev, _ := strconv.Atoi(fmt.Sprint(got.field("version")))
+	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[{"who":"00u-vic","topics":["billing"]}]}`, ev), http.StatusOK)
+	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[]}`, ev), http.StatusConflict)
+	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[{"who":"00u-vic","topics":["Not a topic"]}]}`, ev+1), http.StatusBadRequest)
 
 	c.call(acme, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"shared","text":"hi"}`, http.StatusForbidden)
 	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"hi"}`, http.StatusBadRequest)
@@ -1424,6 +1465,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/agents":         {"name": "Launch"},
 		"/api/projects/{name}/memory/approve": {"name": "Launch"}, "/api/projects/{name}/memory/{id}": {"name": "Launch", "id": shared.str("id")},
+		"/api/projects/{name}/members": {"name": "Launch"}, "/api/projects/{name}/move": {"name": "Launch"}, "/api/projects/{name}/limits": {"name": "Launch"},
 		"/api/schedules/{name}": {"name": "nightly"}, "/api/schedules/{name}/pause": {"name": "nightly"},
 		"/api/schedules/{name}/resume": {"name": "nightly"}, "/api/schedules/{name}/run": {"name": "nightly"},
 		"/api/inbox/{id}": {"id": mid}, "/api/inbox/{id}/read": {"id": mid}, "/api/inbox/{id}/dismiss": {"id": mid},
@@ -1450,6 +1492,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}/channels": `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
 		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
+		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
+		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)

@@ -258,24 +258,8 @@ func clipRunes(s string, limit int) string {
 // puts the agent's words in front of everyone it reaches.
 func (p *Platform) ownsDraft(who auth.Principal, d inbox.DraftPart) error {
 	tree := p.Projects.Tree(who.Tenant)
-	if tree.Resolve(d.Project, projectReader(who)).Role == projects.Owner {
+	if tree.Resolve(d.Project, ReaderOf(who)).Role == projects.Owner {
 		return nil
 	}
 	return fmt.Errorf("%w: deciding a draft needs projects:write, and you need to own %s", ErrForbidden, p.whereOf(who.Tenant, tree, d.Project))
-}
-
-// projectReader is who a caller is to the project tree.
-func projectReader(who auth.Principal) projects.Reader {
-	roles := make([]string, 0, len(who.Roles))
-	for _, r := range who.Roles {
-		roles = append(roles, string(r))
-	}
-	return projects.Reader{Subject: who.Subject, Roles: roles, Govern: who.Can(auth.ProjectsGovern), Machine: who.Kind == auth.Machine}
-}
-
-// withOwns adds to a reader the projects the caller owns, which an
-// "owners:<name>" audience entry reaches: an agent's drafts are addressed so.
-func (p *Platform) withOwns(who auth.Principal, r inbox.Reader) inbox.Reader {
-	r.Owns = p.Projects.Tree(who.Tenant).Owned(projectReader(who))
-	return r
 }

@@ -469,6 +469,15 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 	if w.Agents != nil {
 		declared.Agents, owns = fileAgents(*w.Agents), append(owns, projects.FieldAgents)
 	}
+	if w.Members != nil {
+		declared.Members, owns = membersOf(w.Members), append(owns, projects.FieldMembers)
+	}
+	if w.ProjectKinds != nil {
+		for _, k := range w.ProjectKinds {
+			declared.Kinds = append(declared.Kinds, projects.KindSpec{Name: projects.Kind(k.Name), Title: k.Title, Like: projects.Kind(k.Like)})
+		}
+		owns = append(owns, projects.FieldKinds)
+	}
 	switch {
 	case len(owns) > 0:
 		_, err = p.Projects.Upsert(tenant, declared, owns, fileWriter, now)
@@ -510,6 +519,9 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 	if d.Agents != nil {
 		pr.Agents = fileAgents(*d.Agents)
 	}
+	if d.Members != nil {
+		pr.Members = membersOf(d.Members)
+	}
 	var owns []string
 	for field, set := range map[string]bool{
 		projects.FieldTitle:        d.Title != "",
@@ -520,6 +532,7 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 		projects.FieldInstructions: d.Instructions != "",
 		projects.FieldExperts:      d.Experts != nil,
 		projects.FieldAgents:       d.Agents != nil,
+		projects.FieldMembers:      d.Members != nil,
 	} {
 		if set {
 			owns = append(owns, field)
@@ -575,6 +588,15 @@ func applyHomes(ctx context.Context, p *platform.Platform, doc spec.Platform) er
 		}
 	}
 	return nil
+}
+
+// membersOf is a list of members as the store keeps them.
+func membersOf(ms []spec.Member) []projects.Entry {
+	out := make([]projects.Entry, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, projects.Entry{Who: m.Who, Role: projects.Role(m.Role)})
+	}
+	return out
 }
 
 // parentsFirst is the order to apply the file's projects in: by how deep

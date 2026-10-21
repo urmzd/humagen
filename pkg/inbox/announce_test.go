@@ -106,9 +106,14 @@ func TestAProjectAudienceReachesItsReaders(t *testing.T) {
 	if (Message{Audience: []string{"project:Globex"}}).For(Reader{Projects: []string{"Globex"}}) {
 		t.Fatal("a reader with no subject was reached")
 	}
-	// In the project's own inbox, anyone who reads it is reached.
+	// Narrowed to a project, a reader's own inbox reaches no further.
 	q := readerIn("bo")
 	q.Projects = []string{"Field", "Globex"}
+	if got := ids(t, s, q); len(got) != 0 {
+		t.Fatalf("someone in no project, narrowed to Field, sees %q", got)
+	}
+	// In the project's own inbox, anyone who reads it is reached.
+	q.Shared = true
 	if got := ids(t, s, q); !slices.Equal(got, []string{field.ID, globex.ID}) {
 		t.Fatalf("Field's inbox with its sub-projects = %q", got)
 	}
@@ -130,7 +135,7 @@ func TestTheKindsAndProjectsFiltersNarrowAPage(t *testing.T) {
 		t.Fatalf("alerts and announcements = %q", got)
 	}
 	q = readerIn("ada")
-	q.Projects = []string{"Globex", "Initech"}
+	q.Projects, q.Shared = []string{"Globex", "Initech"}, true
 	if got := ids(t, s, q); !slices.Equal(got, []string{news.ID, failed.ID, alert.ID}) {
 		t.Fatalf("two projects = %q", got)
 	}
@@ -397,5 +402,37 @@ func TestAFailedPostChangesNothing(t *testing.T) {
 	// The failed post did not use up the day.
 	if _, err := s.Post(acme, announcement("Field", "Two"), t0, PostCaps{PerProject: 2}); err != nil {
 		t.Fatalf("a post after the failure: %v", err)
+	}
+}
+
+// A message addressed to a project's owners reaches whoever owns it when it
+// is read, and nobody without a subject.
+func TestAnOwnersAudienceReachesTheOwnersWhenRead(t *testing.T) {
+	m := Message{Audience: []string{OwnersAudience("Globex")}}
+	switch {
+	case !m.For(Reader{Subject: "ada", Owns: []string{"Field", "Globex"}}):
+		t.Fatal("an owner of Globex was not reached")
+	case m.For(Reader{Subject: "cy", Owns: []string{"Field"}}):
+		t.Fatal("an owner of Field alone was reached")
+	case m.For(Reader{Subject: "cy", Projects: []string{"Globex"}}):
+		t.Fatal("a member was reached as an owner")
+	case m.For(Reader{Owns: []string{"Globex"}}):
+		t.Fatal("a reader with no subject was reached")
+	}
+	s := NewStore()
+	raised, _, err := s.Raise(acme, "memory:note:1", Message{Kind: KindMemory, Audience: []string{OwnersAudience("Globex")}, Source: Source{Project: "Globex"}, Parts: []Part{{Type: PartMemory}}}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := readerIn("ada")
+	q.ReaderOwns = []string{"Globex"}
+	if got := ids(t, s, q); !slices.Equal(got, []string{raised.ID}) {
+		t.Fatalf("the owner's inbox = %q", got)
+	}
+	// In the project's own inbox it is still the owners'.
+	q = readerIn("bo")
+	q.Projects, q.Shared = []string{"Globex"}, true
+	if got := ids(t, s, q); len(got) != 0 {
+		t.Fatalf("a viewer of Globex's inbox sees %q", got)
 	}
 }

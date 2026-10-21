@@ -36,6 +36,9 @@ import (
 var (
 	ErrInvalid  = errors.New("policy: invalid")
 	ErrNotFound = errors.New("policy: not found")
+	// ErrAdmin reports a project owner's change to a limit an admin set,
+	// which only billing:write changes.
+	ErrAdmin = errors.New("policy: set by an admin")
 )
 
 // Kind is what a policy covers.

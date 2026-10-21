@@ -151,7 +151,7 @@ func TestMemoryDecidedElsewhereClosesItsMessage(t *testing.T) {
 	if err != nil || got.State != inbox.Dismissed {
 		t.Fatalf("after every proposal was dealt with the message is %s (%v)", got.State, err)
 	}
-	if open, _ := p.InboxCount(admin); open != 0 {
+	if open := p.InboxCount(admin).Open; open != 0 {
 		t.Fatalf("%d still open", open)
 	}
 }
@@ -254,7 +254,7 @@ func TestInboxHoldsFailures(t *testing.T) {
 			t.Fatalf("the alert was acknowledged by %q", a.AckedBy)
 		}
 	}
-	if open, _ := p.InboxCount(admin); open != 0 {
+	if open := p.InboxCount(admin).Open; open != 0 {
 		t.Fatalf("%d still open", open)
 	}
 	// A rule that names whom to notify addresses its message to them alone,
