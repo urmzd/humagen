@@ -362,6 +362,9 @@ type Reader struct {
 	// reader: the projects they are a member of and every ancestor of
 	// those, as the platform reads them from the tree.
 	Projects []string
+	// Owns are where an "owners:<name>" audience entry reaches the reader:
+	// the projects they own, as the platform reads them from the tree.
+	Owns []string
 }
 
 // audienceProject starts an audience entry that names a project.
@@ -370,6 +373,14 @@ const audienceProject = "project:"
 // ProjectAudience is the audience entry of a project's members and of the
 // members of every project below it. The root's is "project:".
 func ProjectAudience(project string) string { return audienceProject + project }
+
+// audienceOwners starts an audience entry that names a project's owners.
+const audienceOwners = "owners:"
+
+// OwnersAudience is the audience entry of whoever owns a project when the
+// message is read, through an entry there or above it. The root's is
+// "owners:".
+func OwnersAudience(project string) string { return audienceOwners + project }
 
 // For reports whether a message is addressed to a reader. Who may see its
 // kind at all is the caller's to decide. A project entry reaches only a
@@ -394,6 +405,11 @@ func (m Message) For(r Reader) bool {
 	}
 	for _, p := range r.Projects {
 		if r.Subject != "" && slices.Contains(m.Audience, ProjectAudience(p)) {
+			return true
+		}
+	}
+	for _, p := range r.Owns {
+		if r.Subject != "" && slices.Contains(m.Audience, OwnersAudience(p)) {
 			return true
 		}
 	}
@@ -890,8 +906,9 @@ type Query struct {
 	// Roles are the roles the reader holds, for messages addressed to a role.
 	Roles []string
 	// ReaderProjects are the projects whose announcements reach the reader
-	// (Reader.Projects).
+	// (Reader.Projects), and ReaderOwns the projects they own (Reader.Owns).
 	ReaderProjects []string
+	ReaderOwns     []string
 	// State keeps messages in one state. Empty means open. "all" means any.
 	// A broadcast is in the state the reader left it in.
 	State State
@@ -899,9 +916,12 @@ type Query struct {
 	// Kinds keeps messages of any of these kinds.
 	Kinds []Kind
 	// Projects keeps messages about these projects (Source.Project), the
-	// root's "" too when it is given. It is a project's inbox, so there a
-	// project audience entry naming one of them reaches any reader.
+	// root's "" too when it is given.
 	Projects []string
+	// Shared reads Projects as the projects' own inbox, which everyone who
+	// can see them reads: there a project audience entry naming one of them
+	// reaches any reader. Without it, the reader's own inbox is narrowed.
+	Shared bool
 	// Alert keeps the messages about one alert.
 	Alert string
 	// Agent keeps the messages about one agent: the one that raised them,
@@ -927,13 +947,15 @@ type filter struct {
 }
 
 func (q Query) filter() filter {
-	f := filter{Query: q, reader: Reader{Subject: q.Reader, Roles: q.Roles, Projects: q.ReaderProjects}}
+	f := filter{Query: q, reader: Reader{Subject: q.Reader, Roles: q.Roles, Projects: q.ReaderProjects, Owns: q.ReaderOwns}}
 	if len(q.Projects) > 0 {
 		f.projects = make(map[string]bool, len(q.Projects))
 		for _, p := range q.Projects {
 			f.projects[p] = true
 		}
-		f.reader.Projects = append(slices.Clone(q.ReaderProjects), q.Projects...)
+		if q.Shared {
+			f.reader.Projects = append(slices.Clone(q.ReaderProjects), q.Projects...)
+		}
 	}
 	return f
 }
@@ -1056,7 +1078,7 @@ type Counts struct {
 // Count returns what is open for a reader across their whole inbox: the
 // narrowing fields of q are ignored, and who is reading is kept.
 func (s *Store) Count(tenantName string, q Query) Counts {
-	q.State, q.Kind, q.Kinds, q.Projects, q.Alert, q.Agent, q.Unread = Open, "", nil, nil, "", "", false
+	q.State, q.Kind, q.Kinds, q.Projects, q.Shared, q.Alert, q.Agent, q.Unread = Open, "", nil, nil, false, "", "", false
 	f := q.filter()
 	s.mu.Lock()
 	defer s.mu.Unlock()

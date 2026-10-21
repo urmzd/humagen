@@ -3,6 +3,7 @@ package projects
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -158,10 +159,30 @@ func (s *Store) Move(tenantName, name string, version int, parent string, w Writ
 	if err := s.admit(tx.t, cur, next); err != nil {
 		return Project{}, err
 	}
-	if left := tx.t.tree().leftBehind(name, parent); leaving != nil && len(left) > 0 {
+	before := tx.t.tree()
+	after := tx.t.copy()
+	after.projects[name] = next
+	if lost := defaultsLost(before, after.tree(), before.Subtree(name)); len(lost) > 0 {
+		return Project{}, fmt.Errorf("%w: under %s, %s", ErrInUse, display(parent), strings.Join(lost, ", "))
+	}
+	if left := before.leftBehind(name, parent); leaving != nil && len(left) > 0 {
 		if err := leaving(left); err != nil {
 			return Project{}, err
 		}
 	}
 	return s.replace(tx, cur, next, w.By, at, Moved)
+}
+
+// defaultsLost names the defaults in names that are available before a move
+// and not after it, since a default that stopped being available is refused
+// rather than passed over.
+func defaultsLost(before, after *Tree, names []string) []string {
+	var out []string
+	for _, n := range names {
+		d := before.nodes[n].p.Agents.Default
+		if d != "" && d != Auto && before.IsAvailable(n, d) && !after.IsAvailable(n, d) {
+			out = append(out, fmt.Sprintf("the default of %s, %s, would not be available", display(n), d))
+		}
+	}
+	return out
 }

@@ -81,6 +81,13 @@ func (f *fixture) machine(t *testing.T, org string, scopes ...string) string {
 	return f.iss.Sign(t, "svc-"+org, audience, map[string]any{"org": org, "scp": scopes})
 }
 
+// machineAs is a machine of its own subject, for a test that tells callers
+// in one workspace apart by who they are.
+func (f *fixture) machineAs(t *testing.T, subject, org string, scopes ...string) string {
+	t.Helper()
+	return f.iss.Sign(t, subject, audience, map[string]any{"org": org, "scp": scopes})
+}
+
 func (f *fixture) do(t *testing.T, c *http.Client, method, path, bearer, body string, hdr ...string) (*http.Response, map[string]any) {
 	t.Helper()
 	req, err := http.NewRequest(method, f.srv.URL+path, strings.NewReader(body))

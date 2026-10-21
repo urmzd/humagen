@@ -308,6 +308,46 @@ func (t *Tree) InheritedOwners(name string) []InheritedOwner {
 	return out
 }
 
+// Roles returns the reader's access to every project the tree holds, the
+// root's "" among them, as Resolve would answer for each: one walk of the
+// tree, for a listing that shows each row's role.
+func (t *Tree) Roles(r Reader) map[string]Access {
+	access := make(map[string]Access, len(t.order))
+	for _, name := range t.order {
+		n := t.nodes[name]
+		a := Access{}
+		if r.Subject != "" {
+			a = step(n.p, access[n.p.Parent], r, name == Root)
+		}
+		access[name] = a
+	}
+	if r.Govern && r.Subject != "" {
+		for name, a := range access {
+			if a.Role != Owner {
+				access[name] = Access{Role: Owner, From: Root, Via: ViaGovern}
+			}
+		}
+	}
+	return access
+}
+
+// Owned returns, in tree order, every project the reader owns: through an
+// owner entry there or above, or projects:govern. A reader with no subject
+// owns nothing.
+func (t *Tree) Owned(r Reader) []string {
+	out := []string{}
+	if r.Subject == "" {
+		return out
+	}
+	access := t.Roles(r)
+	for _, name := range t.order {
+		if access[name].Role == Owner {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 // Memberships returns, in tree order, every project where the reader is at
 // least a member, and every ancestor of those: the projects whose
 // announcements reach them. projects:govern is left out: it owns every
@@ -317,13 +357,10 @@ func (t *Tree) Memberships(r Reader) []string {
 	if r.Subject == "" {
 		return []string{}
 	}
-	access := make(map[string]Access, len(t.order))
+	access := t.Roles(r)
 	in := map[string]bool{}
 	for _, name := range t.order {
-		n := t.nodes[name]
-		a := step(n.p, access[n.p.Parent], r, name == Root)
-		access[name] = a
-		if !a.Role.AtLeast(Member) {
+		if !access[name].Role.AtLeast(Member) {
 			continue
 		}
 		for at := name; !in[at]; at = t.nodes[at].p.Parent {

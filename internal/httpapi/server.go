@@ -671,6 +671,14 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, projects.ErrVersion)+"; reload and try again")
 	case errors.Is(err, projects.ErrForbidden):
 		fail(w, http.StatusForbidden, detail(err, projects.ErrForbidden))
+	case errors.Is(err, projects.ErrConfinement):
+		// "members-only projects need read confinement, not built: Globex
+		// needs an entry for everyone (*) of at least viewer".
+		fail(w, http.StatusConflict, strings.TrimPrefix(err.Error(), "projects: "))
+	case errors.Is(err, policy.ErrAdmin):
+		fail(w, http.StatusConflict, detail(err, policy.ErrAdmin))
+	case errors.Is(err, inbox.ErrLimit):
+		fail(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, callpolicy.ErrLimit):
 		fail(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, pick.ErrNoAgent):

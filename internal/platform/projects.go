@@ -30,16 +30,35 @@ type ProjectInput struct {
 	Parent       string                `json:"parent,omitempty"`
 	Account      *projects.AccountInfo `json:"account,omitempty"`
 	Instructions string                `json:"instructions,omitempty"`
+	// Members are who holds a role in it. Left out, everyone is a member
+	// (a viewer of an account) and the creator its owner, no more open than
+	// the parent allows.
+	Members []projects.Entry `json:"members,omitempty"`
 }
 
-// ProjectUpdate is what a person may change on a project once it exists, as a
-// whole: a field left empty is cleared. Version is the one they read.
+// ProjectUpdate is what a person may change on a project once it exists.
+// Title, description, account and instructions are replaced as a whole: one
+// left empty is cleared. Kind, Archived, Announce and Kinds change only when
+// they are given. Version is the one they read.
 type ProjectUpdate struct {
 	Version      int                   `json:"version"`
 	Title        string                `json:"title"`
 	Description  string                `json:"description"`
 	Account      *projects.AccountInfo `json:"account"`
 	Instructions string                `json:"instructions"`
+	// Kind is a built-in kind or one the workspace defines. Making a
+	// project company, or making a company project another kind, needs
+	// projects:govern.
+	Kind *projects.Kind `json:"kind,omitempty"`
+	// Archived archives the project or brings it back. The workspace is
+	// never archived.
+	Archived *bool `json:"archived,omitempty"`
+	// Announce is the lowest role that may post an announcement; "" reads
+	// as owner.
+	Announce *projects.Role `json:"announce,omitempty"`
+	// Kinds are the workspace's own kinds, on the workspace only. A kind a
+	// project still has cannot be removed.
+	Kinds *[]projects.KindSpec `json:"kinds,omitempty"`
 }
 
 // HasProject reports whether a tenant has a project by this exact name, as it
@@ -65,15 +84,29 @@ func (p *Platform) CreateProject(_ context.Context, tenant string, w projects.Wr
 	return p.Projects.Create(tenant, projects.Project{
 		Name: strings.TrimSpace(in.Name), Title: strings.TrimSpace(in.Title), Description: in.Description,
 		Kind: in.Kind, Parent: projects.NameOf(in.Parent), Account: in.Account, Instructions: in.Instructions,
+		Members: slices.Clone(in.Members),
 	}, w, p.now())
 }
 
 // UpdateProject replaces what a person may change on a project. The root and
 // company projects need projects:govern, a field the platform file sets
-// answers projects.ErrManaged, and a stale version projects.ErrVersion.
+// answers projects.ErrManaged, and a stale version projects.ErrVersion. A
+// new kind, archiving and the workspace's kinds are held to the tree.
 func (p *Platform) UpdateProject(_ context.Context, tenant, name string, w projects.Writer, in ProjectUpdate) (projects.Project, error) {
 	return p.Projects.Update(tenant, projects.NameOf(name), in.Version, w, p.now(), func(pr *projects.Project) error {
 		pr.Title, pr.Description, pr.Account, pr.Instructions = strings.TrimSpace(in.Title), in.Description, in.Account, in.Instructions
+		if in.Kind != nil {
+			pr.Kind = *in.Kind
+		}
+		if in.Archived != nil {
+			pr.Archived = *in.Archived
+		}
+		if in.Announce != nil {
+			pr.Announce = *in.Announce
+		}
+		if in.Kinds != nil {
+			pr.Kinds = slices.Clone(*in.Kinds)
+		}
 		return nil
 	})
 }
