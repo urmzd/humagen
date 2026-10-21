@@ -724,7 +724,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	}
 	switch {
 	case errors.Is(err, runs.ErrNotFound), errors.Is(err, registry.ErrNotFound), errors.Is(err, platform.ErrScheduleNotFound),
-		errors.Is(err, platform.ErrProjectNotFound),
+		errors.Is(err, platform.ErrProjectNotFound), errors.Is(err, errNotSeen),
 		errors.Is(err, alerts.ErrNotFound), errors.Is(err, knowledge.ErrNotFound), errors.Is(err, evals.ErrNotFound),
 		errors.Is(err, memory.ErrNotFound), errors.Is(err, policy.ErrNotFound), errors.Is(err, inbox.ErrNotFound),
 		errors.Is(err, artifacts.ErrNotFound), errors.Is(err, clients.ErrNotFound):

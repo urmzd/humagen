@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -17,6 +18,10 @@ import (
 
 // notFound answers as a missing object does.
 func notFound(w http.ResponseWriter) { fail(w, http.StatusNotFound, "not found") }
+
+// errNotSeen is what a handler returns for an object the caller may not read.
+// It answers as notFound does.
+var errNotSeen = errors.New("not found")
 
 // seenRun guards a route under /api/runs/{id}: the run must be one the caller
 // may read. A run that does not exist is left to the handler, which says so
@@ -78,6 +83,19 @@ func (s *Server) seenProject(h handler) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 		name := projects.NameOf(r.PathValue("name"))
 		if s.P.HasProject(who.Tenant, name) && !s.P.Seer(who).Project(name) {
+			notFound(w)
+			return
+		}
+		h(w, r, who)
+	}
+}
+
+// seenSuite guards a route under /api/evals/{name}: a suite that tests an
+// agent the caller may not read reads as one that does not exist.
+func (s *Server) seenSuite(h handler) handler {
+	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		suite, err := s.P.Evals.Get(who.Tenant, r.PathValue("name"))
+		if err == nil && !s.P.Seer(who).Suite(suite) {
 			notFound(w)
 			return
 		}

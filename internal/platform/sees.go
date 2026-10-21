@@ -10,11 +10,14 @@ import (
 
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 // Read confinement: one rule decides whether a reader sees something that
@@ -154,14 +157,39 @@ func (s *Seer) RunID(id string) bool {
 
 // Message reports whether the reader sees what an inbox message is about: its
 // run's place when it names a run the index holds, else the project and
-// thread it names. Who it is addressed to is the inbox's to decide besides.
+// thread it names, and the agent it names. Who it is addressed to is the
+// inbox's to decide besides.
 func (s *Seer) Message(m inbox.Message) bool {
 	if m.Source.Run != "" {
 		if r, err := s.p.Runs.Get(s.who.Tenant, m.Source.Run); err == nil {
 			return s.Run(r)
 		}
 	}
-	return s.Place(placeOfSource(m.Source))
+	return s.Place(placeOfSource(m.Source)) && (m.Source.Agent == "" || s.Agent(m.Source.Agent))
+}
+
+// Scope reports whether the reader sees what a limit is set on: an agent's
+// where they see the agent, a project's where they see the project.
+func (s *Seer) Scope(sc policy.Scope) bool {
+	switch sc.Kind {
+	case policy.Agent:
+		return s.Agent(sc.Name)
+	case policy.Project:
+		return s.Project(sc.Name)
+	}
+	return true
+}
+
+// Notice reports whether the reader sees a warning or refusal at a limit:
+// the project its run was filed in, its agent, and the limit's scope.
+func (s *Seer) Notice(e usage.Entry) bool {
+	return s.Place(Place{Project: e.Project}) && (e.Agent == "" || s.Agent(e.Agent)) && (e.Scope == nil || s.Scope(*e.Scope))
+}
+
+// Suite reports whether the reader sees an eval suite: one that tests an
+// agent where they see the agent.
+func (s *Seer) Suite(suite evals.Suite) bool {
+	return suite.Target != evals.Agent || s.Agent(suite.Subject)
 }
 
 // Artifact reports whether the reader sees a published file.

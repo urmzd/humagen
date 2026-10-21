@@ -40,10 +40,10 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/evals", s.authed(auth.EvalsRead, s.listSuites))
 	mux.HandleFunc("POST /api/evals", s.authed(auth.EvalsWrite, s.putSuite(false)))
-	mux.HandleFunc("PUT /api/evals/{name}", s.authed(auth.EvalsWrite, s.putSuite(true)))
-	mux.HandleFunc("DELETE /api/evals/{name}", s.authed(auth.EvalsWrite, s.deleteSuite))
-	mux.HandleFunc("POST /api/evals/{name}/run", s.authed(auth.EvalsWrite, s.runSuite))
-	mux.HandleFunc("GET /api/evals/{name}/runs", s.authed(auth.EvalsRead, s.suiteRuns))
+	mux.HandleFunc("PUT /api/evals/{name}", s.authed(auth.EvalsWrite, s.seenSuite(s.putSuite(true))))
+	mux.HandleFunc("DELETE /api/evals/{name}", s.authed(auth.EvalsWrite, s.seenSuite(s.deleteSuite)))
+	mux.HandleFunc("POST /api/evals/{name}/run", s.authed(auth.EvalsWrite, s.seenSuite(s.runSuite)))
+	mux.HandleFunc("GET /api/evals/{name}/runs", s.authed(auth.EvalsRead, s.seenSuite(s.suiteRuns)))
 
 	mux.HandleFunc("GET /api/knowledge", s.authed(auth.KnowledgeRead, s.listSources))
 	mux.HandleFunc("POST /api/knowledge", s.authed(auth.KnowledgeWrite, s.createSource))
@@ -479,7 +479,11 @@ type suiteView struct {
 
 func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	out := []suiteView{}
+	seer := s.P.Seer(who)
 	for _, suite := range s.P.Evals.List(who.Tenant) {
+		if !seer.Suite(suite) {
+			continue
+		}
 		runs, _ := s.P.Evals.Runs(who.Tenant, suite.Name)
 		if len(runs) > 20 {
 			runs = runs[:20]
@@ -508,6 +512,10 @@ func (s *Server) putSuite(replace bool) handler {
 		var err error
 		switch suite.Target {
 		case evals.Agent:
+			if !s.P.Seer(who).Agent(suite.Subject) {
+				notFound(w)
+				return
+			}
 			_, err = s.P.Agents.Get(r.Context(), who.Tenant, suite.Subject, 0)
 		case evals.Knowledge:
 			_, err = s.P.Knowledge.Documents(who.Tenant, suite.Subject)

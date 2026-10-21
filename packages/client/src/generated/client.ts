@@ -2024,7 +2024,10 @@ already raised stay, and so does its cooldown.
     });
   }
 
-  /** Up to 20 runs per suite, newest first. Results are kept on the latest run only. */
+  /** Up to 20 runs per suite, newest first. Results are kept on the latest
+run only. A suite that tests an agent the caller may not read is left
+out, and every route that names it answers 404.
+ */
   async listEvalSuites(options?: RequestOptions): Promise<ListEvalSuitesResponse> {
     const path = "/api/evals";
     return this.request<ListEvalSuitesResponse>("GET", path, {
@@ -3109,7 +3112,9 @@ end; pass it back as `before`.
     });
   }
 
-  /** List the workspace's limits */
+  /** A limit on an agent or a project the caller may not read is left
+out, as if it did not exist.
+ */
   async listPolicies(options?: RequestOptions): Promise<ListPoliciesResponse> {
     const path = "/api/policies";
     return this.request<ListPoliciesResponse>("GET", path, {
@@ -3171,7 +3176,9 @@ tighten what a wider one allows.
     });
   }
 
-  /** List every change made to the workspace's limits */
+  /** Changes to a limit on an agent or a project the caller may not read
+are left out.
+ */
   async listPolicyHistory(options?: RequestOptions): Promise<ListPolicyHistoryResponse> {
     const path = "/api/policies/history";
     return this.request<ListPolicyHistoryResponse>("GET", path, {
@@ -3186,7 +3193,9 @@ tighten what a wider one allows.
     });
   }
 
-  /** One entry per policy. A workspace with no policies has no entries.
+  /** One entry per policy the caller may read: a limit on an agent or a
+project they may not read is left out. A workspace with no policies
+has no entries.
 `state` is the worst of the enforced limits (runs and concurrency).
 Spend is recorded and not enforced, and `spend.metered` is false,
 because the runtime reports no cost.
@@ -3205,7 +3214,10 @@ because the runtime reports no cost.
     });
   }
 
-  /** The 200 most recent. */
+  /** Of the 200 most recent, those the caller may read: a notice about a
+run filed in a project they may not read, an agent they may not
+read, or a limit on either, is left out.
+ */
   async listUsageNotices(options?: RequestOptions): Promise<ListUsageNoticesResponse> {
     const path = "/api/usage/notices";
     return this.request<ListUsageNoticesResponse>("GET", path, {

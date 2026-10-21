@@ -2004,7 +2004,10 @@ paths:
       operationId: listEvalSuites
       tags: [evals]
       summary: List eval suites with their recent runs
-      description: Up to 20 runs per suite, newest first. Results are kept on the latest run only.
+      description: |
+        Up to 20 runs per suite, newest first. Results are kept on the latest
+        run only. A suite that tests an agent the caller may not read is left
+        out, and every route that names it answers 404.
       x-permission: evals:read
       responses:
         "200":
@@ -3316,6 +3319,9 @@ paths:
       operationId: listPolicies
       tags: [billing]
       summary: List the workspace's limits
+      description: |
+        A limit on an agent or a project the caller may not read is left
+        out, as if it did not exist.
       x-permission: billing:read
       responses:
         "200":
@@ -3385,6 +3391,9 @@ paths:
       operationId: listPolicyHistory
       tags: [billing]
       summary: List every change made to the workspace's limits
+      description: |
+        Changes to a limit on an agent or a project the caller may not read
+        are left out.
       x-permission: billing:read
       responses:
         "200":
@@ -3407,7 +3416,9 @@ paths:
       tags: [billing]
       summary: Report usage against every limit, for the current period
       description: |
-        One entry per policy. A workspace with no policies has no entries.
+        One entry per policy the caller may read: a limit on an agent or a
+        project they may not read is left out. A workspace with no policies
+        has no entries.
         `state` is the worst of the enforced limits (runs and concurrency).
         Spend is recorded and not enforced, and `spend.metered` is false,
         because the runtime reports no cost.
@@ -3432,7 +3443,10 @@ paths:
       operationId: listUsageNotices
       tags: [billing]
       summary: List recent refusals and warnings from the usage ledger
-      description: The 200 most recent.
+      description: |
+        Of the 200 most recent, those the caller may read: a notice about a
+        run filed in a project they may not read, an agent they may not
+        read, or a limit on either, is left out.
       x-permission: billing:read
       responses:
         "200":
