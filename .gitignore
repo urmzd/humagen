@@ -40,3 +40,6 @@ storybook-static/
 
 # Local compose settings
 deploy/compose/.env
+
+# What `warp deploy` writes beside a spec
+.warp/

@@ -16,7 +16,9 @@
 #
 # See docs/deploy.md.
 
-ARG GO_VERSION=1.26.9
+# At least the go directive in go.mod: the golang image sets GOTOOLCHAIN=local,
+# so it cannot fetch a newer toolchain.
+ARG GO_VERSION=1.26.10
 ARG NODE_VERSION=24
 
 # 1. The web console: a Vite build inside the pnpm workspace.
@@ -42,6 +44,9 @@ COPY internal ./internal
 COPY pkg ./pkg
 COPY *.go ./
 COPY api ./api
+# The Helm chart `warp deploy` carries, embedded by deploy/chart.go.
+COPY deploy/chart.go ./deploy/
+COPY deploy/helm/warp ./deploy/helm/warp
 ARG VERSION=dev
 ARG COMMIT=none
 ARG DATE=unknown

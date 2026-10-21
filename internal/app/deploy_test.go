@@ -2,10 +2,14 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,7 +20,7 @@ import (
 func TestDeployWritesAComposeProjectWithNoSecretsInIt(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	if err := os.WriteFile(path, []byte(`api_version: warp/v1
 kind: System
 metadata: {name: acme}
 spec:
@@ -32,7 +36,9 @@ kind: Platform
 metadata: {name: default}
 spec:
   models: [{name: anthropic, kind: anthropic, anthropic: {key: {ref: "env:ANTHROPIC_API_KEY"}}}]
-`), 0o600)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	out := filepath.Join(dir, "out")
 	if err := deployCmd(Options{}, []string{"-f", path, "-o", out}, strings.NewReader(""), io.Discard); err != nil {
 		t.Fatal(err)
@@ -80,7 +86,9 @@ func TestCarryTurnsAKeychainReferenceIntoAnEnvOne(t *testing.T) {
 func TestDeployingDevAuthKeepsItOnLoopback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  deploy: {kind: compose, compose: {image: warp:dev}}\n"), 0o600)
+	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  deploy: {kind: compose, compose: {image: warp:dev}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	out := filepath.Join(dir, "out")
 	if err := deployCmd(Options{}, []string{"-f", path, "-o", out}, strings.NewReader(""), io.Discard); err != nil {
 		t.Fatal(err)
@@ -94,7 +102,7 @@ func TestDeployingDevAuthKeepsItOnLoopback(t *testing.T) {
 func TestDeployWritesTheChartAndItsValues(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	if err := os.WriteFile(path, []byte(`api_version: warp/v1
 kind: System
 metadata: {name: acme}
 spec:
@@ -109,7 +117,9 @@ spec:
 api_version: warp/v1
 kind: Platform
 metadata: {name: default, display_name: Acme}
-`), 0o600)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	out := filepath.Join(dir, "out")
 	if err := deployCmd(Options{}, []string{"-f", path, "-o", out}, strings.NewReader(""), io.Discard); err != nil {
 		t.Fatal(err)
@@ -138,9 +148,173 @@ metadata: {name: default, display_name: Acme}
 
 func TestDeployRefusesLoopbackSignInForACluster(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  deploy: {kind: kubernetes}\n"), 0o600)
+	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  deploy: {kind: kubernetes}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	err := deployCmd(Options{}, []string{"-f", path, "-o", t.TempDir()}, strings.NewReader(""), io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "loopback") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// ran records the commands a deploy runs instead of running them, with what
+// each was handed on its standard input.
+type ran struct {
+	args  [][]string
+	stdin []string
+}
+
+func (r *ran) run(cmd *exec.Cmd) error {
+	r.args = append(r.args, cmd.Args)
+	in := ""
+	if cmd.Stdin != nil {
+		b, err := io.ReadAll(cmd.Stdin)
+		if err != nil {
+			return err
+		}
+		in = string(b)
+	}
+	r.stdin = append(r.stdin, in)
+	return nil
+}
+
+func TestDeployToKubernetesPutsNoSecretOnAnyCommandLine(t *testing.T) {
+	t.Setenv("WARP_POSTGRES_URL", "postgres://warp:pg-from-the-shell@db:5432/warp")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "warp.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: warp/v1
+kind: System
+metadata: {name: acme}
+spec:
+  auth:
+    kind: oidc
+    oidc: {issuer: "https://login.example.com", client_id: warp, audience: warp, client_secret: {ref: "keychain:warp/oidc"}}
+  stores: {kind: postgres, postgres: {url: {ref: "env:WARP_POSTGRES_URL"}}}
+  deploy:
+    kind: kubernetes
+    kubernetes: {namespace: agents, context: prod}
+---
+api_version: warp/v1
+kind: Platform
+metadata: {name: default}
+spec:
+  models: [{name: anthropic, kind: anthropic, anthropic: {key: {ref: "keychain:warp/anthropic"}}}]
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	keys := credref.Resolver{GOOS: "linux", Run: func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		if strings.Contains(strings.Join(args, " "), "anthropic") {
+			return []byte("sk-from-the-keychain"), nil
+		}
+		return []byte("oidc-from-the-keychain"), nil
+	}}
+	var r ran
+	if err := deploy(Options{}, []string{"-f", path}, strings.NewReader(""), io.Discard, keys, r.run); err != nil {
+		t.Fatal(err)
+	}
+	secrets := []string{"pg-from-the-shell", "sk-from-the-keychain", "oidc-from-the-keychain"}
+	for _, args := range r.args {
+		for _, a := range args {
+			for _, s := range secrets {
+				if strings.Contains(a, s) {
+					t.Errorf("%s is on a command line: %q", s, args)
+				}
+			}
+		}
+	}
+	if len(r.args) != 2 || r.args[0][0] != "kubectl" || r.args[1][0] != "helm" {
+		t.Fatalf("ran %q, want kubectl apply then helm", r.args)
+	}
+	if want := []string{"kubectl", "apply", "-f", "-", "-n", "agents", "--context", "prod"}; !slices.Equal(r.args[0], want) {
+		t.Errorf("kubectl args = %q, want %q", r.args[0], want)
+	}
+	var got struct {
+		APIVersion string            `json:"apiVersion"`
+		Kind       string            `json:"kind"`
+		Type       string            `json:"type"`
+		Metadata   map[string]string `json:"metadata"`
+		Data       map[string]string `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(r.stdin[0]), &got); err != nil {
+		t.Fatalf("kubectl's stdin is not a manifest: %v\n%s", err, r.stdin[0])
+	}
+	if got.APIVersion != "v1" || got.Kind != "Secret" || got.Type != "Opaque" || got.Metadata["name"] != "acme-env" || got.Metadata["namespace"] != "agents" {
+		t.Errorf("manifest = %+v", got)
+	}
+	var keychain []string
+	for k, v := range got.Data {
+		b, err := base64.StdEncoding.DecodeString(v)
+		if err != nil {
+			t.Fatalf("data.%s is not base64: %v", k, err)
+		}
+		switch {
+		case k == "WARP_POSTGRES_URL":
+			if !strings.Contains(string(b), "pg-from-the-shell") {
+				t.Errorf("data.%s = %q, want the shell's value", k, b)
+			}
+		case strings.HasPrefix(k, "WARP_REF_"):
+			keychain = append(keychain, string(b))
+		default:
+			t.Errorf("data has %s, which the spec does not reference", k)
+		}
+	}
+	slices.Sort(keychain)
+	if want := []string{"oidc-from-the-keychain", "sk-from-the-keychain"}; !slices.Equal(keychain, want) {
+		t.Errorf("keychain values in the Secret = %q, want %q", keychain, want)
+	}
+}
+
+func TestCarryNamesEachReferenceTheSameOnEveryDeploy(t *testing.T) {
+	cfg := spec.Config{Platforms: []spec.Platform{{Metadata: spec.Metadata{Name: "default"}, Spec: spec.PlatformSpec{
+		Surfaces: spec.Surfaces{Slack: &spec.Slack{Enabled: true, Team: "T1", BotToken: &spec.Ref{Ref: "keychain:warp/bot"}, AppToken: &spec.Ref{Ref: "keychain:warp/app"}}},
+	}}}}
+	cfg.System.Spec.Auth.Slot = spec.Slot{Kind: "oidc", Block: spec.MustJSON(map[string]any{"client_secret": map[string]any{"ref": "keychain:warp/oidc"}})}
+	keys := credref.Resolver{GOOS: "linux", Run: func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		return []byte(strings.Join(args, " ")), nil
+	}}
+	var first map[string]string
+	for range 20 {
+		c, err := carry(context.Background(), cfg, keys)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first == nil {
+			first = c.values
+			continue
+		}
+		if !maps.Equal(c.values, first) {
+			t.Fatalf("carry named the references %v, then %v", first, c.values)
+		}
+	}
+}
+
+func TestDeployToComposeLeavesTheCheckedInComposeProjectAlone(t *testing.T) {
+	root := t.TempDir()
+	checkedIn := filepath.Join(root, "deploy", "compose", "compose.yaml")
+	if err := os.MkdirAll(filepath.Dir(checkedIn), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(checkedIn, []byte("# the checked-in project\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "warp.yaml")
+	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\nspec:\n  deploy: {kind: compose, compose: {image: warp:dev}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var r ran
+	if err := deploy(Options{}, []string{"-f", path}, strings.NewReader(""), io.Discard, credref.Default, r.run); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(checkedIn); string(b) != "# the checked-in project\n" {
+		t.Errorf("deploy wrote over deploy/compose/compose.yaml:\n%s", b)
+	}
+	want := filepath.Join(root, ".warp", "compose")
+	for _, f := range []string{"compose.yaml", "warp.yaml"} {
+		if _, err := os.Stat(filepath.Join(want, f)); err != nil {
+			t.Errorf("the project is not in %s: %v", want, err)
+		}
+	}
+	if len(r.args) != 1 || !slices.Contains(r.args[0], want) {
+		t.Errorf("ran %q, want docker compose on %s", r.args, want)
 	}
 }

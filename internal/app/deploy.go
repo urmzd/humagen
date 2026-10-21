@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"net"
 	"os"
 	"os/exec"
@@ -32,7 +34,16 @@ import (
 // passed from this process's environment; a keychain: or op:// reference is
 // read here and handed to the target as an environment variable it then
 // references, because the target cannot reach this machine's keychain.
+// Nor does one land on a command line: every user of this machine can read a
+// command's arguments (ps, /proc), so a secret reaches a tool on its standard
+// input or in its environment.
 func deployCmd(o Options, args []string, in io.Reader, out io.Writer) error {
+	return deploy(o, args, in, out, credref.Default, (*exec.Cmd).Run)
+}
+
+// deploy is deployCmd with what it reaches beyond this process: keys reads
+// keychain and 1Password references, and run runs docker, helm and kubectl.
+func deploy(o Options, args []string, in io.Reader, out io.Writer, keys credref.Resolver, run func(*exec.Cmd) error) error {
 	fs := flag.NewFlagSet("deploy", flag.ContinueOnError)
 	var paths files
 	fs.Var(&paths, "f", "a spec file or directory; repeatable. Empty means warp.yaml in the config directory")
@@ -77,13 +88,13 @@ func deployCmd(o Options, args []string, in io.Reader, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		return deployCompose(ctx, cfg, b, paths, *outDir, credref.Default, out)
+		return deployCompose(ctx, cfg, b, paths, *outDir, keys, run, out)
 	case "kubernetes":
 		b, err := spec.Block[spec.Kubernetes](d)
 		if err != nil {
 			return err
 		}
-		return deployKubernetes(ctx, cfg, b, paths, *outDir, credref.Default, out)
+		return deployKubernetes(ctx, cfg, b, *outDir, keys, run, out)
 	default:
 		return fmt.Errorf("deploy: kind %q is not local, compose or kubernetes", d.Kind)
 	}
@@ -137,8 +148,10 @@ func carry(ctx context.Context, cfg spec.Config, keys credref.Resolver) (carried
 				t["ref"] = "env:" + name
 				return nil
 			}
-			for _, child := range t {
-				if err := walk(child); err != nil {
+			// In key order, so each reference gets the same WARP_REF_n on
+			// every deploy and a written deployment does not churn.
+			for _, k := range slices.Sorted(maps.Keys(t)) {
+				if err := walk(t[k]); err != nil {
 					return err
 				}
 			}
@@ -179,18 +192,29 @@ func loopbackAuth(cfg spec.Config) bool {
 	return false
 }
 
-func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths []string, outDir string, keys credref.Resolver, out io.Writer) error {
+// specDir is the directory the spec was read from: the first path when it
+// is a directory, else the directory holding it.
+func specDir(paths []string) string {
+	if len(paths) == 0 {
+		return "."
+	}
+	if st, err := os.Stat(paths[0]); err == nil && st.IsDir() {
+		return paths[0]
+	}
+	return filepath.Dir(paths[0])
+}
+
+func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths []string, outDir string, keys credref.Resolver, run func(*exec.Cmd) error, out io.Writer) error {
 	name := cfg.System.Metadata.Name
 	dir := b.Dir
 	if outDir != "" {
 		dir = outDir
 	}
+	// The default is .warp/compose beside the spec, which git ignores. A spec
+	// at the root of a warp checkout, where the image is built from, then
+	// cannot write over the checked-in deploy/compose project.
 	if dir == "" {
-		base := "."
-		if len(paths) > 0 {
-			base = filepath.Dir(paths[0])
-		}
-		dir = filepath.Join(base, "deploy", "compose")
+		dir = filepath.Join(specDir(paths), ".warp", "compose")
 	}
 	port := b.Port
 	if port == 0 {
@@ -298,14 +322,14 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 	cmd := exec.CommandContext(ctx, "docker", "compose", "--project-directory", dir, "up", "-d", "--build")
 	cmd.Env, cmd.Stdout, cmd.Stderr = c.environ(), out, os.Stderr
 	fmt.Fprintf(out, "warp: deploying %s with docker compose from %s\n", name, dir)
-	if err := cmd.Run(); err != nil {
+	if err := run(cmd); err != nil {
 		return fmt.Errorf("deploy: docker compose: %w", err)
 	}
 	fmt.Fprintf(out, "warp: %s is up at http://127.0.0.1:%d\n", name, port)
 	return nil
 }
 
-func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, paths []string, outDir string, keys credref.Resolver, out io.Writer) error {
+func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, outDir string, keys credref.Resolver, run func(*exec.Cmd) error, out io.Writer) error {
 	if loopbackAuth(cfg) {
 		return fmt.Errorf("deploy: auth.kind %s only answers on loopback, so it cannot serve a cluster; use oidc", cfg.System.Spec.Auth.Kind)
 	}
@@ -360,14 +384,14 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, p
 		return nil
 	}
 	if len(c.env) > 0 {
-		if err := applySecret(ctx, c, release+"-env", kube, out); err != nil {
+		if err := applySecret(ctx, c, release+"-env", ns, kube, run, out); err != nil {
 			return err
 		}
 	}
 	cmd := exec.CommandContext(ctx, "helm", helmArgs...)
 	cmd.Stdout, cmd.Stderr = out, os.Stderr
 	fmt.Fprintf(out, "warp: deploying %s to namespace %s with helm\n", release, ns)
-	if err := cmd.Run(); err != nil {
+	if err := run(cmd); err != nil {
 		return fmt.Errorf("deploy: helm: %w", err)
 	}
 	return nil
@@ -438,8 +462,10 @@ func merge(base, over map[string]any) map[string]any {
 // applySecret creates or replaces the Secret the chart reads the references
 // from, with values from this shell's environment and from carry. A variable
 // the spec references but nobody set stops the deploy here, not at start.
-func applySecret(ctx context.Context, c carried, name string, kube []string, out io.Writer) error {
-	args := append([]string{"create", "secret", "generic", name, "--dry-run=client", "-o", "yaml"}, kube...)
+// The manifest is built here and goes to kubectl on its standard input, so no
+// value is on its command line.
+func applySecret(ctx context.Context, c carried, name, ns string, kube []string, run func(*exec.Cmd) error, out io.Writer) error {
+	data := map[string][]byte{}
 	var missing []string
 	for _, v := range c.env {
 		val, ok := c.values[v]
@@ -450,21 +476,36 @@ func applySecret(ctx context.Context, c carried, name string, kube []string, out
 			missing = append(missing, v)
 			continue
 		}
-		args = append(args, "--from-literal="+v+"="+val)
+		data[v] = []byte(val)
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("deploy: the spec references %s, which this shell has not set", strings.Join(missing, ", "))
 	}
-	manifest, err := exec.CommandContext(ctx, "kubectl", args...).Output()
+	manifest, err := json.Marshal(kubeSecret{APIVersion: "v1", Kind: "Secret", Metadata: kubeMeta{Name: name, Namespace: ns}, Type: "Opaque", Data: data})
 	if err != nil {
-		return fmt.Errorf("deploy: kubectl create secret: %w", err)
+		return err
 	}
 	apply := exec.CommandContext(ctx, "kubectl", append([]string{"apply", "-f", "-"}, kube...)...)
-	apply.Stdin, apply.Stdout, apply.Stderr = strings.NewReader(string(manifest)), out, os.Stderr
-	if err := apply.Run(); err != nil {
+	apply.Stdin, apply.Stdout, apply.Stderr = bytes.NewReader(manifest), out, os.Stderr
+	if err := run(apply); err != nil {
 		return fmt.Errorf("deploy: kubectl apply: %w", err)
 	}
 	return nil
+}
+
+// kubeSecret is a core/v1 Secret as kubectl apply reads it. encoding/json
+// writes a []byte as standard base64, which is what the API expects in data.
+type kubeSecret struct {
+	APIVersion string            `json:"apiVersion"`
+	Kind       string            `json:"kind"`
+	Metadata   kubeMeta          `json:"metadata"`
+	Type       string            `json:"type"`
+	Data       map[string][]byte `json:"data"`
+}
+
+type kubeMeta struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
 }
 
 func mustSub(f fs.FS, dir string) fs.FS {
