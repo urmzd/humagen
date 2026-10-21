@@ -259,12 +259,29 @@ func (s *Server) agentHistory(w http.ResponseWriter, r *http.Request, who auth.P
 	ok(w, http.StatusOK, map[string]any{"revisions": orEmpty(revs)})
 }
 
-func (s *Server) listMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, r.PathValue("name"), 0); err != nil {
+// agentOwner resolves the agent in the path to its memory owner, or answers
+// 404. A name that is a project's owner is no agent's, whatever the agents
+// are called, so a project's notes are reached only through the project's
+// routes, where projects:govern is asked for the wide ones.
+func (s *Server) agentOwner(w http.ResponseWriter, r *http.Request, who auth.Principal) (string, bool) {
+	name := r.PathValue("name")
+	if _, isProject := memory.OwnerProject(name); isProject {
+		s.problem(w, fmt.Errorf("%w: no agent called %q", registry.ErrNotFound, name))
+		return "", false
+	}
+	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, name, 0); err != nil {
 		s.problem(w, err)
+		return "", false
+	}
+	return name, true
+}
+
+func (s *Server) listMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	owner, found := s.agentOwner(w, r, who)
+	if !found {
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"notes": orEmpty(s.P.Memory.List(who.Tenant, r.PathValue("name")))})
+	ok(w, http.StatusOK, map[string]any{"notes": orEmpty(s.P.Memory.List(who.Tenant, owner))})
 }
 
 func (s *Server) addMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -274,12 +291,12 @@ func (s *Server) addMemory(w http.ResponseWriter, r *http.Request, who auth.Prin
 	if !decode(w, r, &body) {
 		return
 	}
-	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, r.PathValue("name"), 0); err != nil {
-		s.problem(w, err)
+	owner, found := s.agentOwner(w, r, who)
+	if !found {
 		return
 	}
 	// A person writing a note is the approval.
-	note, err := s.P.Memory.Add(who.Tenant, r.PathValue("name"), body.Text, memory.Person, memory.Approved, who.Subject, time.Now())
+	note, err := s.P.Memory.Add(who.Tenant, owner, body.Text, memory.Person, memory.Approved, who.Subject, time.Now())
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -296,11 +313,11 @@ func (s *Server) approveMemory(w http.ResponseWriter, r *http.Request, who auth.
 	if !decode(w, r, &body) {
 		return
 	}
-	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, r.PathValue("name"), 0); err != nil {
-		s.problem(w, err)
+	owner, found := s.agentOwner(w, r, who)
+	if !found {
 		return
 	}
-	n, err := s.P.ApproveMemory(who.Tenant, r.PathValue("name"), body.IDs)
+	n, err := s.P.ApproveMemory(who.Tenant, owner, body.IDs)
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -333,7 +350,11 @@ func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.
 }
 
 func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	if err := s.P.RemoveMemory(who.Tenant, r.PathValue("name"), r.PathValue("id")); err != nil {
+	owner, found := s.agentOwner(w, r, who)
+	if !found {
+		return
+	}
+	if err := s.P.RemoveMemory(who.Tenant, owner, r.PathValue("id")); err != nil {
 		s.problem(w, err)
 		return
 	}

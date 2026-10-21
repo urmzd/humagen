@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -28,6 +29,14 @@ var (
 // proposals runs one turn with a memory agent and waits for what it proposed
 // to reach the inbox.
 func proposals(t *testing.T) (*platform.Platform, inbox.Message) {
+	t.Helper()
+	p := withMemoryAgent(t)
+	return p, proposed(t, p, "api-1", "")
+}
+
+// withMemoryAgent runs a platform with the agent lead and the memory agent
+// scribe, whose proposals wait for a person.
+func withMemoryAgent(t *testing.T) *platform.Platform {
 	t.Helper()
 	p, err := platform.New(platform.Config{Workspace: t.TempDir(), OfflineHooks: true})
 	if err != nil {
@@ -51,7 +60,14 @@ func proposals(t *testing.T) (*platform.Platform, inbox.Message) {
 	if err := p.SetSettings(ctx, tenant, platform.Settings{MemoryAgent: "scribe"}); err != nil {
 		t.Fatal(err)
 	}
-	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-1", Agent: "lead", Text: "Plan the launch"})
+	return p
+}
+
+// proposed runs one turn filed in a project and waits for the message about
+// what the memory agent proposed after it.
+func proposed(t *testing.T, p *platform.Platform, id, project string) inbox.Message {
+	t.Helper()
+	first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: id, Agent: "lead", Text: "Plan the launch", Project: project})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,8 +78,16 @@ func proposals(t *testing.T) (*platform.Platform, inbox.Message) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(page) == 1 {
-			return p, page[0]
+		// A turn at the root teaches its agent, and one in a project the
+		// project.
+		owner := "lead"
+		if project != "" {
+			owner = memory.ProjectOwner(project)
+		}
+		for _, m := range page {
+			if m.Parts[0].Memory != nil && m.Parts[0].Memory.Owner == owner {
+				return m
+			}
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("no memory message reached the inbox: %+v", page)
@@ -127,6 +151,92 @@ func TestInboxDecidesProposedMemory(t *testing.T) {
 	}
 	if got := p.Memory.List(tenant, "lead"); len(got) != 1 {
 		t.Fatalf("a second decision changed the notes: %+v", got)
+	}
+}
+
+// A proposal for a project's notes is the project's to decide, as its own
+// memory routes ask: projects:write, and projects:govern as well for a company
+// project's and the workspace's, which every agent in a wide part of the tree
+// is sent. agents:write is not a way around either.
+func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
+	p := withMemoryAgent(t)
+	ctx := t.Context()
+	manager := auth.Principal{Subject: "mo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	if _, err := p.CreateProject(ctx, tenant, govern, platform.ProjectInput{Name: "News", Kind: projects.Company}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Launch"}); err != nil {
+		t.Fatal(err)
+	}
+	news, launch := proposed(t, p, "api-news", "News"), proposed(t, p, "api-launch", "Launch")
+	pending := func(owner string) int {
+		n := 0
+		for _, note := range p.Memory.List(tenant, owner) {
+			if note.Status == memory.Pending {
+				n++
+			}
+		}
+		return n
+	}
+
+	// A company project's: a manager holds agents:write and projects:write,
+	// not govern, and is offered nothing.
+	part := news.Parts[0]
+	seen, err := p.InboxGet(manager, news.ID)
+	if err != nil || len(seen.Parts[0].Actions) != 0 {
+		t.Fatalf("a manager is offered %v on a company project's proposals (%v)", seen.Parts[0].Actions, err)
+	}
+	for _, action := range []string{platform.ActKeep, platform.ActDiscard} {
+		r := platform.Resolution{Action: action, IDs: []string{part.Memory.Notes[0].ID}}
+		if _, err := p.InboxResolve(ctx, manager, news.ID, part.ID, r); !errors.Is(err, projects.ErrForbidden) {
+			t.Fatalf("a manager's %s on a company project's proposals = %v, want forbidden", action, err)
+		}
+	}
+	if n := pending(memory.ProjectOwner("News")); n != len(part.Memory.Notes) {
+		t.Fatalf("a refused decision changed News's proposals: %d pending", n)
+	}
+	if seen, _ := p.InboxGet(admin, news.ID); len(seen.Parts[0].Actions) != 2 {
+		t.Fatalf("an admin is offered %v", seen.Parts[0].Actions)
+	}
+	if _, err := p.InboxResolve(ctx, admin, news.ID, part.ID, platform.Resolution{Action: platform.ActKeep, IDs: []string{part.Memory.Notes[0].ID}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A team project's: projects:write is enough, without agents:write.
+	part = launch.Parts[0]
+	if seen, _ := p.InboxGet(viewer, launch.ID); len(seen.Parts[0].Actions) != 0 {
+		t.Fatalf("a viewer is offered %v", seen.Parts[0].Actions)
+	}
+	if seen, _ := p.InboxGet(operator, launch.ID); len(seen.Parts[0].Actions) != 2 {
+		t.Fatalf("an operator is offered %v on a team project's proposals", seen.Parts[0].Actions)
+	}
+	if _, err := p.InboxResolve(ctx, operator, launch.ID, part.ID, platform.Resolution{Action: platform.ActDiscard}); err != nil {
+		t.Fatalf("an operator discarding a team project's proposals = %v", err)
+	}
+	if n := len(p.Memory.List(tenant, memory.ProjectOwner("Launch"))); n != 0 {
+		t.Fatalf("%d of Launch's proposals outlived the discard", n)
+	}
+
+	// The workspace's own: govern again.
+	note, err := p.Memory.Add(tenant, memory.ProjectOwner(""), "Everyone ships on Tuesdays.", memory.Consolidated, memory.Pending, "run-x", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _, err := p.Inbox.Raise(tenant, "memory:root", inbox.Message{
+		Kind: inbox.KindMemory, Subject: "1 proposed memory for the workspace", Severity: inbox.Info,
+		Parts: []inbox.Part{{Type: inbox.PartMemory, Memory: &inbox.MemoryPart{Owner: memory.ProjectOwner(""), Notes: []inbox.NoteRef{{ID: note.ID, Text: note.Text}}}}},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.InboxResolve(ctx, manager, root.ID, root.Parts[0].ID, platform.Resolution{Action: platform.ActKeep, IDs: []string{note.ID}}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a manager keeping the workspace's proposal = %v, want forbidden", err)
+	}
+	if _, err := p.InboxResolve(ctx, admin, root.ID, root.Parts[0].ID, platform.Resolution{Action: platform.ActKeep, IDs: []string{note.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Memory.List(tenant, memory.ProjectOwner("")); len(got) != 1 || got[0].Status != memory.Approved {
+		t.Fatalf("the workspace's notes = %+v", got)
 	}
 }
 

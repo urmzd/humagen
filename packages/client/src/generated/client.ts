@@ -676,7 +676,11 @@ At most 500 agents; `truncated` says there are more.
     });
   }
 
-  /** List what an agent remembers */
+  /** An agent's own notes. A project's are read and changed through its
+own routes (`listProjectMemory`), so a name that is no agent's, a
+project's memory owner such as `project:News` among them, is 404 here
+and on every agent memory route.
+ */
   async listAgentMemory(name: string, options?: RequestOptions): Promise<NoteList> {
     let path = "/api/agents/{name}/memory";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -735,7 +739,7 @@ At most 500 agents; `truncated` says there are more.
     });
   }
 
-  /** Remove a note */
+  /** An agent that does not exist, or a note that is not its own, is 404. */
   async removeAgentMemory(name: string, id: string, options?: RequestOptions): Promise<void> {
     let path = "/api/agents/{name}/memory/{id}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -1438,7 +1442,7 @@ inbox, and an action the caller lacks the permission for answers 403:
 |------|--------|-------|
 | `alert` | `acknowledge` | `alerts:write` |
 | `failure` | `retry`, `acknowledge` | `runs:write` |
-| `memory` | `keep` (with `ids`), `discard` | `agents:write` |
+| `memory` | `keep` (with `ids`), `discard` | `agents:write` for an agent's notes; for a project's `projects:write`, and `projects:govern` as well for the workspace's and a company project's |
 | `budget` | `raise_limit` (with `limits`) | `billing:write` |
 | `budget` | `acknowledge` | `alerts:write` |
 | `approval` | `approve` (optionally with `arguments`), `deny` | `runs:write` |

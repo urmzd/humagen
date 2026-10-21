@@ -37,7 +37,10 @@ under them, and because reusing the name of a deleted project adopts the
 conversations still filed under it. `projects:govern` grants nothing on its
 own: every project route checks `projects:read` or `projects:write` first, and
 govern is asked for on top, for the workspace, a company project, its notes, or
-a deleted name. Projects have no roles yet, so anyone holding `projects:write`
+a deleted name. Its notes are asked the same through every route that changes
+them: the project's memory routes and the inbox. The agent memory routes reach
+an agent's own notes only, and answer 404 for a project's memory owner
+(`project:<name>`, and `project:` for the workspace). Projects have no roles yet, so anyone holding `projects:write`
 changes every other project, and every project is visible to everyone holding
 `projects:read`.
 
@@ -277,7 +280,7 @@ decided per message:
 |------|--------|-----------|
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
 | Failed run | `runs:read` | `runs:write` |
-| Proposed memory | `agents:read` | `agents:write` |
+| Proposed memory | `agents:read` | `agents:write` for an agent's; `projects:write` for a project's, and `projects:govern` as well for the workspace's and a company project's |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |
 
 A message a caller may not see answers 404, not 403, and is left out of their

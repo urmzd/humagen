@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/projects"
@@ -156,7 +157,7 @@ func (p *Platform) ProjectLimits(tenant, name string) ([]policy.Policy, error) {
 }
 
 // ProjectMemoryOwner is the memory owner a project's notes are kept under:
-// "workspace" for the root. A project the tenant does not have is
+// "project:" for the root. A project the tenant does not have is
 // projects.ErrNotFound.
 func (p *Platform) ProjectMemoryOwner(tenant, name string) (string, error) {
 	name = projects.NameOf(name)
@@ -164,6 +165,27 @@ func (p *Platform) ProjectMemoryOwner(tenant, name string) (string, error) {
 		return "", fmt.Errorf("%w: %q", projects.ErrNotFound, name)
 	}
 	return memory.ProjectOwner(name), nil
+}
+
+// MayChangeNotes reports whether who may add, approve or remove a project's
+// notes, by any route: the project's memory routes and the inbox alike. It
+// takes projects:write, and for the workspace and company projects, whose
+// notes every agent in a wide part of the tree is sent, projects:govern as
+// well, as changing the project does. A project the tenant does not have is
+// projects.ErrNotFound.
+func (p *Platform) MayChangeNotes(who auth.Principal, name string) error {
+	name = projects.NameOf(name)
+	pr, ok := p.Projects.Tree(who.Tenant).Get(name)
+	if !ok {
+		return fmt.Errorf("%w: %q", projects.ErrNotFound, name)
+	}
+	if !who.Can(auth.ProjectsWrite) {
+		return fmt.Errorf("%w: changing a project's notes needs %s", ErrForbidden, auth.ProjectsWrite)
+	}
+	if (pr.IsRoot() || pr.Kind == projects.Company) && !who.Can(auth.ProjectsGovern) {
+		return fmt.Errorf("%w: the notes of the workspace and of company projects are changed with %s", projects.ErrForbidden, auth.ProjectsGovern)
+	}
+	return nil
 }
 
 // migration is who the projects moved out of settings were created by.

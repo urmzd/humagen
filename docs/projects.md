@@ -155,7 +155,7 @@ An agent's turn is given, in this order:
 | # | Layer | Source | Bound |
 |---|---|---|---|
 | 1 | Project instructions, root first, then each project down to the thread's, then the channel's purpose and the experts line | `Project.Instructions`, `Channel.Purpose` | 4,000 characters per project, 8,000 in all; the farthest ancestors are dropped first, with "(instructions of Acme not sent)" |
-| 2 | Project memory, the thread's project first, then its ancestors | `pkg/memory` owners `project:<name>`, and `workspace` for the root | own notes as today (at most 15,000 characters); ancestors share 6,000, nearest first, with "(n more notes from Field not sent)" |
+| 2 | Project memory, the thread's project first, then its ancestors | `pkg/memory` owners `project:<name>`, and `project:` for the root | own notes as today (at most 15,000 characters); ancestors share 6,000, nearest first, with "(n more notes from Field not sent)" |
 | 3 | The agent's instructions | the pinned revision's `AgentSpec.SystemPrompt`, which fiber sends as the system message | fiber's |
 | 4 | The agent's memory | `pkg/memory` owner `<agent>` | as today |
 | 5 | The thread | the branch so far: human messages by name, agents' answers by agent name | the workspace history limit, as today |
@@ -479,7 +479,7 @@ shown.
 | `policy.Policy` | `Authority` (admin or owner); existing policies are admin | 2 |
 | `usage.Entry` | `Within []string`. `admission.scopes()` adds `p\x00<ancestor>` for each; `matches` checks the project or `Within`. Spent and settled entries take the run's pinned `Within` | 1 |
 | storage limits | `storageAllows` sums `Artifacts.Used` over `Tree.Subtree` for a project policy | 1 |
-| `pkg/memory` | owner `workspace` for the root's notes | 1 |
+| `pkg/memory` | owner `project:` for the root's notes: it holds the colon no agent's name can, so no agent shares them | 1 |
 | `pkg/inbox` | kind `announcement`; `Message.Broadcast` (stored, `json:"-"`); per-reader hide and snooze for broadcasts; Audience entry `project:<name>`; `Reader.Projects`; `Query.Projects`; `Count` returns `updates`; `Withdraw` takes `by` (today it records `"system"`) | 4 |
 | `pkg/inbox` | part `draft` (actions `publish`, `discard`) | 5 |
 | `pkg/inbox` | kind `mention`, part `mention` (actions `reply`, `done`) | 6 |
@@ -585,9 +585,12 @@ ingress overwrites whatever a connector put there (phase 8).
   agent gets its project's instructions and memory (today only API
   conversations get memory). Called runs keep their explicit input messages.
 - Memory stays in `pkg/memory`: owner `<agent>`, `project:<name>`, and
-  `workspace` for the root. The memory agent writes as today: to the run's own
-  project, or to the agent for a run at the root. It never writes from a
-  private thread (phase 7).
+  `project:` for the root. An agent's name cannot hold a colon, so no agent
+  owns a project's notes, and the agent memory routes answer 404 for a
+  project's owner: a project's notes are changed only through its own
+  routes and the inbox, each asking what the project asks. The memory agent
+  writes as today: to the run's own project, or to the agent for a run at
+  the root. It never writes from a private thread (phase 7).
 - Knowledge sources inherited down the tree (phase 9) use warp's executor
   seam, `callExecutor.resolve`, which already rewrites the revision for model
   policies. The chain's sources are pinned at accept as `warp.sources` and
@@ -1285,7 +1288,7 @@ its parent's limit, and nothing claims privacy.
   project's notes, ancestors' notes within 6,000 characters nearest first,
   the agent's notes, the transcript. Converse uses it, and so do `cron` and
   `manual` runs filed in a project. The root's notes live under owner
-  `workspace`.
+  `project:`.
 - **Permissions.** `projects:read`, `projects:write` and `projects:govern`,
   through `default.authz`, `policy_test.go`, the openapi enum, `everything`,
   `access.ts` and the docs. No roles yet: company kind and the root need

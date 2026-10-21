@@ -1311,6 +1311,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=project&name=Launch", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Launch", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Launch", "", http.StatusNotFound)
+	c.call(acme, "DELETE", "/api/agents/{name}/memory/{id}", "/api/agents/ghost/memory/m1", "", http.StatusNotFound)
 
 	// Every status code the contract documents was answered at least once,
 	// or is listed in unexercised with the reason it is not.

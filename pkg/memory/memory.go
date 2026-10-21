@@ -325,28 +325,15 @@ func (s *Store) Prompt(tenant, agent string) string {
 // An agent's name cannot contain a colon, so the two never collide.
 const projectPrefix = "project:"
 
-// WorkspaceOwner is the owner under which the root project's notes are kept:
-// the workspace's own, sent to every agent answering anywhere in it.
-const WorkspaceOwner = "workspace"
-
 // ProjectOwner is the owner under which a project's shared notes are kept.
 // Every agent answering in that project, or below it, is sent them. The
-// root's "" is WorkspaceOwner.
-func ProjectOwner(project string) string {
-	if project == "" {
-		return WorkspaceOwner
-	}
-	return projectPrefix + project
-}
+// root's, the workspace's own, is "project:" with no name after it: it holds
+// the colon too, so no agent's name can be it.
+func ProjectOwner(project string) string { return projectPrefix + project }
 
-// OwnerProject reports the project an owner names, if it names one:
-// WorkspaceOwner names the root, "".
-func OwnerProject(owner string) (string, bool) {
-	if owner == WorkspaceOwner {
-		return "", true
-	}
-	return strings.CutPrefix(owner, projectPrefix)
-}
+// OwnerProject reports the project an owner names, if it names one: "project:"
+// names the root, "".
+func OwnerProject(owner string) (string, bool) { return strings.CutPrefix(owner, projectPrefix) }
 
 // PromptAs renders an owner's approved notes under a heading, or "" for none.
 func (s *Store) PromptAs(tenant, owner, heading string) string {

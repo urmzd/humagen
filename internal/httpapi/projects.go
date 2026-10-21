@@ -328,19 +328,16 @@ func (s *Server) projectHistory(w http.ResponseWriter, r *http.Request, who auth
 // projectOwner resolves the project in the path to its memory owner, or
 // answers 404. Changing the notes of the workspace or of a company project,
 // which every agent in a wide part of the tree is sent, needs projects:govern,
-// as changing the project does.
+// as changing the project does (see platform.MayChangeNotes).
 func (s *Server) projectOwner(w http.ResponseWriter, r *http.Request, who auth.Principal, change bool) (string, bool) {
 	name := projects.NameOf(r.PathValue("name"))
 	owner, err := s.P.ProjectMemoryOwner(who.Tenant, name)
+	if err == nil && change {
+		err = s.P.MayChangeNotes(who, name)
+	}
 	if err != nil {
 		s.problem(w, err)
 		return "", false
-	}
-	if change && !who.Can(auth.ProjectsGovern) {
-		if p, _ := s.P.ProjectTree(who.Tenant).Get(name); p.IsRoot() || p.Kind == projects.Company {
-			s.problem(w, fmt.Errorf("%w: the notes of the workspace and of company projects are changed with projects:govern", projects.ErrForbidden))
-			return "", false
-		}
 	}
 	return owner, true
 }
