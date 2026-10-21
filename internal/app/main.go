@@ -30,6 +30,7 @@ import (
 	"github.com/urmzd/warp/pkg/blob"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/credref"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // Version is the build metadata `warp version` reports.
@@ -445,14 +446,16 @@ func seedAgents(ctx context.Context, p *platform.Platform, tenant string) error 
 	}
 	// The lead answers when nobody picked an agent and none matched. Settings
 	// kept from an earlier start are left as they are.
-	if cfg := p.Settings(tenant); cfg.Baseline != "" || len(cfg.Projects) > 0 || !cfg.SetupAt.IsZero() {
+	if cfg := p.Settings(tenant); cfg.Baseline != "" || p.ProjectTree(tenant).Len() > 0 || !cfg.SetupAt.IsZero() {
 		return nil
 	}
-	if err := p.SetSettings(ctx, tenant, platform.Settings{
-		Baseline: "lead",
-		Projects: []platform.Project{{Name: "Launch", Description: "Everything for the Q4 launch"}},
-	}); err != nil {
+	if err := p.SetSettings(ctx, tenant, platform.Settings{Baseline: "lead"}); err != nil {
 		return fmt.Errorf("seed baseline: %w", err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "seed"}, platform.ProjectInput{
+		Name: "Launch", Description: "Everything for the Q4 launch",
+	}); err != nil && !errors.Is(err, projects.ErrExists) {
+		return fmt.Errorf("seed project: %w", err)
 	}
 	// One rule, so a failure shows up somewhere before anyone configures alerts.
 	err := p.Alerts.AddRule(tenant, alerts.Rule{Name: "any-run-fails", Kind: alerts.RunFailed, Severity: alerts.Critical, CreatedBy: "seed"})

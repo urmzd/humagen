@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -57,6 +58,7 @@ import (
 	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/prefs"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/usage"
 )
@@ -155,7 +157,9 @@ type Platform struct {
 	Evals     *evals.Store
 	Prefs     *prefs.Store
 	Memory    *memory.Store
-	Policies  *policy.Store
+	// Projects is each tenant's tree of projects.
+	Projects *projects.Store
+	Policies *policy.Store
 	// CallPolicies is what each agent says about being called.
 	CallPolicies *callpolicy.Store
 	Usage        *usage.Ledger
@@ -420,8 +424,9 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	if existing, err := p.Runs.Get(tag.Tenant, runID); err == nil {
 		return existing, nil
 	}
-	project, client := p.placeOf(tag, edge)
-	if err := p.admit(tag, edge, project, client); err != nil {
+	project, within, client := p.placeOf(tag, edge)
+	tag = p.pin(tag, edge, project, within)
+	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
 	// Accepting publishes the run's first event before the run is recorded,
@@ -445,6 +450,26 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	// not let them approve their own calls.
 	p.Runs.PinRequesters(acc.RunID, p.resolveRequester(tag.Tenant, tag, client))
 	return p.Runs.Get(tag.Tenant, acc.RunID)
+}
+
+// pin writes into a tag what the platform decides at admission, so every
+// attempt of the run replays it: the ancestors its project counts toward,
+// whatever the tag said, and for a scheduled or run-now run its project's
+// context ahead of the schedule's text, which the run's record keeps as what
+// was asked. A called run keeps its explicit input.
+func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within []string) envelope.Tag {
+	meta := make(map[string]string, len(tag.Meta)+2)
+	maps.Copy(meta, tag.Meta)
+	delete(meta, runs.MetaWithin)
+	if len(within) > 0 {
+		meta[runs.MetaWithin] = strings.Join(within, ",")
+	}
+	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual) && edge.Parent == "" {
+		meta[runs.MetaAsk] = tag.Text
+		tag.Text = p.contextOf(tag.Tenant, project, tag.Agent, tag.Text)
+	}
+	tag.Meta = meta
+	return tag
 }
 
 // Call has one run call another agent. It is the only path by which an agent

@@ -453,6 +453,9 @@ func (p *Platform) inboxMemory(run runs.Run, owner string, notes []memory.Note) 
 	about := owner
 	if project, ok := memory.OwnerProject(owner); ok {
 		part.Project, about = project, "the project "+project
+		if project == "" {
+			about = "the workspace"
+		}
 	} else {
 		part.Agent = owner
 	}

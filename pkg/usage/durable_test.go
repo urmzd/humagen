@@ -101,3 +101,30 @@ func TestFailedWrites(t *testing.T) {
 		t.Fatalf("after the store recovered and a restart = %+v", got)
 	}
 }
+
+// The ancestors an entry was admitted within are kept with it, so a parent's
+// count is the same after a restart.
+func TestWithinSurvivesARestart(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		l, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		field := policy.Scope{Kind: policy.Project, Name: "Field"}
+		if _, err := l.Append(Entry{Kind: Admitted, Tenant: "acme", Project: "Globex", Within: []string{"Field"}, Agent: "lead", RunID: "r1", At: t0}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := l.Append(Entry{Kind: Spent, Tenant: "acme", Project: "Globex", Within: []string{"Field"}, Agent: "lead", RunID: "r1", Key: "r1/1",
+			Spend: &Spend{Micros: 42, ModelCalls: 1}, At: t0}); err != nil {
+			t.Fatal(err)
+		}
+		again, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := again.Usage("acme", field, t0); got.Runs != 1 || got.Concurrent != 1 || got.Spend != 42 {
+			t.Fatalf("Field after restart = %+v", got)
+		}
+	})
+}
