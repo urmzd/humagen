@@ -32,7 +32,7 @@ Today's state is from an audit of all five repositories (October 2026).
 
 | Concept | Owner | Today, elsewhere | Fate |
 |---------|-------|------------------|------|
-| Durable runs: ledger, queue, worker, replay | anchor | saige `agent/durable/local` (1.5k lines, its own step log and locks); playscape `pkg/queue` and `pkg/worker` (a weaker at-most-once queue under anchor's) | delete saige's after a file ledger lands in anchor; playscape runs tasks on an in-process pool |
+| Durable runs: ledger, queue, worker, replay | anchor | saige `agent/durable/local` (1.5k lines, its own step log and locks) | delete saige's after a file ledger lands in anchor. Playscape's own queue and worker are gone (v0.7.0): it runs tasks on a bounded in-process pool |
 | Postgres plumbing: advisory-locked migrations, LISTEN/NOTIFY | anchor (a `pgkit` package in its Postgres adapter module) | eight migrate functions (six in fiber, saige, warp `pkg/state`), three LISTEN hubs | all call `pgkit` |
 | Sandboxes, workspaces, access control | playscape | saige `tools/exec` (its own subprocess and Docker code), saige `tools/fs` (a symlink check that can race), warp's file tools (bypass the agent's NGAC grant) | saige runs commands through a playscape executor; warp's file tools honour the grant |
 | Model providers, fallback, presets | saige `agent/provider` | fiber `agentrt/provider.go` and warp `internal/app/providers.go` each build adapters | fiber exposes one endpoint built on saige's `provider.Build`; warp's model kinds call it |
@@ -68,7 +68,7 @@ deployment are warp's.
 | Repository | Ships today | Becomes |
 |------------|-------------|---------|
 | fiber | nothing (the binary and server are gone) | a small `fiber run` CLI for local tests |
-| playscape | `cmd/playscape` (`serve` on :8484), an HTTP API, an install script, a Dockerfile, Kubernetes manifests | a library with `playscape run`; the server and its queue go; the k8s runner moves to its own module so importers don't inherit client-go |
+| playscape | since v0.7.0, a library with `playscape run` and an install script; the server, its HTTP API, its queue, the Dockerfile and the service's Kubernetes manifests are gone, and the k8s runner is its own module so importers don't inherit client-go | done |
 | saige | `cmd/saige` (a TUI, an HTTP server, ACP, 11.7k lines), `cmd/saige-mcp`, install script, Dockerfile | stays: its CLI is first class. Its reusable hosting code moves into library packages that return `http.Handler`s, so warp can host the same thing |
 | warp | `cmd/warp`, and the Slack app as a separate Node process | the one binary; the Slack app is started and stopped by `warp start` and talks only to warp's API |
 
@@ -84,9 +84,9 @@ Each step leaves every repository building and releasable.
 | 4 | One spec, `warp start`, `warp deploy` (local, compose, Kubernetes) | warp | L | done |
 | 5 | Retire the last legacy names | all | M | done in warp, saige, anchor, playscape; fiber in progress |
 | 6 | Knowledge reaches agent runs (the stated blocker was out of date: fiber's retriever takes the tenant since v0.10) | warp | S | done |
-| 7 | `pgkit` in anchor; `COLLATE "C"`; fiber's durable tables use anchor's DDL and the Postgres delta log | anchor, fiber | S | in progress |
-| 8 | Playscape loses its service and its second queue | playscape | S–M | in progress |
-| 9 | One SSRF guard, the MCP `$defs` inliner and the fallback names exported from saige | saige | S | in progress |
+| 7 | `pgkit` in anchor; `COLLATE "C"`; fiber's durable tables use anchor's DDL and the Postgres delta log | anchor, fiber | S | done in anchor v0.4.0 (`pgkit`, the ledger's prefix read, byte-ordered keys with `COLLATE "C"`); fiber's adoption to come |
+| 8 | Playscape loses its service and its second queue | playscape | S–M | done, released in playscape v0.7.0: a library with `playscape run` |
+| 9 | One SSRF guard, the MCP `$defs` inliner and the fallback names exported from saige | saige | S | done, released in saige v0.41.0: `netguard`, `mcp.InlineDefs` and the exported fallback conditions |
 | 10 | Fiber builds providers through saige's `provider.Build`; warp's model kinds call it | fiber, warp | S–M | |
 | 11 | S3 moves into fiber's blob store; warp's `pkg/blob` goes | fiber, warp | M | |
 | 12 | Fiber's knowledge becomes an adapter over saige's retrieval (needs a stock-Postgres fallback in saige: its store today needs PostgreSQL 18 and the AGPL `pg_search`) | saige, fiber | M–L | |
@@ -120,5 +120,4 @@ keeping its own list.
 - **The container image** is written but not published by releases.
 - **Saige's Postgres retrieval store** needs PostgreSQL 18, pgvector and
   ParadeDB `pg_search` (AGPL).
-- **Playscape's queue** is in memory and at-most-once (step 8 removes it).
 - **Anchor's adapters** are young; durable timers are on its roadmap.

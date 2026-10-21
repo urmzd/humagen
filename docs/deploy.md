@@ -11,6 +11,7 @@ process with its stores beside it.
 | Your machine or one host | Docker Compose: warp, Postgres, optional MinIO and Redis | [`deploy/compose`](../deploy/compose) |
 | Kubernetes | A Helm chart | [`deploy/helm/warp`](../deploy/helm/warp) |
 | Kubernetes, from Git | Flux deploying that chart | [`deploy/flux`](../deploy/flux) |
+| Wherever the spec says | `warp deploy`: the spec's `deploy` slot picks `local`, `compose` or `kubernetes`, and `-o DIR` writes what it would apply and stops | [the spec](spec.md#deploying-it) |
 
 ## What to know first
 
@@ -56,9 +57,11 @@ install`, then `turbo run build --filter=@warp/console`) and a static `warp`
   `/var/lib/warp` volume, so the workspace (agents' files, and `blobs/` with
   disk storage) persists there.
 - The default command is `serve -f /etc/warp -addr 0.0.0.0:8080 -web
-  /usr/share/warp/web`: mount a spec at `/etc/warp`. With none, the defaults
-  sign in with `dev`, which refuses the container's address, so warp stops
-  rather than serve without sign-in.
+  /usr/share/warp/web`: mount a spec at `/etc/warp`. With none, `serve` keeps
+  its own defaults: OIDC from the `WARP_OIDC_*` variables, nothing seeded. When
+  they are unset warp stops rather than serve without sign-in. A System
+  document that names no `auth.kind` means `dev`, which refuses the
+  container's address, so the spec names `oidc`.
 - A healthcheck calls `/healthz`.
 
 ```sh

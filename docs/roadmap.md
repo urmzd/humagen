@@ -8,9 +8,9 @@ This document states direction. The [architecture status](architecture.md#status
 |------|-------------------|------------------------|
 | Agents and hiring | Create and version agents, give them reusable abilities, and hire them into project roles | Project memberships with scoped responsibilities, capability grants and budgets |
 | Projects and tasks | Assign work to people or agents, track dependencies and durable outcomes | Persistent assignments, task state and run links |
-| Shared knowledge | Maintain linked project pages, decisions, sources and agent memory | Tenant-safe retrieval during runs, page history and provenance |
-| Connectors | Bring requests in and publish outcomes through extensible integrations | Durable client configuration and independently validated connectors |
-| Governance | Apply default-deny access, capability, spending and approval policies | Complete project access, persistence and human approval at run limits |
+| Shared knowledge | Maintain linked project pages, decisions, sources and agent memory | Page history and provenance |
+| Connectors | Bring requests in and publish outcomes through extensible integrations | Independently validated connectors |
+| Governance | Apply default-deny access, capability, spending and approval policies | Complete project access and human approval at run limits |
 | Human participation | Ask questions, request approvals, hand off work and notify the right person | Reply entry on every surface, project-aware subscriptions and delivery tracking |
 | Shared improvement | Propose improvements to abilities, prompts and knowledge from completed work | Versioned proposals, deterministic evaluations, human review and rollback |
 

@@ -64,8 +64,9 @@ go run ./cmd/warp start
 ```
 
 `warp start` runs the whole platform in one process: development sign-in on
-loopback, in-memory stores, files on disk, seeded example agents on the offline
-provider, and the console at <http://127.0.0.1:8080>. On a terminal, the first
+loopback, in-memory stores (Postgres when `WARP_POSTGRES_URL` is set), files on
+disk, seeded example agents on the offline provider, and the console at
+<http://127.0.0.1:8080>. On a terminal, the first
 start asks a few questions (its name, model providers, MCP tools, sign-in,
 Slack), each with a default Enter accepts, and writes the answers to
 `warp.yaml` in your config directory. You name where each key is kept
@@ -74,7 +75,7 @@ is used and never stores it.
 
 Everything is configured in that one language: a `System` document for how and
 where warp runs (sign-in, stores, bus, files, limits) and a `Platform` document
-per workspace (models, tools, agents, Slack, settings). See [the spec](docs/spec.md).
+per workspace (models, tools, agents, Slack, GitHub, workspace settings). See [the spec](docs/spec.md).
 The same file runs on your own infrastructure with no code: point `stores` at
 Postgres, `blobs` at S3 and `auth` at your identity provider, and use it with
 compose or the Helm chart ([deploy](docs/deploy.md)). Any flag still wins over
@@ -94,11 +95,11 @@ Run the console in another terminal, from the repository root:
 make web
 ```
 
-Open <http://127.0.0.1:5173>, complete the first-run workspace form and select an example agent. The backend listens on `127.0.0.1:8080`. Seeded agents use fiber's offline provider, so the preview requires no model key.
+Open <http://127.0.0.1:5173> and select an example agent. The backend listens on `127.0.0.1:8080`. Seeded agents use fiber's offline provider, so the preview requires no model key.
 
 To run it in containers, on Kubernetes with Helm, or with Flux, see [deploy](docs/deploy.md).
 
-Development auth grants admin access on loopback. For real sign-in, roles and machine tokens, follow [the security guide](docs/security.md). To use Anthropic, set `ANTHROPIC_API_KEY` before starting the server and configure an agent with provider `anthropic`.
+Development auth grants admin access on loopback; `warp start` and `make dev` use it. `warp serve`, the server's command, signs in with OIDC unless told otherwise. For real sign-in, roles and machine tokens, follow [the security guide](docs/security.md). To use Anthropic, set `ANTHROPIC_API_KEY` before starting the server and configure an agent with provider `anthropic`.
 
 ### Capture the console
 
