@@ -1,36 +1,58 @@
-# Overrides for deploy/helm/warp/values.yaml. Only what differs from the
-# chart's defaults belongs here. No secrets: they are in the warp-env Secret.
+# Overrides for deploy/helm/warp/values.yaml. Helm merges maps key by key and
+# replaces lists, so only what differs from the chart's defaults belongs here.
+# No secrets: the references below read the warp-env Secret's keys.
 
 image:
   # An image you built from the Dockerfile and pushed.
   repository: ghcr.io/your-org/warp
   tag: "0.9.0"
 
-auth:
-  mode: oidc
-  publicURL: https://warp.example.com
-  oidc:
-    issuer: https://login.example.com
-    clientID: warp
-    audience: warp
+# The System document (docs/spec.md#system).
+system:
+  metadata:
+    display_name: Acme
+  spec:
+    server:
+      public_url: https://warp.example.com
+    auth:
+      oidc:
+        issuer: https://login.example.com
+        client_id: warp
+        audience: warp
+      groups: {claim: groups, roles: {admin: [platform-admins], viewer: [staff]}}
+    blobs:
+      kind: s3
+      s3:
+        bucket: warp-files
+        region: us-east-1
+        access_key: {ref: env:WARP_S3_ACCESS_KEY_ID}
+        secret_key: {ref: env:WARP_S3_SECRET_ACCESS_KEY}
 
-# Holds WARP_OIDC_CLIENT_SECRET, WARP_POSTGRES_URL and a model key, and
-# WARP_S3_ACCESS_KEY_ID / WARP_S3_SECRET_ACCESS_KEY for the bucket below.
+# One Platform document per workspace (docs/spec.md#platform).
+platforms:
+  - metadata:
+      name: default
+      display_name: Acme
+    spec:
+      models:
+        - name: anthropic
+          kind: anthropic
+          anthropic: {key: {ref: env:ANTHROPIC_API_KEY}}
+      agents:
+        - spec:
+            name: lead
+            provider: anthropic
+            model: YOUR_MODEL
+            system_prompt: You coordinate work.
+
+# Holds WARP_OIDC_CLIENT_SECRET, WARP_POSTGRES_URL, ANTHROPIC_API_KEY,
+# WARP_S3_ACCESS_KEY_ID and WARP_S3_SECRET_ACCESS_KEY: every name a reference
+# above, or in the chart's defaults, reads.
 existingSecret: warp-env
-
-storage:
-  kind: s3
-  s3:
-    bucket: warp-files
-    region: us-east-1
 
 persistence:
   size: 20Gi
 
-config:
-  # Inline files, mounted at /etc/warp and passed with their flags.
-  providers: ""
-  settings: ""
 
 ingress:
   enabled: true
