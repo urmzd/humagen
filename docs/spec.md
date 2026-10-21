@@ -32,9 +32,10 @@ Four rules hold for every field:
    binary has. A choice is a file or an interface, never a fork.
 4. **Unknown fields are errors**, with the document and path they are in.
 
-Flags still work and win over the file, so `warp start -- -addr 127.0.0.1:9090`
-needs no edit. `warp config check -f warp.yaml` validates without starting;
-`warp config print` writes the result with every default filled in.
+Flags still work and win over the file, so `warp start -addr 127.0.0.1:9090`
+needs no edit. `warp config check -f warp.yaml` validates without starting and
+lists every `env:` reference the shell it runs in has not set; `warp config
+print` writes the result with every default filled in.
 
 ## System
 
@@ -59,7 +60,7 @@ spec:
       client_secret: {ref: env:WARP_OIDC_CLIENT_SECRET}
       audience: warp
     tenant: {fixed: default}                 # or {claim: org}
-    groups: {claim: groups, roles: {admin: [platform-admins], member: [staff]}}
+    groups: {claim: groups, roles: {admin: [platform-admins], operator: [staff]}}   # admin, manager, operator, viewer
     policy_file: ""                          # an authorization policy (docs/security.md)
 
   stores:                   # slot: memory | postgres. Every store family

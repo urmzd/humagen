@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	deployfs "github.com/urmzd/warp/deploy"
 	"github.com/urmzd/warp/pkg/credref"
 	"github.com/urmzd/warp/pkg/spec"
 )
@@ -304,5 +306,171 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 }
 
 func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, paths []string, outDir string, keys credref.Resolver, out io.Writer) error {
-	return errors.New("deploy: kubernetes is not built yet")
+	if loopbackAuth(cfg) {
+		return fmt.Errorf("deploy: auth.kind %s only answers on loopback, so it cannot serve a cluster; use oidc", cfg.System.Spec.Auth.Kind)
+	}
+	release := b.Release
+	if release == "" {
+		release = cfg.System.Metadata.Name
+	}
+	ns := b.Namespace
+	if ns == "" {
+		ns = "warp"
+	}
+	c, err := carry(ctx, cfg, keys)
+	if err != nil {
+		return err
+	}
+	c.cfg.System.Spec.Deploy = spec.Slot{}
+	values, err := chartValues(c, b, release)
+	if err != nil {
+		return err
+	}
+	dir := outDir
+	if dir == "" {
+		if dir, err = os.MkdirTemp("", "warp-deploy-"); err != nil {
+			return err
+		}
+		defer os.RemoveAll(dir)
+	}
+	chart := filepath.Join(dir, "chart")
+	if err := os.CopyFS(chart, mustSub(deployfs.Chart, "helm/warp")); err != nil && !errors.Is(err, fs.ErrExist) {
+		return fmt.Errorf("deploy: write the chart: %w", err)
+	}
+	raw, err := yaml.Marshal(values)
+	if err != nil {
+		return err
+	}
+	header := "# Written by `warp deploy` from the spec. Secrets are in the Secret named\n# by existingSecret, created from the deploying shell; none are in here.\n"
+	if err := os.WriteFile(filepath.Join(dir, "values.yaml"), append([]byte(header), raw...), 0o600); err != nil {
+		return err
+	}
+	helmArgs := []string{"upgrade", "--install", release, chart, "-n", ns, "--create-namespace", "-f", filepath.Join(dir, "values.yaml")}
+	kube := []string{"-n", ns}
+	if b.Context != "" {
+		helmArgs = append(helmArgs, "--kube-context", b.Context)
+		kube = append(kube, "--context", b.Context)
+	}
+	if outDir != "" {
+		fmt.Fprintf(out, "wrote %s (chart/ and values.yaml)\n", dir)
+		if len(c.env) > 0 {
+			fmt.Fprintf(out, "create the Secret %s-env with %s, then:\n", release, strings.Join(c.env, ", "))
+		}
+		fmt.Fprintf(out, "  helm %s\n", strings.Join(helmArgs, " "))
+		return nil
+	}
+	if len(c.env) > 0 {
+		if err := applySecret(ctx, c, release+"-env", kube, out); err != nil {
+			return err
+		}
+	}
+	cmd := exec.CommandContext(ctx, "helm", helmArgs...)
+	cmd.Stdout, cmd.Stderr = out, os.Stderr
+	fmt.Fprintf(out, "warp: deploying %s to namespace %s with helm\n", release, ns)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("deploy: helm: %w", err)
+	}
+	return nil
+}
+
+// chartValues is the chart's values for a carried spec: the documents
+// verbatim, the Secret their references read, and the ingress the block
+// asks for, with the block's own values merged over them.
+func chartValues(c carried, b spec.Kubernetes, release string) (map[string]any, error) {
+	var docs struct {
+		System    map[string]any   `json:"system"`
+		Platforms []map[string]any `json:"platforms"`
+	}
+	raw, err := json.Marshal(c.cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(raw, &docs); err != nil {
+		return nil, err
+	}
+	values := map[string]any{"system": docs.System, "platforms": docs.Platforms}
+	if docs.Platforms == nil {
+		values["platforms"] = []any{}
+	}
+	if len(c.env) > 0 {
+		values["existingSecret"] = release + "-env"
+	}
+	if b.Image.Repository != "" || b.Image.Tag != "" {
+		img := map[string]any{}
+		if b.Image.Repository != "" {
+			img["repository"] = b.Image.Repository
+		}
+		if b.Image.Tag != "" {
+			img["tag"] = b.Image.Tag
+		}
+		values["image"] = img
+	}
+	if b.Host != "" {
+		ing := map[string]any{
+			"enabled": true,
+			"hosts":   []any{map[string]any{"host": b.Host, "paths": []any{map[string]any{"path": "/", "pathType": "Prefix"}}}},
+		}
+		if b.IngressClass != "" {
+			ing["className"] = b.IngressClass
+		}
+		if b.TLSSecret != "" {
+			ing["tls"] = []any{map[string]any{"secretName": b.TLSSecret, "hosts": []any{b.Host}}}
+		}
+		values["ingress"] = ing
+	}
+	return merge(values, b.Values), nil
+}
+
+// merge lays over onto base, recursing into maps.
+func merge(base, over map[string]any) map[string]any {
+	for k, v := range over {
+		if bm, ok := base[k].(map[string]any); ok {
+			if om, ok := v.(map[string]any); ok {
+				base[k] = merge(bm, om)
+				continue
+			}
+		}
+		base[k] = v
+	}
+	return base
+}
+
+// applySecret creates or replaces the Secret the chart reads the references
+// from, with values from this shell's environment and from carry. A variable
+// the spec references but nobody set stops the deploy here, not at start.
+func applySecret(ctx context.Context, c carried, name string, kube []string, out io.Writer) error {
+	args := append([]string{"create", "secret", "generic", name, "--dry-run=client", "-o", "yaml"}, kube...)
+	var missing []string
+	for _, v := range c.env {
+		val, ok := c.values[v]
+		if !ok {
+			val = os.Getenv(v)
+		}
+		if val == "" {
+			missing = append(missing, v)
+			continue
+		}
+		args = append(args, "--from-literal="+v+"="+val)
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("deploy: the spec references %s, which this shell has not set", strings.Join(missing, ", "))
+	}
+	manifest, err := exec.CommandContext(ctx, "kubectl", args...).Output()
+	if err != nil {
+		return fmt.Errorf("deploy: kubectl create secret: %w", err)
+	}
+	apply := exec.CommandContext(ctx, "kubectl", append([]string{"apply", "-f", "-"}, kube...)...)
+	apply.Stdin, apply.Stdout, apply.Stderr = strings.NewReader(string(manifest)), out, os.Stderr
+	if err := apply.Run(); err != nil {
+		return fmt.Errorf("deploy: kubectl apply: %w", err)
+	}
+	return nil
+}
+
+func mustSub(f fs.FS, dir string) fs.FS {
+	sub, err := fs.Sub(f, dir)
+	if err != nil {
+		panic(err)
+	}
+	return sub
 }

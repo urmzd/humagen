@@ -22,7 +22,7 @@ metadata: {name: acme}
 spec:
   auth:
     kind: oidc
-    oidc: {issuer: "https://login.example.com", client_id: warp, client_secret: {ref: "env:OIDC_SECRET"}}
+    oidc: {issuer: "https://login.example.com", client_id: warp, audience: warp, client_secret: {ref: "env:OIDC_SECRET"}}
   deploy:
     kind: compose
     compose: {image: "ghcr.io/urmzd/warp:dev", postgres: true, port: 9090}
@@ -88,5 +88,59 @@ func TestDeployingDevAuthKeepsItOnLoopback(t *testing.T) {
 	project, _ := os.ReadFile(filepath.Join(out, "compose.yaml"))
 	if !strings.Contains(string(project), "network_mode: host") || !strings.Contains(string(project), "127.0.0.1:8080") {
 		t.Errorf("dev auth was published beyond loopback:\n%s", project)
+	}
+}
+
+func TestDeployWritesTheChartAndItsValues(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "warp.yaml")
+	os.WriteFile(path, []byte(`api_version: warp/v1
+kind: System
+metadata: {name: acme}
+spec:
+  auth:
+    kind: oidc
+    oidc: {issuer: "https://login.example.com", client_id: warp, audience: warp, client_secret: {ref: "env:OIDC_SECRET"}}
+  stores: {kind: postgres, postgres: {url: {ref: "env:WARP_POSTGRES_URL"}}}
+  deploy:
+    kind: kubernetes
+    kubernetes: {namespace: agents, host: warp.example.com, image: {repository: ghcr.io/acme/warp, tag: v1}}
+---
+api_version: warp/v1
+kind: Platform
+metadata: {name: default, display_name: Acme}
+`), 0o600)
+	out := filepath.Join(dir, "out")
+	if err := deployCmd(Options{}, []string{"-f", path, "-o", out}, strings.NewReader(""), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	values, _ := os.ReadFile(filepath.Join(out, "values.yaml"))
+	for _, want := range []string{"existingSecret: acme-env", "repository: ghcr.io/acme/warp", "host: warp.example.com", "display_name: Acme", "env:OIDC_SECRET"} {
+		if !strings.Contains(string(values), want) {
+			t.Errorf("values lack %q:\n%s", want, values)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(out, "chart", "Chart.yaml")); err != nil {
+		t.Fatalf("the chart was not written: %v", err)
+	}
+	helm, err := exec.LookPath("helm")
+	if err != nil {
+		t.Skip("helm not on PATH; the render is not checked")
+	}
+	rendered, err := exec.Command(helm, "template", "acme", filepath.Join(out, "chart"), "-f", filepath.Join(out, "values.yaml")).CombinedOutput()
+	if err != nil {
+		t.Fatalf("helm template: %v\n%s", err, rendered)
+	}
+	if !strings.Contains(string(rendered), "kind: Platform") || !strings.Contains(string(rendered), "warp.example.com") {
+		t.Errorf("render:\n%s", rendered)
+	}
+}
+
+func TestDeployRefusesLoopbackSignInForACluster(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "warp.yaml")
+	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  deploy: {kind: kubernetes}\n"), 0o600)
+	err := deployCmd(Options{}, []string{"-f", path, "-o", t.TempDir()}, strings.NewReader(""), io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "loopback") {
+		t.Fatalf("err = %v", err)
 	}
 }

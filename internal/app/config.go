@@ -510,7 +510,22 @@ func configCmd(o Options, args []string, out io.Writer) error {
 		return err
 	}
 	if args[0] == "check" {
-		_, err := fmt.Fprintf(out, "ok: %s\n", strings.Join(paths, ", "))
+		c, err := carry(context.Background(), cfg, credref.Resolver{Run: func(context.Context, string, ...string) ([]byte, error) {
+			return []byte("unread"), nil // check names references, it does not read keychains
+		}})
+		if err != nil {
+			return err
+		}
+		var unset []string
+		for _, v := range c.env {
+			if _, ok := c.values[v]; !ok && os.Getenv(v) == "" {
+				unset = append(unset, v)
+			}
+		}
+		if len(unset) > 0 {
+			fmt.Fprintf(out, "note: not set in this shell: %s (start and deploy need them)\n", strings.Join(unset, ", "))
+		}
+		_, err = fmt.Fprintf(out, "ok: %s\n", strings.Join(paths, ", "))
 		return err
 	}
 	cfg.System.Defaults()

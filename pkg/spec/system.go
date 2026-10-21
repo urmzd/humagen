@@ -146,7 +146,7 @@ type OIDC struct {
 	Issuer       string `json:"issuer"`
 	ClientID     string `json:"client_id"`
 	ClientSecret *Ref   `json:"client_secret,omitempty"`
-	Audience     string `json:"audience,omitempty"`
+	Audience     string `json:"audience"`
 }
 
 // Mock is the mock kind's block: a loopback development identity provider.
@@ -336,8 +336,8 @@ func (k Kinds) check(slot string, s Slot) error {
 func checkBlock(where string, blk any) error {
 	switch b := blk.(type) {
 	case *OIDC:
-		if b.Issuer == "" || b.ClientID == "" {
-			return fmt.Errorf("%s: issuer and client_id are required", where)
+		if b.Issuer == "" || b.ClientID == "" || b.Audience == "" {
+			return fmt.Errorf("%s: issuer, client_id and audience are required", where)
 		}
 	case *URLBlock:
 		if !b.URL.Set() {
