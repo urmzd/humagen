@@ -26,6 +26,9 @@ export const PERMISSIONS = [
   "clients:read",
   "clients:write",
   "people:read",
+  "projects:read",
+  "projects:write",
+  "projects:govern",
 ] as const;
 
 /** What each permission lets a person do, after "can". */
@@ -49,11 +52,17 @@ export const doing: Record<string, string> = {
   "clients:read": "see connections",
   "clients:write": "manage connections",
   "people:read": "see who is in the workspace",
+  "projects:read": "see projects",
+  "projects:write": "make and change projects",
+  // Break-glass: owner of every project, the workspace and company projects included.
+  "projects:govern": "own every project",
 };
 
 // The changes worth naming on the home page, most telling first. A viewer
 // is told they cannot run agents; an operator, that they cannot change one.
-const NOTABLE = ["runs:write", "agents:write", "schedules:write", "knowledge:write", "billing:write", "clients:write"];
+// Owning every project is named last: only someone who may do everything
+// else is told they cannot.
+export const NOTABLE = ["runs:write", "agents:write", "schedules:write", "knowledge:write", "billing:write", "clients:write", "projects:govern"];
 const DENY_WORDS: Record<string, string> = { "agents:write": "change what an agent is" };
 
 /** "a, b and c". */

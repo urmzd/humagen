@@ -100,6 +100,11 @@ export interface Run {
   channel?: string;
   /** The person's message in a shared thread the run answers. Runs answering one message are side by side, not branches. */
   message?: string;
+  /**
+   * The project's ancestors, nearest first and the workspace left out, pinned
+   * when the run was admitted: what it counts toward besides its project.
+   */
+  within?: string[];
   lease: number;
   /** Micro-USD leased to calls that have not ended. */
   granted: number;

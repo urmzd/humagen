@@ -1,5 +1,26 @@
 import { type AnswerRequest, answerPath } from "@warp/adapter/question";
+import type {
+  ProjectDetail,
+  ProjectInput,
+  ProjectUpdate,
+  ProjectView,
+} from "../../../packages/client/src/generated/types.ts";
 import type { BusEvent, Run } from "./adapter.ts";
+
+// The project tree's shapes are the generated client's own, from
+// api/openapi.yaml, so this file cannot drift from the contract on them.
+export type {
+  Project,
+  ProjectAccount,
+  ProjectChange,
+  ProjectDetail,
+  ProjectInput,
+  ProjectKind,
+  ProjectLimit,
+  ProjectStep,
+  ProjectUpdate,
+  ProjectView,
+} from "../../../packages/client/src/generated/types.ts";
 
 export class ApiError extends Error {
   constructor(
@@ -298,16 +319,10 @@ export interface Choice {
   matched?: string[];
 }
 
-export interface Project {
-  name: string;
-  description?: string;
-}
-
 export interface Settings {
   baseline: string;
   history: "recent" | "none";
   history_limit: number;
-  projects: Project[];
   title_agent: string;
   memory_agent: string;
   memory_auto_approve: boolean;
@@ -424,18 +439,6 @@ export interface PolicyChange {
   after?: Policy;
 }
 
-/** A project and what is in it. */
-export interface ProjectView {
-  name: string;
-  description?: string;
-  conversations: number;
-  active: number;
-  schedules: number;
-  notes: number;
-  proposed: number;
-  updated_at?: string;
-}
-
 export interface Note {
   id: string;
   text: string;
@@ -517,6 +520,11 @@ export interface SuiteView extends Suite {
   runs: EvalRun[];
 }
 
+/** A project in a path: `~` is the workspace, which is the project named "". */
+export function projectPath(name: string): string {
+  return name === "" ? "~" : encodeURIComponent(name);
+}
+
 // Same-origin only. The session is an HttpOnly cookie the page cannot read,
 // so there is no token here to leak.
 async function call<T>(method: string, path: string, json?: unknown): Promise<T> {
@@ -563,10 +571,21 @@ export const api = {
   createRun: (agent: string, text: string, opts: { after?: string; project?: string } = {}) =>
     call<Run>("POST", "/api/runs", { agent, text, ...opts }),
   threads: () => call<{ threads: ThreadSummary[] }>("GET", "/api/threads").then((r) => r.threads),
-  /** One page of conversations, newest first. `next` is the cursor for the page after it, null at the end, and absent from a server that does not page. */
-  threadsPage: (q: { limit: number; before?: string; origin?: string; agent?: string; standing?: string }) => {
+  /**
+   * One page of conversations, newest first. `next` is the cursor for the page after it, null at the end, and absent from a server that does not page.
+   * `project` keeps one project's own (`~` for the workspace's), and `within` a project and everything below it.
+   */
+  threadsPage: (q: {
+    limit: number;
+    before?: string;
+    origin?: string;
+    agent?: string;
+    standing?: string;
+    project?: string;
+    within?: string;
+  }) => {
     const params = new URLSearchParams({ limit: String(q.limit) });
-    for (const k of ["before", "origin", "agent", "standing"] as const) if (q[k]) params.set(k, q[k]);
+    for (const k of ["before", "origin", "agent", "standing", "project", "within"] as const) if (q[k]) params.set(k, q[k]);
     return call<{ threads: ThreadSummary[]; next?: string | null }>("GET", `/api/threads?${params}`);
   },
   /** The agents' turns of a conversation, its newest page. `coworking.thread` reads people's messages too. */
@@ -623,17 +642,22 @@ export const api = {
     call<void>("DELETE", `/api/policies?${new URLSearchParams({ kind: scope.kind, name: scope.name ?? "" })}`),
   policyHistory: () => call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
   usage: () => call<{ scopes: ScopeUsage[] }>("GET", "/api/usage").then((r) => r.scopes),
+  /** The workspace's projects in tree order, each before its sub-projects. The workspace itself is not one of them. */
   projects: () => call<{ projects: ProjectView[] }>("GET", "/api/projects").then((r) => r.projects),
-  createProject: (name: string, description: string) => call<void>("POST", "/api/projects", { name, description }),
-  deleteProject: (name: string) => call<void>("DELETE", `/api/projects/${encodeURIComponent(name)}`),
+  /** One project, "" for the workspace: where it sits, its sub-projects and the limits that hold it. */
+  project: (name: string) => call<ProjectDetail>("GET", `/api/projects/${projectPath(name)}`),
+  createProject: (p: ProjectInput) => call<ProjectView>("POST", "/api/projects", p),
+  /** Replace a project's title, description, account and instructions, as a whole, from the version read. */
+  updateProject: (name: string, u: ProjectUpdate) => call<ProjectView>("PUT", `/api/projects/${projectPath(name)}`, u),
+  deleteProject: (name: string) => call<void>("DELETE", `/api/projects/${projectPath(name)}`),
   projectMemory: (project: string) =>
-    call<{ notes: Note[] }>("GET", `/api/projects/${encodeURIComponent(project)}/memory`).then((r) => r.notes),
+    call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then((r) => r.notes),
   addProjectMemory: (project: string, text: string) =>
-    call<Note>("POST", `/api/projects/${encodeURIComponent(project)}/memory`, { text }),
+    call<Note>("POST", `/api/projects/${projectPath(project)}/memory`, { text }),
   approveProjectMemory: (project: string, ids: string[]) =>
-    call<{ approved: number }>("POST", `/api/projects/${encodeURIComponent(project)}/memory/approve`, { ids }),
+    call<{ approved: number }>("POST", `/api/projects/${projectPath(project)}/memory/approve`, { ids }),
   removeProjectMemory: (project: string, id: string) =>
-    call<void>("DELETE", `/api/projects/${encodeURIComponent(project)}/memory/${encodeURIComponent(id)}`),
+    call<void>("DELETE", `/api/projects/${projectPath(project)}/memory/${encodeURIComponent(id)}`),
   removeMemory: (agent: string, id: string) =>
     call<void>("DELETE", `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`),
 
@@ -940,22 +964,22 @@ export interface ProjectAvailability {
   default_resolved: { agent: string; from: string } | null;
 }
 
-/** A project's address in a path: `~` is the workspace itself. */
-const projectPath = (name: string) => `/api/projects/${name === "" ? "~" : encodeURIComponent(name)}`;
+/** A project's API path: `~` is the workspace itself. */
+const projectAPI = (name: string) => `/api/projects/${projectPath(name)}`;
 const threadPath = (id: string) => `/api/threads/${encodeURIComponent(id)}`;
 
 /** Channels, experts and shared threads: where people and agents work together. */
 export const coworking = {
-  channels: (project: string) => call<{ channels: Channel[] }>("GET", `${projectPath(project)}/channels`).then((r) => r.channels),
+  channels: (project: string) => call<{ channels: Channel[] }>("GET", `${projectAPI(project)}/channels`).then((r) => r.channels),
   createChannel: (project: string, c: { name: string; title?: string; purpose?: string; default?: string }) =>
-    call<Channel>("POST", `${projectPath(project)}/channels`, c),
+    call<Channel>("POST", `${projectAPI(project)}/channels`, c),
   updateChannel: (project: string, name: string, c: { version: number; title: string; purpose: string; default: string }) =>
-    call<Channel>("PUT", `${projectPath(project)}/channels/${encodeURIComponent(name)}`, c),
+    call<Channel>("PUT", `${projectAPI(project)}/channels/${encodeURIComponent(name)}`, c),
   archiveChannel: (project: string, name: string) =>
-    call<void>("DELETE", `${projectPath(project)}/channels/${encodeURIComponent(name)}`),
-  experts: (project: string) => call<{ version: number; experts: ProjectExpert[] }>("GET", `${projectPath(project)}/experts`),
+    call<void>("DELETE", `${projectAPI(project)}/channels/${encodeURIComponent(name)}`),
+  experts: (project: string) => call<{ version: number; experts: ProjectExpert[] }>("GET", `${projectAPI(project)}/experts`),
   setExperts: (project: string, version: number, experts: ProjectExpert[]) =>
-    call<{ version: number; experts: ProjectExpert[] }>("PUT", `${projectPath(project)}/experts`, { version, experts }),
+    call<{ version: number; experts: ProjectExpert[] }>("PUT", `${projectAPI(project)}/experts`, { version, experts }),
   /** One page of a channel's threads, most recently active first. */
   threads: (project: string, channel: string, before?: string) => {
     const q = new URLSearchParams({ project: project === "" ? "~" : project, channel, limit: "30" });
@@ -975,5 +999,5 @@ export const coworking = {
   people: (q: string) =>
     call<{ people: DirectoryPerson[] }>("GET", `/api/people?${new URLSearchParams({ q, limit: "8" })}`).then((r) => r.people),
   /** Which agents may answer in a project, for the @ typeahead. */
-  available: (project: string) => call<ProjectAvailability>("GET", `${projectPath(project)}/agents`),
+  available: (project: string) => call<ProjectAvailability>("GET", `${projectAPI(project)}/agents`),
 };
