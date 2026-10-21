@@ -1,13 +1,14 @@
-warp is starting as {{ include "warp.fullname" . }} in {{ .Release.Namespace }}.
+{{- $url := dig "spec" "server" "public_url" "http://localhost:8080" (.Values.system | default dict) -}}
+warp is starting as {{ include "warp.fullname" . }} in {{ .Release.Namespace }},
+reading its spec from /etc/warp/warp.yaml.
 
-Browsers reach it at {{ .Values.auth.publicURL }}. Register
-{{ .Values.auth.publicURL }}/auth/callback as the redirect URI with your
-identity provider.
+Browsers reach it at {{ $url }}. Register {{ $url }}/auth/callback as the
+redirect URI with your identity provider.
 {{- if not .Values.existingSecret }}
 
-No existingSecret is set, so warp has no OIDC client secret, keeps its
-records in memory (no WARP_POSTGRES_URL) and has no model key. Create a Secret
-and set existingSecret; see values.yaml for its keys.
+No existingSecret is set, so the references in the spec ({ref: env:NAME}),
+such as the OIDC client secret and WARP_POSTGRES_URL, have nothing to read and
+warp will stop at start. Create a Secret and set existingSecret.
 {{- end }}
 {{- if not .Values.ingress.enabled }}
 

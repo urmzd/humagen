@@ -1,9 +1,6 @@
 {{- if ne (int .Values.replicaCount) 1 }}
 {{- fail "replicaCount must be 1: warp's stores are single-writer. See values.yaml." }}
 {{- end }}
-{{- if has .Values.auth.mode (list "dev" "mock" "tailscale") }}
-{{- fail (printf "auth.mode=%s only listens on loopback and cannot serve a pod; use oidc" .Values.auth.mode) }}
-{{- end }}
 {{- $fullname := include "warp.fullname" . -}}
 apiVersion: apps/v1
 kind: Deployment
@@ -47,50 +44,15 @@ spec:
         - name: warp
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # The spec is the file; the chart forces only the listener and the
+          # console's directory, which are the image's, as flags that win.
           args:
             - serve
+            - -f=/etc/warp/warp.yaml
             - -addr=0.0.0.0:8080
             - -web=/usr/share/warp/web
-            - -auth={{ .Values.auth.mode }}
-            - -public-url={{ required "auth.publicURL is required" .Values.auth.publicURL }}
-            - -tenant={{ .Values.auth.tenant }}
-            {{- with .Values.auth.tenantClaim }}
-            - -tenant-claim={{ . }}
-            {{- end }}
-            - -groups-claim={{ .Values.auth.groupsClaim }}
-            - -max-depth={{ .Values.limits.maxDepth }}
-            - -max-fan-out={{ .Values.limits.maxFanOut }}
-            - -storage={{ .Values.storage.kind }}
-            {{- if eq .Values.storage.kind "s3" }}
-            - -s3-bucket={{ required "storage.s3.bucket is required with storage.kind=s3" .Values.storage.s3.bucket }}
-            {{- with .Values.storage.s3.region }}
-            - -s3-region={{ . }}
-            {{- end }}
-            {{- with .Values.storage.s3.endpoint }}
-            - -s3-endpoint={{ . }}
-            {{- end }}
-            {{- with .Values.storage.s3.prefix }}
-            - -s3-prefix={{ . }}
-            {{- end }}
-            - -s3-path-style={{ .Values.storage.s3.pathStyle }}
-            {{- end }}
-            {{- with .Values.builtin.provider }}
-            - -builtin-provider={{ . }}
-            {{- end }}
-            {{- with .Values.builtin.model }}
-            - -builtin-model={{ . }}
-            {{- end }}
             {{- if .Values.webhooks.enabled }}
             - -webhook-addr=0.0.0.0:{{ .Values.webhooks.port }}
-            {{- end }}
-            {{- if .Values.config.providers }}
-            - -providers=/etc/warp/providers.json
-            {{- end }}
-            {{- if .Values.config.settings }}
-            - -settings=/etc/warp/settings.json
-            {{- end }}
-            {{- if .Values.config.agents }}
-            - -agent-specs={{ range $i, $name := keys .Values.config.agents | sortAlpha }}{{ if $i }},{{ end }}/etc/warp/agents/{{ $name }}{{ end }}
             {{- end }}
             {{- range .Values.extraArgs }}
             - {{ . | quote }}
@@ -101,22 +63,11 @@ spec:
               value: /var/lib/warp
             - name: XDG_CACHE_HOME
               value: /var/lib/warp/cache
-            {{- if has .Values.auth.mode (list "oidc" "okta") }}
-            - name: WARP_OIDC_ISSUER
-              value: {{ required "auth.oidc.issuer is required with auth.mode=oidc" .Values.auth.oidc.issuer | quote }}
-            - name: WARP_OIDC_CLIENT_ID
-              value: {{ required "auth.oidc.clientID is required with auth.mode=oidc" .Values.auth.oidc.clientID | quote }}
-            - name: WARP_OIDC_AUDIENCE
-              value: {{ required "auth.oidc.audience is required with auth.mode=oidc" .Values.auth.oidc.audience | quote }}
-            {{- end }}
-            {{- if .Values.config.policy }}
-            - name: WARP_AUTHZ_POLICY
-              value: /etc/warp/policy.authz
-            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- with .Values.existingSecret }}
+          # The references in the spec ({ref: env:NAME}) read these.
           envFrom:
             - secretRef:
                 name: {{ . }}
@@ -152,11 +103,9 @@ spec:
             # A read-only root filesystem still needs somewhere for temp files.
             - name: tmp
               mountPath: /tmp
-            {{- if include "warp.hasConfig" . }}
             - name: config
               mountPath: /etc/warp
               readOnly: true
-            {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -170,28 +119,10 @@ spec:
           {{- end }}
         - name: tmp
           emptyDir: {}
-        {{- if include "warp.hasConfig" . }}
+        # warp.yaml and the files beside it.
         - name: config
           configMap:
             name: {{ $fullname }}
-            items:
-              {{- if .Values.config.providers }}
-              - key: providers.json
-                path: providers.json
-              {{- end }}
-              {{- if .Values.config.settings }}
-              - key: settings.json
-                path: settings.json
-              {{- end }}
-              {{- if .Values.config.policy }}
-              - key: policy.authz
-                path: policy.authz
-              {{- end }}
-              {{- range $name, $_ := .Values.config.agents }}
-              - key: agent-{{ $name }}
-                path: agents/{{ $name }}
-              {{- end }}
-        {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

@@ -35,7 +35,33 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 {{- end -}}
 
-{{/* Whether any file goes in the ConfigMap. */}}
-{{- define "warp.hasConfig" -}}
-{{- if or .Values.config.providers .Values.config.settings .Values.config.policy .Values.config.agents -}}true{{- end -}}
+{{/*
+The spec documents the pod reads: the System document, then one Platform
+document per workspace, separated by "---". Rendered from the values as
+written; the chart adds only api_version and kind.
+*/}}
+{{- define "warp.spec" -}}
+{{- $sys := .Values.system | default dict -}}
+{{- $spec := $sys.spec | default dict -}}
+{{- $auth := $spec.auth | default dict -}}
+{{- $kind := $auth.kind | default "dev" -}}
+{{- if has $kind (list "dev" "mock" "tailscale") -}}
+{{- fail (printf "system.spec.auth.kind=%s trusts loopback and cannot serve a pod; use oidc. An empty kind means dev" $kind) -}}
+{{- end -}}
+{{- if eq $kind "oidc" -}}
+{{- $oidc := $auth.oidc | default dict -}}
+{{- $_ := required "system.spec.auth.oidc.issuer is required" $oidc.issuer -}}
+{{- $_ := required "system.spec.auth.oidc.client_id is required" $oidc.client_id -}}
+{{- $_ := required "system.spec.auth.oidc.audience is required: the API audience access tokens are issued for" $oidc.audience -}}
+{{- end -}}
+api_version: warp/v1
+kind: System
+{{ omit $sys "api_version" "kind" | toYaml }}
+{{- range $i, $p := .Values.platforms }}
+{{- $_ := required (printf "platforms[%d].metadata.name is required: it is the workspace's tenant" $i) (($p.metadata | default dict).name) }}
+---
+api_version: warp/v1
+kind: Platform
+{{ omit $p "api_version" "kind" | toYaml }}
+{{- end }}
 {{- end -}}

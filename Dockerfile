@@ -5,14 +5,14 @@
 #
 #   docker build -t warp .
 #
-# Then run it with real sign-in (dev and mock auth listen only on loopback,
-# so they cannot be reached through a published container port):
+# Then run it with a spec (docs/spec.md) in /etc/warp. Its System document
+# must sign in with OIDC: dev, mock and tailscale listen only on loopback, so
+# they cannot be reached through a published container port. Credentials are
+# references in the spec, read from the environment:
 #
 #   docker run -p 8080:8080 -v warp-data:/var/lib/warp \
-#     -e WARP_OIDC_ISSUER=... -e WARP_OIDC_CLIENT_ID=... \
-#     -e WARP_OIDC_CLIENT_SECRET=... -e WARP_OIDC_AUDIENCE=... \
-#     warp serve -addr 0.0.0.0:8080 -web /usr/share/warp/web \
-#       -public-url https://warp.example.com
+#     -v "$PWD/config:/etc/warp:ro" \
+#     -e WARP_OIDC_CLIENT_SECRET=... -e WARP_POSTGRES_URL=... warp
 #
 # See docs/deploy.md.
 
@@ -76,5 +76,6 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
   CMD wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/warp"]
-# The default is OIDC sign-in; it needs the WARP_OIDC_* variables.
-CMD ["serve", "-addr", "0.0.0.0:8080", "-web", "/usr/share/warp/web"]
+# The spec is mounted at /etc/warp; the listen address and the console are the
+# image's, as flags, which win over the spec.
+CMD ["serve", "-f", "/etc/warp", "-addr", "0.0.0.0:8080", "-web", "/usr/share/warp/web"]

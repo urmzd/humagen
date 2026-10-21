@@ -12,22 +12,13 @@ services:
   warp:
     network_mode: host
     ports: !reset []
-    command: >-
-      serve
-      -addr 127.0.0.1:${WARP_PORT:-8080}
-      -web /usr/share/warp/web
-      -auth dev
-      -seed
-      -builtin-provider offline
-      -builtin-model offline
-      -storage ${WARP_STORAGE:-disk}
-      -s3-bucket ${WARP_S3_BUCKET:-warp}
-      -s3-endpoint http://127.0.0.1:9000
-      -s3-region ${WARP_S3_REGION:-us-east-1}
-      -s3-path-style=true
-      ${WARP_EXTRA_ARGS:-}
+    # dev/warp.yaml in place of config/: development sign-in, Postgres on
+    # loopback, the offline provider. The flags win over it, as in compose.yaml.
+    command: serve -f /etc/warp -addr 127.0.0.1:${WARP_PORT:-8080} -web /usr/share/warp/web -seed ${WARP_EXTRA_ARGS:-}
     environment:
       WARP_POSTGRES_URL: postgres://warp:${POSTGRES_PASSWORD:-warp}@127.0.0.1:5432/warp?sslmode=disable
+    volumes:
+      - ./dev:/etc/warp:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${WARP_PORT:-8080}/healthz"]
 
