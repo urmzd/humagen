@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/credref"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/spec"
 )
 
@@ -434,14 +436,39 @@ func applyWorkspace(ctx context.Context, p *platform.Platform, doc spec.Platform
 			s.HistoryLimit = h.Limit
 		}
 	}
-	if w.Projects != nil {
-		s.Projects = nil
-		for _, pr := range w.Projects {
-			s.Projects = append(s.Projects, platform.Project{Name: pr.Name, Description: pr.Description})
-		}
-	}
 	if err := p.SetSettings(ctx, tenant, s); err != nil {
 		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
+	}
+	return applyProjects(p, tenant, w.Projects)
+}
+
+// fileWriter is who the file's changes to projects are recorded as.
+const fileWriter = "file"
+
+// applyProjects merges the file's projects into the tree, never replacing it.
+// Each is upserted, parents first, as managed by the file, and the fields the
+// file sets are the file's: the API answers 409 for them. An unchanged entry
+// makes no new version. A project that left the file stays, unmanaged, and a
+// project made in the console survives every start.
+func applyProjects(p *platform.Platform, tenant string, file []spec.Project) error {
+	in := map[string]bool{}
+	for i, pr := range file {
+		var owns []string
+		if pr.Description != "" {
+			owns = append(owns, projects.FieldDescription)
+		}
+		if _, err := p.Projects.Upsert(tenant, projects.Project{Name: pr.Name, Description: pr.Description}, owns, fileWriter, time.Now()); err != nil {
+			return fmt.Errorf("platform %q: workspace.projects[%d]: %w", tenant, i, err)
+		}
+		in[pr.Name] = true
+	}
+	for _, pr := range p.Projects.List(tenant) {
+		if pr.Managed != projects.ManagedFile || in[pr.Name] {
+			continue
+		}
+		if _, err := p.Projects.Release(tenant, pr.Name, fileWriter, time.Now()); err != nil {
+			return fmt.Errorf("platform %q: workspace.projects: let go of %q: %w", tenant, pr.Name, err)
+		}
 	}
 	return nil
 }
