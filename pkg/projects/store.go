@@ -274,7 +274,8 @@ func (s *Store) Stored(tenantName string) bool {
 // Hold runs fn while the project exists, and keeps it from being deleted until
 // fn returns. A caller filing something under a project (a schedule, an alert
 // rule, a policy) does it in fn, so a delete that checks for such things
-// cannot miss it. fn must not write to this store.
+// cannot miss it. fn may read Tree and Get, which take no lock, and must call
+// nothing else on this store: a write waiting for the lock would wait for fn.
 func (s *Store) Hold(tenantName, name string, fn func() error) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

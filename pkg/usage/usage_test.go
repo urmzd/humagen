@@ -288,3 +288,105 @@ func TestEntriesOutOfOrderAndAcrossAPeriodBoundaryAreCountedInTheirOwnPeriod(t *
 		t.Fatal("the rebuilt ledger disagrees")
 	}
 }
+
+// A run in a child project counts toward each ancestor it was admitted
+// within, whether a period is read from whole days' totals or from the
+// entries of the day it starts inside. An entry with no Within, written
+// before projects nested, counts toward its own project alone.
+func TestWithinCountsFromDayTotalsAndFromInsideADay(t *testing.T) {
+	l := NewLedger()
+	field := policy.Scope{Kind: policy.Project, Name: "Field"}
+	globex := policy.Scope{Kind: policy.Project, Name: "Globex"}
+	at := func(e Entry) {
+		t.Helper()
+		if _, err := l.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Yesterday, in Globex under Field; today, in Initech under Field and in
+	// Renewals under Globex under Field; and one from before nesting.
+	at(Entry{Kind: Admitted, Tenant: "acme", Project: "Globex", Within: []string{"Field"}, Agent: "lead", RunID: "r1", At: t0.Add(-2 * time.Hour)})
+	at(Entry{Kind: Admitted, Tenant: "acme", Project: "Initech", Within: []string{"Field"}, Agent: "lead", RunID: "r2", At: t0.Add(time.Hour)})
+	at(Entry{Kind: Admitted, Tenant: "acme", Project: "Renewals", Within: []string{"Globex", "Field"}, Agent: "lead", RunID: "r3", At: t0.Add(3 * time.Hour)})
+	at(Entry{Kind: Admitted, Tenant: "acme", Project: "Globex", Agent: "lead", RunID: "old", At: t0.Add(4 * time.Hour)})
+	at(Entry{Kind: Spent, Tenant: "acme", Project: "Initech", Within: []string{"Field"}, Agent: "lead", RunID: "r2", Key: "r2/1", Spend: &Spend{Micros: 700, ModelCalls: 1, Tokens: 10}, At: t0.Add(2 * time.Hour)})
+	at(Entry{Kind: Spent, Tenant: "acme", Project: "Renewals", Within: []string{"Globex", "Field"}, Agent: "lead", RunID: "r3", Key: "r3/1", Spend: &Spend{Micros: 300, ModelCalls: 1, Tokens: 5}, At: t0.Add(3 * time.Hour)})
+	at(Entry{Kind: Ended, Tenant: "acme", RunID: "r2", At: t0.Add(5 * time.Hour)})
+
+	for name, c := range map[string]struct {
+		scope      policy.Scope
+		since      time.Time
+		runs, live int
+		spend      int64
+		tokens     int64
+	}{
+		// Since midnight: today's totals.
+		"Field, from today's totals":  {scope: field, since: t0, runs: 2, live: 2, spend: 1000, tokens: 15},
+		"Globex, from today's totals": {scope: globex, since: t0, runs: 2, live: 3, spend: 300, tokens: 5},
+		// Since two in the morning: inside the day, entry by entry.
+		"Field, from inside the day":  {scope: field, since: t0.Add(2 * time.Hour), runs: 1, live: 2, spend: 1000, tokens: 15},
+		"Globex, from inside the day": {scope: globex, since: t0.Add(2 * time.Hour), runs: 2, live: 3, spend: 300, tokens: 5},
+		// Since yesterday: a day inside, then a whole day.
+		"Field, across two days": {scope: field, since: t0.Add(-3 * time.Hour), runs: 3, live: 2, spend: 1000, tokens: 15},
+	} {
+		got := l.Usage("acme", c.scope, c.since)
+		if got.Runs != c.runs || got.Concurrent != c.live || got.Spend != c.spend || got.Tokens != c.tokens {
+			t.Errorf("%s: %+v, want %d runs, %d in flight, %d spent, %d tokens", name, got, c.runs, c.live, c.spend, c.tokens)
+		}
+		if replayed := Rebuild(l.Entries()).Usage("acme", c.scope, c.since); !reflect.DeepEqual(replayed, got) {
+			t.Errorf("%s: rebuilt %+v, live %+v", name, replayed, got)
+		}
+	}
+	// The tenant counts each run once, however many projects it counts in.
+	if got := l.Usage("acme", all, t0); got.Runs != 3 || got.Spend != 1000 {
+		t.Fatalf("tenant = %+v", got)
+	}
+	// A project a run is not within is not charged for it.
+	if got := l.Usage("acme", policy.Scope{Kind: policy.Project, Name: "Initech"}, t0); got.Runs != 1 || got.Spend != 700 {
+		t.Fatalf("Initech = %+v", got)
+	}
+}
+
+// Rebuild replays Within as the live ledger counted it, entries from before
+// nesting included, for every project of the tree.
+func TestRebuildAgreesAlongTheTree(t *testing.T) {
+	rng := rand.New(rand.NewPCG(3, 4))
+	l := NewLedger()
+	places := []struct {
+		project string
+		within  []string
+	}{{"", nil}, {"Field", nil}, {"Globex", []string{"Field"}}, {"Renewals", []string{"Globex", "Field"}}, {"Globex", nil}}
+	at := t0
+	var open []int
+	for i := range 1500 {
+		at = at.Add(time.Duration(rng.IntN(900)) * time.Second)
+		if len(open) > 0 && rng.IntN(2) == 0 {
+			j := open[rng.IntN(len(open))]
+			pl := places[j%len(places)]
+			id := fmt.Sprintf("r%d", j)
+			kind, key := Spent, fmt.Sprintf("%s/%d", id, i)
+			if rng.IntN(5) == 0 {
+				kind, key = Settled, "run:"+id
+			}
+			if _, err := l.Append(Entry{Kind: kind, Tenant: "acme", Project: pl.project, Within: pl.within, Agent: "lead", RunID: id, Key: key,
+				Spend: &Spend{Micros: int64(rng.IntN(4000)), ModelCalls: 1, Tokens: int64(rng.IntN(500))}, At: at}); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		pl := places[i%len(places)]
+		if _, err := l.Append(Entry{Kind: Admitted, Tenant: "acme", Project: pl.project, Within: pl.within, Agent: "lead", RunID: fmt.Sprintf("r%d", i), At: at}); err != nil {
+			t.Fatal(err)
+		}
+		open = append(open, i)
+	}
+	rebuilt := Rebuild(l.Entries())
+	for _, name := range []string{"Field", "Globex", "Renewals"} {
+		scope := policy.Scope{Kind: policy.Project, Name: name}
+		for _, since := range []time.Time{t0, policy.PeriodStart(policy.Day, at), at.Add(-90 * time.Minute), policy.PeriodStart(policy.Month, at)} {
+			if live, replayed := l.Usage("acme", scope, since), rebuilt.Usage("acme", scope, since); !reflect.DeepEqual(live, replayed) {
+				t.Fatalf("%s since %s: live %+v, rebuilt %+v", name, since, live, replayed)
+			}
+		}
+	}
+}
