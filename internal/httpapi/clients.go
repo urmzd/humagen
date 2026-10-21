@@ -63,7 +63,7 @@ type clientView struct {
 
 func (s *Server) view(tenant string, c clients.Client) clientView {
 	v := clientView{Client: c}
-	for _, pol := range s.P.Policies.For(tenant, "", "", c.ID) {
+	for _, pol := range s.P.Policies.For(tenant, nil, "", c.ID) {
 		if pol.Scope.Kind == policy.Client {
 			v.Limits = &pol
 		}

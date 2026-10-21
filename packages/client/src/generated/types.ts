@@ -17,7 +17,7 @@ export interface Refusal {
   resets_at?: string;
 }
 
-export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write";
+export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "projects:read" | "projects:write" | "projects:govern";
 
 /** An authenticated caller. The tenant is the workspace everything they touch is confined to. */
 export interface Principal {
@@ -178,6 +178,7 @@ export interface Approved {
 /** A proposed note, for an agent or for a project. */
 export interface MemoryProposal {
   agent?: string;
+  /** The project the note is for, `~` for the workspace's own. */
   project?: string;
   note: Note;
 }
@@ -235,6 +236,11 @@ turned back into it.
   /** Why the agent was chosen, when the caller left it to the platform. */
   picked?: string;
   project?: string;
+  /** The project's ancestors, nearest first and the workspace left out,
+pinned when the run was admitted: what it counts toward besides
+its project. A run an agent called has its root's.
+ */
+  within?: string[];
   /** The Slack app or GitHub installation that raised the run. */
   client?: string;
   /** The run's budget in micro-USD. Zero means unmetered. */
@@ -353,23 +359,120 @@ export interface ThreadSummary {
   updated_at: string;
 }
 
-export interface Project {
-  name: string;
-  description?: string;
+/** What a project is for. `company` is company-wide: it sits under the
+workspace or another company project, and is created and changed only
+with `projects:govern`; a workspace has at most 10. `team` is the
+default and sits anywhere. `account` is a customer account, never
+under another account. The workspace itself is `company`.
+ */
+export type ProjectKind = "company" | "team" | "account";
+
+/** What an account project records about its customer. */
+export interface ProjectAccount {
+  customer?: string;
+  /** The customer's id in another system, such as a CRM. */
+  external_id?: string;
+  /** An https link to the customer's record. */
+  url?: string;
 }
 
-/** A project and what is in it. */
-export interface ProjectView {
+/** One place in the tree. `name` is the identity: unique ignoring case,
+never changed. The workspace itself is the project named `""` (`~` in
+a path), which has no title, parent or account: show the workspace's
+name for it. It reads as version 0 until it is first changed.
+ */
+export interface Project {
   name: string;
+  /** What people see. Shown instead of the name when set. */
+  title?: string;
   description?: string;
-  conversations: number;
-  active: number;
-  schedules: number;
-  /** How many shared notes are in use. */
-  notes: number;
-  /** How many notes wait for someone to approve them. */
-  proposed: number;
-  updated_at?: string;
+  kind: ProjectKind;
+  /** The project it sits under, fixed when it was created. Absent for the top level. */
+  parent?: string;
+  account?: ProjectAccount;
+  /** Sent to every agent answering here and below, after the
+instructions of the projects above. The agent's own instructions
+win over them.
+ */
+  instructions?: string;
+  /** `file` when the platform file declares the project, and absent otherwise. The fields the file sets answer 409 here, and the project cannot be deleted here. */
+  managed?: string;
+  /** Counts writes, from 1. A change names the version it read. */
+  version: number;
+  created_by?: string;
+  created_at: string;
+  updated_by?: string;
+  /** When the record last changed. What happened in it is `active_at` on a view. */
+  updated_at: string;
+}
+
+/** One project on the way down to another. */
+export interface ProjectStep {
+  name: string;
+  title?: string;
+  kind: ProjectKind;
+}
+
+/** A project, where it sits, and what is in it. */
+export type ProjectView = Project & { depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number };
+
+/** A limit a run filed in the project falls under for being there, and
+the project it is set on. What the limit allows is read from
+`GET /api/policies`, which needs `billing:read`.
+ */
+export interface ProjectLimit {
+  scope: PolicyScope;
+  /** The project the limit is set on, this one or one above it, or `""` for the workspace's own. */
+  from: string;
+}
+
+/** One project, the projects above and below it, and the limits that hold it. */
+export interface ProjectDetail {
+  project: ProjectView;
+  /** The projects above it, the workspace first, so they read as a breadcrumb. Empty for the workspace. */
+  ancestors: ProjectView[];
+  /** Its sub-projects, by name ignoring case. */
+  children: ProjectView[];
+  /** Its own limit, each ancestor's nearest first, then the workspace's. The strictest of them refuses a run. */
+  limits: ProjectLimit[];
+}
+
+/** A new project. `kind` defaults to `team` and `parent` to the top level. */
+export interface ProjectInput {
+  /** The identity, never changed. Letters, digits, spaces, dashes and underscores, starting with a letter or digit. */
+  name: string;
+  title?: string;
+  description?: string;
+  kind?: ProjectKind;
+  /** The project to put it under. Empty or `~` is the top level. At most four levels. */
+  parent?: string;
+  account?: ProjectAccount;
+  instructions?: string;
+}
+
+/** What a person may change on a project, as a whole. A field left out is cleared. */
+export interface ProjectUpdate {
+  /** The version the caller read. */
+  version: number;
+  title?: string;
+  description?: string;
+  account?: ProjectAccount;
+  instructions?: string;
+}
+
+/** One entry of the record of what changed on a project. */
+export interface ProjectChange {
+  seq: number;
+  at: string;
+  /** Who made the change. `migration` for projects moved out of settings. */
+  by: string;
+  project: string;
+  /** `managed` is the platform file taking the project over or letting it go. */
+  what: "created" | "updated" | "deleted" | "managed";
+  /** Says more, such as that a project created under a deleted name adopts its old conversations. */
+  note?: string;
+  before?: Project;
+  after?: Project;
 }
 
 /** Workspace settings. */
@@ -379,7 +482,6 @@ export interface Settings {
   /** Whether an agent is sent the conversation so far. */
   history: "recent" | "none";
   history_limit: number;
-  projects: Project[];
   title_agent: string;
   memory_agent: string;
   memory_auto_approve: boolean;
@@ -1141,6 +1243,8 @@ record of spend and are not listed as notices.
   kind: "admitted" | "ended" | "warned" | "refused" | "spent" | "settled" | "halted";
   tenant: string;
   project?: string;
+  /** The run's project's ancestors, nearest first and the workspace left out. The entry counts toward each of them too. Entries from before the tree have none. */
+  within?: string[];
   agent: string;
   client?: string;
   run_id?: string;
@@ -1828,6 +1932,11 @@ export interface UpdatePreferencesBody {
 
 export interface ListProjectsResponse {
   projects: ProjectView[];
+}
+
+export interface ListProjectHistoryResponse {
+  changes: ProjectChange[];
+  next: string | null;
 }
 
 export interface ListPoliciesResponse {
