@@ -571,7 +571,12 @@ bound Slack channel the bound warp channel's chain decides. The client's
 allow-list (`client.Routes`) still filters the result: a default the client
 may not route to is refused, never swapped. A GitHub label in `auto_labels`
 names an agent, so it is a tag. fiber's in-process connectors may set an
-agent of `auto`; `surface.stamp` resolves it with `@auto` before admission.
+agent of `auto`; `surface.stamp` resolves it with `@auto` before admission,
+among the agents the client may route to. The Slack app built on the API
+cannot have its list applied by the platform (`POST /api/runs` takes no
+client), so it sends `auto` only for a client whose list is `*`: a client that
+lists its agents treats `@auto`, and a default of `auto`, as names outside the
+list.
 `stamp` also writes `warp.project` and `warp.channel` from the binding, and
 `runs.ProjectOf` believes them for `slack` and `github` origins, because
 ingress overwrites whatever a connector put there (phase 8).

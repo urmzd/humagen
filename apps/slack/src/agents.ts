@@ -5,8 +5,8 @@ import type { Agent, ClientRecord } from "./warp.ts";
  *
  * 1. An agent named in the message as `@name`, when that agent exists and this
  *    surface may route to it, or `@auto`, the platform's built-in router,
- *    which picks among the agents available where the message lands. The
- *    name is taken out of the message.
+ *    which picks among the agents available where the message lands, where
+ *    this surface may reach any agent. The name is taken out of the message.
  * 2. The default agent: the client's, or the one configured for the app.
  * 3. Nobody, when the surface may reach any agent: the app sends no agent,
  *    and the default the platform's projects set decides. With none set, the
@@ -14,7 +14,10 @@ import type { Agent, ClientRecord } from "./warp.ts";
  *
  * Nothing is picked here. With a client that lists its agents and names no
  * default, nothing is chosen: the platform's default is not known here, so it
- * could be one the list leaves out.
+ * could be one the list leaves out. For the same reason a client that lists
+ * its agents never sends `auto`, as a tag or as its default: the platform
+ * picks among every agent available where the run lands, and the API does not
+ * tell it the client's list, so the pick could be one the list leaves out.
  */
 export type Choice =
   | { agent: string; text: string; how: "named" | "default" }
@@ -28,22 +31,24 @@ export interface Routing {
   defaultAgent?: string;
 }
 
-/** Whether this surface may route to an agent. Without a client, any agent in the workspace. */
+/** The platform's built-in router. It is no agent: the platform picks one. */
+export const AUTO = "auto";
+
+/**
+ * Whether this surface may route to an agent. Without a client, any agent in
+ * the workspace. `auto` only where the surface may reach any agent: the
+ * platform does not apply a client's list to what @auto picks for the API.
+ */
 export function mayRoute(routing: Routing, name: string): boolean {
   const client = routing.client;
   if (!client) return true;
   if (!client.enabled) return false;
-  return (
-    client.default_agent === name ||
-    (client.agents ?? []).includes("*") ||
-    (client.agents ?? []).includes(name)
-  );
+  const any = (client.agents ?? []).includes("*");
+  if (name === AUTO) return any;
+  return client.default_agent === name || any || (client.agents ?? []).includes(name);
 }
 
 const NAMED = /(^|\s)@([A-Za-z0-9][A-Za-z0-9_-]*)(?=$|[\s,.:;!?])/g;
-
-/** The platform's built-in router. It is no agent: the platform picks one. */
-export const AUTO = "auto";
 
 export function choose(text: string, agents: Agent[], routing: Routing): Choice {
   const said = text.trim();
