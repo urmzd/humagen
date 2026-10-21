@@ -130,6 +130,13 @@ no permission, grants nothing.
   credential's. The answer is recorded as the mapped principal, with the
   credential as `Via`: a credential never approves a call in a run it raised
   as itself, whoever it names. Mapping a person is `clients:write`.
+- **A person posts only as themselves.** A message in a shared thread is
+  the caller's, or, for a credential, the person its client maps through
+  `act_as`, who must hold `runs:write` themselves; a credential acting for
+  nobody is refused (403). No route takes an author or an agent to speak as,
+  and nothing writes an agent's turn but its run. A shared thread is read by
+  everyone with `runs:read`: private threads are refused (409) until every
+  read path is confined.
 - **The machine holds its people's votes.** Whoever holds the credential a
   Slack client names as `machine` can answer every question as any person the
   client maps, within what each may answer, and raise runs as them. The Slack
@@ -299,11 +306,14 @@ decided per message:
 | Failed run | `runs:read` | `runs:write` |
 | Proposed memory | `agents:read` | `agents:write` |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |
+| A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to reply in the thread as themselves or set it aside |
 
 A message a caller may not see answers 404, not 403, and is left out of their
 count. A question is addressed to the people its run's pinned spec lets answer
 it (`approvers` or `answerers`, by subject or `role:<name>`), and never to the
-person who asked for an approval's run or its tree. Someone who can see the run
+person who asked for an approval's run or its tree. A question asked of
+`sme:<topic>` goes to the experts its project's chain names for the topic,
+narrowed to those `answerers` when it names any. Someone who can see the run
 but may not answer is refused with 403 on `answerQuestion`, and nothing is
 recorded. See [People in the loop](architecture.md#people-in-the-loop).
 
