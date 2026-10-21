@@ -34,3 +34,6 @@ storybook-static/
 **/.slack/apps.dev.json
 **/.slack/config.json
 **/.slack/cache/
+
+# Local compose settings
+deploy/compose/.env
