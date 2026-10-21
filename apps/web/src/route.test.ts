@@ -80,6 +80,13 @@ test("a project's schedules have their own address", () => {
   assert.deepEqual(at("/projects/~/schedules"), { page: "project", name: "", tab: "schedules" });
 });
 
+test("a project's Agents tab has its own path, the workspace's included", () => {
+  assert.equal(href({ page: "project", name: "Globex", tab: "agents" }), "/projects/Globex/agents");
+  assert.equal(href({ page: "project", name: "", tab: "agents" }), "/projects/~/agents");
+  assert.deepEqual(at("/projects/~/agents"), { page: "project", name: "", tab: "agents" });
+  assert.deepEqual(at("/projects/Globex/agents"), { page: "project", name: "Globex", tab: "agents" });
+});
+
 test("a project tab or kind it does not know falls back to the default", () => {
   assert.deepEqual(at("/projects/Globex/bogus"), { page: "project", name: "Globex", tab: "overview" });
   assert.deepEqual(at("/projects/Globex/inbox"), { page: "project", name: "Globex", tab: "overview" });

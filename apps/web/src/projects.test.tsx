@@ -149,7 +149,7 @@ test("the picker shows each project's path and kind, and searches its customer",
 test("settings no longer edit projects: the workspace section links to Projects and to the workspace itself", () => {
   const me: Me = { principal: { subject: "ada", tenant: "acme", kind: "user", name: "Ada", roles: ["admin"] }, permissions: ["agents:write"] };
   const prefs: Preferences = { display_name: "", theme: "system", accent: "purple", has_photo: false, photo_version: 0, pinned: [], muted: [] };
-  const settings: Workspace = { baseline: "", history: "recent", history_limit: 20000, title_agent: "", memory_agent: "", memory_auto_approve: false };
+  const settings: Workspace = { history: "recent", history_limit: 20000, title_agent: "", memory_agent: "", memory_auto_approve: false };
   const out = html(
     <Settings
       me={me}

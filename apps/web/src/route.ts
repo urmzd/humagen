@@ -27,8 +27,8 @@ export const DIRECTORY_TABS: DirectoryTab[] = ["people", "agents", "projects"];
  * A project's tabs. Overview is the default. More arrive with later phases of
  * docs/projects.md; an unknown tab falls back to the default.
  */
-export type ProjectTab = "overview" | "context" | "schedules";
-export const PROJECT_TABS: ProjectTab[] = ["overview", "context", "schedules"];
+export type ProjectTab = "overview" | "context" | "agents" | "schedules";
+export const PROJECT_TABS: ProjectTab[] = ["overview", "context", "agents", "schedules"];
 
 /** What a project is for, as the Projects page narrows to it with `?kind=`. */
 export type ProjectKindFilter = "company" | "team" | "account";
