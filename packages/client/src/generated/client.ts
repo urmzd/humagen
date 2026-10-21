@@ -79,6 +79,9 @@ import type {
   StorageUsage,
   StreamEventsStreamEvent,
   Summary,
+  ToolCredential,
+  ToolCredentialInput,
+  ToolCredentials,
   UpdatePreferencesBody,
 } from "./types.js";
 import { type SSEEvent, type SSEOptions, streamSse } from "./sse.js";
@@ -531,6 +534,59 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<AccessDecision>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Lists the workspace's person-scoped tool providers, at most 64, with whether the caller has connected a credential for each and how it is held. A value is never shown. A machine holds no credentials, so it sees every provider unconnected. */
+  async listToolCredentials(options?: RequestOptions): Promise<ToolCredentials> {
+    const path = "/api/me/credentials";
+    return this.request<ToolCredentials>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listToolCredentialsRaw(options?: RequestOptions): Promise<ApiResponse<ToolCredentials>> {
+    const path = "/api/me/credentials";
+    return this.rawRequest<ToolCredentials>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Sets the caller's credential for a person-scoped provider, in place of the one they had. A reference must start with one of the starts the operator listed for the workspace, and is not read here; any reason it cannot be used is answered with one message. A value is accepted only where the workspace keeps them (403 otherwise), and is stored; a reference that replaces a value forgets it. A provider the workspace reaches with its own credential is 400, and a machine is 403: each person connects their own. */
+  async putToolCredential(provider: string, body: ToolCredentialInput, options?: RequestOptions): Promise<ToolCredential> {
+    let path = "/api/me/credentials/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.request<ToolCredential>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putToolCredentialRaw(provider: string, body: ToolCredentialInput, options?: RequestOptions): Promise<ApiResponse<ToolCredential>> {
+    let path = "/api/me/credentials/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.rawRequest<ToolCredential>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Removes it, and the value if it was one. The caller's runs then get no tools from the provider. */
+  async deleteToolCredential(provider: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/me/credentials/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteToolCredentialRaw(provider: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/me/credentials/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.rawRequest<void>("DELETE", path, {
       ...options,
     });
   }

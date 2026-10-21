@@ -124,8 +124,9 @@ func (in Input) Check() error {
 	if len(in.Ref) > MaxRef {
 		return fmt.Errorf("%w: a reference is at most %d characters", ErrInvalid, MaxRef)
 	}
+	// Not echoed: a secret pasted where a reference belongs is not said back.
 	if _, err := credref.Parse(in.Ref); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalid, err)
+		return fmt.Errorf("%w: a reference is env:NAME, keychain:SERVICE[/ACCOUNT] or op://VAULT/ITEM/FIELD", ErrInvalid)
 	}
 	return nil
 }

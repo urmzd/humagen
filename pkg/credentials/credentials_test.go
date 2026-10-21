@@ -178,6 +178,10 @@ func TestOnlyACredentialOfAValidFormIsKept(t *testing.T) {
 	if got := s.List("acme", "ada"); len(got) != 0 {
 		t.Fatalf("a refused credential was kept: %+v", got)
 	}
+	// A secret pasted where a reference belongs is not said back.
+	if _, err := s.Put("acme", "ada", "drive", credentials.Input{Ref: token}, at); err == nil || strings.Contains(err.Error(), token) {
+		t.Fatalf("a pasted secret = %v", err)
+	}
 }
 
 func TestAPersonHoldsABoundedNumber(t *testing.T) {

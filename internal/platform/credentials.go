@@ -264,12 +264,14 @@ var ErrProviderNotFound = errors.New("platform: tool provider not found")
 // it names anything. A value is accepted only where the workspace lets people
 // store one, and is then kept as a client's secret is.
 func (p *Platform) ConnectTool(ctx context.Context, who auth.Principal, provider string, in credentials.Input) (ToolCredential, error) {
-	if who.Kind == auth.Machine {
-		return ToolCredential{}, fmt.Errorf("%w: a machine has no credentials of its own; each person connects theirs", ErrForbidden)
-	}
+	// Looked up first, so another workspace's provider is not found
+	// whoever asks.
 	prov, err := p.personScoped(ctx, who.Tenant, provider)
 	if err != nil {
 		return ToolCredential{}, err
+	}
+	if who.Kind == auth.Machine {
+		return ToolCredential{}, fmt.Errorf("%w: a machine has no credentials of its own; each person connects theirs", ErrForbidden)
 	}
 	if err := in.Check(); err != nil {
 		return ToolCredential{}, err
@@ -289,12 +291,14 @@ func (p *Platform) ConnectTool(ctx context.Context, who auth.Principal, provider
 }
 
 // DisconnectTool removes the caller's own credential for a provider, and the
-// value if they had stored one. Their runs then get no tools from it.
-func (p *Platform) DisconnectTool(ctx context.Context, who auth.Principal, provider string) error {
-	if who.Kind == auth.Machine {
-		return fmt.Errorf("%w: a machine has no credentials of its own", ErrForbidden)
-	}
-	if !toolprovider.ValidName(provider) {
+// value if they had stored one. Their runs then get no tools from it. Nothing
+// of theirs is ErrNotFound.
+func (p *Platform) DisconnectTool(_ context.Context, who auth.Principal, provider string) error {
+	switch {
+	case who.Kind == auth.Machine:
+		// A machine holds none, so it finds none to remove.
+		return fmt.Errorf("%w: a machine holds no credentials", credentials.ErrNotFound)
+	case !toolprovider.ValidName(provider):
 		return fmt.Errorf("%w: no tool provider %q", ErrProviderNotFound, provider)
 	}
 	// A credential outlives its provider leaving the file, so it can be
