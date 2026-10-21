@@ -5,12 +5,20 @@
 // run and the runs it called (Trace), and in what order.
 //
 // The journal is a bounded ring in memory. When it is full the oldest events
-// are dropped, and it is empty after a restart. That bound is the reason a
-// durable store is planned: this answers "what happened in the last while", not
-// "what happened last quarter".
+// are dropped. It answers "what happened in the last while", not "what
+// happened last quarter".
+//
+// Built with Open, the ring is kept in a state.Store too, one record per
+// place in it, so it holds no more there than in memory and comes back after
+// a restart. Events are written behind, by Flush, not as each one arrives: an
+// event is something that already happened, which a failed write cannot
+// undo, and a run streams many of them. What a crash loses is what arrived
+// since the last Flush.
 package journal
 
 import (
+	"cmp"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -18,6 +26,8 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
 	"github.com/urmzd/fiber/pkg/envelope"
+
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // DefaultCapacity is how many events a journal keeps.
@@ -34,9 +44,31 @@ type Journal struct {
 	events []envelope.Event
 	head   int
 	full   bool
+
+	// seq counts every event ever appended. An event's place in the ring is
+	// its seq modulo the capacity, and that place is its record's key.
+	seq int64
+	// pending are appended events not yet written. They are bounded by the
+	// capacity: one the ring has already dropped need not be written.
+	pending []stored
+	// flushing makes one Flush at a time, so records are written in order.
+	flushing sync.Mutex
+	kept     *state.Table[stored]
 }
 
-// New returns a journal that keeps the last capacity events.
+// stored is one record: an event in its place in the ring, or the capacity
+// the ring was written with.
+type stored struct {
+	Seq      int64           `json:"seq,omitempty"`
+	Event    *envelope.Event `json:"event,omitempty"`
+	Capacity int             `json:"capacity,omitempty"`
+}
+
+const capacityKey = "capacity"
+
+func slotKey(seq int64, capacity int) string { return "slot/" + state.Seq(seq%int64(capacity)) }
+
+// New returns a journal that keeps the last capacity events, in memory.
 func New(capacity int) *Journal {
 	if capacity <= 0 {
 		capacity = DefaultCapacity
@@ -44,15 +76,108 @@ func New(capacity int) *Journal {
 	return &Journal{events: make([]envelope.Event, capacity)}
 }
 
-// Append records an event.
+// Open returns a journal that keeps the last capacity events in st too,
+// holding the ones st already has. A nil st is New. A ring written with
+// another capacity is rewritten for this one, keeping its newest events.
+func Open(st state.Store, capacity int) (*Journal, error) {
+	j := New(capacity)
+	j.kept = state.NewTable[stored](st, "journal")
+	var all []stored
+	written := 0
+	err := j.kept.Load(func(_, key string, r stored) error {
+		switch {
+		case key == capacityKey:
+			written = r.Capacity
+		case r.Event != nil:
+			all = append(all, r)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("journal: load: %w", err)
+	}
+	slices.SortFunc(all, func(a, b stored) int { return cmp.Compare(a.Seq, b.Seq) })
+	if written != 0 && written != len(j.events) || len(all) > len(j.events) {
+		b := j.kept.Batch()
+		for _, r := range all {
+			b.Delete("", slotKey(r.Seq, max(written, 1)))
+		}
+		if len(all) > len(j.events) {
+			all = all[len(all)-len(j.events):]
+		}
+		for _, r := range all {
+			b.Put("", slotKey(r.Seq, len(j.events)), r)
+		}
+		b.Put("", capacityKey, stored{Capacity: len(j.events)})
+		if err := b.Commit(); err != nil {
+			return nil, fmt.Errorf("journal: rewrite for capacity %d: %w", len(j.events), err)
+		}
+	} else if written == 0 && j.kept.Enabled() {
+		if err := j.kept.Put("", capacityKey, stored{Capacity: len(j.events)}); err != nil {
+			return nil, fmt.Errorf("journal: write: %w", err)
+		}
+	}
+	for _, r := range all {
+		j.put(*r.Event)
+	}
+	if len(all) > 0 {
+		j.seq = all[len(all)-1].Seq
+	}
+	return j, nil
+}
+
+// Append records an event. With a store, it is written at the next Flush.
 func (j *Journal) Append(e envelope.Event) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	j.put(e)
+	if j.kept.Enabled() {
+		j.seq++
+		j.pending = append(j.pending, stored{Seq: j.seq, Event: &e})
+		if len(j.pending) > len(j.events) {
+			j.pending = slices.Delete(j.pending, 0, len(j.pending)-len(j.events))
+		}
+	}
+}
+
+func (j *Journal) put(e envelope.Event) {
 	j.events[j.head] = e
 	j.head = (j.head + 1) % len(j.events)
 	if j.head == 0 {
 		j.full = true
 	}
+}
+
+// Flush writes the events appended since the last Flush. On a failed write
+// they are kept, to be written by the next one. A journal without a store
+// has nothing to flush.
+func (j *Journal) Flush() error {
+	if !j.kept.Enabled() {
+		return nil
+	}
+	j.flushing.Lock()
+	defer j.flushing.Unlock()
+	j.mu.Lock()
+	batch := j.pending
+	j.pending = nil
+	j.mu.Unlock()
+	if len(batch) == 0 {
+		return nil
+	}
+	b := j.kept.Batch()
+	for _, r := range batch {
+		b.Put("", slotKey(r.Seq, len(j.events)), r)
+	}
+	if err := b.Commit(); err != nil {
+		j.mu.Lock()
+		j.pending = append(batch, j.pending...)
+		if len(j.pending) > len(j.events) {
+			j.pending = slices.Delete(j.pending, 0, len(j.pending)-len(j.events))
+		}
+		j.mu.Unlock()
+		return fmt.Errorf("journal: write: %w", err)
+	}
+	return nil
 }
 
 // each visits events oldest first. The caller holds the read lock.

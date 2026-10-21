@@ -14,7 +14,7 @@ const acme = "acme"
 var t0 = time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 
 func raise(s *Store, key string, at time.Time, parts ...Part) Message {
-	m, _ := s.Raise(acme, key, Message{Kind: KindAlert, Subject: key, From: From{Kind: "rule", Name: "any"}, Severity: Warning, Parts: parts}, at)
+	m, _ := two(s.Raise(acme, key, Message{Kind: KindAlert, Subject: key, From: From{Kind: "rule", Name: "any"}, Severity: Warning, Parts: parts}, at))
 	return m
 }
 
@@ -80,13 +80,13 @@ func TestAMessageStaysOpenWhileAPartIs(t *testing.T) {
 func TestOneMessagePerOpenKey(t *testing.T) {
 	s := NewStore()
 	first := raise(s, "alert:al-1", t0, Part{Type: PartAlert})
-	if again, raised := s.Raise(acme, "alert:al-1", Message{Kind: KindAlert}, t0.Add(time.Second)); raised || again.ID != first.ID {
+	if again, raised := two(s.Raise(acme, "alert:al-1", Message{Kind: KindAlert}, t0.Add(time.Second))); raised || again.ID != first.ID {
 		t.Fatalf("a second message was raised for an open key: %v %s", raised, again.ID)
 	}
 	if _, _, err := s.Dismiss(acme, first.ID, "ada", t0); err != nil {
 		t.Fatal(err)
 	}
-	if next, raised := s.Raise(acme, "alert:al-1", Message{Kind: KindAlert, Parts: []Part{{Type: PartAlert}}}, t0.Add(time.Minute)); !raised || next.ID == first.ID {
+	if next, raised := two(s.Raise(acme, "alert:al-1", Message{Kind: KindAlert, Parts: []Part{{Type: PartAlert}}}, t0.Add(time.Minute))); !raised || next.ID == first.ID {
 		t.Fatal("a closed key could not be raised again")
 	}
 	// Another tenant's inbox is another inbox.
@@ -122,7 +122,7 @@ func TestReadIsPerPerson(t *testing.T) {
 
 func TestAMessageForOnePersonIsOnlyTheirs(t *testing.T) {
 	s := NewStore()
-	m, _ := s.Raise(acme, "k", Message{Kind: KindApproval, To: "ada", Parts: []Part{{Type: PartApproval}}}, t0)
+	m, _ := two(s.Raise(acme, "k", Message{Kind: KindApproval, To: "ada", Parts: []Part{{Type: PartApproval}}}, t0))
 	if _, err := s.Get(acme, m.ID, "grace"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("grace read ada's message: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestRebuildMatchesLiveState(t *testing.T) {
 	_, _, _ = s.Dismiss(acme, d.ID, "ada", t0)
 	_, _, _ = s.Dismiss(acme, d.ID, "grace", t0.Add(time.Hour))
 	raise(s, "d", t0.Add(4*time.Second), Part{Type: PartAlert})
-	s.Raise("globex", "a", Message{Kind: KindAlert, Parts: []Part{{Type: PartAlert}}}, t0)
+	two(s.Raise("globex", "a", Message{Kind: KindAlert, Parts: []Part{{Type: PartAlert}}}, t0))
 
 	rebuilt := Rebuild(append(s.Changes(acme), s.Changes("globex")...))
 	for _, tenantName := range []string{acme, "globex"} {
@@ -272,8 +272,8 @@ func TestWatchersHearChanges(t *testing.T) {
 func TestTheAgentFilterMatchesTheAgentOrTheTarget(t *testing.T) {
 	s := NewStore()
 	at := time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
-	raised, _ := s.Raise(acme, "q1", Message{Kind: KindApproval, Source: Source{Agent: "lead", Target: "helper"}, Parts: []Part{{Type: PartApproval}}}, at)
-	other, _ := s.Raise(acme, "q2", Message{Kind: KindApproval, Source: Source{Agent: "ops"}, Parts: []Part{{Type: PartApproval}}}, at.Add(time.Second))
+	raised, _ := two(s.Raise(acme, "q1", Message{Kind: KindApproval, Source: Source{Agent: "lead", Target: "helper"}, Parts: []Part{{Type: PartApproval}}}, at))
+	other, _ := two(s.Raise(acme, "q2", Message{Kind: KindApproval, Source: Source{Agent: "ops"}, Parts: []Part{{Type: PartApproval}}}, at.Add(time.Second)))
 	ids := func(agent string) []string {
 		page, _, err := s.Page(acme, Query{Kind: KindApproval, Agent: agent, Now: at.Add(time.Minute)})
 		if err != nil {
