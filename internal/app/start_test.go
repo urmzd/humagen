@@ -165,7 +165,7 @@ func get(t *testing.T, url string) string {
 func TestASpecFileRunsThePlatform(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	if err := os.WriteFile(path, []byte(`api_version: warp/v1
 kind: System
 metadata: {name: acme-agents, display_name: Acme Agents}
 spec:
@@ -184,7 +184,9 @@ spec:
     - {name: house, kind: house-model, house-model: {voice: calm}}
   agents:
     - spec: {name: greeter, provider: house, model: h1, system_prompt: Greet.}
-`), 0o600)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var gotBlock string
 	o := Options{Kinds: map[string]map[string]Factory{spec.SlotModels: {"house-model": func(_ context.Context, b json.RawMessage) (any, error) {
 		gotBlock = string(b)
@@ -205,7 +207,9 @@ spec:
 
 func TestAnUnregisteredKindStopsStartup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600)
+	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	err := serve(Options{}, []string{"-f", path, "-addr", "127.0.0.1:0"}, serveDefaults{})
 	if err == nil || !strings.Contains(err.Error(), "disk, memory, s3") {
 		t.Fatalf("err = %v", err)
@@ -214,7 +218,9 @@ func TestAnUnregisteredKindStopsStartup(t *testing.T) {
 
 func TestConfigPrintFillsTheDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\n"), 0o600)
+	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var out bytes.Buffer
 	if err := configCmd(Options{}, []string{"print", "-f", path}, &out); err != nil {
 		t.Fatal(err)
@@ -245,13 +251,15 @@ func TestTheSlackManifestIsWhatWarpGenerates(t *testing.T) {
 
 func TestTheSlackManifestTakesItsNameFromTheSpec(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	if err := os.WriteFile(path, []byte(`api_version: warp/v1
 kind: Platform
 metadata: {name: default, display_name: Acme}
 spec:
   surfaces:
     slack: {enabled: true, team: T1, bot_token: {ref: "env:B"}, app_token: {ref: "env:A"}, command: /acme}
-`), 0o600)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var got bytes.Buffer
 	if err := slackCmd([]string{"manifest", "-f", path}, &got); err != nil {
 		t.Fatal(err)
