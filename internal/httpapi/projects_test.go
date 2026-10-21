@@ -177,6 +177,34 @@ func TestAnAgentNamedWorkspaceNeverReachesTheWorkspacesNotes(t *testing.T) {
 	}
 }
 
+// A conversation filed in a project that was deleted can be read, and its
+// next turn is 409: it would count toward none of the limits above it.
+func TestAConversationInADeletedProjectIsReadNotContinued(t *testing.T) {
+	f := newFixture(t)
+	op := f.machine(t, "acme", operator...)
+	admin := f.machine(t, "acme", everything...)
+	f.do(t, nil, "POST", "/api/agents", admin, helperSpec)
+	want(t, f, op, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
+	want(t, f, op, "POST", "/api/projects", `{"name":"Sub","parent":"Field"}`, http.StatusCreated)
+	want(t, f, admin, "PUT", "/api/policies", `{"scope":{"kind":"project","name":"Field"},"period":"day","max_runs":1}`, http.StatusOK)
+	first := want(t, f, op, "POST", "/api/runs", `{"agent":"helper","text":"hi","project":"Sub"}`, http.StatusAccepted)
+	if within, _ := first["within"].([]any); len(within) != 1 || within[0] != "Field" {
+		t.Fatalf("the first turn is within %v", first["within"])
+	}
+	id := first["id"].(string)
+	want(t, f, op, "DELETE", "/api/projects/Sub", "", http.StatusNoContent)
+	for range 3 {
+		out := want(t, f, op, "POST", "/api/runs", `{"agent":"helper","text":"more","after":"`+id+`"}`, http.StatusConflict)
+		if msg := out["error"].(string); !strings.Contains(msg, `"Sub" was deleted`) {
+			t.Fatalf("the refusal says %q", msg)
+		}
+	}
+	thread := want(t, f, op, "GET", "/api/threads/"+first["thread"].(string), "", http.StatusOK)
+	if turns := thread["turns"].([]any); len(turns) != 1 {
+		t.Fatalf("the conversation holds %d turns", len(turns))
+	}
+}
+
 // A project's view counts what is filed in it and not in its sub-projects,
 // and the conversation filters keep one project, or a project and everything
 // below it.

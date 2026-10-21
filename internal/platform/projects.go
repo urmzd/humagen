@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -20,6 +21,18 @@ var (
 	ErrProjectExists   = projects.ErrExists
 	ErrProjectNotFound = projects.ErrNotFound
 )
+
+// ErrProjectDeleted reports a run asked for in a project the tree no longer
+// holds, such as the next turn of a conversation filed in a project since
+// deleted. Nothing says any more which projects above it the run would count
+// toward, so it is refused rather than let out from under their limits. The
+// conversation can still be read.
+var ErrProjectDeleted = errors.New("platform: project deleted")
+
+// projectDeleted is ErrProjectDeleted for one project, said in words.
+func projectDeleted(project string) error {
+	return fmt.Errorf("%w: the project %q was deleted, so nothing more runs in it; its conversations can still be read", ErrProjectDeleted, project)
+}
 
 // ProjectInput is what a person gives to create a project. Kind defaults to
 // team and Parent to the root; "~" names the root too.

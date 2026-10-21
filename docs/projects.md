@@ -373,7 +373,12 @@ separate locks: check and insert become one critical section.
    name that no longer exists. From phase 2, archiving is the alternative.
    Delete drops the project's memory and leaves a tombstone. Its
    conversations keep the name, and are adopted only if a `projects:govern`
-   holder recreates the project. Delete never drops a policy: only
+   holder recreates the project. Until then they are read, not continued:
+   a run filed in a name the tree does not hold is refused at admission
+   (409), since nothing says which ancestors it would count toward, and a
+   file is published only in a project the tree holds. Files keep the
+   ancestors they were published under, so a parent's storage still counts
+   what a deleted child published. Delete never drops a policy: only
    `billing:write` removes one.
 6. A file-managed project cannot be deleted through the API, and a field the
    file sets answers 409 `ErrManaged`.
@@ -478,7 +483,7 @@ shown.
 | `policy.Store.For` | `For(tenant, chain []string, agent, client)`: agent, client, the project and each ancestor nearest first, then the tenant. `Decide` applies all, so the strictest wins | 1 |
 | `policy.Policy` | `Authority` (admin or owner); existing policies are admin | 2 |
 | `usage.Entry` | `Within []string`. `admission.scopes()` adds `p\x00<ancestor>` for each; `matches` checks the project or `Within`. Spent and settled entries take the run's pinned `Within` | 1 |
-| storage limits | `storageAllows` sums `Artifacts.Used` over `Tree.Subtree` for a project policy | 1 |
+| storage limits | `storageAllows` sums what `Tree.Subtree` holds for a project policy, and what was published below the project in one deleted since: an artifact keeps the ancestors it was published under (`Within`, stored and not on the wire) | 1 |
 | `pkg/memory` | owner `project:` for the root's notes: it holds the colon no agent's name can, so no agent shares them | 1 |
 | `pkg/inbox` | kind `announcement`; `Message.Broadcast` (stored, `json:"-"`); per-reader hide and snooze for broadcasts; Audience entry `project:<name>`; `Reader.Projects`; `Query.Projects`; `Count` returns `updates`; `Withdraw` takes `by` (today it records `"system"`) | 4 |
 | `pkg/inbox` | part `draft` (actions `publish`, `discard`) | 5 |

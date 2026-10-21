@@ -272,6 +272,8 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 		meta[runs.MetaThread] = path[0].Thread
 		meta[runs.MetaPrev] = t.After
+		// A project deleted since is refused at admission (see placeOf),
+		// after a retry of a turn already let in has joined it.
 		meta[runs.MetaProject] = path[0].Project
 		if cfg.History == HistoryRecent {
 			body = transcript(path, cfg.HistoryLimit) + "\n\nUser: " + t.Text

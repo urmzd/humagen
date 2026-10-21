@@ -984,7 +984,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"project","name":"Ghost"},"period":"day","max_runs":1}`, http.StatusNotFound)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day"}`, http.StatusBadRequest)
 	inProject := `{"agent":"helper","text":"go","project":"Launch"}`
-	c.settled(acme, c.call(acme, "POST", "/api/runs", "/api/runs", inProject, http.StatusAccepted).str("id"))
+	inLaunch := c.call(acme, "POST", "/api/runs", "/api/runs", inProject, http.StatusAccepted).str("id")
+	c.settled(acme, inLaunch)
 	refused := c.call(acme, "POST", "/api/runs", "/api/runs", inProject, http.StatusTooManyRequests)
 	if refused.str("limit") != "runs" || refused.field("resets_at") == nil || refused.field("policy") == nil {
 		t.Errorf("the refusal does not say what refused it: %s", refused.raw)
@@ -1311,6 +1312,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=project&name=Launch", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Launch", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Launch", "", http.StatusNotFound)
+	// Its conversations are read, not continued.
+	c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"more","after":"`+inLaunch+`"}`, http.StatusConflict)
 	c.call(acme, "DELETE", "/api/agents/{name}/memory/{id}", "/api/agents/ghost/memory/m1", "", http.StatusNotFound)
 
 	// Every status code the contract documents was answered at least once,
@@ -1380,6 +1383,7 @@ var unexercised = map[string]string{
 	// never fails, so no test can raise one here.
 	"POST /api/inbox/{id}/parts/{part}/resolve 429": "retry refused by a limit",
 	"POST /api/inbox/{id}/parts/{part}/resolve 402": "retry refused by a limit",
+	"POST /api/inbox/{id}/parts/{part}/resolve 409": "retry of a turn whose project was deleted",
 	// A spend refusal is the same answer through every route that starts a
 	// run. createRun's 402 is exercised; a schedule's run now goes through
 	// the same admission.

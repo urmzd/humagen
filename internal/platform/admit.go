@@ -92,14 +92,23 @@ func (p *Platform) applied(tenant string, chain []string, agent, client string, 
 // agent has its root's of all three, pinned when the root was admitted, so a
 // tree counts against the limits of whatever started it. Otherwise the
 // ancestors are read from the tree now, and pinned with the run.
-func (p *Platform) placeOf(tag envelope.Tag, edge call.Edge) (project string, within []string, client string) {
+//
+// A project the tree no longer holds has no ancestors to read, so a run filed
+// there would count toward none of the limits it was under: it fails closed
+// with ErrProjectDeleted. That covers the next turn of a conversation whose
+// project was deleted, and a turn racing the delete of its project.
+func (p *Platform) placeOf(tag envelope.Tag, edge call.Edge) (project string, within []string, client string, err error) {
 	project, client = runs.ProjectOf(tag), runs.ClientOf(tag)
 	if edge.Parent != "" {
 		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
-			return root.Project, root.Within, root.Client
+			return root.Project, root.Within, root.Client, nil
 		}
 	}
-	return project, p.Projects.Tree(tag.Tenant).Ancestors(project), client
+	tree := p.Projects.Tree(tag.Tenant)
+	if !tree.Has(project) {
+		return "", nil, "", projectDeleted(project)
+	}
+	return project, tree.Ancestors(project), client, nil
 }
 
 // chainOf is a run's project followed by the ancestors it is within, nearest

@@ -549,6 +549,10 @@ paths:
         from the same caller joins the run the first one started instead of
         starting another. Without it the ids are random.
 
+        A conversation filed in a project that was deleted since is read,
+        not continued: its next turn answers 409, since nothing says any more
+        which projects above it the run would count toward.
+
         The body takes no metadata: an unknown field answers 400.
       x-permission: runs:write
       parameters:
@@ -571,6 +575,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "402": {$ref: "#/components/responses/Refused"}
         "429": {$ref: "#/components/responses/Refused"}
         "413": {$ref: "#/components/responses/TooLarge"}
@@ -1360,7 +1365,8 @@ paths:
         it, and one the runtime refuses is 403. `act_as` answers for a person
         a surface authenticated. Resolving a part that is already resolved
         returns the first outcome. `retry` starts a new run, so it can be
-        refused by a limit with 429 or 402.
+        refused by a limit with 429 or 402, and with 409 when the turn's
+        project was deleted since.
       x-permission: runs:read
       parameters:
         - {$ref: "#/components/parameters/MessageID"}
@@ -1380,6 +1386,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "402": {$ref: "#/components/responses/Refused"}
         "429": {$ref: "#/components/responses/Refused"}
         "413": {$ref: "#/components/responses/TooLarge"}

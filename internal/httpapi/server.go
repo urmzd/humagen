@@ -688,6 +688,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, projects.ErrManaged))
 	case errors.Is(err, projects.ErrInUse):
 		fail(w, http.StatusConflict, detail(err, projects.ErrInUse))
+	case errors.Is(err, platform.ErrProjectDeleted):
+		fail(w, http.StatusConflict, detail(err, platform.ErrProjectDeleted))
 	case errors.Is(err, projects.ErrVersion):
 		fail(w, http.StatusConflict, detail(err, projects.ErrVersion)+"; reload and try again")
 	case errors.Is(err, projects.ErrForbidden):

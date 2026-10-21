@@ -822,6 +822,10 @@ fiber's `runtime.RunID`), and a second request with the same key
 from the same caller joins the run the first one started instead of
 starting another. Without it the ids are random.
 
+A conversation filed in a project that was deleted since is read,
+not continued: its next turn answers 409, since nothing says any more
+which projects above it the run would count toward.
+
 The body takes no metadata: an unknown field answers 400.
  */
   async createRun(body: CreateRunRequest, idempotencyKey?: string, options?: RequestOptions): Promise<Run> {
@@ -1454,7 +1458,8 @@ same rules: a person the question is not addressed to does not see
 it, and one the runtime refuses is 403. `act_as` answers for a person
 a surface authenticated. Resolving a part that is already resolved
 returns the first outcome. `retry` starts a new run, so it can be
-refused by a limit with 429 or 402.
+refused by a limit with 429 or 402, and with 409 when the turn's
+project was deleted since.
  */
   async resolveInboxPart(id: string, part: string, body: Resolution, options?: RequestOptions): Promise<InboxMessage> {
     let path = "/api/inbox/{id}/parts/{part}/resolve";
