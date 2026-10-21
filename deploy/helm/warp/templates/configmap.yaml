@@ -1,0 +1,25 @@
+{{- if include "warp.hasConfig" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "warp.fullname" . }}
+  labels:
+    {{- include "warp.labels" . | nindent 4 }}
+data:
+  {{- with .Values.config.providers }}
+  providers.yaml: |
+    {{- . | trimSuffix "\n" | nindent 4 }}
+  {{- end }}
+  {{- with .Values.config.settings }}
+  settings.yaml: |
+    {{- . | trimSuffix "\n" | nindent 4 }}
+  {{- end }}
+  {{- with .Values.config.policy }}
+  policy.authz: |
+    {{- . | trimSuffix "\n" | nindent 4 }}
+  {{- end }}
+  {{- range $name, $body := .Values.config.agents }}
+  agent-{{ $name }}: |
+    {{- $body | trimSuffix "\n" | nindent 4 }}
+  {{- end }}
+{{- end }}

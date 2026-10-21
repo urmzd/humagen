@@ -1,0 +1,205 @@
+# Values for the warp chart. Every key is documented where it is set.
+# Secrets never go in this file: name a Secret you created with
+# `existingSecret` and its keys become the container's environment.
+
+# -- One replica. Keep it at one: warp's stores are single-writer (the run
+# index, the usage ledger, the admission lock and the schedules all assume one
+# process owns them), and the workspace volume is ReadWriteOnce. A second
+# replica would race the first, not share its load.
+replicaCount: 1
+
+image:
+  # Releases do not publish an image yet: build one from the Dockerfile at the
+  # repository root and push it here.
+  repository: ghcr.io/urmzd/warp
+  # Empty means the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Sign-in and tenancy. In a cluster the mode is "oidc" (or "okta"): "dev",
+# "mock" and "tailscale" trust loopback and refuse any other listen address.
+auth:
+  mode: oidc
+  # Where browsers reach warp. The OIDC redirect URI is this plus
+  # /auth/callback. Required.
+  publicURL: "https://warp.example.com"
+  # The tenant every caller is confined to, unless tenantClaim is set.
+  tenant: default
+  # A token claim that carries the caller's tenant. Empty means `tenant`.
+  tenantClaim: ""
+  # The token claim that lists a person's groups.
+  groupsClaim: groups
+  oidc:
+    # Not secret, so set here. WARP_OIDC_CLIENT_SECRET comes from
+    # existingSecret.
+    issuer: ""
+    clientID: ""
+    audience: ""
+
+# -- The Secret whose keys become environment variables (envFrom). Create it
+# yourself, with kubectl, SOPS, External Secrets or sealed-secrets. Keys warp
+# reads:
+#   WARP_OIDC_CLIENT_SECRET     with auth.mode=oidc
+#   WARP_POSTGRES_URL           every store in Postgres. Unset means memory,
+#                               which a restart loses
+#   WARP_REDIS_URL              the event bus. Unset means in process
+#   WARP_S3_ACCESS_KEY_ID       with storage.kind=s3. Unset (both) means the
+#   WARP_S3_SECRET_ACCESS_KEY   AWS default chain, such as IRSA
+#   ANTHROPIC_API_KEY           or another provider's key
+#   WARP_SLACK_*, WARP_GITHUB_* a default client per surface (docs/clients.md)
+existingSecret: ""
+
+# -- Where published files' bytes are kept.
+storage:
+  # "disk" keeps them on the workspace volume, under blobs/. "s3" uses any
+  # S3-compatible bucket (AWS, MinIO, R2).
+  kind: disk
+  s3:
+    bucket: ""
+    # Empty means AWS_REGION, then us-east-1. "auto" for R2.
+    region: ""
+    # Empty means AWS. Set it for MinIO or R2.
+    endpoint: ""
+    # A key prefix, so one bucket can serve more than one warp.
+    prefix: ""
+    # Put the bucket in the path, as MinIO usually needs.
+    pathStyle: false
+
+# -- The workspace volume: agents' files and, with storage.kind=disk,
+# published files. Mounted at /var/lib/warp.
+persistence:
+  enabled: true
+  # Use a claim you made instead of creating one.
+  existingClaim: ""
+  # Empty means the cluster's default class.
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+
+# -- Files mounted read-only at /etc/warp from a ConfigMap, each passed to
+# `warp serve` with its flag when set. The content is inline YAML or JSON, as
+# the flag expects. Keep secrets out: refer to an environment variable from
+# existingSecret instead.
+config:
+  # Model and MCP tool providers, passed as -providers /etc/warp/providers.yaml.
+  providers: ""
+  # Platform settings, passed as -settings /etc/warp/settings.yaml.
+  settings: ""
+  # An authorization policy, loaded through WARP_AUTHZ_POLICY.
+  policy: ""
+  # Agent spec files by name, registered at startup with -agent-specs.
+  agents: {}
+  #  reviewer.json: |
+  #    {"name": "reviewer", ...}
+
+# -- Model provider and model for the agents the platform provides, such as
+# "anthropic". Empty means none are provided.
+builtin:
+  provider: ""
+  model: ""
+
+# -- Bounds on agent-to-agent calls.
+limits:
+  maxDepth: 4
+  maxFanOut: 16
+
+# -- A second listener exposing only signed connector webhooks (Slack,
+# GitHub), so the API need not be public for them. Off means the webhooks are
+# on the main port under /connectors.
+webhooks:
+  enabled: false
+  port: 8090
+
+# -- Further flags for `warp serve`, appended last.
+extraArgs: []
+# -- Further environment variables, as container env entries.
+extraEnv: []
+# -- Further volumes and mounts, for example for a stdio MCP server's files.
+extraVolumes: []
+extraVolumeMounts: []
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # The event stream is server-sent events: a proxy that buffers or times out
+  # short-lived requests will cut it. For ingress-nginx, for example:
+  #   nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  #   nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  hosts:
+    - host: warp.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: warp-tls
+  #    hosts:
+  #      - warp.example.com
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # warp does not call the Kubernetes API.
+  automountToken: false
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+# /healthz answers once the server is listening.
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 15
+  timeoutSeconds: 3
+  failureThreshold: 4
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 3
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 2
+  failureThreshold: 30
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

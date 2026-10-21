@@ -1,0 +1,16 @@
+warp is starting as {{ include "warp.fullname" . }} in {{ .Release.Namespace }}.
+
+Browsers reach it at {{ .Values.auth.publicURL }}. Register
+{{ .Values.auth.publicURL }}/auth/callback as the redirect URI with your
+identity provider.
+{{- if not .Values.existingSecret }}
+
+No existingSecret is set, so warp has no OIDC client secret, keeps its
+records in memory (no WARP_POSTGRES_URL) and has no model key. Create a Secret
+and set existingSecret; see values.yaml for its keys.
+{{- end }}
+{{- if not .Values.ingress.enabled }}
+
+To try it without an ingress:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "warp.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}

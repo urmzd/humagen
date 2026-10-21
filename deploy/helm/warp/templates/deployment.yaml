@@ -1,0 +1,209 @@
+{{- if ne (int .Values.replicaCount) 1 }}
+{{- fail "replicaCount must be 1: warp's stores are single-writer. See values.yaml." }}
+{{- end }}
+{{- if has .Values.auth.mode (list "dev" "mock" "tailscale") }}
+{{- fail (printf "auth.mode=%s only listens on loopback and cannot serve a pod; use oidc" .Values.auth.mode) }}
+{{- end }}
+{{- $fullname := include "warp.fullname" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "warp.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # Recreate, not RollingUpdate: the old pod must let go of the stores and the
+  # ReadWriteOnce volume before the new one starts.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "warp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "warp.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "warp.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Long enough for runs in flight to settle on SIGTERM.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: warp
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - serve
+            - -addr=0.0.0.0:8080
+            - -web=/usr/share/warp/web
+            - -auth={{ .Values.auth.mode }}
+            - -public-url={{ required "auth.publicURL is required" .Values.auth.publicURL }}
+            - -tenant={{ .Values.auth.tenant }}
+            {{- with .Values.auth.tenantClaim }}
+            - -tenant-claim={{ . }}
+            {{- end }}
+            - -groups-claim={{ .Values.auth.groupsClaim }}
+            - -max-depth={{ .Values.limits.maxDepth }}
+            - -max-fan-out={{ .Values.limits.maxFanOut }}
+            - -storage={{ .Values.storage.kind }}
+            {{- if eq .Values.storage.kind "s3" }}
+            - -s3-bucket={{ required "storage.s3.bucket is required with storage.kind=s3" .Values.storage.s3.bucket }}
+            {{- with .Values.storage.s3.region }}
+            - -s3-region={{ . }}
+            {{- end }}
+            {{- with .Values.storage.s3.endpoint }}
+            - -s3-endpoint={{ . }}
+            {{- end }}
+            {{- with .Values.storage.s3.prefix }}
+            - -s3-prefix={{ . }}
+            {{- end }}
+            - -s3-path-style={{ .Values.storage.s3.pathStyle }}
+            {{- end }}
+            {{- with .Values.builtin.provider }}
+            - -builtin-provider={{ . }}
+            {{- end }}
+            {{- with .Values.builtin.model }}
+            - -builtin-model={{ . }}
+            {{- end }}
+            {{- if .Values.webhooks.enabled }}
+            - -webhook-addr=0.0.0.0:{{ .Values.webhooks.port }}
+            {{- end }}
+            {{- if .Values.config.providers }}
+            - -providers=/etc/warp/providers.yaml
+            {{- end }}
+            {{- if .Values.config.settings }}
+            - -settings=/etc/warp/settings.yaml
+            {{- end }}
+            {{- if .Values.config.agents }}
+            - -agent-specs={{ range $i, $name := keys .Values.config.agents | sortAlpha }}{{ if $i }},{{ end }}/etc/warp/agents/{{ $name }}{{ end }}
+            {{- end }}
+            {{- range .Values.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            # The workspace lives under the user cache directory, on the volume.
+            - name: HOME
+              value: /var/lib/warp
+            - name: XDG_CACHE_HOME
+              value: /var/lib/warp/cache
+            {{- if has .Values.auth.mode (list "oidc" "okta") }}
+            - name: WARP_OIDC_ISSUER
+              value: {{ required "auth.oidc.issuer is required with auth.mode=oidc" .Values.auth.oidc.issuer | quote }}
+            - name: WARP_OIDC_CLIENT_ID
+              value: {{ required "auth.oidc.clientID is required with auth.mode=oidc" .Values.auth.oidc.clientID | quote }}
+            - name: WARP_OIDC_AUDIENCE
+              value: {{ required "auth.oidc.audience is required with auth.mode=oidc" .Values.auth.oidc.audience | quote }}
+            {{- end }}
+            {{- if .Values.config.policy }}
+            - name: WARP_AUTHZ_POLICY
+              value: /etc/warp/policy.authz
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ . }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            {{- if .Values.webhooks.enabled }}
+            - name: webhooks
+              containerPort: {{ .Values.webhooks.port }}
+              protocol: TCP
+            {{- end }}
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/warp
+            # A read-only root filesystem still needs somewhere for temp files.
+            - name: tmp
+              mountPath: /tmp
+            {{- if include "warp.hasConfig" . }}
+            - name: config
+              mountPath: /etc/warp
+              readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default $fullname }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        {{- if include "warp.hasConfig" . }}
+        - name: config
+          configMap:
+            name: {{ $fullname }}
+            items:
+              {{- if .Values.config.providers }}
+              - key: providers.yaml
+                path: providers.yaml
+              {{- end }}
+              {{- if .Values.config.settings }}
+              - key: settings.yaml
+                path: settings.yaml
+              {{- end }}
+              {{- if .Values.config.policy }}
+              - key: policy.authz
+                path: policy.authz
+              {{- end }}
+              {{- range $name, $_ := .Values.config.agents }}
+              - key: agent-{{ $name }}
+                path: agents/{{ $name }}
+              {{- end }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

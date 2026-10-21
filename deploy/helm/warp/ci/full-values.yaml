@@ -1,0 +1,33 @@
+# Values for `helm lint` and `helm template` in checks: every optional part on.
+auth:
+  publicURL: https://warp.example.com
+  oidc:
+    issuer: https://idp.example.com
+    clientID: warp
+    audience: warp-api
+existingSecret: warp-env
+storage:
+  kind: s3
+  s3:
+    bucket: warp
+    endpoint: http://minio.storage:9000
+    pathStyle: true
+config:
+  providers: |
+    providers: []
+  settings: |
+    {}
+  policy: |
+    # policy
+  agents:
+    reviewer.json: |
+      {"name": "reviewer"}
+webhooks:
+  enabled: true
+ingress:
+  enabled: true
+  className: nginx
+  tls:
+    - secretName: warp-tls
+      hosts: [warp.example.com]
+extraArgs: ["-secret-refs=default=WARP_SLACK_TOKEN"]
