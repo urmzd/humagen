@@ -48,13 +48,28 @@ Today's state is from an audit of all five repositories (October 2026).
 | Observability | one OpenTelemetry seam | playscape `metrics.Recorder` (set to a no-op), saige's two OpenTelemetry shapes, anchor logs only | warp builds the providers and every layer takes the API |
 | Configuration, identity, tenancy, console, Slack, deploy | warp | fiber's providers file and `FIBER_*` variables (being removed) | |
 
+## What each one is for
+
+Every repository below warp is a library first. Each may ship a CLI, and a CLI
+is for validating that layer on its own: it runs a command, shows what
+happened, and exits. Long-running servers, sign-in, configuration and
+deployment are warp's.
+
+| Repository | What it does | Who it serves | Its CLI validates |
+|------------|--------------|---------------|-------------------|
+| **anchor** | Durable execution: a ledger of runs and their records, a queue with leases and fencing, a worker that resumes after a crash, replay | fiber's durable turn and saige's durable agent; anything that must finish once despite restarts | a ledger: list runs, show one run's records and status, replay it (`anchor inspect`, to build) |
+| **playscape** | Where work runs and what it may touch: sandboxes, workspaces, NGAC access control, local and Kubernetes runners | fiber, which runs each turn as a playscape task; saige's command and file tools | a command in the sandbox: `playscape run "go test ./..."` runs it under the same policy an agent gets and shows the exit code, output, denials and timeouts |
+| **saige** | The agent: model providers and fallback, the loop, tools, MCP, retrieval, memory, evals | fiber, and anyone building an agent in Go | an agent end to end, and first class: chat, evals, retrieval, an MCP server for editors (`saige`, `saige-mcp`) |
+| **fiber** | Agents on a bus: specs and revisions, connectors (Slack, GitHub, Jira, cron, webhooks), routing, the durable turn, threads, knowledge, tool providers | warp | an agent spec locally: run it against a message in one process and print its events (`fiber run`, to build) |
+| **warp** | The platform: one process with the API, console, Slack app, identity, tenancy, policies, usage; the spec; `warp start` and `warp deploy` | people and their workspaces | is the product |
+
 ## Services that should be libraries
 
 | Repository | Ships today | Becomes |
 |------------|-------------|---------|
-| fiber | nothing (the binary and server are gone) | done |
-| playscape | `cmd/playscape` (`serve` on :8484), an HTTP API, an install script, a Dockerfile, Kubernetes manifests | library only; the k8s runner moves to its own module so importers don't inherit client-go |
-| saige | `cmd/saige` (a TUI, an HTTP server, ACP, 11.7k lines), `cmd/saige-mcp`, install script, Dockerfile | the reusable hosting code returns `http.Handler`s from library packages; whether a developer CLI survives is the owner's call |
+| fiber | nothing (the binary and server are gone) | a small `fiber run` CLI for local tests |
+| playscape | `cmd/playscape` (`serve` on :8484), an HTTP API, an install script, a Dockerfile, Kubernetes manifests | a library with `playscape run`; the server and its queue go; the k8s runner moves to its own module so importers don't inherit client-go |
+| saige | `cmd/saige` (a TUI, an HTTP server, ACP, 11.7k lines), `cmd/saige-mcp`, install script, Dockerfile | stays: its CLI is first class. Its reusable hosting code moves into library packages that return `http.Handler`s, so warp can host the same thing |
 | warp | `cmd/warp`, and the Slack app as a separate Node process | the one binary; the Slack app is started and stopped by `warp start` and talks only to warp's API |
 
 ## The order
