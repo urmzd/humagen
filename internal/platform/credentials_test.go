@@ -27,6 +27,7 @@ import (
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/credref"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/state/statetest"
 )
 
 // The people of these tests, and the secrets their references name.
@@ -230,7 +231,22 @@ func (w *world) leaks(t *testing.T, secrets ...string) {
 // person it acts for, one by a reference and one by a stored value, and
 // with nobody else's.
 func TestEachPersonsRunReachesTheProviderWithTheirOwnCredential(t *testing.T) {
-	w := newWorld(t, platform.Config{})
+	t.Run("memory", func(t *testing.T) { eachPersonsOwn(t, platform.Backends{}) })
+	t.Run("postgres", func(t *testing.T) {
+		pool := statetest.Pool(t)
+		b, release, err := platform.OpenPostgres(t.Context(), pool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Registered before the platform starts, so it runs once the
+		// platform has stopped and before the pool is closed.
+		t.Cleanup(func() { _ = release() })
+		eachPersonsOwn(t, b)
+	})
+}
+
+func eachPersonsOwn(t *testing.T, b platform.Backends) {
+	w := newWorld(t, platform.Config{Backends: b})
 	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA"})
 	w.connect(t, ben, credentials.Input{Value: benValue})
 

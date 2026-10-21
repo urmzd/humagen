@@ -14,6 +14,7 @@ import (
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
@@ -140,6 +141,14 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		if _, _, err := p.Inbox.Raise(tenant, "note", inbox.Message{Kind: inbox.KindResult, Subject: "Kept", Parts: []inbox.Part{{Type: inbox.PartText, State: inbox.PartInfo, Text: "hi"}}}, time.Now()); err != nil {
 			t.Fatal(err)
 		}
+		// A person's own tool credentials: a reference, and a value kept
+		// beside the clients' secrets.
+		if _, err := p.Credentials.Put(tenant, "ada", "issues", credentials.Input{Ref: "op://People/ada/issues"}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Credentials.Put(tenant, "ada", "drive", credentials.Input{Value: "tok-ada-drive"}, time.Now()); err != nil {
+			t.Fatal(err)
+		}
 		stop()
 
 		q, _ := running(t, again())
@@ -171,6 +180,12 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		}
 		if m, ok := q.Inbox.ByKey(tenant, "note"); !ok || m.Subject != "Kept" {
 			t.Fatalf("the inbox after restart = %+v, %v", m, ok)
+		}
+		if c, ok := q.Credentials.Get(tenant, "ada", "issues"); !ok || c.Ref != "op://People/ada/issues" {
+			t.Fatalf("a person's reference after restart = %+v, %v", c, ok)
+		}
+		if v, ok := q.Credentials.Value(tenant, "ada", "drive"); !ok || v != "tok-ada-drive" {
+			t.Fatalf("a person's stored value after restart = %q, %v", v, ok)
 		}
 		// A run accepted after the restart is not mistaken for one before.
 		r2, err := q.Invoke(ctx, tag("run-2", "lead"))
