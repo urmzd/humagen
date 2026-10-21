@@ -46,6 +46,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261018021017-188198d7a00b // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect

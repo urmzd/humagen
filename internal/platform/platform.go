@@ -66,12 +66,16 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// Backends are where everything the platform keeps is kept. The zero
+	// value is in memory, lost with the process. OpenPostgres fills it from
+	// one database.
+	Backends Backends
 	// Connections seats connectors the embedding program built itself, after
 	// the registry exists. Clients created through CreateClient need none.
 	Connections func(registry.Store) ([]Connection, error)
 	// Clients keeps client records, and Secrets the secret values written for
-	// them. Nil means in memory. Enabled clients already in the store are
-	// started by New.
+	// them. Nil means on Backends.State, or in memory without one. Enabled
+	// clients already in the store are started by New.
 	Clients clients.Store
 	Secrets clients.Secrets
 	// Env reads the process's environment for an "env:NAME" secret reference.
@@ -136,7 +140,7 @@ type Platform struct {
 	log *slog.Logger
 	now func() time.Time
 
-	Agents    *registry.Memory
+	Agents    registry.Store
 	Runs      *runs.Index
 	Schedules *Schedules
 	Journal   *journal.Journal
@@ -172,8 +176,8 @@ type Platform struct {
 	stops stopper
 	// asked reads whether the runtime holds a stop request for a run.
 	asked  func(ctx context.Context, tenant, runID string) (runtime.StopRecord, bool, error)
-	ledger *ledger.Memory
-	queue  *dqueue.Memory
+	ledger Ledger
+	queue  dqueue.Queue
 
 	settings settings
 
@@ -223,27 +227,27 @@ func New(cfg Config) (*Platform, error) {
 	if now == nil {
 		now = time.Now
 	}
+	if err := cfg.Backends.check(); err != nil {
+		return nil, err
+	}
 	p := &Platform{
 		cfg: cfg, log: log, now: now,
-		Agents:       registry.NewMemory(registry.WithProviders(providers()...)),
-		Runs:         runs.NewIndex(),
-		Schedules:    &Schedules{},
-		Journal:      journal.New(0),
-		Alerts:       alerts.NewEngine(),
-		Knowledge:    knowledge.NewStore(),
-		Evals:        evals.NewStore(),
-		Prefs:        prefs.NewStore(),
-		Memory:       memory.NewStore(),
-		Policies:     policy.NewStore(),
-		CallPolicies: callpolicy.NewStore(),
-		Usage:        usage.NewLedger(),
-		Inbox:        inbox.NewStore(),
-		Artifacts:    artifacts.NewIndex(),
-		Blobs:        cfg.Blobs,
-		broker:       bus.NewMemory(),
-		sinks:        connector.NewRegistry(),
-		ledger:       ledger.NewMemory(),
-		queue:        dqueue.NewMemory(),
+		Agents: cfg.Backends.Agents,
+		Blobs:  cfg.Blobs,
+		broker: bus.NewMemory(),
+		sinks:  connector.NewRegistry(),
+		ledger: cfg.Backends.Ledger,
+		queue:  cfg.Backends.Queue,
+	}
+	if p.Agents == nil {
+		p.Agents = registry.NewMemory(registry.WithProviders(providers()...))
+	}
+	if p.ledger == nil {
+		p.ledger, p.queue = ledger.NewMemory(), dqueue.NewMemory()
+	}
+	// Every store is in memory, reading back what Backends.State holds.
+	if err := p.openStores(cfg); err != nil {
+		return nil, err
 	}
 
 	// Schedules are a trigger like any other: the cron connector raises tags
@@ -259,13 +263,6 @@ func New(cfg Config) (*Platform, error) {
 	// One surface per scheme, whether or not it has clients yet: clients are
 	// created while the platform runs, and the router and the trigger loop
 	// are given their connectors once.
-	p.Clients, p.secrets = cfg.Clients, cfg.Secrets
-	if p.Clients == nil {
-		p.Clients = clients.NewMemory()
-	}
-	if p.secrets == nil {
-		p.secrets = clients.NewMemorySecrets()
-	}
 	p.surfaces = make(map[string]*surface)
 	for _, name := range clients.Surfaces() {
 		s := &surface{name: string(name), p: p}
@@ -530,6 +527,10 @@ func reserved(origin string) bool {
 // reconcileEvery is how often open runs are checked against the ledger.
 const reconcileEvery = 2 * time.Second
 
+// flushEvery is how often what the journal, the run index and the usage
+// ledger write behind is written: what a crash can lose.
+const flushEvery = 250 * time.Millisecond
+
 // reconcile closes runs the ledger says are over but whose events never said so.
 //
 // The ledger is the authority on whether a run has ended. The usual way to
@@ -692,6 +693,20 @@ func (p *Platform) Run(ctx context.Context) error {
 	}
 
 	loop("router", func() error { return p.deliver.Run(ctx) })
+	loop("state flush", func() error {
+		tick := time.NewTicker(flushEvery)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				// What changed last is written before the platform stops.
+				p.flush()
+				return nil
+			case <-tick.C:
+				p.flush()
+			}
+		}
+	})
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
 	loop("sandbox sweep", func() error {
 		tick := time.NewTicker(time.Hour)

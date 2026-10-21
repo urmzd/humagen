@@ -453,7 +453,11 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	// The first admin to save settings is on record as having set the
 	// workspace up.
-	saved := s.P.MarkSetup(who.Tenant, who.Subject)
+	saved, err := s.P.MarkSetup(who.Tenant, who.Subject)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	s.Log.Info("httpapi: settings changed", "subject", who.Subject, "tenant", who.Tenant,
 		"workspace_before", before.WorkspaceName, "workspace_after", saved.WorkspaceName,
 		"baseline_before", before.Baseline, "baseline_after", saved.Baseline, "first_setup", before.SetupAt.IsZero())
