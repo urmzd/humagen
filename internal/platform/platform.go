@@ -34,6 +34,7 @@ import (
 	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/router"
 	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/toolprovider"
 	"github.com/urmzd/fiber/pkg/topic"
 	"github.com/urmzd/playscape/pkg/controlplane"
 	"github.com/urmzd/playscape/pkg/metrics"
@@ -128,6 +129,9 @@ type Config struct {
 	Log          *slog.Logger
 	// Now is the clock. Nil means time.Now.
 	Now func() time.Time
+	// Ext is what a program built on warp adds: model providers, tool
+	// sources and MCP tool providers. The zero value adds nothing.
+	Ext Extensions
 }
 
 // Platform is the assembled system.
@@ -155,6 +159,11 @@ type Platform struct {
 	Clients clients.Store
 	// Blobs holds the bytes of published files.
 	Blobs blob.Store
+	// ToolProviders is the MCP servers agents reach through "mcp:<name>"
+	// grants, and the tools accepted from each.
+	ToolProviders toolprovider.Store
+	// closers release what New opened, in reverse, on Close.
+	closers []func() error
 
 	// dir is the workspace directory, resolved once.
 	dir string
@@ -225,7 +234,7 @@ func New(cfg Config) (*Platform, error) {
 	}
 	p := &Platform{
 		cfg: cfg, log: log, now: now,
-		Agents:       registry.NewMemory(registry.WithProviders(providers()...)),
+		Agents:       registry.NewMemory(registry.WithProviders(append(providers(), cfg.Ext.ProviderNames()...)...)),
 		Runs:         runs.NewIndex(),
 		Schedules:    &Schedules{},
 		Journal:      journal.New(0),
@@ -289,8 +298,20 @@ func New(cfg Config) (*Platform, error) {
 
 	p.deliver = router.New(p.broker, p.sinks, router.WithLogger(log))
 
-	exec, err := p.executor()
+	// External tools: "mcp:<provider>[:write]" grants expand, per tenant,
+	// into the tools accepted from that provider. Declared providers are
+	// recorded before anything can run.
+	startup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	groups, closeGroups, err := p.toolGroups(startup)
 	if err != nil {
+		return nil, err
+	}
+	p.closers = append(p.closers, closeGroups)
+
+	exec, err := p.executor(groups)
+	if err != nil {
+		_ = p.Close()
 		return nil, err
 	}
 	rt, err := runtime.New(
@@ -324,7 +345,7 @@ func New(cfg Config) (*Platform, error) {
 
 // executor builds the sandbox every turn runs in: a playscape task under the
 // NGAC policy compiled from the pinned revision's access grant.
-func (p *Platform) executor() (runtime.Executor, error) {
+func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, error) {
 	dir := p.cfg.Workspace
 	if dir == "" {
 		base, err := os.UserCacheDir()
@@ -348,13 +369,14 @@ func (p *Platform) executor() (runtime.Executor, error) {
 	tools := tool.NewRegistry()
 	plane := controlplane.NewMemory(inproc.NewFactory(tools, ws), metrics.Nop())
 	exec, err := runtime.NewSandbox(plane, tools, registry.NewSpecs(p.Agents),
-		runtime.WithCatalog(p.fileTools(p.connectorTools)),
+		runtime.WithCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools))),
+		runtime.WithToolGroupSource(groups),
 		runtime.WithDelegator(p.attach),
 		runtime.WithCallTool(ToolCallAgent),
 		// A run waiting on an attached run of the same agent holds one of
 		// that agent's nodes, so there are as many as there are places.
 		runtime.WithReplicas(p.slots()),
-		runtime.WithAgentOptions(p.cfg.AgentOptions...),
+		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions)...),
 		runtime.WithSandboxLogger(p.log),
 	)
 	if err != nil {

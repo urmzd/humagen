@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"bytes"
@@ -227,7 +227,7 @@ func TestServeRefusesABadPolicy(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv(policyEnv, writeFile(t, "p.authz", src))
-			err := run([]string{"serve", "-auth=dev", "-addr", "127.0.0.1:0"})
+			err := run(Options{}, []string{"serve", "-auth=dev", "-addr", "127.0.0.1:0"})
 			if err == nil || !strings.Contains(err.Error(), policyEnv) {
 				t.Fatalf("got %v", err)
 			}
@@ -235,7 +235,7 @@ func TestServeRefusesABadPolicy(t *testing.T) {
 	}
 	t.Run("missing file", func(t *testing.T) {
 		t.Setenv(policyEnv, filepath.Join(t.TempDir(), "missing.authz"))
-		if err := run([]string{"serve", "-auth=dev", "-addr", "127.0.0.1:0"}); err == nil {
+		if err := run(Options{}, []string{"serve", "-auth=dev", "-addr", "127.0.0.1:0"}); err == nil {
 			t.Fatal("started")
 		}
 	})

@@ -34,3 +34,6 @@ storybook-static/
 **/.slack/apps.dev.json
 **/.slack/config.json
 **/.slack/cache/
+
+# Agent worktrees
+.claude/worktrees/

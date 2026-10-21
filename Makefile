@@ -1,4 +1,4 @@
-.PHONY: all init build test lint fmt check dev dev-signin web client client-check spec-lint oag-install
+.PHONY: all init build test lint fmt check start dev dev-signin web client client-check spec-lint oag-install
 
 BIN := warp
 
@@ -36,6 +36,12 @@ fmt:
 	gofmt -w .
 
 check: fmt lint test
+
+# The whole platform with zero configuration: console, seeded agents, and
+# the first-run questions on a terminal.
+start: build
+	pnpm install && pnpm --filter @warp/console build
+	./bin/$(BIN) start
 
 # Local preview: no sign-in, loopback only, two example agents.
 dev: build

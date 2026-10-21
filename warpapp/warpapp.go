@@ -1,0 +1,175 @@
+// Package warpapp runs warp with extensions: the same command tree, server
+// and composition root as the warp binary, plus model providers, tool
+// sources, MCP tool providers, connectors and stores a downstream program
+// registers in Go. It is the public seam that makes a private build of warp
+// an import and a few options instead of a fork.
+//
+//	func main() {
+//		os.Exit(warpapp.Main(warpapp.Version{Version: "v1"},
+//			warpapp.WithModelProvider("house", newHouseProvider),
+//			warpapp.WithBlobStore(myBucket),
+//		))
+//	}
+//
+// The common cases need no Go at all: `warp serve -providers FILE` declares
+// model endpoints and MCP tool providers in JSON (docs/providers.md), and
+// `warp start` writes that file for you. Options and the file combine; a name
+// declared by both is an error rather than an override.
+//
+// It mirrors fiber's fiberapp option for option, and sits at the module root
+// because it is the public face of internal/app, which nothing under pkg/ may
+// import. It adds no behaviour of its own.
+package warpapp
+
+import (
+	"os"
+
+	saigetypes "github.com/urmzd/saige/agent/types"
+
+	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
+	"github.com/urmzd/fiber/pkg/mcptools"
+	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/toolprovider"
+
+	"github.com/urmzd/warp/internal/app"
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/blob"
+	"github.com/urmzd/warp/pkg/clients"
+)
+
+// Version is the build metadata `warp version` reports.
+type Version struct {
+	Version string
+	Commit  string
+	Date    string
+}
+
+// Option extends the composition root.
+type Option func(*app.Options)
+
+// Main runs the warp command tree with the options applied and returns the
+// process exit code, for os.Exit. Arguments come from os.Args.
+func Main(v Version, opts ...Option) int {
+	o := app.Options{Version: app.Version(v)}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
+	return app.Execute(o, os.Args[1:])
+}
+
+// WithModelProvider makes a model provider selectable by name: a spec whose
+// provider is name runs on what fn builds, and a built-in of the same name is
+// replaced.
+func WithModelProvider(name string, fn agentrt.ProviderFunc) Option {
+	return func(o *app.Options) {
+		if name == "" || fn == nil {
+			return
+		}
+		if o.Ext.Providers == nil {
+			o.Ext.Providers = map[string]agentrt.ProviderFunc{}
+		}
+		o.Ext.Providers[name] = fn
+	}
+}
+
+// WithOpenAICompatible registers an OpenAI-compatible endpoint under ep.Name.
+// The key is read from the variable ep.KeyEnv names when an agent is built.
+func WithOpenAICompatible(ep agentrt.OpenAICompatible) Option {
+	return WithModelProvider(ep.Name, ep.Provider())
+}
+
+// WithToolSource adds a catalog that spec tool names resolve against, after
+// the connectors' actions and the platform's own tools. It is built per turn,
+// so it can bind tools to the run's tenant.
+func WithToolSource(c runtime.Catalog) Option {
+	return func(o *app.Options) {
+		if c != nil {
+			o.Ext.Catalogs = append(o.Ext.Catalogs, c)
+		}
+	}
+}
+
+// WithTools adds a fixed set of tools, resolved by name for every turn.
+func WithTools(tools ...saigetypes.Tool) Option {
+	static := agentrt.StaticTools(tools...)
+	return WithToolSource(func(runtime.Request, func(payload.Action) error) (agentrt.Tools, error) {
+		return static, nil
+	})
+}
+
+// WithToolProvider records an MCP tool provider at startup and accepts the
+// tools in accept from it, each pinned by Name and SchemaHash. Anything the
+// server adds or changes stays pending and is logged with its hash. An empty
+// p.Tenant is the deployment's tenant. Agents reach it with an "mcp:<name>"
+// or "mcp:<name>:write" grant.
+func WithToolProvider(p toolprovider.Provider, accept ...toolprovider.Tool) Option {
+	return func(o *app.Options) {
+		o.Ext.ToolProviders = append(o.Ext.ToolProviders, platform.ToolProviderSeed{Provider: p, Accept: accept})
+	}
+}
+
+// WithToolProviderStore keeps tool provider records and accepted snapshots
+// in s, such as fiber's toolprovider.NewPostgres. Nil keeps them in memory.
+func WithToolProviderStore(s toolprovider.Store) Option {
+	return func(o *app.Options) { o.Ext.ToolStore = s }
+}
+
+// WithCredentialResolver replaces how a tool provider's credential reference
+// is read when a session opens. The default reads env:, keychain: and op://
+// references, each time.
+func WithCredentialResolver(r mcptools.Resolver) Option {
+	return func(o *app.Options) { o.Ext.Resolver = r }
+}
+
+// WithConnector seats a connector the program built itself for one tenant:
+// a client the API does not manage, answering on its surface.
+func WithConnector(tenant string, peer platform.Peer) Option {
+	return func(o *app.Options) {
+		if peer != nil {
+			o.Connections = append(o.Connections, platform.Connection{Tenant: tenant, Peer: peer})
+		}
+	}
+}
+
+// WithBlobStore keeps published files' bytes in s instead of what -storage
+// selects.
+func WithBlobStore(s blob.Store) Option {
+	return func(o *app.Options) { o.Blobs = s }
+}
+
+// WithStore keeps client records and their secrets in the given stores
+// instead of the ones the configuration selects. Either may be nil.
+func WithStore(c clients.Store, secrets clients.Secrets) Option {
+	return WithPlatform(func(cfg *platform.Config) error {
+		if c != nil {
+			cfg.Clients = c
+		}
+		if secrets != nil {
+			cfg.Secrets = secrets
+		}
+		return nil
+	})
+}
+
+// WithPlatform edits the platform's configuration after flags and files are
+// applied. It reaches every seam platform.Config has, including ones no
+// option names yet.
+func WithPlatform(fn func(*platform.Config) error) Option {
+	return func(o *app.Options) {
+		if fn == nil {
+			return
+		}
+		prev := o.Platform
+		o.Platform = func(cfg *platform.Config) error {
+			if prev != nil {
+				if err := prev(cfg); err != nil {
+					return err
+				}
+			}
+			return fn(cfg)
+		}
+	}
+}

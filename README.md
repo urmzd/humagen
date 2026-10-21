@@ -55,6 +55,29 @@ See the [integration trial guide](docs/integrations.md).
 
 ## Quick Start
 
+One command, nothing to configure:
+
+```sh
+pnpm --filter @warp/console build   # once, so the console is served too
+go run ./cmd/warp start
+```
+
+`warp start` runs the whole platform in one process: development sign-in on
+loopback, in-memory stores, files on disk, seeded example agents on the offline
+provider, and the console at <http://127.0.0.1:8080>. On a terminal, the first
+start asks a few questions (model providers, MCP tool providers, sign-in,
+Slack), each with a default Enter accepts, and writes the answers to
+`warp.json` and `providers.json` in your config directory. You name where each
+key is kept (`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`); warp
+reads it when it is used and never stores it. `warp setup` asks again; the files
+can be edited by hand. See [providers](docs/providers.md).
+
+The same command runs on your own infrastructure with overrides and no code:
+`WARP_AUTH`, `WARP_ADDR`, `WARP_PUBLIC_URL`, the store and bucket variables in
+[deploy](docs/deploy.md), and any `serve` flag after `--`
+(`warp start -- -storage s3 -s3-bucket my-bucket`).
+
+### Develop the console
 
 Run the backend in one terminal:
 

@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"flag"
@@ -25,7 +25,7 @@ func TestDevAuthIsLoopbackOnly(t *testing.T) {
 		}
 	}
 	for _, addr := range []string{"0.0.0.0:8080", ":8080"} {
-		if err := run([]string{"serve", "-auth=dev", "-addr", addr}); err == nil {
+		if err := run(Options{}, []string{"serve", "-auth=dev", "-addr", addr}); err == nil {
 			t.Errorf("serve -auth=dev -addr %s started", addr)
 		}
 	}
