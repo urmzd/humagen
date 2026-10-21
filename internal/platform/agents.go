@@ -85,19 +85,16 @@ func onChain(tree *projects.Tree, project, name string) bool {
 
 // admitAgent is admission's availability check. A run filed in a project,
 // the root included, must use an agent available there. Housekeeping is
-// exempt, as it is from admission. An eval tries an agent where it lives, so
-// a project agent can be evaluated without being filed outside its home. A
-// scheduled run refused here keeps firing and is refused each time, and the
-// refusal is raised once, as an alert, until someone acknowledges it.
+// exempt, as it is from admission. An eval is filed where its agent lives
+// (evalCase), so it is checked as any run there is. A scheduled run refused
+// here keeps firing and is refused each time, and the refusal is raised
+// once, as an alert, until someone acknowledges it.
 func (p *Platform) admitAgent(tag envelope.Tag, project string) error {
 	if tag.Origin == runs.OriginSystem {
 		return nil
 	}
 	tree := p.Projects.Tree(tag.Tenant)
 	at := project
-	if home, ok := tree.Home(tag.Agent); ok && tag.Origin == OriginEval {
-		at = home
-	}
 	if tree.IsAvailable(at, tag.Agent) {
 		return nil
 	}

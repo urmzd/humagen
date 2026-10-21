@@ -533,7 +533,10 @@ because every run passes through admission:
 - called runs: `placeOf` gives them their root's project, so a call made in
   Globex reaches only agents available in Globex. Spawn lists, call policies,
   limits and leases still decide every call first; this only narrows;
-- Slack and GitHub tags, once the platform files them (phase 8).
+- Slack and GitHub tags, once the platform files them (phase 8);
+- evals: a case is filed where its agent lives, its home for a project agent
+  and the root for a platform agent, so the home's limits count it and the
+  runs it calls are checked there, as for any run of that agent.
 
 Housekeeping (`OriginSystem`) is exempt, as it is from admission. Earlier
 checks use the same function and give the same answer sooner: writing a
