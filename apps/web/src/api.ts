@@ -276,6 +276,8 @@ export interface ThreadSummary {
   named: boolean;
   origin: string;
   project?: string;
+  /** The project's channel it is in, `general` when its runs name none. */
+  channel: string;
   agents: string[];
   turns: number;
   branches: number;

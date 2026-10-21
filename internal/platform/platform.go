@@ -61,6 +61,7 @@ import (
 	"github.com/urmzd/warp/pkg/prefs"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 	"github.com/urmzd/warp/pkg/usage"
 )
 
@@ -161,7 +162,10 @@ type Platform struct {
 	// Projects is each tenant's tree of projects.
 	Projects *projects.Store
 	// People is each tenant's directory of people.
-	People   *people.Store
+	People *people.Store
+	// Threads is each tenant's shared threads: their records and the
+	// messages people post in them.
+	Threads  *threads.Store
 	Policies *policy.Store
 	// CallPolicies is what each agent says about being called.
 	CallPolicies *callpolicy.Store

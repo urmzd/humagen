@@ -54,6 +54,9 @@ const (
 	// KindArtifact says a file was published to storage, or a new version of
 	// one was. It is there to be read: nothing waits on it.
 	KindArtifact Kind = "artifact"
+	// KindMention is a message in a shared thread that tags the person it is
+	// to, by name or as one of the experts it tags.
+	KindMention Kind = "mention"
 )
 
 // State is where a message stands.
@@ -92,6 +95,9 @@ const (
 	PartReply    PartType = "reply"
 	// PartArtifact is a published file, to open or download.
 	PartArtifact PartType = "artifact"
+	// PartMention is a thread's message that tags the reader, to reply to
+	// or set aside.
+	PartMention PartType = "mention"
 )
 
 // PartState says whether a part still needs someone.
@@ -199,6 +205,38 @@ type ArtifactPart struct {
 	Previous string `json:"previous,omitempty"`
 }
 
+// MaxExcerpt bounds how much of a message a mention carries, in characters.
+const MaxExcerpt = 300
+
+// MentionPart is a message in a shared thread that tags the reader.
+type MentionPart struct {
+	Thread  string `json:"thread"`
+	Message string `json:"message"`
+	// Project is the thread's project, "" the root, and Channel its channel.
+	Project string `json:"project"`
+	Channel string `json:"channel"`
+	// By is the subject of the person who posted it.
+	By string `json:"by"`
+	// Excerpt is the start of what they wrote, at most MaxExcerpt.
+	Excerpt string `json:"excerpt"`
+}
+
+// Excerpt is the start of a message's text, as a mention carries it: at most
+// MaxExcerpt characters, ending in an ellipsis when it was cut.
+func Excerpt(text string) string {
+	r := []rune(strings.TrimSpace(text))
+	if len(r) <= MaxExcerpt {
+		return string(r)
+	}
+	return strings.TrimRight(string(r[:MaxExcerpt-1]), " \t\r\n") + "…"
+}
+
+// MentionKey names the mention of one person in one message, so the same
+// tag is raised once.
+func MentionKey(thread, message, subject string) string {
+	return "mention:" + thread + ":" + message + ":" + subject
+}
+
 // QuestionTool is the call an approval is about.
 type QuestionTool struct {
 	Name string `json:"name"`
@@ -271,6 +309,8 @@ type Part struct {
 	Question *QuestionPart `json:"question,omitempty"`
 	// Draft is set on a draft part.
 	Draft *DraftPart `json:"draft,omitempty"`
+	// Mention is set on a mention part.
+	Mention *MentionPart `json:"mention,omitempty"`
 }
 
 // Message is one thing in the inbox.
@@ -327,6 +367,10 @@ func (m Message) clone() Message {
 			mem := *p.Memory
 			mem.Notes = slices.Clone(mem.Notes)
 			p.Memory = &mem
+		}
+		if p.Mention != nil {
+			mention := *p.Mention
+			p.Mention = &mention
 		}
 		p.Actions = slices.Clone(p.Actions)
 		p.Draft = p.Draft.clone()

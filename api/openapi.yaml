@@ -3472,6 +3472,15 @@ components:
         client:
           description: The Slack app or GitHub installation that raised the run.
           type: string
+        channel:
+          description: The project's channel the conversation is in. Absent is `general`. A called run has its root's.
+          type: string
+        message:
+          description: |
+            The person's message in a shared thread that the run answers, such
+            as `m-3`. Runs that answer one message answer it side by side and
+            are not branches.
+          type: string
         lease:
           description: The run's budget in micro-USD. Zero means unmetered.
           type: integer
@@ -3675,7 +3684,7 @@ components:
     ThreadSummary:
       description: One conversation.
       type: object
-      required: [id, title, named, origin, agents, turns, branches, active, failed, created_at, updated_at]
+      required: [id, title, named, origin, channel, agents, turns, branches, active, failed, created_at, updated_at]
       properties:
         id: {type: string}
         title: {type: string}
@@ -3684,6 +3693,9 @@ components:
           type: boolean
         origin: {type: string}
         project: {type: string}
+        channel:
+          description: The project's channel it is in, `general` when its runs name none.
+          type: string
         agents:
           type: array
           items: {type: string}
@@ -4179,8 +4191,9 @@ components:
         What a message is about. `approval` and `clarification` are questions
         a run is waiting on. `result` is the answer of a run nobody was
         waiting on, and `artifact` a file that was published or revised.
+        `mention` is a message in a shared thread that tags the reader.
       type: string
-      enum: [alert, failure, memory, budget, approval, clarification, result, artifact]
+      enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention]
     InboxState:
       type: string
       enum: [open, resolved, dismissed, snoozed]
@@ -4467,18 +4480,18 @@ components:
     InboxPart:
       description: |
         One typed part of a message. `type` says which of `text`, `alert`,
-        `failure`, `memory`, `budget`, `artifact`, `draft` or `question` carries the body:
-        `approval`, `choice` and `reply` parts carry `question`. A settled
-        question's `outcome` is `approve`, `deny`, `choose` (the option in
-        `note`), `reply` (the words in `note`), `expired`, `stopped` or
-        `closed`.
+        `failure`, `memory`, `budget`, `artifact`, `draft`, `mention` or
+        `question` carries the body: `approval`, `choice` and `reply` parts
+        carry `question`. A settled question's `outcome` is `approve`,
+        `deny`, `choose` (the option in `note`), `reply` (the words in
+        `note`), `expired`, `stopped` or `closed`.
       type: object
       required: [id, type, state, actions]
       properties:
         id: {type: string}
         type:
           type: string
-          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, draft]
+          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, draft, mention]
         state:
           type: string
           enum: [open, resolved, info]
@@ -4487,7 +4500,7 @@ components:
           type: array
           items:
             type: string
-            enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply]
+            enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done]
         outcome: {$ref: "#/components/schemas/InboxOutcome"}
         text: {type: string}
         alert: {$ref: "#/components/schemas/InboxAlertPart"}
@@ -4497,6 +4510,27 @@ components:
         artifact: {$ref: "#/components/schemas/InboxArtifactPart"}
         question: {$ref: "#/components/schemas/InboxQuestionPart"}
         draft: {$ref: "#/components/schemas/InboxDraftPart"}
+        mention: {$ref: "#/components/schemas/InboxMentionPart"}
+    InboxMentionPart:
+      description: A message in a shared thread that tags the reader. `done` sets it aside.
+      type: object
+      required: [thread, message, project, channel, by, excerpt]
+      properties:
+        thread: {type: string}
+        message:
+          description: The message's id within the thread, such as `m-3`.
+          type: string
+        project:
+          description: The thread's project. Empty is the workspace itself.
+          type: string
+        channel: {type: string}
+        by:
+          description: The subject of the person who posted it.
+          type: string
+        excerpt:
+          description: The start of what they wrote.
+          type: string
+          maxLength: 300
     InboxMessage:
       description: One message in the inbox.
       type: object

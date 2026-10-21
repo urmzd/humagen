@@ -24,6 +24,7 @@ const (
 	keyProject   = "p:"
 	keyHistory   = "h:"
 	keyTombstone = "x:"
+	keyChannel   = "c:"
 )
 
 // stored is a project as it is written: the record, and the fields the file
@@ -50,14 +51,16 @@ type tenant struct {
 	seq     int64
 	// homes is where each agent with a home lives, by agent.
 	homes map[string]home
+	// channels is every project's written channels, by project and name.
+	channels map[string]Channel
 }
 
 func newTenant() *tenant {
-	return &tenant{projects: map[string]Project{}, tombs: map[string]Tombstone{}, homes: map[string]home{}}
+	return &tenant{projects: map[string]Project{}, tombs: map[string]Tombstone{}, homes: map[string]home{}, channels: map[string]Channel{}}
 }
 
 func (t *tenant) copy() *tenant {
-	return &tenant{projects: maps.Clone(t.projects), tombs: maps.Clone(t.tombs), history: slices.Clone(t.history), seq: t.seq, homes: maps.Clone(t.homes)}
+	return &tenant{projects: maps.Clone(t.projects), tombs: maps.Clone(t.tombs), history: slices.Clone(t.history), seq: t.seq, homes: maps.Clone(t.homes), channels: maps.Clone(t.channels)}
 }
 
 // stored reports whether the tenant has written anything.
@@ -179,6 +182,8 @@ func (t *tenant) load(key string, raw json.RawMessage) error {
 			return fmt.Errorf("%w: the tombstone of %q is kept under %q", ErrInvalid, x.Name, key)
 		}
 		t.tombs[strings.ToLower(x.Name)] = x
+	case strings.HasPrefix(key, keyChannel):
+		return t.loadChannel(key, raw)
 	case strings.HasPrefix(key, keyHome):
 		var h home
 		if err := json.Unmarshal(raw, &h); err != nil {
@@ -234,7 +239,7 @@ func (t *tenant) check() error {
 			return fmt.Errorf("%w: %s lives in %q, which is not a project", ErrInvalid, agent, h.Project)
 		}
 	}
-	return nil
+	return t.checkChannels()
 }
 
 // Tree returns a tenant's tree. A tenant that has written nothing has the
@@ -320,6 +325,7 @@ func (w *write) delete(key string) { w.batch.Delete(w.name, key) }
 
 // project puts a project's record. A stored enable list is never nil.
 func (w *write) project(p Project) {
+	p.Experts = cloneExperts(p.Experts)
 	if p.Agents.Enable == nil {
 		p.Agents.Enable = []string{}
 	}
@@ -497,10 +503,11 @@ func current(t *tenant, name string) (Project, bool) {
 }
 
 // Update changes a project through the API. fn edits a copy; the name, kind,
-// parent, management and record fields cannot change, a field the file owns
-// cannot change (ErrManaged), and version must be the current one
-// (ErrVersion). The root and company projects need projects:govern. A change
-// that changes nothing writes nothing and keeps the version.
+// parent, experts (SetExperts sets them), management and record fields cannot
+// change, a field the file owns cannot change (ErrManaged), and version must
+// be the current one (ErrVersion). The root and company projects need
+// projects:govern. A change that changes nothing writes nothing and keeps the
+// version.
 func (s *Store) Update(tenantName, name string, version int, w Writer, at time.Time, fn func(*Project) error) (Project, error) {
 	return s.update(tenantName, name, version, w, at, Updated, fn)
 }
@@ -517,7 +524,8 @@ func (s *Store) SetAgents(tenantName, name string, version int, a Agents, w Writ
 	})
 }
 
-// update is Update, recording what.
+// update is Update, recording what the change was. Experts change only
+// through SetExperts, so each change says what it changed.
 func (s *Store) update(tenantName, name string, version int, w Writer, at time.Time, what string, fn func(*Project) error) (Project, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -542,6 +550,8 @@ func (s *Store) update(tenantName, name string, version int, w Writer, at time.T
 		return Project{}, fmt.Errorf("%w: a project's name, kind and parent are fixed when it is created", ErrInvalid)
 	case next.Managed != cur.Managed || !slices.Equal(next.FileOwns, cur.FileOwns):
 		return Project{}, fmt.Errorf("%w: only the platform file manages a project", ErrInvalid)
+	case what != ExpertsChanged && !sameExperts(next.Experts, cur.Experts):
+		return Project{}, fmt.Errorf("%w: a project's experts are set on their own", ErrInvalid)
 	}
 	next.Version, next.CreatedBy, next.CreatedAt, next.UpdatedBy, next.UpdatedAt = cur.Version, cur.CreatedBy, cur.CreatedAt, cur.UpdatedBy, cur.UpdatedAt
 	if err := next.validate(); err != nil {
@@ -612,6 +622,8 @@ func sameField(a, b Project, field string) bool {
 		return a.Instructions == b.Instructions
 	case FieldAgentPosts:
 		return a.AgentPosts == b.AgentPosts
+	case FieldExperts:
+		return sameExperts(a.Experts, b.Experts)
 	case FieldAgents:
 		return sameAgents(a.Agents, b.Agents)
 	}
@@ -656,6 +668,7 @@ func (s *Store) Delete(tenantName, name string, w Writer, at time.Time, inUse fu
 	}
 	delete(tx.t.projects, name)
 	tx.delete(keyProject + name)
+	tx.dropChannels(name)
 	tx.bury(Tombstone{Name: name, By: w.By, At: at})
 	tx.record(Change{At: at, By: w.By, Project: name, What: Deleted, Before: ptr(cur)})
 	return tx.commit()
@@ -720,6 +733,8 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 			next.Account = p.Account
 		case FieldInstructions:
 			next.Instructions = p.Instructions
+		case FieldExperts:
+			next.Experts = cloneExperts(p.Experts)
 		case FieldAgents:
 			next.Agents = p.Agents.canonical()
 		}
