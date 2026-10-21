@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 (2026-10-21)
+
+### Features
+
+- inbox templates, Monitor and Context, built-in analyst and builder, phone-first console (#35) ([71c9898](https://github.com/urmzd/warp/commit/71c9898669c2ad778ab816ab734ed1d9adaf11b6))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.8.0...v0.9.0)
+
+
 ## 0.8.0 (2026-10-20)
 
 ### Features
