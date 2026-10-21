@@ -2,9 +2,10 @@
 // tagged, and named on a project.
 //
 // A person is recorded when they sign in, when a client maps a Slack person
-// to them, and when the policy grants a role to their subject. Nothing here
-// decides who anyone is or what they may do: the identity provider and the
-// policy do. This is what the rest of warp shows and addresses them by, a
+// to them, and when the policy grants a role to their subject in a server of
+// one tenant (a grant names no tenant, so with tenants from a claim it
+// records nobody). Nothing here decides who anyone is or what they may do:
+// the identity provider and the policy do. This is what the rest of warp shows and addresses them by, a
 // name and a handle.
 //
 // # No email

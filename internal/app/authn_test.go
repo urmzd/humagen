@@ -359,3 +359,30 @@ grant auditor to claim department = "finance"
 		t.Fatalf("explain:\n%s", out.String())
 	}
 }
+
+// A grant names a subject and no tenant. With one tenant, whom the policy
+// grants a role is in its directory before they first sign in. With tenants
+// from a claim the one policy is every tenant's, so a grant puts nobody in
+// the directory of the workspace -tenant names: they could belong to any.
+func TestAPolicyGrantEntersNoDirectoryWhenTenantsComeFromAClaim(t *testing.T) {
+	pol, err := auth.ParsePolicy("test", `
+role viewer { allow read on * }
+role admin extends viewer { allow * on * }
+grant viewer to anyone
+grant admin to subject "okta|bob-of-other"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := slog.New(slog.DiscardHandler)
+	claimed := newProjectsPlatform(t)
+	seeGranted(claimed, "home", "tenant", pol, log)
+	if n := claimed.People.Len("home"); n != 0 {
+		t.Fatalf("with tenants from a claim, the grant put %d people in home's directory", n)
+	}
+	one := newProjectsPlatform(t)
+	seeGranted(one, "home", "", pol, log)
+	if bob, err := one.People.Get("home", "okta|bob-of-other"); err != nil || !slices.Equal(bob.Roles, []string{"admin"}) {
+		t.Fatalf("with one tenant, the granted subject = %+v, %v", bob, err)
+	}
+}

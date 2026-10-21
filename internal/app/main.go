@@ -296,13 +296,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err := applyPlatforms(ctx, p, file.cfg, log); err != nil {
 		return err
 	}
-	// Whom the policy grants a role by subject is in the workspace's
-	// directory before they first sign in. It comes after the agents, so
-	// an agent the file or the seed names keeps its name and a person
-	// whose handle would be it gets a suffix.
-	if err := p.SeeGranted(*tenant, granted(pol)); err != nil {
-		log.Warn("people the policy names could not all be recorded", "error", err)
-	}
+	// After the agents, so an agent the file or the seed names keeps its
+	// name and a person whose handle would be it gets a suffix.
+	seeGranted(p, *tenant, *tenantClaim, pol, log)
 	extensions, err := fileRunners(ctx, o, file.cfg)
 	if err != nil {
 		return err
