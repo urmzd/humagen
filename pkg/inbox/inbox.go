@@ -995,10 +995,10 @@ type Query struct {
 	Visible func(Kind) bool
 	// Sees reports whether the reader may read what a message is about:
 	// the project and thread it lives in. Nil means all.
-	Sees func(Message) bool
-	Now     time.Time
-	Limit   int
-	Before  string
+	Sees   func(Message) bool
+	Now    time.Time
+	Limit  int
+	Before string
 }
 
 // All is the State that matches every message.
