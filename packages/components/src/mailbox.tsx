@@ -237,6 +237,41 @@ export function MessagePartView({
       return <Sources items={part.citations} />;
     case "artifact":
       return <AttachmentView attachment={part.artifact} />;
+    case "draft": {
+      // The agent's words, shown as typed: a model wrote them, so no markup is honored.
+      const words = (
+        <>
+          <Context items={[copy.draftTitle(part.draft.agent, part.draft.project)]} />
+          <Text text={`**${untrusted(part.draft.subject)}**`} />
+          {part.draft.text ? <Text text={untrusted(part.draft.text)} /> : null}
+        </>
+      );
+      if (record) {
+        return (
+          <>
+            {words}
+            {record}
+          </>
+        );
+      }
+      const publish = may(ActionId.publishDraft);
+      const discard = may(ActionId.discardDraft);
+      return (
+        <>
+          {words}
+          {publish || discard ? (
+            <Actions blockId={`draft:${part.id}`}>
+              {publish && (
+                <Button label={copy.publish} style="primary" action={act(ActionId.publishDraft)} />
+              )}
+              {discard && <Button label={copy.discardDraft} action={act(ActionId.discardDraft)} />}
+            </Actions>
+          ) : (
+            <Context items={[copy.noPermission]} />
+          )}
+        </>
+      );
+    }
     case "custom":
       return (
         <>
@@ -245,6 +280,16 @@ export function MessagePartView({
         </>
       );
   }
+}
+
+/**
+ * Words a model wrote, made inert for the Text primitive: a link's markup and a
+ * time token are broken with a zero-width space, so they show as typed and
+ * nothing in them becomes a link. Each renderer already escapes what would
+ * ping on its surface.
+ */
+export function untrusted(text: string): string {
+  return text.replaceAll("](", "]\u200B(").replaceAll("{{", "{\u200B{");
 }
 
 /** What kind of message it is, and how urgent, in words: "Alert · Urgent". */

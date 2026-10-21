@@ -56,6 +56,16 @@ export interface MemoryProposal {
   scope?: string;
 }
 
+/** An agent's post waiting for a project's owners. */
+export interface Draft {
+  subject: string;
+  text?: string;
+  /** The agent that wrote it. */
+  agent: string;
+  /** Where it would be posted, in words: "Field", "the workspace". */
+  project: string;
+}
+
 /** Something counted against a limit. */
 export interface Meter {
   used: number;
@@ -126,6 +136,12 @@ export type MessagePart =
   /** A file. Read only. */
   | (PartBase & { type: "artifact"; artifact: Artifact })
   /**
+   * What an agent wrote to post in a project, held for its owners: publish
+   * it as the agent's announcement, or discard it. Its words are the agent's,
+   * so they are shown as plain text, never as markup.
+   */
+  | (PartBase & { type: "draft"; draft: Draft; resolution?: Resolution })
+  /**
    * A part the host app defines. `name` picks its renderer; surfaces without
    * one show `fallback`. It counts as resolvable only when the host says so.
    */
@@ -180,6 +196,7 @@ const RESOLVABLE: Record<Exclude<PartType, "custom">, boolean> = {
   budget: true,
   alert: true,
   failure: true,
+  draft: true,
 };
 
 /**
@@ -308,6 +325,7 @@ const TEMPLATE_OF_PART: Record<PartType, TemplateId> = {
   reference: "note",
   text: "note",
   custom: "note",
+  draft: "announcement",
 };
 
 /** The message's template: the one it names, else what its first ask (or first part) is. */
@@ -360,6 +378,8 @@ function partLine(part: MessagePart): string {
       return part.citations.map((c) => c.title).join(" · ");
     case "artifact":
       return part.artifact.title;
+    case "draft":
+      return part.draft.subject;
     case "custom":
       return part.fallback;
   }
@@ -626,6 +646,10 @@ export function resolveMessage(
         return id === ActionId.reconnect || id === ActionId.report
           ? { ...part, resolution: done("handled") }
           : part;
+      case "draft":
+        if (id === ActionId.publishDraft) return { ...part, resolution: done("published") };
+        if (id === ActionId.discardDraft) return { ...part, resolution: done("discarded") };
+        return part;
       case "custom":
         return { ...part, resolution: done(payload.option ?? "resolved", payload.text) };
       default:

@@ -124,6 +124,11 @@ export const defaultCopy = {
   send: "Send",
   keepSelected: "Keep Selected",
   discardAll: "Discard All",
+  publish: "Publish",
+  discardDraft: "Discard Draft",
+  /** Above an agent's draft: who wrote it and where publishing posts it. */
+  draftTitle: (agent: string, project: string) =>
+    `${agent} wrote this for ${project}. Publishing posts it there, from ${agent}.`,
   memoryTitle: (n: number) => `${n} thing${n === 1 ? "" : "s"} to remember`,
   allowOnce: "Allow This Run",
   raiseTo: (amount: string) => `Raise to ${amount}`,
@@ -174,6 +179,7 @@ export const defaultCopy = {
     failure: "Failed run",
     reference: "Reference",
     artifact: "Artifact",
+    draft: "Draft",
     custom: "Message",
   },
   /** What each message template is called, in the list and above its parts. */
