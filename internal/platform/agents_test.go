@@ -155,6 +155,20 @@ func TestAScheduleWhoseAgentStoppedBeingAvailableIsRefusedAndRaisedOnce(t *testi
 	}
 }
 
+// Asked about a project the tree does not hold, as a schedule is when its
+// project's delete wins between being looked up and being checked, the answer
+// is that the project is not found, not that the agent is refused there.
+func TestAvailabilityInAProjectThatIsGoneIsNotFound(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	if err := p.Available(tenant, "Nowhere", "helper"); !errors.Is(err, platform.ErrProjectNotFound) || errors.Is(err, platform.ErrNotAvailable) {
+		t.Fatalf("helper in a project that is gone = %v, want ErrProjectNotFound", err)
+	}
+	if err := p.Available(tenant, "Globex", "helper"); err != nil {
+		t.Fatalf("helper in Globex = %v", err)
+	}
+}
+
 func TestAnEvalTriesAnAgentWhereItLives(t *testing.T) {
 	p := start(t, call.Limits{})
 	globexHelper(t, p)
