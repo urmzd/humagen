@@ -13,6 +13,7 @@ require (
 )
 
 require (
+	connectrpc.com/connect v1.20.0 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.80.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.22 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.3 // indirect
@@ -56,6 +57,7 @@ require (
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 )
 
 require (
@@ -70,5 +72,3 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5
 	go.yaml.in/yaml/v4 v4.0.0-rc.2
 )
-
-replace github.com/urmzd/fiber => /home/user/fiber
