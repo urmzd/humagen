@@ -122,7 +122,8 @@ func (p *Platform) projectUsers(tenant, name string) []string {
 
 // InProject runs fn while the project exists and cannot be deleted. Filing
 // something under a project (a schedule, an alert rule, a limit) inside fn
-// means a delete cannot miss it. fn must not change projects.
+// means a delete cannot miss it. fn may read the tree (HasProject,
+// ProjectTree, GetProject) and must not otherwise call into projects.
 func (p *Platform) InProject(tenant, name string, fn func() error) error {
 	return p.Projects.Hold(tenant, projects.NameOf(name), fn)
 }
