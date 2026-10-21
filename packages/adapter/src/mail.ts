@@ -28,7 +28,7 @@ export type Source = { kind: "run" | "thread" | "rule" | "agent" | "project" | "
 
 /** A mailbox message, plus what only the platform knows about it. */
 export type PlatformMessage = InboxMessage & {
-  /** What the message is, for the server's kind filter: alert, failure, memory, budget, artifact. */
+  /** What the message is, for the server's kind filter: alert, failure, memory, budget, artifact, announcement. */
   kind: string;
   /** Everything it is about, as things the console can open by kind and id. */
   about: Source[];
@@ -46,6 +46,7 @@ export const kinds: { id: string; label: string }[] = [
   { id: "budget", label: "Limits" },
   { id: "artifact", label: "Artifacts" },
   { id: "result", label: "Results" },
+  { id: "announcement", label: "Announcements" },
 ];
 
 /**
@@ -62,6 +63,7 @@ const templateOf: Record<string, TemplateId> = {
   clarification: "question",
   result: "result",
   artifact: "artifact",
+  announcement: "announcement",
 };
 
 const artifactKinds: ArtifactKind[] = ["document", "spreadsheet", "presentation", "image", "pdf", "html", "code", "data", "archive"];
