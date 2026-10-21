@@ -4,7 +4,9 @@ import type { Agent, ClientRecord } from "./warp.ts";
  * Who answers a message. In order:
  *
  * 1. An agent named in the message as `@name`, when that agent exists and this
- *    surface may route to it. The name is taken out of the message.
+ *    surface may route to it, or `@auto`, the platform's built-in router,
+ *    which picks among the agents available where the message lands. The
+ *    name is taken out of the message.
  * 2. The default agent: the client's, or the one configured for the app.
  * 3. Nobody, when the surface may reach any agent: the app sends no agent,
  *    and the default the platform's projects set decides. With none set, the
@@ -40,12 +42,15 @@ export function mayRoute(routing: Routing, name: string): boolean {
 
 const NAMED = /(^|\s)@([A-Za-z0-9][A-Za-z0-9_-]*)(?=$|[\s,.:;!?])/g;
 
+/** The platform's built-in router. It is no agent: the platform picks one. */
+export const AUTO = "auto";
+
 export function choose(text: string, agents: Agent[], routing: Routing): Choice {
   const said = text.trim();
   const known = new Set(agents.map((a) => a.name));
   for (const m of said.matchAll(NAMED)) {
     const name = m[2] as string;
-    if (!known.has(name) || !mayRoute(routing, name)) continue;
+    if ((!known.has(name) && name !== AUTO) || !mayRoute(routing, name)) continue;
     const at = (m.index ?? 0) + (m[1] ?? "").length;
     const rest = `${said.slice(0, at)}${said.slice(at + name.length + 1)}`
       .replace(/\s{2,}/g, " ")

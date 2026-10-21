@@ -23,8 +23,8 @@ export const MONITOR_TABS: MonitorTab[] = ["overview", "rules"];
  * A project's tabs. Overview is the default. More arrive with later phases of
  * docs/projects.md; an unknown tab falls back to the default.
  */
-export type ProjectTab = "overview" | "context";
-export const PROJECT_TABS: ProjectTab[] = ["overview", "context"];
+export type ProjectTab = "overview" | "context" | "agents";
+export const PROJECT_TABS: ProjectTab[] = ["overview", "context", "agents"];
 
 /** What a project is for, as the Projects page narrows to it with `?kind=`. */
 export type ProjectKindFilter = "company" | "team" | "account";

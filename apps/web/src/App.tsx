@@ -20,6 +20,7 @@ import {
 } from "./api.ts";
 import type { Run } from "./adapter.ts";
 import { Chat } from "./Chat.tsx";
+import { DirectoryPage } from "./Directory.tsx";
 import { InboxPage } from "./InboxPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { Monitor } from "./Monitor.tsx";
@@ -138,6 +139,11 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const [agents, setAgents] = useState<Revision[]>([]);
   // The agents the platform provides. They run like any other and cannot be edited.
   const [builtin, setBuiltin] = useState<string[]>([]);
+  // Where each agent that lives in a project lives, and which projects enable each.
+  const [homes, setHomes] = useState<Record<string, string>>({});
+  const [enabledIn, setEnabledIn] = useState<Record<string, string[]>>({});
+  // Who answers a message that tags no agent in the workspace itself: the Workspace Default.
+  const [workspaceDefault, setWorkspaceDefault] = useState("");
   const [schedules, setSchedules] = useState<ScheduleView[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [rules, setRules] = useState<AlertRule[]>([]);
@@ -182,9 +188,17 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       .then((r) => {
         setAgents(r.agents);
         setBuiltin(r.builtin ?? []);
+        setHomes(r.homes ?? {});
+        setEnabledIn(r.enabled_in ?? {});
       })
       .catch(() => {});
     api.settings().then(setWorkspace).catch(() => {});
+    if (can("projects:read")) {
+      api
+        .projectAgents("")
+        .then((v) => setWorkspaceDefault(v.default ?? ""))
+        .catch(() => {});
+    }
   }, [can]);
   const loadInbox = useCallback(() => {
     if (!can("runs:read")) return;
@@ -315,11 +329,6 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const editing = agents.find((a) => a.spec.name === agentName) ?? null;
   const shownName = prefs?.display_name || me.principal.name || "";
 
-  const setBaseline = (name: string) => {
-    if (!workspace) return;
-    api.saveSettings({ ...workspace, baseline: name }).then(setWorkspace).catch(() => {});
-  };
-
   return (
     <div className="flex h-full text-aui-fg">
       <Sidebar
@@ -350,7 +359,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             summary={threads.find((t) => t.id === thread)}
             tick={tick}
             agents={agents}
-            settings={workspace}
+            homes={homes}
             projects={can("projects:read") ? projects : []}
             canRun={can("runs:write")}
             canCreateProject={can("projects:write")}
@@ -390,6 +399,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             projects={projects ?? []}
             schedules={schedules}
             agents={agents}
+            homes={homes}
+            enabledIn={enabledIn}
             can={can}
             tick={tick}
             onOpen={openProject}
@@ -401,6 +412,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               loadInbox();
             }}
             onSchedulesChanged={loadSchedules}
+            onAgentsChanged={loadAgents}
             onDeleted={() => {
               loadProjects();
               go({ page: "projects" }, { replace: true });
@@ -482,7 +494,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             agents={agents}
             runs={runs}
             stats={stats}
-            baseline={workspace?.baseline ?? ""}
+            workspaceDefault={workspaceDefault}
+            homes={homes}
             canWrite={can("agents:write")}
             onOpen={(name) => openAgent(name)}
             onNew={() => openAgent(null)}
@@ -504,9 +517,13 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               rules={rules}
               alerts={alerts}
               projects={projectNames}
+              tree={projects ?? []}
+              place={route.name ? { home: homes[route.name], enabled_in: enabledIn[route.name] ?? [] } : undefined}
+              workspaceName={workspaceName}
               stats={route.name ? stats.get(route.name) : undefined}
-              baseline={workspace?.baseline ?? ""}
+              workspaceDefault={workspaceDefault}
               canWrite={can("agents:write")}
+              canGovern={can("projects:govern")}
               builtin={route.name ? builtin.includes(route.name) : false}
               canEval={can("evals:write")}
               canAlert={can("alerts:write")}
@@ -523,11 +540,26 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               onOpenSource={(source) => go({ page: "context", source })}
               onOpenAlerts={() => go({ page: "monitor", tab: "rules" })}
               onOpenTask={openThread}
-              onBaseline={setBaseline}
+              onHomed={loadAgents}
+              onOpenProject={openProject}
               policies={workspace?.model_policies ?? []}
               onManagePolicies={() => openSettings("models")}
             />
           ))}
+        {route.page === "directory" && (
+          <DirectoryPage
+            tab={route.tab}
+            onTab={(tab) => go({ page: "directory", tab }, { replace: true })}
+            can={can}
+            agents={agents}
+            homes={homes}
+            enabledIn={enabledIn}
+            projects={projects}
+            workspaceName={workspaceName}
+            onOpenAgent={(name) => openAgent(name, "access")}
+            onOpenProject={openProject}
+          />
+        )}
         {route.page === "artifacts" && (
           <Storage
             signal={tick}
@@ -556,6 +588,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             projects={projectNames}
             onOpenProjects={() => go({ page: "projects" })}
             onOpenWorkspace={() => openProject("")}
+            onOpenWorkspaceAgents={() => go({ page: "project", name: "", tab: "agents" })}
           />
         )}
       </main>
