@@ -154,35 +154,46 @@ var offered = map[inbox.PartType][]string{
 	inbox.PartDraft:    {ActPublish, ActDiscard},
 }
 
-// seenBy fills in what a reader may do with each part. A project's notes
-// are decided by its owners, with projects:write.
-func seenBy(tree *projects.Tree, m inbox.Message, who auth.Principal) inbox.Message {
+// allows reports whether who may take an action on a part, and if not, why.
+// An action needs what needs says, except a proposal for a project's notes:
+// that is the project's to decide, by MayChangeNotes, as its own memory
+// routes ask, so the inbox is no way around a project's owners or
+// projects:govern. An agent's draft is its project's owners' to decide.
+func (p *Platform) allows(tree *projects.Tree, who auth.Principal, part inbox.Part, action string) error {
+	perm, known := needs(part.Type, action)
+	if !known {
+		return fmt.Errorf("%w: a %s part does not take %q", ErrAction, part.Type, action)
+	}
+	if project, isProject := memoryProject(part); isProject {
+		return p.mayChangeNotes(tree, who, project)
+	}
+	if part.Type == inbox.PartDraft && part.Draft != nil {
+		if !ownsNotes(tree, who, part.Draft.Project) {
+			pr, _ := tree.Get(part.Draft.Project)
+			return fmt.Errorf("%w: %s needs projects:write, and %s", ErrForbidden, action, roleNeeded(projects.Owner, titleOf(pr, p.Settings(who.Tenant).WorkspaceName)))
+		}
+		return nil
+	}
+	if !who.Can(perm) {
+		return fmt.Errorf("%w: %s needs %s", ErrForbidden, action, perm)
+	}
+	return nil
+}
+
+// seenBy fills in what a reader may do with each part.
+func (p *Platform) seenBy(tree *projects.Tree, m inbox.Message, who auth.Principal) inbox.Message {
 	for i := range m.Parts {
-		p := &m.Parts[i]
-		p.Actions = []string{}
-		if p.State != inbox.PartOpen || m.State == inbox.Resolved || m.State == inbox.Dismissed {
+		part := &m.Parts[i]
+		part.Actions = []string{}
+		if part.State != inbox.PartOpen || m.State == inbox.Resolved || m.State == inbox.Dismissed {
 			continue
 		}
-		for _, a := range offered[p.Type] {
-			if a == ActRetry && (p.Failure == nil || !p.Failure.Retryable) {
+		for _, a := range offered[part.Type] {
+			if a == ActRetry && (part.Failure == nil || !part.Failure.Retryable) {
 				continue
 			}
-			if project, ok := memoryProject(*p); ok {
-				if ownsNotes(tree, who, project) {
-					p.Actions = append(p.Actions, a)
-				}
-				continue
-			}
-			// An agent's draft is its project's owners' to decide, as its
-			// notes are.
-			if p.Type == inbox.PartDraft && p.Draft != nil {
-				if ownsNotes(tree, who, p.Draft.Project) {
-					p.Actions = append(p.Actions, a)
-				}
-				continue
-			}
-			if perm, ok := needs(p.Type, a); ok && who.Can(perm) {
-				p.Actions = append(p.Actions, a)
+			if p.allows(tree, who, *part, a) == nil {
+				part.Actions = append(part.Actions, a)
 			}
 		}
 	}
@@ -236,7 +247,7 @@ func (p *Platform) InboxPage(who auth.Principal, q inbox.Query) ([]inbox.Message
 	q.Shared = false
 	msgs, next, err := p.Inbox.Page(who.Tenant, p.inboxQuery(tree, who, q))
 	for i := range msgs {
-		msgs[i] = p.ownDeliveries(who, seenBy(tree, msgs[i], who))
+		msgs[i] = p.ownDeliveries(who, p.seenBy(tree, msgs[i], who))
 	}
 	return msgs, next, err
 }
@@ -269,7 +280,7 @@ func (p *Platform) inboxGetAs(who auth.Principal, reader inbox.Reader, id string
 	if m.State == inbox.Snoozed && !p.now().Before(m.SnoozedUntil) {
 		m.State = inbox.Open
 	}
-	return p.ownDeliveries(who, seenBy(p.Projects.Tree(who.Tenant), m, who)), nil
+	return p.ownDeliveries(who, p.seenBy(p.Projects.Tree(who.Tenant), m, who)), nil
 }
 
 // InboxRead marks a message read or unread for the caller alone.
@@ -360,20 +371,10 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 	if r.ActAs != nil {
 		return inbox.Message{}, fmt.Errorf("%w: only a question is answered for someone else", ErrAction)
 	}
-	perm, known := needs(part.Type, r.Action)
-	if !known {
-		return inbox.Message{}, fmt.Errorf("%w: a %s part does not take %q", ErrAction, part.Type, r.Action)
-	}
 	// The right is checked before saying whether there is anything left to
-	// do, so a caller without it learns nothing from trying. A project's
-	// notes are its owners' to decide.
-	if project, ok := memoryProject(part); ok {
-		if !ownsNotes(tree, who, project) {
-			pr, _ := tree.Get(project)
-			return inbox.Message{}, fmt.Errorf("%w: %s needs projects:write, and %s", ErrForbidden, r.Action, roleNeeded(projects.Owner, titleOf(pr, p.Settings(who.Tenant).WorkspaceName)))
-		}
-	} else if !who.Can(perm) {
-		return inbox.Message{}, fmt.Errorf("%w: %s needs %s", ErrForbidden, r.Action, perm)
+	// do, so a caller without it learns nothing from trying.
+	if err := p.allows(tree, who, part, r.Action); err != nil {
+		return inbox.Message{}, err
 	}
 	if part.Type == inbox.PartDraft {
 		if err := p.ownsDraft(who, *part.Draft); err != nil {

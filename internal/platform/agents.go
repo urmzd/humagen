@@ -51,22 +51,25 @@ func (p *Platform) whereOf(tenant string, tree *projects.Tree, project string) s
 // it may not. It is the one check: admission makes it for every run, and the
 // places that write an agent into a project make it first, so a person hears
 // the same answer sooner. Whether the agent exists is the registry's to say.
+// A project the tree does not hold is ErrProjectNotFound, as it is to the
+// caller that looked it up just before a delete won.
 func (p *Platform) Available(tenant, project, agent string) error {
 	project = projects.NameOf(project)
 	tree := p.Projects.Tree(tenant)
 	if tree.IsAvailable(project, agent) {
 		return nil
 	}
+	if !tree.Has(project) {
+		return fmt.Errorf("%w: %q", ErrProjectNotFound, project)
+	}
 	return p.notAvailable(tenant, tree, project, agent)
 }
 
+// notAvailable says why an agent may not run in a project the tree holds.
 func (p *Platform) notAvailable(tenant string, tree *projects.Tree, project, agent string) error {
 	where := p.whereOf(tenant, tree, project)
-	switch {
-	case agent == Auto:
+	if agent == Auto {
 		return fmt.Errorf("%w: @auto picks an agent before anything runs, so it never runs itself", ErrNotAvailable)
-	case !tree.Has(project):
-		return fmt.Errorf("%w: there is no project %q to run %s in", ErrNotAvailable, project, agent)
 	}
 	if home, ok := tree.Home(agent); ok && !onChain(tree, project, home) {
 		return fmt.Errorf("%w: %s is not available in %s; it lives in %s and is available only there and below", ErrNotAvailable, agent, where, p.whereOf(tenant, tree, home))
@@ -97,6 +100,10 @@ func (p *Platform) admitAgent(tag envelope.Tag, project string) error {
 	}
 	if tree.IsAvailable(at, tag.Agent) {
 		return nil
+	}
+	if !tree.Has(at) {
+		// Deleted between placeOf and here: refused as placeOf refuses it.
+		return projectDeleted(at)
 	}
 	err := p.notAvailable(tag.Tenant, tree, at, tag.Agent)
 	p.log.Warn("platform: run refused: agent not available", "tenant", tag.Tenant, "agent", tag.Agent, "project", at, "origin", tag.Origin)

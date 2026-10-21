@@ -15,6 +15,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -697,5 +698,89 @@ func TestProjectLimitsAreTheChain(t *testing.T) {
 	}
 	if root, _ := p.ProjectLimits(tenant, "~"); len(root) != 1 || root[0].Scope.Kind != policy.Tenant {
 		t.Fatalf("the root's limits = %+v", root)
+	}
+}
+
+// A child with no limit of its own can be deleted with projects:write. Its
+// conversations do not then get out from under its parent's limit: their next
+// turns, and a run racing the delete, are refused, and the parent's count
+// stands.
+func TestADeletedChildsConversationsStayUnderItsParentsLimit(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	ctx := t.Context()
+	fieldScope := policy.Scope{Kind: policy.Project, Name: "Field"}
+	if _, err := p.Policies.Put(tenant, policy.Policy{Scope: fieldScope, Period: policy.Day, MaxRuns: 1, Action: policy.Block}, "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-1", Agent: "lead", Text: "Plan the renewal", Project: "Initech"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(first.Within, []string{"Field"}) {
+		t.Fatalf("the first turn is within %q", first.Within)
+	}
+	await(t, p, first.ID, runs.Completed)
+	var denied *platform.Denied
+	if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-2", Agent: "lead", Text: "More", After: first.ID}); !errors.As(err, &denied) || denied.Decision.Policy.Scope != fieldScope {
+		t.Fatalf("a second turn under Field's limit of one = %v", err)
+	}
+	if err := p.DeleteProject(ctx, tenant, "Initech", ada); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 5 {
+		_, err := p.Converse(ctx, tenant, platform.Turn{ID: fmt.Sprintf("api-after-%d", i), Agent: "lead", Text: "More", After: first.ID})
+		if !errors.Is(err, platform.ErrProjectDeleted) {
+			t.Fatalf("turn %d in the deleted child's conversation = %v", i, err)
+		}
+	}
+	// A run that read the tree after the delete is refused too.
+	if _, err := p.Invoke(ctx, inProject("late", "lead", "Initech")); !errors.Is(err, platform.ErrProjectDeleted) {
+		t.Fatalf("a run filed in the deleted child = %v", err)
+	}
+	if got := p.Usage.Usage(tenant, fieldScope, policy.PeriodStart(policy.Day, time.Now())); got.Runs != 1 {
+		t.Fatalf("Field counted %d runs, want 1", got.Runs)
+	}
+	if n := len(p.Runs.List(tenant, 0)); n != 1 {
+		t.Fatalf("%d runs were let in, want only the first", n)
+	}
+	// The conversation can still be read.
+	if path, err := p.Runs.Path(tenant, first.ID); err != nil || len(path) != 1 || path[0].Project != "Initech" {
+		t.Fatalf("the deleted child's conversation reads %+v (%v)", path, err)
+	}
+}
+
+// Files published in a child count toward its parent's storage limit after
+// the child is deleted, and nothing more is published in it.
+func TestADeletedChildsFilesStillCountTowardItsParent(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	if _, err := p.Policies.Put(tenant, policy.Policy{Scope: policy.Scope{Kind: policy.Project, Name: "Field"}, Period: policy.Day, MaxStorage: 30, Action: policy.Block}, "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	publish := func(req runtime.Request, content string) error {
+		t.Helper()
+		if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "f.txt", "content": content}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := use(t, p, req, platform.ToolPublish, map[string]any{"path": "f.txt"})
+		return err
+	}
+	_, inInitech := turn(t, p, "in-initech", "Initech")
+	if err := publish(inInitech, strings.Repeat("a", 20)); err != nil {
+		t.Fatalf("a publish under Field's limit = %v", err)
+	}
+	if err := p.DeleteProject(t.Context(), tenant, "Initech", ada); err != nil {
+		t.Fatal(err)
+	}
+	_, inField := turn(t, p, "in-field", "Field")
+	if err := publish(inField, strings.Repeat("b", 20)); !errors.Is(err, platform.ErrStorage) {
+		t.Fatalf("a publish that takes Field past its limit with the deleted child's files = %v", err)
+	}
+	if err := publish(inField, strings.Repeat("c", 10)); err != nil {
+		t.Fatalf("a publish that fits = %v", err)
+	}
+	if err := publish(inInitech, "d"); !errors.Is(err, platform.ErrProjectDeleted) {
+		t.Fatalf("a publish in the deleted child = %v", err)
 	}
 }

@@ -734,7 +734,11 @@ At most 500 agents; `truncated` says there are more.
     });
   }
 
-  /** List what an agent remembers */
+  /** An agent's own notes. A project's are read and changed through its
+own routes (`listProjectMemory`), so a name that is no agent's, a
+project's memory owner such as `project:News` among them, is 404 here
+and on every agent memory route.
+ */
   async listAgentMemory(name: string, options?: RequestOptions): Promise<NoteList> {
     let path = "/api/agents/{name}/memory";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -793,7 +797,7 @@ At most 500 agents; `truncated` says there are more.
     });
   }
 
-  /** Remove a note */
+  /** An agent that does not exist, or a note that is not its own, is 404. */
   async removeAgentMemory(name: string, id: string, options?: RequestOptions): Promise<void> {
     let path = "/api/agents/{name}/memory/{id}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -881,6 +885,10 @@ derived from that and the workspace (`r` and 32 hex digits, as
 fiber's `runtime.RunID`), and a second request with the same key
 from the same caller joins the run the first one started instead of
 starting another. Without it the ids are random.
+
+A conversation filed in a project that was deleted since is read,
+not continued: its next turn answers 409, since nothing says any more
+which projects above it the run would count toward.
 
 The body takes no metadata: an unknown field answers 400.
 
@@ -1653,7 +1661,7 @@ inbox, and an action the caller lacks the permission for answers 403:
 |------|--------|-------|
 | `alert` | `acknowledge` | `alerts:write` |
 | `failure` | `retry`, `acknowledge` | `runs:write` |
-| `memory` | `keep` (with `ids`), `discard` | `agents:write` |
+| `memory` | `keep` (with `ids`), `discard` | `agents:write` for an agent's notes; for a project's `projects:write`, and `projects:govern` as well for the workspace's and a company project's |
 | `budget` | `raise_limit` (with `limits`) | `billing:write` |
 | `budget` | `acknowledge` | `alerts:write` |
 | `approval` | `approve` (optionally with `arguments`), `deny` | `runs:write` |
@@ -1665,7 +1673,8 @@ same rules: a person the question is not addressed to does not see
 it, and one the runtime refuses is 403. `act_as` answers for a person
 a surface authenticated. Resolving a part that is already resolved
 returns the first outcome. `retry` starts a new run, so it can be
-refused by a limit with 429 or 402.
+refused by a limit with 429 or 402, and with 409 when the turn's
+project was deleted since.
  */
   async resolveInboxPart(id: string, part: string, body: Resolution, options?: RequestOptions): Promise<InboxMessage> {
     let path = "/api/inbox/{id}/parts/{part}/resolve";

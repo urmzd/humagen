@@ -71,7 +71,7 @@ func (p *Platform) PostAnnouncement(who auth.Principal, project string, a Announ
 		return inbox.Message{}, err
 	}
 	p.audit(who, m, "", "announce", "")
-	return seenBy(tree, m, who), nil
+	return p.seenBy(tree, m, who), nil
 }
 
 // WithdrawAnnouncement withdraws an announcement for everyone. Its author or
@@ -126,7 +126,7 @@ func (p *Platform) ProjectInbox(who auth.Principal, project string, children boo
 	}
 	msgs, next, err := p.Inbox.Page(who.Tenant, p.inboxQuery(tree, who, q))
 	for i := range msgs {
-		msgs[i] = seenBy(tree, msgs[i], who)
+		msgs[i] = p.seenBy(tree, msgs[i], who)
 	}
 	return msgs, next, err
 }

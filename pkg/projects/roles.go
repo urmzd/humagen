@@ -312,6 +312,42 @@ func (t *Tree) Resolve(name string, r Reader) Access {
 	return a
 }
 
+// DeletedRole returns a reader's role in a project that was deleted, from its
+// tombstone: its members when it was deleted, under its parent as the tree
+// holds the parent now, so a parent made members only since narrows it as it
+// would have. A parent deleted too is read from its own tombstone, through
+// tomb, at most deletedHops levels up. A tombstone that kept no members, a
+// reader with no subject, or a parent found nowhere, has no role.
+// projects:govern is owner, as everywhere.
+func (t *Tree) DeletedRole(x Tombstone, r Reader, tomb func(name string) (Tombstone, bool)) Access {
+	if r.Govern && r.Subject != "" {
+		return Access{Role: Owner, From: Root, Via: ViaGovern}
+	}
+	chain := []Tombstone{x}
+	for len(chain) <= deletedHops && !t.Has(chain[len(chain)-1].Parent) {
+		up, ok := tomb(chain[len(chain)-1].Parent)
+		if !ok {
+			return Access{}
+		}
+		chain = append(chain, up)
+	}
+	last := chain[len(chain)-1]
+	if !t.Has(last.Parent) || r.Subject == "" {
+		return Access{}
+	}
+	a := t.Resolve(last.Parent, r)
+	for i := len(chain) - 1; i >= 0; i-- {
+		if !chain[i].Kept {
+			return Access{}
+		}
+		a = step(Project{Name: chain[i].Name, Parent: chain[i].Parent, Members: chain[i].Members}, a, r, false)
+	}
+	return a
+}
+
+// deletedHops bounds how many deleted parents DeletedRole reads up through.
+const deletedHops = 16
+
 // InheritedOwner is an owner entry on an ancestor, which owns the project too.
 type InheritedOwner struct {
 	Who  string `json:"who"`

@@ -96,19 +96,24 @@ type Seer struct {
 	roles   map[string]projects.Access
 	govern  bool
 	threads map[string]*threadAccess
+	// gone is the reader's role in each deleted project asked about, read
+	// from its tombstone once.
+	gone map[string]projects.Access
 }
 
 // Seer is a reader's view of their workspace, as the tree stands now.
 func (p *Platform) Seer(who auth.Principal) *Seer {
 	tree := p.Projects.Tree(who.Tenant)
 	r := ReaderOf(who)
-	return &Seer{p: p, who: who, tree: tree, roles: tree.Roles(r), govern: r.Govern && r.Subject != "", threads: map[string]*threadAccess{}}
+	return &Seer{p: p, who: who, tree: tree, roles: tree.Roles(r), govern: r.Govern && r.Subject != "", threads: map[string]*threadAccess{}, gone: map[string]projects.Access{}}
 }
 
 // Sees reports whether a reader may read what lives in a place: a role of at
 // least viewer in its project, and in a private thread to take part in it, or
-// projects:govern. A project the tree no longer holds is seen only with
-// projects:govern: what it held is nobody else's to read (fail closed).
+// projects:govern. What a deleted project held is read, not continued, by
+// whom it was read by when it was deleted, under its parent as the parent
+// stands now (projects.Tree.DeletedRole); a name with no such record is seen
+// only with projects:govern (fail closed).
 func (p *Platform) Sees(who auth.Principal, at Place) bool { return p.Seer(who).Place(at) }
 
 // Place reports whether the reader sees what lives in a place.
@@ -117,7 +122,25 @@ func (s *Seer) Place(at Place) bool {
 		return true
 	}
 	a, ok := s.roles[at.Project]
+	if !ok {
+		a, ok = s.deleted(at.Project)
+	}
 	return ok && seesPlace(a.Role.AtLeast(projects.Viewer), false, s.thread(at.Thread), s.who.Subject)
+}
+
+// deleted is the reader's role in a project the tree no longer holds, from
+// its tombstone.
+func (s *Seer) deleted(name string) (projects.Access, bool) {
+	if a, known := s.gone[name]; known {
+		return a, true
+	}
+	x, ok := s.p.Projects.Tombstone(s.who.Tenant, name)
+	if !ok {
+		return projects.Access{}, false
+	}
+	a := s.tree.DeletedRole(x, ReaderOf(s.who), func(n string) (projects.Tombstone, bool) { return s.p.Projects.Tombstone(s.who.Tenant, n) })
+	s.gone[name] = a
+	return a, true
 }
 
 // Project reports whether the reader sees a project at all.

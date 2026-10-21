@@ -77,6 +77,10 @@ type Artifact struct {
 	CreatedAt time.Time `json:"created_at"`
 	// Key is where the bytes are in the blob store.
 	Key string `json:"-"`
+	// Within is the project's ancestors, nearest first and the workspace
+	// left out, pinned when it was published: whose storage it counts
+	// toward besides its project's, even once its project is deleted.
+	Within []string `json:"-"`
 }
 
 // CleanTitle turns what a model called a file into a name that is safe to
@@ -130,7 +134,8 @@ type stored struct {
 // storedArtifact is an artifact with what its wire form leaves out.
 type storedArtifact struct {
 	Artifact
-	Key string `json:"key"`
+	Key    string   `json:"key"`
+	Within []string `json:"within,omitempty"`
 }
 
 const nextKey = "next"
@@ -165,7 +170,7 @@ func Open(st state.Store) (*Index, error) {
 			return nil
 		}
 		a := r.Artifact.Artifact
-		a.Key = r.Artifact.Key
+		a.Key, a.Within = r.Artifact.Key, r.Artifact.Within
 		t.items = append(t.items, &a)
 		t.byID[a.ID] = &a
 		t.next = max(t.next, seqOf(a.ID))
@@ -233,7 +238,8 @@ func (x *Index) Publish(tenantName string, a Artifact) (Artifact, error) {
 	}
 	b := x.kept.Batch()
 	b.Put(tenantName, nextKey, stored{Next: max(t.next, seqOf(a.ID))})
-	b.Put(tenantName, recordKey(a.ID), stored{Artifact: &storedArtifact{Artifact: a, Key: a.Key}})
+	a.Within = slices.Clone(a.Within)
+	b.Put(tenantName, recordKey(a.ID), stored{Artifact: &storedArtifact{Artifact: a, Key: a.Key, Within: a.Within}})
 	if err := b.Commit(); err != nil {
 		return Artifact{}, fmt.Errorf("artifacts: write: %w", err)
 	}
@@ -426,6 +432,22 @@ func (x *Index) Usage(tenantName string) Usage {
 	}
 	u.ByProject, u.ByAgent = flat(projects), flat(agents)
 	return u
+}
+
+// UsedUnder returns the bytes filed in a project or below it: in one of
+// names, which is the project's subtree as the tree holds it now, or in any
+// project that was below it when the file was published, deleted since or
+// not.
+func (x *Index) UsedUnder(tenantName, project string, names []string) int64 {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	var n int64
+	for _, a := range x.peek(tenantName).items {
+		if slices.Contains(names, a.Project) || slices.Contains(a.Within, project) {
+			n += a.Size
+		}
+	}
+	return n
 }
 
 // Used returns the bytes a tenant holds, or one of its projects when named.

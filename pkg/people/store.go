@@ -230,7 +230,8 @@ func (s *Store) ByHandle(tenantName, handle string) (Person, error) {
 
 // Query is one page of the directory.
 type Query struct {
-	// Q keeps people whose name, handle or subject holds it, ignoring case.
+	// Q keeps people whose name or handle holds it, ignoring case. Subjects
+	// are not searched: some hold an address.
 	Q string
 	// Limit is the most to return: at most MaxPage, which is also the page
 	// when it is zero.
@@ -270,8 +271,7 @@ func (s *Store) List(tenantName string, q Query) ([]Person, string, error) {
 	sort.Strings(handles)
 	for _, h := range handles {
 		p := t.by[t.handles[h]]
-		if needle != "" && !strings.Contains(strings.ToLower(p.Name), needle) && !strings.Contains(p.Handle, needle) &&
-			!strings.Contains(strings.ToLower(p.Subject), needle) {
+		if needle != "" && !strings.Contains(strings.ToLower(p.Name), needle) && !strings.Contains(p.Handle, needle) {
 			continue
 		}
 		if len(page) == limit {

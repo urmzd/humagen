@@ -155,7 +155,7 @@ An agent's turn is given, in this order:
 | # | Layer | Source | Bound |
 |---|---|---|---|
 | 1 | Project instructions, root first, then each project down to the thread's, then the channel's purpose and the experts line | `Project.Instructions`, `Channel.Purpose` | 4,000 characters per project, 8,000 in all; the farthest ancestors are dropped first, with "(instructions of Acme not sent)" |
-| 2 | Project memory, the thread's project first, then its ancestors | `pkg/memory` owners `project:<name>`, and `workspace` for the root | own notes as today (at most 15,000 characters); ancestors share 6,000, nearest first, with "(n more notes from Field not sent)" |
+| 2 | Project memory, the thread's project first, then its ancestors | `pkg/memory` owners `project:<name>`, and `project:` for the root | own notes as today (at most 15,000 characters); ancestors share 6,000, nearest first, with "(n more notes from Field not sent)" |
 | 3 | The agent's instructions | the pinned revision's `AgentSpec.SystemPrompt`, which fiber sends as the system message | fiber's |
 | 4 | The agent's memory | `pkg/memory` owner `<agent>` | as today |
 | 5 | The thread | the branch so far: human messages by name, agents' answers by agent name | the workspace history limit, as today |
@@ -340,7 +340,7 @@ one `state.Write` (all or none within a namespace):
 | `p:<name>` (`p:` is the root) | the project, with the fields the file owns |
 | `c:<project>/<channel>` | a channel (names cannot hold `/`) |
 | `h:<seq>` | a `Change`, a ring of 1,000 per tenant pruned in the same write |
-| `x:<lower(name)>` | a tombstone `{name, by, at}`, at most 1,000 |
+| `x:<lower(name)>` | a tombstone `{name, by, at, parent, members}`, at most 1,000 |
 
 `Open(st)` loads everything once and trusts its memory (one writer). A write
 that fails changes nothing. Open refuses a cycle or an orphan (fail closed).
@@ -374,7 +374,14 @@ separate locks: check and insert become one critical section.
    name that no longer exists. From phase 2, archiving is the alternative.
    Delete drops the project's memory and leaves a tombstone. Its
    conversations keep the name, and are adopted only if a `projects:govern`
-   holder recreates the project. Delete never drops a policy: only
+   holder recreates the project. Until then they are read, not continued,
+   by whom they were read by when it was deleted: the tombstone keeps its
+   parent and members, read under the parent as it stands now (phase 7).
+   A run filed in a name the tree does not hold is refused at admission
+   (409), since nothing says which ancestors it would count toward, and a
+   file is published only in a project the tree holds. Files keep the
+   ancestors they were published under, so a parent's storage still counts
+   what a deleted child published. Delete never drops a policy: only
    `billing:write` removes one.
 6. A file-managed project cannot be deleted through the API, and a field the
    file sets answers 409 `ErrManaged`.
@@ -464,8 +471,9 @@ Handle, SeenAt}`, written at sign-in and when a client maps a Slack person. At
 most 5,000 per tenant. `Handle` is `^[a-z0-9][a-z0-9._-]{0,31}$`, unique per
 tenant across people and agent names. A new agent named like a handle is
 refused (409 "a person goes by @dana"), and a colliding handle at first
-sign-in gets a suffix. `auto` and `sme` are reserved. No email is kept or
-shown.
+sign-in gets a suffix. `auto` and `sme` are reserved. No email is asked for
+or shown: a subject that holds an address (a Tailscale login) is kept as the
+key it is, left out of the directory, and subjects are never searched.
 
 ### Changes to existing stores
 
@@ -479,8 +487,8 @@ shown.
 | `policy.Store.For` | `For(tenant, chain []string, agent, client)`: agent, client, the project and each ancestor nearest first, then the tenant. `Decide` applies all, so the strictest wins | 1 |
 | `policy.Policy` | `Authority` (admin or owner); existing policies are admin | 2 |
 | `usage.Entry` | `Within []string`. `admission.scopes()` adds `p\x00<ancestor>` for each; `matches` checks the project or `Within`. Spent and settled entries take the run's pinned `Within` | 1 |
-| storage limits | `storageAllows` sums `Artifacts.Used` over `Tree.Subtree` for a project policy | 1 |
-| `pkg/memory` | owner `workspace` for the root's notes | 1 |
+| storage limits | `storageAllows` sums what `Tree.Subtree` holds for a project policy, and what was published below the project in one deleted since: an artifact keeps the ancestors it was published under (`Within`, stored and not on the wire) | 1 |
+| `pkg/memory` | owner `project:` for the root's notes: it holds the colon no agent's name can, so no agent shares them | 1 |
 | `pkg/inbox` | kind `announcement`; `Message.Broadcast` (stored, `json:"-"`); per-reader hide and snooze for broadcasts; Audience entry `project:<name>`; `Reader.Projects`; `Query.Projects`; `Count` returns `updates`; `Withdraw` takes `by` (today it records `"system"`) | 4 |
 | `pkg/inbox` | part `draft` (actions `publish`, `discard`) | 5 |
 | `pkg/inbox` | kind `mention`, part `mention` (actions `reply`, `done`) | 6 |
@@ -567,7 +575,12 @@ bound Slack channel the bound warp channel's chain decides. The client's
 allow-list (`client.Routes`) still filters the result: a default the client
 may not route to is refused, never swapped. A GitHub label in `auto_labels`
 names an agent, so it is a tag. fiber's in-process connectors may set an
-agent of `auto`; `surface.stamp` resolves it with `@auto` before admission.
+agent of `auto`; `surface.stamp` resolves it with `@auto` before admission,
+among the agents the client may route to. The Slack app built on the API
+cannot have its list applied by the platform (`POST /api/runs` takes no
+client), so it sends `auto` only for a client whose list is `*`: a client that
+lists its agents treats `@auto`, and a default of `auto`, as names outside the
+list.
 `stamp` also writes `warp.project` and `warp.channel` from the binding, and
 `runs.ProjectOf` believes them for `slack` and `github` origins, because
 ingress overwrites whatever a connector put there (phase 8).
@@ -586,9 +599,12 @@ ingress overwrites whatever a connector put there (phase 8).
   agent gets its project's instructions and memory (today only API
   conversations get memory). Called runs keep their explicit input messages.
 - Memory stays in `pkg/memory`: owner `<agent>`, `project:<name>`, and
-  `workspace` for the root. The memory agent writes as today: to the run's own
-  project, or to the agent for a run at the root. It never writes from a
-  private thread (phase 7).
+  `project:` for the root. An agent's name cannot hold a colon, so no agent
+  owns a project's notes, and the agent memory routes answer 404 for a
+  project's owner: a project's notes are changed only through its own
+  routes and the inbox, each asking what the project asks. The memory agent
+  writes as today: to the run's own project, or to the agent for a run at
+  the root. It never writes from a private thread (phase 7).
 - Knowledge sources inherited down the tree (phase 9) use warp's executor
   seam, `callExecutor.resolve`, which already rewrites the revision for model
   policies. The chain's sources are pinned at accept as `warp.sources` and
@@ -1286,7 +1302,7 @@ its parent's limit, and nothing claims privacy.
   project's notes, ancestors' notes within 6,000 characters nearest first,
   the agent's notes, the transcript. Converse uses it, and so do `cron` and
   `manual` runs filed in a project. The root's notes live under owner
-  `workspace`.
+  `project:`.
 - **Permissions.** `projects:read`, `projects:write` and `projects:govern`,
   through `default.authz`, `policy_test.go`, the openapi enum, `everything`,
   `access.ts` and the docs. No roles yet: company kind and the root need

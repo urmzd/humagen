@@ -940,10 +940,14 @@ export interface AgentPlace {
 /** Where an agent now lives. */
 export type AgentHome = { agent: string } & AgentPlace;
 
-/** One person in the directory. No email address is kept or shown. */
+/** One person in the directory. No email address is shown: a subject
+that holds one, as a Tailscale login does, is left out.
+ */
 export interface Person {
-  /** Who they are to the identity provider, which member entries and grants name. */
-  subject: string;
+  /** Who they are to the identity provider, which member entries and
+grants name. Absent when it holds an email address.
+ */
+  subject?: string;
   /** The name they chose for themselves, or signed in with. Absent until one is known. */
   name?: string;
   /** How they are tagged, unique in the workspace across people and agents. */
@@ -1189,6 +1193,10 @@ export interface InboxNoteRef {
 }
 
 export interface InboxMemoryPart {
+  /** Who would remember them, as the memory store names it: an
+agent's name, or `project:<name>` for a project's notes, with
+`project:` alone for the workspace's own.
+ */
   owner: string;
   agent?: string;
   project?: string;

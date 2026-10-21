@@ -431,7 +431,10 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	if existing, err := p.Runs.Get(tag.Tenant, runID); err == nil {
 		return existing, nil
 	}
-	project, within, client := p.placeOf(tag, edge)
+	project, within, client, err := p.placeOf(tag, edge)
+	if err != nil {
+		return runs.Run{}, err
+	}
 	tag = p.pin(tag, edge, project, within)
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err

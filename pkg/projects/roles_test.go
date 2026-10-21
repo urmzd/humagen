@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/state"
@@ -274,5 +275,66 @@ func TestMembershipsReachMembersAndTheirAncestors(t *testing.T) {
 		if got := tree.Memberships(c.r); !slices.Equal(got, c.want) {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+// What a deleted project held is read by whom it was read by when it was
+// deleted, under its parent as the parent stands now: a members-only child's
+// members still read it and nobody else does, and a parent made members only
+// since narrows an open child's readers to the parent's. A tombstone that kept
+// no members is read only with projects:govern.
+func TestADeletedProjectIsReadByWhoReadItThen(t *testing.T) {
+	s := projects.NewStore()
+	now := time.Now()
+	mustCreate(t, s, "acme", with(team("Field", ""), members("*=member", "ada=owner")), ada)
+	mustCreate(t, s, "acme", with(team("Vault", "Field"), members("ada=owner", "cy=member")), ada)
+	mustCreate(t, s, "acme", with(team("Open", "Field"), members("*=viewer", "ada=owner")), ada)
+	for _, name := range []string{"Vault", "Open"} {
+		if err := s.Delete("acme", name, ada, now, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tomb := func(name string) (projects.Tombstone, bool) { return s.Tombstone("acme", name) }
+	role := func(name, who string) projects.Role {
+		x, ok := tomb(name)
+		if !ok {
+			t.Fatalf("%s left no tombstone", name)
+		}
+		return s.Tree("acme").DeletedRole(x, projects.Reader{Subject: who}, tomb).Role
+	}
+	for _, c := range []struct {
+		project, who string
+		want         projects.Role
+	}{
+		{"Vault", "cy", projects.Member},
+		{"Vault", "bo", projects.None},
+		{"Vault", "ada", projects.Owner},
+		{"Open", "bo", projects.Viewer},
+	} {
+		if got := role(c.project, c.who); got != c.want {
+			t.Errorf("%s in deleted %s = %q, want %q", c.who, c.project, got, c.want)
+		}
+	}
+
+	// Field turns members only: Open's old readers outside it read nothing.
+	if _, err := s.Update("acme", "Field", 1, ada, now, func(p *projects.Project) error {
+		p.Members = members("ada=owner", "dee=member")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := role("Open", "bo"); got != projects.None {
+		t.Errorf("after Field closed, bo reads deleted Open as %q", got)
+	}
+	if got := role("Open", "dee"); got != projects.Viewer {
+		t.Errorf("after Field closed, dee reads deleted Open as %q", got)
+	}
+
+	old := projects.Tombstone{Name: "Before", At: now}
+	if got := s.Tree("acme").DeletedRole(old, projects.Reader{Subject: "ada"}, tomb); got.Role != projects.None {
+		t.Errorf("a tombstone with no members reads as %+v", got)
+	}
+	if got := s.Tree("acme").DeletedRole(old, projects.Reader{Subject: "root", Govern: true}, tomb); got.Role != projects.Owner {
+		t.Errorf("govern reads an old tombstone as %+v", got)
 	}
 }

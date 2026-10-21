@@ -66,7 +66,8 @@ tags:
     description: |
       The directory: who is in the workspace, by name, handle, picture and
       roles, from sign-ins, the Slack people a client maps and the policy's
-      subject grants. No email address is kept or shown.
+      subject grants. No email address is shown: a subject that holds one
+      is left out, and subjects are not searched.
   - name: settings
     description: Workspace settings.
   - name: preferences
@@ -460,6 +461,11 @@ paths:
       operationId: listAgentMemory
       tags: [agents]
       summary: List what an agent remembers
+      description: |
+        An agent's own notes. A project's are read and changed through its
+        own routes (`listProjectMemory`), so a name that is no agent's, a
+        project's memory owner such as `project:News` among them, is 404 here
+        and on every agent memory route.
       x-permission: agents:read
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
@@ -529,6 +535,7 @@ paths:
       operationId: removeAgentMemory
       tags: [agents]
       summary: Remove a note
+      description: An agent that does not exist, or a note that is not its own, is 404.
       x-permission: agents:write
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
@@ -622,6 +629,10 @@ paths:
         from the same caller joins the run the first one started instead of
         starting another. Without it the ids are random.
 
+        A conversation filed in a project that was deleted since is read,
+        not continued: its next turn answers 409, since nothing says any more
+        which projects above it the run would count toward.
+
         The body takes no metadata: an unknown field answers 400.
 
         Nothing routes on its own. With `agent` left out, the default the
@@ -651,8 +662,8 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
-        "402": {$ref: "#/components/responses/Refused"}
         "409": {$ref: "#/components/responses/Conflict"}
+        "402": {$ref: "#/components/responses/Refused"}
         "429": {$ref: "#/components/responses/Refused"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -1600,7 +1611,7 @@ paths:
         |------|--------|-------|
         | `alert` | `acknowledge` | `alerts:write` |
         | `failure` | `retry`, `acknowledge` | `runs:write` |
-        | `memory` | `keep` (with `ids`), `discard` | `agents:write` |
+        | `memory` | `keep` (with `ids`), `discard` | `agents:write` for an agent's notes; for a project's `projects:write`, and `projects:govern` as well for the workspace's and a company project's |
         | `budget` | `raise_limit` (with `limits`) | `billing:write` |
         | `budget` | `acknowledge` | `alerts:write` |
         | `approval` | `approve` (optionally with `arguments`), `deny` | `runs:write` |
@@ -1612,7 +1623,8 @@ paths:
         it, and one the runtime refuses is 403. `act_as` answers for a person
         a surface authenticated. Resolving a part that is already resolved
         returns the first outcome. `retry` starts a new run, so it can be
-        refused by a limit with 429 or 402.
+        refused by a limit with 429 or 402, and with 409 when the turn's
+        project was deleted since.
       x-permission: runs:read
       parameters:
         - {$ref: "#/components/parameters/MessageID"}
@@ -1632,6 +1644,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "402": {$ref: "#/components/responses/Refused"}
         "429": {$ref: "#/components/responses/Refused"}
         "413": {$ref: "#/components/responses/TooLarge"}
@@ -3265,7 +3278,7 @@ paths:
       parameters:
         - name: q
           in: query
-          description: Keeps people whose name, handle or subject holds it, ignoring case.
+          description: Keeps people whose name or handle holds it, ignoring case. Subjects are not searched.
           schema: {type: string, maxLength: 100}
         - name: limit
           in: query
@@ -5252,12 +5265,16 @@ components:
             agent: {type: string}
         - {$ref: "#/components/schemas/AgentPlace"}
     Person:
-      description: One person in the directory. No email address is kept or shown.
+      description: |
+        One person in the directory. No email address is shown: a subject
+        that holds one, as a Tailscale login does, is left out.
       type: object
-      required: [subject, handle, roles, picture]
+      required: [handle, roles, picture]
       properties:
         subject:
-          description: Who they are to the identity provider, which member entries and grants name.
+          description: |
+            Who they are to the identity provider, which member entries and
+            grants name. Absent when it holds an email address.
           type: string
         name:
           description: The name they chose for themselves, or signed in with. Absent until one is known.
@@ -5606,7 +5623,12 @@ components:
       type: object
       required: [owner, notes]
       properties:
-        owner: {type: string}
+        owner:
+          description: |
+            Who would remember them, as the memory store names it: an
+            agent's name, or `project:<name>` for a project's notes, with
+            `project:` alone for the workspace's own.
+          type: string
         agent: {type: string}
         project: {type: string}
         notes:

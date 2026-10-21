@@ -471,13 +471,19 @@ func (s *Server) projectHistory(w http.ResponseWriter, r *http.Request, who auth
 
 // projectOwner resolves the project in the path to its memory owner, holding
 // the caller's role there to need, or answers 404 for a project they cannot
-// see and 403 for too low a role.
+// see and 403 for too low a role. Changing the notes, which need asks as
+// owner, is also held to platform.MayChangeNotes: the workspace's and a
+// company project's, which every agent in a wide part of the tree is sent,
+// need projects:govern, as changing the project does.
 func (s *Server) projectOwner(w http.ResponseWriter, r *http.Request, who auth.Principal, need projects.Role) (string, bool) {
 	p, _, found := s.visible(w, who, r.PathValue("name"), need)
 	if !found {
 		return "", false
 	}
 	owner, err := s.P.ProjectMemoryOwner(who.Tenant, p.Name)
+	if err == nil && need == projects.Owner {
+		err = s.P.MayChangeNotes(who, p.Name)
+	}
 	if err != nil {
 		s.problem(w, err)
 		return "", false

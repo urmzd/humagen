@@ -43,7 +43,7 @@ platforms:
       display_name: Acme
     spec:
       workspace:
-        baseline: lead
+        agents: {enable: ["*"], default: lead}
       models:
         - name: anthropic
           kind: anthropic

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/urmzd/warp/pkg/auth"
 )
 
 func TestSigningInPutsAPersonInTheDirectoryWithNoEmail(t *testing.T) {
@@ -26,6 +28,37 @@ func TestSigningInPutsAPersonInTheDirectoryWithNoEmail(t *testing.T) {
 	raw, _ := json.Marshal(out)
 	if strings.Contains(strings.ToLower(string(raw)), "email") || strings.Contains(string(raw), "@") {
 		t.Fatalf("the directory carries an address: %s", raw)
+	}
+}
+
+// A subject can hold an address: a Tailscale login does, and so can the
+// subject a Slack people map names. The directory leaves such a subject out
+// and never searches subjects, so no address reaches a reader.
+func TestASubjectThatIsAnAddressNeverReachesTheDirectory(t *testing.T) {
+	f := newFixture(t)
+	f.p.SeePerson(auth.Principal{Kind: auth.User, Tenant: "acme", Subject: "tailscale:grace@acme.test", Name: "Grace"})
+	f.p.SeePerson(auth.Principal{Kind: auth.User, Tenant: "acme", Subject: "okta|00u-ada", Name: "Ada"})
+	tok := f.machine(t, "acme", "warp:people:read")
+	out := want(t, f, tok, "GET", "/api/people", "", http.StatusOK)
+	raw, _ := json.Marshal(out)
+	if strings.Contains(string(raw), "@") || strings.Contains(string(raw), "acme.test") {
+		t.Fatalf("the directory carries an address: %s", raw)
+	}
+	byHandle := map[string]map[string]any{}
+	for _, p := range out["people"].([]any) {
+		byHandle[p.(map[string]any)["handle"].(string)] = p.(map[string]any)
+	}
+	if _, has := byHandle["grace"]["subject"]; has || byHandle["grace"]["name"] != "Grace" {
+		t.Fatalf("Grace = %v, want her name and no subject", byHandle["grace"])
+	}
+	if byHandle["ada"]["subject"] != "okta|00u-ada" {
+		t.Fatalf("Ada = %v, want her opaque subject", byHandle["ada"])
+	}
+	for _, q := range []string{"acme.test", "tailscale"} {
+		found := want(t, f, tok, "GET", "/api/people?q="+q, "", http.StatusOK)["people"].([]any)
+		if len(found) != 0 {
+			t.Fatalf("q=%s found %v: subjects are not searched", q, found)
+		}
 	}
 }
 

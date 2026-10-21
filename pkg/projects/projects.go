@@ -283,6 +283,14 @@ type Tombstone struct {
 	Name string    `json:"name"`
 	By   string    `json:"by,omitempty"`
 	At   time.Time `json:"at"`
+	// Parent and Members are where the project stood and who held a role in
+	// it when it was deleted, so what it held is read by whom it was read
+	// by then, under its parent as the parent stands now (DeletedRole). A
+	// tombstone written before they were kept has neither, and what it held
+	// is read only with projects:govern.
+	Parent  string  `json:"parent,omitempty"`
+	Members []Entry `json:"members,omitempty"`
+	Kept    bool    `json:"kept,omitempty"`
 }
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,62}$`)

@@ -36,15 +36,18 @@ company projects carry instructions and notes sent to every agent answering
 under them, and because reusing the name of a deleted project adopts the
 conversations still filed under it. `projects:govern` grants nothing on its
 own: every project route checks `projects:read` or `projects:write` first, and
-govern is asked for on top, for the workspace, a company project, or a deleted
-name. Then the caller's role on the project decides, and only narrows: a viewer
-reads, a member creates projects under it and proposes notes, an owner changes
-it (see [Project roles](authorization.md#project-roles)). A project the caller
-has no role in answers 404. Reads are not confined to members yet: every
-project keeps an entry for everyone of at least viewer, and a members-only
-project is refused (409), so a role never claims a privacy that is not
-enforced. A project's runs, threads and memory stay readable by everyone with
-the permission to read them.
+govern is asked for on top, for the workspace, a company project, its notes, or
+a deleted name. Its notes are asked the same through every route that changes
+them: the project's memory routes and the inbox. The agent memory routes reach
+an agent's own notes only, and answer 404 for a project's memory owner
+(`project:<name>`, and `project:` for the workspace). Then the caller's role on
+the project decides, and only narrows: a viewer reads, a member creates
+projects under it and proposes notes, an owner changes it (see
+[Project roles](authorization.md#project-roles)). A project the caller has no
+role in answers 404, and so does everything that lives in it: its runs,
+threads, events, files, notes, schedules, inbox messages, limits and eval
+suites, and the agents that live there, each answering exactly as an object
+that does not exist. A private thread is read by its participants alone.
 
 A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:
@@ -63,9 +66,13 @@ exist, or grant them `govern on projects`.
 
 The directory (`people:read`, which every built-in role holds) shows each
 person's name, handle, roles and picture to everyone in the workspace. No
-email address is kept or shown, a name that is an address is not kept as a
-name, and a picture is only one a person uploaded themselves, served by warp:
-reading the directory sends nobody else a request. People are recorded when
+email address is asked for or shown, and a name that is an address is not
+kept as a name. A subject is kept as the identity provider gives it, since it
+is the key a person signs in with, and can hold an address: a Tailscale login
+does, and so can the subject a Slack people map names. The directory leaves
+such a subject out and never searches subjects. A picture is only one a
+person uploaded themselves, served by warp: reading the directory sends
+nobody else a request. People are recorded when
 they make a request holding any permission, when a client maps a Slack person
 to them, and when the policy grants a role to their subject. A machine is not
 a person. A policy that should not list someone grants them no role.
@@ -140,8 +147,8 @@ no permission, grants nothing.
   `act_as`, who must hold `runs:write` themselves; a credential acting for
   nobody is refused (403). No route takes an author or an agent to speak as,
   and nothing writes an agent's turn but its run. A shared thread is read by
-  everyone with `runs:read`: private threads are refused (409) until every
-  read path is confined.
+  everyone with `runs:read` who sees its project; a private one by its
+  participants alone, and every read path answers 404 for it to anyone else.
 - **The machine holds its people's votes.** Whoever holds the credential a
   Slack client names as `machine` can answer every question as any person the
   client maps, within what each may answer, and raise runs as them. The Slack
@@ -309,7 +316,7 @@ decided per message:
 |------|--------|-----------|
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
 | Failed run | `runs:read` | `runs:write` |
-| Proposed memory | `agents:read` | `agents:write`; a project's proposed notes, `projects:write` and owning the project |
+| Proposed memory | `agents:read` | `agents:write` for an agent's; a project's, `projects:write` and owning the project, and `projects:govern` as well for the workspace's and a company project's |
 | Announcement | `projects:read`, and a member of its project or one below it (anyone who reads the project's own inbox) | hiding or snoozing it is the reader's own (`projects:read`); withdrawing it is its author's or an owner's (`projects:write`) |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |
 | A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to reply in the thread as themselves or set it aside |

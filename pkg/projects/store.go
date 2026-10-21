@@ -726,7 +726,7 @@ func (s *Store) Delete(tenantName, name string, w Writer, at time.Time, inUse fu
 	delete(tx.t.projects, name)
 	tx.delete(keyProject + name)
 	tx.dropChannels(name)
-	tx.bury(Tombstone{Name: name, By: w.By, At: at})
+	tx.bury(Tombstone{Name: name, By: w.By, At: at, Parent: cur.Parent, Members: slices.Clone(cur.Members), Kept: true})
 	tx.record(Change{At: at, By: w.By, Project: name, What: Deleted, Before: ptr(cur)})
 	return tx.commit()
 }

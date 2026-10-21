@@ -2,11 +2,13 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/projects"
@@ -19,6 +21,18 @@ var (
 	ErrProjectExists   = projects.ErrExists
 	ErrProjectNotFound = projects.ErrNotFound
 )
+
+// ErrProjectDeleted reports a run asked for in a project the tree no longer
+// holds, such as the next turn of a conversation filed in a project since
+// deleted. Nothing says any more which projects above it the run would count
+// toward, so it is refused rather than let out from under their limits. The
+// conversation can still be read.
+var ErrProjectDeleted = errors.New("platform: project deleted")
+
+// projectDeleted is ErrProjectDeleted for one project, said in words.
+func projectDeleted(project string) error {
+	return fmt.Errorf("%w: the project %q was deleted, so nothing more runs in it; its conversations can still be read", ErrProjectDeleted, project)
+}
 
 // ProjectInput is what a person gives to create a project. Kind defaults to
 // team and Parent to the root; "~" names the root too.
@@ -195,7 +209,7 @@ func (p *Platform) ProjectLimits(tenant, name string) ([]policy.Policy, error) {
 }
 
 // ProjectMemoryOwner is the memory owner a project's notes are kept under:
-// "workspace" for the root. A project the tenant does not have is
+// "project:" for the root. A project the tenant does not have is
 // projects.ErrNotFound.
 func (p *Platform) ProjectMemoryOwner(tenant, name string) (string, error) {
 	name = projects.NameOf(name)
@@ -204,6 +218,38 @@ func (p *Platform) ProjectMemoryOwner(tenant, name string) (string, error) {
 	}
 	return memory.ProjectOwner(name), nil
 }
+
+// MayChangeNotes reports whether who may add, approve or remove a project's
+// notes, by any route: the project's memory routes and the inbox alike. It
+// takes projects:write and owning the project, and for the workspace and
+// company projects, whose notes every agent in a wide part of the tree is
+// sent, projects:govern as well, as changing the project does. A project the
+// tenant does not have is projects.ErrNotFound.
+func (p *Platform) MayChangeNotes(who auth.Principal, name string) error {
+	return p.mayChangeNotes(p.Projects.Tree(who.Tenant), who, name)
+}
+
+func (p *Platform) mayChangeNotes(tree *projects.Tree, who auth.Principal, name string) error {
+	name = projects.NameOf(name)
+	pr, ok := tree.Get(name)
+	if !ok {
+		return fmt.Errorf("%w: %q", projects.ErrNotFound, name)
+	}
+	if !who.Can(auth.ProjectsWrite) {
+		return fmt.Errorf("%w: changing a project's notes needs %s", ErrForbidden, auth.ProjectsWrite)
+	}
+	if wideNotes(pr) && !who.Can(auth.ProjectsGovern) {
+		return fmt.Errorf("%w: the notes of the workspace and of company projects are changed with %s", projects.ErrForbidden, auth.ProjectsGovern)
+	}
+	if !ownsNotes(tree, who, name) {
+		return fmt.Errorf("%w: changing a project's notes needs %s, and %s", ErrForbidden, auth.ProjectsWrite, roleNeeded(projects.Owner, titleOf(pr, p.Settings(who.Tenant).WorkspaceName)))
+	}
+	return nil
+}
+
+// wideNotes reports a project whose notes every agent in a wide part of the
+// tree is sent: the workspace, and a company project.
+func wideNotes(pr projects.Project) bool { return pr.IsRoot() || pr.Kind == projects.Company }
 
 // migration is who the projects moved out of settings were created by.
 const migration = "migration"
