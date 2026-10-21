@@ -2,6 +2,7 @@
 import type {
   AccessDecision,
   AddKnowledgeDocumentBody,
+  AgentHome,
   AgentSpec,
   Alert,
   AlertRule,
@@ -39,6 +40,7 @@ import type {
   ListKnowledgeDocumentsResponse,
   ListKnowledgeSourcesResponse,
   ListPendingMemoryResponse,
+  ListPeopleResponse,
   ListPoliciesResponse,
   ListPolicyHistoryResponse,
   ListProjectHistoryResponse,
@@ -58,6 +60,8 @@ import type {
   Policy,
   PolicyInput,
   Preferences,
+  ProjectAgentsInput,
+  ProjectAgentsView,
   ProjectDetail,
   ProjectInput,
   ProjectUpdate,
@@ -73,6 +77,7 @@ import type {
   Schedule,
   ScheduleView,
   SearchKnowledgeResponse,
+  SetAgentHomeBody,
   SetKnowledgeDocumentExcludedBody,
   Settings,
   SnoozeInboxMessageBody,
@@ -550,7 +555,10 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     });
   }
 
-  /** Create an agent */
+  /** A tag names an agent or a person, so an agent cannot take a name a
+person in the workspace goes by ("a person goes by @dana"), nor
+`auto` or `sme`: each is 409.
+ */
   async createAgent(body: AgentSpec, options?: RequestOptions): Promise<Revision> {
     const path = "/api/agents";
     return this.request<Revision>("POST", path, {
@@ -586,6 +594,38 @@ edited from: if someone else revised the agent since, the answer is 409.
     let path = "/api/agents/{name}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<Revision>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** An agent that lives in a project is available there and in every
+project below it, and nowhere else: `*` never reaches it, and it is
+not available in the workspace itself. An empty `project`, or `~`,
+makes it a platform agent again, available wherever it is enabled.
+
+Refused with 409, naming them, while something outside the new home
+would lose the agent: a project's default, enable or allow list, a
+schedule filed elsewhere, an alert rule watching it elsewhere, or a
+client that routes to it. Homing an agent into or out of a company
+project needs `projects:govern`. The platform's own agents live
+nowhere (400).
+ */
+  async setAgentHome(name: string, body: SetAgentHomeBody, options?: RequestOptions): Promise<AgentHome> {
+    let path = "/api/agents/{name}/home";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<AgentHome>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setAgentHomeRaw(name: string, body: SetAgentHomeBody, options?: RequestOptions): Promise<ApiResponse<AgentHome>> {
+    let path = "/api/agents/{name}/home";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<AgentHome>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,
@@ -769,11 +809,16 @@ At most 500 agents; `truncated` says there are more.
     });
   }
 
-  /** Preview which agent would answer a message */
-  async pickAgent(q: string, options?: RequestOptions): Promise<Choice> {
+  /** `@auto` picks among the agents available in the project by the words
+of the message. With no match it hands the message to the nearest
+default on the project's chain that names an agent, and with none it
+answers 409, "no agent fits; tag one". Nothing is started.
+ */
+  async pickAgent(q: string, project?: string, options?: RequestOptions): Promise<Choice> {
     let path = "/api/pick";
     const _q = new URLSearchParams();
     if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<Choice>("GET", path, {
@@ -781,10 +826,11 @@ At most 500 agents; `truncated` says there are more.
     });
   }
 
-  async pickAgentRaw(q: string, options?: RequestOptions): Promise<ApiResponse<Choice>> {
+  async pickAgentRaw(q: string, project?: string, options?: RequestOptions): Promise<ApiResponse<Choice>> {
     let path = "/api/pick";
     const _q = new URLSearchParams();
     if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<Choice>("GET", path, {
@@ -819,6 +865,13 @@ from the same caller joins the run the first one started instead of
 starting another. Without it the ids are random.
 
 The body takes no metadata: an unknown field answers 400.
+
+Nothing routes on its own. With `agent` left out, the default the
+conversation's place inherits answers: the project's, each
+ancestor's nearest first, then the workspace's. With none set it is
+409, "tag an agent". `auto` is `@auto`. An agent not available in the
+conversation's project, or a default that has stopped being
+available there, is 403.
  */
   async createRun(body: CreateRunRequest, idempotencyKey?: string, options?: RequestOptions): Promise<Run> {
     const path = "/api/runs";
@@ -1149,7 +1202,11 @@ each message's `data` field, which is how the oag generator reads
     });
   }
 
-  /** The first save records the caller as the one who set the workspace up. */
+  /** The first save records the caller as the one who set the workspace
+up. `baseline` is gone: the workspace default is the root's
+`default` (`PUT /api/projects/~/agents`), and a body that names it
+is 400.
+ */
   async updateSettings(body: Settings, options?: RequestOptions): Promise<Settings> {
     const path = "/api/settings";
     return this.request<Settings>("PUT", path, {
@@ -2287,6 +2344,54 @@ project the platform file declares is removed there (409).
     });
   }
 
+  /** Read which agents a project turns on, which are available there, and who answers untagged messages */
+  async getProjectAgents(name: string, options?: RequestOptions): Promise<ProjectAgentsView> {
+    let path = "/api/projects/{name}/agents";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectAgentsView>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectAgentsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectAgentsView>> {
+    let path = "/api/projects/{name}/agents";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectAgentsView>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The body replaces the three as a whole. `enable` adds platform agents
+here and below (`*` alone is every one); `allow`, when set, is the
+only agents that may run here and below, and a child can only narrow
+it; `default` answers a message that tags no agent, here and below,
+and is an agent or `auto`. Every name is an agent in the workspace, a
+named default is available where it is set, and an agent that lives
+in a project is not enabled (400). The workspace's own lists, which
+hold the workspace default, and a company project's need
+`projects:govern`. `version` is the one the caller read (409 if it
+changed), and lists the platform file sets answer 409.
+ */
+  async setProjectAgents(name: string, body: ProjectAgentsInput, options?: RequestOptions): Promise<ProjectAgentsView> {
+    let path = "/api/projects/{name}/agents";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectAgentsView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setProjectAgentsRaw(name: string, body: ProjectAgentsInput, options?: RequestOptions): Promise<ApiResponse<ProjectAgentsView>> {
+    let path = "/api/projects/{name}/agents";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectAgentsView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** `next` is the cursor for the page after this one, or null at the end.
 Pass it back as `before`. A cursor is opaque. The workspace keeps its
 last 1,000 changes across all its projects.
@@ -2396,6 +2501,54 @@ and of company projects are changed with `projects:govern` as well.
     path = path.replace("{name}", encodeURIComponent(String(name)));
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Everyone who signed in, every person a client maps, and every
+subject the policy grants a role to, at most 5,000 a workspace.
+`next` is the cursor for the page after this one, or null at the
+end; pass it back as `before`.
+ */
+  async listPeople(q?: string, limit?: number, before?: string, options?: RequestOptions): Promise<ListPeopleResponse> {
+    let path = "/api/people";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListPeopleResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listPeopleRaw(q?: string, limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<ListPeopleResponse>> {
+    let path = "/api/people";
+    const _q = new URLSearchParams();
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListPeopleResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Served by warp, never fetched from elsewhere. 404 for someone with none. */
+  async getPersonPhoto(handle: string, options?: RequestOptions): Promise<Blob> {
+    let path = "/api/people/{handle}/photo";
+    path = path.replace("{handle}", encodeURIComponent(String(handle)));
+    return this.request<Blob>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getPersonPhotoRaw(handle: string, options?: RequestOptions): Promise<ApiResponse<Blob>> {
+    let path = "/api/people/{handle}/photo";
+    path = path.replace("{handle}", encodeURIComponent(String(handle)));
+    return this.rawRequest<Blob>("GET", path, {
       ...options,
     });
   }

@@ -100,7 +100,9 @@ func (p *Platform) admitAgent(tag envelope.Tag, project string) error {
 	}
 	err := p.notAvailable(tag.Tenant, tree, at, tag.Agent)
 	p.log.Warn("platform: run refused: agent not available", "tenant", tag.Tenant, "agent", tag.Agent, "project", at, "origin", tag.Origin)
-	if schedule := tag.Meta["cron_schedule"]; schedule != "" && (tag.Origin == "cron" || tag.Origin == runs.OriginManual) {
+	// A person running a schedule now is told at once; the clock has nobody
+	// to tell.
+	if schedule := tag.Meta["cron_schedule"]; schedule != "" && tag.Origin == "cron" {
 		p.unavailableAlert(tag.Tenant, schedule, tag.Agent, project, err)
 	}
 	return err
@@ -173,8 +175,8 @@ func (p *Platform) auto(ctx context.Context, tenant string, tree *projects.Tree,
 // "channel"). Channels and threads, and a client's home, fill these in; until
 // they do, a message has none.
 type Nearer struct {
-	Agent string
-	From  string
+	Agent string `json:"agent"`
+	From  string `json:"from"`
 }
 
 // Place is where a message is posted, for deciding who answers it.
@@ -369,8 +371,11 @@ type Offer struct {
 // project sets, what is available there as a result, and who answers a
 // message that tags no agent.
 type ProjectAgents struct {
-	Version int             `json:"version"`
-	Agents  projects.Agents `json:"agents"`
+	Version int `json:"version"`
+	// Enable, Allow and Default are what the project sets (projects.Agents).
+	Enable  []string `json:"enable"`
+	Allow   []string `json:"allow,omitempty"`
+	Default string   `json:"default,omitempty"`
 	// Available is what may run here, with Offers saying where each comes
 	// from, in the order of Available's names.
 	Available projects.Availability `json:"available"`
@@ -398,9 +403,12 @@ func (p *Platform) ProjectAgentsOf(tenant, name string) (ProjectAgents, error) {
 	if !ok {
 		return ProjectAgents{}, fmt.Errorf("%w: %q", projects.ErrNotFound, name)
 	}
-	out := ProjectAgents{Version: pr.Version, Agents: pr.Agents, Available: tree.Available(name), Homes: tree.Homes(name), Offers: []Offer{}}
-	if out.Agents.Enable == nil {
-		out.Agents.Enable = []string{}
+	out := ProjectAgents{
+		Version: pr.Version, Enable: pr.Agents.Enable, Allow: pr.Agents.Allow, Default: pr.Agents.Default,
+		Available: tree.Available(name), Homes: tree.Homes(name), Offers: []Offer{},
+	}
+	if out.Enable == nil {
+		out.Enable = []string{}
 	}
 	if out.Homes == nil {
 		out.Homes = []string{}

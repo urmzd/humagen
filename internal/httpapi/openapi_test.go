@@ -581,6 +581,10 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectLimit": {typ: projectLimit{}},
 		"ProjectDetail": {typ: projectDetail{}}, "ProjectChange": {typ: projects.Change{}},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
+		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
+		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
+		"ProjectAgentsInput": {typ: platform.AgentsInput{}, written: true}, "AgentPlace": {typ: platform.AgentPlace{}}, "AgentHome": {typ: agentHome{}},
+		"Person":   {typ: personView{}},
 		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
 		"InboxNotice": {typ: inbox.Notice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
@@ -872,6 +876,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/agents/{name}/memory/approve", "/api/agents/helper/memory/approve", `{"ids":[]}`, http.StatusOK)
 	c.call(acme, "DELETE", "/api/agents/{name}/memory/{id}", "/api/agents/helper/memory/"+note.str("id"), "", http.StatusNoContent)
 	c.call(acme, "GET", "/api/pick", "/api/pick?q=help+me", "", http.StatusOK)
+	c.call(acme, "GET", "/api/pick", "/api/pick?q=help+me&project=~", "", http.StatusOK)
+	c.call(acme, "GET", "/api/pick", "/api/pick?q=help+me&project=Ghost", "", http.StatusNotFound)
+	// A tag names an agent or a person, so an agent cannot take a reserved
+	// name or a person's handle.
+	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"auto","model":"offline","provider":"offline","system_prompt":"x"}`, http.StatusConflict)
+	f.p.SeePerson(auth.Principal{Subject: "okta|dana", Tenant: "acme", Kind: auth.User, Name: "Dana Scully", Roles: []auth.Role{auth.Viewer}})
+	if taken := c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"dana-scully","model":"offline","provider":"offline","system_prompt":"x"}`, http.StatusConflict); !strings.Contains(taken.str("error"), "a person goes by @dana-scully") {
+		t.Errorf("an agent named like a person's handle = %s", taken.raw)
+	}
 
 	// What a Slack surface does: start a turn under its own idempotency key,
 	// continue the conversation, read the run and its tree, and stop it.
@@ -1084,6 +1097,50 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/threads", "/api/threads?within=~&project=Launch", "", http.StatusOK)
 	c.call(acme, "GET", "/api/threads", "/api/threads?project=Ghost", "", http.StatusNotFound)
 	c.call(globex, "GET", "/api/threads", "/api/threads?project=Launch", "", http.StatusNotFound)
+	// Which agents a project turns on, and where an agent lives.
+	c.call(acme, "GET", "/api/projects/{name}/agents", "/api/projects/~/agents", "", http.StatusOK)
+	c.call(acme, "GET", "/api/projects/{name}/agents", "/api/projects/Ghost/agents", "", http.StatusNotFound)
+	agentsAt := "/api/projects/{name}/agents"
+	fieldAgents := c.call(acme, "GET", agentsAt, "/api/projects/Field/agents", "", http.StatusOK)
+	v, _ := strconv.Atoi(fmt.Sprint(fieldAgents.field("version")))
+	set := c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":["helper"],"default":"helper"}`, v), http.StatusOK)
+	if d := obj(set.field("default_resolved")); d["agent"] != "helper" || d["from"] != "project:Field" {
+		t.Errorf("Field's default = %s", set.raw)
+	}
+	c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":[]}`, v), http.StatusConflict)
+	c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":["ghost"]}`, v+1), http.StatusBadRequest)
+	c.call(acme, "PUT", agentsAt, "/api/projects/Ghost/agents", `{"version":1}`, http.StatusNotFound)
+	// The workspace's own lists hold the workspace default: projects:govern.
+	c.call(f.machine(t, "acme", "warp:projects:write"), "PUT", agentsAt, "/api/projects/~/agents", `{"version":1,"enable":["*"]}`, http.StatusForbidden)
+	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"fieldbot","model":"offline","provider":"offline","system_prompt":"Field work."}`, http.StatusCreated)
+	home := "/api/agents/{name}/home"
+	if lives := c.call(acme, "PUT", home, "/api/agents/fieldbot/home", `{"project":"Field"}`, http.StatusOK); lives.str("home") != "Field" {
+		t.Errorf("fieldbot's home = %s", lives.raw)
+	}
+	if inUse := c.call(acme, "PUT", home, "/api/agents/helper/home", `{"project":"Launch"}`, http.StatusConflict); !strings.Contains(inUse.str("error"), "the default of Field") {
+		t.Errorf("homing an agent Field defaults to = %s", inUse.raw)
+	}
+	c.call(acme, "PUT", home, "/api/agents/warp-writer/home", `{"project":"Field"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", home, "/api/agents/ghost/home", `{"project":"Field"}`, http.StatusNotFound)
+
+	// The directory.
+	if _, err := f.p.Prefs.SetPhoto("acme", "okta|dana", []byte("\x89PNG\r\n\x1a\n"+strings.Repeat("\x00", 32))); err != nil {
+		t.Fatal(err)
+	}
+	f.p.SeePerson(auth.Principal{Subject: "okta|fox", Tenant: "acme", Kind: auth.User, Name: "Fox"})
+	page1 := c.call(acme, "GET", "/api/people", "/api/people?limit=1", "", http.StatusOK)
+	if people := sliceOf(page1.field("people")); len(people) != 1 || obj(people[0])["handle"] != "dana-scully" || obj(people[0])["picture"] == nil || page1.field("next") == nil {
+		t.Errorf("the first page of people = %s", page1.raw)
+	}
+	c.call(acme, "GET", "/api/people", "/api/people?q=fox", "", http.StatusOK)
+	c.call(acme, "GET", "/api/people", "/api/people?limit=51", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/people", "/api/people?before=Not+A+Handle", "", http.StatusBadRequest)
+	if photo := c.call(acme, "GET", "/api/people/{handle}/photo", "/api/people/dana-scully/photo", "", http.StatusOK); photo.header.Get("Content-Type") != "image/png" {
+		t.Errorf("a person's picture is served as %q", photo.header.Get("Content-Type"))
+	}
+	c.call(acme, "GET", "/api/people/{handle}/photo", "/api/people/fox/photo", "", http.StatusNotFound)
+	c.call(acme, "GET", "/api/people/{handle}/photo", "/api/people/ghost/photo", "", http.StatusNotFound)
+
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Field", "", http.StatusConflict)
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/~", "", http.StatusBadRequest)
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Globex", "", http.StatusNoContent)
@@ -1093,6 +1150,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		c.call(initech, "POST", "/api/projects", "/api/projects", fmt.Sprintf(`{"name":"Company %d","kind":"company"}`, i), http.StatusCreated)
 	}
 	c.call(initech, "POST", "/api/projects", "/api/projects", `{"name":"One too many","kind":"company"}`, http.StatusTooManyRequests)
+	// A conversation in the workspace that names no agent, where nothing
+	// answers untagged messages, starts nothing.
+	initechRoot := c.call(initech, "GET", agentsAt, "/api/projects/~/agents", "", http.StatusOK)
+	c.call(initech, "PUT", agentsAt, "/api/projects/~/agents", fmt.Sprintf(`{"version":%v,"enable":["*"]}`, initechRoot.field("version")), http.StatusOK)
+	c.call(initech, "POST", "/api/runs", "/api/runs", `{"text":"hi"}`, http.StatusConflict)
+	c.call(initech, "GET", "/api/pick", "/api/pick?q=anything", "", http.StatusConflict)
 
 	// Schedules.
 	c.call(acme, "POST", "/api/schedules", "/api/schedules", `{"name":"nightly","expression":"0 3 * * *","agent":"helper","text":"Report.","project":"Launch"}`, http.StatusCreated)
@@ -1215,7 +1278,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=nonsense", "", http.StatusNotFound)
 	c.call(acme, "GET", "/api/journal", "/api/journal?window=forever", "", http.StatusBadRequest)
 	c.call(acme, "GET", "/api/knowledge/search", "/api/knowledge/search?q=refunds&source=ghost", "", http.StatusNotFound)
-	c.call(globex, "GET", "/api/pick", "/api/pick?q=anything", "", http.StatusBadRequest)
+	c.call(globex, "GET", "/api/pick", "/api/pick?q=anything", "", http.StatusConflict)
 	c.call(acme, "POST", "/api/alert-rules", "/api/alert-rules", `{"name":"lost","kind":"run_failed","agent":"ghost","severity":"critical"}`, http.StatusNotFound)
 	c.call(acme, "POST", "/api/evals", "/api/evals", `{"name":"smoke","target":"agent","subject":"helper","cases":[{"id":"a","input":"hi","checks":[{"kind":"contains","value":"x"}]}]}`, http.StatusConflict)
 	c.call(globex, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_clients":1}`, http.StatusOK)
@@ -1246,7 +1309,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// does not know is refused. Both are asked of every operation the spec
 	// says can answer them, against the objects made above.
 	ids := map[string]string{
-		"name": "helper", "id": "x", "part": parts["alert"], "variant": "lean",
+		"name": "helper", "id": "x", "part": parts["alert"], "variant": "lean", "handle": "dana-scully",
 	}
 	real := map[string]map[string]string{
 		"/api/agents/{name}/memory/{id}": {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
@@ -1255,6 +1318,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
 		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
+		"/api/projects/{name}/agents":         {"name": "Launch"},
 		"/api/projects/{name}/memory/approve": {"name": "Launch"}, "/api/projects/{name}/memory/{id}": {"name": "Launch", "id": shared.str("id")},
 		"/api/schedules/{name}": {"name": "nightly"}, "/api/schedules/{name}/pause": {"name": "nightly"},
 		"/api/schedules/{name}/resume": {"name": "nightly"}, "/api/schedules/{name}/run": {"name": "nightly"},
@@ -1270,6 +1334,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
 		"/api/projects/{name}": `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
+		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`,
 		"/api/runs/{id}/calls":    `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/alert-rules/{name}": `{"kind":"run_failed","severity":"critical"}`,
 		"/api/schedules/{name}":   `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
