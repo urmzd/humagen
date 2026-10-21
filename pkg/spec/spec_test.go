@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/urmzd/fiber/pkg/agentspec"
 )
 
 // The reference's own examples load, so docs/spec.md cannot drift from the
@@ -106,9 +108,9 @@ func TestAKindIsOneTheBinaryHas(t *testing.T) {
 }
 
 func TestWhatWarpWritesItReads(t *testing.T) {
-	baseline := "lead"
 	cfg := Config{Platforms: []Platform{{Metadata: Metadata{Name: "default"}, Spec: PlatformSpec{
-		Workspace: Workspace{Baseline: &baseline},
+		Workspace: Workspace{Agents: &Agents{Enable: []string{EveryAgent}, Default: "lead"}},
+		Agents:    []Agent{{Spec: &agentspec.AgentSpec{Name: "lead", Provider: "anthropic", Model: "m", SystemPrompt: "Lead."}}},
 		Models:    []Model{{Slot: Slot{Kind: "anthropic", Block: MustJSON(ModelBlock{Key: &Ref{Ref: "env:ANTHROPIC_API_KEY"}})}, ModelShared: ModelShared{Name: "anthropic"}}},
 		Surfaces:  Surfaces{Slack: &Slack{Enabled: true, Team: "T1", BotToken: &Ref{Ref: "env:B"}, AppToken: &Ref{Ref: "keychain:warp/slack"}}},
 	}}}}
@@ -123,7 +125,7 @@ func TestWhatWarpWritesItReads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, b)
 	}
-	if *got.Platforms[0].Spec.Workspace.Baseline != "lead" || got.Platforms[0].Spec.Surfaces.Slack.AppToken.Ref != "keychain:warp/slack" || got.System.Spec.Auth.Kind != "dev" {
+	if got.Platforms[0].Spec.Workspace.Agents.Default != "lead" || got.Platforms[0].Spec.Surfaces.Slack.AppToken.Ref != "keychain:warp/slack" || got.System.Spec.Auth.Kind != "dev" {
 		t.Fatalf("round trip lost something:\n%s", b)
 	}
 	if !strings.HasPrefix(string(b), "api_version: warp/v1\nkind: System\n") {

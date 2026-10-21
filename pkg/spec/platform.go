@@ -29,6 +29,8 @@ type PlatformSpec struct {
 // Workspace is the workspace's settings and its project tree. A field left
 // out is left to the console; a field set here is applied at every start.
 type Workspace struct {
+	// Baseline is gone: workspace.agents.default replaces it. It is read
+	// only so that a file still setting it is refused with where it went.
 	Baseline    *string  `json:"baseline,omitempty"`
 	History     *History `json:"history,omitempty"`
 	TitleAgent  *string  `json:"title_agent,omitempty"`
@@ -37,6 +39,10 @@ type Workspace struct {
 	// to every agent answering anywhere in it. Set here, the console cannot
 	// change them.
 	Instructions *string `json:"instructions,omitempty"`
+	// Agents are the workspace's own, the root project's: which agents are
+	// available everywhere, and the workspace default, which answers a
+	// message that tags no agent. Set here, the console cannot change them.
+	Agents *Agents `json:"agents,omitempty"`
 	// Projects are merged into the tree at every start, parents first.
 	Projects []Project `json:"projects,omitempty"`
 	// Channels are the workspace's own, the root project's, besides
@@ -46,6 +52,21 @@ type Workspace struct {
 	// unless a project nearer names someone for the topic. Set here, even
 	// as [], the console cannot change them.
 	Experts []Expert `json:"experts,omitempty"`
+}
+
+// Agents is what a project turns on: which agents are available there and
+// below, and which answers a message that tags none (docs/projects.md).
+type Agents struct {
+	// Enable is platform agents available here and below: agents in this
+	// file or the platform's own. "*" alone is every platform agent. It
+	// adds to what the projects above enable.
+	Enable []string `json:"enable,omitempty"`
+	// Allow, when set, is the only agents that may run here and below. A
+	// project below can only narrow it. Left out, it narrows nothing.
+	Allow []string `json:"allow,omitempty"`
+	// Default answers a message that tags no agent, here and below: an
+	// agent available here, or auto for @auto. Left out, it inherits.
+	Default string `json:"default,omitempty"`
 }
 
 // History is how much of a conversation the next turn sees.
@@ -73,6 +94,9 @@ type Project struct {
 	Account *Account `json:"account,omitempty"`
 	// Instructions are sent to every agent answering here and below.
 	Instructions string `json:"instructions,omitempty"`
+	// Agents is what the project turns on. Set here, the console cannot
+	// change them.
+	Agents *Agents `json:"agents,omitempty"`
 	// Channels are the project's, besides general.
 	Channels []Channel `json:"channels,omitempty"`
 	// Experts are who answers for some topics here and below. Set here,
@@ -207,6 +231,10 @@ type AcceptTool struct {
 type Agent struct {
 	File string               `json:"file,omitempty"`
 	Spec *agentspec.AgentSpec `json:"spec,omitempty"`
+	// Project is where the agent lives: a project in this file. It is
+	// available there and below, and nowhere else. Left out, it is a
+	// platform agent, available wherever it is enabled.
+	Project string `json:"project,omitempty"`
 }
 
 // Surfaces are where the workspace answers besides the console.
@@ -254,6 +282,9 @@ func (p Platform) check(kinds Kinds) error {
 		return fmt.Errorf("%s: workspace.history.mode is recent or none", where)
 	}
 	if err := checkProjects(sp.Workspace); err != nil {
+		return fmt.Errorf("%s: %w", where, err)
+	}
+	if err := checkAgents(sp); err != nil {
 		return fmt.Errorf("%s: %w", where, err)
 	}
 	seen := map[string]bool{}

@@ -285,6 +285,11 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err := seedClients(ctx, p, *tenant, getenv); err != nil {
 		return err
 	}
+	// Whom the policy grants a role by subject is in the workspace's
+	// directory before they first sign in.
+	if err := p.SeeGranted(*tenant, granted(pol)); err != nil {
+		log.Warn("people the policy names could not all be recorded", "error", err)
+	}
 	if *seed {
 		if err := seedAgents(ctx, p, *tenant); err != nil {
 			return err
@@ -444,13 +449,16 @@ func seedAgents(ctx context.Context, p *platform.Platform, tenant string) error 
 			return fmt.Errorf("seed %s: %w", spec.Name, err)
 		}
 	}
-	// The lead answers when nobody picked an agent and none matched. Settings
-	// kept from an earlier start are left as they are.
-	if cfg := p.Settings(tenant); cfg.Baseline != "" || p.ProjectTree(tenant).Len() > 0 || !cfg.SetupAt.IsZero() {
+	// The lead answers a message that tags no agent. A workspace kept from
+	// an earlier start is left as it is.
+	tree := p.ProjectTree(tenant)
+	if cfg := p.Settings(tenant); tree.Root().Version > 0 || tree.Len() > 0 || !cfg.SetupAt.IsZero() {
 		return nil
 	}
-	if err := p.SetSettings(ctx, tenant, platform.Settings{Baseline: "lead"}); err != nil {
-		return fmt.Errorf("seed baseline: %w", err)
+	if _, err := p.SetProjectAgents(ctx, tenant, projects.RootAddress, projects.Writer{By: "seed", Govern: true}, platform.AgentsInput{
+		Version: tree.Root().Version, Enable: []string{projects.Everyone}, Default: "lead",
+	}); err != nil {
+		return fmt.Errorf("seed the workspace default: %w", err)
 	}
 	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "seed"}, platform.ProjectInput{
 		Name: "Launch", Description: "Everything for the Q4 launch",
