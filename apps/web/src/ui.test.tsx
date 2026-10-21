@@ -11,7 +11,7 @@ import { AskAnalyst, FiredStrip, Monitor } from "./Monitor.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
 import { ProjectsPage } from "./Projects.tsx";
-import { MobileNav, Sidebar } from "./Sidebar.tsx";
+import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import type { Me, ThreadSummary } from "./api.ts";
 import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
@@ -691,19 +691,13 @@ test("Monitor: a reader who cannot write sees rules but cannot delete them", () 
   assert.match(monitor(), /aria-label="Delete the rule any-run-fails"/);
 });
 
-test("on a phone, a bottom bar holds Inbox, New, Monitor and Agents, and Menu opens the rest", () => {
-  const all = ["runs:read", "runs:write", "alerts:read", "agents:read"];
-  const bar = (can: string[], count = 0) =>
-    renderToStaticMarkup(<MobileNav route={{ page: "inbox" }} go={() => {}} can={(p) => can.includes(p)} inboxCount={count} onMenu={() => {}} />);
-  const out = bar(all, 3);
-  const order = ["Inbox", "New", "Monitor", "Agents", "Menu"].map((l) => out.indexOf(`>${l}<`));
-  assert.ok(order.every((i) => i >= 0), `every place is there: ${order}`);
-  assert.deepEqual([...order].sort((x, y) => x - y), order);
-  assert.match(out, /md:hidden/, "only on a narrow screen");
-  assert.match(out, /safe-area-inset-bottom/, "clear of the home indicator");
-  assert.match(out, /aria-label="Inbox, 3 need you"/);
-  assert.match(out, /href="\/inbox" aria-current="page"/);
-  assert.doesNotMatch(bar(["runs:write"]), />Inbox<|>Monitor<|>Agents</);
+test("on a phone, one small button opens the sidebar, and there is no bottom bar", () => {
+  const closed = renderToStaticMarkup(<DrawerButton open={false} inboxCount={0} onOpen={() => {}} />);
+  assert.match(closed, /aria-label="Open sidebar"/);
+  assert.match(closed, /md:hidden/, "only on a narrow screen");
+  assert.doesNotMatch(closed, /bottom-0|Quick navigation/);
+  assert.match(renderToStaticMarkup(<DrawerButton open={false} inboxCount={2} onOpen={() => {}} />), /aria-label="Open sidebar, 2 need you"/);
+  assert.equal(renderToStaticMarkup(<DrawerButton open inboxCount={2} onOpen={() => {}} />), "", "hidden while the drawer is open");
 });
 
 const activity = (selected: string | null, trees = sampleTrees(), over: Partial<Parameters<typeof ActivityPanel>[0]> = {}) =>

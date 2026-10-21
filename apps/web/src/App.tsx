@@ -27,7 +27,7 @@ import { ProjectPage, ProjectsPage } from "./Projects.tsx";
 import { Schedules } from "./Schedules.tsx";
 import { Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
-import { MobileNav, Sidebar } from "./Sidebar.tsx";
+import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import { type AgentTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { Page, primary } from "./ui.tsx";
 
@@ -327,9 +327,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         live={live}
         onSignOut={() => api.logout().then(onSignedOut).catch(onSignedOut)}
       />
-      <MobileNav route={route} go={navigate} can={can} inboxCount={inboxCounts.open} onMenu={() => setOpen(true)} />
-      {/* On a phone the bottom bar sits over the page, so the page stops above it. */}
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col max-md:pb-[calc(3.5rem+env(safe-area-inset-bottom))]">
+      <DrawerButton open={open} inboxCount={inboxCounts.open} onOpen={() => setOpen(true)} />
+      {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
         {(page === "new" || page === "task") && (
           <Chat
             key={thread ?? `new:${route.page === "new" ? `${route.project ?? ""}:${route.agent ?? ""}:${route.ask ?? ""}` : ""}`}

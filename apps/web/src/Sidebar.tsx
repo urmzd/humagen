@@ -54,7 +54,6 @@ const LayersIcon = glyph(
 );
 /** Monitor: a pulse, for how runs are going. */
 const PulseIcon = glyph(<path d="M22 12h-4l-3 9L9 3l-3 9H2" />);
-const MenuIcon = glyph(<path d="M4 6h16M4 12h16M4 18h16" />);
 const BoxIcon = glyph(
   <>
     <path d="M21 8v13H3V8M1 3h22v5H1z" />
@@ -496,75 +495,22 @@ export function Sidebar({
 }
 
 /**
- * Navigation on a phone: the few places a person reaches for between other
- * things, one thumb away at the bottom of the screen. Inbox is first because
- * that is where what needs them lands. Menu opens the full sidebar, with
- * tasks and every other page.
+ * On a phone the sidebar is a drawer, opened from one small button in the
+ * corner, as Claude's own app does it. Nothing else sits over the page. A dot
+ * on it says something in the inbox needs you.
  */
-export function MobileNav({
-  route,
-  go,
-  can,
-  inboxCount,
-  onMenu,
-}: {
-  route: Route;
-  go: (next: Route) => void;
-  can: (permission: string) => boolean;
-  inboxCount: number;
-  onMenu: () => void;
-}) {
-  const items: { to: Route; label: string; icon: ReactNode; show: boolean; active: boolean; badge?: number }[] = [
-    { to: { page: "inbox" }, label: "Inbox", icon: <InboxIcon />, show: can("runs:read"), active: route.page === "inbox", badge: inboxCount },
-    { to: { page: "new" }, label: "New", icon: <ComposeIcon />, show: can("runs:write"), active: route.page === "new" || route.page === "task" },
-    {
-      to: { page: "monitor", tab: "overview" },
-      label: "Monitor",
-      icon: <PulseIcon />,
-      show: can("alerts:read") || can("runs:read"),
-      active: route.page === "monitor",
-    },
-    { to: { page: "agents" }, label: "Agents", icon: <BotIcon />, show: can("agents:read"), active: route.page === "agents" || route.page === "agent" },
-  ];
-  const cell =
-    "relative flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-aui-2xs text-aui-muted [&>svg]:size-5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-[current=page]:text-aui-fg";
+export function DrawerButton({ open, inboxCount, onOpen }: { open: boolean; inboxCount: number; onOpen: () => void }) {
+  if (open) return null;
   return (
-    <nav
-      aria-label="Quick navigation"
-      data-testid="mobile-nav"
-      className="warp-glass-bar fixed inset-x-0 bottom-0 z-30 flex border-[var(--warp-rule)] border-t pb-[env(safe-area-inset-bottom)] md:hidden"
+    <button
+      type="button"
+      data-testid="drawer-button"
+      onClick={onOpen}
+      aria-label={inboxCount > 0 ? `Open sidebar, ${inboxCount} need you` : "Open sidebar"}
+      className="fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-2 z-30 inline-flex size-9 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent md:hidden"
     >
-      {items
-        .filter((i) => i.show)
-        .map((i) => (
-          <a
-            key={i.label}
-            href={href(i.to)}
-            aria-current={i.active ? "page" : undefined}
-            aria-label={i.badge ? `${i.label}, ${i.badge} need you` : undefined}
-            onClick={(e) => {
-              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-              e.preventDefault();
-              go(i.to);
-            }}
-            className={cell}
-          >
-            {i.icon}
-            <span className="truncate">{i.label}</span>
-            {i.badge ? (
-              <span
-                aria-hidden
-                className="absolute top-1.5 left-1/2 ml-1.5 min-w-4 rounded-full bg-aui-accent px-1 text-center font-semibold text-[0.625rem] text-aui-accent-fg tabular-nums leading-4"
-              >
-                {i.badge > 99 ? "99+" : i.badge}
-              </span>
-            ) : null}
-          </a>
-        ))}
-      <button type="button" onClick={onMenu} className={cell}>
-        <MenuIcon />
-        <span>Menu</span>
-      </button>
-    </nav>
+      <PanelLeftOpenIcon size={20} />
+      {inboxCount > 0 && <span aria-hidden className="absolute top-1.5 right-1.5 size-2 rounded-full bg-aui-accent" />}
+    </button>
   );
 }
