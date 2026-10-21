@@ -14,30 +14,35 @@ process with its stores beside it.
 
 ## What to know first
 
+- **One spec everywhere.** warp is configured by the YAML documents in
+  [the spec](spec.md). A `System` document says how and where it runs:
+  listeners, sign-in, stores, bus, files, limits. It belongs to whoever runs
+  the process, so here it is the compose file's `config/warp.yaml` or the
+  chart's `system` value. A `Platform` document per workspace says what that
+  workspace offers: models, tools, agents, Slack and GitHub. `warp serve -f
+  PATH` reads them, and flags win over them: every setup below forces only the
+  listen address and the console's directory as flags.
+- **Secrets go in the environment, never in the spec.** A credential in a
+  document is a reference, `{ref: env:NAME}`, read at start. The variable comes
+  from `.env` in compose and from the `existingSecret` Secret in Kubernetes. A
+  reference to an unset variable stops warp at start.
 - **One replica.** The stores are single-writer: the run index, the usage
   ledger, the admission lock and the schedules assume one process owns them
   (see [Limits at scale](architecture.md#limits-at-scale)). A second warp on
   the same database races the first. The chart refuses `replicaCount` other
   than 1 and upgrades with `Recreate`.
-- **Sign-in in a container is OIDC.** `-auth=dev`, `-auth=mock` and
-  `-auth=tailscale` trust loopback and refuse any other listen address, and a
-  published container port is not loopback. Use `-auth=oidc` with the
-  `WARP_OIDC_ISSUER`, `WARP_OIDC_CLIENT_ID`, `WARP_OIDC_CLIENT_SECRET` and
-  `WARP_OIDC_AUDIENCE` variables, and register `PUBLIC_URL/auth/callback` with
-  your identity provider. See [security](security.md).
-- **Stores.** `WARP_POSTGRES_URL` puts every store in Postgres; unset, they are
-  in memory and a restart loses them. `WARP_REDIS_URL` moves the event bus out
-  of the process; unset, it is in process, which is right for one replica. See
-  [Storage](architecture.md#storage) for what a Postgres-only setup cannot do.
-- **Published files** go to disk (`-storage=disk`, the workspace volume) or any
-  S3-compatible bucket (`-storage=s3` and the `-s3-*` flags, with
-  `WARP_S3_ACCESS_KEY_ID` and `WARP_S3_SECRET_ACCESS_KEY`, or the AWS default
-  chain when both are unset).
-- **Providers and settings** are files: `-providers FILE` for model and MCP tool
-  providers, `-settings FILE` for platform settings. Credentials stay in the
-  environment and are referred to from those files, never written in them.
-- **Credentials come from the environment**, never from flags: a flag ends up in
-  shell history and `ps`.
+- **Sign-in in a container is OIDC.** `auth.kind` `dev`, `mock` and
+  `tailscale` trust loopback and refuse any other listen address, and a
+  published container port is not loopback. Use `kind: oidc` with `issuer`,
+  `client_id`, `audience` and `client_secret: {ref: env:WARP_OIDC_CLIENT_SECRET}`,
+  and register `public_url` plus `/auth/callback` with your identity provider.
+  See [security](security.md).
+- **Stores.** `stores.kind: postgres` with `url: {ref: env:WARP_POSTGRES_URL}`
+  puts every store in Postgres; `memory` loses them on restart. `bus.kind:
+  redis` moves the event bus out of the process; `memory` is right for one
+  replica. See [Storage](architecture.md#storage) for what a Postgres-only setup
+  cannot do. **Published files** go to `blobs.kind: disk` (the workspace
+  volume) or `s3`, any S3-compatible bucket.
 
 ## The image
 
@@ -50,8 +55,10 @@ install`, then `turbo run build --filter=@warp/console`) and a static `warp`
 - It runs as uid 10001, with `HOME` and `XDG_CACHE_HOME` under the
   `/var/lib/warp` volume, so the workspace (agents' files, and `blobs/` with
   disk storage) persists there.
-- The default command is `serve -addr 0.0.0.0:8080 -web /usr/share/warp/web`,
-  which signs in with OIDC.
+- The default command is `serve -f /etc/warp -addr 0.0.0.0:8080 -web
+  /usr/share/warp/web`: mount a spec at `/etc/warp`. With none, the defaults
+  sign in with `dev`, which refuses the container's address, so warp stops
+  rather than serve without sign-in.
 - A healthcheck calls `/healthz`.
 
 ```sh
@@ -72,30 +79,33 @@ creates the bucket) and `redis`. Each service has a healthcheck, and warp waits
 for what it depends on.
 
 ```sh
-cp deploy/compose/.env.example deploy/compose/.env   # fill in the OIDC values
+cp deploy/compose/.env.example deploy/compose/.env   # the secrets the spec names
+$EDITOR deploy/compose/config/warp.yaml              # identity provider, public URL
 make up                                              # build and start
 make down                                            # stop, keep the volumes
 make down V=1                                        # stop and delete the volumes
 ```
 
-Every knob is in [`.env.example`](../deploy/compose/.env.example), commented.
-`COMPOSE_PROFILES=s3,redis` there turns on the profiles. The `s3` profile also
-needs `WARP_STORAGE=s3`, and the `redis` profile
-`WARP_REDIS_URL=redis://redis:6379/0`. Files
-in `deploy/compose/config` are mounted at `/etc/warp`; pass them with
-`WARP_EXTRA_ARGS`, for example
-`-providers /etc/warp/providers.json -settings /etc/warp/settings.json`.
+[`config/warp.yaml`](../deploy/compose/config/warp.yaml) holds a System
+document (OIDC, Postgres through `env:WARP_POSTGRES_URL`, disk files) and a
+`default` Platform document, mounted at `/etc/warp` with any file it names.
+compose runs `serve -f /etc/warp -addr 0.0.0.0:8080 -web /usr/share/warp/web`
+and passes `.env` to the container, so a variable a reference names only has to
+be in `.env`. [`.env.example`](../deploy/compose/.env.example) lists them,
+commented. `COMPOSE_PROFILES=s3,redis` turns on the profiles; uncomment the
+matching `blobs` or `bus` block in `warp.yaml` as well.
 
 warp is published on `127.0.0.1:8080` by default. To reach it from other
-machines, set `WARP_BIND=0.0.0.0` behind TLS, and `WARP_PUBLIC_URL` to the
-address browsers use.
+machines, set `WARP_BIND=0.0.0.0` behind TLS, and `public_url` to the address
+browsers use.
 
 ### Without an identity provider
 
-[`compose.dev.yaml`](../deploy/compose/compose.dev.yaml) runs warp with
-`-auth=dev`, `-seed` and the offline provider on the host's network, listening
-on `127.0.0.1:8080`, and publishes Postgres (and MinIO, Redis) on the host's
-loopback for it. It needs host networking: Linux, or Docker Desktop 4.34+ with
+[`compose.dev.yaml`](../deploy/compose/compose.dev.yaml) mounts
+[`dev/warp.yaml`](../deploy/compose/dev/warp.yaml) instead: `auth.kind: dev`,
+seeded agents on the offline provider, the same Platform document. warp runs
+on the host's network, listening on `127.0.0.1:8080`, with Postgres (and MinIO,
+Redis) published on the host's loopback for it. It needs host networking: Linux, or Docker Desktop 4.34+ with
 it turned on.
 
 ```sh
@@ -108,30 +118,50 @@ Every request is an admin. Do not use it anywhere but your own machine.
 ## Kubernetes with Helm
 
 [`deploy/helm/warp`](../deploy/helm/warp) deploys one warp: a Deployment, a
-Service, an optional Ingress, a ConfigMap for the providers, settings, policy
-and agent spec files (mounted at `/etc/warp` and passed with their flags), a
-PersistentVolumeClaim for the workspace, and a ServiceAccount with no API token.
-The pod runs as non-root with a read-only root filesystem and no capabilities.
-Startup, liveness and readiness probes call `/healthz`. Every value is
-documented in [`values.yaml`](../deploy/helm/warp/values.yaml).
+Service, an optional Ingress, a ConfigMap, a PersistentVolumeClaim for the
+workspace, and a ServiceAccount with no API token. The pod runs as non-root
+with a read-only root filesystem and no capabilities. Startup, liveness and
+readiness probes call `/healthz`. Every value is documented in
+[`values.yaml`](../deploy/helm/warp/values.yaml).
 
-Secrets never go in values. Create a Secret and name it with `existingSecret`;
-its keys become the container's environment:
+The `system` value (`metadata` and `spec`) and each item of `platforms` are
+rendered verbatim, with `api_version` and `kind` added, into one `warp.yaml`
+in the ConfigMap. The pod runs `serve -f /etc/warp/warp.yaml -addr=0.0.0.0:8080
+-web=/usr/share/warp/web`. Files the spec names, such as `auth.policy_file` or
+an agent's `file`, go in `files` and sit beside it as `/etc/warp/NAME`.
+Everything else in the values is the chart's own: image, volume, Service,
+Ingress, probes, resources. The defaults are OIDC (`issuer`, `client_id` and
+`audience` are required) and Postgres, both reading their credentials through
+references. Rendering fails for `auth.kind` `dev`, `mock` or `tailscale`, for
+missing OIDC values, and for `replicaCount` other than 1.
+
+Secrets never go in values. Create a Secret with the variables the references
+name and set `existingSecret`; its keys become the container's environment:
 
 ```sh
 kubectl create namespace warp
 kubectl -n warp create secret generic warp-env \
   --from-literal=WARP_OIDC_CLIENT_SECRET=... \
-  --from-literal=WARP_POSTGRES_URL='postgres://warp:...@db:5432/warp' \
-  --from-literal=ANTHROPIC_API_KEY=...
+  --from-literal=WARP_POSTGRES_URL='postgres://warp:...@db:5432/warp'
 
 helm install warp deploy/helm/warp -n warp \
   --set image.repository=registry.example.com/warp --set image.tag=0.9.0 \
-  --set auth.publicURL=https://warp.example.com \
-  --set auth.oidc.issuer=https://login.example.com \
-  --set auth.oidc.clientID=warp --set auth.oidc.audience=warp \
+  --set system.spec.server.public_url=https://warp.example.com \
+  --set system.spec.auth.oidc.issuer=https://login.example.com \
+  --set system.spec.auth.oidc.client_id=warp \
+  --set system.spec.auth.oidc.audience=warp \
   --set existingSecret=warp-env
 ```
+
+Models, tools and agents go in a values file under `platforms`, as in the
+[Flux example](../deploy/flux/app/values.yaml). Helm merges maps key by key and
+replaces lists, so a `platforms` override replaces the default list.
+
+`make chart-check` (`deploy/helm/check.sh`) lints the chart, renders it with
+each file in `ci/` and the Flux values, runs `kubeconform` on the manifests
+when it is installed, and runs `warp config check` on the `warp.yaml` each
+render produces, so the chart cannot render a spec warp refuses. It also checks
+the compose stack's two specs.
 
 The chart does not run Postgres, Redis or a bucket: use what your cluster
 already has, or an operator. With an ingress, turn off proxy buffering and
@@ -150,7 +180,7 @@ signed Slack and GitHub webhooks, on its own Service port.
 - [`app/`](../deploy/flux/app): the `warp` namespace and a `HelmRelease` whose
   chart is `./deploy/helm/warp` from that source, rebuilt on every revision. Its
   values come from [`app/values.yaml`](../deploy/flux/app/values.yaml), an
-  override example, through a generated ConfigMap whose name changes with its
+  override example in the spec's shape (`system`, `platforms`), through a generated ConfigMap whose name changes with its
   content, so an edit upgrades the release.
 
 To use your own values, copy `app/` into your fleet repository, edit
@@ -163,11 +193,15 @@ the `GitRepository`; nothing is published yet.
 
 ## What has been checked
 
-The compose files pass `docker compose config`. The chart passes `helm lint`,
-and its rendered output (the defaults with the required OIDC values, every
-option on in
+The compose files pass `docker compose config`, and both compose specs pass
+`warp config check`; the dev spec, with memory stores, was started with `warp
+serve` and served the console. `make chart-check` passes: `helm lint --strict`,
+`kubeconform -strict` on the renders (the defaults with the required OIDC
+values, every option on in
 [`ci/full-values.yaml`](../deploy/helm/warp/ci/full-values.yaml), and the Flux
-override) passes `kubeconform -strict`, as do the Flux manifests after
-`kustomize build`. The image's build steps were run outside Docker. The image
-has not been built and run, and nothing has been deployed to a cluster. See the
+override), and `warp config check` on each rendered `warp.yaml`. The Flux
+manifests pass `kubeconform` after `kustomize build`. `config check` does not
+resolve references or read the files a spec names, so an unset variable or a
+missing file shows only at start. The image has not been built and run here (no
+Docker daemon), and nothing has been deployed to a cluster. See the
 [status table](architecture.md#status).
