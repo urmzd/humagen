@@ -157,6 +157,12 @@ export interface InboxMessage {
    * would otherwise read "Message". Shown in the list and above the parts.
    */
   tag?: string;
+  /**
+   * How the message is laid out (see `messageTemplate`). Leave out to let it
+   * follow from the parts; a host sets it when it knows better, such as a
+   * limit that leads with an alert part.
+   */
+  template?: TemplateId;
   parts: MessagePart[];
   /** Set by the reader, not by resolving: put away, or hidden until a time. */
   dismissedAt?: string;
@@ -256,6 +262,68 @@ export function messageState(message: InboxMessage, now?: string): InboxItemStat
 /** The kind of the message for filters and icons: what it asks for first, else what it leads with. */
 export function messageKind(message: InboxMessage): PartType {
   return (message.parts.find(isResolvable) ?? message.parts[0])?.type ?? "text";
+}
+
+/**
+ * A message's template: how it is laid out in the list and the reading pane,
+ * and which icon and words it leads with. Each kind of message reads the way
+ * its kind needs: an alert leads with its rule and severity, an artifact with
+ * the file, a result with the answer.
+ */
+export type TemplateId =
+  | "alert"
+  | "approval"
+  | "question"
+  | "failure"
+  | "memory"
+  | "limit"
+  | "artifact"
+  | "result"
+  | "note";
+
+export const TEMPLATES: readonly TemplateId[] = [
+  "alert",
+  "approval",
+  "question",
+  "failure",
+  "memory",
+  "limit",
+  "artifact",
+  "result",
+  "note",
+];
+
+const TEMPLATE_OF_PART: Record<PartType, TemplateId> = {
+  alert: "alert",
+  approval: "approval",
+  choice: "question",
+  reply: "question",
+  failure: "failure",
+  memory: "memory",
+  budget: "limit",
+  artifact: "artifact",
+  reference: "note",
+  text: "note",
+  custom: "note",
+};
+
+/** The message's template: the one it names, else what its first ask (or first part) is. */
+export function messageTemplate(message: InboxMessage): TemplateId {
+  if (message.template && TEMPLATES.includes(message.template)) return message.template;
+  // An update that carries a file is about the file, whatever prose comes first.
+  if (!messageAsks(message) && message.parts.some((p) => p.type === "artifact")) return "artifact";
+  const t = TEMPLATE_OF_PART[messageKind(message)];
+  // Prose from an agent is its answer; from anyone else it is a note.
+  return t === "note" && message.from.kind === "agent" ? "result" : t;
+}
+
+/**
+ * True when the message asks something of a person, as opposed to an update
+ * that is only there to be read: a published file, a run's answer, a note.
+ * The list keeps the two apart, so updates never bury a decision.
+ */
+export function messageAsks(message: InboxMessage): boolean {
+  return message.parts.some(isResolvable);
 }
 
 /** One line for the list, under the subject. */

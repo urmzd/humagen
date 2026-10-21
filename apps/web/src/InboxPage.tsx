@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useInbox } from "./inbox.ts";
 import { platformParts } from "./MailParts.tsx";
 import { kinds, type PlatformMessage, type Source, type Transport, transport as platform } from "./mail.ts";
-import { Empty, Menu, Problem, SkeletonRows, Stroke, type StrokeState } from "./ui.tsx";
+import { AgentMark, Empty, Problem, SkeletonRows, Stroke, type StrokeState } from "./ui.tsx";
 
 /** The id in the address, so a message can be linked to. */
 function linked(): string | null {
@@ -34,6 +34,33 @@ export function edgeOf(message: InboxMessage): { agent?: string; state: StrokeSt
     state: state !== "open" ? "done" : failed ? "failed" : openParts(message).length > 0 ? "waiting" : "idle",
   };
 }
+
+/**
+ * What kind of message to show, as a row of chips like an email client's
+ * categories. It scrolls sideways in a narrow pane rather than wrapping, so
+ * the row stays one line and nothing spills out of it.
+ */
+export function KindChips({ value, onChange }: { value: string; onChange: (kind: string) => void }) {
+  const options = [{ id: "", label: "Everything" }, ...kinds];
+  return (
+    <div role="group" aria-label="Kind" className="aui-scroll -mx-1 flex min-w-0 gap-1.5 overflow-x-auto px-1 pb-1">
+      {options.map((k) => (
+        <button
+          key={k.id || "all"}
+          type="button"
+          aria-pressed={value === k.id}
+          onClick={() => onChange(k.id)}
+          className="inline-flex h-7 shrink-0 items-center rounded-full border border-aui-border px-3 text-aui-xs whitespace-nowrap text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:border-transparent aria-pressed:bg-aui-fg aria-pressed:text-aui-bg motion-reduce:transition-none"
+        >
+          {k.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** An agent is told apart by its color, beside its name; rules and the system need no mark. */
+const senderMark = (from: InboxMessage["from"]) => (from.kind === "agent" ? <AgentMark name={from.name} size={12} /> : null);
 
 /**
  * warp's mailbox with the platform's own pieces on it: the parts it draws
@@ -77,6 +104,7 @@ export function MailboxView({
       onAction={onAction}
       viewer={viewer}
       renderers={renderers}
+      renderSender={senderMark}
       toolbar={toolbar}
       listEnd={listEnd}
       openCount={openCount}
@@ -86,22 +114,25 @@ export function MailboxView({
         const edge = edgeOf(message);
         const sources = (message as PlatformMessage).about ?? [];
         return (
-          <Stroke agent={edge.agent} state={edge.state} testId="mail-frame" className="flex min-h-0 flex-1 flex-col pl-4">
+          <Stroke agent={edge.agent} state={edge.state} testId="mail-frame" className="flex min-h-0 min-w-0 flex-1 flex-col pl-4">
             {children}
             {sources.length > 0 && (
-              <ul className="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-[var(--warp-rule)] border-t pt-2 text-aui-xs" aria-label="About">
-                {sources.map((s) => (
-                  <li key={`${s.kind}:${s.id}`}>
-                    <button
-                      type="button"
-                      onClick={() => onOpen(s)}
-                      className="rounded-aui-sm text-aui-muted underline underline-offset-2 hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-                    >
-                      {s.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-[var(--warp-rule)] border-t pt-3 pb-1">
+                <span className="text-aui-2xs font-medium tracking-wider text-aui-muted uppercase">About</span>
+                <ul className="flex min-w-0 flex-wrap gap-1.5" aria-label="About">
+                  {sources.map((s) => (
+                    <li key={`${s.kind}:${s.id}`} className="min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => onOpen(s)}
+                        className="inline-flex h-6 max-w-56 items-center gap-1 truncate rounded-full border border-aui-border px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
+                      >
+                        <span className="truncate">{s.label}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </Stroke>
         );
@@ -120,10 +151,15 @@ export function InboxPage({
   signal,
   viewer,
   openId,
+  kind: wantedKind,
+  onKind,
   onOpen,
   onCounts,
   via = platform,
 }: {
+  /** The kind shown, when the address says it: "alert" shows only what rules fired. */
+  kind?: string;
+  onKind?: (kind: string) => void;
   /** Changes whenever the inbox may have. The first page is fetched again. */
   signal: unknown;
   /** Who is reading, shown on what they resolve until the platform confirms it. */
@@ -136,7 +172,9 @@ export function InboxPage({
   onCounts?: (counts: { open: number; unread: number }) => void;
   via?: Transport;
 }) {
-  const [kind, setKind] = useState("");
+  const [ownKind, setOwnKind] = useState(wantedKind ?? "");
+  const kind = onKind ? (wantedKind ?? "") : ownKind;
+  const setKind = (next: string) => (onKind ? onKind(next) : setOwnKind(next));
   const [show, setShow] = useState<MailboxShow>("open");
   const [selected, setSelected] = useState<string | null>(() => openId ?? linked());
   // The message being read, held apart from the list. A linked message may not be on a
@@ -215,15 +253,7 @@ export function InboxPage({
           openCount={open}
           show={show}
           onShow={setShow}
-          toolbar={
-            <Menu
-              quiet
-              label="Kind"
-              value={kind}
-              options={[{ value: "", label: "Every kind" }, ...kinds.map((k) => ({ value: k.id, label: k.label }))]}
-              onChange={setKind}
-            />
-          }
+          toolbar={<KindChips value={kind} onChange={setKind} />}
           listEnd={
             (inbox.hasMore || inbox.loading === "more") && (
               <div className="flex justify-center py-3">

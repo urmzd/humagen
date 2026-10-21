@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -716,6 +717,8 @@ func orEmpty[T any](s []T) []T {
 // spa serves a built single-page app, falling back to index.html for routes the
 // app handles itself.
 func spa(dir string) http.Handler {
+	// The web app manifest has its own type, which not every system's table knows.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 	files := http.FileServer(http.Dir(dir))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {

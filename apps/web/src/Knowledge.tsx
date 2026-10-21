@@ -85,8 +85,8 @@ export function Knowledge({
 
   return (
     <Page
-      title="Knowledge"
-      lede="Sources are collections of documents agents are grounded in. Each is shared: attach it to any agent from the agent's Knowledge tab."
+      title="Context"
+      lede="What agents are grounded in: sources of documents they search and cite. Each source is shared: attach it to any agent from the agent's Context tab."
       actions={
         canWrite && !creating ? (
           <button type="button" className={primary} onClick={() => setCreating(true)}>

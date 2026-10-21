@@ -1,4 +1,4 @@
-import { messageState, openParts } from "@warp/core";
+import { messageState } from "@warp/core";
 import { fromServer, type PlatformMessage, type Transport } from "./mail.ts";
 
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
@@ -126,12 +126,105 @@ export function wireMail(): Record<string, unknown>[] {
         },
       ],
     },
+    {
+      id: "m-approval",
+      kind: "approval",
+      subject: "releaser wants to push the 2.4.1 tag",
+      from: { kind: "agent", name: "releaser" },
+      at: ago(2),
+      updated_at: ago(2),
+      severity: "warning",
+      state: "open",
+      unread: true,
+      source: { run: "api-8a1c", agent: "releaser", project: "Launch" },
+      parts: [
+        { id: "p0", type: "text", state: "info", actions: [], text: "2.4.0 already exists, so I bumped the patch. Pushing a tag starts the release pipeline." },
+        {
+          id: "p1",
+          type: "approval",
+          state: "open",
+          actions: ["approve", "deny"],
+          question: {
+            run: "api-8a1c",
+            id: "q-approve",
+            kind: "approval",
+            agent: "releaser",
+            prompt: "Push tag v2.4.1 to origin",
+            tool: { name: "git_push_tag", arguments: { tag: "v2.4.1", remote: "origin" } },
+          },
+        },
+      ],
+    },
+    {
+      id: "m-question",
+      kind: "clarification",
+      subject: "Which channel should the launch note go to?",
+      from: { kind: "agent", name: "lead" },
+      at: ago(9),
+      updated_at: ago(9),
+      severity: "info",
+      state: "open",
+      unread: true,
+      source: { run: "api-5d2e", agent: "lead", project: "Launch" },
+      parts: [
+        {
+          id: "p1",
+          type: "choice",
+          state: "open",
+          actions: ["choose"],
+          question: { run: "api-5d2e", id: "q-choice", kind: "choice", agent: "lead", prompt: "Where should I post the launch note?", options: ["#launch", "#general", "#eng-announce"] },
+        },
+      ],
+    },
+    {
+      id: "m-artifact",
+      kind: "artifact",
+      subject: "lead updated launch-checklist.md to version 2",
+      from: { kind: "agent", name: "lead" },
+      at: ago(35),
+      updated_at: ago(35),
+      severity: "info",
+      state: "open",
+      unread: true,
+      source: { run: "api-2b9f", thread: "th-launch", agent: "lead", project: "Launch" },
+      parts: [
+        {
+          id: "p1",
+          type: "artifact",
+          state: "info",
+          actions: [],
+          artifact: { id: "art-2", title: "launch-checklist.md", kind: "document", mime: "text/markdown", size: 97, version: 2, description: "With support added", previous: "art-1" },
+        },
+      ],
+    },
+    {
+      id: "m-result",
+      kind: "result",
+      subject: "helper finished: Signups grew 75% over three weeks",
+      from: { kind: "agent", name: "helper" },
+      at: ago(95),
+      updated_at: ago(95),
+      severity: "info",
+      state: "open",
+      unread: false,
+      source: { run: "api-9c3a", thread: "th-signups", agent: "helper", project: "Launch" },
+      parts: [
+        {
+          id: "p1",
+          type: "text",
+          state: "info",
+          actions: [],
+          text: "Signups grew from **120** in week 1 to **210** in week 3, a 75% rise. Most of it came after the pricing page changed in week 2.",
+        },
+      ],
+    },
   ];
 }
 
 export const sampleMail = (): PlatformMessage[] => wireMail().map(fromServer);
 
-const isOpen = (m: PlatformMessage) => messageState(m) === "open" && openParts(m).length > 0;
+// As on the platform: open until it is resolved or put away, whether or not it asks for anything.
+const isOpen = (m: PlatformMessage) => messageState(m) === "open";
 
 /**
  * An inbox held in memory, for the gallery and for tests. It pages, filters

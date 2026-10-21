@@ -12,6 +12,7 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 
 	"github.com/urmzd/warp/pkg/alerts"
+	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
@@ -60,8 +61,9 @@ type Resolution struct {
 	ActAs *ActAs
 }
 
-func alertKey(id string) string { return "alert:" + id }
-func runKey(id string) string   { return "run:" + id }
+func alertKey(id string) string    { return "alert:" + id }
+func runKey(id string) string      { return "run:" + id }
+func artifactKey(id string) string { return "artifact:" + id }
 
 func severityOf(s alerts.Severity) inbox.Severity {
 	switch s {
@@ -80,6 +82,8 @@ func reads(k inbox.Kind) auth.Permission {
 		return auth.AgentsRead
 	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult:
 		return auth.RunsRead
+	case inbox.KindArtifact:
+		return auth.ArtifactsRead
 	}
 	return auth.AlertsRead
 }
@@ -91,6 +95,8 @@ func writes(k inbox.Kind) auth.Permission {
 		return auth.AgentsWrite
 	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult:
 		return auth.RunsWrite
+	case inbox.KindArtifact:
+		return auth.ArtifactsWrite
 	}
 	return auth.AlertsWrite
 }
@@ -462,6 +468,55 @@ func (p *Platform) inboxMemory(run runs.Run, owner string, notes []memory.Note) 
 		Source: inbox.Source{Run: run.ID, Agent: part.Agent, Project: part.Project},
 		Parts:  []inbox.Part{{Type: inbox.PartMemory, Memory: &part}},
 	}, p.now())
+}
+
+// inboxArtifact says in the inbox that a file was published. A new version
+// replaces the message about the one before it, so a file revised ten times
+// is one message about its latest version, not ten.
+func (p *Platform) inboxArtifact(tenant string, a artifacts.Artifact) {
+	part := inbox.ArtifactPart{
+		ID: a.ID, Title: a.Title, Kind: string(a.Kind), Mime: a.Mime, Size: a.Size, Version: a.Version, Description: a.Description,
+	}
+	from := inbox.From{Kind: "system", Name: "Artifacts"}
+	who := "A file"
+	if a.Agent != "" {
+		from, who = inbox.From{Kind: "agent", Name: a.Agent}, a.Agent
+	}
+	subject := fmt.Sprintf("%s published %s", who, a.Title)
+	if a.Agent == "" {
+		subject = fmt.Sprintf("%s was published", a.Title)
+	}
+	if a.Version > 1 {
+		subject = fmt.Sprintf("%s updated %s to version %d", who, a.Title, a.Version)
+		if a.Agent == "" {
+			subject = fmt.Sprintf("%s is at version %d", a.Title, a.Version)
+		}
+		if versions, err := p.Artifacts.Versions(tenant, a.ID); err == nil {
+			for _, v := range versions {
+				if v.ID == a.ID {
+					continue
+				}
+				if part.Previous == "" {
+					part.Previous = v.ID
+				}
+				if m, ok := p.Inbox.ByKey(tenant, artifactKey(v.ID)); ok && m.State != inbox.Resolved && m.State != inbox.Dismissed {
+					_, _, _ = p.Inbox.Withdraw(tenant, m.ID, fmt.Sprintf("Replaced by version %d", a.Version), p.now())
+				}
+			}
+		}
+	}
+	p.Inbox.Raise(tenant, artifactKey(a.ID), inbox.Message{
+		Kind: inbox.KindArtifact, Subject: subject, From: from, Severity: inbox.Info,
+		Source: inbox.Source{Run: a.Run, Thread: a.Thread, Agent: a.Agent, Project: a.Project},
+		Parts:  []inbox.Part{{Type: inbox.PartArtifact, State: inbox.PartInfo, Artifact: &part}},
+	}, a.CreatedAt)
+}
+
+// inboxArtifactGone withdraws the message about a version that was deleted.
+func (p *Platform) inboxArtifactGone(tenant string, a artifacts.Artifact) {
+	if m, ok := p.Inbox.ByKey(tenant, artifactKey(a.ID)); ok && m.State != inbox.Resolved && m.State != inbox.Dismissed {
+		_, _, _ = p.Inbox.Withdraw(tenant, m.ID, "The file was deleted", p.now())
+	}
 }
 
 // retry asks a failed turn again, on the same branch it was first asked on.

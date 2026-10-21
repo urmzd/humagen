@@ -99,7 +99,10 @@ export function Composer({
   onDraft,
   leading,
   trailing,
+  seed,
 }: {
+  /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
+  seed?: { text: string };
   placeholder: string;
   queue: QueueControls;
   autoFocus?: boolean;
@@ -123,6 +126,18 @@ export function Composer({
     setValue(next);
     onDraft?.(next);
   };
+
+  // A picked starter fills the box and puts the cursor at its end, ready to send or edit.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per seed
+  useEffect(() => {
+    if (!seed) return;
+    change(seed.text);
+    const el = input.current;
+    if (el) {
+      el.focus();
+      el.setSelectionRange(seed.text.length, seed.text.length);
+    }
+  }, [seed]);
 
   // Grow with the text up to a cap, then scroll.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure whenever the text changes

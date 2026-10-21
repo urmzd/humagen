@@ -1,8 +1,11 @@
 import { type ActionHandler, ActionId, type ActionPayload } from "@warp/core";
 import type { ButtonProps, ConfirmSpec, PrimitiveProps } from "@warp/primitives";
+import { Button as ButtonPrimitive, Menu as MenuPrimitive } from "@warp/primitives";
 import {
   Children,
   createContext,
+  isValidElement,
+  type ReactNode,
   useContext,
   useEffect,
   useId,
@@ -17,7 +20,7 @@ import { SuppressContext } from "./meta";
 export const ActionContext = createContext<ActionHandler>(() => {});
 
 const base =
-  "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-aui px-2.5 font-medium text-aui-xs transition-[background-color,border-color,color,opacity,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-aui-accent focus-visible:ring-offset-2 focus-visible:ring-offset-aui-bg disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-aui px-2.5 font-medium text-aui-xs pointer-coarse:h-10 pointer-coarse:px-4 pointer-coarse:text-aui-sm transition-[background-color,border-color,color,opacity,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-aui-accent focus-visible:ring-offset-2 focus-visible:ring-offset-aui-bg disabled:pointer-events-none disabled:opacity-50";
 
 export const buttonVariant = {
   primary: "bg-aui-primary text-aui-primary-fg shadow-aui-sm hover:opacity-90",
@@ -231,6 +234,37 @@ function ConfirmPanel({
   );
 }
 
+/**
+ * A Button followed by a Menu is one split button. They are kept in one box
+ * that never wraps apart, so the chevron half can't land on the next line,
+ * pulled out past the row's edge by the margin that joins it to its button.
+ */
+function keepSplitsTogether(children: ReactNode): ReactNode[] {
+  const list = Children.toArray(children);
+  const out: ReactNode[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const here = list[i];
+    const next = list[i + 1];
+    if (
+      isValidElement(here) &&
+      here.type === ButtonPrimitive &&
+      isValidElement(next) &&
+      next.type === MenuPrimitive
+    ) {
+      out.push(
+        <span key={`split:${here.key ?? i}`} data-aui-split-group="" className="inline-flex">
+          {here}
+          {next}
+        </span>,
+      );
+      i++;
+    } else {
+      out.push(here);
+    }
+  }
+  return out;
+}
+
 export function Actions({ children, blockId }: PrimitiveProps["Actions"]) {
   const suppressed = useContext(SuppressContext);
   const [pending, setPending] = useState<{ spec: ConfirmSpec; run: () => void } | null>(null);
@@ -267,7 +301,7 @@ export function Actions({ children, blockId }: PrimitiveProps["Actions"]) {
         />
       ) : (
         <ConfirmContext.Provider value={(spec, run) => setPending({ spec, run })}>
-          {children}
+          {keepSplitsTogether(children)}
         </ConfirmContext.Provider>
       )}
     </fieldset>

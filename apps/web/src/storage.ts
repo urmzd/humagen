@@ -69,7 +69,8 @@ export const contentUrl = (id: string, inline = false) => `${at(id)}/content${in
 
 /** Types the platform will serve inline. Everything else, HTML and SVG included, is a download. */
 const INLINE = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-export const showsInline = (file: Stored) => INLINE.has(file.mime);
+export const inlineType = (mime: string) => INLINE.has(mime);
+export const showsInline = (file: Stored) => inlineType(file.mime);
 
 export { bytes } from "./format.ts";
 
@@ -93,11 +94,11 @@ export function matches(file: Stored, query: string): boolean {
 /** True when a workspace holds more than its limit. No limit is never over. */
 export const overLimit = (use: StorageUse) => use.limit_bytes !== null && use.limit_bytes > 0 && use.used_bytes > use.limit_bytes;
 
-export const OVER_LIMIT = "Storage is over its limit. Agents cannot publish new files until some are deleted or the limit is raised in Settings.";
+export const OVER_LIMIT = "Storage is over its limit. Agents cannot publish new artifacts until some are deleted or the limit is raised in Settings.";
 
 /** What a failed delete says, with the platform's reason when it gave one. */
 export const deleteProblem = (e: unknown) =>
-  e instanceof Error && e.message ? `The file could not be deleted. ${e.message}` : "The file could not be deleted.";
+  e instanceof Error && e.message ? `The artifact could not be deleted. ${e.message}` : "The artifact could not be deleted.";
 
 /** A later page added to what is loaded. A file already shown is not shown twice. */
 export function appendPage(old: Stored[], page: Stored[]): Stored[] {

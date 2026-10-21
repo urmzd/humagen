@@ -443,8 +443,11 @@ export interface ScheduleView {
   recent: Run[];
 }
 
-/** What a message is about. `approval` and `clarification` are questions a run is waiting on. */
-export type InboxKind = "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result";
+/** What a message is about. `approval` and `clarification` are questions
+a run is waiting on. `result` is the answer of a run nobody was
+waiting on, and `artifact` a file that was published or revised.
+ */
+export type InboxKind = "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact";
 
 export type InboxState = "open" | "resolved" | "dismissed" | "snoozed";
 
@@ -580,6 +583,19 @@ export interface InboxBudgetPart {
   current: InboxLimits;
 }
 
+/** One published version of a file. Open it from the artifacts routes by `id`. */
+export interface InboxArtifactPart {
+  id: string;
+  title: string;
+  kind: string;
+  mime?: string;
+  size: number;
+  version: number;
+  description?: string;
+  /** The id of the version this one replaces, when it is not the first. */
+  previous?: string;
+}
+
 export interface InboxQuestionTool {
   name: string;
   /** The model's id for the call. */
@@ -617,7 +633,7 @@ the callee's call policy's approvers, for a call to an agent.
 }
 
 /** One typed part of a message. `type` says which of `text`, `alert`,
-`failure`, `memory`, `budget` or `question` carries the body:
+`failure`, `memory`, `budget`, `artifact` or `question` carries the body:
 `approval`, `choice` and `reply` parts carry `question`. A settled
 question's `outcome` is `approve`, `deny`, `choose` (the option in
 `note`), `reply` (the words in `note`), `expired`, `stopped` or
@@ -625,7 +641,7 @@ question's `outcome` is `approve`, `deny`, `choose` (the option in
  */
 export interface InboxPart {
   id: string;
-  type: "text" | "alert" | "failure" | "memory" | "budget" | "approval" | "choice" | "reply";
+  type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply";
   state: "open" | "resolved" | "info";
   /** What this caller may do with the part now. Empty once it is resolved, or when the caller has no permission for any action. */
   actions: ("acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply")[];
@@ -635,6 +651,7 @@ export interface InboxPart {
   failure?: InboxFailurePart;
   memory?: InboxMemoryPart;
   budget?: InboxBudgetPart;
+  artifact?: InboxArtifactPart;
   question?: InboxQuestionPart;
 }
 

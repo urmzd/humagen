@@ -127,9 +127,18 @@ function TurnView({
  * One conversation: its turns along the branch on screen, and the box that
  * adds the next one. `threadId` null is a conversation not yet started.
  */
+/** Ways into the platform's own agents, shown on an empty conversation when the workspace has them. */
+export const STARTERS: { agent: string; label: string; text: string }[] = [
+  { agent: "warp-analyst", label: "How did my agents do today?", text: "How did my agents do today?" },
+  { agent: "warp-builder", label: "Build a new agent", text: "Help me build an agent that " },
+  { agent: "warp-writer", label: "Write a report", text: "Write a one-page report on " },
+];
+
 export function Chat({
   threadId,
   startIn,
+  startAgent,
+  startAsk,
   summary,
   tick,
   agents,
@@ -143,6 +152,9 @@ export function Chat({
   threadId: string | null;
   /** The project a new conversation starts in, when it was started from one. */
   startIn?: string;
+  /** The agent a new conversation is for, and its first message, when a link or a starter picked them. */
+  startAgent?: string;
+  startAsk?: string;
   /** The conversation at a glance, once it exists. */
   summary: ThreadSummary | undefined;
   /** Changes whenever any run starts or ends. */
@@ -157,8 +169,9 @@ export function Chat({
 }) {
   const [turns, setTurns] = useState<Run[]>([]);
   const [chosen, setChosen] = useState<Record<string, string>>({});
-  const [auto, setAuto] = useState(true);
-  const [agent, setAgent] = useState("");
+  const [auto, setAuto] = useState(!startAgent);
+  const [agent, setAgent] = useState(startAgent ?? "");
+  const [seed, setSeed] = useState<{ text: string } | undefined>(() => (startAsk ? { text: startAsk } : undefined));
   const [project, setProject] = useState<string | null>(startIn ?? null);
   const [preview, setPreview] = useState<Choice | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -273,6 +286,8 @@ export function Chat({
     return () => window.clearTimeout(timer);
   }, [auto, draft]);
 
+  const starters = STARTERS.filter((st) => agents.some((a) => a.spec.name === st.agent));
+
   const composer = canRun && agents.length > 0 && (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
       <Problem message={problem} />
@@ -281,6 +296,7 @@ export function Chat({
         queue={queue}
         autoFocus={!threadId}
         onDraft={setDraft}
+        seed={seed}
         leading={
           <>
         {threadId ? (
@@ -374,6 +390,26 @@ export function Chat({
     return (
       <HomePage greeting={greeting} canRun={canRun} hasAgents={agents.length > 0}>
         {composer}
+        {canRun && starters.length > 0 && (
+          <ul aria-label="Start with" className="mx-auto flex w-full max-w-4xl flex-wrap justify-center gap-2 px-4">
+            {starters.map((st) => (
+              <li key={st.agent}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuto(false);
+                    setAgent(st.agent);
+                    setSeed({ text: st.text });
+                  }}
+                  className="inline-flex h-9 items-center gap-2 rounded-full border border-aui-border px-3.5 text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
+                >
+                  <AgentMark name={st.agent} size={14} />
+                  {st.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </HomePage>
     );
   }

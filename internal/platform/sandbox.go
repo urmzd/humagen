@@ -330,6 +330,7 @@ func (p *Platform) Publish(ctx context.Context, pub Publication) (artifacts.Arti
 	}
 	p.log.Info("platform: artifact published", "tenant", pub.Tenant, "artifact", saved.ID, "title", saved.Title, "version", saved.Version,
 		"size", saved.Size, "sha256", saved.SHA256, "run", saved.Run, "agent", saved.Agent, "by", saved.CreatedBy)
+	p.inboxArtifact(pub.Tenant, saved)
 	return saved, nil
 }
 
@@ -394,6 +395,7 @@ func (p *Platform) DeleteArtifact(ctx context.Context, who auth.Principal, id st
 	if err := p.Blobs.Delete(ctx, dirName(who.Tenant), a.Key); err != nil {
 		p.log.Warn("platform: an artifact's bytes could not be removed", "artifact", a.ID, "error", err)
 	}
+	p.inboxArtifactGone(who.Tenant, a)
 	p.log.Info("platform: artifact deleted", "tenant", who.Tenant, "artifact", a.ID, "title", a.Title, "version", a.Version, "by", who.Subject)
 	return nil
 }
@@ -444,6 +446,9 @@ func (p *Platform) fileTools(base runtime.Catalog) runtime.Catalog {
 			inner = b
 		}
 		tools := p.turnFileTools(req, action)
+		for name, t := range p.builtinTools(req) {
+			tools[name] = t
+		}
 		return agentrt.ToolsFunc(func(name string) (saigetypes.Tool, error) {
 			if t, ok := tools[name]; ok {
 				return t, nil

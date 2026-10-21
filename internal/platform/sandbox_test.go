@@ -437,3 +437,62 @@ func TestPublishingUsesTheConfiguredStore(t *testing.T) {
 		t.Fatalf("a delete left %+v", list)
 	}
 }
+
+// A published file arrives in the inbox, a new version replaces the message
+// about the one before, and deleting a version withdraws its message.
+func TestPublishingTellsTheInbox(t *testing.T) {
+	p := start(t, call.Limits{})
+	_, req := turn(t, p, "api-1", "")
+	publish := func(content string) artifacts.Artifact {
+		t.Helper()
+		if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "notes.md", "content": content}); err != nil {
+			t.Fatal(err)
+		}
+		_, reported, err := p.UseTool(t.Context(), req, platform.ToolPublish, map[string]any{"path": "notes.md", "description": "What we found"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var a artifacts.Artifact
+		if err := json.Unmarshal(reported[0].Data, &a); err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+
+	first := publish("one")
+	open := p.Inbox.OpenOf(tenant, inbox.KindArtifact)
+	if len(open) != 1 {
+		t.Fatalf("open artifact messages = %d, want 1", len(open))
+	}
+	m := open[0]
+	if m.Subject != "lead published notes.md" || m.From.Name != "lead" || m.Severity != inbox.Info ||
+		len(m.Parts) != 1 || m.Parts[0].Type != inbox.PartArtifact || m.Parts[0].State != inbox.PartInfo {
+		t.Fatalf("message = %+v", m)
+	}
+	if a := m.Parts[0].Artifact; a == nil || a.ID != first.ID || a.Version != 1 || a.Title != "notes.md" || a.Description != "What we found" {
+		t.Fatalf("artifact part = %+v", m.Parts[0].Artifact)
+	}
+	// A viewer may read artifacts, so the message is theirs too.
+	if !platform.InboxSees(viewer, inbox.KindArtifact) {
+		t.Fatal("a viewer should see artifact messages")
+	}
+
+	second := publish("two")
+	open = p.Inbox.OpenOf(tenant, inbox.KindArtifact)
+	if len(open) != 1 || open[0].Subject != "lead updated notes.md to version 2" {
+		t.Fatalf("after a second version, open = %+v", open)
+	}
+	if a := open[0].Parts[0].Artifact; a.ID != second.ID || a.Previous != first.ID {
+		t.Fatalf("second part = %+v", a)
+	}
+	if old, ok := p.Inbox.ByKey(tenant, "artifact:"+first.ID); !ok || old.State != inbox.Dismissed {
+		t.Fatalf("the first version's message = %+v, %v", old, ok)
+	}
+
+	if err := p.DeleteArtifact(t.Context(), admin, second.ID); err != nil {
+		t.Fatal(err)
+	}
+	if open = p.Inbox.OpenOf(tenant, inbox.KindArtifact); len(open) != 0 {
+		t.Fatalf("after deleting, open = %+v", open)
+	}
+}

@@ -15,8 +15,8 @@ export function consoleUrl(view: string, extra: Record<string, string> = {}, bas
 /** One inbox message: the inbox, with that message open. */
 export const inboxItemUrl = (id: string, base?: string) => consoleUrl("inbox", { message: id }, base);
 
-/** One alert: the Alerts page, with that alert open. */
-export const alertUrl = (id: string, base?: string) => consoleUrl("alerts", { alert: id }, base);
+/** One alert: the inbox, at the message the alert raised. */
+export const alertUrl = (id: string, base?: string) => consoleUrl("inbox", { alert: id }, base);
 
 /**
  * The alert a link names, from the alerts this person was given. The list is

@@ -1,7 +1,9 @@
 import { ActionId, canAct, type Resolution } from "@warp/core";
+import { DownloadIcon, FileIcon } from "@warp/render-web";
 import type { PartRenderer } from "@warp/web";
 import { useState } from "react";
 import { limitWord, type PlatformMessage, reached, type Source, scopeName } from "./mail.ts";
+import { bytes, contentUrl, inlineType, kindWord } from "./storage.ts";
 import { ago, button, counted, field, LimitField, type Period, primary, UsageMeter } from "./ui.tsx";
 
 /**
@@ -9,6 +11,8 @@ import { ago, button, counted, field, LimitField, type Period, primary, UsageMet
  * failures, memory to review, replies) is drawn by warp's mailbox.
  *
  * - An alert, so it can name its rule and link to it.
+ * - An artifact, so it can show the file, preview an image, and open it on
+ *   the Artifacts page with every version.
  * - A limit that was reached, so it can say which limit and on what, show the
  *   console's meter, and take any new limit rather than a few offered ones.
  */
@@ -48,12 +52,7 @@ export function platformParts(onOpen: (source: Source) => void): Record<string, 
       const { alert } = part;
       const may = canAct(part, ActionId.acknowledge);
       const acknowledge = () => onAction({ id: ActionId.acknowledge, payload: { turnId: message.id, target: part.id } });
-      // Snoozing hides the whole message until tomorrow. It is the message that sleeps, not this part.
-      const snooze = () =>
-        onAction({
-          id: ActionId.snooze,
-          payload: { turnId: message.id, target: message.id, option: new Date(Date.now() + 24 * 3_600_000).toISOString() },
-        });
+      // Snoozing is the whole message's, so it is in the reading pane's header, not here.
       const critical = alert.status === "down" || message.severity === "bad";
       return (
         <div data-testid="part-alert" className="flex flex-col gap-2">
@@ -71,7 +70,7 @@ export function platformParts(onOpen: (source: Source) => void): Record<string, 
               <button type="button" className={link} onClick={() => onOpen({ kind: "rule", id: alert.service, label: alert.service })}>
                 {alert.service}
               </button>
-              . Change what it watches for on the Alerts page.
+              . Change what it watches for in Monitor.
             </p>
           )}
           {part.resolution ? (
@@ -83,15 +82,53 @@ export function platformParts(onOpen: (source: Source) => void): Record<string, 
               <button type="button" className={primary} onClick={acknowledge}>
                 Acknowledge
               </button>
-              <button type="button" className={button} onClick={snooze}>
-                Snooze for a Day
-              </button>
             </div>
           )}
         </div>
       );
     },
     budget: (props) => <Budget {...props} />,
+    artifact: ({ part }) => {
+      if (part.type !== "artifact") return null;
+      const a = part.artifact;
+      const image = inlineType(a.mimeType ?? "");
+      const facts = [kindWord[a.kind], a.sizeBytes === undefined ? null : bytes(a.sizeBytes), a.version ? `Version ${a.version}` : null].filter(Boolean);
+      return (
+        <div data-testid="part-artifact" className="flex min-w-0 flex-col gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span aria-hidden className="inline-flex size-10 shrink-0 items-center justify-center rounded-aui bg-aui-subtle text-aui-fg">
+              <FileIcon size={18} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-aui-sm font-medium text-aui-fg" title={a.title}>
+                {a.title}
+              </p>
+              <p className="truncate text-aui-xs text-aui-muted">{facts.join(" · ")}</p>
+            </div>
+          </div>
+          {a.description && <p className="max-w-[68ch] break-words text-aui-sm text-aui-muted">{a.description}</p>}
+          {image && (
+            <img
+              src={contentUrl(a.id, true)}
+              alt={a.description || a.title}
+              className="max-h-64 w-auto max-w-full self-start rounded-aui border border-[var(--warp-rule)] object-contain"
+            />
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={primary} onClick={() => onOpen({ kind: "artifact", id: a.id, label: a.title })}>
+              Open in Artifacts
+            </button>
+            <a className={button} href={contentUrl(a.id)} download={a.title}>
+              <DownloadIcon size={14} />
+              Download
+            </a>
+          </div>
+          {(a.version ?? 1) > 1 && (
+            <p className="text-aui-xs text-aui-muted">This replaces version {(a.version ?? 1) - 1}. Every version is kept in Artifacts.</p>
+          )}
+        </div>
+      );
+    },
   };
 }
 
