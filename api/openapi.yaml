@@ -66,7 +66,8 @@ tags:
     description: |
       The directory: who is in the workspace, by name, handle, picture and
       roles, from sign-ins, the Slack people a client maps and the policy's
-      subject grants. No email address is kept or shown.
+      subject grants. No email address is shown: a subject that holds one
+      is left out, and subjects are not searched.
   - name: settings
     description: Workspace settings.
   - name: preferences
@@ -2621,7 +2622,7 @@ paths:
       parameters:
         - name: q
           in: query
-          description: Keeps people whose name, handle or subject holds it, ignoring case.
+          description: Keeps people whose name or handle holds it, ignoring case. Subjects are not searched.
           schema: {type: string, maxLength: 100}
         - name: limit
           in: query
@@ -4011,12 +4012,16 @@ components:
             agent: {type: string}
         - {$ref: "#/components/schemas/AgentPlace"}
     Person:
-      description: One person in the directory. No email address is kept or shown.
+      description: |
+        One person in the directory. No email address is shown: a subject
+        that holds one, as a Tailscale login does, is left out.
       type: object
-      required: [subject, handle, roles, picture]
+      required: [handle, roles, picture]
       properties:
         subject:
-          description: Who they are to the identity provider, which member entries and grants name.
+          description: |
+            Who they are to the identity provider, which member entries and
+            grants name. Absent when it holds an email address.
           type: string
         name:
           description: The name they chose for themselves, or signed in with. Absent until one is known.

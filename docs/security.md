@@ -61,9 +61,13 @@ exist, or grant them `govern on projects`.
 
 The directory (`people:read`, which every built-in role holds) shows each
 person's name, handle, roles and picture to everyone in the workspace. No
-email address is kept or shown, a name that is an address is not kept as a
-name, and a picture is only one a person uploaded themselves, served by warp:
-reading the directory sends nobody else a request. People are recorded when
+email address is asked for or shown, and a name that is an address is not
+kept as a name. A subject is kept as the identity provider gives it, since it
+is the key a person signs in with, and can hold an address: a Tailscale login
+does, and so can the subject a Slack people map names. The directory leaves
+such a subject out and never searches subjects. A picture is only one a
+person uploaded themselves, served by warp: reading the directory sends
+nobody else a request. People are recorded when
 they make a request holding any permission, when a client maps a Slack person
 to them, and when the policy grants a role to their subject. A machine is not
 a person. A policy that should not list someone grants them no role.

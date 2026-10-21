@@ -468,8 +468,9 @@ Handle, SeenAt}`, written at sign-in and when a client maps a Slack person. At
 most 5,000 per tenant. `Handle` is `^[a-z0-9][a-z0-9._-]{0,31}$`, unique per
 tenant across people and agent names. A new agent named like a handle is
 refused (409 "a person goes by @dana"), and a colliding handle at first
-sign-in gets a suffix. `auto` and `sme` are reserved. No email is kept or
-shown.
+sign-in gets a suffix. `auto` and `sme` are reserved. No email is asked for
+or shown: a subject that holds an address (a Tailscale login) is kept as the
+key it is, left out of the directory, and subjects are never searched.
 
 ### Changes to existing stores
 
