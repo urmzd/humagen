@@ -2,6 +2,7 @@ import { defaultCopy } from "@warp/components";
 import { type FormEvent, useState } from "react";
 import type { Run } from "./adapter.ts";
 import { ApiError, api, type Revision, type Schedule, type ScheduleView } from "./api.ts";
+import { deliverFor, deliverOptions } from "./recap.ts";
 import { AgentMark, agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Section } from "./ui.tsx";
 
 const presets: { label: string; expression: string }[] = [
@@ -151,7 +152,7 @@ function ScheduleForm({
             label="Project"
             value={draft.project ?? ""}
             options={[{ value: "", label: "No project" }, ...projects.map((p) => ({ value: p, label: p }))]}
-            onChange={(next) => set({ project: next || undefined })}
+            onChange={(next) => set({ project: next || undefined, deliver: deliverFor(next || undefined, draft.deliver) })}
           />
         </Label>
       </div>
@@ -181,11 +182,8 @@ function ScheduleForm({
         <Menu
           label={copy.deliver}
           value={draft.deliver ?? ""}
-          options={[
-            { value: "", label: copy.deliverNone },
-            { value: "inbox", label: copy.deliverInbox(!editing) },
-          ]}
-          onChange={(next) => set({ deliver: next === "inbox" ? "inbox" : undefined })}
+          options={deliverOptions(draft.project, copy, !editing)}
+          onChange={(next) => set({ deliver: next === "inbox" || next === "project" ? next : undefined })}
         />
       </Label>
       <Problem message={problem} />
@@ -290,13 +288,15 @@ export function Schedules({
         actions={
           canWrite ? (
             <>
-              <button type="button" className={button} onClick={() => act(api.deleteSchedule(s.name), "The schedule could not be deleted.", () => select(null))}>
-                Delete
-              </button>
+              {!s.managed && (
+                <button type="button" className={button} onClick={() => act(api.deleteSchedule(s.name), "The schedule could not be deleted.", () => select(null))}>
+                  Delete
+                </button>
+              )}
               <button type="button" className={button} onClick={() => act(api.pauseSchedule(s.name, !s.paused), "The schedule could not be changed.")}>
                 {s.paused ? "Resume" : "Pause"}
               </button>
-              {!editing && (
+              {!editing && !s.managed && (
                 <button type="button" className={button} onClick={() => setEditing(true)}>
                   Edit
                 </button>
@@ -309,6 +309,7 @@ export function Schedules({
         }
       >
         <Problem message={problem} />
+        {s.managed && <p className="text-aui-xs text-aui-muted">{copy.managed}</p>}
         {editing ? (
           <ScheduleForm
             editing={s}

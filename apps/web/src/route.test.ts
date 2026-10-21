@@ -74,6 +74,12 @@ test("a project's address is its name, ~ is the workspace, and the default tab h
   assert.equal(href({ page: "projects", q: "globex", kind: "account" }), "/projects?q=globex&kind=account");
 });
 
+test("a project's schedules have their own address", () => {
+  assert.equal(href({ page: "project", name: "Field", tab: "schedules" }), "/projects/Field/schedules");
+  assert.deepEqual(at("/projects/Field/schedules"), { page: "project", name: "Field", tab: "schedules" });
+  assert.deepEqual(at("/projects/~/schedules"), { page: "project", name: "", tab: "schedules" });
+});
+
 test("a project tab or kind it does not know falls back to the default", () => {
   assert.deepEqual(at("/projects/Globex/bogus"), { page: "project", name: "Globex", tab: "overview" });
   assert.deepEqual(at("/projects/Globex/inbox"), { page: "project", name: "Globex", tab: "overview" });

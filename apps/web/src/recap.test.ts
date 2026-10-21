@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { recapCron, recapName, weeklyRecap } from "./recap.ts";
+import { deliverFor, deliverOptions, recapAgent, recapCron, recapName, weeklyRecap } from "./recap.ts";
 
 test("a recap runs on Monday between 08:01 and 08:59, never on :00 or :30", () => {
   const minutes = new Set<number>();
@@ -44,4 +44,34 @@ test("Add Weekly Recap posts the agent's answer to the project", () => {
     description: "Weekly",
     deliver: "project",
   });
+});
+
+test("the workspace's recap is filed in the workspace, ~", () => {
+  for (const root of ["", "~"]) {
+    const s = weeklyRecap(root, "warp-analyst", "What changed?", "Weekly");
+    assert.equal(s.name, "workspace-recap");
+    assert.equal(s.project, "~");
+    assert.equal(s.expression, recapCron("~"));
+  }
+});
+
+test("only a schedule filed in a project can post to one", () => {
+  const words = { deliverNone: "Keep", deliverInbox: (mine: boolean) => (mine ? "Mine" : "Theirs"), deliverProject: "Post" };
+  assert.deepEqual(
+    deliverOptions(undefined, words, true).map((o) => o.value),
+    ["", "inbox"],
+  );
+  assert.deepEqual(
+    deliverOptions("Field", words, false).map((o) => o.label),
+    ["Keep", "Theirs", "Post"],
+  );
+  assert.equal(deliverFor(undefined, "project"), undefined);
+  assert.equal(deliverFor("Field", "project"), "project");
+  assert.equal(deliverFor(undefined, "inbox"), "inbox");
+});
+
+test("a recap asks warp-analyst when it is there", () => {
+  assert.equal(recapAgent(["lead", "warp-analyst"]), "warp-analyst");
+  assert.equal(recapAgent(["lead"]), "lead");
+  assert.equal(recapAgent([]), undefined);
 });

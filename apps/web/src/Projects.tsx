@@ -30,6 +30,7 @@ import {
   updateOf,
   WORKSPACE,
 } from "./projects.ts";
+import { deliverOptions, recapAgent, recapName, weeklyRecap } from "./recap.ts";
 import { href, PROJECT_TABS, type ProjectTab } from "./route.ts";
 import {
   AgentMark,
@@ -53,6 +54,7 @@ import {
 } from "./ui.tsx";
 
 const words = defaultCopy.projects;
+const scheduleWords = defaultCopy.schedules;
 const section = "flex flex-col gap-2 border-aui-border border-t pt-5";
 const heading = "text-aui-base font-medium text-aui-fg";
 const fail = (set: (m: string) => void, fallback: string) => (e: unknown) => set(e instanceof ApiError ? e.message : fallback);
@@ -702,39 +704,73 @@ function SubProjects({
 /** What runs in a project on a timer, and a way to add one. */
 function Scheduled({
   name,
+  title,
   schedules,
   agents,
   canSchedule,
+  recap = false,
   onOpenThread,
   onSchedulesChanged,
   onChanged,
 }: {
   name: string;
+  /** The project's title, for the recap's question. */
+  title: string;
   schedules: ScheduleView[];
   agents: Revision[];
   canSchedule: boolean;
+  /** Offer "Add Weekly Recap" and where answers go: the Schedules tab. */
+  recap?: boolean;
   onOpenThread: (id: string) => void;
   onSchedulesChanged: () => void;
   onChanged: () => void;
 }) {
   const timed = schedules.filter((s) => (s.project ?? "") === name);
-  const [draft, setDraft] = useState({ name: "", expression: "0 9 * * 1-5", agent: "", text: "" });
+  const [draft, setDraft] = useState<{ name: string; expression: string; agent: string; text: string; deliver?: "inbox" | "project" }>({
+    name: "",
+    expression: "0 9 * * 1-5",
+    agent: "",
+    text: "",
+  });
   const [adding, setAdding] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const agent = draft.agent || agents[0]?.spec.name || "";
   const failed = (fallback: string) => fail(setProblem, fallback);
+  const recapper = recapAgent(agents.map((a) => a.spec.name));
+  const hasRecap = timed.some((s) => s.name === recapName(name));
+  const addRecap = () => {
+    if (!recapper) return;
+    setProblem(null);
+    api
+      .createSchedule(weeklyRecap(name, recapper, scheduleWords.recapText(title), scheduleWords.recapDescription))
+      .then(() => {
+        onSchedulesChanged();
+        onChanged();
+      })
+      .catch(failed("The recap could not be added."));
+  };
 
   return (
     <section className={section}>
       <div className="flex items-center justify-between gap-3">
         <h2 className={heading}>Scheduled ({timed.length})</h2>
-        {canSchedule && agents.length > 0 && !adding && (
-          <button type="button" className={button} onClick={() => setAdding(true)}>
-            New Schedule
-          </button>
-        )}
+        <span className="flex gap-2">
+          {recap && canSchedule && recapper && !hasRecap && (
+            <button type="button" className={button} onClick={addRecap}>
+              {scheduleWords.addWeeklyRecap}
+            </button>
+          )}
+          {canSchedule && agents.length > 0 && !adding && (
+            <button type="button" className={button} onClick={() => setAdding(true)}>
+              New Schedule
+            </button>
+          )}
+        </span>
       </div>
       <p className="max-w-xl text-aui-sm text-aui-muted">Each time one fires, its run is filed in this project and is sent what the project knows.</p>
+      {recap && recapper && (
+        <p className="max-w-xl text-aui-xs text-aui-muted">{hasRecap ? scheduleWords.hasRecap : scheduleWords.recapHint(recapper)}</p>
+      )}
       <Problem message={problem} />
       {adding && (
         <form
@@ -743,7 +779,7 @@ function Scheduled({
             e.preventDefault();
             setProblem(null);
             api
-              .createSchedule({ ...draft, agent, ...(name ? { project: name } : {}) })
+              .createSchedule({ ...draft, agent, project: name === "" ? "~" : name })
               .then(() => {
                 setDraft({ ...draft, name: "", text: "" });
                 setAdding(false);
@@ -767,6 +803,16 @@ function Scheduled({
           <Label text="What to ask">
             <textarea className={`${field} min-h-14`} value={draft.text} required onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
           </Label>
+          {recap && (
+            <Label text={scheduleWords.deliver} hint={scheduleWords.deliverHint}>
+              <Menu
+                label={scheduleWords.deliver}
+                value={draft.deliver ?? ""}
+                options={deliverOptions(name, scheduleWords, true)}
+                onChange={(v) => setDraft({ ...draft, deliver: v === "inbox" || v === "project" ? v : undefined })}
+              />
+            </Label>
+          )}
           <div className="flex justify-end gap-2">
             <button type="button" className={button} onClick={() => setAdding(false)}>
               Cancel
@@ -789,9 +835,11 @@ function Scheduled({
                   <span className="pl-2 text-aui-xs text-aui-muted">
                     <code className="font-aui-mono">{s.expression}</code> to {s.agent}
                     {s.paused ? ", paused" : ""}
+                    {s.deliver === "project" ? `, ${scheduleWords.deliverProject.toLowerCase()}` : ""}
                   </span>
                 </span>
                 <span className="block truncate text-aui-xs text-aui-muted">{s.text}</span>
+                {s.managed && <span className="block text-aui-xs text-aui-muted">{scheduleWords.managed}</span>}
               </span>
               {canSchedule && (
                 <button
@@ -1175,6 +1223,19 @@ export function ProjectPage({
 
       {tab === "context" ? (
         <ContextTab key={p.name} detail={detail} workspaceName={workspaceName} canWrite={canWrite} onSaved={changed} />
+      ) : tab === "schedules" ? (
+        <Scheduled
+          key={p.name}
+          name={p.name}
+          title={titleOf(p, workspaceName)}
+          schedules={schedules}
+          agents={agents}
+          canSchedule={can("schedules:write")}
+          recap
+          onOpenThread={onOpenThread}
+          onSchedulesChanged={onSchedulesChanged}
+          onChanged={changed}
+        />
       ) : (
         // Tasks, what sits below and what holds the project take the wide column; what every task is sent and what runs on a timer sit beside them.
         <div className="grid grid-cols-1 items-start gap-8 @4xl:grid-cols-[minmax(0,1fr)_20rem]">
@@ -1201,6 +1262,7 @@ export function ProjectPage({
             <SharedMemory project={p.name} canWrite={canWrite} onChanged={changed} />
             <Scheduled
               name={p.name}
+              title={titleOf(p, workspaceName)}
               schedules={schedules}
               agents={agents}
               canSchedule={can("schedules:write")}

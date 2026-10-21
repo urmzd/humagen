@@ -27,8 +27,9 @@ export function recapCron(project: string): string {
   return `${minute} 8 * * 1`;
 }
 
-/** A schedule's name for a project's recap: letters, digits and dashes, as schedule names are. */
+/** A schedule's name for a project's recap: letters, digits and dashes, as schedule names are. "~" and "" are the workspace. */
 export function recapName(project: string): string {
+  if (project === "" || project === "~") return "workspace-recap";
   const slug = project
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -46,11 +47,37 @@ export function recapName(project: string): string {
 export function weeklyRecap(project: string, agent: string, text: string, description: string): Schedule {
   return {
     name: recapName(project),
-    expression: recapCron(project),
+    expression: recapCron(project === "" ? "~" : project),
     agent,
     text,
-    project,
+    project: project === "" ? "~" : project,
     description,
     deliver: "project",
   };
+}
+
+/** Where a schedule's answers may go: the project only when it is filed in one. */
+export type Deliver = "" | "inbox" | "project";
+
+export function deliverOptions(
+  project: string | undefined,
+  words: { deliverNone: string; deliverInbox: (mine: boolean) => string; deliverProject: string },
+  mine: boolean,
+): { value: Deliver; label: string }[] {
+  const out: { value: Deliver; label: string }[] = [
+    { value: "", label: words.deliverNone },
+    { value: "inbox", label: words.deliverInbox(mine) },
+  ];
+  if (project !== undefined) out.push({ value: "project", label: words.deliverProject });
+  return out;
+}
+
+/** What deliver becomes when the project changes: a schedule filed nowhere cannot post to a project. */
+export function deliverFor(project: string | undefined, deliver: Schedule["deliver"]): Schedule["deliver"] {
+  return deliver === "project" && project === undefined ? undefined : deliver;
+}
+
+/** The agent a recap asks: warp-analyst when it is there, else the first agent offered. */
+export function recapAgent(agents: string[]): string | undefined {
+  return agents.includes("warp-analyst") ? "warp-analyst" : agents[0];
 }

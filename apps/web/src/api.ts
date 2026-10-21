@@ -116,8 +116,9 @@ export interface Schedule {
   /** What the schedule is for, at most 500 characters. The agent is not shown it. */
   description?: string;
   /**
-   * Where the answer of each run goes: the creator's inbox, or the project's
-   * (refused until project inboxes are built). Absent, it stays on the run.
+   * Where the answer of each run goes: the creator's inbox, or posted in the
+   * project (held for its owners where agent posts are reviewed). Absent, it
+   * stays on the run.
    */
   deliver?: "inbox" | "project";
 }
@@ -131,6 +132,8 @@ export type ScheduleEdit = Omit<Schedule, "name">;
 /** A schedule plus what makes it trustworthy: state, next fires, recent runs. */
 export interface ScheduleView extends Schedule {
   paused: boolean;
+  /** "file" while the platform file declares it: run and pause it here, change it in the file. */
+  managed?: "file";
   created_by?: string;
   /** Who last edited the schedule, and when. Absent until it is edited. */
   updated_by?: string;

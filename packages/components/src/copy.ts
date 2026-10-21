@@ -355,6 +355,13 @@ export const defaultCopy = {
     addWeeklyRecap: "Add Weekly Recap",
     recapText: (title: string) => `What changed in ${title} since the last recap?`,
     recapDescription: "A weekly recap of this project, posted to its inbox",
+    recapHint: (agent: string) =>
+      `Each Monday morning ${agent} looks at what changed here and posts it to the project.`,
+    hasRecap: "This project has a weekly recap.",
+    /** A schedule the platform file declares: run and pause it here, change it in the file. */
+    managed: "From the platform file. Change it there.",
+    tab: "Schedules",
+    none: "Nothing runs on a timer here.",
   },
   /** The one-field form a Slack mention or an expert's question opens to reply. */
   replyModal: {
@@ -519,7 +526,10 @@ export const defaultCopy = {
       below: (n: number) => `${n} ${n === 1 ? "sub-project" : "sub-projects"}`,
       active: (when: string) => `active ${when}`,
     },
-    tab: { overview: "Overview", context: "Context" } as Record<string, string>,
+    tab: { overview: "Overview", context: "Context", schedules: "Schedules" } as Record<
+      string,
+      string
+    >,
     tasks: "Tasks",
     noTasks:
       "Start a task here to keep its conversation, execution history and shared context in this project.",
