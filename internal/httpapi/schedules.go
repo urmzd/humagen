@@ -134,8 +134,8 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 // scheduleMeta checks that what a schedule names exists in the caller's
 // tenant now, and returns meta with its project set. A schedule runs an agent
 // with nobody present, so a missing agent is refused now rather than failing
-// every occurrence later. "~" is the workspace, which files a schedule in no
-// project.
+// every occurrence later, and so is one not available in the schedule's
+// project. "~" is the workspace, which files a schedule in no project.
 func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.Principal, body schedule, meta map[string]string) (map[string]string, bool) {
 	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, body.Agent, 0); err != nil {
 		s.problem(w, err)
@@ -151,6 +151,13 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 			return nil, false
 		}
 		meta[runs.MetaProject] = project
+	}
+	// The agent must be available where the schedule files its runs, or
+	// every occurrence would be refused. It is the answer admission would
+	// give, given now.
+	if err := s.P.Available(who.Tenant, meta[runs.MetaProject], body.Agent); err != nil {
+		s.problem(w, err)
+		return nil, false
 	}
 	return meta, true
 }
