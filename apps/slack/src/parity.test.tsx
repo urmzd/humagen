@@ -314,7 +314,13 @@ test("an inbox item is one message, with the same choices in both", () => {
 });
 
 test("every kind of inbox message holds the same content on both, as each surface is given it", () => {
-  for (const wire of [memoryMail(RUN), failureMail(RUN), alertMail(), budgetMail(), mentionMail()]) {
+  for (const wire of [
+    memoryMail(RUN),
+    failureMail(RUN),
+    alertMail(),
+    budgetMail(),
+    mentionMail(),
+  ]) {
     const message = fromServer(wire);
     // The console renders the message as the platform sends it, Slack as the app hands it over.
     const s = slack(<MessageView message={forSlack(message)} />);
@@ -330,18 +336,43 @@ test("every kind of inbox message holds the same content on both, as each surfac
 test("a mention is a message to reply to, the same on both, and replying posts as the reader", () => {
   const mention = fromServer(mentionMail());
   assert.equal(mention.template, "mention");
-  bothSay(<MessageView message={mention} />, "Ana mentioned you in #renewals", "@dana can you confirm the renewal date with Globex?", defaultCopy.template.mention);
+  bothSay(
+    <MessageView message={mention} />,
+    "Ana mentioned you in #renewals",
+    "@dana can you confirm the renewal date with Globex?",
+    defaultCopy.template.mention,
+  );
   const part = mention.parts[0];
   assert.equal(part?.type, "reply");
   // Replying is a resolve with the reader's words; nothing names an author.
-  const request = toRequest(mention, { id: ActionId.reply, payload: { turnId: mention.id, target: part?.id ?? "", text: "It renews in May." } });
-  assert.deepEqual(request, { call: "resolve", partId: "p1", action: "reply", values: { text: "It renews in May." } });
+  const request = toRequest(mention, {
+    id: ActionId.reply,
+    payload: { turnId: mention.id, target: part?.id ?? "", text: "It renews in May." },
+  });
+  assert.deepEqual(request, {
+    call: "resolve",
+    partId: "p1",
+    action: "reply",
+    values: { text: "It renews in May." },
+  });
   // Once replied, both show the record.
   const wire = mentionMail();
   const replied = fromServer({
     ...wire,
     state: "resolved",
-    parts: [{ ...(wire.parts as Record<string, unknown>[])[0], state: "resolved", actions: [], outcome: { action: "reply", by: "dana", at: "2026-10-09T00:50:00Z", note: "Replied as m-4" } }],
+    parts: [
+      {
+        ...(wire.parts as Record<string, unknown>[])[0],
+        state: "resolved",
+        actions: [],
+        outcome: {
+          action: "reply",
+          by: "dana",
+          at: "2026-10-09T00:50:00Z",
+          note: "Replied as m-4",
+        },
+      },
+    ],
   });
   bothSay(<MessageView message={replied} />, "Replied as m-4");
 });

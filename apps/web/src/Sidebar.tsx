@@ -52,6 +52,14 @@ const LayersIcon = glyph(
     <path d="m2 17 10 5 10-5M2 12l10 5 10-5" />
   </>,
 );
+/** Directory: the people and agents in the workspace. */
+const PeopleIcon = glyph(
+  <>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+  </>,
+);
 /** Monitor: a pulse, for how runs are going. */
 const PulseIcon = glyph(<path d="M22 12h-4l-3 9L9 3l-3 9H2" />);
 const BoxIcon = glyph(
@@ -284,6 +292,14 @@ export function Sidebar({
     },
     { to: { page: "context" }, label: "Context", icon: <LayersIcon />, show: can("knowledge:read"), active: here("context") },
     { to: { page: "agents" }, label: "Agents", icon: <BotIcon />, show: can("agents:read"), active: here("agents", "agent") },
+    // Who and what is in the workspace, for everyone in it.
+    {
+      to: { page: "directory", tab: "people" },
+      label: "Directory",
+      icon: <PeopleIcon />,
+      show: can("people:read") || can("agents:read") || can("projects:read"),
+      active: here("directory"),
+    },
     { to: { page: "artifacts" }, label: "Artifacts", icon: <BoxIcon />, show: can("artifacts:read"), active: here("artifacts") },
   ];
 

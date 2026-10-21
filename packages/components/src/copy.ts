@@ -266,7 +266,15 @@ export const defaultCopy = {
     tagOne: (example?: string) => `Tag an agent, for example @${example ?? "name"}.`,
     /** Where a default comes from: "from Field". */
     from: (project: string) => `from ${project}`,
-    setByUpgrade: "Workspace Default: @auto, set by the upgrade",
+    /** The composer's menu of who answers. */
+    choose: "Choose who answers",
+    /** Marks the agent that answers untagged messages where the person is. */
+    defaultChip: "Default",
+    /** @auto is chosen, or is the default, and has picked. */
+    picks: (agent: string) => `@auto picks @${agent}`,
+    picksWho: "@auto picks who answers",
+    /** The composer's prompt with nobody to answer yet. */
+    tagToAsk: "Tag an agent to ask",
   },
   /** The control for the root's default, which every project inherits. */
   workspaceDefault: "Workspace Default",
@@ -279,7 +287,16 @@ export const defaultCopy = {
     platform: "A platform agent: available wherever a project enables it",
     everywhere: "Available everywhere",
     nowhere: "Not enabled in any project yet.",
-    loses: (n: number) => `${n} project${n === 1 ? "" : "s"} will lose this agent.`,
+    loses: (n: number) => `${n} ${n === 1 ? "place" : "places"} will lose this agent.`,
+    /** On an agent's Access tab. */
+    title: "Where it answers",
+    hint: "A platform agent answers wherever a project enables it. An agent that lives in a project answers there and below, and nowhere else.",
+    home: "Lives in",
+    noHome: "No project: a platform agent",
+    livesHere: "Lives here",
+    fromProject: (title: string) => `from ${title}`,
+    moved: "Saved. It answers where it lives now.",
+    failed: "Where the agent lives could not be changed.",
   },
   /** Who and what is in the workspace, readable by everyone in it. */
   directory: {
@@ -295,6 +312,24 @@ export const defaultCopy = {
     noMatch: "Nothing matches that search.",
     /** A person's handle, which is how they are tagged. */
     handle: (handle: string) => `@${handle}`,
+    more: "Show More",
+    failed: "The directory could not be read.",
+    /** An agent's row: where it lives or that it is a platform agent, and where it is enabled. */
+    platformAgent: "Platform agent",
+    enabledIn: (places: string) => `Enabled in ${places}`,
+    enabledEverywhere: "Enabled everywhere",
+    notEnabled: "Not enabled anywhere",
+    /** A project's row: what it holds besides its tasks. */
+    holds: (schedules: number, notes: number) =>
+      [
+        schedules ? `${schedules} ${schedules === 1 ? "schedule" : "schedules"}` : "",
+        notes ? `${notes} ${notes === 1 ? "note" : "notes"}` : "",
+      ]
+        .filter(Boolean)
+        .join(", "),
+    livingHere: (agents: string) => `Agents living here: ${agents}`,
+    /** People are tagged by handle; agents by name. */
+    roles: (roles: string[]) => (roles.length ? roles.join(", ") : "No role"),
   },
   /** Raising a limit to an amount the reader types. */
   raiseLimit: "Raise Limit",
@@ -463,7 +498,42 @@ export const defaultCopy = {
       below: (n: number) => `${n} ${n === 1 ? "sub-project" : "sub-projects"}`,
       active: (when: string) => `active ${when}`,
     },
-    tab: { overview: "Overview", context: "Context", channels: "Channels" } as Record<string, string>,
+    tab: { overview: "Overview", context: "Context", agents: "Agents", channels: "Channels" } as Record<string, string>,
+    /** A project's Agents tab: what it turns on, and who answers untagged messages. */
+    agents: {
+      available: "Available here",
+      availableHint:
+        "Agents that may answer here and below: what this project and those above it enable, the agents that live here, narrowed by every allow list on the way.",
+      everyPlatform: "Every platform agent",
+      noneAvailable: "No agent may answer here. Enable one, or let one live here.",
+      default: "Default",
+      defaultHint:
+        "Answers a message that tags no agent, here and below. A project below can set its own.",
+      inherit: "Inherit",
+      inherits: (agent: string, from: string) => `Inherits @${agent} from ${from}`,
+      nobody: "Nobody answers untagged messages here. A message has to tag an agent.",
+      answers: (agent: string) => `@${agent} answers untagged messages here.`,
+      enable: "Enable",
+      enableHint:
+        "Platform agents this project turns on for itself and everything below. It adds to what the projects above enable.",
+      enableEvery: "Every platform agent",
+      enableEveryHint:
+        "Every agent that lives in no project. An agent that lives in a project is never reached this way.",
+      enableNone: "Enables nothing of its own.",
+      addAgent: "Add Agent",
+      allow: "Only these may run",
+      allowHint:
+        "When on, only the agents listed may answer here and below. A project below can only narrow it further.",
+      allowEmpty: "Name at least one agent, or turn this off.",
+      save: "Save Agents",
+      saved: "Saved",
+      governed: "Only those who govern projects change the workspace's agents and its default.",
+      managed: "The platform file sets these agents. They can't be changed here.",
+      lives: "Lives here",
+      livesHint: "Agents that live in this project answer here and below, and nowhere else.",
+      noneLive: "No agent lives here.",
+      failed: "The agents could not be saved.",
+    },
     tasks: "Tasks",
     noTasks:
       "Start a task here to keep its conversation, execution history and shared context in this project.",

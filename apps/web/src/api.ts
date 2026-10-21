@@ -1,5 +1,9 @@
 import { type AnswerRequest, answerPath } from "@warp/adapter/question";
 import type {
+  AgentHome,
+  Person,
+  ProjectAgentsInput,
+  ProjectAgentsView,
   ProjectDetail,
   ProjectInput,
   ProjectUpdate,
@@ -10,8 +14,15 @@ import type { BusEvent, Run } from "./adapter.ts";
 // The project tree's shapes are the generated client's own, from
 // api/openapi.yaml, so this file cannot drift from the contract on them.
 export type {
+  AgentHome,
+  AgentOffer,
+  AgentPlace,
+  DefaultResolved,
+  Person,
   Project,
   ProjectAccount,
+  ProjectAgentsInput,
+  ProjectAgentsView,
   ProjectChange,
   ProjectDetail,
   ProjectInput,
@@ -314,8 +325,11 @@ export interface Choice {
   matched?: string[];
 }
 
+/**
+ * Workspace settings. Who answers a message that tags no agent is not one of
+ * them: it is the workspace's default, on the root's agents.
+ */
 export interface Settings {
-  baseline: string;
   history: "recent" | "none";
   history_limit: number;
   title_agent: string;
@@ -546,7 +560,15 @@ export const api = {
     call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
   agents: () => call<{ agents: Revision[] }>("GET", "/api/agents").then((r) => r.agents),
   /** Every agent, and the names of those the platform provides, which cannot be edited. */
-  agentList: () => call<{ agents: Revision[]; builtin?: string[] }>("GET", "/api/agents"),
+  /**
+   * Every agent, the platform's own by name, where each that lives in a
+   * project lives, and which projects enable each ("~" is the workspace).
+   */
+  agentList: () =>
+    call<{ agents: Revision[]; builtin?: string[]; homes?: Record<string, string>; enabled_in?: Record<string, string[]> }>("GET", "/api/agents"),
+  /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */
+  setAgentHome: (agent: string, project: string) =>
+    call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),
   createAgent: (spec: AgentSpec) => call<Revision>("POST", "/api/agents", spec),
   reviseAgent: (spec: AgentSpec, expectedRev: number) =>
     call<Revision>("PUT", `/api/agents/${encodeURIComponent(spec.name)}`, {
@@ -582,7 +604,9 @@ export const api = {
     call<ThreadPage>("GET", `/api/threads/${encodeURIComponent(id)}`).then((r) =>
       r.turns.flatMap((t) => (t.run ? [t.run] : [])),
     ),
-  pick: (q: string) => call<Choice>("GET", `/api/pick?${new URLSearchParams({ q })}`),
+  /** Who @auto would pick for a message in a project, "" for the workspace. */
+  pick: (q: string, project = "") =>
+    call<Choice>("GET", `/api/pick?${new URLSearchParams(project ? { q, project } : { q })}`),
   settings: () => call<Settings>("GET", "/api/settings"),
   saveSettings: (s: Settings) => call<Settings>("PUT", "/api/settings", s),
   history: (name: string) =>
@@ -637,6 +661,19 @@ export const api = {
   createProject: (p: ProjectInput) => call<ProjectView>("POST", "/api/projects", p),
   /** Replace a project's title, description, account and instructions, as a whole, from the version read. */
   updateProject: (name: string, u: ProjectUpdate) => call<ProjectView>("PUT", `/api/projects/${projectPath(name)}`, u),
+  /** What a project turns on, what is available there, and who answers untagged messages. "" is the workspace. */
+  projectAgents: (name: string) => call<ProjectAgentsView>("GET", `/api/projects/${projectPath(name)}/agents`),
+  setProjectAgents: (name: string, input: ProjectAgentsInput) =>
+    call<ProjectAgentsView>("PUT", `/api/projects/${projectPath(name)}/agents`, input),
+  /** One page of the directory, by handle. `next` is the cursor for the page after, null at the end. */
+  people: (q: { q?: string; before?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (q.q) params.set("q", q.q);
+    if (q.before) params.set("before", q.before);
+    if (q.limit) params.set("limit", String(q.limit));
+    const query = params.toString();
+    return call<{ people: Person[]; next: string | null }>("GET", `/api/people${query ? `?${query}` : ""}`);
+  },
   deleteProject: (name: string) => call<void>("DELETE", `/api/projects/${projectPath(name)}`),
   projectMemory: (project: string) =>
     call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then((r) => r.notes),
