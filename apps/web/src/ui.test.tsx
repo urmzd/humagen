@@ -27,9 +27,10 @@ import { WebSurface } from "@warp/render-web";
 import { replay } from "./Runs.tsx";
 import { formats } from "./copyas.ts";
 import { emptyTurn } from "@warp/core";
+import { projectView } from "./projects.fixtures.ts";
 
 test("the projects page lists projects; creation follows permission", () => {
-  const project = { name: "launch", conversations: 3, active: 1, schedules: 0, notes: 0, proposed: 0 };
+  const project = projectView({ name: "launch", conversations: 3, active: 1 });
   const props = { projects: [project], onOpen: () => {}, onCreated: () => {} };
   const readOnly = renderToStaticMarkup(<ProjectsPage {...props} canCreate={false} />);
   assert.match(readOnly, />Projects</);
@@ -38,6 +39,23 @@ test("the projects page lists projects; creation follows permission", () => {
   assert.doesNotMatch(readOnly, /New Project/);
   assert.match(renderToStaticMarkup(<ProjectsPage {...props} canCreate />), /New Project/);
   assert.match(renderToStaticMarkup(<ProjectsPage {...props} projects={[]} canCreate />), /No projects yet/);
+});
+
+test("a project in the list says its kind and where it sits, deeper ones by their path", () => {
+  const globex = projectView({
+    name: "Globex",
+    title: "Globex Inc",
+    kind: "account",
+    depth: 2,
+    path: [
+      { name: "Field", title: "Field engineering", kind: "team" },
+      { name: "Globex", kind: "account" },
+    ],
+    account: { customer: "Globex Corporation" },
+  });
+  const html = renderToStaticMarkup(<ProjectsPage projects={[globex]} canCreate={false} onOpen={() => {}} onCreated={() => {}} />);
+  assert.match(html, /Globex Inc/);
+  assert.match(html, /Account · in Field engineering · Globex Corporation/);
 });
 
 const sidebarMe: Me = {
@@ -58,7 +76,7 @@ const task = (id: string, title: string): ThreadSummary => ({
   updated_at: "2026-01-01T00:00:00Z",
 });
 function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
-  const all = ["runs:read", "runs:write", "schedules:read", "agents:read", "knowledge:read", "evals:read", "alerts:read", "artifacts:read"];
+  const all = ["runs:read", "runs:write", "schedules:read", "agents:read", "knowledge:read", "evals:read", "alerts:read", "artifacts:read", "projects:read"];
   return renderToStaticMarkup(
     <Sidebar
       open

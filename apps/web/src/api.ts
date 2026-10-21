@@ -410,17 +410,107 @@ export interface PolicyChange {
   after?: Policy;
 }
 
-/** A project and what is in it. */
+/** What a member may do in a project, each including the one before. */
+export type ProjectRole = "viewer" | "member" | "owner";
+
+/** One member of a project: `*` (everyone), `role:<name>`, or a subject. */
+export interface ProjectEntry {
+  who: string;
+  role: ProjectRole;
+}
+
+/** The caller's role in a project, where it comes from and what gave it. */
+export interface ProjectAccess {
+  /** Empty is no role. */
+  role: "" | ProjectRole;
+  /** The project whose entry gave it, "" for the workspace. */
+  from: string;
+  /** The entry's who, "owner above", or "projects:govern". */
+  via: string;
+}
+
+/** What the caller may do on a project: their permission and their role together. */
+export type ProjectAction = "create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce";
+
+/** A workspace's own kind, a label over team or account. */
+export interface ProjectKindSpec {
+  name: string;
+  title?: string;
+  like: "team" | "account";
+}
+
+/** One project on the way down to another. */
+export interface ProjectStep {
+  name: string;
+  title?: string;
+  kind: string;
+}
+
+/** A project, where it sits, and what is in it. The workspace itself is the project named "". */
 export interface ProjectView {
   name: string;
+  title?: string;
   description?: string;
+  kind: string;
+  parent?: string;
+  account?: { customer?: string; external_id?: string; url?: string };
+  instructions?: string;
+  members: ProjectEntry[];
+  kinds?: ProjectKindSpec[];
+  archived?: boolean;
+  /** The lowest role that may announce. Absent is owner. */
+  announce?: ProjectRole;
+  managed?: string;
+  version: number;
+  created_by?: string;
+  created_at: string;
+  updated_by?: string;
+  updated_at: string;
+  depth: number;
+  path: ProjectStep[];
+  children: number;
   conversations: number;
   active: number;
+  active_at?: string;
   schedules: number;
   notes: number;
   proposed: number;
-  updated_at?: string;
+  access: ProjectAccess;
+  actions: ProjectAction[];
 }
+
+/** One project, the projects above and below it, and the limits that hold it. */
+export interface ProjectDetail {
+  project: ProjectView;
+  /** The workspace first, so they read as a breadcrumb. */
+  ancestors: ProjectView[];
+  children: ProjectView[];
+  /** Its own limit, each ancestor's nearest first, then the workspace's. `from` "" is the workspace. */
+  limits: { scope: PolicyScope; from: string }[];
+}
+
+/** Who holds a role in a project, and who owns it from above. */
+export interface ProjectMembers {
+  version: number;
+  members: ProjectEntry[];
+  inherited: { who: string; from: string }[];
+}
+
+/** One entry of the record of what changed on a project. */
+export interface ProjectChange {
+  seq: number;
+  at: string;
+  by: string;
+  project: string;
+  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home";
+  agent?: string;
+  note?: string;
+  before?: ProjectView;
+  after?: ProjectView;
+}
+
+/** A project's address in a path: `~` is the workspace. */
+export const projectPath = (name: string) => `/api/projects/${name === "" ? "~" : encodeURIComponent(name)}`;
 
 export interface Note {
   id: string;
@@ -579,7 +669,8 @@ export const api = {
     call<{ events: BusEvent[]; complete: boolean }>("GET", `/api/runs/${encodeURIComponent(id)}/events`),
   /** Everything recorded about a run and the runs under it, as one document. */
   manifest: (id: string) => call<unknown>("GET", `/api/runs/${encodeURIComponent(id)}/manifest`),
-  inboxCount: () => call<{ open: number; unread: number }>("GET", "/api/inbox/count"),
+  /** Open and unread count what may need the reader; updates are announcements they have not read, which never grow the badge. */
+  inboxCount: () => call<{ open: number; unread: number; updates: number }>("GET", "/api/inbox/count"),
   /** The id of the message an alert raised, or null when it raised none. */
   inboxFor: (alert: string) =>
     call<{ messages: { id: string }[] }>("GET", `/api/inbox?alert=${encodeURIComponent(alert)}`).then((r) => r.messages[0]?.id ?? null),
@@ -605,22 +696,57 @@ export const api = {
     call<void>("DELETE", `/api/policies?${new URLSearchParams({ kind: scope.kind, name: scope.name ?? "" })}`),
   policyHistory: () => call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
   usage: () => call<{ scopes: ScopeUsage[] }>("GET", "/api/usage").then((r) => r.scopes),
-  projects: () => call<{ projects: ProjectView[] }>("GET", "/api/projects").then((r) => r.projects),
-  createProject: (name: string, description: string) => call<void>("POST", "/api/projects", { name, description }),
-  deleteProject: (name: string) => call<void>("DELETE", `/api/projects/${encodeURIComponent(name)}`),
+  /** Every project the caller can see, in tree order, read a page at a time: at most 500. */
+  projects: async () => {
+    const all: ProjectView[] = [];
+    let before: string | null = null;
+    for (let page = 0; page < 5; page++) {
+      const q = new URLSearchParams({ limit: "100" });
+      if (before) q.set("before", before);
+      const r = await call<{ projects: ProjectView[]; next: string | null }>("GET", `/api/projects?${q}`);
+      all.push(...r.projects);
+      before = r.next;
+      if (!before) break;
+    }
+    return all;
+  },
+  project: (name: string) => call<ProjectDetail>("GET", projectPath(name)),
+  createProject: (name: string, description: string, parent?: string) =>
+    call<ProjectView>("POST", "/api/projects", parent ? { name, description, parent } : { name, description }),
+  updateProject: (
+    name: string,
+    body: { version: number; title?: string; description?: string; instructions?: string; account?: ProjectView["account"]; kind?: string; archived?: boolean; announce?: "" | ProjectRole },
+  ) => call<ProjectView>("PUT", projectPath(name), body),
+  deleteProject: (name: string) => call<void>("DELETE", projectPath(name)),
+  projectMembers: (name: string) => call<ProjectMembers>("GET", `${projectPath(name)}/members`),
+  setProjectMembers: (name: string, version: number, members: ProjectEntry[]) =>
+    call<ProjectMembers>("PUT", `${projectPath(name)}/members`, { version, members }),
+  moveProject: (name: string, version: number, parent: string) => call<ProjectView>("POST", `${projectPath(name)}/move`, { version, parent }),
+  projectHistory: (name: string, before?: string) =>
+    call<{ changes: ProjectChange[]; next: string | null }>(
+      "GET",
+      `${projectPath(name)}/history?${new URLSearchParams(before ? { limit: "50", before } : { limit: "50" })}`,
+    ),
+  /** A tighten-only limit, as an owner of a project above. */
+  setProjectLimit: (name: string, limits: { period: "day" | "month"; max_runs?: number; max_concurrent?: number; spend_limit?: number; max_tokens?: number }) =>
+    call<Policy>("PUT", `${projectPath(name)}/limits`, limits),
+  deleteProjectLimit: (name: string) => call<void>("DELETE", `${projectPath(name)}/limits`),
+  postAnnouncement: (name: string, a: { subject: string; text: string; severity?: "info" | "warning" }) =>
+    call<unknown>("POST", `${projectPath(name)}/announcements`, a),
+  withdrawAnnouncement: (name: string, id: string) =>
+    call<void>("DELETE", `${projectPath(name)}/announcements/${encodeURIComponent(id)}`),
   projectMemory: (project: string) =>
-    call<{ notes: Note[] }>("GET", `/api/projects/${encodeURIComponent(project)}/memory`).then((r) => r.notes),
-  addProjectMemory: (project: string, text: string) =>
-    call<Note>("POST", `/api/projects/${encodeURIComponent(project)}/memory`, { text }),
+    call<{ notes: Note[] }>("GET", `${projectPath(project)}/memory`).then((r) => r.notes),
+  addProjectMemory: (project: string, text: string) => call<Note>("POST", `${projectPath(project)}/memory`, { text }),
   approveProjectMemory: (project: string, ids: string[]) =>
-    call<{ approved: number }>("POST", `/api/projects/${encodeURIComponent(project)}/memory/approve`, { ids }),
+    call<{ approved: number }>("POST", `${projectPath(project)}/memory/approve`, { ids }),
   removeProjectMemory: (project: string, id: string) =>
-    call<void>("DELETE", `/api/projects/${encodeURIComponent(project)}/memory/${encodeURIComponent(id)}`),
+    call<void>("DELETE", `${projectPath(project)}/memory/${encodeURIComponent(id)}`),
   removeMemory: (agent: string, id: string) =>
     call<void>("DELETE", `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`),
 
   preferences: () => call<Preferences>("GET", "/api/preferences"),
-  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[] }) =>
+  savePreferences: (p: Pick<Preferences, "display_name" | "theme" | "accent"> & { onboarded?: boolean; pinned?: string[]; muted?: string[] }) =>
     call<Preferences>("PUT", "/api/preferences", p),
   removePhoto: () => call<Preferences>("DELETE", "/api/preferences/photo"),
   // The picture is sent as its own bytes. The server decides what it is.

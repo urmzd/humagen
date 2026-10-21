@@ -13,7 +13,13 @@ test("every route survives a round trip through its address", () => {
     { page: "new", project: "launch" },
     { page: "task", id: "t-1" },
     { page: "projects" },
-    { page: "project", name: "Q4 launch" },
+    { page: "project", name: "Q4 launch", tab: "inbox" },
+    { page: "project", name: "Q4 launch", tab: "inbox", message: "m7" },
+    { page: "project", name: "~", tab: "people" },
+    { page: "project", name: "Globex", tab: "overview" },
+    { page: "project", name: "Globex", tab: "context" },
+    { page: "project", name: "Globex", tab: "limits" },
+    { page: "project", name: "Globex", tab: "history" },
     { page: "schedules" },
     { page: "schedules", name: "nightly" },
     { page: "new", agent: "warp-analyst", ask: "How did runs go today?" },
@@ -56,6 +62,17 @@ test("the Directory opens on People, and each tab has its own path", () => {
   assert.equal(href({ page: "directory", tab: "projects" }), "/directory/projects");
   assert.deepEqual(at("/directory/people"), { page: "directory", tab: "people" });
   assert.deepEqual(at("/directory/bogus"), { page: "directory", tab: "people" });
+});
+
+test("a project opens on its inbox, and each tab has its own path", () => {
+  assert.equal(href({ page: "project", name: "Globex", tab: "inbox" }), "/projects/Globex");
+  assert.equal(href({ page: "project", name: "Globex", tab: "inbox", message: "m1" }), "/projects/Globex?message=m1");
+  assert.equal(href({ page: "project", name: "~", tab: "people" }), "/projects/~/people");
+  assert.equal(href({ page: "project", name: "Q4 launch", tab: "history" }), "/projects/Q4%20launch/history");
+  assert.deepEqual(at("/projects/Globex/inbox?message=m1"), { page: "project", name: "Globex", tab: "inbox", message: "m1" });
+  // A message is a selection in the inbox, and nowhere else.
+  assert.deepEqual(at("/projects/Globex/people?message=m1"), { page: "project", name: "Globex", tab: "people" });
+  assert.deepEqual(at("/projects/Globex/bogus"), { page: "project", name: "Globex", tab: "inbox" });
 });
 
 test("old ?view= links open the page they named", () => {

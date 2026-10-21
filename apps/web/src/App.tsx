@@ -28,7 +28,10 @@ import { Schedules } from "./Schedules.tsx";
 import { Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
-import { type AgentTab, type Route, type SettingsSection, useRoute } from "./route.ts";
+import { updatesOf } from "@warp/adapter";
+import { HomeLines } from "./HomePage.tsx";
+import { type Source as About, type PlatformMessage, transport as mail } from "./mail.ts";
+import { type AgentTab, href, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { Page, primary } from "./ui.tsx";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "error"; message: string } | { state: "ready"; me: Me };
@@ -130,6 +133,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const [inboxCounts, setInboxCounts] = useState({ open: 0, unread: 0 });
   const [inboxTick, setInboxTick] = useState(0);
   const [projects, setProjects] = useState<ProjectView[]>([]);
+  // The reader's own open announcements, for What's new on Home.
+  const [announced, setAnnounced] = useState<PlatformMessage[]>([]);
   const [open, setOpen] = useState(() => stored(SIDEBAR_KEY, window.innerWidth >= 768));
   const [runs, setRuns] = useState<Run[]>([]);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -188,12 +193,17 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const loadInbox = useCallback(() => {
     if (!can("runs:read")) return;
     api.inboxCount().then(setInboxCounts).catch(() => {});
+    if (can("projects:read"))
+      mail
+        .list({ limit: 20, state: "open", kind: "announcement" })
+        .then((page) => setAnnounced(page.messages))
+        .catch(() => {});
     setInboxTick((t) => t + 1);
     // Settling a message settles its alert, which the Alerts badge counts.
     if (can("alerts:read")) api.alerts().then(setAlerts).catch(() => {});
   }, [can]);
   const loadProjects = useCallback(() => {
-    if (can("runs:read")) api.projects().then(setProjects).catch(() => {});
+    if (can("projects:read")) api.projects().then(setProjects).catch(() => {});
   }, [can]);
   const loadSources = useCallback(() => {
     if (can("knowledge:read")) api.sources().then(setSources).catch(() => {});
@@ -287,7 +297,31 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   };
   // A new conversation is home: the same empty composer, at the bare address.
   const newChat = (inProject?: string) => go({ page: "new", project: inProject });
-  const openProject = (name: string) => go({ page: "project", name });
+  // A project opens on its inbox. The workspace itself is "~".
+  const openProject = (name: string, tab: ProjectTab = "inbox") => go({ page: "project", name: name === "" ? "~" : name, tab });
+  // What a message is about, opened where it lives.
+  const openSource = (source: About) =>
+    source.kind === "run"
+      ? openRun(source.id)
+      : source.kind === "thread"
+        ? openThread(source.id)
+        : source.kind === "agent"
+          ? openAgent(source.id)
+          : source.kind === "project"
+            ? openProject(source.id)
+            : source.kind === "artifact"
+              ? go({ page: "artifacts", artifact: source.id })
+              : go({ page: "monitor", tab: "rules" });
+  // Muting shows at once and is saved with the person's preferences.
+  const mute = (project: string, on: boolean) => {
+    const next = on ? [...prefs.muted.filter((p) => p !== project), project] : prefs.muted.filter((p) => p !== project);
+    const before = prefs;
+    setPrefs({ ...prefs, muted: next });
+    api
+      .savePreferences({ display_name: prefs.display_name, theme: prefs.theme, accent: prefs.accent, muted: next })
+      .then(setPrefs)
+      .catch(() => setPrefs(before));
+  };
   const openAgent = (name: string | null, tab: AgentTab = "prompt") => go({ page: "agent", name, tab });
   const openSettings = (section: SettingsSection) => go({ page: "settings", section });
   // Pinning shows at once and is saved with the person's preferences. If the
@@ -302,6 +336,14 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       .catch(() => setPrefs(before));
   };
   const stats = useMemo(() => new Map((day?.by_agent ?? []).map((g) => [g.name, g])), [day]);
+  const updates = useMemo(() => {
+    const titles = new Map(projects.map((p) => [p.name, p.title || p.name]));
+    return updatesOf(
+      announced,
+      (name) => (name === "" ? workspace?.workspace_name || "the workspace" : (titles.get(name) ?? name)),
+      (name, id) => href({ page: "project", name: name || "~", tab: "inbox", message: id }),
+    );
+  }, [announced, projects, workspace?.workspace_name]);
   const agentName = route.page === "agent" ? route.name : null;
   const editing = agents.find((a) => a.spec.name === agentName) ?? null;
   const shownName = prefs?.display_name || me.principal.name || "";
@@ -351,6 +393,14 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               loadProjects();
               loadAgents();
             }}
+            home={
+              <HomeLines
+                needsYou={inboxCounts.open}
+                updates={updates}
+                onInbox={() => go({ page: "inbox" })}
+                onUpdate={(u) => go({ page: "project", name: u.project || "~", tab: "inbox", message: u.id })}
+              />
+            }
             onThread={(id) => go({ page: "task", id }, { replace: route.page === "new" })}
             onChanged={loadRuns}
           />
@@ -358,7 +408,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         {route.page === "projects" && (
           <ProjectsPage
             projects={projects}
-            canCreate={can("runs:write")}
+            canCreate={can("projects:write")}
             onOpen={openProject}
             onCreated={(name) => {
               loadProjects();
@@ -367,38 +417,43 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             }}
           />
         )}
-        {route.page === "project" &&
-          (() => {
-            const current = projects.find((p) => p.name === route.name);
-            return current ? (
-              <ProjectPage
-                key={current.name}
-                project={current}
-                threads={threads}
-                schedules={schedules}
-                agents={agents}
-                canWrite={can("runs:write")}
-                canSchedule={can("schedules:write")}
-                canLimit={can("billing:write")}
-                tick={tick}
-                onBack={() => go({ page: "projects" })}
-                onNewChat={() => newChat(current.name)}
-                onOpenThread={openThread}
-                onChanged={() => {
-                  loadProjects();
-                  loadInbox();
-                }}
-                onSchedulesChanged={loadSchedules}
-                onDeleted={() => {
-                  loadProjects();
-                  loadAgents();
-                  go({ page: "projects" }, { replace: true });
-                }}
-              />
-            ) : (
-              <Missing what="project" name={route.name} onBack={() => go({ page: "projects" })} />
-            );
-          })()}
+        {route.page === "project" && (
+          <ProjectPage
+            key={route.name}
+            name={route.name}
+            tab={route.tab}
+            message={route.message}
+            me={me.principal.subject}
+            workspace={workspace?.workspace_name}
+            threads={threads}
+            schedules={schedules}
+            agents={agents}
+            canSchedule={can("schedules:write")}
+            canBilling={can("billing:write")}
+            canPropose={can("projects:write")}
+            muted={prefs.muted}
+            tick={tick}
+            inboxTick={inboxTick}
+            onTab={(tab) => go({ page: "project", name: route.name, tab })}
+            onMessage={(id) => go({ page: "project", name: route.name, tab: "inbox", message: id ?? undefined }, { replace: true })}
+            onBack={(parent) => (parent === null ? go({ page: "projects" }) : openProject(parent))}
+            onOpenProject={(name) => openProject(name)}
+            onNewChat={(project) => newChat(project)}
+            onOpenThread={openThread}
+            onOpenSource={openSource}
+            onChanged={() => {
+              loadProjects();
+              loadInbox();
+            }}
+            onSchedulesChanged={loadSchedules}
+            onMute={mute}
+            onDeleted={() => {
+              loadProjects();
+              loadAgents();
+              go({ page: "projects" }, { replace: true });
+            }}
+          />
+        )}
         {route.page === "schedules" && (
           <Schedules
             schedules={schedules}
@@ -438,19 +493,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             kind={route.kind ?? ""}
             onKind={(kind) => go({ page: "inbox", kind: kind || undefined }, { replace: true })}
             onCounts={setInboxCounts}
-            onOpen={(source) =>
-              source.kind === "run"
-                ? openRun(source.id)
-                : source.kind === "thread"
-                  ? openThread(source.id)
-                  : source.kind === "agent"
-                    ? openAgent(source.id)
-                    : source.kind === "project"
-                      ? openProject(source.id)
-                      : source.kind === "artifact"
-                        ? go({ page: "artifacts", artifact: source.id })
-                        : go({ page: "monitor", tab: "rules" })
-            }
+            onOpen={openSource}
           />
         )}
         {route.page === "context" && (

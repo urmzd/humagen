@@ -19,6 +19,13 @@ export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "eva
 export type MonitorTab = "overview" | "rules";
 export const MONITOR_TABS: MonitorTab[] = ["overview", "rules"];
 
+/**
+ * A project's tabs. The inbox is the default, so `/projects/{name}` opens what
+ * is new there. `~` names the workspace itself, the root of the tree.
+ */
+export type ProjectTab = "inbox" | "overview" | "context" | "people" | "limits" | "history";
+export const PROJECT_TABS: ProjectTab[] = ["inbox", "overview", "context", "people", "limits", "history"];
+
 /** The Directory: who and what is in the workspace, for everyone in it. */
 export type DirectoryTab = "people" | "agents" | "projects";
 export const DIRECTORY_TABS: DirectoryTab[] = ["people", "agents", "projects"];
@@ -31,7 +38,8 @@ export type Route =
   | { page: "new"; project?: string; agent?: string; ask?: string }
   | { page: "task"; id: string }
   | { page: "projects" }
-  | { page: "project"; name: string }
+  /** A project at a tab, and in its inbox, at a message. */
+  | { page: "project"; name: string; tab: ProjectTab; message?: string }
   | { page: "schedules"; name?: string }
   | { page: "monitor"; tab: MonitorTab }
   /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
@@ -71,8 +79,11 @@ export function href(r: Route): string {
       return `/tasks/${enc(r.id)}`;
     case "projects":
       return "/projects";
-    case "project":
-      return `/projects/${enc(r.name)}`;
+    case "project": {
+      const base = `/projects/${enc(r.name)}`;
+      if (r.tab !== "inbox") return `${base}/${r.tab}`;
+      return r.message ? `${base}?message=${enc(r.message)}` : base;
+    }
     case "schedules":
       return r.name ? `/schedules/${enc(r.name)}` : "/schedules";
     case "monitor":
@@ -164,8 +175,11 @@ function read(pathname: string, search: string): Route {
       return legacy(q) ?? { page: "new", project: q.get("project") ?? undefined, agent: q.get("agent") ?? undefined, ask: q.get("ask") ?? undefined };
     case "tasks":
       return a ? { page: "task", id: a } : { page: "new" };
-    case "projects":
-      return a ? { page: "project", name: a } : { page: "projects" };
+    case "projects": {
+      if (!a) return { page: "projects" };
+      const tab = pick(b, PROJECT_TABS, "inbox");
+      return { page: "project", name: a, tab, message: tab === "inbox" ? (q.get("message") ?? undefined) : undefined };
+    }
     case "schedules":
       return { page: "schedules", name: a };
     case "monitor":
