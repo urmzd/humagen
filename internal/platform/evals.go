@@ -13,7 +13,7 @@ import (
 
 // OriginEval marks a run raised by an eval, so it can be told apart from work
 // a person or a schedule asked for.
-const OriginEval = "eval"
+const OriginEval = runs.OriginEval
 
 // caseTimeout bounds one agent case. A case that outlives it fails, which is a
 // result, rather than holding the suite open.
@@ -99,6 +99,12 @@ func (p *Platform) evalCase(ctx context.Context, tenant string, suite evals.Suit
 			DurationMs: r.UpdatedAt.Sub(r.CreatedAt).Milliseconds(),
 		}
 	}
+	meta := map[string]string{"eval_suite": suite.Name, "eval_case": c.ID}
+	// An agent that lives in a project is tried there, and filed there, so
+	// the limits of its home's chain hold for its evals as for its work.
+	if home, ok := p.Projects.Tree(tenant).Home(suite.Subject); ok {
+		meta[runs.MetaProject] = home
+	}
 	started, err := p.Invoke(ctx, envelope.Tag{
 		ID:     fmt.Sprintf("eval-%s-%s-%s", tenant, evalID, c.ID),
 		Tenant: tenant,
@@ -106,7 +112,7 @@ func (p *Platform) evalCase(ctx context.Context, tenant string, suite evals.Suit
 		Origin: OriginEval,
 		Text:   c.Input,
 		Actor:  envelope.Actor{ID: "eval:" + suite.Name, Display: "eval " + suite.Name, Bot: true},
-		Meta:   map[string]string{"eval_suite": suite.Name, "eval_case": c.ID},
+		Meta:   meta,
 	})
 	if err != nil {
 		return failed("the run could not be started: "+err.Error(), runs.Run{})

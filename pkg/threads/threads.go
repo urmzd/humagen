@@ -298,6 +298,19 @@ func (m Mention) validate() error {
 	return nil
 }
 
+// CheckText refuses a message's text that cannot be posted: empty, longer
+// than MaxText, or not plain text. A post checks it before anything reads the
+// text, so nothing is looked up for a message that is refused.
+func CheckText(text string) error {
+	switch {
+	case strings.TrimSpace(text) == "":
+		return fmt.Errorf("%w: a message says something", ErrInvalid)
+	case len(text) > 4*MaxText || utf8.RuneCountInString(text) > MaxText || !plain(text):
+		return fmt.Errorf("%w: a message is at most %d characters", ErrInvalid, MaxText)
+	}
+	return nil
+}
+
 // validate checks a message on its own, as it is posted: not its place in
 // the thread, which the store fills in.
 func (m Message) validate() error {
@@ -307,10 +320,8 @@ func (m Message) validate() error {
 		return fmt.Errorf("%w: a message is posted by a person", ErrInvalid)
 	case chars(m.Name) > MaxName || !oneLine(m.Name):
 		return fmt.Errorf("%w: a name is one line of at most %d characters", ErrInvalid, MaxName)
-	case strings.TrimSpace(m.Text) == "":
-		return fmt.Errorf("%w: a message says something", ErrInvalid)
-	case chars(m.Text) > MaxText || !plain(m.Text):
-		return fmt.Errorf("%w: a message is at most %d characters", ErrInvalid, MaxText)
+	case CheckText(m.Text) != nil:
+		return CheckText(m.Text)
 	case len(m.Mentions) > MaxMentions:
 		return fmt.Errorf("%w: a message tags at most %d people and agents", ErrInvalid, MaxMentions)
 	case m.Via != ViaConsole && !validVia.MatchString(m.Via):

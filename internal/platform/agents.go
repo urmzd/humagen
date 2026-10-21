@@ -82,8 +82,8 @@ func onChain(tree *projects.Tree, project, name string) bool {
 
 // admitAgent is admission's availability check. A run filed in a project,
 // the root included, must use an agent available there. Housekeeping is
-// exempt, as it is from admission. An eval tries an agent where it lives, so
-// a project agent can be evaluated without being filed outside its home. A
+// exempt, as it is from admission. An eval is filed where its agent lives
+// (evalCase), so it is judged, and limited, there like any other run. A
 // scheduled run refused here keeps firing and is refused each time, and the
 // refusal is raised once, as an alert, until someone acknowledges it.
 func (p *Platform) admitAgent(tag envelope.Tag, project string) error {
@@ -92,9 +92,6 @@ func (p *Platform) admitAgent(tag envelope.Tag, project string) error {
 	}
 	tree := p.Projects.Tree(tag.Tenant)
 	at := project
-	if home, ok := tree.Home(tag.Agent); ok && tag.Origin == OriginEval {
-		at = home
-	}
 	if tree.IsAvailable(at, tag.Agent) {
 		return nil
 	}
@@ -243,7 +240,9 @@ func namedDefault(tree *projects.Tree, at Place) string {
 // (pick.ErrNoAgent when nothing fits). A named default that has stopped being
 // available is not passed over for the next one along: it is ErrNotAvailable,
 // saying why. Whether a tagged agent is available is admission's to say.
-func (p *Platform) resolveAgent(ctx context.Context, tenant string, at Place, asked, text string) (Answerer, error) {
+// routes, when set, is the client's list a surface sends the message through:
+// @auto picks only among the agents on it, and falls back only to one on it.
+func (p *Platform) resolveAgent(ctx context.Context, tenant string, at Place, asked, text string, routes func(string) bool) (Answerer, error) {
 	tree := p.Projects.Tree(tenant)
 	out := Answerer{Agent: asked}
 	if asked == "" {
@@ -254,7 +253,11 @@ func (p *Platform) resolveAgent(ctx context.Context, tenant string, at Place, as
 		out.Agent, out.From = d.Agent, d.From
 	}
 	if out.Agent == Auto {
-		choice, err := p.auto(ctx, tenant, tree, at.Project, text, namedDefault(tree, at), nil)
+		fallback := namedDefault(tree, at)
+		if routes != nil && !routes(fallback) {
+			fallback = ""
+		}
+		choice, err := p.auto(ctx, tenant, tree, at.Project, text, fallback, routes)
 		if err != nil {
 			return Answerer{}, err
 		}

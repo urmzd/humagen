@@ -239,9 +239,15 @@ func (p *Platform) checkTags(tenant string, tree *projects.Tree, project string,
 // answers it: the thread's project, with the thread's and its channel's
 // defaults nearer than the project's.
 func (p *Platform) placeOfThread(tenant string, th threads.Thread) Place {
-	ch, _ := p.Projects.Channel(tenant, th.Project, th.Channel)
+	return p.placeIn(tenant, th, "")
+}
+
+// placeIn is placeOfThread for a message a client sends, with the client's
+// default between the thread's and the channel's.
+func (p *Platform) placeIn(tenant string, th threads.Thread, clientDefault string) Place {
+	ch, _ := p.Projects.Channel(tenant, th.Project, cmp.Or(th.Channel, projects.General))
 	at := Place{Project: th.Project}
-	for _, d := range threads.Nearer(th, "", ch) {
+	for _, d := range threads.Nearer(th, clientDefault, ch) {
 		at.Nearer = append(at.Nearer, Nearer{Agent: d.Agent, From: d.From})
 	}
 	return at
@@ -380,6 +386,10 @@ func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
+	// Refused before its tags are looked up.
+	if err := threads.CheckText(in.Text); err != nil {
+		return Posted{}, err
+	}
 	switch in.Visibility {
 	case threads.Shared:
 	case threads.Private:
@@ -420,6 +430,10 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
+	// Refused before its tags are looked up.
+	if err := threads.CheckText(in.Text); err != nil {
+		return Posted{}, err
+	}
 	by, name, via, slack, err := p.author(who, in.ActAs)
 	if err != nil {
 		return Posted{}, err
@@ -436,7 +450,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
 	msg := threads.Message{By: by, Name: name, Text: in.Text, Mentions: mentions, Via: via, Prev: prev}
 	if in.Answers != nil {
-		if err := p.answerFromThread(ctx, who, th, *in.Answers, in.Text); err != nil {
+		if err := p.answerFromThread(ctx, who, in.ActAs, th, *in.Answers, in.Text); err != nil {
 			return Posted{}, err
 		}
 		a := *in.Answers
@@ -494,8 +508,10 @@ func (p *Platform) prevOf(tenant string, th threads.Thread, after string) (strin
 // answerFromThread records a message as a question's answer: the reply's
 // words, or the option it names. The question must be one a run of this
 // thread is parked on, and who may answer it is checked as on every other
-// path.
-func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, th threads.Thread, ref threads.AnswerRef, text string) error {
+// path. as is the person a surface's credential posts for, so the answer is
+// checked against and recorded as the person the message is posted as, with
+// the credential as the way it came.
+func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, as *ActAs, th threads.Thread, ref threads.AnswerRef, text string) error {
 	run, err := p.Runs.Get(who.Tenant, ref.Run)
 	if err != nil || run.Thread != th.ID {
 		return fmt.Errorf("%w: no run of this thread asked that", threads.ErrInvalid)
@@ -504,7 +520,7 @@ func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, th 
 	if !ok || len(m.Parts) == 0 {
 		return fmt.Errorf("%w: no run of this thread asked that", threads.ErrInvalid)
 	}
-	a := QuestionAnswer{Text: strings.TrimSpace(text)}
+	a := QuestionAnswer{Text: strings.TrimSpace(text), ActAs: as}
 	switch m.Parts[0].Type {
 	case inbox.PartReply:
 		a.Action = ActReply
@@ -624,7 +640,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	tagID := answerTagID(th.ID, m.ID, agent)
 	if agent == Auto {
-		who, err := p.resolveAgent(ctx, tenant, p.placeOfThread(tenant, th), Auto, m.Text)
+		who, err := p.resolveAgent(ctx, tenant, p.placeOfThread(tenant, th), Auto, m.Text, nil)
 		if err != nil {
 			return runs.Run{}, err
 		}
@@ -644,36 +660,96 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	})
 }
 
+// maxRoomDepth bounds how many times a transcript follows a branch back from
+// the runs that answer a message to the room before it.
+const maxRoomDepth = 8
+
+// room is a conversation's runs, read once for one transcript: the runs that
+// answer each message, and the runs that follow a run, as the API's
+// follow-ups do.
+type room struct {
+	answers map[string][]runs.Run
+	follows map[string][]runs.Run
+}
+
+func (p *Platform) roomOf(tenant, id string) room {
+	rm := room{answers: map[string][]runs.Run{}, follows: map[string][]runs.Run{}}
+	if turns, err := p.Runs.Conversation(tenant, id); err == nil {
+		for _, r := range turns {
+			switch {
+			case r.Message != "":
+				rm.answers[r.Message] = append(rm.answers[r.Message], r)
+			case r.Prev != "":
+				rm.follows[r.Prev] = append(rm.follows[r.Prev], r)
+			}
+		}
+	}
+	return rm
+}
+
+// after is the runs that follow a run, and the runs that follow them, made
+// before a moment: what the room showed after it then.
+func (rm room) after(id string, before time.Time) []threads.Turn {
+	var out []threads.Turn
+	next := []string{id}
+	for len(next) > 0 {
+		at := next[0]
+		next = next[1:]
+		for _, r := range rm.follows[at] {
+			if r.CreatedAt.Before(before) {
+				out = append(out, threads.RunTurn(r))
+				next = append(next, r.ID)
+			}
+		}
+	}
+	return out
+}
+
 // roomBefore is the thread as it stands before a message, on the message's
 // branch: the messages leading to it, each followed by the runs that answer
-// it, and ahead of them the turns of the conversation from before threads
-// that the first message follows.
+// it and the follow-ups to those made before the message, and ahead of them
+// the turns that the first message follows.
 func (p *Platform) roomBefore(tenant string, th threads.Thread, m threads.Message) []threads.Turn {
+	return p.messagesBefore(tenant, th, p.roomOf(tenant, th.ID), m, maxRoomDepth)
+}
+
+// branchBefore is the conversation as a follow-up through the API finds it:
+// the runs of its branch and, when the first of them answers a message, the
+// room up to and with that message ahead of them.
+func (p *Platform) branchBefore(tenant string, th threads.Thread, path []runs.Run) []threads.Turn {
+	return p.runsBefore(tenant, th, p.roomOf(tenant, th.ID), path, maxRoomDepth)
+}
+
+func (p *Platform) messagesBefore(tenant string, th threads.Thread, rm room, m threads.Message, depth int) []threads.Turn {
 	path, err := p.Threads.Path(tenant, th.ID, m.ID)
 	if err != nil {
 		return nil
 	}
-	answers := map[string][]runs.Run{}
-	if turns, err := p.Runs.Conversation(tenant, th.ID); err == nil {
-		for _, r := range turns {
-			if r.Message != "" {
-				answers[r.Message] = append(answers[r.Message], r)
-			}
-		}
-	}
 	var out []threads.Turn
 	if first := path[0]; first.Prev != "" && !strings.HasPrefix(first.Prev, "m-") {
-		if legacy, err := p.Runs.Path(tenant, first.Prev); err == nil {
-			for _, r := range legacy {
-				out = append(out, threads.RunTurn(r))
-			}
+		if branch, err := p.Runs.Path(tenant, first.Prev); err == nil {
+			out = p.runsBefore(tenant, th, rm, branch, depth)
 		}
 	}
 	for _, msg := range path[:len(path)-1] {
 		out = append(out, threads.MessageTurn(msg))
-		for _, r := range answers[msg.ID] {
+		for _, r := range rm.answers[msg.ID] {
 			out = append(out, threads.RunTurn(r))
+			out = append(out, rm.after(r.ID, m.At)...)
 		}
+	}
+	return out
+}
+
+func (p *Platform) runsBefore(tenant string, th threads.Thread, rm room, path []runs.Run, depth int) []threads.Turn {
+	var out []threads.Turn
+	if head := path[0]; depth > 0 && strings.HasPrefix(head.Prev, "m-") {
+		if m, err := p.Threads.Message(tenant, th.ID, head.Prev); err == nil {
+			out = append(p.messagesBefore(tenant, th, rm, m, depth-1), threads.MessageTurn(m))
+		}
+	}
+	for _, r := range path {
+		out = append(out, threads.RunTurn(r))
 	}
 	return out
 }
@@ -736,6 +812,9 @@ func (p *Platform) raiseMention(tenant string, th threads.Thread, m threads.Mess
 func (p *Platform) replyToMention(ctx context.Context, who auth.Principal, part inbox.MentionPart, text string) (threads.Message, error) {
 	if strings.TrimSpace(text) == "" {
 		return threads.Message{}, fmt.Errorf("%w: a reply says something", threads.ErrInvalid)
+	}
+	if err := threads.CheckText(text); err != nil {
+		return threads.Message{}, err
 	}
 	posted, err := p.PostMessage(ctx, who, part.Thread, MessageInput{Text: text, After: part.Message, reply: true})
 	return posted.Message, err

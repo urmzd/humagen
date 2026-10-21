@@ -3,9 +3,11 @@ package platform_test
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
@@ -16,8 +18,10 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/people"
 	"github.com/urmzd/warp/pkg/pick"
+	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state"
@@ -155,13 +159,52 @@ func TestAScheduleWhoseAgentStoppedBeingAvailableIsRefusedAndRaisedOnce(t *testi
 	}
 }
 
-func TestAnEvalTriesAnAgentWhereItLives(t *testing.T) {
+// An eval tries an agent where it lives, and files its runs there, so the
+// limits of its home's chain hold for its evals as for its work. An eval tag
+// that names no home is filed at the root, where a project agent is not
+// available.
+func TestAnEvalOfAProjectAgentIsFiledAndLimitedInItsHome(t *testing.T) {
 	p := start(t, call.Limits{})
 	globexHelper(t, p)
 	tg := tag("eval-1", "globex-helper")
 	tg.Origin = platform.OriginEval
-	if _, err := p.Invoke(t.Context(), tg); err != nil {
-		t.Fatalf("an eval of a project agent = %v", err)
+	if _, err := p.Invoke(t.Context(), tg); !errors.Is(err, platform.ErrNotAvailable) {
+		t.Fatalf("an eval of a project agent filed at the root = %v", err)
+	}
+	if _, err := p.Policies.Put(tenant, policy.Policy{Scope: policy.Scope{Kind: policy.Project, Name: "Field"}, Period: policy.Day, MaxRuns: 1, Action: policy.Block}, "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	suite := evals.Suite{Name: "globex", Target: evals.Agent, Subject: "globex-helper", Cases: []evals.Case{
+		{ID: "one", Input: "hello", Checks: []evals.Check{{Kind: evals.Contains, Value: "offline"}}},
+		{ID: "two", Input: "again", Checks: []evals.Check{{Kind: evals.Contains, Value: "offline"}}},
+	}}
+	if err := p.Evals.Put(tenant, suite, false); err != nil {
+		t.Fatal(err)
+	}
+	started, err := p.StartEval(t.Context(), tenant, "globex", "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var done evals.Run
+	eventually(t, "the eval finished", func() bool {
+		all, err := p.Evals.Runs(tenant, "globex")
+		for _, r := range all {
+			if r.ID == started.ID && r.Status != evals.Running {
+				done = r
+				return true
+			}
+		}
+		return err != nil
+	})
+	if len(done.Results) != 2 || done.Results[0].Error != "" {
+		t.Fatalf("the eval's results are %+v", done.Results)
+	}
+	first, err := p.Runs.Get(tenant, done.Results[0].RunID)
+	if err != nil || first.Project != "Globex" || !slices.Equal(first.Within, []string{"Field"}) {
+		t.Fatalf("the eval's run is filed at %q within %v (%v)", first.Project, first.Within, err)
+	}
+	if !strings.Contains(done.Results[1].Error, "limit") {
+		t.Fatalf("a second eval run escaped Field's limit of one: %+v", done.Results[1])
 	}
 }
 
@@ -525,5 +568,38 @@ func TestATurnCannotRunAutoItself(t *testing.T) {
 	p := start(t, call.Limits{})
 	if _, err := p.Invoke(t.Context(), envelope.Tag{ID: "a", Tenant: tenant, Agent: "auto", Origin: "api", Text: "hi"}); !errors.Is(err, platform.ErrNotAvailable) {
 		t.Fatalf("a run of auto itself = %v", err)
+	}
+}
+
+// @auto for a person a client's credential acts for picks only among the
+// agents the client may route to, whether the turn asks for it or the
+// client's default is auto, and never answers with an agent off its list.
+func TestAutoThroughAClientPicksOnlyAmongItsAgents(t *testing.T) {
+	f := &fakes{}
+	p := startWith(t, f.config())
+	ctx := t.Context()
+	if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{
+		Name: "releaser", Model: "offline", Provider: "offline", SystemPrompt: "x", Description: "Cuts releases and tags versions.",
+	}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "lead"})
+	in := slackClient("app", "A0APP", team, "auto")
+	in.Agents = []string{"helper"}
+	create(t, p, tenant, in)
+	if r, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-free", Agent: "auto", Text: "tag the next release"}); err != nil || r.Agent != "releaser" {
+		t.Fatalf("@auto with no client = %+v, %v", r, err)
+	}
+	for _, c := range []struct{ id, agent string }{{"t-asked", "auto"}, {"t-default", ""}} {
+		r, err := p.Converse(ctx, tenant, platform.Turn{ID: c.id, Agent: c.agent, Text: "tag the next release", Client: "app"})
+		if err == nil && r.Agent != "helper" {
+			t.Fatalf("%s through the client was answered by %s, off its list", c.id, r.Agent)
+		}
+		if err != nil && !errors.Is(err, pick.ErrNoAgent) {
+			t.Fatalf("%s through the client = %v", c.id, err)
+		}
+	}
+	if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-ghost", Agent: "auto", Text: "x", Client: "ghost"}); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("a turn through a client that is not there = %v", err)
 	}
 }

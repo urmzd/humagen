@@ -41,6 +41,10 @@ const OriginManual = "manual"
 // as naming a conversation. Nothing outside the platform can raise one.
 const OriginSystem = "system"
 
+// OriginEval marks a run raised by an eval, so it can be told apart from work
+// a person or a schedule asked for. Only the platform raises one.
+const OriginEval = "eval"
+
 // OriginAPI marks a run a caller asked for through the platform's API. It is
 // the only origin whose conversation keys are believed.
 const OriginAPI = "api"
@@ -99,10 +103,10 @@ func ClientOf(tag envelope.Tag) string {
 
 // ProjectOf returns the project a tag files its run under, or "". Only origins
 // whose project the server itself wrote are believed: the API, the cron trigger
-// (a schedule's project is set when the schedule is created) and a person's
-// run-now.
+// (a schedule's project is set when the schedule is created), a person's
+// run-now and an eval (an agent's home, where it is tried).
 func ProjectOf(tag envelope.Tag) string {
-	if tag.Origin == OriginAPI || tag.Origin == "cron" || tag.Origin == OriginManual {
+	if tag.Origin == OriginAPI || tag.Origin == "cron" || tag.Origin == OriginManual || tag.Origin == OriginEval {
 		return tag.Meta[MetaProject]
 	}
 	return ""
