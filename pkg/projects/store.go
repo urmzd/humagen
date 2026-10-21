@@ -152,6 +152,11 @@ func (t *tenant) load(key string, raw json.RawMessage) error {
 		if p.Name != strings.TrimPrefix(key, keyProject) {
 			return fmt.Errorf("%w: the project %q is kept under %q", ErrInvalid, p.Name, key)
 		}
+		// A record from before roles lists nobody. It reads as what it
+		// meant, and is written with members the next time it changes.
+		if p.Members == nil {
+			p.Members = legacyMembers(p.Name)
+		}
 		t.projects[p.Name] = p
 	case strings.HasPrefix(key, keyHistory):
 		var c Change
@@ -180,13 +185,18 @@ func (t *tenant) load(key string, raw json.RawMessage) error {
 }
 
 // check holds loaded records to what a tree must be: valid records, unique
-// names, every parent present, and no cycle. Caps are not checked, so a
-// tighter cap never stops a tree from loading.
+// names, kinds the workspace defines, every parent present, and no cycle.
+// Caps and openness are not checked, so a tighter rule never stops a tree
+// from loading: Resolve reads a project nobody matches as one nobody sees.
 func (t *tenant) check() error {
 	seen := map[string]string{}
+	kinds := t.projects[Root].Kinds
 	for name, p := range t.projects {
 		if err := p.validate(); err != nil {
 			return fmt.Errorf("%q: %w", name, err)
+		}
+		if like := likeIn(kinds, p.Kind); like == "" || p.Account != nil && like != Account {
+			return fmt.Errorf("%w: %q is of the kind %q, which the workspace does not define for it", ErrInvalid, name, p.Kind)
 		}
 		if other, dup := seen[strings.ToLower(name)]; dup {
 			return fmt.Errorf("%w: %q and %q are one name", ErrInvalid, other, name)
@@ -361,10 +371,9 @@ func ptr(p Project) *Project {
 	return &c
 }
 
-// place checks where a new project would sit: its parent, depth, kind and the
-// counts the caps bound. The caller holds the lock.
-func (s *Store) place(t *tenant, p Project, w Writer) error {
-	tree := build(t.projects)
+// place checks where a new project would sit: its parent, depth, kind,
+// openness and the counts the caps bound. The caller holds the lock.
+func (s *Store) place(tree *Tree, p Project, w Writer) error {
 	parent, ok := tree.Get(p.Parent)
 	if !ok {
 		return fmt.Errorf("%w: there is no project %q to put it under", ErrInvalid, p.Parent)
@@ -377,31 +386,30 @@ func (s *Store) place(t *tenant, p Project, w Writer) error {
 		return fmt.Errorf("%w: a project sits at most %d levels below the workspace", ErrInvalid, s.caps.Depth)
 	case len(tree.Children(p.Parent)) >= s.caps.Children:
 		return fmt.Errorf("%w: a project has at most %d sub-projects", ErrInvalid, s.caps.Children)
-	case p.Kind == Company && parent.Kind != Company:
-		return fmt.Errorf("%w: a company project sits under the workspace or another company project", ErrInvalid)
-	case accountLike(p.Kind) && accountLike(parent.Kind):
-		return fmt.Errorf("%w: an account cannot sit under another account", ErrInvalid)
-	case p.Kind == Company && !w.Govern:
+	}
+	if err := tree.kindRules(p, parent, nil); err != nil {
+		return err
+	}
+	if p.Kind == Company && !w.Govern {
 		return fmt.Errorf("%w: company projects need projects:govern", ErrForbidden)
 	}
+	if err := tree.open(p.Parent); err != nil {
+		return err
+	}
 	if p.Kind == Company {
-		n := 0
-		for _, q := range tree.Projects() {
-			if q.Kind == Company {
-				n++
-			}
-		}
-		if n >= s.caps.Company {
-			return fmt.Errorf("%w: a workspace has at most %d company projects", ErrLimit, s.caps.Company)
+		if err := s.companyRoom(tree); err != nil {
+			return err
 		}
 	}
-	return nil
+	return checkOpen(p, &parent, nil)
 }
 
 // Create adds a project. Its name must be free ignoring case, deleted names
 // included unless the writer holds projects:govern, and its place must keep
-// the tree within its caps and kind rules. The checks and the insert are one
-// step, so two creates cannot both take one name or the last place.
+// the tree within its caps, kind rules and openness. A project that lists
+// no members gets DefaultMembers with the writer as owner, everyone no more
+// open than the parent allows. The checks and the insert are one step, so
+// two creates cannot both take one name or the last place.
 func (s *Store) Create(tenantName string, p Project, w Writer, at time.Time) (Project, error) {
 	p = p.clone()
 	p.Kind = cmp.Or(p.Kind, Team)
@@ -409,18 +417,28 @@ func (s *Store) Create(tenantName string, p Project, w Writer, at time.Time) (Pr
 	if p.IsRoot() {
 		return Project{}, fmt.Errorf("%w: the workspace is the root, and is not created", ErrInvalid)
 	}
-	if err := p.validate(); err != nil {
-		return Project{}, err
+	if p.Archived {
+		return Project{}, fmt.Errorf("%w: a project is archived once it exists", ErrInvalid)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.create(tenantName, p, w, at)
+	return s.create(tenantName, p, w, at, w.By)
 }
 
-// create is Create, and Upsert's way in for a new project. The caller holds
-// the lock and has validated p.
-func (s *Store) create(tenantName string, p Project, w Writer, at time.Time) (Project, error) {
+// create is Create, and Upsert's way in for a new project. creator owns a
+// project that lists no members. The caller holds the lock.
+func (s *Store) create(tenantName string, p Project, w Writer, at time.Time, creator string) (Project, error) {
 	tx := s.begin(tenantName)
+	tree := build(tx.t.projects)
+	if p.Members == nil {
+		p.Members = DefaultMembers(tree.Like(p.Kind), creator)
+		if parent, ok := tree.Get(p.Parent); ok {
+			p.Members = limitOpenness(p.Members, parent)
+		}
+	}
+	if err := p.validate(); err != nil {
+		return Project{}, err
+	}
 	if have, ok := tx.t.lookup(p.Name); ok {
 		return Project{}, fmt.Errorf("%w: %q", ErrExists, have.Name)
 	}
@@ -432,7 +450,7 @@ func (s *Store) create(tenantName string, p Project, w Writer, at time.Time) (Pr
 		}
 		note = AdoptsNote
 	}
-	if err := s.place(tx.t, p, w); err != nil {
+	if err := s.place(tree, p, w); err != nil {
 		return Project{}, err
 	}
 	p.Version, p.CreatedBy, p.CreatedAt, p.UpdatedBy, p.UpdatedAt = 1, w.By, at, w.By, at
@@ -461,11 +479,13 @@ func current(t *tenant, name string) (Project, bool) {
 	return Project{}, false
 }
 
-// Update changes a project through the API. fn edits a copy; the name, kind,
-// parent, management and record fields cannot change, a field the file owns
-// cannot change (ErrManaged), and version must be the current one
-// (ErrVersion). The root and company projects need projects:govern. A change
-// that changes nothing writes nothing and keeps the version.
+// Update changes a project through the API. fn edits a copy; the name, the
+// parent (Move changes it), management and record fields cannot change, a
+// field the file owns cannot change (ErrManaged), and version must be the
+// current one (ErrVersion). The root and company projects, and making a
+// project company, need projects:govern. A new kind, new members, archiving
+// and the root's kinds are checked against the parent and the children. A
+// change that changes nothing writes nothing and keeps the version.
 func (s *Store) Update(tenantName, name string, version int, w Writer, at time.Time, fn func(*Project) error) (Project, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -485,10 +505,14 @@ func (s *Store) Update(tenantName, name string, version int, w Writer, at time.T
 		return Project{}, err
 	}
 	switch {
-	case next.Name != cur.Name || next.Kind != cur.Kind || next.Parent != cur.Parent:
-		return Project{}, fmt.Errorf("%w: a project's name, kind and parent are fixed when it is created", ErrInvalid)
+	case next.Name != cur.Name:
+		return Project{}, fmt.Errorf("%w: a project's name is fixed when it is created", ErrInvalid)
+	case next.Parent != cur.Parent:
+		return Project{}, fmt.Errorf("%w: a project changes parent by moving", ErrInvalid)
 	case next.Managed != cur.Managed || !slices.Equal(next.FileOwns, cur.FileOwns):
 		return Project{}, fmt.Errorf("%w: only the platform file manages a project", ErrInvalid)
+	case next.Kind == Company && !w.Govern:
+		return Project{}, fmt.Errorf("%w: company projects need projects:govern", ErrForbidden)
 	}
 	next.Version, next.CreatedBy, next.CreatedAt, next.UpdatedBy, next.UpdatedAt = cur.Version, cur.CreatedBy, cur.CreatedAt, cur.UpdatedBy, cur.UpdatedAt
 	if err := next.validate(); err != nil {
@@ -502,7 +526,27 @@ func (s *Store) Update(tenantName, name string, version int, w Writer, at time.T
 	if same(cur, next) {
 		return cur.clone(), nil
 	}
-	return s.replace(tx, cur, next, w.By, at, Updated)
+	if err := s.admit(tx.t, cur, next); err != nil {
+		return Project{}, err
+	}
+	return s.replace(tx, cur, next, w.By, at, whatChanged(cur, next))
+}
+
+// whatChanged names a new version for the record: a move, an archive, a
+// change to members alone, or an update.
+func whatChanged(cur, next Project) string {
+	switch {
+	case cur.Parent != next.Parent:
+		return Moved
+	case cur.Archived != next.Archived:
+		return Archived
+	}
+	rest := next.clone()
+	rest.Members = cur.Members
+	if same(cur, rest) {
+		return Members
+	}
+	return Updated
 }
 
 // replace writes next over cur as a new version.
@@ -533,7 +577,7 @@ func same(a, b Project) bool {
 			return false
 		}
 	}
-	return a.Managed == b.Managed && slices.Equal(a.FileOwns, b.FileOwns)
+	return a.Managed == b.Managed && slices.Equal(a.FileOwns, b.FileOwns) && a.Archived == b.Archived && a.Announce == b.Announce
 }
 
 func sameField(a, b Project, field string) bool {
@@ -550,6 +594,10 @@ func sameField(a, b Project, field string) bool {
 		return (a.Account == nil) == (b.Account == nil) && (a.Account == nil || *a.Account == *b.Account)
 	case FieldInstructions:
 		return a.Instructions == b.Instructions
+	case FieldMembers:
+		return slices.Equal(a.Members, b.Members)
+	case FieldKinds:
+		return slices.Equal(a.Kinds, b.Kinds)
 	}
 	return false
 }
@@ -608,9 +656,11 @@ func (s *Store) Tombstone(tenantName, name string) (Tombstone, bool) {
 // Upsert applies the platform file's declaration of a project: it creates the
 // project, or takes over the one by that name, with the fields owns lists set
 // from p and the rest left as they are. The file is the server's own
-// configuration, so it writes as projects:govern. A declaration that changes
-// nothing writes nothing and keeps the version. Parents come first: a project
-// whose parent is not there yet is refused.
+// configuration, so it writes as projects:govern, and a new kind or parent
+// is checked as Update and Move check them. A new project the file gives no
+// members has DefaultMembers with no owner but projects:govern. A
+// declaration that changes nothing writes nothing and keeps the version.
+// Parents come first: a project whose parent is not there yet is refused.
 func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, at time.Time) (Project, error) {
 	p = p.clone()
 	owns = slices.Clone(owns)
@@ -630,11 +680,14 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 			return Project{}, fmt.Errorf("%w: %q", ErrExists, have.Name)
 		}
 		p.Kind = cmp.Or(p.Kind, Team)
-		p.Managed, p.FileOwns = ManagedFile, owns
-		if err := p.validate(); err != nil {
-			return Project{}, err
+		p.Managed, p.FileOwns, p.Archived = ManagedFile, owns, false
+		if !slices.Contains(owns, FieldMembers) {
+			p.Members = nil
 		}
-		return s.create(tenantName, p, Writer{By: by, Govern: true}, at)
+		if !slices.Contains(owns, FieldKinds) {
+			p.Kinds = nil
+		}
+		return s.create(tenantName, p, Writer{By: by, Govern: true}, at, "")
 	}
 	next := cur.clone()
 	for _, f := range owns {
@@ -651,13 +704,14 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 			next.Account = p.Account
 		case FieldInstructions:
 			next.Instructions = p.Instructions
+		case FieldMembers:
+			next.Members = slices.Clone(p.Members)
+		case FieldKinds:
+			next.Kinds = slices.Clone(p.Kinds)
 		}
 	}
 	if next.IsRoot() {
-		next.Kind = Company
-	}
-	if next.Kind != cur.Kind || next.Parent != cur.Parent {
-		return Project{}, fmt.Errorf("%w: %q is a %s under %s; a project's kind and parent are fixed when it is created", ErrInvalid, display(cur.Name), cur.Kind, display(cur.Parent))
+		next.Kind, next.Parent = Company, Root
 	}
 	next.Managed, next.FileOwns = ManagedFile, owns
 	if err := next.validate(); err != nil {
@@ -666,7 +720,10 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 	if same(cur, next) {
 		return cur.clone(), nil
 	}
-	what := Updated
+	if err := s.admit(tx.t, cur, next); err != nil {
+		return Project{}, err
+	}
+	what := whatChanged(cur, next)
 	if cur.Managed != ManagedFile {
 		what = Managed
 	}
@@ -708,7 +765,7 @@ func (s *Store) Import(tenantName string, ps []Project, by string, at time.Time)
 	}
 	tx.root(by, at)
 	for _, p := range ps {
-		p = Project{Name: p.Name, Description: legacyText(p.Description, MaxDescription), Kind: Team}
+		p = Project{Name: p.Name, Description: legacyText(p.Description, MaxDescription), Kind: Team, Members: legacyMembers(p.Name)}
 		if err := p.validate(); err != nil {
 			return fmt.Errorf("%q: %w", p.Name, err)
 		}

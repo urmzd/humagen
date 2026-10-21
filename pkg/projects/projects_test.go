@@ -61,7 +61,7 @@ func TestFortyRacersCreatingOneNameKeepOne(t *testing.T) {
 }
 
 func TestTheCapHoldsUnderRacingCreates(t *testing.T) {
-	s := projects.NewStore()
+	s := projects.NewStore(projects.WithCaps(projects.Caps{Projects: 100}))
 	var wg sync.WaitGroup
 	var limited atomic.Int64
 	for i := range 140 {
@@ -163,10 +163,9 @@ func TestANameIsItsIdentityIgnoringCase(t *testing.T) {
 	if _, err := s.Create("acme", team("Globex", "FIELD"), ada, t0); !errors.Is(err, projects.ErrInvalid) {
 		t.Fatalf("a parent in another case = %v", err)
 	}
-	// The name cannot change, nor the kind or the parent.
+	// The name cannot change, and the parent changes only by moving.
 	for _, edit := range []func(*projects.Project){
 		func(p *projects.Project) { p.Name = "Field2" },
-		func(p *projects.Project) { p.Kind = projects.Account },
 		func(p *projects.Project) { p.Parent = "Other" },
 	} {
 		if _, err := s.Update("acme", "Field", 1, ada, t0, func(p *projects.Project) error { edit(p); return nil }); !errors.Is(err, projects.ErrInvalid) {
@@ -317,10 +316,6 @@ func TestManagedFields(t *testing.T) {
 	if err := s.Delete("acme", "Field", ada, t0, nil); !errors.Is(err, projects.ErrManaged) {
 		t.Fatalf("deleting a managed project = %v", err)
 	}
-	// The file cannot move a project or change its kind in phase 1.
-	if _, err := s.Upsert("acme", projects.Project{Name: "Field", Kind: projects.Account}, []string{projects.FieldKind}, "file", t0); !errors.Is(err, projects.ErrInvalid) {
-		t.Fatalf("the file changing a kind = %v", err)
-	}
 	// A project that left the file stays, unmanaged.
 	released, err := s.Release("acme", "Field", "file", t0)
 	if err != nil || released.Managed != "" || released.Title != "Field engineering" {
@@ -333,6 +328,15 @@ func TestManagedFields(t *testing.T) {
 	created, err := s.Upsert("acme", projects.Project{Name: "Globex", Parent: "Field", Kind: projects.Account}, []string{projects.FieldParent, projects.FieldKind}, "file", t0)
 	if err != nil || created.Version != 1 || created.Managed != projects.ManagedFile || created.Kind != projects.Account {
 		t.Fatalf("created by the file = %+v, %v", created, err)
+	}
+	// The file names nobody, so only projects:govern owns what it made.
+	if want := []projects.Entry{{Who: "*", Role: projects.Viewer}}; !slices.Equal(created.Members, want) {
+		t.Fatalf("the file's members = %+v, want %+v", created.Members, want)
+	}
+	// The file changes a kind under the same rules as the console: Field
+	// cannot become an account with an account under it.
+	if _, err := s.Upsert("acme", projects.Project{Name: "Field", Kind: projects.Account}, []string{projects.FieldKind}, "file", t0); !errors.Is(err, projects.ErrInvalid) {
+		t.Fatalf("the file breaking a kind rule = %v", err)
 	}
 	root, err := s.Upsert("acme", projects.Project{Instructions: "Answer plainly."}, []string{projects.FieldInstructions}, "file", t0)
 	if err != nil || root.Instructions != "Answer plainly." || root.Kind != projects.Company || !root.IsRoot() {
