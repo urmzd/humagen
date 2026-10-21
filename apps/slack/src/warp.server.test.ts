@@ -115,7 +115,9 @@ test("the stand-in client against the real routes", { skip: !enabled }, async ()
   const next = await c.createRun({ agent: "", text: "and then?", after: run.id }, `${key}-2`);
   assert.equal(next.thread, run.id);
   assert.equal(next.prev, run.id);
-  assert.ok(next.picked, "an empty agent is the platform's picker");
+  // The seeded workspace's default is lead, so nothing is picked.
+  assert.equal(next.agent, "lead", "an empty agent is the default the workspace sets");
+  assert.ok(!next.picked, "a named default is not a pick");
   await finish(c, next);
   const turns = (await c.getThread(run.id))?.turns;
   assert.deepEqual(turns?.map((t) => t.id).sort(), [run.id, next.id].sort());

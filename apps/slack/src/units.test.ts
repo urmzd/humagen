@@ -93,9 +93,14 @@ test("choose: @auto is the platform's router, sent as auto where the surface may
     how: "named",
   });
   assert.equal(choose("@auto hi", agents, { client: client({ agents: ["*"] }) }).agent, "auto");
+  // A client whose list is not every agent never sends auto, even as its
+  // default: the platform would pick among agents the list leaves out.
+  const autoListed = { client: client({ default_agent: "auto", agents: ["helper"] }) };
+  assert.equal(choose("@auto hi", agents, autoListed).agent, null);
+  assert.equal(choose("hi", agents, autoListed).agent, null);
+  assert.equal(choose("@helper hi", agents, autoListed).agent, "helper");
   assert.equal(
-    choose("@auto hi", agents, { client: client({ default_agent: "auto", agents: ["helper"] }) })
-      .agent,
+    choose("hi", agents, { client: client({ default_agent: "auto", agents: ["*"] }) }).agent,
     "auto",
   );
   // A client that lists its agents and is not routed to auto keeps its list.

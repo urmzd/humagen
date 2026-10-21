@@ -14,7 +14,9 @@ import type { Agent, ClientRecord } from "./warp.ts";
  *
  * Nothing is picked here. With a client that lists its agents and names no
  * default, nothing is chosen: the platform's default is not known here, so it
- * could be one the list leaves out.
+ * could be one the list leaves out. For the same reason a client whose list is
+ * not `*` never sends `@auto`, even as its default: the platform would pick
+ * among agents the list leaves out.
  */
 export type Choice =
   | { agent: string; text: string; how: "named" | "default" }
@@ -28,16 +30,18 @@ export interface Routing {
   defaultAgent?: string;
 }
 
-/** Whether this surface may route to an agent. Without a client, any agent in the workspace. */
+/**
+ * Whether this surface may route to an agent. Without a client, any agent in
+ * the workspace. @auto picks among every agent where the message lands, so
+ * only a client that may reach any agent sends it, whatever its default says.
+ */
 export function mayRoute(routing: Routing, name: string): boolean {
   const client = routing.client;
   if (!client) return true;
   if (!client.enabled) return false;
-  return (
-    client.default_agent === name ||
-    (client.agents ?? []).includes("*") ||
-    (client.agents ?? []).includes(name)
-  );
+  const listed = client.agents ?? [];
+  if (name === AUTO) return listed.includes("*");
+  return client.default_agent === name || listed.includes("*") || listed.includes(name);
 }
 
 const NAMED = /(^|\s)@([A-Za-z0-9][A-Za-z0-9_-]*)(?=$|[\s,.:;!?])/g;
