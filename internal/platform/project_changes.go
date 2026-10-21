@@ -17,7 +17,9 @@ import (
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // project_changes is what a recap is grounded in: what happened in the run's
@@ -50,25 +52,55 @@ const (
 // reads only the run's own project.
 var ErrNoProject = errors.New("platform: this run is not filed in a project")
 
-// subtreeOf is a project and every project below it, in tree order, or false
-// for a name the tenant does not have. The root's subtree is the whole
-// workspace, which callers read as every project rather than as a list.
+// subtreeOf is a project and every project below it that is as open as it
+// is, in tree order, or false for a name the tenant does not have. What a
+// recap of a project reads reaches everyone it is posted to, so a members-only
+// project below, read by its members alone, is left out, and so is
+// everything below that. The root's subtree is the whole workspace, which
+// callers read as every project rather than as a list.
 func (p *Platform) subtreeOf(tenant, name string) ([]string, bool) {
-	names := p.ProjectTree(tenant).Subtree(name)
-	return names, names != nil
+	tree := p.ProjectTree(tenant)
+	names := tree.Subtree(name)
+	if names == nil {
+		return nil, false
+	}
+	closed := map[string]bool{}
+	return slices.DeleteFunc(names, func(n string) bool {
+		pr, _ := tree.Get(n)
+		if n != name && (closed[pr.Parent] || projects.MembersOnly(pr)) {
+			closed[n] = true
+			return true
+		}
+		return false
+	}), true
+}
+
+// openWork keeps what a summary may read for everyone it reaches: not a
+// private thread, which only its participants read, and not a members-only
+// project, unless it is the one named.
+func (p *Platform) openWork(tenant, named string) func(runs.Run) bool {
+	tree := p.ProjectTree(tenant)
+	return func(r runs.Run) bool {
+		if pr, ok := tree.Get(r.Project); !ok || (r.Project != named && projects.MembersOnly(pr)) {
+			return false
+		}
+		return !p.privateThread(tenant, r.Thread)
+	}
 }
 
 // summaryScope is which runs runs_summary counts: the whole workspace when no
 // project is named, or "~", the root, is; otherwise the project's subtree.
+// Either way private threads and members-only projects other than the one
+// named are left out.
 func (p *Platform) summaryScope(tenant, project string) (runs.SummaryQuery, error) {
 	if project == "" || project == "~" {
-		return runs.SummaryQuery{AllProjects: true}, nil
+		return runs.SummaryQuery{AllProjects: true, Keep: p.openWork(tenant, projects.Root)}, nil
 	}
 	names, ok := p.subtreeOf(tenant, project)
 	if !ok {
 		return runs.SummaryQuery{}, fmt.Errorf("%w: %q", ErrProjectNotFound, project)
 	}
-	return runs.SummaryQuery{Projects: names}, nil
+	return runs.SummaryQuery{Projects: names, Keep: p.openWork(tenant, project)}, nil
 }
 
 // changesScope is what one project_changes call reads.
@@ -231,7 +263,7 @@ func (p *Platform) runChanges(scope changesScope) []changeRow {
 	s, err := p.Runs.SummarizeWhere(scope.tenant, runs.SummaryQuery{
 		Since: scope.since, Until: scope.until, Bucket: 24 * time.Hour, Projects: scope.projects,
 		Keep: func(r runs.Run) bool {
-			if r.Root == scope.asking {
+			if r.Root == scope.asking || p.privateThread(scope.tenant, r.Thread) {
 				return false
 			}
 			g := byProject[r.Project]
@@ -292,7 +324,7 @@ func (p *Platform) artifactChanges(scope changesScope) []changeRow {
 			continue
 		}
 		for _, a := range page {
-			if a.CreatedAt.Before(scope.since) || !a.CreatedAt.Before(scope.until) {
+			if a.CreatedAt.Before(scope.since) || !a.CreatedAt.Before(scope.until) || p.privateThread(scope.tenant, a.Thread) {
 				continue
 			}
 			by := a.Agent
@@ -364,7 +396,7 @@ func (p *Platform) threadChanges(scope changesScope) []changeRow {
 	var out []changeRow
 	q := runs.ThreadQuery{Projects: scope.projects, Limit: runs.MaxThreadPage}
 	for range maxThreadPages {
-		page, next, err := p.Runs.ThreadPage(scope.tenant, q)
+		page, next, err := p.ThreadPage(scope.tenant, q)
 		if err != nil {
 			break
 		}
@@ -372,7 +404,7 @@ func (p *Platform) threadChanges(scope changesScope) []changeRow {
 			if t.UpdatedAt.Before(scope.since) {
 				return out
 			}
-			if t.ID == scope.thread || !t.CreatedAt.Before(scope.until) {
+			if t.ID == scope.thread || !t.CreatedAt.Before(scope.until) || t.Visibility == threads.Private {
 				continue
 			}
 			how := "carried on"

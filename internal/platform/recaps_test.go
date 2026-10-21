@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // project creates a project at the top of the tree.
@@ -96,12 +97,21 @@ func TestProjectChangesReadsOnlyItsSubtree(t *testing.T) {
 	p := start(t, call.Limits{})
 	project(t, p, "Field")
 	project(t, p, "Other")
-	if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Globex", Parent: "Field", Kind: projects.Account}); err != nil {
-		t.Fatal(err)
+	// Ops is as open as Field; Globex, an account, is members only, so a
+	// recap of Field, which everyone in Field reads, leaves it out.
+	for _, in := range []platform.ProjectInput{{Name: "Ops", Parent: "Field"}, {Name: "Globex", Parent: "Field", Kind: projects.Account}} {
+		if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "ada"}, in); err != nil {
+			t.Fatal(err)
+		}
 	}
 	asking, _ := turn(t, p, "api-f1", "Field")
 	turn(t, p, "api-f2", "Field")
+	turn(t, p, "api-o1", "Ops")
 	turn(t, p, "api-g1", "Globex")
+	// A private thread is its participants' alone, so no recap reads it.
+	if _, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Title: "hushhush", Text: "between us", PostOnly: true}); err != nil {
+		t.Fatal(err)
+	}
 	turn(t, p, "api-o1", "Other")
 	now := time.Now().UTC()
 	for project, subject := range map[string]string{"Field": "Field moved to the new office", "Other": "Other news"} {
@@ -136,8 +146,8 @@ func TestProjectChangesReadsOnlyItsSubtree(t *testing.T) {
 	}
 	for _, want := range []string{
 		"What changed in Field and the projects below it", "Field ships on Friday.", "field-plan.md", "field-recap created by ada",
-		"In all, 2 runs: 2 completed", "In Globex: 1 runs", "Field #general: \"Write the report\" started, settled",
-		"Globex #general", "\"Field moved to the new office\", from person ada", "Globex: created by ada",
+		"In all, 2 runs: 2 completed", "In Ops: 1 runs", "Field #general: \"Write the report\" started, settled",
+		"Ops #general", "\"Field moved to the new office\", from person ada", "Ops: created by ada",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the changes leave out %q:\n%s", want, out)
@@ -145,7 +155,7 @@ func TestProjectChangesReadsOnlyItsSubtree(t *testing.T) {
 	}
 	// Nothing of another project, nothing still waiting for a person, and
 	// not the run that asked.
-	for _, never := range []string{"Other", "renewal", "might slip"} {
+	for _, never := range []string{"Other", "renewal", "might slip", "Globex", "hushhush"} {
 		if strings.Contains(out, never) {
 			t.Errorf("the changes carry %q:\n%s", never, out)
 		}

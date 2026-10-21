@@ -69,7 +69,9 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 	if cfg.TitleAgent != "" && run.Prev == "" {
 		p.startHook(ctx, run, cfg.TitleAgent, hookTitle, run.Thread, fmt.Sprintf(titlePrompt, clip(run.Text, 2000)))
 	}
-	if cfg.MemoryAgent != "" {
+	// What is said in a private thread is its participants' alone: nothing
+	// in it becomes a note anyone else would be sent.
+	if cfg.MemoryAgent != "" && !p.privateThread(run.Tenant, run.Thread) {
 		// In a project, what is learned is the project's: every agent and
 		// every conversation there shares it. Outside one, it is the agent's.
 		owner := run.Agent
@@ -97,7 +99,9 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 		Origin: runs.OriginSystem,
 		Text:   prompt,
 		Actor:  envelope.Actor{ID: "system:" + hook, Display: "platform " + hook, Bot: true},
-		Meta:   map[string]string{metaHook: hook, metaFor: target},
+		// The housekeeping run is sent the turn's words, so it is read
+		// where the turn is: in its project and its conversation.
+		Meta: map[string]string{metaHook: hook, metaFor: target, metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread},
 	})
 	if err != nil {
 		p.log.Warn("platform: housekeeping run could not start", "hook", hook, "error", err)

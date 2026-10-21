@@ -50,9 +50,30 @@ func seesPlace(viewer, govern bool, th *threadAccess, subject string) bool {
 	return subject != "" && slices.Contains(th.Participants, subject)
 }
 
+// Where a housekeeping run lives: the turn it serves, whose words it is
+// sent. Only the platform writes these, on runs of origin system.
+const (
+	metaPlaceProject = "warp.place.project"
+	metaPlaceThread  = "warp.place.thread"
+)
+
 // placeOfRun is where a run lives: its conversation, in the project it is
-// filed in. A run another run called has its root's.
-func placeOfRun(r runs.Run) Place { return Place{Project: r.Project, Thread: r.Thread} }
+// filed in. A run another run called has its root's, and a housekeeping run
+// the turn's it serves.
+func placeOfRun(r runs.Run) Place {
+	if r.Origin == runs.OriginSystem {
+		if meta := r.Tag().Meta; meta[metaPlaceThread] != "" {
+			return Place{Project: meta[metaPlaceProject], Thread: meta[metaPlaceThread]}
+		}
+	}
+	return Place{Project: r.Project, Thread: r.Thread}
+}
+
+// privateThread reports a conversation only its participants read.
+func (p *Platform) privateThread(tenant, id string) bool {
+	th, err := p.Threads.Get(tenant, id)
+	return err == nil && th.Visibility == threads.Private
+}
 
 // placeOfSource is where an inbox message's subject lives.
 func placeOfSource(s inbox.Source) Place { return Place{Project: s.Project, Thread: s.Thread} }
@@ -173,6 +194,9 @@ func (p *Platform) SeesThread(who auth.Principal, id string) bool {
 // root's conversation for a called run, else the conversation the API placed
 // it in, or its own.
 func (p *Platform) placeAdmitted(tag envelope.Tag, edge call.Edge, runID, project string) Place {
+	if tag.Origin == runs.OriginSystem && tag.Meta[metaPlaceThread] != "" {
+		return Place{Project: tag.Meta[metaPlaceProject], Thread: tag.Meta[metaPlaceThread]}
+	}
 	if edge.Parent != "" {
 		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
 			return placeOfRun(root)

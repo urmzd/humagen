@@ -407,3 +407,7 @@ func (t *Tree) Memberships(r Reader) []string {
 	}
 	return out
 }
+
+// MembersOnly reports a project with no entry for everyone: read by its
+// members alone.
+func MembersOnly(p Project) bool { return everyoneOf(p.Members) == None }
