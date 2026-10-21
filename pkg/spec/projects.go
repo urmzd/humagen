@@ -33,12 +33,12 @@ const (
 	generalChannel   = "general"
 	autoDefault      = "auto"
 	expertRolePrefix = "role:"
-	maxMembers    = 100
-	maxKinds      = 16
-	maxKindTitle  = 40
-	maxSubject    = 255
-	everyoneEntry = "*"
-	roleEntry     = "role:"
+	maxMembers       = 100
+	maxKinds         = 16
+	maxKindTitle     = 40
+	maxSubject       = 255
+	everyoneEntry    = "*"
+	roleEntry        = "role:"
 )
 
 var (
