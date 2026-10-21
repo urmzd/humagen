@@ -368,6 +368,8 @@ export interface Client {
     mutations?: boolean;
     read_repositories?: string[];
   };
+  /** Where the client files threads it starts outside a bound channel. Absent, the workspace's general. */
+  home?: { project: string; channel?: string };
   enabled: boolean;
   /** Set on a client the server's configuration owns and the API cannot change. */
   managed?: string;
@@ -596,6 +598,7 @@ export const api = {
       bots: c.bots ?? {},
       slack: c.slack ?? null,
       github: c.github ?? null,
+      home: c.home ?? null,
       enabled,
     }),
   deleteClient: (id: string) => call<void>("DELETE", `/api/clients/${encodeURIComponent(id)}`),

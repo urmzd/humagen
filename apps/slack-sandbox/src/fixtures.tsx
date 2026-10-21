@@ -17,7 +17,13 @@ import {
 import type { Turn, TurnEvent } from "@warp/core";
 import { ActionId } from "@warp/core";
 import * as fx from "@warp/core/fixtures";
-import { amountModal, askForm, feedbackModal, type Placement } from "@warp/render-slack";
+import {
+  amountModal,
+  askForm,
+  feedbackModal,
+  type Placement,
+  replyModal,
+} from "@warp/render-slack";
 import type { ReactElement } from "react";
 
 /**
@@ -118,6 +124,14 @@ export function views(): { name: string; view: object }[] {
     { name: "feedback.up@modal", view: feedbackModal({ turnId: "turn-1", rating: "up" }) },
     { name: "feedback.down@modal", view: feedbackModal({ turnId: "turn-1", rating: "down" }) },
     { name: "ask@modal", view: askForm() },
+    {
+      name: "reply.mention@modal",
+      view: replyModal(
+        { thread: "th-1", message: "m-7" },
+        { context: "Dana mentioned you in Globex › #renewals" },
+      ),
+    },
+    { name: "reply.question@modal", view: replyModal({ run: "r-1", question: "q-1" }) },
     {
       name: "amount.usd@modal",
       view: amountModal({

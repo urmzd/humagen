@@ -18,6 +18,7 @@ one per agent are all the same record with different values.
 | `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. |
 | `slack` | `sessions`, `commands`, and `machine` and `people` (see [People a Slack app answers for](#people-a-slack-app-answers-for)). |
 | `github` | `auto_labels`, `checks`, `guides`, `mutations`, `read_repositories`. |
+| `home` | `{project, channel}`: where the client files the threads it starts outside a channel bound to one, such as direct messages and GitHub issues. `project` is a project's name, or `~` for the workspace, and must exist. `channel` is `general`, the default, until channels are built. Left out, the workspace's `general`. |
 | `enabled` | A disabled client answers nothing and carries nothing. |
 
 The options under `slack` and `github` are the ones [Slack](slack.md) and
@@ -64,6 +65,12 @@ calls. The same maps name whoever a Slack connector run was raised by, so they
 do not approve its calls either: the Slack user is looked up in every Slack
 client of the run's team, not only the one that received the message, and
 the names are pinned when the run starts.
+
+The same credential, and no other, records where the app posted an inbox
+message: `PUT /api/inbox/{id}/deliveries/{client}` with `{channel, ts}`. The
+receipt shows in that message's `deliveries`, to that machine only, so after a
+restart, an edit or a withdrawal the app updates its post instead of posting
+again. For anyone else the answer is 404.
 
 The trust model: the credential named as `machine` holds the vote of every
 person mapped here and can raise runs as them. The platform cannot check which

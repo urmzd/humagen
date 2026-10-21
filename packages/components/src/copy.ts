@@ -279,6 +279,15 @@ export const defaultCopy = {
     recapText: (title: string) => `What changed in ${title} since the last recap?`,
     recapDescription: "A weekly recap of this project, posted to its inbox",
   },
+  /** The one-field form a Slack mention or an expert's question opens to reply. */
+  replyModal: {
+    title: "Reply",
+    label: "Your reply",
+    answerLabel: "Your answer",
+    placeholder: "Write a reply",
+    send: "Send",
+    cancel: "Cancel",
+  },
   home: {
     greeting: (first: string, assistant: string) => `Hi ${first}, I'm ${assistant}.`,
     /** Follows the host's intro: how to reach the assistant from here. */

@@ -586,7 +586,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"InboxChange": {typ: inbox.Change{}},
 		"CallPolicy":  {typ: callpolicy.Policy{}}, "CallPolicyInput": {typ: callPolicyBody{}, written: true}, "Reach": {typ: platform.Reach{}},
 		"Artifact": {typ: artifacts.Artifact{}}, "StorageShare": {typ: artifacts.Share{}},
-		"InboxDraftPart": {typ: inbox.DraftPart{}},
+		"InboxDraftPart": {typ: inbox.DraftPart{}}, "InboxDelivery": {typ: inbox.Delivery{}}, "InboxDeliveryInput": {typ: deliveryBody{}, written: true}, "ClientHome": {typ: clients.Home{}},
 		"AnalyticsGroup": {typ: runs.Group{}}, "AnalyticsBucket": {typ: runs.Bucket{}}, "Summary": {typ: runs.Summary{}},
 		"JournalEntry": {typ: journal.Entry{}}, "Span": {typ: journal.Span{}},
 		"AlertRule": {typ: alerts.Rule{}}, "Alert": {typ: alerts.Alert{}},
@@ -1098,6 +1098,21 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"client","name":"support"},"period":"day","max_runs":3}`, http.StatusOK)
 	c.call(acme, "GET", "/api/clients/{id}", "/api/clients/support", "", http.StatusOK)
 	c.call(globex, "GET", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
+	// A Slack app's machine records where it posted a message; nobody else can.
+	app := `{"id":"app","name":"App","surface":"slack","identity":{"app_id":"A01APP","team":"T01ABCDEF"},"default_agent":"helper","slack":{"machine":"svc-acme"},` +
+		`"credentials":{"token":{"value":"` + botToken + `"},"signing_secret":{"value":"` + signingSecret + `"}}}`
+	c.call(acme, "POST", "/api/clients", "/api/clients", app, http.StatusCreated)
+	deliveries := "/api/inbox/{id}/deliveries/{client}"
+	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"C0123ABC","ts":"1700000000.000100"}`, http.StatusNoContent)
+	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/app", `{"channel":"","ts":"1700000000.000100"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", deliveries, inboxPath+"/deliveries/support", `{"channel":"C0123ABC","ts":"1700000000.000100"}`, http.StatusNotFound)
+	if got := c.call(acme, "GET", "/api/inbox/{id}", inboxPath, "", http.StatusOK); obj(obj(obj(got.field("message"))["deliveries"])["app"])["ts"] != "1700000000.000100" {
+		t.Errorf("the machine does not see its own receipt: %s", got.raw)
+	}
+	// Where the app files the threads it starts outside a bound channel.
+	homed := strings.Replace(app, `"slack":`, `"home":{"project":"Launch"},"slack":`, 1)
+	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/app", homed, http.StatusOK)
+	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/app", strings.Replace(homed, "Launch", "Ghost", 1), http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/support", `{"name":"Support","surface":"slack","identity":{"app_id":"A01CONTRACT","team":"T01ABCDEF"},"default_agent":"helper","agents":["*"],"slack":{"sessions":true},"enabled":false}`, http.StatusOK)
 
 	// Settings and the caller's own preferences.
@@ -1204,6 +1219,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/snooze": {"id": mid}, "/api/inbox/{id}/parts/{part}/resolve": {"id": mid},
 		"/api/artifacts/{id}": {"id": published.ID}, "/api/artifacts/{id}/versions": {"id": published.ID},
 		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
+		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 	}
 	valid := map[string]string{
 		"/api/agents/{name}": revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
@@ -1212,6 +1228,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
 		"/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
+		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``,
 		"/api/runs/{id}/calls":    `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/alert-rules/{name}": `{"kind":"run_failed","severity":"critical"}`,
 		"/api/schedules/{name}":   `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,

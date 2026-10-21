@@ -1357,6 +1357,37 @@ paths:
         "429": {$ref: "#/components/responses/Refused"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/inbox/{id}/deliveries/{client}:
+    put:
+      operationId: recordInboxDelivery
+      tags: [inbox]
+      summary: Record where a client posted a message
+      description: |
+        A Slack app records the channel and the ts of a message it posted,
+        such as an announcement, so that after a restart, an edit or a
+        withdrawal it updates that post instead of posting again. Only the
+        credential the client names as `slack.machine` may record one: for
+        anyone else, and for a message of a kind the caller may not read, the
+        answer is 404. Recording the same post again changes nothing. The
+        receipt shows in the message's `deliveries`, to that machine only.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/MessageID"}
+        - {name: client, in: path, required: true, description: The id of the client that posted it., schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/InboxDeliveryInput"}
+      responses:
+        "204":
+          description: Recorded.
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
 
   /api/artifacts:
     get:
@@ -3683,6 +3714,29 @@ components:
         run: {type: string}
         subject: {type: string, maxLength: 150}
         text: {type: string, maxLength: 4000}
+    InboxDelivery:
+      description: Where one client posted a message.
+      type: object
+      required: [channel, ts, at]
+      properties:
+        channel: {type: string}
+        ts: {type: string}
+        at: {type: string, format: date-time}
+    InboxDeliveryInput:
+      description: Where a client posted a message.
+      type: object
+      required: [channel, ts]
+      properties:
+        channel:
+          description: Where it was posted, such as a Slack channel id. 1 to 64 characters, no spaces.
+          type: string
+          minLength: 1
+          maxLength: 64
+        ts:
+          description: The post there, such as a Slack message ts. 1 to 64 characters, no spaces.
+          type: string
+          minLength: 1
+          maxLength: 64
     InboxPart:
       description: |
         One typed part of a message. `type` says which of `text`, `alert`,
@@ -3738,6 +3792,10 @@ components:
         parts:
           type: array
           items: {$ref: "#/components/schemas/InboxPart"}
+        deliveries:
+          description: Where the reading client posted the message, by client id. Shown only to that client's machine.
+          type: object
+          additionalProperties: {$ref: "#/components/schemas/InboxDelivery"}
     InboxChange:
       description: One thing that happened to a message.
       type: object
@@ -3748,7 +3806,7 @@ components:
         by: {type: string}
         what:
           type: string
-          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn]
+          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered]
         part: {type: string}
         action: {type: string}
         note: {type: string}
@@ -4495,6 +4553,10 @@ components:
           oneOf:
             - $ref: "#/components/schemas/GitHubOptions"
             - type: "null"
+        home:
+          oneOf:
+            - $ref: "#/components/schemas/ClientHome"
+            - type: "null"
         enabled:
           description: Defaults to true.
           type: [boolean, "null"]
@@ -4503,6 +4565,22 @@ components:
           properties:
             token: {$ref: "#/components/schemas/SecretInput"}
             signing_secret: {$ref: "#/components/schemas/SecretInput"}
+    ClientHome:
+      description: |
+        Where a client files the threads it starts outside a channel bound to
+        one: direct messages, the assistant pane, an unbound channel, a GitHub
+        issue. Absent, they are filed in the workspace's `general` channel.
+        Until channels are built, the channel is `general`.
+      type: object
+      required: [project]
+      properties:
+        project:
+          description: A project's name, or `~` for the workspace. It must exist.
+          type: string
+        channel:
+          description: A channel of that project. Absent is `general`.
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{0,39}$"
     ClientView:
       description: A Slack app or GitHub installation the workspace answers through, and the limits on the runs it raises.
       type: object
@@ -4527,6 +4605,7 @@ components:
           additionalProperties: {type: string}
         slack: {$ref: "#/components/schemas/SlackOptions"}
         github: {$ref: "#/components/schemas/GitHubOptions"}
+        home: {$ref: "#/components/schemas/ClientHome"}
         enabled: {type: boolean}
         managed:
           description: Set on a client the server's configuration owns, which the API cannot change.

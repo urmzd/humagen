@@ -94,7 +94,9 @@ func slackManifest(name, command string) SlackManifest {
 		{Name: "Ask " + name + " about this", Type: "message", CallbackID: "aui_ask_about", Description: "Answer in this message's thread, using the message as the question."},
 	}
 	m.Features.SlashCommands = []slackCommand{{Command: command, Description: "Ask " + name + " in this channel", UsageHint: "[question] or help"}}
-	m.Features.AgentView.Description = "Your workspace's agents in Slack. Mention @" + name + " or message it, and the agent that fits answers."
+	// Slack delivers a channel message to the app only when it mentions the
+	// app, so the agent is named after it.
+	m.Features.AgentView.Description = "Your workspace's agents in Slack. Mention @" + name + " and the agent you want, such as @" + name + " @analyst, or message it."
 	m.OAuth.Scopes.Bot = []string{
 		"app_mentions:read", "assistant:write", "channels:history", "chat:write", "commands",
 		"groups:history", "im:history", "mpim:history", "reactions:write", "users:read",

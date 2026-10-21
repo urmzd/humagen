@@ -22,6 +22,7 @@ import type {
   GetRunTraceResponse,
   GetThreadResponse,
   GetUsageResponse,
+  InboxDeliveryInput,
   InboxMessage,
   KnowledgeDocument,
   KnowledgeSource,
@@ -1460,6 +1461,36 @@ refused by a limit with 429 or 402.
     path = path.replace("{id}", encodeURIComponent(String(id)));
     path = path.replace("{part}", encodeURIComponent(String(part)));
     return this.rawRequest<InboxMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** A Slack app records the channel and the ts of a message it posted,
+such as an announcement, so that after a restart, an edit or a
+withdrawal it updates that post instead of posting again. Only the
+credential the client names as `slack.machine` may record one: for
+anyone else, and for a message of a kind the caller may not read, the
+answer is 404. Recording the same post again changes nothing. The
+receipt shows in the message's `deliveries`, to that machine only.
+ */
+  async recordInboxDelivery(id: string, client: string, body: InboxDeliveryInput, options?: RequestOptions): Promise<void> {
+    let path = "/api/inbox/{id}/deliveries/{client}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{client}", encodeURIComponent(String(client)));
+    await this.request<void>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async recordInboxDeliveryRaw(id: string, client: string, body: InboxDeliveryInput, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/inbox/{id}/deliveries/{client}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{client}", encodeURIComponent(String(client)));
+    return this.rawRequest<void>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,

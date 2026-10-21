@@ -177,7 +177,7 @@ func InboxSees(who auth.Principal, k inbox.Kind) bool { return who.Can(reads(k))
 func (p *Platform) InboxPage(who auth.Principal, q inbox.Query) ([]inbox.Message, string, error) {
 	msgs, next, err := p.Inbox.Page(who.Tenant, p.inboxQuery(who, q))
 	for i := range msgs {
-		msgs[i] = seenBy(msgs[i], who)
+		msgs[i] = p.ownDeliveries(who, seenBy(msgs[i], who))
 	}
 	return msgs, next, err
 }
@@ -208,7 +208,7 @@ func (p *Platform) inboxGetAs(who auth.Principal, reader inbox.Reader, id string
 	if m.State == inbox.Snoozed && !p.now().Before(m.SnoozedUntil) {
 		m.State = inbox.Open
 	}
-	return seenBy(m, who), nil
+	return p.ownDeliveries(who, seenBy(m, who)), nil
 }
 
 // InboxRead marks a message read or unread for the caller alone.

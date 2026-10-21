@@ -23,6 +23,29 @@ func (s *Server) inboxRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/inbox/{id}/dismiss", s.authed(auth.RunsRead, s.dismissInbox))
 	mux.HandleFunc("POST /api/inbox/{id}/snooze", s.authed(auth.RunsRead, s.snoozeInbox))
 	mux.HandleFunc("POST /api/inbox/{id}/parts/{part}/resolve", s.authed(auth.RunsRead, s.resolveInbox))
+	// A client's machine records where it posted a message. The platform
+	// answers 404 to anyone else.
+	mux.HandleFunc("PUT /api/inbox/{id}/deliveries/{client}", s.authed(auth.RunsWrite, s.deliverInbox))
+}
+
+// deliveryBody is where a client posted a message: the Slack channel and the
+// ts of the post.
+type deliveryBody struct {
+	Channel string `json:"channel"`
+	TS      string `json:"ts"`
+}
+
+// deliverInbox records where a client posted a message.
+func (s *Server) deliverInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body deliveryBody
+	if !decode(w, r, &body) {
+		return
+	}
+	if err := s.P.RecordDelivery(who, r.PathValue("id"), r.PathValue("client"), inbox.Delivery{Channel: body.Channel, TS: body.TS}); err != nil {
+		s.problem(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // listInbox pages the caller's inbox, newest first.

@@ -650,6 +650,21 @@ export interface InboxDraftPart {
   text?: string;
 }
 
+/** Where one client posted a message. */
+export interface InboxDelivery {
+  channel: string;
+  ts: string;
+  at: string;
+}
+
+/** Where a client posted a message. */
+export interface InboxDeliveryInput {
+  /** Where it was posted, such as a Slack channel id. 1 to 64 characters, no spaces. */
+  channel: string;
+  /** The post there, such as a Slack message ts. 1 to 64 characters, no spaces. */
+  ts: string;
+}
+
 /** One typed part of a message. `type` says which of `text`, `alert`,
 `failure`, `memory`, `budget`, `artifact`, `draft` or `question` carries the body:
 `approval`, `choice` and `reply` parts carry `question`. A settled
@@ -690,6 +705,8 @@ export interface InboxMessage {
   unread: boolean;
   source: InboxSource;
   parts: InboxPart[];
+  /** Where the reading client posted the message, by client id. Shown only to that client's machine. */
+  deliveries?: Record<string, InboxDelivery>;
 }
 
 /** One thing that happened to a message. */
@@ -697,7 +714,7 @@ export interface InboxChange {
   message: string;
   at: string;
   by?: string;
-  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn";
+  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered";
   part?: string;
   action?: string;
   note?: string;
@@ -1246,9 +1263,22 @@ export interface ClientInput {
   bots?: Record<string, string> | null;
   slack?: SlackOptions | null;
   github?: GitHubOptions | null;
+  home?: ClientHome | null;
   /** Defaults to true. */
   enabled?: boolean | null;
   credentials?: ClientInputCredentials;
+}
+
+/** Where a client files the threads it starts outside a channel bound to
+one: direct messages, the assistant pane, an unbound channel, a GitHub
+issue. Absent, they are filed in the workspace's `general` channel.
+Until channels are built, the channel is `general`.
+ */
+export interface ClientHome {
+  /** A project's name, or `~` for the workspace. It must exist. */
+  project: string;
+  /** A channel of that project. Absent is `general`. */
+  channel?: string;
 }
 
 /** A Slack app or GitHub installation the workspace answers through, and the limits on the runs it raises. */
@@ -1263,6 +1293,7 @@ export interface ClientView {
   bots?: Record<string, string>;
   slack?: SlackOptions;
   github?: GitHubOptions;
+  home?: ClientHome;
   enabled: boolean;
   /** Set on a client the server's configuration owns, which the API cannot change. */
   managed?: string;

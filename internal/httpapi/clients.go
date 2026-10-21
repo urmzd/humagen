@@ -34,6 +34,7 @@ type clientBody struct {
 	Bots         map[string]string      `json:"bots"`
 	Slack        *clients.SlackOptions  `json:"slack"`
 	GitHub       *clients.GitHubOptions `json:"github"`
+	Home         *clients.Home          `json:"home"`
 	// Enabled defaults to true on create.
 	Enabled     *bool `json:"enabled"`
 	Credentials struct {
@@ -46,7 +47,7 @@ func (b clientBody) input() platform.ClientInput {
 	return platform.ClientInput{
 		Client: clients.Client{
 			ID: b.ID, Name: b.Name, Surface: b.Surface, Identity: b.Identity,
-			DefaultAgent: b.DefaultAgent, Agents: b.Agents, Bots: b.Bots, Slack: b.Slack, GitHub: b.GitHub,
+			DefaultAgent: b.DefaultAgent, Agents: b.Agents, Bots: b.Bots, Slack: b.Slack, GitHub: b.GitHub, Home: b.Home,
 			Enabled: b.Enabled == nil || *b.Enabled,
 		},
 		Token: b.Credentials.Token, SigningSecret: b.Credentials.SigningSecret,
