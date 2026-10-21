@@ -98,6 +98,8 @@ type Config struct {
 	// Blobs holds the bytes of published files. Nil means a disk store in
 	// the workspace directory.
 	Blobs blob.Store
+	// Bus carries every run's events. Nil means in memory, for one process.
+	Bus bus.Bus
 	// Limits bounds every tree of calls.
 	Limits call.Limits
 	// Concurrency is how many runs execute at once. Zero means one.
@@ -249,10 +251,14 @@ func New(cfg Config) (*Platform, error) {
 		Inbox:        inbox.NewStore(),
 		Artifacts:    artifacts.NewIndex(),
 		Blobs:        cfg.Blobs,
-		broker:       bus.NewMemory(),
+		broker:       cfg.Bus,
 		sinks:        connector.NewRegistry(),
 		ledger:       ledger.NewMemory(),
 		queue:        dqueue.NewMemory(),
+	}
+
+	if p.broker == nil {
+		p.broker = bus.NewMemory()
 	}
 
 	// Schedules are a trigger like any other: the cron connector raises tags

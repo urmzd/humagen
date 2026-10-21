@@ -66,17 +66,19 @@ go run ./cmd/warp start
 `warp start` runs the whole platform in one process: development sign-in on
 loopback, in-memory stores, files on disk, seeded example agents on the offline
 provider, and the console at <http://127.0.0.1:8080>. On a terminal, the first
-start asks a few questions (model providers, MCP tool providers, sign-in,
+start asks a few questions (its name, model providers, MCP tools, sign-in,
 Slack), each with a default Enter accepts, and writes the answers to
-`warp.json` and `providers.json` in your config directory. You name where each
-key is kept (`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`); warp
-reads it when it is used and never stores it. `warp setup` asks again; the files
-can be edited by hand. See [providers](docs/providers.md).
+`warp.yaml` in your config directory. You name where each key is kept
+(`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`); warp reads it when it
+is used and never stores it.
 
-The same command runs on your own infrastructure with overrides and no code:
-`WARP_AUTH`, `WARP_ADDR`, `WARP_PUBLIC_URL`, the store and bucket variables in
-[deploy](docs/deploy.md), and any `serve` flag after `--`
-(`warp start -- -storage s3 -s3-bucket my-bucket`).
+Everything is configured in that one language: a `System` document for how and
+where warp runs (sign-in, stores, bus, files, limits) and a `Platform` document
+per workspace (models, tools, agents, Slack, settings). See [the spec](docs/spec.md).
+The same file runs on your own infrastructure with no code: point `stores` at
+Postgres, `blobs` at S3 and `auth` at your identity provider, and use it with
+compose or the Helm chart ([deploy](docs/deploy.md)). Any flag still wins over
+the file (`warp start -addr 127.0.0.1:9090`).
 
 ### Develop the console
 

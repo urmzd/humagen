@@ -86,6 +86,8 @@ const (
 	ManagedEnv = "env"
 	// ManagedStatic is a connector the embedding program built itself.
 	ManagedStatic = "static"
+	// ManagedFile is a client a Platform document declares.
+	ManagedFile = "file"
 )
 
 // Identity is the external identity a client answers for. An inbound request

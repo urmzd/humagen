@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -51,6 +52,9 @@ type Options struct {
 	// flags and files. It is the escape hatch for a store or a seam no
 	// option names yet.
 	Platform func(*platform.Config) error
+	// Kinds are the kinds a binary registered, by slot and name, that a
+	// spec file selects (docs/spec.md).
+	Kinds map[string]map[string]Factory
 
 	// ctx and ready are for tests: the parent context, and a call with the
 	// address once the server listens.
@@ -61,6 +65,7 @@ type Options struct {
 const usage = `usage: warp start [flags]              run the platform with zero configuration
        warp serve [flags]              run the platform from flags and files
        warp setup [flags]              choose providers, auth and Slack, and write them down
+       warp config check|print -f PATH check a spec, or print it with every default
        warp slack manifest [flags]     print the Slack app manifest
        warp authz check FILE | authz explain [flags] PERMISSION
        warp version`
@@ -90,13 +95,15 @@ func run(o Options, args []string) error {
 	case "authz":
 		return runAuthz(args[1:], os.Stdout, os.Getenv)
 	case "serve":
-		return serve(o, args[1:], serveDefaults{auth: "oidc"})
+		return serve(o, args[1:], serveDefaults{})
 	case "start":
 		return start(o, args[1:], os.Stdin, os.Stdout)
 	case "setup":
 		return setupCmd(args[1:], os.Stdin, os.Stdout)
 	case "slack":
 		return slackCmd(args[1:], os.Stdout)
+	case "config":
+		return configCmd(o, args[1:], os.Stdout)
 	case "help", "-h", "-help", "--help":
 		fmt.Println(usage)
 		return nil
@@ -105,22 +112,20 @@ func run(o Options, args []string) error {
 	}
 }
 
-// serveDefaults are the flag defaults a command starts from: serve's are
-// production's, start's are a laptop's.
+// serveDefaults are what a command adds to serve's own defaults: start
+// seeds example agents and reads the spec in the config directory.
 type serveDefaults struct {
-	auth      string
-	seed      bool
-	web       string
-	providers string
-	// slack, when set, is started beside the server and stopped with it.
-	slack *slackApp
+	seed bool
+	web  string
+	// files are read when the command line names none.
+	files []string
 }
 
 func serve(o Options, args []string, d serveDefaults) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:8080", "listen address")
 	webhookAddr := fs.String("webhook-addr", "", "optional separate listener exposing only signed connector webhooks")
-	authMode := fs.String("auth", d.auth, `who may call: "oidc" (or "okta") for SSO; "tailscale" behind local Tailscale Serve; "mock" for the loopback development identity provider; "dev" for a loopback preview with no sign-in`)
+	authMode := fs.String("auth", "dev", `who may call: "oidc" (or "okta") for SSO; "tailscale" behind local Tailscale Serve; "mock" for the loopback development identity provider; "dev" for a loopback preview with no sign-in`)
 	tenant := fs.String("tenant", "default", "tenant every caller is confined to, unless -tenant-claim is set")
 	tenantClaim := fs.String("tenant-claim", "", "token claim that carries the caller's tenant")
 	groupsClaim := fs.String("groups-claim", "groups", "token claim that lists a person's groups")
@@ -137,12 +142,11 @@ func serve(o Options, args []string, d serveDefaults) error {
 	builtinModel := fs.String("builtin-model", "", "model for the agents the platform provides")
 	secretRefsFlag := fs.String("secret-refs", "", `environment variables each tenant's clients may reference as secrets, as "tenant=NAME,NAME;tenant=NAME". A tenant not listed may reference none`)
 	agentSpecs := fs.String("agent-specs", "", "comma-separated agent JSON files to register on startup")
-	providersPath := fs.String("providers", d.providers, "JSON file of model providers and MCP tool providers (see docs/providers.md)")
-	settingsPath := fs.String("settings", "", "JSON file of the workspace's settings (baseline agent, history, workspace name), applied when the workspace has none stored yet")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
+	var specFiles files
+	fs.Var(&specFiles, "f", "a spec file or directory of System and Platform documents (docs/spec.md); repeatable. Flags win over it")
+	workspaceDir := fs.String("workspace", "", "directory agents write their files under. Empty means the user cache directory")
+	concurrency := fs.Int("concurrency", 1, "how many runs execute at once")
+	busKind := fs.String("bus", "memory", `the event bus: "memory", or "redis" at WARP_REDIS_URL`)
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	parent := o.ctx
 	if parent == nil {
@@ -151,46 +155,70 @@ func serve(o Options, args []string, d serveDefaults) error {
 	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Credentials come from the environment, never from flags: a flag ends up
-	// in shell history and in ps output.
-	pol, groupRoles, err := loadPolicy(fs, groups, os.Getenv)
+	// The spec's System document becomes the flags' defaults, so a flag
+	// typed on the command line wins over the file.
+	paths := scanFiles(args)
+	if len(paths) == 0 {
+		paths = d.files
+	}
+	keys := credref.Default
+	file, err := loadFiles(ctx, o, paths, keys)
 	if err != nil {
 		return err
 	}
+	if err := fs.Parse(append(file.args, args...)); err != nil {
+		return err
+	}
+	getenv := overlay(file.env, os.Getenv)
+
+	// Credentials come from the environment, never from flags: a flag ends up
+	// in shell history and in ps output.
+	pol, groupRoles, err := loadPolicy(fs, groups, getenv)
+	if err != nil {
+		return err
+	}
+	maps.Copy(groupRoles, file.roles)
 	authn, stopAuthn, err := newAuthn(ctx, authConfig{
 		mode: *authMode, addr: *addr, publicURL: *publicURL,
 		tenant: *tenant, tenantClaim: *tenantClaim, groups: *groupsClaim,
 		policy: pol, groupRoles: groupRoles,
 		mockAddr: *mockAddr, mockPersonas: *mockPersonas,
-		getenv: os.Getenv, log: log,
+		getenv: getenv, log: log,
 	})
 	if err != nil {
 		return err
 	}
 	defer stopAuthn()
 
-	refs, err := secretRefs(*secretRefsFlag, *tenant, os.Getenv)
+	refs, err := secretRefs(*secretRefsFlag, *tenant, getenv)
 	if err != nil {
 		return err
 	}
 	blobs := o.Blobs
 	if blobs == nil {
-		if blobs, err = openBlobs(ctx, storage, os.Getenv); err != nil {
+		if blobs, err = openBlobs(ctx, o, file, storage, getenv); err != nil {
 			return err
 		}
 	}
-	// Model and tool providers: a file for the common cases, options for the
-	// rest. Keys are named in the file and read when they are used.
-	file, err := ReadProvidersFile(*providersPath, d.providers != "" && *providersPath == d.providers)
+	broker, closeBus, err := openBus(ctx, o, file, *busKind, getenv)
 	if err != nil {
 		return err
 	}
-	ext, err := file.Extensions(*tenant, credref.Default).Merge(o.Ext)
+	if closeBus != nil {
+		defer func() { _ = closeBus() }()
+	}
+	// Model and tool providers: the spec's Platform documents for the common
+	// cases, options for the rest. Keys are references, read when used.
+	fromFile, err := fileExtensions(ctx, o, file.cfg, keys)
+	if err != nil {
+		return err
+	}
+	ext, err := fromFile.Merge(o.Ext)
 	if err != nil {
 		return err
 	}
 	if ext.Resolver == nil {
-		ext.Resolver = credref.Default.MCP()
+		ext.Resolver = keys.MCP()
 	}
 	cfg := platform.Config{
 		// A client may keep its secrets in this process's environment, under
@@ -202,6 +230,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 		BuiltinProvider: *builtinProvider,
 		BuiltinModel:    *builtinModel,
 		Blobs:           blobs,
+		Bus:             broker,
+		Workspace:       *workspaceDir,
+		Concurrency:     *concurrency,
 		Ext:             ext,
 	}
 	if len(o.Connections) > 0 {
@@ -237,7 +268,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 			return fmt.Errorf("agent spec %s: %w", path, err)
 		}
 	}
-	if err := seedClients(ctx, p, *tenant, os.Getenv); err != nil {
+	if err := seedClients(ctx, p, *tenant, getenv); err != nil {
 		return err
 	}
 	if *seed {
@@ -245,7 +276,11 @@ func serve(o Options, args []string, d serveDefaults) error {
 			return err
 		}
 	}
-	if err := seedSettings(ctx, p, *tenant, *settingsPath); err != nil {
+	if err := applyPlatforms(ctx, p, file.cfg, log); err != nil {
+		return err
+	}
+	extensions, err := fileRunners(ctx, o, file.cfg)
+	if err != nil {
 		return err
 	}
 
@@ -259,7 +294,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		MaxHeaderBytes:    1 << 16,
 	}
 
-	errc := make(chan error, 4)
+	errc := make(chan error, 8)
 	var ingress *http.Server
 	if *webhookAddr != "" {
 		ingress = &http.Server{Addr: *webhookAddr, Handler: p.IngressHandler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 1 << 16}
@@ -298,11 +333,18 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if o.ready != nil {
 		o.ready(ln.Addr().String())
 	}
-	if d.slack != nil {
-		// The Slack app is a client of this server, started once it listens.
+	// Each Slack app is a client of this server, started once it listens.
+	for _, app := range slackApps(file.cfg, keys, getenv) {
 		go func() {
-			if err := d.slack.run(ctx, "http://"+ln.Addr().String(), *tenant, *publicURL, log); err != nil {
-				errc <- fmt.Errorf("slack: %w", err)
+			if err := app.run(ctx, "http://"+ln.Addr().String(), *publicURL, log); err != nil {
+				errc <- fmt.Errorf("slack (%s): %w", app.tenant, err)
+			}
+		}()
+	}
+	for _, x := range extensions {
+		go func() {
+			if err := x.Run(ctx); err != nil && ctx.Err() == nil {
+				errc <- err
 			}
 		}()
 	}
@@ -318,30 +360,6 @@ func serve(o Options, args []string, d serveDefaults) error {
 		_ = ingress.Shutdown(shutdown)
 	}
 	return err
-}
-
-// seedSettings applies a settings file to a workspace that has none stored.
-// The file is where a deployment starts; once an admin saves settings, what
-// is stored wins, so a restart never undoes a change made in the console.
-func seedSettings(ctx context.Context, p *platform.Platform, tenant, path string) error {
-	if strings.TrimSpace(path) == "" {
-		return nil
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return fmt.Errorf("settings: %w", err)
-	}
-	var want platform.Settings
-	if err := decodeStrict(b, &want); err != nil {
-		return fmt.Errorf("settings %s: %w", path, err)
-	}
-	if cur := p.Settings(tenant); !cur.SetupAt.IsZero() || cur.WorkspaceName != "" {
-		return nil
-	}
-	if err := p.SetSettings(ctx, tenant, want); err != nil {
-		return fmt.Errorf("settings %s: %w", path, err)
-	}
-	return nil
 }
 
 // seedFiles publishes a few example files, so the storage page has something

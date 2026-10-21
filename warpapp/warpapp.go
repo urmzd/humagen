@@ -11,10 +11,12 @@
 //		))
 //	}
 //
-// The common cases need no Go at all: `warp serve -providers FILE` declares
-// model endpoints and MCP tool providers in JSON (docs/providers.md), and
-// `warp start` writes that file for you. Options and the file combine; a name
-// declared by both is an error rather than an override.
+// The common cases need no Go at all: a spec file (docs/spec.md) declares
+// stores, models, MCP tools, agents and surfaces, and `warp setup` writes one.
+// Go adds what a file cannot: a kind the file then selects by name
+// (WithKind), or a provider, tool source or connector directly. Options and
+// the file combine; a model or tool provider declared by both is an error
+// rather than an override.
 //
 // It mirrors fiber's fiberapp option for option, and sits at the module root
 // because it is the public face of internal/app, which nothing under pkg/ may
@@ -36,6 +38,7 @@ import (
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/blob"
 	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/spec"
 )
 
 // Version is the build metadata `warp version` reports.
@@ -171,5 +174,50 @@ func WithPlatform(fn func(*platform.Config) error) Option {
 			}
 			return fn(cfg)
 		}
+	}
+}
+
+// Slots a kind can be registered in. See docs/spec.md.
+const (
+	Blobs      = spec.SlotBlobs
+	Bus        = spec.SlotBus
+	Extensions = spec.SlotExtensions
+	Models     = spec.SlotModels
+	Tools      = spec.SlotTools
+)
+
+// Factory builds a registered kind from its block in the spec file, which it
+// decodes strictly itself. What it returns depends on the slot: a blob.Store
+// for Blobs, a bus.Bus for Bus, an agentrt.ProviderFunc for Models, a
+// runtime.Catalog for Tools, and an Extension for Extensions.
+type Factory = app.Factory
+
+// Extension is a process-wide part, run beside the server until its context
+// ends.
+type Extension = app.Extension
+
+// WithKind registers a kind in a slot, so a spec file can select it by name:
+//
+//	warpapp.WithKind(warpapp.Blobs, "gcs", func(ctx context.Context, block json.RawMessage) (any, error) {
+//		var c struct{ Bucket string `json:"bucket"` }
+//		if err := strictDecode(block, &c); err != nil {
+//			return nil, err
+//		}
+//		return newGCS(ctx, c.Bucket)
+//	})
+//
+// and then `blobs: {kind: gcs, gcs: {bucket: files}}` in a System document.
+func WithKind(slot, name string, f Factory) Option {
+	return func(o *app.Options) {
+		if name == "" || f == nil {
+			return
+		}
+		if o.Kinds == nil {
+			o.Kinds = map[string]map[string]app.Factory{}
+		}
+		if o.Kinds[slot] == nil {
+			o.Kinds[slot] = map[string]app.Factory{}
+		}
+		o.Kinds[slot][name] = f
 	}
 }

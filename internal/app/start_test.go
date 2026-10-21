@@ -14,14 +14,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/credref"
+	saigetypes "github.com/urmzd/saige/agent/types"
+
+	"github.com/urmzd/fiber/pkg/agentrt"
+
+	"github.com/urmzd/warp/pkg/spec"
 )
 
 func TestStartWorksWithNothingConfigured(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("WARP_HOME", home)
-	t.Setenv(envAddr, "127.0.0.1:0")
 	t.Setenv(envWebDir, "")
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -29,7 +31,7 @@ func TestStartWorksWithNothingConfigured(t *testing.T) {
 	addrs := make(chan string, 1)
 	done := make(chan error, 1)
 	o := Options{ctx: ctx, ready: func(a string) { addrs <- a }}
-	go func() { done <- start(o, []string{"-yes"}, strings.NewReader(""), io.Discard) }()
+	go func() { done <- start(o, []string{"-yes", "-addr", "127.0.0.1:0"}, strings.NewReader(""), io.Discard) }()
 	var addr string
 	select {
 	case addr = <-addrs:
@@ -69,89 +71,157 @@ func TestStartWorksWithNothingConfigured(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("start did not stop")
 	}
-	if _, err := os.Stat(filepath.Join(home, "warp.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, "warp.yaml")); !os.IsNotExist(err) {
 		t.Errorf("-yes wrote choices nobody made: %v", err)
 	}
 }
 
-func TestSetupWithNoAnswersWritesTheDefaults(t *testing.T) {
-	dir := t.TempDir()
-	sp, pp := filepath.Join(dir, "warp.json"), filepath.Join(dir, "providers.json")
-	// "y" adds a model provider and every other answer is the default:
-	// the first preset, with its usual key reference.
-	sf, err := runSetup(bufio.NewReader(strings.NewReader("\ny\n\n\n\nn\nn\n")), io.Discard, sp, pp)
+func TestSetupWithNoAnswersWritesAWorkingSpec(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "warp.yaml")
+	// Every answer is the default except "y" to a model provider, which
+	// takes the first preset with its usual key reference.
+	if err := runSetup(bufio.NewReader(strings.NewReader("\n\ny\n\n\n\nn\nn\n")), io.Discard, path); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := spec.Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sf.Auth != "dev" || sf.Slack.Enabled {
-		t.Errorf("choices = %+v", sf)
+	if cfg.System.Spec.Auth.Kind != "dev" || len(cfg.Platforms) != 1 {
+		t.Fatalf("config = %+v", cfg)
 	}
-	pf, err := ReadProvidersFile(pp, false)
-	if err != nil {
-		t.Fatal(err)
+	m := cfg.Platforms[0].Spec.Models
+	blk, _ := spec.Block[spec.ModelBlock](m[0].Slot)
+	if len(m) != 1 || m[0].Name != "anthropic" || m[0].Kind != "anthropic" || blk.Key.Ref != "env:ANTHROPIC_API_KEY" {
+		t.Errorf("models = %+v %+v", m, blk)
 	}
-	want := []ModelProvider{{Name: "anthropic", Kind: KindAnthropic, APIKeyRef: "env:ANTHROPIC_API_KEY"}}
-	if !reflect.DeepEqual(pf.Models, want) {
-		t.Errorf("models = %+v, want %+v", pf.Models, want)
-	}
-	st, _ := os.Stat(pp)
-	if st.Mode().Perm() != 0o600 {
-		t.Errorf("providers file mode %v", st.Mode().Perm())
+	if st, _ := os.Stat(path); st.Mode().Perm() != 0o600 {
+		t.Errorf("spec mode %v", st.Mode().Perm())
 	}
 	// A second run keeps what is there.
-	if _, err := runSetup(bufio.NewReader(strings.NewReader("")), io.Discard, sp, pp); err != nil {
+	if err := runSetup(bufio.NewReader(strings.NewReader("")), io.Discard, path); err != nil {
 		t.Fatal(err)
 	}
-	if again, _ := ReadProvidersFile(pp, false); !reflect.DeepEqual(again.Models, want) {
-		t.Errorf("second setup changed the providers: %+v", again.Models)
+	if again, _ := spec.Load(path); len(again.Platforms[0].Spec.Models) != 1 {
+		t.Errorf("a second setup changed the models: %+v", again.Platforms[0].Spec.Models)
 	}
 }
 
 func TestSetupNeverTakesAKeyForAReference(t *testing.T) {
-	dir := t.TempDir()
-	in := "dev\ny\n2\n\nsk-live-abc\n\nn\nn\nn\n"
+	path := filepath.Join(t.TempDir(), "warp.yaml")
+	in := "\ndev\ny\n2\n\nsk-live-abc\n\nn\nn\nn\n"
 	var out bytes.Buffer
-	if _, err := runSetup(bufio.NewReader(strings.NewReader(in)), &out, filepath.Join(dir, "w.json"), filepath.Join(dir, "p.json")); err != nil {
+	if err := runSetup(bufio.NewReader(strings.NewReader(in)), &out, path); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "use env:NAME") {
 		t.Errorf("the key was not refused:\n%s", out.String())
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "p.json")); bytes.Contains(b, []byte("sk-live")) {
+	if b, _ := os.ReadFile(path); bytes.Contains(b, []byte("sk-live")) {
 		t.Fatal("the key was written")
 	}
 }
 
-func TestProvidersFileReadsFibersSpelling(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "p.json")
-	os.WriteFile(path, []byte(`{"models":[{"name":"vllm","base_url":"http://127.0.0.1:8000/v1","api_key_env":"VLLM_KEY"}],
-	  "tool_providers":[{"name":"docs","transport":"http","endpoint":"https://mcp.example.com","tools":[{"name":"search","schema_hash":"abc"}]}]}`), 0o600)
-	f, err := ReadProvidersFile(path, false)
+// serveFor runs serve with args until the test ends and returns its address.
+func serveFor(t *testing.T, o Options, args ...string) string {
+	t.Helper()
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	ctx, cancel := context.WithCancel(context.Background())
+	addrs := make(chan string, 1)
+	done := make(chan error, 1)
+	o.ctx, o.ready = ctx, func(a string) { addrs <- a }
+	go func() { done <- serve(o, args, serveDefaults{}) }()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("serve: %v", err)
+		}
+	})
+	select {
+	case a := <-addrs:
+		return a
+	case err := <-done:
+		t.Fatalf("serve returned before listening: %v", err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("serve did not listen")
+	}
+	return ""
+}
+
+func get(t *testing.T, url string) string {
+	t.Helper()
+	resp, err := http.Get(url)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ext := f.Extensions("acme", credref.Resolver{})
-	if _, ok := ext.Providers["vllm"]; !ok || len(ext.ToolProviders) != 1 || ext.ToolProviders[0].Provider.Tenant != "acme" {
-		t.Fatalf("extensions = %+v", ext)
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("GET %s: %d %s", url, resp.StatusCode, b)
+	}
+	return string(b)
+}
+
+func TestASpecFileRunsThePlatform(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "warp.yaml")
+	os.WriteFile(path, []byte(`api_version: warp/v1
+kind: System
+metadata: {name: acme-agents, display_name: Acme Agents}
+spec:
+  server: {addr: "127.0.0.1:1"}
+  blobs: {kind: memory}
+  execution: {max_depth: 2}
+---
+api_version: warp/v1
+kind: Platform
+metadata: {name: default, display_name: Acme}
+spec:
+  workspace:
+    baseline: greeter
+    projects: [{name: Launch}]
+  models:
+    - {name: house, kind: house-model, house-model: {voice: calm}}
+  agents:
+    - spec: {name: greeter, provider: house, model: h1, system_prompt: Greet.}
+`), 0o600)
+	var gotBlock string
+	o := Options{Kinds: map[string]map[string]Factory{spec.SlotModels: {"house-model": func(_ context.Context, b json.RawMessage) (any, error) {
+		gotBlock = string(b)
+		return agentrt.ProviderFunc(func(agentrt.Spec) (saigetypes.Provider, error) { return nil, nil }), nil
+	}}}}
+	// The file says 127.0.0.1:1; the flag wins.
+	addr := serveFor(t, o, "-f", path, "-addr", "127.0.0.1:0")
+	if !strings.Contains(gotBlock, "calm") {
+		t.Errorf("the registered kind got %q", gotBlock)
+	}
+	if body := get(t, "http://"+addr+"/api/agents"); !strings.Contains(body, `"greeter"`) {
+		t.Errorf("the file's agent is not there: %s", body)
+	}
+	if body := get(t, "http://"+addr+"/api/settings"); !strings.Contains(body, `"workspace_name":"Acme"`) || !strings.Contains(body, `"baseline":"greeter"`) {
+		t.Errorf("the file's workspace is not applied: %s", body)
 	}
 }
 
-func TestProvidersFileRefusesMistakes(t *testing.T) {
-	for name, body := range map[string]string{
-		"a key in the file":  `{"models":[{"name":"x","api_key":"sk"}]}`,
-		"a key as reference": `{"models":[{"name":"x","api_key_ref":"sk-123"}]}`,
-		"hosted with no key": `{"models":[{"name":"x"}]}`,
-		"twice":              `{"models":[{"name":"x","base_url":"http://a"},{"name":"x","base_url":"http://b"}]}`,
-		"unknown kind":       `{"models":[{"name":"x","kind":"bard","base_url":"http://a"}]}`,
-		"credentials in url": `{"models":[{"name":"x","base_url":"http://u:p@a"}]}`,
-		"unpinned tool":      `{"tool_providers":[{"name":"d","transport":"http","endpoint":"https://a","tools":[{"name":"s"}]}]}`,
-		"bad credential ref": `{"tool_providers":[{"name":"d","transport":"http","endpoint":"https://a","credential_ref":"hunter2","tools":[]}]}`,
-		"both key spellings": `{"models":[{"name":"x","api_key_env":"A","api_key_ref":"env:B"}]}`,
-	} {
-		path := filepath.Join(t.TempDir(), "p.json")
-		os.WriteFile(path, []byte(body), 0o600)
-		if _, err := ReadProvidersFile(path, false); err == nil {
-			t.Errorf("%s: accepted", name)
+func TestAnUnregisteredKindStopsStartup(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "warp.yaml")
+	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600)
+	err := serve(Options{}, []string{"-f", path, "-addr", "127.0.0.1:0"}, serveDefaults{})
+	if err == nil || !strings.Contains(err.Error(), "disk, memory, s3") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestConfigPrintFillsTheDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "warp.yaml")
+	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\n"), 0o600)
+	var out bytes.Buffer
+	if err := configCmd(Options{}, []string{"print", "-f", path}, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"name: acme", "kind: dev", "max_fan_out: 16"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("print lacks %q:\n%s", want, out.String())
 		}
 	}
 }
@@ -173,29 +243,20 @@ func TestTheSlackManifestIsWhatWarpGenerates(t *testing.T) {
 	}
 }
 
-func TestASettingsFileSeedsOnlyAnEmptyWorkspace(t *testing.T) {
-	p, err := platform.New(platform.Config{Workspace: t.TempDir()})
-	if err != nil {
+func TestTheSlackManifestTakesItsNameFromTheSpec(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "warp.yaml")
+	os.WriteFile(path, []byte(`api_version: warp/v1
+kind: Platform
+metadata: {name: default, display_name: Acme}
+spec:
+  surfaces:
+    slack: {enabled: true, team: T1, bot_token: {ref: "env:B"}, app_token: {ref: "env:A"}, command: /acme}
+`), 0o600)
+	var got bytes.Buffer
+	if err := slackCmd([]string{"manifest", "-f", path}, &got); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "s.json")
-	os.WriteFile(path, []byte(`{"workspace_name":"Acme","history":"none","history_limit":4000}`), 0o600)
-	ctx := context.Background()
-	if err := seedSettings(ctx, p, "t", path); err != nil {
-		t.Fatal(err)
-	}
-	if got := p.Settings("t"); got.WorkspaceName != "Acme" || got.History != platform.HistoryNone {
-		t.Fatalf("settings = %+v", got)
-	}
-	os.WriteFile(path, []byte(`{"workspace_name":"Other"}`), 0o600)
-	if err := seedSettings(ctx, p, "t", path); err != nil {
-		t.Fatal(err)
-	}
-	if got := p.Settings("t"); got.WorkspaceName != "Acme" {
-		t.Fatalf("the file replaced stored settings: %+v", got)
-	}
-	os.WriteFile(path, []byte(`{"workspace":"typo"}`), 0o600)
-	if err := seedSettings(ctx, p, "u", path); err == nil {
-		t.Fatal("an unknown field was accepted")
+	if !strings.Contains(got.String(), `"name": "Acme"`) || !strings.Contains(got.String(), `"command": "/acme"`) {
+		t.Errorf("manifest:\n%s", got.String())
 	}
 }

@@ -12,151 +12,174 @@ import (
 	"strings"
 
 	"github.com/urmzd/warp/pkg/credref"
+	"github.com/urmzd/warp/pkg/spec"
 )
 
 // setupCmd is `warp setup`: the first-run questions on their own.
 func setupCmd(args []string, in io.Reader, out io.Writer) error {
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
-	dir := fs.String("config", "", "directory to write warp.json and providers.json in. Empty means WARP_HOME, else the user config directory")
+	path := fs.String("o", "", "the spec file to write. Empty means warp.yaml in WARP_HOME, else the user config directory")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *dir == "" {
-		*dir = configDir(os.Getenv)
+	if *path == "" {
+		*path = filepath.Join(configDir(os.Getenv), "warp.yaml")
 	}
-	_, err := runSetup(bufio.NewReader(in), out, filepath.Join(*dir, "warp.json"), filepath.Join(*dir, "providers.json"))
-	return err
+	return runSetup(bufio.NewReader(in), out, *path)
 }
 
-// modelPresets are the providers setup offers by name. Each is a providers
-// file entry with its usual key reference filled in.
+// modelPresets are the model providers setup offers by name.
 var modelPresets = []struct {
-	label string
-	entry ModelProvider
+	label, kind, name, baseURL, key string
 }{
-	{"Anthropic", ModelProvider{Name: "anthropic", Kind: KindAnthropic, APIKeyRef: "env:ANTHROPIC_API_KEY"}},
-	{"OpenAI", ModelProvider{Name: "openai", Kind: KindOpenAI, APIKeyRef: "env:OPENAI_API_KEY"}},
-	{"Ollama on this machine (no key)", ModelProvider{Name: "ollama", Kind: KindOpenAI, BaseURL: "http://127.0.0.1:11434/v1"}},
-	{"Another OpenAI-compatible server", ModelProvider{Kind: KindOpenAI}},
+	{"Anthropic", "anthropic", "anthropic", "", "env:ANTHROPIC_API_KEY"},
+	{"OpenAI", "openai", "openai", "", "env:OPENAI_API_KEY"},
+	{"Ollama on this machine (no key)", "ollama", "ollama", "", ""},
+	{"Another OpenAI-compatible server", "openai", "custom", "http://127.0.0.1:8000/v1", ""},
 }
 
-// runSetup asks for the deployment's choices and writes them to the two
-// files, keeping what is already there as each question's default. It never
-// asks for a key: it asks where one is kept.
-func runSetup(r *bufio.Reader, out io.Writer, startPath, providersPath string) (StartFile, error) {
-	sf, _, err := ReadStartFile(startPath)
-	if err != nil {
-		return sf, err
+// runSetup asks for the deployment's choices and writes them to path as a
+// System and a Platform document, keeping what is already there as each
+// question's default. It never asks for a key, only where one is kept.
+func runSetup(r *bufio.Reader, out io.Writer, path string) error {
+	var cfg spec.Config
+	if _, err := os.Stat(path); err == nil {
+		if cfg, err = spec.Load(path); err != nil {
+			return err
+		}
 	}
-	pf, err := ReadProvidersFile(providersPath, true)
-	if err != nil {
-		return sf, err
+	cfg.System.Defaults()
+	if len(cfg.Platforms) == 0 {
+		cfg.Platforms = []spec.Platform{{Metadata: spec.Metadata{Name: cfg.System.Tenant()}}}
+		if cfg.Platforms[0].Metadata.Name == "" {
+			cfg.Platforms[0].Metadata.Name = "default"
+		}
 	}
+	sys, plat := &cfg.System, &cfg.Platforms[0]
 	q := asker{r: r, out: out}
 	fmt.Fprintln(out, "Setting up warp. Press Enter to take the default in brackets. Nothing here asks for a key; you name where each one is kept.")
 
-	sf.Auth = q.choose("Who may sign in? dev (this machine only, no sign-in), tailscale or oidc", or(sf.Auth, "dev"), "dev", "tailscale", "oidc")
+	sys.Metadata.DisplayName = q.text("What should people see it called?", sys.Metadata.DisplayName, nonEmpty)
+	kind := q.choose("Who may sign in? dev (this machine only, no sign-in), tailscale or oidc", sys.Spec.Auth.Kind, "dev", "tailscale", "oidc")
+	if kind != sys.Spec.Auth.Kind {
+		sys.Spec.Auth.Slot = spec.Slot{Kind: kind}
+	}
+	if kind == "oidc" {
+		b, _ := spec.Block[spec.OIDC](sys.Spec.Auth.Slot)
+		b.Issuer = q.text("Issuer URL", b.Issuer, nonEmpty)
+		b.ClientID = q.text("Client id", or(b.ClientID, "warp"), nonEmpty)
+		secret := ""
+		if b.ClientSecret.Set() {
+			secret = b.ClientSecret.Ref
+		}
+		b.ClientSecret = &spec.Ref{Ref: q.text("Where is the client secret?", or(secret, "env:WARP_OIDC_CLIENT_SECRET"), parseRef)}
+		sys.Spec.Auth.Block = spec.MustJSON(b)
+	}
 
 	have := map[string]bool{}
-	for _, m := range pf.Models {
+	for _, m := range plat.Spec.Models {
 		have[m.Name] = true
 	}
-	if len(pf.Models) > 0 {
-		names := make([]string, 0, len(pf.Models))
-		for _, m := range pf.Models {
-			names = append(names, m.Name)
-		}
-		fmt.Fprintf(out, "Model providers already declared: %s\n", strings.Join(names, ", "))
+	if len(have) > 0 {
+		fmt.Fprintf(out, "Model providers already declared: %d\n", len(have))
 	}
-	for q.yes("Add a model provider?", len(pf.Models) == 0) {
+	for q.yes("Add a model provider?", len(plat.Spec.Models) == 0) {
 		for i, p := range modelPresets {
 			fmt.Fprintf(out, "  %d. %s\n", i+1, p.label)
 		}
-		pick := q.number("Which one", 1, len(modelPresets))
-		m := modelPresets[pick-1].entry
-		m.Name = q.text("Name agents will use for it", or(m.Name, "custom"), func(v string) error {
+		pr := modelPresets[q.number("Which one", 1, len(modelPresets))-1]
+		name := q.text("Name agents will use for it", pr.name, func(v string) error {
 			if have[v] {
 				return fmt.Errorf("%q is already declared", v)
 			}
-			if !providerName.MatchString(v) {
-				return fmt.Errorf("letters, digits, dots, dashes and underscores")
-			}
 			return nil
 		})
-		if m.BaseURL != "" || pick == len(modelPresets) {
-			m.BaseURL = q.text("Base URL (blank for the vendor's own)", m.BaseURL, nil)
+		blk := spec.ModelBlock{}
+		if pr.baseURL != "" {
+			blk.BaseURL = q.text("Base URL", pr.baseURL, nil)
 		}
-		m.APIKeyRef = q.text("Where is its key? env:NAME, keychain:SERVICE[/ACCOUNT], op://VAULT/ITEM/FIELD, or blank for none", m.APIKeyRef, func(v string) error {
-			if v == "" {
-				return nil
+		if pr.kind != "ollama" {
+			ref := q.text("Where is its key? env:NAME, keychain:SERVICE[/ACCOUNT], op://VAULT/ITEM/FIELD, or blank for none", pr.key, func(v string) error {
+				if v == "" {
+					return nil
+				}
+				return parseRef(v)
+			})
+			if ref != "" {
+				blk.Key = &spec.Ref{Ref: ref}
 			}
-			_, err := credref.Parse(v)
-			return err
-		})
-		if err := (ProvidersFile{Models: []ModelProvider{m}}).Check(); err != nil {
-			fmt.Fprintf(out, "  not added: %v\n", err)
-			continue
 		}
-		pf.Models = append(pf.Models, m)
-		have[m.Name] = true
+		plat.Spec.Models = append(plat.Spec.Models, spec.Model{
+			Slot: spec.Slot{Kind: pr.kind, Block: spec.MustJSON(blk)}, ModelShared: spec.ModelShared{Name: name},
+		})
+		have[name] = true
 	}
 
 	for q.yes("Add an MCP tool provider?", false) {
-		tp := ToolProvider{}
-		tp.Name = q.text("Name", "", nil)
-		tp.Transport = q.choose("Transport", "http", "http", "stdio")
-		if tp.Transport == "http" {
-			tp.Endpoint = q.text("URL", "", nil)
+		b := spec.MCP{Transport: q.choose("Transport", "http", "http", "stdio")}
+		name := q.text("Name", "", nonEmpty)
+		if b.Transport == "http" {
+			b.Endpoint = q.text("URL", "", nonEmpty)
 		} else {
-			tp.Endpoint = q.text("Command", "", nil)
+			b.Endpoint = q.text("Command", "", nonEmpty)
 			if a := q.text("Arguments, space separated", "", nil); a != "" {
-				tp.Args = strings.Fields(a)
+				b.Args = strings.Fields(a)
 			}
 		}
-		tp.CredentialRef = q.text("Where is its credential? (blank for none)", "", func(v string) error {
+		if ref := q.text("Where is its credential? (blank for none)", "", func(v string) error {
 			if v == "" {
 				return nil
 			}
-			_, err := credref.Parse(v)
-			return err
-		})
-		if tp.CredentialRef != "" {
+			return parseRef(v)
+		}); ref != "" {
+			b.Credential = &spec.Ref{Ref: ref}
 			def := ""
-			if tp.Transport == "stdio" {
+			if b.Transport == "stdio" {
 				def = "API_KEY"
 			}
-			tp.CredentialEnv = q.text("Sent as which variable or header (blank for a bearer token)", def, nil)
+			b.CredentialAs = q.text("Sent as which variable or header (blank for a bearer token)", def, nil)
 		}
-		tp.Tools = []AcceptedTool{}
-		if err := (ProvidersFile{ToolProviders: []ToolProvider{tp}}).Check(); err != nil {
-			fmt.Fprintf(out, "  not added: %v\n", err)
-			continue
-		}
-		pf.ToolProviders = append(pf.ToolProviders, tp)
-		fmt.Fprintln(out, "  Its tools start pending. warp logs each one with its schema hash; add the ones you accept to providers.json.")
+		plat.Spec.Tools = append(plat.Spec.Tools, spec.Tool{Slot: spec.Slot{Kind: "mcp", Block: spec.MustJSON(b)}, ToolShared: spec.ToolShared{Name: name}})
+		fmt.Fprintln(out, "  Its tools start pending. warp logs each one with its schema hash; add the ones you accept under accept.")
 	}
 
-	sf.Slack.Enabled = q.yes("Answer in Slack too?", sf.Slack.Enabled)
-	if sf.Slack.Enabled {
+	sl := plat.Spec.Surfaces.Slack
+	on := q.yes("Answer in Slack too?", sl != nil && sl.Enabled)
+	if on {
+		if sl == nil {
+			sl = &spec.Slack{BotToken: &spec.Ref{Ref: "env:SLACK_BOT_TOKEN"}, AppToken: &spec.Ref{Ref: "env:SLACK_APP_TOKEN"}}
+		}
+		sl.Enabled = true
 		fmt.Fprintln(out, "  Create the app from `warp slack manifest`, install it, and make an app-level token with connections:write.")
-		sf.Slack.Team = q.text("Slack team id (T...)", sf.Slack.Team, nonEmpty)
-		sf.Slack.BotTokenRef = q.text("Where is the bot token (xoxb-)?", or(sf.Slack.BotTokenRef, "env:SLACK_BOT_TOKEN"), parseRef)
-		sf.Slack.AppTokenRef = q.text("Where is the app token (xapp-)?", or(sf.Slack.AppTokenRef, "env:SLACK_APP_TOKEN"), parseRef)
+		sl.Team = q.text("Slack team id (T...)", sl.Team, nonEmpty)
+		sl.BotToken = &spec.Ref{Ref: q.text("Where is the bot token (xoxb-)?", sl.BotToken.Ref, parseRef)}
+		sl.AppToken = &spec.Ref{Ref: q.text("Where is the app token (xapp-)?", sl.AppToken.Ref, parseRef)}
+		plat.Spec.Surfaces.Slack = sl
+	} else if sl != nil {
+		sl.Enabled = false
 	}
 	if q.err != nil {
-		return sf, q.err
+		return q.err
 	}
-	if err := sf.Check(); err != nil {
-		return sf, err
+	if err := cfg.Check(nil); err != nil {
+		return err
 	}
-	if err := writeJSON(startPath, sf); err != nil {
-		return sf, err
+	b, err := spec.Marshal(cfg)
+	if err != nil {
+		return err
 	}
-	if err := WriteProvidersFile(providersPath, pf); err != nil {
-		return sf, err
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
 	}
-	fmt.Fprintf(out, "Wrote %s and %s. Edit them any time; `warp setup` asks again.\n", startPath, providersPath)
-	return sf, nil
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Wrote %s. Edit it any time (docs/spec.md); `warp setup` asks again.\n", path)
+	return nil
 }
 
 func parseRef(v string) error { _, err := credref.Parse(v); return err }

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/urmzd/warp/pkg/credref"
+	"github.com/urmzd/warp/pkg/spec"
 )
 
 // SlackManifest is a Slack app manifest: what the Slack app asks Slack for.
@@ -104,16 +105,52 @@ func slackManifest(name, command string) SlackManifest {
 	return m
 }
 
-// slackCmd is `warp slack manifest`.
+// slackCmd is `warp slack manifest`. With -f, the name and command come from
+// the spec: the workspace's Slack surface, else its display name, else the
+// deployment's. Flags win.
 func slackCmd(args []string, out io.Writer) error {
 	if len(args) == 0 || args[0] != "manifest" {
-		return errors.New("usage: warp slack manifest [-name NAME] [-command /agent]")
+		return errors.New("usage: warp slack manifest [-f PATH] [-workspace NAME] [-name NAME] [-command /agent]")
 	}
 	fs := flag.NewFlagSet("slack manifest", flag.ContinueOnError)
-	name := fs.String("name", "Warp", "the app's name in Slack")
-	command := fs.String("command", "/agent", "the slash command")
+	var paths files
+	fs.Var(&paths, "f", "a spec file or directory to take the name and command from")
+	workspace := fs.String("workspace", "", "with -f, which Platform document. Empty means the first with Slack")
+	name := fs.String("name", "", `the app's name in Slack. Empty means the spec's, else "Warp"`)
+	command := fs.String("command", "", `the slash command. Empty means the spec's, else "/agent"`)
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
+	}
+	n, c := "Warp", "/agent"
+	if len(paths) > 0 {
+		cfg, err := spec.Load(paths...)
+		if err != nil {
+			return err
+		}
+		cfg.System.Defaults()
+		n = cfg.System.Metadata.DisplayName
+		for _, p := range cfg.Platforms {
+			sl := p.Spec.Surfaces.Slack
+			if (*workspace != "" && p.Metadata.Name != *workspace) || (*workspace == "" && sl == nil) {
+				continue
+			}
+			if p.Metadata.DisplayName != "" {
+				n = p.Metadata.DisplayName
+			}
+			if sl != nil && sl.AppName != "" {
+				n = sl.AppName
+			}
+			if sl != nil && sl.Command != "" {
+				c = sl.Command
+			}
+			break
+		}
+	}
+	if *name == "" {
+		*name = n
+	}
+	if *command == "" {
+		*command = c
 	}
 	if !strings.HasPrefix(*command, "/") {
 		return errors.New("-command starts with /")
@@ -132,7 +169,8 @@ func slackCmd(args []string, out io.Writer) error {
 // stopped with the server; its tokens are read from where the choices say
 // they are kept and handed to it in its environment, never written down.
 type slackApp struct {
-	choice SlackChoice
+	tenant string
+	choice spec.Slack
 	keys   credref.Resolver
 	// dir is apps/slack. Empty means not found.
 	dir string
@@ -144,14 +182,7 @@ func slackDir(getenv func(string) string) string {
 	if d := strings.TrimSpace(getenv("WARP_SLACK_APP_DIR")); d != "" {
 		return d
 	}
-	var roots []string
-	if wd, err := os.Getwd(); err == nil {
-		roots = append(roots, wd)
-	}
-	if exe, err := os.Executable(); err == nil {
-		roots = append(roots, filepath.Dir(exe), filepath.Join(filepath.Dir(exe), "share", "warp"))
-	}
-	for _, r := range roots {
+	for _, r := range searchRoots() {
 		for _, c := range []string{filepath.Join(r, "apps", "slack"), filepath.Join(r, "slack")} {
 			if _, err := os.Stat(filepath.Join(c, "src", "main.ts")); err == nil {
 				return c
@@ -162,25 +193,25 @@ func slackDir(getenv func(string) string) string {
 }
 
 // env is the Slack app's environment: this process's, plus its own.
-func (s *slackApp) env(ctx context.Context, url, tenant, publicURL string) ([]string, error) {
-	bot, err := s.keys.Resolve(ctx, s.choice.BotTokenRef)
+func (s *slackApp) env(ctx context.Context, url, publicURL string) ([]string, error) {
+	bot, err := s.keys.Resolve(ctx, s.choice.BotToken.Ref)
 	if err != nil {
 		return nil, fmt.Errorf("bot token: %w", err)
 	}
-	app, err := s.keys.Resolve(ctx, s.choice.AppTokenRef)
+	app, err := s.keys.Resolve(ctx, s.choice.AppToken.Ref)
 	if err != nil {
 		return nil, fmt.Errorf("app token: %w", err)
 	}
 	return append(os.Environ(),
 		"SLACK_BOT_TOKEN="+bot, "SLACK_APP_TOKEN="+app, "SLACK_TEAM_ID="+s.choice.Team,
 		"SLACK_OPERATORS="+strings.Join(s.choice.Operators, ","),
-		"WARP_URL="+url, "WARP_TENANT="+tenant, "WARP_PUBLIC_URL="+publicURL,
+		"WARP_URL="+url, "WARP_TENANT="+s.tenant, "WARP_PUBLIC_URL="+publicURL,
 	), nil
 }
 
 // run keeps the Slack app running until ctx ends, restarting it with a
 // growing pause when it exits. It returns only on a configuration error.
-func (s *slackApp) run(ctx context.Context, url, tenant, publicURL string, log *slog.Logger) error {
+func (s *slackApp) run(ctx context.Context, url, publicURL string, log *slog.Logger) error {
 	if s.dir == "" {
 		return errors.New("apps/slack not found; set WARP_SLACK_APP_DIR or run from a checkout")
 	}
@@ -193,7 +224,7 @@ func (s *slackApp) run(ctx context.Context, url, tenant, publicURL string, log *
 	}
 	pause := time.Second
 	for ctx.Err() == nil {
-		env, err := s.env(ctx, url, tenant, publicURL)
+		env, err := s.env(ctx, url, publicURL)
 		if err != nil {
 			return err
 		}

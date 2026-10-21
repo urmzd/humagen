@@ -39,7 +39,7 @@ func TestStorageFlags(t *testing.T) {
 		if err := fs.Parse(args); err != nil {
 			t.Fatal(err)
 		}
-		return openBlobs(t.Context(), f, func(k string) string { return env[k] })
+		return openBlobs(t.Context(), Options{}, loaded{}, f, func(k string) string { return env[k] })
 	}
 	if s, err := open(nil); s != nil || err != nil {
 		t.Fatalf("the default = %T, %v; want the platform's own", s, err)
