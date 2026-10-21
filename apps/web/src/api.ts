@@ -430,6 +430,36 @@ export interface Note {
   at: string;
 }
 
+/**
+ * A tool that acts as you: an MCP provider reached with each person's own
+ * credential. A value you stored is never sent back; a reference is shown,
+ * since it names where the secret is kept and not the secret.
+ */
+export interface ToolCredential {
+  provider: string;
+  transport: "http" | "stdio";
+  /** Where an http provider is reached, so you see where your credential goes. */
+  endpoint?: string;
+  /** How many of its tools the workspace accepted. */
+  tools: number;
+  connected: boolean;
+  kind?: "reference" | "value";
+  ref?: string;
+  updated_at?: string;
+}
+
+/** The tools that act as you, and what this workspace lets people give for them. */
+export interface ToolCredentials {
+  providers: ToolCredential[];
+  /** Whether you may store the credential itself with warp. */
+  values: boolean;
+  /** How the references you may give start. Empty means none can be given. */
+  references: string[];
+}
+
+/** What you give for one tool: a reference or a value, exactly one. */
+export type ToolCredentialInput = { ref: string } | { value: string };
+
 export interface Preferences {
   display_name: string;
   theme: "system" | "light" | "dark";
@@ -594,6 +624,11 @@ export const api = {
       enabled,
     }),
   deleteClient: (id: string) => call<void>("DELETE", `/api/clients/${encodeURIComponent(id)}`),
+  /** Your own credentials for the tools that act as you. Nobody else's can be named. */
+  toolCredentials: () => call<ToolCredentials>("GET", "/api/me/credentials"),
+  connectTool: (provider: string, input: ToolCredentialInput) =>
+    call<ToolCredential>("PUT", `/api/me/credentials/${encodeURIComponent(provider)}`, input),
+  disconnectTool: (provider: string) => call<void>("DELETE", `/api/me/credentials/${encodeURIComponent(provider)}`),
   policies: () => call<{ policies: Policy[] }>("GET", "/api/policies").then((r) => r.policies),
   savePolicy: (p: Omit<Policy, "version" | "updated_at" | "updated_by" | "action"> & { action?: Policy["action"] }) =>
     call<Policy>("PUT", "/api/policies", p),
