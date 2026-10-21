@@ -191,7 +191,8 @@ from answers, run events, what the model was sent and the server log.
 | asked in the console, or through the API with a person's sign-in | that person |
 | asked by a machine for a person its client maps (`act_as`) | the mapped person |
 | raised by a Slack client's connector | the one person the team's enabled Slack clients map the Slack user to; none, or two different people, is nobody |
-| asked by a machine as itself, a schedule, an eval, housekeeping, a call from another agent, GitHub | nobody |
+| Run Now on a schedule | whoever pressed it |
+| asked by a machine as itself, a schedule on its own clock, an eval, housekeeping, a call from another agent, GitHub | nobody |
 
 A person connects their own credential at `PUT /api/me/credentials/{tool}`
 (Your connections in the console). The route takes no subject, a machine

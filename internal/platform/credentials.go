@@ -29,15 +29,16 @@ import (
 // once, when the run is accepted, by setting the actor's User to the person's
 // subject:
 //
-//   - a run from the console or the API acts for the person signed in
-//     (ActorOf);
+//   - a run from the console or the API, Run Now on a schedule included,
+//     acts for the person signed in (ActorOf);
 //   - a run a surface asks for a person its client maps (act_as) acts for
 //     that person (PersonActor);
 //   - a run a Slack connector raised acts for the one person the team's
 //     Slack clients map its Slack user to (surface.stamp);
 //   - everything else acts for nobody: a machine asking as itself, a
-//     schedule, the platform's own housekeeping, an eval, a run another agent
-//     called, and every GitHub actor, since no client maps GitHub logins.
+//     schedule firing on its own clock, the platform's own housekeeping, an
+//     eval, a run another agent called, and every GitHub actor, since no
+//     client maps GitHub logins.
 //
 // A person gives their credential through ConnectTool, as a reference or, where
 // the workspace allows it, a value (pkg/credentials).

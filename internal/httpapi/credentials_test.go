@@ -109,8 +109,8 @@ func (f *fixture) ask(t *testing.T, tok, body string) map[string]any {
 // The Slack app's runs act as the person its client maps, never as the app:
 // a person connects their own credential in the console, the app asks for
 // them, and the tool is reached with that person's credential. Asked as
-// itself, the app's run gets no tools. A console run acts for whoever is
-// signed in.
+// itself, the app's run gets no tools. A console run, and Run Now, act for
+// whoever is signed in.
 func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 	f, server, _ := toolFixture(t)
 	ana, ben := f.person(t, "ana"), f.person(t, "ben")
@@ -149,6 +149,19 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 	f.ask(t, ben, `{"agent":"worker","text":"Open bugs?"}`)
 	if calls := server.Calls(); len(calls) != 2 {
 		t.Fatalf("ben, who connected nothing, reached the server: %q", calls)
+	}
+	// Run Now on a schedule is the person's say-so, so it acts for them.
+	if res, out := f.do(t, nil, "POST", "/api/schedules", ana, `{"name":"bugs","expression":"0 3 * * *","agent":"worker","text":"Open bugs?"}`); res.StatusCode != http.StatusCreated {
+		t.Fatalf("create schedule = %d %v", res.StatusCode, out)
+	}
+	res, now := f.do(t, nil, "POST", "/api/schedules/bugs/run", ana, "")
+	if res.StatusCode != http.StatusAccepted {
+		t.Fatalf("run now = %d %v", res.StatusCode, now)
+	}
+	for deadline := time.Now().Add(10 * time.Second); len(server.Calls()) < 3 && time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+	}
+	if calls := server.Calls(); len(calls) != 3 || calls[2] != "Bearer tok-ana-httpapi" {
+		t.Fatalf("ana's run now reached the server with %q", calls)
 	}
 	for _, r := range server.Requests() {
 		if r != "Bearer tok-ana-httpapi" {
