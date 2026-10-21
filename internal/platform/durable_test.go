@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state"
 	"github.com/urmzd/warp/pkg/state/statetest"
@@ -104,8 +105,10 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		}
 		cfg := p.Settings(tenant)
 		cfg.Baseline, cfg.WorkspaceName = "lead", "Acme Ops"
-		cfg.Projects = []platform.Project{{Name: "Launch"}}
 		if err := p.SetSettings(ctx, tenant, cfg); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Launch"}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p.MarkSetup(tenant, "ada"); err != nil {
@@ -144,8 +147,11 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 			t.Fatalf("the agent after restart: %v", err)
 		}
 		s := q.Settings(tenant)
-		if s.Baseline != "lead" || s.WorkspaceName != "Acme Ops" || len(s.Projects) != 1 || s.SetupBy != "ada" || s.SetupAt.IsZero() {
+		if s.Baseline != "lead" || s.WorkspaceName != "Acme Ops" || s.SetupBy != "ada" || s.SetupAt.IsZero() {
 			t.Fatalf("settings after restart = %+v", s)
+		}
+		if l := q.Projects.List(tenant); len(l) != 1 || l[0].Name != "Launch" || l[0].CreatedBy != "ada" {
+			t.Fatalf("projects after restart = %+v", l)
 		}
 		if c, err := q.Clients.Get(tenant, "docs"); err != nil || !c.Enabled || !c.Credentials.Token.Set {
 			t.Fatalf("the client after restart = %+v, %v", c, err)

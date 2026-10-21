@@ -69,7 +69,7 @@ func (p *Platform) observeUsage(ctx context.Context, e envelope.Event) {
 	// Stamped with the platform's clock, so entries are appended in time
 	// order whatever the runtime's clock said; the call's own time is kept.
 	added, counted, err := p.Usage.Record(usage.Entry{
-		Kind: usage.Spent, Key: key, Tenant: run.Tenant, Project: run.Project, Agent: run.Agent, Client: run.Client,
+		Kind: usage.Spent, Key: key, Tenant: run.Tenant, Project: run.Project, Within: run.Within, Agent: run.Agent, Client: run.Client,
 		RunID: run.ID, At: p.now(), EventAt: e.At, Spend: new(usage.OfCall(c)),
 	})
 	if err != nil {
@@ -92,7 +92,7 @@ func (p *Platform) enforce(ctx context.Context, run runs.Run, call usage.Spend) 
 		return
 	}
 	now := p.now()
-	applied := p.applied(run.Tenant, run.Project, run.Agent, run.Client, now)
+	applied := p.applied(run.Tenant, chainOf(run.Project, run.Within), run.Agent, run.Client, now)
 	if call.Unpriced > 0 || len(call.Other) > 0 {
 		for _, a := range applied {
 			if a.Policy.SpendLimit > 0 {
@@ -111,7 +111,7 @@ func (p *Platform) enforce(ctx context.Context, run runs.Run, call usage.Spend) 
 		return
 	}
 	d := policy.Exceeded(applied)
-	entry := usage.Entry{Tenant: run.Tenant, Project: run.Project, Agent: run.Agent, Client: run.Client, RunID: run.ID, At: now}
+	entry := usage.Entry{Tenant: run.Tenant, Project: run.Project, Within: run.Within, Agent: run.Agent, Client: run.Client, RunID: run.ID, At: now}
 	if d.Policy != nil {
 		entry.Scope, entry.Version, entry.Limit, entry.Reason = &d.Policy.Scope, d.Policy.Version, d.Limit, d.Reason
 	}
@@ -187,7 +187,7 @@ func (p *Platform) settleUsage(ctx context.Context, run runs.Run) {
 		// Only the run's own calls: the runs it called settle their own,
 		// so each call in a tree is counted once.
 		added, _, err := p.Usage.Record(usage.Entry{
-			Kind: usage.Settled, Key: "run:" + run.ID, Tenant: run.Tenant, Project: run.Project, Agent: run.Agent,
+			Kind: usage.Settled, Key: "run:" + run.ID, Tenant: run.Tenant, Project: run.Project, Within: run.Within, Agent: run.Agent,
 			Client: run.Client, RunID: run.ID, At: p.now(), Spend: new(usage.Of(u.Own)),
 		})
 		if err != nil {

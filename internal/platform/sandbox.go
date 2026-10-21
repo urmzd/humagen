@@ -27,6 +27,7 @@ import (
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // Files an agent makes.
@@ -335,9 +336,12 @@ func (p *Platform) Publish(ctx context.Context, pub Publication) (artifacts.Arti
 }
 
 // storageAllows checks a publish against every storage limit that applies, and
-// says so in the inbox when one refuses it.
+// says so in the inbox when one refuses it. A file filed in a project counts
+// toward the project's limit and every ancestor's, and a project's use is what
+// its whole subtree holds.
 func (p *Platform) storageAllows(tenant, project, agent string, size int64) error {
-	for _, pol := range p.Policies.For(tenant, project, agent, "") {
+	tree := p.Projects.Tree(tenant)
+	for _, pol := range p.Policies.For(tenant, chainOf(project, tree.Ancestors(project)), agent, "") {
 		if pol.MaxStorage <= 0 {
 			continue
 		}
@@ -346,7 +350,7 @@ func (p *Platform) storageAllows(tenant, project, agent string, size int64) erro
 		case policy.Tenant:
 			used = p.Artifacts.Used(tenant, "")
 		case policy.Project:
-			used = p.Artifacts.Used(tenant, pol.Scope.Name)
+			used = p.storageUsed(tenant, tree, pol.Scope.Name)
 		case policy.Agent:
 			for _, s := range p.Artifacts.Usage(tenant).ByAgent {
 				if s.Name == pol.Scope.Name {
@@ -369,6 +373,22 @@ func (p *Platform) storageAllows(tenant, project, agent string, size int64) erro
 		}
 	}
 	return nil
+}
+
+// storageUsed is what a project and every project below it hold, in bytes. A
+// project the tree no longer holds counts what is still filed under its name.
+func (p *Platform) storageUsed(tenant string, tree *projects.Tree, project string) int64 {
+	names := tree.Subtree(project)
+	if names == nil {
+		names = []string{project}
+	}
+	var used int64
+	for _, share := range p.Artifacts.Usage(tenant).ByProject {
+		if slices.Contains(names, share.Name) {
+			used += share.Bytes
+		}
+	}
+	return used
 }
 
 // OpenArtifact opens an artifact's bytes for a caller.
