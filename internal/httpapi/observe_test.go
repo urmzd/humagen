@@ -15,7 +15,7 @@ var everything = []string{
 	"warp:schedules:read", "warp:schedules:write", "warp:alerts:read", "warp:alerts:write",
 	"warp:knowledge:read", "warp:knowledge:write", "warp:evals:read", "warp:evals:write",
 	"warp:billing:read", "warp:billing:write", "warp:artifacts:read", "warp:artifacts:write",
-	"warp:clients:read", "warp:clients:write",
+	"warp:clients:read", "warp:clients:write", "warp:projects:read", "warp:projects:write", "warp:projects:govern",
 	"warp:people:read",
 }
 
@@ -333,11 +333,14 @@ func TestConversationsBranchAndPick(t *testing.T) {
 	if res, _ := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"helper","text":"hi","project":"Ghost"}`); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("an unknown project = %d, want 400", res.StatusCode)
 	}
-	if res, out := f.do(t, nil, "PUT", "/api/settings", tok, `{"baseline":"helper","history":"none","history_limit":5000,"projects":[{"name":"Launch"}]}`); res.StatusCode != http.StatusOK {
+	if res, out := f.do(t, nil, "PUT", "/api/settings", tok, `{"baseline":"helper","history":"none","history_limit":5000}`); res.StatusCode != http.StatusOK {
 		t.Fatalf("settings = %d %v", res.StatusCode, out)
 	}
+	if res, out := f.do(t, nil, "POST", "/api/projects", tok, `{"name":"Launch"}`); res.StatusCode != http.StatusCreated {
+		t.Fatalf("project = %d %v", res.StatusCode, out)
+	}
 	for _, bad := range []string{
-		`{"history":"everything"}`, `{"history_limit":5}`, `{"projects":[{"name":"a"},{"name":"A"}]}`, `{"projects":[{"name":"<b>"}]}`,
+		`{"history":"everything"}`, `{"history_limit":5}`, `{"projects":[{"name":"Launch"}]}`,
 	} {
 		if res, _ := f.do(t, nil, "PUT", "/api/settings", tok, bad); res.StatusCode != http.StatusBadRequest {
 			t.Errorf("settings %s = %d, want 400", bad, res.StatusCode)
@@ -531,7 +534,13 @@ func TestProjects(t *testing.T) {
 		t.Errorf("a viewer made a project: %d", res.StatusCode)
 	}
 
-	// Deleting a project drops its shared memory and keeps its conversations.
+	// A project a schedule files its runs in is kept until the schedule
+	// goes. Deleting it then drops its shared memory and keeps its
+	// conversations.
+	if res, out := f.do(t, nil, "DELETE", "/api/projects/Launch", acme, ""); res.StatusCode != http.StatusConflict || !strings.Contains(out["error"].(string), "the schedule standup") {
+		t.Fatalf("delete with a schedule in it = %d %v", res.StatusCode, out)
+	}
+	f.do(t, nil, "DELETE", "/api/schedules/standup", acme, "")
 	if res, _ := f.do(t, nil, "DELETE", "/api/projects/Launch", acme, ""); res.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete = %d", res.StatusCode)
 	}

@@ -538,7 +538,7 @@ func (s *Store) update(tenantName, name string, version int, w Writer, at time.T
 		return Project{}, fmt.Errorf("%w: the workspace and company projects are changed with projects:govern", ErrForbidden)
 	}
 	if version != cur.Version {
-		return Project{}, fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, name, cur.Version, version)
+		return Project{}, fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, display(name), cur.Version, version)
 	}
 	next := cur.clone()
 	if err := fn(&next); err != nil {

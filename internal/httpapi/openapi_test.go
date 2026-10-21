@@ -48,6 +48,7 @@ import (
 	"github.com/urmzd/warp/pkg/pick"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/prefs"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/usage"
 )
@@ -576,7 +577,10 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: agentspec.AgentSpec{}}, "AgentSource": {typ: agentspec.Source{}},
 		"AgentAccess": {typ: agentspec.Access{}}, "Revision": {typ: agentspec.Revision{}}, "Choice": {typ: pick.Choice{}},
 		"Note": {typ: memory.Note{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
-		"ThreadSummary": {typ: runs.ThreadSummary{}}, "Project": {typ: platform.Project{}}, "ProjectView": {typ: projectView{}},
+		"ThreadSummary": {typ: runs.ThreadSummary{}}, "Project": {typ: projects.Project{}}, "ProjectView": {typ: projectView{}},
+		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectLimit": {typ: projectLimit{}},
+		"ProjectDetail": {typ: projectDetail{}}, "ProjectChange": {typ: projects.Change{}},
+		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
 		"InboxNotice": {typ: inbox.Notice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
@@ -1036,6 +1040,59 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/projects/{name}/memory", "/api/projects/Ghost/memory", "", http.StatusNotFound)
 	c.call(acme, "POST", "/api/projects/{name}/memory/approve", "/api/projects/Launch/memory/approve", `{"ids":[]}`, http.StatusOK)
 	c.call(acme, "DELETE", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+shared.str("id"), "", http.StatusNoContent)
+	c.call(acme, "POST", "/api/projects/{name}/memory", "/api/projects/~/memory", `{"text":"We sell warehouse robots."}`, http.StatusCreated)
+	c.call(acme, "GET", "/api/projects/{name}/memory", "/api/projects/~/memory", "", http.StatusOK)
+
+	// The tree: a team, an account under it, the workspace itself, and what
+	// changed on each.
+	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Field","title":"Field engineering","kind":"team","instructions":"Never promise dates."}`, http.StatusCreated)
+	account := c.call(acme, "POST", "/api/projects", "/api/projects",
+		`{"name":"Globex","parent":"Field","kind":"account","account":{"customer":"Globex Inc","external_id":"sf:0015g","url":"https://crm.example.com/globex"}}`, http.StatusCreated)
+	if account.field("depth") != json.Number("2") || len(sliceOf(account.field("path"))) != 2 {
+		t.Errorf("an account under Field is not two levels down: %s", account.raw)
+	}
+	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Initech","parent":"Globex","kind":"account"}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Nowhere","parent":"Ghost"}`, http.StatusNotFound)
+	c.call(acme, "GET", "/api/projects", "/api/projects?parent=~", "", http.StatusOK)
+	if within := c.call(acme, "GET", "/api/projects", "/api/projects?within=Field", "", http.StatusOK); len(sliceOf(within.field("projects"))) != 2 {
+		t.Errorf("within Field = %s, want Field and Globex", within.raw)
+	}
+	c.call(acme, "GET", "/api/projects", "/api/projects?parent=Ghost", "", http.StatusNotFound)
+	detail := c.call(acme, "GET", "/api/projects/{name}", "/api/projects/Globex", "", http.StatusOK)
+	if ancestors := sliceOf(detail.field("ancestors")); len(ancestors) != 2 || obj(ancestors[0])["name"] != "" || obj(ancestors[1])["name"] != "Field" {
+		t.Errorf("Globex's ancestors are not the workspace then Field: %s", detail.raw)
+	}
+	c.call(acme, "GET", "/api/projects/{name}", "/api/projects/Launch", "", http.StatusOK)
+	root := c.call(acme, "GET", "/api/projects/{name}", "/api/projects/~", "", http.StatusOK)
+	c.call(acme, "GET", "/api/projects/{name}", "/api/projects/Ghost", "", http.StatusNotFound)
+	c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/Field", `{"version":1,"title":"Field","description":"Customer work.","instructions":"Never promise dates."}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/Field", `{"version":1,"title":"Stale"}`, http.StatusConflict)
+	c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/Field", `{"version":2,"parent":"Launch"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/~",
+		`{"version":`+string(obj(root.field("project"))["version"].(json.Number))+`,"instructions":"Answer plainly."}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/Ghost", `{"version":1}`, http.StatusNotFound)
+	page := c.call(acme, "GET", "/api/projects/{name}/history", "/api/projects/Field/history?limit=1", "", http.StatusOK)
+	if cursor := page.str("next"); cursor == "" {
+		t.Errorf("a project changed twice has one page of one: %s", page.raw)
+	} else if last := c.call(acme, "GET", "/api/projects/{name}/history", "/api/projects/Field/history?limit=1&before="+cursor, "", http.StatusOK); last.field("next") != nil {
+		t.Errorf("the second page of two is not the last: %s", last.raw)
+	}
+	c.call(acme, "GET", "/api/projects/{name}/history", "/api/projects/~/history", "", http.StatusOK)
+	c.call(acme, "GET", "/api/projects/{name}/history", "/api/projects/Field/history?limit=0", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/projects/{name}/history", "/api/projects/Field/history?before=nonsense", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/projects/{name}/history", "/api/projects/Ghost/history", "", http.StatusNotFound)
+	c.call(acme, "GET", "/api/threads", "/api/threads?within=~&project=Launch", "", http.StatusOK)
+	c.call(acme, "GET", "/api/threads", "/api/threads?project=Ghost", "", http.StatusNotFound)
+	c.call(globex, "GET", "/api/threads", "/api/threads?project=Launch", "", http.StatusNotFound)
+	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Field", "", http.StatusConflict)
+	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/~", "", http.StatusBadRequest)
+	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Globex", "", http.StatusNoContent)
+	// A workspace holds at most 10 company projects.
+	initech := f.machine(t, "initech", everything...)
+	for i := range 10 {
+		c.call(initech, "POST", "/api/projects", "/api/projects", fmt.Sprintf(`{"name":"Company %d","kind":"company"}`, i), http.StatusCreated)
+	}
+	c.call(initech, "POST", "/api/projects", "/api/projects", `{"name":"One too many","kind":"company"}`, http.StatusTooManyRequests)
 
 	// Schedules.
 	c.call(acme, "POST", "/api/schedules", "/api/schedules", `{"name":"nightly","expression":"0 3 * * *","agent":"helper","text":"Report.","project":"Launch"}`, http.StatusCreated)
@@ -1102,7 +1159,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// Settings and the caller's own preferences.
 	settings := c.call(acme, "GET", "/api/settings", "/api/settings", "", http.StatusOK)
 	c.call(acme, "PUT", "/api/settings", "/api/settings", string(settings.raw), http.StatusOK)
-	c.call(acme, "PUT", "/api/settings", "/api/settings", `{"baseline":"ghost","history":"recent","history_limit":10,"projects":[]}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/settings", "/api/settings", `{"baseline":"ghost","history":"recent","history_limit":10}`, http.StatusBadRequest)
+	// Projects left settings for their own routes.
+	c.call(acme, "PUT", "/api/settings", "/api/settings", `{"history":"recent","history_limit":10,"projects":[]}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"display_name":"Service","theme":"dark","accent":"teal","onboarded":true}`, http.StatusOK)
 	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"theme":"neon"}`, http.StatusBadRequest)
 	c.call(acme, "GET", "/api/preferences/photo", "/api/preferences/photo", "", http.StatusNotFound)
@@ -1195,7 +1254,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
 		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},
-		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"},
+		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/memory/approve": {"name": "Launch"}, "/api/projects/{name}/memory/{id}": {"name": "Launch", "id": shared.str("id")},
 		"/api/schedules/{name}": {"name": "nightly"}, "/api/schedules/{name}/pause": {"name": "nightly"},
 		"/api/schedules/{name}/resume": {"name": "nightly"}, "/api/schedules/{name}/run": {"name": "nightly"},
@@ -1210,7 +1269,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
-		"/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
+		"/api/projects/{name}": `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/runs/{id}/calls":    `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/alert-rules/{name}": `{"kind":"run_failed","severity":"critical"}`,
 		"/api/schedules/{name}":   `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
@@ -1244,6 +1303,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", "/api/alert-rules/{name}", "/api/alert-rules/any", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/schedules/{name}", "/api/schedules/nightly", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/schedules/{name}", "/api/schedules/nightly", "", http.StatusNotFound)
+	// A project is deleted once nothing points at it: its limit goes first,
+	// and a delete never drops a limit itself.
+	if inUse := c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Launch", "", http.StatusConflict); !strings.Contains(inUse.str("error"), "its limits") {
+		t.Errorf("the refusal does not name what points at the project: %s", inUse.raw)
+	}
+	c.call(acme, "DELETE", "/api/policies", "/api/policies?kind=project&name=Launch", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Launch", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Launch", "", http.StatusNotFound)
 

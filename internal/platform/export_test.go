@@ -12,6 +12,8 @@ import (
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/pick"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -80,4 +82,9 @@ func (p *Platform) CallTargets(tenant, caller string, spawn []string) []string {
 func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (agentrt.ApprovalRequest, bool) {
 	t := p.callAgentTool(req, func(payload.Action) error { return nil })
 	return t.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: ToolCallAgent, Arguments: args})
+}
+
+// AutoFor is @auto for a message a client raised, as stamp resolves it.
+func (p *Platform) AutoFor(ctx context.Context, c clients.Client, text string) (pick.Choice, error) {
+	return p.autoFor(ctx, c, text)
 }
