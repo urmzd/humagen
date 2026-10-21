@@ -432,6 +432,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             canBilling={can("billing:write")}
             canPropose={can("projects:write")}
             muted={prefs.muted}
+            projects={projects}
             tick={tick}
             inboxTick={inboxTick}
             onTab={(tab) => go({ page: "project", name: route.name, tab })}

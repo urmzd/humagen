@@ -33,7 +33,7 @@ test("an owner changes who holds a role, and the whole list is sent with the ver
   const owner = projectView({ name: "Field", access: { role: "owner", from: "Field", via: "ana" }, actions: ["edit"] });
   render(<ProjectPeople project={owner} onChanged={() => {}} />);
   await screen.findByText("ana");
-  fireEvent.change(screen.getByLabelText(/^Who/), { target: { value: "role:field-eng" } });
+  fireEvent.change(screen.getByLabelText(/subject, or role:/), { target: { value: "role:field-eng" } });
   fireEvent.click(screen.getByText("Add Person"));
   fireEvent.click(await screen.findByText("Save Members"));
   await waitFor(() => assert.ok(net.seen.some((s) => s.method === "PUT")));

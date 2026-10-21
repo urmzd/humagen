@@ -332,6 +332,7 @@ export function ProjectPage({
   canBilling,
   canPropose,
   muted,
+  projects,
   tick,
   inboxTick,
   onTab,
@@ -361,6 +362,8 @@ export function ProjectPage({
   /** Holds projects:write at all. */
   canPropose: boolean;
   muted: string[];
+  /** Every project the caller can see, for where this one can move. */
+  projects: ProjectView[];
   tick?: number;
   inboxTick: unknown;
   onTab: (tab: ProjectTab) => void;
@@ -379,6 +382,7 @@ export function ProjectPage({
   const [missing, setMissing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const [moving, setMoving] = useState<string | null>(null);
   const address = addressOf(name === "~" ? "" : name);
   const reload = useCallback(() => setVersion((v) => v + 1), []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: read again when runs change or this page changes it
@@ -446,6 +450,11 @@ export function ProjectPage({
               {isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute}
             </button>
           )}
+          {p.actions.includes("move") && moving === null && (
+            <button type="button" className={button} onClick={() => setMoving(p.parent ?? "")}>
+              {defaultCopy.roles.moveProject}
+            </button>
+          )}
           {p.actions.includes("archive") && (
             <button
               type="button"
@@ -475,6 +484,40 @@ export function ProjectPage({
     >
       <Problem message={problem} />
       {isMuted && <p className="text-aui-xs text-aui-muted">{defaultCopy.announcements.muted}</p>}
+      {moving !== null && (
+        <form
+          className="flex flex-wrap items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            api
+              .moveProject(address, p.version, moving === "" ? "~" : moving)
+              .then(() => {
+                setMoving(null);
+                changed();
+              })
+              .catch(fail("The project could not be moved."));
+          }}
+        >
+          <Menu
+            label={defaultCopy.project.moveUnder}
+            value={moving}
+            options={[
+              { value: "", label: defaultCopy.project.topLevel },
+              ...projects
+                // Not under itself or anything below it, and only where the caller works.
+                .filter((q) => q.name !== p.name && !q.path.some((s) => s.name === p.name) && (q.access.role === "member" || q.access.role === "owner"))
+                .map((q) => ({ value: q.name, label: titleOf(q), hint: q.path.length > 1 ? q.path.map((s) => s.title || s.name).join(" › ") : undefined })),
+            ]}
+            onChange={setMoving}
+          />
+          <button type="submit" className={primary} disabled={moving === (p.parent ?? "")}>
+            {defaultCopy.project.move}
+          </button>
+          <button type="button" className={button} onClick={() => setMoving(null)}>
+            Cancel
+          </button>
+        </form>
+      )}
       {tab === "inbox" && (
         <ProjectInbox project={p} me={me} signal={inboxTick} message={message} onMessage={onMessage} onOpen={onOpenSource} onChanged={onChanged} />
       )}

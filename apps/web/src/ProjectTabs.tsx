@@ -313,6 +313,31 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
           </div>
         )}
       </section>
+      {editable && (
+        <section className={section}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className={heading}>{copy.project.whoAnnounces}</h2>
+            <Menu
+              label={copy.project.whoAnnounces}
+              value={project.announce ?? "owner"}
+              options={roleOptions}
+              onChange={(announce) =>
+                api
+                  .updateProject(name, {
+                    version: project.version,
+                    title: project.title,
+                    description: project.description,
+                    account: project.account,
+                    instructions: project.instructions,
+                    announce,
+                  })
+                  .then(onChanged)
+                  .catch((err) => setProblem(sorry("That could not be saved.")(err)))
+              }
+            />
+          </div>
+        </section>
+      )}
       {members.inherited.length > 0 && (
         <section className={section}>
           <h2 className={heading}>{copy.project.ownersAbove}</h2>
