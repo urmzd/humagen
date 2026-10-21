@@ -42,6 +42,8 @@ const (
 	ActKeep        = "keep"
 	ActDiscard     = "discard"
 	ActRaiseLimit  = "raise_limit"
+	// ActDone sets a mention aside: the person has seen to it.
+	ActDone = "done"
 )
 
 // Resolution is what a person decided about a part.
@@ -80,7 +82,7 @@ func reads(k inbox.Kind) auth.Permission {
 	switch k {
 	case inbox.KindMemory:
 		return auth.AgentsRead
-	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult:
+	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
 		return auth.RunsRead
 	case inbox.KindArtifact:
 		return auth.ArtifactsRead
@@ -93,7 +95,7 @@ func writes(k inbox.Kind) auth.Permission {
 	switch k {
 	case inbox.KindMemory:
 		return auth.AgentsWrite
-	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult:
+	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
 		return auth.RunsWrite
 	case inbox.KindArtifact:
 		return auth.ArtifactsWrite
@@ -114,6 +116,8 @@ func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 		return auth.BillingWrite, true
 	case t == inbox.PartBudget && action == ActAcknowledge:
 		return auth.AlertsWrite, true
+	case t == inbox.PartMention && action == ActDone:
+		return auth.RunsWrite, true
 	case t == inbox.PartApproval && (action == ActApprove || action == ActDeny),
 		t == inbox.PartChoice && action == ActChoose,
 		t == inbox.PartReply && action == ActReply:
@@ -132,6 +136,7 @@ var offered = map[inbox.PartType][]string{
 	inbox.PartApproval: {ActApprove, ActDeny},
 	inbox.PartChoice:   {ActChoose},
 	inbox.PartReply:    {ActReply},
+	inbox.PartMention:  {ActDone},
 }
 
 // seenBy fills in what a reader may do with each part.

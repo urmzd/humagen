@@ -455,8 +455,9 @@ export interface ScheduleView {
 /** What a message is about. `approval` and `clarification` are questions
 a run is waiting on. `result` is the answer of a run nobody was
 waiting on, and `artifact` a file that was published or revised.
+`mention` is a message in a shared thread that tags the reader.
  */
-export type InboxKind = "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact";
+export type InboxKind = "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention";
 
 export type InboxState = "open" | "resolved" | "dismissed" | "snoozed";
 
@@ -642,18 +643,18 @@ the callee's call policy's approvers, for a call to an agent.
 }
 
 /** One typed part of a message. `type` says which of `text`, `alert`,
-`failure`, `memory`, `budget`, `artifact` or `question` carries the body:
-`approval`, `choice` and `reply` parts carry `question`. A settled
-question's `outcome` is `approve`, `deny`, `choose` (the option in
-`note`), `reply` (the words in `note`), `expired`, `stopped` or
-`closed`.
+`failure`, `memory`, `budget`, `artifact`, `mention` or `question`
+carries the body: `approval`, `choice` and `reply` parts carry
+`question`. A settled question's `outcome` is `approve`, `deny`,
+`choose` (the option in `note`), `reply` (the words in `note`),
+`expired`, `stopped` or `closed`.
  */
 export interface InboxPart {
   id: string;
-  type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply";
+  type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply" | "mention";
   state: "open" | "resolved" | "info";
   /** What this caller may do with the part now. Empty once it is resolved, or when the caller has no permission for any action. */
-  actions: ("acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply")[];
+  actions: ("acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done")[];
   outcome?: InboxOutcome;
   text?: string;
   alert?: InboxAlertPart;
@@ -662,6 +663,21 @@ export interface InboxPart {
   budget?: InboxBudgetPart;
   artifact?: InboxArtifactPart;
   question?: InboxQuestionPart;
+  mention?: InboxMentionPart;
+}
+
+/** A message in a shared thread that tags the reader. `done` sets it aside. */
+export interface InboxMentionPart {
+  thread: string;
+  /** The message's id within the thread, such as `m-3`. */
+  message: string;
+  /** The thread's project. Empty is the workspace itself. */
+  project: string;
+  channel: string;
+  /** The subject of the person who posted it. */
+  by: string;
+  /** The start of what they wrote. */
+  excerpt: string;
 }
 
 /** One message in the inbox. */

@@ -3421,8 +3421,9 @@ components:
         What a message is about. `approval` and `clarification` are questions
         a run is waiting on. `result` is the answer of a run nobody was
         waiting on, and `artifact` a file that was published or revised.
+        `mention` is a message in a shared thread that tags the reader.
       type: string
-      enum: [alert, failure, memory, budget, approval, clarification, result, artifact]
+      enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention]
     InboxState:
       type: string
       enum: [open, resolved, dismissed, snoozed]
@@ -3674,18 +3675,18 @@ components:
     InboxPart:
       description: |
         One typed part of a message. `type` says which of `text`, `alert`,
-        `failure`, `memory`, `budget`, `artifact` or `question` carries the body:
-        `approval`, `choice` and `reply` parts carry `question`. A settled
-        question's `outcome` is `approve`, `deny`, `choose` (the option in
-        `note`), `reply` (the words in `note`), `expired`, `stopped` or
-        `closed`.
+        `failure`, `memory`, `budget`, `artifact`, `mention` or `question`
+        carries the body: `approval`, `choice` and `reply` parts carry
+        `question`. A settled question's `outcome` is `approve`, `deny`,
+        `choose` (the option in `note`), `reply` (the words in `note`),
+        `expired`, `stopped` or `closed`.
       type: object
       required: [id, type, state, actions]
       properties:
         id: {type: string}
         type:
           type: string
-          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply]
+          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, mention]
         state:
           type: string
           enum: [open, resolved, info]
@@ -3694,7 +3695,7 @@ components:
           type: array
           items:
             type: string
-            enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply]
+            enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done]
         outcome: {$ref: "#/components/schemas/InboxOutcome"}
         text: {type: string}
         alert: {$ref: "#/components/schemas/InboxAlertPart"}
@@ -3703,6 +3704,27 @@ components:
         budget: {$ref: "#/components/schemas/InboxBudgetPart"}
         artifact: {$ref: "#/components/schemas/InboxArtifactPart"}
         question: {$ref: "#/components/schemas/InboxQuestionPart"}
+        mention: {$ref: "#/components/schemas/InboxMentionPart"}
+    InboxMentionPart:
+      description: A message in a shared thread that tags the reader. `done` sets it aside.
+      type: object
+      required: [thread, message, project, channel, by, excerpt]
+      properties:
+        thread: {type: string}
+        message:
+          description: The message's id within the thread, such as `m-3`.
+          type: string
+        project:
+          description: The thread's project. Empty is the workspace itself.
+          type: string
+        channel: {type: string}
+        by:
+          description: The subject of the person who posted it.
+          type: string
+        excerpt:
+          description: The start of what they wrote.
+          type: string
+          maxLength: 300
     InboxMessage:
       description: One message in the inbox.
       type: object

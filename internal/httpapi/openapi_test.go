@@ -582,7 +582,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"InboxNotice": {typ: inbox.Notice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
 		"InboxOutcome": {typ: inbox.Outcome{}}, "InboxLimits": {typ: inbox.Limits{}}, "InboxAlertPart": {typ: inbox.AlertPart{}},
 		"InboxFailurePart": {typ: inbox.FailurePart{}}, "InboxNoteRef": {typ: inbox.NoteRef{}}, "InboxMemoryPart": {typ: inbox.MemoryPart{}},
-		"InboxBudgetPart": {typ: inbox.BudgetPart{}}, "InboxPart": {typ: inbox.Part{}}, "InboxQuestionPart": {typ: inbox.QuestionPart{}}, "InboxQuestionTool": {typ: inbox.QuestionTool{}}, "InboxMessage": {typ: inbox.Message{}},
+		"InboxBudgetPart": {typ: inbox.BudgetPart{}}, "InboxPart": {typ: inbox.Part{}}, "InboxQuestionPart": {typ: inbox.QuestionPart{}}, "InboxQuestionTool": {typ: inbox.QuestionTool{}}, "InboxMessage": {typ: inbox.Message{}}, "InboxMentionPart": {typ: inbox.MentionPart{}},
 		"InboxChange": {typ: inbox.Change{}},
 		"CallPolicy":  {typ: callpolicy.Policy{}}, "CallPolicyInput": {typ: callPolicyBody{}, written: true}, "Reach": {typ: platform.Reach{}},
 		"Artifact": {typ: artifacts.Artifact{}}, "StorageShare": {typ: artifacts.Share{}},
