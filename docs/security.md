@@ -36,10 +36,15 @@ company projects carry instructions and notes sent to every agent answering
 under them, and because reusing the name of a deleted project adopts the
 conversations still filed under it. `projects:govern` grants nothing on its
 own: every project route checks `projects:read` or `projects:write` first, and
-govern is asked for on top, for the workspace, a company project, its notes, or
-a deleted name. Projects have no roles yet, so anyone holding `projects:write`
-changes every other project, and every project is visible to everyone holding
-`projects:read`.
+govern is asked for on top, for the workspace, a company project, or a deleted
+name. Then the caller's role on the project decides, and only narrows: a viewer
+reads, a member creates projects under it and proposes notes, an owner changes
+it (see [Project roles](authorization.md#project-roles)). A project the caller
+has no role in answers 404. Reads are not confined to members yet: every
+project keeps an entry for everyone of at least viewer, and a members-only
+project is refused (409), so a role never claims a privacy that is not
+enforced. A project's runs, threads and memory stay readable by everyone with
+the permission to read them.
 
 A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:
@@ -277,11 +282,17 @@ decided per message:
 |------|--------|-----------|
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
 | Failed run | `runs:read` | `runs:write` |
-| Proposed memory | `agents:read` | `agents:write` |
+| Proposed memory | `agents:read` | `agents:write`; a project's proposed notes, `projects:write` and owning the project |
+| Announcement | `projects:read`, and a member of its project or one below it (anyone who reads the project's own inbox) | hiding or snoozing it is the reader's own (`projects:read`); withdrawing it is its author's or an owner's (`projects:write`) |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |
 
 A message a caller may not see answers 404, not 403, and is left out of their
-count. A question is addressed to the people its run's pinned spec lets answer
+count, and a notice about it never reaches their event stream. An
+announcement's audience (`project:<name>`) and a proposed note's
+(`owners:<name>`) are decided from the project tree at each read, so a revoked
+membership hides past announcements at the next one. Announcements are plain
+text; surfaces escape Slack mention syntax before showing them, and at most 20
+a project and 200 a workspace are posted a day. A question is addressed to the people its run's pinned spec lets answer
 it (`approvers` or `answerers`, by subject or `role:<name>`), and never to the
 person who asked for an approval's run or its tree. Someone who can see the run
 but may not answer is refused with 403 on `answerQuestion`, and nothing is
