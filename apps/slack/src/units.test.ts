@@ -62,7 +62,7 @@ const client = (over: Partial<ClientRecord>): ClientRecord => ({
   ...over,
 });
 
-test("choose: a named agent, then the default, then the picker", () => {
+test("choose: a named agent, then the default, then the platform's default", () => {
   assert.deepEqual(choose("@helper look at this", agents, { defaultAgent: "lead" }), {
     agent: "helper",
     text: "look at this",
@@ -78,9 +78,9 @@ test("choose: a named agent, then the default, then the picker", () => {
     text: "hello",
     how: "default",
   });
-  assert.deepEqual(choose("hello", agents, {}), { agent: "", text: "hello", how: "picker" });
+  assert.deepEqual(choose("hello", agents, {}), { agent: "", text: "hello", how: "inherited" });
   // An address is not a name, and neither is a word that is no agent.
-  assert.equal(choose("mail dana@helper.example", agents, {}).how, "picker");
+  assert.equal(choose("mail dana@helper.example", agents, {}).how, "inherited");
   assert.equal(choose("@someone hello", agents, {}).text, "@someone hello");
   // Naming an agent and saying nothing else still sends the words.
   assert.equal(choose("@helper", agents, {}).text, "@helper");
@@ -102,9 +102,9 @@ test("choose: a client's list is default deny", () => {
   assert.equal(
     choose("hi", agents, { client: client({ agents: ["helper"] }) }).agent,
     null,
-    "the picker does not know the list",
+    "the platform's default could be outside the list",
   );
-  assert.equal(choose("hi", agents, { client: client({ agents: ["*"] }) }).how, "picker");
+  assert.equal(choose("hi", agents, { client: client({ agents: ["*"] }) }).how, "inherited");
   assert.equal(
     choose("@helper hi", agents, { client: client({ enabled: false, agents: ["*"] }) }).agent,
     null,
