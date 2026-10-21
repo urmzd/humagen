@@ -831,6 +831,9 @@ type ThreadSummary struct {
 	Channel string `json:"channel"`
 	// Agents is every agent that has answered in it, in order of first reply.
 	Agents []string `json:"agents"`
+	// People is every person who asked in it, by subject, in order of first
+	// turn. A credential that is not a person is not one of them.
+	People []string `json:"people"`
 	Turns  int      `json:"turns"`
 	// Branches is how many turns have more than one answer.
 	Branches int `json:"branches"`
@@ -1036,7 +1039,7 @@ func (x *Index) threads(tenant string) []ThreadSummary {
 		}
 		s, ok := byID[r.Thread]
 		if !ok {
-			s = &ThreadSummary{ID: r.Thread, Title: r.Text, Origin: r.Origin, Project: r.Project, Channel: cmp.Or(r.Channel, DefaultChannel), CreatedAt: r.CreatedAt}
+			s = &ThreadSummary{ID: r.Thread, Title: r.Text, Origin: r.Origin, Project: r.Project, Channel: cmp.Or(r.Channel, DefaultChannel), People: []string{}, CreatedAt: r.CreatedAt}
 			byID[r.Thread] = s
 			order = append(order, r.Thread)
 		}
@@ -1055,6 +1058,9 @@ func (x *Index) threads(tenant string) []ThreadSummary {
 		s.Turns++
 		if !slices.Contains(s.Agents, r.Agent) {
 			s.Agents = append(s.Agents, r.Agent)
+		}
+		if id := r.Actor.ID; id != "" && !r.Actor.Bot && !slices.Contains(s.People, id) {
+			s.People = append(s.People, id)
 		}
 		// A second answer at the same point makes that point a branch. Runs
 		// answering one person's message answer it side by side instead.

@@ -2,6 +2,7 @@ package threads_test
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/urmzd/warp/pkg/projects"
@@ -62,7 +63,7 @@ func TestAtMostThreeAgentsAnswerOneMessage(t *testing.T) {
 }
 
 func TestADefaultThatIsNoLongerAvailableFailsClosed(t *testing.T) {
-	d := threads.Decide(threads.Input{Default: threads.Default{Agent: "ignite", From: threads.FromProject("Field")}, Unavailable: "it is not available in Globex"})
+	d := threads.Decide(threads.Input{Default: threads.Default{Agent: "ignite", From: "project:Field"}, Unavailable: "it is not available in Globex"})
 	if d.Rule != threads.RuleDefault || len(d.Agents) != 0 || d.Default {
 		t.Fatalf("Decide = %+v; want no run", d)
 	}
@@ -71,27 +72,14 @@ func TestADefaultThatIsNoLongerAvailableFailsClosed(t *testing.T) {
 	}
 }
 
-func TestTheDefaultIsTheNearestOneSet(t *testing.T) {
-	chain := []threads.Default{{From: threads.FromProject("Globex")}, {Agent: "field-helper", From: threads.FromProject("Field")}, {Agent: "auto", From: threads.FromProject(projects.Root)}}
+func TestTheNearerDefaultsAreTheThreadsThenTheClientsThenTheChannels(t *testing.T) {
 	renewals := projects.Channel{Project: "Globex", Name: "renewals", Default: "globex-helper"}
-	general := projects.Channel{Project: "Globex", Name: projects.General}
-	for _, c := range []struct {
-		name   string
-		thread threads.Thread
-		client string
-		ch     projects.Channel
-		chain  []threads.Default
-		want   threads.Default
-	}{
-		{"the thread's", threads.Thread{Default: "scribe"}, "slack-helper", renewals, chain, threads.Default{Agent: "scribe", From: threads.FromThread}},
-		{"the client's", threads.Thread{}, "slack-helper", renewals, chain, threads.Default{Agent: "slack-helper", From: threads.FromClient}},
-		{"the channel's", threads.Thread{}, "", renewals, chain, threads.Default{Agent: "globex-helper", From: threads.FromChannel}},
-		{"the nearest project's", threads.Thread{}, "", general, chain, threads.Default{Agent: "field-helper", From: "project:Field"}},
-		{"the root's", threads.Thread{}, "", general, chain[2:], threads.Default{Agent: "auto", From: "project:~"}},
-		{"none", threads.Thread{}, "", general, nil, threads.Default{}},
-	} {
-		if got := threads.DefaultOf(c.thread, c.client, c.ch, c.chain); got != c.want {
-			t.Errorf("%s: DefaultOf = %+v, want %+v", c.name, got, c.want)
-		}
+	got := threads.Nearer(threads.Thread{Default: "scribe"}, "slack-helper", renewals)
+	want := []threads.Default{{Agent: "scribe", From: threads.FromThread}, {Agent: "slack-helper", From: threads.FromClient}, {Agent: "globex-helper", From: threads.FromChannel}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Nearer = %+v, want %+v", got, want)
+	}
+	if got := threads.Nearer(threads.Thread{}, "", projects.Channel{Name: projects.General}); slices.ContainsFunc(got, func(d threads.Default) bool { return d.Agent != "" }) {
+		t.Fatalf("Nearer with none set = %+v", got)
 	}
 }

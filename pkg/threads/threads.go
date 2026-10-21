@@ -10,8 +10,9 @@
 // this package writes a turn for an agent.
 //
 // The package also holds what the platform decides with, as pure functions:
-// the tag grammar (Parse), what a message starts (Decide), which default it
-// inherits (DefaultOf) and the room's transcript (Transcript).
+// the tag grammar (Parse), what a message starts (Decide), the defaults set
+// nearer a message than its project (Nearer) and the room's transcript
+// (Transcript).
 //
 // # Default deny
 //

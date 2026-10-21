@@ -717,6 +717,36 @@ func (s *Store) List(tenantName string, q Query) ([]Thread, string, error) {
 	return page, "", nil
 }
 
+// Summary is a thread's record with what a list shows of its messages.
+type Summary struct {
+	Thread
+	// Messages is how many messages it holds.
+	Messages int `json:"messages"`
+	// First is what its first message says, "" when it has none.
+	First string `json:"first,omitempty"`
+}
+
+// Summaries returns every thread a tenant has a record of, in no order. It is
+// what a list of conversations merges with the run index's, which holds
+// every run of the tenant in the same way.
+func (s *Store) Summaries(tenantName string) []Summary {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	t, ok := s.tenants[tenantName]
+	if !ok {
+		return []Summary{}
+	}
+	out := make([]Summary, 0, len(t.threads))
+	for _, th := range t.threads {
+		sum := Summary{Thread: th.rec.clone(), Messages: len(th.msgs)}
+		if len(th.msgs) > 0 {
+			sum.First = th.msgs[0].Text
+		}
+		out = append(out, sum)
+	}
+	return out
+}
+
 // Watch reports what happens in a tenant's threads until cancel is called.
 func (s *Store) Watch(tenantName string) (<-chan Notice, func()) {
 	s.mu.Lock()

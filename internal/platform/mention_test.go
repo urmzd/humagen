@@ -40,7 +40,7 @@ func TestAMentionIsForThePersonTaggedAndDoneTakesRunsWrite(t *testing.T) {
 		t.Fatalf("someone not tagged read a mention: %v", err)
 	}
 	got, err := p.InboxGet(operator, mine.ID)
-	if err != nil || got.Parts[0].Mention == nil || got.Parts[0].Mention.Excerpt != part.Excerpt || !slices.Equal(got.Parts[0].Actions, []string{platform.ActDone}) {
+	if err != nil || got.Parts[0].Mention == nil || got.Parts[0].Mention.Excerpt != part.Excerpt || !slices.Equal(got.Parts[0].Actions, []string{platform.ActReply, platform.ActDone}) {
 		t.Fatalf("the person tagged reads %+v, %v", got, err)
 	}
 	seen, err := p.InboxGet(reader, theirs.ID)

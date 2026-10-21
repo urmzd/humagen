@@ -33,43 +33,21 @@ const (
 	FromChannel = "channel"
 )
 
-// FromProject is where a default set on a project comes from:
-// "project:<name>", and "project:~" for the root.
-func FromProject(name string) string {
-	if name == projects.Root {
-		return "project:" + projects.RootAddress
-	}
-	return "project:" + name
-}
-
 // Default is the agent that answers an untagged message, or "auto", and
-// where it is set. The zero Default is none.
+// where it is set: FromThread, FromClient, FromChannel, or "project:<name>"
+// ("project:~" for the root). The zero Default is none.
 type Default struct {
 	Agent string `json:"agent"`
 	From  string `json:"from"`
 }
 
-// DefaultOf returns the default a thread inherits: the first set of the
-// thread's, the client's default agent (for a thread a client files outside
-// a bound channel; "" otherwise), the channel's, and then chain's, which
-// holds the defaults of the thread's project, its ancestors nearest first and
-// the root, in that order, each with its From. It is the zero Default when
-// none is set.
-func DefaultOf(t Thread, clientDefault string, ch projects.Channel, chain []Default) Default {
-	switch {
-	case t.Default != "":
-		return Default{Agent: t.Default, From: FromThread}
-	case clientDefault != "":
-		return Default{Agent: clientDefault, From: FromClient}
-	case ch.Default != "":
-		return Default{Agent: ch.Default, From: FromChannel}
-	}
-	for _, d := range chain {
-		if d.Agent != "" {
-			return d
-		}
-	}
-	return Default{}
+// Nearer returns the defaults set nearer a message than its project, nearest
+// first: the thread's, the client's default agent (for a thread a client
+// files outside a bound channel; "" otherwise) and the channel's. Each is
+// returned, set or not, so the first that is set wins and the project's
+// chain decides only when none is.
+func Nearer(t Thread, clientDefault string, ch projects.Channel) []Default {
+	return []Default{{Agent: t.Default, From: FromThread}, {Agent: clientDefault, From: FromClient}, {Agent: ch.Default, From: FromChannel}}
 }
 
 // Input is what decides what a message starts.
@@ -83,7 +61,8 @@ type Input struct {
 	Reply bool
 	// PostOnly is set when the person chose to post only.
 	PostOnly bool
-	// Default is what the thread inherits (DefaultOf).
+	// Default is what the thread inherits: the first set of Nearer, then
+	// the project's chain.
 	Default Default
 	// Unavailable says why the default cannot answer, when it has stopped
 	// being available where the thread is. The next default along is never

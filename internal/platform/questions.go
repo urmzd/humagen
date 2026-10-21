@@ -18,7 +18,9 @@ import (
 	"github.com/urmzd/warp/pkg/authz"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // People in the loop.
@@ -209,6 +211,9 @@ func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Questi
 		return []string{nobody}, nil
 	}
 	if q.Kind != payload.QuestionApproval {
+		if experts, asked := p.expertsAsked(run, q); asked {
+			return expertAudience(rev.Spec.Answerers, experts), nil
+		}
 		return audienceOf(rev.Spec.Answerers, q), nil
 	}
 	// A call held by the callee's policy names its own approvers, which
@@ -221,6 +226,44 @@ func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Questi
 	// Whoever asked for the call does not approve it, and neither does
 	// whoever asked for the work it is part of.
 	return audienceOf(allowed, q), p.selfApprovers(run, self)
+}
+
+// expertsAsked is who a question that asks the project's experts is for:
+// asked_of "sme:<topic>" names the experts for the topic, and "sme" any
+// expert, of the nearest project on the run's chain that lists one. asked is
+// false for a question that asks someone else.
+func (p *Platform) expertsAsked(run runs.Run, q payload.Question) (experts []string, asked bool) {
+	who := strings.TrimSpace(q.AskedOf)
+	topic, ok := strings.CutPrefix(who, threads.SMEName+":")
+	switch {
+	case who == threads.SMEName:
+		topic = ""
+	case !ok || !projects.ValidTopic(topic):
+		return nil, false
+	}
+	experts, _ = p.Projects.Tree(run.Tenant).ExpertsFor(run.Project, topic)
+	return experts, true
+}
+
+// expertAudience is who a question for experts is addressed to: the experts,
+// narrowed to allowed when allowed names anyone. Addressing routes and does
+// not admit, so when none of the experts may answer, or there are none, it
+// is allowed, as audienceOf does. Who may answer stays the runtime's to
+// check.
+func expertAudience(allowed, experts []string) []string {
+	if len(allowed) == 0 {
+		return slices.Clone(experts)
+	}
+	var out []string
+	for _, e := range experts {
+		if slices.Contains(allowed, e) {
+			out = append(out, e)
+		}
+	}
+	if len(out) == 0 {
+		return slices.Clone(allowed)
+	}
+	return out
 }
 
 // audienceOf is who a question is addressed to: allowed, narrowed to whom

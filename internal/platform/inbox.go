@@ -116,7 +116,8 @@ func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 		return auth.BillingWrite, true
 	case t == inbox.PartBudget && action == ActAcknowledge:
 		return auth.AlertsWrite, true
-	case t == inbox.PartMention && action == ActDone:
+	case t == inbox.PartMention && (action == ActReply || action == ActDone):
+		// Replying posts a message in the thread as the reader.
 		return auth.RunsWrite, true
 	case t == inbox.PartApproval && (action == ActApprove || action == ActDeny),
 		t == inbox.PartChoice && action == ActChoose,
@@ -136,7 +137,7 @@ var offered = map[inbox.PartType][]string{
 	inbox.PartApproval: {ActApprove, ActDeny},
 	inbox.PartChoice:   {ActChoose},
 	inbox.PartReply:    {ActReply},
-	inbox.PartMention:  {ActDone},
+	inbox.PartMention:  {ActReply, ActDone},
 }
 
 // seenBy fills in what a reader may do with each part.
@@ -332,6 +333,12 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			return inbox.Message{}, err
 		}
 		note = fmt.Sprintf("Kept %d of %d", kept, len(part.Memory.Notes))
+	case part.Type == inbox.PartMention && r.Action == ActReply:
+		m, err := p.replyToMention(ctx, who, *part.Mention, r.Text)
+		if err != nil {
+			return inbox.Message{}, err
+		}
+		note = "Replied as " + m.ID
 	case part.Type == inbox.PartBudget:
 		saved, err := p.raiseLimit(who, *part.Budget, r.Limits)
 		if err != nil {
