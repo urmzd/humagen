@@ -285,6 +285,11 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err := seedClients(ctx, p, *tenant, getenv); err != nil {
 		return err
 	}
+	// Whom the policy grants a role by subject is in the workspace's
+	// directory before they first sign in.
+	if err := p.SeeGranted(*tenant, granted(pol)); err != nil {
+		log.Warn("people the policy names could not all be recorded", "error", err)
+	}
 	if *seed {
 		if err := seedAgents(ctx, p, *tenant); err != nil {
 			return err

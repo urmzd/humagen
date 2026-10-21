@@ -400,6 +400,9 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 				return fmt.Errorf("platform %q: agent %q: %w", tenant, s.Name, err)
 			}
 		}
+		if err := applyHomes(ctx, p, doc); err != nil {
+			return err
+		}
 		if err := applyWorkspace(ctx, p, doc); err != nil {
 			return err
 		}
@@ -462,14 +465,21 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 	if err != nil {
 		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
 	}
+	declared, owns := projects.Project{Name: projects.Root}, []string(nil)
+	if w.Instructions != nil {
+		declared.Instructions, owns = *w.Instructions, append(owns, projects.FieldInstructions)
+	}
+	if w.Agents != nil {
+		declared.Agents, owns = fileAgents(*w.Agents), append(owns, projects.FieldAgents)
+	}
 	switch {
-	case w.Instructions != nil:
-		_, err = p.Projects.Upsert(tenant, projects.Project{Name: projects.Root, Instructions: *w.Instructions}, []string{projects.FieldInstructions}, fileWriter, now)
+	case len(owns) > 0:
+		_, err = p.Projects.Upsert(tenant, declared, owns, fileWriter, now)
 	case root.Managed == projects.ManagedFile:
 		_, err = p.Projects.Release(tenant, projects.Root, fileWriter, now)
 	}
 	if err != nil {
-		return fmt.Errorf("platform %q: workspace.instructions: %w", tenant, err)
+		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
 	}
 	in := map[string]bool{}
 	for _, i := range parentsFirst(w.Projects) {
@@ -500,6 +510,9 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 	if a := d.Account; a != nil {
 		pr.Account = &projects.AccountInfo{Customer: a.Customer, ExternalID: a.ExternalID, URL: a.URL}
 	}
+	if d.Agents != nil {
+		pr.Agents = fileAgents(*d.Agents)
+	}
 	var owns []string
 	for field, set := range map[string]bool{
 		projects.FieldTitle:        d.Title != "",
@@ -508,12 +521,62 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 		projects.FieldParent:       d.Parent != "",
 		projects.FieldAccount:      d.Account != nil,
 		projects.FieldInstructions: d.Instructions != "",
+		projects.FieldAgents:       d.Agents != nil,
 	} {
 		if set {
 			owns = append(owns, field)
 		}
 	}
 	return pr, owns
+}
+
+// fileAgents is a project's agents as the file declares them.
+func fileAgents(a spec.Agents) projects.Agents {
+	return projects.Agents{Enable: a.Enable, Allow: a.Allow, Default: a.Default}
+}
+
+// applyHomes makes each agent the file places in a project live there, once
+// the file's agents exist, and holds every agent the file's lists name to the
+// registry: a name the check could not see, in an agent read from a file, is
+// refused here. A home that left the file stays, as a project does. A home
+// something outside it still needs fails the start, naming what.
+func applyHomes(ctx context.Context, p *platform.Platform, doc spec.Platform) error {
+	tenant, w := doc.Metadata.Name, doc.Spec.Workspace
+	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
+		return fmt.Errorf("platform %q: the platform's own agents: %w", tenant, err)
+	}
+	lists := []struct {
+		path   string
+		agents *spec.Agents
+	}{{"workspace.agents", w.Agents}}
+	for i, pr := range w.Projects {
+		lists = append(lists, struct {
+			path   string
+			agents *spec.Agents
+		}{fmt.Sprintf("workspace.projects[%d].agents", i), pr.Agents})
+	}
+	for _, l := range lists {
+		if l.agents == nil {
+			continue
+		}
+		for _, n := range slices.Concat(l.agents.Enable, l.agents.Allow, []string{l.agents.Default}) {
+			if n == "" || n == spec.EveryAgent || n == spec.AutoAgent {
+				continue
+			}
+			if _, err := p.Agents.Get(ctx, tenant, n, 0); err != nil {
+				return fmt.Errorf("platform %q: %s: there is no agent called %q", tenant, l.path, n)
+			}
+		}
+	}
+	for i, a := range doc.Spec.Agents {
+		if a.Spec == nil || a.Project == "" || a.Project == spec.RootParent {
+			continue
+		}
+		if err := p.SetAgentHome(ctx, tenant, agentspec.NormalizeName(a.Spec.Name), a.Project, projects.Writer{By: fileWriter, Govern: true}); err != nil {
+			return fmt.Errorf("platform %q: agents[%d].project: %w", tenant, i, err)
+		}
+	}
+	return nil
 }
 
 // parentsFirst is the order to apply the file's projects in: by how deep
