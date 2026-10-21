@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,6 +74,7 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 			secret = b.ClientSecret.Ref
 		}
 		b.ClientSecret = &spec.Ref{Ref: q.text("Where is the client secret?", or(secret, "env:WARP_OIDC_CLIENT_SECRET"), parseRef)}
+		b.Audience = q.text("Audience of the API's access tokens", or(b.Audience, "warp"), nonEmpty)
 		sys.Spec.Auth.Block = spec.MustJSON(b)
 	}
 
@@ -144,8 +146,15 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 	}
 
 	sl := plat.Spec.Surfaces.Slack
-	on := q.yes("Answer in Slack too?", sl != nil && sl.Enabled)
-	if on {
+	switch {
+	case kind == "tailscale":
+		// The Slack app calls warp's API, and a process cannot sign in
+		// through Tailscale Serve.
+		if sl != nil && sl.Enabled {
+			fmt.Fprintln(out, "Slack is off: its app cannot sign in to warp through Tailscale Serve.")
+			sl.Enabled = false
+		}
+	case q.yes("Answer in Slack too?", sl != nil && sl.Enabled):
 		if sl == nil {
 			sl = &spec.Slack{BotToken: &spec.Ref{Ref: "env:SLACK_BOT_TOKEN"}, AppToken: &spec.Ref{Ref: "env:SLACK_APP_TOKEN"}}
 		}
@@ -154,8 +163,23 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 		sl.Team = q.text("Slack team id (T...)", sl.Team, nonEmpty)
 		sl.BotToken = &spec.Ref{Ref: q.text("Where is the bot token (xoxb-)?", sl.BotToken.Ref, parseRef)}
 		sl.AppToken = &spec.Ref{Ref: q.text("Where is the app token (xapp-)?", sl.AppToken.Ref, parseRef)}
+		if kind == "oidc" && !sl.WarpToken.Set() {
+			fmt.Fprintln(out, "  The app signs in to warp as a machine client of the identity provider, with client credentials.")
+			c := sl.WarpClient
+			if c == nil {
+				c = &spec.ClientCredentials{}
+			}
+			c.TokenURL = q.text("Its token URL", c.TokenURL, httpURL)
+			c.ClientID = q.text("Its client id", or(c.ClientID, "warp-slack"), nonEmpty)
+			secret := "env:WARP_SLACK_CLIENT_SECRET"
+			if c.ClientSecret.Set() {
+				secret = c.ClientSecret.Ref
+			}
+			c.ClientSecret = &spec.Ref{Ref: q.text("Where is its client secret?", secret, parseRef)}
+			sl.WarpClient = c
+		}
 		plat.Spec.Surfaces.Slack = sl
-	} else if sl != nil {
+	case sl != nil:
 		sl.Enabled = false
 	}
 	if q.err != nil {
@@ -183,6 +207,14 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 }
 
 func parseRef(v string) error { _, err := credref.Parse(v); return err }
+
+func httpURL(v string) error {
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("an http or https URL")
+	}
+	return nil
+}
 
 func nonEmpty(v string) error {
 	if strings.TrimSpace(v) == "" {

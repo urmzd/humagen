@@ -56,13 +56,16 @@ type Options struct {
 	// spec file selects (docs/spec.md).
 	Kinds map[string]map[string]Factory
 
-	// ctx and ready are for tests: the parent context, and a call with the
-	// address once the server listens.
-	ctx   context.Context
-	ready func(addr string)
+	// ctx, ready and slackDone are for tests: the parent context, a call
+	// with the address once the server listens, and a call when a Slack
+	// app's supervisor returns.
+	ctx       context.Context
+	ready     func(addr string)
+	slackDone func(tenant string, err error)
 }
 
 const usage = `usage: warp start [-f PATH] [flags]     run the platform here; no file needs no configuration
+       warp serve [-f PATH] [flags]     run it as a server: OIDC sign-in, nothing seeded, no questions
        warp deploy [-f PATH] [-o DIR]  run it where the spec's deploy says: local, compose or kubernetes
        warp setup                      answer a few questions and write warp.yaml
        warp config check|print -f PATH check a spec, or print it with every default
@@ -97,9 +100,9 @@ func run(o Options, args []string) error {
 	case "start":
 		return start(o, args[1:], os.Stdin, os.Stdout)
 	case "serve":
-		// start's old name, kept so a container command keeps working. It
-		// never asks questions.
-		return start(o, append([]string{"-yes"}, args[1:]...), os.Stdin, os.Stdout)
+		// The server: what a container, a chart or a unit file runs. It
+		// reads only the files -f names and never asks.
+		return serve(o, args[1:], serveDefaults{})
 	case "deploy":
 		return deployCmd(o, args[1:], os.Stdin, os.Stdout)
 	case "setup":
@@ -116,9 +119,14 @@ func run(o Options, args []string) error {
 	}
 }
 
-// serveDefaults are what a command adds to serve's own defaults: start
-// seeds example agents and reads the spec in the config directory.
+// serveDefaults are what a command changes of serve's own defaults, which
+// are a server's: OIDC sign-in, nothing seeded, no file but -f. start signs
+// in as the developer, seeds example agents and reads the spec in the config
+// directory. A System document sets sign-in over either, and a flag wins
+// over all of them.
 type serveDefaults struct {
+	// auth is -auth's default. Empty is oidc.
+	auth string
 	seed bool
 	web  string
 	// files are read when the command line names none.
@@ -129,7 +137,11 @@ func serve(o Options, args []string, d serveDefaults) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	addr := fs.String("addr", "127.0.0.1:8080", "listen address")
 	webhookAddr := fs.String("webhook-addr", "", "optional separate listener exposing only signed connector webhooks")
-	authMode := fs.String("auth", "dev", `who may call: "oidc" (or "okta") for SSO; "tailscale" behind local Tailscale Serve; "mock" for the loopback development identity provider; "dev" for a loopback preview with no sign-in`)
+	authDefault := d.auth
+	if authDefault == "" {
+		authDefault = "oidc"
+	}
+	authMode := fs.String("auth", authDefault, `who may call: "oidc" (or "okta") for SSO; "tailscale" behind local Tailscale Serve; "mock" for the loopback development identity provider; "dev" for a loopback preview with no sign-in`)
 	tenant := fs.String("tenant", "default", "tenant every caller is confined to, unless -tenant-claim is set")
 	tenantClaim := fs.String("tenant-claim", "", "token claim that carries the caller's tenant")
 	groupsClaim := fs.String("groups-claim", "groups", "token claim that lists a person's groups")
@@ -175,6 +187,14 @@ func serve(o Options, args []string, d serveDefaults) error {
 		return err
 	}
 	getenv := overlay(file.env, os.Getenv)
+	// A Slack app calls this server's API, so it needs a credential for the
+	// sign-in a flag may have chosen over the file's.
+	slack := slackApps(file.cfg, keys, getenv)
+	for _, app := range slack {
+		if err := app.choice.CheckSignIn(*authMode); err != nil {
+			return fmt.Errorf("platform %q: surfaces.slack: %w", app.tenant, err)
+		}
+	}
 
 	// Credentials come from the environment, never from flags: a flag ends up
 	// in shell history and in ps output.
@@ -348,10 +368,16 @@ func serve(o Options, args []string, d serveDefaults) error {
 		o.ready(ln.Addr().String())
 	}
 	// Each Slack app is a client of this server, started once it listens.
-	for _, app := range slackApps(file.cfg, keys, getenv) {
+	// One that cannot start is logged and left off: the server, the console
+	// and every other surface keep running without it.
+	for _, app := range slack {
 		go func() {
-			if err := app.run(ctx, "http://"+ln.Addr().String(), *publicURL, log); err != nil {
-				errc <- fmt.Errorf("slack (%s): %w", app.tenant, err)
+			err := app.run(ctx, "http://"+ln.Addr().String(), *publicURL, log)
+			if err != nil {
+				log.Error("slack app is off", "tenant", app.tenant, "error", err)
+			}
+			if o.slackDone != nil {
+				o.slackDone(app.tenant, err)
 			}
 		}()
 	}

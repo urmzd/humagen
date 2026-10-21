@@ -122,6 +122,33 @@ func TestSetupNeverTakesAKeyForAReference(t *testing.T) {
 	}
 }
 
+// Under OIDC the Slack app calls warp's API as a machine, so setup asks
+// where that machine's credentials are, and the spec it writes is one a
+// check takes.
+func TestSetupGivesTheSlackAppACredentialUnderOIDC(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "warp.yaml")
+	in := strings.Join([]string{
+		"", "oidc", "https://login.example.com", "", "", "", // name, sign-in, issuer, client id, secret, audience
+		"n", "n", // no model, no tool
+		"y", "T1", "", "", // Slack: team, bot token, app token
+		"https://login.example.com/oauth2/v1/token", "", "", // the app's token URL, client id, secret
+	}, "\n") + "\n"
+	if err := runSetup(bufio.NewReader(strings.NewReader(in)), io.Discard, path); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := spec.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sl := cfg.Platforms[0].Spec.Surfaces.Slack
+	if sl == nil || !sl.Enabled || sl.WarpClient == nil {
+		t.Fatalf("slack = %+v", sl)
+	}
+	if c := sl.WarpClient; c.TokenURL != "https://login.example.com/oauth2/v1/token" || c.ClientID != "warp-slack" || c.ClientSecret.Ref != "env:WARP_SLACK_CLIENT_SECRET" {
+		t.Errorf("warp_client = %+v", c)
+	}
+}
+
 // serveFor runs serve with args until the test ends and returns its address.
 func serveFor(t *testing.T, o Options, args ...string) string {
 	t.Helper()
@@ -165,7 +192,7 @@ func get(t *testing.T, url string) string {
 func TestASpecFileRunsThePlatform(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	if err := os.WriteFile(path, []byte(`api_version: warp/v1
 kind: System
 metadata: {name: acme-agents, display_name: Acme Agents}
 spec:
@@ -184,7 +211,9 @@ spec:
     - {name: house, kind: house-model, house-model: {voice: calm}}
   agents:
     - spec: {name: greeter, provider: house, model: h1, system_prompt: Greet.}
-`), 0o600)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var gotBlock string
 	o := Options{Kinds: map[string]map[string]Factory{spec.SlotModels: {"house-model": func(_ context.Context, b json.RawMessage) (any, error) {
 		gotBlock = string(b)
@@ -205,7 +234,9 @@ spec:
 
 func TestAnUnregisteredKindStopsStartup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600)
+	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	err := serve(Options{}, []string{"-f", path, "-addr", "127.0.0.1:0"}, serveDefaults{})
 	if err == nil || !strings.Contains(err.Error(), "disk, memory, s3") {
 		t.Fatalf("err = %v", err)
@@ -214,7 +245,9 @@ func TestAnUnregisteredKindStopsStartup(t *testing.T) {
 
 func TestConfigPrintFillsTheDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\n"), 0o600)
+	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var out bytes.Buffer
 	if err := configCmd(Options{}, []string{"print", "-f", path}, &out); err != nil {
 		t.Fatal(err)
@@ -245,13 +278,15 @@ func TestTheSlackManifestIsWhatWarpGenerates(t *testing.T) {
 
 func TestTheSlackManifestTakesItsNameFromTheSpec(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	if err := os.WriteFile(path, []byte(`api_version: warp/v1
 kind: Platform
 metadata: {name: default, display_name: Acme}
 spec:
   surfaces:
     slack: {enabled: true, team: T1, bot_token: {ref: "env:B"}, app_token: {ref: "env:A"}, command: /acme}
-`), 0o600)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var got bytes.Buffer
 	if err := slackCmd([]string{"manifest", "-f", path}, &got); err != nil {
 		t.Fatal(err)

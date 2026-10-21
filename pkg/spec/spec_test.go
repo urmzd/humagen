@@ -24,7 +24,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 		all = append(all, b[1])
 	}
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte(strings.Join(all, "---\n")), 0o600)
+	if err := os.WriteFile(path, []byte(strings.Join(all, "---\n")), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +70,9 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"two systems":              {sys + "---\n" + sys, "second System"},
 	} {
 		path := filepath.Join(t.TempDir(), "warp.yaml")
-		os.WriteFile(path, []byte(tc.body), 0o600)
+		if err := os.WriteFile(path, []byte(tc.body), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		_, err := Load(path)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want %q", name, err, tc.want)
@@ -78,7 +82,9 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 
 func TestAKindIsOneTheBinaryHas(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600)
+	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load cannot know the binary's kinds, so it lets one through: %v", err)
@@ -108,7 +114,9 @@ func TestWhatWarpWritesItReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, b, 0o600)
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	got, err := Load(path)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, b)

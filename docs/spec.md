@@ -17,6 +17,13 @@ or a Kubernetes cluster). Both read `-f PATH` (repeatable; a directory reads its
 with example agents, if there is none. `warp setup` writes one by asking a few
 questions.
 
+`warp serve` is the command for a server: what the image, the chart and the
+compose project run. It reads only the files `-f` names, seeds nothing, never
+asks, and signs in with `oidc` unless a flag or a System document says
+otherwise. A System document sets sign-in like any other field, so one that
+leaves `auth` out is `dev`, which answers only on loopback; Platform documents
+alone leave `serve` on `oidc`.
+
 Four rules hold for every field:
 
 1. **Every field has a working default.** No file is a running platform on a
@@ -160,6 +167,13 @@ spec:
       app_token: {ref: env:SLACK_APP_TOKEN}
       operators: [U0123456]
       command: /agent       # `warp slack manifest -f warp.yaml` writes the app's manifest
+      warp_client:          # how the app signs in to warp's API. Dev sign-in needs none
+        token_url: https://login.example.com/oauth2/v1/token
+        client_id: warp-slack
+        client_secret: {ref: env:WARP_SLACK_CLIENT_SECRET}
+        scopes: [warp:agents:read, warp:runs:read, warp:runs:write, warp:billing:read]
+        audience: ""        # set when the provider needs one named
+      # warp_token: {ref: env:WARP_SLACK_API_TOKEN}   # instead: a bearer token that does not expire
     github:
       enabled: false
       owners: [acme]
@@ -181,6 +195,31 @@ builds on:
   pinned schemas are its acceptance; anything else stays pending.
 - **GitHub** is a client managed by the file, read-only in the API.
 - Nothing is deleted because it left the file.
+
+### The Slack app
+
+`surfaces.slack` runs the Slack app (`apps/slack`) beside the server as a
+client of its API, restarting it when it exits. It needs Node.js on `PATH` and
+`apps/slack` with its dependencies installed (`pnpm install`), found under the
+working directory, beside the binary, or at `WARP_SLACK_APP_DIR`. The warp image
+carries neither, so there the surface is logged as off and the server runs
+without it.
+
+The app is given its tokens, its workspace and warp's address, plus `PATH`,
+`HOME`, `TMPDIR`, `TZ`, `XDG_STATE_HOME`, the `NODE_OPTIONS`,
+`NODE_EXTRA_CA_CERTS`, `NODE_USE_ENV_PROXY` and proxy variables, and
+`SLACK_BRANDING` and `SLACK_SOCKET_*`, when they are set. Nothing else of
+warp's environment reaches it.
+
+It calls warp's API with a credential for the server's sign-in. Under `dev` it
+needs none. Under `oidc` or `mock` it needs `warp_client`: a machine client of
+the identity provider, whose access tokens the app gets with client credentials
+and renews as they expire, with the scopes [the API](api.md#authenticating-a-machine)
+lists for a Slack surface. `warp_token` is a bearer token given as it is, for a
+token that does not expire; set one or the other. A process cannot sign in
+through Tailscale Serve, so `tailscale` sign-in refuses a Slack surface. A spec
+that needs a credential and has none is refused when it is checked, and so is a
+start whose `-auth` flag needs one the file does not give.
 
 Model names are shared across the workspaces in one process: two workspaces
 may declare the same model, but not two different ones under one name.

@@ -1,11 +1,124 @@
 package app
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/urmzd/warp/pkg/auth/mockidp"
 	"github.com/urmzd/warp/pkg/blob"
 )
+
+// serve is what a server runs, behind a proxy or in a pod, so it keeps a
+// server's defaults: OIDC sign-in, nothing seeded, and no spec but the ones
+// -f names. The laptop's defaults are start's alone.
+func TestServeSignsInWithOIDCAndSeedsNothing(t *testing.T) {
+	// A spec in the config directory that would turn on dev sign-in and
+	// declare an agent, were serve to read it.
+	home := t.TempDir()
+	t.Setenv("WARP_HOME", home)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	if err := os.WriteFile(filepath.Join(home, "warp.yaml"), []byte(`api_version: warp/v1
+kind: System
+spec: {auth: {kind: dev}}
+---
+api_version: warp/v1
+kind: Platform
+metadata: {name: default}
+spec:
+  agents:
+    - spec: {name: from-home, provider: offline, model: offline, system_prompt: Hi.}
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	idp, err := mockidp.Start(mockidp.Config{
+		Enabled: true, Addr: "127.0.0.1:0",
+		ClientID: "warp", ClientSecret: "web-secret", RedirectURIs: []string{"http://127.0.0.1/auth/callback"},
+		Audience: "warp", Tenant: "default",
+		Machines: []mockidp.Machine{{ClientID: "probe", Secret: "probe-secret", Scopes: []string{"warp:agents:read"}}},
+		Log:      slog.New(slog.DiscardHandler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = idp.Close() }()
+	t.Setenv("WARP_OIDC_ISSUER", idp.Issuer())
+	t.Setenv("WARP_OIDC_CLIENT_ID", "warp")
+	t.Setenv("WARP_OIDC_CLIENT_SECRET", "web-secret")
+	t.Setenv("WARP_OIDC_AUDIENCE", "warp")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	addrs, done := make(chan string, 1), make(chan error, 1)
+	o := Options{ctx: ctx, ready: func(a string) { addrs <- a }}
+	go func() { done <- run(o, []string{"serve", "-addr", "127.0.0.1:0"}) }()
+	var addr string
+	select {
+	case addr = <-addrs:
+	case err := <-done:
+		t.Fatalf("serve returned before listening: %v", err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("serve did not listen")
+	}
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("serve: %v", err)
+		}
+	}()
+
+	// No credential is no one, where dev sign-in would be an admin.
+	resp, err := http.Get("http://" + addr + "/api/me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("GET /api/me with no credential: %d, want 401", resp.StatusCode)
+	}
+
+	// A machine signed in through the provider sees no agents: none
+	// seeded, none read from the config directory.
+	tok, err := http.PostForm(idp.Issuer()+"/token", url.Values{
+		"grant_type": {"client_credentials"}, "client_id": {"probe"}, "client_secret": {"probe-secret"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var grant struct {
+		AccessToken string `json:"access_token"`
+	}
+	err = json.NewDecoder(tok.Body).Decode(&grant)
+	tok.Body.Close()
+	if err != nil || grant.AccessToken == "" {
+		t.Fatalf("token: %d %v", tok.StatusCode, err)
+	}
+	req, _ := http.NewRequest(http.MethodGet, "http://"+addr+"/api/agents", nil)
+	req.Header.Set("Authorization", "Bearer "+grant.AccessToken)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/agents as a machine: %d %s", resp.StatusCode, body)
+	}
+	for _, name := range []string{`"lead"`, `"helper"`, `"from-home"`} {
+		if strings.Contains(string(body), name) {
+			t.Errorf("serve has agent %s: %s", name, body)
+		}
+	}
+}
 
 // Dev auth makes every request an admin, so it must never be reachable from
 // another machine.

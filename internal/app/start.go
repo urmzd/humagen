@@ -30,7 +30,8 @@ const envWebDir = "WARP_WEB_DIR"
 // stores, disk files, seeded example agents and the console. It reads
 // warp.yaml from the config directory when there is one, and on a terminal
 // with none it asks the first-run questions, every one with a default Enter
-// accepts. Every serve flag works here too and wins over the file.
+// accepts. Every serve flag works here too and wins over the file. These are
+// a laptop's defaults; serve keeps a server's.
 func start(o Options, args []string, in io.Reader, out io.Writer) error {
 	fs := flag.NewFlagSet("start", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -53,7 +54,7 @@ func start(o Options, args []string, in io.Reader, out io.Writer) error {
 	}
 	// Example agents are seeded only when nothing is configured: a spec
 	// declares its own agents.
-	d := serveDefaults{seed: true, web: webDir(os.Getenv)}
+	d := serveDefaults{auth: "dev", seed: true, web: webDir(os.Getenv)}
 	path := filepath.Join(configDir(os.Getenv), "warp.yaml")
 	if len(scanFiles(rest)) > 0 {
 		d.seed = false

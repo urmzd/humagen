@@ -2,6 +2,7 @@ package spec
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -137,6 +138,41 @@ type Slack struct {
 	// deployment's display name.
 	AppName string `json:"app_name,omitempty"`
 	Command string `json:"command,omitempty"`
+	// WarpClient is how the app signs in to warp's API: a machine client of
+	// the identity provider, whose tokens it gets and renews with client
+	// credentials. Sign-in other than dev needs it or WarpToken.
+	WarpClient *ClientCredentials `json:"warp_client,omitempty"`
+	// WarpToken is a bearer token the app calls warp's API with, given to it
+	// as WARP_TOKEN. It is not renewed, so it suits a token that does not
+	// expire; an identity provider's access tokens do, so use WarpClient.
+	WarpToken *Ref `json:"warp_token,omitempty"`
+}
+
+// ClientCredentials is a machine client of an identity provider: where it
+// gets a token, and its id and secret.
+type ClientCredentials struct {
+	TokenURL     string   `json:"token_url"`
+	ClientID     string   `json:"client_id"`
+	ClientSecret *Ref     `json:"client_secret"`
+	Scopes       []string `json:"scopes,omitempty"`
+	Audience     string   `json:"audience,omitempty"`
+}
+
+// CheckSignIn reports whether the app can call warp's API under the sign-in
+// kind auth, where empty is dev, the default. Dev needs no credential, a
+// process cannot sign in through Tailscale Serve, and every other kind needs
+// warp_client or warp_token.
+func (s Slack) CheckSignIn(auth string) error {
+	switch auth {
+	case "", "dev":
+		return nil
+	case "tailscale":
+		return errors.New("the Slack app cannot sign in through Tailscale Serve; use oidc, or dev on one machine")
+	}
+	if s.WarpClient == nil && !s.WarpToken.Set() {
+		return fmt.Errorf("under %s sign-in the Slack app needs a credential for warp's API: warp_client (client credentials) or warp_token", auth)
+	}
+	return nil
 }
 
 // GitHub is a GitHub App installation answering through signed webhooks.
@@ -216,6 +252,18 @@ func (p Platform) check(kinds Kinds) error {
 		if s.Command != "" && !strings.HasPrefix(s.Command, "/") {
 			return fmt.Errorf("%s: surfaces.slack.command starts with /", where)
 		}
+		if s.WarpClient != nil && s.WarpToken.Set() {
+			return fmt.Errorf("%s: surfaces.slack: warp_client or warp_token, not both", where)
+		}
+		if c := s.WarpClient; c != nil {
+			u, err := url.Parse(c.TokenURL)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+				return fmt.Errorf("%s: surfaces.slack.warp_client.token_url must be an http or https URL", where)
+			}
+			if c.ClientID == "" || !c.ClientSecret.Set() {
+				return fmt.Errorf("%s: surfaces.slack.warp_client: client_id and client_secret are required", where)
+			}
+		}
 	}
 	if g := sp.Surfaces.GitHub; g != nil && g.Enabled {
 		if len(g.Owners) == 0 || !g.Token.Set() || !g.WebhookSecret.Set() {
@@ -251,6 +299,11 @@ func (c Config) Check(kinds Kinds) error {
 	for _, p := range c.Platforms {
 		if err := p.check(kinds); err != nil {
 			return err
+		}
+		if s := p.Spec.Surfaces.Slack; s != nil && s.Enabled {
+			if err := s.CheckSignIn(c.System.Spec.Auth.Kind); err != nil {
+				return fmt.Errorf("platform %q: surfaces.slack: %w", p.Metadata.Name, err)
+			}
 		}
 		// Model providers are named process-wide: two workspaces may share
 		// one, but not declare it two ways.

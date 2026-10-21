@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"maps"
 	"os"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -159,7 +160,12 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		set("web", d)
 	}
 
-	set("auth", sp.Auth.Kind)
+	// A System document sets sign-in, dev when it names none, as it sets
+	// every field. Platform documents alone leave the command's own: dev for
+	// start, oidc for serve.
+	if !reflect.DeepEqual(cfg.System, spec.System{}) {
+		set("auth", sp.Auth.Kind)
+	}
 	switch sp.Auth.Kind {
 	case "oidc":
 		b, _ := spec.Block[spec.OIDC](sp.Auth.Slot)

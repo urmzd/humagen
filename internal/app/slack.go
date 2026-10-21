@@ -192,8 +192,27 @@ func slackDir(getenv func(string) string) string {
 	return ""
 }
 
-// env is the Slack app's environment: this process's, plus its own.
-func (s *slackApp) env(ctx context.Context, url, publicURL string) ([]string, error) {
+// slackPassEnv are the variables of this process the Slack app is given when
+// they are set: what Node needs to run, to trust a CA and to reach Slack
+// through a proxy, and the app's own optional settings. Nothing else is
+// passed, since warp's environment holds its database URL, its sign-in
+// secret and its model keys, and the app runs npm dependencies.
+var slackPassEnv = []string{
+	"PATH", "HOME", "TMPDIR", "TZ", "XDG_STATE_HOME",
+	"NODE_OPTIONS", "NODE_EXTRA_CA_CERTS", "NODE_USE_ENV_PROXY",
+	"HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy",
+	"SLACK_BRANDING", "SLACK_SOCKET_IDLE_MS", "SLACK_SOCKET_MAX_ATTEMPTS",
+}
+
+// env is the Slack app's environment: the variables in slackPassEnv that
+// lookup has, and its own, read from where the choices say they are kept.
+func (s *slackApp) env(ctx context.Context, url, publicURL string, lookup func(string) (string, bool)) ([]string, error) {
+	var env []string
+	for _, k := range slackPassEnv {
+		if v, ok := lookup(k); ok {
+			env = append(env, k+"="+v)
+		}
+	}
 	bot, err := s.keys.Resolve(ctx, s.choice.BotToken.Ref)
 	if err != nil {
 		return nil, fmt.Errorf("bot token: %w", err)
@@ -202,15 +221,38 @@ func (s *slackApp) env(ctx context.Context, url, publicURL string) ([]string, er
 	if err != nil {
 		return nil, fmt.Errorf("app token: %w", err)
 	}
-	return append(os.Environ(),
+	env = append(env,
 		"SLACK_BOT_TOKEN="+bot, "SLACK_APP_TOKEN="+app, "SLACK_TEAM_ID="+s.choice.Team,
 		"SLACK_OPERATORS="+strings.Join(s.choice.Operators, ","),
 		"WARP_URL="+url, "WARP_TENANT="+s.tenant, "WARP_PUBLIC_URL="+publicURL,
-	), nil
+	)
+	// How the app signs in to warp's API (apps/slack/src/config.ts).
+	if c := s.choice.WarpClient; c != nil {
+		secret, err := s.keys.Resolve(ctx, c.ClientSecret.Ref)
+		if err != nil {
+			return nil, fmt.Errorf("warp_client.client_secret: %w", err)
+		}
+		env = append(env, "WARP_OIDC_TOKEN_URL="+c.TokenURL, "WARP_OIDC_CLIENT_ID="+c.ClientID,
+			"WARP_OIDC_CLIENT_SECRET="+secret, "WARP_OIDC_SCOPES="+strings.Join(c.Scopes, " "))
+		if c.Audience != "" {
+			env = append(env, "WARP_OIDC_AUDIENCE="+c.Audience)
+		}
+	}
+	if s.choice.WarpToken.Set() {
+		token, err := s.keys.Resolve(ctx, s.choice.WarpToken.Ref)
+		if err != nil {
+			return nil, fmt.Errorf("warp_token: %w", err)
+		}
+		env = append(env, "WARP_TOKEN="+token)
+	}
+	return env, nil
 }
 
 // run keeps the Slack app running until ctx ends, restarting it with a
-// growing pause when it exits. It returns only on a configuration error.
+// growing pause when it exits. It returns an error only when the app cannot
+// be started at all: no apps/slack, no Node.js, no dependencies, or a token
+// that cannot be read. The caller logs it and leaves the surface off; the
+// server it is a client of keeps running.
 func (s *slackApp) run(ctx context.Context, url, publicURL string, log *slog.Logger) error {
 	if s.dir == "" {
 		return errors.New("apps/slack not found; set WARP_SLACK_APP_DIR or run from a checkout")
@@ -224,7 +266,7 @@ func (s *slackApp) run(ctx context.Context, url, publicURL string, log *slog.Log
 	}
 	pause := time.Second
 	for ctx.Err() == nil {
-		env, err := s.env(ctx, url, publicURL)
+		env, err := s.env(ctx, url, publicURL, os.LookupEnv)
 		if err != nil {
 			return err
 		}
