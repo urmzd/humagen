@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -19,7 +20,14 @@ import (
 var (
 	ErrScheduleExists   = errors.New("platform: schedule already exists")
 	ErrScheduleNotFound = errors.New("platform: schedule not found")
+	// ErrScheduleManaged reports a change through the API to a schedule the
+	// platform file declares. It can be paused, resumed and run, not
+	// changed or deleted.
+	ErrScheduleManaged = errors.New("platform: the platform file manages this schedule")
 )
+
+// ManagedFile marks a schedule the platform file declares.
+const ManagedFile = "file"
 
 // MaxScheduleDescription bounds what a schedule says about itself.
 const MaxScheduleDescription = 500
@@ -37,6 +45,8 @@ type About struct {
 	// CreatedAt is when the schedule was created. A schedule kept before it
 	// was recorded reads as zero.
 	CreatedAt time.Time
+	// Managed is ManagedFile while the platform file declares the schedule.
+	Managed string `json:",omitempty"`
 }
 
 func (a About) validate() error {
@@ -269,6 +279,9 @@ func (s *Schedules) Replace(sc cron.Schedule, about About) error {
 	if i < 0 {
 		return fmt.Errorf("%w: %q", ErrScheduleNotFound, sc.Name)
 	}
+	if s.about[sc.Name].Managed != "" {
+		return fmt.Errorf("%w: change %q in the file", ErrScheduleManaged, sc.Name)
+	}
 	if err := s.write(sc, s.paused[sc.Name], about); err != nil {
 		return err
 	}
@@ -298,6 +311,9 @@ func (s *Schedules) Remove(tenant, name string) error {
 	defer s.mu.Unlock()
 	for i, have := range s.all {
 		if have.Name == name && have.Tenant == tenant {
+			if s.about[name].Managed != "" {
+				return fmt.Errorf("%w: remove %q from the file first", ErrScheduleManaged, name)
+			}
 			if s.kept != nil {
 				if err := s.kept.Delete(tenant, name); err != nil {
 					return fmt.Errorf("platform: write schedule: %w", err)
@@ -312,4 +328,78 @@ func (s *Schedules) Remove(tenant, name string) error {
 		}
 	}
 	return fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
+}
+
+// Declare puts a schedule the platform file declares: created, or taken over
+// from the console, or changed to what the file now says, and marked as the
+// file's. Whether it is paused is kept, and so is when it was created. A
+// schedule the file declares unchanged is not written again. A name another
+// workspace holds is ErrScheduleExists: names are unique across them.
+func (s *Schedules) Declare(sc cron.Schedule, description string, at time.Time) (changed bool, err error) {
+	if err := sc.Validate(); err != nil {
+		return false, err
+	}
+	about := About{Description: description, Managed: ManagedFile}
+	if err := about.validate(); err != nil {
+		return false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := slices.IndexFunc(s.all, func(have cron.Schedule) bool { return have.Name == sc.Name })
+	if i < 0 {
+		about.CreatedAt = at
+		if err := s.write(sc, false, about); err != nil {
+			return false, err
+		}
+		s.all = append(s.all, sc)
+		s.setAbout(sc.Name, about)
+		return true, nil
+	}
+	have, was := s.all[i], s.about[sc.Name]
+	if have.Tenant != sc.Tenant {
+		return false, fmt.Errorf("%w: %q is another workspace's", ErrScheduleExists, sc.Name)
+	}
+	about.CreatedAt, about.UpdatedBy, about.UpdatedAt = was.CreatedAt, was.UpdatedBy, was.UpdatedAt
+	sc.Routes = have.Routes
+	if was == about && sameSchedule(have, sc) {
+		return false, nil
+	}
+	about.UpdatedBy, about.UpdatedAt = ManagedFile, at
+	if err := s.write(sc, s.paused[sc.Name], about); err != nil {
+		return false, err
+	}
+	s.all[i] = sc
+	s.setAbout(sc.Name, about)
+	if s.edited == nil {
+		s.edited = map[string]bool{}
+	}
+	s.edited[sc.Name] = true
+	return true, nil
+}
+
+// Release hands a schedule that left the platform file to the console. It
+// stays as it is, and the API may change it from now on.
+func (s *Schedules) Release(tenant, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, have := range s.all {
+		if have.Name == name && have.Tenant == tenant {
+			about := s.about[name]
+			if about.Managed == "" {
+				return nil
+			}
+			about.Managed = ""
+			if err := s.write(have, s.paused[name], about); err != nil {
+				return err
+			}
+			s.setAbout(name, about)
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
+}
+
+func sameSchedule(a, b cron.Schedule) bool {
+	return a.Name == b.Name && a.Expression == b.Expression && a.Agent == b.Agent && a.Text == b.Text &&
+		a.Tenant == b.Tenant && maps.Equal(a.Meta, b.Meta)
 }

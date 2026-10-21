@@ -1414,7 +1414,9 @@ it and the runs it raised are kept. The agent, and the project if one
 is named, must exist now. The whole edit is checked before anything
 changes, so a refused edit leaves the schedule as it was. An edited
 schedule starts afresh from the time of the edit: it does not catch up
-on occurrences of its new expression that fell before it.
+on occurrences of its new expression that fell before it. A schedule
+the platform file declares (`managed: file`) is changed in the file:
+here it answers 409.
  */
   async updateSchedule(name: string, body: Schedule, options?: RequestOptions): Promise<ScheduleView> {
     let path = "/api/schedules/{name}";
@@ -1436,7 +1438,7 @@ on occurrences of its new expression that fell before it.
     });
   }
 
-  /** Delete a schedule */
+  /** A schedule the platform file declares is removed from the file, not here (409). */
   async deleteSchedule(name: string, options?: RequestOptions): Promise<void> {
     let path = "/api/schedules/{name}";
     path = path.replace("{name}", encodeURIComponent(String(name)));

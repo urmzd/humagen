@@ -122,6 +122,7 @@ spec:
     experts: [{who: "role:security", topics: [security]}]         # answer anywhere a nearer project names nobody
     members: [{who: "*", role: member}, {who: "role:comms", role: owner}]   # the workspace's own
     project_kinds: [{name: partner, title: Partner, like: account}]          # the workspace's own kinds
+    agent_posts: review     # what agents scheduled in the workspace itself post waits for its owners
     projects:               # merged into the tree at every start, parents first
       - {name: Launch, description: Everything for the Q4 launch}
       - name: Field
@@ -130,6 +131,9 @@ spec:
         instructions: Customer accounts. Never promise dates.
         agents: {default: lead}             # answers untagged messages here and below
         members: [{who: "*", role: viewer}, {who: "role:field-eng", role: member}, {who: "role:field-leads", role: owner}]
+        agent_posts: publish  # what its scheduled agents post goes out at once
+        schedules:            # the file's: filed here, paused and run in the console, changed only here
+          - {name: field-recap, cron: "41 8 * * 1", agent: warp-analyst, text: "What changed in Field this week?", deliver: project}
       - name: Globex
         parent: Field       # a project in this file. Left out: the top level
         kind: account
@@ -209,7 +213,12 @@ builds on:
   console again. A project's **channels** and **experts** are the file's in
   the same way: a channel the file declares is created or taken over, and
   one that leaves it stays, unmanaged; experts the file sets, even as `[]`,
-  are the file's, and experts it leaves out stay the console's.
+  are the file's, and experts it leaves out stay the console's. A
+  project's **schedules** are the file's whole: created, or taken over when
+  the console made one by that name, filed in the project; the console can
+  pause, resume and run one, not change or delete it (409), and one that
+  leaves the file stays, the console's again. Schedules are applied last,
+  once the agents and where they live are in.
 - **Agents in projects.** `workspace.agents` and a project's `agents` are
   what it turns on: `enable` adds platform agents here and below (`*` alone
   is every one), `allow`, when set, is the only agents that may run here and
@@ -245,6 +254,8 @@ console's addresses. Each entry of `workspace.projects` is one project:
 | `parent` | the workspace | another project in this file (`~` is the workspace), at most 4 levels below the workspace |
 | `account` | none | `{customer, external_id, url}`, on an account project only. `url` is https |
 | `instructions` | none | at most 4,000 characters, sent to every agent answering here and below |
+| `agent_posts` | the console's | what an agent scheduled here posts: `publish` posts it at once, `review` holds it as a draft until an owner publishes or discards it. A project that leaves both out reviews at the workspace and in company projects, which everyone reads, and publishes in team and account projects. `workspace.agent_posts` is the workspace's own |
+| `schedules` | none | agents scheduled here, see below |
 | `members` | the console's | at most 100 `{who, role}`: `who` is `*` (everyone who can see the parent), `role:<name>` (the holders of a policy role) or a subject; `role` is `viewer`, `member` or `owner`. An owner owns everything below. Until reads are confined to members, the list has an entry for `*` of at least `viewer`, a company project's of at least `member`, and a project is never more open than its parent. A new project the file leaves them out of has everyone as a member (a viewer of an account) and `projects:govern` as its owner |
 
 `workspace.members` are the workspace's own in the same way: everyone (`*`)
@@ -289,6 +300,25 @@ or declares `general` to set its purpose:
 nearest project that names someone answers, then the projects above it.
 Tagging `@sme:<topic>` in a thread notifies them, and an agent's question
 asked of `sme:<topic>` is addressed to them.
+
+### Schedules
+
+A project's `schedules` run an agent on a cron, filed in the project, so
+each run is counted under every limit on its chain and is sent the
+project's instructions and notes:
+
+| Field | Left out | Rule |
+|-------|----------|------|
+| `name` | required | letters, digits, dashes and underscores, at most 63, unique across the deployment: every run it raises carries it |
+| `cron` | required | a 5-field cron expression, in UTC |
+| `agent` | required | an agent in the file or one of the platform's own, available in the project |
+| `text` | required | what the agent is asked, at most 8,000 characters |
+| `description` | none | what it is for, at most 500 characters; the agent is not shown it |
+| `deliver` | the run | `project` posts each answer in the project as an announcement from the agent, its first line the subject, or as a draft for the project's owners under `agent_posts: review`. An answer of NONE posts nothing. A file has nobody to send an answer to, so `inbox` is refused |
+
+A recap is such a schedule: `warp-analyst`, a Monday morning, "What changed in
+Field this week?", `deliver: project`. Its `project_changes` tool reads only
+the project and the projects below it.
 
 ## Which level a knob lives at
 

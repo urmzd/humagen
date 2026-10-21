@@ -759,7 +759,8 @@ than the parent allows.
 
 /** What an owner may change on a project. Title, description, account
 and instructions are replaced as a whole: one left out is cleared.
-`kind`, `archived`, `announce` and `kinds` change only when given.
+`kind`, `archived`, `announce`, `kinds` and `agent_posts` change only
+when given.
  */
 export interface ProjectUpdate {
   /** The version the caller read. */
@@ -776,6 +777,8 @@ export interface ProjectUpdate {
   announce?: "" | "viewer" | "member" | "owner";
   /** The workspace's own kinds, on the workspace only. A kind a project still has cannot be removed (409). */
   kinds?: ProjectKindSpec[];
+  /** What a scheduled agent's announcement here does, `publish` or `review`. Empty takes the kind's default. */
+  agent_posts?: "" | "publish" | "review";
 }
 
 /** A caller's role in a project, where it comes from, and the entry or rule that gave it. */
@@ -1026,6 +1029,8 @@ export interface ScheduleView {
   /** Where the answer of each run goes. Absent when it stays on the run. */
   deliver?: "inbox" | "project";
   paused: boolean;
+  /** `file` while the platform file declares the schedule: it can be paused, resumed and run here, and changing or deleting it answers 409. */
+  managed: "file";
   created_by?: string;
   /** Who last changed the schedule. Absent until it is changed. */
   updated_by?: string;

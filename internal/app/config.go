@@ -403,6 +403,9 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 		if err := applyHomes(ctx, p, doc); err != nil {
 			return err
 		}
+		if err := applySchedules(p, tenant, doc.Spec.Workspace); err != nil {
+			return err
+		}
 		if err := applyWorkspace(ctx, p, doc); err != nil {
 			return err
 		}
@@ -466,6 +469,9 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
 	}
 	declared, owns := fileRoot(w)
+	if w.AgentPosts != nil {
+		declared.AgentPosts, owns = *w.AgentPosts, append(owns, projects.FieldAgentPosts)
+	}
 	if w.Agents != nil {
 		declared.Agents, owns = fileAgents(*w.Agents), append(owns, projects.FieldAgents)
 	}
@@ -511,7 +517,7 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 func fileProject(d spec.Project) (projects.Project, []string) {
 	pr := projects.Project{
 		Name: d.Name, Title: d.Title, Description: d.Description, Kind: projects.Kind(d.Kind),
-		Parent: spec.ParentOf(d), Instructions: d.Instructions, Experts: expertsOf(d.Experts),
+		Parent: spec.ParentOf(d), Instructions: d.Instructions, Experts: expertsOf(d.Experts), AgentPosts: d.AgentPosts,
 	}
 	if a := d.Account; a != nil {
 		pr.Account = &projects.AccountInfo{Customer: a.Customer, ExternalID: a.ExternalID, URL: a.URL}
@@ -530,6 +536,7 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 		projects.FieldParent:       d.Parent != "",
 		projects.FieldAccount:      d.Account != nil,
 		projects.FieldInstructions: d.Instructions != "",
+		projects.FieldAgentPosts:   d.AgentPosts != "",
 		projects.FieldExperts:      d.Experts != nil,
 		projects.FieldAgents:       d.Agents != nil,
 		projects.FieldMembers:      d.Members != nil,

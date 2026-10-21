@@ -29,6 +29,7 @@ import (
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
 	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/connectors/cron"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/saige/agent/agenttest"
@@ -1092,9 +1093,13 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/projects/{name}", "/api/projects/Launch", "", http.StatusOK)
 	root := c.call(acme, "GET", "/api/projects/{name}", "/api/projects/~", "", http.StatusOK)
 	c.call(acme, "GET", "/api/projects/{name}", "/api/projects/Ghost", "", http.StatusNotFound)
-	c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/Field", `{"version":1,"title":"Field","description":"Customer work.","instructions":"Never promise dates."}`, http.StatusOK)
+	if updated := c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/Field",
+		`{"version":1,"title":"Field","description":"Customer work.","instructions":"Never promise dates.","agent_posts":"review"}`, http.StatusOK); updated.str("agent_posts") != "review" {
+		t.Errorf("Field reviews its agents' posts: %s", updated.raw)
+	}
 	c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/Field", `{"version":1,"title":"Stale"}`, http.StatusConflict)
 	c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/Field", `{"version":2,"parent":"Launch"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/Field", `{"version":2,"agent_posts":"sometimes"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/~",
 		`{"version":`+string(obj(root.field("project"))["version"].(json.Number))+`,"instructions":"Answer plainly."}`, http.StatusOK)
 	c.call(acme, "PUT", "/api/projects/{name}", "/api/projects/Ghost", `{"version":1}`, http.StatusNotFound)
@@ -1221,6 +1226,20 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/nightly", `{"expression":"0 4 * * 1-5","agent":"helper","text":"Report again.","project":"Launch","description":"Weekday report"}`, http.StatusOK)
 	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/nightly", `{"expression":"whenever","agent":"helper","text":"Report."}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/ghost", `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`, http.StatusNotFound)
+	// One the platform file declares is changed and deleted in the file.
+	if _, err := f.p.Schedules.Declare(cron.Schedule{Name: "from-file", Expression: "41 8 * * 1", Agent: "helper", Text: "Recap.", Tenant: "acme",
+		Meta: map[string]string{runs.MetaProject: "Launch", platform.MetaDeliver: platform.DeliverProject}}, "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if listed := c.call(acme, "GET", "/api/schedules", "/api/schedules", "", http.StatusOK); !strings.Contains(string(listed.raw), `"managed":"file"`) {
+		t.Errorf("the file's schedule does not say so: %s", listed.raw)
+	}
+	c.call(acme, "PUT", "/api/schedules/{name}", "/api/schedules/from-file", `{"expression":"0 3 * * *","agent":"helper","text":"Mine."}`, http.StatusConflict)
+	c.call(acme, "DELETE", "/api/schedules/{name}", "/api/schedules/from-file", "", http.StatusConflict)
+	if err := f.p.Schedules.Release("acme", "from-file"); err != nil {
+		t.Fatal(err)
+	}
+	c.call(acme, "DELETE", "/api/schedules/{name}", "/api/schedules/from-file", "", http.StatusNoContent)
 
 	// Alerts, knowledge and evals.
 	c.call(acme, "POST", "/api/alert-rules", "/api/alert-rules", `{"name":"any","kind":"run_failed","severity":"critical"}`, http.StatusCreated)

@@ -59,6 +59,9 @@ type ProjectUpdate struct {
 	// Kinds are the workspace's own kinds, on the workspace only. A kind a
 	// project still has cannot be removed.
 	Kinds *[]projects.KindSpec `json:"kinds,omitempty"`
+	// AgentPosts is what becomes of what an agent scheduled here posts:
+	// publish, review, or "" for the kind's default.
+	AgentPosts *string `json:"agent_posts,omitempty"`
 }
 
 // HasProject reports whether a tenant has a project by this exact name, as it
@@ -106,6 +109,9 @@ func (p *Platform) UpdateProject(_ context.Context, tenant, name string, w proje
 		}
 		if in.Kinds != nil {
 			pr.Kinds = slices.Clone(*in.Kinds)
+		}
+		if in.AgentPosts != nil {
+			pr.AgentPosts = *in.AgentPosts
 		}
 		return nil
 	})

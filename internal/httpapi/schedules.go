@@ -34,7 +34,10 @@ type schedule struct {
 // is running, when it fires next, and how its recent occurrences went.
 type scheduleView struct {
 	schedule
-	Paused    bool        `json:"paused"`
+	Paused bool `json:"paused"`
+	// Managed is "file" while the platform file declares the schedule: it
+	// can be paused, resumed and run, not changed or deleted.
+	Managed   string      `json:"managed,omitempty"`
 	CreatedBy string      `json:"created_by,omitempty"`
 	UpdatedBy string      `json:"updated_by,omitempty"`
 	UpdatedAt time.Time   `json:"updated_at,omitzero"`
@@ -50,6 +53,7 @@ func (s *Server) viewOf(sc cron.Schedule, now time.Time) scheduleView {
 			Project: sc.Meta[runs.MetaProject], Description: about.Description, Deliver: sc.Meta[platform.MetaDeliver],
 		},
 		Paused:    s.P.Schedules.Paused(sc.Name),
+		Managed:   about.Managed,
 		CreatedBy: sc.Meta["created_by"],
 		UpdatedBy: about.UpdatedBy,
 		UpdatedAt: about.UpdatedAt,

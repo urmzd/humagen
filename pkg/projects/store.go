@@ -801,6 +801,8 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 			next.Members = slices.Clone(p.Members)
 		case FieldKinds:
 			next.Kinds = slices.Clone(p.Kinds)
+		case FieldAgentPosts:
+			next.AgentPosts = p.AgentPosts
 		case FieldAgents:
 			next.Agents = p.Agents.canonical()
 		}

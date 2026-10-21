@@ -707,6 +707,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, clients.ErrManaged):
 		fail(w, http.StatusConflict, "that client is configured by the server and cannot be changed here")
+	case errors.Is(err, platform.ErrScheduleManaged):
+		fail(w, http.StatusConflict, detail(err, platform.ErrScheduleManaged))
 	case errors.Is(err, clients.ErrInvalid), errors.Is(err, callpolicy.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, projects.ErrInvalid):

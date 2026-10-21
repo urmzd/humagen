@@ -1290,7 +1290,9 @@ paths:
         is named, must exist now. The whole edit is checked before anything
         changes, so a refused edit leaves the schedule as it was. An edited
         schedule starts afresh from the time of the edit: it does not catch up
-        on occurrences of its new expression that fell before it.
+        on occurrences of its new expression that fell before it. A schedule
+        the platform file declares (`managed: file`) is changed in the file:
+        here it answers 409.
       x-permission: schedules:write
       parameters:
         - {$ref: "#/components/parameters/ScheduleName"}
@@ -1309,12 +1311,14 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
     delete:
       operationId: deleteSchedule
       tags: [schedules]
       summary: Delete a schedule
+      description: A schedule the platform file declares is removed from the file, not here (409).
       x-permission: schedules:write
       parameters:
         - {$ref: "#/components/parameters/ScheduleName"}
@@ -1324,6 +1328,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/schedules/{name}/pause:
     post:
@@ -4814,7 +4819,8 @@ components:
       description: |
         What an owner may change on a project. Title, description, account
         and instructions are replaced as a whole: one left out is cleared.
-        `kind`, `archived`, `announce` and `kinds` change only when given.
+        `kind`, `archived`, `announce`, `kinds` and `agent_posts` change only
+        when given.
       type: object
       required: [version]
       properties:
@@ -4841,6 +4847,10 @@ components:
           type: array
           maxItems: 16
           items: {$ref: "#/components/schemas/ProjectKindSpec"}
+        agent_posts:
+          description: What a scheduled agent's announcement here does, `publish` or `review`. Empty takes the kind's default.
+          type: string
+          enum: ["", publish, review]
     ProjectAccess:
       description: A caller's role in a project, where it comes from, and the entry or rule that gave it.
       type: object
@@ -5230,6 +5240,10 @@ components:
           type: string
           enum: [inbox, project]
         paused: {type: boolean}
+        managed:
+          description: "`file` while the platform file declares the schedule: it can be paused, resumed and run here, and changing or deleting it answers 409."
+          type: string
+          enum: [file]
         created_by: {type: string}
         updated_by:
           description: Who last changed the schedule. Absent until it is changed.
