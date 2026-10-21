@@ -1315,9 +1315,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}": `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`,
-		"/api/runs/{id}/calls":    `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
-		"/api/alert-rules/{name}": `{"kind":"run_failed","severity":"critical"}`,
-		"/api/schedules/{name}":   `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
+		"/api/runs/{id}/calls":        `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
+		"/api/alert-rules/{name}":     `{"kind":"run_failed","severity":"critical"}`,
+		"/api/schedules/{name}":       `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
