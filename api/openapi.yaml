@@ -2741,6 +2741,7 @@ components:
         - artifacts:write
         - clients:read
         - clients:write
+        - people:read
     Principal:
       description: An authenticated caller. The tenant is the workspace everything they touch is confined to.
       type: object
