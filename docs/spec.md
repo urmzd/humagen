@@ -118,6 +118,8 @@ spec:
     baseline: lead
     history: {mode: recent, limit: 8000}
     instructions: Acme sells warehouse robots. Answer plainly.   # the workspace's own, sent first
+    channels: [{name: announcements, purpose: Company news}]      # the workspace's own; every project has general
+    experts: [{who: "role:security", topics: [security]}]         # answer anywhere a nearer project names nobody
     projects:               # merged into the tree at every start, parents first
       - {name: Launch, description: Everything for the Q4 launch}
       - name: Field
@@ -128,6 +130,9 @@ spec:
         parent: Field       # a project in this file. Left out: the top level
         kind: account
         account: {customer: Globex Inc, external_id: "sf:0015g00000ABC", url: "https://crm.example.com/globex"}
+        channels:
+          - {name: renewals, purpose: Renewal work, default: auto}   # auto: @auto answers untagged messages here
+        experts: [{who: "okta|00u1ana", topics: [billing, renewals]}]
 
   models:                   # each a slot: anthropic | openai | ollama
     - name: anthropic       # what an agent names as its provider
@@ -193,7 +198,10 @@ builds on:
   workspace's own in the same way. An unchanged entry makes no new version.
   A project made in the console survives every start, and one that leaves
   the file stays, no longer managed, so it can be changed or deleted in the
-  console again.
+  console again. A project's **channels** and **experts** are the file's in
+  the same way: a channel the file declares is created or taken over, and
+  one that leaves it stays, unmanaged; experts the file sets, even as `[]`,
+  are the file's, and experts it leaves out stay the console's.
 - **Models and tools** exist only while the file declares them. A tool's
   pinned schemas are its acceptance; anything else stays pending.
 - **GitHub** is a client managed by the file, read-only in the API.
@@ -230,6 +238,26 @@ checks the file again against the projects the console made. A project's kind
 and parent are fixed when it is created, so a file that names another kind or
 parent for a project that already exists fails the start.
 
+### Channels and experts
+
+Every project, the workspace included, has a `general` channel, and at most
+20 channels in all. `channels` on `workspace` or on a project declares more,
+or declares `general` to set its purpose:
+
+| Field | Left out | Rule |
+|-------|----------|------|
+| `name` | required | lower case letters, digits and dashes, starting with a letter or digit, at most 40, once per project, never changed |
+| `title` | the name | one line, at most 80 characters |
+| `purpose` | none | one line, at most 200 characters, sent to every agent answering in the channel |
+| `default` | the project's | the agent that answers a message that tags none, or `auto`. One that cannot answer in the project answers nothing, and the message says why |
+
+`experts` names who answers for some topics, here and below: at most 50, each
+`{who, topics}`, where `who` is a person's subject or `role:<name>` and
+`topics` are 1 to 8 of lower case letters, digits and dashes. For a topic, the
+nearest project that names someone answers, then the projects above it.
+Tagging `@sme:<topic>` in a thread notifies them, and an agent's question
+asked of `sme:<topic>` is addressed to them.
+
 ## Which level a knob lives at
 
 | Concern | Level | Why |
@@ -245,7 +273,7 @@ parent for a project that already exists fails the start.
 | Agents | Platform | the workspace's own |
 | Slack and GitHub | Platform | its identity on a surface |
 | Baseline, history | Platform | how it behaves |
-| Project tree, kinds and instructions | Platform | the workspace's own |
+| Project tree, kinds, instructions, channels and experts | Platform | the workspace's own |
 | Spend and run limits | Platform, in the console | versioned, scoped policies (`pkg/policy`) |
 
 ## Deploying it
