@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import * as fx from "./fixtures";
-import { type HomeNotification, notificationsFromWaiting, orderNotifications } from "./home";
+import {
+  HOME_UPDATES_MAX,
+  type HomeNotification,
+  type HomeUpdate,
+  notificationsFromWaiting,
+  orderNotifications,
+  orderUpdates,
+} from "./home";
 
 const n = (over: Partial<HomeNotification> & Pick<HomeNotification, "id">): HomeNotification => ({
   kind: "inbox",
@@ -84,5 +91,38 @@ describe("home fixtures", () => {
       if (name !== "unlinked")
         for (const x of home.notifications.items) expect(x.url, name).toBeTruthy();
     }
+  });
+});
+
+describe("orderUpdates", () => {
+  const update = (id: string, at: string, unread: boolean): HomeUpdate => ({
+    id,
+    project: "Field",
+    projectTitle: "Field engineering",
+    subject: `Update ${id}`,
+    from: { kind: "person", name: "Dana" },
+    at,
+    unread,
+  });
+
+  it("puts unread first, then the newest, and shows at most five", () => {
+    const items = [
+      update("a", "2026-10-20T09:00:00Z", false),
+      update("b", "2026-10-21T09:00:00Z", false),
+      update("c", "2026-10-19T09:00:00Z", true),
+      update("d", "2026-10-21T10:00:00Z", true),
+      update("e", "2026-10-18T09:00:00Z", false),
+      update("f", "2026-10-17T09:00:00Z", false),
+      update("g", "2026-10-21T10:00:00Z", true),
+    ];
+    const shown = orderUpdates(items).map((u) => u.id);
+    expect(shown).toEqual(["d", "g", "c", "b", "a"]);
+    expect(shown).toHaveLength(HOME_UPDATES_MAX);
+  });
+
+  it("keeps an update with no time last among its kind, and changes nothing it is given", () => {
+    const items = [update("x", "", true), update("y", "2026-10-21T09:00:00Z", true)];
+    expect(orderUpdates(items).map((u) => u.id)).toEqual(["y", "x"]);
+    expect(items.map((u) => u.id)).toEqual(["x", "y"]);
   });
 });

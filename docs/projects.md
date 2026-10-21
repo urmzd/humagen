@@ -231,9 +231,10 @@ const (
 	Owner  Role = "owner"
 )
 
-// Member is one entry. Who is "*", "role:<name>", or a subject (a subject
-// that starts with "role:" is refused).
-type Member struct {
+// Entry is one member. Who is "*", "role:<name>", or a subject (a subject
+// that starts with "role:" is refused). It is not called Member, which is
+// the role.
+type Entry struct {
 	Who  string `json:"who"`
 	Role Role   `json:"role"`
 }
@@ -270,7 +271,7 @@ type Project struct {
 	Parent       string     `json:"parent,omitempty"`       // "" is the root
 	Account      *Account   `json:"account,omitempty"`      // account-like kinds only
 	Instructions string     `json:"instructions,omitempty"` // <= 4000 (phase 1)
-	Members      []Member   `json:"members"`                // <= 100, never nil when stored (phase 2)
+	Members      []Entry    `json:"members"`                // <= 100, never nil when stored (phase 2)
 	Experts      []Expert   `json:"experts"`                // <= 50 (phase 2)
 	Kinds        []KindSpec `json:"kinds,omitempty"`        // root only, <= 16 (phase 2)
 	Archived     bool       `json:"archived,omitempty"`     // phase 2

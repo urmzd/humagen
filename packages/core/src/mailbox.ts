@@ -268,7 +268,8 @@ export function messageKind(message: InboxMessage): PartType {
  * A message's template: how it is laid out in the list and the reading pane,
  * and which icon and words it leads with. Each kind of message reads the way
  * its kind needs: an alert leads with its rule and severity, an artifact with
- * the file, a result with the answer.
+ * the file, a result with the answer, an announcement with its project and
+ * who posted it.
  */
 export type TemplateId =
   | "alert"
@@ -279,7 +280,8 @@ export type TemplateId =
   | "limit"
   | "artifact"
   | "result"
-  | "note";
+  | "note"
+  | "announcement";
 
 export const TEMPLATES: readonly TemplateId[] = [
   "alert",
@@ -291,6 +293,7 @@ export const TEMPLATES: readonly TemplateId[] = [
   "artifact",
   "result",
   "note",
+  "announcement",
 ];
 
 const TEMPLATE_OF_PART: Record<PartType, TemplateId> = {

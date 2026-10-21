@@ -380,6 +380,30 @@ under another account. The workspace itself is `company`.
  */
 export type ProjectKind = "company" | "team" | "account";
 
+/** What a member may do in a project, each including the one before:
+`viewer` sees it, its inbox, its context and its people; `member`
+works in it, creates projects under it and proposes notes; `owner`
+changes it and everything below it. A role only narrows what a
+permission allows: an owner without `projects:write` still cannot
+write.
+ */
+export type ProjectRole = "viewer" | "member" | "owner";
+
+/** One member of a project and the role it grants. */
+export interface ProjectEntry {
+  /** `*`, `role:<name>`, or a subject. */
+  who: string;
+  role: ProjectRole;
+}
+
+/** A workspace's own kind, a label over a built-in behavior. */
+export interface ProjectKindSpec {
+  name: string;
+  title?: string;
+  /** The built-in kind it behaves as. */
+  like: "team" | "account";
+}
+
 /** What an account project records about its customer. */
 export interface ProjectAccount {
   customer?: string;
@@ -415,7 +439,20 @@ projects, which everyone reads, and publish in team and account
 projects.
  */
   agent_posts?: "publish" | "review";
+  /** Who holds a role here. `*` is everyone who can see the parent (at
+the workspace, everyone holding `projects:read`), `role:<name>`
+the holders of a policy role, anything else a subject. An owner
+here owns everything below. Every project keeps a `*` entry of at
+least viewer, so every project stays visible.
+ */
+  members: ProjectEntry[];
+  /** The workspace's own kinds, each a label over `team` or `account`. Only the workspace carries them. */
+  kinds?: ProjectKindSpec[];
   agents: ProjectAgents;
+  /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
+  archived?: boolean;
+  /** The lowest role that may post an announcement here. Absent reads as owner. */
+  announce?: "viewer" | "member" | "owner";
   /** `file` when the platform file declares the project, and absent otherwise. The fields the file sets answer 409 here, and the project cannot be deleted here. */
   managed?: string;
   /** Counts writes, from 1. A change names the version it read. */
@@ -489,12 +526,13 @@ export interface ProjectChange {
   by: string;
   project: string;
   /** `managed` is the platform file taking the project over or letting
-it go. `agents` is a change to what the project turns on. `home`
-is an agent coming to live in the project, or leaving it: `agent`
-names it and `note` says which.
+it go, `moved` a new parent, `archived` archiving or bringing it
+back, `members` a change to who holds a role and nothing else,
+`agents` a change to what it turns on, and `home` an agent coming
+to live in it or leaving it.
  */
-  what: "created" | "updated" | "deleted" | "managed" | "agents" | "home";
-  /** The agent a home change is about. */
+  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home";
+  /** The agent a `home` change is about. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
   note?: string;
@@ -631,6 +669,8 @@ export interface Preferences {
   onboarded_at?: string;
   /** Conversations kept at the top of the person's sidebar, most recently pinned first. */
   pinned: string[];
+  /** Projects whose announcements are left out of the person's own inbox. They stay in each project's inbox, and the workspace itself is never muted. */
+  muted: string[];
 }
 
 /** A cron schedule as a caller writes it. */
@@ -1345,6 +1385,8 @@ export interface Policy {
   max_clients_per_surface?: number;
   warn_at?: number;
   action: PolicyAction;
+  /** Who set it. Absent is an admin, with `billing:write`. `owner` is a tighten-only limit a project's owner set on a project below one they own, never looser than the limits over it. */
+  authority?: "admin" | "owner";
   version: number;
   updated_by?: string;
   updated_at: string;

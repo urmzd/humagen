@@ -165,6 +165,13 @@ export const ClockIcon = icon(
   "ClockIcon",
 );
 export const GaugeIcon = icon(<path d="M12 14l4-4M3.3 19a10 10 0 1 1 17.4 0" />, "GaugeIcon");
+export const MegaphoneIcon = icon(
+  <>
+    <path d="m3 11 18-5v12L3 14v-3z" />
+    <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+  </>,
+  "MegaphoneIcon",
+);
 export const ShieldIcon = icon(
   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />,
   "ShieldIcon",

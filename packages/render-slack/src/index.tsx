@@ -21,7 +21,7 @@ export {
 export * from "./feedback";
 export * from "./forms";
 export * from "./lifecycle";
-export { escapeSlackText, plainDate, toMrkdwn, toPlain } from "./mrkdwn";
+export { escapeAnnouncement, escapeSlackText, plainDate, toMrkdwn, toPlain } from "./mrkdwn";
 export * from "./reply";
 export { breakMarkdown, nextBreak } from "./split";
 export * from "./stream";

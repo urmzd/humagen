@@ -3717,6 +3717,40 @@ components:
         under another account. The workspace itself is `company`.
       type: string
       enum: [company, team, account]
+    ProjectRole:
+      description: |
+        What a member may do in a project, each including the one before:
+        `viewer` sees it, its inbox, its context and its people; `member`
+        works in it, creates projects under it and proposes notes; `owner`
+        changes it and everything below it. A role only narrows what a
+        permission allows: an owner without `projects:write` still cannot
+        write.
+      type: string
+      enum: [viewer, member, owner]
+    ProjectEntry:
+      description: One member of a project and the role it grants.
+      type: object
+      required: [who, role]
+      properties:
+        who:
+          description: "`*`, `role:<name>`, or a subject."
+          type: string
+          maxLength: 255
+        role: {$ref: "#/components/schemas/ProjectRole"}
+    ProjectKindSpec:
+      description: A workspace's own kind, a label over a built-in behavior.
+      type: object
+      required: [name, like]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{0,31}$"
+          maxLength: 32
+        title: {type: string, maxLength: 40}
+        like:
+          description: The built-in kind it behaves as.
+          type: string
+          enum: [team, account]
     ProjectAccount:
       description: What an account project records about its customer.
       type: object
@@ -3737,7 +3771,7 @@ components:
         a path), which has no title, parent or account: show the workspace's
         name for it. It reads as version 0 until it is first changed.
       type: object
-      required: [name, kind, agents, version, created_at, updated_at]
+      required: [name, kind, members, agents, version, created_at, updated_at]
       properties:
         name: {type: string, maxLength: 63}
         title:
@@ -3767,7 +3801,29 @@ components:
             projects.
           type: string
           enum: [publish, review]
+        members:
+          description: |
+            Who holds a role here. `*` is everyone who can see the parent (at
+            the workspace, everyone holding `projects:read`), `role:<name>`
+            the holders of a policy role, anything else a subject. An owner
+            here owns everything below. Every project keeps a `*` entry of at
+            least viewer, so every project stays visible.
+          type: array
+          maxItems: 100
+          items: {$ref: "#/components/schemas/ProjectEntry"}
+        kinds:
+          description: The workspace's own kinds, each a label over `team` or `account`. Only the workspace carries them.
+          type: array
+          maxItems: 16
+          items: {$ref: "#/components/schemas/ProjectKindSpec"}
         agents: {$ref: "#/components/schemas/ProjectAgents"}
+        archived:
+          description: An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived.
+          type: boolean
+        announce:
+          description: The lowest role that may post an announcement here. Absent reads as owner.
+          type: string
+          enum: [viewer, member, owner]
         managed:
           description: "`file` when the platform file declares the project, and absent otherwise. The fields the file sets answer 409 here, and the project cannot be deleted here."
           type: string
@@ -3908,13 +3964,14 @@ components:
         what:
           description: |
             `managed` is the platform file taking the project over or letting
-            it go. `agents` is a change to what the project turns on. `home`
-            is an agent coming to live in the project, or leaving it: `agent`
-            names it and `note` says which.
+            it go, `moved` a new parent, `archived` archiving or bringing it
+            back, `members` a change to who holds a role and nothing else,
+            `agents` a change to what it turns on, and `home` an agent coming
+            to live in it or leaving it.
           type: string
-          enum: [created, updated, deleted, managed, agents, home]
+          enum: [created, updated, deleted, managed, moved, archived, members, agents, home]
         agent:
-          description: The agent a home change is about.
+          description: The agent a `home` change is about.
           type: string
         note:
           description: Says more, such as that a project created under a deleted name adopts its old conversations.
@@ -4114,7 +4171,7 @@ components:
     Preferences:
       description: A person's own settings.
       type: object
-      required: [display_name, theme, accent, has_photo, photo_version, pinned]
+      required: [display_name, theme, accent, has_photo, photo_version, pinned, muted]
       properties:
         display_name: {type: string}
         theme: {$ref: "#/components/schemas/Theme"}
@@ -4128,6 +4185,11 @@ components:
         pinned:
           description: Conversations kept at the top of the person's sidebar, most recently pinned first.
           type: array
+          items: {type: string}
+        muted:
+          description: Projects whose announcements are left out of the person's own inbox. They stay in each project's inbox, and the workspace itself is never muted.
+          type: array
+          maxItems: 100
           items: {type: string}
 
     Schedule:
@@ -5107,6 +5169,10 @@ components:
         max_clients_per_surface: {type: integer}
         warn_at: {type: integer}
         action: {$ref: "#/components/schemas/PolicyAction"}
+        authority:
+          description: Who set it. Absent is an admin, with `billing:write`. `owner` is a tighten-only limit a project's owner set on a project below one they own, never looser than the limits over it.
+          type: string
+          enum: [admin, owner]
         version: {type: integer}
         updated_by: {type: string}
         updated_at: {type: string, format: date-time}

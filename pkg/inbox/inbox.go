@@ -16,9 +16,18 @@
 //
 // Built with Open, the store writes each change through a state.Store before
 // it takes effect, and replays them when it is built again.
+//
+// # Broadcasts
+//
+// An announcement is one message many people read as their own: a
+// broadcast. Who it reaches is decided when it is read, through a
+// "project:<name>" audience entry and the projects a reader belongs to, so
+// a post is never copied per person. Dismissing or snoozing a broadcast
+// hides it for that reader alone; withdrawing it closes it for everyone.
 package inbox
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -28,6 +37,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/urmzd/warp/pkg/state"
 )
@@ -37,6 +48,9 @@ var (
 	ErrNotFound = errors.New("inbox: not found")
 	ErrCursor   = errors.New("inbox: invalid cursor")
 	ErrInvalid  = errors.New("inbox: invalid")
+	// ErrLimit reports a project or a tenant that has posted as many
+	// announcements today as it may.
+	ErrLimit = errors.New("inbox: limit reached")
 )
 
 // Kind says what a message is about.
@@ -57,6 +71,10 @@ const (
 	// KindMention is a message in a shared thread that tags the person it is
 	// to, by name or as one of the experts it tags.
 	KindMention Kind = "mention"
+	// KindAnnouncement is news posted in a project's inbox, by a person or
+	// an agent. It is a broadcast, only there to be read, and never needs
+	// anyone.
+	KindAnnouncement Kind = "announcement"
 )
 
 // State is where a message stands.
@@ -329,7 +347,10 @@ type Message struct {
 	// Excluded are principals the message is never shown to, whatever else
 	// admits them: the person whose request raised a call they may not
 	// approve.
-	Excluded     []string  `json:"-"`
+	Excluded []string `json:"-"`
+	// Broadcast is a message each reader keeps as their own: dismissing or
+	// snoozing it hides it for that reader alone. Announcements are.
+	Broadcast    bool      `json:"-"`
 	Kind         Kind      `json:"kind"`
 	Subject      string    `json:"subject"`
 	From         From      `json:"from"`
@@ -381,15 +402,28 @@ func (m Message) clone() Message {
 	return m
 }
 
-// Reader is who is reading: their subject, and the roles they hold, which
-// decide whether a message addressed to a role is theirs.
+// Reader is who is reading: their subject, the roles they hold, which
+// decide whether a message addressed to a role is theirs, and the projects
+// whose announcements reach them.
 type Reader struct {
 	Subject string
 	Roles   []string
+	// Projects are where a "project:<name>" audience entry reaches the
+	// reader: the projects they are a member of and every ancestor of
+	// those, as the platform reads them from the tree.
+	Projects []string
 }
 
+// audienceProject starts an audience entry that names a project.
+const audienceProject = "project:"
+
+// ProjectAudience is the audience entry of a project's members and of the
+// members of every project below it. The root's is "project:".
+func ProjectAudience(project string) string { return audienceProject + project }
+
 // For reports whether a message is addressed to a reader. Who may see its
-// kind at all is the caller's to decide.
+// kind at all is the caller's to decide. A project entry reaches only a
+// reader with a subject.
 func (m Message) For(r Reader) bool {
 	if m.To != "" && m.To != r.Subject {
 		return false
@@ -408,15 +442,12 @@ func (m Message) For(r Reader) bool {
 			return true
 		}
 	}
-	return false
-}
-
-// at reports the message's state at a moment: a snooze that has run out is open.
-func (m Message) at(now time.Time) State {
-	if m.State == Snoozed && !now.Before(m.SnoozedUntil) {
-		return Open
+	for _, p := range r.Projects {
+		if r.Subject != "" && slices.Contains(m.Audience, ProjectAudience(p)) {
+			return true
+		}
 	}
-	return m.State
+	return false
 }
 
 // What names a change.
@@ -465,10 +496,53 @@ type tenant struct {
 	byKey    map[string]*Message
 	byID     map[string]*Message
 	read     map[string]map[string]bool // message id -> subject
+	// hidden is how each reader set a broadcast aside for themselves:
+	// message id -> subject -> how.
+	hidden   map[string]map[string]hide
+	posted   posted
 	log      []Change
 	next     int
 	watchers map[int]chan Notice
 	nextW    int
+}
+
+// hide is one reader's own state of a broadcast: dismissed, or snoozed
+// until a time.
+type hide struct {
+	state State
+	until time.Time
+}
+
+// posted counts the announcements raised on the latest day one was, in UTC,
+// for Post's caps. It is rebuilt with everything else when changes are
+// replayed.
+type posted struct {
+	day   time.Time
+	total int
+	by    map[string]int
+}
+
+func dayOf(at time.Time) time.Time {
+	at = at.UTC()
+	return time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func (p *posted) add(project string, at time.Time) {
+	switch day := dayOf(at); {
+	case day.After(p.day):
+		*p = posted{day: day, total: 1, by: map[string]int{project: 1}}
+	case day.Equal(p.day):
+		p.total++
+		p.by[project]++
+	}
+}
+
+// on is how many were posted on at's day: in the project, and in all.
+func (p posted) on(project string, at time.Time) (int, int) {
+	if !dayOf(at).Equal(p.day) {
+		return 0, 0
+	}
+	return p.by[project], p.total
 }
 
 // Store holds every tenant's inbox.
@@ -490,15 +564,16 @@ type storedChange struct {
 
 type storedMessage struct {
 	Message
-	Key      string   `json:"key"`
-	Audience []string `json:"audience,omitempty"`
-	Excluded []string `json:"excluded,omitempty"`
+	Key       string   `json:"key"`
+	Audience  []string `json:"audience,omitempty"`
+	Excluded  []string `json:"excluded,omitempty"`
+	Broadcast bool     `json:"broadcast,omitempty"`
 }
 
 func storedOf(c Change) storedChange {
 	out := storedChange{Change: c, Delivery: c.Delivery}
 	if c.Raised != nil {
-		out.Raised = &storedMessage{Message: *c.Raised, Key: c.Raised.Key, Audience: c.Raised.Audience, Excluded: c.Raised.Excluded}
+		out.Raised = &storedMessage{Message: *c.Raised, Key: c.Raised.Key, Audience: c.Raised.Audience, Excluded: c.Raised.Excluded, Broadcast: c.Raised.Broadcast}
 	}
 	return out
 }
@@ -508,7 +583,7 @@ func (sc storedChange) change(tenant string) Change {
 	c.Tenant, c.Delivery = tenant, sc.Delivery
 	if sc.Raised != nil {
 		m := sc.Raised.Message
-		m.Key, m.Audience, m.Excluded = sc.Raised.Key, sc.Raised.Audience, sc.Raised.Excluded
+		m.Key, m.Audience, m.Excluded, m.Broadcast = sc.Raised.Key, sc.Raised.Audience, sc.Raised.Excluded, sc.Raised.Broadcast
 		c.Raised = &m
 	}
 	return c
@@ -549,7 +624,10 @@ func (s *Store) replay(name string, n int) {
 func (s *Store) of(name string) *tenant {
 	t, ok := s.tenants[name]
 	if !ok {
-		t = &tenant{byKey: map[string]*Message{}, byID: map[string]*Message{}, read: map[string]map[string]bool{}, watchers: map[int]chan Notice{}}
+		t = &tenant{
+			byKey: map[string]*Message{}, byID: map[string]*Message{}, read: map[string]map[string]bool{},
+			hidden: map[string]map[string]hide{}, watchers: map[int]chan Notice{},
+		}
 		s.tenants[name] = t
 	}
 	return t
@@ -575,6 +653,9 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		}
 		t.messages = append(t.messages, &m)
 		t.byKey[m.Key], t.byID[m.ID] = &m, &m
+		if m.Kind == KindAnnouncement && m.Broadcast {
+			t.posted.add(m.Source.Project, c.At)
+		}
 		c.Message = m.ID
 		t.log = append(t.log, c)
 		return &m, true
@@ -583,6 +664,9 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 	m := t.byID[c.Message]
 	if m == nil {
 		return nil, false
+	}
+	if m.Broadcast && (c.What == DidDismiss || c.What == DidSnooze) {
+		return m, t.hideFor(m, c)
 	}
 	switch c.What {
 	case MarkRead, MarkUnread:
@@ -617,6 +701,10 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		if m.State == Resolved || m.State == Dismissed {
 			return m, false
 		}
+		// A withdrawal from before it recorded who reads as the system's.
+		if c.What == DidWithdraw && c.By == "" {
+			c.By = "system"
+		}
 		m.State, m.SnoozedUntil = Dismissed, time.Time{}
 	case DidSnooze:
 		if m.State == Resolved || m.State == Dismissed {
@@ -629,6 +717,48 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 	m.UpdatedAt = c.At
 	t.log = append(t.log, c)
 	return m, true
+}
+
+// hideFor records one reader dismissing or snoozing a broadcast for
+// themselves. It changes nothing anyone else sees, so it reports no change
+// to tell watchers about. A broadcast already closed for everyone, one the
+// reader dismissed, or a change with no reader, is not recorded.
+func (t *tenant) hideFor(m *Message, c Change) bool {
+	if c.By == "" || m.State == Resolved || m.State == Dismissed || t.hidden[m.ID][c.By].state == Dismissed {
+		return false
+	}
+	h := hide{state: Dismissed}
+	if c.What == DidSnooze {
+		h = hide{state: Snoozed, until: c.Until}
+	}
+	if t.hidden[m.ID] == nil {
+		t.hidden[m.ID] = map[string]hide{}
+	}
+	t.hidden[m.ID][c.By] = h
+	t.log = append(t.log, c)
+	return false
+}
+
+// stateFor is a message's state for one reader at a moment: a broadcast as
+// the reader set it aside, and a snooze that has run out open. A zero now
+// leaves a snooze as it is.
+func (t *tenant) stateFor(m *Message, subject string, now time.Time) (State, time.Time) {
+	st, until := m.State, m.SnoozedUntil
+	if h, ok := t.hidden[m.ID][subject]; ok && m.Broadcast && (st == Open || st == Snoozed) {
+		st, until = h.state, h.until
+	}
+	if st == Snoozed && !now.IsZero() && !now.Before(until) {
+		return Open, time.Time{}
+	}
+	return st, until
+}
+
+// view is a message as one reader sees it.
+func (t *tenant) view(m *Message, subject string, now time.Time) Message {
+	out := m.clone()
+	out.State, out.SnoozedUntil = t.stateFor(m, subject, now)
+	out.Unread = !t.read[m.ID][subject]
+	return out
 }
 
 func (t *tenant) tell(m *Message) {
@@ -646,6 +776,11 @@ func (t *tenant) tell(m *Message) {
 func (s *Store) do(c Change) (Message, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.doLocked(c)
+}
+
+// doLocked is do with the lock held.
+func (s *Store) doLocked(c Change) (Message, bool, error) {
 	t := s.of(c.Tenant)
 	if c.What != Raised && t.byID[c.Message] == nil {
 		return Message{}, false, fmt.Errorf("%w: message %q", ErrNotFound, c.Message)
@@ -668,9 +803,7 @@ func (s *Store) do(c Change) (Message, bool, error) {
 	if changed {
 		t.tell(m)
 	}
-	out := m.clone()
-	out.Unread = !t.read[m.ID][c.By]
-	return out, changed, nil
+	return t.view(m, c.By, time.Time{}), changed, nil
 }
 
 // Raise puts a message in the inbox. key names what it is about: while a
@@ -710,9 +843,7 @@ func (s *Store) GetAs(tenantName, id string, r Reader) (Message, error) {
 	if m == nil || !m.For(r) {
 		return Message{}, fmt.Errorf("%w: message %q", ErrNotFound, id)
 	}
-	out := m.clone()
-	out.Unread = !t.read[id][r.Subject]
-	return out, nil
+	return t.view(m, r.Subject, time.Time{}), nil
 }
 
 // Read marks a message read or unread for one person.
@@ -731,17 +862,24 @@ func (s *Store) Resolve(tenantName, id, part string, o Outcome) (Message, bool, 
 	return s.do(Change{Tenant: tenantName, Message: id, What: DidResolve, Part: part, Action: o.Action, By: o.By, At: o.At, Note: o.Note})
 }
 
-// Dismiss sets a message aside without a decision.
+// Dismiss sets a message aside without a decision. A broadcast is set aside
+// for the one who dismisses it; everyone else still has it.
 func (s *Store) Dismiss(tenantName, id, by string, at time.Time) (Message, bool, error) {
 	return s.do(Change{Tenant: tenantName, Message: id, What: DidDismiss, By: by, At: at})
 }
 
-// Withdraw closes a message because what it was about is gone.
-func (s *Store) Withdraw(tenantName, id, note string, at time.Time) (Message, bool, error) {
-	return s.do(Change{Tenant: tenantName, Message: id, What: DidWithdraw, By: "system", Note: note, At: at})
+// Withdraw closes a message for everyone because what it was about is gone,
+// or because who posted it took it back. by is who withdrew it, or "system"
+// for the platform; "" reads as "system".
+func (s *Store) Withdraw(tenantName, id, by, note string, at time.Time) (Message, bool, error) {
+	if by == "" {
+		by = "system"
+	}
+	return s.do(Change{Tenant: tenantName, Message: id, What: DidWithdraw, By: by, Note: note, At: at})
 }
 
-// Snooze hides a message until a time, when it is open again.
+// Snooze hides a message until a time, when it is open again. A broadcast is
+// hidden for the one who snoozes it alone.
 func (s *Store) Snooze(tenantName, id, by string, until, at time.Time) (Message, bool, error) {
 	if !until.After(at) {
 		return Message{}, false, fmt.Errorf("%w: snooze until a time that is still to come", ErrInvalid)
@@ -811,9 +949,19 @@ type Query struct {
 	Reader string
 	// Roles are the roles the reader holds, for messages addressed to a role.
 	Roles []string
+	// ReaderProjects are the projects whose announcements reach the reader
+	// (Reader.Projects).
+	ReaderProjects []string
 	// State keeps messages in one state. Empty means open. "all" means any.
+	// A broadcast is in the state the reader left it in.
 	State State
 	Kind  Kind
+	// Kinds keeps messages of any of these kinds.
+	Kinds []Kind
+	// Projects keeps messages about these projects (Source.Project), the
+	// root's "" too when it is given. It is a project's inbox, so there a
+	// project audience entry naming one of them reaches any reader.
+	Projects []string
 	// Alert keeps the messages about one alert.
 	Alert string
 	// Agent keeps the messages about one agent: the one that raised them,
@@ -831,14 +979,39 @@ type Query struct {
 // All is the State that matches every message.
 const All State = "all"
 
-func (t *tenant) match(m *Message, q Query) bool {
-	if !m.For(Reader{Subject: q.Reader, Roles: q.Roles}) {
+// filter is a Query made ready to test many messages against.
+type filter struct {
+	Query
+	reader   Reader
+	projects map[string]bool
+}
+
+func (q Query) filter() filter {
+	f := filter{Query: q, reader: Reader{Subject: q.Reader, Roles: q.Roles, Projects: q.ReaderProjects}}
+	if len(q.Projects) > 0 {
+		f.projects = make(map[string]bool, len(q.Projects))
+		for _, p := range q.Projects {
+			f.projects[p] = true
+		}
+		f.reader.Projects = append(slices.Clone(q.ReaderProjects), q.Projects...)
+	}
+	return f
+}
+
+func (t *tenant) match(m *Message, q filter) bool {
+	if q.projects != nil && !q.projects[m.Source.Project] {
+		return false
+	}
+	if !m.For(q.reader) {
 		return false
 	}
 	if q.Visible != nil && !q.Visible(m.Kind) {
 		return false
 	}
 	if q.Kind != "" && m.Kind != q.Kind {
+		return false
+	}
+	if len(q.Kinds) > 0 && !slices.Contains(q.Kinds, m.Kind) {
 		return false
 	}
 	if q.Alert != "" && m.Source.Alert != q.Alert {
@@ -851,7 +1024,7 @@ func (t *tenant) match(m *Message, q Query) bool {
 	if want == "" {
 		want = Open
 	}
-	if want != All && m.at(q.Now) != want {
+	if st, _ := t.stateFor(m, q.Reader, q.Now); want != All && st != want {
 		return false
 	}
 	return !q.Unread || !t.read[m.ID][q.Reader]
@@ -894,6 +1067,7 @@ func (s *Store) Page(tenantName string, q Query) ([]Message, string, error) {
 			return nil, "", err
 		}
 	}
+	f := q.filter()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := s.of(tenantName)
@@ -909,16 +1083,13 @@ func (s *Store) Page(tenantName string, q Query) ([]Message, string, error) {
 				continue
 			}
 		}
-		if !t.match(m, q) {
+		if !t.match(m, f) {
 			continue
 		}
 		if len(out) == limit {
 			return out, encodeCursor(last), nil
 		}
-		c := m.clone()
-		c.State = m.at(q.Now)
-		c.Unread = !t.read[m.ID][q.Reader]
-		out = append(out, c)
+		out = append(out, t.view(m, q.Reader, q.Now))
 		last = m
 	}
 	return out, "", nil
@@ -932,23 +1103,108 @@ func older(a, b string) bool {
 	return a < b
 }
 
-// Count returns how many messages are open for a reader, and how many of those
-// are unread.
-func (s *Store) Count(tenantName string, q Query) (open, unread int) {
+// Counts is what a reader's inbox holds open: Open and Unread count what
+// may need them, and Updates the broadcasts open for them that they have
+// not read. A broadcast counts only in Updates, so announcements never grow
+// the badge.
+type Counts struct {
+	Open    int `json:"open"`
+	Unread  int `json:"unread"`
+	Updates int `json:"updates"`
+}
+
+// Count returns what is open for a reader across their whole inbox: the
+// narrowing fields of q are ignored, and who is reading is kept.
+func (s *Store) Count(tenantName string, q Query) Counts {
+	q.State, q.Kind, q.Kinds, q.Projects, q.Alert, q.Agent, q.Unread = Open, "", nil, nil, "", "", false
+	f := q.filter()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := s.of(tenantName)
-	q.State, q.Kind, q.Alert, q.Agent, q.Unread = Open, "", "", "", false
+	var c Counts
 	for _, m := range t.messages {
-		if !t.match(m, q) {
+		if !t.match(m, f) {
 			continue
 		}
-		open++
-		if !t.read[m.ID][q.Reader] {
-			unread++
+		unread := !t.read[m.ID][q.Reader]
+		switch {
+		case m.Broadcast:
+			if unread {
+				c.Updates++
+			}
+		default:
+			c.Open++
+			if unread {
+				c.Unread++
+			}
 		}
 	}
-	return open, unread
+	return c
+}
+
+// Bounds of an announcement.
+const (
+	// MaxSubject is an announcement's subject, in characters.
+	MaxSubject = 150
+	// MaxText is each part of an announcement, in characters.
+	MaxText = 4000
+)
+
+// PostCaps bound how many announcements are posted in one UTC day: in one
+// project, and in the tenant. A zero field keeps the default.
+type PostCaps struct {
+	PerProject int
+	PerTenant  int
+}
+
+// DefaultPostCaps are 20 a project and 200 a tenant, a day.
+func DefaultPostCaps() PostCaps { return PostCaps{PerProject: 20, PerTenant: 200} }
+
+// Post raises an announcement in a project's inbox: m.Source.Project names
+// the project, the root's "" included. It is a broadcast that reaches the
+// members of the project and of every project below it, so its kind, its
+// audience and its key ("announce:<project>:<n>") are set here, and every
+// part is text, only there to be read. The day's posts are counted and the
+// announcement raised under one lock, so racing posts stop at the caps
+// (ErrLimit).
+func (s *Store) Post(tenantName string, m Message, at time.Time, caps PostCaps) (Message, error) {
+	d := DefaultPostCaps()
+	caps.PerProject, caps.PerTenant = cmp.Or(caps.PerProject, d.PerProject), cmp.Or(caps.PerTenant, d.PerTenant)
+	m = m.clone()
+	m.Severity = cmp.Or(m.Severity, Info)
+	switch n := utf8.RuneCountInString(m.Subject); {
+	case n == 0 || n > MaxSubject || strings.ContainsFunc(m.Subject, unicode.IsControl) || !utf8.ValidString(m.Subject):
+		return Message{}, fmt.Errorf("%w: an announcement's subject is one line of 1 to %d characters", ErrInvalid, MaxSubject)
+	case m.Severity != Info && m.Severity != Warning:
+		return Message{}, fmt.Errorf("%w: an announcement is info or a warning", ErrInvalid)
+	case m.From.Kind == "" || m.From.Name == "":
+		return Message{}, fmt.Errorf("%w: an announcement says who it is from", ErrInvalid)
+	case len(m.Parts) == 0:
+		return Message{}, fmt.Errorf("%w: an announcement says something", ErrInvalid)
+	}
+	for i := range m.Parts {
+		p := &m.Parts[i]
+		if n := utf8.RuneCountInString(p.Text); p.Type != PartText || n == 0 || n > MaxText || !utf8.ValidString(p.Text) {
+			return Message{}, fmt.Errorf("%w: an announcement is text of 1 to %d characters", ErrInvalid, MaxText)
+		}
+		p.State = PartInfo
+	}
+	project := m.Source.Project
+	m.Kind, m.Broadcast, m.To = KindAnnouncement, true, ""
+	m.Audience, m.Excluded = []string{ProjectAudience(project)}, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.of(tenantName)
+	inProject, inTenant := t.posted.on(project, at)
+	switch {
+	case inProject >= caps.PerProject:
+		return Message{}, fmt.Errorf("%w: a project posts at most %d announcements a day", ErrLimit, caps.PerProject)
+	case inTenant >= caps.PerTenant:
+		return Message{}, fmt.Errorf("%w: a workspace posts at most %d announcements a day", ErrLimit, caps.PerTenant)
+	}
+	m.Key = "announce:" + project + ":" + strconv.Itoa(t.next+1)
+	out, _, err := s.doLocked(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
+	return out, err
 }
 
 // OpenOf returns the open and snoozed messages of a kind, for keeping the

@@ -13,7 +13,7 @@ import (
 // them at start. They are checked here too, so warp config check finds a
 // mistake before a start does; a test holds the two to the same values.
 const (
-	maxProjects     = 100
+	maxProjects     = 500
 	maxProjectDepth = 4
 	maxCompany      = 10
 

@@ -225,10 +225,11 @@ first, and the turn says which.
 `warp config check` refuses a mistake with its path, such as
 `workspace.projects[2].parent: "Feild" is not a project in this file`. A
 parent must be in the same file, because one made only in the console cannot
-be checked before start. A workspace has at most 100 projects, and the start
-checks the file again against the projects the console made. A project's kind
-and parent are fixed when it is created, so a file that names another kind or
-parent for a project that already exists fails the start.
+be checked before start. A workspace has at most 500 projects, and the start
+checks the file again against the projects the console made. A file that
+names another kind or parent for a project that already exists changes it as
+the console's move would, under the same rules: a move into its own subtree,
+past four levels, or that breaks a kind or openness rule fails the start.
 
 ## Which level a knob lives at
 

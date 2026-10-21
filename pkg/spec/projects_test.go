@@ -39,7 +39,7 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 	for i := range companies {
 		companies[i] = fmt.Sprintf("{name: C%d, kind: company}", i)
 	}
-	many := make([]string, 101)
+	many := make([]string, 501)
 	for i := range many {
 		many[i] = fmt.Sprintf("{name: P%d}", i)
 	}
@@ -85,7 +85,7 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 		// 4. Kinds are built in.
 		"an unknown kind": {tree(`{name: Partners, kind: partner}`), `workspace.projects[0].kind: "partner" is not a kind: company, team or account`},
 		// The fields' bounds, which the store would refuse at start.
-		"101 projects":                 {tree(many...), `workspace.projects: a workspace has at most 100 projects, not 101`},
+		"501 projects":                 {tree(many...), `workspace.projects: a workspace has at most 500 projects, not 501`},
 		"a long title":                 {tree(`{name: Field, title: ` + strings.Repeat("t", 81) + `}`), `workspace.projects[0].title: at most 80 characters, not 81`},
 		"a title on two lines":         {tree(`{name: Field, title: "Field\nengineering"}`), `workspace.projects[0].title: one line of plain text`},
 		"a long description":           {tree(`{name: Field, description: ` + strings.Repeat("d", 501) + `}`), `workspace.projects[0].description: at most 500 characters`},

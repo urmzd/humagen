@@ -28,9 +28,6 @@ const FieldExperts = "experts"
 // ExpertsChanged is what a change to a project's experts records.
 const ExpertsChanged = "experts"
 
-// RolePrefix marks an entry that names a role rather than a person.
-const RolePrefix = "role:"
-
 // Expert is who answers for some topics in a project: a person by subject,
 // or everyone holding a role, written "role:<name>".
 type Expert struct {
@@ -70,7 +67,7 @@ func validExperts(es []Expert) error {
 	}
 	seen := map[string]bool{}
 	for _, e := range es {
-		if err := validWho(e.Who); err != nil {
+		if err := validExpertWho(e.Who); err != nil {
 			return err
 		}
 		if seen[e.Who] {
@@ -94,9 +91,9 @@ func validExperts(es []Expert) error {
 	return nil
 }
 
-// validWho checks who an expert is: a subject, or "role:<name>". Everyone
+// validExpertWho checks who an expert is: a subject, or "role:<name>". Everyone
 // ("*") is no one's expert.
-func validWho(who string) error {
+func validExpertWho(who string) error {
 	if name, ok := strings.CutPrefix(who, RolePrefix); ok {
 		if !validRole.MatchString(name) {
 			return fmt.Errorf("%w: a role is lower case letters, digits, dashes and underscores; not %q", ErrInvalid, who)

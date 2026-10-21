@@ -108,6 +108,18 @@ const (
 // DefaultWarnAt is the share of a limit, in percent, at which usage warns.
 const DefaultWarnAt = 80
 
+// Authority is who set a policy, and so who may change it.
+type Authority string
+
+const (
+	// AuthorityAdmin is a policy set with billing:write. "" reads as it, so
+	// every policy from before owners could set one is an admin's.
+	AuthorityAdmin Authority = "admin"
+	// AuthorityOwner is a tighten-only limit a project's owner set on a
+	// project below one they own. It never replaces an admin's policy.
+	AuthorityOwner Authority = "owner"
+)
+
 // Policy is the limits for one scope. A zero limit means this scope sets none,
 // and whatever a wider scope set still applies.
 type Policy struct {
@@ -137,12 +149,19 @@ type Policy struct {
 	// means DefaultWarnAt.
 	WarnAt int    `json:"warn_at,omitempty"`
 	Action Action `json:"action"`
+	// Authority is who set it: "" and AuthorityAdmin are an admin, and
+	// AuthorityOwner a project's owner, on a project scope only.
+	Authority Authority `json:"authority,omitempty"`
 
 	// Version counts changes to this scope's policy, from 1.
 	Version   int       `json:"version"`
 	UpdatedBy string    `json:"updated_by,omitempty"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// ByOwner reports whether a project's owner set the policy, rather than an
+// admin.
+func (p Policy) ByOwner() bool { return p.Authority == AuthorityOwner }
 
 func (p Policy) warnAt() int {
 	if p.WarnAt <= 0 {
@@ -180,6 +199,10 @@ func (p Policy) Validate() error {
 		return fmt.Errorf("%w: holding a run for approval is not built yet, so the action must be block", ErrInvalid)
 	case p.Action != Block:
 		return fmt.Errorf("%w: the action at the limit is block", ErrInvalid)
+	case p.Authority != "" && p.Authority != AuthorityAdmin && p.Authority != AuthorityOwner:
+		return fmt.Errorf("%w: a policy is set by an admin or by a project's owner", ErrInvalid)
+	case p.Authority == AuthorityOwner && p.Scope.Kind != Project:
+		return fmt.Errorf("%w: an owner sets limits on a project, not on %s", ErrInvalid, p.Scope)
 	}
 	return nil
 }
@@ -209,6 +232,24 @@ func (p Policy) Within(parent Policy) error {
 		return fmt.Errorf("%w: %s allows a larger budget per run than %s", ErrInvalid, p.Scope, parent.Scope)
 	case over(p.MaxTokens, parent.MaxTokens):
 		return fmt.Errorf("%w: %s allows more tokens than %s", ErrInvalid, p.Scope, parent.Scope)
+	}
+	return nil
+}
+
+// Tighter checks that a policy claims no more than any policy already in
+// force over it: effective is the chain that applies where p would, its own
+// scope left out or skipped. A looser one could never take effect, since the
+// strictest wins, so it is refused naming the scope that binds. Like Within,
+// it compares limits of the same period number for number, and storage
+// whatever the periods.
+func Tighter(p Policy, effective []Policy) error {
+	for _, e := range effective {
+		if e.Scope == p.Scope {
+			continue
+		}
+		if err := p.Within(e); err != nil {
+			return err
+		}
 	}
 	return nil
 }

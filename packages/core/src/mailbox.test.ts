@@ -261,4 +261,19 @@ describe("mailbox", () => {
     expect(messageTemplate({ ...text, from: { kind: "rule", name: "Gate" } })).toBe("note");
     expect(messageTemplate({ ...get("m-alert"), template: "limit" })).toBe("limit");
   });
+
+  it("lays an announcement out as one, and never as something that needs the reader", () => {
+    const news: InboxMessage = {
+      id: "m-news",
+      subject: "Renewal signed",
+      from: { kind: "person", name: "Dana" },
+      at: "2026-10-21T09:00:00Z",
+      template: "announcement",
+      source: { kind: "project", id: "Globex", label: "Project Globex" },
+      parts: [{ type: "text", id: "p1", text: "Globex renewed for two years." }],
+    };
+    expect(messageTemplate(news)).toBe("announcement");
+    expect(messageAsks(news)).toBe(false);
+    expect(openMessageCount([news])).toBe(0);
+  });
 });
