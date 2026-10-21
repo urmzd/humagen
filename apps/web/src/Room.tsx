@@ -62,6 +62,12 @@ export function whoAnswers(a: ThreadAnswers | undefined): string {
   return words.answers(a.agent);
 }
 
+/** Who answers an untagged message in a channel, as its row in a list says it. */
+function answersShort(a: ThreadAnswers | undefined): string {
+  if (!a || !a.agent) return defaultCopy.auto.nobody;
+  return defaultCopy.auto.answers(a.agent);
+}
+
 /** What a posted message did, in one line: who it was sent to, and why a tag started nothing. */
 export function postedLine(p: ThreadPosted): string {
   const parts: string[] = [];
@@ -242,11 +248,8 @@ function AnswerView({ run, live }: { run: Run; live: boolean }) {
       {!run.message && (
         <p className="warp-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
       )}
-      <p className="inline-flex items-center gap-1.5 text-aui-xs text-aui-muted">
-        <AgentMark name={run.agent} size={14} />
-        <span className="font-medium text-aui-fg">{run.agent}</span>
-        {run.picked && <span>{run.picked}</span>}
-      </p>
+      {/* The answer names its agent; why @auto chose it is said above it. */}
+      {run.picked && <p className="pl-11 text-aui-xs text-aui-muted">{run.picked}</p>}
       <AgentTint name={run.agent}>
         <AgentMessage turn={shown} itemActions={itemActions(run)} />
       </AgentTint>
@@ -627,7 +630,7 @@ export function ChannelsTab({
                   {c.archived && <span className="pl-2 font-normal text-aui-muted">{words.archived}</span>}
                 </span>
                 {c.purpose && <span className="truncate text-aui-xs text-aui-muted">{c.purpose}</span>}
-                <span className="text-aui-xs text-aui-muted">{whoAnswers(c.answers)}</span>
+                <span className="text-aui-xs text-aui-muted">{answersShort(c.answers)}</span>
               </button>
               {canWrite && c.name !== "general" && !c.archived && !c.managed && (
                 <button
