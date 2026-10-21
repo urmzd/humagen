@@ -6,13 +6,17 @@ import type { Agent, ClientRecord } from "./warp.ts";
  * 1. An agent named in the message as `@name`, when that agent exists and this
  *    surface may route to it. The name is taken out of the message.
  * 2. The default agent: the client's, or the one configured for the app.
- * 3. The platform's picker, when the surface may reach any agent.
+ * 3. Nobody, when the surface may reach any agent: the app sends no agent,
+ *    and the default the platform's projects set decides. With none set, the
+ *    platform refuses, and the person is asked to tag an agent.
  *
- * With a client that lists its agents and names no default, nothing is chosen:
- * the picker does not know the client's list, so it is not asked.
+ * Nothing is picked here. With a client that lists its agents and names no
+ * default, nothing is chosen: the platform's default is not known here, so it
+ * could be one the list leaves out.
  */
 export type Choice =
-  | { agent: string; text: string; how: "named" | "default" | "picker" }
+  | { agent: string; text: string; how: "named" | "default" }
+  | { agent: ""; text: string; how: "inherited" }
   | { agent: null; text: string; how: "none" };
 
 export interface Routing {
@@ -54,5 +58,7 @@ export function choose(text: string, agents: Agent[], routing: Routing): Choice 
   if (fallback && mayRoute(routing, fallback))
     return { agent: fallback, text: said, how: "default" };
   const any = !routing.client || (routing.client.agents ?? []).includes("*");
-  return any ? { agent: "", text: said, how: "picker" } : { agent: null, text: said, how: "none" };
+  return any
+    ? { agent: "", text: said, how: "inherited" }
+    : { agent: null, text: said, how: "none" };
 }

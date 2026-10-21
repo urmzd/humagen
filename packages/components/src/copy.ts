@@ -251,6 +251,49 @@ export const defaultCopy = {
     empty: "No agent can be asked here yet.",
     handle: (name: string) => `@${name}`,
   },
+  /** @auto, the built-in router, and who answers a message that tags no agent. */
+  auto: {
+    handle: "@auto",
+    description: "Picks the agent that fits, from the agents available here.",
+    /** Under the composer: who answers a message that tags nobody. */
+    answers: (handle: string) => `@${handle} answers`,
+    nobody: "Nobody answers; tag an agent",
+    /** @auto matched nothing, and no default on the way up names an agent. */
+    noFit: "No agent fits; tag one.",
+    /** Nothing answers here by default, so the person names an agent. */
+    tagOne: (example?: string) => `Tag an agent, for example @${example ?? "name"}.`,
+    /** Where a default comes from: "from Field". */
+    from: (project: string) => `from ${project}`,
+    setByUpgrade: "Workspace Default: @auto, set by the upgrade",
+  },
+  /** The control for the root's default, which every project inherits. */
+  workspaceDefault: "Workspace Default",
+  /** The control that makes an agent live in a project. */
+  livesHere: "Lives Here",
+  /** Where an agent can answer, on its Access tab and in the Directory. */
+  agentPlace: {
+    livesIn: (project: string) => `Lives in ${project}`,
+    availableIn: "Available in",
+    platform: "A platform agent: available wherever a project enables it",
+    everywhere: "Available everywhere",
+    nowhere: "Not enabled in any project yet.",
+    loses: (n: number) => `${n} project${n === 1 ? "" : "s"} will lose this agent.`,
+  },
+  /** Who and what is in the workspace, readable by everyone in it. */
+  directory: {
+    title: "Directory",
+    lede: "Who and what is in this workspace.",
+    tabs: { people: "People", agents: "Agents", projects: "Projects" },
+    search: "Search the directory",
+    empty: {
+      people: "Nobody is listed yet. People appear here once they sign in.",
+      agents: "No agents yet.",
+      projects: "No projects yet. Everything is filed in the workspace itself.",
+    },
+    noMatch: "Nothing matches that search.",
+    /** A person's handle, which is how they are tagged. */
+    handle: (handle: string) => `@${handle}`,
+  },
   /** Raising a limit to an amount the reader types. */
   raiseLimit: "Raise Limit",
   raiseLimitTitle: "Raise the limit",

@@ -263,6 +263,7 @@ func (p *Platform) keep(c clients.Client, in ClientInput) error {
 // seat puts a client's connector on its surface, in place of the one it had.
 // A disabled client is unseated: it answers nothing and carries nothing.
 func (p *Platform) seat(c clients.Client, st *seat) {
+	p.seeMapped(c)
 	s := p.surfaces[string(c.Surface)]
 	if !c.Enabled {
 		s.remove(c.Tenant, c.ID)

@@ -424,9 +424,6 @@ func applyWorkspace(ctx context.Context, p *platform.Platform, doc spec.Platform
 			s.ModelPolicies = append(s.ModelPolicies, platform.ModelPolicy{Name: m.Name, Description: m.Description, Models: m.Models, FallbackOn: m.FallbackOn})
 		}
 	}
-	if w.Baseline != nil {
-		s.Baseline = *w.Baseline
-	}
 	if w.TitleAgent != nil {
 		s.TitleAgent = *w.TitleAgent
 	}

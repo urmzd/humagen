@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/people"
 )
 
 // The confinement sweep reads every GET in the contract, and the event
@@ -41,6 +42,7 @@ const marker = "zqx"
 type hidden struct {
 	project, agent, schedule, rule, source, eval, client, variant string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
+	handle                                                        string
 }
 
 // hide fills the acme workspace with one of everything, each named or
@@ -89,6 +91,11 @@ func hide(t *testing.T, f *fixture, owner string) hidden {
 	must("POST", "/api/knowledge/"+h.source+"/variants", `{"name":"`+h.variant+`"}`, http.StatusCreated)
 	must("POST", "/api/evals", `{"name":"`+h.eval+`","target":"agent","subject":"`+h.agent+`","cases":[{"id":"c-`+marker+`","input":"hi","checks":[{"kind":"contains","value":"`+marker+`"}]}]}`, http.StatusCreated)
 	must("POST", "/api/clients", slackApp(h.client, "A01ZQX", "svc-acme"), http.StatusCreated)
+	person, err := f.p.People.Seen("acme", people.Sighting{Subject: "okta|canary-" + marker, Name: "Canary " + marker, Source: people.SignIn}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.handle = person.Handle
 
 	// A refusal at a limit raises an inbox message about the hidden agent.
 	must("PUT", "/api/policies", `{"scope":{"kind":"agent","name":"`+h.agent+`"},"period":"day","max_runs":1}`, http.StatusOK)
@@ -143,6 +150,8 @@ func (h hidden) value(path, param string) (string, bool) {
 		case prefix("/api/clients/"):
 			return h.client, true
 		}
+	case "handle":
+		return h.handle, true
 	case "variant":
 		return h.variant, true
 	case "client":

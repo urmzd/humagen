@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/urmzd/warp/pkg/artifacts"
@@ -46,11 +47,11 @@ func TestObjectsNameTheirPlace(t *testing.T) {
 		"message":  placeOfSource(inbox.Source{Run: "r2", Project: "Globex", Thread: "r1"}),
 		"artifact": placeOfArtifact(artifacts.Artifact{ID: "art-1", Project: "Globex", Thread: "r1"}),
 	} {
-		if got != want {
+		if !reflect.DeepEqual(got, want) {
 			t.Errorf("%s = %+v", name, got)
 		}
 	}
-	if (placeOfRun(runs.Run{})) != (Place{}) {
+	if !reflect.DeepEqual(placeOfRun(runs.Run{}), Place{}) {
 		t.Error("a run filed nowhere is not at the root")
 	}
 }

@@ -1,5 +1,5 @@
-// Package pick chooses which agent should answer a message when the person
-// did not choose one.
+// Package pick is what @auto, the built-in router, runs: it chooses which of
+// the agents available in a place should answer a message.
 //
 // It is lexical and explainable on purpose: an agent is picked because words
 // in the message appear in its name, its description or its prompt, and the
@@ -8,10 +8,12 @@
 // A description is optional. It works the way a skill's description does: a
 // line or two written to be found by, so its words count for more than the
 // same words buried in a long prompt. An agent with no description is still
-// found through its prompt. When nothing matches, or
-// two agents match equally, the tenant's baseline agent answers, and the pick
-// says that too. No model is asked, so the same message always goes to the same
-// agent and anyone can see why.
+// found through its prompt. When nothing matches, or two agents match
+// equally, the fallback answers: the nearest default on the place's chain
+// that names an agent rather than @auto. The pick says that too. With no
+// fallback nothing is picked, and the person tags an agent. No model is
+// asked, so the same message always goes to the same agent and anyone can see
+// why.
 package pick
 
 import (
@@ -23,9 +25,9 @@ import (
 	"unicode"
 )
 
-// ErrNoAgent reports that nothing could be picked: no agent matched and the
-// tenant has no baseline.
-var ErrNoAgent = errors.New("pick: no agent matched and no baseline agent is set")
+// ErrNoAgent reports that nothing could be picked: no agent matched, and no
+// fallback among the candidates could answer instead.
+var ErrNoAgent = errors.New("pick: no agent fits; tag one")
 
 // Candidate is an agent that could be picked.
 type Candidate struct {
@@ -47,7 +49,7 @@ type Choice struct {
 	Agent string `json:"agent"`
 	// Reason is a sentence a person can read.
 	Reason string `json:"reason"`
-	// Matched is the words that decided it. Empty when the baseline was used.
+	// Matched is the words that decided it. Empty when the fallback answered.
 	Matched []string `json:"matched,omitempty"`
 }
 
@@ -85,8 +87,10 @@ func words(s string) []string {
 	return out
 }
 
-// Agent picks an agent for a message. baseline may be empty.
-func Agent(message string, candidates []Candidate, baseline string) (Choice, error) {
+// Agent picks an agent for a message from candidates, the agents available
+// where it was sent. fallback answers when nothing matches or a match is
+// tied; it may be empty, and counts only when it is one of the candidates.
+func Agent(message string, candidates []Candidate, fallback string) (Choice, error) {
 	if len(candidates) == 0 {
 		return Choice{}, ErrNoAgent
 	}
@@ -131,15 +135,15 @@ func Agent(message string, candidates []Candidate, baseline string) (Choice, err
 		return Choice{
 			Agent:   candidates[best].Name,
 			Matched: matched[best],
-			Reason:  fmt.Sprintf("Picked for: %s.", strings.Join(matched[best], ", ")),
+			Reason:  fmt.Sprintf("Picked by @auto: matched %s.", strings.Join(matched[best], ", ")),
 		}, nil
 	}
-	if baseline == "" || !slices.ContainsFunc(candidates, func(c Candidate) bool { return c.Name == baseline }) {
+	if fallback == "" || !slices.ContainsFunc(candidates, func(c Candidate) bool { return c.Name == fallback }) {
 		return Choice{}, ErrNoAgent
 	}
-	reason := "No agent's description matched, so the baseline answered."
+	reason := "Picked by @auto: nothing matched, so the default answered."
 	if tied {
-		reason = "More than one agent matched equally, so the baseline answered."
+		reason = "Picked by @auto: more than one agent matched equally, so the default answered."
 	}
-	return Choice{Agent: baseline, Reason: reason}, nil
+	return Choice{Agent: fallback, Reason: reason}, nil
 }

@@ -16,14 +16,6 @@ import (
 // its project, and the thread it belongs to when it belongs to one. Runs,
 // inbox messages and artifacts each name theirs.
 
-// Place is where something lives, for deciding who may read it.
-type Place struct {
-	// Project is the project it is filed in. "" is the root.
-	Project string
-	// Thread is the conversation it belongs to, or "".
-	Thread string
-}
-
 // threadAccess is what reading a thread turns on: whether only its
 // participants read it, and who they are, by subject.
 type threadAccess struct {

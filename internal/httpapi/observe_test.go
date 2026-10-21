@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ var everything = []string{
 	"warp:knowledge:read", "warp:knowledge:write", "warp:evals:read", "warp:evals:write",
 	"warp:billing:read", "warp:billing:write", "warp:artifacts:read", "warp:artifacts:write",
 	"warp:clients:read", "warp:clients:write", "warp:projects:read", "warp:projects:write", "warp:projects:govern",
+	"warp:people:read",
 }
 
 func TestObservabilityIsConfinedToATenant(t *testing.T) {
@@ -281,14 +283,17 @@ func TestConversationsBranchAndPick(t *testing.T) {
 	f.do(t, nil, "POST", "/api/agents", tok, helperSpec)
 	f.do(t, nil, "POST", "/api/agents", tok, `{"name":"releaser","description":"Cuts releases and tags versions.","model":"offline","provider":"offline","system_prompt":"x"}`)
 
-	// With no baseline, a message nothing matches cannot be auto-picked.
-	if res, _ := f.do(t, nil, "POST", "/api/runs", tok, `{"text":"what is the weather"}`); res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("auto with no baseline = %d, want 400", res.StatusCode)
+	// A new workspace's default is @auto. With no default that names an
+	// agent, a message nothing matches goes nowhere: tag one.
+	if res, out := f.do(t, nil, "POST", "/api/runs", tok, `{"text":"what is the weather"}`); res.StatusCode != http.StatusConflict || out["error"] != "no agent fits; tag one" {
+		t.Fatalf("@auto with nothing to fall back to = %d %v, want 409", res.StatusCode, out)
 	}
-	if res, _ := f.do(t, nil, "PUT", "/api/settings", tok, `{"baseline":"ghost"}`); res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("a baseline that is not an agent = %d, want 400", res.StatusCode)
+	if res, _ := f.do(t, nil, "PUT", "/api/projects/~/agents", tok, `{"version":0,"enable":["*"],"default":"ghost"}`); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("a workspace default that is not an agent = %d, want 400", res.StatusCode)
 	}
-	f.do(t, nil, "PUT", "/api/settings", tok, `{"baseline":"helper"}`)
+	// The workspace default names helper; a project below it uses @auto,
+	// which falls back to helper.
+	f.do(t, nil, "PUT", "/api/projects/~/agents", tok, `{"version":0,"enable":["*"],"default":"helper"}`)
 
 	// The first message starts a thread and is auto-picked by description.
 	_, first := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"auto","text":"tag the next release"}`)
@@ -296,8 +301,12 @@ func TestConversationsBranchAndPick(t *testing.T) {
 		t.Fatalf("first = %v", first)
 	}
 	_, weather := f.do(t, nil, "POST", "/api/runs", tok, `{"text":"what is the weather"}`)
-	if weather["agent"] != "helper" {
-		t.Fatalf("nothing matched, so the baseline should answer: %v", weather)
+	if weather["agent"] != "helper" || weather["picked"] != nil {
+		t.Fatalf("an untagged message, so the workspace default should answer: %v", weather)
+	}
+	_, auto := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"auto","text":"what is the weather"}`)
+	if auto["agent"] != "helper" || !strings.Contains(fmt.Sprint(auto["picked"]), "the default answered") {
+		t.Fatalf("@auto with no match should hand the message to the default: %v", auto)
 	}
 	id := first["id"].(string)
 
@@ -332,7 +341,7 @@ func TestConversationsBranchAndPick(t *testing.T) {
 	if res, _ := f.do(t, nil, "POST", "/api/runs", tok, `{"agent":"helper","text":"hi","project":"Ghost"}`); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("an unknown project = %d, want 400", res.StatusCode)
 	}
-	if res, out := f.do(t, nil, "PUT", "/api/settings", tok, `{"baseline":"helper","history":"none","history_limit":5000}`); res.StatusCode != http.StatusOK {
+	if res, out := f.do(t, nil, "PUT", "/api/settings", tok, `{"history":"none","history_limit":5000}`); res.StatusCode != http.StatusOK {
 		t.Fatalf("settings = %d %v", res.StatusCode, out)
 	}
 	if res, out := f.do(t, nil, "POST", "/api/projects", tok, `{"name":"Launch"}`); res.StatusCode != http.StatusCreated {

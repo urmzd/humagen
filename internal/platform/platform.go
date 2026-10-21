@@ -56,6 +56,7 @@ import (
 	"github.com/urmzd/warp/pkg/journal"
 	"github.com/urmzd/warp/pkg/knowledge"
 	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/people"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/prefs"
 	"github.com/urmzd/warp/pkg/projects"
@@ -159,6 +160,8 @@ type Platform struct {
 	Memory    *memory.Store
 	// Projects is each tenant's tree of projects.
 	Projects *projects.Store
+	// People is each tenant's directory of people.
+	People   *people.Store
 	Policies *policy.Store
 	// CallPolicies is what each agent says about being called.
 	CallPolicies *callpolicy.Store
