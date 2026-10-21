@@ -932,9 +932,12 @@ export interface Schedule {
   /** What the schedule is for, at most 500 characters. The agent is not shown it. */
   description?: string;
   /** Where the answer of each run goes. Left out, it stays on the run.
-`inbox` sends it to the schedule's creator as a result, unless the
-answer is NONE. `project` posts it to the schedule's project, and
-needs a project; it is refused until project inboxes are built.
+`inbox` sends it to the schedule's creator as a result. `project`
+posts it in the schedule's project as an announcement from the
+agent, its first line the subject: it needs a project (`~` for
+the workspace) where the agent is available (400 without one). A
+project whose `agent_posts` is `review` holds it as a draft for
+its owners instead. An answer of NONE goes nowhere.
  */
   deliver?: "inbox" | "project";
 }
@@ -983,6 +986,8 @@ export interface InboxFrom {
   /** What sent the message, such as `agent`, `rule` or `system`. */
   kind: string;
   name: string;
+  /** The person who published an agent's draft, by subject. Absent on what an agent posted itself. */
+  approved_by?: string;
 }
 
 /** Which agents may call an agent, and which of those calls a person approves. */
@@ -1187,7 +1192,7 @@ export interface InboxPart {
   type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply" | "draft" | "mention";
   state: "open" | "resolved" | "info";
   /** What this caller may do with the part now. Empty once it is resolved, or when the caller has no permission for any action. */
-  actions: ("acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done")[];
+  actions: ("acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done" | "publish")[];
   outcome?: InboxOutcome;
   text?: string;
   alert?: InboxAlertPart;
@@ -1248,7 +1253,11 @@ export interface InboxChange {
 
 /** What a person decided about a part. */
 export interface Resolution {
-  action: "acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply";
+  /** `publish` posts an agent's draft as the announcement it wrote, and
+`discard` drops it; only an owner of the draft's project decides
+one (403 for anyone else who can see it).
+ */
+  action: "acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done" | "publish";
   /** The proposed notes to keep, with `keep`. */
   ids?: string[];
   /** At most 500 characters. On a denial the model is shown it. */

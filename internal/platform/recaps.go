@@ -2,11 +2,15 @@ package platform
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -71,29 +75,122 @@ func (p *Platform) deliverAnswer(_ context.Context, run runs.Run) {
 	case DeliverInbox:
 		p.deliverToInbox(run)
 	case DeliverProject:
-		// Schedules refuse deliver: project until project inboxes are
-		// built, so no run carries it yet.
-		p.log.Warn("platform: a run asks to be posted to its project, which is not built", "tenant", run.Tenant, "run", run.ID)
+		p.deliverToProject(run)
 	}
+}
+
+// MaxOpenDrafts is how many of its agents' drafts a project holds for its
+// owners at once.
+const MaxOpenDrafts = 20
+
+// deliverToProject posts a scheduled run's answer in the run's project, as an
+// announcement from the agent that wrote it, which reaches the members of the
+// project and of every project below it. A project whose agent posts are
+// reviewed holds it as a draft for its owners instead. An answer that cannot
+// be posted, because the project's announcements for the day are used up or
+// its owners already hold as many drafts as they may, goes to the schedule's
+// creator, saying why, so nobody's answer is lost.
+func (p *Platform) deliverToProject(run runs.Run) {
+	subject, text, post := announcementOf(run.Answer)
+	if !post {
+		return
+	}
+	if text == "" {
+		text = subject
+	}
+	tree := p.Projects.Tree(run.Tenant)
+	if !tree.Has(run.Project) {
+		p.log.Warn("platform: a scheduled answer's project is gone", "tenant", run.Tenant, "run", run.ID, "project", run.Project)
+		p.heldBack(run, subject, text, "its project is gone")
+		return
+	}
+	where := p.whereOf(run.Tenant, tree, run.Project)
+	if projects.EffectiveAgentPosts(tree, run.Project) == projects.AgentPostsPublish {
+		_, err := p.postFromAgent(run.Tenant, inbox.DraftPart{
+			Project: run.Project, Agent: run.Agent, Run: run.ID, Subject: subject, Text: text,
+		}, run.Thread, "")
+		switch {
+		case errors.Is(err, inbox.ErrLimit):
+			p.heldBack(run, subject, text, where+" has posted all the announcements it may today")
+		case err != nil:
+			p.log.Error("platform: a scheduled answer could not be posted", "tenant", run.Tenant, "run", run.ID, "error", err)
+		}
+		return
+	}
+	if p.openDrafts(run.Tenant, run.Project) >= MaxOpenDrafts {
+		p.heldBack(run, subject, text, fmt.Sprintf("the owners of %s already hold %d drafts", where, MaxOpenDrafts))
+		return
+	}
+	p.raiseInbox(run.Tenant, draftKey(run.ID), inbox.Message{
+		Kind: inbox.KindAnnouncement, Subject: subject, Severity: inbox.Info,
+		From: inbox.From{Kind: "agent", Name: run.Agent},
+		// Only the project's owners decide, whoever they are when it is
+		// read.
+		Audience: []string{inbox.OwnersAudience(run.Project)},
+		Source:   inbox.Source{Run: run.ID, Thread: run.Thread, Agent: run.Agent, Project: run.Project},
+		Parts: []inbox.Part{{Type: inbox.PartDraft, Draft: &inbox.DraftPart{
+			Project: run.Project, Agent: run.Agent, Run: run.ID, Subject: subject, Text: text,
+		}}},
+	}, p.now())
+}
+
+func draftKey(run string) string { return "draft:" + run }
+
+// postFromAgent posts an announcement an agent wrote, in d's project, linked
+// to the run that wrote it. approvedBy is who published it from a draft, or
+// "" for a post the project publishes as it comes.
+func (p *Platform) postFromAgent(tenant string, d inbox.DraftPart, thread, approvedBy string) (inbox.Message, error) {
+	return p.Inbox.Post(tenant, inbox.Message{
+		Subject:  d.Subject,
+		From:     inbox.From{Kind: "agent", Name: d.Agent, ApprovedBy: approvedBy},
+		Severity: inbox.Info,
+		Source:   inbox.Source{Run: d.Run, Thread: thread, Agent: d.Agent, Project: d.Project},
+		Parts:    []inbox.Part{{Type: inbox.PartText, Text: d.Text}},
+	}, p.now(), inbox.PostCaps{})
+}
+
+// openDrafts counts the drafts a project's owners have still to decide.
+func (p *Platform) openDrafts(tenant, project string) int {
+	n := 0
+	for _, m := range p.Inbox.OpenOf(tenant, inbox.KindAnnouncement) {
+		for _, part := range m.Parts {
+			if part.Type == inbox.PartDraft && part.Draft != nil && part.Draft.Project == project && part.State == inbox.PartOpen {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// heldBack sends a scheduled answer that could not be posted to the
+// schedule's creator, saying why.
+func (p *Platform) heldBack(run runs.Run, subject, text, why string) {
+	p.sendToCreator(run, subject, "Not posted: "+why+".\n\n"+text)
 }
 
 // deliverToInbox sends the answer to the person who created the schedule, as
 // a result only they are shown. A schedule with no creator on record has
 // nobody to send it to, so nothing is sent.
 func (p *Platform) deliverToInbox(run runs.Run) {
-	to := run.Tag().Meta[metaCreatedBy]
 	subject, text, post := announcementOf(run.Answer)
 	if !post {
-		return
-	}
-	if to == "" {
-		p.log.Warn("platform: a scheduled answer has nobody to go to", "tenant", run.Tenant, "run", run.ID, "schedule", run.Schedule)
 		return
 	}
 	// A one-line answer is its own subject, and still the message's body,
 	// as every result has one.
 	if text == "" {
 		text = subject
+	}
+	p.sendToCreator(run, subject, text)
+}
+
+// sendToCreator sends a result about a scheduled run to whoever created its
+// schedule, the only one shown it.
+func (p *Platform) sendToCreator(run runs.Run, subject, text string) {
+	to := run.Tag().Meta[metaCreatedBy]
+	if to == "" {
+		p.log.Warn("platform: a scheduled answer has nobody to go to", "tenant", run.Tenant, "run", run.ID, "schedule", run.Schedule)
+		return
 	}
 	p.raiseInbox(run.Tenant, "result:"+run.ID, inbox.Message{
 		Kind: inbox.KindResult, To: to, Subject: subject,
@@ -155,4 +252,30 @@ func clipRunes(s string, limit int) string {
 		n++
 	}
 	return s
+}
+
+// ownsDraft refuses anyone but an owner of the draft's project: publishing
+// puts the agent's words in front of everyone it reaches.
+func (p *Platform) ownsDraft(who auth.Principal, d inbox.DraftPart) error {
+	tree := p.Projects.Tree(who.Tenant)
+	if tree.Resolve(d.Project, projectReader(who)).Role == projects.Owner {
+		return nil
+	}
+	return fmt.Errorf("%w: deciding a draft needs projects:write, and you need to own %s", ErrForbidden, p.whereOf(who.Tenant, tree, d.Project))
+}
+
+// projectReader is who a caller is to the project tree.
+func projectReader(who auth.Principal) projects.Reader {
+	roles := make([]string, 0, len(who.Roles))
+	for _, r := range who.Roles {
+		roles = append(roles, string(r))
+	}
+	return projects.Reader{Subject: who.Subject, Roles: roles, Govern: who.Can(auth.ProjectsGovern), Machine: who.Kind == auth.Machine}
+}
+
+// withOwns adds to a reader the projects the caller owns, which an
+// "owners:<name>" audience entry reaches: an agent's drafts are addressed so.
+func (p *Platform) withOwns(who auth.Principal, r inbox.Reader) inbox.Reader {
+	r.Owns = p.Projects.Tree(who.Tenant).Owned(projectReader(who))
+	return r
 }

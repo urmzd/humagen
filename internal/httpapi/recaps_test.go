@@ -98,11 +98,18 @@ func TestAScheduleDeliversOnlyWhereItCan(t *testing.T) {
 	f.do(t, nil, "POST", "/api/agents", tok, helperSpec)
 	f.do(t, nil, "POST", "/api/projects", tok, `{"name":"Launch"}`)
 	for name, body := range map[string]string{
-		"somewhere else":       `{"name":"a","expression":"0 3 * * *","agent":"helper","text":"x","deliver":"email"}`,
-		"a project with none":  `{"name":"b","expression":"0 3 * * *","agent":"helper","text":"x","deliver":"project"}`,
-		"a project, not built": `{"name":"c","expression":"0 3 * * *","agent":"helper","text":"x","deliver":"project","project":"Launch"}`,
+		"somewhere else":      `{"name":"a","expression":"0 3 * * *","agent":"helper","text":"x","deliver":"email"}`,
+		"a project with none": `{"name":"b","expression":"0 3 * * *","agent":"helper","text":"x","deliver":"project"}`,
 	} {
 		if res, out := f.do(t, nil, "POST", "/api/schedules", tok, body); res.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s = %d %v", name, res.StatusCode, out)
+		}
+	}
+	for name, body := range map[string]string{
+		"a project":     `{"name":"c","expression":"0 3 * * *","agent":"helper","text":"x","deliver":"project","project":"Launch"}`,
+		"the workspace": `{"name":"d","expression":"0 3 * * *","agent":"helper","text":"x","deliver":"project","project":"~"}`,
+	} {
+		if res, out := f.do(t, nil, "POST", "/api/schedules", tok, body); res.StatusCode != http.StatusCreated || out["deliver"] != "project" {
 			t.Errorf("%s = %d %v", name, res.StatusCode, out)
 		}
 	}

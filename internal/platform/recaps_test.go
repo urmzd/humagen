@@ -13,6 +13,7 @@ import (
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
@@ -95,10 +96,22 @@ func TestProjectChangesReadsOnlyItsSubtree(t *testing.T) {
 	p := start(t, call.Limits{})
 	project(t, p, "Field")
 	project(t, p, "Other")
+	if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Globex", Parent: "Field", Kind: projects.Account}); err != nil {
+		t.Fatal(err)
+	}
 	asking, _ := turn(t, p, "api-f1", "Field")
 	turn(t, p, "api-f2", "Field")
+	turn(t, p, "api-g1", "Globex")
 	turn(t, p, "api-o1", "Other")
 	now := time.Now().UTC()
+	for project, subject := range map[string]string{"Field": "Field moved to the new office", "Other": "Other news"} {
+		if _, err := p.Inbox.Post(tenant, inbox.Message{
+			Subject: subject, From: inbox.From{Kind: "person", Name: "ada"}, Source: inbox.Source{Project: project},
+			Parts: []inbox.Part{{Type: inbox.PartText, Text: "x"}},
+		}, now, inbox.PostCaps{}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	for owner, notes := range map[string][]struct {
 		text   string
 		status memory.Status
@@ -121,7 +134,11 @@ func TestProjectChangesReadsOnlyItsSubtree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"What changed in Field", "Field ships on Friday.", "field-plan.md", "field-recap created by ada", "In all, 1 runs: 1 completed"} {
+	for _, want := range []string{
+		"What changed in Field and the projects below it", "Field ships on Friday.", "field-plan.md", "field-recap created by ada",
+		"In all, 2 runs: 2 completed", "In Globex: 1 runs", "Field #general: \"Write the report\" started, settled",
+		"Globex #general", "\"Field moved to the new office\", from person ada", "Globex: created by ada",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the changes leave out %q:\n%s", want, out)
 		}

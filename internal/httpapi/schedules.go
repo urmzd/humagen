@@ -157,10 +157,7 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 		fail(w, http.StatusBadRequest, "deliver is inbox, project, or left out to keep the answer on the run")
 		return nil, false
 	case body.Deliver == platform.DeliverProject && body.Project == "":
-		fail(w, http.StatusBadRequest, "deliver: project posts to the schedule's project, so name one")
-		return nil, false
-	case body.Deliver == platform.DeliverProject:
-		fail(w, http.StatusBadRequest, "deliver: project needs project inboxes, which are not built yet; use deliver: inbox")
+		fail(w, http.StatusBadRequest, "deliver: project posts to the schedule's project, so name one, or ~ for the workspace")
 		return nil, false
 	case body.Deliver != platform.DeliverNone:
 		meta[platform.MetaDeliver] = body.Deliver

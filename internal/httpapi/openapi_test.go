@@ -1431,7 +1431,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/artifacts/{id}": {"id": published.ID}, "/api/artifacts/{id}/versions": {"id": published.ID},
 		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
-		"/api/projects/{name}/channels": {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
+		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
 		"/api/projects/{name}/experts": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
 	}

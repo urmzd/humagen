@@ -44,6 +44,8 @@ const (
 	ActRaiseLimit  = "raise_limit"
 	// ActDone sets a mention aside: the person has seen to it.
 	ActDone = "done"
+	// ActPublish posts an agent's draft as the announcement it wrote.
+	ActPublish = "publish"
 )
 
 // Resolution is what a person decided about a part.
@@ -80,6 +82,8 @@ func severityOf(s alerts.Severity) inbox.Severity {
 // reads is the right needed to see a kind of message.
 func reads(k inbox.Kind) auth.Permission {
 	switch k {
+	case inbox.KindAnnouncement:
+		return auth.ProjectsRead
 	case inbox.KindMemory:
 		return auth.AgentsRead
 	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
@@ -90,9 +94,13 @@ func reads(k inbox.Kind) auth.Permission {
 	return auth.AlertsRead
 }
 
-// writes is the right needed to set a kind of message aside.
+// writes is the right needed to set a kind of message aside. Hiding an
+// announcement hides the reader's own copy and changes nothing others see,
+// so reading it is enough.
 func writes(k inbox.Kind) auth.Permission {
 	switch k {
+	case inbox.KindAnnouncement:
+		return auth.ProjectsRead
 	case inbox.KindMemory:
 		return auth.AgentsWrite
 	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
@@ -116,6 +124,10 @@ func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 		return auth.BillingWrite, true
 	case t == inbox.PartBudget && action == ActAcknowledge:
 		return auth.AlertsWrite, true
+	case t == inbox.PartDraft && (action == ActPublish || action == ActDiscard):
+		// Deciding an agent's post is the project's owners' to do: the
+		// role is checked when the action is taken.
+		return auth.ProjectsWrite, true
 	case t == inbox.PartMention && (action == ActReply || action == ActDone):
 		// Replying posts a message in the thread as the reader.
 		return auth.RunsWrite, true
@@ -138,6 +150,7 @@ var offered = map[inbox.PartType][]string{
 	inbox.PartChoice:   {ActChoose},
 	inbox.PartReply:    {ActReply},
 	inbox.PartMention:  {ActReply, ActDone},
+	inbox.PartDraft:    {ActPublish, ActDiscard},
 }
 
 // seenBy fills in what a reader may do with each part.
@@ -172,6 +185,7 @@ func readerOf(who auth.Principal) inbox.Reader {
 
 func (p *Platform) inboxQuery(who auth.Principal, q inbox.Query) inbox.Query {
 	q.Reader, q.Roles, q.Now = who.Subject, readerOf(who).Roles, p.now()
+	q.ReaderOwns = p.withOwns(who, inbox.Reader{}).Owns
 	q.Visible = func(k inbox.Kind) bool { return who.Can(reads(k)) }
 	return q
 }
@@ -197,7 +211,7 @@ func (p *Platform) InboxCount(who auth.Principal) (open, unread int) {
 
 // InboxGet returns one message as a person sees it.
 func (p *Platform) InboxGet(who auth.Principal, id string) (inbox.Message, error) {
-	return p.inboxGetAs(who, readerOf(who), id)
+	return p.inboxGetAs(who, p.withOwns(who, readerOf(who)), id)
 }
 
 // inboxGetAs returns one message as it is shown to reader, with the actions
@@ -278,7 +292,7 @@ func (p *Platform) InboxDismiss(who auth.Principal, id string) (inbox.Message, e
 // and records it. Resolving a part that is already resolved does nothing and
 // returns the message with the first outcome.
 func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, partID string, r Resolution) (inbox.Message, error) {
-	reader := readerOf(who)
+	reader := p.withOwns(who, readerOf(who))
 	if r.ActAs != nil {
 		var err error
 		if reader, _, err = p.answerer(who, r.ActAs); err != nil {
@@ -314,6 +328,11 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 	if !who.Can(perm) {
 		return inbox.Message{}, fmt.Errorf("%w: %s needs %s", ErrForbidden, r.Action, perm)
 	}
+	if part.Type == inbox.PartDraft {
+		if err := p.ownsDraft(who, *part.Draft); err != nil {
+			return inbox.Message{}, err
+		}
+	}
 	if part.State != inbox.PartOpen || m.State == inbox.Resolved || m.State == inbox.Dismissed {
 		return m, nil
 	}
@@ -334,6 +353,14 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			return inbox.Message{}, err
 		}
 		note = fmt.Sprintf("Kept %d of %d", kept, len(part.Memory.Notes))
+	case part.Type == inbox.PartDraft && r.Action == ActPublish:
+		posted, err := p.postFromAgent(who.Tenant, *part.Draft, m.Source.Thread, who.Subject)
+		if err != nil {
+			return inbox.Message{}, err
+		}
+		note = "Published as " + posted.ID
+	case part.Type == inbox.PartDraft:
+		note = "Discarded"
 	case part.Type == inbox.PartMention && r.Action == ActReply:
 		m, err := p.replyToMention(ctx, who, *part.Mention, r.Text)
 		if err != nil {

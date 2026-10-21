@@ -4897,9 +4897,12 @@ components:
         deliver:
           description: |
             Where the answer of each run goes. Left out, it stays on the run.
-            `inbox` sends it to the schedule's creator as a result, unless the
-            answer is NONE. `project` posts it to the schedule's project, and
-            needs a project; it is refused until project inboxes are built.
+            `inbox` sends it to the schedule's creator as a result. `project`
+            posts it in the schedule's project as an announcement from the
+            agent, its first line the subject: it needs a project (`~` for
+            the workspace) where the agent is available (400 without one). A
+            project whose `agent_posts` is `review` holds it as a draft for
+            its owners instead. An answer of NONE goes nowhere.
           type: string
           enum: [inbox, project]
     ScheduleView:
@@ -4963,6 +4966,9 @@ components:
           description: What sent the message, such as `agent`, `rule` or `system`.
           type: string
         name: {type: string}
+        approved_by:
+          description: The person who published an agent's draft, by subject. Absent on what an agent posted itself.
+          type: string
     CallPolicyInput:
       description: Which agents may call an agent, and which of those calls a person approves.
       type: object
@@ -5246,7 +5252,7 @@ components:
           type: array
           items:
             type: string
-            enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done]
+            enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done, publish]
         outcome: {$ref: "#/components/schemas/InboxOutcome"}
         text: {type: string}
         alert: {$ref: "#/components/schemas/InboxAlertPart"}
@@ -5324,8 +5330,12 @@ components:
       required: [action]
       properties:
         action:
+          description: |
+            `publish` posts an agent's draft as the announcement it wrote, and
+            `discard` drops it; only an owner of the draft's project decides
+            one (403 for anyone else who can see it).
           type: string
-          enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply]
+          enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done, publish]
         ids:
           description: The proposed notes to keep, with `keep`.
           type: array
