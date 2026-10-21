@@ -465,14 +465,27 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 	if err != nil {
 		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
 	}
+	file, owns := projects.Project{Name: projects.Root}, []string{}
+	if w.Instructions != nil {
+		file.Instructions, owns = *w.Instructions, append(owns, projects.FieldInstructions)
+	}
+	if w.Members != nil {
+		file.Members, owns = membersOf(w.Members), append(owns, projects.FieldMembers)
+	}
+	if w.ProjectKinds != nil {
+		for _, k := range w.ProjectKinds {
+			file.Kinds = append(file.Kinds, projects.KindSpec{Name: projects.Kind(k.Name), Title: k.Title, Like: projects.Kind(k.Like)})
+		}
+		owns = append(owns, projects.FieldKinds)
+	}
 	switch {
-	case w.Instructions != nil:
-		_, err = p.Projects.Upsert(tenant, projects.Project{Name: projects.Root, Instructions: *w.Instructions}, []string{projects.FieldInstructions}, fileWriter, now)
+	case len(owns) > 0:
+		_, err = p.Projects.Upsert(tenant, file, owns, fileWriter, now)
 	case root.Managed == projects.ManagedFile:
 		_, err = p.Projects.Release(tenant, projects.Root, fileWriter, now)
 	}
 	if err != nil {
-		return fmt.Errorf("platform %q: workspace.instructions: %w", tenant, err)
+		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
 	}
 	in := map[string]bool{}
 	for _, i := range parentsFirst(w.Projects) {
@@ -503,6 +516,9 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 	if a := d.Account; a != nil {
 		pr.Account = &projects.AccountInfo{Customer: a.Customer, ExternalID: a.ExternalID, URL: a.URL}
 	}
+	if d.Members != nil {
+		pr.Members = membersOf(d.Members)
+	}
 	var owns []string
 	for field, set := range map[string]bool{
 		projects.FieldTitle:        d.Title != "",
@@ -511,12 +527,22 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 		projects.FieldParent:       d.Parent != "",
 		projects.FieldAccount:      d.Account != nil,
 		projects.FieldInstructions: d.Instructions != "",
+		projects.FieldMembers:      d.Members != nil,
 	} {
 		if set {
 			owns = append(owns, field)
 		}
 	}
 	return pr, owns
+}
+
+// membersOf is a list of members as the store keeps them.
+func membersOf(ms []spec.Member) []projects.Entry {
+	out := make([]projects.Entry, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, projects.Entry{Who: m.Who, Role: projects.Role(m.Role)})
+	}
+	return out
 }
 
 // parentsFirst is the order to apply the file's projects in: by how deep

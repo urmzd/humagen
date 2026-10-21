@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -195,6 +196,57 @@ func TestAConsoleProjectTheFileNamesIsTakenOver(t *testing.T) {
 	changes, _, err := p.ProjectHistory(tenant, "Ops", 0, 0)
 	if err != nil || len(changes) == 0 || changes[0].What != projects.Managed || changes[0].By != fileWriter {
 		t.Fatalf("history = %+v", changes)
+	}
+}
+
+// The file's members and kinds are the file's: the workspace's and a
+// project's members, and the workspace's own kinds, apply at start, and the
+// console cannot change them. A kind a console project still has cannot leave
+// the file: the start fails, naming it.
+func TestTheFilesMembersAndKindsAreTheFiles(t *testing.T) {
+	p := newProjectsPlatform(t)
+	const tenant = "acme"
+	file := spec.Workspace{
+		Members:      []spec.Member{{Who: "*", Role: spec.RoleMember}, {Who: "role:comms", Role: spec.RoleOwner}},
+		ProjectKinds: []spec.ProjectKind{{Name: "partner", Title: "Partner", Like: spec.ProjectAccount}},
+		Projects: []spec.Project{
+			{Name: "Field", Members: []spec.Member{{Who: "*", Role: spec.RoleViewer}, {Who: "role:field-eng", Role: spec.RoleMember}}},
+			{Name: "Reseller", Parent: "Field", Kind: "partner"},
+		},
+	}
+	if err := applyProjects(p, tenant, file); err != nil {
+		t.Fatal(err)
+	}
+	root, field := mustGet(t, p, tenant, projects.Root), mustGet(t, p, tenant, "Field")
+	if len(root.Members) != 2 || root.Members[1].Who != "role:comms" || len(root.Kinds) != 1 || root.Kinds[0].Like != projects.Account {
+		t.Fatalf("the workspace = %+v", root)
+	}
+	if len(field.Members) != 2 || field.Members[1].Role != projects.Member {
+		t.Fatalf("Field = %+v", field)
+	}
+	// Reseller lists nobody in the file, so it is everyone's to view, as an
+	// account is, and no more open than Field.
+	if r := mustGet(t, p, tenant, "Reseller"); r.Kind != "partner" || len(r.Members) != 1 || r.Members[0] != (projects.Entry{Who: "*", Role: projects.Viewer}) {
+		t.Fatalf("Reseller = %+v", r)
+	}
+	_, err := p.Projects.Update(tenant, "Field", field.Version, projects.Writer{By: "ada"}, field.UpdatedAt, func(pr *projects.Project) error {
+		pr.Members = []projects.Entry{{Who: "*", Role: projects.Viewer}}
+		return nil
+	})
+	if !errors.Is(err, projects.ErrManaged) {
+		t.Fatalf("changing the file's members = %v", err)
+	}
+	file.ProjectKinds = []spec.ProjectKind{}
+	if err := applyProjects(p, tenant, file); !errors.Is(err, projects.ErrInUse) || !strings.Contains(err.Error(), "Reseller") {
+		t.Fatalf("removing a kind in use = %v", err)
+	}
+	// Left out of the file, the kinds stay, and are the console's.
+	file.ProjectKinds = nil
+	if err := applyProjects(p, tenant, file); err != nil {
+		t.Fatal(err)
+	}
+	if root := mustGet(t, p, tenant, projects.Root); len(root.Kinds) != 1 || slices.Contains(root.FileOwns, projects.FieldKinds) {
+		t.Fatalf("the workspace after its kinds left the file = %+v", root)
 	}
 }
 

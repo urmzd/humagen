@@ -37,8 +37,31 @@ type Workspace struct {
 	// to every agent answering anywhere in it. Set here, the console cannot
 	// change them.
 	Instructions *string `json:"instructions,omitempty"`
+	// Members are who holds a role in the workspace itself, the root
+	// project. Set here, the console cannot change them. Left out, everyone
+	// is a member, and projects:govern owns it.
+	Members []Member `json:"members,omitempty"`
+	// ProjectKinds are the workspace's own kinds, each a name over team or
+	// account. Set here, the console cannot change them.
+	ProjectKinds []ProjectKind `json:"project_kinds,omitempty"`
 	// Projects are merged into the tree at every start, parents first.
 	Projects []Project `json:"projects,omitempty"`
+}
+
+// Member is one entry of a project's members: who, "*" for everyone,
+// "role:<name>" for the holders of a policy role, or a subject; and the role
+// it grants, viewer, member or owner.
+type Member struct {
+	Who  string `json:"who"`
+	Role string `json:"role"`
+}
+
+// ProjectKind is a workspace's own kind: a name, what people see, and the
+// built-in kind it behaves as, team or account.
+type ProjectKind struct {
+	Name  string `json:"name"`
+	Title string `json:"title,omitempty"`
+	Like  string `json:"like"`
 }
 
 // History is how much of a conversation the next turn sees.
@@ -66,6 +89,11 @@ type Project struct {
 	Account *Account `json:"account,omitempty"`
 	// Instructions are sent to every agent answering here and below.
 	Instructions string `json:"instructions,omitempty"`
+	// Members are who holds a role here. Left out, they are the console's:
+	// a new project has everyone as a member (a viewer of an account) and
+	// projects:govern as its owner. Until reads are confined to members,
+	// they hold an entry for everyone ("*") of at least viewer.
+	Members []Member `json:"members,omitempty"`
 }
 
 // Account is an account project's customer.
@@ -95,6 +123,13 @@ func ParentOf(p Project) string {
 	}
 	return p.Parent
 }
+
+// Member roles.
+const (
+	RoleViewer = "viewer"
+	RoleMember = "member"
+	RoleOwner  = "owner"
+)
 
 // KindOf is a declared project's kind, with its default.
 func KindOf(p Project) string {
