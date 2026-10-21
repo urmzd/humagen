@@ -5,7 +5,8 @@
     <br /><br />
     <a href="#installation">Install</a> &middot;
     <a href="https://github.com/urmzd/warp/issues">Report Bug</a> &middot;
-    <a href="docs/architecture.md">Architecture</a>
+    <a href="docs/architecture.md">Architecture</a> &middot;
+    <a href="docs/deploy.md">Deploy</a>
   </p>
 </p>
 
@@ -69,6 +70,8 @@ make web
 ```
 
 Open <http://127.0.0.1:5173>, complete the first-run workspace form and select an example agent. The backend listens on `127.0.0.1:8080`. Seeded agents use fiber's offline provider, so the preview requires no model key.
+
+To run it in containers, on Kubernetes with Helm, or with Flux, see [deploy](docs/deploy.md).
 
 Development auth grants admin access on loopback. For real sign-in, roles and machine tokens, follow [the security guide](docs/security.md). To use Anthropic, set `ANTHROPIC_API_KEY` before starting the server and configure an agent with provider `anthropic`.
 
