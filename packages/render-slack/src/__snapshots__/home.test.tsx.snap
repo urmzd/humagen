@@ -46,7 +46,7 @@ exports[`homeView > renders the alertsOnly Home tab 1`] = `
           "action_id": "aui.home.start#2",
           "text": {
             "emoji": true,
-            "text": "Search Knowledge",
+            "text": "Search Context",
             "type": "plain_text",
           },
           "type": "button",
@@ -272,7 +272,7 @@ exports[`homeView > renders the default Home tab 1`] = `
           "action_id": "aui.home.start#2",
           "text": {
             "emoji": true,
-            "text": "Search Knowledge",
+            "text": "Search Context",
             "type": "plain_text",
           },
           "type": "button",
@@ -516,7 +516,7 @@ exports[`homeView > renders the empty Home tab 1`] = `
           "action_id": "aui.home.start#2",
           "text": {
             "emoji": true,
-            "text": "Search Knowledge",
+            "text": "Search Context",
             "type": "plain_text",
           },
           "type": "button",
@@ -733,7 +733,7 @@ exports[`homeView > renders the noConnect Home tab 1`] = `
           "action_id": "aui.home.start#2",
           "text": {
             "emoji": true,
-            "text": "Search Knowledge",
+            "text": "Search Context",
             "type": "plain_text",
           },
           "type": "button",
@@ -956,7 +956,7 @@ exports[`homeView > renders the noGrants Home tab 1`] = `
           "action_id": "aui.home.start#1",
           "text": {
             "emoji": true,
-            "text": "Search Knowledge",
+            "text": "Search Context",
             "type": "plain_text",
           },
           "type": "button",
@@ -1083,7 +1083,7 @@ exports[`homeView > renders the overflow Home tab 1`] = `
           "action_id": "aui.home.start#2",
           "text": {
             "emoji": true,
-            "text": "Search Knowledge",
+            "text": "Search Context",
             "type": "plain_text",
           },
           "type": "button",
@@ -1376,7 +1376,7 @@ exports[`homeView > renders the unlinked Home tab 1`] = `
           "action_id": "aui.home.start#2",
           "text": {
             "emoji": true,
-            "text": "Search Knowledge",
+            "text": "Search Context",
             "type": "plain_text",
           },
           "type": "button",

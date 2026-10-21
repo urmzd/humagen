@@ -66,7 +66,7 @@ describe("homeView", () => {
     const { view } = homeView(<Home home={fx.home} />);
     const start = view.blocks.find((b) => b.block_id === "home:start");
     const buttons = (start?.elements as Element[]).map((e) => e.text?.text);
-    expect(buttons).toEqual(["Ask a Question", "Build an Agent", "Search Knowledge"]);
+    expect(buttons).toEqual(["Ask a Question", "Build an Agent", "Search Context"]);
     const ask = (start?.elements as Element[])[0] as { action_id: string; value: string };
     expect(decodeSlackAction(ask)).toEqual({
       id: ActionId.homeAsk,
