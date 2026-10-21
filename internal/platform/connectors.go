@@ -177,7 +177,7 @@ func (s *surface) pump(ctx context.Context, st *seat, out chan<- envelope.Tag) {
 			}
 			return
 		case tag := <-tags:
-			tag, ok := s.stamp(st, tag)
+			tag, ok := s.stamp(ctx, st, tag)
 			if !ok {
 				continue
 			}
@@ -194,8 +194,20 @@ func (s *surface) pump(ctx context.Context, st *seat, out chan<- envelope.Tag) {
 // stamp binds a tag to the client that raised it. Whatever the connector or
 // the payload said about tenant, origin or client is overwritten here, and a
 // tag for an agent the client may not route to goes no further.
-func (s *surface) stamp(st *seat, tag envelope.Tag) (envelope.Tag, bool) {
+//
+// A connector may ask for @auto (its client's default can be auto). stamp
+// resolves it before admission, among the agents available at the root that
+// the client may route to. With none that fits, the tag goes no further.
+func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) (envelope.Tag, bool) {
 	c := st.client
+	if tag.Agent == Auto {
+		choice, err := s.p.autoFor(ctx, c, tag.Text)
+		if err != nil {
+			s.p.log.Warn("platform: @auto found no agent for a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "tag", tag.ID, "error", err)
+			return envelope.Tag{}, false
+		}
+		tag.Agent = choice.Agent
+	}
 	if !c.Routes(tag.Agent) {
 		s.p.log.Warn("platform: client may not route to that agent", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "agent", tag.Agent, "tag", tag.ID)
 		return envelope.Tag{}, false
