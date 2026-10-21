@@ -290,8 +290,9 @@ that kind.
 - Limits are checked under a lock in one process. With `-state=postgres` the
   usage ledger is kept, and a second server on the same database is refused
   at start, so two servers cannot both admit a run at the limit. In memory, a
-  restart forgets what was used. Spend limits are recorded but not enforced, because a
-  run reports no cost.
+  restart forgets what was used. Spend is priced from saige's catalog: a model
+  it has no price for is counted apart and never as dollars, so a spend limit
+  does not bound it (a token limit does).
 - Sessions are in memory, so a restart signs everyone out. Schedules are kept
   with `-state=postgres`.
 - With `-state=postgres`, client secret values written through the API are

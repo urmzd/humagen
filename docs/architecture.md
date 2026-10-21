@@ -460,7 +460,7 @@ and GitHub release from `main`, using the main-only `release` environment.
 | Uploading binary files (PDF, images) to knowledge or a message | Not built. Files are read as text in the browser |
 | Evals against a knowledge variant | Not built. Evals search the current view |
 | Summarizing history | Not built. Long conversations are truncated to the limit, oldest turns first |
-| Knowledge retrieval inside a run | Not built. fiber's retriever is not given the tenant or the agent, so wiring it would cross tenants |
+| Knowledge retrieval inside a run: an agent's declared `sources` ground each turn, searched in the run's own tenant, the passages labelled so fiber's citation events line up with what the model saw | Built, tested with a scripted model in two tenants. Lexical (BM25) only; a source the workspace no longer has grounds nothing |
 | Connections: MCP servers, OAuth to third parties | Not built. Slack and GitHub credentials are held per client, see above |
 | Schedule delivery to Slack, email or another system | Not built. Needs connections |
 | Call tool inside the sandbox | Not built. Calls are made through the API |

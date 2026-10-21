@@ -375,6 +375,9 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 		runtime.WithCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools))),
 		runtime.WithToolGroupSource(groups),
 		runtime.WithDelegator(p.attach),
+		// An agent's declared sources ground its turns, searched in the
+		// run's tenant.
+		runtime.WithKnowledge(p.knowledgeFor),
 		runtime.WithCallTool(ToolCallAgent),
 		// A run waiting on an attached run of the same agent holds one of
 		// that agent's nodes, so there are as many as there are places.

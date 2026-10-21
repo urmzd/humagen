@@ -68,10 +68,10 @@ Each step leaves every repository building and releasable.
 | 3 | Warp's stores on memory or Postgres, chosen by the spec | warp | L | done |
 | 4 | One spec, `warp start`, `warp deploy` (local, compose, Kubernetes) | warp | L | done |
 | 5 | Retire the last legacy names | all | M | done in warp, saige, anchor, playscape; fiber in progress |
-| 6 | Knowledge reaches agent runs (the stated blocker is out of date: fiber's retriever takes the tenant since v0.10) | warp | S | next |
-| 7 | `pgkit` in anchor; `COLLATE "C"`; fiber's durable tables use anchor's DDL and the Postgres delta log | anchor, fiber | S | next |
-| 8 | Playscape loses its service and its second queue | playscape | S–M | next |
-| 9 | One SSRF guard, the MCP `$defs` inliner and the fallback names exported from saige | saige | S | next |
+| 6 | Knowledge reaches agent runs (the stated blocker was out of date: fiber's retriever takes the tenant since v0.10) | warp | S | done |
+| 7 | `pgkit` in anchor; `COLLATE "C"`; fiber's durable tables use anchor's DDL and the Postgres delta log | anchor, fiber | S | in progress |
+| 8 | Playscape loses its service and its second queue | playscape | S–M | in progress |
+| 9 | One SSRF guard, the MCP `$defs` inliner and the fallback names exported from saige | saige | S | in progress |
 | 10 | Fiber builds providers through saige's `provider.Build`; warp's model kinds call it | fiber, warp | S–M | |
 | 11 | S3 moves into fiber's blob store; warp's `pkg/blob` goes | fiber, warp | M | |
 | 12 | Fiber's knowledge becomes an adapter over saige's retrieval (needs a stock-Postgres fallback in saige: its store today needs PostgreSQL 18 and the AGPL `pg_search`) | saige, fiber | M–L | |
@@ -95,8 +95,8 @@ keeping its own list.
 - **Sessions are in memory.** A restart signs everyone out.
 - **Spend limits** are enforced at admission and mid-run, but a model call in
   flight when a limit is crossed finishes and is counted.
-- **Knowledge** is lexical only in warp and does not yet reach agent runs
-  (step 6).
+- **Knowledge** is lexical only in warp (step 12 moves it onto saige's
+  hybrid retrieval).
 - **Client secrets** written as values are stored in Postgres in plaintext;
   references are not stored at all. Prefer references.
 - **Per-person credentials for tools** (each person's own key, no shared
