@@ -1,0 +1,401 @@
+package inbox
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"reflect"
+	"slices"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/warp/pkg/state/statetest"
+)
+
+func announcement(project, subject string) Message {
+	return Message{
+		Subject: subject, From: From{Kind: "person", Name: "dana"}, Source: Source{Project: project},
+		Parts: []Part{{Type: PartText, Text: "The renewal is signed."}},
+	}
+}
+
+func post(t *testing.T, s *Store, project, subject string, at time.Time) Message {
+	t.Helper()
+	m, err := s.Post(acme, announcement(project, subject), at, PostCaps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// readerIn reads as a member of the projects given, as the platform computes
+// them from the tree.
+func readerIn(subject string, projects ...string) Query {
+	return Query{Reader: subject, ReaderProjects: projects, Now: t0.Add(time.Minute)}
+}
+
+func ids(t *testing.T, s *Store, q Query) []string {
+	t.Helper()
+	page, _, err := s.Page(acme, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := []string{}
+	for _, m := range page {
+		out = append(out, m.ID)
+	}
+	return out
+}
+
+func TestPostRaisesABroadcastInTheProject(t *testing.T) {
+	s := NewStore()
+	m := post(t, s, "Globex", "Renewal signed", t0)
+	if m.Kind != KindAnnouncement || !m.Broadcast || m.Key != "announce:Globex:1" || !slices.Equal(m.Audience, []string{"project:Globex"}) {
+		t.Fatalf("posted = %+v", m)
+	}
+	if m.State != Open || m.Severity != Info || m.Parts[0].State != PartInfo {
+		t.Fatalf("an announcement only to be read = %+v", m)
+	}
+	root := post(t, s, "", "All hands", t0)
+	if root.Key != "announce::2" || !slices.Equal(root.Audience, []string{"project:"}) {
+		t.Fatalf("the root's = %+v", root)
+	}
+	for name, edit := range map[string]func(*Message){
+		"no subject":       func(m *Message) { m.Subject = "" },
+		"a long subject":   func(m *Message) { m.Subject = strings.Repeat("s", MaxSubject+1) },
+		"a subject in two": func(m *Message) { m.Subject = "a\nb" },
+		"no text":          func(m *Message) { m.Parts = nil },
+		"empty text":       func(m *Message) { m.Parts[0].Text = "" },
+		"long text":        func(m *Message) { m.Parts[0].Text = strings.Repeat("x", MaxText+1) },
+		"a part not text":  func(m *Message) { m.Parts = []Part{{Type: PartAlert, Alert: &AlertPart{ID: "a"}}} },
+		"critical":         func(m *Message) { m.Severity = Critical },
+		"from nobody":      func(m *Message) { m.From = From{} },
+	} {
+		a := announcement("Globex", "x")
+		edit(&a)
+		if _, err := s.Post(acme, a, t0, PostCaps{}); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v, want ErrInvalid", name, err)
+		}
+	}
+}
+
+func TestAProjectAudienceReachesItsReaders(t *testing.T) {
+	s := NewStore()
+	globex := post(t, s, "Globex", "Renewal signed", t0)
+	field := post(t, s, "Field", "Field offsite", t0)
+	// A member of Globex belongs to Globex, Field and the root.
+	if got := ids(t, s, readerIn("cy", "", "Field", "Globex")); !slices.Equal(got, []string{field.ID, globex.ID}) {
+		t.Fatalf("a member of Globex sees %q", got)
+	}
+	// A member of Field alone is not sent what was posted below it.
+	if got := ids(t, s, readerIn("dee", "", "Field")); !slices.Equal(got, []string{field.ID}) {
+		t.Fatalf("a member of Field sees %q", got)
+	}
+	if got := ids(t, s, readerIn("bo", "")); len(got) != 0 {
+		t.Fatalf("someone in no project sees %q", got)
+	}
+	if _, err := s.GetAs(acme, globex.ID, Reader{Subject: "bo"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("an announcement for others = %v", err)
+	}
+	// A reader with no subject belongs nowhere.
+	if (Message{Audience: []string{"project:Globex"}}).For(Reader{Projects: []string{"Globex"}}) {
+		t.Fatal("a reader with no subject was reached")
+	}
+	// In the project's own inbox, anyone who reads it is reached.
+	q := readerIn("bo")
+	q.Projects = []string{"Field", "Globex"}
+	if got := ids(t, s, q); !slices.Equal(got, []string{field.ID, globex.ID}) {
+		t.Fatalf("Field's inbox with its sub-projects = %q", got)
+	}
+	q.Projects = []string{"Globex"}
+	if got := ids(t, s, q); !slices.Equal(got, []string{globex.ID}) {
+		t.Fatalf("Globex's inbox = %q", got)
+	}
+}
+
+func TestTheKindsAndProjectsFiltersNarrowAPage(t *testing.T) {
+	s := NewStore()
+	alert, _ := two(s.Raise(acme, "alert:1", Message{Kind: KindAlert, Source: Source{Project: "Globex"}, Parts: []Part{{Type: PartAlert}}}, t0))
+	failed, _ := two(s.Raise(acme, "failure:1", Message{Kind: KindFailure, Source: Source{Project: "Initech"}, Parts: []Part{{Type: PartFailure}}}, t0))
+	root, _ := two(s.Raise(acme, "result:1", Message{Kind: KindResult, Parts: []Part{{Type: PartText, State: PartInfo}}}, t0))
+	news := post(t, s, "Globex", "Renewal signed", t0)
+	q := readerIn("ada", "Globex")
+	q.Kinds = []Kind{KindAlert, KindAnnouncement}
+	if got := ids(t, s, q); !slices.Equal(got, []string{news.ID, alert.ID}) {
+		t.Fatalf("alerts and announcements = %q", got)
+	}
+	q = readerIn("ada")
+	q.Projects = []string{"Globex", "Initech"}
+	if got := ids(t, s, q); !slices.Equal(got, []string{news.ID, failed.ID, alert.ID}) {
+		t.Fatalf("two projects = %q", got)
+	}
+	// The root's inbox is what is filed in no project.
+	q.Projects = []string{""}
+	if got := ids(t, s, q); !slices.Equal(got, []string{root.ID}) {
+		t.Fatalf("the root's inbox = %q", got)
+	}
+}
+
+func TestABroadcastHiddenByOneStaysForOthers(t *testing.T) {
+	s := NewStore()
+	m := post(t, s, "Field", "Field offsite", t0)
+	if got, _, err := s.Dismiss(acme, m.ID, "ada", t0); err != nil || got.State != Dismissed {
+		t.Fatalf("ada's dismiss = %+v, %v", got, err)
+	}
+	if _, _, err := s.Snooze(acme, m.ID, "bo", t0.Add(time.Hour), t0); err != nil {
+		t.Fatal(err)
+	}
+	for who, want := range map[string]State{"ada": Dismissed, "bo": Snoozed, "cy": Open} {
+		got, err := s.GetAs(acme, m.ID, Reader{Subject: who, Projects: []string{"Field"}})
+		if err != nil || got.State != want {
+			t.Errorf("%s sees %s, %v, want %s", who, got.State, err, want)
+		}
+	}
+	during, after := readerIn("bo", "Field"), readerIn("bo", "Field")
+	during.Now, after.Now = t0.Add(30*time.Minute), t0.Add(2*time.Hour)
+	if got := ids(t, s, during); len(got) != 0 {
+		t.Fatalf("bo's open page while snoozed = %q", got)
+	}
+	if got := ids(t, s, after); !slices.Equal(got, []string{m.ID}) {
+		t.Fatalf("bo's open page once the snooze ran out = %q", got)
+	}
+	if got := ids(t, s, readerIn("ada", "Field")); len(got) != 0 {
+		t.Fatalf("ada's open page = %q", got)
+	}
+	if got := ids(t, s, readerIn("cy", "Field")); !slices.Equal(got, []string{m.ID}) {
+		t.Fatalf("cy's open page = %q", got)
+	}
+	// Dismissed is final for the reader: a later snooze does not bring it back.
+	if got, _, _ := s.Snooze(acme, m.ID, "ada", t0.Add(time.Hour), t0); got.State != Dismissed {
+		t.Fatalf("ada snoozing a dismissed broadcast = %s", got.State)
+	}
+	// The message itself is still open for everyone.
+	msgs, _ := s.Snapshot(acme)
+	if msgs[0].State != Open {
+		t.Fatalf("the shared state = %s", msgs[0].State)
+	}
+	// Withdrawing closes it for everyone.
+	if _, _, err := s.Withdraw(acme, m.ID, "dana", "Posted to the wrong project", t0); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetAs(acme, m.ID, Reader{Subject: "cy", Projects: []string{"Field"}}); got.State != Dismissed {
+		t.Fatalf("cy after the withdrawal = %s", got.State)
+	}
+}
+
+func TestReplayRebuildsPerReaderState(t *testing.T) {
+	s := NewStore()
+	a := post(t, s, "Field", "One", t0)
+	b := post(t, s, "Field", "Two", t0.Add(time.Second))
+	_, _, _ = s.Dismiss(acme, a.ID, "ada", t0)
+	_, _, _ = s.Snooze(acme, b.ID, "bo", t0.Add(time.Hour), t0)
+	_, _ = s.Read(acme, b.ID, "cy", true, t0)
+	_, _, _ = s.Withdraw(acme, b.ID, "dana", "", t0.Add(time.Minute))
+	rebuilt := Rebuild(s.Changes(acme))
+	for _, who := range []string{"ada", "bo", "cy", "dee"} {
+		for _, id := range []string{a.ID, b.ID} {
+			r := Reader{Subject: who, Projects: []string{"Field"}}
+			live, _ := s.GetAs(acme, id, r)
+			got, _ := rebuilt.GetAs(acme, id, r)
+			if !reflect.DeepEqual(live, got) {
+				t.Errorf("%s reads %s as %+v live and %+v rebuilt", who, id, live, got)
+			}
+		}
+		q := readerIn(who, "Field")
+		if live, got := s.Count(acme, q), rebuilt.Count(acme, q); live != got {
+			t.Errorf("%s counts %+v live and %+v rebuilt", who, live, got)
+		}
+	}
+	// The day's posts are part of what is rebuilt.
+	if _, err := rebuilt.Post(acme, announcement("Field", "Three"), t0, PostCaps{PerProject: 2}); !errors.Is(err, ErrLimit) {
+		t.Fatalf("a rebuilt inbox forgot the day's posts: %v", err)
+	}
+}
+
+func TestBroadcastsCountOnlyInUpdates(t *testing.T) {
+	s := NewStore()
+	raise(s, "alert:1", t0, Part{Type: PartAlert})
+	a := post(t, s, "Field", "One", t0)
+	b := post(t, s, "", "Two", t0)
+	q := readerIn("ada", "", "Field")
+	if c := s.Count(acme, q); c != (Counts{Open: 1, Unread: 1, Updates: 2}) {
+		t.Fatalf("counts = %+v", c)
+	}
+	_, _ = s.Read(acme, a.ID, "ada", true, t0)
+	_, _, _ = s.Dismiss(acme, b.ID, "ada", t0)
+	if c := s.Count(acme, q); c != (Counts{Open: 1, Unread: 1, Updates: 0}) {
+		t.Fatalf("counts after reading one and hiding one = %+v", c)
+	}
+	// Someone else still has both to read.
+	if c := s.Count(acme, readerIn("bo", "", "Field")); c.Updates != 2 || c.Open != 1 {
+		t.Fatalf("bo's counts = %+v", c)
+	}
+	// The count is the whole inbox, whatever a page narrows to.
+	narrowed := q
+	narrowed.Kinds, narrowed.Projects = []Kind{KindAlert}, []string{"Nowhere"}
+	if c := s.Count(acme, narrowed); c != s.Count(acme, q) {
+		t.Fatalf("a narrowed count = %+v", c)
+	}
+}
+
+func TestRacingPostsStopAtTheDailyCaps(t *testing.T) {
+	s := NewStore()
+	var wg sync.WaitGroup
+	var posted, limited atomic.Int64
+	for i := range 60 {
+		wg.Go(func() {
+			project := []string{"Field", "Globex", "Initech"}[i%3]
+			_, err := s.Post(acme, announcement(project, fmt.Sprint("post ", i)), t0.Add(time.Duration(i)*time.Second), PostCaps{PerProject: 5, PerTenant: 12})
+			switch {
+			case err == nil:
+				posted.Add(1)
+			case errors.Is(err, ErrLimit):
+				limited.Add(1)
+			default:
+				t.Errorf("post: %v", err)
+			}
+		})
+	}
+	wg.Wait()
+	if posted.Load() != 12 || limited.Load() != 48 {
+		t.Fatalf("%d posted and %d refused, want 12 and 48", posted.Load(), limited.Load())
+	}
+	per := map[string]int{}
+	msgs, _ := s.Snapshot(acme)
+	for _, m := range msgs {
+		per[m.Source.Project]++
+	}
+	for project, n := range per {
+		if n > 5 {
+			t.Errorf("%s posted %d, more than 5", project, n)
+		}
+	}
+	// The default is 20 a project a day, and a new day starts again.
+	d := NewStore()
+	for i := range 20 {
+		post(t, d, "Field", fmt.Sprint("post ", i), t0)
+	}
+	if _, err := d.Post(acme, announcement("Field", "one more"), t0, PostCaps{}); !errors.Is(err, ErrLimit) {
+		t.Fatalf("the 21st post of the day = %v", err)
+	}
+	post(t, d, "Globex", "another project", t0)
+	post(t, d, "Field", "tomorrow", t0.Add(24*time.Hour))
+	// Another tenant counts its own.
+	if _, err := d.Post("globex", announcement("Field", "elsewhere"), t0, PostCaps{}); err != nil {
+		t.Fatalf("another tenant: %v", err)
+	}
+}
+
+func TestWithdrawRecordsWho(t *testing.T) {
+	s := NewStore()
+	m := post(t, s, "Field", "Field offsite", t0)
+	if _, _, err := s.Withdraw(acme, m.ID, "dana", "Moved to Friday", t0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	h := s.History(acme, m.ID)
+	if len(h) != 2 || h[1].What != DidWithdraw || h[1].By != "dana" || h[1].Note != "Moved to Friday" {
+		t.Fatalf("history = %+v", h)
+	}
+	other := raise(s, "alert:1", t0, Part{Type: PartAlert})
+	if _, _, err := s.Withdraw(acme, other.ID, "", "Gone", t0); err != nil {
+		t.Fatal(err)
+	}
+	if h := s.History(acme, other.ID); h[1].By != "system" {
+		t.Fatalf("the platform's withdrawal = %+v", h[1])
+	}
+}
+
+// Withdrawals written before the inbox recorded who did them read as the
+// system's, and the record replays unchanged.
+func TestOldWithdrawalsReadAsSystem(t *testing.T) {
+	st := state.NewMemory()
+	put := func(seq int64, v any) {
+		t.Helper()
+		raw, _ := json.Marshal(v)
+		if err := st.Write(context.Background(), "inbox", state.Put(acme, state.Seq(seq), raw)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(0, map[string]any{"message": "", "at": t0, "by": "rule", "what": "raised",
+		"raised": map[string]any{"id": "", "key": "artifact:a1", "kind": "artifact", "subject": "Report", "from": map[string]any{"kind": "system", "name": "artifacts"},
+			"at": t0, "updated_at": t0, "severity": "info", "state": "open", "unread": false, "source": map[string]any{}, "parts": []any{map[string]any{"type": "artifact", "state": "info", "actions": nil}}}})
+	put(1, map[string]any{"message": "m-1", "at": t0.Add(time.Minute), "what": "withdrawn", "note": "Replaced"})
+	s, err := OpenStore(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := s.History(acme, "m-1")
+	if len(h) != 2 || h[1].By != "system" || h[1].Note != "Replaced" {
+		t.Fatalf("an old withdrawal = %+v", h)
+	}
+	if m, _ := s.Get(acme, "m-1", "ada"); m.State != Dismissed || m.Broadcast {
+		t.Fatalf("an old message = %+v", m)
+	}
+}
+
+func TestRestartKeepsBroadcastsAndWhoHidThem(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := post(t, s, "Field", "One", t0)
+		b := post(t, s, "Field", "Two", t0)
+		if _, _, err := s.Dismiss(acme, a.ID, "ada", t0); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := s.Snooze(acme, b.ID, "bo", t0.Add(time.Hour), t0); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := s.Withdraw(acme, b.ID, "dana", "", t0); err != nil {
+			t.Fatal(err)
+		}
+		again, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(again.Changes(acme), s.Changes(acme)) {
+			t.Fatalf("record after restart = %+v, want %+v", again.Changes(acme), s.Changes(acme))
+		}
+		got, err := again.GetAs(acme, a.ID, Reader{Subject: "ada", Projects: []string{"Field"}})
+		if err != nil || got.State != Dismissed || !got.Broadcast || got.Key != "announce:Field:1" {
+			t.Fatalf("ada's copy after restart = %+v, %v", got, err)
+		}
+		if got, _ := again.GetAs(acme, a.ID, Reader{Subject: "cy", Projects: []string{"Field"}}); got.State != Open {
+			t.Fatalf("cy's copy after restart = %s", got.State)
+		}
+		if _, err := again.GetAs(acme, a.ID, Reader{Subject: "cy"}); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("who it reaches did not survive: %v", err)
+		}
+		if h := again.History(acme, b.ID); h[len(h)-1].By != "dana" {
+			t.Fatalf("who withdrew did not survive: %+v", h)
+		}
+	})
+}
+
+func TestAFailedPostChangesNothing(t *testing.T) {
+	f := statetest.NewFaulty(state.NewMemory())
+	s, _ := OpenStore(f)
+	m := post(t, s, "Field", "One", t0)
+	f.Fail(statetest.ErrInjected)
+	if _, err := s.Post(acme, announcement("Field", "Two"), t0, PostCaps{PerProject: 2}); !errors.Is(err, statetest.ErrInjected) {
+		t.Fatalf("Post = %v", err)
+	}
+	if _, _, err := s.Dismiss(acme, m.ID, "ada", t0); !errors.Is(err, statetest.ErrInjected) {
+		t.Fatalf("Dismiss = %v", err)
+	}
+	if got, _ := s.GetAs(acme, m.ID, Reader{Subject: "ada", Projects: []string{"Field"}}); got.State != Open {
+		t.Fatalf("a failed hide hid it: %s", got.State)
+	}
+	f.Fail(nil)
+	// The failed post did not use up the day.
+	if _, err := s.Post(acme, announcement("Field", "Two"), t0, PostCaps{PerProject: 2}); err != nil {
+		t.Fatalf("a post after the failure: %v", err)
+	}
+}

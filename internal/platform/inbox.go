@@ -185,7 +185,8 @@ func (p *Platform) InboxPage(who auth.Principal, q inbox.Query) ([]inbox.Message
 // InboxCount returns how many messages are open for a person, and how many of
 // those they have not read.
 func (p *Platform) InboxCount(who auth.Principal) (open, unread int) {
-	return p.Inbox.Count(who.Tenant, p.inboxQuery(who, inbox.Query{}))
+	c := p.Inbox.Count(who.Tenant, p.inboxQuery(who, inbox.Query{}))
+	return c.Open, c.Unread
 }
 
 // InboxGet returns one message as a person sees it.
@@ -500,7 +501,7 @@ func (p *Platform) inboxArtifact(tenant string, a artifacts.Artifact) {
 					part.Previous = v.ID
 				}
 				if m, ok := p.Inbox.ByKey(tenant, artifactKey(v.ID)); ok && m.State != inbox.Resolved && m.State != inbox.Dismissed {
-					_, _, _ = p.Inbox.Withdraw(tenant, m.ID, fmt.Sprintf("Replaced by version %d", a.Version), p.now())
+					_, _, _ = p.Inbox.Withdraw(tenant, m.ID, "system", fmt.Sprintf("Replaced by version %d", a.Version), p.now())
 				}
 			}
 		}
@@ -526,7 +527,7 @@ func (p *Platform) raiseInbox(tenant, key string, m inbox.Message, at time.Time)
 // inboxArtifactGone withdraws the message about a version that was deleted.
 func (p *Platform) inboxArtifactGone(tenant string, a artifacts.Artifact) {
 	if m, ok := p.Inbox.ByKey(tenant, artifactKey(a.ID)); ok && m.State != inbox.Resolved && m.State != inbox.Dismissed {
-		_, _, _ = p.Inbox.Withdraw(tenant, m.ID, "The file was deleted", p.now())
+		_, _, _ = p.Inbox.Withdraw(tenant, m.ID, "system", "The file was deleted", p.now())
 	}
 }
 
@@ -636,7 +637,7 @@ func (p *Platform) syncMemory(tenant, owner string) {
 				continue
 			}
 			if !slices.ContainsFunc(part.Memory.Notes, func(n inbox.NoteRef) bool { return slices.Contains(pending, n.ID) }) {
-				_, _, _ = p.Inbox.Withdraw(tenant, m.ID, "Dealt with on the "+strings.TrimPrefix(owner, "project:")+" memory page", p.now())
+				_, _, _ = p.Inbox.Withdraw(tenant, m.ID, "system", "Dealt with on the "+strings.TrimPrefix(owner, "project:")+" memory page", p.now())
 			}
 		}
 	}
