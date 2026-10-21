@@ -123,6 +123,18 @@ may read. A project record from before roles reads as everyone owning it,
 which is what any operator could do to it; the workspace reads as everyone a
 member, owned by `projects:govern`.
 
+The directory has one permission, `people:read`: seeing who is in the
+workspace, by name, handle, picture and roles. `allow read on *` holds it, so
+every built-in role does, and a policy file that lists reads by resource adds
+`people`. A grant to a subject (`grant operator to subject "okta|00u1ana"`)
+also puts that person in the directory before they first sign in.
+
+Setting the workspace default agent, the root's `default`, is a change to the
+workspace itself, so it needs `projects:govern` as well as `projects:write`.
+Managers held it through `agents:write` while it was a setting called the
+baseline; `role steward` above, or `allow govern on projects` on `manager`,
+gives it back to them.
+
 ## Configure
 
 ```sh

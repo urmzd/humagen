@@ -13,11 +13,17 @@ test("every route survives a round trip through its address", () => {
     { page: "new", project: "launch" },
     { page: "task", id: "t-1" },
     { page: "projects" },
+    { page: "projects", q: "globex" },
+    { page: "projects", kind: "account" },
+    { page: "projects", q: "renewals", kind: "team" },
     { page: "project", name: "Q4 launch", tab: "inbox" },
     { page: "project", name: "Q4 launch", tab: "inbox", message: "m7" },
-    { page: "project", name: "~", tab: "people" },
-    { page: "project", name: "Globex", tab: "overview" },
-    { page: "project", name: "Globex", tab: "context" },
+    { page: "project", name: "Q4 launch", tab: "overview" },
+    { page: "project", name: "Q4 launch", tab: "context" },
+    { page: "project", name: "", tab: "inbox" },
+    { page: "project", name: "", tab: "overview" },
+    { page: "project", name: "", tab: "context" },
+    { page: "project", name: "", tab: "people" },
     { page: "project", name: "Globex", tab: "limits" },
     { page: "project", name: "Globex", tab: "history" },
     { page: "schedules" },
@@ -67,12 +73,35 @@ test("the Directory opens on People, and each tab has its own path", () => {
 test("a project opens on its inbox, and each tab has its own path", () => {
   assert.equal(href({ page: "project", name: "Globex", tab: "inbox" }), "/projects/Globex");
   assert.equal(href({ page: "project", name: "Globex", tab: "inbox", message: "m1" }), "/projects/Globex?message=m1");
-  assert.equal(href({ page: "project", name: "~", tab: "people" }), "/projects/~/people");
+  assert.equal(href({ page: "project", name: "", tab: "people" }), "/projects/~/people");
   assert.equal(href({ page: "project", name: "Q4 launch", tab: "history" }), "/projects/Q4%20launch/history");
   assert.deepEqual(at("/projects/Globex/inbox?message=m1"), { page: "project", name: "Globex", tab: "inbox", message: "m1" });
   // A message is a selection in the inbox, and nowhere else.
   assert.deepEqual(at("/projects/Globex/people?message=m1"), { page: "project", name: "Globex", tab: "people" });
+});
+
+test("a project's address is its name, ~ is the workspace, and the default tab has no segment", () => {
+  assert.equal(href({ page: "project", name: "Globex", tab: "overview" }), "/projects/Globex/overview");
+  assert.equal(href({ page: "project", name: "Globex", tab: "context" }), "/projects/Globex/context");
+  assert.equal(href({ page: "project", name: "Field engineering", tab: "context" }), "/projects/Field%20engineering/context");
+  assert.equal(href({ page: "project", name: "", tab: "inbox" }), "/projects/~");
+  assert.equal(href({ page: "project", name: "", tab: "context" }), "/projects/~/context");
+  assert.deepEqual(at("/projects/~"), { page: "project", name: "", tab: "inbox" });
+  assert.equal(href({ page: "projects", q: "globex", kind: "account" }), "/projects?q=globex&kind=account");
+});
+
+test("a project's Agents tab has its own path, the workspace's included", () => {
+  assert.equal(href({ page: "project", name: "Globex", tab: "agents" }), "/projects/Globex/agents");
+  assert.equal(href({ page: "project", name: "", tab: "agents" }), "/projects/~/agents");
+  assert.deepEqual(at("/projects/~/agents"), { page: "project", name: "", tab: "agents" });
+  assert.deepEqual(at("/projects/Globex/agents"), { page: "project", name: "Globex", tab: "agents" });
+});
+
+test("a project tab or kind it does not know falls back to the default", () => {
   assert.deepEqual(at("/projects/Globex/bogus"), { page: "project", name: "Globex", tab: "inbox" });
+  assert.deepEqual(at("/projects?kind=planet"), { page: "projects" });
+  assert.deepEqual(at("/projects?q="), { page: "projects" });
+  assert.deepEqual(at("/?view=projects"), { page: "projects" });
 });
 
 test("old ?view= links open the page they named", () => {

@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { accessOf, asked, explained, explainedPermission, explainUrl, listed, PERMISSIONS } from "./access.ts";
+import type { Permission } from "../../../packages/client/src/generated/types.ts";
+import { accessOf, asked, doing, explained, explainedPermission, explainUrl, listed, NOTABLE, PERMISSIONS } from "./access.ts";
 import type { AccessDecision, Me } from "./api.ts";
 
 const reads = PERMISSIONS.filter((p) => p.endsWith(":read"));
-const operatorWrites = ["runs:write", "schedules:write", "alerts:write", "evals:write", "artifacts:write"];
+const operatorWrites = ["runs:write", "schedules:write", "alerts:write", "evals:write", "artifacts:write", "projects:write"];
+
+// The console names exactly the permissions the contract has: one the API
+// gains and this list lacks, or the reverse, fails the typecheck.
+type Listed = (typeof PERMISSIONS)[number];
+export const contractIsListed: [Exclude<Permission, Listed>] extends [never] ? true : false = true;
+export const listedIsContract: [Exclude<Listed, Permission>] extends [never] ? true : false = true;
 
 function me(roles: string[], permissions: string[], subject = "00u-ada"): Me {
   return { principal: { subject, tenant: "acme", kind: "user", name: "Ada Lovelace", roles }, permissions };
@@ -20,6 +27,26 @@ const decision = (d: Partial<AccessDecision>): AccessDecision => ({
   outcome: "allowed",
   held: [],
   ...d,
+});
+
+test("every permission has words, the project ones included", () => {
+  for (const p of PERMISSIONS) assert.ok(doing[p], `${p} has words`);
+  assert.equal(doing["projects:read"], "see projects");
+  assert.equal(doing["projects:write"], "make and change projects");
+  assert.equal(doing["projects:govern"], "own every project");
+  assert.equal(doing["people:read"], "see who is in the workspace");
+  assert.deepEqual(PERMISSIONS.slice(-4), ["projects:read", "projects:write", "projects:govern", "people:read"], "in the order the platform lists them");
+});
+
+test("owning every project is the last thing named, so only someone who may do everything else is told they cannot", () => {
+  assert.equal(NOTABLE[NOTABLE.length - 1], "projects:govern");
+  const almost = me(["manager", "billing", "clients"], PERMISSIONS.filter((p) => p !== "projects:govern"));
+  const a = accessOf(almost, decision({ role: "manager", held: [{ role: "manager" }] }));
+  assert.equal(a.denies, "own every project");
+  assert.notEqual(a.allows, "do everything in this workspace");
+  // An operator makes projects, and is still told first that it cannot change an agent.
+  assert.equal(accessOf(operator, decision({ role: "operator", held: [{ role: "operator" }] })).denies, "change what an agent is");
+  assert.equal(explained(decision({ permission: "projects:govern", allowed: false, outcome: "no match", held: [{ role: "operator" }] }), "Ada").question, "Can Ada own every project?");
 });
 
 test("listed: joins with commas and a final and", () => {

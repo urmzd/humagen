@@ -400,6 +400,9 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 				return fmt.Errorf("platform %q: agent %q: %w", tenant, s.Name, err)
 			}
 		}
+		if err := applyHomes(ctx, p, doc); err != nil {
+			return err
+		}
 		if err := applyWorkspace(ctx, p, doc); err != nil {
 			return err
 		}
@@ -423,9 +426,6 @@ func applyWorkspace(ctx context.Context, p *platform.Platform, doc spec.Platform
 		for _, m := range doc.Spec.ModelPolicies {
 			s.ModelPolicies = append(s.ModelPolicies, platform.ModelPolicy{Name: m.Name, Description: m.Description, Models: m.Models, FallbackOn: m.FallbackOn})
 		}
-	}
-	if w.Baseline != nil {
-		s.Baseline = *w.Baseline
 	}
 	if w.TitleAgent != nil {
 		s.TitleAgent = *w.TitleAgent
@@ -478,6 +478,9 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 		}
 		owns = append(owns, projects.FieldKinds)
 	}
+	if w.Agents != nil {
+		file.Agents, owns = fileAgents(*w.Agents), append(owns, projects.FieldAgents)
+	}
 	switch {
 	case len(owns) > 0:
 		_, err = p.Projects.Upsert(tenant, file, owns, fileWriter, now)
@@ -519,6 +522,9 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 	if d.Members != nil {
 		pr.Members = membersOf(d.Members)
 	}
+	if d.Agents != nil {
+		pr.Agents = fileAgents(*d.Agents)
+	}
 	var owns []string
 	for field, set := range map[string]bool{
 		projects.FieldTitle:        d.Title != "",
@@ -528,6 +534,7 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 		projects.FieldAccount:      d.Account != nil,
 		projects.FieldInstructions: d.Instructions != "",
 		projects.FieldMembers:      d.Members != nil,
+		projects.FieldAgents:       d.Agents != nil,
 	} {
 		if set {
 			owns = append(owns, field)
@@ -543,6 +550,55 @@ func membersOf(ms []spec.Member) []projects.Entry {
 		out = append(out, projects.Entry{Who: m.Who, Role: projects.Role(m.Role)})
 	}
 	return out
+}
+
+// fileAgents is a project's agents as the file declares them.
+func fileAgents(a spec.Agents) projects.Agents {
+	return projects.Agents{Enable: a.Enable, Allow: a.Allow, Default: a.Default}
+}
+
+// applyHomes makes each agent the file places in a project live there, once
+// the file's agents exist, and holds every agent the file's lists name to the
+// registry: a name the check could not see, in an agent read from a file, is
+// refused here. A home that left the file stays, as a project does. A home
+// something outside it still needs fails the start, naming what.
+func applyHomes(ctx context.Context, p *platform.Platform, doc spec.Platform) error {
+	tenant, w := doc.Metadata.Name, doc.Spec.Workspace
+	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
+		return fmt.Errorf("platform %q: the platform's own agents: %w", tenant, err)
+	}
+	lists := []struct {
+		path   string
+		agents *spec.Agents
+	}{{"workspace.agents", w.Agents}}
+	for i, pr := range w.Projects {
+		lists = append(lists, struct {
+			path   string
+			agents *spec.Agents
+		}{fmt.Sprintf("workspace.projects[%d].agents", i), pr.Agents})
+	}
+	for _, l := range lists {
+		if l.agents == nil {
+			continue
+		}
+		for _, n := range slices.Concat(l.agents.Enable, l.agents.Allow, []string{l.agents.Default}) {
+			if n == "" || n == spec.EveryAgent || n == spec.AutoAgent {
+				continue
+			}
+			if _, err := p.Agents.Get(ctx, tenant, n, 0); err != nil {
+				return fmt.Errorf("platform %q: %s: there is no agent called %q", tenant, l.path, n)
+			}
+		}
+	}
+	for i, a := range doc.Spec.Agents {
+		if a.Spec == nil || a.Project == "" || a.Project == spec.RootParent {
+			continue
+		}
+		if err := p.SetAgentHome(ctx, tenant, agentspec.NormalizeName(a.Spec.Name), a.Project, projects.Writer{By: fileWriter, Govern: true}); err != nil {
+			return fmt.Errorf("platform %q: agents[%d].project: %w", tenant, i, err)
+		}
+	}
+	return nil
 }
 
 // parentsFirst is the order to apply the file's projects in: by how deep

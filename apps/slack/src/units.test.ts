@@ -86,6 +86,27 @@ test("choose: a named agent, then the default, then the platform's default", () 
   assert.equal(choose("@helper", agents, {}).text, "@helper");
 });
 
+test("choose: @auto is the platform's router, sent as auto where the surface may route to any agent", () => {
+  assert.deepEqual(choose("@auto who knows billing?", agents, {}), {
+    agent: "auto",
+    text: "who knows billing?",
+    how: "named",
+  });
+  assert.equal(choose("@auto hi", agents, { client: client({ agents: ["*"] }) }).agent, "auto");
+  assert.equal(
+    choose("@auto hi", agents, { client: client({ default_agent: "auto", agents: ["helper"] }) })
+      .agent,
+    "auto",
+  );
+  // A client that lists its agents and is not routed to auto keeps its list.
+  assert.equal(
+    choose("@auto hi", agents, {
+      client: client({ default_agent: "docs-bot", agents: ["helper"] }),
+    }).agent,
+    "docs-bot",
+  );
+});
+
 test("choose: a client's list is default deny", () => {
   const listed = { client: client({ default_agent: "docs-bot", agents: ["helper"] }) };
   assert.equal(choose("@helper hi", agents, listed).agent, "helper");

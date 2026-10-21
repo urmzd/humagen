@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/state"
@@ -223,5 +224,25 @@ func TestOpenRefusesAHomeThatIsNoProject(t *testing.T) {
 	}
 	if root := s.Tree("acme").Root(); root.Agents.Enable != nil || s.Tree("acme").IsAvailable("Field", "lead") {
 		t.Fatalf("a record from before agents = %+v", root.Agents)
+	}
+}
+
+func TestEnsureRootWritesTheRootOnce(t *testing.T) {
+	s := projects.NewStore()
+	if err := s.EnsureRoot("acme", "migration", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnsureRoot("acme", "someone", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	root := s.Tree("acme").Root()
+	if root.Version != 1 || root.CreatedBy != "migration" || root.Agents.Default != projects.Auto {
+		t.Fatalf("the root = %+v", root)
+	}
+	if h, _ := s.History("acme", projects.Root, 0, 0); len(h) != 1 {
+		t.Fatalf("history = %+v", h)
+	}
+	if got := s.Tenants(); len(got) != 1 || got[0] != "acme" {
+		t.Fatalf("tenants = %v", got)
 	}
 }

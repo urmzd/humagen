@@ -5,8 +5,8 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   api,
+  type PolicyScope,
   type ProjectChange,
-  type ProjectDetail,
   type ProjectEntry,
   type ProjectMembers,
   type ProjectRole,
@@ -17,20 +17,12 @@ import { useInbox } from "./inbox.ts";
 import { KindChips, MailboxView } from "./InboxPage.tsx";
 import { type PlatformMessage, projectInbox, type Source } from "./mail.ts";
 import { ago, button, Empty, field, Label, Menu, Problem, primary, SkeletonRows, Switch } from "./ui.tsx";
+import { updateOf } from "./projects.ts";
 
 const copy = defaultCopy;
 const section = "flex flex-col gap-2 border-aui-border border-t pt-5 first:border-t-0 first:pt-0";
 const heading = "text-aui-base font-medium text-aui-fg";
 const sorry = (fallback: string) => (e: unknown) => (e instanceof ApiError ? e.message : fallback);
-
-/** How a project is named to people: its title, its name, or the workspace's name for the root. */
-export function titleOf(p: Pick<ProjectView, "name" | "title">, workspace?: string): string {
-  if (p.name === "") return workspace || "Workspace";
-  return p.title || p.name;
-}
-
-/** A project's name in an address: `~` is the workspace. */
-export const addressOf = (name: string) => (name === "" ? "~" : name);
 
 const roleOptions = (["viewer", "member", "owner"] as const).map((r) => ({ value: r, label: copy.roles[r] }));
 
@@ -82,7 +74,7 @@ export function ProjectInbox({
     e.preventDefault();
     setProblem(null);
     api
-      .postAnnouncement(project.name === "" ? "~" : project.name, {
+      .postAnnouncement(project.name, {
         subject: draft.subject.trim(),
         text: draft.text.trim(),
         severity: draft.warning ? "warning" : "info",
@@ -116,7 +108,7 @@ export function ProjectInbox({
               className={button}
               onClick={() =>
                 api
-                  .withdrawAnnouncement(addressOf(project.name), selected.id)
+                  .withdrawAnnouncement(project.name, selected.id)
                   .then(() => {
                     onMessage(null);
                     setPosted((n) => n + 1);
@@ -217,7 +209,7 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
   const [role, setRole] = useState<ProjectRole>("member");
   const [problem, setProblem] = useState<string | null>(null);
   const editable = project.actions.includes("edit") && project.managed !== "file";
-  const name = addressOf(project.name);
+  const name = project.name;
 
   useEffect(() => {
     api
@@ -323,14 +315,7 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
               options={roleOptions}
               onChange={(announce) =>
                 api
-                  .updateProject(name, {
-                    version: project.version,
-                    title: project.title,
-                    description: project.description,
-                    account: project.account,
-                    instructions: project.instructions,
-                    announce,
-                  })
+                  .updateProject(name, { ...updateOf(project, {}), announce })
                   .then(onChanged)
                   .catch((err) => setProblem(sorry("That could not be saved.")(err)))
               }
@@ -360,7 +345,7 @@ export function ProjectHistory({ project, tick }: { project: ProjectView; tick?:
   const [changes, setChanges] = useState<ProjectChange[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const name = addressOf(project.name);
+  const name = project.name;
   // biome-ignore lint/correctness/useExhaustiveDependencies: read again when the project changes
   useEffect(() => {
     api
@@ -413,44 +398,34 @@ export function ProjectHistory({ project, tick }: { project: ProjectView; tick?:
 
 /**
  * The limits that hold a project: its own, which an admin changes, the chain
- * above it, and, for an owner of a project above, a tighter limit of their own.
+ * above it ("Field's limit also applies here"), and, for an owner of a
+ * project above, a tighter limit of their own.
  */
 export function ProjectLimits({
-  detail,
+  project,
+  scope,
+  chain,
   canBilling,
   tick,
-  workspace,
 }: {
-  detail: ProjectDetail;
+  project: ProjectView;
+  /** The project's own scope: the tenant's for the workspace. */
+  scope: PolicyScope;
+  /** The limits above it, in words. */
+  chain: { scope: PolicyScope; words: string }[];
   canBilling: boolean;
   tick?: number;
-  workspace?: string;
 }) {
-  const project = detail.project;
   const [runs, setRuns] = useState("");
   const [period, setPeriod] = useState<"day" | "month">("day");
   const [problem, setProblem] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const titles = new Map([...detail.ancestors, project].map((p) => [p.name, titleOf(p, workspace)]));
-  const above = detail.limits.filter((l) => l.from !== project.name);
+  const [reads, setReads] = useState(0);
   return (
     <div className="flex flex-col gap-6">
-      {project.name !== "" && (
-        <section className={section}>
-          <ScopeLimits key={project.name} scope={{ kind: "project", name: project.name }} canWrite={canBilling} tick={tick} />
-        </section>
-      )}
-      {above.length > 0 && (
-        <section className={section}>
-          <ul className="flex flex-col gap-1">
-            {above.map((l) => (
-              <li key={`${l.scope.kind}:${l.from}`} className="text-aui-sm text-aui-muted">
-                {l.scope.kind === "tenant" ? copy.project.workspaceLimit : copy.project.limitFrom(titles.get(l.from) ?? l.from)}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <section className={section} aria-label={copy.project.tabs.limits}>
+        <ScopeLimits key={`${project.name}:${reads}`} scope={scope} canWrite={canBilling} tick={tick} chain={chain} />
+      </section>
       {project.actions.includes("limits") && !canBilling && (
         <section className={section}>
           <h2 className={heading}>{copy.project.ownerLimit}</h2>
@@ -463,8 +438,11 @@ export function ProjectLimits({
               e.preventDefault();
               setProblem(null);
               api
-                .setProjectLimit(addressOf(project.name), { period, max_runs: Number(runs) })
-                .then(() => setNote(`At most ${runs} runs each ${period}.`))
+                .setProjectLimit(project.name, { period, max_runs: Number(runs), action: "block" })
+                .then(() => {
+                  setNote(`At most ${runs} runs each ${period}.`);
+                  setReads((n) => n + 1);
+                })
                 .catch((err) => setProblem(sorry("The limit could not be set.")(err)));
             }}
           >
@@ -488,8 +466,11 @@ export function ProjectLimits({
               className={button}
               onClick={() =>
                 api
-                  .deleteProjectLimit(addressOf(project.name))
-                  .then(() => setNote(null))
+                  .deleteProjectLimit(project.name)
+                  .then(() => {
+                    setNote(null);
+                    setReads((n) => n + 1);
+                  })
                   .catch((err) => setProblem(sorry("The limit could not be removed.")(err)))
               }
             >
@@ -499,68 +480,5 @@ export function ProjectLimits({
         </section>
       )}
     </div>
-  );
-}
-
-/**
- * What every agent answering in a project is sent from it: its instructions,
- * which an owner edits, after those of the projects above.
- */
-export function ProjectInstructions({ project, ancestors, workspace, onSaved }: {
-  project: ProjectView;
-  ancestors: ProjectView[];
-  workspace?: string;
-  onSaved: () => void;
-}) {
-  const [text, setText] = useState(project.instructions ?? "");
-  const [problem, setProblem] = useState<string | null>(null);
-  const editable = project.actions.includes("edit") && project.managed !== "file";
-  const inherited = ancestors.filter((a) => a.instructions);
-  return (
-    <section className={section}>
-      <h2 className={heading}>{copy.project.instructions}</h2>
-      <p className="max-w-xl text-aui-sm text-aui-muted">{copy.project.instructionsHint}</p>
-      <Problem message={problem} />
-      {inherited.map((a) => (
-        <div key={a.name} className="flex flex-col gap-1 rounded-aui-lg border border-aui-border p-3">
-          <span className="text-aui-xs text-aui-muted">From {titleOf(a, workspace)}</span>
-          <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{a.instructions}</p>
-        </div>
-      ))}
-      {editable ? (
-        <form
-          className="flex flex-col gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setProblem(null);
-            api
-              .updateProject(addressOf(project.name), {
-                version: project.version,
-                title: project.title,
-                description: project.description,
-                account: project.account,
-                instructions: text,
-              })
-              .then(onSaved)
-              .catch((err) => setProblem(sorry("The instructions could not be saved.")(err)));
-          }}
-        >
-          <textarea
-            aria-label={copy.project.instructions}
-            className={`${field} min-h-28`}
-            maxLength={4000}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <button type="submit" className={`${primary} self-end`} disabled={text === (project.instructions ?? "")}>
-            {copy.project.saveInstructions}
-          </button>
-        </form>
-      ) : project.instructions ? (
-        <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{project.instructions}</p>
-      ) : (
-        <p className="text-aui-sm text-aui-muted">{copy.project.noInstructions}</p>
-      )}
-    </section>
   );
 }

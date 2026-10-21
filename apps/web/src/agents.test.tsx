@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { policyWords } from "./Governance.tsx";
 import { AgentDetail, BUILTIN_LOCKED, type Tab } from "./AgentDetail.tsx";
-import type { Note, Revision } from "./api.ts";
+import type { Note, ProjectView, Revision } from "./api.ts";
 
 const writer: Revision = {
   rev: 2,
@@ -11,6 +11,26 @@ const writer: Revision = {
   created_at: new Date().toISOString(),
   created_by: "warp",
   hash: "h2",
+};
+
+const field: ProjectView = {
+  name: "Field",
+  kind: "team",
+  agents: { enable: [] },
+  members: [{ who: "*", role: "member" }],
+  access: { role: "owner", from: "", via: "projects:govern" },
+  actions: [],
+  version: 1,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  depth: 1,
+  path: [{ name: "Field", kind: "team" }],
+  children: 0,
+  conversations: 0,
+  active: 0,
+  schedules: 0,
+  notes: 0,
+  proposed: 0,
 };
 
 const older: Revision = { ...writer, rev: 1, hash: "h1", spec: { ...writer.spec, system_prompt: "Write." } };
@@ -30,7 +50,10 @@ const render = (builtin: boolean, canWrite = true, startOn: Tab = "prompt") =>
       rules={[]}
       alerts={[]}
       stats={undefined}
-      baseline=""
+      workspaceDefault="warp-writer"
+      tree={[field]}
+      place={{ enabled_in: ["~"] }}
+      workspaceName="Acme"
       canWrite={canWrite}
       builtin={builtin}
       canEval={false}
@@ -40,7 +63,6 @@ const render = (builtin: boolean, canWrite = true, startOn: Tab = "prompt") =>
       onRulesChanged={noop}
       onSuitesChanged={noop}
       onOpenRun={noop}
-      onBaseline={noop}
       tab={startOn}
       seed={{ history: [writer, older], notes }}
     />,
@@ -68,27 +90,31 @@ test("someone who may not write sees no save, with or without the lock", () => {
 });
 
 const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-// The controls, by what they hold: the model on the Model tab, the baseline on the Prompt tab.
+// The controls, by what they hold: the model on the Model tab, where it lives on the Access tab.
 const model = (html: string) => /<input[^>]*value="offline"[^>]*>/.exec(html)?.[0] ?? "";
-const baselineSwitch = (html: string) => {
-  const at = html.indexOf("Baseline agent");
-  return at < 0 ? "" : (/<input type="checkbox" class="warp-switch[^>]*>/.exec(html.slice(at))?.[0] ?? "");
-};
+const livesIn = (html: string) => /<button[^>]*aria-label="Lives in: [^"]*"[^>]*>/.exec(html)?.[0] ?? "";
 
-test("A built-in's spec is locked, but the workspace baseline is not", () => {
+test("A built-in's spec is locked, and it lives in no project", () => {
   assert.match(model(render(true, true, "model")), /disabled=""/);
   // Every switch of the spec's own is locked.
   const access = render(true, true, "access");
   const specSwitches = access.match(/<input type="checkbox" class="warp-switch[^>]*>/g) ?? [];
   assert.ok(specSwitches.length > 0 && specSwitches.every((s) => s.includes('disabled=""')), "the spec's switches are locked");
-  const locked = render(true, true, "prompt");
-  assert.ok(baselineSwitch(locked), "the baseline switch is on the page");
-  assert.doesNotMatch(baselineSwitch(locked), /disabled/);
+  assert.match(livesIn(access), /disabled=""/, "the platform's own agents live nowhere");
   assert.doesNotMatch(model(render(false, true, "model")), /disabled/);
-  assert.doesNotMatch(baselineSwitch(render(false, true, "prompt")), /disabled/);
+  assert.doesNotMatch(livesIn(render(false, true, "access")), /disabled=""/);
   // Without the right to write, neither changes.
   assert.match(model(render(false, false, "model")), /disabled=""/);
-  assert.match(baselineSwitch(render(false, false, "prompt")), /disabled=""/);
+  assert.match(livesIn(render(false, false, "access")), /disabled=""/);
+});
+
+test("Access: an agent enabled in the workspace says it is available everywhere, and the workspace default says so", () => {
+  const html = text(render(false, true, "access"));
+  assert.match(html, /Where it answers/);
+  assert.match(html, /Lives in No project: a platform agent/);
+  assert.match(html, /Available everywhere/);
+  assert.match(text(render(false, true, "prompt")), /Workspace Default/);
+  assert.doesNotMatch(text(render(false, true, "prompt")), /Baseline/);
 });
 
 test("Access: calls are picked from a list, and approving a call to another agent is not offered", () => {

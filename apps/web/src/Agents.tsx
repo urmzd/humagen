@@ -1,3 +1,4 @@
+import { defaultCopy } from "@warp/components";
 import { useState } from "react";
 import type { Run } from "./adapter.ts";
 import type { Group, Revision } from "./api.ts";
@@ -13,7 +14,8 @@ export function Agents({
   stats,
   runs = [],
   builtin = [],
-  baseline,
+  workspaceDefault = "",
+  homes = {},
   canWrite,
   onOpen,
   onNew,
@@ -28,7 +30,10 @@ export function Agents({
   runs?: Run[];
   /** Agents the platform provides. They can be opened and read, not changed. */
   builtin?: string[];
-  baseline: string;
+  /** Who answers a message that tags no agent in the workspace itself. */
+  workspaceDefault?: string;
+  /** Where each agent that lives in a project lives. */
+  homes?: Record<string, string>;
   canWrite: boolean;
   onOpen: (name: string) => void;
   onNew: () => void;
@@ -107,7 +112,8 @@ export function Agents({
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="warp-display truncate text-aui-lg font-semibold text-aui-fg">{name}</span>
-                        {name === baseline && <Chip>Baseline</Chip>}
+                        {name === workspaceDefault && <Chip>{defaultCopy.workspaceDefault}</Chip>}
+                        {homes[name] && <Chip>{defaultCopy.agentPlace.livesIn(homes[name])}</Chip>}
                         {builtin.includes(name) && <Chip>Built in, read only</Chip>}
                       </span>
                       <span className="line-clamp-1 text-aui-sm text-aui-muted">

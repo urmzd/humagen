@@ -138,3 +138,31 @@ func plural(n int, word string) string {
 	}
 	return fmt.Sprintf("%d %ss", n, word)
 }
+
+// Tenants lists the workspaces that have written anything, by name.
+func (s *Store) Tenants() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]string, 0, len(s.tenants))
+	for name, t := range s.tenants {
+		if t.stored() {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// EnsureRoot writes a tenant's root if it has not been written: the root as
+// it reads until then, with its history entry. It changes nothing once the
+// root is written.
+func (s *Store) EnsureRoot(tenantName, by string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx := s.begin(tenantName)
+	if _, ok := tx.t.projects[Root]; ok {
+		return nil
+	}
+	tx.root(by, at)
+	return tx.commit()
+}

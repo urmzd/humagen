@@ -1,5 +1,50 @@
 import { type AnswerRequest, answerPath } from "@warp/adapter/question";
+import type {
+  AgentHome,
+  Person,
+  ProjectAgentsInput,
+  ProjectAgentsView,
+  ProjectChange,
+  ProjectDetail,
+  ProjectEntry,
+  ProjectInput,
+  ProjectLimitInput,
+  ProjectMembers,
+  ProjectUpdate,
+  ProjectView,
+} from "../../../packages/client/src/generated/types.ts";
 import type { BusEvent, Run } from "./adapter.ts";
+
+// The project tree's shapes are the generated client's own, from
+// api/openapi.yaml, so this file cannot drift from the contract on them.
+export type {
+  AgentHome,
+  AgentOffer,
+  AgentPlace,
+  DefaultResolved,
+  Person,
+  Project,
+  ProjectAccount,
+  ProjectAgentsInput,
+  ProjectAgentsView,
+  ProjectChange,
+  ProjectAccess,
+  ProjectDetail,
+  ProjectEntry,
+  ProjectInput,
+  ProjectKind,
+  ProjectKindSpec,
+  ProjectLimit,
+  ProjectLimitInput,
+  ProjectMembers,
+  ProjectRole,
+  ProjectStep,
+  ProjectUpdate,
+  ProjectView,
+} from "../../../packages/client/src/generated/types.ts";
+
+/** What the caller may do on a project: their permission and their role together. */
+export type ProjectAction = ProjectView["actions"][number];
 
 export class ApiError extends Error {
   constructor(
@@ -286,16 +331,13 @@ export interface Choice {
   matched?: string[];
 }
 
-export interface Project {
-  name: string;
-  description?: string;
-}
-
+/**
+ * Workspace settings. Who answers a message that tags no agent is not one of
+ * them: it is the workspace's default, on the root's agents.
+ */
 export interface Settings {
-  baseline: string;
   history: "recent" | "none";
   history_limit: number;
-  projects: Project[];
   title_agent: string;
   memory_agent: string;
   memory_auto_approve: boolean;
@@ -410,108 +452,6 @@ export interface PolicyChange {
   after?: Policy;
 }
 
-/** What a member may do in a project, each including the one before. */
-export type ProjectRole = "viewer" | "member" | "owner";
-
-/** One member of a project: `*` (everyone), `role:<name>`, or a subject. */
-export interface ProjectEntry {
-  who: string;
-  role: ProjectRole;
-}
-
-/** The caller's role in a project, where it comes from and what gave it. */
-export interface ProjectAccess {
-  /** Empty is no role. */
-  role: "" | ProjectRole;
-  /** The project whose entry gave it, "" for the workspace. */
-  from: string;
-  /** The entry's who, "owner above", or "projects:govern". */
-  via: string;
-}
-
-/** What the caller may do on a project: their permission and their role together. */
-export type ProjectAction = "create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce";
-
-/** A workspace's own kind, a label over team or account. */
-export interface ProjectKindSpec {
-  name: string;
-  title?: string;
-  like: "team" | "account";
-}
-
-/** One project on the way down to another. */
-export interface ProjectStep {
-  name: string;
-  title?: string;
-  kind: string;
-}
-
-/** A project, where it sits, and what is in it. The workspace itself is the project named "". */
-export interface ProjectView {
-  name: string;
-  title?: string;
-  description?: string;
-  kind: string;
-  parent?: string;
-  account?: { customer?: string; external_id?: string; url?: string };
-  instructions?: string;
-  members: ProjectEntry[];
-  kinds?: ProjectKindSpec[];
-  archived?: boolean;
-  /** The lowest role that may announce. Absent is owner. */
-  announce?: ProjectRole;
-  managed?: string;
-  version: number;
-  created_by?: string;
-  created_at: string;
-  updated_by?: string;
-  updated_at: string;
-  depth: number;
-  path: ProjectStep[];
-  children: number;
-  conversations: number;
-  active: number;
-  active_at?: string;
-  schedules: number;
-  notes: number;
-  proposed: number;
-  access: ProjectAccess;
-  actions: ProjectAction[];
-}
-
-/** One project, the projects above and below it, and the limits that hold it. */
-export interface ProjectDetail {
-  project: ProjectView;
-  /** The workspace first, so they read as a breadcrumb. */
-  ancestors: ProjectView[];
-  children: ProjectView[];
-  /** Its own limit, each ancestor's nearest first, then the workspace's. `from` "" is the workspace. */
-  limits: { scope: PolicyScope; from: string }[];
-}
-
-/** Who holds a role in a project, and who owns it from above. */
-export interface ProjectMembers {
-  version: number;
-  members: ProjectEntry[];
-  inherited: { who: string; from: string }[];
-}
-
-/** One entry of the record of what changed on a project. */
-export interface ProjectChange {
-  seq: number;
-  at: string;
-  by: string;
-  project: string;
-  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home";
-  agent?: string;
-  note?: string;
-  before?: ProjectView;
-  after?: ProjectView;
-}
-
-/** A project's address in a path: `~` is the workspace. */
-export const projectPath = (name: string) => `/api/projects/${name === "" ? "~" : encodeURIComponent(name)}`;
-
 export interface Note {
   id: string;
   text: string;
@@ -593,6 +533,11 @@ export interface SuiteView extends Suite {
   runs: EvalRun[];
 }
 
+/** A project in a path: `~` is the workspace, which is the project named "". */
+export function projectPath(name: string): string {
+  return name === "" ? "~" : encodeURIComponent(name);
+}
+
 // Same-origin only. The session is an HttpOnly cookie the page cannot read,
 // so there is no token here to leak.
 async function call<T>(method: string, path: string, json?: unknown): Promise<T> {
@@ -625,7 +570,15 @@ export const api = {
     call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
   agents: () => call<{ agents: Revision[] }>("GET", "/api/agents").then((r) => r.agents),
   /** Every agent, and the names of those the platform provides, which cannot be edited. */
-  agentList: () => call<{ agents: Revision[]; builtin?: string[] }>("GET", "/api/agents"),
+  /**
+   * Every agent, the platform's own by name, where each that lives in a
+   * project lives, and which projects enable each ("~" is the workspace).
+   */
+  agentList: () =>
+    call<{ agents: Revision[]; builtin?: string[]; homes?: Record<string, string>; enabled_in?: Record<string, string[]> }>("GET", "/api/agents"),
+  /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */
+  setAgentHome: (agent: string, project: string) =>
+    call<AgentHome>("PUT", `/api/agents/${encodeURIComponent(agent)}/home`, { project }),
   createAgent: (spec: AgentSpec) => call<Revision>("POST", "/api/agents", spec),
   reviseAgent: (spec: AgentSpec, expectedRev: number) =>
     call<Revision>("PUT", `/api/agents/${encodeURIComponent(spec.name)}`, {
@@ -639,15 +592,28 @@ export const api = {
   createRun: (agent: string, text: string, opts: { after?: string; project?: string } = {}) =>
     call<Run>("POST", "/api/runs", { agent, text, ...opts }),
   threads: () => call<{ threads: ThreadSummary[] }>("GET", "/api/threads").then((r) => r.threads),
-  /** One page of conversations, newest first. `next` is the cursor for the page after it, null at the end, and absent from a server that does not page. */
-  threadsPage: (q: { limit: number; before?: string; origin?: string; agent?: string; standing?: string }) => {
+  /**
+   * One page of conversations, newest first. `next` is the cursor for the page after it, null at the end, and absent from a server that does not page.
+   * `project` keeps one project's own (`~` for the workspace's), and `within` a project and everything below it.
+   */
+  threadsPage: (q: {
+    limit: number;
+    before?: string;
+    origin?: string;
+    agent?: string;
+    standing?: string;
+    project?: string;
+    within?: string;
+  }) => {
     const params = new URLSearchParams({ limit: String(q.limit) });
-    for (const k of ["before", "origin", "agent", "standing"] as const) if (q[k]) params.set(k, q[k]);
+    for (const k of ["before", "origin", "agent", "standing", "project", "within"] as const) if (q[k]) params.set(k, q[k]);
     return call<{ threads: ThreadSummary[]; next?: string | null }>("GET", `/api/threads?${params}`);
   },
   thread: (id: string) =>
     call<{ turns: Run[] }>("GET", `/api/threads/${encodeURIComponent(id)}`).then((r) => r.turns),
-  pick: (q: string) => call<Choice>("GET", `/api/pick?${new URLSearchParams({ q })}`),
+  /** Who @auto would pick for a message in a project, "" for the workspace. */
+  pick: (q: string, project = "") =>
+    call<Choice>("GET", `/api/pick?${new URLSearchParams(project ? { q, project } : { q })}`),
   settings: () => call<Settings>("GET", "/api/settings"),
   saveSettings: (s: Settings) => call<Settings>("PUT", "/api/settings", s),
   history: (name: string) =>
@@ -696,52 +662,67 @@ export const api = {
     call<void>("DELETE", `/api/policies?${new URLSearchParams({ kind: scope.kind, name: scope.name ?? "" })}`),
   policyHistory: () => call<{ changes: PolicyChange[] }>("GET", "/api/policies/history").then((r) => r.changes),
   usage: () => call<{ scopes: ScopeUsage[] }>("GET", "/api/usage").then((r) => r.scopes),
-  /** Every project the caller can see, in tree order, read a page at a time: at most 500. */
+  /** The workspace's projects in tree order, each before its sub-projects. The workspace itself is not one of them. */
   projects: async () => {
+    // Read a page at a time, at most the 500 a workspace holds.
     const all: ProjectView[] = [];
     let before: string | null = null;
     for (let page = 0; page < 5; page++) {
       const q = new URLSearchParams({ limit: "100" });
       if (before) q.set("before", before);
-      const r = await call<{ projects: ProjectView[]; next: string | null }>("GET", `/api/projects?${q}`);
+      const r: { projects: ProjectView[]; next: string | null } = await call("GET", `/api/projects?${q}`);
       all.push(...r.projects);
       before = r.next;
       if (!before) break;
     }
     return all;
   },
-  project: (name: string) => call<ProjectDetail>("GET", projectPath(name)),
-  createProject: (name: string, description: string, parent?: string) =>
-    call<ProjectView>("POST", "/api/projects", parent ? { name, description, parent } : { name, description }),
-  updateProject: (
-    name: string,
-    body: { version: number; title?: string; description?: string; instructions?: string; account?: ProjectView["account"]; kind?: string; archived?: boolean; announce?: "" | ProjectRole },
-  ) => call<ProjectView>("PUT", projectPath(name), body),
-  deleteProject: (name: string) => call<void>("DELETE", projectPath(name)),
-  projectMembers: (name: string) => call<ProjectMembers>("GET", `${projectPath(name)}/members`),
+  /** One project, "" for the workspace: where it sits, its sub-projects and the limits that hold it. */
+  project: (name: string) => call<ProjectDetail>("GET", `/api/projects/${projectPath(name)}`),
+  createProject: (p: ProjectInput) => call<ProjectView>("POST", "/api/projects", p),
+  /** Replace a project's title, description, account and instructions, as a whole, from the version read. */
+  updateProject: (name: string, u: ProjectUpdate) => call<ProjectView>("PUT", `/api/projects/${projectPath(name)}`, u),
+  /** What a project turns on, what is available there, and who answers untagged messages. "" is the workspace. */
+  projectAgents: (name: string) => call<ProjectAgentsView>("GET", `/api/projects/${projectPath(name)}/agents`),
+  setProjectAgents: (name: string, input: ProjectAgentsInput) =>
+    call<ProjectAgentsView>("PUT", `/api/projects/${projectPath(name)}/agents`, input),
+  /** One page of the directory, by handle. `next` is the cursor for the page after, null at the end. */
+  people: (q: { q?: string; before?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (q.q) params.set("q", q.q);
+    if (q.before) params.set("before", q.before);
+    if (q.limit) params.set("limit", String(q.limit));
+    const query = params.toString();
+    return call<{ people: Person[]; next: string | null }>("GET", `/api/people${query ? `?${query}` : ""}`);
+  },
+  deleteProject: (name: string) => call<void>("DELETE", `/api/projects/${projectPath(name)}`),
+  /** Who holds a role in a project, and who owns it from above. "" is the workspace. */
+  projectMembers: (name: string) => call<ProjectMembers>("GET", `/api/projects/${projectPath(name)}/members`),
   setProjectMembers: (name: string, version: number, members: ProjectEntry[]) =>
-    call<ProjectMembers>("PUT", `${projectPath(name)}/members`, { version, members }),
-  moveProject: (name: string, version: number, parent: string) => call<ProjectView>("POST", `${projectPath(name)}/move`, { version, parent }),
+    call<ProjectMembers>("PUT", `/api/projects/${projectPath(name)}/members`, { version, members }),
+  /** Put a project under another, "" for the top level. */
+  moveProject: (name: string, version: number, parent: string) =>
+    call<ProjectView>("POST", `/api/projects/${projectPath(name)}/move`, { version, parent: projectPath(parent) }),
   projectHistory: (name: string, before?: string) =>
     call<{ changes: ProjectChange[]; next: string | null }>(
       "GET",
-      `${projectPath(name)}/history?${new URLSearchParams(before ? { limit: "50", before } : { limit: "50" })}`,
+      `/api/projects/${projectPath(name)}/history?${new URLSearchParams(before ? { limit: "50", before } : { limit: "50" })}`,
     ),
   /** A tighten-only limit, as an owner of a project above. */
-  setProjectLimit: (name: string, limits: { period: "day" | "month"; max_runs?: number; max_concurrent?: number; spend_limit?: number; max_tokens?: number }) =>
-    call<Policy>("PUT", `${projectPath(name)}/limits`, limits),
-  deleteProjectLimit: (name: string) => call<void>("DELETE", `${projectPath(name)}/limits`),
+  setProjectLimit: (name: string, limits: ProjectLimitInput) => call<Policy>("PUT", `/api/projects/${projectPath(name)}/limits`, limits),
+  deleteProjectLimit: (name: string) => call<void>("DELETE", `/api/projects/${projectPath(name)}/limits`),
   postAnnouncement: (name: string, a: { subject: string; text: string; severity?: "info" | "warning" }) =>
-    call<unknown>("POST", `${projectPath(name)}/announcements`, a),
+    call<unknown>("POST", `/api/projects/${projectPath(name)}/announcements`, a),
   withdrawAnnouncement: (name: string, id: string) =>
-    call<void>("DELETE", `${projectPath(name)}/announcements/${encodeURIComponent(id)}`),
+    call<void>("DELETE", `/api/projects/${projectPath(name)}/announcements/${encodeURIComponent(id)}`),
   projectMemory: (project: string) =>
-    call<{ notes: Note[] }>("GET", `${projectPath(project)}/memory`).then((r) => r.notes),
-  addProjectMemory: (project: string, text: string) => call<Note>("POST", `${projectPath(project)}/memory`, { text }),
+    call<{ notes: Note[] }>("GET", `/api/projects/${projectPath(project)}/memory`).then((r) => r.notes),
+  addProjectMemory: (project: string, text: string) =>
+    call<Note>("POST", `/api/projects/${projectPath(project)}/memory`, { text }),
   approveProjectMemory: (project: string, ids: string[]) =>
-    call<{ approved: number }>("POST", `${projectPath(project)}/memory/approve`, { ids }),
+    call<{ approved: number }>("POST", `/api/projects/${projectPath(project)}/memory/approve`, { ids }),
   removeProjectMemory: (project: string, id: string) =>
-    call<void>("DELETE", `${projectPath(project)}/memory/${encodeURIComponent(id)}`),
+    call<void>("DELETE", `/api/projects/${projectPath(project)}/memory/${encodeURIComponent(id)}`),
   removeMemory: (agent: string, id: string) =>
     call<void>("DELETE", `/api/agents/${encodeURIComponent(agent)}/memory/${encodeURIComponent(id)}`),
 

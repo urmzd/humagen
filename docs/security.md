@@ -50,6 +50,26 @@ A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:
 `runs:*` no longer covers them.
 
+Which agents may run where is a policy the platform enforces, never an
+instruction in a prompt. A run is refused at admission when its agent is not
+available in the project it is filed in, whatever started it, and an agent
+that lives in a project is not available in the workspace itself or in any
+project outside its home's subtree. A message that tags no agent goes to the
+default its place inherits, and with none nothing runs: nothing routes on its
+own. Setting the workspace default changes who answers everyone's untagged
+messages, so it needs `projects:govern`; to keep the old split where managers
+set it, add `role:manager` as an owner of the workspace once project roles
+exist, or grant them `govern on projects`.
+
+The directory (`people:read`, which every built-in role holds) shows each
+person's name, handle, roles and picture to everyone in the workspace. No
+email address is kept or shown, a name that is an address is not kept as a
+name, and a picture is only one a person uploaded themselves, served by warp:
+reading the directory sends nobody else a request. People are recorded when
+they make a request holding any permission, when a client maps a Slack person
+to them, and when the policy grants a role to their subject. A machine is not
+a person. A policy that should not list someone grants them no role.
+
 A webhook from Slack or GitHub is not a `Principal`. It is authorized by the
 signing secret of the [client](clients.md) it is for, and takes its tenant from
 that client. No client secret is returned by the API or written to a log.

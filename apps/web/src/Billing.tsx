@@ -300,7 +300,23 @@ export function Limits({
 }
 
 /** The limits of one project or agent, with what the workspace allows named beside it. */
-export function ScopeLimits({ scope, canWrite, tick }: { scope: PolicyScope; canWrite: boolean; tick?: number }) {
+/**
+ * One scope's limits. `chain` is the limits set higher up that also hold it,
+ * nearest first, each with its words ("Field's limit also applies here"); a
+ * reader who may see limits is also told what each allows. Without a chain,
+ * the workspace's limit is named.
+ */
+export function ScopeLimits({
+  scope,
+  canWrite,
+  tick,
+  chain,
+}: {
+  scope: PolicyScope;
+  canWrite: boolean;
+  tick?: number;
+  chain?: { scope: PolicyScope; words: string }[];
+}) {
   const { policies, usage, loaded, reload } = useBilling(tick);
   if (!loaded) return <SkeletonRows count={2} />;
   const policy = policies.find((p) => same(p.scope, scope));
@@ -308,7 +324,23 @@ export function ScopeLimits({ scope, canWrite, tick }: { scope: PolicyScope; can
   return (
     <div className="flex flex-col gap-3">
       <Limits scope={scope} policy={policy} usage={usage.find((u) => same(u.scope, scope))} canWrite={canWrite} onChanged={reload} />
-      {above && <p className="text-aui-xs text-aui-muted">The workspace allows {brief(above)}. Limits here can only be tighter.</p>}
+      {chain ? (
+        chain.length > 0 && (
+          <ul className="flex flex-col gap-1" aria-label="Limits set above">
+            {chain.map((c) => {
+              const held = policies.find((p) => same(p.scope, c.scope));
+              return (
+                <li key={keyOf(c.scope)} className="text-aui-xs text-aui-muted">
+                  {c.words}
+                  {held ? `: ${brief(held)}` : ""}.
+                </li>
+              );
+            })}
+          </ul>
+        )
+      ) : (
+        above && <p className="text-aui-xs text-aui-muted">The workspace allows {brief(above)}. Limits here can only be tighter.</p>
+      )}
     </div>
   );
 }

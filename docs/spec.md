@@ -115,8 +115,8 @@ metadata:
   display_name: Acme
 spec:
   workspace:                # a field left out is left to the console
-    baseline: lead
     history: {mode: recent, limit: 8000}
+    agents: {enable: ["*"], default: auto}   # the workspace's own: every platform agent, and @auto for untagged messages
     instructions: Acme sells warehouse robots. Answer plainly.   # the workspace's own, sent first
     members: [{who: "*", role: member}, {who: "role:comms", role: owner}]   # the workspace's own
     project_kinds: [{name: partner, title: Partner, like: account}]          # the workspace's own kinds
@@ -127,11 +127,13 @@ spec:
         kind: team          # company | team | account | a project_kinds name. Left out: team
         instructions: Customer accounts. Never promise dates.
         members: [{who: "*", role: viewer}, {who: "role:field-eng", role: member}, {who: "role:field-leads", role: owner}]
+        agents: {default: lead}             # answers untagged messages here and below
       - name: Globex
         parent: Field       # a project in this file. Left out: the top level
         kind: account
         account: {customer: Globex Inc, external_id: "sf:0015g00000ABC", url: "https://crm.example.com/globex"}
         members: [{who: "*", role: viewer}, {who: "okta|00u1ana", role: owner}]   # "*" required until reads are confined
+        agents: {allow: [globex-helper, lead], default: globex-helper}  # narrows: only these run here and below
 
   models:                   # each a slot: anthropic | openai | ollama
     - name: anthropic       # what an agent names as its provider
@@ -164,6 +166,8 @@ spec:
         system_prompt: You coordinate work.
         access: {spawn: [helper]}
     - spec: {name: helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: Do one task well.}
+    - project: Globex       # lives in Globex: available there and below, and nowhere else
+      spec: {name: globex-helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: You know the Globex account.}
 
   surfaces:
     slack:                  # warp runs the Slack app as its client, over Socket Mode
@@ -198,6 +202,19 @@ builds on:
   A project made in the console survives every start, and one that leaves
   the file stays, no longer managed, so it can be changed or deleted in the
   console again.
+- **Agents in projects.** `workspace.agents` and a project's `agents` are
+  what it turns on: `enable` adds platform agents here and below (`*` alone
+  is every one), `allow`, when set, is the only agents that may run here and
+  below, and `default` answers a message that tags no agent (an agent, or
+  `auto` for `@auto`). Each list names agents in the file or the platform's
+  own. Set, the three are the file's as a whole, and the console cannot
+  change them. An agent's `project` is where it lives: available there and
+  below, and nowhere else, so `*` never reaches it and enabling it adds
+  nothing. A named default must be available where it is set. They are
+  applied in this order: the workspace, the projects, the agents, then
+  where each agent lives. A home that leaves the file stays.
+  `workspace.baseline` is gone: a file that still sets it fails with
+  "baseline is now workspace.agents.default".
 - **Models and tools** exist only while the file declares them. A tool's
   pinned schemas are its acceptance; anything else stays pending.
 - **GitHub** is a client managed by the file, read-only in the API.
@@ -259,8 +276,8 @@ past four levels, or that breaks a kind or openness rule fails the start.
 | MCP tools and pinned schemas | Platform | what its agents may touch |
 | Agents | Platform | the workspace's own |
 | Slack and GitHub | Platform | its identity on a surface |
-| Baseline, history | Platform | how it behaves |
-| Project tree, kinds and instructions | Platform | the workspace's own |
+| History | Platform | how it behaves |
+| Project tree, kinds, instructions and which agents are available where | Platform | the workspace's own |
 | Spend and run limits | Platform, in the console | versioned, scoped policies (`pkg/policy`) |
 
 ## Deploying it

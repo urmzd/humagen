@@ -10,7 +10,6 @@ import { sampleTrees } from "./activity.fixtures.ts";
 import { AskAnalyst, FiredStrip, Monitor } from "./Monitor.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
-import { ProjectsPage } from "./Projects.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import type { Me, ThreadSummary } from "./api.ts";
 import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
@@ -27,36 +26,6 @@ import { WebSurface } from "@warp/render-web";
 import { replay } from "./Runs.tsx";
 import { formats } from "./copyas.ts";
 import { emptyTurn } from "@warp/core";
-import { projectView } from "./projects.fixtures.ts";
-
-test("the projects page lists projects; creation follows permission", () => {
-  const project = projectView({ name: "launch", conversations: 3, active: 1 });
-  const props = { projects: [project], onOpen: () => {}, onCreated: () => {} };
-  const readOnly = renderToStaticMarkup(<ProjectsPage {...props} canCreate={false} />);
-  assert.match(readOnly, />Projects</);
-  assert.match(readOnly, /launch/);
-  assert.match(readOnly, /1 running · 3 tasks/);
-  assert.doesNotMatch(readOnly, /New Project/);
-  assert.match(renderToStaticMarkup(<ProjectsPage {...props} canCreate />), /New Project/);
-  assert.match(renderToStaticMarkup(<ProjectsPage {...props} projects={[]} canCreate />), /No projects yet/);
-});
-
-test("a project in the list says its kind and where it sits, deeper ones by their path", () => {
-  const globex = projectView({
-    name: "Globex",
-    title: "Globex Inc",
-    kind: "account",
-    depth: 2,
-    path: [
-      { name: "Field", title: "Field engineering", kind: "team" },
-      { name: "Globex", kind: "account" },
-    ],
-    account: { customer: "Globex Corporation" },
-  });
-  const html = renderToStaticMarkup(<ProjectsPage projects={[globex]} canCreate={false} onOpen={() => {}} onCreated={() => {}} />);
-  assert.match(html, /Globex Inc/);
-  assert.match(html, /Account · in Field engineering · Globex Corporation/);
-});
 
 const sidebarMe: Me = {
   principal: { subject: "ada", tenant: "acme", name: "Ada", roles: ["member"] },
@@ -133,7 +102,7 @@ test("project selection: an empty workspace still offers projectless work and cr
   const actions = { onChange: () => {}, onCreated: () => {}, close: () => {} };
   const out = renderToStaticMarkup(<ProjectChoices projects={[]} value={null} {...actions} />);
   assert.match(out, /Projectless/);
-  assert.match(out, /Create project/);
+  assert.match(out, /Create Project/);
   assert.match(out, /No projects yet/);
   assert.doesNotMatch(out, /<form/, "the picker must not nest a form inside the message form");
   const loading = renderToStaticMarkup(<ProjectChoices projects={null} value={null} {...actions} />);

@@ -48,6 +48,8 @@ func (s *Server) projectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{name}/inbox", s.authed(auth.ProjectsRead, s.projectInbox))
 	mux.HandleFunc("POST /api/projects/{name}/announcements", s.authed(auth.ProjectsWrite, s.postAnnouncement))
 	mux.HandleFunc("DELETE /api/projects/{name}/announcements/{id}", s.authed(auth.ProjectsWrite, s.withdrawAnnouncement))
+	mux.HandleFunc("GET /api/projects/{name}/agents", s.authed(auth.ProjectsRead, s.getProjectAgents))
+	mux.HandleFunc("PUT /api/projects/{name}/agents", s.authed(auth.ProjectsWrite, s.putProjectAgents))
 }
 
 // writer is who a change to the tree is made by, and whether they may change

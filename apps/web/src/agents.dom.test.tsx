@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AgentDetail } from "./AgentDetail.tsx";
-import type { Note, Revision } from "./api.ts";
+import type { Note, ProjectView, Revision } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 
 const writer: Revision = {
@@ -11,6 +11,25 @@ const writer: Revision = {
   created_at: new Date().toISOString(),
   created_by: "warp",
   hash: "h2",
+};
+const field: ProjectView = {
+  name: "Field",
+  kind: "team",
+  agents: { enable: [] },
+  members: [{ who: "*", role: "member" }],
+  access: { role: "owner", from: "", via: "projects:govern" },
+  actions: [],
+  version: 1,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+  depth: 1,
+  path: [{ name: "Field", kind: "team" }],
+  children: 0,
+  conversations: 0,
+  active: 0,
+  schedules: 0,
+  notes: 0,
+  proposed: 0,
 };
 const older: Revision = { ...writer, rev: 1, hash: "h1", spec: { ...writer.spec, system_prompt: "Write." } };
 const notes: Note[] = [{ id: "n1", text: "Releases go out on Tuesdays.", source: "person", status: "approved", by: "ada", at: new Date().toISOString() }];
@@ -21,8 +40,9 @@ afterEach(() => {
   net.restore();
 });
 
-function open(builtin: boolean, onBaseline: (name: string) => void = () => {}) {
+function open(builtin: boolean, onHomed: () => void = () => {}) {
   net = stubFetch({
+    "PUT /api/agents/warp-writer/home": () => ({ agent: "warp-writer", home: "Field", enabled_in: [] }),
     "GET /api/agents/warp-writer/history": () => ({ revisions: [writer, older] }),
     "GET /api/agents/warp-writer/memory": () => ({ notes }),
     "POST /api/agents/warp-writer/memory": () => ({ id: "n2" }),
@@ -38,7 +58,9 @@ function open(builtin: boolean, onBaseline: (name: string) => void = () => {}) {
       rules={[]}
       alerts={[]}
       stats={undefined}
-      baseline=""
+      tree={[field]}
+      place={{ enabled_in: ["~"] }}
+      workspaceName="Acme"
       canWrite
       builtin={builtin}
       canEval={false}
@@ -48,25 +70,23 @@ function open(builtin: boolean, onBaseline: (name: string) => void = () => {}) {
       onRulesChanged={noop}
       onSuitesChanged={noop}
       onOpenRun={noop}
-      onBaseline={onBaseline}
+      onHomed={onHomed}
     />,
   );
 }
 
 const tab = (name: string) => fireEvent.click(screen.getByRole("tab", { name: new RegExp(`^${name}`) }));
 
-test("a built-in agent: the spec cannot be changed or saved, the baseline and memory can", async () => {
-  const chose: string[] = [];
-  open(true, (n) => chose.push(n));
+test("a built-in agent: the spec cannot be changed or saved, nor moved into a project; its memory can", async () => {
+  open(true);
   assert.ok(screen.getByTestId("agent-locked"));
   assert.ok(!screen.queryByRole("button", { name: /Save as Revision/ }));
   const prompt = screen.getByLabelText("System prompt") as HTMLTextAreaElement;
   assert.ok(prompt.disabled);
 
-  const baseline = screen.getByRole("checkbox", { name: /Baseline agent/ }) as HTMLInputElement;
-  assert.ok(!baseline.disabled);
-  fireEvent.click(baseline);
-  assert.deepEqual(chose, ["warp-writer"]);
+  tab("Access");
+  const lives = screen.getByRole("button", { name: /^Lives in:/ }) as HTMLButtonElement;
+  assert.ok(lives.disabled, "the platform's own agents live nowhere");
 
   tab("Model");
   const model = screen.getByDisplayValue("offline") as HTMLInputElement;
@@ -98,4 +118,14 @@ test("the same agent, not built in: editing makes a save, and an older revision 
   assert.ok(!(screen.getByDisplayValue("offline") as HTMLInputElement).disabled);
   tab("Revisions");
   assert.ok(await screen.findByRole("button", { name: "Restore as Revision 3" }));
+});
+
+test("an agent of the workspace's own comes to live in a project from its Access tab", async () => {
+  let homed = 0;
+  open(false, () => homed++);
+  tab("Access");
+  fireEvent.click(screen.getByRole("button", { name: /^Lives in:/ }));
+  fireEvent.click(await screen.findByRole("option", { name: /Field/ }));
+  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "PUT" && r.path === "/api/agents/warp-writer/home")));
+  await waitFor(() => assert.equal(homed, 1));
 });

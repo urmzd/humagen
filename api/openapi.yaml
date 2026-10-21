@@ -62,6 +62,11 @@ tags:
       and limits under its name, and carries instructions and shared memory
       every agent answering in it or below it is sent. Its limits hold
       everything below it.
+  - name: people
+    description: |
+      The directory: who is in the workspace, by name, handle, picture and
+      roles, from sign-ins, the Slack people a client maps and the policy's
+      subject grants. No email address is kept or shown.
   - name: settings
     description: Workspace settings.
   - name: preferences
@@ -211,7 +216,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [agents, builtin]
+                required: [agents, builtin, homes, enabled_in]
                 properties:
                   agents:
                     type: array
@@ -220,6 +225,22 @@ paths:
                     description: Names of the agents the platform provides, which cannot be edited.
                     type: array
                     items: {type: string}
+                  homes:
+                    description: |
+                      Where each agent that lives in a project lives, by agent.
+                      Such an agent is available there and below, and nowhere
+                      else. An agent not listed is a platform agent.
+                    type: object
+                    additionalProperties: {type: string}
+                  enabled_in:
+                    description: |
+                      Which projects enable each agent, by agent: those whose
+                      enable list names it, or holds `*` for a platform agent.
+                      `~` is the workspace.
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items: {type: string}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -227,6 +248,10 @@ paths:
       operationId: createAgent
       tags: [agents]
       summary: Create an agent
+      description: |
+        A tag names an agent or a person, so an agent cannot take a name a
+        person in the workspace goes by ("a person goes by @dana"), nor
+        `auto` or `sme`: each is 409.
       x-permission: agents:write
       requestBody:
         required: true
@@ -272,6 +297,50 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Revision"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/agents/{name}/home:
+    put:
+      operationId: setAgentHome
+      tags: [agents]
+      summary: Make an agent live in a project
+      description: |
+        An agent that lives in a project is available there and in every
+        project below it, and nowhere else: `*` never reaches it, and it is
+        not available in the workspace itself. An empty `project`, or `~`,
+        makes it a platform agent again, available wherever it is enabled.
+
+        Refused with 409, naming them, while something outside the new home
+        would lose the agent: a project's default, enable or allow list, a
+        schedule filed elsewhere, an alert rule watching it elsewhere, or a
+        client that routes to it. Homing an agent into or out of a company
+        project needs `projects:govern`. The platform's own agents live
+        nowhere (400).
+      x-permission: agents:write
+      parameters:
+        - {$ref: "#/components/parameters/AgentName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project:
+                  description: The project it lives in. Empty or `~` for none.
+                  type: string
+                  maxLength: 63
+      responses:
+        "200":
+          description: Where the agent now lives, and which projects enable it.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentHome"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -496,19 +565,29 @@ paths:
     get:
       operationId: pickAgent
       tags: [agents]
-      summary: Preview which agent would answer a message
+      summary: Preview which agent @auto would pick for a message
+      description: |
+        `@auto` picks among the agents available in the project by the words
+        of the message. With no match it hands the message to the nearest
+        default on the project's chain that names an agent, and with none it
+        answers 409, "no agent fits; tag one". Nothing is started.
       x-permission: agents:read
       parameters:
         - {name: q, in: query, required: true, description: The message., schema: {type: string}}
+        - name: project
+          in: query
+          description: Where the message is posted. Empty or `~` is the workspace itself.
+          schema: {type: string, maxLength: 63}
       responses:
         "200":
           description: The agent and why.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Choice"}
-        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/ServerError"}
 
   /api/runs:
@@ -544,6 +623,13 @@ paths:
         starting another. Without it the ids are random.
 
         The body takes no metadata: an unknown field answers 400.
+
+        Nothing routes on its own. With `agent` left out, the default the
+        conversation's place inherits answers: the project's, each
+        ancestor's nearest first, then the workspace's. With none set it is
+        409, "tag an agent". `auto` is `@auto`. An agent not available in the
+        conversation's project, or a default that has stopped being
+        available there, is 403.
       x-permission: runs:write
       parameters:
         - name: Idempotency-Key
@@ -566,6 +652,7 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "402": {$ref: "#/components/responses/Refused"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "429": {$ref: "#/components/responses/Refused"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -970,7 +1057,11 @@ paths:
       operationId: updateSettings
       tags: [settings]
       summary: Replace workspace settings
-      description: The first save records the caller as the one who set the workspace up.
+      description: |
+        The first save records the caller as the one who set the workspace
+        up. `baseline` is gone: the workspace default is the root's
+        `default` (`PUT /api/projects/~/agents`), and a body that names it
+        is 400.
       x-permission: agents:write
       requestBody:
         required: true
@@ -2371,6 +2462,60 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/agents:
+    get:
+      operationId: getProjectAgents
+      tags: [projects]
+      summary: Read which agents a project turns on, which are available there, and who answers untagged messages
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "200":
+          description: The project's agents.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectAgentsView"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: setProjectAgents
+      tags: [projects]
+      summary: Replace which agents a project turns on, narrows to, and answers untagged messages with
+      description: |
+        The body replaces the three as a whole. `enable` adds platform agents
+        here and below (`*` alone is every one); `allow`, when set, is the
+        only agents that may run here and below, and a child can only narrow
+        it; `default` answers a message that tags no agent, here and below,
+        and is an agent or `auto`. Every name is an agent in the workspace, a
+        named default is available where it is set, and an agent that lives
+        in a project is not enabled (400). The workspace's own lists, which
+        hold the workspace default, and a company project's need
+        `projects:govern`. `version` is the one the caller read (409 if it
+        changed), and lists the platform file sets answer 409.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectAgentsInput"}
+      responses:
+        "200":
+          description: The project's agents as they now stand.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectAgentsView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/projects/{name}/history:
     get:
       operationId: listProjectHistory
@@ -2750,6 +2895,69 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/people:
+    get:
+      operationId: listPeople
+      tags: [people]
+      summary: Page the workspace's directory of people, by handle
+      description: |
+        Everyone who signed in, every person a client maps, and every
+        subject the policy grants a role to, at most 5,000 a workspace.
+        `next` is the cursor for the page after this one, or null at the
+        end; pass it back as `before`.
+      x-permission: people:read
+      parameters:
+        - name: q
+          in: query
+          description: Keeps people whose name, handle or subject holds it, ignoring case.
+          schema: {type: string, maxLength: 100}
+        - name: limit
+          in: query
+          description: Page size, 50 when left out.
+          schema: {type: integer, minimum: 1, maximum: 50}
+        - name: before
+          in: query
+          description: The `next` cursor of the previous page.
+          schema: {type: string}
+      responses:
+        "200":
+          description: One page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [people, next]
+                properties:
+                  people:
+                    type: array
+                    maxItems: 50
+                    items: {$ref: "#/components/schemas/Person"}
+                  next: {type: [string, "null"]}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/people/{handle}/photo:
+    get:
+      operationId: getPersonPhoto
+      tags: [people]
+      summary: The photo a person uploaded for themselves
+      description: Served by warp, never fetched from elsewhere. 404 for someone with none.
+      x-permission: people:read
+      parameters:
+        - {$ref: "#/components/parameters/PersonHandle"}
+      responses:
+        "200":
+          description: The picture, as the type warp found its bytes to be.
+          content:
+            image/png: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/gif: {schema: {type: string, format: binary}}
+            image/webp: {schema: {type: string, format: binary}}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
 
   /api/policies:
     get:
@@ -3077,6 +3285,12 @@ components:
       required: true
       description: The project's name, or `~` for the workspace itself. A name never starts with `~`.
       schema: {type: string, maxLength: 63}
+    PersonHandle:
+      name: handle
+      in: path
+      required: true
+      description: The person's handle, as the directory lists it.
+      schema: {type: string, maxLength: 32}
     ClientID:
       name: id
       in: path
@@ -3384,12 +3598,14 @@ components:
         created_at: {type: string, format: date-time}
         created_by: {type: string}
     Choice:
-      description: Which agent would answer a message, and why.
+      description: Which agent @auto would pick for a message, and why.
       type: object
       required: [agent, reason]
       properties:
         agent: {type: string}
-        reason: {type: string}
+        reason:
+          description: 'A sentence a person reads, such as "Picked by @auto: matched billing."'
+          type: string
         matched:
           type: array
           items: {type: string}
@@ -3596,7 +3812,10 @@ components:
       required: [text]
       properties:
         agent:
-          description: Who should answer. Empty or `auto` lets the platform pick.
+          description: |
+            Who should answer: an agent, or `auto` for `@auto`, which picks
+            among the agents available where the conversation is filed. Left
+            out, the default the conversation's place inherits answers.
           type: string
         text:
           description: The message. It must not be blank.
@@ -3779,26 +3998,6 @@ components:
           type: string
           maxLength: 255
         role: {$ref: "#/components/schemas/ProjectRole"}
-    ProjectAgents:
-      description: |
-        What a project turns on. An agent is available in a project when the
-        project or one above it enables it (`*` alone is every agent that
-        lives nowhere), or it lives there or above, and every allow list on
-        the way permits it.
-      type: object
-      properties:
-        enable:
-          type: array
-          maxItems: 64
-          items: {type: string}
-        allow:
-          description: When set, the only agents that may run here and below.
-          type: array
-          maxItems: 64
-          items: {type: string}
-        default:
-          description: Answers a message that tags no agent, here and below. `auto` is the built-in router; absent inherits.
-          type: string
     ProjectKindSpec:
       description: A workspace's own kind, a label over a built-in behavior.
       type: object
@@ -4149,27 +4348,183 @@ components:
           description: |
             `managed` is the platform file taking the project over or letting
             it go, `moved` a new parent, `archived` archiving or bringing it
-            back, `members` a change to who holds a role and nothing else,
-            `agents` a change to what it turns on, and `home` an agent coming
-            to live in it or leaving it.
+            back, and `members` a change to who holds a role and nothing
+            else. `agents` is a change to what the project turns on. `home`
+            is an agent coming to live in the project, or leaving it: `agent`
+            names it and `note` says which.
           type: string
           enum: [created, updated, deleted, managed, moved, archived, members, agents, home]
         agent:
-          description: The agent a `home` change is about.
+          description: The agent a home change is about.
           type: string
         note:
           description: Says more, such as that a project created under a deleted name adopts its old conversations.
           type: string
         before: {$ref: "#/components/schemas/Project"}
         after: {$ref: "#/components/schemas/Project"}
-    Settings:
-      description: Workspace settings.
+    ProjectAgents:
+      description: |
+        What a project turns on. An agent is available in a project when
+        something on its chain offers it (an `enable` list, `*` for every
+        platform agent, or the agent living there or above) and every `allow`
+        list on the chain permits it. The zero value adds nothing.
       type: object
-      required: [baseline, history, history_limit, title_agent, memory_agent, memory_auto_approve, workspace_name, model_policies]
+      required: [enable]
       properties:
-        baseline:
-          description: The agent that answers when the picker matches none.
+        enable:
+          description: Platform agents available here and below. `*` alone is every platform agent.
+          type: array
+          maxItems: 64
+          items: {type: string}
+        allow:
+          description: When set, the only agents that may run here and below. Absent narrows nothing.
+          type: array
+          minItems: 1
+          maxItems: 64
+          items: {type: string}
+        default:
+          description: Answers a message that tags no agent, here and below. An agent or `auto`. Absent inherits.
           type: string
+    AgentAvailability:
+      description: Which agents may run in a project.
+      type: object
+      required: [all, names]
+      properties:
+        all:
+          description: Every platform agent, because `*` is enabled on the chain and no allow list narrows it.
+          type: boolean
+        names:
+          description: With `all`, the agents living on the chain, which `*` never reaches; without, every agent available.
+          type: array
+          items: {type: string}
+    AgentOffer:
+      description: One agent available in a project, and where it comes from.
+      type: object
+      required: [agent, from]
+      properties:
+        agent:
+          description: The agent, or `*` for every platform agent.
+          type: string
+        from:
+          description: The nearest project on the chain that enables it, or the one it lives in. `~` is the workspace.
+          type: string
+        home:
+          description: Set when the agent lives in `from`.
+          type: boolean
+    DefaultResolved:
+      description: Who answers a message that tags no agent, and where that default is set.
+      type: object
+      required: [agent, from]
+      properties:
+        agent:
+          description: An agent, or `auto`.
+          type: string
+        from:
+          description: "`project:<name>`, or `project:~` for the workspace."
+          type: string
+    ProjectAgentsView:
+      description: A project's agents as a person reads them.
+      type: object
+      required: [version, enable, available, offers, homes, default_resolved]
+      properties:
+        version:
+          description: The project's version, which a change names.
+          type: integer
+        enable:
+          type: array
+          maxItems: 64
+          items: {type: string}
+        allow:
+          type: array
+          maxItems: 64
+          items: {type: string}
+        default: {type: string}
+        available: {$ref: "#/components/schemas/AgentAvailability"}
+        offers:
+          description: Each available agent and where it comes from, `*` first when every platform agent is.
+          type: array
+          items: {$ref: "#/components/schemas/AgentOffer"}
+        homes:
+          description: The agents that live here.
+          type: array
+          items: {type: string}
+        default_resolved:
+          description: Who answers an untagged message here, or null when nothing does.
+          oneOf:
+            - {$ref: "#/components/schemas/DefaultResolved"}
+            - {type: "null"}
+    ProjectAgentsInput:
+      description: What a project turns on, as a whole. A list left out is cleared.
+      type: object
+      required: [version]
+      properties:
+        version:
+          description: The version the caller read.
+          type: integer
+        enable:
+          type: array
+          maxItems: 64
+          items: {type: string}
+        allow:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items: {type: string}
+        default: {type: string}
+    AgentPlace:
+      description: Where an agent lives and which projects enable it.
+      type: object
+      required: [enabled_in]
+      properties:
+        home:
+          description: The project it lives in. Absent for a platform agent.
+          type: string
+        enabled_in:
+          description: The projects whose enable list names it, or holds `*` for a platform agent. `~` is the workspace.
+          type: array
+          items: {type: string}
+    AgentHome:
+      description: Where an agent now lives.
+      allOf:
+        - type: object
+          required: [agent]
+          properties:
+            agent: {type: string}
+        - {$ref: "#/components/schemas/AgentPlace"}
+    Person:
+      description: One person in the directory. No email address is kept or shown.
+      type: object
+      required: [subject, handle, roles, picture]
+      properties:
+        subject:
+          description: Who they are to the identity provider, which member entries and grants name.
+          type: string
+        name:
+          description: The name they chose for themselves, or signed in with. Absent until one is known.
+          type: string
+        handle:
+          description: How they are tagged, unique in the workspace across people and agents.
+          type: string
+          pattern: "^[a-z0-9][a-z0-9._-]{0,31}$"
+        roles:
+          description: The workspace roles they held when last seen.
+          type: array
+          items: {type: string}
+        picture:
+          description: Where their own photo is served, or null without one.
+          type: [string, "null"]
+        seen_at:
+          description: When they last signed in. Absent for someone who never has.
+          type: string
+          format: date-time
+    Settings:
+      description: |
+        Workspace settings. The workspace default agent, which answers a
+        message that tags none, is the root's `default`
+        (`GET /api/projects/~/agents`).
+      type: object
+      required: [history, history_limit, title_agent, memory_agent, memory_auto_approve, workspace_name, model_policies]
+      properties:
         history:
           description: Whether an agent is sent the conversation so far.
           type: string

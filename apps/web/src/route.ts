@@ -21,10 +21,15 @@ export const MONITOR_TABS: MonitorTab[] = ["overview", "rules"];
 
 /**
  * A project's tabs. The inbox is the default, so `/projects/{name}` opens what
- * is new there. `~` names the workspace itself, the root of the tree.
+ * is new there; an unknown tab falls back to it. More arrive with later phases
+ * of docs/projects.md.
  */
-export type ProjectTab = "inbox" | "overview" | "context" | "people" | "limits" | "history";
-export const PROJECT_TABS: ProjectTab[] = ["inbox", "overview", "context", "people", "limits", "history"];
+export type ProjectTab = "inbox" | "overview" | "context" | "agents" | "people" | "limits" | "history";
+export const PROJECT_TABS: ProjectTab[] = ["inbox", "overview", "context", "agents", "people", "limits", "history"];
+
+/** What a project is for, as the Projects page narrows to it with `?kind=`. */
+export type ProjectKindFilter = "company" | "team" | "account";
+export const PROJECT_KINDS: ProjectKindFilter[] = ["company", "team", "account"];
 
 /** The Directory: who and what is in the workspace, for everyone in it. */
 export type DirectoryTab = "people" | "agents" | "projects";
@@ -37,8 +42,9 @@ export type Route =
   /** A new conversation, optionally with an agent picked and a first message written for it. */
   | { page: "new"; project?: string; agent?: string; ask?: string }
   | { page: "task"; id: string }
-  | { page: "projects" }
-  /** A project at a tab, and in its inbox, at a message. */
+  /** Every project, searched with `q` and narrowed to one kind. */
+  | { page: "projects"; q?: string; kind?: ProjectKindFilter }
+  /** One project at a tab, and in its inbox, at a message. The workspace itself is the project named "", written `~`. */
   | { page: "project"; name: string; tab: ProjectTab; message?: string }
   | { page: "schedules"; name?: string }
   | { page: "monitor"; tab: MonitorTab }
@@ -61,8 +67,9 @@ function dec(s: string): string {
     return s;
   }
 }
-const pick = <T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T =>
-  value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+const oneOf = <T extends string>(value: string | null | undefined, allowed: readonly T[]): T | undefined =>
+  value && (allowed as readonly string[]).includes(value) ? (value as T) : undefined;
+const pick = <T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T => oneOf(value, allowed) ?? fallback;
 
 /** The address of a route, path and query. */
 export function href(r: Route): string {
@@ -77,10 +84,16 @@ export function href(r: Route): string {
     }
     case "task":
       return `/tasks/${enc(r.id)}`;
-    case "projects":
-      return "/projects";
+    case "projects": {
+      const q = new URLSearchParams();
+      if (r.q) q.set("q", r.q);
+      if (r.kind) q.set("kind", r.kind);
+      const query = q.toString();
+      return query ? `/projects?${query}` : "/projects";
+    }
     case "project": {
-      const base = `/projects/${enc(r.name)}`;
+      // Names never hold "/", so nesting lives in the tree, never in the path.
+      const base = `/projects/${r.name === "" ? "~" : enc(r.name)}`;
       if (r.tab !== "inbox") return `${base}/${r.tab}`;
       return r.message ? `${base}?message=${enc(r.message)}` : base;
     }
@@ -176,9 +189,9 @@ function read(pathname: string, search: string): Route {
     case "tasks":
       return a ? { page: "task", id: a } : { page: "new" };
     case "projects": {
-      if (!a) return { page: "projects" };
+      if (!a) return { page: "projects", q: q.get("q") || undefined, kind: oneOf(q.get("kind"), PROJECT_KINDS) };
       const tab = pick(b, PROJECT_TABS, "inbox");
-      return { page: "project", name: a, tab, message: tab === "inbox" ? (q.get("message") ?? undefined) : undefined };
+      return { page: "project", name: a === "~" ? "" : a, tab, message: tab === "inbox" ? (q.get("message") ?? undefined) : undefined };
     }
     case "schedules":
       return { page: "schedules", name: a };

@@ -1,6 +1,7 @@
-import { type FormEvent, useRef, useState } from "react";
+import { defaultCopy } from "@warp/components";
+import { type FormEvent, type MouseEvent, useRef, useState } from "react";
 import { AccessExplain } from "./AccessExplain.tsx";
-import type { SettingsSection } from "./route.ts";
+import { href, type SettingsSection } from "./route.ts";
 import { ApiError, api, type Me, type ModelPolicy, type Preferences, type Revision, type Settings as Workspace } from "./api.ts";
 import { ModelChain, POLICY, chainProblem, starterPolicy } from "./ModelChain.tsx";
 import { BillingSettings } from "./Billing.tsx";
@@ -41,11 +42,19 @@ export function Avatar({ name, prefs, size = 28 }: { name: string; prefs: Prefer
   );
 }
 
+/** A plain link's click: in place on a plain click, left to the browser on a modified one. */
+const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  go();
+};
+
 export function Settings({
   me,
   prefs,
   workspace,
   agents,
+  projects,
   canAdmin,
   section,
   onSection,
@@ -53,11 +62,16 @@ export function Settings({
   onExplain,
   onPrefs,
   onWorkspace,
+  onOpenProjects,
+  onOpenWorkspace,
+  onOpenWorkspaceAgents = onOpenWorkspace,
 }: {
   me: Me;
   prefs: Preferences;
   workspace: Workspace | null;
   agents: Revision[];
+  /** The workspace's project names, for limits. */
+  projects: string[];
   canAdmin: boolean;
   /** The section on screen. The sidebar links to some of them, so the caller holds it. */
   section: Section;
@@ -67,11 +81,15 @@ export function Settings({
   onExplain: (permission: string) => void;
   onPrefs: (next: Preferences) => void;
   onWorkspace: (next: Workspace) => void;
+  onOpenProjects: () => void;
+  /** Opens the workspace's own project, where its instructions and notes are. */
+  onOpenWorkspace: () => void;
+  /** Opens the workspace's Agents tab, where the Workspace Default is. */
+  onOpenWorkspaceAgents?: () => void;
 }) {
   const setSection = onSection;
   const [problem, setProblem] = useState<string | null>(null);
   const [name, setName] = useState(prefs.display_name);
-  const [project, setProject] = useState({ name: "", description: "" });
   const file = useRef<HTMLInputElement>(null);
   const who = me.principal;
   const shown = prefs.display_name || who.name || who.email || who.subject;
@@ -131,25 +149,22 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Agent routing</h1>
-                <p className={pageLede}>New requests use the automatic router. You can also choose an agent in the prompt.</p>
+                <p className={pageLede}>A message goes to the agent it tags. One that tags none goes to the default where it is posted, which can be @auto.</p>
               </header>
               <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">Automatic router</h2>
+                <h2 className="text-aui-sm font-medium text-aui-fg">@auto</h2>
                 <p className="text-aui-sm text-aui-muted">
-                  Matches requests to agent names, descriptions and instructions. Names and descriptions carry more weight.
-                  When agents tie or none match, the fallback answers.
+                  Matches a message to the names, descriptions and instructions of the agents available where it is posted.
+                  Names and descriptions carry more weight. When agents tie or none match, the nearest default that names an
+                  agent answers.
                 </p>
-                {workspace && (
-                  <Label text="Fallback agent" hint="Set an available agent so unmatched requests can run.">
-                    <Menu
-                      label="Fallback agent"
-                      value={workspace.baseline}
-                      disabled={!canAdmin}
-                      options={agentOptions(agents.map((a) => a.spec.name), "None")}
-                      onChange={(baseline) => saveWorkspace({ baseline })}
-                    />
-                  </Label>
-                )}
+                <p className="text-aui-sm text-aui-muted">
+                  {defaultCopy.workspaceDefault} answers a message that tags no agent, unless a project sets its own. It lives on the
+                  workspace's Agents tab.
+                </p>
+                <a href={href({ page: "project", name: "", tab: "agents" })} className={`${button} self-start`} onClick={follow(onOpenWorkspaceAgents)}>
+                  {defaultCopy.workspaceDefault}
+                </a>
               </section>
               <section className={`${card} flex flex-col gap-3`}>
                 <h2 className="text-aui-sm font-medium text-aui-fg">Agent capabilities</h2>
@@ -354,60 +369,21 @@ export function Settings({
                     </Label>
                   </section>
 
-                  <section className={`${card} flex flex-col gap-3`}>
+                  {/* Projects have their own page. The workspace is the top of their tree. */}
+                  <section className={`${card} flex flex-col gap-3`} aria-label="Projects">
                     <h3 className="text-aui-sm font-medium text-aui-fg">Projects</h3>
-                    <p className="text-aui-xs text-aui-muted">A project groups tasks and their shared context.</p>
-                    {workspace.projects.length === 0 ? (
-                      <p className="text-aui-sm text-aui-muted">No projects yet.</p>
-                    ) : (
-                      <ul>
-                        {workspace.projects.map((p) => (
-                          <li key={p.name} className="flex items-center justify-between gap-3 border-aui-border border-t py-2 first:border-t-0">
-                            <span className="min-w-0">
-                              <span className="block text-aui-sm text-aui-fg">{p.name}</span>
-                              {p.description && <span className="block truncate text-aui-xs text-aui-muted">{p.description}</span>}
-                            </span>
-                            {canAdmin && (
-                              <button
-                                type="button"
-                                className={button}
-                                onClick={() => saveWorkspace({ projects: workspace.projects.filter((x) => x.name !== p.name) })}
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {canAdmin && (
-                      <form
-                        className="flex flex-wrap items-end gap-2 border-aui-border border-t pt-3"
-                        onSubmit={(e: FormEvent) => {
-                          e.preventDefault();
-                          saveWorkspace({ projects: [...workspace.projects, project] });
-                          setProject({ name: "", description: "" });
-                        }}
-                      >
-                        <span className="min-w-36 flex-1">
-                          <Label text="Name">
-                            <input className={field} value={project.name} required onChange={(e) => setProject({ ...project, name: e.target.value })} />
-                          </Label>
-                        </span>
-                        <span className="min-w-36 flex-[2]">
-                          <Label text="Description">
-                            <input
-                              className={field}
-                              value={project.description}
-                              onChange={(e) => setProject({ ...project, description: e.target.value })}
-                            />
-                          </Label>
-                        </span>
-                        <button type="submit" className={button}>
-                          Add Project
-                        </button>
-                      </form>
-                    )}
+                    <p className="text-aui-xs text-aui-muted">
+                      Projects are made and changed on their own page. The workspace is the top of the tree: its instructions
+                      and notes reach every agent.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <a href={href({ page: "projects" })} className={button} onClick={follow(onOpenProjects)}>
+                        Open Projects
+                      </a>
+                      <a href={href({ page: "project", name: "", tab: "inbox" })} className={button} onClick={follow(onOpenWorkspace)}>
+                        Open the Workspace
+                      </a>
+                    </div>
                   </section>
                 </>
               )}
@@ -416,7 +392,7 @@ export function Settings({
 
           {section === "limits" && (
             <BillingSettings
-              projects={workspace?.projects.map((p) => p.name) ?? []}
+              projects={projects}
               agents={agents.map((a) => a.spec.name)}
               canWrite={me.permissions.includes("billing:write")}
             />

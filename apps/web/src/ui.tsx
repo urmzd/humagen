@@ -219,6 +219,7 @@ export function Page({
   lede,
   icon,
   meta,
+  crumbs,
   back,
   actions,
   tabs,
@@ -232,6 +233,8 @@ export function Page({
   icon?: ReactNode;
   /** A short line under the title: a revision, a status, who made it. */
   meta?: ReactNode;
+  /** Where the page sits in a tree, as plain links from the top down, under the meta line. */
+  crumbs?: ReactNode;
   /** Where the page sits: a link back to the list it came from. */
   back?: { label: string; onClick: () => void };
   /** The page's own actions. The primary one goes last. */
@@ -265,6 +268,7 @@ export function Page({
               <div className="min-w-0">
                 <h1 className={pageTitle}>{title}</h1>
                 {meta && <div className="flex flex-wrap items-center gap-x-3 pt-1 text-aui-xs text-aui-muted">{meta}</div>}
+                {crumbs && <div className="pt-1.5">{crumbs}</div>}
                 {lede && <p className={pageLede}>{lede}</p>}
               </div>
             </div>
