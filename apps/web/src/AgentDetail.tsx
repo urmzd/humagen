@@ -330,7 +330,7 @@ export function AgentDetail({
   // A tab that needs a saved agent falls back to the prompt until there is one.
   const [own, setOwn] = useState<Tab>(wanted);
   const asked = onTab ? wanted : own;
-  const tab: Tab = revision || ["prompt", "model", "access", "knowledge"].includes(asked) ? asked : "prompt";
+  const tab: Tab = revision || ["prompt", "model", "access", "context"].includes(asked) ? asked : "prompt";
   const setTab = (next: Tab) => (onTab ? onTab(next) : setOwn(next));
   const [newSource, setNewSource] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -438,12 +438,12 @@ export function AgentDetail({
     { id: "model", label: "Model" },
     { id: "access", label: "Access", count: spawn.length },
     ...(revision ? [{ id: "queue" as const, label: "Queue", count: waiting }] : []),
-    { id: "knowledge", label: "Knowledge", count: reads.length },
+    { id: "context", label: "Context", count: reads.length },
     ...(revision
       ? ([
           { id: "memory", label: "Memory", count: proposed.length },
           { id: "evals", label: "Evals", count: mySuites.length },
-          { id: "alerts", label: "Alerts", count: myRules.length },
+          { id: "alerts", label: "Rules", count: myRules.length },
           { id: "revisions", label: "Revisions", count: history.length },
         ] as const)
       : []),
@@ -698,9 +698,9 @@ export function AgentDetail({
           <ApprovalQueue agent={name} onOpenTask={onOpenTask} onCount={setWaiting} />
         )}
 
-        {tab === "knowledge" && (
+        {tab === "context" && (
           <Section
-            title="Knowledge"
+            title="Context"
             hint="The sources this agent reads from. A source is shared: attaching it here does not copy it."
           >
             <PickMany

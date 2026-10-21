@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Run } from "./adapter.ts";
 import type { Group, Revision } from "./api.ts";
-import { AgentMark, Chip, Empty, field, longest, Page, primary, rows, Stroke, Tape, took } from "./ui.tsx";
+import { AgentMark, button, Chip, Empty, field, longest, Page, primary, rows, Stroke, Tape, took } from "./ui.tsx";
 
 /**
  * Every agent in the tenant, one lane each: who it is, its recent runs on a
@@ -17,7 +17,10 @@ export function Agents({
   canWrite,
   onOpen,
   onNew,
+  onBuild,
 }: {
+  /** Describe an agent to the built-in builder instead of writing it by hand, when the workspace has it. */
+  onBuild?: () => void;
   agents: Revision[];
   /** The last 24 hours, by agent name. */
   stats: Map<string, Group>;
@@ -39,12 +42,21 @@ export function Agents({
   return (
     <Page
       title="Agents"
-      lede="An agent is a prompt with a model, the agents it may call, and the knowledge it reads. Open one to change it, test it, and watch it."
+      lede="An agent is a prompt with a model, the agents it may call, and the context it reads. Open one to change it, test it, and watch it."
       actions={
-        canWrite ? (
-          <button type="button" className={primary} onClick={onNew}>
-            New Agent
-          </button>
+        canWrite || onBuild ? (
+          <div className="flex flex-wrap gap-2">
+            {onBuild && (
+              <button type="button" className={canWrite ? button : primary} onClick={onBuild}>
+                Build with the Builder
+              </button>
+            )}
+            {canWrite && (
+              <button type="button" className={primary} onClick={onNew}>
+                New Agent
+              </button>
+            )}
+          </div>
         ) : undefined
       }
     >

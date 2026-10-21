@@ -7,11 +7,11 @@ import type { Run } from "./adapter.ts";
 import { ActivityPanel, ordered, ordinals, trailOf } from "./Activity.tsx";
 import { isEnded } from "./format.ts";
 import { sampleTrees } from "./activity.fixtures.ts";
-import { Alerts } from "./Alerts.tsx";
+import { AskAnalyst, FiredStrip, Monitor } from "./Monitor.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
 import { ProjectsPage } from "./Projects.tsx";
-import { Sidebar } from "./Sidebar.tsx";
+import { MobileNav, Sidebar } from "./Sidebar.tsx";
 import type { Me, ThreadSummary } from "./api.ts";
 import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
@@ -72,7 +72,6 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
       pinned={[]}
       onPin={() => {}}
       inboxCount={0}
-      alertCount={0}
       live
       onSignOut={() => {}}
       {...over}
@@ -82,12 +81,13 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
 
 test("the sidebar is one flat list in working order, with New as home", () => {
   const out = sidebar();
-  const order = ["New", "Projects", "Schedules", "Alerts", "Inbox", "Knowledge", "Agents", "Artifacts"];
+  // Inbox comes right after New: what fired and what waits on a person land there.
+  const order = ["New", "Inbox", "Projects", "Schedules", "Monitor", "Context", "Agents", "Artifacts"];
   const at = order.map((label) => out.indexOf(`>${label}<`));
   assert.ok(at.every((i) => i >= 0), `every page is listed: ${at}`);
   assert.deepEqual([...at].sort((x, y) => x - y), at, "in this order");
   // Home and New are one entry; runs, evals and analytics live where they belong.
-  for (const gone of ["Home", "New conversation", "More", "Execution history", "Evals", "Analytics", "Storage"]) {
+  for (const gone of ["Home", "New conversation", "More", "Execution history", "Evals", "Analytics", "Storage", "Alerts", "Knowledge"]) {
     assert.doesNotMatch(out, new RegExp(`>${gone}<`));
   }
   assert.match(out, /href="\/" aria-current="page"/);
@@ -97,7 +97,7 @@ test("the sidebar is one flat list in working order, with New as home", () => {
 test("the sidebar hides pages from someone who may not read them", () => {
   const out = sidebar({ can: (p) => p === "runs:write" });
   assert.match(out, />New</);
-  for (const label of ["Projects", "Inbox", "Schedules", "Knowledge", "Agents", "Artifacts"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
+  for (const label of ["Projects", "Inbox", "Schedules", "Context", "Agents", "Artifacts"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
 });
 
 test("pinned tasks sit in their own section, ahead of the rest", () => {
@@ -638,11 +638,12 @@ const fired: Alert[] = [
   { id: "al-1", rule: "any-run-fails", kind: "run_failed", severity: "critical", title: "lead failed", at: "2026-10-09T10:00:00Z" },
   { id: "al-2", rule: "any-run-fails", kind: "run_failed", severity: "critical", title: "oncall failed", at: "2026-10-09T11:00:00Z", acked_by: "ada", acked_at: "2026-10-09T11:05:00Z" },
 ];
-const alertsPage = (over: Partial<Parameters<typeof Alerts>[0]> = {}) =>
-  html(<Alerts alerts={fired} rules={[rule, quiet]} agents={[]} canWrite onChanged={() => {}} onOpenInbox={() => {}} {...over} />);
+const monitor = (over: Partial<Parameters<typeof Monitor>[0]> = {}) =>
+  html(<Monitor tab="rules" alerts={fired} rules={[rule, quiet]} agents={[]} canWrite onChanged={() => {}} onOpenAlert={() => {}} onOpenFired={() => {}} {...over} />);
 
-test("Alerts: each rule says what it watches, how loud it is, and where its message goes", () => {
-  const out = alertsPage();
+test("Monitor: each rule says what it watches, how loud it is, and where its message goes", () => {
+  const out = monitor();
+  assert.match(out, />Monitor</);
   assert.equal(out.match(/data-testid="alert-rule"/g)?.length, 2);
   assert.match(out, /When a run of any agent fails\./);
   assert.match(out, /Watches every agent\. Raises a critical message for everyone who can see alerts\. Made by ada\./);
@@ -651,8 +652,9 @@ test("Alerts: each rule says what it watches, how loud it is, and where its mess
   assert.match(out, />Warning</);
 });
 
-test("Alerts: recent firings are listed newest first, as links into the inbox", () => {
-  const out = alertsPage();
+test("Monitor: a rule's recent firings are listed newest first, as links into the inbox", () => {
+  // The rules, after the strip that counts what fired.
+  const out = monitor().split('aria-label="Rules"')[1] ?? "";
   assert.match(out, /Fired 2 times, 1 still open\./);
   assert.ok(out.indexOf("oncall failed") < out.indexOf("lead failed"), "newest first");
   assert.match(out, /<button[^>]*>lead failed<\/button>/);
@@ -660,26 +662,48 @@ test("Alerts: recent firings are listed newest first, as links into the inbox", 
   assert.match(out, /Has not fired\./);
 });
 
-test("Alerts: open alerts are counted and linked, not acknowledged here", () => {
-  const out = alertsPage({ tab: "open" });
-  assert.match(out, /1 message a rule raised is open\./);
-  assert.match(out, />Open the inbox</);
-  assert.doesNotMatch(out, />Acknowledge</);
-  assert.match(alertsPage({ tab: "open", alerts: [] }), /Nothing a rule raised is open\./);
-  // The Fired tab lists every firing, newest first.
-  assert.ok(out.indexOf("oncall failed") < out.indexOf("lead failed"));
+test("Monitor: what fired is counted and sent to the inbox, never listed or acknowledged here", () => {
+  const out = monitor();
+  assert.match(out, /1 fired alert is open/);
+  assert.match(out, /Latest: lead failed/);
+  assert.match(out, />Review in Inbox</);
+  assert.doesNotMatch(out, />Acknowledge<|>Fired</);
+  assert.match(html(<FiredStrip alerts={[]} />), /Nothing that fired is still open/);
 });
 
-test("Alerts: with no rules, it says nothing is watched, and who can change that", () => {
-  assert.match(alertsPage({ rules: [], alerts: [] }), /Add one with New Rule\./);
-  const reader = alertsPage({ rules: [], alerts: [], canWrite: false });
+test("Monitor: the overview is for who may read runs, and offers the analyst when there is one", () => {
+  assert.doesNotMatch(monitor({ tab: "overview" }), /Ask the analyst/, "no run statistics: only the rules");
+  assert.match(monitor({ tab: "overview" }), /data-testid="alert-rule"/);
+  const asks = html(<AskAnalyst onAsk={() => {}} />);
+  assert.match(asks, /How did my agents do today\?/);
+  assert.match(asks, /What did we spend in the last 7 days, by agent\?/);
+});
+
+test("Monitor: with no rules, it says nothing is watched, and who can change that", () => {
+  assert.match(monitor({ rules: [], alerts: [] }), /Add one with New Rule\./);
+  const reader = monitor({ rules: [], alerts: [], canWrite: false });
   assert.match(reader, /Ask someone who can change alerts/);
   assert.doesNotMatch(reader, />New Rule</);
 });
 
-test("Alerts: a reader who cannot write sees rules but cannot delete them", () => {
-  assert.doesNotMatch(alertsPage({ canWrite: false }), />Delete</);
-  assert.match(alertsPage(), /aria-label="Delete the rule any-run-fails"/);
+test("Monitor: a reader who cannot write sees rules but cannot delete them", () => {
+  assert.doesNotMatch(monitor({ canWrite: false }), />Delete</);
+  assert.match(monitor(), /aria-label="Delete the rule any-run-fails"/);
+});
+
+test("on a phone, a bottom bar holds Inbox, New, Monitor and Agents, and Menu opens the rest", () => {
+  const all = ["runs:read", "runs:write", "alerts:read", "agents:read"];
+  const bar = (can: string[], count = 0) =>
+    renderToStaticMarkup(<MobileNav route={{ page: "inbox" }} go={() => {}} can={(p) => can.includes(p)} inboxCount={count} onMenu={() => {}} />);
+  const out = bar(all, 3);
+  const order = ["Inbox", "New", "Monitor", "Agents", "Menu"].map((l) => out.indexOf(`>${l}<`));
+  assert.ok(order.every((i) => i >= 0), `every place is there: ${order}`);
+  assert.deepEqual([...order].sort((x, y) => x - y), order);
+  assert.match(out, /md:hidden/, "only on a narrow screen");
+  assert.match(out, /safe-area-inset-bottom/, "clear of the home indicator");
+  assert.match(out, /aria-label="Inbox, 3 need you"/);
+  assert.match(out, /href="\/inbox" aria-current="page"/);
+  assert.doesNotMatch(bar(["runs:write"]), />Inbox<|>Monitor<|>Agents</);
 });
 
 const activity = (selected: string | null, trees = sampleTrees(), over: Partial<Parameters<typeof ActivityPanel>[0]> = {}) =>

@@ -151,10 +151,15 @@ export function InboxPage({
   signal,
   viewer,
   openId,
+  kind: wantedKind,
+  onKind,
   onOpen,
   onCounts,
   via = platform,
 }: {
+  /** The kind shown, when the address says it: "alert" shows only what rules fired. */
+  kind?: string;
+  onKind?: (kind: string) => void;
   /** Changes whenever the inbox may have. The first page is fetched again. */
   signal: unknown;
   /** Who is reading, shown on what they resolve until the platform confirms it. */
@@ -167,7 +172,9 @@ export function InboxPage({
   onCounts?: (counts: { open: number; unread: number }) => void;
   via?: Transport;
 }) {
-  const [kind, setKind] = useState("");
+  const [ownKind, setOwnKind] = useState(wantedKind ?? "");
+  const kind = onKind ? (wantedKind ?? "") : ownKind;
+  const setKind = (next: string) => (onKind ? onKind(next) : setOwnKind(next));
   const [show, setShow] = useState<MailboxShow>("open");
   const [selected, setSelected] = useState<string | null>(() => openId ?? linked());
   // The message being read, held apart from the list. A linked message may not be on a

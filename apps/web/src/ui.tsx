@@ -8,10 +8,10 @@ export const field =
   "w-full rounded-aui border border-aui-border bg-aui-bg px-2.5 py-1.5 text-aui-sm text-aui-fg outline-none placeholder:text-aui-muted focus-visible:border-aui-accent focus-visible:ring-2 focus-visible:ring-aui-ring";
 
 export const button =
-  "inline-flex h-8 items-center justify-center gap-1.5 warp-press rounded-aui border border-aui-border bg-aui-surface px-3 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 warp-press rounded-aui border border-aui-border bg-aui-surface px-3 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
 
 export const primary =
-  "inline-flex h-8 items-center justify-center gap-1.5 warp-press rounded-aui bg-aui-primary px-3 text-aui-sm font-medium text-aui-primary-fg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 warp-press rounded-aui bg-aui-primary px-3 text-aui-sm font-medium text-aui-primary-fg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
 
 export function Label({ text, hint, children }: { text: string; hint?: string; children: ReactNode }) {
   return (

@@ -20,7 +20,7 @@ import { SuppressContext } from "./meta";
 export const ActionContext = createContext<ActionHandler>(() => {});
 
 const base =
-  "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-aui px-2.5 font-medium text-aui-xs transition-[background-color,border-color,color,opacity,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-aui-accent focus-visible:ring-offset-2 focus-visible:ring-offset-aui-bg disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-aui px-2.5 font-medium text-aui-xs pointer-coarse:h-10 pointer-coarse:px-4 pointer-coarse:text-aui-sm transition-[background-color,border-color,color,opacity,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-aui-accent focus-visible:ring-offset-2 focus-visible:ring-offset-aui-bg disabled:pointer-events-none disabled:opacity-50";
 
 export const buttonVariant = {
   primary: "bg-aui-primary text-aui-primary-fg shadow-aui-sm hover:opacity-90",

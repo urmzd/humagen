@@ -45,13 +45,16 @@ const InboxIcon = glyph(
     <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
   </>,
 );
-const BookIcon = glyph(<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />);
-const BellIcon = glyph(
+/** Context: layers of what agents are grounded in. */
+const LayersIcon = glyph(
   <>
-    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    <path d="m12 2 10 5-10 5L2 7z" />
+    <path d="m2 17 10 5 10-5M2 12l10 5 10-5" />
   </>,
 );
+/** Monitor: a pulse, for how runs are going. */
+const PulseIcon = glyph(<path d="M22 12h-4l-3 9L9 3l-3 9H2" />);
+const MenuIcon = glyph(<path d="M4 6h16M4 12h16M4 18h16" />);
 const BoxIcon = glyph(
   <>
     <path d="M21 8v13H3V8M1 3h22v5H1z" />
@@ -229,7 +232,6 @@ export function Sidebar({
   pinned,
   onPin,
   inboxCount,
-  alertCount,
   live,
   onSignOut,
 }: {
@@ -245,7 +247,6 @@ export function Sidebar({
   pinned: string[];
   onPin: (id: string, pin: boolean) => void;
   inboxCount: number;
-  alertCount: number;
   /** Updates are arriving. When false, the sidebar says so. */
   live: boolean;
   onSignOut: () => void;
@@ -271,18 +272,18 @@ export function Sidebar({
   const here = (...pages: RoutePage[]) => pages.includes(route.page);
   const entries: { to: Route; label: string; icon: ReactNode; show: boolean; active: boolean; badge?: number }[] = [
     { to: { page: "new" }, label: "New", icon: <ComposeIcon />, show: can("runs:write"), active: here("new") },
+    // What fired, what waits for a person and what agents published all arrive here, so it comes first.
+    { to: { page: "inbox" }, label: "Inbox", icon: <InboxIcon />, show: can("runs:read"), active: here("inbox"), badge: inboxCount },
     { to: { page: "projects" }, label: "Projects", icon: <FolderIcon />, show: can("runs:read"), active: here("projects", "project") },
     { to: { page: "schedules" }, label: "Schedules", icon: <ClockIcon />, show: can("schedules:read"), active: here("schedules") },
     {
-      to: { page: "alerts", tab: "open" },
-      label: "Alerts",
-      icon: <BellIcon />,
+      to: { page: "monitor", tab: "overview" },
+      label: "Monitor",
+      icon: <PulseIcon />,
       show: can("alerts:read") || can("runs:read"),
-      active: here("alerts"),
-      badge: alertCount,
+      active: here("monitor"),
     },
-    { to: { page: "inbox" }, label: "Inbox", icon: <InboxIcon />, show: can("runs:read"), active: here("inbox"), badge: inboxCount },
-    { to: { page: "knowledge" }, label: "Knowledge", icon: <BookIcon />, show: can("knowledge:read"), active: here("knowledge") },
+    { to: { page: "context" }, label: "Context", icon: <LayersIcon />, show: can("knowledge:read"), active: here("context") },
     { to: { page: "agents" }, label: "Agents", icon: <BotIcon />, show: can("agents:read"), active: here("agents", "agent") },
     { to: { page: "artifacts" }, label: "Artifacts", icon: <BoxIcon />, show: can("artifacts:read"), active: here("artifacts") },
   ];
@@ -307,7 +308,7 @@ export function Sidebar({
     <aside
       aria-label="Navigation"
       className={`warp-glass-bar flex shrink-0 flex-col border-[var(--warp-rule)] border-r transition-[width] duration-200 motion-reduce:transition-none ${
-        open ? "w-64 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50" : "w-12"
+        open ? "w-64 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(20rem,85vw)]" : "w-12 max-md:hidden"
       }`}
     >
       <div className={`flex h-12 items-center ${open ? "justify-between pr-2 pl-3.5" : "justify-center"}`}>
@@ -491,5 +492,79 @@ export function Sidebar({
       </div>
     </aside>
     </>
+  );
+}
+
+/**
+ * Navigation on a phone: the few places a person reaches for between other
+ * things, one thumb away at the bottom of the screen. Inbox is first because
+ * that is where what needs them lands. Menu opens the full sidebar, with
+ * tasks and every other page.
+ */
+export function MobileNav({
+  route,
+  go,
+  can,
+  inboxCount,
+  onMenu,
+}: {
+  route: Route;
+  go: (next: Route) => void;
+  can: (permission: string) => boolean;
+  inboxCount: number;
+  onMenu: () => void;
+}) {
+  const items: { to: Route; label: string; icon: ReactNode; show: boolean; active: boolean; badge?: number }[] = [
+    { to: { page: "inbox" }, label: "Inbox", icon: <InboxIcon />, show: can("runs:read"), active: route.page === "inbox", badge: inboxCount },
+    { to: { page: "new" }, label: "New", icon: <ComposeIcon />, show: can("runs:write"), active: route.page === "new" || route.page === "task" },
+    {
+      to: { page: "monitor", tab: "overview" },
+      label: "Monitor",
+      icon: <PulseIcon />,
+      show: can("alerts:read") || can("runs:read"),
+      active: route.page === "monitor",
+    },
+    { to: { page: "agents" }, label: "Agents", icon: <BotIcon />, show: can("agents:read"), active: route.page === "agents" || route.page === "agent" },
+  ];
+  const cell =
+    "relative flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 text-aui-2xs text-aui-muted [&>svg]:size-5 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-[current=page]:text-aui-fg";
+  return (
+    <nav
+      aria-label="Quick navigation"
+      data-testid="mobile-nav"
+      className="warp-glass-bar fixed inset-x-0 bottom-0 z-30 flex border-[var(--warp-rule)] border-t pb-[env(safe-area-inset-bottom)] md:hidden"
+    >
+      {items
+        .filter((i) => i.show)
+        .map((i) => (
+          <a
+            key={i.label}
+            href={href(i.to)}
+            aria-current={i.active ? "page" : undefined}
+            aria-label={i.badge ? `${i.label}, ${i.badge} need you` : undefined}
+            onClick={(e) => {
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              e.preventDefault();
+              go(i.to);
+            }}
+            className={cell}
+          >
+            {i.icon}
+            <span className="truncate">{i.label}</span>
+            {i.badge ? (
+              <span
+                aria-hidden
+                className="absolute top-1.5 left-1/2 ml-1.5 min-w-4 rounded-full bg-aui-accent px-1 text-center font-semibold text-[0.625rem] text-aui-accent-fg tabular-nums leading-4"
+              >
+                {i.badge > 99 ? "99+" : i.badge}
+              </span>
+            ) : null}
+          </a>
+        ))}
+      <button type="button" onClick={onMenu} className={cell}>
+        <MenuIcon />
+        <span>Menu</span>
+      </button>
+    </nav>
   );
 }

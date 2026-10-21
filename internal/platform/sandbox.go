@@ -446,6 +446,9 @@ func (p *Platform) fileTools(base runtime.Catalog) runtime.Catalog {
 			inner = b
 		}
 		tools := p.turnFileTools(req, action)
+		for name, t := range p.builtinTools(req) {
+			tools[name] = t
+		}
 		return agentrt.ToolsFunc(func(name string) (saigetypes.Tool, error) {
 			if t, ok := tools[name]; ok {
 				return t, nil

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentDetail } from "./AgentDetail.tsx";
 import { Agents } from "./Agents.tsx";
-import { Alerts } from "./Alerts.tsx";
 import {
   type Alert,
   type AlertRule,
@@ -23,12 +22,13 @@ import type { Run } from "./adapter.ts";
 import { Chat } from "./Chat.tsx";
 import { InboxPage } from "./InboxPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
+import { Monitor } from "./Monitor.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
 import { Schedules } from "./Schedules.tsx";
 import { Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
-import { Sidebar } from "./Sidebar.tsx";
-import { type AgentTab, type SettingsSection, useRoute } from "./route.ts";
+import { MobileNav, Sidebar } from "./Sidebar.tsx";
+import { type AgentTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { Page, primary } from "./ui.tsx";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "error"; message: string } | { state: "ready"; me: Me };
@@ -84,6 +84,10 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 const SIDEBAR_KEY = "warp.sidebar";
 
+/** The platform's own agents the console offers ways into. */
+export const BUILTIN_ANALYST = "warp-analyst";
+export const BUILTIN_BUILDER = "warp-builder";
+
 /** A per-viewer convenience, so it lives in the browser and must never throw. */
 function stored(key: string, fallback: boolean): boolean {
   try {
@@ -134,8 +138,6 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const [builtin, setBuiltin] = useState<string[]>([]);
   const [schedules, setSchedules] = useState<ScheduleView[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
-  // Set once the first list of alerts is in, so a linked alert that is not in it can be called missing.
-  const [alertsLoaded, setAlertsLoaded] = useState(false);
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [suites, setSuites] = useState<SuiteView[]>([]);
@@ -154,6 +156,12 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const [tick, setTick] = useState(0);
 
   useAppearance(prefs);
+
+  // On a phone the sidebar is a drawer: going somewhere from it puts it away.
+  const navigate = (next: Route) => {
+    go(next);
+    if (window.innerWidth < 768) setOpen(false);
+  };
 
   const toggle = () =>
     setOpen((was) => {
@@ -193,12 +201,11 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     if (can("evals:read")) api.suites().then(setSuites).catch(() => {});
   }, [can]);
   const loadAlerts = useCallback(() => {
-    if (!can("alerts:read")) return setAlertsLoaded(true);
+    if (!can("alerts:read")) return;
     api
       .alerts()
       .then(setAlerts)
-      .catch(() => {})
-      .finally(() => setAlertsLoaded(true));
+      .catch(() => {});
     api.alertRules().then(setRules).catch(() => {});
   }, [can]);
   const loadSchedules = useCallback(() => {
@@ -258,6 +265,18 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   }, [evalRunning, loadSuites]);
 
   const openThread = (id: string) => go({ page: "task", id });
+  // A built-in can be asked when the workspace has it and the reader may start runs.
+  const canAsk = (name: string) => can("runs:write") && agents.some((a) => a.spec.name === name);
+  // An alert's link names the alert. What fired is resolved in the inbox, so it opens the message the alert raised.
+  const alertLinked = route.page === "inbox" ? route.alert : undefined;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per linked alert
+  useEffect(() => {
+    if (!alertLinked) return;
+    api
+      .inboxFor(alertLinked)
+      .then((message) => go({ page: "inbox", message: message ?? undefined, kind: message ? undefined : "alert" }, { replace: true }))
+      .catch(() => go({ page: "inbox", kind: "alert" }, { replace: true }));
+  }, [alertLinked]);
   // Opening a run opens the task it belongs to, where its history is kept.
   const openRun = (id: string) => {
     api
@@ -281,7 +300,6 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       .then(setPrefs)
       .catch(() => setPrefs(before));
   };
-  const openAlerts = alerts.filter((a) => !a.acked_by).length;
   const stats = useMemo(() => new Map((day?.by_agent ?? []).map((g) => [g.name, g])), [day]);
   const agentName = route.page === "agent" ? route.name : null;
   const editing = agents.find((a) => a.spec.name === agentName) ?? null;
@@ -298,7 +316,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         open={open}
         onToggle={toggle}
         route={route}
-        go={go}
+        go={navigate}
         me={me}
         prefs={prefs}
         can={can}
@@ -306,16 +324,19 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         pinned={prefs.pinned}
         onPin={pin}
         inboxCount={inboxCounts.open}
-        alertCount={openAlerts}
         live={live}
         onSignOut={() => api.logout().then(onSignedOut).catch(onSignedOut)}
       />
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <MobileNav route={route} go={navigate} can={can} inboxCount={inboxCounts.open} onMenu={() => setOpen(true)} />
+      {/* On a phone the bottom bar sits over the page, so the page stops above it. */}
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col max-md:pb-[calc(3.5rem+env(safe-area-inset-bottom))]">
         {(page === "new" || page === "task") && (
           <Chat
-            key={thread ?? `new:${route.page === "new" ? (route.project ?? "") : ""}`}
+            key={thread ?? `new:${route.page === "new" ? `${route.project ?? ""}:${route.agent ?? ""}:${route.ask ?? ""}` : ""}`}
             threadId={thread}
             startIn={route.page === "new" ? route.project : undefined}
+            startAgent={route.page === "new" ? route.agent : undefined}
+            startAsk={route.page === "new" ? route.ask : undefined}
             summary={threads.find((t) => t.id === thread)}
             tick={tick}
             agents={agents}
@@ -390,15 +411,11 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onOpenAgent={(name) => openAgent(name)}
           />
         )}
-        {route.page === "alerts" && (
-          <Alerts
+        {route.page === "monitor" && (
+          <Monitor
             tab={route.tab}
-            onTab={(tab) => go({ page: "alerts", tab })}
+            onTab={(tab) => go({ page: "monitor", tab })}
             alerts={alerts}
-            // Someone who may not read alerts has none to wait for.
-            loaded={alertsLoaded || !can("alerts:read")}
-            selected={route.alert ?? null}
-            onSelect={(id) => go({ page: "alerts", tab: "open", alert: id ?? undefined }, { replace: true })}
             rules={rules}
             agents={agents}
             projects={projects.map((p) => p.name)}
@@ -407,14 +424,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             tick={tick}
             onChanged={loadAlerts}
             onOpenRun={openRun}
-            onOpenInbox={(alert) => {
-              if (!alert) return go({ page: "inbox" });
-              // The message about an alert is found by the alert, in whatever state it is.
-              api
-                .inboxFor(alert.id)
-                .then((message) => go({ page: "inbox", message: message ?? undefined }))
-                .catch(() => go({ page: "inbox" }));
-            }}
+            onOpenFired={can("runs:read") ? () => go({ page: "inbox", kind: "alert" }) : undefined}
+            onOpenAlert={can("runs:read") ? (alert) => go({ page: "inbox", alert: alert.id }) : undefined}
+            onAsk={canAsk(BUILTIN_ANALYST) ? (ask) => go({ page: "new", agent: BUILTIN_ANALYST, ask }) : undefined}
           />
         )}
         {route.page === "inbox" && (
@@ -422,6 +434,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             signal={inboxTick}
             viewer={shownName}
             openId={route.message ?? null}
+            kind={route.kind ?? ""}
+            onKind={(kind) => go({ page: "inbox", kind: kind || undefined }, { replace: true })}
             onCounts={setInboxCounts}
             onOpen={(source) =>
               source.kind === "run"
@@ -434,23 +448,23 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
                       ? openProject(source.id)
                       : source.kind === "artifact"
                         ? go({ page: "artifacts", artifact: source.id })
-                        : go({ page: "alerts", tab: "open" })
+                        : go({ page: "monitor", tab: "rules" })
             }
           />
         )}
-        {route.page === "knowledge" && (
+        {route.page === "context" && (
           <Knowledge
             sources={sources}
             agents={agents}
             suites={suites}
             selected={route.source ?? null}
             tab={route.tab ?? "documents"}
-            onSelect={(source, tab) => go({ page: "knowledge", source: source ?? undefined, tab })}
+            onSelect={(source, tab) => go({ page: "context", source: source ?? undefined, tab })}
             canWrite={can("knowledge:write")}
             canEval={can("evals:write")}
             onChanged={loadSources}
             onSuitesChanged={loadSuites}
-            onOpenAgent={(name) => openAgent(name, "knowledge")}
+            onOpenAgent={(name) => openAgent(name, "context")}
           />
         )}
         {route.page === "agents" && (
@@ -463,6 +477,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             canWrite={can("agents:write")}
             onOpen={(name) => openAgent(name)}
             onNew={() => openAgent(null)}
+            onBuild={canAsk(BUILTIN_BUILDER) ? () => go({ page: "new", agent: BUILTIN_BUILDER, ask: "Help me build an agent that " }) : undefined}
           />
         )}
         {route.page === "agent" &&
@@ -496,8 +511,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               onSuitesChanged={loadSuites}
               onSourcesChanged={loadSources}
               onOpenRun={openRun}
-              onOpenSource={(source) => go({ page: "knowledge", source })}
-              onOpenAlerts={() => go({ page: "alerts", tab: "rules" })}
+              onOpenSource={(source) => go({ page: "context", source })}
+              onOpenAlerts={() => go({ page: "monitor", tab: "rules" })}
               onOpenTask={openThread}
               onBaseline={setBaseline}
               policies={workspace?.model_policies ?? []}

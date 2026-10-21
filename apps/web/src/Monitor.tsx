@@ -1,8 +1,8 @@
+import { AlertTriangleIcon, CheckCircleIcon, SparkleIcon } from "@warp/render-web";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { type Alert, type AlertRule, ApiError, alertRuleEdit, api, type Revision } from "./api.ts";
 import { Analytics } from "./Analytics.tsx";
-import { alertNamed } from "./links.ts";
-import type { AlertsTab } from "./route.ts";
+import type { MonitorTab } from "./route.ts";
 import { agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Tabs } from "./ui.tsx";
 
 const kindLabel: Record<AlertRule["kind"], string> = {
@@ -56,32 +56,95 @@ function Severity({ level }: { level: AlertRule["severity"] }) {
   );
 }
 
+/** Questions the analyst is good at, offered as one tap each. */
+export const ANALYST_STARTERS = [
+  "How did my agents do today?",
+  "Which agent failed most this week, and why?",
+  "What did we spend in the last 7 days, by agent?",
+];
+
 /**
- * What to watch for. A rule looks at runs as they end, and when it holds it
- * raises a message in the inbox. This page is where rules are made and where
- * each one's recent firings are listed. Resolving what a rule raised happens
- * in the inbox, so there is one place for it.
+ * What fired, at a glance. Fired alerts are resolved in the inbox, so this
+ * only counts them and sends the reader there.
  */
-export function Alerts({
-  tab: wanted = "rules",
+export function FiredStrip({ alerts, onOpen }: { alerts: Alert[]; onOpen?: () => void }) {
+  const open = alerts.filter((a) => !a.acked_by);
+  const latest = [...open].sort((x, y) => y.at.localeCompare(x.at))[0];
+  const critical = open.some((a) => a.severity === "critical");
+  return (
+    <section data-testid="alerts-open" aria-label="Fired alerts" className={`${card} flex flex-wrap items-center gap-x-4 gap-y-3`}>
+      <span
+        aria-hidden
+        className={`inline-flex size-9 shrink-0 items-center justify-center rounded-full ${
+          open.length === 0 ? "bg-aui-ok/12 text-aui-ok" : critical ? "bg-aui-bad/12 text-aui-bad" : "bg-aui-warn/12 text-aui-warn"
+        }`}
+      >
+        {open.length === 0 ? <CheckCircleIcon size={16} /> : <AlertTriangleIcon size={16} />}
+      </span>
+      <div className="min-w-[12rem] flex-1">
+        <p className="text-aui-sm font-medium text-aui-fg">
+          {open.length === 0 ? "Nothing that fired is still open" : `${open.length} fired ${open.length === 1 ? "alert is" : "alerts are"} open`}
+        </p>
+        <p className="truncate text-aui-xs text-aui-muted">
+          {latest ? `Latest: ${latest.title}, ${ago(latest.at)}` : "When a rule fires, it lands in your inbox, where you resolve it."}
+        </p>
+      </div>
+      {onOpen && (
+        <button type="button" className={`${open.length > 0 ? primary : button} max-sm:w-full`} onClick={onOpen}>
+          Review in Inbox
+        </button>
+      )}
+    </section>
+  );
+}
+
+/** A way into the built-in analyst: one tap asks it a question in a new conversation. */
+export function AskAnalyst({ onAsk }: { onAsk: (question: string) => void }) {
+  return (
+    <section aria-label="Ask the analyst" className="flex flex-col gap-2">
+      <h2 className="text-aui-xs font-medium text-aui-muted">Ask the analyst for a deep dive</h2>
+      <div className="aui-scroll -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        {ANALYST_STARTERS.map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => onAsk(q)}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-aui-border px-3.5 text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
+          >
+            <SparkleIcon size={14} className="text-aui-accent" />
+            {q}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Monitor: how the workspace's runs are going, and the rules that watch them.
+ * It is where alerting is configured and where trends are read. When a rule
+ * holds it raises a message in the inbox, and that is where it is resolved,
+ * so there is one place for what fired.
+ */
+export function Monitor({
+  tab: wanted = "overview",
   onTab,
   projects = [],
   alerts,
-  loaded = true,
-  selected = null,
-  onSelect,
   rules,
   agents,
   canWrite,
   canAnalytics = false,
   tick = 0,
   onChanged,
-  onOpenInbox,
+  onOpenFired,
+  onOpenAlert,
+  onAsk,
   onOpenRun,
 }: {
-  /** Open: what fired. Rules: what is watched. Overview: how runs are going. */
-  tab?: AlertsTab;
-  onTab?: (next: AlertsTab) => void;
+  /** Overview: how runs are going. Rules: what is watched. */
+  tab?: MonitorTab;
+  onTab?: (next: MonitorTab) => void;
   /** Projects a rule can be scoped to. */
   projects?: string[];
   /** May read run statistics, for the Overview tab. */
@@ -89,30 +152,29 @@ export function Alerts({
   /** Changes when runs do, so the overview reads again. */
   tick?: number;
   alerts: Alert[];
-  /** False until the first list is in, so a linked alert is not called missing too early. */
-  loaded?: boolean;
-  /** The alert a link opened, by id: `?view=alerts&alert=<id>`. */
-  selected?: string | null;
-  /** Open another alert, or close it with null. */
-  onSelect?: (id: string | null) => void;
   rules: AlertRule[];
   agents: Revision[];
   canWrite: boolean;
   onChanged: () => void;
-  /** Open the inbox, at the message an alert raised when one is given. */
-  onOpenInbox?: (alert?: Alert) => void;
+  /** Open the inbox at what rules fired. */
+  onOpenFired?: () => void;
+  /** Open the message one fired alert raised. */
+  onOpenAlert?: (alert: Alert) => void;
+  /** Ask the built-in analyst, when the workspace has it. */
+  onAsk?: (question: string) => void;
   /** Open the task a run belongs to, from the overview. */
   onOpenRun?: (id: string) => void;
 }) {
-  const [own, setOwn] = useState<AlertsTab>(wanted);
-  const tab = onTab ? wanted : own;
-  const setTab = (next: AlertsTab) => (onTab ? onTab(next) : setOwn(next));
+  const [own, setOwn] = useState<MonitorTab>(wanted);
+  const asked = onTab ? wanted : own;
+  // Someone who may not read run statistics has only the rules.
+  const tab: MonitorTab = asked === "overview" && !canAnalytics ? "rules" : asked;
+  const setTab = (next: MonitorTab) => (onTab ? onTab(next) : setOwn(next));
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const open = alerts.filter((a) => !a.acked_by).length;
   const newest = [...alerts].sort((x, y) => y.at.localeCompare(x.at));
-  const shown = alertNamed(alerts, selected);
 
   const act = (p: Promise<unknown>, fallback: string) => {
     setProblem(null);
@@ -121,8 +183,8 @@ export function Alerts({
 
   return (
     <Page
-      title="Alerts"
-      lede="Rules watch runs, evals and spend. When one holds, it raises a message in the inbox for the people it names, and that is where it gets resolved."
+      title="Monitor"
+      lede="How your agents are doing, and the rules that watch them. When a rule fires, it lands in your inbox, where it gets resolved."
       actions={
         canWrite && !adding && tab === "rules" ? (
           <button type="button" className={primary} onClick={() => setAdding(true)}>
@@ -132,60 +194,21 @@ export function Alerts({
       }
       tabs={
         <Tabs
-          label="Alerts sections"
+          label="Monitor sections"
           value={tab}
           onChange={setTab}
-          tabs={[
-            { id: "open", label: "Fired", count: open },
-            { id: "rules", label: "Rules", count: rules.length },
-            ...(canAnalytics ? [{ id: "overview" as const, label: "Overview" }] : []),
-          ]}
+          tabs={[...(canAnalytics ? [{ id: "overview" as const, label: "Overview" }] : []), { id: "rules", label: "Rules", count: rules.length }]}
         />
       }
     >
       <Problem message={problem} />
-      {tab === "overview" && canAnalytics && <Analytics embedded agents={agents} openAlerts={open} tick={tick} onOpenRun={onOpenRun ?? (() => {})} />}
-      {tab === "open" && (
+      <FiredStrip alerts={alerts} onOpen={onOpenFired} />
+      {tab === "overview" && (
         <>
-      {selected && loaded && !shown && (
-        <Problem message="That alert is not here. It may have aged out, or you may not have access to it." />
-      )}
-      {shown && <AlertCard alert={shown} onClose={() => onSelect?.(null)} onOpenInbox={onOpenInbox} />}
-
-      <p data-testid="alerts-open" className="text-aui-sm text-aui-muted">
-        {open === 0 ? "Nothing a rule raised is open." : `${open} ${open === 1 ? "message a rule raised is" : "messages rules raised are"} open.`}{" "}
-        {onOpenInbox && (
-          <button type="button" className={linkish} onClick={() => onOpenInbox()}>
-            Open the inbox
-          </button>
-        )}
-      </p>
-      {newest.length === 0 ? (
-        <Empty title="Nothing has fired">When a rule holds, what it raised is listed here, newest first.</Empty>
-      ) : (
-        <ul className={rows} aria-label="Fired alerts">
-          {newest.slice(0, 100).map((a) => (
-            <li key={a.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-3">
-              <Severity level={a.severity} />
-              <button
-                type="button"
-                className={`${linkish} min-w-0 flex-1 truncate text-left`}
-                aria-current={a.id === selected ? "true" : undefined}
-                onClick={() => onSelect?.(a.id)}
-              >
-                {a.title}
-              </button>
-              <span className="shrink-0 text-aui-xs text-aui-muted">
-                {a.rule || "Limits"}
-                {a.agent ? ` on ${a.agent}` : ""}, {ago(a.at)}, {a.acked_by ? `acknowledged by ${a.acked_by}` : "open"}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+          {onAsk && <AskAnalyst onAsk={onAsk} />}
+          <Analytics embedded agents={agents} openAlerts={open} tick={tick} onOpenRun={onOpenRun ?? (() => {})} />
         </>
       )}
-
       {tab === "rules" && (
         <>
 
@@ -252,13 +275,9 @@ export function Alerts({
                   {fired.length > 0 && (
                     <ul className="pt-1">
                       {fired.slice(0, 3).map((a) => (
-                        <li
-                          key={a.id}
-                          aria-current={a.id === selected ? "true" : undefined}
-                          className={`flex items-baseline gap-3 py-0.5 text-aui-sm ${a.id === selected ? "font-medium" : ""}`}
-                        >
-                          {onOpenInbox ? (
-                            <button type="button" className={`${linkish} min-w-0 truncate text-left`} onClick={() => onOpenInbox(a)}>
+                        <li key={a.id} className="flex items-baseline gap-3 py-0.5 text-aui-sm">
+                          {onOpenAlert ? (
+                            <button type="button" className={`${linkish} min-w-0 truncate text-left`} onClick={() => onOpenAlert(a)}>
                               {a.title}
                             </button>
                           ) : (
@@ -304,41 +323,6 @@ export function Alerts({
         </>
       )}
     </Page>
-  );
-}
-
-/** The alert a link opened: what fired, how serious, when, and where to resolve it. */
-function AlertCard({ alert, onClose, onOpenInbox }: { alert: Alert; onClose: () => void; onOpenInbox?: (alert?: Alert) => void }) {
-  const heading = useRef<HTMLHeadingElement>(null);
-  // Reached from a link, so the alert is where the reader starts.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: once per alert
-  useEffect(() => {
-    heading.current?.focus();
-  }, [alert.id]);
-  return (
-    <section data-testid="alert-open" aria-labelledby={`alert-${alert.id}`} className={`${card} flex flex-col gap-2`}>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h2 id={`alert-${alert.id}`} ref={heading} tabIndex={-1} className="warp-display text-aui-lg font-semibold text-aui-fg outline-none">
-          {alert.title}
-        </h2>
-        <Severity level={alert.severity} />
-      </div>
-      {alert.body && <p className="text-aui-sm text-aui-muted">{alert.body}</p>}
-      <p className="text-aui-xs text-aui-muted">
-        Raised by the rule {alert.rule || "for limits"}
-        {alert.agent ? ` on ${alert.agent}` : ""}, {ago(alert.at)}. {alert.acked_by ? `Acknowledged by ${alert.acked_by}.` : "Open."}
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {onOpenInbox && (
-          <button type="button" className={primary} onClick={() => onOpenInbox(alert)}>
-            Open Its Message
-          </button>
-        )}
-        <button type="button" className={button} onClick={onClose}>
-          Close
-        </button>
-      </div>
-    </section>
   );
 }
 

@@ -6,9 +6,9 @@ import { alertNamed, alertUrl, consoleUrl, inboxItemUrl } from "./links.ts";
 test("item addresses: relative on the console, absolute under a public URL", () => {
   const cases: [string, string][] = [
     [inboxItemUrl("m-1"), "/?view=inbox&message=m-1"],
-    [alertUrl("al-3"), "/?view=alerts&alert=al-3"],
+    [alertUrl("al-3"), "/?view=inbox&alert=al-3"],
     [inboxItemUrl("m 1&x"), "/?view=inbox&message=m+1%26x"],
-    [alertUrl("al-3", "https://warp.example.com"), "https://warp.example.com/?view=alerts&alert=al-3"],
+    [alertUrl("al-3", "https://warp.example.com"), "https://warp.example.com/?view=inbox&alert=al-3"],
     [inboxItemUrl("m-1", "https://warp.example.com//"), "https://warp.example.com/?view=inbox&message=m-1"],
     [consoleUrl("alerts", {}, "https://c.example.com/console/"), "https://c.example.com/console/?view=alerts"],
   ];

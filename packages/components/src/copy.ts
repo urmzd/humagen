@@ -295,7 +295,7 @@ export const defaultCopy = {
       search: {
         label: "Search what agents know",
         description: "Docs and wiki pages, with the passage each answer came from.",
-        slack: "Search Knowledge",
+        slack: "Search Context",
       },
       review: {
         label: "Review what needs you",

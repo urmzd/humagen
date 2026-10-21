@@ -70,7 +70,7 @@ export function platformParts(onOpen: (source: Source) => void): Record<string, 
               <button type="button" className={link} onClick={() => onOpen({ kind: "rule", id: alert.service, label: alert.service })}>
                 {alert.service}
               </button>
-              . Change what it watches for on the Alerts page.
+              . Change what it watches for in Monitor.
             </p>
           )}
           {part.resolution ? (

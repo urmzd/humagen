@@ -9,27 +9,30 @@ import { useCallback, useEffect, useState } from "react";
  * query parameter. Old `?view=` links still open the page they named.
  */
 
-export type AgentTab = "prompt" | "model" | "access" | "queue" | "knowledge" | "memory" | "evals" | "alerts" | "revisions";
-export const AGENT_TABS: AgentTab[] = ["prompt", "model", "access", "queue", "knowledge", "memory", "evals", "alerts", "revisions"];
+export type AgentTab = "prompt" | "model" | "access" | "queue" | "context" | "memory" | "evals" | "alerts" | "revisions";
+export const AGENT_TABS: AgentTab[] = ["prompt", "model", "access", "queue", "context", "memory", "evals", "alerts", "revisions"];
 
 export type SourceTab = "documents" | "search" | "variants" | "evals";
 export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "evals"];
 
-export type AlertsTab = "open" | "rules" | "overview";
-export const ALERTS_TABS: AlertsTab[] = ["open", "rules", "overview"];
+/** Monitor: how runs are going (overview), and the rules that watch them. What a rule fires lands in the inbox. */
+export type MonitorTab = "overview" | "rules";
+export const MONITOR_TABS: MonitorTab[] = ["overview", "rules"];
 
 export type SettingsSection = "profile" | "appearance" | "workspace" | "routing" | "models" | "limits" | "connections" | "access";
 export const SETTINGS_SECTIONS: SettingsSection[] = ["profile", "appearance", "workspace", "routing", "models", "limits", "connections", "access"];
 
 export type Route =
-  | { page: "new"; project?: string }
+  /** A new conversation, optionally with an agent picked and a first message written for it. */
+  | { page: "new"; project?: string; agent?: string; ask?: string }
   | { page: "task"; id: string }
   | { page: "projects" }
   | { page: "project"; name: string }
   | { page: "schedules"; name?: string }
-  | { page: "alerts"; tab: AlertsTab; alert?: string }
-  | { page: "inbox"; message?: string }
-  | { page: "knowledge"; source?: string; tab?: SourceTab }
+  | { page: "monitor"; tab: MonitorTab }
+  /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
+  | { page: "inbox"; message?: string; alert?: string; kind?: string }
+  | { page: "context"; source?: string; tab?: SourceTab }
   | { page: "agents" }
   | { page: "agent"; name: string | null; tab: AgentTab }
   | { page: "artifacts"; artifact?: string }
@@ -51,8 +54,14 @@ const pick = <T extends string>(value: string | undefined, allowed: readonly T[]
 /** The address of a route, path and query. */
 export function href(r: Route): string {
   switch (r.page) {
-    case "new":
-      return r.project ? `/?project=${enc(r.project)}` : "/";
+    case "new": {
+      const q = new URLSearchParams();
+      if (r.project) q.set("project", r.project);
+      if (r.agent) q.set("agent", r.agent);
+      if (r.ask) q.set("ask", r.ask);
+      const query = q.toString();
+      return query ? `/?${query}` : "/";
+    }
     case "task":
       return `/tasks/${enc(r.id)}`;
     case "projects":
@@ -61,15 +70,19 @@ export function href(r: Route): string {
       return `/projects/${enc(r.name)}`;
     case "schedules":
       return r.name ? `/schedules/${enc(r.name)}` : "/schedules";
-    case "alerts": {
-      const base = r.tab === "open" ? "/alerts" : `/alerts/${r.tab}`;
-      return r.alert ? `${base}?alert=${enc(r.alert)}` : base;
+    case "monitor":
+      return r.tab === "overview" ? "/monitor" : `/monitor/${r.tab}`;
+    case "inbox": {
+      const q = new URLSearchParams();
+      if (r.message) q.set("message", r.message);
+      if (r.alert) q.set("alert", r.alert);
+      if (r.kind) q.set("kind", r.kind);
+      const query = q.toString();
+      return query ? `/inbox?${query}` : "/inbox";
     }
-    case "inbox":
-      return r.message ? `/inbox?message=${enc(r.message)}` : "/inbox";
-    case "knowledge":
-      if (!r.source) return "/knowledge";
-      return !r.tab || r.tab === "documents" ? `/knowledge/${enc(r.source)}` : `/knowledge/${enc(r.source)}/${r.tab}`;
+    case "context":
+      if (!r.source) return "/context";
+      return !r.tab || r.tab === "documents" ? `/context/${enc(r.source)}` : `/context/${enc(r.source)}/${r.tab}`;
     case "agents":
       return "/agents";
     case "agent": {
@@ -85,30 +98,38 @@ export function href(r: Route): string {
   }
 }
 
+function inboxAt(q: URLSearchParams): Route {
+  return { page: "inbox", message: q.get("message") ?? undefined, alert: q.get("alert") ?? undefined, kind: q.get("kind") ?? undefined };
+}
+
 /** Links from before pages had paths: `/?view=agents`, `/?view=alerts&alert=…`. */
 function legacy(q: URLSearchParams): Route | null {
   const v = q.get("view");
-  if (!v) return q.has("message") ? { page: "inbox", message: q.get("message") ?? undefined } : null;
+  if (!v) return q.has("message") ? inboxAt(q) : null;
   switch (v) {
     case "home":
     case "chat":
     case "runs":
       return { page: "new" };
     case "inbox":
-      return { page: "inbox", message: q.get("message") ?? undefined };
+      return inboxAt(q);
     case "projects":
     case "schedules":
     case "agents":
-    case "knowledge":
       return { page: v };
+    case "knowledge":
+    case "context":
+      return { page: "context" };
     case "storage":
       return { page: "artifacts" };
     case "evals":
       return { page: "agents" };
     case "analytics":
-      return { page: "alerts", tab: "overview" };
+    case "monitor":
+      return { page: "monitor", tab: "overview" };
+    // What fired belongs in the inbox; an alert's link opens the message it raised.
     case "alerts":
-      return { page: "alerts", tab: "open", alert: q.get("alert") ?? undefined };
+      return { page: "inbox", alert: q.get("alert") ?? undefined, kind: q.get("alert") ? undefined : "alert" };
     case "connections":
     case "limits":
       return { page: "settings", section: v };
@@ -133,22 +154,33 @@ function read(pathname: string, search: string): Route {
   const [head, a, b] = parts;
   switch (head) {
     case undefined:
-      return legacy(q) ?? (q.get("project") ? { page: "new", project: q.get("project") ?? undefined } : { page: "new" });
+      return legacy(q) ?? { page: "new", project: q.get("project") ?? undefined, agent: q.get("agent") ?? undefined, ask: q.get("ask") ?? undefined };
     case "tasks":
       return a ? { page: "task", id: a } : { page: "new" };
     case "projects":
       return a ? { page: "project", name: a } : { page: "projects" };
     case "schedules":
       return { page: "schedules", name: a };
+    case "monitor":
+      return { page: "monitor", tab: pick(a, MONITOR_TABS, "overview") };
+    // Alerts became Monitor. Its rules and overview moved there; what fired is in the inbox.
     case "alerts":
-      return { page: "alerts", tab: pick(a, ALERTS_TABS, "open"), alert: q.get("alert") ?? undefined };
+      if (q.get("alert")) return { page: "inbox", alert: q.get("alert") ?? undefined };
+      if (a === "rules" || a === "overview") return { page: "monitor", tab: a };
+      return { page: "inbox", kind: "alert" };
     case "inbox":
-      return { page: "inbox", message: q.get("message") ?? undefined };
+      return inboxAt(q);
+    // Knowledge is called Context. Old links open the same place.
+    case "context":
     case "knowledge":
-      return a ? { page: "knowledge", source: a, tab: pick(b, SOURCE_TABS, "documents") } : { page: "knowledge" };
+      return a ? { page: "context", source: a, tab: pick(b, SOURCE_TABS, "documents") } : { page: "context" };
     case "agents":
       if (!a) return { page: "agents" };
-      return { page: "agent", name: a === "new" ? null : a, tab: a === "new" ? "prompt" : pick(b, AGENT_TABS, "prompt") };
+      return {
+        page: "agent",
+        name: a === "new" ? null : a,
+        tab: a === "new" ? "prompt" : pick(b === "knowledge" ? "context" : b, AGENT_TABS, "prompt"),
+      };
     case "artifacts":
       return { page: "artifacts", artifact: a };
     case "settings":
