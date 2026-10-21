@@ -1,6 +1,7 @@
 # warp with Postgres, and optional MinIO (S3) and Redis.
 #
-#   cp .env.example .env                       # then fill in the OIDC values
+#   cp .env.example .env                       # the secrets config/warp.yaml names
+#   $EDITOR config/warp.yaml                   # the identity provider, public URL
 #   docker compose up -d --build               # warp and Postgres
 #   docker compose --profile s3 --profile redis up -d --build   # and MinIO, Redis
 #
@@ -16,38 +17,24 @@ services:
       dockerfile: Dockerfile
     image: ${WARP_IMAGE:-warp:local}
     restart: unless-stopped
-    # One warp per database: the stores are single-writer.
-    command: >-
-      serve
-      -addr 0.0.0.0:8080
-      -web /usr/share/warp/web
-      -auth ${WARP_AUTH:-oidc}
-      -public-url ${WARP_PUBLIC_URL:-http://localhost:8080}
-      -tenant ${WARP_TENANT:-default}
-      -storage ${WARP_STORAGE:-disk}
-      -s3-bucket ${WARP_S3_BUCKET:-warp}
-      -s3-endpoint ${WARP_S3_ENDPOINT:-http://minio:9000}
-      -s3-region ${WARP_S3_REGION:-us-east-1}
-      -s3-path-style=${WARP_S3_PATH_STYLE:-true}
-      ${WARP_EXTRA_ARGS:-}
+    # One warp per database: the stores are single-writer. The spec in
+    # ./config says the rest; these flags win over it for what belongs to the
+    # container: the listen address and the console's directory.
+    command: serve -f /etc/warp -addr 0.0.0.0:8080 -web /usr/share/warp/web ${WARP_EXTRA_ARGS:-}
     ports:
       - "${WARP_BIND:-127.0.0.1}:${WARP_PORT:-8080}:8080"
+    # The variables the spec's references name ({ref: env:NAME}), such as
+    # WARP_OIDC_CLIENT_SECRET or ANTHROPIC_API_KEY. A reference to an unset
+    # variable stops warp at start.
+    env_file:
+      - path: .env
+        required: false
     environment:
       WARP_POSTGRES_URL: ${WARP_POSTGRES_URL:-postgres://warp:${POSTGRES_PASSWORD:-warp}@postgres:5432/warp?sslmode=disable}
-      WARP_REDIS_URL: ${WARP_REDIS_URL:-}
-      WARP_OIDC_ISSUER: ${WARP_OIDC_ISSUER:-}
-      WARP_OIDC_CLIENT_ID: ${WARP_OIDC_CLIENT_ID:-}
-      WARP_OIDC_CLIENT_SECRET: ${WARP_OIDC_CLIENT_SECRET:-}
-      WARP_OIDC_AUDIENCE: ${WARP_OIDC_AUDIENCE:-}
-      WARP_S3_ACCESS_KEY_ID: ${WARP_S3_ACCESS_KEY_ID:-}
-      WARP_S3_SECRET_ACCESS_KEY: ${WARP_S3_SECRET_ACCESS_KEY:-}
-      WARP_AUTHZ_POLICY: ${WARP_AUTHZ_POLICY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
-      # The workspace: agents' files and, with -storage=disk, published files.
+      # The workspace: agents' files and, with blobs.kind=disk, published files.
       - warp-data:/var/lib/warp
-      # Providers, settings and an authorization policy, read-only. Pass them
-      # with WARP_EXTRA_ARGS, such as -providers /etc/warp/providers.json.
+      # warp.yaml and any file it names (a policy, agent specs), read-only.
       - ./config:/etc/warp:ro
     depends_on:
       postgres:
