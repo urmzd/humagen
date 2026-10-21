@@ -1169,8 +1169,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// The offline provider prices nothing, so the spend is written to the
 	// ledger as a priced call would be.
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":5000}`, http.StatusOK)
-	c.f.p.Usage.Append(usage.Entry{Kind: usage.Spent, Tenant: "acme", Agent: "helper", RunID: "r-spent", Key: "r-spent/a1/1",
-		At: time.Now(), Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 1000}})
+	if _, err := c.f.p.Usage.Append(usage.Entry{Kind: usage.Spent, Tenant: "acme", Agent: "helper", RunID: "r-spent", Key: "r-spent/a1/1",
+		At: time.Now(), Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 1000}}); err != nil {
+		t.Fatal(err)
+	}
 	c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"hi"}`, http.StatusPaymentRequired)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"tenant"},"period":"day","max_runs":100,"max_concurrent":50,"spend_limit":1000000}`, http.StatusOK)
 	// With the agent at its day's limit, everything that would start it is

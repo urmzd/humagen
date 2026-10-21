@@ -19,7 +19,7 @@ var (
 )
 
 func admit(l *Ledger, tenant, project, agent, id string, at time.Time) {
-	l.Append(Entry{Kind: Admitted, Tenant: tenant, Project: project, Agent: agent, RunID: id, At: at})
+	_, _ = l.Append(Entry{Kind: Admitted, Tenant: tenant, Project: project, Agent: agent, RunID: id, At: at})
 }
 
 func TestUsageByScopeAndPeriod(t *testing.T) {
@@ -28,7 +28,9 @@ func TestUsageByScopeAndPeriod(t *testing.T) {
 	admit(l, "acme", "Launch", "lead", "r2", t0)                 // the first instant of today
 	admit(l, "acme", "", "helper", "r3", t0.Add(time.Hour))
 	admit(l, "globex", "Launch", "lead", "r9", t0.Add(time.Hour))
-	l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r1", At: t0.Add(2 * time.Hour)})
+	if _, err := l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r1", At: t0.Add(2 * time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
 
 	for name, tc := range map[string]struct {
 		scope      policy.Scope
@@ -63,10 +65,14 @@ func TestRebuildMatchesTheLiveLedger(t *testing.T) {
 		switch {
 		case len(open) > 0 && rng.IntN(3) == 0:
 			j := rng.IntN(len(open))
-			l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: open[j], At: at})
+			if _, err := l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: open[j], At: at}); err != nil {
+				t.Fatal(err)
+			}
 			open = append(open[:j], open[j+1:]...)
 		case rng.IntN(20) == 0:
-			l.Append(Entry{Kind: Refused, Tenant: "acme", Agent: "lead", At: at, Scope: &launch, Version: 1, Limit: policy.LimitRuns})
+			if _, err := l.Append(Entry{Kind: Refused, Tenant: "acme", Agent: "lead", At: at, Scope: &launch, Version: 1, Limit: policy.LimitRuns}); err != nil {
+				t.Fatal(err)
+			}
 		case len(open) > 0 && rng.IntN(3) == 0:
 			// A call, sometimes delivered twice, sometimes unpriced or in
 			// another currency, and sometimes a run's settled total.
@@ -83,7 +89,9 @@ func TestRebuildMatchesTheLiveLedger(t *testing.T) {
 				kind, key = Settled, "run:"+run
 				sp.Micros += 10_000
 			}
-			l.Append(Entry{Kind: kind, Tenant: "acme", Project: projects[i%3], Agent: agents[i%3], RunID: run, Key: key, Spend: sp, At: at})
+			if _, err := l.Append(Entry{Kind: kind, Tenant: "acme", Project: projects[i%3], Agent: agents[i%3], RunID: run, Key: key, Spend: sp, At: at}); err != nil {
+				t.Fatal(err)
+			}
 		default:
 			id := fmt.Sprintf("r%d", i)
 			admit(l, "acme", projects[rng.IntN(3)], agents[rng.IntN(3)], id, at)
@@ -123,14 +131,20 @@ func TestOldAdmissionsAreDropped(t *testing.T) {
 func TestUsageByClient(t *testing.T) {
 	l := NewLedger()
 	raise := func(client, id string) {
-		l.Append(Entry{Kind: Admitted, Tenant: "acme", Agent: "lead", Client: client, RunID: id, At: t0})
+		if _, err := l.Append(Entry{Kind: Admitted, Tenant: "acme", Agent: "lead", Client: client, RunID: id, At: t0}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	raise("docs-app", "r1")
 	raise("docs-app", "r2")
 	raise("ops-app", "r3")
 	raise("", "r4") // from the console
-	l.Append(Entry{Kind: Admitted, Tenant: "globex", Agent: "lead", Client: "docs-app", RunID: "r9", At: t0})
-	l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r1", At: t0.Add(time.Minute)})
+	if _, err := l.Append(Entry{Kind: Admitted, Tenant: "globex", Agent: "lead", Client: "docs-app", RunID: "r9", At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r1", At: t0.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
 
 	docs := policy.Scope{Kind: policy.Client, Name: "docs-app"}
 	if got := l.Usage("acme", docs, t0); got.Runs != 2 || got.Concurrent != 1 {

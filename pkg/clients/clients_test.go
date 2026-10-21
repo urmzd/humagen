@@ -290,15 +290,21 @@ func TestAnEnvReferenceNamesOnlyWarpVariables(t *testing.T) {
 
 func TestSecretsAreKeptPerTenantAndClient(t *testing.T) {
 	s := NewMemorySecrets()
-	s.Put("acme", "docs", SecretToken, "a")
-	s.Put("globex", "docs", SecretToken, "b")
+	if err := s.Put("acme", "docs", SecretToken, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Put("globex", "docs", SecretToken, "b"); err != nil {
+		t.Fatal(err)
+	}
 	if v, _ := s.Get("acme", "docs", SecretToken); v != "a" {
 		t.Fatalf("acme reads %q", v)
 	}
 	if _, ok := s.Get("acme", "ops", SecretToken); ok {
 		t.Fatal("a client read another client's secret")
 	}
-	s.Drop("acme", "docs")
+	if err := s.Drop("acme", "docs"); err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := s.Get("acme", "docs", SecretToken); ok {
 		t.Fatal("a dropped secret is still held")
 	}
