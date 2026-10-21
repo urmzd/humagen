@@ -156,7 +156,9 @@ func TestStore(t *testing.T) {
 		t.Fatalf("a second run started: %v", err)
 	}
 	run.Finish([]Result{{Passed: true}}, nil, now)
-	s.Save("acme", run)
+	if err := s.Save("acme", run); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.Begin("acme", suite, 4, "bob", now); err != nil {
 		t.Fatalf("could not run again after the first ended: %v", err)
 	}

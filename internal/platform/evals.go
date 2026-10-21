@@ -60,7 +60,9 @@ func (p *Platform) StartEval(ctx context.Context, tenant, name, by string) (eval
 			results, metrics = p.evalKnowledge(tenant, suite)
 		}
 		run.Finish(results, metrics, p.now())
-		p.Evals.Save(tenant, run)
+		if err := p.Evals.Save(tenant, run); err != nil {
+			p.log.Error("platform: eval result could not be kept", "suite", suite.Name, "run", run.ID, "error", err)
+		}
 		p.log.Info("platform: eval finished", "suite", suite.Name, "status", run.Status, "pass_rate", run.PassRate)
 		raised, err := p.Alerts.EvaluateEval(tenant, run)
 		if err != nil {
@@ -83,7 +85,9 @@ func (p *Platform) evalAgent(ctx context.Context, tenant string, suite evals.Sui
 		results = append(results, res)
 		// Publish progress, so the console can show cases as they land.
 		run.Results = results
-		p.Evals.Save(tenant, *run)
+		if err := p.Evals.Save(tenant, *run); err != nil {
+			p.log.Warn("platform: eval progress could not be kept", "suite", suite.Name, "run", run.ID, "error", err)
+		}
 	}
 	return results
 }
