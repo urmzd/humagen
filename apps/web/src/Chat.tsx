@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import type { Run } from "./adapter.ts";
 import { Composer } from "./Composer.tsx";
-import { ApiError, api, type Choice, type Project, type Revision, type Settings, type ThreadSummary } from "./api.ts";
+import { ApiError, api, type Choice, type ProjectView, type Revision, type Settings, type ThreadSummary } from "./api.ts";
 import { HomePage } from "./HomePage.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { useRunTurn } from "./Runs.tsx";
@@ -143,7 +143,9 @@ export function Chat({
   tick,
   agents,
   settings,
+  projects,
   canRun,
+  canCreateProject,
   greeting,
   onThread,
   onChanged,
@@ -161,11 +163,15 @@ export function Chat({
   tick: number;
   agents: Revision[];
   settings: Settings | null;
+  /** The project tree a new conversation can be filed in, or null while it loads. */
+  projects: ProjectView[] | null;
   canRun: boolean;
+  /** May make a project from the picker. */
+  canCreateProject: boolean;
   greeting: string;
   onThread: (id: string) => void;
   onChanged: () => void;
-  onProjectCreated: (project: Project) => void;
+  onProjectCreated: (project: ProjectView) => void;
 }) {
   const [turns, setTurns] = useState<Run[]>([]);
   const [chosen, setChosen] = useState<Record<string, string>>({});
@@ -304,7 +310,8 @@ export function Chat({
         ) : (
           <ProjectPicker
             value={project}
-            projects={settings?.projects ?? null}
+            projects={projects}
+            canCreate={canCreateProject}
             onChange={setProject}
             onCreated={onProjectCreated}
           />
