@@ -123,6 +123,7 @@ const TEMPLATE_LOOK: Record<TemplateId, { icon: Icon; tint: string }> = {
   result: { icon: SparkleIcon, tint: "bg-aui-ok/12 text-aui-ok" },
   note: { icon: InfoIcon, tint: "bg-aui-fg/10 text-aui-muted" },
   announcement: { icon: MegaphoneIcon, tint: "bg-aui-accent-soft text-aui-accent" },
+  mention: { icon: MessageIcon, tint: "bg-aui-accent-soft text-aui-accent" },
 };
 
 /** The template's look, raised to the message's severity: an urgent alert is red. */

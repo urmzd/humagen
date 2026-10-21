@@ -25,6 +25,7 @@ import { InboxPage } from "./InboxPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { Monitor } from "./Monitor.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
+import { ChannelPage } from "./Room.tsx";
 import { Schedules } from "./Schedules.tsx";
 import { Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
@@ -265,6 +266,11 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       onOpen: loadRuns,
       onState: setLive,
       onInbox: loadInbox,
+      // A person's message starts no run, so the stream says so by name.
+      onThread: () => {
+        window.clearTimeout(pending.current);
+        pending.current = window.setTimeout(loadRuns, 150);
+      },
       onEvent: (e) => {
         if (!e.kind.startsWith("lifecycle.") && !e.kind.startsWith("control.")) return;
         if (e.kind.startsWith("control.")) loadAgents();
@@ -352,11 +358,16 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       <main className="flex min-h-0 min-w-0 flex-1 flex-col max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
         {(page === "new" || page === "task") && (
           <Chat
-            key={thread ?? `new:${route.page === "new" ? `${route.project ?? ""}:${route.agent ?? ""}:${route.ask ?? ""}` : ""}`}
+            key={thread ?? `new:${route.page === "new" ? `${route.project ?? ""}:${route.channel ?? ""}:${route.agent ?? ""}:${route.ask ?? ""}` : ""}`}
             threadId={thread}
             startIn={route.page === "new" ? route.project : undefined}
             startAgent={route.page === "new" ? route.agent : undefined}
             startAsk={route.page === "new" ? route.ask : undefined}
+            startChannel={route.page === "new" ? route.channel : undefined}
+            focus={route.page === "task" ? route.message : undefined}
+            root={root}
+            workspaceName={workspaceName}
+            onOpenChannel={(project, channel) => go({ page: "channel", project, channel })}
             summary={threads.find((t) => t.id === thread)}
             tick={tick}
             agents={agents}
@@ -418,6 +429,22 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               loadProjects();
               go({ page: "projects" }, { replace: true });
             }}
+            onOpenChannel={(channel) => go({ page: "channel", project: route.name, channel })}
+          />
+        )}
+        {route.page === "channel" && (
+          <ChannelPage
+            key={`${route.project}/${route.channel}`}
+            project={route.project}
+            channel={route.channel}
+            tick={tick}
+            agents={agents}
+            projects={projects ?? []}
+            root={root}
+            workspaceName={workspaceName}
+            canRun={can("runs:write")}
+            onOpenProject={() => go({ page: "project", name: route.project, tab: "channels" })}
+            onOpenThread={openThread}
           />
         )}
         {route.page === "schedules" && (

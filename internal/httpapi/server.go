@@ -597,8 +597,8 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 	// Inbox changes ride the same stream as a named event, so a reader that
 	// only listens for run events never sees them. A notice names a message
 	// and nothing more: the reader fetches it and is shown what they may see.
-	// The watch starts before the answer does, so a change made as soon as
-	// the caller has the stream is on it.
+	// Both kinds are watched before the stream opens, so a reader that
+	// connects and then acts is told of what it did.
 	notices, unwatch := s.P.Inbox.Watch(who.Tenant)
 	defer unwatch()
 	// So do threads: a notice names a thread and the message posted or

@@ -27,8 +27,8 @@ export const DIRECTORY_TABS: DirectoryTab[] = ["people", "agents", "projects"];
  * A project's tabs. Overview is the default. More arrive with later phases of
  * docs/projects.md; an unknown tab falls back to the default.
  */
-export type ProjectTab = "overview" | "context" | "agents" | "schedules";
-export const PROJECT_TABS: ProjectTab[] = ["overview", "context", "agents", "schedules"];
+export type ProjectTab = "overview" | "context" | "agents" | "schedules" | "channels";
+export const PROJECT_TABS: ProjectTab[] = ["overview", "context", "agents", "schedules", "channels"];
 
 /** What a project is for, as the Projects page narrows to it with `?kind=`. */
 export type ProjectKindFilter = "company" | "team" | "account";
@@ -39,12 +39,15 @@ export const SETTINGS_SECTIONS: SettingsSection[] = ["profile", "appearance", "w
 
 export type Route =
   /** A new conversation, optionally with an agent picked and a first message written for it. */
-  | { page: "new"; project?: string; agent?: string; ask?: string }
-  | { page: "task"; id: string }
+  | { page: "new"; project?: string; channel?: string; agent?: string; ask?: string }
+  /** A conversation, at one of its people's messages when `message` is set. */
+  | { page: "task"; id: string; message?: string }
   /** Every project, searched with `q` and narrowed to one kind. */
   | { page: "projects"; q?: string; kind?: ProjectKindFilter }
   /** One project. The workspace itself is the project named "", written `~`. */
   | { page: "project"; name: string; tab: ProjectTab }
+  /** One of a project's channels, with its shared threads. */
+  | { page: "channel"; project: string; channel: string }
   | { page: "schedules"; name?: string }
   | { page: "monitor"; tab: MonitorTab }
   /** The inbox, at a message, at the message an alert raised, or narrowed to one kind. */
@@ -76,13 +79,14 @@ export function href(r: Route): string {
     case "new": {
       const q = new URLSearchParams();
       if (r.project) q.set("project", r.project);
+      if (r.channel) q.set("channel", r.channel);
       if (r.agent) q.set("agent", r.agent);
       if (r.ask) q.set("ask", r.ask);
       const query = q.toString();
       return query ? `/?${query}` : "/";
     }
     case "task":
-      return `/tasks/${enc(r.id)}`;
+      return r.message ? `/tasks/${enc(r.id)}?${new URLSearchParams({ message: r.message })}` : `/tasks/${enc(r.id)}`;
     case "projects": {
       const q = new URLSearchParams();
       if (r.q) q.set("q", r.q);
@@ -95,6 +99,8 @@ export function href(r: Route): string {
       const base = `/projects/${r.name === "" ? "~" : enc(r.name)}`;
       return r.tab === "overview" ? base : `${base}/${r.tab}`;
     }
+    case "channel":
+      return `/projects/${r.project === "" ? "~" : enc(r.project)}/channels/${enc(r.channel)}`;
     case "schedules":
       return r.name ? `/schedules/${enc(r.name)}` : "/schedules";
     case "monitor":
@@ -183,11 +189,21 @@ function read(pathname: string, search: string): Route {
   const [head, a, b] = parts;
   switch (head) {
     case undefined:
-      return legacy(q) ?? { page: "new", project: q.get("project") ?? undefined, agent: q.get("agent") ?? undefined, ask: q.get("ask") ?? undefined };
+      return (
+        legacy(q) ?? {
+          page: "new",
+          project: q.get("project") ?? undefined,
+          channel: q.get("channel") ?? undefined,
+          agent: q.get("agent") ?? undefined,
+          ask: q.get("ask") ?? undefined,
+        }
+      );
     case "tasks":
-      return a ? { page: "task", id: a } : { page: "new" };
+      return a ? { page: "task", id: a, message: q.get("message") || undefined } : { page: "new" };
     case "projects":
       if (!a) return { page: "projects", q: q.get("q") || undefined, kind: oneOf(q.get("kind"), PROJECT_KINDS) };
+      // A channel is a page of its own, under the project's Channels tab.
+      if (b === "channels" && parts[3]) return { page: "channel", project: a === "~" ? "" : a, channel: parts[3] };
       return { page: "project", name: a === "~" ? "" : a, tab: pick(b, PROJECT_TABS, "overview") };
     case "schedules":
       return { page: "schedules", name: a };
