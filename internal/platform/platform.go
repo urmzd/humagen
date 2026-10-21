@@ -300,6 +300,7 @@ func New(cfg Config) (*Platform, error) {
 	p.restore()
 
 	p.deliver = router.New(p.broker, p.sinks, router.WithLogger(log))
+	p.reroute()
 
 	// External tools: "mcp:<provider>[:write]" grants expand, per tenant,
 	// into the tools accepted from that provider. Declared providers are
@@ -389,6 +390,23 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
 	return callExecutor{inner: exec, resolve: p.resolveModel}, nil
+}
+
+// reroute registers the routes of every run the index holds that has not
+// ended, from the tag it was accepted with. The router keeps routes only in
+// memory, and a run accepted before a restart is resumed from the ledger by
+// the worker: without its routes, what it says after the restart would reach
+// no surface. It runs before the worker can resume anything.
+func (p *Platform) reroute() {
+	for _, run := range p.Runs.Unfinished() {
+		routes := run.Tag().Routes()
+		if len(routes) == 0 {
+			continue
+		}
+		if err := p.deliver.Register(run.ID, routes); err != nil {
+			p.log.Error("platform: the routes of a run accepted before the restart could not be registered", "tenant", run.Tenant, "run", run.ID, "error", err)
+		}
+	}
 }
 
 // Invoke accepts a tag and starts its run. Routes are registered before the run
@@ -730,8 +748,6 @@ func (p *Platform) Run(ctx context.Context) error {
 		for {
 			select {
 			case <-ctx.Done():
-				// What changed last is written before the platform stops.
-				p.flush()
 				return nil
 			case <-tick.C:
 				p.flush()
@@ -828,6 +844,9 @@ func (p *Platform) Run(ctx context.Context) error {
 	})
 
 	wg.Wait()
+	// What changed last is written once every loop has stopped, so nothing
+	// the observer folded in while the platform stopped is left unwritten.
+	p.flush()
 	close(errc)
 	return <-errc
 }

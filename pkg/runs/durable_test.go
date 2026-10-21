@@ -77,6 +77,11 @@ func TestRestart(t *testing.T) {
 		if got := again.Active(); len(got) != 2 {
 			t.Fatalf("active after restart = %v", got)
 		}
+		// What has not ended comes back with the tag it was accepted with,
+		// which is where its routes are registered again from.
+		if open := again.Unfinished(); len(open) != 2 || open[0].ID != rootID || !reflect.DeepEqual(open[0].Tag(), rootTag) {
+			t.Fatalf("unfinished after restart = %+v", open)
+		}
 		if th := again.Threads("acme", 10); len(th) != 1 || th[0].Title != "Release notes" {
 			t.Fatalf("threads after restart = %+v", th)
 		}

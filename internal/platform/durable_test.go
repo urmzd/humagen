@@ -2,14 +2,23 @@ package platform_test
 
 import (
 	"context"
+	"net/http"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/urmzd/anchor/pkg/ledger"
 	dqueue "github.com/urmzd/anchor/pkg/queue"
+	"github.com/urmzd/fiber/pkg/address"
+	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
 	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/connector"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/registry"
+	"github.com/urmzd/saige/agent/agenttest"
+	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/alerts"
@@ -68,7 +77,16 @@ func eachBackend(t *testing.T, fn func(t *testing.T, first platform.Backends, ag
 // waits until it has.
 func running(t *testing.T, b platform.Backends) (*platform.Platform, func()) {
 	t.Helper()
-	p, err := platform.New(platform.Config{Backends: b, Workspace: t.TempDir()})
+	return runningWith(t, platform.Config{Backends: b})
+}
+
+// runningWith is running with more of the configuration given.
+func runningWith(t *testing.T, cfg platform.Config) (*platform.Platform, func()) {
+	t.Helper()
+	if cfg.Workspace == "" {
+		cfg.Workspace = t.TempDir()
+	}
+	p, err := platform.New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,6 +192,129 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		await(t, q, r2.ID, runs.Completed)
 		if l := q.Runs.List(tenant, 10); len(l) != 2 || l[0].ID != r2.ID {
 			t.Fatalf("runs after restart = %+v", l)
+		}
+	})
+}
+
+// surfaceFake is a GitHub connection that keeps what it is given to deliver,
+// as the issue a run was raised on would show it.
+type surfaceFake struct {
+	mu   sync.Mutex
+	sent []delivered
+}
+
+type delivered struct {
+	to address.Address
+	e  envelope.Event
+}
+
+func (f *surfaceFake) Name() string { return string(clients.GitHub) }
+
+func (f *surfaceFake) Ingest(ctx context.Context, _ chan<- envelope.Tag) error {
+	<-ctx.Done()
+	return nil
+}
+
+func (f *surfaceFake) Deliver(_ context.Context, to address.Address, e envelope.Event) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sent = append(f.sent, delivered{to: to, e: e})
+	return nil
+}
+
+func (f *surfaceFake) Actions() []connector.Action { return nil }
+
+func (f *surfaceFake) ServeHTTP(w http.ResponseWriter, _ *http.Request) { http.NotFound(w, nil) }
+
+func (f *surfaceFake) Ingesting() bool { return true }
+
+func (f *surfaceFake) Flush(context.Context) error { return nil }
+
+// answer is the final answer delivered for a run, and where it went.
+func (f *surfaceFake) answer(runID string) (string, address.Address, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, d := range f.sent {
+		if d.e.RunID != runID || d.e.Kind != envelope.KindCompleted {
+			continue
+		}
+		if l, err := payload.Decode[payload.Lifecycle](d.e); err == nil {
+			return l.Text, d.to, true
+		}
+	}
+	return "", address.Address{}, false
+}
+
+// holding is a model that holds its call open, saying nothing, until it is
+// cancelled. It closes called when it is first called.
+type holding struct {
+	called chan struct{}
+	once   sync.Once
+}
+
+func (h *holding) Stream(ctx context.Context, _ saigetypes.Request) (<-chan saigetypes.Delta, error) {
+	h.once.Do(func() { close(h.called) })
+	out := make(chan saigetypes.Delta)
+	go func() {
+		defer close(out)
+		<-ctx.Done()
+	}()
+	return out, nil
+}
+
+// A run still working when its platform stops is resumed from the ledger by
+// the next one, and its answer reaches the surface its tag routed it to. The
+// router keeps routes only in memory, so the platform that resumes the run has
+// to register them again from the run index.
+func TestARunInFlightAcrossARestartAnswersOnItsRoute(t *testing.T) {
+	eachBackend(t, func(t *testing.T, first platform.Backends, again func() platform.Backends) {
+		ctx := t.Context()
+		model := func(m saigetypes.Provider) []agentrt.Option {
+			return []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return m, nil })}
+		}
+		connected := func(peer platform.Peer) func(registry.Store) ([]platform.Connection, error) {
+			return func(registry.Store) ([]platform.Connection, error) {
+				return []platform.Connection{{Tenant: tenant, Peer: peer}}, nil
+			}
+		}
+
+		held := &holding{called: make(chan struct{})}
+		before := &surfaceFake{}
+		p, stop := runningWith(t, platform.Config{Backends: first, AgentOptions: model(held), Connections: connected(before)})
+		if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "lead", Model: "offline", Provider: "offline", SystemPrompt: "Lead."}, "test"); err != nil {
+			t.Fatal(err)
+		}
+		issue := address.MustParse("github://acme/repo/issues/7")
+		asked := tag("in-flight", "lead")
+		asked.Source = issue
+		r, err := p.Invoke(ctx, asked)
+		if err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-held.called:
+		case <-time.After(10 * time.Second):
+			t.Fatal("the run never called its model")
+		}
+		stop()
+		if _, _, ok := before.answer(r.ID); ok {
+			t.Fatal("the run answered before the restart")
+		}
+
+		after := &surfaceFake{}
+		const answer = "Answered after the restart."
+		q, _ := runningWith(t, platform.Config{
+			Backends:     again(),
+			AgentOptions: model(&agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{say(answer)}}),
+			Connections:  connected(after),
+		})
+		await(t, q, r.ID, runs.Completed)
+		eventually(t, "the answer reached the issue", func() bool {
+			_, _, ok := after.answer(r.ID)
+			return ok
+		})
+		if got, to, _ := after.answer(r.ID); got != answer || to.String() != issue.String() {
+			t.Fatalf("delivered %q to %s, want %q to %s", got, to, answer, issue)
 		}
 	})
 }

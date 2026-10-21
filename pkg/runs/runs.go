@@ -570,6 +570,20 @@ func (x *Index) Active() []string {
 	return out
 }
 
+// Unfinished returns the runs that have not ended, oldest first, each with the
+// tag it was accepted with.
+func (x *Index) Unfinished() []Run {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	var out []Run
+	for _, id := range x.order {
+		if r := x.runs[id]; !r.Status.Terminal() {
+			out = append(out, *r)
+		}
+	}
+	return out
+}
+
 // End closes a run from a source other than its own events. It returns the run
 // and whether this call is what ended it, so an ending is still acted on once.
 //
