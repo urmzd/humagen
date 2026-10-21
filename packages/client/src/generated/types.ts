@@ -716,7 +716,7 @@ export interface ProjectStep {
 }
 
 /** A project, where it sits, and what is in it. */
-export type ProjectView = Project & { depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits")[] };
+export type ProjectView = Project & { depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[] };
 
 /** A limit a run filed in the project falls under for being there, and
 the project it is set on. What the limit allows is read from
@@ -1039,6 +1039,15 @@ export interface ScheduleView {
   next: string[];
   /** Up to 20 recent runs. */
   recent: Run[];
+}
+
+/** An announcement to post. */
+export interface AnnouncementInput {
+  /** One line. */
+  subject: string;
+  text: string;
+  /** `info` when left out. */
+  severity?: "info" | "warning";
 }
 
 /** What a reader's inbox holds open. */
@@ -2506,6 +2515,7 @@ export interface UpdatePreferencesBody {
   accent?: string;
   onboarded?: boolean;
   pinned?: string[];
+  muted?: string[];
 }
 
 export interface ListProjectsResponse {
@@ -2515,6 +2525,11 @@ export interface ListProjectsResponse {
 
 export interface ListProjectHistoryResponse {
   changes: ProjectChange[];
+  next: string | null;
+}
+
+export interface GetProjectInboxResponse {
+  messages: InboxMessage[];
   next: string | null;
 }
 

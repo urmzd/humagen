@@ -18,6 +18,8 @@ const field: ProjectView = {
   members: [{ who: "*", role: "member" }],
   experts: [],
   agents: { enable: [] },
+  access: { role: "owner", from: "", via: "projects:govern" },
+  actions: [],
   version: 1,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
@@ -29,8 +31,6 @@ const field: ProjectView = {
   schedules: 0,
   notes: 0,
   proposed: 0,
-  access: { role: "owner", from: "", via: "*" },
-  actions: [],
 };
 const older: Revision = { ...writer, rev: 1, hash: "h1", spec: { ...writer.spec, system_prompt: "Write." } };
 const notes: Note[] = [{ id: "n1", text: "Releases go out on Tuesdays.", source: "person", status: "approved", by: "ada", at: new Date().toISOString() }];

@@ -5,6 +5,7 @@ import {
   ApiError,
   api,
   type Note,
+  type ProjectAction,
   type ProjectAccount,
   type ProjectDetail,
   type ProjectKind,
@@ -15,6 +16,8 @@ import {
 } from "./api.ts";
 import { ScopeLimits } from "./Billing.tsx";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
+import type { Source } from "./mail.ts";
+import { ProjectHistory, ProjectInbox, ProjectLimits, ProjectPeople } from "./ProjectTabs.tsx";
 import {
   above,
   accountOf,
@@ -75,7 +78,7 @@ function Go({ to, onGo, className, children }: { to: string; onGo: () => void; c
   );
 }
 
-const projectHref = (name: string) => href({ page: "project", name, tab: "overview" });
+const projectHref = (name: string) => href({ page: "project", name, tab: "inbox" });
 
 /** Whether the viewport is a phone's, where the tree stops nesting. Follows the window as it resizes. */
 export function useNarrow(): boolean {
@@ -398,8 +401,21 @@ export function NewProject({
   );
 }
 
-/** What every agent in the project is sent, and what is waiting to become that. */
-function SharedMemory({ project, canWrite, onChanged }: { project: string; canWrite: boolean; onChanged: () => void }) {
+/**
+ * What every agent in the project is sent, and what is waiting to become that.
+ * An owner decides what is kept; a member's note is a proposal for them.
+ */
+function SharedMemory({
+  project,
+  canWrite,
+  canPropose = false,
+  onChanged,
+}: {
+  project: string;
+  canWrite: boolean;
+  canPropose?: boolean;
+  onChanged: () => void;
+}) {
   const [notes, setNotes] = useState<Note[]>([]);
   const [text, setText] = useState("");
   const [picked, setPicked] = useState<Set<string>>(() => new Set());
@@ -517,7 +533,8 @@ function SharedMemory({ project, canWrite, onChanged }: { project: string; canWr
           ))}
         </ul>
       )}
-      {canWrite && (
+      {canPropose && !canWrite && <p className="text-aui-xs text-aui-muted">{defaultCopy.project.proposeHint}</p>}
+      {(canWrite || canPropose) && (
         <form
           className="flex gap-2"
           onSubmit={(e) => {
@@ -1085,6 +1102,13 @@ export function ProjectPage({
   name,
   tab,
   onTab,
+  message,
+  onMessage = () => {},
+  me = "",
+  inboxTick,
+  muted = [],
+  onMute,
+  onOpenSource = () => {},
   workspaceName,
   projects,
   schedules,
@@ -1109,6 +1133,18 @@ export function ProjectPage({
   /** Open one of the project's channels. */
   onOpenChannel?: (channel: string) => void;
   onTab: (tab: ProjectTab) => void;
+  /** The message open in its inbox, and how another is opened. */
+  message?: string;
+  onMessage?: (id: string | null) => void;
+  /** The reader's subject, to tell their own announcements apart. */
+  me?: string;
+  /** Changes whenever the inbox may have. */
+  inboxTick?: unknown;
+  /** The projects whose announcements stay out of the reader's own inbox. */
+  muted?: string[];
+  onMute?: (project: string, muted: boolean) => void;
+  /** Open what an inbox message is about. */
+  onOpenSource?: (source: Source) => void;
   workspaceName: string;
   /** Every project, for the places a sub-project could go and the title shown while this one loads. */
   projects: ProjectView[];
@@ -1134,6 +1170,7 @@ export function ProjectPage({
   const [missing, setMissing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [moving, setMoving] = useState<string | null>(null);
   const [reads, setReads] = useState(0);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
@@ -1177,9 +1214,12 @@ export function ProjectPage({
 
   const p = detail.project;
   const root = p.name === "";
-  // Until projects have owners, the workspace and company-wide projects are changed only by those who govern projects.
+  // The workspace and company-wide projects are changed only by those who govern projects as well.
   const governed = root || p.kind === "company";
-  const canWrite = can("projects:write") && (!governed || can("projects:govern"));
+  // What the caller may do here is their permission and their role together, as the server says.
+  const may = (action: ProjectAction) => p.actions.includes(action);
+  const canWrite = may("edit");
+  const isMuted = muted.includes(p.name);
   const parent = detail.ancestors[detail.ancestors.length - 1];
   const back = parent && parent.name !== "" ? { label: titleOf(parent), onClick: () => onOpen(parent.name) } : { label: words.allProjects, onClick: onOpenAll };
   const meta = root ? words.workspace : [kindWord(p.kind), p.account?.customer, p.depth > 1 ? words.within(above(p)) : null].filter(Boolean).join(" · ");
@@ -1201,12 +1241,31 @@ export function ProjectPage({
       lede={root ? words.workspaceHint : p.description}
       actions={
         <>
+          {!root && onMute && (
+            <button type="button" className={button} onClick={() => onMute(p.name, !isMuted)}>
+              {isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute}
+            </button>
+          )}
           {canWrite && !root && !editing && (
             <button type="button" className={button} onClick={() => setEditing(true)}>
               {words.editProject}
             </button>
           )}
-          {canWrite && !root && !p.managed && (
+          {may("move") && moving === null && (
+            <button type="button" className={button} onClick={() => setMoving(p.parent ?? "")}>
+              {defaultCopy.roles.moveProject}
+            </button>
+          )}
+          {may("archive") && (
+            <button
+              type="button"
+              className={button}
+              onClick={() => api.updateProject(p.name, { ...updateOf(p), archived: !p.archived }).then(changed).catch(fail(setProblem, words.failed.save))}
+            >
+              {p.archived ? defaultCopy.roles.unarchive : defaultCopy.roles.archive}
+            </button>
+          )}
+          {may("delete") && (
             <button type="button" className={button} onClick={() => api.deleteProject(p.name).then(onDeleted).catch(fail(setProblem, words.failed.delete))}>
               {words.deleteProject}
             </button>
@@ -1218,9 +1277,52 @@ export function ProjectPage({
           )}
         </>
       }
-      tabs={<Tabs label={titleOf(p, workspaceName)} value={tab} tabs={PROJECT_TABS.map((id) => ({ id, label: words.tab[id] ?? id }))} onChange={onTab} />}
+      tabs={
+        <Tabs
+          label={titleOf(p, workspaceName)}
+          value={tab}
+          tabs={PROJECT_TABS.map((id) => ({ id, label: words.tab[id] ?? defaultCopy.project.tabs[id as keyof typeof defaultCopy.project.tabs] ?? id }))}
+          onChange={onTab}
+        />
+      }
     >
       <Problem message={problem} />
+      {isMuted && <p className="text-aui-xs text-aui-muted">{defaultCopy.announcements.muted}</p>}
+      {p.archived && <p className="text-aui-xs text-aui-muted">{defaultCopy.roles.archived}</p>}
+      {moving !== null && (
+        <form
+          className="flex flex-wrap items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            api
+              .moveProject(p.name, p.version, moving)
+              .then(() => {
+                setMoving(null);
+                changed();
+              })
+              .catch(fail(setProblem, words.failed.save));
+          }}
+        >
+          <Menu
+            label={defaultCopy.project.moveUnder}
+            value={moving}
+            options={[
+              { value: "", label: defaultCopy.project.topLevel },
+              ...projects
+                // Not under itself or anything below it, and only where the caller works.
+                .filter((q) => q.name !== p.name && !q.path.some((step) => step.name === p.name) && (q.access.role === "member" || q.access.role === "owner"))
+                .map((q) => ({ value: q.name, label: titleOf(q, workspaceName), hint: q.depth > 1 ? words.within(above(q)) : undefined })),
+            ]}
+            onChange={setMoving}
+          />
+          <button type="submit" className={primary} disabled={moving === (p.parent ?? "")}>
+            {defaultCopy.project.move}
+          </button>
+          <button type="button" className={button} onClick={() => setMoving(null)}>
+            {words.cancel}
+          </button>
+        </form>
+      )}
       {p.managed && <p className="text-aui-xs text-aui-muted">{words.managed}</p>}
       {can("projects:write") && governed && !can("projects:govern") && <p className="text-aui-xs text-aui-muted">{words.governed}</p>}
       {editing && (
@@ -1234,7 +1336,15 @@ export function ProjectPage({
         />
       )}
 
-      {tab === "agents" ? (
+      {tab === "inbox" ? (
+        <ProjectInbox key={p.name} project={p} me={me} signal={inboxTick} message={message} onMessage={onMessage} onOpen={onOpenSource} onChanged={onChanged} />
+      ) : tab === "people" ? (
+        <ProjectPeople key={`${p.name}:${p.version}`} project={p} onChanged={changed} />
+      ) : tab === "limits" ? (
+        <ProjectLimits project={p} scope={ownScope} chain={chain} canBilling={can("billing:write")} tick={tick} />
+      ) : tab === "history" ? (
+        <ProjectHistory project={p} tick={tick} />
+      ) : tab === "agents" ? (
         <ProjectAgentsTab
           key={p.name}
           name={p.name}
@@ -1275,7 +1385,7 @@ export function ProjectPage({
             <SubProjects
               detail={detail}
               places={projects}
-              canCreate={can("projects:write")}
+              canCreate={may("create")}
               canGovern={can("projects:govern")}
               onOpen={onOpen}
               onCreated={(created) => {
@@ -1283,14 +1393,9 @@ export function ProjectPage({
                 onOpen(created.name);
               }}
             />
-            {/* The limit editor needs the wide column; the limits above say how they reach here. */}
-            <section className={section} aria-label={words.limits}>
-              <h2 className={heading}>{words.limits}</h2>
-              <ScopeLimits key={p.name} scope={ownScope} canWrite={can("billing:write")} tick={tick} chain={chain} />
-            </section>
           </div>
           <aside className="flex flex-col gap-8">
-            <SharedMemory project={p.name} canWrite={canWrite} onChanged={changed} />
+            <SharedMemory project={p.name} canWrite={may("notes")} canPropose={may("propose")} onChanged={changed} />
             <Scheduled
               name={p.name}
               title={titleOf(p, workspaceName)}

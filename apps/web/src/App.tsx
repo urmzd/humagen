@@ -30,7 +30,10 @@ import { Schedules } from "./Schedules.tsx";
 import { Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
-import { type AgentTab, PROJECT_KINDS, type Route, type SettingsSection, useRoute } from "./route.ts";
+import { updatesOf } from "@warp/adapter";
+import { HomeLines } from "./HomePage.tsx";
+import { type Source as About, type PlatformMessage, transport as mail } from "./mail.ts";
+import { type AgentTab, href, PROJECT_KINDS, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { Page, primary } from "./ui.tsx";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "error"; message: string } | { state: "ready"; me: Me };
@@ -160,6 +163,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     pinned: [],
     muted: [],
   });
+  // The reader's own open announcements, for What's new on Home.
+  const [announced, setAnnounced] = useState<PlatformMessage[]>([]);
   const [day, setDay] = useState<Summary | null>(null);
   const [live, setLive] = useState(false);
   // Bumped whenever a run starts or ends, so pages that aggregate refetch.
@@ -205,6 +210,11 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const loadInbox = useCallback(() => {
     if (!can("runs:read")) return;
     api.inboxCount().then(setInboxCounts).catch(() => {});
+    if (can("projects:read"))
+      mail
+        .list({ limit: 20, state: "open", kind: "announcement" })
+        .then((page) => setAnnounced(page.messages))
+        .catch(() => {});
     setInboxTick((t) => t + 1);
     // Settling a message settles its alert, which the Alerts badge counts.
     if (can("alerts:read")) api.alerts().then(setAlerts).catch(() => {});
@@ -315,7 +325,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // A new conversation is home: the same empty composer, at the bare address.
   const newChat = (inProject?: string) => go({ page: "new", project: inProject });
   // "~" is how an address or a message names the workspace, which is the project "".
-  const openProject = (name: string) => go({ page: "project", name: name === "~" ? "" : name, tab: "overview" });
+  // A project opens on its inbox.
+  const openProject = (name: string, tab: ProjectTab = "inbox") => go({ page: "project", name: name === "~" ? "" : name, tab });
   const projectNames = useMemo(() => (projects ?? []).map((p) => p.name), [projects]);
   const workspaceName = workspace?.workspace_name || me.principal.tenant;
   const openAgent = (name: string | null, tab: AgentTab = "prompt") => go({ page: "agent", name, tab });
@@ -331,10 +342,41 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       .then(setPrefs)
       .catch(() => setPrefs(before));
   };
+  // What a message is about, opened where it lives.
+  const openSource = (source: About) =>
+    source.kind === "run"
+      ? openRun(source.id)
+      : source.kind === "thread"
+        ? openThread(source.id)
+        : source.kind === "agent"
+          ? openAgent(source.id)
+          : source.kind === "project"
+            ? openProject(source.id)
+            : source.kind === "artifact"
+              ? go({ page: "artifacts", artifact: source.id })
+              : go({ page: "monitor", tab: "rules" });
+  // Muting shows at once and is saved with the person's preferences.
+  const mute = (project: string, on: boolean) => {
+    const next = on ? [...prefs.muted.filter((p) => p !== project), project] : prefs.muted.filter((p) => p !== project);
+    const before = prefs;
+    setPrefs({ ...prefs, muted: next });
+    api
+      .savePreferences({ display_name: prefs.display_name, theme: prefs.theme, accent: prefs.accent, muted: next })
+      .then(setPrefs)
+      .catch(() => setPrefs(before));
+  };
   const stats = useMemo(() => new Map((day?.by_agent ?? []).map((g) => [g.name, g])), [day]);
   const agentName = route.page === "agent" ? route.name : null;
   const editing = agents.find((a) => a.spec.name === agentName) ?? null;
   const shownName = prefs?.display_name || me.principal.name || "";
+  const updates = useMemo(() => {
+    const titles = new Map((projects ?? []).map((p) => [p.name, p.title || p.name]));
+    return updatesOf(
+      announced,
+      (name) => (name === "" ? workspaceName : (titles.get(name) ?? name)),
+      (name, id) => href({ page: "project", name, tab: "inbox", message: id }),
+    );
+  }, [announced, projects, workspaceName]);
 
   return (
     <div className="flex h-full text-aui-fg">
@@ -376,6 +418,14 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             canRun={can("runs:write")}
             canCreateProject={can("projects:write")}
             greeting={greeting(shownName)}
+            home={
+              <HomeLines
+                needsYou={inboxCounts.open}
+                updates={updates}
+                onInbox={() => go({ page: "inbox" })}
+                onUpdate={(u) => go({ page: "project", name: u.project, tab: "inbox", message: u.id })}
+              />
+            }
             onProjectCreated={(project) => {
               setProjects((current) => [...(current ?? []).filter((p) => p.name !== project.name), project]);
               loadProjects();
@@ -391,7 +441,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             workspaceName={workspaceName}
             q={route.q ?? ""}
             kind={route.kind}
-            onFilter={(q, kind) => go({ page: "projects", q: q || undefined, kind: PROJECT_KINDS.find((k) => k === kind) }, { replace: true })}
+            onFilter={(q, kind) =>
+              go({ page: "projects", q: q || undefined, kind: PROJECT_KINDS.find((k) => k === kind) }, { replace: true })
+            }
             canCreate={can("projects:write")}
             canGovern={can("projects:govern")}
             onOpen={openProject}
@@ -407,6 +459,13 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             name={route.name}
             tab={route.tab}
             onTab={(tab) => go({ page: "project", name: route.name, tab }, { replace: true })}
+            message={route.message}
+            onMessage={(id) => go({ page: "project", name: route.name, tab: "inbox", message: id ?? undefined }, { replace: true })}
+            me={me.principal.subject}
+            inboxTick={inboxTick}
+            muted={prefs.muted}
+            onMute={mute}
+            onOpenSource={openSource}
             workspaceName={workspaceName}
             projects={projects ?? []}
             schedules={schedules}
@@ -486,19 +545,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             kind={route.kind ?? ""}
             onKind={(kind) => go({ page: "inbox", kind: kind || undefined }, { replace: true })}
             onCounts={setInboxCounts}
-            onOpen={(source) =>
-              source.kind === "run"
-                ? openRun(source.id)
-                : source.kind === "thread"
-                  ? openThread(source.id)
-                  : source.kind === "agent"
-                    ? openAgent(source.id)
-                    : source.kind === "project"
-                      ? openProject(source.id)
-                      : source.kind === "artifact"
-                        ? go({ page: "artifacts", artifact: source.id })
-                        : go({ page: "monitor", tab: "rules" })
-            }
+            onOpen={openSource}
           />
         )}
         {route.page === "context" && (

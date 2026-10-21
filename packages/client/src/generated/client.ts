@@ -6,6 +6,7 @@ import type {
   AgentSpec,
   Alert,
   AlertRule,
+  AnnouncementInput,
   Approved,
   Artifact,
   CallPolicy,
@@ -22,6 +23,7 @@ import type {
   EvalRun,
   EvalSuite,
   GetInboxMessageResponse,
+  GetProjectInboxResponse,
   GetRunTraceResponse,
   GetUsageResponse,
   InboxCounts,
@@ -2824,6 +2826,95 @@ limit an admin set is 409, and changes with `billing:write` on
   async deleteProjectLimitRaw(name: string, options?: RequestOptions): Promise<ApiResponse<void>> {
     let path = "/api/projects/{name}/limits";
     path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Every inbox message filed in the project (`source.project`), and with
+`children=true` in the projects below it too: alerts, failures,
+questions, results, files, proposed notes and announcements. Everyone
+who can see the project reads it, so an announcement here reaches
+every reader, member or not; a message addressed to someone in
+particular still reaches only them, and each kind still needs its
+own permission. `next` is the cursor for the page after this one, or
+null at the end.
+ */
+  async getProjectInbox(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "announcement")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<GetProjectInboxResponse> {
+    let path = "/api/projects/{name}/inbox";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (kind !== undefined && kind !== null) { for (const _v of kind) _q.append("kind", String(_v)); }
+    if (children !== undefined && children !== null) _q.set("children", String(children));
+    if (state !== undefined && state !== null) _q.set("state", String(state));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GetProjectInboxResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectInboxRaw(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "announcement")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<GetProjectInboxResponse>> {
+    let path = "/api/projects/{name}/inbox";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (kind !== undefined && kind !== null) { for (const _v of kind) _q.append("kind", String(_v)); }
+    if (children !== undefined && children !== null) _q.set("children", String(children));
+    if (state !== undefined && state !== null) _q.set("state", String(state));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GetProjectInboxResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** It needs at least the role the project lets announce (`announce`,
+owner when it names none). It reaches the members of the project and
+of every project below it, read as one message, never a copy per
+person: each reader hides or snoozes only their own copy. Its text is
+plain, and surfaces escape mention syntax before showing it. A
+project posts at most 20 a day and a workspace 200 (429).
+ */
+  async postAnnouncement(name: string, body: AnnouncementInput, options?: RequestOptions): Promise<InboxMessage> {
+    let path = "/api/projects/{name}/announcements";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<InboxMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async postAnnouncementRaw(name: string, body: AnnouncementInput, options?: RequestOptions): Promise<ApiResponse<InboxMessage>> {
+    let path = "/api/projects/{name}/announcements";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<InboxMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Its author or an owner of the project withdraws it. An id that is not
+an announcement in this project is 404.
+ */
+  async withdrawAnnouncement(name: string, id: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/projects/{name}/announcements/{id}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async withdrawAnnouncementRaw(name: string, id: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/projects/{name}/announcements/{id}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("DELETE", path, {
       ...options,
     });

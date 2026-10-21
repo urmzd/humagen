@@ -126,6 +126,16 @@ const TEMPLATE_LOOK: Record<TemplateId, { icon: Icon; tint: string }> = {
   mention: { icon: MessageIcon, tint: "bg-aui-accent-soft text-aui-accent" },
 };
 
+/**
+ * What setting a message aside is called. An announcement is everyone's, and
+ * putting it away hides only the reader's own copy, so it says so.
+ */
+function hideLabel(message: InboxMessage): string {
+  return messageTemplate(message) === "announcement"
+    ? defaultCopy.announcements.hideForMe
+    : defaultCopy.dismiss;
+}
+
 /** The template's look, raised to the message's severity: an urgent alert is red. */
 function lookOf(message: InboxMessage): { icon: Icon; tint: string } {
   const template = messageTemplate(message);
@@ -400,8 +410,8 @@ export function Mailbox({
           <button
             type="button"
             onClick={() => dismiss(m)}
-            title={copy.dismiss}
-            aria-label={`${copy.dismiss}: ${m.subject}`}
+            title={hideLabel(m)}
+            aria-label={`${hideLabel(m)}: ${m.subject}`}
             className="absolute top-2 right-2 inline-flex size-6 items-center justify-center rounded-aui-sm text-aui-muted opacity-0 transition-opacity hover:bg-aui-hover hover:text-aui-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-aui-accent group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none"
           >
             <XIcon size={14} />
@@ -578,7 +588,7 @@ function ReadingPane({
             </button>
             <button type="button" onClick={onDismiss} className={headerButton}>
               <XIcon size={14} />
-              {copy.dismiss}
+              {hideLabel(message)}
             </button>
           </div>
         )}
@@ -638,6 +648,9 @@ function ReadingPane({
         </WebSurface>
         {open && openParts(message).length === 0 && (
           <p className="pt-4 text-aui-muted text-aui-xs">{copy.mailbox.readOnly}</p>
+        )}
+        {state === "dismissed" && template === "announcement" && (
+          <p className="pt-4 text-aui-muted text-aui-xs">{copy.announcements.hiddenForYou}</p>
         )}
       </div>
     </article>

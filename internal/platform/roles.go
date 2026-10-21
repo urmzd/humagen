@@ -221,3 +221,15 @@ func memoryProject(part inbox.Part) (string, bool) {
 func ownsNotes(tree *projects.Tree, who auth.Principal, project string) bool {
 	return who.Can(auth.ProjectsWrite) && tree.Resolve(project, ReaderOf(who)).Role == projects.Owner
 }
+
+// OwnsHome holds a caller to owning the project an agent lives in, when it
+// lives in one: changing a project agent, or where it lives, is changing that
+// project. A platform agent, which lives nowhere, needs nothing more.
+func (p *Platform) OwnsHome(who auth.Principal, agent string) error {
+	home, homed := p.Projects.Tree(who.Tenant).Home(agent)
+	if !homed {
+		return nil
+	}
+	_, _, err := p.ProjectRole(who, home, projects.Owner)
+	return err
+}

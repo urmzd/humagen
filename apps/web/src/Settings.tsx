@@ -380,7 +380,7 @@ export function Settings({
                       <a href={href({ page: "projects" })} className={button} onClick={follow(onOpenProjects)}>
                         Open Projects
                       </a>
-                      <a href={href({ page: "project", name: "", tab: "overview" })} className={button} onClick={follow(onOpenWorkspace)}>
+                      <a href={href({ page: "project", name: "", tab: "inbox" })} className={button} onClick={follow(onOpenWorkspace)}>
                         Open the Workspace
                       </a>
                     </div>

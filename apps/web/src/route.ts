@@ -24,11 +24,12 @@ export type DirectoryTab = "people" | "agents" | "projects";
 export const DIRECTORY_TABS: DirectoryTab[] = ["people", "agents", "projects"];
 
 /**
- * A project's tabs. Overview is the default. More arrive with later phases of
- * docs/projects.md; an unknown tab falls back to the default.
+ * A project's tabs. The inbox is the default, so `/projects/{name}` opens what
+ * is new there; an unknown tab falls back to it. More arrive with later phases
+ * of docs/projects.md.
  */
-export type ProjectTab = "overview" | "context" | "agents" | "schedules" | "channels";
-export const PROJECT_TABS: ProjectTab[] = ["overview", "context", "agents", "schedules", "channels"];
+export type ProjectTab = "inbox" | "overview" | "context" | "agents" | "people" | "limits" | "history" | "schedules" | "channels";
+export const PROJECT_TABS: ProjectTab[] = ["inbox", "overview", "context", "agents", "people", "limits", "history", "schedules", "channels"];
 
 /** What a project is for, as the Projects page narrows to it with `?kind=`. */
 export type ProjectKindFilter = "company" | "team" | "account";
@@ -44,8 +45,8 @@ export type Route =
   | { page: "task"; id: string; message?: string }
   /** Every project, searched with `q` and narrowed to one kind. */
   | { page: "projects"; q?: string; kind?: ProjectKindFilter }
-  /** One project. The workspace itself is the project named "", written `~`. */
-  | { page: "project"; name: string; tab: ProjectTab }
+  /** One project at a tab, and in its inbox, at a message. The workspace itself is the project named "", written `~`. */
+  | { page: "project"; name: string; tab: ProjectTab; message?: string }
   /** One of a project's channels, with its shared threads. */
   | { page: "channel"; project: string; channel: string }
   | { page: "schedules"; name?: string }
@@ -97,7 +98,8 @@ export function href(r: Route): string {
     case "project": {
       // Names never hold "/", so nesting lives in the tree, never in the path.
       const base = `/projects/${r.name === "" ? "~" : enc(r.name)}`;
-      return r.tab === "overview" ? base : `${base}/${r.tab}`;
+      if (r.tab !== "inbox") return `${base}/${r.tab}`;
+      return r.message ? `${base}?message=${enc(r.message)}` : base;
     }
     case "channel":
       return `/projects/${r.project === "" ? "~" : enc(r.project)}/channels/${enc(r.channel)}`;
@@ -200,11 +202,13 @@ function read(pathname: string, search: string): Route {
       );
     case "tasks":
       return a ? { page: "task", id: a, message: q.get("message") || undefined } : { page: "new" };
-    case "projects":
+    case "projects": {
       if (!a) return { page: "projects", q: q.get("q") || undefined, kind: oneOf(q.get("kind"), PROJECT_KINDS) };
       // A channel is a page of its own, under the project's Channels tab.
       if (b === "channels" && parts[3]) return { page: "channel", project: a === "~" ? "" : a, channel: parts[3] };
-      return { page: "project", name: a === "~" ? "" : a, tab: pick(b, PROJECT_TABS, "overview") };
+      const tab = pick(b, PROJECT_TABS, "inbox");
+      return { page: "project", name: a === "~" ? "" : a, tab, message: tab === "inbox" ? (q.get("message") ?? undefined) : undefined };
+    }
     case "schedules":
       return { page: "schedules", name: a };
     case "monitor":

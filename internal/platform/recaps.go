@@ -108,7 +108,7 @@ func (p *Platform) deliverToProject(run runs.Run) {
 	if projects.EffectiveAgentPosts(tree, run.Project) == projects.AgentPostsPublish {
 		_, err := p.postFromAgent(run.Tenant, inbox.DraftPart{
 			Project: run.Project, Agent: run.Agent, Run: run.ID, Subject: subject, Text: text,
-		}, run.Thread, "")
+		}, "")
 		switch {
 		case errors.Is(err, inbox.ErrLimit):
 			p.heldBack(run, subject, text, where+" has posted all the announcements it may today")
@@ -137,16 +137,12 @@ func (p *Platform) deliverToProject(run runs.Run) {
 func draftKey(run string) string { return "draft:" + run }
 
 // postFromAgent posts an announcement an agent wrote, in d's project, linked
-// to the run that wrote it. approvedBy is who published it from a draft, or
-// "" for a post the project publishes as it comes.
-func (p *Platform) postFromAgent(tenant string, d inbox.DraftPart, thread, approvedBy string) (inbox.Message, error) {
-	return p.Inbox.Post(tenant, inbox.Message{
-		Subject:  d.Subject,
-		From:     inbox.From{Kind: "agent", Name: d.Agent, ApprovedBy: approvedBy},
-		Severity: inbox.Info,
-		Source:   inbox.Source{Run: d.Run, Thread: thread, Agent: d.Agent, Project: d.Project},
-		Parts:    []inbox.Part{{Type: inbox.PartText, Text: d.Text}},
-	}, p.now(), inbox.PostCaps{})
+// to the run that wrote it, through the platform's one way in (Announce).
+// approvedBy is who published it from a draft, or "" for a post the project
+// publishes as it comes.
+func (p *Platform) postFromAgent(tenant string, d inbox.DraftPart, approvedBy string) (inbox.Message, error) {
+	return p.Announce(tenant, d.Project, inbox.From{Kind: "agent", Name: d.Agent, ApprovedBy: approvedBy},
+		Announcement{Subject: d.Subject, Text: d.Text, Severity: inbox.Info, Run: d.Run}, p.now())
 }
 
 // openDrafts counts the drafts a project's owners have still to decide.
@@ -258,7 +254,7 @@ func clipRunes(s string, limit int) string {
 // puts the agent's words in front of everyone it reaches.
 func (p *Platform) ownsDraft(who auth.Principal, d inbox.DraftPart) error {
 	tree := p.Projects.Tree(who.Tenant)
-	if tree.Resolve(d.Project, ReaderOf(who)).Role == projects.Owner {
+	if ownsNotes(tree, who, d.Project) {
 		return nil
 	}
 	return fmt.Errorf("%w: deciding a draft needs projects:write, and you need to own %s", ErrForbidden, p.whereOf(who.Tenant, tree, d.Project))

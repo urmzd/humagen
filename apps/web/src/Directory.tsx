@@ -223,7 +223,7 @@ function Projects({
   return (
     <section className="flex flex-col gap-3" aria-label={words.tabs.projects}>
       <p className="text-aui-sm text-aui-fg">
-        <a href={href({ page: "project", name: "", tab: "overview" })} onClick={follow(() => onOpen(""))} className="hover:underline">
+        <a href={href({ page: "project", name: "", tab: "inbox" })} onClick={follow(() => onOpen(""))} className="hover:underline">
           {workspaceName}
         </a>
       </p>
@@ -236,7 +236,7 @@ function Projects({
             return (
               <li key={p.name} className="flex items-start gap-3 py-2.5" style={{ paddingLeft: `${Math.min(p.depth - 1, 3) * 16}px` }}>
                 <span className="min-w-0 flex-1">
-                  <a href={href({ page: "project", name: p.name, tab: "overview" })} onClick={follow(() => onOpen(p.name))} className="block truncate text-aui-sm text-aui-fg hover:underline">
+                  <a href={href({ page: "project", name: p.name, tab: "inbox" })} onClick={follow(() => onOpen(p.name))} className="block truncate text-aui-sm text-aui-fg hover:underline">
                     {titleOf(p)}
                   </a>
                   <span className="block truncate text-aui-xs text-aui-muted">

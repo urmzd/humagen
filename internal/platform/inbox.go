@@ -173,6 +173,14 @@ func seenBy(tree *projects.Tree, m inbox.Message, who auth.Principal) inbox.Mess
 				}
 				continue
 			}
+			// An agent's draft is its project's owners' to decide, as its
+			// notes are.
+			if p.Type == inbox.PartDraft && p.Draft != nil {
+				if ownsNotes(tree, who, p.Draft.Project) {
+					p.Actions = append(p.Actions, a)
+				}
+				continue
+			}
 			if perm, ok := needs(p.Type, a); ok && who.Can(perm) {
 				p.Actions = append(p.Actions, a)
 			}
@@ -391,7 +399,7 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 		}
 		note = fmt.Sprintf("Kept %d of %d", kept, len(part.Memory.Notes))
 	case part.Type == inbox.PartDraft && r.Action == ActPublish:
-		posted, err := p.postFromAgent(who.Tenant, *part.Draft, m.Source.Thread, who.Subject)
+		posted, err := p.postFromAgent(who.Tenant, *part.Draft, who.Subject)
 		if err != nil {
 			return inbox.Message{}, err
 		}
@@ -422,7 +430,7 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			return inbox.Message{}, err
 		}
 	} else {
-		p.settle(who.Tenant, id, who.Subject)
+		p.settle(who.Tenant, id, reader, who.Subject)
 	}
 	return p.InboxGet(who, id)
 }
@@ -434,9 +442,10 @@ func (p *Platform) audit(who auth.Principal, m inbox.Message, part, action, note
 		"part", part, "action", action, "note", note, "alert", m.Source.Alert, "run", m.Source.Run)
 }
 
-// settle closes whatever is still open in a message once it has been dealt with.
-func (p *Platform) settle(tenant, id, by string) {
-	m, err := p.Inbox.Get(tenant, id, by)
+// settle closes whatever is still open in a message once it has been dealt
+// with, reading it as the reader who dealt with it.
+func (p *Platform) settle(tenant, id string, reader inbox.Reader, by string) {
+	m, err := p.Inbox.GetAs(tenant, id, reader)
 	if err != nil {
 		return
 	}

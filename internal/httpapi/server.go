@@ -264,6 +264,11 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		fail(w, http.StatusForbidden, "this agent is provided by the platform and cannot be edited")
 		return
 	}
+	// An agent that lives in a project is that project's to change.
+	if err := s.P.OwnsHome(who, body.Spec.Name); err != nil {
+		s.problem(w, err)
+		return
+	}
 	if err := s.P.CheckAgentModel(who.Tenant, body.Spec); err != nil {
 		s.problem(w, err)
 		return
@@ -641,7 +646,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 		case <-r.Context().Done():
 			return
 		case n := <-notices:
-			if !platform.InboxSees(who, n.Kind) {
+			// A notice reaches only a reader the message is for, so an id
+			// from a project they cannot see, or an announcement for
+			// others, never reaches their stream.
+			if !s.P.InboxNoticeFor(who, n) {
 				continue
 			}
 			b, err := json.Marshal(n)

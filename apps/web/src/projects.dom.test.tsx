@@ -76,11 +76,15 @@ test("a project page shows where it sits, what sits below it, and every limit ab
   assert.ok(within(below).getByText("Globex renewals"));
   assert.equal(within(below).getByRole("link").getAttribute("href"), "/projects/Globex%20renewals");
 
-  const limits = screen.getByRole("region", { name: "Limits" });
-  await within(limits).findByText("Field engineering's limit also applies here: 7 runs a day.");
-  assert.ok(within(limits).getByText("The workspace's limit also applies here."));
   // Its tasks are read from the server, filed in this project only.
   assert.ok(net.seen.some((r) => r.method === "GET" && r.path === "/api/threads?limit=20&project=Globex"));
+});
+
+test("the Limits tab says, in words, every limit above a project", async () => {
+  open(globexDetail, { tab: "limits" });
+  const limits = await screen.findByRole("region", { name: "Limits" });
+  await within(limits).findByText("Field engineering's limit also applies here: 7 runs a day.");
+  assert.ok(within(limits).getByText("The workspace's limit also applies here."));
 });
 
 test("including sub-projects reads the tasks of everything below", async () => {
@@ -122,7 +126,9 @@ test("the Context tab saves the instructions as a whole from the version read, a
 
 test("the workspace and company-wide projects are changed only with projects:govern", async () => {
   const root: ProjectDetail = { project: workspace, ancestors: [], children: [field], limits: [{ scope: { kind: "tenant" }, from: "" }] };
-  open(root, { tab: "context", can: ["projects:read", "projects:write"] });
+  // The server says what an operator may do on the workspace: work in it, and change nothing of its own.
+  const asOperator: ProjectDetail = { ...root, project: { ...workspace, access: { role: "member", from: "", via: "*" }, actions: ["create", "propose"] } };
+  open(asOperator, { tab: "context", can: ["projects:read", "projects:write"] });
   await screen.findByText("Acme sells warehouse robots. Answer plainly.");
   assert.ok(!screen.queryByRole("textbox", { name: "Instructions" }));
   assert.ok(screen.getByText("Only those who govern projects change the workspace and company-wide projects."));
