@@ -37,3 +37,6 @@ storybook-static/
 
 # Agent worktrees
 .claude/worktrees/
+
+# Local compose settings
+deploy/compose/.env

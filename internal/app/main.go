@@ -138,6 +138,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	secretRefsFlag := fs.String("secret-refs", "", `environment variables each tenant's clients may reference as secrets, as "tenant=NAME,NAME;tenant=NAME". A tenant not listed may reference none`)
 	agentSpecs := fs.String("agent-specs", "", "comma-separated agent JSON files to register on startup")
 	providersPath := fs.String("providers", d.providers, "JSON file of model providers and MCP tool providers (see docs/providers.md)")
+	settingsPath := fs.String("settings", "", "JSON file of the workspace's settings (baseline agent, history, workspace name), applied when the workspace has none stored yet")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -244,6 +245,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 			return err
 		}
 	}
+	if err := seedSettings(ctx, p, *tenant, *settingsPath); err != nil {
+		return err
+	}
 
 	srv := &http.Server{
 		Addr:              *addr,
@@ -314,6 +318,30 @@ func serve(o Options, args []string, d serveDefaults) error {
 		_ = ingress.Shutdown(shutdown)
 	}
 	return err
+}
+
+// seedSettings applies a settings file to a workspace that has none stored.
+// The file is where a deployment starts; once an admin saves settings, what
+// is stored wins, so a restart never undoes a change made in the console.
+func seedSettings(ctx context.Context, p *platform.Platform, tenant, path string) error {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("settings: %w", err)
+	}
+	var want platform.Settings
+	if err := decodeStrict(b, &want); err != nil {
+		return fmt.Errorf("settings %s: %w", path, err)
+	}
+	if cur := p.Settings(tenant); !cur.SetupAt.IsZero() || cur.WorkspaceName != "" {
+		return nil
+	}
+	if err := p.SetSettings(ctx, tenant, want); err != nil {
+		return fmt.Errorf("settings %s: %w", path, err)
+	}
+	return nil
 }
 
 // seedFiles publishes a few example files, so the storage page has something

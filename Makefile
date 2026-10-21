@@ -1,4 +1,4 @@
-.PHONY: all init build test lint fmt check start dev dev-signin web client client-check spec-lint oag-install
+.PHONY: all init build test lint fmt check start dev dev-signin web up down image client client-check spec-lint oag-install
 
 BIN := warp
 
@@ -57,6 +57,21 @@ dev-signin: build
 web:
 	pnpm install
 	pnpm --filter @warp/console dev
+
+# The container image, from the Dockerfile at the root.
+IMAGE ?= warp:local
+image:
+	docker build -t $(IMAGE) .
+
+# warp, Postgres and the profiles in deploy/compose/.env (COMPOSE_PROFILES), built
+# from this checkout. Copy deploy/compose/.env.example to .env first.
+COMPOSE := docker compose --project-directory deploy/compose -f deploy/compose/compose.yaml
+up:
+	$(COMPOSE) up -d --build
+
+# Stops the stack and keeps its volumes. `make down V=1` removes them too.
+down:
+	$(COMPOSE) down $(if $(V),-v)
 
 # Regenerate the TypeScript client from the API contract. The output under
 # packages/client/src/generated is committed.

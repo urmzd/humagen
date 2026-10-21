@@ -1,0 +1,16 @@
+# Keep the build context to what the image is built from.
+.git
+.github
+.claude
+.worktrees
+**/node_modules
+**/dist
+**/storybook-static
+**/.turbo
+bin
+build
+showcase
+deploy
+*.log
+.env
+**/.env

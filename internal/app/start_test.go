@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/credref"
 )
 
@@ -169,5 +170,32 @@ func TestTheSlackManifestIsWhatWarpGenerates(t *testing.T) {
 	_ = json.Unmarshal(want, &b)
 	if !reflect.DeepEqual(a, b) {
 		t.Errorf("apps/slack/manifest.json is out of date: run `go run ./cmd/warp slack manifest > apps/slack/manifest.json`\n%s", got.String())
+	}
+}
+
+func TestASettingsFileSeedsOnlyAnEmptyWorkspace(t *testing.T) {
+	p, err := platform.New(platform.Config{Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "s.json")
+	os.WriteFile(path, []byte(`{"workspace_name":"Acme","history":"none","history_limit":4000}`), 0o600)
+	ctx := context.Background()
+	if err := seedSettings(ctx, p, "t", path); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Settings("t"); got.WorkspaceName != "Acme" || got.History != platform.HistoryNone {
+		t.Fatalf("settings = %+v", got)
+	}
+	os.WriteFile(path, []byte(`{"workspace_name":"Other"}`), 0o600)
+	if err := seedSettings(ctx, p, "t", path); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Settings("t"); got.WorkspaceName != "Acme" {
+		t.Fatalf("the file replaced stored settings: %+v", got)
+	}
+	os.WriteFile(path, []byte(`{"workspace":"typo"}`), 0o600)
+	if err := seedSettings(ctx, p, "u", path); err == nil {
+		t.Fatal("an unknown field was accepted")
 	}
 }
