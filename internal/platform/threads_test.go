@@ -95,7 +95,7 @@ func TestATaggedAgentAnswersSeeingTheRoomUpToTheMessage(t *testing.T) {
 		}
 		await(t, p, r.ID, runs.Completed)
 	}
-	sum, _, err := p.ThreadPage(tenant, platform.ThreadsQuery{ThreadQuery: runs.ThreadQuery{Channel: projects.General}})
+	sum, _, err := p.ThreadPage(tenant, runs.ThreadQuery{Channel: projects.General})
 	if err != nil || len(sum) != 1 || sum[0].Branches != 0 || sum[0].Messages != 2 {
 		t.Fatalf("answers to one message read as branches: %+v, %v", sum, err)
 	}
@@ -423,7 +423,7 @@ func TestAThreadNoAgentAnsweredIsListedInItsChannel(t *testing.T) {
 	}
 	in := func(project, channel string) []string {
 		t.Helper()
-		page, _, err := p.ThreadPage(tenant, platform.ThreadsQuery{ThreadQuery: runs.ThreadQuery{Channel: channel}, Project: project, InProject: true})
+		page, _, err := p.ThreadPage(tenant, runs.ThreadQuery{Channel: channel, Projects: []string{project}})
 		if err != nil {
 			t.Fatal(err)
 		}

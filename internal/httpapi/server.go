@@ -119,6 +119,7 @@ func (s *Server) Handler() http.Handler {
 	s.preferenceRoutes(mux)
 	s.projectRoutes(mux)
 	s.peopleRoutes(mux)
+	s.threadRoutes(mux)
 	s.billingRoutes(mux)
 	s.clientRoutes(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) { fail(w, http.StatusNotFound, "no such route") })
@@ -427,7 +428,11 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 	q := r.URL.Query()
 	query := runs.ThreadQuery{
 		Origin: q.Get("origin"), Agent: q.Get("agent"), Before: q.Get("before"),
-		Standing: runs.Standing(q.Get("standing")),
+		Standing: runs.Standing(q.Get("standing")), Channel: q.Get("channel"),
+	}
+	if query.Channel != "" && !projects.ValidChannel(query.Channel) {
+		fail(w, http.StatusBadRequest, "channel is a channel's name")
+		return
 	}
 	var found bool
 	if query.Projects, found = s.projectsWithin(w, who.Tenant, q.Get("project"), q.Get("within")); !found {
@@ -447,7 +452,7 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 		fail(w, http.StatusBadRequest, "standing is running or failed")
 		return
 	}
-	page, next, err := s.P.Runs.ThreadPage(who.Tenant, query)
+	page, next, err := s.P.ThreadPage(who.Tenant, query)
 	if err != nil {
 		fail(w, http.StatusBadRequest, "before is not a cursor this server issued")
 		return
@@ -457,15 +462,6 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 		cursor = &next
 	}
 	ok(w, http.StatusOK, map[string]any{"threads": page, "next": cursor})
-}
-
-func (s *Server) getThread(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	turns, err := s.P.Runs.Conversation(who.Tenant, r.PathValue("id"))
-	if err != nil {
-		s.problem(w, err)
-		return
-	}
-	ok(w, http.StatusOK, map[string]any{"turns": turns})
 }
 
 // pickAgent previews which agent @auto would pick for a message in a project,
@@ -631,6 +627,11 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 	// and nothing more: the reader fetches it and is shown what they may see.
 	notices, unwatch := s.P.Inbox.Watch(who.Tenant)
 	defer unwatch()
+	// So do threads: a notice names a thread and the message posted or
+	// settled. Every thread is shared until reads are confined, so whoever
+	// may read conversations is told of each.
+	posts, unwatchThreads := s.P.WatchThreads(who.Tenant)
+	defer unwatchThreads()
 
 	tick := time.NewTicker(heartbeat)
 	defer tick.Stop()
@@ -647,6 +648,14 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 				continue
 			}
 			if _, err := fmt.Fprintf(w, "event: inbox\ndata: %s\n\n", b); err != nil {
+				return
+			}
+		case n := <-posts:
+			b, err := json.Marshal(n)
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(w, "event: thread\ndata: %s\n\n", b); err != nil {
 				return
 			}
 		case <-tick.C:
@@ -677,7 +686,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 // and reported without detail, so an internal error never leaks through.
 func (s *Server) problem(w http.ResponseWriter, err error) {
 	var tooBig *http.MaxBytesError
-	if denied(w, err) {
+	if denied(w, err) || threadProblem(w, err) {
 		return
 	}
 	switch {

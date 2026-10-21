@@ -132,15 +132,6 @@ type ThreadSummary struct {
 	Messages int `json:"messages"`
 }
 
-// ThreadsQuery selects and pages conversations: the run index's query, and
-// the project they are filed in when Project is set.
-type ThreadsQuery struct {
-	runs.ThreadQuery
-	// Project keeps conversations filed in one project, when InProject.
-	Project   string
-	InProject bool
-}
-
 // author is who a message is posted as: the caller, or the person a
 // surface's credential acts for. A credential that is not a person posts
 // only for one (ErrThreadAuthor), and the person it acts for must hold
@@ -424,11 +415,12 @@ func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in Threa
 // second post with a surface's id already posted is the first, and starts
 // nothing again.
 func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id string, in MessageInput) (Posted, error) {
-	by, name, via, slack, err := p.author(who, in.ActAs)
+	// Another tenant's thread is not there, whoever asks.
+	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return Posted{}, err
 	}
-	th, err := p.ThreadRecord(who.Tenant, id)
+	by, name, via, slack, err := p.author(who, in.ActAs)
 	if err != nil {
 		return Posted{}, err
 	}
@@ -921,11 +913,12 @@ func (t ThreadTurn) at() time.Time {
 	return t.Run.CreatedAt
 }
 
-// ThreadPage returns one page of conversations, most recently active first:
-// the run index's, with what each one's record adds, and the threads people
-// have started that no agent has answered yet. A conversation's channel and
-// project are its record's when it has one.
-func (p *Platform) ThreadPage(tenant string, q ThreadsQuery) ([]ThreadSummary, string, error) {
+// ThreadPage returns one page of conversations, most recently active first,
+// as the run index's query selects them: the run index's conversations, with
+// what each one's record adds, and the threads people have started that no
+// agent has answered yet. A conversation's channel and project are its
+// record's when it has one.
+func (p *Platform) ThreadPage(tenant string, q runs.ThreadQuery) ([]ThreadSummary, string, error) {
 	limit := q.Limit
 	if limit <= 0 {
 		limit = runs.DefaultThreadPage
@@ -974,7 +967,7 @@ func (p *Platform) ThreadPage(tenant string, q ThreadsQuery) ([]ThreadSummary, s
 	page := []ThreadSummary{}
 	for _, s := range order {
 		switch {
-		case q.InProject && s.Project != q.Project:
+		case q.Projects != nil && !slices.Contains(q.Projects, s.Project):
 			continue
 		case q.Origin != "" && s.Origin != q.Origin:
 			continue
