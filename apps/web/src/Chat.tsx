@@ -15,7 +15,8 @@ import { ThreadRoom } from "./Room.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { SessionGaugeFor } from "./SessionGauge.tsx";
-import { AgentMark, AgentTint, cause, Popover, Presence, Problem } from "./ui.tsx";
+import { readFromStart } from "./turns.ts";
+import { AgentMark, AgentTint, cause, isWorking, Popover, Presence, Problem } from "./ui.tsx";
 
 const auto = defaultCopy.auto;
 // Controls in the dock are text, not boxes: they sit under the composer and
@@ -27,11 +28,13 @@ function siblingsOf(turns: Run[], run: Run): Run[] {
 
 /**
  * Walk the conversation from its start, taking one answer at each point: the
- * one the reader chose, or the newest. That walk is the branch on screen.
+ * one the reader chose, or the newest. That walk is the branch on screen. A
+ * conversation too long to be read whole is walked from the oldest turn read.
  */
 function pathOf(turns: Run[], chosen: Record<string, string>): Run[] {
   const path: Run[] = [];
-  let prev = "";
+  const read = new Set(turns.map((t) => t.id));
+  let prev = turns.some((t) => (t.prev ?? "") === "") ? "" : (turns.find((t) => !read.has(t.prev ?? ""))?.prev ?? "");
   for (;;) {
     const options = turns.filter((t) => (t.prev ?? "") === prev);
     const next = options.find((t) => t.id === chosen[prev]) ?? options[options.length - 1];
@@ -212,8 +215,9 @@ export function Chat({
       return setTurns([]);
     }
     let live = true;
-    coworking
-      .thread(threadId)
+    // The branch on screen is walked from the conversation's start, so every
+    // page is read, not only the newest.
+    readFromStart((before) => coworking.thread(threadId, before))
       .then((p) => {
         if (!live) return;
         setRoom(p);
@@ -234,7 +238,8 @@ export function Chat({
 
   const path = useMemo(() => pathOf(turns, chosen), [turns, chosen]);
   const tail = path[path.length - 1];
-  const tailEnded = !tail || tail.status === "completed" || tail.status === "failed";
+  // A run waiting on a person is still, like one that has ended.
+  const tailWorking = !!tail && isWorking(tail.status);
   // What may answer where the next message goes, and who answers it untagged.
   const where = threadId ? (tail?.project ?? "") : (project ?? "");
   const [here, setHere] = useState<ProjectAgentsView | null>(null);
@@ -562,7 +567,7 @@ export function Chat({
         </button>
       </header>
       <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
-        <Thread className="mx-auto w-full max-w-4xl flex-1 px-4" busy={!tailEnded} label="Conversation">
+        <Thread className="mx-auto w-full max-w-4xl flex-1 px-4" busy={tailWorking} label="Conversation">
           {path.map((run, i) => (
             <TurnView
               key={run.id}

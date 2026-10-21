@@ -24,7 +24,8 @@ import { Composer } from "./Composer.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { type TagOption, tagOptions } from "./tags.ts";
-import { AgentMark, AgentTint, ago, button, cause, field, Label, Page, Problem, primary } from "./ui.tsx";
+import { mergeTurns } from "./turns.ts";
+import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
 
 /**
  * Channels and shared threads: where people and agents work together in a
@@ -289,7 +290,10 @@ export function ThreadRoom({
   onChanged: () => void;
 }) {
   const [page, setPage] = useState<ThreadPage>(initial);
-  const [earlier, setEarlier] = useState<ThreadTurn[]>([]);
+  // Every turn read so far, oldest first. A refresh reads the newest page,
+  // which moves on as the thread grows; the turns it no longer holds stay.
+  const [turns, setTurns] = useState<ThreadTurn[]>(initial.turns);
+  // The cursor for the turns before the oldest one read.
   const [before, setBefore] = useState<string | null>(initial.next);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -301,7 +305,7 @@ export function ThreadRoom({
       .then((p) => {
         if (!live) return;
         setPage(p);
-        if (earlier.length === 0) setBefore(p.next);
+        setTurns((t) => mergeTurns(t, p.turns));
       })
       .catch(() => {});
     return () => {
@@ -314,20 +318,20 @@ export function ThreadRoom({
     coworking
       .thread(id, before)
       .then((p) => {
-        setEarlier((e) => [...p.turns, ...e]);
+        setTurns((t) => mergeTurns(p.turns, t));
         setBefore(p.next);
       })
       .catch(() => setProblem(defaultCopy.failure.internal()));
   };
 
   const th = page.thread;
-  const turns = [...earlier, ...page.turns];
   const tags = useTags(th.project, agents, topicsOf(projects, root, th.project));
   const people = th.participants.filter((p) => p.kind === "person");
   const answering = th.participants.filter((p) => p.kind === "agent").map((p) => p.name);
   const title = th.title || turns.find((t) => t.message)?.message?.text || turns[0]?.run?.text || words.channel(th.channel);
   const last = turns[turns.length - 1];
-  const busy = turns.some((t) => t.run && t.run.status !== "completed" && t.run.status !== "failed" && t.run.status !== "stopped");
+  // A run waiting on a person, such as an expert's answer, is shown still.
+  const busy = turns.some((t) => t.run && isWorking(t.run.status));
 
   const onAction = (a: UiAction) => {
     if (!isAnswer(a)) return;

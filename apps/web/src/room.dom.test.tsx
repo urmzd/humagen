@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@warp/components";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { Revision, ThreadPage } from "./api.ts";
-import { stubFetch } from "./dom.ts";
+import type { Revision, ThreadPage, ThreadTurn } from "./api.ts";
+import { stubEventSource, stubFetch } from "./dom.ts";
 import { ChannelPage, ChannelsTab, ThreadRoom } from "./Room.tsx";
 import { globex, tree } from "./projects.fixtures.ts";
 
@@ -166,4 +166,64 @@ test("a project's channels open their pages, and a new one is made with a name t
   fireEvent.click(screen.getByText(words.createChannel));
   await waitFor(() => assert.equal(made.length, 1));
   assert.deepEqual(made[0], { name: "renewals" });
+});
+
+test("a run waiting on a person, such as an expert's answer, is shown still", async () => {
+  const restore = stubEventSource();
+  try {
+    const run = (status: string) =>
+      ({
+        ...page.turns[1]?.run,
+        status,
+        answer: "",
+        question: { id: "q1", kind: "reply", question: "What is the PO number?", asked_of: "sme:billing" },
+      }) as never;
+    for (const [status, bars] of [
+      ["parked", 0],
+      ["running", 1],
+    ] as const) {
+      const waiting: ThreadPage = { ...page, turns: [page.turns[0] as ThreadTurn, { kind: "run", run: run(status) }] };
+      net = stubFetch({
+        "GET /api/threads/th-0123456789abcdef": () => waiting,
+        "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+        "GET /api/runs/r1/events": () => ({ events: [] }),
+      });
+      render(
+        <ThreadRoom id="th-0123456789abcdef" initial={waiting} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+      );
+      await screen.findByText("Ana");
+      assert.equal(document.querySelectorAll(".aui-busy-bar").length, bars, `a ${status} run`);
+      cleanup();
+      net.restore();
+      net = undefined;
+    }
+  } finally {
+    restore();
+  }
+});
+
+test("turns read earlier stay when the newest page moves on", async () => {
+  const message = (n: number): ThreadTurn => ({
+    kind: "message",
+    message: { id: `m-${n}`, thread: "th-0123456789abcdef", by: "00u-ana", name: "Ana", text: `turn ${n}`, mentions: [], via: "console", at },
+  });
+  const newest: ThreadPage = { ...page, turns: [message(2), message(3)], next: "c2" };
+  const moved: ThreadPage = { ...page, turns: [message(3), message(4)], next: "c3" };
+  let reads = 0;
+  net = stubFetch({
+    "GET /api/threads/th-0123456789abcdef": (_, q) => {
+      if (q.get("before") === "c2") return { ...page, turns: [message(1)], next: null };
+      return reads++ === 0 ? newest : moved;
+    },
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+  });
+  const props = { id: "th-0123456789abcdef", initial: newest, agents: [helper], projects: tree, root: null, workspaceName: "Acme", canRun: true, onOpenChannel: () => {}, onChanged: () => {} };
+  const { rerender } = render(<ThreadRoom {...props} tick={0} />);
+  await waitFor(() => assert.equal(reads, 1));
+  fireEvent.click(await screen.findByText(words.olderTurns));
+  assert.ok(await screen.findByText("turn 1", { selector: "p" }));
+  rerender(<ThreadRoom {...props} tick={1} />);
+  assert.ok(await screen.findByText("turn 4", { selector: "p" }));
+  for (const n of [1, 2, 3, 4]) assert.equal(screen.getAllByText(`turn ${n}`, { selector: "p" }).length, 1, `turn ${n} is shown once`);
+  assert.equal(screen.queryByText(words.olderTurns), null);
 });
