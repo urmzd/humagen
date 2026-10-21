@@ -127,9 +127,9 @@ test("project selection: an empty workspace still offers projectless work and cr
   assert.match(projectless, /aria-label="Select project: Projectless"/);
 });
 import type { Alert, AlertRule } from "./api.ts";
-import { ActionId, messageState, partTarget, type UiAction } from "@warp/core";
+import { ActionId, messageState, messageTemplate, partTarget, type UiAction } from "@warp/core";
 import { after, merge } from "./inbox.ts";
-import { edgeOf, MailboxView } from "./InboxPage.tsx";
+import { edgeOf, KindChips, MailboxView } from "./InboxPage.tsx";
 import { fromServer, type PlatformMessage, reached, toRequest } from "./mail.ts";
 import { memoryTransport, sampleMail, wireMail } from "./mail.fixtures.ts";
 import { counted, dollars, LimitField, PolicyBadge, parseDollars, Stroke, strokeOf, UsageMeter, usageOf } from "./ui.tsx";
@@ -374,7 +374,7 @@ test("fromServer: failure, memory and a limit, and an outcome as a resolution", 
   assert.ok(budget?.type === "budget");
   assert.deepEqual(budget.meter, { used: 100, limit: 100, unit: "runs", period: "day" });
   assert.deepEqual(budget.allowed, [ActionId.raiseBudget, ActionId.acknowledge]);
-  assert.equal(limit.tag, "Limit", "tagged by what it is about");
+  assert.equal(limit.template, "limit", "laid out by what it is about");
   const data = limit.budgets.p1;
   assert.ok(data);
   assert.deepEqual(reached(data), { field: "max_runs", value: 100 });
@@ -497,8 +497,9 @@ test("memoryTransport: filters, pages, resolves, and refuses on demand", async (
   const first = await via.list({ limit: 30, state: "all" });
   assert.equal(first.messages.length, 2);
   assert.ok(first.next);
-  assert.equal(first.open, 4);
-  assert.equal(first.unread, 2);
+  // Open is everything not yet put away or resolved: updates such as an artifact count too.
+  assert.equal(first.open, 8);
+  assert.equal(first.unread, 5);
   const second = await via.list({ limit: 30, state: "all", before: first.next ?? undefined });
   assert.equal(new Set([...first.messages, ...second.messages].map((m) => m.id)).size, 4);
   assert.deepEqual((await via.list({ limit: 30, state: "resolved" })).messages.map((m) => m.id), ["m-done"]);
@@ -510,7 +511,7 @@ test("memoryTransport: filters, pages, resolves, and refuses on demand", async (
   via.fail.add("resolve");
   await assert.rejects(via.send(alert, request));
   assert.equal(messageState(await via.send(alert, request)), "resolved");
-  assert.equal((await via.list({ limit: 30 })).open, 3);
+  assert.equal((await via.list({ limit: 30 })).open, 7);
 });
 
 test("edgeOf: an agent's message carries its edge, a rule's and the platform's stay neutral", () => {
@@ -524,7 +525,11 @@ test("edgeOf: an agent's message carries its edge, a rule's and the platform's s
 test("MailboxView: hosts warp's mailbox with every message listed", () => {
   const out = mailbox(null);
   for (const m of sampleMail().filter((x) => messageState(x) === "open")) assert.ok(out.includes(m.subject), m.subject);
-  assert.equal(out.match(/data-message="/g)?.length, 4, "one row per open message");
+  assert.equal(out.match(/data-message="/g)?.length, 8, "one row per open message");
+  // Decisions come first, then what is only there to be read.
+  assert.ok(out.indexOf(">Needs you<") < out.indexOf(">Updates<"));
+  assert.ok(out.indexOf('data-message="m-approval"') < out.indexOf(">Updates<"));
+  assert.ok(out.indexOf('data-message="m-artifact"') > out.indexOf(">Updates<"));
 });
 
 test("MailboxView: an agent's message is framed in that agent's stroke, a rule's is neutral", () => {
@@ -543,7 +548,9 @@ test("MailboxView: the platform draws the alert, with its rule and what this rea
   assert.match(out, />Critical</);
   assert.match(out, /Raised by the rule/);
   assert.match(out, />Acknowledge</);
-  assert.match(out, />Snooze for a Day</);
+  // Snoozing is the whole message's, in the reading pane's header, not the alert's.
+  assert.doesNotMatch(out, />Snooze for a Day</);
+  assert.match(out, />Snooze</);
   assert.match(out, /Rule oncall-failure-rate/, "what the message is about can be opened");
   assert.match(out, /Agent oncall/);
 });
@@ -581,6 +588,44 @@ test("MailboxView: a reader with no right to act is told so, and a message put a
   assert.doesNotMatch(reader, />Acknowledge</);
   const away = mailbox("m-alert", [{ ...alert, dismissedAt: new Date().toISOString() }, ...rest]);
   assert.doesNotMatch(away, />Acknowledge<|someone with more access/);
+});
+
+test("fromServer: an artifact arrives as a file to open, laid out as an artifact", () => {
+  const m = mailOf("m-artifact");
+  assert.equal(m.template, "artifact");
+  assert.equal(messageTemplate(m), "artifact");
+  const part = m.parts[0];
+  assert.ok(part && part.type === "artifact");
+  assert.equal(part.artifact.title, "launch-checklist.md");
+  assert.equal(part.artifact.kind, "document");
+  assert.equal(part.artifact.version, 2);
+  assert.equal(part.artifact.sizeBytes, 97);
+  assert.equal(part.artifact.downloadUrl, "/api/artifacts/art-2/content");
+  // The file is the first thing the message is about, so it can be opened from the footer too.
+  assert.deepEqual(m.about[0], { kind: "artifact", id: "art-2", label: "launch-checklist.md" });
+  // A run's answer is a result, a limit leads with its own template.
+  assert.equal(messageTemplate(mailOf("m-result")), "result");
+  assert.equal(messageTemplate(mailOf("m-budget")), "limit");
+});
+
+test("MailboxView: an artifact shows the file, opens it in Artifacts, and offers a download", () => {
+  const out = mailbox("m-artifact");
+  assert.match(out, /data-template="artifact"/);
+  assert.match(out, /data-testid="part-artifact"/);
+  assert.match(out, /Document · 97 B · Version 2/);
+  assert.match(out, />Open in Artifacts</);
+  assert.match(out, /href="\/api\/artifacts\/art-2\/content" download="launch-checklist.md"/);
+  assert.match(out, /This replaces version 1/);
+  assert.match(out, /Nothing to decide/);
+});
+
+test("MailboxView: the kind filter is a row of chips, and there is no j/k hint", () => {
+  const out = mailbox(null);
+  assert.doesNotMatch(out, /j\/k|<kbd/);
+  const chips = html(<KindChips value="artifact" onChange={() => {}} />);
+  assert.match(chips, /aria-pressed="true"[^>]*>Artifacts</);
+  assert.match(chips, />Everything</);
+  assert.doesNotMatch(chips, /<select/);
 });
 
 test("MailboxView: nothing in the inbox animates", () => {
@@ -876,7 +921,7 @@ test("StorageUsed: a real meter in bytes, under, over and with no limit, and whe
   assert.match(under, /role="meter"/);
   assert.match(under, /data-usage="under"/);
   assert.match(under, /1\.7 MB of 5\.0 MB, 33%\. Under limit\./);
-  assert.match(under, /Storage, 4 files/);
+  assert.match(under, /Stored, 4 artifacts/);
   assert.match(under, /Launch/);
   assert.match(under, /Projectless/);
   const over = html(<StorageUsed use={sampleUse({ used_bytes: 6 * 1024 ** 2 })} />);
@@ -899,10 +944,10 @@ test("StoredList: each row says what the file is, who made it and when", () => {
 
 test("StoredList: empty, no match, loading and failed each say what is going on", () => {
   const list = (state: "ready" | "loading" | "failed", narrowed = false) => html(<StoredList files={[]} selected={null} state={state} narrowed={narrowed} onSelect={() => {}} />);
-  assert.match(list("ready"), /Nothing is stored yet/);
-  assert.match(list("ready", true), /No files match/);
+  assert.match(list("ready"), /No artifacts yet/);
+  assert.match(list("ready", true), /No artifacts match/);
   assert.match(list("loading"), />Loading</);
-  assert.match(list("failed"), /Storage could not be loaded/);
+  assert.match(list("failed"), /Artifacts could not be loaded/);
 });
 
 test("StoredDetail: a text file shows its preview, its versions, and where it came from", () => {
@@ -923,7 +968,7 @@ test("StoredDetail: an image is shown inline, HTML never is, and a file with nei
   const page = detail("a4");
   assert.doesNotMatch(page, /<img|<iframe/);
   assert.match(page, /&lt;h1&gt;2\.4&lt;\/h1&gt;/, "its preview is text, escaped");
-  assert.match(detail("a2"), /No preview for this kind of file/);
+  assert.match(detail("a2"), /No preview for this kind of artifact/);
 });
 
 test("StoredDetail: delete is offered only to those who may, and asks first", () => {

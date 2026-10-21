@@ -3405,9 +3405,12 @@ components:
           items: {$ref: "#/components/schemas/Run"}
 
     InboxKind:
-      description: What a message is about. `approval` and `clarification` are questions a run is waiting on.
+      description: |
+        What a message is about. `approval` and `clarification` are questions
+        a run is waiting on. `result` is the answer of a run nobody was
+        waiting on, and `artifact` a file that was published or revised.
       type: string
-      enum: [alert, failure, memory, budget, approval, clarification, result]
+      enum: [alert, failure, memory, budget, approval, clarification, result, artifact]
     InboxState:
       type: string
       enum: [open, resolved, dismissed, snoozed]
@@ -3588,6 +3591,21 @@ components:
         refused: {type: boolean}
         max: {type: integer, format: int64}
         current: {$ref: "#/components/schemas/InboxLimits"}
+    InboxArtifactPart:
+      description: One published version of a file. Open it from the artifacts routes by `id`.
+      type: object
+      required: [id, title, kind, size, version]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        kind: {type: string}
+        mime: {type: string}
+        size: {type: integer, format: int64}
+        version: {type: integer}
+        description: {type: string}
+        previous:
+          description: The id of the version this one replaces, when it is not the first.
+          type: string
     InboxQuestionTool:
       type: object
       required: [name]
@@ -3644,7 +3662,7 @@ components:
     InboxPart:
       description: |
         One typed part of a message. `type` says which of `text`, `alert`,
-        `failure`, `memory`, `budget` or `question` carries the body:
+        `failure`, `memory`, `budget`, `artifact` or `question` carries the body:
         `approval`, `choice` and `reply` parts carry `question`. A settled
         question's `outcome` is `approve`, `deny`, `choose` (the option in
         `note`), `reply` (the words in `note`), `expired`, `stopped` or
@@ -3655,7 +3673,7 @@ components:
         id: {type: string}
         type:
           type: string
-          enum: [text, alert, failure, memory, budget, approval, choice, reply]
+          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply]
         state:
           type: string
           enum: [open, resolved, info]
@@ -3671,6 +3689,7 @@ components:
         failure: {$ref: "#/components/schemas/InboxFailurePart"}
         memory: {$ref: "#/components/schemas/InboxMemoryPart"}
         budget: {$ref: "#/components/schemas/InboxBudgetPart"}
+        artifact: {$ref: "#/components/schemas/InboxArtifactPart"}
         question: {$ref: "#/components/schemas/InboxQuestionPart"}
     InboxMessage:
       description: One message in the inbox.

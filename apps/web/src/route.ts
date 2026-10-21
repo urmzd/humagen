@@ -32,7 +32,7 @@ export type Route =
   | { page: "knowledge"; source?: string; tab?: SourceTab }
   | { page: "agents" }
   | { page: "agent"; name: string | null; tab: AgentTab }
-  | { page: "artifacts" }
+  | { page: "artifacts"; artifact?: string }
   | { page: "settings"; section: SettingsSection; permission?: string };
 
 export type Page = Route["page"];
@@ -77,7 +77,7 @@ export function href(r: Route): string {
       return r.tab === "prompt" ? base : `${base}/${r.tab}`;
     }
     case "artifacts":
-      return "/artifacts";
+      return r.artifact ? `/artifacts/${enc(r.artifact)}` : "/artifacts";
     case "settings": {
       const base = `/settings/${r.section}`;
       return r.section === "access" && r.permission ? `${base}?permission=${enc(r.permission)}` : base;
@@ -150,7 +150,7 @@ function read(pathname: string, search: string): Route {
       if (!a) return { page: "agents" };
       return { page: "agent", name: a === "new" ? null : a, tab: a === "new" ? "prompt" : pick(b, AGENT_TABS, "prompt") };
     case "artifacts":
-      return { page: "artifacts" };
+      return { page: "artifacts", artifact: a };
     case "settings":
       return { page: "settings", section: pick(a, SETTINGS_SECTIONS, "profile"), permission: q.get("permission") ?? undefined };
     default:

@@ -33,7 +33,7 @@ test("only inert image types are previewed: SVG and HTML are not", () => {
   const page = detail(byId("a4"));
   assert.doesNotMatch(page, /<img|<h1>2\.4/);
   assert.match(page, /&lt;h1&gt;2\.4&lt;\/h1&gt;/);
-  assert.match(detail(byId("a2")), /No preview for this kind of file/);
+  assert.match(detail(byId("a2")), /No preview for this kind of artifact/);
 });
 
 test("delete is offered only to someone who may delete, and asks before it deletes", () => {
@@ -41,7 +41,7 @@ test("delete is offered only to someone who may delete, and asks before it delet
   assert.match(text(detail(byId("a1"))), /Delete/);
   assert.doesNotMatch(text(detail(byId("a1"))), /cannot be undone/);
   const asking = text(html(<DeleteVersion version={3} confirming onAsk={noop} onDelete={noop} onKeep={noop} />));
-  assert.match(asking, /Delete version 3 of this file\? This cannot be undone\./);
+  assert.match(asking, /Delete version 3 of this artifact\? This cannot be undone\./);
   assert.match(asking, /Delete Version/);
   assert.match(asking, /Keep It/);
 });
@@ -58,9 +58,9 @@ test("a deleted file leaves the list and the totals", async () => {
 });
 
 test("a refused delete says why", () => {
-  assert.equal(deleteProblem(new Error("You may not delete files.")), "The file could not be deleted. You may not delete files.");
-  assert.equal(deleteProblem(new Error("")), "The file could not be deleted.");
-  assert.equal(deleteProblem("boom"), "The file could not be deleted.");
+  assert.equal(deleteProblem(new Error("You may not delete files.")), "The artifact could not be deleted. You may not delete files.");
+  assert.equal(deleteProblem(new Error("")), "The artifact could not be deleted.");
+  assert.equal(deleteProblem("boom"), "The artifact could not be deleted.");
 });
 
 test("over quota is more than the limit, and no limit is never over", () => {
@@ -68,7 +68,7 @@ test("over quota is more than the limit, and no limit is never over", () => {
   assert.ok(!overLimit(sampleUse({ used_bytes: 5 * 1024 ** 2 })), "exactly at the limit is not over");
   assert.ok(!overLimit(sampleUse({ used_bytes: 1 })));
   assert.ok(!overLimit(sampleUse({ used_bytes: 10 * 1024 ** 3, limit_bytes: null })));
-  assert.match(OVER_LIMIT, /cannot publish new files/);
+  assert.match(OVER_LIMIT, /cannot publish new artifacts/);
   const over = text(html(<StorageUsed use={sampleUse({ used_bytes: 6 * 1024 ** 2 })} />));
   assert.match(over, /Over/);
   assert.match(text(html(<StorageUsed use={sampleUse({ limit_bytes: null })} />)), /No limit/);

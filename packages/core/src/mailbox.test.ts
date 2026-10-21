@@ -5,10 +5,12 @@ import {
   filterMessages,
   type InboxMessage,
   isResolvable,
+  messageAsks,
   messageFromItem,
   messageKind,
   messagePreview,
   messageState,
+  messageTemplate,
   openMessageCount,
   openParts,
   parseAmount,
@@ -238,5 +240,25 @@ describe("mailbox", () => {
       who,
     );
     expect(messageState(done)).toBe("resolved");
+  });
+
+  it("lays each kind of message out with its own template", () => {
+    const get = (id: string) => fx.mailMessages.find((m) => m.id === id) as InboxMessage;
+    expect(messageTemplate(get("m-approval"))).toBe("approval");
+    expect(messageTemplate(get("m-choice"))).toBe("question");
+    expect(messageTemplate(get("m-reply"))).toBe("question");
+    expect(messageTemplate(get("m-memory"))).toBe("memory");
+    expect(messageTemplate(get("m-budget"))).toBe("limit");
+    expect(messageTemplate(get("m-alert"))).toBe("alert");
+    expect(messageTemplate(get("m-failure"))).toBe("failure");
+    // Prose and a file, with nothing to decide: it is about the file.
+    expect(messageTemplate(get("m-fyi"))).toBe("artifact");
+    expect(messageAsks(get("m-fyi"))).toBe(false);
+    expect(messageAsks(get("m-approval"))).toBe(true);
+    // An agent's prose is its answer; a rule's is a note. A named template wins.
+    const text = { ...get("m-fyi"), parts: [{ type: "text" as const, id: "t", text: "Done." }] };
+    expect(messageTemplate(text)).toBe("result");
+    expect(messageTemplate({ ...text, from: { kind: "rule", name: "Gate" } })).toBe("note");
+    expect(messageTemplate({ ...get("m-alert"), template: "limit" })).toBe("limit");
   });
 });

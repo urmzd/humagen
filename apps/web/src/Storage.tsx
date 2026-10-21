@@ -12,7 +12,7 @@ export function StorageUsed({ use }: { use: StorageUse }) {
     <section data-testid="storage-use" className="grid grid-cols-1 gap-x-10 gap-y-5 border-[var(--warp-rule)] border-y py-5 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <UsageMeter
         size="header"
-        label={`Storage, ${use.count} ${use.count === 1 ? "file" : "files"}`}
+        label={`Stored, ${use.count} ${use.count === 1 ? "artifact" : "artifacts"}`}
         spent={use.used_bytes}
         limit={use.limit_bytes}
         format={bytes}
@@ -24,7 +24,7 @@ export function StorageUsed({ use }: { use: StorageUse }) {
             <li key={p.name} className="flex items-baseline justify-between gap-3 text-aui-sm">
               <span className="min-w-0 truncate text-aui-fg">{p.name || "Projectless"}</span>
               <span className="shrink-0 text-aui-xs tabular-nums text-aui-muted">
-                {bytes(p.bytes)}, {p.count} {p.count === 1 ? "file" : "files"}
+                {bytes(p.bytes)}, {p.count} {p.count === 1 ? "artifact" : "artifacts"}
               </span>
             </li>
           ))}
@@ -52,7 +52,7 @@ export function DeleteVersion({
     <div className="flex flex-wrap items-center gap-3 border-[var(--warp-rule)] border-t pt-3">
       {confirming ? (
         <>
-          <span className="text-aui-sm text-aui-fg">Delete version {version} of this file? This cannot be undone.</span>
+          <span className="text-aui-sm text-aui-fg">Delete version {version} of this artifact? This cannot be undone.</span>
           <button type="button" className={button} onClick={onDelete}>
             Delete Version
           </button>
@@ -132,7 +132,7 @@ export function StoredDetail({
           {file.preview}
         </pre>
       ) : (
-        <p className="text-aui-sm text-aui-muted">No preview for this kind of file. Download it to open it.</p>
+        <p className="text-aui-sm text-aui-muted">No preview for this kind of artifact. Download it to open it.</p>
       )}
 
       <p className="flex flex-wrap gap-x-4 gap-y-1 text-aui-xs text-aui-muted">
@@ -209,17 +209,17 @@ export function StoredList({
   narrowed: boolean;
   onSelect: (id: string) => void;
 }) {
-  if (state === "failed") return <Empty title="Storage could not be loaded">It will be tried again when something changes. Reload the page to try now.</Empty>;
+  if (state === "failed") return <Empty title="Artifacts could not be loaded">It will be tried again when something changes. Reload the page to try now.</Empty>;
   if (files.length === 0) {
     if (state === "loading") return <SkeletonRows count={5} height="2.5rem" />;
     return narrowed ? (
-      <Empty title="No files match">Change the filters or the search to see the rest.</Empty>
+      <Empty title="No artifacts match">Change the filters or the search to see the rest.</Empty>
     ) : (
-      <Empty title="Nothing is stored yet">When an agent publishes a file from its sandbox, it is kept here with every later version.</Empty>
+      <Empty title="No artifacts yet">When an agent publishes a file from its sandbox, it is kept here as an artifact, with every later version. Each one also arrives in your inbox.</Empty>
     );
   }
   return (
-    <ul className={rows} aria-label="Files">
+    <ul className={rows} aria-label="Artifacts">
       {files.map((f) => (
         <li key={f.id} className="warp-enter">
           <button
@@ -261,8 +261,13 @@ export function Storage({
   canDelete,
   onOpenRun,
   onOpenThread,
+  selectedId,
+  onSelect,
   via = platform,
 }: {
+  /** The artifact that is open, when the address names one. Leave out to let the page keep its own. */
+  selectedId?: string | null;
+  onSelect?: (id: string | null) => void;
   /** Changes when files may have: the list and the totals are fetched again. */
   signal: unknown;
   agents: string[];
@@ -279,13 +284,19 @@ export function Storage({
     const timer = window.setTimeout(() => setFilter((f) => (f.q === query.trim() ? f : { ...f, q: query.trim() })), 250);
     return () => window.clearTimeout(timer);
   }, [query]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [own, setOwn] = useState<string | null>(null);
+  const selected = selectedId === undefined ? own : selectedId;
+  const setSelected = (id: string | null) => {
+    if (selectedId === undefined) setOwn(id);
+    onSelect?.(id);
+  };
   const [versions, setVersions] = useState<Stored[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const store = useStorage(filter, signal, via);
 
   const shown = store.files;
-  const file = store.files.find((f) => f.id === selected) ?? null;
+  // An older version, or one past the loaded pages, is found among its versions.
+  const file = store.files.find((f) => f.id === selected) ?? versions?.find((v) => v.id === selected) ?? null;
   const narrowed = query.trim() !== "" || filter.project !== "" || filter.agent !== "" || filter.kind !== "";
   const over = store.use ? overLimit(store.use) : false;
 
@@ -314,13 +325,13 @@ export function Storage({
   };
 
   return (
-    <Page title="Storage" lede="Files agents have published from their sandboxes. Each keeps its versions, and what made it.">
+    <Page title="Artifacts" lede="Files agents have published from their sandboxes. Each keeps its versions, and what made it.">
       {store.use && <StorageUsed use={store.use} />}
       {over && <Problem message={OVER_LIMIT} />}
       <Problem message={problem} />
 
       <div className="flex flex-wrap items-center gap-2">
-        <SearchField label="Search files" placeholder="Search by title" value={query} onChange={setQuery} className="min-w-56 flex-1" />
+        <SearchField label="Search artifacts" placeholder="Search by title" value={query} onChange={setQuery} className="min-w-56 flex-1" />
         <Menu
           label="Project"
           className="w-40"

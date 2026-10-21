@@ -432,7 +432,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
                     ? openAgent(source.id)
                     : source.kind === "project"
                       ? openProject(source.id)
-                      : go({ page: "alerts", tab: "open" })
+                      : source.kind === "artifact"
+                        ? go({ page: "artifacts", artifact: source.id })
+                        : go({ page: "alerts", tab: "open" })
             }
           />
         )}
@@ -510,6 +512,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             canDelete={can("artifacts:write")}
             onOpenRun={openRun}
             onOpenThread={openThread}
+            selectedId={route.artifact ?? null}
+            onSelect={(artifact) => go({ page: "artifacts", artifact: artifact ?? undefined })}
           />
         )}
         {route.page === "settings" && (

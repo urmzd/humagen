@@ -4,8 +4,8 @@ import {
   formatAmount,
   type InboxMessage,
   type MessagePart,
-  messageKind,
   messageState,
+  messageTemplate,
   openParts,
   partAction,
   partResolution,
@@ -250,7 +250,9 @@ export function MessagePartView({
 /** What kind of message it is, and how urgent, in words: "Alert · Urgent". */
 export function messageTag(message: InboxMessage, copy: Copy = defaultCopy): string {
   const severity = message.severity ? copy.severity[message.severity] : undefined;
-  return [message.tag ?? copy.partKind[messageKind(message)], severity].filter(Boolean).join(" · ");
+  return [message.tag ?? copy.template[messageTemplate(message)], severity]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** The envelope line: its tag, who sent it, when, and where it came from. */

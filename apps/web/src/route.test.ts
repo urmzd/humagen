@@ -30,6 +30,7 @@ test("every route survives a round trip through its address", () => {
     { page: "agent", name: "lead", tab: "prompt" },
     { page: "agent", name: "lead", tab: "knowledge" },
     { page: "artifacts" },
+    { page: "artifacts", artifact: "art-2" },
     { page: "settings", section: "profile" },
     { page: "settings", section: "access", permission: "runs:read" },
   ];
@@ -39,6 +40,7 @@ test("every route survives a round trip through its address", () => {
 test("deep links name pages by path", () => {
   assert.equal(href({ page: "agent", name: "lead", tab: "access" }), "/agents/lead/access");
   assert.equal(href({ page: "task", id: "abc" }), "/tasks/abc");
+  assert.equal(href({ page: "artifacts", artifact: "art-2" }), "/artifacts/art-2");
   assert.equal(href({ page: "knowledge", source: "a b", tab: "search" }), "/knowledge/a%20b/search");
 });
 

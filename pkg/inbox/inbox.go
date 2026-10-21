@@ -46,6 +46,9 @@ const (
 	KindClarification Kind = "clarification"
 	// KindResult is the answer of a run nobody was waiting on.
 	KindResult Kind = "result"
+	// KindArtifact says a file was published to storage, or a new version of
+	// one was. It is there to be read: nothing waits on it.
+	KindArtifact Kind = "artifact"
 )
 
 // State is where a message stands.
@@ -82,6 +85,8 @@ const (
 	PartApproval PartType = "approval"
 	PartChoice   PartType = "choice"
 	PartReply    PartType = "reply"
+	// PartArtifact is a published file, to open or download.
+	PartArtifact PartType = "artifact"
 )
 
 // PartState says whether a part still needs someone.
@@ -175,6 +180,20 @@ type BudgetPart struct {
 	Current Limits `json:"current"`
 }
 
+// ArtifactPart is one published version of a file.
+type ArtifactPart struct {
+	// ID is the artifact version's id, as the artifacts routes name it.
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Kind        string `json:"kind"`
+	Mime        string `json:"mime,omitempty"`
+	Size        int64  `json:"size"`
+	Version     int    `json:"version"`
+	Description string `json:"description,omitempty"`
+	// Previous is the id of the version this one replaces, when it is not the first.
+	Previous string `json:"previous,omitempty"`
+}
+
 // QuestionTool is the call an approval is about.
 type QuestionTool struct {
 	Name string `json:"name"`
@@ -241,6 +260,8 @@ type Part struct {
 	Failure *FailurePart `json:"failure,omitempty"`
 	Memory  *MemoryPart  `json:"memory,omitempty"`
 	Budget  *BudgetPart  `json:"budget,omitempty"`
+	// Artifact is set on an artifact part.
+	Artifact *ArtifactPart `json:"artifact,omitempty"`
 	// Question is set on approval, choice and reply parts.
 	Question *QuestionPart `json:"question,omitempty"`
 }

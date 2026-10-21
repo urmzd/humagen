@@ -9,15 +9,26 @@
  * session cookie, or a machine's bearer token. When either side changes, this
  * file is what changes.
  */
-import { ActionId, type InboxMessage, type MessagePart, partMatches, partTarget, type Resolution, type Tone, type UiAction } from "@warp/core";
+import {
+  ActionId,
+  type ArtifactKind,
+  type InboxMessage,
+  type MessagePart,
+  partMatches,
+  partTarget,
+  type Resolution,
+  type TemplateId,
+  type Tone,
+  type UiAction,
+} from "@warp/core";
 import { interruptOf, settledFromOutcome, type WireQuestion } from "./question.ts";
 
 /** Something a message is about, which the console can open. */
-export type Source = { kind: "run" | "thread" | "rule" | "agent" | "project"; id: string; label: string };
+export type Source = { kind: "run" | "thread" | "rule" | "agent" | "project" | "artifact"; id: string; label: string };
 
 /** A mailbox message, plus what only the platform knows about it. */
 export type PlatformMessage = InboxMessage & {
-  /** What the message is, for the server's kind filter: alert, failure, memory, budget. */
+  /** What the message is, for the server's kind filter: alert, failure, memory, budget, artifact. */
   kind: string;
   /** Everything it is about, as things the console can open by kind and id. */
   about: Source[];
@@ -25,14 +36,35 @@ export type PlatformMessage = InboxMessage & {
   budgets: Record<string, BudgetData>;
 };
 
+/** The server's kinds, in the order the inbox offers them as filters. */
 export const kinds: { id: string; label: string }[] = [
-  { id: "alert", label: "Alerts" },
-  { id: "failure", label: "Failed runs" },
-  { id: "memory", label: "Memory to review" },
-  { id: "budget", label: "Limits" },
   { id: "approval", label: "Approvals" },
   { id: "clarification", label: "Questions" },
+  { id: "alert", label: "Alerts" },
+  { id: "failure", label: "Failed runs" },
+  { id: "memory", label: "Memory" },
+  { id: "budget", label: "Limits" },
+  { id: "artifact", label: "Artifacts" },
+  { id: "result", label: "Results" },
 ];
+
+/**
+ * The template each server kind is laid out with. The kind says what a
+ * message is about better than its first part does: a limit leads with an
+ * alert part, but it is a limit.
+ */
+const templateOf: Record<string, TemplateId> = {
+  alert: "alert",
+  failure: "failure",
+  memory: "memory",
+  budget: "limit",
+  approval: "approval",
+  clarification: "question",
+  result: "result",
+  artifact: "artifact",
+};
+
+const artifactKinds: ArtifactKind[] = ["document", "spreadsheet", "presentation", "image", "pdf", "html", "code", "data", "archive"];
 
 export type LimitKind = "runs" | "concurrent" | "spend" | "lease" | "tokens";
 export type Limits = { max_runs?: number; max_concurrent?: number; spend_limit?: number; max_tokens?: number };
@@ -75,7 +107,7 @@ const obj = (v: unknown): Wire => (v && typeof v === "object" ? (v as Wire) : {}
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
 const sourceKinds = ["run", "thread", "rule", "agent", "project"] as const;
-const sourceWord: Record<Source["kind"], string> = { run: "Run", thread: "Conversation", rule: "Rule", agent: "Agent", project: "Project" };
+const sourceWord: Record<(typeof sourceKinds)[number], string> = { run: "Run", thread: "Conversation", rule: "Rule", agent: "Agent", project: "Project" };
 const tone: Record<string, Tone> = { critical: "bad", warning: "warn", info: "info" };
 
 /** The platform's name for an action as the mailbox's. What this reader may do to a part is a list of these. */
@@ -180,6 +212,28 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
         ...resolution,
       };
     }
+    case "artifact": {
+      const a = obj(p.artifact);
+      const kind = str(a.kind) as ArtifactKind;
+      const fileId = str(a.id);
+      return {
+        id,
+        type: "artifact",
+        artifact: {
+          type: "artifact",
+          id: fileId,
+          title: str(a.title) || "Untitled",
+          kind: artifactKinds.includes(kind) ? kind : "data",
+          phase: "ready",
+          ...(str(a.mime) ? { mimeType: str(a.mime) } : {}),
+          ...(typeof a.size === "number" ? { sizeBytes: a.size } : {}),
+          ...(typeof a.version === "number" ? { version: a.version } : {}),
+          ...(str(a.description) ? { description: str(a.description) } : {}),
+          ...(fileId ? { downloadUrl: `/api/artifacts/${encodeURIComponent(fileId)}/content` } : {}),
+        },
+        allowed,
+      };
+    }
     case "approval":
     case "choice":
     case "reply": {
@@ -226,6 +280,13 @@ export function fromServer(raw: unknown): PlatformMessage {
   const sources: Source[] = sourceKinds
     .filter((k) => str(source[k]))
     .map((k) => ({ kind: k, id: str(source[k]), label: `${sourceWord[k]} ${str(source[k])}` }));
+  // A published file is something to open too, by the version the message is about.
+  for (const p of list(m.parts)) {
+    const a = obj(obj(p).artifact);
+    if (obj(p).type === "artifact" && str(a.id)) {
+      sources.unshift({ kind: "artifact", id: str(a.id), label: str(a.title) || "Artifact" });
+    }
+  }
   const first = sources.find((s) => s.kind === "run" || s.kind === "rule" || s.kind === "project");
   const state = str(m.state);
   return {
@@ -241,8 +302,8 @@ export function fromServer(raw: unknown): PlatformMessage {
       .filter((p): p is MessagePart => p !== null),
     ...(state === "dismissed" ? { dismissedAt: at } : {}),
     ...(state === "snoozed" ? { snoozedUntil: str(m.snoozed_until) || at } : {}),
-    // A message about a limit leads with an alert part, so it is tagged by what it is about.
-    ...(str(m.kind) === "budget" ? { tag: "Limit" } : {}),
+    // A message about a limit leads with an alert part, so it is laid out by what it is about.
+    ...(templateOf[str(m.kind)] ? { template: templateOf[str(m.kind)] } : {}),
     kind: str(m.kind),
     about: sources,
     budgets: Object.fromEntries(

@@ -215,7 +215,7 @@ function Gallery() {
         </div>
       </Section>
 
-      <Section title="Storage, held in memory, then its over-limit, loading and failed states">
+      <Section title="Artifacts, held in memory, then its over-limit, loading and failed states">
         <div data-testid="gallery-storage" className="overflow-hidden rounded-aui-lg border border-[var(--warp-rule)]">
           <Storage signal={0} agents={["lead", "billing", "oncall", "releaser"]} projects={["Launch"]} canDelete via={files} onOpenRun={() => {}} onOpenThread={() => {}} />
         </div>

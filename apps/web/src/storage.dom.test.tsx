@@ -21,7 +21,7 @@ test("delete asks first: Keep It changes nothing, Delete Version removes the fil
   const detail = await screen.findByTestId("stored-detail");
 
   fireEvent.click(inside(detail).getByRole("button", { name: "Delete" }));
-  assert.ok(inside(detail).getByText("Delete version 3 of this file? This cannot be undone."));
+  assert.ok(inside(detail).getByText("Delete version 3 of this artifact? This cannot be undone."));
   fireEvent.click(inside(detail).getByRole("button", { name: "Keep It" }));
   assert.ok(!inside(detail).queryByText(/cannot be undone/));
   assert.deepEqual(removed, []);
@@ -32,7 +32,7 @@ test("delete asks first: Keep It changes nothing, Delete Version removes the fil
   assert.deepEqual(removed, ["a1"]);
   await waitFor(() => assert.ok(!titles().includes("launch-plan.md")));
   assert.equal(titles().length, sampleFiles().length - 1);
-  await waitFor(() => assert.match(screen.getByTestId("storage-use").textContent ?? "", /3 files/));
+  await waitFor(() => assert.match(screen.getByTestId("storage-use").textContent ?? "", /3 artifacts/));
 });
 
 test("a refused delete keeps the file and says why", async () => {
@@ -41,7 +41,7 @@ test("a refused delete keeps the file and says why", async () => {
   fireEvent.click(await screen.findByText("refunds-q3.xlsx"));
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
   fireEvent.click(screen.getByRole("button", { name: "Delete Version" }));
-  assert.equal((await screen.findByRole("alert")).textContent, "The file could not be deleted. You may not delete files.");
+  assert.equal((await screen.findByRole("alert")).textContent, "The artifact could not be deleted. You may not delete files.");
   assert.ok(screen.getByTestId("stored-detail"));
   assert.ok(titles().includes("refunds-q3.xlsx"));
 });
