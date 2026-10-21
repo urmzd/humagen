@@ -1,4 +1,6 @@
-{{- if include "warp.hasConfig" . }}
+{{- if hasKey .Values.files "warp.yaml" }}
+{{- fail "files: warp.yaml is the rendered spec; give the file another name" }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,20 +8,9 @@ metadata:
   labels:
     {{- include "warp.labels" . | nindent 4 }}
 data:
-  {{- with .Values.config.providers }}
-  providers.json: |
-    {{- . | trimSuffix "\n" | nindent 4 }}
-  {{- end }}
-  {{- with .Values.config.settings }}
-  settings.json: |
-    {{- . | trimSuffix "\n" | nindent 4 }}
-  {{- end }}
-  {{- with .Values.config.policy }}
-  policy.authz: |
-    {{- . | trimSuffix "\n" | nindent 4 }}
-  {{- end }}
-  {{- range $name, $body := .Values.config.agents }}
-  agent-{{ $name }}: |
+  warp.yaml: |
+    {{- include "warp.spec" . | trimSuffix "\n" | nindent 4 }}
+  {{- range $name, $body := .Values.files }}
+  {{ $name }}: |
     {{- $body | trimSuffix "\n" | nindent 4 }}
   {{- end }}
-{{- end }}

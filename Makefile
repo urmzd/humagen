@@ -1,4 +1,4 @@
-.PHONY: all init build test lint fmt check start dev dev-signin web up down image client client-check spec-lint oag-install
+.PHONY: all init build test lint fmt check start dev dev-signin web up down chart-check image client client-check spec-lint oag-install
 
 BIN := warp
 
@@ -72,6 +72,14 @@ up:
 # Stops the stack and keeps its volumes. `make down V=1` removes them too.
 down:
 	$(COMPOSE) down $(if $(V),-v)
+
+# Lint and render the Helm chart, and run `warp config check` on the spec each
+# render produces, and on the compose stack's. Needs helm; kubeconform is used
+# when it is on PATH.
+chart-check:
+	deploy/helm/check.sh
+	go run ./cmd/warp config check -f deploy/compose/config
+	go run ./cmd/warp config check -f deploy/compose/dev
 
 # Regenerate the TypeScript client from the API contract. The output under
 # packages/client/src/generated is committed.
