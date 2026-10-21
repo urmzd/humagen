@@ -27,6 +27,7 @@ package state
 import (
 	"context"
 	"errors"
+	"strings"
 )
 
 // Errors a caller can match.
@@ -82,9 +83,15 @@ func checkNames(namespace string, ops []Op) error {
 	if namespace == "" {
 		return errors.Join(ErrInvalid, errors.New("state: a namespace is required"))
 	}
+	if strings.ContainsRune(namespace, 0) {
+		return errors.Join(ErrInvalid, errors.New("state: a name cannot hold a NUL"))
+	}
 	for _, op := range ops {
 		if op.Key == "" {
 			return errors.Join(ErrInvalid, errors.New("state: a key is required"))
+		}
+		if strings.ContainsRune(op.Key, 0) || strings.ContainsRune(op.Tenant, 0) {
+			return errors.Join(ErrInvalid, errors.New("state: a name cannot hold a NUL"))
 		}
 	}
 	return nil

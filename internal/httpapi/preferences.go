@@ -57,10 +57,16 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 		return
 	}
 	if body.Pinned != nil {
-		next, _ = s.P.Prefs.SetPinned(who.Tenant, who.Subject, pinned)
+		if next, err = s.P.Prefs.SetPinned(who.Tenant, who.Subject, pinned); err != nil {
+			s.problem(w, err)
+			return
+		}
 	}
 	if body.Onboarded {
-		next = s.P.Prefs.MarkOnboarded(who.Tenant, who.Subject, time.Now())
+		if next, err = s.P.Prefs.MarkOnboarded(who.Tenant, who.Subject, time.Now()); err != nil {
+			s.problem(w, err)
+			return
+		}
 	}
 	ok(w, http.StatusOK, next)
 }
@@ -82,7 +88,12 @@ func (s *Server) putPhoto(w http.ResponseWriter, r *http.Request, who auth.Princ
 }
 
 func (s *Server) deletePhoto(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, s.P.Prefs.ClearPhoto(who.Tenant, who.Subject))
+	next, err := s.P.Prefs.ClearPhoto(who.Tenant, who.Subject)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, next)
 }
 
 func (s *Server) getPhoto(w http.ResponseWriter, _ *http.Request, who auth.Principal) {

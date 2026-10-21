@@ -2,9 +2,12 @@ package policy
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Change is one entry in a tenant's policy history: who changed which scope's
@@ -30,14 +33,88 @@ type tenant struct {
 }
 
 // Store holds every tenant's policies and the history of their changes. It is
-// in memory and is lost on restart.
+// in memory. Built with Open, it writes every change through a state.Store
+// and reads them back when it is built again.
 type Store struct {
 	mu      sync.RWMutex
 	tenants map[string]*tenant
+	// kept is where each tenant's policies are written, all of a tenant's
+	// in one record. Nil keeps them only in memory.
+	kept *state.Table[stored]
 }
 
-// NewStore returns an empty store.
+// stored is a tenant as it is written.
+type stored struct {
+	Policies []Policy  `json:"policies"`
+	History  []Change  `json:"history"`
+	Versions []version `json:"versions"`
+}
+
+type version struct {
+	Scope   Scope `json:"scope"`
+	Version int   `json:"version"`
+}
+
+// tenantKey is the one key a tenant's record is kept under.
+const tenantKey = "policies"
+
+// NewStore returns an empty store in memory.
 func NewStore() *Store { return &Store{tenants: map[string]*tenant{}} }
+
+// Open returns a store that keeps every policy in st, holding what st
+// already has. A nil st is NewStore.
+func Open(st state.Store) (*Store, error) {
+	s := NewStore()
+	s.kept = state.NewTable[stored](st, "policy")
+	err := s.kept.Load(func(name, _ string, r stored) error {
+		t := s.of(name)
+		t.policies, t.history = r.Policies, r.History
+		for _, v := range r.Versions {
+			t.versions[v.Scope] = v.Version
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("policy: load: %w", err)
+	}
+	return s, nil
+}
+
+func (t *tenant) copy() tenant {
+	return tenant{policies: slices.Clone(t.policies), history: slices.Clone(t.history), versions: maps.Clone(t.versions)}
+}
+
+// save writes a tenant, or puts back how it was if the write fails. It is
+// called with the lock held.
+func (s *Store) save(name string, t *tenant, before tenant) error {
+	if !s.kept.Enabled() {
+		return nil
+	}
+	r := stored{Policies: t.policies, History: t.history}
+	for scope, v := range t.versions {
+		r.Versions = append(r.Versions, version{Scope: scope, Version: v})
+	}
+	slices.SortFunc(r.Versions, func(a, b version) int {
+		if a.Scope.Kind != b.Scope.Kind {
+			if a.Scope.Kind < b.Scope.Kind {
+				return -1
+			}
+			return 1
+		}
+		if a.Scope.Name < b.Scope.Name {
+			return -1
+		}
+		if a.Scope.Name > b.Scope.Name {
+			return 1
+		}
+		return 0
+	})
+	if err := s.kept.Put(name, tenantKey, r); err != nil {
+		*t = before
+		return fmt.Errorf("policy: write: %w", err)
+	}
+	return nil
+}
 
 func (s *Store) of(name string) *tenant {
 	t, ok := s.tenants[name]
@@ -70,6 +147,7 @@ func (s *Store) Put(tenantName string, p Policy, by string, at time.Time) (Polic
 			}
 		}
 	}
+	before := t.copy()
 	t.versions[p.Scope]++
 	p.Version, p.UpdatedBy, p.UpdatedAt = t.versions[p.Scope], by, at
 	change := Change{Scope: p.Scope, By: by, At: at, After: &p}
@@ -81,6 +159,9 @@ func (s *Store) Put(tenantName string, p Policy, by string, at time.Time) (Polic
 		t.policies = append(t.policies, p)
 	}
 	t.record(change)
+	if err := s.save(tenantName, t, before); err != nil {
+		return Policy{}, err
+	}
 	return p, nil
 }
 
@@ -100,10 +181,11 @@ func (s *Store) Delete(tenantName string, scope Scope, by string, at time.Time) 
 	if i < 0 {
 		return fmt.Errorf("%w: no policy for %s", ErrNotFound, scope)
 	}
+	saved := t.copy()
 	before := t.policies[i]
-	t.policies = slices.Delete(t.policies, i, i+1)
+	t.policies = slices.Delete(slices.Clone(t.policies), i, i+1)
 	t.record(Change{Scope: scope, By: by, At: at, Before: &before})
-	return nil
+	return s.save(tenantName, t, saved)
 }
 
 // List returns a tenant's policies: the tenant's first, then by kind and name.

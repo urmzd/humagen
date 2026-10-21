@@ -220,6 +220,9 @@ func Run(t *testing.T, open func(t *testing.T) state.Store) {
 		if _, err := st.Get(ctx, "ns", "t", "keep"); err != nil {
 			t.Fatalf("a refused write deleted %q: %v", "keep", err)
 		}
+		if err := st.Write(ctx, "ns", state.Put("t", "a\x00b", []byte("1"))); !errors.Is(err, state.ErrInvalid) {
+			t.Fatalf("a key with a NUL = %v, want ErrInvalid", err)
+		}
 		// Ops apply in order: a put then a delete of one key leaves nothing.
 		must(t, st.Write(ctx, "ns", state.Put("t", "x", []byte("1")), state.Delete("t", "x")))
 		if _, err := st.Get(ctx, "ns", "t", "x"); !errors.Is(err, state.ErrNotFound) {

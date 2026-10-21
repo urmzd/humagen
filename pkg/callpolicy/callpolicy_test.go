@@ -108,7 +108,9 @@ func TestStoreKeepsTenantsApartAndIsBounded(t *testing.T) {
 	if again, _ := s.Get("acme", "h"); len(again.Allow) != 0 {
 		t.Fatal("a read shares the stored lists")
 	}
-	s.Delete("acme", "h")
+	if err := s.Delete("acme", "h"); err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := s.Get("acme", "h"); ok {
 		t.Fatal("a deleted policy is still stored")
 	}

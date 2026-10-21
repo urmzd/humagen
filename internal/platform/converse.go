@@ -360,7 +360,9 @@ func (p *Platform) DeleteProject(ctx context.Context, tenant, name string) error
 	if err := p.SetSettings(ctx, tenant, cfg); err != nil {
 		return err
 	}
-	p.Memory.Drop(tenant, memory.ProjectOwner(name))
+	if err := p.Memory.Drop(tenant, memory.ProjectOwner(name)); err != nil {
+		return err
+	}
 	p.syncMemory(tenant, memory.ProjectOwner(name))
 	return nil
 }
