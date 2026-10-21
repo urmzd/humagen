@@ -1,6 +1,8 @@
 import { ArrowUpIcon, FileIcon, XIcon } from "@warp/render-web";
 import { type QueueControls, QueueStrip } from "@warp/web";
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { insertTag, matching, type TagOption, type Typing, tagAt } from "./tags.ts";
+import { AgentMark } from "./ui.tsx";
 
 const MAX_HEIGHT = 260;
 const MAX_FILES = 5;
@@ -100,6 +102,7 @@ export function Composer({
   leading,
   trailing,
   seed,
+  tags,
 }: {
   /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
   seed?: { text: string };
@@ -112,6 +115,11 @@ export function Composer({
   leading?: ReactNode;
   /** Controls before the send or speak button, such as who answers. */
   trailing?: ReactNode;
+  /**
+   * The @ typeahead: what a message here can tag, and a call each time the
+   * name being typed changes, for options looked up as it is typed.
+   */
+  tags?: { label: string; options: TagOption[]; onQuery?: (query: string) => void };
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<Attached[]>([]);
@@ -121,6 +129,33 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const speech = useRef<Recognizer | null>(null);
   const canDictate = recognizer() !== undefined;
+
+  const [typing, setTyping] = useState<Typing | null>(null);
+  const [active, setActive] = useState(0);
+  const shown = tags && typing ? matching(tags.options, typing.query) : [];
+
+  // What is being tagged at the caret, read after every change and every
+  // move of the caret.
+  const follow = (text: string) => {
+    if (!tags) return;
+    const el = input.current;
+    const at = tagAt(text, el?.selectionStart ?? text.length);
+    setTyping(at);
+    setActive(0);
+    if (at && at.query !== typing?.query) tags.onQuery?.(at.query);
+  };
+
+  const pickTag = (option: TagOption) => {
+    if (!typing) return;
+    const next = insertTag(value, typing, option);
+    change(next.text);
+    setTyping(null);
+    requestAnimationFrame(() => {
+      const el = input.current;
+      el?.focus();
+      el?.setSelectionRange(next.caret, next.caret);
+    });
+  };
 
   const change = (next: string) => {
     setValue(next);
@@ -169,6 +204,25 @@ export function Composer({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // While the typeahead is open, the keys move through it and pick from it.
+    if (shown.length > 0 && !e.nativeEvent.isComposing) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setActive((i) => (i + (e.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const option = shown[Math.min(active, shown.length - 1)];
+        if (option) pickTag(option);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setTyping(null);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       send(e.metaKey || e.ctrlKey);
@@ -219,8 +273,42 @@ export function Composer({
         e.preventDefault();
         send(false);
       }}
-      className="flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-2 transition-colors focus-within:border-aui-muted"
+      className="relative flex flex-col gap-1 rounded-[1.25rem] border border-aui-border bg-aui-surface p-2 transition-colors focus-within:border-aui-muted"
     >
+      {tags && shown.length > 0 && (
+        // Still: a list waiting on a person does not animate.
+        <ul
+          id="composer-tags"
+          role="listbox"
+          aria-label={tags.label}
+          className="absolute right-2 bottom-full left-2 z-20 mb-1 max-h-64 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg"
+        >
+          {shown.map((o, i) => (
+            <li
+              key={`${o.kind}:${o.token}`}
+              id={`composer-tag-${i}`}
+              role="option"
+              aria-selected={i === active}
+              onMouseDown={(e) => {
+                // Keep the text box's focus and caret while picking.
+                e.preventDefault();
+                pickTag(o);
+              }}
+              className="flex cursor-pointer items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-aui-sm text-aui-fg aria-selected:bg-aui-hover"
+            >
+              {o.kind === "agent" || o.kind === "auto" ? (
+                <AgentMark name={o.token} size={16} />
+              ) : (
+                <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[0.6rem] font-medium">
+                  {o.kind === "sme" ? "?" : (o.hint ?? o.label).trim().charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span className="font-medium">@{o.token}</span>
+              {o.hint && <span className="min-w-0 truncate text-aui-xs text-aui-muted">{o.hint}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
       <QueueStrip queue={queue} />
       {files.length > 0 && (
         <ul className="flex flex-wrap gap-1.5 px-2 pt-1" aria-label="Attached files">
@@ -252,8 +340,21 @@ export function Composer({
         rows={2}
         value={value}
         placeholder={placeholder}
-        onChange={(e) => change(e.target.value)}
+        onChange={(e) => {
+          change(e.target.value);
+          follow(e.target.value);
+        }}
         onKeyDown={onKeyDown}
+        onKeyUp={(e) => {
+          if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") follow(value);
+        }}
+        onClick={() => follow(value)}
+        onBlur={() => setTyping(null)}
+        role={tags ? "combobox" : undefined}
+        aria-expanded={tags ? shown.length > 0 : undefined}
+        aria-controls={tags && shown.length > 0 ? "composer-tags" : undefined}
+        aria-autocomplete={tags ? "list" : undefined}
+        aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${active}` : undefined}
         className="max-h-[260px] min-h-14 w-full resize-none bg-transparent px-3 pt-2 text-aui-lg text-aui-fg outline-none placeholder:text-aui-muted"
       />
       {notice && (

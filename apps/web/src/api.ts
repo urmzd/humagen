@@ -736,6 +736,8 @@ export function subscribe(
     onState?: (live: boolean) => void;
     /** The inbox changed. It arrives as a named event, apart from run events. */
     onInbox?: () => void;
+    /** Something happened in a shared thread: a message was posted, or its record changed. */
+    onThread?: () => void;
   },
 ): () => void {
   const source = new EventSource(`/api/events?topic=${encodeURIComponent(topic)}`);
@@ -752,6 +754,7 @@ export function subscribe(
     }
   };
   source.addEventListener("inbox", () => handlers.onInbox?.());
+  source.addEventListener("thread", () => handlers.onThread?.());
   return () => source.close();
 }
 

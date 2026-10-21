@@ -664,6 +664,39 @@ export function budgetMail(): Record<string, unknown> {
   };
 }
 
+/** A message in a shared thread that tags the reader, as the platform's inbox sends it. */
+export function mentionMail(): Record<string, unknown> {
+  return {
+    id: "m-mention",
+    kind: "mention",
+    to: "dana",
+    subject: "Ana mentioned you in #renewals",
+    from: { kind: "person", name: "Ana" },
+    at: "2026-10-09T00:40:00Z",
+    updated_at: "2026-10-09T00:40:00Z",
+    severity: "info",
+    state: "open",
+    unread: true,
+    source: { thread: "th-0123456789abcdef", project: "Globex" },
+    parts: [
+      {
+        id: "p1",
+        type: "mention",
+        state: "open",
+        actions: ["reply", "done"],
+        mention: {
+          thread: "th-0123456789abcdef",
+          message: "m-3",
+          project: "Globex",
+          channel: "renewals",
+          by: "ana",
+          excerpt: "@dana can you confirm the renewal date with Globex?",
+        },
+      },
+    ],
+  };
+}
+
 /** The question a run asks of each kind, as the platform's stream and inbox carry it. */
 export const QUESTIONS = {
   approval: {

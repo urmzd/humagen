@@ -82,6 +82,28 @@ test("a project tab or kind it does not know falls back to the default", () => {
   assert.deepEqual(at("/?view=projects"), { page: "projects" });
 });
 
+test("a channel is a page under its project's Channels tab, and ~ is the workspace's", () => {
+  assert.equal(href({ page: "project", name: "Globex", tab: "channels" }), "/projects/Globex/channels");
+  assert.equal(href({ page: "channel", project: "Globex", channel: "renewals" }), "/projects/Globex/channels/renewals");
+  assert.equal(href({ page: "channel", project: "", channel: "general" }), "/projects/~/channels/general");
+  assert.equal(href({ page: "channel", project: "Field engineering", channel: "ops" }), "/projects/Field%20engineering/channels/ops");
+  for (const r of [
+    { page: "channel", project: "Globex", channel: "renewals" },
+    { page: "channel", project: "", channel: "general" },
+    { page: "project", name: "Globex", tab: "channels" },
+  ] as const) {
+    assert.deepEqual(at(href(r)), r);
+  }
+});
+
+test("a task opens at one of its messages, and a new task starts in a channel", () => {
+  assert.equal(href({ page: "task", id: "th-0123456789abcdef", message: "m-3" }), "/tasks/th-0123456789abcdef?message=m-3");
+  assert.deepEqual(at("/tasks/th-0123456789abcdef?message=m-3"), { page: "task", id: "th-0123456789abcdef", message: "m-3" });
+  assert.deepEqual(at("/tasks/th-0123456789abcdef?message="), { page: "task", id: "th-0123456789abcdef" });
+  assert.equal(href({ page: "new", project: "Globex", channel: "renewals" }), "/?project=Globex&channel=renewals");
+  assert.deepEqual(at("/?project=Globex&channel=renewals"), { page: "new", project: "Globex", channel: "renewals" });
+});
+
 test("old ?view= links open the page they named", () => {
   assert.deepEqual(at("/?view=agents"), { page: "agents" });
   assert.deepEqual(at("/?view=storage"), { page: "artifacts" });

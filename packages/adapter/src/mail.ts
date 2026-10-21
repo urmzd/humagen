@@ -46,6 +46,7 @@ export const kinds: { id: string; label: string }[] = [
   { id: "budget", label: "Limits" },
   { id: "artifact", label: "Artifacts" },
   { id: "result", label: "Results" },
+  { id: "mention", label: "Mentions" },
 ];
 
 /**
@@ -62,6 +63,7 @@ const templateOf: Record<string, TemplateId> = {
   clarification: "question",
   result: "result",
   artifact: "artifact",
+  mention: "mention",
 };
 
 const artifactKinds: ArtifactKind[] = ["document", "spreadsheet", "presentation", "image", "pdf", "html", "code", "data", "archive"];
@@ -264,6 +266,20 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
       const card = interruptOf(question, settled);
       if (!card) return null;
       return card.type === "approval" ? { id, type: "approval", approval: card, allowed } : { id, type: "choice", clarification: card, allowed };
+    }
+    case "mention": {
+      // A message in a shared thread that tags the reader is one to reply
+      // to: the reply posts in the thread as them, and starts no run.
+      const mn = obj(p.mention);
+      return {
+        id,
+        type: "reply",
+        prompt: str(mn.excerpt),
+        allowed,
+        ...(out.action
+          ? { resolution: { outcome: str(out.action) === "reply" ? "replied" : str(out.action), by: str(out.by), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
+          : {}),
+      };
     }
     default:
       // A part this console does not know is left out rather than guessed at.
