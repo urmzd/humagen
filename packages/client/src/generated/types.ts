@@ -1118,7 +1118,7 @@ export interface InboxPart {
   mention?: InboxMentionPart;
 }
 
-/** A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which starts no run; `done` sets it aside. */
+/** A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which starts no run; `done` sets it aside. The console and the Slack app offer Reply, and set a mention aside by dismissing its message; `done` is the API's. */
 export interface InboxMentionPart {
   thread: string;
   /** The message's id within the thread, such as `m-3`. */
@@ -1164,7 +1164,7 @@ export interface InboxChange {
 
 /** What a person decided about a part. */
 export interface Resolution {
-  action: "acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply";
+  action: "acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done";
   /** The proposed notes to keep, with `keep`. */
   ids?: string[];
   /** At most 500 characters. On a denial the model is shown it. */

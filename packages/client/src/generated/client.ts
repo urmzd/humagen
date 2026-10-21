@@ -1505,7 +1505,7 @@ may do with each part, is decided per message: a memory proposal needs
 `alerts:read`. `next` is the cursor for the page after this one, or
 null at the end.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "clarification" | "result" | "mention", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1522,7 +1522,7 @@ null at the end.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "clarification" | "result" | "mention", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1644,6 +1644,10 @@ inbox, and an action the caller lacks the permission for answers 403:
 | `approval` | `approve` (optionally with `arguments`), `deny` | `runs:write` |
 | `choice` | `choose` (with `choice`) | `runs:write` |
 | `reply` | `reply` (with `text`) | `runs:write` |
+| `mention` | `reply` (with `text`), `done` | `runs:write` |
+
+A mention's `reply` posts the words in its thread as the reader,
+which starts no run, and `done` sets it aside.
 
 Answering a question is `answerQuestion` by another route, with the
 same rules: a person the question is not addressed to does not see

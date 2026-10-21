@@ -1403,7 +1403,7 @@ paths:
         - name: kind
           in: query
           description: Only messages of this kind. An unknown kind matches nothing.
-          schema: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result]}
+          schema: {type: string, enum: [alert, failure, memory, budget, artifact, approval, clarification, result, mention]}
         - name: unread
           in: query
           description: Only `true` narrows to messages the caller has not read.
@@ -1591,6 +1591,10 @@ paths:
         | `approval` | `approve` (optionally with `arguments`), `deny` | `runs:write` |
         | `choice` | `choose` (with `choice`) | `runs:write` |
         | `reply` | `reply` (with `text`) | `runs:write` |
+        | `mention` | `reply` (with `text`), `done` | `runs:write` |
+
+        A mention's `reply` posts the words in its thread as the reader,
+        which starts no run, and `done` sets it aside.
 
         Answering a question is `answerQuestion` by another route, with the
         same rules: a person the question is not addressed to does not see
@@ -5107,7 +5111,7 @@ components:
         question: {$ref: "#/components/schemas/InboxQuestionPart"}
         mention: {$ref: "#/components/schemas/InboxMentionPart"}
     InboxMentionPart:
-      description: A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which starts no run; `done` sets it aside.
+      description: A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which starts no run; `done` sets it aside. The console and the Slack app offer Reply, and set a mention aside by dismissing its message; `done` is the API's.
       type: object
       required: [thread, message, project, channel, by, excerpt]
       properties:
@@ -5170,7 +5174,7 @@ components:
       properties:
         action:
           type: string
-          enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply]
+          enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done]
         ids:
           description: The proposed notes to keep, with `keep`.
           type: array

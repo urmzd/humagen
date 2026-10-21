@@ -1232,7 +1232,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// Channels, experts and shared threads. A person posts; a credential
 	// posts only for a person it acts for.
 	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
-	f.person(t, "acme", "00u-vic", "Vic", "warp-viewers")
+	vic := f.person(t, "acme", "00u-vic", "Vic", "warp-viewers")
+	bo := f.person(t, "acme", "00u-bo", "Bo", "warp-admins")
 	channels := "/api/projects/{name}/channels"
 	c.call(acme, "GET", channels, "/api/projects/Field/channels", "", http.StatusOK)
 	c.call(acme, "GET", channels, "/api/projects/~/channels", "", http.StatusOK)
@@ -1293,6 +1294,26 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"add":[{"kind":"person","name":"00u-vic","at":"2026-01-01T00:00:00Z"}]}`, http.StatusOK)
 	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"remove":["00u-vic"]}`, http.StatusConflict)
 	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":3,"add":[{"kind":"person","name":"nobody","at":"2026-01-01T00:00:00Z"}]}`, http.StatusBadRequest)
+	// A mention, read by the person it tags: replied to, set aside, and
+	// refused to a viewer, who may read it but not act on it.
+	c.call(ana, "POST", messages, threadPath+"/messages", `{"text":"@bo one for you"}`, http.StatusCreated)
+	c.call(ana, "POST", messages, threadPath+"/messages", `{"text":"@bo and another"}`, http.StatusCreated)
+	partPath := func(m any) string {
+		msg := obj(m)
+		return "/api/inbox/" + fmt.Sprint(msg["id"]) + "/parts/" + fmt.Sprint(obj(sliceOf(msg["parts"])[0])["id"]) + "/resolve"
+	}
+	if ms := sliceOf(c.call(bo, "GET", "/api/inbox", "/api/inbox?kind=mention", "", http.StatusOK).field("messages")); len(ms) != 2 {
+		t.Errorf("bo holds %d mentions, want 2", len(ms))
+	} else {
+		c.call(bo, "POST", resolve, partPath(ms[0]), `{"action":"reply","text":"On it."}`, http.StatusOK)
+		c.call(bo, "POST", resolve, partPath(ms[1]), `{"action":"done"}`, http.StatusOK)
+		c.call(bo, "POST", resolve, partPath(ms[1]), `{"action":"approve"}`, http.StatusBadRequest)
+	}
+	if ms := sliceOf(c.call(vic, "GET", "/api/inbox", "/api/inbox?kind=mention", "", http.StatusOK).field("messages")); len(ms) != 1 {
+		t.Errorf("vic holds %d mentions, want 1", len(ms))
+	} else {
+		c.call(vic, "POST", resolve, partPath(ms[0]), `{"action":"done"}`, http.StatusForbidden)
+	}
 	// A thread holds 5,000 messages, and then is full.
 	for {
 		_, _, err := f.p.Threads.Post("acme", tid, threads.Message{By: "00u-ana", Text: "filler"}, time.Now())
