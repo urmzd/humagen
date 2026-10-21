@@ -222,6 +222,85 @@ export const defaultCopy = {
     needOwner: (project: string) => `You need to own ${project}`,
     archived: "Archived. Nothing new can be added under it.",
   },
+  /** A project's page: its tabs, its kinds in words, and what each tab says. */
+  project: {
+    tabs: {
+      inbox: "Inbox",
+      overview: "Overview",
+      context: "Context",
+      people: "People",
+      limits: "Limits",
+      history: "History",
+    },
+    /** A kind in words. A workspace's own kind shows its title. */
+    kind: (kind: string, title?: string) =>
+      kind === "company"
+        ? "Company-wide"
+        : kind === "team"
+          ? "Team"
+          : kind === "account"
+            ? "Account"
+            : (title ?? kind),
+    in: (parent: string) => `in ${parent}`,
+    /** The caller's role, in words: "You own it". */
+    yourRole: (role: string) =>
+      role === "owner"
+        ? "You own it"
+        : role === "member"
+          ? "You are a member"
+          : role === "viewer"
+            ? "You can view it"
+            : "",
+    allProjects: "All projects",
+    newSubProject: "New Sub-project",
+    newTask: "New Task",
+    deleteProject: "Delete Project",
+    move: "Move",
+    moveUnder: "Move under",
+    topLevel: "The top level",
+    subProjects: "Sub-projects",
+    noSubProjects: "No sub-projects yet.",
+    instructions: "Instructions",
+    instructionsHint:
+      "Sent to every agent answering here and below, after the instructions of the projects above.",
+    noInstructions: "No instructions of its own.",
+    saveInstructions: "Save Instructions",
+    proposeHint: "Your note is a proposal. The project's owners keep or discard it in their inbox.",
+    members: "Members",
+    ownersAbove: "Owners from above",
+    remove: "Remove",
+    who: "Who",
+    whoHint: "A person's subject, or role:<name> for everyone who holds a role.",
+    role: "Role",
+    saveMembers: "Save Members",
+    everyoneNeeded: "Everyone keeps at least viewer here, since every project stays visible.",
+    limitFrom: (project: string) => `${project}'s limit also applies here.`,
+    workspaceLimit: "The workspace's own limit applies here too.",
+    ownerLimit: "A tighter limit, as an owner above",
+    ownerLimitHint:
+      "It can only be tighter than every limit over this project. An admin's limit is changed under Settings.",
+    period: "Each",
+    maxRuns: "Most runs",
+    setLimit: "Set Limit",
+    removeLimit: "Remove Limit",
+    what: {
+      created: "Created",
+      updated: "Changed",
+      deleted: "Deleted",
+      managed: "Taken over or let go by the platform file",
+      moved: "Moved",
+      archived: "Archived or restored",
+      members: "Members changed",
+      agents: "Agents changed",
+      home: "An agent's home changed",
+    } as Record<string, string>,
+    noHistory: "Nothing has changed here yet.",
+    older: "Show Older",
+    subject: "Subject",
+    text: "What to say",
+    warning: "Mark as a warning",
+    whoAnnounces: "Who may announce",
+  },
   serviceStatus: {
     operational: "Operational",
     degraded: "Degraded",
