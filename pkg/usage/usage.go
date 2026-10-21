@@ -192,7 +192,13 @@ type Entry struct {
 	Kind    Kind   `json:"kind"`
 	Tenant  string `json:"tenant"`
 	Project string `json:"project,omitempty"`
-	Agent   string `json:"agent"`
+	// Within is the project's ancestors, nearest first and the root left
+	// out, as they were when the run was admitted. The entry counts toward
+	// each of them as it does toward its project, so a parent's limit holds
+	// everything below it. An entry written before projects nested has
+	// none, and counts toward its own project only.
+	Within []string `json:"within,omitempty"`
+	Agent  string   `json:"agent"`
 	// Client is the external client that raised the run, if one did.
 	Client string `json:"client,omitempty"`
 	RunID  string `json:"run_id,omitempty"`
@@ -225,14 +231,21 @@ const (
 
 type admission struct {
 	project, agent, client, runID string
+	within                        []string
 	at                            time.Time
 }
 
-// scopes is the keys of every scope an admission falls in.
+// scopes is the keys of every scope an admission falls in: the tenant, its
+// project and each of the project's ancestors, its agent and its client.
 func (a admission) scopes() []string {
 	out := []string{"t"}
 	if a.project != "" {
 		out = append(out, "p\x00"+a.project)
+	}
+	for _, p := range a.within {
+		if p != "" && p != a.project {
+			out = append(out, "p\x00"+p)
+		}
 	}
 	if a.agent != "" {
 		out = append(out, "a\x00"+a.agent)
@@ -451,7 +464,7 @@ func (l *Ledger) Record(e Entry) (Spend, bool, error) {
 
 func (l *Ledger) apply(e Entry) Spend {
 	t := l.of(e.Tenant)
-	a := admission{project: e.Project, agent: e.Agent, client: e.Client, runID: e.RunID, at: e.At}
+	a := admission{project: e.Project, agent: e.Agent, client: e.Client, runID: e.RunID, within: e.Within, at: e.At}
 	var added Spend
 	switch e.Kind {
 	case Admitted:
@@ -543,7 +556,7 @@ func (l *Ledger) prune(now time.Time) {
 func matches(s policy.Scope, a admission) bool {
 	switch s.Kind {
 	case policy.Project:
-		return a.project == s.Name
+		return a.project == s.Name || slices.Contains(a.within, s.Name)
 	case policy.Agent:
 		return a.agent == s.Name
 	case policy.Client:

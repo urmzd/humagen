@@ -17,7 +17,7 @@ export interface Refusal {
   resets_at?: string;
 }
 
-export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write";
+export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "people:read";
 
 /** An authenticated caller. The tenant is the workspace everything they touch is confined to. */
 export interface Principal {

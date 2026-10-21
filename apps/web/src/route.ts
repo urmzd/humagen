@@ -19,6 +19,10 @@ export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "eva
 export type MonitorTab = "overview" | "rules";
 export const MONITOR_TABS: MonitorTab[] = ["overview", "rules"];
 
+/** The Directory: who and what is in the workspace, for everyone in it. */
+export type DirectoryTab = "people" | "agents" | "projects";
+export const DIRECTORY_TABS: DirectoryTab[] = ["people", "agents", "projects"];
+
 export type SettingsSection = "profile" | "appearance" | "workspace" | "routing" | "models" | "limits" | "connections" | "access";
 export const SETTINGS_SECTIONS: SettingsSection[] = ["profile", "appearance", "workspace", "routing", "models", "limits", "connections", "access"];
 
@@ -36,6 +40,7 @@ export type Route =
   | { page: "agents" }
   | { page: "agent"; name: string | null; tab: AgentTab }
   | { page: "artifacts"; artifact?: string }
+  | { page: "directory"; tab: DirectoryTab }
   | { page: "settings"; section: SettingsSection; permission?: string };
 
 export type Page = Route["page"];
@@ -91,6 +96,8 @@ export function href(r: Route): string {
     }
     case "artifacts":
       return r.artifact ? `/artifacts/${enc(r.artifact)}` : "/artifacts";
+    case "directory":
+      return r.tab === "people" ? "/directory" : `/directory/${r.tab}`;
     case "settings": {
       const base = `/settings/${r.section}`;
       return r.section === "access" && r.permission ? `${base}?permission=${enc(r.permission)}` : base;
@@ -183,6 +190,8 @@ function read(pathname: string, search: string): Route {
       };
     case "artifacts":
       return { page: "artifacts", artifact: a };
+    case "directory":
+      return { page: "directory", tab: pick(a, DIRECTORY_TABS, "people") };
     case "settings":
       return { page: "settings", section: pick(a, SETTINGS_SECTIONS, "profile"), permission: q.get("permission") ?? undefined };
     default:

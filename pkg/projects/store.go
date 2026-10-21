@@ -49,22 +49,27 @@ type tenant struct {
 	// history is the tenant's changes, oldest first.
 	history []Change
 	seq     int64
+	// homes is where each agent with a home lives, by agent.
+	homes map[string]home
 	// channels is every project's written channels, by project and name.
 	channels map[string]Channel
 }
 
 func newTenant() *tenant {
-	return &tenant{projects: map[string]Project{}, tombs: map[string]Tombstone{}, channels: map[string]Channel{}}
+	return &tenant{projects: map[string]Project{}, tombs: map[string]Tombstone{}, homes: map[string]home{}, channels: map[string]Channel{}}
 }
 
 func (t *tenant) copy() *tenant {
-	return &tenant{projects: maps.Clone(t.projects), tombs: maps.Clone(t.tombs), history: slices.Clone(t.history), seq: t.seq, channels: maps.Clone(t.channels)}
+	return &tenant{projects: maps.Clone(t.projects), tombs: maps.Clone(t.tombs), history: slices.Clone(t.history), seq: t.seq, homes: maps.Clone(t.homes), channels: maps.Clone(t.channels)}
 }
 
 // stored reports whether the tenant has written anything.
 func (t *tenant) stored() bool {
-	return len(t.projects) > 0 || len(t.tombs) > 0 || len(t.history) > 0
+	return len(t.projects) > 0 || len(t.tombs) > 0 || len(t.history) > 0 || len(t.homes) > 0
 }
+
+// tree is the tenant's records as a Tree.
+func (t *tenant) tree() *Tree { return build(t.projects, homeNames(t.homes)) }
 
 // lookup returns the project whose name equals name ignoring case.
 func (t *tenant) lookup(name string) (Project, bool) {
@@ -119,7 +124,8 @@ func NewStore(opts ...Option) *Store {
 
 // Open returns a store that keeps its records in st, holding what st already
 // has. A nil st is NewStore. It refuses records that do not make a tree: a
-// project whose parent is missing, or a cycle.
+// project whose parent is missing, a cycle, or an agent living in a project
+// that is not there.
 func Open(st state.Store, opts ...Option) (*Store, error) {
 	s := NewStore(opts...)
 	s.kept = state.NewTable[json.RawMessage](st, namespace)
@@ -139,7 +145,7 @@ func Open(st state.Store, opts ...Option) (*Store, error) {
 		if err := t.check(); err != nil {
 			return nil, fmt.Errorf("projects: load %q: %w", name, err)
 		}
-		s.trees.Store(name, build(t.projects))
+		s.trees.Store(name, t.tree())
 	}
 	return s, nil
 }
@@ -178,6 +184,15 @@ func (t *tenant) load(key string, raw json.RawMessage) error {
 		t.tombs[strings.ToLower(x.Name)] = x
 	case strings.HasPrefix(key, keyChannel):
 		return t.loadChannel(key, raw)
+	case strings.HasPrefix(key, keyHome):
+		var h home
+		if err := json.Unmarshal(raw, &h); err != nil {
+			return fmt.Errorf("home %q: %w", key, err)
+		}
+		if h.Agent != strings.TrimPrefix(key, keyHome) {
+			return fmt.Errorf("%w: the home of %q is kept under %q", ErrInvalid, h.Agent, key)
+		}
+		t.homes[h.Agent] = h
 	default:
 		return fmt.Errorf("%w: nothing is kept under %q", ErrInvalid, key)
 	}
@@ -185,8 +200,9 @@ func (t *tenant) load(key string, raw json.RawMessage) error {
 }
 
 // check holds loaded records to what a tree must be: valid records, unique
-// names, every parent present, and no cycle. Caps are not checked, so a
-// tighter cap never stops a tree from loading.
+// names, every parent present, no cycle, and every agent's home a project
+// that is there. Caps are not checked, so a tighter cap never stops a tree
+// from loading.
 func (t *tenant) check() error {
 	seen := map[string]string{}
 	for name, p := range t.projects {
@@ -215,6 +231,14 @@ func (t *tenant) check() error {
 			at = parent
 		}
 	}
+	for agent, h := range t.homes {
+		switch _, ok := t.projects[h.Project]; {
+		case !ValidAgent(agent):
+			return fmt.Errorf("%w: %q cannot live in a project", ErrInvalid, agent)
+		case h.Project == Root || !ok:
+			return fmt.Errorf("%w: %s lives in %q, which is not a project", ErrInvalid, agent, h.Project)
+		}
+	}
 	return t.checkChannels()
 }
 
@@ -229,7 +253,7 @@ func (s *Store) Tree(tenantName string) *Tree {
 
 // bare is the tree of a tenant that has written nothing. A Tree is never
 // changed, so one serves them all.
-var bare = build(nil)
+var bare = build(nil, nil)
 
 // Get returns a project by its exact name. The root is "".
 func (s *Store) Get(tenantName, name string) (Project, error) {
@@ -255,7 +279,8 @@ func (s *Store) Stored(tenantName string) bool {
 // Hold runs fn while the project exists, and keeps it from being deleted until
 // fn returns. A caller filing something under a project (a schedule, an alert
 // rule, a policy) does it in fn, so a delete that checks for such things
-// cannot miss it. fn must not write to this store.
+// cannot miss it. fn may read Tree and Get, which take no lock, and must call
+// nothing else on this store: a write waiting for the lock would wait for fn.
 func (s *Store) Hold(tenantName, name string, fn func() error) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -298,9 +323,12 @@ func (w *write) put(key string, v any) {
 
 func (w *write) delete(key string) { w.batch.Delete(w.name, key) }
 
-// project puts a project's record.
+// project puts a project's record. A stored enable list is never nil.
 func (w *write) project(p Project) {
 	p.Experts = cloneExperts(p.Experts)
+	if p.Agents.Enable == nil {
+		p.Agents.Enable = []string{}
+	}
 	w.t.projects[p.Name] = p
 	w.put(keyProject+p.Name, stored{Project: p, Owns: p.FileOwns})
 }
@@ -357,7 +385,7 @@ func (w *write) commit() error {
 		return fmt.Errorf("projects: write: %w", err)
 	}
 	w.s.tenants[w.name] = w.t
-	w.s.trees.Store(w.name, build(w.t.projects))
+	w.s.trees.Store(w.name, w.t.tree())
 	return nil
 }
 
@@ -370,7 +398,7 @@ func ptr(p Project) *Project {
 // place checks where a new project would sit: its parent, depth, kind and the
 // counts the caps bound. The caller holds the lock.
 func (s *Store) place(t *tenant, p Project, w Writer) error {
-	tree := build(t.projects)
+	tree := build(t.projects, nil)
 	parent, ok := tree.Get(p.Parent)
 	if !ok {
 		return fmt.Errorf("%w: there is no project %q to put it under", ErrInvalid, p.Parent)
@@ -412,6 +440,7 @@ func (s *Store) Create(tenantName string, p Project, w Writer, at time.Time) (Pr
 	p = p.clone()
 	p.Kind = cmp.Or(p.Kind, Team)
 	p.Managed, p.FileOwns = "", nil
+	p.Agents = p.Agents.canonical()
 	if p.IsRoot() {
 		return Project{}, fmt.Errorf("%w: the workspace is the root, and is not created", ErrInvalid)
 	}
@@ -420,12 +449,13 @@ func (s *Store) Create(tenantName string, p Project, w Writer, at time.Time) (Pr
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.create(tenantName, p, w, at)
+	return s.create(tenantName, p, w, at, true)
 }
 
 // create is Create, and Upsert's way in for a new project. The caller holds
-// the lock and has validated p.
-func (s *Store) create(tenantName string, p Project, w Writer, at time.Time) (Project, error) {
+// the lock and has validated p. checked holds its agents to the tree; the
+// platform file is checked as a whole instead.
+func (s *Store) create(tenantName string, p Project, w Writer, at time.Time, checked bool) (Project, error) {
 	tx := s.begin(tenantName)
 	if have, ok := tx.t.lookup(p.Name); ok {
 		return Project{}, fmt.Errorf("%w: %q", ErrExists, have.Name)
@@ -444,6 +474,11 @@ func (s *Store) create(tenantName string, p Project, w Writer, at time.Time) (Pr
 	p.Version, p.CreatedBy, p.CreatedAt, p.UpdatedBy, p.UpdatedAt = 1, w.By, at, w.By, at
 	tx.root(w.By, at)
 	tx.project(p)
+	if checked {
+		if err := checkAgents(tx.t.tree(), p); err != nil {
+			return Project{}, err
+		}
+	}
 	if deleted {
 		delete(tx.t.tombs, strings.ToLower(p.Name))
 		tx.delete(keyTombstone + strings.ToLower(p.Name))
@@ -474,12 +509,24 @@ func current(t *tenant, name string) (Project, bool) {
 // projects:govern. A change that changes nothing writes nothing and keeps the
 // version.
 func (s *Store) Update(tenantName, name string, version int, w Writer, at time.Time, fn func(*Project) error) (Project, error) {
-	return s.edit(tenantName, name, version, w, at, Updated, fn)
+	return s.update(tenantName, name, version, w, at, Updated, fn)
 }
 
-// edit is Update, recording what the change was. Experts change only through
-// SetExperts, so each change says what it changed.
-func (s *Store) edit(tenantName, name string, version int, w Writer, at time.Time, what string, fn func(*Project) error) (Project, error) {
+// SetAgents changes what a project turns on: Update for its Agents alone,
+// recorded as AgentsChanged. A named default must be available in the
+// project under the new lists, and an agent that lives in a project cannot be
+// enabled, since that would add nothing. The root's lists are the workspace
+// default, so they need projects:govern, as the root does.
+func (s *Store) SetAgents(tenantName, name string, version int, a Agents, w Writer, at time.Time) (Project, error) {
+	return s.update(tenantName, name, version, w, at, AgentsChanged, func(p *Project) error {
+		p.Agents = a.clone()
+		return nil
+	})
+}
+
+// update is Update, recording what the change was. Experts change only
+// through SetExperts, so each change says what it changed.
+func (s *Store) update(tenantName, name string, version int, w Writer, at time.Time, what string, fn func(*Project) error) (Project, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx := s.begin(tenantName)
@@ -497,6 +544,7 @@ func (s *Store) edit(tenantName, name string, version int, w Writer, at time.Tim
 	if err := fn(&next); err != nil {
 		return Project{}, err
 	}
+	next.Agents = next.Agents.canonical()
 	switch {
 	case next.Name != cur.Name || next.Kind != cur.Kind || next.Parent != cur.Parent:
 		return Project{}, fmt.Errorf("%w: a project's name, kind and parent are fixed when it is created", ErrInvalid)
@@ -516,6 +564,13 @@ func (s *Store) edit(tenantName, name string, version int, w Writer, at time.Tim
 	}
 	if same(cur, next) {
 		return cur.clone(), nil
+	}
+	if !sameAgents(cur.Agents, next.Agents) {
+		after := tx.t.copy()
+		after.projects[name] = next
+		if err := checkAgents(after.tree(), next); err != nil {
+			return Project{}, err
+		}
 	}
 	return s.replace(tx, cur, next, w.By, at, what)
 }
@@ -567,15 +622,17 @@ func sameField(a, b Project, field string) bool {
 		return a.Instructions == b.Instructions
 	case FieldExperts:
 		return sameExperts(a.Experts, b.Experts)
+	case FieldAgents:
+		return sameAgents(a.Agents, b.Agents)
 	}
 	return false
 }
 
 // Delete removes a project and leaves a tombstone, so its name is reused only
-// with projects:govern. It is refused while the project has children, or
-// while inUse, called under the lock, names anything that points at it. The
-// root cannot be deleted, a file-managed project cannot be deleted here, and
-// a company project needs projects:govern.
+// with projects:govern. It is refused while the project has children, while
+// an agent lives in it, or while inUse, called under the lock, names anything
+// that points at it. The root cannot be deleted, a file-managed project
+// cannot be deleted here, and a company project needs projects:govern.
 func (s *Store) Delete(tenantName, name string, w Writer, at time.Time, inUse func(Project) []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -594,8 +651,12 @@ func (s *Store) Delete(tenantName, name string, w Writer, at time.Time, inUse fu
 		return fmt.Errorf("%w: company projects are deleted with projects:govern", ErrForbidden)
 	}
 	var users []string
-	for _, c := range build(tx.t.projects).Children(name) {
+	tree := tx.t.tree()
+	for _, c := range tree.Children(name) {
 		users = append(users, "the sub-project "+c.Name)
+	}
+	for _, a := range tree.Homes(name) {
+		users = append(users, "the agent "+a+", which lives here")
 	}
 	if inUse != nil {
 		users = append(users, inUse(cur.clone())...)
@@ -649,10 +710,11 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 		}
 		p.Kind = cmp.Or(p.Kind, Team)
 		p.Managed, p.FileOwns = ManagedFile, owns
+		p.Agents = p.Agents.canonical()
 		if err := p.validate(); err != nil {
 			return Project{}, err
 		}
-		return s.create(tenantName, p, Writer{By: by, Govern: true}, at)
+		return s.create(tenantName, p, Writer{By: by, Govern: true}, at, false)
 	}
 	next := cur.clone()
 	for _, f := range owns {
@@ -671,6 +733,8 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 			next.Instructions = p.Instructions
 		case FieldExperts:
 			next.Experts = cloneExperts(p.Experts)
+		case FieldAgents:
+			next.Agents = p.Agents.canonical()
 		}
 	}
 	if next.IsRoot() {

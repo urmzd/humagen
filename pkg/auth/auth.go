@@ -66,6 +66,9 @@ const (
 	// ClientsWrite is creating, changing and removing them, which is giving
 	// the workspace's agents a credential to act with.
 	ClientsWrite Permission = "clients:write"
+	// PeopleRead is seeing the workspace's directory of people: names,
+	// handles, pictures and roles. Never an email address.
+	PeopleRead Permission = "people:read"
 )
 
 // Permissions lists every permission, for validating configured scopes.
@@ -75,6 +78,7 @@ func Permissions() []Permission {
 		AlertsRead, AlertsWrite, KnowledgeRead, KnowledgeWrite, EvalsRead, EvalsWrite,
 		BillingRead, BillingWrite, ArtifactsRead, ArtifactsWrite,
 		ClientsRead, ClientsWrite,
+		PeopleRead,
 	}
 }
 

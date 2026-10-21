@@ -169,7 +169,7 @@ func (s *Store) SetExperts(tenantName, name string, version int, experts []Exper
 	if err := validExperts(experts); err != nil {
 		return Project{}, err
 	}
-	return s.edit(tenantName, name, version, w, at, ExpertsChanged, func(p *Project) error {
+	return s.update(tenantName, name, version, w, at, ExpertsChanged, func(p *Project) error {
 		p.Experts = experts
 		return nil
 	})

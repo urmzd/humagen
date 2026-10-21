@@ -25,6 +25,7 @@ export const PERMISSIONS = [
   "artifacts:write",
   "clients:read",
   "clients:write",
+  "people:read",
 ] as const;
 
 /** What each permission lets a person do, after "can". */
@@ -47,6 +48,7 @@ export const doing: Record<string, string> = {
   "artifacts:write": "delete stored files",
   "clients:read": "see connections",
   "clients:write": "manage connections",
+  "people:read": "see who is in the workspace",
 };
 
 // The changes worth naming on the home page, most telling first. A viewer

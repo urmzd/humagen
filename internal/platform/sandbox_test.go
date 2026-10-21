@@ -21,6 +21,7 @@ import (
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -158,7 +159,7 @@ func TestSandboxIsBounded(t *testing.T) {
 func TestPublishVersionsAndReports(t *testing.T) {
 	p := start(t, call.Limits{})
 	ctx := t.Context()
-	if err := p.CreateProject(ctx, tenant, platform.Project{Name: "Launch"}); err != nil {
+	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Launch"}); err != nil {
 		t.Fatal(err)
 	}
 	run, req := turn(t, p, "api-1", "Launch")

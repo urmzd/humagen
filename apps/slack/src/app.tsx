@@ -389,6 +389,16 @@ export class App {
     return agents;
   }
 
+  /** Nothing answers by default: say how to tag an agent this app may reach, naming one. */
+  private async tagOne(routing: Routing | undefined): Promise<Failure> {
+    const known = await this.agents().catch(() => [] as Agent[]);
+    const example = known
+      .map((a) => a.name)
+      .filter((name) => !routing || mayRoute(routing, name))
+      .sort()[0];
+    return { kind: "forbidden", message: this.copy.auto.tagOne(example) };
+  }
+
   /** The client record is read again every half minute, so a change in the console takes effect. */
   private async routing(): Promise<Routing> {
     if (!this.opts.clientId) return { defaultAgent: this.opts.defaultAgent };
@@ -595,11 +605,12 @@ export class App {
     let agent = job.again?.agent ?? "";
     let text = job.text;
     let run: Run;
+    let routing: Routing | undefined;
     try {
       placed = await this.place(job);
       // Warp already has a run for this Slack event: it was answered before a restart.
       if (placed === "duplicate") return "done" as const;
-      const routing = await this.routing();
+      routing = await this.routing();
       if (!job.again) {
         const choice = choose(job.text, await this.agents(), routing);
         if (choice.agent === null) return this.refuse(job, presenter, "", NO_AGENT);
@@ -633,6 +644,9 @@ export class App {
       );
     } catch (e) {
       this.log(`warp refused the turn: ${(e as Error).message}`);
+      // No agent was named, and nothing answers here by default.
+      if (agent === "" && e instanceof WarpError && e.status === 409)
+        return this.refuse(job, presenter, "", await this.tagOne(routing));
       return this.refuse(job, presenter, agent, publicFailure(e));
     }
 

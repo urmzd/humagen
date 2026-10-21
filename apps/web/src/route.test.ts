@@ -32,6 +32,9 @@ test("every route survives a round trip through its address", () => {
     { page: "agent", name: "lead", tab: "context" },
     { page: "artifacts" },
     { page: "artifacts", artifact: "art-2" },
+    { page: "directory", tab: "people" },
+    { page: "directory", tab: "agents" },
+    { page: "directory", tab: "projects" },
     { page: "settings", section: "profile" },
     { page: "settings", section: "access", permission: "runs:read" },
   ];
@@ -45,6 +48,14 @@ test("deep links name pages by path", () => {
   assert.equal(href({ page: "context", source: "a b", tab: "search" }), "/context/a%20b/search");
   assert.equal(href({ page: "monitor", tab: "rules" }), "/monitor/rules");
   assert.equal(href({ page: "inbox", kind: "alert" }), "/inbox?kind=alert");
+});
+
+test("the Directory opens on People, and each tab has its own path", () => {
+  assert.equal(href({ page: "directory", tab: "people" }), "/directory");
+  assert.equal(href({ page: "directory", tab: "agents" }), "/directory/agents");
+  assert.equal(href({ page: "directory", tab: "projects" }), "/directory/projects");
+  assert.deepEqual(at("/directory/people"), { page: "directory", tab: "people" });
+  assert.deepEqual(at("/directory/bogus"), { page: "directory", tab: "people" });
 });
 
 test("old ?view= links open the page they named", () => {
