@@ -37,6 +37,7 @@ platform and its web and Slack presentation in one repository. The design is in
 - `pkg/memory`: what an agent carries between conversations. `internal/platform/hooks.go`: housekeeping runs.
 - `pkg/clients`: the Slack apps and GitHub installations a workspace answers through. `internal/platform/connectors.go`: one surface per scheme, fanning in and out to them.
 - `pkg/evals`: suites and runs, scored by saige. `pkg/pick`: who answers a message. `pkg/prefs`: a person's own settings.
+- `pkg/state`: the record store every warp store writes through, in memory or in Postgres, with the `statetest` suite. A store keeps its logic in memory and gains `Open(state.Store)`; `internal/platform/backends.go` chooses the backends.
 - `internal/platform`: the composition root. `internal/httpapi`: routes, sessions, event stream.
 - `cmd/warp`: the binary. `apps/web`: the console, built on the shared UI packages. `apps/slack`: the Slack app, a client of the API.
 - `packages/adapter`: the one adapter between the platform's wire shapes and the shared UI model. The console and the Slack app both use it; nothing surface-specific goes in it.

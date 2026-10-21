@@ -115,7 +115,7 @@ of two ways:
 
 | Written as | Where the secret lives | What a read shows |
 |------------|------------------------|-------------------|
-| `{"value": "xoxb-..."}` | In the server's secret store, in memory | `{"set": true}` |
+| `{"value": "xoxb-..."}` | In the server's secret store: in memory, or in the database with `-state=postgres` | `{"set": true}` |
 | `{"ref": "env:WARP_SLACK_TOKEN_DOCS"}` | In the server's environment | `{"set": true, "ref": "env:..."}` |
 
 ### Which variables a workspace may reference
@@ -153,10 +153,13 @@ No response and no log line carries a secret. The stored type has no field for
 one, and the type a secret is written through hides its value from formatting.
 A secret left out of an update is kept.
 
-The secret store is in memory like every other store, so a value written
-through the API is lost on restart and has to be written again. A reference
-survives, because the environment does. A secret manager goes behind the same
-three-method `clients.Secrets` interface.
+The secret store is in memory like every other store unless the server keeps
+its state in Postgres (`-state=postgres`). In memory, a value written through
+the API is lost on restart and has to be written again. In Postgres it is kept
+as written, so the database holds it in the clear and is to be guarded as the
+secret is. A reference keeps no value and survives either way, because the
+environment does. A secret manager goes behind the same three-method
+`clients.Secrets` interface.
 
 For GitHub, the token is an installation access token. The server does not mint
 or refresh one. A fix grant is signed with the client's own webhook secret, so
@@ -293,8 +296,8 @@ or remove one. Creating a client and setting its limits are API calls.
 
 ## What is not built
 
-- A durable store. Records and secret values are in memory behind
-  `clients.Store` and `clients.Secrets`, and are lost on restart.
+- Encrypting secret values at rest. With `-state=postgres` records and values
+  are kept in the database, values as written.
 - Creating and editing a client in the console, and setting a client's limits
   there.
 - Minting or refreshing GitHub installation tokens.
