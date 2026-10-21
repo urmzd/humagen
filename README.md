@@ -27,6 +27,7 @@
 - Apply tenant permissions, depth and fan-out limits, run admission policies and usage accounting.
 - Search knowledge, manage project memory and inspect alerts and analytics in the web console.
 - Connect GitHub and Slack through signed webhook ingress and tenant-bound connector capabilities.
+- Give agents MCP tools that act as each person with that person's own credential, and never a shared one in its place.
 - Answer in Slack with the console's own components through a Socket Mode app that streams natively.
 
 **Early development:** pre-1.0, one replica per database, sessions in memory, Slack and GitHub tested against simulated APIs. The full, current list is in [the ecosystem's limitations](docs/ecosystem.md#limitations-in-one-place); what each piece has been tested against is in the [status table](docs/architecture.md#status).

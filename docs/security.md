@@ -112,13 +112,23 @@ no permission, grants nothing.
   as itself, whoever it names. Mapping a person is `clients:write`.
 - **The machine holds its people's votes.** Whoever holds the credential a
   Slack client names as `machine` can answer every question as any person the
-  client maps, within what each may answer, and raise runs as them. The Slack
+  client maps, within what each may answer, and raise runs as them, which
+  use the tools that act as them with their own credentials. The Slack
   app is trusted to say truthfully which Slack user clicked; the platform
   cannot check it. A mapped person's roles are what the policy grants their
   subject: a click carries no groups, so a role held only through a group
   does not count, and such a person cannot answer from Slack. Keep that credential as you would those people's sign-ins,
   map only people who use that Slack workspace, and remove a mapping when
   someone leaves.
+- **A tool that acts as a person uses that person's credential and no
+  other.** A person-scoped tool provider names no shared credential, so none
+  is there to fall back on, and a run for someone who connected nothing gets
+  no tools from it. See [Tool credentials](#tool-credentials).
+- **Who a run acts for is decided when it is accepted.** It is the signed-in
+  person, the person a surface asked for (`act_as`), or the person a Slack
+  client maps the connector's Slack user to, written on the run's record. A
+  trigger's tag cannot name anyone itself, and nothing a turn says changes
+  it.
 - **Lineage cannot be forged.** Only the platform's call path mints a tag with
   origin `agent`. A trigger's tag claiming it is dropped.
 - **An agent calls only who its spec allows.** The caller's pinned revision
@@ -163,6 +173,56 @@ no permission, grants nothing.
 - **Secrets come from the environment**, never from flags.
 - **Every change is logged** with subject, kind, tenant, method and path.
   Denials are logged with the permission that was missing.
+
+## Tool credentials
+
+An MCP tool provider is reached with one of two credentials, as its
+`credential_scope` says ([spec](spec.md#tools-that-act-as-you)): its own
+shared `credential`, the same for every run, or the credential of the person
+the run acts for. fiber reaches a person-scoped provider only with the
+credential warp answers for the actor on the run's record, on a session of
+that person's own, and never with the shared one: such a provider has none.
+fiber redacts every resolved credential, shared or a person's, from tool
+results, errors and logs; warp's tests check each person's token is absent
+from answers, run events, what the model was sent and the server log.
+
+| The run | Acts for |
+|---|---|
+| asked in the console, or through the API with a person's sign-in | that person |
+| asked by a machine for a person its client maps (`act_as`) | the mapped person |
+| raised by a Slack client's connector | the one person the team's enabled Slack clients map the Slack user to; none, or two different people, is nobody |
+| asked by a machine as itself, a schedule, an eval, housekeeping, a call from another agent, GitHub | nobody |
+
+A person connects their own credential at `PUT /api/me/credentials/{tool}`
+(Your connections in the console). The route takes no subject, a machine
+connects nothing, and another workspace's tool is not found. There are two
+kinds, and they are kept differently:
+
+- **A reference is not stored as a secret.** Only the reference is kept: a
+  name such as `op://People/ana/issues`. The server reads what it names when a
+  run uses it, with the server's own access: its environment, its keychain,
+  the 1Password account it signed in to. So a person could name anything the
+  server can read, and the operator lists, per tenant, where references may
+  start (`person_refs`, `-person-refs`). Nothing is listed by default, so
+  nobody may reference anything until the operator says where. An `env:`
+  start names a `WARP_` variable and never a sign-in secret, as a client's
+  reference must. Anyone in the workspace may name anything under a listed
+  start, so list only a vault or keychain service where that is acceptable.
+  A reference is not read when it is given, so connecting one says nothing
+  about whether it names anything, and a refused reference gets one message
+  whatever the reason.
+- **A value is stored.** Only where the Platform document sets
+  `workspace.person_credentials.values: true`, which is off by default. It is
+  kept with the same protections a client's secret has: in the same secrets
+  store, apart from the record, never returned by any route, never written to
+  a log, and forgotten when it is removed or replaced by a reference. warp
+  does not encrypt it: with `-state=postgres` it is in the database as
+  written, so guard the database as you would the credentials.
+
+Both are checked again each time a run uses them: a stored value is not used
+once the workspace turns values off, and a reference is not used once its
+start is no longer listed. A person sees where their credential is sent (the
+endpoint of an http provider) before they connect it.
 
 ## Dev auth
 
@@ -316,9 +376,10 @@ that kind.
   does not bound it (a token limit does).
 - Sessions are in memory, so a restart signs everyone out. Schedules are kept
   with `-state=postgres`.
-- With `-state=postgres`, client secret values written through the API are
-  kept in the database as written. Guard it as you would the secrets, or use
-  `env:` references, which keep no value.
+- With `-state=postgres`, client secret values written through the API, and
+  people's tool credentials stored as values, are kept in the database as
+  written. Guard it as you would the secrets, or use references, which keep
+  no value. Values for people are off unless a workspace turns them on.
 - Knowledge is not yet used by runs. The runtime's retriever is not told which
   tenant or agent is asking, and wiring it before that changes would let one
   tenant's agent read another's documents.
@@ -327,8 +388,18 @@ that kind.
   and off by default, but nothing reviews a note before it is used.
 - Dictation uses the browser's speech recognition. In Chrome that sends audio
   to the browser vendor's service, not to this server.
-- No connections. Nothing stores a third-party credential yet, and that should
-  wait for an encrypted, durable store rather than be held in memory.
+- No OAuth to third parties. A person connects a tool with a reference or a
+  token they got elsewhere, and warp keeps no refresh token. A value is kept
+  in the clear in the store client secrets use: there is no encrypted store
+  yet.
+- Only MCP tools act as a person. The Slack and GitHub surfaces' own actions
+  and deliveries still use their client's token, whoever the run acts for.
+- A rotated secret behind an unchanged reference is not noticed by an open
+  session until the reference, the secret warp answers or the provider's
+  record changes, as fiber documents.
+- A run another agent called acts for nobody, so it gets no tools that act as
+  a person, even when the person who started the tree has connected them. A
+  GitHub run acts for nobody too, since no client maps GitHub logins.
 - No token revocation check beyond expiry, and no refresh. A session lasts 8
   hours.
 - No rate limiting.

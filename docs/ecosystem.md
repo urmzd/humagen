@@ -112,10 +112,14 @@ keeping its own list.
   flight when a limit is crossed finishes and is counted.
 - **Knowledge** is lexical only in warp (step 12 moves it onto saige's
   hybrid retrieval).
-- **Client secrets** written as values are stored in Postgres in plaintext;
-  references are not stored at all. Prefer references.
-- **Per-person credentials for tools** (each person's own key, no shared
-  fallback) are not built: fiber's tool groups are not told who a run acts for.
+- **Client secrets**, and people's tool credentials where a workspace lets
+  them store values, are stored in Postgres in plaintext; a reference's value
+  is not stored at all. Prefer references.
+- **Per-person credentials for tools** reach MCP tools only, and need the
+  fiber release that tells tool groups who a run acts for. The Slack and
+  GitHub surfaces' own actions still use their client's token, a run another
+  agent called acts for nobody, and a rotated secret behind an unchanged
+  reference is not noticed by an open session.
 - **Slack and GitHub** are tested against simulated APIs, not live.
 - **The container image** is written but not published by releases.
 - **Saige's Postgres retrieval store** needs PostgreSQL 18, pgvector and
