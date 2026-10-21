@@ -49,6 +49,7 @@ import (
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/callpolicy"
 	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/integrations/github"
@@ -91,6 +92,18 @@ type Config struct {
 	// nothing in the API can change it. A tenant with no entry may reference
 	// nothing, and can still write its secrets as values.
 	SecretRefs map[string][]string
+	// CredentialRefs is which references each tenant's people may give for
+	// their own tool credentials, by tenant: each entry is how a reference
+	// starts ("op://People/", "keychain:warp-people/", "env:WARP_PERSON_").
+	// A reference is read with this process's own access (its environment,
+	// its keychain, the 1Password account it signed in to), so this is the
+	// server's configuration and nothing in the API can change it. A tenant
+	// with no entry may reference nothing.
+	CredentialRefs map[string][]string
+	// CredentialValues is the tenants whose people may store a credential's
+	// value with warp, kept in Secrets as a client's secret is. Everyone
+	// else may only reference one.
+	CredentialValues map[string]bool
 	// SlackAPI and GitHubAPI build the API a client writes through from its
 	// token. Nil means the real one over HTTP.
 	SlackAPI  func(token string) slack.API
@@ -167,6 +180,9 @@ type Platform struct {
 	Artifacts    *artifacts.Index
 	// Clients is the external clients each tenant answers through.
 	Clients clients.Store
+	// Credentials is each person's own credentials for person-scoped tool
+	// providers. Values are kept in the store client secrets are kept in.
+	Credentials *credentials.Store
 	// Blobs holds the bytes of published files.
 	Blobs blob.Store
 	// ToolProviders is the MCP servers agents reach through "mcp:<name>"
@@ -842,6 +858,12 @@ func (p *Platform) Run(ctx context.Context) error {
 				if reserved(tag.Origin) {
 					p.log.Warn("platform: dropped a trigger tag claiming a reserved origin", "tag", tag.ID, "origin", tag.Origin)
 					continue
+				}
+				// Who a run acts for is named only by a surface's stamp,
+				// from its clients' people maps. Any other trigger's run,
+				// a schedule's, acts for nobody.
+				if _, stamped := p.surfaces[tag.Origin]; !stamped {
+					tag.Actor.User = ""
 				}
 				if r, err := p.Invoke(ctx, tag); err != nil {
 					p.log.Error("platform: accept tag", "tag", tag.ID, "agent", tag.Agent, "error", err)

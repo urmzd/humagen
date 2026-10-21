@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/callpolicy"
 	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/journal"
@@ -40,7 +41,9 @@ type Ledger interface {
 // its own; OpenPostgres chooses all of them on one database.
 type Backends struct {
 	// State is where warp's own stores keep their records: clients and
-	// their secrets (unless Config sets its own), the inbox, preferences,
+	// their secrets (unless Config sets its own), people's own credentials
+	// for tool providers (their values beside the clients' secrets), the
+	// inbox, preferences,
 	// memory, projects, limits, call policies, alerts, evals, schedules, the journal,
 	// artifacts, the run index, the usage ledger, knowledge and workspace
 	// settings. Nil keeps them in memory.
@@ -148,6 +151,10 @@ func (p *Platform) openStores(cfg Config) error {
 		p.secrets, err = clients.OpenSecrets(st)
 		keep("client secrets", err)
 	}
+	// People's values are kept where client secrets are, and guarded the
+	// same way.
+	p.Credentials, err = credentials.Open(st, p.secrets)
+	keep("credentials", err)
 	return errors.Join(errs...)
 }
 

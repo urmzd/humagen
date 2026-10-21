@@ -364,14 +364,16 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		fail(w, http.StatusBadRequest, "a run needs a request")
 		return
 	}
-	actor := envelope.Actor{ID: who.Subject, Display: who.Name, Bot: who.Kind == auth.Machine}
+	// The run acts for the caller, or for the person a surface asks for:
+	// their credentials are the ones its person-scoped tools use.
+	actor := platform.ActorOf(who)
 	if body.ActAs != nil {
 		person, err := s.P.ActsFor(who, *body.ActAs)
 		if err != nil {
 			s.problem(w, err)
 			return
 		}
-		actor = envelope.Actor{ID: person, Display: person}
+		actor = platform.PersonActor(person)
 	}
 	// A caller that retries sends the same key and joins the run it started.
 	id := "api-r-" + token()[:22]
