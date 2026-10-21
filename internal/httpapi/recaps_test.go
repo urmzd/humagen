@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 )
@@ -112,5 +113,42 @@ func TestAScheduleDeliversOnlyWhereItCan(t *testing.T) {
 		if res, out := f.do(t, nil, "POST", "/api/schedules", tok, body); res.StatusCode != http.StatusCreated || out["deliver"] != "project" {
 			t.Errorf("%s = %d %v", name, res.StatusCode, out)
 		}
+	}
+}
+
+// Scheduling in a project is a member's: a viewer may read its schedules
+// and not write, pause or run them.
+func TestOnlyAMemberSchedulesInAProject(t *testing.T) {
+	f := newFixture(t)
+	ada := f.signedAs(t, "ada")
+	// Bob may do everything but govern projects, which owns them all.
+	bob := f.iss.Sign(t, "bob", audience, map[string]any{"org": "acme", "scp": slices.DeleteFunc(slices.Clone(everything), func(s string) bool { return s == "warp:projects:govern" })})
+	f.do(t, nil, "POST", "/api/agents", ada, helperSpec)
+	if res, out := f.do(t, nil, "POST", "/api/projects", ada, `{"name":"Field"}`); res.StatusCode != http.StatusCreated {
+		t.Fatalf("project = %d %v", res.StatusCode, out)
+	}
+	if res, out := f.do(t, nil, "PUT", "/api/projects/Field/members", ada,
+		`{"version":1,"members":[{"who":"*","role":"viewer"},{"who":"ada","role":"owner"}]}`); res.StatusCode != http.StatusOK {
+		t.Fatalf("members = %d %v", res.StatusCode, out)
+	}
+	recap := `{"name":"field-recap","expression":"41 8 * * 1","agent":"helper","text":"What changed?","project":"Field","deliver":"project"}`
+	if res, _ := f.do(t, nil, "POST", "/api/schedules", bob, recap); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("a viewer scheduled in Field: %d", res.StatusCode)
+	}
+	if res, out := f.do(t, nil, "POST", "/api/schedules", ada, recap); res.StatusCode != http.StatusCreated {
+		t.Fatalf("an owner's schedule = %d %v", res.StatusCode, out)
+	}
+	for _, try := range []struct{ method, path, body string }{
+		{"POST", "/api/schedules/field-recap/run", ""},
+		{"POST", "/api/schedules/field-recap/pause", ""},
+		{"PUT", "/api/schedules/field-recap", recap},
+		{"DELETE", "/api/schedules/field-recap", ""},
+	} {
+		if res, _ := f.do(t, nil, try.method, try.path, bob, try.body); res.StatusCode != http.StatusForbidden {
+			t.Errorf("a viewer's %s %s = %d", try.method, try.path, res.StatusCode)
+		}
+	}
+	if res, _ := f.do(t, nil, "GET", "/api/schedules", bob, ""); res.StatusCode != http.StatusOK {
+		t.Errorf("a viewer cannot list schedules: %d", res.StatusCode)
 	}
 }

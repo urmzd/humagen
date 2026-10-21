@@ -109,9 +109,8 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 	}
 	// Another workspace's schedule, or one that does not exist, is not
 	// found before what the body names is looked up.
-	old, _, err := s.P.Schedules.Get(who.Tenant, name)
-	if err != nil {
-		s.problem(w, err)
+	old, found := s.scheduleIn(w, who, name)
+	if !found {
 		return
 	}
 	if body.Name == "" {
@@ -173,6 +172,9 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 		}
 		meta[runs.MetaProject] = project
 	}
+	if !s.inProject(w, who, meta[runs.MetaProject]) {
+		return nil, false
+	}
 	// The agent must be available where the schedule files its runs, or
 	// every occurrence would be refused. It is the answer admission would
 	// give, given now.
@@ -184,6 +186,9 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 func (s *Server) deleteSchedule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if _, found := s.scheduleIn(w, who, r.PathValue("name")); !found {
+		return
+	}
 	if err := s.P.Schedules.Remove(who.Tenant, r.PathValue("name")); err != nil {
 		s.problem(w, err)
 		return
@@ -194,6 +199,9 @@ func (s *Server) deleteSchedule(w http.ResponseWriter, r *http.Request, who auth
 func (s *Server) pauseSchedule(paused bool) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 		name := r.PathValue("name")
+		if _, found := s.scheduleIn(w, who, name); !found {
+			return
+		}
 		if err := s.P.Schedules.SetPaused(who.Tenant, name, paused); err != nil {
 			s.problem(w, err)
 			return
@@ -210,9 +218,8 @@ func (s *Server) pauseSchedule(paused bool) handler {
 // runSchedule fires a schedule once, now, on a person's say-so. The run is
 // attributed to that person, not to the clock, and works while paused.
 func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	sc, _, err := s.P.Schedules.Get(who.Tenant, r.PathValue("name"))
-	if err != nil {
-		s.problem(w, err)
+	sc, found := s.scheduleIn(w, who, r.PathValue("name"))
+	if !found {
 		return
 	}
 	now := time.Now()
@@ -237,4 +244,26 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 		return
 	}
 	ok(w, http.StatusAccepted, run)
+}
+
+// inProject holds a write on a schedule to its project: the caller needs to be
+// a member of the project the schedule is filed in, the workspace's included
+// ("" is the workspace, where everyone is a member unless it says otherwise).
+// A project the caller cannot see answers as one that does not exist.
+func (s *Server) inProject(w http.ResponseWriter, who auth.Principal, project string) bool {
+	if _, _, err := s.P.ProjectRole(who, projects.NameOf(project), projects.Member); err != nil {
+		s.problem(w, err)
+		return false
+	}
+	return true
+}
+
+// scheduleIn is one of the caller's schedules, held to its project.
+func (s *Server) scheduleIn(w http.ResponseWriter, who auth.Principal, name string) (cron.Schedule, bool) {
+	sc, _, err := s.P.Schedules.Get(who.Tenant, name)
+	if err != nil {
+		s.problem(w, err)
+		return cron.Schedule{}, false
+	}
+	return sc, s.inProject(w, who, sc.Meta[runs.MetaProject])
 }
