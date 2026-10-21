@@ -27,7 +27,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 		all = append(all, b[1])
 	}
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte(strings.Join(all, "---\n")), 0o600)
+	mustWriteFile(t, path, []byte(strings.Join(all, "---\n")), 0o600)
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"a person reference the server cannot confine": {sys + "  person_refs: {default: ['env:ANTHROPIC_']}\n", "person_refs.default"},
 	} {
 		path := filepath.Join(t.TempDir(), "warp.yaml")
-		os.WriteFile(path, []byte(tc.body), 0o600)
+		mustWriteFile(t, path, []byte(tc.body), 0o600)
 		_, err := Load(path)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want %q", name, err, tc.want)
@@ -89,7 +89,7 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 
 func TestAKindIsOneTheBinaryHas(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600)
+	mustWriteFile(t, path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600)
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load cannot know the binary's kinds, so it lets one through: %v", err)
@@ -119,7 +119,7 @@ func TestWhatWarpWritesItReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, b, 0o600)
+	mustWriteFile(t, path, b, 0o600)
 	got, err := Load(path)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, b)
@@ -171,5 +171,13 @@ func TestAPersonScopedToolDeclaresItsWholeForm(t *testing.T) {
 	}
 	if !got.Platforms[0].Spec.Workspace.PersonCredentials.Values || got.System.Spec.PersonRefs["default"][0] != "op://People/" {
 		t.Fatalf("round trip lost something:\n%s", b)
+	}
+}
+
+// mustWriteFile writes a test's fixture and stops the test if it cannot.
+func mustWriteFile(t *testing.T, path string, data []byte, perm os.FileMode) {
+	t.Helper()
+	if err := os.WriteFile(path, data, perm); err != nil {
+		t.Fatal(err)
 	}
 }

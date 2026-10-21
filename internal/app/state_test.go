@@ -78,7 +78,7 @@ func TestASpecOnPostgresKeepsItsAgentsAcrossARestart(t *testing.T) {
 	}
 	t.Setenv("SPEC_TEST_PG", url)
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	mustWriteFile(t, path, []byte(`api_version: warp/v1
 kind: System
 spec:
   stores: {kind: postgres, postgres: {url: {ref: "env:SPEC_TEST_PG"}}}

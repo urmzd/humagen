@@ -165,7 +165,7 @@ func get(t *testing.T, url string) string {
 func TestASpecFileRunsThePlatform(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	mustWriteFile(t, path, []byte(`api_version: warp/v1
 kind: System
 metadata: {name: acme-agents, display_name: Acme Agents}
 spec:
@@ -205,7 +205,7 @@ spec:
 
 func TestAnUnregisteredKindStopsStartup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600)
+	mustWriteFile(t, path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600)
 	err := serve(Options{}, []string{"-f", path, "-addr", "127.0.0.1:0"}, serveDefaults{})
 	if err == nil || !strings.Contains(err.Error(), "disk, memory, s3") {
 		t.Fatalf("err = %v", err)
@@ -214,7 +214,7 @@ func TestAnUnregisteredKindStopsStartup(t *testing.T) {
 
 func TestConfigPrintFillsTheDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\n"), 0o600)
+	mustWriteFile(t, path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\n"), 0o600)
 	var out bytes.Buffer
 	if err := configCmd(Options{}, []string{"print", "-f", path}, &out); err != nil {
 		t.Fatal(err)
@@ -245,7 +245,7 @@ func TestTheSlackManifestIsWhatWarpGenerates(t *testing.T) {
 
 func TestTheSlackManifestTakesItsNameFromTheSpec(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	mustWriteFile(t, path, []byte(`api_version: warp/v1
 kind: Platform
 metadata: {name: default, display_name: Acme}
 spec:

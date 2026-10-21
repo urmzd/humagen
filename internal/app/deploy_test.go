@@ -16,7 +16,7 @@ import (
 func TestDeployWritesAComposeProjectWithNoSecretsInIt(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	mustWriteFile(t, path, []byte(`api_version: warp/v1
 kind: System
 metadata: {name: acme}
 spec:
@@ -80,7 +80,7 @@ func TestCarryTurnsAKeychainReferenceIntoAnEnvOne(t *testing.T) {
 func TestDeployingDevAuthKeepsItOnLoopback(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  deploy: {kind: compose, compose: {image: warp:dev}}\n"), 0o600)
+	mustWriteFile(t, path, []byte("api_version: warp/v1\nkind: System\nspec:\n  deploy: {kind: compose, compose: {image: warp:dev}}\n"), 0o600)
 	out := filepath.Join(dir, "out")
 	if err := deployCmd(Options{}, []string{"-f", path, "-o", out}, strings.NewReader(""), io.Discard); err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestDeployingDevAuthKeepsItOnLoopback(t *testing.T) {
 func TestDeployWritesTheChartAndItsValues(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	mustWriteFile(t, path, []byte(`api_version: warp/v1
 kind: System
 metadata: {name: acme}
 spec:
@@ -138,7 +138,7 @@ metadata: {name: default, display_name: Acme}
 
 func TestDeployRefusesLoopbackSignInForACluster(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  deploy: {kind: kubernetes}\n"), 0o600)
+	mustWriteFile(t, path, []byte("api_version: warp/v1\nkind: System\nspec:\n  deploy: {kind: kubernetes}\n"), 0o600)
 	err := deployCmd(Options{}, []string{"-f", path, "-o", t.TempDir()}, strings.NewReader(""), io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "loopback") {
 		t.Fatalf("err = %v", err)
