@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.0 (2026-10-21)
+
+### Breaking
+
+- one spec, warp start and warp deploy, durable stores, and the platform's public seam (#36) ([6b6fae9](https://github.com/urmzd/warp/commit/6b6fae9138e7453b773f5f7085ede6d9a4342fd7))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.9.0...v0.10.0)
+
+
 ## 0.9.0 (2026-10-21)
 
 ### Features

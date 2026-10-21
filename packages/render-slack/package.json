@@ -1,6 +1,6 @@
 {
   "name": "@warp/render-slack",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
   "description": "Render warp components to Slack Block Kit JSON via a custom React reconciler.",
