@@ -1,4 +1,4 @@
-.PHONY: all init build test lint fmt check dev dev-signin web client client-check spec-lint oag-install
+.PHONY: all init build test lint fmt check start dev dev-signin web up down chart-check image client client-check spec-lint oag-install
 
 BIN := warp
 
@@ -37,6 +37,12 @@ fmt:
 
 check: fmt lint test
 
+# The whole platform with zero configuration: console, seeded agents, and
+# the first-run questions on a terminal.
+start: build
+	pnpm install && pnpm --filter @warp/console build
+	./bin/$(BIN) start
+
 # Local preview: no sign-in, loopback only, two example agents.
 dev: build
 	./bin/$(BIN) serve -auth=dev -seed -builtin-provider offline -builtin-model offline
@@ -51,6 +57,29 @@ dev-signin: build
 web:
 	pnpm install
 	pnpm --filter @warp/console dev
+
+# The container image, from the Dockerfile at the root.
+IMAGE ?= warp:local
+image:
+	docker build -t $(IMAGE) .
+
+# warp, Postgres and the profiles in deploy/compose/.env (COMPOSE_PROFILES), built
+# from this checkout. Copy deploy/compose/.env.example to .env first.
+COMPOSE := docker compose --project-directory deploy/compose -f deploy/compose/compose.yaml
+up:
+	$(COMPOSE) up -d --build
+
+# Stops the stack and keeps its volumes. `make down V=1` removes them too.
+down:
+	$(COMPOSE) down $(if $(V),-v)
+
+# Lint and render the Helm chart, and run `warp config check` on the spec each
+# render produces, and on the compose stack's. Needs helm; kubeconform is used
+# when it is on PATH.
+chart-check:
+	deploy/helm/check.sh
+	go run ./cmd/warp config check -f deploy/compose/config
+	go run ./cmd/warp config check -f deploy/compose/dev
 
 # Regenerate the TypeScript client from the API contract. The output under
 # packages/client/src/generated is committed.

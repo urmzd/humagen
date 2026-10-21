@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -26,7 +26,7 @@ type storageFlags struct {
 
 func addStorageFlags(fs *flag.FlagSet) storageFlags {
 	return storageFlags{
-		kind:      fs.String("storage", "disk", `where published files are kept: "disk", or "s3" for any S3-compatible bucket (AWS, MinIO, R2)`),
+		kind:      fs.String("storage", "disk", `where published files are kept: "disk", "memory" (lost on restart), or "s3" for any S3-compatible bucket (AWS, MinIO, R2)`),
 		dir:       fs.String("storage-dir", "", "with -storage=disk, the directory files are kept in. Empty means blobs/ in the agents' workspace"),
 		bucket:    fs.String("s3-bucket", "", "with -storage=s3, the bucket"),
 		region:    fs.String("s3-region", "", `with -storage=s3, the bucket's region ("auto" for R2). Empty means AWS_REGION, then us-east-1`),
@@ -38,7 +38,7 @@ func addStorageFlags(fs *flag.FlagSet) storageFlags {
 
 // openBlobs returns the store the flags name. Nil with no error means the
 // platform's default: a disk store in its workspace.
-func openBlobs(ctx context.Context, f storageFlags, getenv func(string) string) (blob.Store, error) {
+func openBlobs(ctx context.Context, o Options, l loaded, f storageFlags, getenv func(string) string) (blob.Store, error) {
 	switch strings.TrimSpace(*f.kind) {
 	case "", "disk":
 		if *f.dir == "" {
@@ -54,7 +54,12 @@ func openBlobs(ctx context.Context, f storageFlags, getenv func(string) string) 
 			Bucket: *f.bucket, Region: *f.region, Endpoint: *f.endpoint, Prefix: *f.prefix, PathStyle: *f.pathStyle,
 			AccessKey: access, SecretKey: secret,
 		})
+	case "memory":
+		return blob.NewMemory(), nil
 	default:
-		return nil, fmt.Errorf("storage: -storage=%q is not disk or s3", *f.kind)
+		if l.cfg.System.Spec.Blobs.Kind == *f.kind {
+			return build[blob.Store](ctx, o, "blobs", l.cfg.System.Spec.Blobs)
+		}
+		return nil, fmt.Errorf("storage: -storage=%q is not disk, memory or s3", *f.kind)
 	}
 }

@@ -11,7 +11,7 @@ import (
 )
 
 // ReviewFormat identifies a structured final answer, distinct from ordinary text.
-const ReviewFormat = "mandatum.github.review.v1"
+const ReviewFormat = "warp.github.review.v1"
 
 // ReviewReport is the agent's evidence-backed final answer. Counts are derived
 // from findings, never supplied by the model. Evidence is cited, not verified

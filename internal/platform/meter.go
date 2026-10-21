@@ -68,10 +68,13 @@ func (p *Platform) observeUsage(ctx context.Context, e envelope.Event) {
 	}
 	// Stamped with the platform's clock, so entries are appended in time
 	// order whatever the runtime's clock said; the call's own time is kept.
-	added, counted := p.Usage.Record(usage.Entry{
+	added, counted, err := p.Usage.Record(usage.Entry{
 		Kind: usage.Spent, Key: key, Tenant: run.Tenant, Project: run.Project, Agent: run.Agent, Client: run.Client,
 		RunID: run.ID, At: p.now(), EventAt: e.At, Spend: new(usage.OfCall(c)),
 	})
+	if err != nil {
+		p.log.Error("platform: usage entry could not be written yet", "kind", usage.Spent, "run", run.ID, "error", err)
+	}
 	if !counted {
 		return
 	}
@@ -115,7 +118,7 @@ func (p *Platform) enforce(ctx context.Context, run runs.Run, call usage.Spend) 
 	switch d.Verdict {
 	case policy.Deny:
 		entry.Kind = usage.Halted
-		p.Usage.Append(entry)
+		p.appendUsage(entry)
 		p.budgetAlert(run.Tenant, d, alerts.Critical, "Runs are being stopped: ", "stopped")
 		p.halt(ctx, run, fmt.Sprintf("Stopped at a limit: %s (%s policy, version %d)", d.Reason, d.Policy.Scope, d.Policy.Version))
 	case policy.Warn:
@@ -123,7 +126,7 @@ func (p *Platform) enforce(ctx context.Context, run runs.Run, call usage.Spend) 
 		// calls cross the threshold.
 		if p.budgetAlert(run.Tenant, d, alerts.Warning, "", string(d.Verdict)) {
 			entry.Kind = usage.Warned
-			p.Usage.Append(entry)
+			p.appendUsage(entry)
 		}
 	}
 }
@@ -162,7 +165,11 @@ func (p *Platform) unmeteredAlert(tenant string, a policy.Applied) {
 	if pol.Scope.Kind == policy.Agent {
 		al.Agent = pol.Scope.Name
 	}
-	if raised, ok := p.Alerts.Raise(tenant, key, al); ok {
+	raised, ok, err := p.Alerts.Raise(tenant, key, al)
+	if err != nil {
+		p.log.Error("platform: alert could not be kept", "rule", key, "error", err)
+	}
+	if ok {
 		p.log.Warn("platform: alert", "rule", key, "severity", al.Severity, "title", title)
 		p.inboxAlert(tenant, raised, inbox.Part{Type: inbox.PartText, State: inbox.PartInfo, Text: body})
 	}
@@ -179,10 +186,13 @@ func (p *Platform) settleUsage(ctx context.Context, run runs.Run) {
 		recorded = &u
 		// Only the run's own calls: the runs it called settle their own,
 		// so each call in a tree is counted once.
-		added, _ := p.Usage.Record(usage.Entry{
+		added, _, err := p.Usage.Record(usage.Entry{
 			Kind: usage.Settled, Key: "run:" + run.ID, Tenant: run.Tenant, Project: run.Project, Agent: run.Agent,
 			Client: run.Client, RunID: run.ID, At: p.now(), Spend: new(usage.Of(u.Own)),
 		})
+		if err != nil {
+			p.log.Error("platform: usage entry could not be written yet", "kind", usage.Settled, "run", run.ID, "error", err)
+		}
 		micros = added.Micros
 	}
 	// From here a call reported late changes the ledger, by what goes beyond

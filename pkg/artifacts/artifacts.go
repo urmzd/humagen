@@ -2,7 +2,9 @@
 // it came from, and which version of it this is.
 //
 // The bytes live in a blob store. This index holds everything else, and is
-// what the console's storage page and the download route read.
+// what the console's storage page and the download route read. Built with
+// Open, it writes every change through a state.Store and reads the records
+// back when it is built again.
 package artifacts
 
 import (
@@ -17,6 +19,8 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Errors a caller can match.
@@ -113,10 +117,65 @@ type tenant struct {
 type Index struct {
 	mu      sync.RWMutex
 	tenants map[string]*tenant
+	// kept is where records are written. Nil keeps them only in memory.
+	kept *state.Table[stored]
 }
 
-// NewIndex returns an empty index.
+// stored is one record: an artifact, or a tenant's id counter.
+type stored struct {
+	Artifact *storedArtifact `json:"artifact,omitempty"`
+	Next     int             `json:"next,omitempty"`
+}
+
+// storedArtifact is an artifact with what its wire form leaves out.
+type storedArtifact struct {
+	Artifact
+	Key string `json:"key"`
+}
+
+const nextKey = "next"
+
+func seqOf(id string) int {
+	n, _ := strconv.Atoi(strings.TrimPrefix(id, "art-"))
+	return n
+}
+
+// recordKey sorts a tenant's artifacts in the order their ids were issued.
+func recordKey(id string) string { return "artifact/" + state.Seq(int64(seqOf(id))) }
+
+// NewIndex returns an empty index in memory.
 func NewIndex() *Index { return &Index{tenants: map[string]*tenant{}} }
+
+// Open returns an index that keeps its records in st, holding what st
+// already has. A nil st is NewIndex.
+//
+// Ids are issued once. NextID reserves one in memory, and Publish writes the
+// counter with the record, so an id reserved and never published may be
+// issued again after a restart: nothing was kept under it.
+func Open(st state.Store) (*Index, error) {
+	x := NewIndex()
+	x.kept = state.NewTable[stored](st, "artifacts")
+	err := x.kept.Load(func(name, key string, r stored) error {
+		t := x.of(name)
+		if key == nextKey {
+			t.next = max(t.next, r.Next)
+			return nil
+		}
+		if r.Artifact == nil {
+			return nil
+		}
+		a := r.Artifact.Artifact
+		a.Key = r.Artifact.Key
+		t.items = append(t.items, &a)
+		t.byID[a.ID] = &a
+		t.next = max(t.next, seqOf(a.ID))
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("artifacts: load: %w", err)
+	}
+	return x, nil
+}
 
 // empty stands in for a tenant with nothing published, for readers. It is
 // never written to.
@@ -172,6 +231,12 @@ func (x *Index) Publish(tenantName string, a Artifact) (Artifact, error) {
 			a.Version = o.Version + 1
 		}
 	}
+	b := x.kept.Batch()
+	b.Put(tenantName, nextKey, stored{Next: max(t.next, seqOf(a.ID))})
+	b.Put(tenantName, recordKey(a.ID), stored{Artifact: &storedArtifact{Artifact: a, Key: a.Key}})
+	if err := b.Commit(); err != nil {
+		return Artifact{}, fmt.Errorf("artifacts: write: %w", err)
+	}
 	t.items = append(t.items, &a)
 	t.byID[a.ID] = &a
 	return a, nil
@@ -215,6 +280,9 @@ func (x *Index) Delete(tenantName, id string) (Artifact, error) {
 	a := t.byID[id]
 	if a == nil {
 		return Artifact{}, fmt.Errorf("%w: artifact %q", ErrNotFound, id)
+	}
+	if err := x.kept.Delete(tenantName, recordKey(id)); err != nil {
+		return Artifact{}, fmt.Errorf("artifacts: write: %w", err)
 	}
 	delete(t.byID, id)
 	t.items = slices.DeleteFunc(t.items, func(o *Artifact) bool { return o.ID == id })

@@ -1,0 +1,16 @@
+{{- if hasKey .Values.files "warp.yaml" }}
+{{- fail "files: warp.yaml is the rendered spec; give the file another name" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "warp.fullname" . }}
+  labels:
+    {{- include "warp.labels" . | nindent 4 }}
+data:
+  warp.yaml: |
+    {{- include "warp.spec" . | trimSuffix "\n" | nindent 4 }}
+  {{- range $name, $body := .Values.files }}
+  {{ $name }}: |
+    {{- $body | trimSuffix "\n" | nindent 4 }}
+  {{- end }}

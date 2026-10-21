@@ -1,0 +1,36 @@
+# A local preview without an identity provider.
+#
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+#
+# -auth=dev signs every request in as admin, so warp refuses to listen on
+# anything but loopback. A published container port is not loopback, so this
+# file puts warp on the host's network instead, listening on 127.0.0.1:8080,
+# and publishes Postgres (and Redis, MinIO) on the host's loopback for it.
+# Host networking needs Linux, or Docker Desktop 4.34+ with it turned on.
+
+services:
+  warp:
+    network_mode: host
+    ports: !reset []
+    # dev/warp.yaml in place of config/: development sign-in, Postgres on
+    # loopback, the offline provider. The flags win over it, as in compose.yaml.
+    command: serve -f /etc/warp -addr 127.0.0.1:${WARP_PORT:-8080} -web /usr/share/warp/web -seed ${WARP_EXTRA_ARGS:-}
+    environment:
+      WARP_POSTGRES_URL: postgres://warp:${POSTGRES_PASSWORD:-warp}@127.0.0.1:5432/warp?sslmode=disable
+    volumes:
+      - ./dev:/etc/warp:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${WARP_PORT:-8080}/healthz"]
+
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  minio:
+    ports: !override
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"

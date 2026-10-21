@@ -19,7 +19,7 @@ var (
 )
 
 func admit(l *Ledger, tenant, project, agent, id string, at time.Time) {
-	l.Append(Entry{Kind: Admitted, Tenant: tenant, Project: project, Agent: agent, RunID: id, At: at})
+	_, _ = l.Append(Entry{Kind: Admitted, Tenant: tenant, Project: project, Agent: agent, RunID: id, At: at})
 }
 
 func TestUsageByScopeAndPeriod(t *testing.T) {
@@ -28,7 +28,9 @@ func TestUsageByScopeAndPeriod(t *testing.T) {
 	admit(l, "acme", "Launch", "lead", "r2", t0)                 // the first instant of today
 	admit(l, "acme", "", "helper", "r3", t0.Add(time.Hour))
 	admit(l, "globex", "Launch", "lead", "r9", t0.Add(time.Hour))
-	l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r1", At: t0.Add(2 * time.Hour)})
+	if _, err := l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r1", At: t0.Add(2 * time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
 
 	for name, tc := range map[string]struct {
 		scope      policy.Scope
@@ -63,10 +65,14 @@ func TestRebuildMatchesTheLiveLedger(t *testing.T) {
 		switch {
 		case len(open) > 0 && rng.IntN(3) == 0:
 			j := rng.IntN(len(open))
-			l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: open[j], At: at})
+			if _, err := l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: open[j], At: at}); err != nil {
+				t.Fatal(err)
+			}
 			open = append(open[:j], open[j+1:]...)
 		case rng.IntN(20) == 0:
-			l.Append(Entry{Kind: Refused, Tenant: "acme", Agent: "lead", At: at, Scope: &launch, Version: 1, Limit: policy.LimitRuns})
+			if _, err := l.Append(Entry{Kind: Refused, Tenant: "acme", Agent: "lead", At: at, Scope: &launch, Version: 1, Limit: policy.LimitRuns}); err != nil {
+				t.Fatal(err)
+			}
 		case len(open) > 0 && rng.IntN(3) == 0:
 			// A call, sometimes delivered twice, sometimes unpriced or in
 			// another currency, and sometimes a run's settled total.
@@ -83,7 +89,9 @@ func TestRebuildMatchesTheLiveLedger(t *testing.T) {
 				kind, key = Settled, "run:"+run
 				sp.Micros += 10_000
 			}
-			l.Append(Entry{Kind: kind, Tenant: "acme", Project: projects[i%3], Agent: agents[i%3], RunID: run, Key: key, Spend: sp, At: at})
+			if _, err := l.Append(Entry{Kind: kind, Tenant: "acme", Project: projects[i%3], Agent: agents[i%3], RunID: run, Key: key, Spend: sp, At: at}); err != nil {
+				t.Fatal(err)
+			}
 		default:
 			id := fmt.Sprintf("r%d", i)
 			admit(l, "acme", projects[rng.IntN(3)], agents[rng.IntN(3)], id, at)
@@ -123,14 +131,20 @@ func TestOldAdmissionsAreDropped(t *testing.T) {
 func TestUsageByClient(t *testing.T) {
 	l := NewLedger()
 	raise := func(client, id string) {
-		l.Append(Entry{Kind: Admitted, Tenant: "acme", Agent: "lead", Client: client, RunID: id, At: t0})
+		if _, err := l.Append(Entry{Kind: Admitted, Tenant: "acme", Agent: "lead", Client: client, RunID: id, At: t0}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	raise("docs-app", "r1")
 	raise("docs-app", "r2")
 	raise("ops-app", "r3")
 	raise("", "r4") // from the console
-	l.Append(Entry{Kind: Admitted, Tenant: "globex", Agent: "lead", Client: "docs-app", RunID: "r9", At: t0})
-	l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r1", At: t0.Add(time.Minute)})
+	if _, err := l.Append(Entry{Kind: Admitted, Tenant: "globex", Agent: "lead", Client: "docs-app", RunID: "r9", At: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.Append(Entry{Kind: Ended, Tenant: "acme", RunID: "r1", At: t0.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
 
 	docs := policy.Scope{Kind: policy.Client, Name: "docs-app"}
 	if got := l.Usage("acme", docs, t0); got.Runs != 2 || got.Concurrent != 1 {
@@ -149,7 +163,8 @@ func TestUsageByClient(t *testing.T) {
 }
 
 func call(l *Ledger, tenant, run, key string, at time.Time, sp Spend) bool {
-	return l.Append(Entry{Kind: Spent, Tenant: tenant, Project: "Launch", Agent: "lead", RunID: run, Key: key, Spend: &sp, At: at})
+	ok, _ := l.Append(Entry{Kind: Spent, Tenant: tenant, Project: "Launch", Agent: "lead", RunID: run, Key: key, Spend: &sp, At: at})
+	return ok
 }
 
 // A model call is counted once however often it is delivered, and a run's
@@ -164,8 +179,9 @@ func TestARunsSpendIsCountedOnceDespiteRedeliveryAndSettlement(t *testing.T) {
 	call(l, "acme", "r1", "r1/a1/2", t0, one)
 	// The run ended having made three calls: one of them was never seen.
 	settle := func() (Spend, bool) {
-		return l.Record(Entry{Kind: Settled, Tenant: "acme", Project: "Launch", Agent: "lead", RunID: "r1", Key: "run:r1",
+		added, ok, _ := l.Record(Entry{Kind: Settled, Tenant: "acme", Project: "Launch", Agent: "lead", RunID: "r1", Key: "run:r1",
 			Spend: &Spend{Micros: 900, ModelCalls: 3, Tokens: 3000}, At: t0.Add(time.Minute)})
+		return added, ok
 	}
 	added, ok := settle()
 	if !ok || added.Micros != 300 || added.ModelCalls != 1 || added.Tokens != 1000 {
@@ -213,7 +229,7 @@ func TestUnpricedAndOtherCurrencyCallsAreNotDollars(t *testing.T) {
 // excess. The same holds in the other order.
 func TestALateCallAfterSettlementIsNotCountedTwice(t *testing.T) {
 	settle := func(l *Ledger, sp Spend) Spend {
-		added, _ := l.Record(Entry{Kind: Settled, Tenant: "acme", Agent: "lead", RunID: "r1", Key: "run:r1", Spend: &sp, At: t0})
+		added, _, _ := l.Record(Entry{Kind: Settled, Tenant: "acme", Agent: "lead", RunID: "r1", Key: "run:r1", Spend: &sp, At: t0})
 		return added
 	}
 	one := Spend{Micros: 4500, ModelCalls: 1, Tokens: 1100}

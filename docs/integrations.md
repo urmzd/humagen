@@ -8,8 +8,9 @@ the review and guide Markdown. The same repository contains the shared web and S
 
 ## Local setup
 
-The external Go modules are pinned to released versions in
-`go.mod`, so the server builds from this checkout alone. Use `go test ./... -race`
+The external Go modules are pinned in `go.mod`, to released versions apart
+from anchor's Postgres adapter, which has no release yet and is pinned to a
+commit, so the server builds from this checkout alone. Use `go test ./... -race`
 to verify the composition. Run `go run ./examples/github-review` for a token-free preview.
 
 Provide `ANTHROPIC_API_KEY` and `WARP_AGENT_MODEL` for a model available to
@@ -30,7 +31,8 @@ on the same Runs page as console runs. The variables below create one default
 client per surface in tenant `trial`. Only that tenant can see or use it;
 inbound payloads cannot choose a tenant. Further clients, such as a second Slack
 app that answers as another agent, are created through `POST /api/clients`. See
-[clients](clients.md). Stores are still in memory.
+[clients](clients.md). Stores are in memory unless the server runs with
+`-state=postgres`, the default when `WARP_POSTGRES_URL` is set.
 
 Forward **only port 8383**, whose handler exposes signed webhook endpoints and
 readiness. `/api`, `/auth` and the console are absent there. Never forward the

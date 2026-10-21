@@ -5,7 +5,8 @@
     <br /><br />
     <a href="#installation">Install</a> &middot;
     <a href="https://github.com/urmzd/warp/issues">Report Bug</a> &middot;
-    <a href="docs/architecture.md">Architecture</a>
+    <a href="docs/architecture.md">Architecture</a> &middot;
+    <a href="docs/deploy.md">Deploy</a>
   </p>
 </p>
 
@@ -28,7 +29,7 @@
 - Connect GitHub and Slack through signed webhook ingress and tenant-bound connector capabilities.
 - Answer in Slack with the console's own components through a Socket Mode app that streams natively.
 
-**Early development:** platform records are in memory. Spend limits are recorded but not enforced. Approvals are tool calls and questions a run parks on; a run cannot yet park at a limit. Local accounts and per-project access are unfinished. GitHub and Slack integrations have simulated-API coverage; see the [integration trial guide](docs/integrations.md) and [status table](docs/architecture.md#status) for validation boundaries.
+**Early development:** pre-1.0, one replica per database, sessions in memory, Slack and GitHub tested against simulated APIs. The full, current list is in [the ecosystem's limitations](docs/ecosystem.md#limitations-in-one-place); what each piece has been tested against is in the [status table](docs/architecture.md#status).
 
 ## Installation
 
@@ -55,6 +56,32 @@ See the [integration trial guide](docs/integrations.md).
 
 ## Quick Start
 
+One command, nothing to configure:
+
+```sh
+pnpm --filter @warp/console build   # once, so the console is served too
+go run ./cmd/warp start
+```
+
+`warp start` runs the whole platform in one process: development sign-in on
+loopback, in-memory stores (Postgres when `WARP_POSTGRES_URL` is set), files on
+disk, seeded example agents on the offline provider, and the console at
+<http://127.0.0.1:8080>. On a terminal, the first
+start asks a few questions (its name, model providers, MCP tools, sign-in,
+Slack), each with a default Enter accepts, and writes the answers to
+`warp.yaml` in your config directory. You name where each key is kept
+(`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`); warp reads it when it
+is used and never stores it.
+
+Everything is configured in that one language: a `System` document for how and
+where warp runs (sign-in, stores, bus, files, limits) and a `Platform` document
+per workspace (models, tools, agents, Slack, GitHub, workspace settings). See [the spec](docs/spec.md).
+The same file runs on your own infrastructure with no code: point `stores` at
+Postgres, `blobs` at S3 and `auth` at your identity provider, and use it with
+compose or the Helm chart ([deploy](docs/deploy.md)). Any flag still wins over
+the file (`warp start -addr 127.0.0.1:9090`).
+
+### Develop the console
 
 Run the backend in one terminal:
 
@@ -68,9 +95,11 @@ Run the console in another terminal, from the repository root:
 make web
 ```
 
-Open <http://127.0.0.1:5173>, complete the first-run workspace form and select an example agent. The backend listens on `127.0.0.1:8080`. Seeded agents use fiber's offline provider, so the preview requires no model key.
+Open <http://127.0.0.1:5173> and select an example agent. The backend listens on `127.0.0.1:8080`. Seeded agents use fiber's offline provider, so the preview requires no model key.
 
-Development auth grants admin access on loopback. For real sign-in, roles and machine tokens, follow [the security guide](docs/security.md). To use Anthropic, set `ANTHROPIC_API_KEY` before starting the server and configure an agent with provider `anthropic`.
+To run it in containers, on Kubernetes with Helm, or with Flux, see [deploy](docs/deploy.md).
+
+Development auth grants admin access on loopback; `warp start` and `make dev` use it. `warp serve`, the server's command, signs in with OIDC unless told otherwise. For real sign-in, roles and machine tokens, follow [the security guide](docs/security.md). To use Anthropic, set `ANTHROPIC_API_KEY` before starting the server and configure an agent with provider `anthropic`.
 
 ### Capture the console
 
@@ -143,6 +172,10 @@ Warp is a shared place for people and agents to organize projects and tasks, mai
 This is the direction, not a claim that every workflow exists today. See the [roadmap](docs/roadmap.md) and [implementation status](docs/architecture.md#status).
 
 ## Architecture
+
+warp is the top of five layers (warp, fiber, saige, playscape, anchor), each
+building on the one below. [The ecosystem](docs/ecosystem.md) says who owns
+what and the order the remaining duplication is being removed in.
 
 | Part | Responsibility |
 |------|----------------|

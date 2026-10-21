@@ -1,0 +1,8 @@
+# Teaches kustomize that a HelmRelease's valuesFrom names a ConfigMap, so the
+# generated name with its hash suffix is written there.
+nameReference:
+  - kind: ConfigMap
+    version: v1
+    fieldSpecs:
+      - path: spec/valuesFrom/name
+        kind: HelmRelease

@@ -1,0 +1,208 @@
+# Values for the warp chart. Every key is documented where it is set.
+#
+# warp is configured by the documents in docs/spec.md. `system` and
+# `platforms` below are rendered verbatim into one warp.yaml the pod reads
+# with `warp serve -f`. Everything else is the chart's own: image, volume,
+# Service, Ingress, probes.
+#
+# Secrets never go in this file. A credential in the spec is a reference,
+# {ref: env:NAME}; name a Secret you created with `existingSecret`, and its
+# keys become the container's environment, where the references read them.
+
+# -- One replica. Keep it at one: warp's stores are single-writer (the run
+# index, the usage ledger, the admission lock and the schedules all assume one
+# process owns them), and the workspace volume is ReadWriteOnce. A second
+# replica would race the first, not share its load.
+replicaCount: 1
+
+image:
+  # Releases do not publish an image yet: build one from the Dockerfile at the
+  # repository root and push it here.
+  repository: ghcr.io/urmzd/warp
+  # Empty means the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# -- The System document: how and where warp runs (docs/spec.md#system).
+# Rendered as written, except that the chart passes -addr=0.0.0.0:8080 and
+# -web=/usr/share/warp/web as flags, which win over server.addr and
+# server.console. auth.kind must be oidc: dev, mock and tailscale trust
+# loopback and refuse any other listen address.
+system:
+  metadata:
+    name: warp
+    display_name: Warp
+  spec:
+    server:
+      # Where browsers reach warp. The OIDC redirect URI is this plus
+      # /auth/callback.
+      public_url: https://warp.example.com
+    auth:
+      kind: oidc
+      oidc:
+        # All three required. Not secret, so set here.
+        issuer: ""
+        client_id: ""
+        client_secret: {ref: env:WARP_OIDC_CLIENT_SECRET}
+        audience: ""
+      tenant: {fixed: default}
+      groups: {claim: groups}
+      # An authorization policy: put it in `files` and name it here, as
+      # /etc/warp/policy.authz.
+      # policy_file: /etc/warp/policy.authz
+    stores:
+      kind: postgres
+      postgres: {url: {ref: env:WARP_POSTGRES_URL}}
+    bus:
+      kind: memory
+    # disk keeps published files on the workspace volume. For a bucket:
+    #   kind: s3
+    #   s3: {bucket: warp-files, region: us-east-1,
+    #        access_key: {ref: env:WARP_S3_ACCESS_KEY_ID},
+    #        secret_key: {ref: env:WARP_S3_SECRET_ACCESS_KEY}}
+    # Both keys left out means the AWS chain, such as IRSA.
+    blobs:
+      kind: disk
+    # The workspace defaults to the volume (the image points the user cache
+    # directory into /var/lib/warp).
+    execution:
+      max_depth: 4
+      max_fan_out: 16
+
+# -- Platform documents, one per workspace (docs/spec.md#platform). Each item
+# is {metadata, spec} and is rendered with api_version and kind added;
+# metadata.name is the workspace's tenant. An agent can come from `files`:
+#   agents: [{file: /etc/warp/reviewer.json}]
+platforms:
+  - metadata:
+      name: default
+    spec: {}
+
+# -- Further files beside warp.yaml in /etc/warp, by name: an authorization
+# policy, agent specs. The spec refers to them as /etc/warp/NAME. No secrets.
+files: {}
+#  policy.authz: |
+#    ...
+#  reviewer.json: |
+#    {"name": "reviewer", ...}
+
+# -- The Secret whose keys become environment variables (envFrom), for the
+# references in `system` and `platforms` to read. Create it yourself, with
+# kubectl, SOPS, External Secrets or sealed-secrets. With the defaults:
+#   WARP_OIDC_CLIENT_SECRET, WARP_POSTGRES_URL
+# and whatever else the documents name, such as ANTHROPIC_API_KEY or
+# SLACK_BOT_TOKEN. A reference to an unset variable stops warp at start.
+existingSecret: ""
+
+# -- The workspace volume: agents' files and, with blobs.kind=disk,
+# published files. Mounted at /var/lib/warp.
+persistence:
+  enabled: true
+  # Use a claim you made instead of creating one.
+  existingClaim: ""
+  # Empty means the cluster's default class.
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+
+# -- A second listener exposing only signed connector webhooks (Slack,
+# GitHub), so the API need not be public for them. Off means the webhooks are
+# on the main port under /connectors. Passed as -webhook-addr, which wins over
+# system.spec.server.webhook_addr.
+webhooks:
+  enabled: false
+  port: 8090
+
+# -- Further flags for `warp serve`, appended last.
+extraArgs: []
+# -- Further environment variables, as container env entries.
+extraEnv: []
+# -- Further volumes and mounts, for example for a stdio MCP server's files.
+extraVolumes: []
+extraVolumeMounts: []
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # The event stream is server-sent events: a proxy that buffers or times out
+  # short-lived requests will cut it. For ingress-nginx, for example:
+  #   nginx.ingress.kubernetes.io/proxy-buffering: "off"
+  #   nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  hosts:
+    - host: warp.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: warp-tls
+  #    hosts:
+  #      - warp.example.com
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # warp does not call the Kubernetes API.
+  automountToken: false
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+# /healthz answers once the server is listening.
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 15
+  timeoutSeconds: 3
+  failureThreshold: 4
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 5
+  timeoutSeconds: 3
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 2
+  failureThreshold: 30
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

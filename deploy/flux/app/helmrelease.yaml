@@ -1,0 +1,29 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: warp
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: ./deploy/helm/warp
+      # Rebuild the chart on every commit to the source, not only when its
+      # version in Chart.yaml changes.
+      reconcileStrategy: Revision
+      sourceRef:
+        kind: GitRepository
+        name: warp
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    # The release is one replica with Recreate: a failed upgrade rolls back
+    # rather than leaving warp down.
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  valuesFrom:
+    - kind: ConfigMap
+      name: warp-values
+      valuesKey: values.yaml

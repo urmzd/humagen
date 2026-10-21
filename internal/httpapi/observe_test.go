@@ -757,8 +757,10 @@ func TestASpendRefusalNamesTheLimitPolicyAndReset(t *testing.T) {
 	f.do(t, nil, "PUT", "/api/policies", globex, `{"scope":{"kind":"tenant"},"period":"month","spend_limit":5000}`)
 
 	// globex spends past its limit; acme is untouched by it.
-	f.p.Usage.Append(usage.Entry{Kind: usage.Spent, Tenant: "globex", Agent: "helper", RunID: "r-g", Key: "r-g/a1/1",
-		At: time.Now(), Spend: &usage.Spend{Micros: 9000, ModelCalls: 1, Tokens: 500}})
+	if _, err := f.p.Usage.Append(usage.Entry{Kind: usage.Spent, Tenant: "globex", Agent: "helper", RunID: "r-g", Key: "r-g/a1/1",
+		At: time.Now(), Spend: &usage.Spend{Micros: 9000, ModelCalls: 1, Tokens: 500}}); err != nil {
+		t.Fatal(err)
+	}
 	res, run := f.do(t, nil, "POST", "/api/runs", acme, `{"agent":"helper","text":"go"}`)
 	if res.StatusCode != http.StatusAccepted {
 		t.Fatalf("acme was refused for globex's spending: %d %v", res.StatusCode, run)
@@ -793,8 +795,10 @@ func TestASpendRefusalNamesTheLimitPolicyAndReset(t *testing.T) {
 	}
 
 	// acme spends to its limit.
-	f.p.Usage.Append(usage.Entry{Kind: usage.Spent, Tenant: "acme", Agent: "helper", RunID: "r-a", Key: "r-a/a1/1",
-		At: time.Now(), Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 500}})
+	if _, err := f.p.Usage.Append(usage.Entry{Kind: usage.Spent, Tenant: "acme", Agent: "helper", RunID: "r-a", Key: "r-a/a1/1",
+		At: time.Now(), Spend: &usage.Spend{Micros: 5000, ModelCalls: 1, Tokens: 500}}); err != nil {
+		t.Fatal(err)
+	}
 	res, refused := f.do(t, nil, "POST", "/api/runs", acme, `{"agent":"helper","text":"again"}`)
 	if res.StatusCode != http.StatusPaymentRequired || refused["limit"] != "spend" || refused["remaining"].(float64) != 0 {
 		t.Fatalf("refusal = %d %v", res.StatusCode, refused)

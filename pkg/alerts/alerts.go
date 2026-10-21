@@ -6,7 +6,8 @@
 // project, paused, held quiet for a cooldown after it raises, and addressed
 // to some people or roles rather than everyone who may read alerts.
 //
-// Rules and alerts are in memory and are lost on restart.
+// Rules and alerts are in memory. Built with Open, the engine writes every
+// change through a state.Store and reads them back when it is built again.
 package alerts
 
 import (
@@ -20,6 +21,7 @@ import (
 
 	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Errors.
@@ -304,10 +306,114 @@ func (t *tenant) openFor(r Rule, agent string) bool {
 type Engine struct {
 	mu      sync.Mutex
 	tenants map[string]*tenant
+	// kept is where rules and alerts are written: one record per tenant for
+	// its rules, its counter and its cooldowns, and one per alert. Nil keeps
+	// them only in memory.
+	kept *state.Table[stored]
 }
 
-// NewEngine returns an engine with no rules.
+// stored is one record: a tenant's rules (under rulesKey) or one alert.
+type stored struct {
+	Rules []Rule               `json:"rules,omitempty"`
+	Next  int                  `json:"next,omitempty"`
+	Last  map[string]time.Time `json:"last,omitempty"`
+	Alert *storedAlert         `json:"alert,omitempty"`
+}
+
+// storedAlert is an alert with what its wire form leaves out.
+type storedAlert struct {
+	Alert
+	Notify []string `json:"notify,omitempty"`
+}
+
+const (
+	rulesKey    = "rules"
+	alertPrefix = "alert/"
+)
+
+func alertKey(id string) string {
+	n, _ := strconv.ParseInt(strings.TrimPrefix(id, "al-"), 10, 64)
+	return alertPrefix + state.Seq(n)
+}
+
+// NewEngine returns an engine with no rules, in memory.
 func NewEngine() *Engine { return &Engine{tenants: map[string]*tenant{}} }
+
+// Open returns an engine that keeps its rules and alerts in st, holding what
+// st already has. A nil st is NewEngine.
+func Open(st state.Store) (*Engine, error) {
+	e := NewEngine()
+	e.kept = state.NewTable[stored](st, "alerts")
+	err := e.kept.Load(func(name, key string, r stored) error {
+		t := e.of(name)
+		switch {
+		case key == rulesKey:
+			t.rules, t.next, t.last = r.Rules, r.Next, r.Last
+		case strings.HasPrefix(key, alertPrefix) && r.Alert != nil:
+			a := r.Alert.Alert
+			a.Notify = r.Alert.Notify
+			// Keys sort as the alerts were numbered, so this is oldest first.
+			t.alerts = append(t.alerts, a)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("alerts: load: %w", err)
+	}
+	return e, nil
+}
+
+func (t *tenant) copy() tenant {
+	c := tenant{rules: slices.Clone(t.rules), alerts: slices.Clone(t.alerts), next: t.next}
+	if t.last != nil {
+		c.last = make(map[string]time.Time, len(t.last))
+		for k, v := range t.last {
+			c.last[k] = v
+		}
+	}
+	return c
+}
+
+// snapshot is how a tenant was before a change, for save to put back.
+func (e *Engine) snapshot(t *tenant) tenant {
+	if !e.kept.Enabled() {
+		return tenant{}
+	}
+	return t.copy()
+}
+
+// save writes what changed in a tenant since before: its rules record when
+// rules is set, the alerts named, and a delete for every alert that was
+// dropped. A failed write puts the tenant back as it was. It is called with
+// the lock held.
+func (e *Engine) save(name string, t *tenant, before tenant, rules bool, changed ...Alert) error {
+	if !e.kept.Enabled() {
+		return nil
+	}
+	b := e.kept.Batch()
+	if rules {
+		b.Put(name, rulesKey, stored{Rules: t.rules, Next: t.next, Last: t.last})
+	}
+	for _, a := range changed {
+		b.Put(name, alertKey(a.ID), stored{Alert: &storedAlert{Alert: a, Notify: a.Notify}})
+	}
+	if len(t.alerts) < len(before.alerts)+len(changed) {
+		kept := make(map[string]bool, len(t.alerts))
+		for _, a := range t.alerts {
+			kept[a.ID] = true
+		}
+		for _, a := range before.alerts {
+			if !kept[a.ID] {
+				b.Delete(name, alertKey(a.ID))
+			}
+		}
+	}
+	if err := b.Commit(); err != nil {
+		*t = before
+		return fmt.Errorf("alerts: write: %w", err)
+	}
+	return nil
+}
 
 func (e *Engine) of(name string) *tenant {
 	t, ok := e.tenants[name]
@@ -333,8 +439,9 @@ func (e *Engine) AddRule(tenantName string, r Rule) error {
 	if len(t.rules) >= maxRules {
 		return fmt.Errorf("%w: a workspace has at most %d rules", ErrInvalid, maxRules)
 	}
+	before := e.snapshot(t)
 	t.rules = append(t.rules, r)
-	return nil
+	return e.save(tenantName, t, before, true)
 }
 
 // ReplaceRule replaces a rule with the same name and returns it as stored.
@@ -353,7 +460,11 @@ func (e *Engine) ReplaceRule(tenantName string, r Rule) (Rule, error) {
 		return Rule{}, err
 	}
 	r.CreatedBy, r.CreatedAt = t.rules[i].CreatedBy, t.rules[i].CreatedAt
+	before := e.snapshot(t)
 	t.rules[i] = r
+	if err := e.save(tenantName, t, before, true); err != nil {
+		return Rule{}, err
+	}
 	return r, nil
 }
 
@@ -378,9 +489,10 @@ func (e *Engine) RemoveRule(tenantName, name string) error {
 	if i < 0 {
 		return fmt.Errorf("%w: rule %q", ErrNotFound, name)
 	}
-	t.rules = slices.Delete(t.rules, i, i+1)
+	before := e.snapshot(t)
+	t.rules = slices.Delete(slices.Clone(t.rules), i, i+1)
 	delete(t.last, name)
-	return nil
+	return e.save(tenantName, t, before, true)
 }
 
 // Rules returns a tenant's rules.
@@ -407,7 +519,11 @@ func (e *Engine) Ack(tenantName, id, by string, at time.Time) (Alert, error) {
 	for i := range t.alerts {
 		if t.alerts[i].ID == id {
 			if t.alerts[i].Open() {
+				before := e.snapshot(t)
 				t.alerts[i].AckedBy, t.alerts[i].AckedAt = by, at
+				if err := e.save(tenantName, t, before, false, t.alerts[i]); err != nil {
+					return Alert{}, err
+				}
 			}
 			return t.alerts[i], nil
 		}
@@ -420,11 +536,12 @@ func (e *Engine) Ack(tenantName, id, by string, at time.Time) (Alert, error) {
 type Recent func(tenant, agent, project string, since time.Time) runs.Window
 
 // Evaluate checks a run that has just ended against its tenant's rules and
-// returns the alerts it raised.
-func (e *Engine) Evaluate(run runs.Run, recent Recent) []Alert {
+// returns the alerts it raised. When they cannot be written none is raised.
+func (e *Engine) Evaluate(run runs.Run, recent Recent) ([]Alert, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	t := e.of(run.Tenant)
+	before := e.snapshot(t)
 	var raised []Alert
 	raise := func(r Rule, title, body string) {
 		raised = append(raised, t.fired(r, Alert{
@@ -472,7 +589,13 @@ func (e *Engine) Evaluate(run runs.Run, recent Recent) []Alert {
 			}
 		}
 	}
-	return raised
+	if len(raised) == 0 {
+		return nil, nil
+	}
+	if err := e.save(run.Tenant, t, before, true, raised...); err != nil {
+		return nil, err
+	}
+	return raised, nil
 }
 
 // Dollars writes micro-USD as dollars and cents, rounded down.
@@ -487,13 +610,14 @@ func Dollars(micros int64) string {
 // EvaluateEval checks a finished eval run against its tenant's rules. A rule
 // scoped to an agent applies to suites that test that agent, and a rule with no
 // agent applies to every suite.
-func (e *Engine) EvaluateEval(tenantName string, run evals.Run) []Alert {
+func (e *Engine) EvaluateEval(tenantName string, run evals.Run) ([]Alert, error) {
 	if run.Status == evals.Running {
-		return nil
+		return nil, nil
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	t := e.of(tenantName)
+	before := e.snapshot(t)
 	var raised []Alert
 	for _, r := range t.rules {
 		if r.Kind != EvalBelow {
@@ -517,19 +641,30 @@ func (e *Engine) EvaluateEval(tenantName string, run evals.Run) []Alert {
 			Body:  fmt.Sprintf("%d of %d cases passed. The rule expects at least %.0f%%.", run.Passed, run.Total, r.Threshold),
 		}))
 	}
-	return raised
+	if len(raised) == 0 {
+		return nil, nil
+	}
+	if err := e.save(tenantName, t, before, true, raised...); err != nil {
+		return nil, err
+	}
+	return raised, nil
 }
 
 // Raise records an alert the platform itself decided on. key names what it is
 // about, and while an alert with that key is open a second one is not raised:
 // a limit that is refusing every run says so once, not once per run.
-func (e *Engine) Raise(tenantName, key string, a Alert) (Alert, bool) {
+func (e *Engine) Raise(tenantName, key string, a Alert) (Alert, bool, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	t := e.of(tenantName)
 	if slices.ContainsFunc(t.alerts, func(x Alert) bool { return x.Open() && x.Rule == key }) {
-		return Alert{}, false
+		return Alert{}, false, nil
 	}
+	before := e.snapshot(t)
 	a.Rule = key
-	return t.add(a), true
+	a = t.add(a)
+	if err := e.save(tenantName, t, before, true, a); err != nil {
+		return Alert{}, false, err
+	}
+	return a, true, nil
 }

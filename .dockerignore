@@ -1,0 +1,22 @@
+# Keep the build context to what the image is built from.
+.git
+.github
+.claude
+.worktrees
+**/node_modules
+**/dist
+**/storybook-static
+**/.turbo
+bin
+build
+showcase
+# deploy/ holds only the chart the binary embeds (deploy/chart.go and
+# deploy/helm/warp); the rest is not part of the image.
+deploy/compose
+deploy/flux
+deploy/helm/check.sh
+# Projects `warp deploy` writes beside a spec.
+**/.warp
+*.log
+.env
+**/.env

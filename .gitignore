@@ -34,3 +34,12 @@ storybook-static/
 **/.slack/apps.dev.json
 **/.slack/config.json
 **/.slack/cache/
+
+# Agent worktrees
+.claude/worktrees/
+
+# Local compose settings
+deploy/compose/.env
+
+# What `warp deploy` writes beside a spec
+.warp/

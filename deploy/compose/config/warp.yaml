@@ -1,0 +1,59 @@
+# The spec the compose stack's warp reads (docs/spec.md). Mounted at
+# /etc/warp, read with `warp serve -f /etc/warp`. Edit the names and URLs here;
+# credentials are references to variables set in .env, never values.
+# Check it with: go run ./cmd/warp config check -f deploy/compose/config
+api_version: warp/v1
+kind: System
+metadata:
+  name: warp
+  display_name: Warp
+spec:
+  server:
+    # Where browsers reach warp. The OIDC redirect URI is this plus
+    # /auth/callback. The listen address and the console's directory are
+    # flags in compose.yaml.
+    public_url: http://localhost:8080
+  auth:
+    kind: oidc
+    oidc:
+      issuer: https://login.example.com
+      client_id: warp
+      client_secret: {ref: env:WARP_OIDC_CLIENT_SECRET}
+      audience: warp
+    tenant: {fixed: default}
+    groups: {claim: groups}
+    # An authorization policy, a file beside this one:
+    # policy_file: /etc/warp/policy.authz
+  stores:
+    kind: postgres
+    # compose.yaml points this at the bundled Postgres unless .env says otherwise.
+    postgres: {url: {ref: env:WARP_POSTGRES_URL}}
+  bus:
+    kind: memory
+    # With the redis profile:
+    # kind: redis
+    # redis: {url: {ref: env:WARP_REDIS_URL}}
+  blobs:
+    # In the warp-data volume.
+    kind: disk
+    # With the s3 profile (MinIO):
+    # kind: s3
+    # s3:
+    #   bucket: warp
+    #   endpoint: http://minio:9000
+    #   path_style: true
+    #   access_key: {ref: env:WARP_S3_ACCESS_KEY_ID}
+    #   secret_key: {ref: env:WARP_S3_SECRET_ACCESS_KEY}
+---
+api_version: warp/v1
+kind: Platform
+metadata:
+  name: default
+spec: {}
+  # A model and an agent on it, for example:
+  # models:
+  #   - name: anthropic
+  #     kind: anthropic
+  #     anthropic: {key: {ref: env:ANTHROPIC_API_KEY}}
+  # agents:
+  #   - spec: {name: lead, provider: anthropic, model: YOUR_MODEL, system_prompt: You coordinate work.}

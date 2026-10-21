@@ -75,7 +75,15 @@ func (p *Platform) CreateClient(_ context.Context, tenant, by string, in ClientI
 	if err != nil {
 		return clients.Client{}, err
 	}
-	p.keep(saved, in)
+	if err := p.keep(saved, in); err != nil {
+		// A client whose secrets were not kept would not verify a request
+		// after a restart, so it is not created at all.
+		_ = p.secrets.Drop(tenant, saved.ID)
+		if derr := p.Clients.Delete(tenant, saved.ID); derr != nil {
+			p.log.Error("platform: a client whose secrets were not kept could not be removed", "tenant", tenant, "client", saved.ID, "error", derr)
+		}
+		return clients.Client{}, err
+	}
 	p.seat(saved, st)
 	p.log.Info("platform: client created", "tenant", tenant, "client", saved.ID, "surface", saved.Surface, "by", by)
 	return saved, nil
@@ -117,7 +125,14 @@ func (p *Platform) UpdateClient(_ context.Context, tenant, id, by string, in Cli
 	if err != nil {
 		return clients.Client{}, err
 	}
-	p.keep(saved, in)
+	if err := p.keep(saved, in); err != nil {
+		// The record is put back, so it does not name secrets that were
+		// not kept. Its connector is left as it was.
+		if _, uerr := p.Clients.Update(tenant, old, p.now()); uerr != nil {
+			p.log.Error("platform: a client whose secrets were not kept could not be put back", "tenant", tenant, "client", id, "error", uerr)
+		}
+		return clients.Client{}, err
+	}
 	p.seat(saved, st)
 	p.log.Info("platform: client updated", "tenant", tenant, "client", id, "version", saved.Version, "enabled", saved.Enabled, "by", by)
 	return saved, nil
@@ -140,7 +155,9 @@ func (p *Platform) DeleteClient(_ context.Context, tenant, id, by string) error 
 		return err
 	}
 	p.surfaces[string(old.Surface)].remove(tenant, id)
-	p.secrets.Drop(tenant, id)
+	if err := p.secrets.Drop(tenant, id); err != nil {
+		return err
+	}
 	if err := p.Policies.Delete(tenant, policy.Scope{Kind: policy.Client, Name: id}, by, p.now()); err != nil && !errors.Is(err, policy.ErrNotFound) {
 		return err
 	}
@@ -215,7 +232,7 @@ func (p *Platform) credentials(tenant, id string, had clients.Credentials, in Cl
 
 // keep stores the secret values that were written, and forgets a stored value
 // that a reference has replaced.
-func (p *Platform) keep(c clients.Client, in ClientInput) {
+func (p *Platform) keep(c clients.Client, in ClientInput) error {
 	for name, pair := range map[string]struct {
 		ref clients.SecretRef
 		in  clients.SecretInput
@@ -223,13 +240,18 @@ func (p *Platform) keep(c clients.Client, in ClientInput) {
 		clients.SecretToken:   {c.Credentials.Token, in.Token},
 		clients.SecretSigning: {c.Credentials.SigningSecret, in.SigningSecret},
 	} {
+		var err error
 		switch {
 		case pair.in.Value != "":
-			p.secrets.Put(c.Tenant, c.ID, name, pair.in.Value)
+			err = p.secrets.Put(c.Tenant, c.ID, name, pair.in.Value)
 		case pair.ref.Ref != "":
-			p.secrets.Put(c.Tenant, c.ID, name, "")
+			err = p.secrets.Put(c.Tenant, c.ID, name, "")
+		}
+		if err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
 // seat puts a client's connector on its surface, in place of the one it had.

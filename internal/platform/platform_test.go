@@ -456,8 +456,18 @@ func TestConcurrentRunsNeverExceedALimit(t *testing.T) {
 		t.Fatalf("%d refusal alerts, want exactly one", budget)
 	}
 	// The live counts are a projection of the ledger: replaying it agrees.
-	if live, replayed := p.Usage.Usage(tenant, scope, time.Time{}), usage.Rebuild(p.Usage.Entries()).Usage(tenant, scope, time.Time{}); !reflect.DeepEqual(live, replayed) {
-		t.Fatalf("live %+v, rebuilt %+v", live, replayed)
+	// The admitted runs are still recording their model calls, and the two
+	// reads are not one step, so compare once they agree or the runs are done.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		live, replayed := p.Usage.Usage(tenant, scope, time.Time{}), usage.Rebuild(p.Usage.Entries()).Usage(tenant, scope, time.Time{})
+		if reflect.DeepEqual(live, replayed) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("live %+v, rebuilt %+v", live, replayed)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

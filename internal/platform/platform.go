@@ -34,6 +34,7 @@ import (
 	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/router"
 	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/toolprovider"
 	"github.com/urmzd/fiber/pkg/topic"
 	"github.com/urmzd/playscape/pkg/controlplane"
 	"github.com/urmzd/playscape/pkg/metrics"
@@ -66,12 +67,16 @@ var ErrForbidden = errors.New("platform: forbidden")
 // Config is what a running platform needs. Nothing here reads the environment,
 // so a test can build a second platform in the same process.
 type Config struct {
+	// Backends are where everything the platform keeps is kept. The zero
+	// value is in memory, lost with the process. OpenPostgres fills it from
+	// one database.
+	Backends Backends
 	// Connections seats connectors the embedding program built itself, after
 	// the registry exists. Clients created through CreateClient need none.
 	Connections func(registry.Store) ([]Connection, error)
 	// Clients keeps client records, and Secrets the secret values written for
-	// them. Nil means in memory. Enabled clients already in the store are
-	// started by New.
+	// them. Nil means on Backends.State, or in memory without one. Enabled
+	// clients already in the store are started by New.
 	Clients clients.Store
 	Secrets clients.Secrets
 	// Env reads the process's environment for an "env:NAME" secret reference.
@@ -97,6 +102,8 @@ type Config struct {
 	// Blobs holds the bytes of published files. Nil means a disk store in
 	// the workspace directory.
 	Blobs blob.Store
+	// Bus carries every run's events. Nil means in memory, for one process.
+	Bus bus.Bus
 	// Limits bounds every tree of calls.
 	Limits call.Limits
 	// Concurrency is how many runs execute at once. Zero means one.
@@ -128,6 +135,9 @@ type Config struct {
 	Log          *slog.Logger
 	// Now is the clock. Nil means time.Now.
 	Now func() time.Time
+	// Ext is what a program built on warp adds: model providers, tool
+	// sources and MCP tool providers. The zero value adds nothing.
+	Ext Extensions
 }
 
 // Platform is the assembled system.
@@ -136,7 +146,7 @@ type Platform struct {
 	log *slog.Logger
 	now func() time.Time
 
-	Agents    *registry.Memory
+	Agents    registry.Store
 	Runs      *runs.Index
 	Schedules *Schedules
 	Journal   *journal.Journal
@@ -155,6 +165,11 @@ type Platform struct {
 	Clients clients.Store
 	// Blobs holds the bytes of published files.
 	Blobs blob.Store
+	// ToolProviders is the MCP servers agents reach through "mcp:<name>"
+	// grants, and the tools accepted from each.
+	ToolProviders toolprovider.Store
+	// closers release what New opened, in reverse, on Close.
+	closers []func() error
 
 	// dir is the workspace directory, resolved once.
 	dir string
@@ -172,8 +187,8 @@ type Platform struct {
 	stops stopper
 	// asked reads whether the runtime holds a stop request for a run.
 	asked  func(ctx context.Context, tenant, runID string) (runtime.StopRecord, bool, error)
-	ledger *ledger.Memory
-	queue  *dqueue.Memory
+	ledger Ledger
+	queue  dqueue.Queue
 
 	settings settings
 
@@ -223,27 +238,31 @@ func New(cfg Config) (*Platform, error) {
 	if now == nil {
 		now = time.Now
 	}
+	if err := cfg.Backends.check(); err != nil {
+		return nil, err
+	}
 	p := &Platform{
 		cfg: cfg, log: log, now: now,
-		Agents:       registry.NewMemory(registry.WithProviders(providers()...)),
-		Runs:         runs.NewIndex(),
-		Schedules:    &Schedules{},
-		Journal:      journal.New(0),
-		Alerts:       alerts.NewEngine(),
-		Knowledge:    knowledge.NewStore(),
-		Evals:        evals.NewStore(),
-		Prefs:        prefs.NewStore(),
-		Memory:       memory.NewStore(),
-		Policies:     policy.NewStore(),
-		CallPolicies: callpolicy.NewStore(),
-		Usage:        usage.NewLedger(),
-		Inbox:        inbox.NewStore(),
-		Artifacts:    artifacts.NewIndex(),
-		Blobs:        cfg.Blobs,
-		broker:       bus.NewMemory(),
-		sinks:        connector.NewRegistry(),
-		ledger:       ledger.NewMemory(),
-		queue:        dqueue.NewMemory(),
+		Agents: cfg.Backends.Agents,
+		Blobs:  cfg.Blobs,
+		broker: cfg.Bus,
+		sinks:  connector.NewRegistry(),
+		ledger: cfg.Backends.Ledger,
+		queue:  cfg.Backends.Queue,
+	}
+	if p.Agents == nil {
+		p.Agents = registry.NewMemory(registry.WithProviders(append(providers(), cfg.Ext.ProviderNames()...)...))
+	}
+	if p.ledger == nil {
+		p.ledger, p.queue = ledger.NewMemory(), dqueue.NewMemory()
+	}
+	// Every store is in memory, reading back what Backends.State holds.
+	if err := p.openStores(cfg); err != nil {
+		return nil, err
+	}
+
+	if p.broker == nil {
+		p.broker = bus.NewMemory()
 	}
 
 	// Schedules are a trigger like any other: the cron connector raises tags
@@ -259,13 +278,6 @@ func New(cfg Config) (*Platform, error) {
 	// One surface per scheme, whether or not it has clients yet: clients are
 	// created while the platform runs, and the router and the trigger loop
 	// are given their connectors once.
-	p.Clients, p.secrets = cfg.Clients, cfg.Secrets
-	if p.Clients == nil {
-		p.Clients = clients.NewMemory()
-	}
-	if p.secrets == nil {
-		p.secrets = clients.NewMemorySecrets()
-	}
 	p.surfaces = make(map[string]*surface)
 	for _, name := range clients.Surfaces() {
 		s := &surface{name: string(name), p: p}
@@ -288,9 +300,22 @@ func New(cfg Config) (*Platform, error) {
 	p.restore()
 
 	p.deliver = router.New(p.broker, p.sinks, router.WithLogger(log))
+	p.reroute()
 
-	exec, err := p.executor()
+	// External tools: "mcp:<provider>[:write]" grants expand, per tenant,
+	// into the tools accepted from that provider. Declared providers are
+	// recorded before anything can run.
+	startup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	groups, closeGroups, err := p.toolGroups(startup)
 	if err != nil {
+		return nil, err
+	}
+	p.closers = append(p.closers, closeGroups)
+
+	exec, err := p.executor(groups)
+	if err != nil {
+		_ = p.Close()
 		return nil, err
 	}
 	rt, err := runtime.New(
@@ -324,7 +349,7 @@ func New(cfg Config) (*Platform, error) {
 
 // executor builds the sandbox every turn runs in: a playscape task under the
 // NGAC policy compiled from the pinned revision's access grant.
-func (p *Platform) executor() (runtime.Executor, error) {
+func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, error) {
 	dir := p.cfg.Workspace
 	if dir == "" {
 		base, err := os.UserCacheDir()
@@ -348,19 +373,40 @@ func (p *Platform) executor() (runtime.Executor, error) {
 	tools := tool.NewRegistry()
 	plane := controlplane.NewMemory(inproc.NewFactory(tools, ws), metrics.Nop())
 	exec, err := runtime.NewSandbox(plane, tools, registry.NewSpecs(p.Agents),
-		runtime.WithCatalog(p.fileTools(p.connectorTools)),
+		runtime.WithCatalog(p.cfg.Ext.catalog(p.fileTools(p.connectorTools))),
+		runtime.WithToolGroupSource(groups),
 		runtime.WithDelegator(p.attach),
+		// An agent's declared sources ground its turns, searched in the
+		// run's tenant.
+		runtime.WithKnowledge(p.knowledgeFor),
 		runtime.WithCallTool(ToolCallAgent),
 		// A run waiting on an attached run of the same agent holds one of
 		// that agent's nodes, so there are as many as there are places.
 		runtime.WithReplicas(p.slots()),
-		runtime.WithAgentOptions(p.cfg.AgentOptions...),
+		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions)...),
 		runtime.WithSandboxLogger(p.log),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
 	return callExecutor{inner: exec, resolve: p.resolveModel}, nil
+}
+
+// reroute registers the routes of every run the index holds that has not
+// ended, from the tag it was accepted with. The router keeps routes only in
+// memory, and a run accepted before a restart is resumed from the ledger by
+// the worker: without its routes, what it says after the restart would reach
+// no surface. It runs before the worker can resume anything.
+func (p *Platform) reroute() {
+	for _, run := range p.Runs.Unfinished() {
+		routes := run.Tag().Routes()
+		if len(routes) == 0 {
+			continue
+		}
+		if err := p.deliver.Register(run.ID, routes); err != nil {
+			p.log.Error("platform: the routes of a run accepted before the restart could not be registered", "tenant", run.Tenant, "run", run.ID, "error", err)
+		}
+	}
 }
 
 // Invoke accepts a tag and starts its run. Routes are registered before the run
@@ -401,13 +447,13 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client})
 	defer p.admitting.Delete(runID)
 	if err := p.deliver.Register(runID, tag.Routes()); err != nil {
-		p.Usage.Append(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
+		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
 		return runs.Run{}, fmt.Errorf("platform: register routes: %w", err)
 	}
 	acc, err := p.rt.Accept(ctx, tag)
 	if err != nil {
 		// It never started, so it holds no place.
-		p.Usage.Append(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
+		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
 		return runs.Run{}, err
 	}
 	if err := p.Runs.Record(acc.RunID, tag, acc.Rev); err != nil {
@@ -530,6 +576,10 @@ func reserved(origin string) bool {
 // reconcileEvery is how often open runs are checked against the ledger.
 const reconcileEvery = 2 * time.Second
 
+// flushEvery is how often what the journal, the run index and the usage
+// ledger write behind is written: what a crash can lose.
+const flushEvery = 250 * time.Millisecond
+
 // reconcile closes runs the ledger says are over but whose events never said so.
 //
 // The ledger is the authority on whether a run has ended. The usual way to
@@ -613,7 +663,11 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 // raise checks a run that has just ended against its tenant's alert rules.
 func (p *Platform) raise(run runs.Run) {
 	spoken := false
-	for _, a := range p.Alerts.Evaluate(run, p.Runs.Recent) {
+	raised, err := p.Alerts.Evaluate(run, p.Runs.Recent)
+	if err != nil {
+		p.log.Error("platform: alerts could not be kept", "run", run.ID, "error", err)
+	}
+	for _, a := range raised {
 		p.log.Warn("platform: alert", "rule", a.Rule, "severity", a.Severity, "title", a.Title, "run", a.RunID)
 		p.inboxAlert(run.Tenant, a)
 		spoken = spoken || a.RunID == run.ID
@@ -688,6 +742,18 @@ func (p *Platform) Run(ctx context.Context) error {
 	}
 
 	loop("router", func() error { return p.deliver.Run(ctx) })
+	loop("state flush", func() error {
+		tick := time.NewTicker(flushEvery)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-tick.C:
+				p.flush()
+			}
+		}
+	})
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
 	loop("sandbox sweep", func() error {
 		tick := time.NewTicker(time.Hour)
@@ -778,6 +844,9 @@ func (p *Platform) Run(ctx context.Context) error {
 	})
 
 	wg.Wait()
+	// What changed last is written once every loop has stopped, so nothing
+	// the observer folded in while the platform stopped is left unwritten.
+	p.flush()
 	close(errc)
 	return <-errc
 }

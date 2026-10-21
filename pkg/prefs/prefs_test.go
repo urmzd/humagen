@@ -87,7 +87,7 @@ func TestPhotoVersionChanges(t *testing.T) {
 	s := NewStore()
 	a, _ := s.SetPhoto("acme", "ada", png)
 	b, _ := s.SetPhoto("acme", "ada", jpeg)
-	c := s.ClearPhoto("acme", "ada")
+	c, _ := s.ClearPhoto("acme", "ada")
 	if a.PhotoVersion == b.PhotoVersion || b.PhotoVersion == c.PhotoVersion || c.HasPhoto {
 		t.Fatalf("versions %d %d %d, has photo %v", a.PhotoVersion, b.PhotoVersion, c.PhotoVersion, c.HasPhoto)
 	}

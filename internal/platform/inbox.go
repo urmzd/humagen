@@ -418,7 +418,7 @@ func (p *Platform) inboxAlert(tenant string, a alerts.Alert, extra ...inbox.Part
 		}
 	}
 	m.Parts = append(m.Parts, extra...)
-	p.Inbox.Raise(tenant, alertKey(a.ID), m, a.At)
+	p.raiseInbox(tenant, alertKey(a.ID), m, a.At)
 }
 
 func retryable(run runs.Run) bool { return run.Origin == runs.OriginAPI && run.Parent == "" }
@@ -435,7 +435,7 @@ func (p *Platform) inboxFailure(run runs.Run) {
 	if run.Status != runs.Failed || run.Origin == runs.OriginSystem || run.Origin == OriginEval {
 		return
 	}
-	p.Inbox.Raise(run.Tenant, runKey(run.ID), inbox.Message{
+	p.raiseInbox(run.Tenant, runKey(run.ID), inbox.Message{
 		Kind: inbox.KindFailure, Subject: run.Agent + " failed", From: inbox.From{Kind: "agent", Name: run.Agent},
 		Severity: inbox.Warning,
 		Source:   inbox.Source{Run: run.ID, Thread: run.Thread, Agent: run.Agent, Project: run.Project},
@@ -462,7 +462,7 @@ func (p *Platform) inboxMemory(run runs.Run, owner string, notes []memory.Note) 
 	if len(notes) == 1 {
 		noun = "memory"
 	}
-	p.Inbox.Raise(run.Tenant, "memory:"+run.ID, inbox.Message{
+	p.raiseInbox(run.Tenant, "memory:"+run.ID, inbox.Message{
 		Kind: inbox.KindMemory, Subject: fmt.Sprintf("%d proposed %s for %s", len(notes), noun, about),
 		From: inbox.From{Kind: "agent", Name: run.Agent}, Severity: inbox.Info,
 		Source: inbox.Source{Run: run.ID, Agent: part.Agent, Project: part.Project},
@@ -505,11 +505,22 @@ func (p *Platform) inboxArtifact(tenant string, a artifacts.Artifact) {
 			}
 		}
 	}
-	p.Inbox.Raise(tenant, artifactKey(a.ID), inbox.Message{
+	p.raiseInbox(tenant, artifactKey(a.ID), inbox.Message{
 		Kind: inbox.KindArtifact, Subject: subject, From: from, Severity: inbox.Info,
 		Source: inbox.Source{Run: a.Run, Thread: a.Thread, Agent: a.Agent, Project: a.Project},
 		Parts:  []inbox.Part{{Type: inbox.PartArtifact, State: inbox.PartInfo, Artifact: &part}},
 	}, a.CreatedAt)
+}
+
+// raiseInbox raises a message for the platform itself, which has nobody to
+// hand an error to: one that could not be kept is logged and not raised.
+func (p *Platform) raiseInbox(tenant, key string, m inbox.Message, at time.Time) (inbox.Message, bool) {
+	out, raised, err := p.Inbox.Raise(tenant, key, m, at)
+	if err != nil {
+		p.log.Error("platform: inbox message could not be kept", "tenant", tenant, "key", key, "error", err)
+		return inbox.Message{}, false
+	}
+	return out, raised
 }
 
 // inboxArtifactGone withdraws the message about a version that was deleted.

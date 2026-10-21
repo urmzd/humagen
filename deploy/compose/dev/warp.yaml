@@ -1,0 +1,32 @@
+# The spec compose.dev.yaml mounts at /etc/warp in place of ../config: the same
+# workspace, with development sign-in and Postgres on the host's loopback.
+# -auth=dev signs every request in as admin and listens only on loopback.
+api_version: warp/v1
+kind: System
+metadata:
+  name: warp-dev
+  display_name: Warp
+spec:
+  server:
+    addr: 127.0.0.1:8080
+    public_url: http://localhost:8080
+  auth:
+    kind: dev
+  stores:
+    kind: postgres
+    postgres: {url: {ref: env:WARP_POSTGRES_URL}}
+  blobs:
+    kind: disk
+    # With the s3 profile, MinIO is on the host's loopback:
+    # kind: s3
+    # s3: {bucket: warp, endpoint: "http://127.0.0.1:9000", path_style: true,
+    #      access_key: {ref: env:WARP_S3_ACCESS_KEY_ID}, secret_key: {ref: env:WARP_S3_SECRET_ACCESS_KEY}}
+  execution:
+    # The seeded agents need no model key.
+    builtin: {provider: offline, model: offline}
+---
+api_version: warp/v1
+kind: Platform
+metadata:
+  name: default
+spec: {}

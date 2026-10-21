@@ -294,7 +294,7 @@ func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Qu
 	if at.IsZero() {
 		at = p.now()
 	}
-	m, raised := p.Inbox.Raise(run.Tenant, key, inbox.Message{
+	m, raised := p.raiseInbox(run.Tenant, key, inbox.Message{
 		Kind: kind, Subject: subject, From: inbox.From{Kind: "agent", Name: part.Agent}, Severity: severity,
 		Audience: audience, Excluded: excluded,
 		Source: inbox.Source{Run: run.ID, Thread: run.Thread, Agent: run.Agent, Project: run.Project, Target: questionTarget(q)},

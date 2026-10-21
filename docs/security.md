@@ -131,6 +131,13 @@ no permission, grants nothing.
   data in.
 - **Project memory reaches only that project.** A turn is sent a project's
   shared notes only when its conversation is filed in that project.
+- **Knowledge stays in its tenant.** A turn is grounded only in the sources
+  its agent's pinned revision names, searched in the run's own tenant, so one
+  workspace's agent never reads another's documents. A source the workspace no
+  longer has grounds nothing. Passages reach the model labelled as reference
+  material, not instructions. `TestAnAgentsSourcesGroundItsTurnsInItsOwnTenant`
+  runs the same agent spec in two tenants and checks the second never sees
+  the first's passage.
 - **Evals are bounded.** A suite holds at most 50 cases, one run of a suite is
   open at a time, cases run one after another, and a case is given two minutes.
 - **Only trusted origins name a schedule.** A run is tied to a schedule only
@@ -139,7 +146,9 @@ no permission, grants nothing.
   30 days, a capped number of buckets and a capped number of rows.
 - **Errors do not leak.** Unrecognized errors are logged and reported without
   detail. The identity provider's error text is never echoed.
-- **Secrets come from the environment**, never from flags.
+- **Secrets come from the environment or a reference**, never from flags.
+  A spec names where a credential is kept (`env:`, `keychain:`, `op://`);
+  warp reads it when it is used and does not write it down.
 - **Every change is logged** with subject, kind, tenant, method and path.
   Denials are logged with the permission that was missing.
 
@@ -148,6 +157,10 @@ no permission, grants nothing.
 `-auth=dev` makes every request an admin so the console can be previewed
 without an identity provider. The server refuses to start in this mode on any
 address that is not loopback. Never put it behind a proxy.
+
+It is `warp start`'s default, for a laptop. `warp serve` signs in with OIDC
+unless a flag or the spec's System document says otherwise; a System document
+that names no `auth.kind` means `dev`, so a server's spec names one.
 
 `-auth=mock` runs a development identity provider in process, so sign-in,
 roles and machine tokens can be tried without a real one. Anyone who reaches
@@ -287,21 +300,26 @@ that kind.
 
 ## Not built yet
 
-- Limits are checked under a lock in one process, and the usage ledger is in
-  memory. Two servers could both admit a run at the limit, and a restart
-  forgets what was used. Spend limits are recorded but not enforced, because a
-  run reports no cost.
-- Sessions and schedules are in memory, so a restart signs everyone out.
-- Knowledge is not yet used by runs. The runtime's retriever is not told which
-  tenant or agent is asking, and wiring it before that changes would let one
-  tenant's agent read another's documents.
+- Limits are checked under a lock in one process. With `-state=postgres` the
+  usage ledger is kept, and a second server on the same database is refused
+  at start, so two servers cannot both admit a run at the limit. In memory, a
+  restart forgets what was used. Spend is priced from saige's catalog: a model
+  it has no price for is counted apart and never as dollars, so a spend limit
+  does not bound it (a token limit does).
+- Sessions are in memory, so a restart signs everyone out. Schedules are kept
+  with `-state=postgres`.
+- With `-state=postgres`, client secret values written through the API are
+  kept in the database as written. Guard it as you would the secrets, or use
+  `env:` references, which keep no value.
 - Memory written by the memory agent can carry whatever a conversation
   persuaded it to write, into later conversations. It is visible and removable,
   and off by default, but nothing reviews a note before it is used.
 - Dictation uses the browser's speech recognition. In Chrome that sends audio
   to the browser vendor's service, not to this server.
-- No connections. Nothing stores a third-party credential yet, and that should
-  wait for an encrypted, durable store rather than be held in memory.
+- No connections: nobody signs in to a third party through warp. An MCP
+  server's credential is a reference the spec names, read when a session
+  opens; storing a person's own credential should wait for an encrypted,
+  durable store.
 - No token revocation check beyond expiry, and no refresh. A session lasts 8
   hours.
 - No rate limiting.

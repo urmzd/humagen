@@ -51,8 +51,8 @@ func TestChecksStreamAndKeepTheirPinnedCommit(t *testing.T) {
 
 func TestCheckConclusionReflectsReviewErrorsAndMalformedReports(t *testing.T) {
 	for _, tc := range []struct{ text, conclusion string }{
-		{`{"format":"mandatum.github.review.v1","summary":"Found a bug","findings":[{"severity":"error","title":"Bug","suggestion":"Fix it","evidence":[{"observation":"Failure","source":"test.go:1"}],"prompt":"Add a regression test"}]}`, "failure"},
-		{`{"format":"mandatum.github.review.v1","summary":"Missing evidence","findings":[{"severity":"error"}]}`, "action_required"},
+		{`{"format":"warp.github.review.v1","summary":"Found a bug","findings":[{"severity":"error","title":"Bug","suggestion":"Fix it","evidence":[{"observation":"Failure","source":"test.go:1"}],"prompt":"Add a regression test"}]}`, "failure"},
+		{`{"format":"warp.github.review.v1","summary":"Missing evidence","findings":[{"severity":"error"}]}`, "action_required"},
 	} {
 		fake := github.NewFake()
 		c, _ := github.New(github.Config{API: fake, Checks: true})

@@ -1,0 +1,17 @@
+{{- $url := dig "spec" "server" "public_url" "http://localhost:8080" (.Values.system | default dict) -}}
+warp is starting as {{ include "warp.fullname" . }} in {{ .Release.Namespace }},
+reading its spec from /etc/warp/warp.yaml.
+
+Browsers reach it at {{ $url }}. Register {{ $url }}/auth/callback as the
+redirect URI with your identity provider.
+{{- if not .Values.existingSecret }}
+
+No existingSecret is set, so the references in the spec ({ref: env:NAME}),
+such as the OIDC client secret and WARP_POSTGRES_URL, have nothing to read and
+warp will stop at start. Create a Secret and set existingSecret.
+{{- end }}
+{{- if not .Values.ingress.enabled }}
+
+To try it without an ingress:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "warp.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}

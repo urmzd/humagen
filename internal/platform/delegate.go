@@ -269,7 +269,7 @@ func (p *Platform) cascade(ctx context.Context, run runs.Run) {
 	// A delegated run's caller is not waiting and may be gone, so its answer
 	// goes where a person will find it.
 	if run.Lifecycle == runs.Delegated && run.Status == runs.Completed {
-		p.Inbox.Raise(run.Tenant, "result:"+run.ID, inbox.Message{
+		p.raiseInbox(run.Tenant, "result:"+run.ID, inbox.Message{
 			Kind: inbox.KindResult, Subject: run.Agent + " finished: " + oneLine(run.Text, 80),
 			From: inbox.From{Kind: "agent", Name: run.Agent}, Severity: inbox.Info,
 			Source: inbox.Source{Run: run.ID, Thread: run.Thread, Agent: run.Agent, Project: run.Project},

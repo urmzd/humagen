@@ -15,7 +15,10 @@
 // The scoring itself is saige's: this package declares cases and stores
 // results, and hands the arithmetic to saige/eval and saige/rag/eval.
 //
-// Suites and runs are in memory and are lost on restart.
+// Suites and runs are in memory. Built with Open, the store writes every
+// change through a state.Store and reads them back when it is built again. A
+// run that was still going when the process stopped is read back as errored:
+// nothing is carrying it out any more.
 package evals
 
 import (
@@ -25,6 +28,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +36,8 @@ import (
 	saigeeval "github.com/urmzd/saige/eval"
 	rageval "github.com/urmzd/saige/rag/eval"
 	ragtypes "github.com/urmzd/saige/rag/types"
+
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Errors.
@@ -408,10 +414,82 @@ type tenant struct {
 type Store struct {
 	mu      sync.Mutex
 	tenants map[string]*tenant
+	// kept is where suites and runs are written. Nil keeps them only in
+	// memory.
+	kept *state.Table[stored]
 }
 
-// NewStore returns an empty store.
+// stored is one record: a suite, a run, or a tenant's run counter.
+type stored struct {
+	Suite *Suite `json:"suite,omitempty"`
+	Run   *Run   `json:"run,omitempty"`
+	Next  int    `json:"next,omitempty"`
+}
+
+const (
+	nextKey     = "next"
+	suitePrefix = "suite/"
+	runPrefix   = "run/"
+)
+
+func suiteKey(name string) string { return suitePrefix + name }
+
+// runKey sorts a suite's runs in the order they were numbered.
+func runKey(run Run) string {
+	n, _ := strconv.ParseInt(strings.TrimPrefix(run.ID, "ev-"), 10, 64)
+	return runPrefix + run.Suite + "/" + state.Seq(n)
+}
+
+// Interrupted is the error of a run that was still going when the process
+// that ran it stopped.
+const Interrupted = "the server stopped while this run was going"
+
+// NewStore returns an empty store in memory.
 func NewStore() *Store { return &Store{tenants: map[string]*tenant{}} }
+
+// Open returns a store that keeps its suites and runs in st, holding what st
+// already has. A nil st is NewStore.
+func Open(st state.Store) (*Store, error) {
+	s := NewStore()
+	s.kept = state.NewTable[stored](st, "evals")
+	var interrupted []string
+	err := s.kept.Load(func(name, key string, r stored) error {
+		t := s.of(name)
+		switch {
+		case key == nextKey:
+			t.next = r.Next
+		case r.Suite != nil:
+			suite := *r.Suite
+			t.suites[suite.Name] = &suite
+		case r.Run != nil:
+			run := *r.Run
+			if run.Status == Running {
+				run.Status, run.Error = Errored, Interrupted
+				interrupted = append(interrupted, name)
+			}
+			t.runs[run.Suite] = append(t.runs[run.Suite], run)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("evals: load: %w", err)
+	}
+	// What was read back as errored is written so, once.
+	for _, name := range interrupted {
+		b := s.kept.Batch()
+		for _, runs := range s.tenants[name].runs {
+			for _, run := range runs {
+				if run.Error == Interrupted {
+					b.Put(name, runKey(run), stored{Run: &run})
+				}
+			}
+		}
+		if err := b.Commit(); err != nil {
+			return nil, fmt.Errorf("evals: load: %w", err)
+		}
+	}
+	return s, nil
+}
 
 func (s *Store) of(name string) *tenant {
 	t, ok := s.tenants[name]
@@ -439,6 +517,9 @@ func (s *Store) Put(tenantName string, suite Suite, replace bool) error {
 	case exists && (have.Target != suite.Target || have.Subject != suite.Subject):
 		// History compares like with like, so a suite keeps its target.
 		return fmt.Errorf("%w: a suite cannot change what it tests", ErrInvalid)
+	}
+	if err := s.kept.Put(tenantName, suiteKey(suite.Name), stored{Suite: &suite}); err != nil {
+		return fmt.Errorf("evals: write: %w", err)
 	}
 	t.suites[suite.Name] = &suite
 	return nil
@@ -476,6 +557,14 @@ func (s *Store) Delete(tenantName, name string) error {
 	if _, ok := t.suites[name]; !ok {
 		return fmt.Errorf("%w: suite %q", ErrNotFound, name)
 	}
+	b := s.kept.Batch()
+	b.Delete(tenantName, suiteKey(name))
+	for _, run := range t.runs[name] {
+		b.Delete(tenantName, runKey(run))
+	}
+	if err := b.Commit(); err != nil {
+		return fmt.Errorf("evals: write: %w", err)
+	}
 	delete(t.suites, name)
 	delete(t.runs, name)
 	return nil
@@ -490,22 +579,32 @@ func (s *Store) Begin(tenantName string, suite Suite, rev int, by string, at tim
 	if runs := t.runs[suite.Name]; len(runs) > 0 && runs[len(runs)-1].Status == Running {
 		return Run{}, fmt.Errorf("%w: %q", ErrBusy, suite.Name)
 	}
-	t.next++
+	next := t.next + 1
 	run := Run{
-		ID: fmt.Sprintf("ev-%d", t.next), Suite: suite.Name, Target: suite.Target, Subject: suite.Subject,
+		ID: fmt.Sprintf("ev-%d", next), Suite: suite.Name, Target: suite.Target, Subject: suite.Subject,
 		Rev: rev, Status: Running, Total: len(suite.Cases), Threshold: suite.Threshold(),
 		Results: []Result{}, StartedBy: by, StartedAt: at,
 	}
-	runs := append(t.runs[suite.Name], run)
+	runs := append(slices.Clone(t.runs[suite.Name]), run)
+	b := s.kept.Batch()
+	b.Put(tenantName, nextKey, stored{Next: next})
+	b.Put(tenantName, runKey(run), stored{Run: &run})
 	if len(runs) > maxRuns {
+		for _, old := range runs[:len(runs)-maxRuns] {
+			b.Delete(tenantName, runKey(old))
+		}
 		runs = runs[len(runs)-maxRuns:]
 	}
+	if err := b.Commit(); err != nil {
+		return Run{}, fmt.Errorf("evals: write: %w", err)
+	}
+	t.next = next
 	t.runs[suite.Name] = runs
 	return run, nil
 }
 
 // Save stores a run's latest state.
-func (s *Store) Save(tenantName string, run Run) {
+func (s *Store) Save(tenantName string, run Run) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// The runner keeps appending to its own slice, so the store keeps a copy.
@@ -513,10 +612,14 @@ func (s *Store) Save(tenantName string, run Run) {
 	runs := s.of(tenantName).runs[run.Suite]
 	for i := range runs {
 		if runs[i].ID == run.ID {
+			if err := s.kept.Put(tenantName, runKey(run), stored{Run: &run}); err != nil {
+				return fmt.Errorf("evals: write: %w", err)
+			}
 			runs[i] = run
-			return
+			return nil
 		}
 	}
+	return nil
 }
 
 // Runs returns a suite's runs, newest first.
