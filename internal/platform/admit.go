@@ -109,7 +109,11 @@ func (p *Platform) budgetAlert(tenant string, d policy.Decision, severity alerts
 	if d.Policy.Scope.Kind == policy.Agent {
 		a.Agent = d.Policy.Scope.Name
 	}
-	if raised, ok := p.Alerts.Raise(tenant, key, a); ok {
+	raised, ok, err := p.Alerts.Raise(tenant, key, a)
+	if err != nil {
+		p.log.Error("platform: alert could not be kept", "rule", key, "error", err)
+	}
+	if ok {
 		p.log.Warn("platform: alert", "rule", key, "severity", severity, "title", a.Title)
 		pol := d.Policy
 		p.inboxAlert(tenant, raised, inbox.Part{Type: inbox.PartBudget, Budget: &inbox.BudgetPart{

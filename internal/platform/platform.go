@@ -613,7 +613,11 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 // raise checks a run that has just ended against its tenant's alert rules.
 func (p *Platform) raise(run runs.Run) {
 	spoken := false
-	for _, a := range p.Alerts.Evaluate(run, p.Runs.Recent) {
+	raised, err := p.Alerts.Evaluate(run, p.Runs.Recent)
+	if err != nil {
+		p.log.Error("platform: alerts could not be kept", "run", run.ID, "error", err)
+	}
+	for _, a := range raised {
 		p.log.Warn("platform: alert", "rule", a.Rule, "severity", a.Severity, "title", a.Title, "run", a.RunID)
 		p.inboxAlert(run.Tenant, a)
 		spoken = spoken || a.RunID == run.ID

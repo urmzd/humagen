@@ -162,7 +162,11 @@ func (p *Platform) unmeteredAlert(tenant string, a policy.Applied) {
 	if pol.Scope.Kind == policy.Agent {
 		al.Agent = pol.Scope.Name
 	}
-	if raised, ok := p.Alerts.Raise(tenant, key, al); ok {
+	raised, ok, err := p.Alerts.Raise(tenant, key, al)
+	if err != nil {
+		p.log.Error("platform: alert could not be kept", "rule", key, "error", err)
+	}
+	if ok {
 		p.log.Warn("platform: alert", "rule", key, "severity", al.Severity, "title", title)
 		p.inboxAlert(tenant, raised, inbox.Part{Type: inbox.PartText, State: inbox.PartInfo, Text: body})
 	}

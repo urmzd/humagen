@@ -356,9 +356,13 @@ func (p *Platform) storageAllows(tenant, project, agent string, size int64) erro
 		}
 		if used+size > pol.MaxStorage {
 			reason := fmt.Sprintf("%s has reached its storage limit of %d bytes", pol.Scope, pol.MaxStorage)
-			if a, ok := p.Alerts.Raise(tenant, "storage: "+pol.Scope.String(), alerts.Alert{
+			a, ok, err := p.Alerts.Raise(tenant, "storage: "+pol.Scope.String(), alerts.Alert{
 				Kind: alerts.Budget, Severity: alerts.Critical, Title: "Files are not being published: " + reason, At: p.now(),
-			}); ok {
+			})
+			if err != nil {
+				p.log.Error("platform: alert could not be kept", "scope", pol.Scope.String(), "error", err)
+			}
+			if ok {
 				p.inboxAlert(tenant, a)
 			}
 			return fmt.Errorf("%w: %s", ErrStorage, reason)
