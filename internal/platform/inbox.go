@@ -390,7 +390,7 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			return inbox.Message{}, err
 		}
 	} else {
-		p.settle(who.Tenant, id, who.Subject)
+		p.settle(who.Tenant, id, reader, who.Subject)
 	}
 	return p.InboxGet(who, id)
 }
@@ -402,9 +402,10 @@ func (p *Platform) audit(who auth.Principal, m inbox.Message, part, action, note
 		"part", part, "action", action, "note", note, "alert", m.Source.Alert, "run", m.Source.Run)
 }
 
-// settle closes whatever is still open in a message once it has been dealt with.
-func (p *Platform) settle(tenant, id, by string) {
-	m, err := p.Inbox.Get(tenant, id, by)
+// settle closes whatever is still open in a message once it has been dealt
+// with, reading it as the reader who dealt with it.
+func (p *Platform) settle(tenant, id string, reader inbox.Reader, by string) {
+	m, err := p.Inbox.GetAs(tenant, id, reader)
 	if err != nil {
 		return
 	}

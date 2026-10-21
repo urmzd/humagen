@@ -599,7 +599,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 		case <-r.Context().Done():
 			return
 		case n := <-notices:
-			if !platform.InboxSees(who, n.Kind) {
+			// A notice reaches only a reader the message is for, so an id
+			// from a project they cannot see, or an announcement for
+			// others, never reaches their stream.
+			if !s.P.InboxNoticeFor(who, n) {
 				continue
 			}
 			b, err := json.Marshal(n)

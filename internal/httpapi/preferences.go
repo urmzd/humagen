@@ -9,6 +9,7 @@ import (
 
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/prefs"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // Preferences are a person's own. Every route here acts on the caller and takes
@@ -36,17 +37,34 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 		// Pinned replaces the pinned conversations when present. Absent
 		// leaves them as they are.
 		Pinned *[]string `json:"pinned"`
+		// Muted replaces the projects whose announcements stay out of the
+		// person's own inbox when present. They stay in each project's
+		// inbox, and the workspace is never muted.
+		Muted *[]string `json:"muted"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
 	// Everything is checked before anything is saved.
-	var pinned []string
+	var pinned, muted []string
 	if body.Pinned != nil {
 		var err error
 		if pinned, err = prefs.CleanPinned(*body.Pinned); err != nil {
 			s.problem(w, err)
 			return
+		}
+	}
+	if body.Muted != nil {
+		var err error
+		if muted, err = prefs.CleanMuted(*body.Muted); err != nil {
+			s.problem(w, err)
+			return
+		}
+		for _, name := range muted {
+			if _, _, err := s.P.ProjectRole(who, name, projects.Viewer); err != nil {
+				s.problem(w, err)
+				return
+			}
 		}
 	}
 	next, err := s.P.Prefs.Set(who.Tenant, who.Subject, prefs.Preferences{
@@ -58,6 +76,12 @@ func (s *Server) putPreferences(w http.ResponseWriter, r *http.Request, who auth
 	}
 	if body.Pinned != nil {
 		if next, err = s.P.Prefs.SetPinned(who.Tenant, who.Subject, pinned); err != nil {
+			s.problem(w, err)
+			return
+		}
+	}
+	if body.Muted != nil {
+		if next, err = s.P.Prefs.SetMuted(who.Tenant, who.Subject, muted); err != nil {
 			s.problem(w, err)
 			return
 		}

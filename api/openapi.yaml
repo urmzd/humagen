@@ -1212,6 +1212,7 @@ paths:
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/inbox/count:
     get:
@@ -2124,6 +2125,16 @@ paths:
                   type: array
                   maxItems: 50
                   items: {type: string}
+                muted:
+                  description: |
+                    Replaces the projects whose announcements stay out of the
+                    caller's own inbox, at most 100, each a project they can
+                    see (404 otherwise). They stay in each project's inbox.
+                    The workspace (`~`) is never muted (400). Absent leaves
+                    them as they are.
+                  type: array
+                  maxItems: 100
+                  items: {type: string, maxLength: 63}
       responses:
         "200":
           description: The preferences as saved.
@@ -2132,6 +2143,7 @@ paths:
               schema: {$ref: "#/components/schemas/Preferences"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/preferences/photo:
@@ -2624,6 +2636,119 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/projects/{name}/inbox:
+    get:
+      operationId: getProjectInbox
+      tags: [projects]
+      summary: Page a project's inbox, newest first
+      description: |
+        Every inbox message filed in the project (`source.project`), and with
+        `children=true` in the projects below it too: alerts, failures,
+        questions, results, files, proposed notes and announcements. Everyone
+        who can see the project reads it, so an announcement here reaches
+        every reader, member or not; a message addressed to someone in
+        particular still reaches only them, and each kind still needs its
+        own permission. `next` is the cursor for the page after this one, or
+        null at the end.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+        - name: kind
+          in: query
+          description: Only messages of these kinds. Repeat it for several.
+          schema:
+            type: array
+            items: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, announcement]}
+          style: form
+          explode: true
+        - name: children
+          in: query
+          description: "`true` takes in the projects below it."
+          schema: {type: string, enum: ["true", "false"]}
+        - name: state
+          in: query
+          description: Defaults to `open`.
+          schema: {type: string, enum: [open, all]}
+        - name: limit
+          in: query
+          description: Page size, 30 when left out.
+          schema: {type: integer, minimum: 1, maximum: 200}
+        - name: before
+          in: query
+          description: The `next` cursor of the previous page.
+          schema: {type: string}
+      responses:
+        "200":
+          description: One page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [messages, next]
+                properties:
+                  messages:
+                    type: array
+                    maxItems: 200
+                    items: {$ref: "#/components/schemas/InboxMessage"}
+                  next: {type: [string, "null"]}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/announcements:
+    post:
+      operationId: postAnnouncement
+      tags: [projects]
+      summary: Post an announcement in a project's inbox
+      description: |
+        It needs at least the role the project lets announce (`announce`,
+        owner when it names none). It reaches the members of the project and
+        of every project below it, read as one message, never a copy per
+        person: each reader hides or snoozes only their own copy. Its text is
+        plain, and surfaces escape mention syntax before showing it. A
+        project posts at most 20 a day and a workspace 200 (429).
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AnnouncementInput"}
+      responses:
+        "201":
+          description: The announcement.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/InboxMessage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/announcements/{id}:
+    delete:
+      operationId: withdrawAnnouncement
+      tags: [projects]
+      summary: Withdraw an announcement for everyone
+      description: |
+        Its author or an owner of the project withdraws it. An id that is not
+        an announcement in this project is 404.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+        - {name: id, in: path, required: true, description: The announcement's id., schema: {type: string}}
+      responses:
+        "204":
+          description: Withdrawn.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
   /api/policies:
@@ -3818,12 +3943,13 @@ components:
                 What the caller may do here, their permission and their role
                 together: `create` a project under it, `propose` a note,
                 decide its `notes`, `edit` it (its record, members and who
-                may announce), `move`, `archive` or `delete` it, and set
-                tighten-only `limits` on it as an owner above.
+                may announce), `move`, `archive` or `delete` it, set
+                tighten-only `limits` on it as an owner above, and `announce`
+                in its inbox.
               type: array
               items:
                 type: string
-                enum: [create, propose, notes, edit, move, archive, delete, limits]
+                enum: [create, propose, notes, edit, move, archive, delete, limits, announce]
     ProjectLimit:
       description: |
         A limit a run filed in the project falls under for being there, and
@@ -4139,6 +4265,24 @@ components:
           type: array
           items: {$ref: "#/components/schemas/Run"}
 
+    AnnouncementInput:
+      description: An announcement to post.
+      type: object
+      required: [subject, text]
+      properties:
+        subject:
+          description: One line.
+          type: string
+          minLength: 1
+          maxLength: 150
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        severity:
+          description: "`info` when left out."
+          type: string
+          enum: [info, warning]
     InboxCounts:
       description: What a reader's inbox holds open.
       type: object

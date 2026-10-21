@@ -45,6 +45,9 @@ func (s *Server) projectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects/{name}/move", s.authed(auth.ProjectsWrite, s.moveProject))
 	mux.HandleFunc("PUT /api/projects/{name}/limits", s.authed(auth.ProjectsWrite, s.putProjectLimit))
 	mux.HandleFunc("DELETE /api/projects/{name}/limits", s.authed(auth.ProjectsWrite, s.deleteProjectLimit))
+	mux.HandleFunc("GET /api/projects/{name}/inbox", s.authed(auth.ProjectsRead, s.projectInbox))
+	mux.HandleFunc("POST /api/projects/{name}/announcements", s.authed(auth.ProjectsWrite, s.postAnnouncement))
+	mux.HandleFunc("DELETE /api/projects/{name}/announcements/{id}", s.authed(auth.ProjectsWrite, s.withdrawAnnouncement))
 }
 
 // writer is who a change to the tree is made by, and whether they may change
@@ -105,6 +108,8 @@ const (
 	actNotes = "notes"
 	// actLimits is setting a tighten-only limit on it, as an owner above.
 	actLimits = "limits"
+	// actAnnounce is posting an announcement in its inbox.
+	actAnnounce = "announce"
 )
 
 // projectFacts is what a tenant's project views are made of, read once for a
@@ -166,6 +171,9 @@ func actionsOf(f projectFacts, p projects.Project) []string {
 	}
 	if !p.IsRoot() && f.access[p.Parent].Role == projects.Owner {
 		out = append(out, actLimits)
+	}
+	if role.AtLeast(platform.Announcer(p)) {
+		out = append(out, actAnnounce)
 	}
 	return out
 }

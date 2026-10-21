@@ -584,6 +584,11 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectEntry": {typ: projects.Entry{}}, "ProjectKindSpec": {typ: projects.KindSpec{}}, "ProjectAccess": {typ: projects.Access{}},
 		"ProjectInheritedOwner": {typ: projects.InheritedOwner{}}, "ProjectMembers": {typ: projectMembersView{}},
 		"ProjectLimitInput": {typ: projectLimitBody{}, written: true}, "InboxCounts": {typ: inbox.Counts{}},
+		"AnnouncementInput": {typ: struct {
+			Subject  string `json:"subject"`
+			Text     string `json:"text"`
+			Severity string `json:"severity,omitempty"`
+		}{}, written: true},
 		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
 		"InboxNotice": {typ: inbox.Notice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
@@ -1126,6 +1131,31 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", "/api/projects/{name}/limits", "/api/projects/Globex/limits", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/projects/{name}/limits", "/api/projects/Field/limits", "", http.StatusNoContent)
 
+	// A project's inbox and its announcements.
+	news := c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Field/announcements",
+		`{"subject":"Field offsite","text":"We meet in Lisbon in May.","severity":"info"}`, http.StatusCreated)
+	if news.str("kind") != "announcement" {
+		t.Errorf("an announcement = %s", news.raw)
+	}
+	c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Field/announcements", `{"subject":"","text":"Nothing to say."}`, http.StatusBadRequest)
+	c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Ghost/announcements", `{"subject":"Hi","text":"Hi."}`, http.StatusNotFound)
+	for range 19 {
+		c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Ops/announcements", `{"subject":"Again","text":"Once more."}`, http.StatusCreated)
+	}
+	c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Ops/announcements", `{"subject":"Again","text":"Once more."}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Ops/announcements", `{"subject":"Again","text":"Once more."}`, http.StatusTooManyRequests)
+	if page := c.call(acme, "GET", "/api/projects/{name}/inbox", "/api/projects/Field/inbox?kind=announcement&children=true&limit=5", "", http.StatusOK); len(sliceOf(page.field("messages"))) != 5 || page.str("next") == "" {
+		t.Errorf("Field's inbox with its sub-projects = %s", page.raw)
+	}
+	c.call(acme, "GET", "/api/projects/{name}/inbox", "/api/projects/~/inbox?state=all", "", http.StatusOK)
+	c.call(acme, "GET", "/api/projects/{name}/inbox", "/api/projects/Field/inbox?kind=gossip", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/projects/{name}/inbox", "/api/projects/Field/inbox?before=nonsense", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/projects/{name}/inbox", "/api/projects/Ghost/inbox", "", http.StatusNotFound)
+	c.call(acme, "GET", "/api/inbox", "/api/inbox?project=Field&kind=announcement", "", http.StatusOK)
+	c.call(acme, "GET", "/api/inbox", "/api/inbox?project=Ghost", "", http.StatusNotFound)
+	c.call(acme, "DELETE", "/api/projects/{name}/announcements/{id}", "/api/projects/Ops/announcements/"+news.str("id"), "", http.StatusNotFound)
+	c.call(acme, "DELETE", "/api/projects/{name}/announcements/{id}", "/api/projects/Field/announcements/"+news.str("id"), "", http.StatusNoContent)
+
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Field", "", http.StatusConflict)
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/~", "", http.StatusBadRequest)
 	c.call(acme, "DELETE", "/api/projects/{name}", "/api/projects/Globex", "", http.StatusNoContent)
@@ -1206,6 +1236,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", "/api/settings", "/api/settings", `{"history":"recent","history_limit":10,"projects":[]}`, http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"display_name":"Service","theme":"dark","accent":"teal","onboarded":true}`, http.StatusOK)
 	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"theme":"neon"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"display_name":"Service","theme":"dark","accent":"teal","muted":["Launch"]}`, http.StatusOK)
+	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"display_name":"Service","theme":"dark","accent":"teal","muted":["~"]}`, http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"display_name":"Service","theme":"dark","accent":"teal","muted":["Ghost"]}`, http.StatusNotFound)
+	c.call(acme, "PUT", "/api/preferences", "/api/preferences", `{"display_name":"Service","theme":"dark","accent":"teal","muted":[]}`, http.StatusOK)
 	c.call(acme, "GET", "/api/preferences/photo", "/api/preferences/photo", "", http.StatusNotFound)
 	png := "\x89PNG\r\n\x1a\n" + strings.Repeat("\x00", 32)
 	c.call(acme, "PUT", "/api/preferences/photo", "/api/preferences/photo", png, http.StatusOK)
@@ -1299,7 +1333,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}": {"name": "Launch"}, "/api/projects/{name}/memory": {"name": "Launch"}, "/api/projects/{name}/history": {"name": "Launch"},
 		"/api/projects/{name}/memory/approve": {"name": "Launch"}, "/api/projects/{name}/memory/{id}": {"name": "Launch", "id": shared.str("id")},
 		"/api/projects/{name}/members": {"name": "Launch"}, "/api/projects/{name}/move": {"name": "Launch"}, "/api/projects/{name}/limits": {"name": "Launch"},
-		"/api/schedules/{name}": {"name": "nightly"}, "/api/schedules/{name}/pause": {"name": "nightly"},
+		"/api/projects/{name}/inbox": {"name": "Launch"}, "/api/projects/{name}/announcements": {"name": "Launch"},
+		"/api/projects/{name}/announcements/{id}": {"name": "Launch", "id": mid},
+		"/api/schedules/{name}":                   {"name": "nightly"}, "/api/schedules/{name}/pause": {"name": "nightly"},
 		"/api/schedules/{name}/resume": {"name": "nightly"}, "/api/schedules/{name}/run": {"name": "nightly"},
 		"/api/inbox/{id}": {"id": mid}, "/api/inbox/{id}/read": {"id": mid}, "/api/inbox/{id}/dismiss": {"id": mid},
 		"/api/inbox/{id}/snooze": {"id": mid}, "/api/inbox/{id}/parts/{part}/resolve": {"id": mid},
@@ -1314,10 +1350,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
 		"/api/projects/{name}": `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
-		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`,
-		"/api/runs/{id}/calls":        `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
-		"/api/alert-rules/{name}":     `{"kind":"run_failed","severity":"critical"}`,
-		"/api/schedules/{name}":       `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
+		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
+		"/api/runs/{id}/calls":    `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
+		"/api/alert-rules/{name}": `{"kind":"run_failed","severity":"critical"}`,
+		"/api/schedules/{name}":   `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
