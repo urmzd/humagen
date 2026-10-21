@@ -149,6 +149,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     has_photo: false,
     photo_version: 0,
     pinned: [],
+    muted: [],
   });
   const [day, setDay] = useState<Summary | null>(null);
   const [live, setLive] = useState(false);

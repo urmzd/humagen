@@ -442,6 +442,8 @@ export interface Preferences {
   onboarded_at?: string;
   /** Conversations kept at the top of the sidebar, most recently pinned first. */
   pinned: string[];
+  /** Projects whose announcements stay out of this person's own inbox. */
+  muted: string[];
 }
 
 export interface Check {

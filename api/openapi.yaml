@@ -3344,7 +3344,7 @@ components:
     Preferences:
       description: A person's own settings.
       type: object
-      required: [display_name, theme, accent, has_photo, photo_version, pinned]
+      required: [display_name, theme, accent, has_photo, photo_version, pinned, muted]
       properties:
         display_name: {type: string}
         theme: {$ref: "#/components/schemas/Theme"}
@@ -3358,6 +3358,11 @@ components:
         pinned:
           description: Conversations kept at the top of the person's sidebar, most recently pinned first.
           type: array
+          items: {type: string}
+        muted:
+          description: Projects whose announcements are left out of the person's own inbox. They stay in each project's inbox, and the workspace itself is never muted.
+          type: array
+          maxItems: 100
           items: {type: string}
 
     Schedule:

@@ -409,6 +409,8 @@ export interface Preferences {
   onboarded_at?: string;
   /** Conversations kept at the top of the person's sidebar, most recently pinned first. */
   pinned: string[];
+  /** Projects whose announcements are left out of the person's own inbox. They stay in each project's inbox, and the workspace itself is never muted. */
+  muted: string[];
 }
 
 /** A cron schedule as a caller writes it. */
