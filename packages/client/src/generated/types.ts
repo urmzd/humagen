@@ -422,6 +422,12 @@ export interface Schedule {
   project?: string;
   /** What the schedule is for, at most 500 characters. The agent is not shown it. */
   description?: string;
+  /** Where the answer of each run goes. Left out, it stays on the run.
+`inbox` sends it to the schedule's creator as a result, unless the
+answer is NONE. `project` posts it to the schedule's project, and
+needs a project; it is refused until project inboxes are built.
+ */
+  deliver?: "inbox" | "project";
 }
 
 /** A schedule with whether it is running, when it fires next, and how its recent occurrences went. */
@@ -432,6 +438,8 @@ export interface ScheduleView {
   text: string;
   project?: string;
   description?: string;
+  /** Where the answer of each run goes. Absent when it stays on the run. */
+  deliver?: "inbox" | "project";
   paused: boolean;
   created_by?: string;
   /** Who last changed the schedule. Absent until it is changed. */
@@ -632,8 +640,18 @@ the callee's call policy's approvers, for a call to an agent.
   self_approval?: boolean;
 }
 
+/** A post an agent wrote for a project, waiting for one of its owners. */
+export interface InboxDraftPart {
+  /** Where it would be posted. Empty is the root. */
+  project: string;
+  agent: string;
+  run: string;
+  subject: string;
+  text?: string;
+}
+
 /** One typed part of a message. `type` says which of `text`, `alert`,
-`failure`, `memory`, `budget`, `artifact` or `question` carries the body:
+`failure`, `memory`, `budget`, `artifact`, `draft` or `question` carries the body:
 `approval`, `choice` and `reply` parts carry `question`. A settled
 question's `outcome` is `approve`, `deny`, `choose` (the option in
 `note`), `reply` (the words in `note`), `expired`, `stopped` or
@@ -641,7 +659,7 @@ question's `outcome` is `approve`, `deny`, `choose` (the option in
  */
 export interface InboxPart {
   id: string;
-  type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply";
+  type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply" | "draft";
   state: "open" | "resolved" | "info";
   /** What this caller may do with the part now. Empty once it is resolved, or when the caller has no permission for any action. */
   actions: ("acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply")[];
@@ -653,6 +671,7 @@ export interface InboxPart {
   budget?: InboxBudgetPart;
   artifact?: InboxArtifactPart;
   question?: InboxQuestionPart;
+  draft?: InboxDraftPart;
 }
 
 /** One message in the inbox. */

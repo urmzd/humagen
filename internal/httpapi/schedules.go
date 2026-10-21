@@ -24,6 +24,9 @@ type schedule struct {
 	Project string `json:"project,omitempty"`
 	// Description says what the schedule is for. The agent is not shown it.
 	Description string `json:"description,omitempty"`
+	// Deliver is where the answer of each run goes: nowhere (""), the
+	// creator's inbox, or the project's.
+	Deliver string `json:"deliver,omitempty"`
 }
 
 // scheduleView is a schedule with what a person needs to trust it: whether it
@@ -43,7 +46,7 @@ func (s *Server) viewOf(sc cron.Schedule, now time.Time) scheduleView {
 	v := scheduleView{
 		schedule: schedule{
 			Name: sc.Name, Expression: sc.Expression, Agent: sc.Agent, Text: sc.Text,
-			Project: sc.Meta[runs.MetaProject], Description: about.Description,
+			Project: sc.Meta[runs.MetaProject], Description: about.Description, Deliver: sc.Meta[platform.MetaDeliver],
 		},
 		Paused:    s.P.Schedules.Paused(sc.Name),
 		CreatedBy: sc.Meta["created_by"],
@@ -81,7 +84,7 @@ func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request, who auth
 		Tenant: who.Tenant,
 		Meta:   meta,
 	}
-	if err := s.P.Schedules.Add(sc, platform.About{Description: strings.TrimSpace(body.Description)}); err != nil {
+	if err := s.P.Schedules.Add(sc, platform.About{Description: strings.TrimSpace(body.Description), CreatedAt: time.Now().UTC()}); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -120,7 +123,10 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 		Tenant: who.Tenant, Routes: old.Routes,
 		Meta: meta,
 	}
-	about := platform.About{Description: strings.TrimSpace(body.Description), UpdatedBy: who.Subject, UpdatedAt: time.Now().UTC()}
+	about := platform.About{
+		Description: strings.TrimSpace(body.Description), UpdatedBy: who.Subject, UpdatedAt: time.Now().UTC(),
+		CreatedAt: s.P.Schedules.About(name).CreatedAt,
+	}
 	if err := s.P.Schedules.Replace(sc, about); err != nil {
 		s.problem(w, err)
 		return
@@ -141,6 +147,20 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 		meta = map[string]string{}
 	}
 	delete(meta, runs.MetaProject)
+	delete(meta, platform.MetaDeliver)
+	switch {
+	case !platform.ValidDeliver(body.Deliver):
+		fail(w, http.StatusBadRequest, "deliver is inbox, project, or left out to keep the answer on the run")
+		return nil, false
+	case body.Deliver == platform.DeliverProject && body.Project == "":
+		fail(w, http.StatusBadRequest, "deliver: project posts to the schedule's project, so name one")
+		return nil, false
+	case body.Deliver == platform.DeliverProject:
+		fail(w, http.StatusBadRequest, "deliver: project needs project inboxes, which are not built yet; use deliver: inbox")
+		return nil, false
+	case body.Deliver != platform.DeliverNone:
+		meta[platform.MetaDeliver] = body.Deliver
+	}
 	if body.Project != "" {
 		if !s.P.HasProject(who.Tenant, body.Project) {
 			s.problem(w, platform.ErrProjectNotFound)
@@ -191,9 +211,12 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 		Origin: runs.OriginManual,
 		Text:   sc.Text,
 		Actor:  envelope.Actor{ID: who.Subject, Display: who.Name, Bot: who.Kind == auth.Machine},
+		// The run carries what its schedule says now, as a run the clock
+		// raises does: its project, where its answer goes, and its creator.
 		Meta: map[string]string{
 			"cron_schedule": sc.Name, "cron_expression": sc.Expression,
-			runs.MetaProject: sc.Meta[runs.MetaProject],
+			runs.MetaProject: sc.Meta[runs.MetaProject], platform.MetaDeliver: sc.Meta[platform.MetaDeliver],
+			"created_by": sc.Meta["created_by"],
 		},
 		At: now,
 	})

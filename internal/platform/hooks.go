@@ -54,6 +54,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 	p.settleQuestionsOf(run)
 	p.forgetApprovedCalls(run.Tenant, run.ID)
 	p.cascade(ctx, run)
+	p.deliverAnswer(ctx, run)
 	switch {
 	case run.Origin == runs.OriginSystem:
 		p.fileHook(run)

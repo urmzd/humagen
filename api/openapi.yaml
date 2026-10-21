@@ -3378,6 +3378,14 @@ components:
           description: What the schedule is for, at most 500 characters. The agent is not shown it.
           type: string
           maxLength: 500
+        deliver:
+          description: |
+            Where the answer of each run goes. Left out, it stays on the run.
+            `inbox` sends it to the schedule's creator as a result, unless the
+            answer is NONE. `project` posts it to the schedule's project, and
+            needs a project; it is refused until project inboxes are built.
+          type: string
+          enum: [inbox, project]
     ScheduleView:
       description: A schedule with whether it is running, when it fires next, and how its recent occurrences went.
       type: object
@@ -3389,6 +3397,10 @@ components:
         text: {type: string}
         project: {type: string}
         description: {type: string}
+        deliver:
+          description: Where the answer of each run goes. Absent when it stays on the run.
+          type: string
+          enum: [inbox, project]
         paused: {type: boolean}
         created_by: {type: string}
         updated_by:
@@ -3659,10 +3671,22 @@ components:
         self_approval:
           description: Goes with `approvers`.
           type: boolean
+    InboxDraftPart:
+      description: A post an agent wrote for a project, waiting for one of its owners.
+      type: object
+      required: [project, agent, run, subject]
+      properties:
+        project:
+          description: Where it would be posted. Empty is the root.
+          type: string
+        agent: {type: string}
+        run: {type: string}
+        subject: {type: string, maxLength: 150}
+        text: {type: string, maxLength: 4000}
     InboxPart:
       description: |
         One typed part of a message. `type` says which of `text`, `alert`,
-        `failure`, `memory`, `budget`, `artifact` or `question` carries the body:
+        `failure`, `memory`, `budget`, `artifact`, `draft` or `question` carries the body:
         `approval`, `choice` and `reply` parts carry `question`. A settled
         question's `outcome` is `approve`, `deny`, `choose` (the option in
         `note`), `reply` (the words in `note`), `expired`, `stopped` or
@@ -3673,7 +3697,7 @@ components:
         id: {type: string}
         type:
           type: string
-          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply]
+          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, draft]
         state:
           type: string
           enum: [open, resolved, info]
@@ -3691,6 +3715,7 @@ components:
         budget: {$ref: "#/components/schemas/InboxBudgetPart"}
         artifact: {$ref: "#/components/schemas/InboxArtifactPart"}
         question: {$ref: "#/components/schemas/InboxQuestionPart"}
+        draft: {$ref: "#/components/schemas/InboxDraftPart"}
     InboxMessage:
       description: One message in the inbox.
       type: object

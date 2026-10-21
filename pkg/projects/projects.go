@@ -97,6 +97,7 @@ const (
 	FieldParent       = "parent"
 	FieldAccount      = "account"
 	FieldInstructions = "instructions"
+	FieldAgentPosts   = "agent_posts"
 )
 
 // Bounds.
@@ -157,6 +158,10 @@ type Project struct {
 	Account *AccountInfo `json:"account,omitempty"`
 	// Instructions are sent to every agent answering here and below.
 	Instructions string `json:"instructions,omitempty"`
+	// AgentPosts says what becomes of a post an agent scheduled here
+	// writes: AgentPostsPublish or AgentPostsReview. Empty takes the
+	// default for the project's kind; see EffectiveAgentPosts.
+	AgentPosts string `json:"agent_posts,omitempty"`
 
 	// Managed is ManagedFile when the platform file declares the project.
 	Managed string `json:"managed,omitempty"`
@@ -236,6 +241,7 @@ func accountLike(k Kind) bool { return k == Account }
 
 var validField = map[string]bool{
 	FieldTitle: true, FieldDescription: true, FieldKind: true, FieldParent: true, FieldAccount: true, FieldInstructions: true,
+	FieldAgentPosts: true,
 }
 
 // validate checks a project on its own: its fields and bounds, not its place.
@@ -264,6 +270,8 @@ func (p Project) validate() error {
 		return fmt.Errorf("%w: only an account project carries an account", ErrInvalid)
 	case p.Managed != "" && p.Managed != ManagedFile:
 		return fmt.Errorf("%w: a project is managed by the file or not at all", ErrInvalid)
+	case !validAgentPosts(p.AgentPosts):
+		return fmt.Errorf("%w: agent posts are published or reviewed", ErrInvalid)
 	}
 	if a := p.Account; a != nil {
 		switch {

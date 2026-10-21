@@ -267,6 +267,18 @@ export const defaultCopy = {
     `${name} is still working on this. The answer will appear here when it's ready.`,
   /** What Slack says under the rating buttons, which can't show which one was pressed. */
   rated: { up: "Rated helpful", down: "Rated not helpful" },
+  /** Where a schedule's answers go, and the weekly recap a project can add. */
+  schedules: {
+    deliver: "Answer",
+    deliverHint: "Where each run's answer goes. A recap that finds nothing to say sends nothing.",
+    deliverNone: "Keep on the task",
+    /** A new schedule is the reader's own; an existing one goes to whoever created it. */
+    deliverInbox: (mine: boolean) => (mine ? "Send to my inbox" : "Send to its creator's inbox"),
+    deliverProject: "Post to the project",
+    addWeeklyRecap: "Add Weekly Recap",
+    recapText: (title: string) => `What changed in ${title} since the last recap?`,
+    recapDescription: "A weekly recap of this project, posted to its inbox",
+  },
   home: {
     greeting: (first: string, assistant: string) => `Hi ${first}, I'm ${assistant}.`,
     /** Follows the host's intro: how to reach the assistant from here. */

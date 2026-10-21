@@ -269,6 +269,8 @@ type Part struct {
 	Artifact *ArtifactPart `json:"artifact,omitempty"`
 	// Question is set on approval, choice and reply parts.
 	Question *QuestionPart `json:"question,omitempty"`
+	// Draft is set on a draft part.
+	Draft *DraftPart `json:"draft,omitempty"`
 }
 
 // Message is one thing in the inbox.
@@ -325,6 +327,7 @@ func (m Message) clone() Message {
 			p.Memory = &mem
 		}
 		p.Actions = slices.Clone(p.Actions)
+		p.Draft = p.Draft.clone()
 	}
 	m.Audience = slices.Clone(m.Audience)
 	m.Excluded = slices.Clone(m.Excluded)

@@ -38,7 +38,7 @@ const (
 )
 
 // AnalystTools are the read-only tools about how the workspace is doing.
-func AnalystTools() []string { return []string{ToolRunsSummary, ToolListAlerts} }
+func AnalystTools() []string { return []string{ToolRunsSummary, ToolListAlerts, ToolProjectChanges} }
 
 // BuilderTools are the tools for reading and changing agents.
 func BuilderTools() []string { return []string{ToolListAgents, ToolReadAgent, ToolSaveAgent} }
@@ -64,8 +64,9 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 		ToolRunsSummary: tool(ToolRunsSummary,
 			"Summarize the workspace's runs over the last hours: how many ran, completed, failed and were stopped, durations (p50 and p95), tokens and spend, by agent and by origin, and the slowest runs. Use it before answering any question about how agents are doing.",
 			schema(nil, map[string]string{
-				"hours": fmt.Sprintf("How many hours back to look, 1 to %d. Defaults to 24", MaxSummaryHours),
-				"agent": "Only this agent's runs. Leave out for every agent",
+				"hours":   fmt.Sprintf("How many hours back to look, 1 to %d. Defaults to 24", MaxSummaryHours),
+				"agent":   "Only this agent's runs. Leave out for every agent",
+				"project": "Only the runs filed in this project and the projects below it. Leave out for the whole workspace",
 			}),
 			func(_ context.Context, args map[string]any) (string, error) {
 				hours := 24
@@ -76,8 +77,13 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 					}
 					hours = n
 				}
-				return p.runsSummary(req.Tenant, time.Duration(hours)*time.Hour, strings.TrimSpace(arg(args, "agent")))
+				scope, err := p.summaryScope(req.Tenant, strings.TrimSpace(arg(args, "project")))
+				if err != nil {
+					return "", err
+				}
+				return p.runsSummary(req.Tenant, time.Duration(hours)*time.Hour, strings.TrimSpace(arg(args, "agent")), scope)
 			}),
+		ToolProjectChanges: p.projectChangesTool(req),
 		ToolListAlerts: tool(ToolListAlerts,
 			"List the alert rules the workspace has, what each watches for, and the alerts that are still open.",
 			schema(nil, nil),
@@ -123,13 +129,17 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 }
 
 // runsSummary is runs_summary's answer: compact JSON a model can read and quote.
-func (p *Platform) runsSummary(tenant string, window time.Duration, agent string) (string, error) {
+func (p *Platform) runsSummary(tenant string, window time.Duration, agent string, scope runs.SummaryQuery) (string, error) {
 	until := p.now()
 	bucket := time.Hour
 	if window > 7*24*time.Hour {
 		bucket = 24 * time.Hour
 	}
-	s := p.Runs.Summarize(tenant, until.Add(-window), until, bucket)
+	scope.Since, scope.Until, scope.Bucket = until.Add(-window), until, bucket
+	s, err := p.Runs.SummarizeWhere(tenant, scope)
+	if err != nil {
+		return "", err
+	}
 	type group struct {
 		Name        string  `json:"name"`
 		Runs        int     `json:"runs"`

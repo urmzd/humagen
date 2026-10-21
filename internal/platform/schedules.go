@@ -34,6 +34,9 @@ type About struct {
 	Description string
 	UpdatedBy   string
 	UpdatedAt   time.Time
+	// CreatedAt is when the schedule was created. A schedule kept before it
+	// was recorded reads as zero.
+	CreatedAt time.Time
 }
 
 func (a About) validate() error {

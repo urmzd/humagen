@@ -586,6 +586,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"InboxChange": {typ: inbox.Change{}},
 		"CallPolicy":  {typ: callpolicy.Policy{}}, "CallPolicyInput": {typ: callPolicyBody{}, written: true}, "Reach": {typ: platform.Reach{}},
 		"Artifact": {typ: artifacts.Artifact{}}, "StorageShare": {typ: artifacts.Share{}},
+		"InboxDraftPart": {typ: inbox.DraftPart{}},
 		"AnalyticsGroup": {typ: runs.Group{}}, "AnalyticsBucket": {typ: runs.Bucket{}}, "Summary": {typ: runs.Summary{}},
 		"JournalEntry": {typ: journal.Entry{}}, "Span": {typ: journal.Span{}},
 		"AlertRule": {typ: alerts.Rule{}}, "Alert": {typ: alerts.Alert{}},
@@ -1038,7 +1039,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", "/api/projects/{name}/memory/{id}", "/api/projects/Launch/memory/"+shared.str("id"), "", http.StatusNoContent)
 
 	// Schedules.
-	c.call(acme, "POST", "/api/schedules", "/api/schedules", `{"name":"nightly","expression":"0 3 * * *","agent":"helper","text":"Report.","project":"Launch"}`, http.StatusCreated)
+	c.call(acme, "POST", "/api/schedules", "/api/schedules", `{"name":"nightly","expression":"0 3 * * *","agent":"helper","text":"Report.","project":"Launch","deliver":"inbox"}`, http.StatusCreated)
 	c.call(acme, "POST", "/api/schedules", "/api/schedules", `{"name":"nightly","expression":"0 3 * * *","agent":"helper","text":"Report."}`, http.StatusConflict)
 	c.call(acme, "POST", "/api/schedules", "/api/schedules", `{"name":"bad","expression":"whenever","agent":"helper","text":"Report."}`, http.StatusBadRequest)
 	c.call(acme, "POST", "/api/schedules", "/api/schedules", `{"name":"lost","expression":"0 3 * * *","agent":"ghost","text":"Report."}`, http.StatusNotFound)

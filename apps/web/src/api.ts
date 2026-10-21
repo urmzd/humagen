@@ -94,6 +94,11 @@ export interface Schedule {
   project?: string;
   /** What the schedule is for, at most 500 characters. The agent is not shown it. */
   description?: string;
+  /**
+   * Where the answer of each run goes: the creator's inbox, or the project's
+   * (refused until project inboxes are built). Absent, it stays on the run.
+   */
+  deliver?: "inbox" | "project";
 }
 
 /**

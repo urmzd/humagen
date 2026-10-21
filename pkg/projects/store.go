@@ -550,6 +550,8 @@ func sameField(a, b Project, field string) bool {
 		return (a.Account == nil) == (b.Account == nil) && (a.Account == nil || *a.Account == *b.Account)
 	case FieldInstructions:
 		return a.Instructions == b.Instructions
+	case FieldAgentPosts:
+		return a.AgentPosts == b.AgentPosts
 	}
 	return false
 }
