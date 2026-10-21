@@ -171,3 +171,37 @@ func TestAnOwnerLimitsOnlyWhatIsBelowWhatTheyOwn(t *testing.T) {
 		t.Fatalf("a limit looser than Field's = %v", out)
 	}
 }
+
+// What a project turns on, where an agent lives, and a project agent itself
+// are a project's to change: each needs ownership of the project, and a move
+// of home needs ownership of the project it leaves and the one it comes to.
+func TestOwnersDecideAProjectsAgentsAndWhereAnAgentLives(t *testing.T) {
+	f := newFixture(t)
+	writes := append([]string{"warp:agents:write"}, operator...)
+	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	ana := f.machineAs(t, "ana", "acme", writes...)
+	bo := f.machineAs(t, "bo", "acme", writes...)
+	want(t, f, admin, "POST", "/api/agents", `{"name":"fieldbot","model":"offline","provider":"offline","system_prompt":"Field work."}`, http.StatusCreated)
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Field","members":[{"who":"*","role":"member"},{"who":"ana","role":"owner"}]}`, http.StatusCreated)
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Launch"}`, http.StatusCreated)
+
+	if out := want(t, f, bo, "PUT", "/api/projects/Field/agents", `{"version":1,"enable":["fieldbot"]}`, http.StatusForbidden); out["error"] != "you need to own Field" {
+		t.Fatalf("a member changing Field's agents = %v", out)
+	}
+	want(t, f, bo, "PUT", "/api/agents/fieldbot/home", `{"project":"Field"}`, http.StatusForbidden)
+	want(t, f, ana, "PUT", "/api/agents/fieldbot/home", `{"project":"Field"}`, http.StatusOK)
+	// Ana does not own Launch, so the agent cannot go there; nor can it leave Field for someone who does not own Field.
+	if out := want(t, f, ana, "PUT", "/api/agents/fieldbot/home", `{"project":"Launch"}`, http.StatusForbidden); out["error"] != "you need to own Launch" {
+		t.Fatalf("moving it to a project Ana does not own = %v", out)
+	}
+	want(t, f, admin, "PUT", "/api/projects/Launch/members", `{"version":1,"members":[{"who":"*","role":"member"},{"who":"bo","role":"owner"}]}`, http.StatusOK)
+	if out := want(t, f, bo, "PUT", "/api/agents/fieldbot/home", `{"project":"Launch"}`, http.StatusForbidden); out["error"] != "you need to own Field" {
+		t.Fatalf("taking it from a project Bo does not own = %v", out)
+	}
+	// Editing a project agent is its home's to do.
+	revise := `{"spec":{"name":"fieldbot","model":"offline","provider":"offline","system_prompt":"Field work, carefully."},"expected_rev":1}`
+	if out := want(t, f, bo, "PUT", "/api/agents/fieldbot", revise, http.StatusForbidden); out["error"] != "you need to own Field" {
+		t.Fatalf("editing an agent that lives in Field, without owning Field = %v", out)
+	}
+	want(t, f, ana, "PUT", "/api/agents/fieldbot", revise, http.StatusOK)
+}

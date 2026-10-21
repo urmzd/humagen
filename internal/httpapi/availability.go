@@ -5,6 +5,7 @@ import (
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // Agents in projects. A project turns agents on for itself and everything
@@ -24,11 +25,15 @@ func (s *Server) getProjectAgents(w http.ResponseWriter, r *http.Request, who au
 	ok(w, http.StatusOK, v)
 }
 
-// putProjectAgents replaces what a project turns on, as a whole. The
-// workspace's own, which hold the workspace default, need projects:govern.
+// putProjectAgents replaces what a project turns on, as a whole. It needs
+// ownership of the project; the workspace's own, which hold the workspace
+// default, need projects:govern as well.
 func (s *Server) putProjectAgents(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body platform.AgentsInput
 	if !decode(w, r, &body) {
+		return
+	}
+	if _, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner); !found {
 		return
 	}
 	v, err := s.P.SetProjectAgents(r.Context(), who.Tenant, r.PathValue("name"), writer(who), body)
@@ -56,6 +61,17 @@ func (s *Server) putAgentHome(w http.ResponseWriter, r *http.Request, who auth.P
 		return
 	}
 	name := r.PathValue("name")
+	// Moving an agent changes both the project it leaves and the one it
+	// comes to, so it needs ownership of each.
+	if err := s.P.OwnsHome(who, name); err != nil {
+		s.problem(w, err)
+		return
+	}
+	if projects.NameOf(body.Project) != projects.Root {
+		if _, _, found := s.visible(w, who, body.Project, projects.Owner); !found {
+			return
+		}
+	}
 	if err := s.P.SetAgentHome(r.Context(), who.Tenant, name, body.Project, writer(who)); err != nil {
 		s.problem(w, err)
 		return

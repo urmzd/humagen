@@ -110,7 +110,9 @@ and then `{who: "role:field-eng", role: member}` on the project.
 | See a project, its inbox, history, members and notes | `projects:read` | viewer |
 | Create a project under it | `projects:write` | member (company kind: `projects:govern`) |
 | Propose a note, which its owners keep or discard | `projects:write` | member |
-| Change it: title, description, instructions, account, kind, archiving, members, who may announce; add, keep or remove notes; delete it | `projects:write` | owner (the workspace and company projects: `projects:govern` too) |
+| Change it: title, description, instructions, account, kind, archiving, members, the agents it turns on, who may announce; add, keep or remove notes; delete it | `projects:write` | owner (the workspace and company projects: `projects:govern` too) |
+| Make an agent live in it, or move one out | `agents:write` | owner of the project it comes to and of the one it leaves |
+| Edit an agent that lives in it | `agents:write` | owner |
 | Move it | `projects:write` | owner, and member of the new parent; leaving a project that holds a limit needs `billing:write` |
 | Set a tighten-only limit on it | `projects:write` | owner of a project above it |
 | Post an announcement | `projects:write` | the project's `announce` role, owner by default |
