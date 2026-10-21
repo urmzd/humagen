@@ -332,6 +332,8 @@ export interface Policy {
   max_tokens?: number;
   warn_at?: number;
   action: "block" | "approve";
+  /** Who set it. Absent is an admin; "owner" is a tighten-only limit a project's owner set. */
+  authority?: "admin" | "owner";
   version: number;
   updated_by?: string;
   updated_at: string;

@@ -4263,6 +4263,10 @@ components:
         max_clients_per_surface: {type: integer}
         warn_at: {type: integer}
         action: {$ref: "#/components/schemas/PolicyAction"}
+        authority:
+          description: Who set it. Absent is an admin, with `billing:write`. `owner` is a tighten-only limit a project's owner set on a project below one they own, never looser than the limits over it.
+          type: string
+          enum: [admin, owner]
         version: {type: integer}
         updated_by: {type: string}
         updated_at: {type: string, format: date-time}

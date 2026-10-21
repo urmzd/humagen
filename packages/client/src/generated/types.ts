@@ -1071,6 +1071,8 @@ export interface Policy {
   max_clients_per_surface?: number;
   warn_at?: number;
   action: PolicyAction;
+  /** Who set it. Absent is an admin, with `billing:write`. `owner` is a tighten-only limit a project's owner set on a project below one they own, never looser than the limits over it. */
+  authority?: "admin" | "owner";
   version: number;
   updated_by?: string;
   updated_at: string;
