@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
@@ -297,6 +298,9 @@ func (p Platform) check(kinds Kinds) error {
 	for i, a := range sp.Agents {
 		if (a.File == "") == (a.Spec == nil) {
 			return fmt.Errorf("%s: agents[%d]: file or spec, exactly one", where, i)
+		}
+		if a.Spec != nil && slices.Contains(ReservedNames, agentspec.NormalizeName(a.Spec.Name)) {
+			return fmt.Errorf("%s: agents[%d].spec.name: @%s is reserved: it is never an agent's name", where, i, agentspec.NormalizeName(a.Spec.Name))
 		}
 	}
 	if s := sp.Surfaces.Slack; s != nil && s.Enabled {

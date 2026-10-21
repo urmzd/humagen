@@ -2,6 +2,8 @@ package app
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -9,6 +11,7 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 
 	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/spec"
 )
@@ -71,6 +74,47 @@ func TestAListNamingNoAgentFailsTheStart(t *testing.T) {
 	err := applyPlatforms(t.Context(), p, spec.Config{Platforms: []spec.Platform{doc}}, nil)
 	if err == nil || !strings.Contains(err.Error(), `workspace.agents: there is no agent called "ghost"`) {
 		t.Fatalf("a default naming no agent = %v", err)
+	}
+}
+
+// A new agent from the file takes no reserved word and no handle a person
+// goes by, as through the API, so a tag names one of them. An agent read
+// from a file is named only at start, so it is checked there.
+func TestAFileAgentNamedLikeAPersonOrAReservedWordFailsTheStart(t *testing.T) {
+	p := newProjectsPlatform(t)
+	p.SeePerson(auth.Principal{Kind: auth.User, Tenant: "acme", Subject: "okta|00u-dana", Name: "Dana"})
+	if person, err := p.People.Get("acme", "okta|00u-dana"); err != nil || person.Handle != "dana" {
+		t.Fatalf("Dana = %+v, %v", person, err)
+	}
+	doc := func(agents ...spec.Agent) spec.Config {
+		return spec.Config{Platforms: []spec.Platform{{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{Agents: agents}}}}
+	}
+	err := applyPlatforms(t.Context(), p, doc(fileAgent("dana", "")), nil)
+	if err == nil || !strings.Contains(err.Error(), "a person goes by @dana") {
+		t.Fatalf("a file agent named like Dana = %v", err)
+	}
+	dir := t.TempDir()
+	for _, name := range []string{"auto", "sme"} {
+		path := filepath.Join(dir, name+".json")
+		if err := os.WriteFile(path, []byte(`{"name":"`+name+`","provider":"offline","model":"offline","system_prompt":"X."}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		err := applyPlatforms(t.Context(), p, doc(spec.Agent{File: path}), nil)
+		if err == nil || !strings.Contains(err.Error(), "@"+name+" is reserved") {
+			t.Fatalf("an agent file naming %s = %v", name, err)
+		}
+	}
+	for _, name := range []string{"dana", "auto", "sme"} {
+		if _, err := p.Agents.Get(t.Context(), "acme", name, 0); err == nil {
+			t.Fatalf("the agent %s was created", name)
+		}
+	}
+	// A name nobody holds is taken, and keeps being the agent's at the next
+	// start.
+	for range 2 {
+		if err := applyPlatforms(t.Context(), p, doc(fileAgent("lead", "")), nil); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
