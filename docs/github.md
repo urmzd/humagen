@@ -87,7 +87,7 @@ warp serve -agent-specs examples/github-review/agent.json
 ```
 
 Ordinary questions receive Markdown answers. Reviews return a JSON report with
-`format: "mandatum.github.review.v1"`, which the sink converts to Markdown:
+`format: "warp.github.review.v1"`, which the sink converts to Markdown:
 severity counts, summary, comments, an aligned findings table, related concepts,
 and native reaction/mention instructions. Counts are derived from findings.
 Every finding requires a suggestion, observed evidence with a source, and a

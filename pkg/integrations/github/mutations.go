@@ -26,7 +26,7 @@ func (c *Connector) mutationAction() connector.Action {
 func (c *Connector) mutationMAC(target address.Address) []byte {
 	// A separate protocol prefix prevents using a webhook signature as a grant,
 	// even when a deployment uses its webhook secret as the signing key.
-	fields := []string{"mandatum.github.mutation.v1", target.Workspace, strings.Join(target.Path, "/"), target.Params["head_sha"], target.Params["write_actor"], target.Params["write_run"], target.Params["write_operation"], target.Params["write_workflow"], target.Params["write_attempt"]}
+	fields := []string{"warp.github.mutation.v1", target.Workspace, strings.Join(target.Path, "/"), target.Params["head_sha"], target.Params["write_actor"], target.Params["write_run"], target.Params["write_operation"], target.Params["write_workflow"], target.Params["write_attempt"]}
 	encoded, _ := json.Marshal(fields)
 	mac := hmac.New(sha256.New, c.cfg.MutationSecret)
 	_, _ = mac.Write(encoded)
