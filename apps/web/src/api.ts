@@ -965,21 +965,21 @@ export interface ProjectAvailability {
 }
 
 /** A project's API path: `~` is the workspace itself. */
-const projectAPI = (name: string) => `/api/projects/${projectPath(name)}`;
+const projectAt = (name: string) => `/api/projects/${projectPath(name)}`;
 const threadPath = (id: string) => `/api/threads/${encodeURIComponent(id)}`;
 
 /** Channels, experts and shared threads: where people and agents work together. */
 export const coworking = {
-  channels: (project: string) => call<{ channels: Channel[] }>("GET", `${projectAPI(project)}/channels`).then((r) => r.channels),
+  channels: (project: string) => call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
   createChannel: (project: string, c: { name: string; title?: string; purpose?: string; default?: string }) =>
-    call<Channel>("POST", `${projectAPI(project)}/channels`, c),
+    call<Channel>("POST", `${projectAt(project)}/channels`, c),
   updateChannel: (project: string, name: string, c: { version: number; title: string; purpose: string; default: string }) =>
-    call<Channel>("PUT", `${projectAPI(project)}/channels/${encodeURIComponent(name)}`, c),
+    call<Channel>("PUT", `${projectAt(project)}/channels/${encodeURIComponent(name)}`, c),
   archiveChannel: (project: string, name: string) =>
-    call<void>("DELETE", `${projectAPI(project)}/channels/${encodeURIComponent(name)}`),
-  experts: (project: string) => call<{ version: number; experts: ProjectExpert[] }>("GET", `${projectAPI(project)}/experts`),
+    call<void>("DELETE", `${projectAt(project)}/channels/${encodeURIComponent(name)}`),
+  experts: (project: string) => call<{ version: number; experts: ProjectExpert[] }>("GET", `${projectAt(project)}/experts`),
   setExperts: (project: string, version: number, experts: ProjectExpert[]) =>
-    call<{ version: number; experts: ProjectExpert[] }>("PUT", `${projectAPI(project)}/experts`, { version, experts }),
+    call<{ version: number; experts: ProjectExpert[] }>("PUT", `${projectAt(project)}/experts`, { version, experts }),
   /** One page of a channel's threads, most recently active first. */
   threads: (project: string, channel: string, before?: string) => {
     const q = new URLSearchParams({ project: project === "" ? "~" : project, channel, limit: "30" });
@@ -999,5 +999,5 @@ export const coworking = {
   people: (q: string) =>
     call<{ people: DirectoryPerson[] }>("GET", `/api/people?${new URLSearchParams({ q, limit: "8" })}`).then((r) => r.people),
   /** Which agents may answer in a project, for the @ typeahead. */
-  available: (project: string) => call<ProjectAvailability>("GET", `${projectAPI(project)}/agents`),
+  available: (project: string) => call<ProjectAvailability>("GET", `${projectAt(project)}/agents`),
 };

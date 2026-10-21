@@ -1,0 +1,81 @@
+package app
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/warp/pkg/spec"
+)
+
+// The file's channels and experts merge into the tree as its projects do: a
+// channel it declares is created or taken over and changed only by the file,
+// an unchanged file makes no version, a console channel survives, and a
+// channel that left the file stays, unmanaged. Experts the file sets are the
+// file's; experts it leaves out stay the console's.
+func TestTheFilesChannelsAndExpertsMergeIntoTheTree(t *testing.T) {
+	p := newProjectsPlatform(t)
+	const tenant = "acme"
+	ada := projects.Writer{By: "ada"}
+	file := spec.Workspace{
+		Channels: []spec.Channel{{Name: "announcements", Purpose: "Company news"}},
+		Experts:  []spec.Expert{{Who: "role:security", Topics: []string{"security"}}},
+		Projects: []spec.Project{
+			{Name: "Globex", Kind: spec.ProjectAccount,
+				Channels: []spec.Channel{{Name: "general", Purpose: "The account"}, {Name: "renewals", Title: "Renewals", Purpose: "Renewal work", Default: "auto"}},
+				Experts:  []spec.Expert{{Who: "okta|00u1ana", Topics: []string{"billing", "renewals"}}}},
+			{Name: "Field"},
+		},
+	}
+	for range 2 {
+		if err := applyProjects(p, tenant, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	renewals, err := p.Projects.Channel(tenant, "Globex", "renewals")
+	if err != nil || renewals.Managed != projects.ManagedFile || renewals.Version != 1 || renewals.Default != "auto" || renewals.Purpose != "Renewal work" {
+		t.Fatalf("the file's channel = %+v, %v", renewals, err)
+	}
+	if general, _ := p.Projects.Channel(tenant, "Globex", projects.General); general.Purpose != "The account" || general.Managed != projects.ManagedFile {
+		t.Fatalf("general as the file declares it = %+v", general)
+	}
+	if news, _ := p.Projects.Channel(tenant, projects.Root, "announcements"); news.Managed != projects.ManagedFile {
+		t.Fatalf("the workspace's channel = %+v", news)
+	}
+	if _, err := p.UpdateChannel(t.Context(), tenant, "Globex", "renewals", ada, platform.ChannelUpdate{Version: 1, Purpose: "mine"}); !errors.Is(err, projects.ErrManaged) {
+		t.Fatalf("changing the file's channel = %v", err)
+	}
+	globex := mustGet(t, p, tenant, "Globex")
+	if len(globex.Experts) != 1 || globex.Experts[0].Who != "okta|00u1ana" {
+		t.Fatalf("the file's experts = %+v", globex.Experts)
+	}
+	if _, err := p.SetProjectExperts(tenant, "Globex", ada, platform.Experts{Version: globex.Version}); !errors.Is(err, projects.ErrManaged) {
+		t.Fatalf("changing the file's experts = %v", err)
+	}
+	if root := mustGet(t, p, tenant, "~"); len(root.Experts) != 1 || root.Experts[0].Who != "role:security" {
+		t.Fatalf("the workspace's experts = %+v", root.Experts)
+	}
+	// Field's experts are the console's.
+	field := mustGet(t, p, tenant, "Field")
+	if _, err := p.SetProjectExperts(tenant, "Field", ada, platform.Experts{Version: field.Version, Experts: []projects.Expert{{Who: "vic", Topics: []string{"ops"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateChannel(t.Context(), tenant, "Field", ada, platform.ChannelInput{Name: "console-made"}); err != nil {
+		t.Fatal(err)
+	}
+	// renewals leaves the file; Field's console channel and experts stay.
+	file.Projects[0].Channels = file.Projects[0].Channels[:1]
+	if err := applyProjects(p, tenant, file); err != nil {
+		t.Fatal(err)
+	}
+	if renewals, _ := p.Projects.Channel(tenant, "Globex", "renewals"); renewals.Managed != "" {
+		t.Fatalf("a channel that left the file = %+v", renewals)
+	}
+	if _, err := p.Projects.Channel(tenant, "Field", "console-made"); err != nil {
+		t.Fatalf("a console channel did not survive the file: %v", err)
+	}
+	if f := mustGet(t, p, tenant, "Field"); len(f.Experts) != 1 || f.Experts[0].Who != "vic" {
+		t.Fatalf("the console's experts = %+v", f.Experts)
+	}
+}
