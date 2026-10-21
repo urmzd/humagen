@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/connectors/cron"
+
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Schedule errors.
@@ -40,8 +43,9 @@ func (a About) validate() error {
 	return nil
 }
 
-// Schedules is the store the cron connector reads. It is in memory, so
-// schedules are lost on restart until the Postgres store lands.
+// Schedules is the store the cron connector reads. It is in memory. Built
+// with OpenSchedules, it writes every change through a state.Store and reads
+// the schedules back when it is built again, paused or not.
 type Schedules struct {
 	mu     sync.Mutex
 	all    []cron.Schedule
@@ -53,6 +57,65 @@ type Schedules struct {
 	// for a resumed schedule. Otherwise an edit from "daily" to "every
 	// minute" would catch up on every minute since the last daily run.
 	edited map[string]bool
+
+	// kept is where schedules are written, and seqs each one's place in all
+	// as it was written. Nil keeps them only in memory.
+	kept *state.Table[storedSchedule]
+	seq  int64
+	seqs map[string]int64
+}
+
+// storedSchedule is a schedule as it is written.
+type storedSchedule struct {
+	Seq      int64         `json:"seq"`
+	Schedule cron.Schedule `json:"schedule"`
+	Paused   bool          `json:"paused,omitempty"`
+	About    About         `json:"about"`
+}
+
+// OpenSchedules returns schedules kept in st, holding what st already has. A
+// nil st keeps them in memory.
+func OpenSchedules(st state.Store) (*Schedules, error) {
+	s := &Schedules{kept: state.NewTable[storedSchedule](st, "schedules"), seqs: map[string]int64{}}
+	var loaded []storedSchedule
+	if err := s.kept.Load(func(_, _ string, r storedSchedule) error {
+		loaded = append(loaded, r)
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("platform: load schedules: %w", err)
+	}
+	slices.SortFunc(loaded, func(a, b storedSchedule) int { return cmp.Compare(a.Seq, b.Seq) })
+	for _, r := range loaded {
+		s.all = append(s.all, r.Schedule)
+		s.setAbout(r.Schedule.Name, r.About)
+		if r.Paused {
+			if s.paused == nil {
+				s.paused = map[string]bool{}
+			}
+			s.paused[r.Schedule.Name] = true
+		}
+		s.seqs[r.Schedule.Name] = r.Seq
+		s.seq = max(s.seq, r.Seq)
+	}
+	return s, nil
+}
+
+// write puts a schedule's record. The caller holds the lock.
+func (s *Schedules) write(sc cron.Schedule, paused bool, about About) error {
+	if s.kept == nil {
+		return nil
+	}
+	seq, ok := s.seqs[sc.Name]
+	if !ok {
+		seq = s.seq + 1
+	}
+	if err := s.kept.Put(sc.Tenant, sc.Name, storedSchedule{Seq: seq, Schedule: sc, Paused: paused, About: about}); err != nil {
+		return fmt.Errorf("platform: write schedule: %w", err)
+	}
+	if !ok {
+		s.seq, s.seqs[sc.Name] = seq, seq
+	}
+	return nil
 }
 
 var _ cron.Store = (*Schedules)(nil)
@@ -113,6 +176,9 @@ func (s *Schedules) SetPaused(tenant, name string, paused bool) error {
 	defer s.mu.Unlock()
 	for _, sc := range s.all {
 		if sc.Name == name && sc.Tenant == tenant {
+			if err := s.write(sc, paused, s.about[name]); err != nil {
+				return err
+			}
 			if s.paused == nil {
 				s.paused = map[string]bool{}
 			}
@@ -176,6 +242,9 @@ func (s *Schedules) Add(sc cron.Schedule, about About) error {
 			return fmt.Errorf("%w: %q", ErrScheduleExists, sc.Name)
 		}
 	}
+	if err := s.write(sc, false, about); err != nil {
+		return err
+	}
 	s.all = append(s.all, sc)
 	s.setAbout(sc.Name, about)
 	return nil
@@ -196,6 +265,9 @@ func (s *Schedules) Replace(sc cron.Schedule, about About) error {
 	i := slices.IndexFunc(s.all, func(have cron.Schedule) bool { return have.Name == sc.Name && have.Tenant == sc.Tenant })
 	if i < 0 {
 		return fmt.Errorf("%w: %q", ErrScheduleNotFound, sc.Name)
+	}
+	if err := s.write(sc, s.paused[sc.Name], about); err != nil {
+		return err
 	}
 	s.all[i] = sc
 	s.setAbout(sc.Name, about)
@@ -223,6 +295,12 @@ func (s *Schedules) Remove(tenant, name string) error {
 	defer s.mu.Unlock()
 	for i, have := range s.all {
 		if have.Name == name && have.Tenant == tenant {
+			if s.kept != nil {
+				if err := s.kept.Delete(tenant, name); err != nil {
+					return fmt.Errorf("platform: write schedule: %w", err)
+				}
+				delete(s.seqs, name)
+			}
 			s.all = slices.Delete(s.all, i, i+1)
 			delete(s.paused, name)
 			delete(s.about, name)

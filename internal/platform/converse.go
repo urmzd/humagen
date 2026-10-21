@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/pick"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Auto asks the platform to pick the agent.
@@ -107,9 +108,41 @@ func (s Settings) withDefaults() Settings {
 	return s
 }
 
+// settings are every tenant's Settings. With a state store each tenant's is
+// written before it is kept, and read back when the platform is built.
 type settings struct {
-	mu sync.RWMutex
-	by map[string]Settings
+	mu   sync.RWMutex
+	by   map[string]Settings
+	kept *state.Table[Settings]
+}
+
+// settingsKey is the one key a tenant's settings are kept under.
+const settingsKey = "settings"
+
+// open reads every tenant's settings from st and keeps them there from now
+// on. A nil st keeps them in memory.
+func (s *settings) open(st state.Store) error {
+	s.by, s.kept = map[string]Settings{}, state.NewTable[Settings](st, "settings")
+	err := s.kept.Load(func(tenant, _ string, v Settings) error {
+		s.by[tenant] = v
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("platform: load settings: %w", err)
+	}
+	return nil
+}
+
+// put keeps a tenant's settings. The caller holds the lock.
+func (s *settings) put(tenant string, v Settings) error {
+	if err := s.kept.Put(tenant, settingsKey, v); err != nil {
+		return fmt.Errorf("platform: write settings: %w", err)
+	}
+	if s.by == nil {
+		s.by = map[string]Settings{}
+	}
+	s.by[tenant] = v
+	return nil
 }
 
 func (s *settings) get(tenant string) Settings {
@@ -169,27 +202,22 @@ func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings
 	}
 	p.settings.mu.Lock()
 	defer p.settings.mu.Unlock()
-	if p.settings.by == nil {
-		p.settings.by = map[string]Settings{}
-	}
-	p.settings.by[tenant] = next
-	return nil
+	return p.settings.put(tenant, next)
 }
 
 // MarkSetup records who first set the workspace up. It does nothing once that
 // is on record, so it is safe to call after every admin write.
-func (p *Platform) MarkSetup(tenant, by string) Settings {
+func (p *Platform) MarkSetup(tenant, by string) (Settings, error) {
 	p.settings.mu.Lock()
 	defer p.settings.mu.Unlock()
-	if p.settings.by == nil {
-		p.settings.by = map[string]Settings{}
-	}
 	cfg := p.settings.by[tenant]
 	if cfg.SetupAt.IsZero() {
 		cfg.SetupAt, cfg.SetupBy = p.now(), by
-		p.settings.by[tenant] = cfg
+		if err := p.settings.put(tenant, cfg); err != nil {
+			return Settings{}, err
+		}
 	}
-	return cfg.withDefaults()
+	return cfg.withDefaults(), nil
 }
 
 // Pick chooses an agent for a message without starting anything.
@@ -360,7 +388,9 @@ func (p *Platform) DeleteProject(ctx context.Context, tenant, name string) error
 	if err := p.SetSettings(ctx, tenant, cfg); err != nil {
 		return err
 	}
-	p.Memory.Drop(tenant, memory.ProjectOwner(name))
+	if err := p.Memory.Drop(tenant, memory.ProjectOwner(name)); err != nil {
+		return err
+	}
 	p.syncMemory(tenant, memory.ProjectOwner(name))
 	return nil
 }

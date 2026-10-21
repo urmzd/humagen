@@ -1,10 +1,14 @@
 package clients
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Caps is how many clients a workspace may have. Zero means none: a caller
@@ -40,17 +44,67 @@ type Store interface {
 	On(surface Surface) []Client
 }
 
-// Memory is a Store in memory. It is lost on restart.
+// Memory is a Store in memory. Built with Open, it writes every change
+// through a state.Store and reads the records back when it is built again.
+//
+// A client the environment configures (Managed is ManagedEnv) is never
+// written: the environment is where it lives, and it is created again from
+// there at every start.
 type Memory struct {
 	mu sync.RWMutex
 	// all is every client, oldest first.
 	all []Client
+	// order is each client's place in all, as it was written, so a restart
+	// keeps the order clients were created in.
+	order map[[2]string]int64
+	seq   int64
+	kept  *state.Table[storedClient]
 }
 
-// NewMemory returns an empty store.
-func NewMemory() *Memory { return &Memory{} }
+// storedClient is a client as it is written.
+type storedClient struct {
+	Seq    int64  `json:"seq"`
+	Client Client `json:"client"`
+}
+
+// NewMemory returns an empty store in memory.
+func NewMemory() *Memory { return &Memory{order: map[[2]string]int64{}} }
+
+// Open returns a store that keeps its records in st, holding what st already
+// has. A nil st is NewMemory.
+func Open(st state.Store) (*Memory, error) {
+	m := NewMemory()
+	m.kept = state.NewTable[storedClient](st, "clients")
+	var loaded []storedClient
+	err := m.kept.Load(func(tenant, id string, r storedClient) error {
+		r.Client.Tenant, r.Client.ID = tenant, id
+		loaded = append(loaded, r)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clients: load: %w", err)
+	}
+	slices.SortStableFunc(loaded, func(a, b storedClient) int { return cmp.Compare(a.Seq, b.Seq) })
+	for _, r := range loaded {
+		m.all = append(m.all, r.Client)
+		m.order[[2]string{r.Client.Tenant, r.Client.ID}] = r.Seq
+		m.seq = max(m.seq, r.Seq)
+	}
+	return m, nil
+}
 
 var _ Store = (*Memory)(nil)
+
+// write puts a client's record, unless the environment manages it.
+func (m *Memory) write(c Client, seq int64) error {
+	if c.Managed == ManagedEnv {
+		return nil
+	}
+	if err := m.kept.Put(c.Tenant, c.ID, storedClient{Seq: seq, Client: c}); err != nil {
+		return fmt.Errorf("clients: write: %w", err)
+	}
+	return nil
+}
 
 func (m *Memory) index(tenant, id string) int {
 	return slices.IndexFunc(m.all, func(c Client) bool { return c.Tenant == tenant && c.ID == id })
@@ -91,6 +145,12 @@ func (m *Memory) Create(tenant string, c Client, caps Caps, at time.Time) (Clien
 		return Client{}, fmt.Errorf("%w: the workspace may have %d %s clients", ErrLimit, caps.MaxPerSurface, c.Surface)
 	}
 	c.Version, c.CreatedAt, c.UpdatedAt = 1, at, at
+	seq := m.seq + 1
+	if err := m.write(c, seq); err != nil {
+		return Client{}, err
+	}
+	m.seq = seq
+	m.order[[2]string{tenant, c.ID}] = seq
 	m.all = append(m.all, c)
 	return c.clone(), nil
 }
@@ -119,6 +179,9 @@ func (m *Memory) Update(tenant string, c Client, at time.Time) (Client, error) {
 	}
 	c.Managed, c.CreatedBy, c.CreatedAt = old.Managed, old.CreatedBy, old.CreatedAt
 	c.Version, c.UpdatedAt = old.Version+1, at
+	if err := m.write(c, m.order[[2]string{tenant, c.ID}]); err != nil {
+		return Client{}, err
+	}
 	m.all[i] = c
 	return c.clone(), nil
 }
@@ -155,7 +218,13 @@ func (m *Memory) Delete(tenant, id string) error {
 	if i < 0 {
 		return fmt.Errorf("%w: %q", ErrNotFound, id)
 	}
+	if m.all[i].Managed != ManagedEnv {
+		if err := m.kept.Delete(tenant, id); err != nil {
+			return fmt.Errorf("clients: write: %w", err)
+		}
+	}
 	m.all = slices.Delete(m.all, i, i+1)
+	delete(m.order, [2]string{tenant, id})
 	return nil
 }
 
@@ -175,29 +244,68 @@ func (m *Memory) On(surface Surface) []Client {
 // Secrets keeps the secret values written for clients, apart from the records.
 // A durable deployment puts a secret manager behind it.
 type Secrets interface {
-	Put(tenant, client, name, value string)
+	Put(tenant, client, name, value string) error
 	Get(tenant, client, name string) (string, bool)
 	// Drop forgets every secret of a client.
-	Drop(tenant, client string)
+	Drop(tenant, client string) error
 }
 
-// MemorySecrets is Secrets in memory. It is lost on restart, so a client whose
-// secrets were written as values has to be given them again.
+// MemorySecrets is Secrets in memory. Without a state.Store it is lost on
+// restart, so a client whose secrets were written as values has to be given
+// them again. Built with OpenSecrets, it writes each value through the store
+// as it was given: the database then holds the secrets in the clear, and is
+// to be guarded as they are. A reference (env:NAME) keeps no value at all.
 type MemorySecrets struct {
 	mu     sync.RWMutex
 	values map[[3]string]string
+	kept   *state.Table[string]
 }
 
-// NewMemorySecrets returns an empty secret store.
+// NewMemorySecrets returns an empty secret store in memory.
 func NewMemorySecrets() *MemorySecrets { return &MemorySecrets{values: map[[3]string]string{}} }
+
+// OpenSecrets returns a secret store that keeps its values in st, holding
+// what st already has. A nil st is NewMemorySecrets.
+func OpenSecrets(st state.Store) (*MemorySecrets, error) {
+	s := NewMemorySecrets()
+	s.kept = state.NewTable[string](st, "clients.secret")
+	err := s.kept.Load(func(tenant, key string, v string) error {
+		client, name, ok := splitSecretKey(key)
+		if !ok {
+			return fmt.Errorf("clients: a secret is kept under %q", key)
+		}
+		s.values[[3]string{tenant, client, name}] = v
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clients: load secrets: %w", err)
+	}
+	return s, nil
+}
+
+// secretKey names a secret within its tenant. A secret's name holds no
+// slash, so the last one parts it from the client's id.
+func secretKey(client, name string) string { return client + "/" + name }
+
+func splitSecretKey(key string) (client, name string, ok bool) {
+	i := strings.LastIndexByte(key, '/')
+	if i <= 0 {
+		return "", "", false
+	}
+	return key[:i], key[i+1:], true
+}
 
 var _ Secrets = (*MemorySecrets)(nil)
 
 // Put implements Secrets.
-func (s *MemorySecrets) Put(tenant, client, name, value string) {
+func (s *MemorySecrets) Put(tenant, client, name, value string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.kept.Put(tenant, secretKey(client, name), value); err != nil {
+		return fmt.Errorf("clients: write secret: %w", err)
+	}
 	s.values[[3]string{tenant, client, name}] = value
+	return nil
 }
 
 // Get implements Secrets.
@@ -209,12 +317,22 @@ func (s *MemorySecrets) Get(tenant, client, name string) (string, bool) {
 }
 
 // Drop implements Secrets.
-func (s *MemorySecrets) Drop(tenant, client string) {
+func (s *MemorySecrets) Drop(tenant, client string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	batch := s.kept.Batch()
+	for k := range s.values {
+		if k[0] == tenant && k[1] == client {
+			batch.Delete(tenant, secretKey(client, k[2]))
+		}
+	}
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("clients: write secret: %w", err)
+	}
 	for k := range s.values {
 		if k[0] == tenant && k[1] == client {
 			delete(s.values, k)
 		}
 	}
+	return nil
 }

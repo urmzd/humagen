@@ -30,7 +30,8 @@ on the same Runs page as console runs. The variables below create one default
 client per surface in tenant `trial`. Only that tenant can see or use it;
 inbound payloads cannot choose a tenant. Further clients, such as a second Slack
 app that answers as another agent, are created through `POST /api/clients`. See
-[clients](clients.md). Stores are still in memory.
+[clients](clients.md). Stores are in memory unless the server runs with
+`-state=postgres`.
 
 Forward **only port 8383**, whose handler exposes signed webhook endpoints and
 readiness. `/api`, `/auth` and the console are absent there. Never forward the

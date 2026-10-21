@@ -8,7 +8,8 @@
 //
 // The store is in memory, per tenant, and bounded: a tenant holds at most
 // MaxPolicies policies, each list at most MaxNames entries and
-// MaxApprovers approvers.
+// MaxApprovers approvers. Built with Open, it writes every change through a
+// state.Store and reads them back when it is built again.
 package callpolicy
 
 import (
@@ -18,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Errors a caller can match.
@@ -210,10 +213,30 @@ func (p Policy) Validate(known func(string) bool) error {
 type Store struct {
 	mu      sync.Mutex
 	tenants map[string]map[string]Policy
+	// kept is where policies are written. Nil keeps them only in memory.
+	kept *state.Table[Policy]
 }
 
-// NewStore returns an empty store.
+// NewStore returns an empty store in memory.
 func NewStore() *Store { return &Store{tenants: map[string]map[string]Policy{}} }
+
+// Open returns a store that keeps every policy in st, holding what st
+// already has. A nil st is NewStore.
+func Open(st state.Store) (*Store, error) {
+	s := NewStore()
+	s.kept = state.NewTable[Policy](st, "callpolicy")
+	err := s.kept.Load(func(tenant, agent string, p Policy) error {
+		if s.tenants[tenant] == nil {
+			s.tenants[tenant] = map[string]Policy{}
+		}
+		s.tenants[tenant][agent] = p
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("callpolicy: load: %w", err)
+	}
+	return s, nil
+}
 
 func clone(p Policy) Policy {
 	p.Allow, p.Trusted, p.Approvers = slices.Clone(p.Allow), slices.Clone(p.Trusted), slices.Clone(p.Approvers)
@@ -250,13 +273,23 @@ func (s *Store) Put(tenant string, p Policy, known func(string) bool, by string,
 	}
 	p.Version = prev.Version + 1
 	p.UpdatedBy, p.UpdatedAt = by, at.UTC()
+	if err := s.kept.Put(tenant, p.Agent, p); err != nil {
+		return Policy{}, fmt.Errorf("callpolicy: write: %w", err)
+	}
 	t[p.Agent] = clone(p)
 	return clone(p), nil
 }
 
 // Delete drops an agent's policy, so it reads as the default again.
-func (s *Store) Delete(tenant, agent string) {
+func (s *Store) Delete(tenant, agent string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if _, ok := s.tenants[tenant][agent]; !ok {
+		return nil
+	}
+	if err := s.kept.Delete(tenant, agent); err != nil {
+		return fmt.Errorf("callpolicy: write: %w", err)
+	}
 	delete(s.tenants[tenant], agent)
+	return nil
 }

@@ -13,6 +13,9 @@
 // The inbox does not decide who may do what, and it does not carry out a
 // decision. The platform checks the caller's rights and acts on the source
 // (the alert, the run, the notes), then records the outcome here.
+//
+// Built with Open, the store writes each change through a state.Store before
+// it takes effect, and replays them when it is built again.
 package inbox
 
 import (
@@ -25,6 +28,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Errors a caller can match.
@@ -417,10 +422,75 @@ type tenant struct {
 type Store struct {
 	mu      sync.Mutex
 	tenants map[string]*tenant
+	// kept is where changes are written, one record each, in the order they
+	// were made. Nil keeps them only in memory.
+	kept *state.Table[storedChange]
 }
 
-// NewStore returns an empty inbox.
+// storedChange is a change as it is written, with what the wire forms of a
+// change and a message leave out.
+type storedChange struct {
+	Change
+	Raised *storedMessage `json:"raised,omitempty"`
+}
+
+type storedMessage struct {
+	Message
+	Key      string   `json:"key"`
+	Audience []string `json:"audience,omitempty"`
+	Excluded []string `json:"excluded,omitempty"`
+}
+
+func storedOf(c Change) storedChange {
+	out := storedChange{Change: c}
+	if c.Raised != nil {
+		out.Raised = &storedMessage{Message: *c.Raised, Key: c.Raised.Key, Audience: c.Raised.Audience, Excluded: c.Raised.Excluded}
+	}
+	return out
+}
+
+func (sc storedChange) change(tenant string) Change {
+	c := sc.Change
+	c.Tenant = tenant
+	if sc.Raised != nil {
+		m := sc.Raised.Message
+		m.Key, m.Audience, m.Excluded = sc.Raised.Key, sc.Raised.Audience, sc.Raised.Excluded
+		c.Raised = &m
+	}
+	return c
+}
+
+// NewStore returns an empty inbox in memory.
 func NewStore() *Store { return &Store{tenants: map[string]*tenant{}} }
+
+// OpenStore returns an inbox that keeps its changes in st, rebuilt from what st
+// already has. A nil st is NewStore.
+func OpenStore(st state.Store) (*Store, error) {
+	s := NewStore()
+	s.kept = state.NewTable[storedChange](st, "inbox")
+	err := s.kept.Load(func(name, _ string, sc storedChange) error {
+		s.of(name).apply(sc.change(name))
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("inbox: load: %w", err)
+	}
+	return s, nil
+}
+
+// replay puts a tenant back to what the first n changes of its record say,
+// keeping who is watching it. It is how a change that could not be written is
+// undone.
+func (s *Store) replay(name string, n int) {
+	old := s.tenants[name]
+	log := old.log[:n]
+	delete(s.tenants, name)
+	t := s.of(name)
+	for _, c := range log {
+		t.apply(c)
+	}
+	t.watchers, t.nextW = old.watchers, old.nextW
+}
 
 func (s *Store) of(name string) *tenant {
 	t, ok := s.tenants[name]
@@ -520,7 +590,18 @@ func (s *Store) do(c Change) (Message, bool, error) {
 	if c.What != Raised && t.byID[c.Message] == nil {
 		return Message{}, false, fmt.Errorf("%w: message %q", ErrNotFound, c.Message)
 	}
+	n := len(t.log)
 	m, changed := t.apply(c)
+	if len(t.log) > n && s.kept.Enabled() {
+		b := s.kept.Batch()
+		for i := n; i < len(t.log); i++ {
+			b.Put(c.Tenant, state.Seq(int64(i)), storedOf(t.log[i]))
+		}
+		if err := b.Commit(); err != nil {
+			s.replay(c.Tenant, n)
+			return Message{}, false, fmt.Errorf("inbox: write: %w", err)
+		}
+	}
 	if m == nil {
 		return Message{}, false, nil
 	}
@@ -535,13 +616,12 @@ func (s *Store) do(c Change) (Message, bool, error) {
 // Raise puts a message in the inbox. key names what it is about: while a
 // message with that key is open, a second is not raised and the first is
 // returned.
-func (s *Store) Raise(tenantName, key string, m Message, at time.Time) (Message, bool) {
+func (s *Store) Raise(tenantName, key string, m Message, at time.Time) (Message, bool, error) {
 	if existing, ok := s.ByKey(tenantName, key); ok && existing.State != Resolved && existing.State != Dismissed {
-		return existing, false
+		return existing, false, nil
 	}
 	m.Key = key
-	out, raised, _ := s.do(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
-	return out, raised
+	return s.do(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
 }
 
 // ByKey returns the latest message raised under a key.

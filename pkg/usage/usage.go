@@ -15,8 +15,17 @@
 // a period that starts inside a day reads that day's entries. Where an entry
 // falls is decided by its own time, never by the order it was appended in, so
 // an entry stamped earlier than the one before it is still counted in its own
-// day. A durable store belongs behind the same writes and one read: append to
-// a table, and keep the day counters beside it.
+// day.
+//
+// # Kept
+//
+// Built with Open, the ledger writes each entry to a state.Store as it is
+// appended, deletes what it prunes, and replays what the store holds when it
+// is built again. An admission that cannot be written is not counted, and
+// Record says so, so the run is not let in: a limit is never judged on a
+// count a restart would lose. Every other entry is something that already
+// happened, so it is counted whether or not it could be written, and one
+// that could not is written with the next entry or by Flush.
 //
 // # Spend, counted once
 //
@@ -41,7 +50,9 @@
 package usage
 
 import (
+	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -49,6 +60,7 @@ import (
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
 
 	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Kind is what a ledger entry records.
@@ -287,10 +299,88 @@ type Ledger struct {
 	tenants map[string]*tenant
 	// oldest is the start of the oldest day any tenant holds.
 	oldest time.Time
+
+	// kept is where entries are written, each under its place in the
+	// ledger. seqs are those places, beside entries, and seq the last one
+	// given. pending are entries counted but not yet written, and stale the
+	// places of pruned entries not yet deleted.
+	kept    *state.Table[Entry]
+	seqs    []int64
+	seq     int64
+	pending map[int64]Entry
+	stale   []int64
 }
 
-// NewLedger returns an empty ledger.
+// NewLedger returns an empty ledger in memory.
 func NewLedger() *Ledger { return &Ledger{tenants: map[string]*tenant{}} }
+
+// Open returns a ledger that keeps its entries in st, rebuilt from what st
+// already has. A nil st is NewLedger.
+func Open(st state.Store) (*Ledger, error) {
+	l := NewLedger()
+	l.kept = state.NewTable[Entry](st, "usage")
+	if st == nil {
+		return l, nil
+	}
+	l.pending = map[int64]Entry{}
+	var last time.Time
+	err := l.kept.Load(func(_, key string, e Entry) error {
+		n, err := strconv.ParseInt(key, 10, 64)
+		if err != nil {
+			return fmt.Errorf("usage: an entry is kept under %q", key)
+		}
+		l.entries = append(l.entries, e)
+		l.seqs = append(l.seqs, n)
+		l.seq = max(l.seq, n)
+		_ = l.apply(e)
+		if e.At.After(last) {
+			last = e.At
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("usage: load: %w", err)
+	}
+	if !last.IsZero() {
+		l.prune(last)
+	}
+	return l, nil
+}
+
+// write writes what is pending and stale, and e when given. The caller holds
+// the lock. On failure nothing is cleared.
+func (l *Ledger) write(n int64, e *Entry) error {
+	b := l.kept.Batch()
+	for seq, p := range l.pending {
+		b.Put("", state.Seq(seq), p)
+	}
+	if e != nil {
+		b.Put("", state.Seq(n), *e)
+	}
+	for _, seq := range l.stale {
+		b.Delete("", state.Seq(seq))
+	}
+	if err := b.Commit(); err != nil {
+		return fmt.Errorf("usage: write: %w", err)
+	}
+	clear(l.pending)
+	l.stale = l.stale[:0]
+	return nil
+}
+
+// Flush writes the entries that could not be written when they were
+// appended, and deletes what was pruned since.
+func (l *Ledger) Flush() error {
+	if !l.kept.Enabled() {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.pending) == 0 && len(l.stale) == 0 {
+		return nil
+	}
+	return l.write(0, nil)
+}
 
 func (l *Ledger) of(name string) *tenant {
 	t, ok := l.tenants[name]
@@ -316,26 +406,47 @@ func (l *Ledger) dayOf(t *tenant, at time.Time) *day {
 
 // Append records an entry and folds it into the counts. It is the only way the
 // counts change. A Spent or Settled entry whose key was already counted is
-// not recorded, and Append reports false.
-func (l *Ledger) Append(e Entry) bool {
-	_, ok := l.Record(e)
-	return ok
+// not recorded, and Append reports false. An error is a write that failed:
+// see Record for what was counted.
+func (l *Ledger) Append(e Entry) (bool, error) {
+	_, ok, err := l.Record(e)
+	return ok, err
 }
 
 // Record appends an entry, as Append does, and returns what it added to the
 // counts: for a Spent entry its call, unless its run had already settled a
 // total that covers it, and for a Settled entry only what the run's calls
 // already counted did not cover. Anything else adds no spend.
-func (l *Ledger) Record(e Entry) (Spend, bool) {
+//
+// With a store, an error says the entry could not be written. An admission
+// is then not counted, and Record reports false. Any other entry is counted
+// and reported true, and is written later.
+func (l *Ledger) Record(e Entry) (Spend, bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if (e.Kind == Spent || e.Kind == Settled) && (e.Key == "" || e.Spend == nil || l.of(e.Tenant).keys[e.Key]) {
-		return Spend{}, false
+		return Spend{}, false, nil
+	}
+	var werr error
+	if l.kept.Enabled() {
+		n := l.seq + 1
+		if werr = l.write(n, &e); werr != nil {
+			if e.Kind == Admitted {
+				return Spend{}, false, werr
+			}
+			l.pending[n] = e
+		}
+		l.seq = n
+		l.seqs = append(l.seqs, n)
 	}
 	l.entries = append(l.entries, e)
 	added := l.apply(e)
 	l.prune(e.At)
-	return added, true
+	if len(l.stale) > 0 && werr == nil {
+		// What a failed delete leaves is deleted by a later write.
+		_ = l.write(0, nil)
+	}
+	return added, true, werr
 }
 
 func (l *Ledger) apply(e Entry) Spend {
@@ -390,6 +501,21 @@ func (l *Ledger) prune(now time.Time) {
 	cutoff := policy.PeriodStart(policy.Day, now.Add(-keepAdmissions))
 	if l.oldest.IsZero() || !l.oldest.Before(cutoff) {
 		return
+	}
+	if l.kept.Enabled() {
+		keep := l.seqs[:0]
+		for i, e := range l.entries {
+			if !e.At.Before(cutoff) {
+				keep = append(keep, l.seqs[i])
+				continue
+			}
+			if _, ok := l.pending[l.seqs[i]]; ok {
+				delete(l.pending, l.seqs[i])
+			} else {
+				l.stale = append(l.stale, l.seqs[i])
+			}
+		}
+		l.seqs = keep
 	}
 	l.entries = slices.DeleteFunc(l.entries, func(e Entry) bool { return e.At.Before(cutoff) })
 	l.oldest = time.Time{}

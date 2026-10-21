@@ -287,11 +287,16 @@ that kind.
 
 ## Not built yet
 
-- Limits are checked under a lock in one process, and the usage ledger is in
-  memory. Two servers could both admit a run at the limit, and a restart
-  forgets what was used. Spend limits are recorded but not enforced, because a
+- Limits are checked under a lock in one process. With `-state=postgres` the
+  usage ledger is kept, and a second server on the same database is refused
+  at start, so two servers cannot both admit a run at the limit. In memory, a
+  restart forgets what was used. Spend limits are recorded but not enforced, because a
   run reports no cost.
-- Sessions and schedules are in memory, so a restart signs everyone out.
+- Sessions are in memory, so a restart signs everyone out. Schedules are kept
+  with `-state=postgres`.
+- With `-state=postgres`, client secret values written through the API are
+  kept in the database as written. Guard it as you would the secrets, or use
+  `env:` references, which keep no value.
 - Knowledge is not yet used by runs. The runtime's retriever is not told which
   tenant or agent is asking, and wiring it before that changes would let one
   tenant's agent read another's documents.

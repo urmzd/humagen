@@ -128,6 +128,9 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		return l, err
 	}
 	l.cfg, l.any = cfg, true
+	// The stores' default comes from $WARP_POSTGRES_URL, so the file sets
+	// -state only when it says.
+	declaredStores := cfg.System.Spec.Stores.Kind
 	sys := cfg.System
 	sys.Defaults()
 	sp := sys.Spec
@@ -211,6 +214,9 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		if err := secret(s3SecretEnv, b.SecretKey); err != nil {
 			return l, err
 		}
+	}
+	if declaredStores != "" {
+		set("state", declaredStores)
 	}
 	if sp.Stores.Kind == "postgres" {
 		b, _ := spec.Block[spec.URLBlock](sp.Stores)

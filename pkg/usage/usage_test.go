@@ -149,7 +149,8 @@ func TestUsageByClient(t *testing.T) {
 }
 
 func call(l *Ledger, tenant, run, key string, at time.Time, sp Spend) bool {
-	return l.Append(Entry{Kind: Spent, Tenant: tenant, Project: "Launch", Agent: "lead", RunID: run, Key: key, Spend: &sp, At: at})
+	ok, _ := l.Append(Entry{Kind: Spent, Tenant: tenant, Project: "Launch", Agent: "lead", RunID: run, Key: key, Spend: &sp, At: at})
+	return ok
 }
 
 // A model call is counted once however often it is delivered, and a run's
@@ -164,8 +165,9 @@ func TestARunsSpendIsCountedOnceDespiteRedeliveryAndSettlement(t *testing.T) {
 	call(l, "acme", "r1", "r1/a1/2", t0, one)
 	// The run ended having made three calls: one of them was never seen.
 	settle := func() (Spend, bool) {
-		return l.Record(Entry{Kind: Settled, Tenant: "acme", Project: "Launch", Agent: "lead", RunID: "r1", Key: "run:r1",
+		added, ok, _ := l.Record(Entry{Kind: Settled, Tenant: "acme", Project: "Launch", Agent: "lead", RunID: "r1", Key: "run:r1",
 			Spend: &Spend{Micros: 900, ModelCalls: 3, Tokens: 3000}, At: t0.Add(time.Minute)})
+		return added, ok
 	}
 	added, ok := settle()
 	if !ok || added.Micros != 300 || added.ModelCalls != 1 || added.Tokens != 1000 {
@@ -213,7 +215,7 @@ func TestUnpricedAndOtherCurrencyCallsAreNotDollars(t *testing.T) {
 // excess. The same holds in the other order.
 func TestALateCallAfterSettlementIsNotCountedTwice(t *testing.T) {
 	settle := func(l *Ledger, sp Spend) Spend {
-		added, _ := l.Record(Entry{Kind: Settled, Tenant: "acme", Agent: "lead", RunID: "r1", Key: "run:r1", Spend: &sp, At: t0})
+		added, _, _ := l.Record(Entry{Kind: Settled, Tenant: "acme", Agent: "lead", RunID: "r1", Key: "run:r1", Spend: &sp, At: t0})
 		return added
 	}
 	one := Spend{Micros: 4500, ModelCalls: 1, Tokens: 1100}

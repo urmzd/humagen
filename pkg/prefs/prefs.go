@@ -4,7 +4,8 @@
 // Preferences belong to a person in a tenant. Nobody else reads or writes them,
 // and they change nothing about what the person is allowed to do.
 //
-// The store is in memory and is lost on restart.
+// The store is in memory. Built with Open, it writes every change through a
+// state.Store and reads them back when it is built again.
 package prefs
 
 import (
@@ -15,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Errors.
@@ -87,12 +90,94 @@ type entry struct {
 type Store struct {
 	mu sync.RWMutex
 	by map[string]*entry
+	// kept and photos are where preferences and pictures are written. Nil
+	// keeps them only in memory.
+	kept   *state.Table[Preferences]
+	photos *state.Table[storedPhoto]
 }
 
-// NewStore returns an empty store.
+// storedPhoto is a picture as it is written.
+type storedPhoto struct {
+	Data []byte `json:"data"`
+	Mime string `json:"mime"`
+}
+
+// NewStore returns an empty store in memory.
 func NewStore() *Store { return &Store{by: map[string]*entry{}} }
 
+// Open returns a store that keeps everything in st, holding what st already
+// has. A nil st is NewStore.
+func Open(st state.Store) (*Store, error) {
+	s := NewStore()
+	s.kept = state.NewTable[Preferences](st, "prefs")
+	s.photos = state.NewTable[storedPhoto](st, "prefs.photo")
+	if err := s.kept.Load(func(tenant, subject string, p Preferences) error {
+		if p.Pinned == nil {
+			p.Pinned = []string{}
+		}
+		s.by[key(tenant, subject)] = &entry{Preferences: p}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("prefs: load: %w", err)
+	}
+	if err := s.photos.Load(func(tenant, subject string, ph storedPhoto) error {
+		if e, ok := s.by[key(tenant, subject)]; ok {
+			e.photo = photo{data: ph.Data, mime: ph.Mime}
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("prefs: load photos: %w", err)
+	}
+	return s, nil
+}
+
 func key(tenant, subject string) string { return tenant + "\x00" + subject }
+
+// change applies fn to a person's entry and writes the result, undoing it if
+// the write fails. With photo, the picture is written too. It is called with
+// the lock held.
+func (s *Store) change(tenant, subject string, photo bool, fn func(e *entry)) (Preferences, error) {
+	k := key(tenant, subject)
+	before, existed := s.by[k]
+	var saved entry
+	if existed {
+		saved = *before
+	}
+	e := s.of(tenant, subject)
+	fn(e)
+	if err := s.write(tenant, subject, e, photo); err != nil {
+		if existed {
+			*e = saved
+		} else {
+			delete(s.by, k)
+		}
+		return Preferences{}, err
+	}
+	return e.Preferences, nil
+}
+
+func (s *Store) write(tenant, subject string, e *entry, photo bool) error {
+	if !s.kept.Enabled() {
+		return nil
+	}
+	if photo {
+		// The picture is written first: preferences that say there is a
+		// picture never point at one that was not kept.
+		var err error
+		if e.HasPhoto {
+			err = s.photos.Put(tenant, subject, storedPhoto{Data: e.photo.data, Mime: e.photo.mime})
+		} else {
+			err = s.photos.Delete(tenant, subject)
+		}
+		if err != nil {
+			return fmt.Errorf("prefs: write photo: %w", err)
+		}
+	}
+	if err := s.kept.Put(tenant, subject, e.Preferences); err != nil {
+		return fmt.Errorf("prefs: write: %w", err)
+	}
+	return nil
+}
 
 func (s *Store) of(tenant, subject string) *entry {
 	e, ok := s.by[key(tenant, subject)]
@@ -133,9 +218,9 @@ func (s *Store) Set(tenant, subject string, next Preferences) (Preferences, erro
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e := s.of(tenant, subject)
-	e.DisplayName, e.Theme, e.Accent = next.DisplayName, next.Theme, next.Accent
-	return e.Preferences, nil
+	return s.change(tenant, subject, false, func(e *entry) {
+		e.DisplayName, e.Theme, e.Accent = next.DisplayName, next.Theme, next.Accent
+	})
 }
 
 // CleanPinned checks a list of pinned conversations and drops repeats,
@@ -166,22 +251,19 @@ func (s *Store) SetPinned(tenant, subject string, ids []string) (Preferences, er
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e := s.of(tenant, subject)
-	e.Pinned = next
-	return e.Preferences, nil
+	return s.change(tenant, subject, false, func(e *entry) { e.Pinned = next })
 }
 
 // MarkOnboarded records that a person has been through the first-run questions.
 // The time is the server's, and the first one stands: asking twice does not
 // move it.
-func (s *Store) MarkOnboarded(tenant, subject string, at time.Time) Preferences {
+func (s *Store) MarkOnboarded(tenant, subject string, at time.Time) (Preferences, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e := s.of(tenant, subject)
-	if e.OnboardedAt.IsZero() {
-		e.OnboardedAt = at
+	if e, ok := s.by[key(tenant, subject)]; ok && !e.OnboardedAt.IsZero() {
+		return e.Preferences, nil
 	}
-	return e.Preferences
+	return s.change(tenant, subject, false, func(e *entry) { e.OnboardedAt = at })
 }
 
 // imageType reports the type of an image from its own bytes. What the uploader
@@ -214,21 +296,21 @@ func (s *Store) SetPhoto(tenant, subject string, data []byte) (Preferences, erro
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e := s.of(tenant, subject)
-	e.photo = photo{data: bytes.Clone(data), mime: mime}
-	e.HasPhoto = true
-	e.PhotoVersion++
-	return e.Preferences, nil
+	return s.change(tenant, subject, true, func(e *entry) {
+		e.photo = photo{data: bytes.Clone(data), mime: mime}
+		e.HasPhoto = true
+		e.PhotoVersion++
+	})
 }
 
 // ClearPhoto removes a profile picture.
-func (s *Store) ClearPhoto(tenant, subject string) Preferences {
+func (s *Store) ClearPhoto(tenant, subject string) (Preferences, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e := s.of(tenant, subject)
-	e.photo, e.HasPhoto = photo{}, false
-	e.PhotoVersion++
-	return e.Preferences
+	return s.change(tenant, subject, true, func(e *entry) {
+		e.photo, e.HasPhoto = photo{}, false
+		e.PhotoVersion++
+	})
 }
 
 // Photo returns a person's picture and its type.

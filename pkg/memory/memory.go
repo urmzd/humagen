@@ -17,7 +17,8 @@
 // What may be stored at all is also saige's rule. Every note passes through
 // saige's memory Policy, which refuses text that carries personal data.
 //
-// The store is in memory and is lost on restart.
+// The store is in memory. Built with Open, it writes every change through a
+// state.Store and reads them back when it is built again.
 package memory
 
 import (
@@ -31,6 +32,8 @@ import (
 	"time"
 
 	saigememory "github.com/urmzd/saige/agent/memory"
+
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Errors.
@@ -86,12 +89,62 @@ type Store struct {
 	mu   sync.RWMutex
 	by   map[string][]Note
 	next int
+	// kept is where each owner's notes are written. Nil keeps them only in
+	// memory.
+	kept *state.Table[stored]
 }
 
-// NewStore returns an empty store.
+// stored is one owner's notes as they are written. Next is the store's id
+// counter when they were written, so ids are not issued twice after a
+// restart. An owner whose notes are all gone keeps its record for the same
+// reason.
+type stored struct {
+	Notes []Note `json:"notes"`
+	Next  int    `json:"next"`
+}
+
+// NewStore returns an empty store in memory.
 func NewStore() *Store { return &Store{by: map[string][]Note{}} }
 
+// Open returns a store that keeps every note in st, holding what st already
+// has. A nil st is NewStore.
+func Open(st state.Store) (*Store, error) {
+	s := NewStore()
+	s.kept = state.NewTable[stored](st, "memory")
+	err := s.kept.Load(func(tenant, owner string, r stored) error {
+		s.next = max(s.next, r.Next)
+		for _, n := range r.Notes {
+			if id, err := strconv.Atoi(strings.TrimPrefix(n.ID, "m")); err == nil {
+				s.next = max(s.next, id)
+			}
+		}
+		if len(r.Notes) > 0 {
+			s.by[key(tenant, owner)] = r.Notes
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("memory: load: %w", err)
+	}
+	return s, nil
+}
+
 func key(tenant, agent string) string { return tenant + "\x00" + agent }
+
+// set replaces an owner's notes, writing them first. It is called with the
+// lock held, and on a failed write leaves everything as it was.
+func (s *Store) set(tenant, owner string, notes []Note, next int) error {
+	if err := s.kept.Put(tenant, owner, stored{Notes: notes, Next: next}); err != nil {
+		return fmt.Errorf("memory: write: %w", err)
+	}
+	s.next = next
+	if len(notes) == 0 {
+		delete(s.by, key(tenant, owner))
+		return nil
+	}
+	s.by[key(tenant, owner)] = notes
+	return nil
+}
 
 // clean makes text fit for a note: one line, trimmed, bounded.
 func clean(text string) (string, error) {
@@ -135,13 +188,15 @@ func (s *Store) Add(tenant, agent, text string, source Source, status Status, by
 			return n, nil
 		}
 	}
-	notes, err = makeRoom(notes, status)
+	notes, err = makeRoom(slices.Clone(notes), status)
 	if err != nil {
 		return Note{}, err
 	}
-	s.next++
-	note := Note{ID: "m" + strconv.Itoa(s.next), Text: text, Source: source, Status: status, By: by, At: at}
-	s.by[k] = append(notes, note)
+	next := s.next + 1
+	note := Note{ID: "m" + strconv.Itoa(next), Text: text, Source: source, Status: status, By: by, At: at}
+	if err := s.set(tenant, agent, append(notes, note), next); err != nil {
+		return Note{}, err
+	}
 	return note, nil
 }
 
@@ -179,9 +234,9 @@ func makeRoom(notes []Note, status Status) ([]Note, error) {
 func (s *Store) Approve(tenant, agent string, ids []string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	k := key(tenant, agent)
-	notes := s.by[k]
+	notes := s.by[key(tenant, agent)]
 	approved := 0
+	var refused error
 	for _, id := range ids {
 		i := slices.IndexFunc(notes, func(n Note) bool { return n.ID == id && n.Status == Pending })
 		if i < 0 {
@@ -190,15 +245,19 @@ func (s *Store) Approve(tenant, agent string, ids []string) (int, error) {
 		note := notes[i]
 		rest, err := makeRoom(slices.Delete(slices.Clone(notes), i, i+1), Approved)
 		if err != nil {
-			s.by[k] = notes
-			return approved, err
+			refused = err
+			break
 		}
 		note.Status = Approved
 		notes = append(rest, note)
 		approved++
 	}
-	s.by[k] = notes
-	return approved, nil
+	if approved > 0 {
+		if err := s.set(tenant, agent, notes, s.next); err != nil {
+			return 0, err
+		}
+	}
+	return approved, refused
 }
 
 // Proposal is a pending note and the agent it is for.
@@ -236,10 +295,13 @@ func (s *Store) List(tenant, agent string) []Note {
 }
 
 // Drop forgets everything an owner holds, for when the owner is deleted.
-func (s *Store) Drop(tenant, owner string) {
+func (s *Store) Drop(tenant, owner string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	delete(s.by, key(tenant, owner))
+	if _, ok := s.by[key(tenant, owner)]; !ok {
+		return nil
+	}
+	return s.set(tenant, owner, nil, s.next)
 }
 
 // Remove deletes one note.
@@ -251,8 +313,7 @@ func (s *Store) Remove(tenant, agent, id string) error {
 	if i < 0 {
 		return fmt.Errorf("%w: note %q", ErrNotFound, id)
 	}
-	s.by[k] = slices.Delete(s.by[k], i, i+1)
-	return nil
+	return s.set(tenant, agent, slices.Delete(slices.Clone(s.by[k]), i, i+1), s.next)
 }
 
 // Prompt renders an agent's notes for the start of a turn, or "" for none.

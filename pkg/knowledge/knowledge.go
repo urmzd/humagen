@@ -3,9 +3,10 @@
 // A source is a named collection in one tenant. A document added to it is cut
 // into passages, and Search ranks passages against a query with BM25.
 //
-// The store is in memory and lexical only: no embeddings, and nothing survives
-// a restart. It is the smallest thing that makes a source real enough to fill,
-// search and assign to an agent.
+// The store is in memory and lexical only: no embeddings. Built with Open, it
+// writes every change through a state.Store, passages included, and reads
+// them back when it is built again. It is the smallest thing that makes a
+// source real enough to fill, search and assign to an agent.
 package knowledge
 
 import (
@@ -16,10 +17,13 @@ import (
 	"math"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // Errors.
@@ -96,16 +100,141 @@ type source struct {
 	Source
 	docs     []*Document
 	passages []*passage
+	// seqs is each document's place in docs as it was written, by id.
+	seqs map[string]int64
 }
 
 // Store holds every tenant's sources. Every method is confined to one tenant.
 type Store struct {
 	mu      sync.RWMutex
 	tenants map[string]map[string]*source
+	seq     int64
+	// kept is where sources and documents are written. Nil keeps them only
+	// in memory.
+	kept *state.Table[stored]
 }
 
-// NewStore returns an empty store.
+// stored is one record: a source, a document, or a document's passages. A
+// document's passages are written once, when it is added, and its record
+// again whenever it changes.
+type stored struct {
+	Source   *Source   `json:"source,omitempty"`
+	Document *Document `json:"document,omitempty"`
+	Passages []string  `json:"passages,omitempty"`
+}
+
+func sourceKey(name string) string { return "source/" + name }
+func docKey(name string, seq int64) string {
+	return "doc/" + name + "/" + state.Seq(seq)
+}
+func textKey(name string, seq int64) string {
+	return "text/" + name + "/" + state.Seq(seq)
+}
+
+// NewStore returns an empty store in memory.
 func NewStore() *Store { return &Store{tenants: map[string]map[string]*source{}} }
+
+// Open returns a store that keeps its sources in st, holding what st already
+// has. A nil st is NewStore.
+func Open(st state.Store) (*Store, error) {
+	s := NewStore()
+	s.kept = state.NewTable[stored](st, "knowledge")
+	type doc struct {
+		d        *Document
+		passages []string
+	}
+	docs := map[[2]string]map[int64]*doc{} // (tenant, source) -> seq -> doc
+	at := func(tenant, key, kind string) (string, int64, bool) {
+		rest, ok := strings.CutPrefix(key, kind+"/")
+		if !ok {
+			return "", 0, false
+		}
+		i := strings.LastIndexByte(rest, '/')
+		if i < 0 {
+			return "", 0, false
+		}
+		n, err := strconv.ParseInt(rest[i+1:], 10, 64)
+		if err != nil {
+			return "", 0, false
+		}
+		return rest[:i], n, true
+	}
+	of := func(tenant, name string, seq int64) *doc {
+		k := [2]string{tenant, name}
+		if docs[k] == nil {
+			docs[k] = map[int64]*doc{}
+		}
+		if docs[k][seq] == nil {
+			docs[k][seq] = &doc{}
+		}
+		return docs[k][seq]
+	}
+	err := s.kept.Load(func(tenant, key string, r stored) error {
+		switch {
+		case r.Source != nil:
+			if s.tenants[tenant] == nil {
+				s.tenants[tenant] = map[string]*source{}
+			}
+			src := &source{Source: *r.Source, seqs: map[string]int64{}}
+			if src.Variants == nil {
+				src.Variants = []Variant{}
+			}
+			s.tenants[tenant][src.Name] = src
+		case r.Document != nil:
+			if name, seq, ok := at(tenant, key, "doc"); ok {
+				d := *r.Document
+				of(tenant, name, seq).d = &d
+				s.seq = max(s.seq, seq)
+			}
+		case r.Passages != nil:
+			if name, seq, ok := at(tenant, key, "text"); ok {
+				of(tenant, name, seq).passages = r.Passages
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("knowledge: load: %w", err)
+	}
+	for k, bySeq := range docs {
+		src := s.tenants[k[0]][k[1]]
+		if src == nil {
+			continue
+		}
+		seqs := make([]int64, 0, len(bySeq))
+		for seq := range bySeq {
+			seqs = append(seqs, seq)
+		}
+		slices.Sort(seqs)
+		for _, seq := range seqs {
+			d := bySeq[seq]
+			if d.d == nil {
+				continue
+			}
+			src.docs = append(src.docs, d.d)
+			src.seqs[d.d.ID] = seq
+			src.passages = append(src.passages, passagesOf(d.d, d.passages)...)
+		}
+		src.Documents, src.Passages = len(src.docs), len(src.passages)
+		src.recount()
+	}
+	return s, nil
+}
+
+// passagesOf indexes a document's passages for search.
+func passagesOf(doc *Document, texts []string) []*passage {
+	out := make([]*passage, 0, len(texts))
+	for i, p := range texts {
+		terms := map[string]int{}
+		n := 0
+		for _, t := range tokens(p) {
+			terms[t]++
+			n++
+		}
+		out = append(out, &passage{doc: doc, index: i, text: p, terms: terms, n: n})
+	}
+	return out
+}
 
 func (s *Store) get(tenant, name string) (*source, error) {
 	src, ok := s.tenants[tenant][name]
@@ -125,10 +254,13 @@ func (s *Store) Create(tenant, name, description, by string, at time.Time) (Sour
 	if _, ok := s.tenants[tenant][name]; ok {
 		return Source{}, fmt.Errorf("%w: %q", ErrExists, name)
 	}
+	src := &source{Source: Source{Name: name, Description: description, Variants: []Variant{}, CreatedBy: by, UpdatedAt: at}, seqs: map[string]int64{}}
+	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &src.Source}); err != nil {
+		return Source{}, fmt.Errorf("knowledge: write: %w", err)
+	}
 	if s.tenants[tenant] == nil {
 		s.tenants[tenant] = map[string]*source{}
 	}
-	src := &source{Source: Source{Name: name, Description: description, Variants: []Variant{}, CreatedBy: by, UpdatedAt: at}}
 	s.tenants[tenant][name] = src
 	return src.Source, nil
 }
@@ -137,8 +269,18 @@ func (s *Store) Create(tenant, name, description, by string, at time.Time) (Sour
 func (s *Store) Delete(tenant, name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := s.get(tenant, name); err != nil {
+	src, err := s.get(tenant, name)
+	if err != nil {
 		return err
+	}
+	b := s.kept.Batch()
+	b.Delete(tenant, sourceKey(name))
+	for _, seq := range src.seqs {
+		b.Delete(tenant, docKey(name, seq))
+		b.Delete(tenant, textKey(name, seq))
+	}
+	if err := b.Commit(); err != nil {
+		return fmt.Errorf("knowledge: write: %w", err)
 	}
 	delete(s.tenants[tenant], name)
 	return nil
@@ -194,16 +336,22 @@ func (s *Store) Add(tenant, name, title, uri, text, by string, at time.Time) (Do
 	if err != nil {
 		return Document{}, err
 	}
-	for i, p := range split(text) {
-		terms := map[string]int{}
-		n := 0
-		for _, t := range tokens(p) {
-			terms[t]++
-			n++
-		}
-		src.passages = append(src.passages, &passage{doc: doc, index: i, text: p, terms: terms, n: n})
-		doc.Passages++
+	texts := split(text)
+	added := passagesOf(doc, texts)
+	doc.Passages = len(added)
+	seq := s.seq + 1
+	meta := src.Source
+	meta.Documents, meta.Passages, meta.UpdatedAt = len(src.docs)+1, len(src.passages)+len(added), at
+	b := s.kept.Batch()
+	b.Put(tenant, textKey(name, seq), stored{Passages: texts})
+	b.Put(tenant, docKey(name, seq), stored{Document: doc})
+	b.Put(tenant, sourceKey(name), stored{Source: &meta})
+	if err := b.Commit(); err != nil {
+		return Document{}, fmt.Errorf("knowledge: write: %w", err)
 	}
+	s.seq = seq
+	src.seqs[doc.ID] = seq
+	src.passages = append(src.passages, added...)
 	src.docs = append(src.docs, doc)
 	src.Documents, src.Passages, src.UpdatedAt = len(src.docs), len(src.passages), at
 	return *doc, nil
@@ -221,13 +369,26 @@ func (s *Store) Remove(tenant, name, id string, at time.Time) error {
 	if i < 0 {
 		return fmt.Errorf("%w: document %q", ErrNotFound, id)
 	}
-	src.docs = slices.Delete(src.docs, i, i+1)
-	src.passages = slices.DeleteFunc(src.passages, func(p *passage) bool { return p.doc.ID == id })
-	for i := range src.Variants {
-		src.Variants[i].Excluded = slices.DeleteFunc(src.Variants[i].Excluded, func(x string) bool { return x == id })
+	docs := slices.Delete(slices.Clone(src.docs), i, i+1)
+	passages := slices.DeleteFunc(slices.Clone(src.passages), func(p *passage) bool { return p.doc.ID == id })
+	variants := slices.Clone(src.Variants)
+	for i := range variants {
+		variants[i].Excluded = slices.DeleteFunc(slices.Clone(variants[i].Excluded), func(x string) bool { return x == id })
 	}
-	src.Documents, src.Passages, src.UpdatedAt = len(src.docs), len(src.passages), at
-	src.recount()
+	next := *src
+	next.docs, next.passages, next.Variants = docs, passages, variants
+	next.Documents, next.Passages, next.UpdatedAt = len(docs), len(passages), at
+	next.recount()
+	seq := src.seqs[id]
+	b := s.kept.Batch()
+	b.Delete(tenant, docKey(name, seq))
+	b.Delete(tenant, textKey(name, seq))
+	b.Put(tenant, sourceKey(name), stored{Source: &next.Source})
+	if err := b.Commit(); err != nil {
+		return fmt.Errorf("knowledge: write: %w", err)
+	}
+	delete(next.seqs, id)
+	*src = next
 	return nil
 }
 
@@ -252,6 +413,24 @@ func (s *Store) SetExcluded(tenant, name, id string, excluded bool, at time.Time
 	i := slices.IndexFunc(src.docs, func(d *Document) bool { return d.ID == id })
 	if i < 0 {
 		return Document{}, fmt.Errorf("%w: document %q", ErrNotFound, id)
+	}
+	doc := *src.docs[i]
+	doc.Excluded = excluded
+	meta := src.Source
+	meta.UpdatedAt = at
+	meta.Excluded = src.Excluded
+	if doc.Excluded != src.docs[i].Excluded {
+		if excluded {
+			meta.Excluded++
+		} else {
+			meta.Excluded--
+		}
+	}
+	b := s.kept.Batch()
+	b.Put(tenant, docKey(name, src.seqs[id]), stored{Document: &doc})
+	b.Put(tenant, sourceKey(name), stored{Source: &meta})
+	if err := b.Commit(); err != nil {
+		return Document{}, fmt.Errorf("knowledge: write: %w", err)
 	}
 	src.docs[i].Excluded = excluded
 	src.UpdatedAt = at
@@ -278,15 +457,21 @@ func (s *Store) SaveVariant(tenant, name, variant string, at time.Time) (Variant
 		}
 	}
 	i := slices.IndexFunc(src.Variants, func(x Variant) bool { return x.Name == variant })
+	variants := slices.Clone(src.Variants)
 	switch {
 	case i >= 0:
-		src.Variants[i] = v
+		variants[i] = v
 	case len(src.Variants) >= MaxVariants:
 		return Variant{}, fmt.Errorf("%w: a source keeps at most %d variants", ErrInvalid, MaxVariants)
 	default:
-		src.Variants = append(src.Variants, v)
+		variants = append(variants, v)
 	}
-	src.UpdatedAt = at
+	meta := src.Source
+	meta.Variants, meta.UpdatedAt = variants, at
+	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &meta}); err != nil {
+		return Variant{}, fmt.Errorf("knowledge: write: %w", err)
+	}
+	src.Variants, src.UpdatedAt = variants, at
 	return v, nil
 }
 
@@ -302,7 +487,12 @@ func (s *Store) DeleteVariant(tenant, name, variant string) error {
 	if i < 0 {
 		return fmt.Errorf("%w: variant %q", ErrNotFound, variant)
 	}
-	src.Variants = slices.Delete(src.Variants, i, i+1)
+	meta := src.Source
+	meta.Variants = slices.Delete(slices.Clone(src.Variants), i, i+1)
+	if err := s.kept.Put(tenant, sourceKey(name), stored{Source: &meta}); err != nil {
+		return fmt.Errorf("knowledge: write: %w", err)
+	}
+	src.Variants = meta.Variants
 	return nil
 }
 
