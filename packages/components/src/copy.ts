@@ -498,7 +498,12 @@ export const defaultCopy = {
       below: (n: number) => `${n} ${n === 1 ? "sub-project" : "sub-projects"}`,
       active: (when: string) => `active ${when}`,
     },
-    tab: { overview: "Overview", context: "Context", agents: "Agents", channels: "Channels" } as Record<string, string>,
+    tab: {
+      overview: "Overview",
+      context: "Context",
+      agents: "Agents",
+      channels: "Channels",
+    } as Record<string, string>,
     /** A project's Agents tab: what it turns on, and who answers untagged messages. */
     agents: {
       available: "Available here",
@@ -609,7 +614,8 @@ export const defaultCopy = {
     /** Under the composer: who answers a message that tags nobody. */
     answers: (agent: string) => `@${agent} answers untagged messages. Tag anyone with @.`,
     nobody: "Nobody answers untagged messages here. Tag an agent with @.",
-    stale: (agent: string, why: string) => `@${agent} answers untagged messages here, but ${why}. Tag an agent with @.`,
+    stale: (agent: string, why: string) =>
+      `@${agent} answers untagged messages here, but ${why}. Tag an agent with @.`,
     /** What a message did, said once it is posted. */
     notified: (names: string[]) => `Sent to ${names.join(", ")}.`,
     refused: (tag: string, why: string) => `${tag}: ${why}`,
@@ -625,7 +631,6 @@ export const defaultCopy = {
       channel: "The channel could not be created.",
     },
   },
-
 };
 
 export type Copy = typeof defaultCopy;
