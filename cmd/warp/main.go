@@ -1,13 +1,13 @@
 // Command warp runs the platform: API, sign-in, event stream, schedules and
-// agent execution, in one process. It is warpapp with no extensions; a
-// program that adds providers, tools or stores calls warpapp.Main with
+// agent execution, in one process. It is warp.Main with no options; a
+// program that adds providers, tools or stores calls warp.Main with
 // options instead. See internal/app for the composition root.
 package main
 
 import (
 	"os"
 
-	"github.com/urmzd/warp/warpapp"
+	"github.com/urmzd/warp"
 )
 
 // Set at release time with -ldflags.
@@ -18,5 +18,5 @@ var (
 )
 
 func main() {
-	os.Exit(warpapp.Main(warpapp.Version{Version: version, Commit: commit, Date: date}))
+	os.Exit(warp.Main(warp.Version{Version: version, Commit: commit, Date: date}))
 }

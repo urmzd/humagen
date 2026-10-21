@@ -1,13 +1,13 @@
-// Package warpapp runs warp with extensions: the same command tree, server
+// Package warp runs warp with extensions: the same command tree, server
 // and composition root as the warp binary, plus model providers, tool
 // sources, MCP tool providers, connectors and stores a downstream program
 // registers in Go. It is the public seam that makes a private build of warp
 // an import and a few options instead of a fork.
 //
 //	func main() {
-//		os.Exit(warpapp.Main(warpapp.Version{Version: "v1"},
-//			warpapp.WithModelProvider("house", newHouseProvider),
-//			warpapp.WithBlobStore(myBucket),
+//		os.Exit(warp.Main(warp.Version{Version: "v1"},
+//			warp.WithModelProvider("house", newHouseProvider),
+//			warp.WithBlobStore(myBucket),
 //		))
 //	}
 //
@@ -21,7 +21,7 @@
 // It mirrors fiber's fiberapp option for option, and sits at the module root
 // because it is the public face of internal/app, which nothing under pkg/ may
 // import. It adds no behaviour of its own.
-package warpapp
+package warp
 
 import (
 	"os"
@@ -198,7 +198,7 @@ type Extension = app.Extension
 
 // WithKind registers a kind in a slot, so a spec file can select it by name:
 //
-//	warpapp.WithKind(warpapp.Blobs, "gcs", func(ctx context.Context, block json.RawMessage) (any, error) {
+//	warp.WithKind(warp.Blobs, "gcs", func(ctx context.Context, block json.RawMessage) (any, error) {
 //		var c struct{ Bucket string `json:"bucket"` }
 //		if err := strictDecode(block, &c); err != nil {
 //			return nil, err

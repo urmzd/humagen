@@ -40,7 +40,7 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY pkg ./pkg
-COPY warpapp ./warpapp
+COPY *.go ./
 COPY api ./api
 ARG VERSION=dev
 ARG COMMIT=none

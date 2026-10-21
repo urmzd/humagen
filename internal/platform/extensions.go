@@ -19,7 +19,7 @@ import (
 
 // Extensions is what a program built on warp adds to the platform without
 // forking it: model providers, tool sources and MCP tool providers. The zero
-// value adds nothing. warpapp fills it from options and from a providers file.
+// value adds nothing. The warp package fills it from options and a spec file.
 type Extensions struct {
 	// Providers are model providers by name. A spec whose provider is the
 	// name runs on what the function builds, and a built-in of the same name

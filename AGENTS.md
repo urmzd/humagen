@@ -8,7 +8,7 @@ platform and its web and Slack presentation in one repository. The design is in
 
 ## Rules
 
-- **Every choice is a file or an interface, never a fork.** A new backend is a kind in a spec slot (`pkg/spec`, `warpapp.WithKind`); a new setting is a spec field with a default, documented in docs/spec.md, whose examples are tested.
+- **Every choice is a file or an interface, never a fork.** A new backend is a kind in a spec slot (`pkg/spec`, `warp.WithKind`); a new setting is a spec field with a default, documented in docs/spec.md, whose examples are tested.
 
 - **Compose, don't reimplement.** If fiber, saige, playscape or anchor owns
   a concern, use it or change it upstream.
@@ -40,7 +40,7 @@ platform and its web and Slack presentation in one repository. The design is in
 - `pkg/clients`: the Slack apps and GitHub installations a workspace answers through. `internal/platform/connectors.go`: one surface per scheme, fanning in and out to them.
 - `pkg/evals`: suites and runs, scored by saige. `pkg/pick`: who answers a message. `pkg/prefs`: a person's own settings.
 - `internal/platform`: the composition root. `internal/httpapi`: routes, sessions, event stream.
-- `pkg/spec`: the configuration language, System and Platform documents (docs/spec.md). `internal/app`: the command tree (`start`, `serve`, `setup`, `config`, `slack manifest`) and the composition root, which turns a spec and flags into a running platform. `warpapp`: its public face, options a downstream program passes instead of forking. `cmd/warp`: `warpapp.Main` with no options. `pkg/credref`: credential references (`env:`, `keychain:`, `op://`), read when used and never stored.
+- `pkg/spec`: the configuration language, System and Platform documents (docs/spec.md). `internal/app`: the command tree (`start`, `serve`, `setup`, `config`, `slack manifest`) and the composition root, which turns a spec and flags into a running platform. The module root package `warp` (`warp.go`): its public face, `warp.Main` and the options a downstream program passes instead of forking. `cmd/warp`: `warp.Main` with no options. `pkg/credref`: credential references (`env:`, `keychain:`, `op://`), read when used and never stored.
 - `cmd/warp`: the binary. `apps/web`: the console, built on the shared UI packages. `apps/slack`: the Slack app, a client of the API.
 - `packages/adapter`: the one adapter between the platform's wire shapes and the shared UI model. The console and the Slack app both use it; nothing surface-specific goes in it.
 - `api/openapi.yaml`: the API contract, checked by `internal/httpapi/openapi_test.go`. `packages/client`: the TypeScript client generated from it by oag.

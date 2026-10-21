@@ -9,10 +9,13 @@ of two kinds, each with one owner.
 | `Platform` | what one workspace offers: its models, tools, agents, Slack and GitHub, settings | that workspace's admins | at start, with the console building on it |
 
 Both can live in one `warp.yaml`, separated by `---`, or in separate files.
-`warp start` and `warp serve` read `-f PATH` (repeatable; a directory reads its
-`*.yaml`, `*.yml` and `*.json`). With no `-f`, `warp start` reads `warp.yaml`
-from `WARP_HOME`, else the user config directory, and runs on defaults if there
-is none. `warp setup` writes one by asking a few questions.
+Two commands use it. `warp start` runs the platform here; `warp deploy` runs it
+where the System document's `deploy` slot says (here, a Docker Compose project,
+or a Kubernetes cluster). Both read `-f PATH` (repeatable; a directory reads its
+`*.yaml`, `*.yml` and `*.json`). With no `-f` they read `warp.yaml` from
+`WARP_HOME`, else the user config directory, and `warp start` runs on defaults,
+with example agents, if there is none. `warp setup` writes one by asking a few
+questions.
 
 Four rules hold for every field:
 
@@ -23,8 +26,8 @@ Four rules hold for every field:
    `{ref: op://VAULT/ITEM/FIELD}`, read when it is used and never stored. A bare
    string where a secret belongs is refused.
 3. **Every replaceable part is a slot: `kind` plus a block named after it.**
-   `kind: postgres` reads `postgres: {...}`. A binary built on `warpapp`
-   registers more kinds (`warpapp.WithKind`), and the file selects one by name
+   `kind: postgres` reads `postgres: {...}`. A program built on the `warp` package
+   registers more kinds (`warp.WithKind`), and the file selects one by name
    with no other change. An unknown kind is an error listing the kinds the
    binary has. A choice is a file or an interface, never a fork.
 4. **Unknown fields are errors**, with the document and path they are in.
@@ -88,6 +91,15 @@ spec:
     default: [WARP_SLACK_TOKEN]
 
   extensions: []            # process-wide parts a binary registered, each a slot
+
+  deploy:                   # slot: local | compose | kubernetes. Read by warp deploy
+    kind: compose
+    compose:
+      image: ""             # empty builds one from `build`, a warp checkout
+      postgres: true        # run Postgres beside warp and point the stores at it
+      port: 8080
+    # kind: kubernetes
+    # kubernetes: {context: prod, namespace: warp, host: warp.example.com, image: {repository: ghcr.io/urmzd/warp, tag: v0.10.0}}
 ```
 
 ## Platform
@@ -191,14 +203,21 @@ may declare the same model, but not two different ones under one name.
 
 ## Deploying it
 
-The same documents go everywhere:
+`warp deploy` takes the same documents anywhere, so nobody writes compose files
+or Helm values by hand:
 
-- **Laptop:** `warp start`, with no file, or the one `warp setup` writes.
-- **Compose:** `deploy/compose` mounts `warp.yaml` at `/etc/warp`.
-- **Kubernetes:** the Helm chart's `system` and `platforms` values are
-  rendered verbatim into the document the pod reads, beside chart-only values
-  (image, ingress, volume). Credentials stay in a Secret the references name.
-- **Flux:** a HelmRelease carrying the same values.
+| `deploy.kind` | What `warp deploy` does |
+|---------------|-------------------------|
+| `local` (the default) | `warp start` on this machine |
+| `compose` | writes a Docker Compose project (warp, and Postgres when asked) and brings it up. Sign-in that only answers on loopback runs on the host's network, so it stays on this machine |
+| `kubernetes` | installs the Helm chart warp carries, with the spec as its values, into the cluster the block names |
+
+`warp deploy -o DIR` writes the project or the chart and values and stops, for
+review or for GitOps (the Flux example in `deploy/flux` applies the same
+chart). A secret never lands in a written file: an `env:` reference is passed
+from the deploying shell's environment, and a `keychain:` or `op://` one is
+read on this machine and handed to the target as a variable the written spec
+references.
 
 ## Extending it
 
@@ -210,7 +229,7 @@ The same documents go everywhere:
 | `platform.models[]` | anthropic, openai, ollama | an `agentrt.ProviderFunc` |
 | `platform.tools[]` | mcp | a `runtime.Catalog` |
 
-`warpapp.WithKind(slot, name, factory)` registers one. The factory is given its
+`warp.WithKind(slot, name, factory)` registers one. The factory is given its
 block as JSON and decodes it strictly itself, so its fields get the same
 unknown-field errors as the built-ins'. Sign-in and stores are built in only,
 for now.

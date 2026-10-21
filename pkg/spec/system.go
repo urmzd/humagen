@@ -14,6 +14,7 @@ const (
 	SlotBus        = "bus"
 	SlotBlobs      = "blobs"
 	SlotExtensions = "extensions"
+	SlotDeploy     = "deploy"
 	SlotModels     = "models"
 	SlotTools      = "tools"
 )
@@ -26,6 +27,7 @@ var Builtin = map[string][]string{
 	SlotBus:        {"memory", "redis"},
 	SlotBlobs:      {"disk", "memory", "s3"},
 	SlotExtensions: {},
+	SlotDeploy:     {"local", "compose", "kubernetes"},
 	SlotModels:     {"anthropic", "openai", "ollama"},
 	SlotTools:      {"mcp"},
 }
@@ -46,6 +48,45 @@ type SystemSpec struct {
 	Execution  Execution           `json:"execution,omitzero"`
 	SecretEnv  map[string][]string `json:"secret_env,omitempty"`
 	Extensions []Slot              `json:"extensions,omitempty"`
+	// Deploy is where `warp deploy` runs this: local, compose or
+	// kubernetes. It is read by warp deploy, not by the server.
+	Deploy Slot `json:"deploy,omitzero"`
+}
+
+// Compose is the compose deploy kind's block: the platform as a Docker
+// Compose project on this machine.
+type Compose struct {
+	// Dir is where the project is written. Empty is deploy/compose under
+	// the spec's directory.
+	Dir string `json:"dir,omitempty"`
+	// Image is the warp image. Empty builds one from Build.
+	Image string `json:"image,omitempty"`
+	// Build is a warp checkout to build the image from. Empty is the
+	// working directory when Image is empty.
+	Build string `json:"build,omitempty"`
+	// Port is the host port. Empty is the port of server.addr.
+	Port int `json:"port,omitempty"`
+	// Postgres runs a Postgres beside warp and points the stores at it.
+	Postgres bool `json:"postgres,omitempty"`
+}
+
+// Kubernetes is the kubernetes deploy kind's block: the platform as a Helm
+// release of the chart warp carries.
+type Kubernetes struct {
+	Context   string `json:"context,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	// Release is the Helm release name. Empty is metadata.name.
+	Release string `json:"release,omitempty"`
+	Image   struct {
+		Repository string `json:"repository,omitempty"`
+		Tag        string `json:"tag,omitempty"`
+	} `json:"image,omitzero"`
+	// Host is the ingress host. Empty means no ingress.
+	Host         string `json:"host,omitempty"`
+	IngressClass string `json:"ingress_class,omitempty"`
+	TLSSecret    string `json:"tls_secret,omitempty"`
+	// Values are further chart values, merged over what warp derives.
+	Values map[string]any `json:"values,omitempty"`
 }
 
 // Server is the listeners and the console.
@@ -223,7 +264,7 @@ func (s System) check(kinds Kinds) error {
 	slots := []struct {
 		name string
 		slot Slot
-	}{{SlotAuth, sp.Auth.Slot}, {SlotStores, sp.Stores}, {SlotBus, sp.Bus}, {SlotBlobs, sp.Blobs}}
+	}{{SlotAuth, sp.Auth.Slot}, {SlotStores, sp.Stores}, {SlotBus, sp.Bus}, {SlotBlobs, sp.Blobs}, {SlotDeploy, sp.Deploy}}
 	for _, e := range sp.Extensions {
 		slots = append(slots, struct {
 			name string
@@ -242,8 +283,12 @@ func (s System) check(kinds Kinds) error {
 // checked when the file is read.
 func builtinBlock(slot, kind string) (any, bool) {
 	switch slot + "." + kind {
-	case "auth.dev", "auth.tailscale", "stores.memory", "bus.memory", "blobs.memory":
+	case "auth.dev", "auth.tailscale", "stores.memory", "bus.memory", "blobs.memory", "deploy.local":
 		return &struct{}{}, true
+	case "deploy.compose":
+		return &Compose{}, true
+	case "deploy.kubernetes":
+		return &Kubernetes{}, true
 	case "auth.oidc":
 		return &OIDC{}, true
 	case "auth.mock":

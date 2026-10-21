@@ -51,9 +51,13 @@ func start(o Options, args []string, in io.Reader, out io.Writer) error {
 	if i := indexOf(rest, "--"); i >= 0 {
 		rest = append(rest[:i:i], rest[i+1:]...)
 	}
+	// Example agents are seeded only when nothing is configured: a spec
+	// declares its own agents.
 	d := serveDefaults{seed: true, web: webDir(os.Getenv)}
 	path := filepath.Join(configDir(os.Getenv), "warp.yaml")
-	if len(scanFiles(rest)) == 0 {
+	if len(scanFiles(rest)) > 0 {
+		d.seed = false
+	} else {
 		_, err := os.Stat(path)
 		exists := err == nil
 		if *ask || (!exists && !*yes && interactive(in)) {
@@ -63,7 +67,7 @@ func start(o Options, args []string, in io.Reader, out io.Writer) error {
 			exists = true
 		}
 		if exists {
-			d.files = []string{path}
+			d.files, d.seed = []string{path}, false
 			fmt.Fprintf(out, "warp: reading %s\n", path)
 		}
 	}

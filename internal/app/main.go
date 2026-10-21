@@ -1,7 +1,7 @@
 // Package app is the warp command tree and the process's composition root:
 // it turns a command line, files and an environment into a running platform.
-// warpapp is its public face, so a program that adds providers or stores
-// imports warpapp and passes options instead of forking this package.
+// The module root package warp is its public face, so a program that adds
+// providers or stores imports it and passes options instead of forking.
 package app
 
 import (
@@ -38,7 +38,7 @@ type Version struct {
 }
 
 // Options is what a program built on warp passes to Execute: its build
-// metadata and what it adds to the platform. warpapp fills it.
+// metadata and what it adds to the platform. The warp package fills it.
 type Options struct {
 	Version Version
 	// Ext is added to whatever a providers file declares. A name declared
@@ -62,9 +62,9 @@ type Options struct {
 	ready func(addr string)
 }
 
-const usage = `usage: warp start [flags]              run the platform with zero configuration
-       warp serve [flags]              run the platform from flags and files
-       warp setup [flags]              choose providers, auth and Slack, and write them down
+const usage = `usage: warp start [-f PATH] [flags]     run the platform here; no file needs no configuration
+       warp deploy [-f PATH] [-o DIR]  run it where the spec's deploy says: local, compose or kubernetes
+       warp setup                      answer a few questions and write warp.yaml
        warp config check|print -f PATH check a spec, or print it with every default
        warp slack manifest [flags]     print the Slack app manifest
        warp authz check FILE | authz explain [flags] PERMISSION
@@ -94,10 +94,12 @@ func run(o Options, args []string) error {
 		return nil
 	case "authz":
 		return runAuthz(args[1:], os.Stdout, os.Getenv)
-	case "serve":
-		return serve(o, args[1:], serveDefaults{})
-	case "start":
+	case "start", "serve":
+		// serve is start's old name, kept so a container command keeps
+		// working.
 		return start(o, args[1:], os.Stdin, os.Stdout)
+	case "deploy":
+		return deployCmd(o, args[1:], os.Stdin, os.Stdout)
 	case "setup":
 		return setupCmd(args[1:], os.Stdin, os.Stdout)
 	case "slack":
