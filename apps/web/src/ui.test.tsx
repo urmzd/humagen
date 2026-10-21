@@ -49,6 +49,7 @@ const task = (id: string, title: string): ThreadSummary => ({
   title,
   named: true,
   origin: "api",
+  channel: "general",
   agents: ["lead"],
   turns: 1,
   branches: 1,

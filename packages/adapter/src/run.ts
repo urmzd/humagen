@@ -96,6 +96,10 @@ export interface Run {
   /** Why the agent was chosen, when the platform picked it. */
   picked?: string;
   project?: string;
+  /** The project's channel the conversation is in. Absent is `general`. */
+  channel?: string;
+  /** The person's message in a shared thread the run answers. Runs answering one message are side by side, not branches. */
+  message?: string;
   lease: number;
   /** Micro-USD leased to calls that have not ended. */
   granted: number;

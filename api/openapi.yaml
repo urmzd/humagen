@@ -3059,6 +3059,15 @@ components:
         client:
           description: The Slack app or GitHub installation that raised the run.
           type: string
+        channel:
+          description: The project's channel the conversation is in. Absent is `general`. A called run has its root's.
+          type: string
+        message:
+          description: |
+            The person's message in a shared thread that the run answers, such
+            as `m-3`. Runs that answer one message answer it side by side and
+            are not branches.
+          type: string
         lease:
           description: The run's budget in micro-USD. Zero means unmetered.
           type: integer
@@ -3259,7 +3268,7 @@ components:
     ThreadSummary:
       description: One conversation.
       type: object
-      required: [id, title, named, origin, agents, turns, branches, active, failed, created_at, updated_at]
+      required: [id, title, named, origin, channel, agents, turns, branches, active, failed, created_at, updated_at]
       properties:
         id: {type: string}
         title: {type: string}
@@ -3268,6 +3277,9 @@ components:
           type: boolean
         origin: {type: string}
         project: {type: string}
+        channel:
+          description: The project's channel it is in, `general` when its runs name none.
+          type: string
         agents:
           type: array
           items: {type: string}

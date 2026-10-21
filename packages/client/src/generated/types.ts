@@ -237,6 +237,13 @@ turned back into it.
   project?: string;
   /** The Slack app or GitHub installation that raised the run. */
   client?: string;
+  /** The project's channel the conversation is in. Absent is `general`. A called run has its root's. */
+  channel?: string;
+  /** The person's message in a shared thread that the run answers, such
+as `m-3`. Runs that answer one message answer it side by side and
+are not branches.
+ */
+  message?: string;
   /** The run's budget in micro-USD. Zero means unmetered. */
   lease: number;
   /** The budget the run has leased to calls that have not ended, in
@@ -343,6 +350,8 @@ export interface ThreadSummary {
   named: boolean;
   origin: string;
   project?: string;
+  /** The project's channel it is in, `general` when its runs name none. */
+  channel: string;
   agents: string[];
   turns: number;
   branches: number;
