@@ -221,6 +221,7 @@ func (p *Platform) inboxQuery(tree *projects.Tree, who auth.Principal, q inbox.Q
 	r := p.inboxReader(tree, who)
 	q.Reader, q.Roles, q.ReaderProjects, q.ReaderOwns, q.Now = r.Subject, r.Roles, r.Projects, r.Owns, p.now()
 	q.Visible = func(k inbox.Kind) bool { return who.Can(reads(k)) }
+	q.Sees = p.Seer(who).Message
 	return q
 }
 
@@ -260,8 +261,9 @@ func (p *Platform) inboxGetAs(who auth.Principal, reader inbox.Reader, id string
 	if err != nil {
 		return inbox.Message{}, err
 	}
-	// What a caller may not see does not exist for them.
-	if !who.Can(reads(m.Kind)) {
+	// What a caller may not see does not exist for them: a kind they may
+	// not read, or what lives where they may not read.
+	if !who.Can(reads(m.Kind)) || !p.Seer(who).Message(m) {
 		return inbox.Message{}, fmt.Errorf("%w: message %q", inbox.ErrNotFound, id)
 	}
 	if m.State == inbox.Snoozed && !p.now().Before(m.SnoozedUntil) {

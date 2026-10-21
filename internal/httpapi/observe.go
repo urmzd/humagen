@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,9 +27,9 @@ const maxWindow = 30 * 24 * time.Hour
 func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/analytics", s.authed(auth.RunsRead, s.analytics))
 	mux.HandleFunc("GET /api/journal", s.authed(auth.RunsRead, s.journal))
-	mux.HandleFunc("GET /api/runs/{id}/trace", s.authed(auth.RunsRead, s.trace))
-	mux.HandleFunc("GET /api/runs/{id}/events", s.authed(auth.RunsRead, s.runEvents))
-	mux.HandleFunc("GET /api/runs/{id}/manifest", s.authed(auth.RunsRead, s.manifest))
+	mux.HandleFunc("GET /api/runs/{id}/trace", s.authed(auth.RunsRead, s.seenRun(s.trace)))
+	mux.HandleFunc("GET /api/runs/{id}/events", s.authed(auth.RunsRead, s.seenRun(s.runEvents)))
+	mux.HandleFunc("GET /api/runs/{id}/manifest", s.authed(auth.RunsRead, s.seenRun(s.manifest)))
 
 	mux.HandleFunc("GET /api/alerts", s.authed(auth.AlertsRead, s.listAlerts))
 	mux.HandleFunc("POST /api/alerts/{id}/ack", s.authed(auth.AlertsWrite, s.ackAlert))
@@ -85,7 +86,15 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request, who auth.Prin
 		}
 		bucket = parsed
 	}
-	ok(w, http.StatusOK, s.P.Runs.Summarize(who.Tenant, since, until.Add(time.Nanosecond), bucket))
+	// Only what the caller may read is counted.
+	summary, err := s.P.Runs.SummarizeWhere(who.Tenant, runs.SummaryQuery{
+		Since: since, Until: until.Add(time.Nanosecond), Bucket: bucket, AllProjects: true, Keep: s.P.Seer(who).Run,
+	})
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, summary)
 }
 
 // journal answers "what happened": events in the caller's tenant, narrowed by
@@ -101,6 +110,20 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 	entries := s.P.Journal.Query(journal.Query{
 		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Kind: q.Get("kind"),
 		Origin: q.Get("origin"), Contains: q.Get("q"), Since: since, Until: until, Limit: limit,
+	})
+	// An event of a run the caller may not read is left out, as is one of
+	// an agent that lives in a project they cannot see.
+	seer, verdict := s.P.Seer(who), map[string]bool{}
+	entries = slices.DeleteFunc(entries, func(e journal.Entry) bool {
+		if e.RunID == "" {
+			return !seer.Agent(e.Agent)
+		}
+		seen, known := verdict[e.RunID]
+		if !known {
+			seen = seer.RunID(e.RunID)
+			verdict[e.RunID] = seen
+		}
+		return !seen
 	})
 	ok(w, http.StatusOK, map[string]any{"entries": orEmpty(entries)})
 }
@@ -224,7 +247,10 @@ func treeUsage(tree []runs.Run) payload.Usage {
 }
 
 func (s *Server) listAlerts(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"alerts": orEmpty(s.P.Alerts.Alerts(who.Tenant))})
+	seer := s.P.Seer(who)
+	ok(w, http.StatusOK, map[string]any{"alerts": orEmpty(slices.DeleteFunc(s.P.Alerts.Alerts(who.Tenant), func(a alerts.Alert) bool {
+		return !seer.Project(a.Project) || (a.Agent != "" && !seer.Agent(a.Agent))
+	}))})
 }
 
 func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -237,7 +263,10 @@ func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Princ
 }
 
 func (s *Server) listRules(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"rules": orEmpty(s.P.Alerts.Rules(who.Tenant))})
+	seer := s.P.Seer(who)
+	ok(w, http.StatusOK, map[string]any{"rules": orEmpty(slices.DeleteFunc(s.P.Alerts.Rules(who.Tenant), func(r alerts.Rule) bool {
+		return !seer.Project(r.Project) || (r.Agent != "" && !seer.Agent(r.Agent))
+	}))})
 }
 
 func (s *Server) createRule(w http.ResponseWriter, r *http.Request, who auth.Principal) {

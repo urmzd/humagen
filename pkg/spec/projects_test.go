@@ -102,8 +102,9 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 		"a member with no role": {tree(`{name: Field, members: [{who: "*", role: member}, {who: ana, role: boss}]}`), `workspace.projects[0].members[1].role: "boss" is not a role`},
 		"a role with a space":   {tree(`{name: Field, members: [{who: "*", role: member}, {who: "role:field eng", role: owner}]}`), `workspace.projects[0].members[1].who: "role:field eng" names no role`},
 		"one person twice":      {tree(`{name: Field, members: [{who: "*", role: member}, {who: ana, role: owner}, {who: ana, role: member}]}`), `workspace.projects[0].members[2].who: "ana" is listed twice`},
-		"members only": {
-			tree(`{name: Field, members: [{who: ana, role: owner}]}`), `workspace.projects[0].members: an entry for everyone ("*") of at least viewer is needed: members-only projects need read confinement`,
+		"members only under a project everyone owns": {
+			tree(`{name: Field, members: [{who: "*", role: owner}]}`, `{name: Globex, parent: Field, members: [{who: ana, role: owner}]}`),
+			`workspace.projects[1].members: everyone owns "Field", which owns everything below it, so "Globex" cannot be members only`,
 		},
 		"a company project for viewers": {tree(`{name: News, kind: company, members: [{who: "*", role: viewer}]}`), `workspace.projects[0].members: a company project is open to everyone ("*") as a member at least`},
 		"the workspace for viewers":     {"    members: [{who: \"*\", role: viewer}]\n", `workspace.members: a company project is open to everyone ("*") as a member at least`},

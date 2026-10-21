@@ -15,16 +15,16 @@ import (
 // routes take runs:*, as conversations do; a project's channels and experts
 // take projects:*, as the rest of the project does.
 func (s *Server) threadRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/projects/{name}/channels", s.authed(auth.ProjectsRead, s.listChannels))
-	mux.HandleFunc("POST /api/projects/{name}/channels", s.authed(auth.ProjectsWrite, s.createChannel))
-	mux.HandleFunc("PUT /api/projects/{name}/channels/{channel}", s.authed(auth.ProjectsWrite, s.updateChannel))
-	mux.HandleFunc("DELETE /api/projects/{name}/channels/{channel}", s.authed(auth.ProjectsWrite, s.archiveChannel))
-	mux.HandleFunc("GET /api/projects/{name}/experts", s.authed(auth.ProjectsRead, s.getExperts))
-	mux.HandleFunc("PUT /api/projects/{name}/experts", s.authed(auth.ProjectsWrite, s.putExperts))
+	mux.HandleFunc("GET /api/projects/{name}/channels", s.authed(auth.ProjectsRead, s.seenProject(s.listChannels)))
+	mux.HandleFunc("POST /api/projects/{name}/channels", s.authed(auth.ProjectsWrite, s.seenProject(s.createChannel)))
+	mux.HandleFunc("PUT /api/projects/{name}/channels/{channel}", s.authed(auth.ProjectsWrite, s.seenProject(s.updateChannel)))
+	mux.HandleFunc("DELETE /api/projects/{name}/channels/{channel}", s.authed(auth.ProjectsWrite, s.seenProject(s.archiveChannel)))
+	mux.HandleFunc("GET /api/projects/{name}/experts", s.authed(auth.ProjectsRead, s.seenProject(s.getExperts)))
+	mux.HandleFunc("PUT /api/projects/{name}/experts", s.authed(auth.ProjectsWrite, s.seenProject(s.putExperts)))
 	mux.HandleFunc("POST /api/threads", s.authed(auth.RunsWrite, s.startThread))
-	mux.HandleFunc("PUT /api/threads/{id}", s.authed(auth.RunsWrite, s.updateThread))
-	mux.HandleFunc("POST /api/threads/{id}/messages", s.authed(auth.RunsWrite, s.postMessage))
-	mux.HandleFunc("PUT /api/threads/{id}/participants", s.authed(auth.RunsWrite, s.putParticipants))
+	mux.HandleFunc("PUT /api/threads/{id}", s.authed(auth.RunsWrite, s.seenThread(s.updateThread)))
+	mux.HandleFunc("POST /api/threads/{id}/messages", s.authed(auth.RunsWrite, s.seenThread(s.postMessage)))
+	mux.HandleFunc("PUT /api/threads/{id}/participants", s.authed(auth.RunsWrite, s.seenThread(s.putParticipants)))
 }
 
 // answers is who answers an untagged message in a place, and where that is

@@ -306,10 +306,13 @@ type Query struct {
 	Title  string
 	Limit  int
 	Before string
+	// Keep, when set, keeps only the files it accepts: those the reader may
+	// read. A page is full of those.
+	Keep func(Artifact) bool
 }
 
 func (q Query) match(a *Artifact) bool {
-	return (q.Project == "" || a.Project == q.Project) && (q.Agent == "" || a.Agent == q.Agent) &&
+	return (q.Keep == nil || q.Keep(*a)) && (q.Project == "" || a.Project == q.Project) && (q.Agent == "" || a.Agent == q.Agent) &&
 		(q.Run == "" || a.Run == q.Run) && (q.Thread == "" || a.Thread == q.Thread) && (q.Kind == "" || a.Kind == q.Kind) &&
 		(q.Title == "" || strings.Contains(strings.ToLower(a.Title), strings.ToLower(q.Title)))
 }

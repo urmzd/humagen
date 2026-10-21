@@ -37,6 +37,8 @@ func TestArtifactsAreServedSafely(t *testing.T) {
 	reader := f.machine(t, "acme", "warp:artifacts:read")
 	none := f.machine(t, "acme", "warp:runs:read")
 	globex := f.machine(t, "globex", everything...)
+	// What is published is read where it lives: Launch, which everyone sees.
+	f.do(t, nil, "POST", "/api/projects", admin, `{"name":"Launch"}`)
 
 	publish := func(thread, name, content string) string {
 		t.Helper()

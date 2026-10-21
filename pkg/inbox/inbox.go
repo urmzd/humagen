@@ -993,6 +993,9 @@ type Query struct {
 	Unread bool
 	// Visible reports whether the reader may see a kind. Nil means all.
 	Visible func(Kind) bool
+	// Sees reports whether the reader may read what a message is about:
+	// the project and thread it lives in. Nil means all.
+	Sees func(Message) bool
 	Now     time.Time
 	Limit   int
 	Before  string
@@ -1030,6 +1033,9 @@ func (t *tenant) match(m *Message, q filter) bool {
 		return false
 	}
 	if q.Visible != nil && !q.Visible(m.Kind) {
+		return false
+	}
+	if q.Sees != nil && !q.Sees(*m) {
 		return false
 	}
 	if q.Kind != "" && m.Kind != q.Kind {

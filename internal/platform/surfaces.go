@@ -30,8 +30,8 @@ func (p *Platform) RecordDelivery(who auth.Principal, id, client string, d inbox
 		return fmt.Errorf("%w: %q", clients.ErrNotFound, client)
 	}
 	d.At = p.now()
-	reader := readerOf(who)
-	return p.Inbox.Deliver(who.Tenant, id, c.ID, d, func(m inbox.Message) bool { return who.Can(reads(m.Kind)) && m.For(reader) })
+	reader, seer := readerOf(who), p.Seer(who)
+	return p.Inbox.Deliver(who.Tenant, id, c.ID, d, func(m inbox.Message) bool { return who.Can(reads(m.Kind)) && m.For(reader) && seer.Message(m) })
 }
 
 // ownDeliveries keeps, of a message's deliveries, only the receipt of the

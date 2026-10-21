@@ -533,8 +533,13 @@ func (p *Platform) clientOf(tenant, runID string) string {
 	return ""
 }
 
-// admitted is what is known of a run between its admission and its record.
-type admitted struct{ tenant, client string }
+// admitted is what is known of a run between its admission and its record:
+// its tenant, the client that raised it, and where it lives, so its first
+// event reaches only those who may read it.
+type admitted struct {
+	tenant, client string
+	place          Place
+}
 
 func (p *Platform) flushConnections(ctx context.Context) error {
 	tick := time.NewTicker(time.Second)

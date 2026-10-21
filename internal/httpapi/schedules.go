@@ -69,7 +69,13 @@ func (s *Server) viewOf(sc cron.Schedule, now time.Time) scheduleView {
 func (s *Server) listSchedules(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	now := time.Now()
 	out := []scheduleView{}
+	seer := s.P.Seer(who)
 	for _, sc := range s.P.Schedules.List(who.Tenant) {
+		// A schedule filed in a project the caller cannot see is not theirs
+		// to read.
+		if !seer.Project(sc.Meta[runs.MetaProject]) {
+			continue
+		}
 		out = append(out, s.viewOf(sc, now))
 	}
 	ok(w, http.StatusOK, map[string]any{"schedules": out})
@@ -179,6 +185,11 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 	// every occurrence would be refused. It is the answer admission would
 	// give, given now.
 	if err := s.P.Available(who.Tenant, meta[runs.MetaProject], body.Agent); err != nil {
+		// A project deleted since it was looked up is not found, as it
+		// would have been a moment earlier.
+		if !s.P.HasProject(who.Tenant, meta[runs.MetaProject]) {
+			err = platform.ErrProjectNotFound
+		}
 		s.problem(w, err)
 		return nil, false
 	}

@@ -119,16 +119,22 @@ func validMembers(ms []Entry) error {
 }
 
 // DefaultMembers is who a new project has when its creator names nobody:
-// everyone as a member and the creator as owner. For an account-like kind,
-// everyone is a viewer instead. A creator that cannot be an entry, such as
-// the platform file, is left out, so only projects:govern owns the project.
+// everyone as a member and the creator as owner. An account-like project is
+// members only: its creator owns it and nobody else is in it, since a
+// customer account's work is its team's. A creator that cannot be an entry,
+// such as the platform file, is left out, so only projects:govern owns the
+// project; an account the file declares with no members is opened to
+// everyone as a viewer, or nobody but projects:govern would see it.
 func DefaultMembers(like Kind, creator string) []Entry {
-	everyone := Member
-	if like == Account {
-		everyone = Viewer
+	named := creator != Everyone && !strings.HasPrefix(creator, RolePrefix) && validWho(creator) == nil
+	var out []Entry
+	switch {
+	case like != Account:
+		out = append(out, Entry{Who: Everyone, Role: Member})
+	case !named:
+		out = append(out, Entry{Who: Everyone, Role: Viewer})
 	}
-	out := []Entry{{Who: Everyone, Role: everyone}}
-	if creator != Everyone && !strings.HasPrefix(creator, RolePrefix) && validWho(creator) == nil {
+	if named {
 		out = append(out, Entry{Who: creator, Role: Owner})
 	}
 	return out
@@ -158,15 +164,37 @@ func everyoneOf(ms []Entry) Role {
 // member. Owner opens no wider than member; it is ownership, not reach.
 func openness(r Role) int { return min(r.rank(), Member.rank()) }
 
-// checkOpen holds a project's Everyone entry to the tree around it. Every
-// project keeps one of at least viewer, since reads are not confined; a
-// company project, the root among them, is open to everyone as a member; and
-// no project is more open than its parent, or less open than a child.
-func checkOpen(p Project, parent *Project, children []Project) error {
+// checkOpen holds a project's Everyone entry to the tree around it. A project
+// with none is members only: read by its members alone. A company project,
+// the root among them, is open to everyone as a member; no project is more
+// open than its parent, or less open than a child; and ownership flows down,
+// so a project everyone owns has no members-only project anywhere below it,
+// and a members-only project has no project everyone owns above it.
+func checkOpen(tree *Tree, p Project, parent *Project, children []Project) error {
 	star := everyoneOf(p.Members)
+	if star == None && parent != nil {
+		above := append([]string{parent.Name}, tree.Ancestors(parent.Name)...)
+		if !parent.IsRoot() {
+			above = append(above, Root)
+		}
+		for _, name := range above {
+			q, ok := tree.Get(name)
+			if name == parent.Name {
+				q, ok = *parent, true
+			}
+			if ok && everyoneOf(q.Members) == Owner {
+				return fmt.Errorf("%w: everyone owns %s, and owners above own everything below, so %s cannot be members only; name its owners first", ErrInvalid, display(q.Name), display(p.Name))
+			}
+		}
+	}
+	if star == Owner {
+		for _, below := range tree.Subtree(p.Name) {
+			if q, ok := tree.Get(below); ok && below != p.Name && everyoneOf(q.Members) == None {
+				return fmt.Errorf("%w: %s is members only, so everyone cannot own %s above it", ErrInvalid, display(q.Name), display(p.Name))
+			}
+		}
+	}
 	switch {
-	case !star.AtLeast(Viewer):
-		return fmt.Errorf("%w: %s needs an entry for everyone (*) of at least viewer", ErrConfinement, display(p.Name))
 	case p.Kind == Company && !star.AtLeast(Member):
 		return fmt.Errorf("%w: %s is company-wide, so everyone (*) is at least a member", ErrInvalid, display(p.Name))
 	case parent != nil && openness(star) > openness(everyoneOf(parent.Members)):
@@ -188,7 +216,8 @@ func limitOpenness(ms []Entry, parent Project) []Entry {
 		most = Member
 	}
 	if most == None {
-		return ms
+		// Under a members-only project, a new one is members only too.
+		return slices.DeleteFunc(ms, func(m Entry) bool { return m.Who == Everyone })
 	}
 	for i, m := range ms {
 		if m.Who == Everyone && openness(m.Role) > openness(most) {

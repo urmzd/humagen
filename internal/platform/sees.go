@@ -3,9 +3,18 @@ package platform
 import (
 	"slices"
 
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
+
+	"github.com/urmzd/warp/pkg/call"
+
 	"github.com/urmzd/warp/pkg/artifacts"
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // Read confinement: one rule decides whether a reader sees something that
@@ -51,3 +60,141 @@ func placeOfSource(s inbox.Source) Place { return Place{Project: s.Project, Thre
 // placeOfArtifact is where a published file lives: the conversation that
 // published it, in its project.
 func placeOfArtifact(a artifacts.Artifact) Place { return Place{Project: a.Project, Thread: a.Thread} }
+
+// Seer answers what one reader may read, from one snapshot of the tree: their
+// role in every project, read once, and each private thread's participants,
+// read once each. A read path takes a Seer per request and asks it of every
+// object it would return.
+type Seer struct {
+	p       *Platform
+	who     auth.Principal
+	tree    *projects.Tree
+	roles   map[string]projects.Access
+	govern  bool
+	threads map[string]*threadAccess
+}
+
+// Seer is a reader's view of their workspace, as the tree stands now.
+func (p *Platform) Seer(who auth.Principal) *Seer {
+	tree := p.Projects.Tree(who.Tenant)
+	r := ReaderOf(who)
+	return &Seer{p: p, who: who, tree: tree, roles: tree.Roles(r), govern: r.Govern && r.Subject != "", threads: map[string]*threadAccess{}}
+}
+
+// Sees reports whether a reader may read what lives in a place: a role of at
+// least viewer in its project, and in a private thread to take part in it, or
+// projects:govern. A project the tree no longer holds is seen only with
+// projects:govern: what it held is nobody else's to read (fail closed).
+func (p *Platform) Sees(who auth.Principal, at Place) bool { return p.Seer(who).Place(at) }
+
+// Place reports whether the reader sees what lives in a place.
+func (s *Seer) Place(at Place) bool {
+	if s.govern {
+		return true
+	}
+	a, ok := s.roles[at.Project]
+	return ok && seesPlace(a.Role.AtLeast(projects.Viewer), false, s.thread(at.Thread), s.who.Subject)
+}
+
+// Project reports whether the reader sees a project at all.
+func (s *Seer) Project(name string) bool { return s.Place(Place{Project: name}) }
+
+// thread is what reading a thread needs: nil for one that is shared, or has
+// no record, which reads as shared.
+func (s *Seer) thread(id string) *threadAccess {
+	if id == "" {
+		return nil
+	}
+	if th, seen := s.threads[id]; seen {
+		return th
+	}
+	var out *threadAccess
+	if th, err := s.p.Threads.Get(s.who.Tenant, id); err == nil && th.Visibility == threads.Private {
+		out = &threadAccess{Private: true}
+		for _, pt := range th.Participants {
+			if pt.Kind == threads.Person {
+				out.Participants = append(out.Participants, pt.Name)
+			}
+		}
+	}
+	s.threads[id] = out
+	return out
+}
+
+// Run reports whether the reader sees a run: where its conversation lives.
+func (s *Seer) Run(r runs.Run) bool { return s.Place(placeOfRun(r)) }
+
+// RunID reports whether the reader sees the run an id names, one being
+// admitted included. One that does not exist is not seen.
+func (s *Seer) RunID(id string) bool {
+	at, ok := s.p.placeOfRunID(s.who.Tenant, id)
+	return ok && s.Place(at)
+}
+
+// Message reports whether the reader sees what an inbox message is about: its
+// run's place when it names a run the index holds, else the project and
+// thread it names. Who it is addressed to is the inbox's to decide besides.
+func (s *Seer) Message(m inbox.Message) bool {
+	if m.Source.Run != "" {
+		if r, err := s.p.Runs.Get(s.who.Tenant, m.Source.Run); err == nil {
+			return s.Run(r)
+		}
+	}
+	return s.Place(placeOfSource(m.Source))
+}
+
+// Artifact reports whether the reader sees a published file.
+func (s *Seer) Artifact(a artifacts.Artifact) bool { return s.Place(placeOfArtifact(a)) }
+
+// Agent reports whether the reader sees an agent: a platform agent always, an
+// agent that lives in a project only where they see the project.
+func (s *Seer) Agent(name string) bool {
+	home, homed := s.tree.Home(name)
+	return !homed || s.Project(home)
+}
+
+// MemoryOwner reports whether the reader sees notes kept under an owner: a
+// project's where they see the project, an agent's where they see the agent.
+func (s *Seer) MemoryOwner(owner string) bool {
+	if project, ok := memory.OwnerProject(owner); ok {
+		return s.Project(project)
+	}
+	return s.Agent(owner)
+}
+
+// SeesThread reports whether a reader may read a thread: its project, and in
+// a private one taking part. A thread that does not exist is not seen.
+func (p *Platform) SeesThread(who auth.Principal, id string) bool {
+	th, err := p.ThreadRecord(who.Tenant, id)
+	return err == nil && p.Seer(who).Place(Place{Project: th.Project, Thread: id})
+}
+
+// placeAdmitted is where a run lives before the index records it: its
+// root's conversation for a called run, else the conversation the API placed
+// it in, or its own.
+func (p *Platform) placeAdmitted(tag envelope.Tag, edge call.Edge, runID, project string) Place {
+	if edge.Parent != "" {
+		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
+			return placeOfRun(root)
+		}
+	}
+	thread := runID
+	if v := tag.Meta[runs.MetaThread]; v != "" && tag.Origin == runs.OriginAPI {
+		thread = v
+	}
+	return Place{Project: project, Thread: thread}
+}
+
+// placeOfRunID is where the run an id names lives: from the index, or from
+// its admission while it is not recorded yet.
+func (p *Platform) placeOfRunID(tenant, id string) (Place, bool) {
+	if r, err := p.Runs.Get(tenant, id); err == nil {
+		return placeOfRun(r), true
+	}
+	if v, ok := p.admitting.Load(id); ok {
+		if a := v.(admitted); a.tenant == tenant {
+			return a.place, true
+		}
+	}
+	return Place{}, false
+}

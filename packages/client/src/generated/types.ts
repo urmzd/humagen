@@ -684,8 +684,9 @@ projects.
   /** Who holds a role here. `*` is everyone who can see the parent (at
 the workspace, everyone holding `projects:read`), `role:<name>`
 the holders of a policy role, anything else a subject. An owner
-here owns everything below. Every project keeps a `*` entry of at
-least viewer, so every project stays visible.
+here owns everything below. A project with no `*` entry is
+members only: read by its members alone. A new account project
+is members only unless everyone owns a project above it.
  */
   members: ProjectEntry[];
   /** The workspace's own kinds, each a label over `team` or `account`. Only the workspace carries them. */

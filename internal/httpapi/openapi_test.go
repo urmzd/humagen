@@ -1175,8 +1175,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	mset := c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members",
 		fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"viewer"},{"who":"okta|ana","role":"owner"}]}`, mv), http.StatusOK)
 	c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"viewer"}]}`, mv), http.StatusConflict)
-	c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"okta|ana","role":"owner"}]}`, version(mset)), http.StatusConflict)
-	c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"ruler"}]}`, version(mset)), http.StatusBadRequest)
+	// Members only: read by its members, and by projects:govern.
+	closed := c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"okta|ana","role":"owner"}]}`, version(mset)), http.StatusOK)
+	c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"ruler"}]}`, version(closed)), http.StatusBadRequest)
 	ops := c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Ops"}`, http.StatusCreated)
 	moved := c.call(acme, "POST", "/api/projects/{name}/move", "/api/projects/Ops/move", fmt.Sprintf(`{"version":%d,"parent":"Field"}`, version(ops)), http.StatusOK)
 	if moved.str("parent") != "Field" || moved.field("depth") != json.Number("2") {
@@ -1367,7 +1368,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	c.call(acme, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"shared","text":"hi"}`, http.StatusForbidden)
 	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"hi"}`, http.StatusBadRequest)
-	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"private","text":"hi"}`, http.StatusConflict)
+	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"private","text":"hi"}`, http.StatusCreated)
 	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Ghost","visibility":"shared","text":"hi"}`, http.StatusNotFound)
 	started := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","channel":"renewals","visibility":"shared","title":"Globex renewal","text":"@helper when does Globex renew? @vic @sme:billing"}`, http.StatusCreated)
 	tid, _ := obj(started.field("thread"))["id"].(string)

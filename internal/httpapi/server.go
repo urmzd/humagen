@@ -82,29 +82,29 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/access/explain", s.authed("", s.explainAccess))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
-	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, s.reviseAgent))
-	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, s.putAgentHome))
-	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, s.agentHistory))
-	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, s.getCallPolicy))
-	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, s.putCallPolicy))
-	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, s.reachable))
-	mux.HandleFunc("GET /api/agents/{name}/memory", s.authed(auth.AgentsRead, s.listMemory))
-	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, s.addMemory))
-	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, s.removeMemory))
-	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, s.approveMemory))
+	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, s.seenAgent(s.reviseAgent)))
+	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, s.seenAgent(s.putAgentHome)))
+	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, s.seenAgent(s.agentHistory)))
+	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, s.seenAgent(s.getCallPolicy)))
+	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, s.seenAgent(s.putCallPolicy)))
+	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, s.seenAgent(s.reachable)))
+	mux.HandleFunc("GET /api/agents/{name}/memory", s.authed(auth.AgentsRead, s.seenAgent(s.listMemory)))
+	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, s.seenAgent(s.addMemory)))
+	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, s.seenAgent(s.removeMemory)))
+	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, s.seenAgent(s.approveMemory)))
 	mux.HandleFunc("GET /api/memory/pending", s.authed(auth.AgentsRead, s.pendingMemory))
 	mux.HandleFunc("GET /api/runs", s.authed(auth.RunsRead, s.listRuns))
 	mux.HandleFunc("POST /api/runs", s.authed(auth.RunsWrite, s.createRun))
 	mux.HandleFunc("GET /api/threads", s.authed(auth.RunsRead, s.listThreads))
-	mux.HandleFunc("GET /api/threads/{id}", s.authed(auth.RunsRead, s.getThread))
+	mux.HandleFunc("GET /api/threads/{id}", s.authed(auth.RunsRead, s.seenThread(s.getThread)))
 	mux.HandleFunc("GET /api/pick", s.authed(auth.AgentsRead, s.pickAgent))
 	mux.HandleFunc("GET /api/settings", s.authed(auth.AgentsRead, s.getSettings))
 	mux.HandleFunc("PUT /api/settings", s.authed(auth.AgentsWrite, s.putSettings))
-	mux.HandleFunc("GET /api/runs/{id}", s.authed(auth.RunsRead, s.getRun))
-	mux.HandleFunc("GET /api/runs/{id}/tree", s.authed(auth.RunsRead, s.runTree))
-	mux.HandleFunc("POST /api/runs/{id}/calls", s.authed(auth.RunsWrite, s.createCall))
-	mux.HandleFunc("POST /api/runs/{id}/stop", s.authed(auth.RunsWrite, s.stopRun))
-	mux.HandleFunc("POST /api/runs/{id}/questions/{question}/answer", s.authed(auth.RunsWrite, s.answerQuestion))
+	mux.HandleFunc("GET /api/runs/{id}", s.authed(auth.RunsRead, s.seenRun(s.getRun)))
+	mux.HandleFunc("GET /api/runs/{id}/tree", s.authed(auth.RunsRead, s.seenRun(s.runTree)))
+	mux.HandleFunc("POST /api/runs/{id}/calls", s.authed(auth.RunsWrite, s.seenRun(s.createCall)))
+	mux.HandleFunc("POST /api/runs/{id}/stop", s.authed(auth.RunsWrite, s.seenRun(s.stopRun)))
+	mux.HandleFunc("POST /api/runs/{id}/questions/{question}/answer", s.authed(auth.RunsWrite, s.seenRun(s.answerQuestion)))
 	mux.HandleFunc("GET /api/schedules", s.authed(auth.SchedulesRead, s.listSchedules))
 	mux.HandleFunc("POST /api/schedules", s.authed(auth.SchedulesWrite, s.createSchedule))
 	mux.HandleFunc("PUT /api/schedules/{name}", s.authed(auth.SchedulesWrite, s.updateSchedule))
@@ -211,12 +211,17 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 	for i, rev := range all {
 		names[i] = rev.Spec.Name
 	}
+	// An agent that lives in a project the caller cannot see is left out,
+	// and so is every project they cannot see that enables an agent.
+	seer := s.P.Seer(who)
+	all = slices.DeleteFunc(all, func(rev agentspec.Revision) bool { return !seer.Agent(rev.Spec.Name) })
+	names = slices.DeleteFunc(names, func(n string) bool { return !seer.Agent(n) })
 	homes, enabled := map[string]string{}, map[string][]string{}
 	for name, place := range s.P.AgentPlaces(who.Tenant, names) {
 		if place.Home != "" {
 			homes[name] = place.Home
 		}
-		enabled[name] = place.EnabledIn
+		enabled[name] = slices.DeleteFunc(place.EnabledIn, func(p string) bool { return !seer.Project(projects.NameOf(p)) })
 	}
 	ok(w, http.StatusOK, map[string]any{"agents": orEmpty(all), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled})
 }
@@ -350,7 +355,11 @@ func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.
 		Note    memory.Note `json:"note"`
 	}
 	out := []proposal{}
+	seer := s.P.Seer(who)
 	for _, p := range s.P.Memory.Pending(who.Tenant) {
+		if !seer.MemoryOwner(p.Agent) {
+			continue
+		}
 		if project, isProject := memory.OwnerProject(p.Agent); isProject {
 			// The workspace's own notes are the root's, named as a path
 			// names it.
@@ -374,7 +383,8 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.Runs.List(who.Tenant, 200))})
+	seer := s.P.Seer(who)
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) }))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -440,7 +450,7 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 		return
 	}
 	var found bool
-	if query.Projects, found = s.projectsWithin(w, who.Tenant, q.Get("project"), q.Get("within")); !found {
+	if query.Projects, found = s.projectsWithin(w, who, q.Get("project"), q.Get("within")); !found {
 		return
 	}
 	if raw := q.Get("limit"); raw != "" {
@@ -457,7 +467,7 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 		fail(w, http.StatusBadRequest, "standing is running or failed")
 		return
 	}
-	page, next, err := s.P.ThreadPage(who.Tenant, query)
+	page, next, err := s.P.ThreadPageAs(who, query)
 	if err != nil {
 		fail(w, http.StatusBadRequest, "before is not a cursor this server issued")
 		return
@@ -473,6 +483,10 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 // "~" or nothing for the workspace, and why.
 func (s *Server) pickAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
+	if !s.P.Seer(who).Project(projects.NameOf(q.Get("project"))) {
+		notFound(w)
+		return
+	}
 	choice, err := s.P.Pick(r.Context(), who.Tenant, q.Get("project"), q.Get("q"))
 	if err != nil {
 		s.problem(w, err)
@@ -639,6 +653,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 		}
 	}()
 
+	// What the reader may read is decided once a run, from a snapshot of the
+	// tree taken again every refresh, so a role taken away stops the next
+	// run's events within one.
+	gate := newRunGate(s.P, who)
 	tick := time.NewTicker(heartbeat)
 	defer tick.Stop()
 	for {
@@ -660,6 +678,9 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 				return
 			}
 		case n := <-posts:
+			if !s.P.SeesThread(who, n.ID) {
+				continue
+			}
 			b, err := json.Marshal(n)
 			if err != nil {
 				continue
@@ -676,6 +697,9 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 				// The client reconnects and resumes. A consumer that fell
 				// behind is ended here rather than fed a gap.
 				return
+			}
+			if !gate.seen(e.RunID) {
+				continue
 			}
 			b, err := json.Marshal(e)
 			if err != nil {

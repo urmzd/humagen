@@ -186,9 +186,6 @@ func (s *Store) writable(tenantName, id string) (*thread, error) {
 	if err != nil {
 		return nil, err
 	}
-	if th.rec.Visibility == Private {
-		return nil, ErrPrivate
-	}
 	return th, nil
 }
 
@@ -234,9 +231,6 @@ func newID() string {
 // caller holds the lock.
 func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, error) {
 	t = t.clone()
-	if t.Visibility == Private {
-		return Thread{}, ErrPrivate
-	}
 	have := s.of(tenantName).threads
 	if t.ID == "" {
 		for t.ID = newID(); have[t.ID] != nil; t.ID = newID() {
@@ -474,8 +468,8 @@ func (s *Store) rewrite(tenantName string, th *thread, rec Thread, at time.Time)
 
 // Update changes a thread's title, visibility or default. fn edits a copy;
 // the id, place, participants and record fields cannot change, and version
-// must be the current one (ErrVersion). A private thread is refused
-// (ErrPrivate). A change that changes nothing writes nothing.
+// must be the current one (ErrVersion). A change that changes nothing writes
+// nothing.
 func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func(*Thread) error) (Thread, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -496,8 +490,6 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 		return Thread{}, fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
 	case !slices.Equal(next.Participants, cur.Participants):
 		return Thread{}, fmt.Errorf("%w: participants are changed on their own", ErrInvalid)
-	case next.Visibility == Private:
-		return Thread{}, ErrPrivate
 	}
 	next.Version, next.CreatedBy, next.CreatedAt, next.UpdatedAt = cur.Version, cur.CreatedBy, cur.CreatedAt, cur.UpdatedAt
 	if err := next.validate(); err != nil {

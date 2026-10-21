@@ -139,6 +139,6 @@ func (p *Platform) InboxNoticeFor(who auth.Principal, n inbox.Notice) bool {
 	if !InboxSees(who, n.Kind) {
 		return false
 	}
-	_, err := p.Inbox.GetAs(who.Tenant, n.ID, p.inboxReader(p.Projects.Tree(who.Tenant), who))
-	return err == nil
+	m, err := p.Inbox.GetAs(who.Tenant, n.ID, p.inboxReader(p.Projects.Tree(who.Tenant), who))
+	return err == nil && p.Seer(who).Message(m)
 }

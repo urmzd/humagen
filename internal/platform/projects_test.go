@@ -36,7 +36,9 @@ var (
 )
 
 // field makes Field with Globex and Initech under it, and Renewals under
-// Globex.
+// Globex. Globex, an account, is open to everyone as a viewer, so what is
+// filed there is everyone's to read, as an account was before projects could
+// be members only.
 func field(t *testing.T, p *platform.Platform) {
 	t.Helper()
 	for _, in := range []platform.ProjectInput{
@@ -47,6 +49,14 @@ func field(t *testing.T, p *platform.Platform) {
 	} {
 		if _, err := p.CreateProject(t.Context(), tenant, ada, in); err != nil {
 			t.Fatal(err)
+		}
+		if in.Name == "Globex" {
+			if _, err := p.Projects.Update(tenant, "Globex", 1, ada, time.Now(), func(pr *projects.Project) error {
+				pr.Members = []projects.Entry{{Who: projects.Everyone, Role: projects.Viewer}, {Who: "ada", Role: projects.Owner}}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 }

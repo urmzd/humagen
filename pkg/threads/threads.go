@@ -16,9 +16,9 @@
 //
 // # Default deny
 //
-// A thread is shared: everyone who can see its project reads it. A private
-// thread is refused (ErrPrivate) until every read path is confined, so
-// privacy is never claimed before it is enforced.
+// A thread is shared, read by everyone who can see its project, or private,
+// read by its participants alone: the platform's read rule confines every
+// read path to them.
 package threads
 
 import (
@@ -46,7 +46,10 @@ var (
 	ErrVersion = errors.New("threads: changed since it was read")
 	// ErrFull reports a thread that holds as many messages as it may.
 	ErrFull = errors.New("threads: this thread is full; start a new thread")
-	// ErrPrivate reports a private thread, which is refused until every read
+	// ErrPrivate reported a private thread while reads were not confined.
+	// Nothing raises it any more.
+	//
+	// Deprecated: private threads are accepted.
 	// path is confined.
 	ErrPrivate = errors.New("threads: private threads need read confinement, not built")
 	// ErrCursor reports a paging cursor this store did not issue.
@@ -81,8 +84,7 @@ type Visibility string
 const (
 	// Shared is read by everyone who can see the thread's project.
 	Shared Visibility = "shared"
-	// Private is read by its participants only. It is refused (ErrPrivate)
-	// until read confinement is built.
+	// Private is read by its participants only.
 	Private Visibility = "private"
 )
 

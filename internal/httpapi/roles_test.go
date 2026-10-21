@@ -60,26 +60,31 @@ func TestAProjectRoleOnlyNarrowsATenantPermission(t *testing.T) {
 	if a := sub["access"].(map[string]any); a["role"] != "owner" {
 		t.Fatalf("Ana in what she made under Field = %v", a)
 	}
-	ms := want(t, f, bo, "GET", "/api/projects/Globex/members", "", http.StatusOK)
-	if fmt.Sprint(ms["members"]) != "[map[role:viewer who:*] map[role:owner who:ana]]" || fmt.Sprint(ms["inherited"]) != "[map[from:Field who:ana]]" {
+	// An account is members only: Bo, a viewer of Field, does not see it.
+	ms := want(t, f, ana, "GET", "/api/projects/Globex/members", "", http.StatusOK)
+	if fmt.Sprint(ms["members"]) != "[map[role:owner who:ana]]" || fmt.Sprint(ms["inherited"]) != "[map[from:Field who:ana]]" {
 		t.Fatalf("Globex's members = %v", ms)
 	}
+	want(t, f, bo, "GET", "/api/projects/Globex/members", "", http.StatusNotFound)
 }
 
-// Until reads are confined to members, every project keeps an entry for
-// everyone, and a child is never more open than its parent.
-func TestEveryProjectStaysVisible(t *testing.T) {
+// A project may be members only: whoever is not in it does not see it, and a
+// child is never more open than its parent.
+func TestAMembersOnlyProjectIsHiddenFromEveryoneElse(t *testing.T) {
 	f := newFixture(t)
 	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	bo := f.machineAs(t, "bo", "acme", operator...)
 	want(t, f, admin, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
 	want(t, f, admin, "POST", "/api/projects", `{"name":"Globex","parent":"Field"}`, http.StatusCreated)
-	out := want(t, f, admin, "PUT", "/api/projects/Globex/members", `{"version":1,"members":[{"who":"svc-admin","role":"owner"}]}`, http.StatusConflict)
-	if !strings.HasPrefix(out["error"].(string), "members-only projects need read confinement, not built") {
-		t.Fatalf("a members-only project = %v", out)
+	want(t, f, admin, "PUT", "/api/projects/Globex/members", `{"version":1,"members":[{"who":"svc-admin","role":"owner"}]}`, http.StatusOK)
+	want(t, f, bo, "GET", "/api/projects/Globex", "", http.StatusNotFound)
+	if listed := want(t, f, bo, "GET", "/api/projects", "", http.StatusOK); strings.Contains(fmt.Sprint(listed["projects"]), "Globex") {
+		t.Fatalf("a members-only project is listed for someone outside it: %v", listed)
 	}
-	want(t, f, admin, "PUT", "/api/projects/Field/members", `{"version":1,"members":[{"who":"*","role":"viewer"}]}`, http.StatusBadRequest)
-	want(t, f, admin, "PUT", "/api/projects/Globex/members", `{"version":1,"members":[{"who":"*","role":"viewer"}]}`, http.StatusOK)
-	want(t, f, admin, "PUT", "/api/projects/Globex/members", `{"version":2,"members":[{"who":"role:x","role":"member"},{"who":"*","role":"member"},{"who":"*","role":"viewer"}]}`, http.StatusBadRequest)
+	want(t, f, admin, "PUT", "/api/projects/Field/members", `{"version":1,"members":[{"who":"*","role":"owner"}]}`, http.StatusBadRequest)
+	want(t, f, admin, "PUT", "/api/projects/Globex/members", `{"version":2,"members":[{"who":"*","role":"viewer"}]}`, http.StatusOK)
+	want(t, f, bo, "GET", "/api/projects/Globex", "", http.StatusOK)
+	want(t, f, admin, "PUT", "/api/projects/Globex/members", `{"version":3,"members":[{"who":"role:x","role":"member"},{"who":"*","role":"member"},{"who":"*","role":"viewer"}]}`, http.StatusBadRequest)
 }
 
 // A member's note waits for an owner: it reaches the project's owners in

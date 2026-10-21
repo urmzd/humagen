@@ -441,7 +441,7 @@ func (s *Store) place(tree *Tree, p Project, w Writer) error {
 			return err
 		}
 	}
-	return checkOpen(p, &parent, nil)
+	return checkOpen(tree, p, &parent, nil)
 }
 
 // Create adds a project. Its name must be free ignoring case, deleted names

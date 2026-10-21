@@ -1153,8 +1153,9 @@ credential acting for nobody is refused (403). What the message
 starts follows the tag rules: the agents it tags answer, at most 3;
 tagging only people or experts notifies them; posted only, nothing
 answers; otherwise the default the thread inherits answers. A
-`private` thread is refused (409) until reads are confined. A
-`default` must be able to answer in the project (400).
+`private` thread is read by its participants alone, the person who
+starts it first; tagging a person in it invites them. A `default`
+must be able to answer in the project (400).
  */
   async startThread(body: ThreadInput, options?: RequestOptions): Promise<ThreadPosted> {
     const path = "/api/threads";
@@ -1214,8 +1215,9 @@ as `before`. `answers` is who answers an untagged message here.
   /** The body replaces those three as a whole: one left out is cleared.
 `version` is the one the caller read (0 for a conversation from
 before threads, whose record this writes), so a change made since
-answers 409. `private` is refused (409) until reads are confined. A
-`default` must be able to answer in the thread's project (400).
+answers 409. Made `private`, the thread is read by its participants
+alone. A `default` must be able to answer in the thread's project
+(400).
  */
   async updateThread(id: string, body: ThreadUpdate, options?: RequestOptions): Promise<Thread> {
     let path = "/api/threads/{id}";
@@ -2732,13 +2734,13 @@ inbox to keep or discard it. A viewer is 403.
     });
   }
 
-  /** It needs ownership of the project. Every project keeps an entry for
-everyone (`*`) of at least viewer, a company project one of at least
-member, and no project is more open than its parent or less open
-than a child (400). A list with no `*` entry is 409: members-only
-projects need read confinement, which is not built. The workspace
-and company projects need `projects:govern`; a list the platform
-file sets answers 409.
+  /** It needs ownership of the project. A list with no `*` entry makes
+the project members only: read by its members alone, and by
+`projects:govern`. A company project keeps one of at least member,
+no project is more open than its parent or less open than a child,
+and a members-only project never sits under one everyone owns (400).
+The workspace and company projects need `projects:govern`; a list
+the platform file sets answers 409.
  */
   async setProjectMembers(name: string, body: ProjectMembersInput, options?: RequestOptions): Promise<ProjectMembers> {
     let path = "/api/projects/{name}/members";

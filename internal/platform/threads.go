@@ -46,7 +46,8 @@ type ThreadInput struct {
 	Project string `json:"project"`
 	// Channel is the project's channel. "" is general.
 	Channel string `json:"channel"`
-	// Visibility is shared. Private is refused until reads are confined.
+	// Visibility is shared, read by everyone who sees the project, or
+	// private, read by its participants.
 	Visibility threads.Visibility `json:"visibility"`
 	Title      string             `json:"title,omitempty"`
 	// Default answers untagged messages in the thread: an agent, or auto.
@@ -381,11 +382,9 @@ func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in Threa
 		return Posted{}, err
 	}
 	switch in.Visibility {
-	case threads.Shared:
-	case threads.Private:
-		return Posted{}, threads.ErrPrivate
+	case threads.Shared, threads.Private:
 	default:
-		return Posted{}, fmt.Errorf("%w: a thread is shared, for now", threads.ErrInvalid)
+		return Posted{}, fmt.Errorf("%w: a thread is shared or private", threads.ErrInvalid)
 	}
 	project, ch, err := p.placeFor(who.Tenant, in.Project, in.Channel)
 	if err != nil {
@@ -401,7 +400,7 @@ func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in Threa
 	}
 	mentions = p.checkTags(who.Tenant, tree, project, mentions)
 	th, m, err := p.Threads.Start(who.Tenant, threads.Thread{
-		Project: project, Channel: ch.Name, Title: strings.TrimSpace(in.Title), Visibility: threads.Shared, Default: in.Default, CreatedBy: by,
+		Project: project, Channel: ch.Name, Title: strings.TrimSpace(in.Title), Visibility: in.Visibility, Default: in.Default, CreatedBy: by,
 	}, threads.Message{By: by, Name: name, Text: in.Text, Mentions: mentions, Via: via}, p.now())
 	if err != nil {
 		return Posted{}, err
@@ -698,6 +697,15 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 			if who == m.By || slices.Contains(sent, who) {
 				continue
 			}
+			// In a private thread, tagging a person invites them: they
+			// take part from now on, so they can read what they were
+			// tagged in.
+			if th.Visibility == threads.Private && !strings.HasPrefix(who, projects.RolePrefix) {
+				if _, err := p.Threads.Join(tenant, th.ID, []threads.Participant{{Kind: threads.Person, Name: who, AddedBy: m.By}}, p.now()); err != nil {
+					p.log.Warn("platform: a person tagged in a private thread could not be invited", "tenant", tenant, "thread", th.ID, "error", err)
+					continue
+				}
+			}
 			p.raiseMention(tenant, th, m, who, mn)
 			sent = append(sent, who)
 		}
@@ -751,9 +759,6 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	}
 	if in.Version != th.Version {
 		return threads.Thread{}, fmt.Errorf("%w: %q is at version %d, not %d", threads.ErrVersion, id, th.Version, in.Version)
-	}
-	if in.Visibility == threads.Private {
-		return threads.Thread{}, threads.ErrPrivate
 	}
 	if err := p.checkDefault(ctx, who.Tenant, th.Project, in.Default); err != nil {
 		return threads.Thread{}, err
@@ -919,6 +924,18 @@ func (t ThreadTurn) at() time.Time {
 // agent has answered yet. A conversation's channel and project are its
 // record's when it has one.
 func (p *Platform) ThreadPage(tenant string, q runs.ThreadQuery) ([]ThreadSummary, string, error) {
+	return p.threadPage(tenant, q, nil)
+}
+
+// ThreadPageAs is ThreadPage holding only the conversations the reader may
+// read: in a project they see, and in a private thread taking part. A page is
+// full of those, so a hidden conversation never shortens one.
+func (p *Platform) ThreadPageAs(who auth.Principal, q runs.ThreadQuery) ([]ThreadSummary, string, error) {
+	seer := p.Seer(who)
+	return p.threadPage(who.Tenant, q, func(s ThreadSummary) bool { return seer.Place(Place{Project: s.Project, Thread: s.ID}) })
+}
+
+func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(ThreadSummary) bool) ([]ThreadSummary, string, error) {
 	limit := q.Limit
 	if limit <= 0 {
 		limit = runs.DefaultThreadPage
@@ -978,6 +995,8 @@ func (p *Platform) ThreadPage(tenant string, q runs.ThreadQuery) ([]ThreadSummar
 		case q.Standing == runs.StandingFailed && s.Failed == 0:
 			continue
 		case q.Channel != "" && s.Channel != q.Channel:
+			continue
+		case keep != nil && !keep(*s):
 			continue
 		}
 		if q.Before != "" {

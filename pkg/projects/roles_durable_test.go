@@ -54,7 +54,7 @@ func TestRestartKeepsRolesKindsAndMoves(t *testing.T) {
 		if tree.Like("partner") != projects.Account || !slices.Equal(tree.Kinds(), []projects.KindSpec{partner}) {
 			t.Fatalf("the workspace's kinds after restart = %+v", tree.Kinds())
 		}
-		if g, _ := tree.Get("Globex"); g.Parent != "Field" || g.Announce != projects.Member || !slices.Equal(g.Members, members("*=viewer", "ada=owner")) {
+		if g, _ := tree.Get("Globex"); g.Parent != "Field" || g.Announce != projects.Member || !slices.Equal(g.Members, members("ada=owner")) {
 			t.Fatalf("Globex after restart = %+v", g)
 		}
 		if a := tree.Resolve("Globex", projects.Reader{Subject: "dee", Roles: []string{"comms"}}); a.Role != projects.Owner || a.From != "" {

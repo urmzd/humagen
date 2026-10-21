@@ -162,14 +162,20 @@ func TestANewProjectGetsDefaultMembers(t *testing.T) {
 	if want := members("*=member", "ada=owner"); !slices.Equal(field.Members, want) {
 		t.Fatalf("a team = %+v, want %+v", field.Members, want)
 	}
+	// An account is its team's: members only, its creator owning it.
 	globex := mustCreate(t, s, "acme", projects.Project{Name: "Globex", Parent: "Field", Kind: projects.Account}, projects.Writer{By: "bo"})
-	if want := members("*=viewer", "bo=owner"); !slices.Equal(globex.Members, want) {
+	if want := members("bo=owner"); !slices.Equal(globex.Members, want) {
 		t.Fatalf("an account = %+v, want %+v", globex.Members, want)
 	}
-	// A team under an account is no more open than the account.
+	// A team under a members-only account is members only too.
 	renewals := mustCreate(t, s, "acme", team("Renewals", "Globex"), ada)
-	if want := members("*=viewer", "ada=owner"); !slices.Equal(renewals.Members, want) {
+	if want := members("ada=owner"); !slices.Equal(renewals.Members, want) {
 		t.Fatalf("a team under an account = %+v, want %+v", renewals.Members, want)
+	}
+	// One the file declares, with no creator to own it, is opened to everyone
+	// as a viewer, or only projects:govern would see it.
+	if got := projects.DefaultMembers(projects.Account, "role:ops"); !slices.Equal(got, members("*=viewer")) {
+		t.Fatalf("an account with no creator = %+v", got)
 	}
 	news := mustCreate(t, s, "acme", projects.Project{Name: "News", Kind: projects.Company}, admin)
 	if want := members("*=member", "root=owner"); !slices.Equal(news.Members, want) {
@@ -217,32 +223,33 @@ func TestAChildIsNeverMoreOpenThanItsParent(t *testing.T) {
 	}
 }
 
-func TestEveryProjectStaysVisible(t *testing.T) {
+// A project may be members only, read by its members alone: anyone else has
+// no role in it and does not see it. Ownership flows down, so it cannot sit
+// under a project everyone owns, and a project cannot be opened to everyone
+// as owners while one below it is members only.
+func TestAProjectMayBeMembersOnlyWhereNobodyOwnsAll(t *testing.T) {
 	s := projects.NewStore()
-	for name, ms := range map[string][]projects.Entry{
-		"nobody":       members(),
-		"owners only":  members("ada=owner"),
-		"a role only":  members("role:field-eng=member", "ada=owner"),
-		"no one reads": members("ada=owner", "bo=member"),
-	} {
-		if _, err := s.Create("acme", with(team("Secret", ""), ms), ada, t0); !errors.Is(err, projects.ErrConfinement) {
-			t.Errorf("%s: %v, want ErrConfinement", name, err)
-		}
-	}
 	mustCreate(t, s, "acme", team("Field", ""), ada)
-	if _, err := s.Update("acme", "Field", 1, ada, t0, func(p *projects.Project) error { p.Members = members("ada=owner"); return nil }); !errors.Is(err, projects.ErrConfinement) {
-		t.Fatalf("closing a project = %v", err)
+	secret := mustCreate(t, s, "acme", with(team("Secret", "Field"), members("ada=owner", "bo=member")), ada)
+	if a := s.Tree("acme").Resolve("Secret", projects.Reader{Subject: "stranger"}); a.Role != projects.None {
+		t.Fatalf("a stranger in a members-only project = %+v", a)
+	}
+	if a := s.Tree("acme").Resolve("Secret", projects.Reader{Subject: "bo"}); a.Role != projects.Member {
+		t.Fatalf("a member of it = %+v", a)
+	}
+	if _, err := s.Update("acme", "Field", 1, ada, t0, func(p *projects.Project) error { p.Members = members("ada=owner"); return nil }); err != nil {
+		t.Fatalf("closing a project nobody owns wholesale = %v", err)
+	}
+	// Everyone owning Open owns what is below it, so nothing there is members only.
+	mustCreate(t, s, "acme", with(team("Open", ""), members("*=owner")), ada)
+	if _, err := s.Create("acme", with(team("Hidden", "Open"), members("ada=owner")), ada, t0); !errors.Is(err, projects.ErrInvalid) {
+		t.Fatalf("members only under a project everyone owns = %v", err)
+	}
+	if _, err := s.Update("acme", "Field", 2, ada, t0, func(p *projects.Project) error { p.Members = members("*=owner"); return nil }); !errors.Is(err, projects.ErrInvalid) {
+		t.Fatalf("everyone owning a project with %s below it = %v", secret.Name, err)
 	}
 	if _, err := s.Create("acme", with(projects.Project{Name: "News", Kind: projects.Company}, members("*=viewer", "root=owner")), admin, t0); !errors.Is(err, projects.ErrInvalid) {
 		t.Fatalf("a company project everyone only views = %v", err)
-	}
-	// Everyone who can see projects sees every one of them.
-	mustCreate(t, s, "acme", projects.Project{Name: "Globex", Parent: "Field", Kind: projects.Account}, ada)
-	tree := s.Tree("acme")
-	for _, name := range tree.Subtree("") {
-		if a := tree.Resolve(name, projects.Reader{Subject: "stranger"}); !a.Role.AtLeast(projects.Viewer) {
-			t.Errorf("a stranger cannot see %q: %+v", name, a)
-		}
 	}
 }
 

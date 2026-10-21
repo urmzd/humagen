@@ -178,10 +178,10 @@ func TestAKindInUseCannotBeRemoved(t *testing.T) {
 		t.Fatal("Like does not read the workspace's kinds")
 	}
 	mustCreate(t, s, "acme", team("Field", ""), ada)
-	// A partner behaves as an account: it carries one, views by default, and
-	// cannot sit under another account-like project.
+	// A partner behaves as an account: it carries one, is members only by
+	// default, and cannot sit under another account-like project.
 	globex := mustCreate(t, s, "acme", projects.Project{Name: "Globex", Parent: "Field", Kind: "partner", Account: &projects.AccountInfo{Customer: "Globex Inc"}}, ada)
-	if want := members("*=viewer", "ada=owner"); !slices.Equal(globex.Members, want) {
+	if want := members("ada=owner"); !slices.Equal(globex.Members, want) {
 		t.Fatalf("a partner's default members = %+v", globex.Members)
 	}
 	if _, err := s.Create("acme", projects.Project{Name: "Sub", Parent: "Globex", Kind: projects.Account}, ada, t0); !errors.Is(err, projects.ErrInvalid) {

@@ -188,8 +188,30 @@ func checkProjects(w Workspace) error {
 			}
 			return fmt.Errorf("%s.members: %q would be more open than %s; a project is never more open than its parent", at(i), p.Name, name)
 		}
+		// A members-only project is read by its members alone, and owners
+		// above own everything below: none sits under one everyone owns.
+		if p.Members != nil && openness(p.Members) == 0 {
+			for j := parent[i]; j >= 0; j = parent[j] {
+				if everyoneOwns(ps[j].Members) {
+					return fmt.Errorf("%s.members: everyone owns %q, which owns everything below it, so %q cannot be members only", at(i), ps[j].Name, p.Name)
+				}
+			}
+			if everyoneOwns(w.Members) {
+				return fmt.Errorf("%s.members: everyone owns the workspace, which owns everything below it, so %q cannot be members only", at(i), p.Name)
+			}
+		}
 	}
 	return nil
+}
+
+// everyoneOwns reports a list whose entry for everyone is owner.
+func everyoneOwns(ms []Member) bool {
+	for _, m := range ms {
+		if m.Who == everyoneEntry {
+			return m.Role == RoleOwner
+		}
+	}
+	return false
 }
 
 // checkKinds checks the workspace's own kinds, and returns what every kind
@@ -247,9 +269,7 @@ func checkMembers(ms []Member, like string) error {
 		seen[m.Who] = true
 	}
 	switch {
-	case star == "":
-		return fmt.Errorf(`: an entry for everyone ("*") of at least viewer is needed: members-only projects need read confinement, which is not built`)
-	case like == ProjectCompany && star == RoleViewer:
+	case like == ProjectCompany && (star == "" || star == RoleViewer):
 		return fmt.Errorf(`: a company project is open to everyone ("*") as a member at least`)
 	}
 	return nil
