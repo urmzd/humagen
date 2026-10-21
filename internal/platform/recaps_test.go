@@ -14,13 +14,14 @@ import (
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
 // project creates a project at the top of the tree.
 func project(t *testing.T, p *platform.Platform, name string) {
 	t.Helper()
-	if err := p.CreateProject(t.Context(), tenant, platform.Project{Name: name}); err != nil {
+	if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: name}); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -191,14 +191,14 @@ func TestStoreKeepsNarrowerPoliciesWithinTheTenants(t *testing.T) {
 	if _, err := s.Put("acme", pol(lead, func(p *Policy) { p.MaxLease = 5000 }), "ada", t0); err != nil {
 		t.Fatal(err)
 	}
-	got := s.For("acme", "Launch", "lead", "")
+	got := s.For("acme", []string{"Launch"}, "lead", "")
 	if len(got) != 3 || got[0].Scope != lead || got[1].Scope != launch || got[2].Scope != tenantScope {
 		t.Fatalf("most specific first: %+v", got)
 	}
-	if len(s.For("acme", "", "helper", "")) != 1 {
+	if len(s.For("acme", nil, "helper", "")) != 1 {
 		t.Fatal("a run in no project, by an agent with no policy, should fall under the tenant's alone")
 	}
-	if len(s.For("globex", "Launch", "lead", "")) != 0 || len(s.List("globex")) != 0 {
+	if len(s.For("globex", []string{"Launch"}, "lead", "")) != 0 || len(s.List("globex")) != 0 {
 		t.Fatal("another tenant falls under these policies")
 	}
 }
@@ -265,19 +265,60 @@ func TestAClientIsAScopeThatCanOnlyTighten(t *testing.T) {
 	if _, err := s.Put("acme", pol(lead, func(p *Policy) { p.MaxConcurrent = 1 }), "ada", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	got := s.For("acme", "", "lead", "docs-app")
+	got := s.For("acme", nil, "lead", "docs-app")
 	if len(got) != 3 || got[0].Scope != lead || got[1].Scope != docs || got[2].Scope != tenantScope {
 		t.Fatalf("most specific first: %+v", got)
 	}
 	// A run no client raised falls under no client's policy.
-	if got := s.For("acme", "", "helper", ""); len(got) != 1 || got[0].Scope != tenantScope {
+	if got := s.For("acme", nil, "helper", ""); len(got) != 1 || got[0].Scope != tenantScope {
 		t.Fatalf("a run with no client: %+v", got)
 	}
-	if got := s.For("acme", "", "helper", "ops-app"); len(got) != 1 {
+	if got := s.For("acme", nil, "helper", "ops-app"); len(got) != 1 {
 		t.Fatalf("another client's run fell under docs-app's policy: %+v", got)
 	}
 	if list := s.List("acme"); list[len(list)-1].Scope != docs {
 		t.Fatalf("clients sort last: %+v", list)
+	}
+}
+
+// A run in a project falls under its project's policy and every ancestor's,
+// nearest first, between the client's and the tenant's, so the nearest limit
+// is the one a refusal names among equals and the strictest wins.
+func TestForReturnsTheChainNearestFirst(t *testing.T) {
+	s := NewStore()
+	field, renewals := Scope{Project, "Field"}, Scope{Project, "Renewals"}
+	docs := Scope{Kind: Client, Name: "docs-app"}
+	for _, p := range []Policy{
+		pol(tenantScope, func(p *Policy) { p.MaxRuns = 100 }),
+		pol(field, func(p *Policy) { p.MaxRuns = 7 }),
+		pol(renewals, func(p *Policy) { p.MaxRuns = 50 }),
+		pol(lead, func(p *Policy) { p.MaxRuns = 90 }),
+		pol(docs, func(p *Policy) { p.MaxRuns = 80 }),
+		pol(Scope{Project, "Initech"}, func(p *Policy) { p.MaxRuns = 1 }),
+	} {
+		if _, err := s.Put("acme", p, "ada", t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := s.For("acme", []string{"Renewals", "Globex", "Field", ""}, "lead", "docs-app")
+	want := []Scope{lead, docs, renewals, field, tenantScope}
+	if len(got) != len(want) {
+		t.Fatalf("For = %+v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i].Scope != want[i] {
+			t.Fatalf("For[%d] = %s, want %s", i, got[i].Scope, want[i])
+		}
+	}
+	// Globex sets no policy of its own and the root's "" names none, so
+	// both are skipped; a sibling's policy never applies.
+	// The strictest wins: Field's 7 runs, though Renewals allows 50.
+	var applied []Applied
+	for _, p := range got {
+		applied = append(applied, Applied{Policy: p, Usage: Usage{Runs: 7}})
+	}
+	if d := Decide(applied, Request{}); d.Verdict != Deny || d.Policy.Scope != field {
+		t.Fatalf("Decide = %+v, want Field's limit to refuse", d)
 	}
 }
 

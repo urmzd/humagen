@@ -49,15 +49,12 @@ const (
 // reads only the run's own project.
 var ErrNoProject = errors.New("platform: this run is not filed in a project")
 
-// subtreeOf is a project and every project below it, or false for a name the
-// tenant does not have. The root's subtree is the whole workspace, which
-// callers read as every project rather than as a list. Projects are flat until
-// the tree is wired in here, so a project's subtree is the project itself.
+// subtreeOf is a project and every project below it, in tree order, or false
+// for a name the tenant does not have. The root's subtree is the whole
+// workspace, which callers read as every project rather than as a list.
 func (p *Platform) subtreeOf(tenant, name string) ([]string, bool) {
-	if !p.HasProject(tenant, name) {
-		return nil, false
-	}
-	return []string{name}, true
+	names := p.ProjectTree(tenant).Subtree(name)
+	return names, names != nil
 }
 
 // summaryScope is which runs runs_summary counts: the whole workspace when no

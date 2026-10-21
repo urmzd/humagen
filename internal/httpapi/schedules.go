@@ -11,6 +11,7 @@ import (
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -84,7 +85,9 @@ func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request, who auth
 		Tenant: who.Tenant,
 		Meta:   meta,
 	}
-	if err := s.P.Schedules.Add(sc, platform.About{Description: strings.TrimSpace(body.Description), CreatedAt: time.Now().UTC()}); err != nil {
+	if err := s.filed(who.Tenant, meta[runs.MetaProject], func() error {
+		return s.P.Schedules.Add(sc, platform.About{Description: strings.TrimSpace(body.Description), CreatedAt: time.Now().UTC()})
+	}); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -127,7 +130,7 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 		Description: strings.TrimSpace(body.Description), UpdatedBy: who.Subject, UpdatedAt: time.Now().UTC(),
 		CreatedAt: s.P.Schedules.About(name).CreatedAt,
 	}
-	if err := s.P.Schedules.Replace(sc, about); err != nil {
+	if err := s.filed(who.Tenant, meta[runs.MetaProject], func() error { return s.P.Schedules.Replace(sc, about) }); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -137,7 +140,8 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 // scheduleMeta checks that what a schedule names exists in the caller's
 // tenant now, and returns meta with its project set. A schedule runs an agent
 // with nobody present, so a missing agent is refused now rather than failing
-// every occurrence later.
+// every occurrence later. "~" is the workspace, which files a schedule in no
+// project.
 func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.Principal, body schedule, meta map[string]string) (map[string]string, bool) {
 	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, body.Agent, 0); err != nil {
 		s.problem(w, err)
@@ -161,12 +165,12 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 	case body.Deliver != platform.DeliverNone:
 		meta[platform.MetaDeliver] = body.Deliver
 	}
-	if body.Project != "" {
-		if !s.P.HasProject(who.Tenant, body.Project) {
+	if project := projects.NameOf(body.Project); project != projects.Root {
+		if !s.P.HasProject(who.Tenant, project) {
 			s.problem(w, platform.ErrProjectNotFound)
 			return nil, false
 		}
-		meta[runs.MetaProject] = body.Project
+		meta[runs.MetaProject] = project
 	}
 	return meta, true
 }

@@ -11,14 +11,18 @@ import (
 )
 
 // legacyRolePermissions is the hardcoded table the policy language replaced,
-// copied as it stood. The built-in policy must reproduce it exactly, so that
-// a deployment with no policy file behaves as it did.
+// copied as it stood, with the projects permissions added since: a viewer
+// reads projects, an operator also makes them (anyone who can start a run
+// can make a project), and only an admin governs the tree. The built-in
+// policy must reproduce it exactly, so that a deployment with no policy file
+// behaves as it did.
 var legacyRolePermissions = map[auth.Role][]auth.Permission{
-	auth.Viewer: {auth.AgentsRead, auth.RunsRead, auth.SchedulesRead, auth.AlertsRead, auth.KnowledgeRead, auth.EvalsRead, auth.BillingRead, auth.ArtifactsRead, auth.ClientsRead},
+	auth.Viewer: {auth.AgentsRead, auth.RunsRead, auth.SchedulesRead, auth.AlertsRead, auth.KnowledgeRead, auth.EvalsRead, auth.BillingRead, auth.ArtifactsRead, auth.ClientsRead, auth.ProjectsRead},
 	auth.Operator: {
 		auth.AgentsRead, auth.RunsRead, auth.RunsWrite, auth.SchedulesRead, auth.SchedulesWrite,
 		auth.AlertsRead, auth.AlertsWrite, auth.KnowledgeRead, auth.EvalsRead, auth.EvalsWrite,
 		auth.BillingRead, auth.ArtifactsRead, auth.ArtifactsWrite, auth.ClientsRead,
+		auth.ProjectsRead, auth.ProjectsWrite,
 	},
 	auth.Admin: auth.Permissions(),
 }
@@ -231,9 +235,42 @@ func TestManagerIsAnOperatorWhoWritesAgentsAndKnowledge(t *testing.T) {
 			t.Errorf("a manager cannot %s", p)
 		}
 	}
-	for _, p := range []auth.Permission{auth.BillingWrite, auth.ClientsWrite} {
+	for _, p := range []auth.Permission{auth.BillingWrite, auth.ClientsWrite, auth.ProjectsGovern} {
 		if who.Can(p) {
 			t.Errorf("a manager can %s, which stays an admin's", p)
 		}
+	}
+}
+
+// Anyone reads the tree, whoever starts runs makes projects, and only an
+// admin governs it: the workspace itself and company projects. A machine
+// holds govern only when its token names it, and a policy file can grant it
+// by name.
+func TestOnlyAnAdminGovernsTheProjectTree(t *testing.T) {
+	for _, tc := range []struct {
+		role               auth.Role
+		read, write, govrn bool
+	}{
+		{auth.Viewer, true, false, false},
+		{auth.Operator, true, true, false},
+		{auth.Manager, true, true, false},
+		{auth.Admin, true, true, true},
+	} {
+		who := auth.Principal{Subject: "u", Tenant: "acme", Kind: auth.User, Roles: []auth.Role{tc.role}}
+		if who.Can(auth.ProjectsRead) != tc.read || who.Can(auth.ProjectsWrite) != tc.write || who.Can(auth.ProjectsGovern) != tc.govrn {
+			t.Errorf("%s: read %v write %v govern %v, want %v %v %v", tc.role,
+				who.Can(auth.ProjectsRead), who.Can(auth.ProjectsWrite), who.Can(auth.ProjectsGovern), tc.read, tc.write, tc.govrn)
+		}
+	}
+	machine := auth.Principal{Subject: "ci", Tenant: "acme", Kind: auth.Machine, Scopes: []auth.Permission{auth.ProjectsWrite}}
+	if machine.Can(auth.ProjectsGovern) || machine.Can(auth.ProjectsRead) {
+		t.Error("a machine scoped to projects:write holds more than its scope")
+	}
+	pol, err := auth.ParsePolicy("p.authz", "role keeper { allow read, govern on projects }")
+	if err != nil {
+		t.Fatalf("a policy cannot grant govern by name: %v", err)
+	}
+	if got := pol.Permissions([]auth.Role{"keeper"}); !slices.Equal(sorted(got), sorted([]auth.Permission{auth.ProjectsRead, auth.ProjectsGovern})) {
+		t.Fatalf("keeper holds %v", got)
 	}
 }

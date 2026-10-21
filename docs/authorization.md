@@ -56,10 +56,11 @@ word, or a string for a name such as `"https://example.com/roles"`.
 ```
 role viewer   { allow read on * }
 role operator extends viewer {
-  allow write on runs, schedules, alerts, evals, artifacts
+  allow write on runs, schedules, alerts, evals, artifacts, projects
 }
 role admin    { allow * on * }
 role auditor  extends viewer { deny read on billing }
+role steward  extends viewer { allow govern on projects }
 
 grant viewer   to anyone
 grant operator to group "eng-oncall"
@@ -69,6 +70,15 @@ grant auditor  to claim department = "finance"
 
 Someone in `platform-admins` whose `department` is `finance` holds viewer,
 admin and auditor, and cannot read billing: the auditor's deny wins.
+
+Projects have three permissions: `projects:read`, `projects:write`, and
+`projects:govern`, the action `govern`, which changes the workspace itself and
+company projects and reuses a deleted project's name. `allow * on *` holds it,
+and so does a rule that names it, as `steward` does above. It adds to
+`projects:write` and never replaces it: a steward who cannot write projects
+changes none. A policy file written before projects had their own permissions
+adds `projects` to the rule that lets operators write runs, as above, or only
+admins make projects.
 
 ## Configure
 

@@ -55,6 +55,21 @@ const (
 	MetaProject = "warp.project"
 )
 
+// MetaWithin is the key the platform writes into a tag's Meta at admission:
+// the ancestors of the run's project, nearest first and comma separated (a
+// project's name holds no comma). The platform overwrites whatever a caller
+// put there, so it is believed from every origin.
+const MetaWithin = "warp.within"
+
+// WithinOf returns the ancestors a tag's run was admitted within.
+func WithinOf(tag envelope.Tag) []string {
+	v := tag.Meta[MetaWithin]
+	if v == "" {
+		return nil
+	}
+	return strings.Split(v, ",")
+}
+
 // MetaClient is the key the platform's ingress writes into a tag's Meta to
 // say which external client raised it. Ingress overwrites whatever a
 // connector put there, and only a tag whose origin is a client surface is
@@ -161,6 +176,10 @@ type Run struct {
 	Picked string `json:"picked,omitempty"`
 	// Project is the project the conversation is filed under, if any.
 	Project string `json:"project,omitempty"`
+	// Within is the project's ancestors, nearest first and the root left
+	// out, pinned when the run was admitted: what it counts toward besides
+	// its project. A run called by an agent has its root's.
+	Within []string `json:"within,omitempty"`
 	// Client is the external client (a Slack or GitHub installation) that
 	// raised the run. A run called by an agent has its root's.
 	Client string `json:"client,omitempty"`
@@ -272,12 +291,16 @@ type Index struct {
 	order []string
 	// titles names conversations, by tenant and thread.
 	titles map[string]string
+	// counts are what each project holds, kept as runs change.
+	counts counters
 	// kept is where runs are written. Nil keeps them only in memory.
 	kept *persisted
 }
 
 // NewIndex returns an empty index.
-func NewIndex() *Index { return &Index{runs: map[string]*Run{}, titles: map[string]string{}} }
+func NewIndex() *Index {
+	return &Index{runs: map[string]*Run{}, titles: map[string]string{}, counts: newCounters()}
+}
 
 // SetTitle names a conversation. A conversation with no name is shown by the
 // first thing that was asked in it.
@@ -323,24 +346,25 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	thread, prev, picked, text, project, client := runID, "", "", tag.Text, "", ClientOf(tag)
 	// A schedule's project is written by the server when the schedule is
 	// created, so the cron trigger and a person's run-now are believed too.
-	project = ProjectOf(tag)
+	project, within := ProjectOf(tag), WithinOf(tag)
 	if tag.Origin == OriginAPI {
 		if v := tag.Meta[MetaThread]; v != "" {
 			thread = v
 		}
 		prev, picked = tag.Meta[MetaPrev], tag.Meta[MetaPicked]
-		// The agent is sent the conversation so far. What the person
-		// actually typed is kept apart, and is what the record shows.
-		if v := tag.Meta[MetaAsk]; v != "" {
-			text = v
-		}
+	}
+	// The agent is sent the conversation so far, or a schedule's text with
+	// its project's context. What was actually asked is kept apart, and is
+	// what the record shows. The platform writes it for these origins.
+	if v := tag.Meta[MetaAsk]; v != "" && (tag.Origin == OriginAPI || tag.Origin == "cron" || tag.Origin == OriginManual) {
+		text = v
 	}
 	if top, ok := x.runs[root]; ok && parent != "" && top.Tenant == tag.Tenant {
-		thread, project, client = top.Thread, top.Project, top.Client
+		thread, project, client, within = top.Thread, top.Project, top.Client, top.Within
 	}
 	r := &Run{
 		ID: runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: tag.Agent, Rev: rev, Origin: tag.Origin,
-		Text: text, Input: input, Actor: tag.Actor, Thread: thread, Prev: prev, Picked: picked, Project: project, Client: client,
+		Text: text, Input: input, Actor: tag.Actor, Thread: thread, Prev: prev, Picked: picked, Project: project, Within: slices.Clone(within), Client: client,
 		Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, Lifecycle: lifecycleOf(parent, edge.Mode),
 		Lease: edge.Lease, Schedule: schedule,
 		Status: Accepted, CreatedAt: tag.At, UpdatedAt: tag.At,
@@ -351,6 +375,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	}
 	x.runs[runID] = r
 	x.order = append(x.order, runID)
+	x.count(r)
 	return nil
 }
 
@@ -383,6 +408,7 @@ func (x *Index) Observe(e envelope.Event) (Run, bool) {
 	if !ok || r.Tenant != e.Tenant || r.Status.Terminal() {
 		return Run{}, false
 	}
+	defer x.recount(r)
 	x.touch(r.ID)
 	r.UpdatedAt = e.At
 	switch e.Kind {
@@ -583,6 +609,7 @@ func (x *Index) End(runID string, status Status, answer, failure string, at time
 	if !ok || r.Status.Terminal() || !status.Terminal() {
 		return Run{}, false
 	}
+	defer x.recount(r)
 	x.touch(runID)
 	if answer != "" {
 		r.Answer = answer
@@ -630,6 +657,7 @@ func (x *Index) Settle(runID string, at time.Time) (Run, bool) {
 	if !ok || !r.Finishing || r.Status.Terminal() || x.openAttached(runID) > 0 {
 		return Run{}, false
 	}
+	defer x.recount(r)
 	x.touch(runID)
 	r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping = Completed, at, false, "", false
 	return *r, true
@@ -650,6 +678,7 @@ func (x *Index) AskStop(runID string, at time.Time) (Run, bool) {
 	if !r.Stopping {
 		r.Stopping, r.StopRequestedAt, r.UpdatedAt = true, at, at
 		x.touch(runID)
+		x.recount(r)
 	}
 	return *r, true
 }
@@ -665,6 +694,7 @@ func (x *Index) Stop(runID, answer, cause string, at time.Time) (Run, bool) {
 	if !ok || r.Status.Terminal() {
 		return Run{}, false
 	}
+	defer x.recount(r)
 	x.touch(runID)
 	if answer != "" {
 		r.Answer = answer
@@ -855,6 +885,12 @@ type ThreadQuery struct {
 	Agent string
 	// Standing keeps conversations that are running or that had a failure.
 	Standing Standing
+	// Projects, when not nil, keeps conversations filed in one of these
+	// projects: one project, or a project and every project below it. "" is
+	// the root: conversations filed in no project. An empty, non-nil list
+	// keeps nothing. It is at most a subtree of the tree, which the tree's
+	// caps bound.
+	Projects []string
 	// Limit is the page size. Zero means DefaultThreadPage, and it is capped
 	// at MaxThreadPage.
 	Limit int
@@ -918,9 +954,18 @@ func (x *Index) ThreadPage(tenant string, q ThreadQuery) ([]ThreadSummary, strin
 		}
 	}
 
+	var in map[string]bool
+	if q.Projects != nil {
+		in = make(map[string]bool, len(q.Projects))
+		for _, p := range q.Projects {
+			in[p] = true
+		}
+	}
 	page := []ThreadSummary{}
 	for _, s := range x.threads(tenant) {
 		switch {
+		case in != nil && !in[s.Project]:
+			continue
 		case q.Origin != "" && s.Origin != q.Origin:
 			continue
 		case q.Agent != "" && !slices.Contains(s.Agents, q.Agent):

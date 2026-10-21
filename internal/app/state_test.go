@@ -78,7 +78,7 @@ func TestASpecOnPostgresKeepsItsAgentsAcrossARestart(t *testing.T) {
 	}
 	t.Setenv("SPEC_TEST_PG", url)
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	os.WriteFile(path, []byte(`api_version: warp/v1
+	if err := os.WriteFile(path, []byte(`api_version: warp/v1
 kind: System
 spec:
   stores: {kind: postgres, postgres: {url: {ref: "env:SPEC_TEST_PG"}}}
@@ -86,7 +86,9 @@ spec:
 api_version: warp/v1
 kind: Platform
 metadata: {name: default}
-`), 0o600)
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	create := func(addr string) {
 		body := strings.NewReader(`{"name":"kept","provider":"offline","model":"offline","system_prompt":"Stay."}`)
 		resp, err := http.Post("http://"+addr+"/api/agents", "application/json", body)

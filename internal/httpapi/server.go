@@ -41,6 +41,7 @@ import (
 	"github.com/urmzd/warp/pkg/pick"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/prefs"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -318,6 +319,11 @@ func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.
 	out := []proposal{}
 	for _, p := range s.P.Memory.Pending(who.Tenant) {
 		if project, isProject := memory.OwnerProject(p.Agent); isProject {
+			// The workspace's own notes are the root's, named as a path
+			// names it.
+			if project == projects.Root {
+				project = projects.RootAddress
+			}
 			out = append(out, proposal{Project: project, Note: p.Note})
 		} else {
 			out = append(out, proposal{Agent: p.Agent, Note: p.Note})
@@ -384,13 +390,19 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 
 // listThreads pages a tenant's conversations, newest activity first.
 //
-// limit, before, origin, agent and standing are all optional. The answer
+// limit, before, origin, agent, standing, project and within are all optional.
+// project keeps the conversations filed in one project, "~" for the
+// workspace's own, and within those filed in a project or below it. The answer
 // carries next, the cursor for the page after this one, or null at the end.
 func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
 	query := runs.ThreadQuery{
 		Origin: q.Get("origin"), Agent: q.Get("agent"), Before: q.Get("before"),
 		Standing: runs.Standing(q.Get("standing")),
+	}
+	var found bool
+	if query.Projects, found = s.projectsWithin(w, who.Tenant, q.Get("project"), q.Get("within")); !found {
+		return
 	}
 	if raw := q.Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
@@ -648,6 +660,18 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, "that client is configured by the server and cannot be changed here")
 	case errors.Is(err, clients.ErrInvalid), errors.Is(err, callpolicy.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, projects.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, projects.ErrInvalid))
+	case errors.Is(err, projects.ErrLimit):
+		fail(w, http.StatusTooManyRequests, detail(err, projects.ErrLimit))
+	case errors.Is(err, projects.ErrManaged):
+		fail(w, http.StatusConflict, detail(err, projects.ErrManaged))
+	case errors.Is(err, projects.ErrInUse):
+		fail(w, http.StatusConflict, detail(err, projects.ErrInUse))
+	case errors.Is(err, projects.ErrVersion):
+		fail(w, http.StatusConflict, detail(err, projects.ErrVersion)+"; reload and try again")
+	case errors.Is(err, projects.ErrForbidden):
+		fail(w, http.StatusForbidden, detail(err, projects.ErrForbidden))
 	case errors.Is(err, callpolicy.ErrLimit):
 		fail(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, pick.ErrNoAgent):
@@ -685,6 +709,18 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		s.Log.Error("httpapi: internal error", "error", err)
 		fail(w, http.StatusInternalServerError, "something went wrong on our side")
 	}
+}
+
+// detail is what an error says after the error it wraps, for an answer: the
+// project store's "projects: in use: "Launch" is still used by the schedule
+// nightly" is answered as "Launch" is still used by the schedule nightly. It
+// names only what is in the caller's own workspace.
+func detail(err, sentinel error) string {
+	msg, prefix := err.Error(), sentinel.Error()+": "
+	if i := strings.Index(msg, prefix); i >= 0 {
+		return msg[i+len(prefix):]
+	}
+	return sentinel.Error()
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {

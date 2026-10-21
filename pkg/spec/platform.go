@@ -26,14 +26,19 @@ type PlatformSpec struct {
 	Surfaces      Surfaces      `json:"surfaces,omitzero"`
 }
 
-// Workspace is the workspace's settings. A field left out is left to the
-// console; a field set here is applied at every start.
+// Workspace is the workspace's settings and its project tree. A field left
+// out is left to the console; a field set here is applied at every start.
 type Workspace struct {
-	Baseline    *string   `json:"baseline,omitempty"`
-	History     *History  `json:"history,omitempty"`
-	TitleAgent  *string   `json:"title_agent,omitempty"`
-	MemoryAgent *string   `json:"memory_agent,omitempty"`
-	Projects    []Project `json:"projects,omitempty"`
+	Baseline    *string  `json:"baseline,omitempty"`
+	History     *History `json:"history,omitempty"`
+	TitleAgent  *string  `json:"title_agent,omitempty"`
+	MemoryAgent *string  `json:"memory_agent,omitempty"`
+	// Instructions are the workspace's own, the root project's: sent first
+	// to every agent answering anywhere in it. Set here, the console cannot
+	// change them.
+	Instructions *string `json:"instructions,omitempty"`
+	// Projects are merged into the tree at every start, parents first.
+	Projects []Project `json:"projects,omitempty"`
 }
 
 // History is how much of a conversation the next turn sees.
@@ -42,10 +47,61 @@ type History struct {
 	Limit int    `json:"limit,omitempty"`
 }
 
-// Project files conversations together.
+// Project is one project in the workspace's tree. A field set here is the
+// file's, and the console cannot change it; a field left out is the
+// console's.
 type Project struct {
-	Name        string `json:"name"`
+	// Name is the project's identity and never changes: letters, digits,
+	// spaces, dashes and underscores, unique ignoring case.
+	Name string `json:"name"`
+	// Title is what people see. Empty shows the name.
+	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
+	// Kind is company, team or account. Left out, a new project is a team.
+	Kind string `json:"kind,omitempty"`
+	// Parent is another project in this file. Left out, a new project sits
+	// at the top, under the workspace.
+	Parent string `json:"parent,omitempty"`
+	// Account is what an account project records about its customer.
+	Account *Account `json:"account,omitempty"`
+	// Instructions are sent to every agent answering here and below.
+	Instructions string `json:"instructions,omitempty"`
+}
+
+// Account is an account project's customer.
+type Account struct {
+	Customer   string `json:"customer,omitempty"`
+	ExternalID string `json:"external_id,omitempty"`
+	// URL is an https link, such as the customer's record in a CRM.
+	URL string `json:"url,omitempty"`
+}
+
+// Project kinds.
+const (
+	ProjectCompany = "company"
+	ProjectTeam    = "team"
+	ProjectAccount = "account"
+)
+
+// RootParent is how a project names the workspace as its parent, the same
+// as leaving parent out.
+const RootParent = "~"
+
+// ParentOf is the project a declared project sits under: "" is the
+// workspace.
+func ParentOf(p Project) string {
+	if p.Parent == RootParent {
+		return ""
+	}
+	return p.Parent
+}
+
+// KindOf is a declared project's kind, with its default.
+func KindOf(p Project) string {
+	if p.Kind == "" {
+		return ProjectTeam
+	}
+	return p.Kind
 }
 
 // Model is a model provider agents name as their provider: a slot
@@ -163,6 +219,9 @@ func (p Platform) check(kinds Kinds) error {
 	sp := p.Spec
 	if h := sp.Workspace.History; h != nil && h.Mode != "" && h.Mode != "recent" && h.Mode != "none" {
 		return fmt.Errorf("%s: workspace.history.mode is recent or none", where)
+	}
+	if err := checkProjects(sp.Workspace); err != nil {
+		return fmt.Errorf("%s: %w", where, err)
 	}
 	seen := map[string]bool{}
 	for i, m := range sp.Models {

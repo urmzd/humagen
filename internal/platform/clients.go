@@ -29,7 +29,7 @@ type ClientInput struct {
 // own policy says.
 func (p *Platform) ClientCaps(tenant string) clients.Caps {
 	caps := clients.DefaultCaps()
-	for _, pol := range p.Policies.For(tenant, "", "", "") {
+	for _, pol := range p.Policies.For(tenant, nil, "", "") {
 		if pol.MaxClients > 0 {
 			caps.Max = pol.MaxClients
 		}
