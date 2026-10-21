@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/toolprovider"
 )
 
 // Platform is what one workspace offers. Metadata.Name is its tenant.
@@ -34,6 +35,19 @@ type Workspace struct {
 	TitleAgent  *string   `json:"title_agent,omitempty"`
 	MemoryAgent *string   `json:"memory_agent,omitempty"`
 	Projects    []Project `json:"projects,omitempty"`
+	// PersonCredentials is what people may give for the tools that take
+	// their own credential.
+	PersonCredentials *PersonCredentials `json:"person_credentials,omitempty"`
+}
+
+// PersonCredentials is what a workspace's people may give for a
+// person-scoped tool. A reference is always theirs to give, from where the
+// operator allows (System person_refs). Values are off by default.
+type PersonCredentials struct {
+	// Values lets a person store the credential itself with warp, kept as a
+	// client's secret is. Off, they may only give a reference to where it
+	// is kept, and nothing of theirs is stored but that name.
+	Values bool `json:"values,omitempty"`
 }
 
 // History is how much of a conversation the next turn sees.
@@ -94,23 +108,44 @@ func (t Tool) MarshalJSON() ([]byte, error)  { return marshalSlot(t.Slot, t.Tool
 
 // MCP is the mcp tool kind's block.
 type MCP struct {
-	Transport  string   `json:"transport"`
-	Endpoint   string   `json:"endpoint"`
-	Args       []string `json:"args,omitempty"`
-	Credential *Ref     `json:"credential,omitempty"`
+	Transport string   `json:"transport"`
+	Endpoint  string   `json:"endpoint"`
+	Args      []string `json:"args,omitempty"`
+	// CredentialScope is whose credential the server is reached with:
+	// shared, the default, is Credential for every run; person is the
+	// credential of the person a run acts for, which each person gives
+	// themselves, and nothing for a person who has given none. A
+	// person-scoped tool names no Credential, so there is none to fall
+	// back to.
+	CredentialScope string `json:"credential_scope,omitempty"`
+	Credential      *Ref   `json:"credential,omitempty"`
 	// CredentialAs is the variable (stdio) or header (http) the credential
-	// is sent as. Empty on http is a bearer token.
+	// is sent as. Empty on http is a bearer token. A person-scoped stdio
+	// tool needs it.
 	CredentialAs string `json:"credential_as,omitempty"`
 	// Accept pins the tools taken from the server by schema hash. A tool
 	// left out, or changed, stays pending.
 	Accept []AcceptTool `json:"accept,omitempty"`
 }
 
+// Credential scopes.
+const (
+	ScopeShared = "shared"
+	ScopePerson = "person"
+)
+
 // AcceptTool is one pinned tool.
 type AcceptTool struct {
 	Name       string `json:"name"`
 	SchemaHash string `json:"schema_hash"`
 	Class      string `json:"class,omitempty"`
+	// Description and InputSchema are the tool's whole form as the server
+	// offers it. A person-scoped tool's server is not reached at start, as
+	// there is no credential to reach it with, so the tool is accepted in
+	// this form, which SchemaHash must be the hash of. A shared tool takes
+	// its form from the server and leaves these out.
+	Description string          `json:"description,omitempty"`
+	InputSchema json.RawMessage `json:"input_schema,omitempty"`
 }
 
 // Agent is one agent, from a file or written inline in the agent JSON fiber
@@ -202,6 +237,9 @@ func (p Platform) check(kinds Kinds) error {
 					return fmt.Errorf("%s: tools[%d] %q: every accepted tool needs a name and a schema_hash; pending tools are logged with theirs", where, i, t.Name)
 				}
 			}
+			if err := checkScope(b); err != nil {
+				return fmt.Errorf("%s: tools[%d] %q: %w", where, i, t.Name, err)
+			}
 		}
 	}
 	for i, a := range sp.Agents {
@@ -220,6 +258,37 @@ func (p Platform) check(kinds Kinds) error {
 	if g := sp.Surfaces.GitHub; g != nil && g.Enabled {
 		if len(g.Owners) == 0 || !g.Token.Set() || !g.WebhookSecret.Set() {
 			return fmt.Errorf("%s: surfaces.github: owners, token and webhook_secret are required", where)
+		}
+	}
+	return nil
+}
+
+// checkScope holds an mcp tool to its credential scope. A person-scoped one
+// names no credential, so a person with none is never given the shared one,
+// and declares each tool's whole form, since its server is not reached at
+// start.
+func checkScope(b MCP) error {
+	switch b.CredentialScope {
+	case "", ScopeShared:
+		return nil
+	case ScopePerson:
+	default:
+		return fmt.Errorf("credential_scope is shared or person")
+	}
+	if b.Credential.Set() {
+		return fmt.Errorf("a person-scoped tool takes each person's own credential, so it names no credential")
+	}
+	if b.Transport == "stdio" && b.CredentialAs == "" {
+		return fmt.Errorf("a person-scoped stdio tool needs credential_as, the variable each person's credential is sent in")
+	}
+	for j, a := range b.Accept {
+		full, err := toolprovider.NewTool(a.Name, a.Description, a.InputSchema)
+		if err != nil {
+			return fmt.Errorf("accept[%d] %q: input_schema: %w", j, a.Name, err)
+		}
+		if full.SchemaHash != a.SchemaHash {
+			return fmt.Errorf("accept[%d] %q: a person-scoped tool is declared with the description and input_schema its server offers, "+
+				"and schema_hash %s is not the hash of this input_schema (%s)", j, a.Name, a.SchemaHash, full.SchemaHash)
 		}
 	}
 	return nil

@@ -146,6 +146,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	seed := fs.Bool("seed", d.seed, "create example agents that need no model key")
 	builtinProvider := fs.String("builtin-provider", "", `model provider for the agents the platform provides, such as "anthropic" or "ollama". Empty means none are provided`)
 	builtinModel := fs.String("builtin-model", "", "model for the agents the platform provides")
+	personRefsFlag := fs.String("person-refs", "", `how the references each tenant's people may give for their own tool credentials start, as "tenant=op://People/,keychain:warp-people/;tenant=env:WARP_PERSON_". The server reads them with its own access. A tenant not listed may reference nothing`)
 	secretRefsFlag := fs.String("secret-refs", "", `environment variables each tenant's clients may reference as secrets, as "tenant=NAME,NAME;tenant=NAME". A tenant not listed may reference none`)
 	agentSpecs := fs.String("agent-specs", "", "comma-separated agent JSON files to register on startup")
 	var specFiles files
@@ -200,6 +201,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err != nil {
 		return err
 	}
+	people, err := personRefs(*personRefsFlag)
+	if err != nil {
+		return err
+	}
 	blobs := o.Blobs
 	if blobs == nil {
 		if blobs, err = openBlobs(ctx, o, file, storage, getenv); err != nil {
@@ -237,17 +242,21 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Backends: backends,
 		// A client may keep its secrets in this process's environment, under
 		// the names the operator gave its tenant.
-		Env:             os.LookupEnv,
-		SecretRefs:      refs,
-		Limits:          call.Limits{MaxDepth: *maxDepth, MaxFanOut: *maxFanOut},
-		Log:             log,
-		BuiltinProvider: *builtinProvider,
-		BuiltinModel:    *builtinModel,
-		Blobs:           blobs,
-		Bus:             broker,
-		Workspace:       *workspaceDir,
-		Concurrency:     *concurrency,
-		Ext:             ext,
+		Env:        os.LookupEnv,
+		SecretRefs: refs,
+		// People's own tool credentials: references from where the
+		// operator allows, values where the workspace keeps them.
+		CredentialRefs:   people,
+		CredentialValues: personValues(file.cfg),
+		Limits:           call.Limits{MaxDepth: *maxDepth, MaxFanOut: *maxFanOut},
+		Log:              log,
+		BuiltinProvider:  *builtinProvider,
+		BuiltinModel:     *builtinModel,
+		Blobs:            blobs,
+		Bus:              broker,
+		Workspace:        *workspaceDir,
+		Concurrency:      *concurrency,
+		Ext:              ext,
 	}
 	if len(o.Connections) > 0 {
 		conns := o.Connections

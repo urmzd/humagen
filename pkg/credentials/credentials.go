@@ -130,6 +130,33 @@ func (in Input) Check() error {
 	return nil
 }
 
+// CheckStart reports whether start may begin the references a workspace's
+// people give: one of the three schemes and, for env:, the name or the
+// start of the name of a WARP_ variable that is not a sign-in secret, which
+// is what a client's reference may name too. The operator lists these
+// (System person_refs), because a reference is read with the server's own
+// access, so a person may name anything that starts with one.
+func CheckStart(start string) error {
+	switch {
+	case strings.ContainsFunc(start, func(r rune) bool { return unicode.IsControl(r) || r == ',' || r == ';' }):
+		return fmt.Errorf("%w: %q is not how a reference starts", ErrInvalid, start)
+	case strings.HasPrefix(start, "env:"):
+		name := strings.TrimPrefix(start, "env:")
+		if !strings.HasPrefix(name, "WARP_") || strings.HasPrefix(name, "WARP_OIDC") || strings.ContainsFunc(name, notEnvRune) {
+			return fmt.Errorf("%w: %q: an env: start names a WARP_ variable that is not a sign-in secret", ErrInvalid, start)
+		}
+	case strings.HasPrefix(start, "keychain:") && len(start) > len("keychain:"),
+		strings.HasPrefix(start, "op://") && len(start) > len("op://"):
+	default:
+		return fmt.Errorf("%w: %q: a start is env:WARP_NAME, keychain:SERVICE or op://VAULT, or the start of one", ErrInvalid, start)
+	}
+	return nil
+}
+
+func notEnvRune(r rune) bool {
+	return (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '_'
+}
+
 // Secrets keeps values apart from the records. clients.Secrets is one: the
 // platform hands this store the very store its clients' secrets are kept in,
 // so both are kept, and guarded, the same way.

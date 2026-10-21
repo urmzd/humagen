@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/urmzd/warp/pkg/credentials"
 )
 
 // Slot names, for a binary registering a kind.
@@ -40,13 +42,19 @@ type System struct {
 
 // SystemSpec is a System document's spec.
 type SystemSpec struct {
-	Server     Server              `json:"server,omitzero"`
-	Auth       Auth                `json:"auth,omitzero"`
-	Stores     Slot                `json:"stores,omitzero"`
-	Bus        Slot                `json:"bus,omitzero"`
-	Blobs      Slot                `json:"blobs,omitzero"`
-	Execution  Execution           `json:"execution,omitzero"`
-	SecretEnv  map[string][]string `json:"secret_env,omitempty"`
+	Server    Server              `json:"server,omitzero"`
+	Auth      Auth                `json:"auth,omitzero"`
+	Stores    Slot                `json:"stores,omitzero"`
+	Bus       Slot                `json:"bus,omitzero"`
+	Blobs     Slot                `json:"blobs,omitzero"`
+	Execution Execution           `json:"execution,omitzero"`
+	SecretEnv map[string][]string `json:"secret_env,omitempty"`
+	// PersonRefs is where each workspace's people may keep their own tool
+	// credentials, by tenant: how the references they give may start
+	// (op://People/, keychain:warp-people/, env:WARP_PERSON_). The server
+	// reads a reference with its own access, so a person may name anything
+	// under a start listed here. A tenant not listed may reference nothing.
+	PersonRefs map[string][]string `json:"person_refs,omitempty"`
 	Extensions []Slot              `json:"extensions,omitempty"`
 	// Deploy is where `warp deploy` runs this: local, compose or
 	// kubernetes. It is read by warp deploy, not by the server.
@@ -258,6 +266,13 @@ func (s System) check(kinds Kinds) error {
 		for _, v := range vars {
 			if !envVar.MatchString(v) || strings.HasPrefix(v, "WARP_OIDC_") {
 				return fmt.Errorf("system: secret_env.%s: %q cannot be referenced by a client", name, v)
+			}
+		}
+	}
+	for name, starts := range sp.PersonRefs {
+		for _, start := range starts {
+			if err := credentials.CheckStart(start); err != nil {
+				return fmt.Errorf("system: person_refs.%s: %w", name, err)
 			}
 		}
 	}
