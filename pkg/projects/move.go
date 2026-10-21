@@ -66,7 +66,7 @@ func (s *Store) movable(tree *Tree, name, parent string) error {
 // projects use, and openness against the parent and the children. The
 // caller holds the lock.
 func (s *Store) admit(t *tenant, cur, next Project) error {
-	tree := build(t.projects)
+	tree := t.tree()
 	children := tree.Children(next.Name)
 	if next.IsRoot() {
 		if err := kindsHeld(t.projects, cur.Kinds, next.Kinds); err != nil {
@@ -158,7 +158,7 @@ func (s *Store) Move(tenantName, name string, version int, parent string, w Writ
 	if err := s.admit(tx.t, cur, next); err != nil {
 		return Project{}, err
 	}
-	if left := build(tx.t.projects).leftBehind(name, parent); leaving != nil && len(left) > 0 {
+	if left := tx.t.tree().leftBehind(name, parent); leaving != nil && len(left) > 0 {
 		if err := leaving(left); err != nil {
 			return Project{}, err
 		}

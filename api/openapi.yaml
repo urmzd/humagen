@@ -2896,6 +2896,7 @@ components:
         - projects:read
         - projects:write
         - projects:govern
+        - people:read
     Principal:
       description: An authenticated caller. The tenant is the workspace everything they touch is confined to.
       type: object
@@ -3474,6 +3475,26 @@ components:
           type: string
           maxLength: 255
         role: {$ref: "#/components/schemas/ProjectRole"}
+    ProjectAgents:
+      description: |
+        What a project turns on. An agent is available in a project when the
+        project or one above it enables it (`*` alone is every agent that
+        lives nowhere), or it lives there or above, and every allow list on
+        the way permits it.
+      type: object
+      properties:
+        enable:
+          type: array
+          maxItems: 64
+          items: {type: string}
+        allow:
+          description: When set, the only agents that may run here and below.
+          type: array
+          maxItems: 64
+          items: {type: string}
+        default:
+          description: Answers a message that tags no agent, here and below. `auto` is the built-in router; absent inherits.
+          type: string
     ProjectKindSpec:
       description: A workspace's own kind, a label over a built-in behavior.
       type: object
@@ -3508,7 +3529,7 @@ components:
         a path), which has no title, parent or account: show the workspace's
         name for it. It reads as version 0 until it is first changed.
       type: object
-      required: [name, kind, members, version, created_at, updated_at]
+      required: [name, kind, members, agents, version, created_at, updated_at]
       properties:
         name: {type: string, maxLength: 63}
         title:
@@ -3544,6 +3565,7 @@ components:
           type: array
           maxItems: 16
           items: {$ref: "#/components/schemas/ProjectKindSpec"}
+        agents: {$ref: "#/components/schemas/ProjectAgents"}
         archived:
           description: An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived.
           type: boolean
@@ -3689,9 +3711,17 @@ components:
           type: string
         project: {type: string}
         what:
-          description: "`managed` is the platform file taking the project over or letting it go."
+          description: |
+            `managed` is the platform file taking the project over or letting
+            it go, `moved` a new parent, `archived` archiving or bringing it
+            back, `members` a change to who holds a role and nothing else,
+            `agents` a change to what it turns on, and `home` an agent coming
+            to live in it or leaving it.
           type: string
-          enum: [created, updated, deleted, managed]
+          enum: [created, updated, deleted, managed, moved, archived, members, agents, home]
+        agent:
+          description: The agent a `home` change is about.
+          type: string
         note:
           description: Says more, such as that a project created under a deleted name adopts its old conversations.
           type: string

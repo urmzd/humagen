@@ -55,7 +55,6 @@ require (
 	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
@@ -71,4 +70,5 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	go.yaml.in/yaml/v3 v3.0.5
 	go.yaml.in/yaml/v4 v4.0.0-rc.2
+	golang.org/x/text v0.43.0
 )

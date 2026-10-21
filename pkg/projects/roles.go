@@ -45,9 +45,9 @@ func (r Role) AtLeast(need Role) bool { return r.rank() >= need.rank() }
 // Valid reports whether a role can be granted: viewer, member or owner.
 func (r Role) Valid() bool { return r.valid() }
 
-// Everyone is the entry that matches every reader who can see the parent;
-// at the root, everyone who can see projects at all.
-const Everyone = "*"
+// Everyone ("*", declared with the agent lists) is also the member entry
+// that matches every reader who can see the parent; at the root, everyone who
+// can see projects at all.
 
 // RolePrefix starts an entry that matches the holders of a policy role, as
 // "role:field-eng".

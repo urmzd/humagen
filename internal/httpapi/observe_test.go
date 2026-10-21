@@ -16,6 +16,7 @@ var everything = []string{
 	"warp:knowledge:read", "warp:knowledge:write", "warp:evals:read", "warp:evals:write",
 	"warp:billing:read", "warp:billing:write", "warp:artifacts:read", "warp:artifacts:write",
 	"warp:clients:read", "warp:clients:write", "warp:projects:read", "warp:projects:write", "warp:projects:govern",
+	"warp:people:read",
 }
 
 func TestObservabilityIsConfinedToATenant(t *testing.T) {

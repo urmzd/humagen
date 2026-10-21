@@ -77,6 +77,9 @@ const (
 	// adopts its old conversations. It grants nothing on its own: each route
 	// still checks its own permission first.
 	ProjectsGovern Permission = "projects:govern"
+	// PeopleRead is seeing the workspace's directory of people: names,
+	// handles, pictures and roles. Never an email address.
+	PeopleRead Permission = "people:read"
 )
 
 // Permissions lists every permission, for validating configured scopes.
@@ -86,6 +89,7 @@ func Permissions() []Permission {
 		AlertsRead, AlertsWrite, KnowledgeRead, KnowledgeWrite, EvalsRead, EvalsWrite,
 		BillingRead, BillingWrite, ArtifactsRead, ArtifactsWrite,
 		ClientsRead, ClientsWrite, ProjectsRead, ProjectsWrite, ProjectsGovern,
+		PeopleRead,
 	}
 }
 

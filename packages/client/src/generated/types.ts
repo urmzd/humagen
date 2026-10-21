@@ -17,7 +17,7 @@ export interface Refusal {
   resets_at?: string;
 }
 
-export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "projects:read" | "projects:write" | "projects:govern";
+export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "projects:read" | "projects:write" | "projects:govern" | "people:read";
 
 /** An authenticated caller. The tenant is the workspace everything they touch is confined to. */
 export interface Principal {
@@ -383,6 +383,19 @@ export interface ProjectEntry {
   role: ProjectRole;
 }
 
+/** What a project turns on. An agent is available in a project when the
+project or one above it enables it (`*` alone is every agent that
+lives nowhere), or it lives there or above, and every allow list on
+the way permits it.
+ */
+export interface ProjectAgents {
+  enable?: string[];
+  /** When set, the only agents that may run here and below. */
+  allow?: string[];
+  /** Answers a message that tags no agent, here and below. `auto` is the built-in router; absent inherits. */
+  default?: string;
+}
+
 /** A workspace's own kind, a label over a built-in behavior. */
 export interface ProjectKindSpec {
   name: string;
@@ -428,6 +441,7 @@ least viewer, so every project stays visible.
   members: ProjectEntry[];
   /** The workspace's own kinds, each a label over `team` or `account`. Only the workspace carries them. */
   kinds?: ProjectKindSpec[];
+  agents: ProjectAgents;
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
   /** The lowest role that may post an announcement here. Absent reads as owner. */
@@ -504,8 +518,15 @@ export interface ProjectChange {
   /** Who made the change. `migration` for projects moved out of settings. */
   by: string;
   project: string;
-  /** `managed` is the platform file taking the project over or letting it go. */
-  what: "created" | "updated" | "deleted" | "managed";
+  /** `managed` is the platform file taking the project over or letting
+it go, `moved` a new parent, `archived` archiving or bringing it
+back, `members` a change to who holds a role and nothing else,
+`agents` a change to what it turns on, and `home` an agent coming
+to live in it or leaving it.
+ */
+  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home";
+  /** The agent a `home` change is about. */
+  agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
   note?: string;
   before?: Project;

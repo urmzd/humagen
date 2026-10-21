@@ -192,7 +192,7 @@ export class FakeWarp implements Warp {
       id,
       tag_id: tagId(SUBJECT, t.idempotencyKey),
       tenant: "acme",
-      // An empty agent is the platform's picker, which here always picks the baseline.
+      // An empty agent leaves it to the default the platform's projects set, here lead.
       agent: t.agent || "lead",
       rev: 1,
       origin: "api",

@@ -195,6 +195,9 @@ type Project struct {
 	// Announce is the lowest role that may post an announcement here. ""
 	// reads as owner.
 	Announce Role `json:"announce,omitempty"`
+	// Agents is what the project turns on: which agents are available here
+	// and below, and which answers a message that tags none.
+	Agents Agents `json:"agents"`
 
 	// Managed is ManagedFile when the platform file declares the project.
 	Managed string `json:"managed,omitempty"`
@@ -220,6 +223,7 @@ func (p Project) clone() Project {
 	p.FileOwns = slices.Clone(p.FileOwns)
 	p.Members = slices.Clone(p.Members)
 	p.Kinds = slices.Clone(p.Kinds)
+	p.Agents = p.Agents.clone()
 	return p
 }
 
@@ -256,6 +260,8 @@ type Change struct {
 	By      string    `json:"by"`
 	Project string    `json:"project"`
 	What    string    `json:"what"`
+	// Agent is the agent a home change is about.
+	Agent string `json:"agent,omitempty"`
 	// Note says more, such as that a project adopts its old conversations.
 	Note   string   `json:"note,omitempty"`
 	Before *Project `json:"before,omitempty"`
@@ -280,7 +286,7 @@ func builtIn(k Kind) bool { return k == Company || k == Team || k == Account }
 
 var validField = map[string]bool{
 	FieldTitle: true, FieldDescription: true, FieldKind: true, FieldParent: true, FieldAccount: true, FieldInstructions: true,
-	FieldMembers: true, FieldKinds: true,
+	FieldMembers: true, FieldKinds: true, FieldAgents: true,
 }
 
 // validate checks a project on its own: its fields and bounds, not its place.
@@ -337,7 +343,7 @@ func (p Project) validate() error {
 			return fmt.Errorf("%w: the file cannot own %q", ErrInvalid, f)
 		}
 	}
-	return nil
+	return p.Agents.validate()
 }
 
 func oneLine(s string) bool {
@@ -370,6 +376,10 @@ type Tree struct {
 	// order is every name in tree order, the root first: each project
 	// before its children, siblings by name ignoring case.
 	order []string
+	// homes is where each agent with a home lives, and lives the agents
+	// each project is home to, by name.
+	homes map[string]string
+	lives map[string][]string
 }
 
 type node struct {
@@ -378,12 +388,27 @@ type node struct {
 	children []string
 }
 
-// virtualRoot is the root of a tenant that has written nothing yet.
-func virtualRoot() Project { return Project{Name: Root, Kind: Company, Members: legacyMembers(Root)} }
+// virtualRoot is the root of a tenant that has written nothing yet. It reads
+// as what the upgrade writes on a workspace's root: everyone a member, every
+// platform agent available, and the built-in router answering a message that
+// tags no agent.
+func virtualRoot() Project {
+	return Project{Name: Root, Kind: Company, Members: legacyMembers(Root), Agents: Agents{Enable: []string{Everyone}, Default: Auto}}
+}
 
-// build makes a tree. Every parent must be in projects; build does not check.
-func build(projects map[string]Project) *Tree {
-	t := &Tree{nodes: make(map[string]*node, len(projects)+1)}
+// build makes a tree. Every parent and every home must be in projects; build
+// does not check.
+func build(projects map[string]Project, homes map[string]string) *Tree {
+	t := &Tree{nodes: make(map[string]*node, len(projects)+1), homes: homes, lives: map[string][]string{}}
+	if t.homes == nil {
+		t.homes = map[string]string{}
+	}
+	for agent, project := range t.homes {
+		t.lives[project] = append(t.lives[project], agent)
+	}
+	for _, agents := range t.lives {
+		slices.Sort(agents)
+	}
 	root, ok := projects[Root]
 	if !ok {
 		root = virtualRoot()
