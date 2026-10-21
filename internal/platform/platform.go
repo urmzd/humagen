@@ -401,13 +401,13 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client})
 	defer p.admitting.Delete(runID)
 	if err := p.deliver.Register(runID, tag.Routes()); err != nil {
-		p.Usage.Append(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
+		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
 		return runs.Run{}, fmt.Errorf("platform: register routes: %w", err)
 	}
 	acc, err := p.rt.Accept(ctx, tag)
 	if err != nil {
 		// It never started, so it holds no place.
-		p.Usage.Append(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
+		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
 		return runs.Run{}, err
 	}
 	if err := p.Runs.Record(acc.RunID, tag, acc.Rev); err != nil {

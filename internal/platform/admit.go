@@ -44,19 +44,31 @@ func (p *Platform) admit(tag envelope.Tag, edge call.Edge, project, client strin
 	switch d.Verdict {
 	case policy.Deny, policy.NeedsApproval:
 		entry.Kind = usage.Refused
-		p.Usage.Append(entry)
+		p.appendUsage(entry)
 		p.budgetAlert(tag.Tenant, d, alerts.Critical, "Runs are being refused: ", string(d.Verdict))
 		p.log.Warn("platform: run refused by policy", "tenant", tag.Tenant, "agent", tag.Agent, "project", project, "reason", d.Reason)
 		return &Denied{Decision: d}
 	case policy.Warn:
 		warned := entry
 		warned.Kind = usage.Warned
-		p.Usage.Append(warned)
+		p.appendUsage(warned)
 		p.budgetAlert(tag.Tenant, d, alerts.Warning, "", string(d.Verdict))
 	}
 	entry.Kind, entry.Scope, entry.Version, entry.Limit, entry.Reason = usage.Admitted, nil, 0, "", ""
-	p.Usage.Append(entry)
+	// A run whose admission could not be kept is not let in: a restart
+	// would forget it was counted.
+	if _, err := p.Usage.Append(entry); err != nil {
+		return fmt.Errorf("platform: the run could not be counted: %w", err)
+	}
 	return nil
+}
+
+// appendUsage appends an entry the platform has nobody to report a failed
+// write to. The ledger has counted it all the same and writes it later.
+func (p *Platform) appendUsage(e usage.Entry) {
+	if _, err := p.Usage.Append(e); err != nil {
+		p.log.Error("platform: usage entry could not be written yet", "kind", e.Kind, "run", e.RunID, "error", err)
+	}
 }
 
 // applied is every policy a run in this place falls under, most specific

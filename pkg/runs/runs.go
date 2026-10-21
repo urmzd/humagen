@@ -5,8 +5,9 @@
 // budget each has handed out. It is a projection of two inputs, the tag a run
 // was accepted with and the lifecycle events that run later publishes.
 //
-// Index is in memory. It is rebuilt empty on restart, which is acceptable for a
-// single process and is the reason a Postgres implementation is planned.
+// Index is in memory. Built with Open, it keeps its runs in a state.Store and
+// reads them back when it is built again; see persisted for when each change
+// is written.
 package runs
 
 import (
@@ -239,6 +240,7 @@ func (x *Index) PinRequesters(runID string, names []string) {
 	defer x.mu.Unlock()
 	if r, ok := x.runs[runID]; ok && r.requesters == nil {
 		r.requesters = slices.Clone(names)
+		x.touch(runID)
 	}
 }
 
@@ -270,6 +272,8 @@ type Index struct {
 	order []string
 	// titles names conversations, by tenant and thread.
 	titles map[string]string
+	// kept is where runs are written. Nil keeps them only in memory.
+	kept *persisted
 }
 
 // NewIndex returns an empty index.
@@ -281,6 +285,7 @@ func (x *Index) SetTitle(tenant, thread, title string) {
 	x.mu.Lock()
 	defer x.mu.Unlock()
 	x.titles[tenant+"\x00"+thread] = title
+	x.titled(tenant + "\x00" + thread)
 }
 
 // Record adds an accepted run. Recording a run that is already known changes
@@ -333,7 +338,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	if top, ok := x.runs[root]; ok && parent != "" && top.Tenant == tag.Tenant {
 		thread, project, client = top.Thread, top.Project, top.Client
 	}
-	x.runs[runID] = &Run{
+	r := &Run{
 		ID: runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: tag.Agent, Rev: rev, Origin: tag.Origin,
 		Text: text, Input: input, Actor: tag.Actor, Thread: thread, Prev: prev, Picked: picked, Project: project, Client: client,
 		Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, Lifecycle: lifecycleOf(parent, edge.Mode),
@@ -341,6 +346,10 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 		Status: Accepted, CreatedAt: tag.At, UpdatedAt: tag.At,
 		tag: tag,
 	}
+	if err := x.recorded(r); err != nil {
+		return err
+	}
+	x.runs[runID] = r
 	x.order = append(x.order, runID)
 	return nil
 }
@@ -352,6 +361,7 @@ func (x *Index) Called(runID string, lease int64) {
 	if r, ok := x.runs[runID]; ok {
 		r.Calls++
 		r.Granted += lease
+		x.touch(runID)
 	}
 }
 
@@ -373,6 +383,7 @@ func (x *Index) Observe(e envelope.Event) (Run, bool) {
 	if !ok || r.Tenant != e.Tenant || r.Status.Terminal() {
 		return Run{}, false
 	}
+	x.touch(r.ID)
 	r.UpdatedAt = e.At
 	switch e.Kind {
 	case envelope.KindStarted, envelope.KindResumed:
@@ -434,6 +445,7 @@ func (x *Index) ObserveUsage(e envelope.Event) (Run, bool) {
 		// judge, so the run is returned.
 		return *r, true
 	}
+	x.touch(r.ID)
 	if r.tally == nil {
 		r.tally = &payload.Tally{}
 	}
@@ -474,6 +486,7 @@ func (x *Index) SetUsage(runID string, u *payload.RunUsage, micros int64) {
 	}
 	r.tally, r.closed = nil, true
 	r.Spent += micros
+	x.touch(runID)
 }
 
 // Spend adds what a run's own model call cost, in micro-USD, to what it has
@@ -492,6 +505,7 @@ func (x *Index) Spend(runID string, micros int64) (Run, bool) {
 		return *r, false
 	}
 	r.Spent += micros
+	x.touch(runID)
 	return *r, true
 }
 
@@ -517,8 +531,10 @@ func (x *Index) SettleCall(child Run) {
 	}
 	c.settledUp = true
 	r.Granted = max(r.Granted-c.Lease, 0)
+	x.touch(c.ID)
 	for {
 		r.Spent += c.Spent
+		x.touch(r.ID)
 		if !r.settledUp {
 			return
 		}
@@ -567,6 +583,7 @@ func (x *Index) End(runID string, status Status, answer, failure string, at time
 	if !ok || r.Status.Terminal() || !status.Terminal() {
 		return Run{}, false
 	}
+	x.touch(runID)
 	if answer != "" {
 		r.Answer = answer
 	}
@@ -613,6 +630,7 @@ func (x *Index) Settle(runID string, at time.Time) (Run, bool) {
 	if !ok || !r.Finishing || r.Status.Terminal() || x.openAttached(runID) > 0 {
 		return Run{}, false
 	}
+	x.touch(runID)
 	r.Status, r.UpdatedAt, r.Finishing, r.Reason, r.Stopping = Completed, at, false, "", false
 	return *r, true
 }
@@ -631,6 +649,7 @@ func (x *Index) AskStop(runID string, at time.Time) (Run, bool) {
 	}
 	if !r.Stopping {
 		r.Stopping, r.StopRequestedAt, r.UpdatedAt = true, at, at
+		x.touch(runID)
 	}
 	return *r, true
 }
@@ -646,6 +665,7 @@ func (x *Index) Stop(runID, answer, cause string, at time.Time) (Run, bool) {
 	if !ok || r.Status.Terminal() {
 		return Run{}, false
 	}
+	x.touch(runID)
 	if answer != "" {
 		r.Answer = answer
 	}
