@@ -62,6 +62,7 @@ func run(args []string) error {
 	groupsClaim := fs.String("groups-claim", "groups", "token claim that lists a person's groups")
 	groups := addGroupFlags(fs)
 	storage := addStorageFlags(fs)
+	stateKind := addStateFlags(fs, os.Getenv)
 	mockAddr := fs.String("mock-idp-addr", "127.0.0.1:8081", "with -auth=mock, the loopback address the development identity provider listens on")
 	mockPersonas := fs.String("mock-personas", "", `with -auth=mock, a JSON file of {"people": [...], "machines": [...]} to sign in as. Empty means the built-in set`)
 	publicURL := fs.String("public-url", "http://localhost:8080", "where browsers reach this server")
@@ -107,7 +108,13 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	backends, releaseState, err := openState(ctx, stateKind, os.Getenv, log)
+	if err != nil {
+		return err
+	}
+	defer releaseState()
 	p, err := platform.New(platform.Config{
+		Backends: backends,
 		// A client may keep its secrets in this process's environment, under
 		// the names the operator gave its tenant.
 		Env:             os.LookupEnv,
@@ -136,7 +143,7 @@ func run(args []string) error {
 		if spec.Model == "" {
 			return fmt.Errorf("agent spec %s needs a model or WARP_AGENT_MODEL", path)
 		}
-		if _, err := p.Agents.Create(ctx, *tenant, spec, "startup"); err != nil {
+		if err := registerSpec(ctx, p.Agents, *tenant, spec); err != nil {
 			return fmt.Errorf("agent spec %s: %w", path, err)
 		}
 	}
@@ -170,7 +177,8 @@ func run(args []string) error {
 			}
 		}()
 	}
-	go func() { errc <- p.Run(ctx) }()
+	ran := make(chan struct{})
+	go func() { defer close(ran); errc <- p.Run(ctx) }()
 	if *seed {
 		go func() {
 			// After the platform is running, so the conversation the files
@@ -202,6 +210,10 @@ func run(args []string) error {
 	if ingress != nil {
 		_ = ingress.Shutdown(shutdown)
 	}
+	// The platform writes what it has not written yet as it stops, so the
+	// state it keeps is let go only after.
+	stop()
+	<-ran
 	return err
 }
 
@@ -268,7 +280,11 @@ func seedAgents(ctx context.Context, p *platform.Platform, tenant string) error 
 			return fmt.Errorf("seed %s: %w", spec.Name, err)
 		}
 	}
-	// The lead answers when nobody picked an agent and none matched.
+	// The lead answers when nobody picked an agent and none matched. Settings
+	// kept from an earlier start are left as they are.
+	if cfg := p.Settings(tenant); cfg.Baseline != "" || len(cfg.Projects) > 0 || !cfg.SetupAt.IsZero() {
+		return nil
+	}
 	if err := p.SetSettings(ctx, tenant, platform.Settings{
 		Baseline: "lead",
 		Projects: []platform.Project{{Name: "Launch", Description: "Everything for the Q4 launch"}},
