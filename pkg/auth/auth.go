@@ -66,6 +66,17 @@ const (
 	// ClientsWrite is creating, changing and removing them, which is giving
 	// the workspace's agents a credential to act with.
 	ClientsWrite Permission = "clients:write"
+	// ProjectsRead is seeing the workspace's projects: the tree, what each
+	// holds, its instructions, its history and its shared memory.
+	ProjectsRead Permission = "projects:read"
+	// ProjectsWrite is creating, changing and deleting projects, and writing
+	// their shared memory.
+	ProjectsWrite Permission = "projects:write"
+	// ProjectsGovern is break-glass over the tree: the workspace itself,
+	// company projects, and reusing the name of a deleted project, which
+	// adopts its old conversations. It grants nothing on its own: each route
+	// still checks its own permission first.
+	ProjectsGovern Permission = "projects:govern"
 	// PeopleRead is seeing the workspace's directory of people: names,
 	// handles, pictures and roles. Never an email address.
 	PeopleRead Permission = "people:read"
@@ -77,7 +88,7 @@ func Permissions() []Permission {
 		AgentsRead, AgentsWrite, RunsRead, RunsWrite, SchedulesRead, SchedulesWrite,
 		AlertsRead, AlertsWrite, KnowledgeRead, KnowledgeWrite, EvalsRead, EvalsWrite,
 		BillingRead, BillingWrite, ArtifactsRead, ArtifactsWrite,
-		ClientsRead, ClientsWrite,
+		ClientsRead, ClientsWrite, ProjectsRead, ProjectsWrite, ProjectsGovern,
 		PeopleRead,
 	}
 }
@@ -88,15 +99,15 @@ type Role string
 const (
 	// Viewer reads everything in the tenant and changes nothing.
 	Viewer Role = "viewer"
-	// Operator runs agents, manages schedules, and acknowledges alerts and
-	// sets their rules.
+	// Operator runs agents, manages schedules, acknowledges alerts and sets
+	// their rules, and makes and changes projects.
 	Operator Role = "operator"
 	// Manager is an operator who also defines and revises agents, their call
 	// policies among them, and decides what they may be grounded in. It is
 	// the natural approver of calls between agents.
 	Manager Role = "manager"
-	// Admin also sets limits and billing, and manages the workspace's
-	// clients.
+	// Admin also sets limits and billing, manages the workspace's clients,
+	// and governs the project tree.
 	Admin Role = "admin"
 )
 

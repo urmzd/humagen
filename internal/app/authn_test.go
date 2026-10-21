@@ -177,7 +177,7 @@ func signIn(t *testing.T, public, persona string) me {
 
 func TestMockSignInForEachDefaultPersona(t *testing.T) {
 	public := mockServer(t, "")
-	viewer := []auth.Permission{auth.AgentsRead, auth.RunsRead, auth.SchedulesRead, auth.AlertsRead, auth.KnowledgeRead, auth.EvalsRead, auth.BillingRead, auth.ArtifactsRead, auth.ClientsRead, auth.PeopleRead}
+	viewer := []auth.Permission{auth.AgentsRead, auth.RunsRead, auth.SchedulesRead, auth.AlertsRead, auth.KnowledgeRead, auth.EvalsRead, auth.BillingRead, auth.ArtifactsRead, auth.ClientsRead, auth.ProjectsRead, auth.PeopleRead}
 	for _, tc := range []struct {
 		persona string
 		roles   []auth.Role
