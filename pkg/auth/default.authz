@@ -9,9 +9,10 @@
 role viewer { allow read on * }
 
 # Runs agents, manages schedules, acknowledges alerts and sets their rules,
-# runs evals and deletes published files.
+# runs evals, deletes published files, and makes and changes projects:
+# anyone who can start a run can make a project.
 role operator extends viewer {
-  allow write on runs, schedules, alerts, evals, artifacts
+  allow write on runs, schedules, alerts, evals, artifacts, projects
 }
 
 # Everything an operator does, and also defines and revises agents (their
@@ -22,5 +23,6 @@ role manager extends operator {
 }
 
 # Also defines and revises agents, decides what they are grounded in, sets
-# limits and manages the workspace's clients.
+# limits, manages the workspace's clients, and governs the project tree
+# (projects:govern): the workspace itself and company projects.
 role admin { allow * on * }

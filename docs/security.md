@@ -22,14 +22,28 @@ The built-in one declares these four, and the group flags grant them:
 
 | Role | Permissions |
 |------|-------------|
-| `viewer` | `agents:read`, `runs:read`, `schedules:read`, `alerts:read`, `knowledge:read`, `evals:read`, `billing:read`, `artifacts:read`, `clients:read` |
-| `operator` | viewer, plus `runs:write`, `schedules:write`, `alerts:write`, `evals:write`, `artifacts:write` |
+| `viewer` | `agents:read`, `runs:read`, `schedules:read`, `alerts:read`, `knowledge:read`, `evals:read`, `billing:read`, `artifacts:read`, `clients:read`, `projects:read` |
+| `operator` | viewer, plus `runs:write`, `schedules:write`, `alerts:write`, `evals:write`, `artifacts:write`, `projects:write` |
 | `manager` | operator, plus `agents:write`, `knowledge:write`. Writing agents covers their call policies, so a manager is the natural approver of calls between agents |
-| `admin` | manager, plus `billing:write`, `clients:write` |
+| `admin` | manager, plus `billing:write`, `clients:write`, `projects:govern` |
 
 Writing knowledge is an admin permission because a document an agent is grounded
 in changes what that agent says. Writing clients is one because a client hands
 the workspace's agents a credential to act with outside it.
+
+Governing projects is an admin permission because the workspace itself and its
+company projects carry instructions and notes sent to every agent answering
+under them, and because reusing the name of a deleted project adopts the
+conversations still filed under it. `projects:govern` grants nothing on its
+own: every project route checks `projects:read` or `projects:write` first, and
+govern is asked for on top, for the workspace, a company project, its notes, or
+a deleted name. Projects have no roles yet, so anyone holding `projects:write`
+changes every other project, and every project is visible to everyone holding
+`projects:read`.
+
+A machine whose token names its scopes, such as the Slack app or CI, needs
+`warp:projects:read` to list projects and `warp:projects:write` to make them:
+`runs:*` no longer covers them.
 
 A webhook from Slack or GitHub is not a `Principal`. It is authorized by the
 signing secret of the [client](clients.md) it is for, and takes its tenant from
@@ -57,7 +71,14 @@ no permission, grants nothing.
   verified token claim. A body that carries a `tenant` field is rejected.
 - **Another tenant's objects do not exist.** Reads, deletes, calls and stops
   across tenants return 404, never 403, so a response cannot confirm that
-  something exists.
+  something exists. Each workspace has its own project tree and its own root,
+  `~`: a project name another workspace uses is not found, as a filter, a
+  parent or a limit's scope.
+- **Nothing is filed under a project being deleted.** A schedule, an alert
+  rule or a limit is written while its project is held, and a delete is
+  refused while any of them points at the project, so a delete never leaves
+  one naming a project that is gone. A delete never drops a limit: only
+  `billing:write` removes one.
 - **A run id carries its tenant.** The runtime derives it from the tenant and
   the tag id together, so a trigger's id, chosen outside, cannot name or join
   another tenant's run. A stop request is honoured only by a run of the tenant
