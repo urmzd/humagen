@@ -15,6 +15,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -294,5 +295,39 @@ func TestInboxHoldsFailures(t *testing.T) {
 	}
 	if got, _ := p.InboxGet(operator, page[0].ID); got.State != inbox.Resolved || got.Parts[0].Outcome.By != admin.Subject {
 		t.Fatalf("after an ack by someone not notified the message is %+v", got)
+	}
+}
+
+// A proposal for the notes of an agent that lives in a project is decided as
+// the agent's own memory routes decide it: agents:write, and ownership of its
+// home as well, so the inbox is no way around the home's owners.
+func TestKeepingAHomedAgentsNotesNeedsItsHome(t *testing.T) {
+	p, msg := proposals(t)
+	ctx := t.Context()
+	part := msg.Parts[0]
+	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "ada"}, platform.ProjectInput{
+		Name: "Field", Members: []projects.Entry{{Who: "*", Role: projects.Member}, {Who: "own", Role: projects.Owner}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetAgentHome(ctx, tenant, "lead", "Field", projects.Writer{By: "ada"}); err != nil {
+		t.Fatal(err)
+	}
+	manager := auth.Principal{Subject: "mo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	owner := auth.Principal{Subject: "own", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	keep := platform.Resolution{Action: platform.ActKeep, IDs: []string{part.Memory.Notes[0].ID}}
+
+	seen, err := p.InboxGet(manager, msg.ID)
+	if err != nil || len(seen.Parts[0].Actions) != 0 {
+		t.Fatalf("a manager who does not own Field is offered %v (%v)", seen.Parts[0].Actions, err)
+	}
+	if _, err := p.InboxResolve(ctx, manager, msg.ID, part.ID, keep); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a manager who does not own Field keeping = %v, want forbidden", err)
+	}
+	if seen, err := p.InboxGet(owner, msg.ID); err != nil || len(seen.Parts[0].Actions) != 2 {
+		t.Fatalf("Field's owner is offered %v (%v)", seen.Parts[0].Actions, err)
+	}
+	if done, err := p.InboxResolve(ctx, owner, msg.ID, part.ID, keep); err != nil || done.Parts[0].Outcome.By != "own" {
+		t.Fatalf("Field's owner keeping = %+v, %v", done, err)
 	}
 }

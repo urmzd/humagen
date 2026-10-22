@@ -146,3 +146,68 @@ func TestWhoAnnouncesAndWhoWithdraws(t *testing.T) {
 	}
 	want(t, f, ana, "DELETE", "/api/projects/Globex/announcements/"+theirs["id"].(string), "", http.StatusNotFound)
 }
+
+// Whatever a project's inbox shows a reader they may act on: a viewer who is
+// not a member, and a member who muted the project, read, snooze and hide its
+// announcements there, for themselves alone, and are still not sent them.
+func TestAProjectsInboxIsReadByEveryoneWhoSeesIt(t *testing.T) {
+	f, ana, bo, cy := acmeNews(t)
+	globex := want(t, f, ana, "POST", "/api/projects/Globex/announcements", `{"subject":"Renewal signed","text":"Three more years."}`, http.StatusCreated)
+	field := want(t, f, ana, "POST", "/api/projects/Field/announcements", `{"subject":"Field offsite","text":"Lisbon, in May."}`, http.StatusCreated)
+	want(t, f, cy, "PUT", "/api/preferences", `{"theme":"system","accent":"teal","muted":["Field"]}`, http.StatusOK)
+
+	for _, tc := range []struct {
+		who, reader, project string
+		m                    map[string]any
+	}{{bo, "a viewer of Globex", "Globex", globex}, {cy, "a member who muted Field", "Field", field}} {
+		id := tc.m["id"].(string)
+		own := "/api/projects/" + tc.project + "/inbox"
+		if got := subjects(want(t, f, tc.who, "GET", own, "", http.StatusOK)); !slices.Contains(got, tc.m["subject"].(string)) {
+			t.Fatalf("%s reads %s's inbox as %q", tc.reader, tc.project, got)
+		}
+		if out := want(t, f, tc.who, "GET", "/api/inbox/"+id, "", http.StatusOK)["message"].(map[string]any); out["unread"] != true {
+			t.Fatalf("%s opening it = %v", tc.reader, out)
+		}
+		if out := want(t, f, tc.who, "POST", "/api/inbox/"+id+"/read", `{}`, http.StatusOK); out["unread"] != false {
+			t.Fatalf("%s reading it = %v", tc.reader, out)
+		}
+		if out := want(t, f, tc.who, "POST", "/api/inbox/"+id+"/snooze", `{"until":"2999-01-01T00:00:00Z"}`, http.StatusOK); out["state"] != string(inbox.Snoozed) {
+			t.Fatalf("%s snoozing it = %v", tc.reader, out)
+		}
+		if out := want(t, f, tc.who, "POST", "/api/inbox/"+id+"/dismiss", `{}`, http.StatusOK); out["state"] != string(inbox.Dismissed) {
+			t.Fatalf("%s hiding it = %v", tc.reader, out)
+		}
+		if got := subjects(want(t, f, tc.who, "GET", own, "", http.StatusOK)); slices.Contains(got, tc.m["subject"].(string)) {
+			t.Fatalf("%s still reads %q after hiding it", tc.reader, got)
+		}
+		if got := subjects(want(t, f, tc.who, "GET", "/api/inbox?kind=announcement&state=all", "", http.StatusOK)); slices.Contains(got, tc.m["subject"].(string)) {
+			t.Fatalf("%s is sent %q", tc.reader, got)
+		}
+	}
+	// Each hid their own copy, and nobody else's.
+	if got := subjects(want(t, f, ana, "GET", "/api/inbox?kind=announcement", "", http.StatusOK)); !slices.Equal(got, []string{"Field offsite", "Renewal signed"}) {
+		t.Fatalf("the author's inbox = %q", got)
+	}
+	// The project's inbox is no way into another's: a message not addressed
+	// to a reader is still not found.
+	want(t, f, bo, "GET", "/api/inbox/m-404", "", http.StatusNotFound)
+}
+
+// A withdrawal is everyone's, even when the one withdrawing hid the
+// announcement for themselves first.
+func TestWithdrawingAnAnnouncementOneHidWithdrawsItForEveryone(t *testing.T) {
+	f, ana, bo, _ := acmeNews(t)
+	m := want(t, f, ana, "POST", "/api/projects/Field/announcements", `{"subject":"Field offsite","text":"Lisbon, in May."}`, http.StatusCreated)
+	id := m["id"].(string)
+	want(t, f, ana, "POST", "/api/inbox/"+id+"/dismiss", `{}`, http.StatusOK)
+	want(t, f, ana, "DELETE", "/api/projects/Field/announcements/"+id, "", http.StatusNoContent)
+	if got := subjects(want(t, f, bo, "GET", "/api/inbox?kind=announcement", "", http.StatusOK)); len(got) != 0 {
+		t.Fatalf("another reader still sees %q", got)
+	}
+	history := want(t, f, bo, "GET", "/api/inbox/"+id, "", http.StatusOK)["history"].([]any)
+	if last := history[len(history)-1].(map[string]any); last["what"] != "withdrawn" || last["by"] != "ana" {
+		t.Fatalf("the withdrawal = %v", last)
+	}
+	// Withdrawing it again changes nothing.
+	want(t, f, ana, "DELETE", "/api/projects/Field/announcements/"+id, "", http.StatusNoContent)
+}

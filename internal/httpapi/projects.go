@@ -156,18 +156,17 @@ func actionsOf(f projectFacts, p projects.Project) []string {
 	if role.AtLeast(projects.Member) {
 		out = append(out, actPropose)
 	}
-	if role == projects.Owner {
-		out = append(out, actNotes)
-		if !wide {
-			out = append(out, actEdit)
-			if !p.IsRoot() {
-				if !slices.Contains(p.FileOwns, projects.FieldParent) {
-					out = append(out, actMove)
-				}
-				out = append(out, actArchive)
-				if p.Managed == "" {
-					out = append(out, actDelete)
-				}
+	// The notes of a wide project are changed with projects:govern too,
+	// as the project is (platform.MayChangeNotes).
+	if role == projects.Owner && !wide {
+		out = append(out, actNotes, actEdit)
+		if !p.IsRoot() {
+			if !slices.Contains(p.FileOwns, projects.FieldParent) {
+				out = append(out, actMove)
+			}
+			out = append(out, actArchive)
+			if p.Managed == "" {
+				out = append(out, actDelete)
 			}
 		}
 	}
@@ -461,13 +460,21 @@ func (s *Server) projectHistory(w http.ResponseWriter, r *http.Request, who auth
 	ok(w, http.StatusOK, map[string]any{"changes": changes, "next": cursor})
 }
 
-// projectOwner resolves the project in the path to its memory owner, holding
-// the caller's role there to need, or answers 404 for a project they cannot
-// see and 403 for too low a role.
-func (s *Server) projectOwner(w http.ResponseWriter, r *http.Request, who auth.Principal, need projects.Role) (string, bool) {
-	p, _, found := s.visible(w, who, r.PathValue("name"), need)
+// projectOwner resolves the project in the path to its memory owner, or
+// answers 404 for a project the caller cannot see. Changing its notes, which
+// every agent in the project and below it is sent, takes what
+// platform.MayChangeNotes says: ownership, and projects:govern as well for the
+// workspace and company projects, as changing the project does; else 403.
+func (s *Server) projectOwner(w http.ResponseWriter, r *http.Request, who auth.Principal, change bool) (string, bool) {
+	p, _, found := s.visible(w, who, r.PathValue("name"), projects.Viewer)
 	if !found {
 		return "", false
+	}
+	if change {
+		if err := s.P.MayChangeNotes(who, p.Name); err != nil {
+			s.problem(w, err)
+			return "", false
+		}
 	}
 	owner, err := s.P.ProjectMemoryOwner(who.Tenant, p.Name)
 	if err != nil {
@@ -478,7 +485,7 @@ func (s *Server) projectOwner(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 func (s *Server) projectMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	owner, found := s.projectOwner(w, r, who, projects.Viewer)
+	owner, found := s.projectOwner(w, r, who, false)
 	if !found {
 		return
 	}
@@ -509,7 +516,7 @@ func (s *Server) approveProjectMemory(w http.ResponseWriter, r *http.Request, wh
 	if !decode(w, r, &body) {
 		return
 	}
-	owner, found := s.projectOwner(w, r, who, projects.Owner)
+	owner, found := s.projectOwner(w, r, who, true)
 	if !found {
 		return
 	}
@@ -522,7 +529,7 @@ func (s *Server) approveProjectMemory(w http.ResponseWriter, r *http.Request, wh
 }
 
 func (s *Server) removeProjectMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	owner, found := s.projectOwner(w, r, who, projects.Owner)
+	owner, found := s.projectOwner(w, r, who, true)
 	if !found {
 		return
 	}

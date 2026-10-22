@@ -128,10 +128,12 @@ func (t *Tree) leftBehind(name, parent string) []string {
 // answers ErrManaged; the new parent must be there and not archived, and not
 // the project or below it; the depth, the parent's children, the kind rules
 // and openness must still hold. leaving, when it is not nil, is called under
-// the lock with the ancestors the project leaves, nearest first, so the
-// caller can refuse a move that escapes a limit they hold; it must not write
-// to this store. Moving to the parent it has changes nothing.
-func (s *Store) Move(tenantName, name string, version int, parent string, w Writer, at time.Time, leaving func(left []string) error) (Project, error) {
+// the lock with the tree as it is before the move and the ancestors the
+// project leaves, nearest first (none when it goes deeper under the chain it
+// has), so the caller can refuse a move that escapes a limit, or that would
+// hand them a limit they could not change before; it must not write to this
+// store. Moving to the parent it has changes nothing.
+func (s *Store) Move(tenantName, name string, version int, parent string, w Writer, at time.Time, leaving func(before *Tree, left []string) error) (Project, error) {
 	if name == Root {
 		return Project{}, fmt.Errorf("%w: the workspace cannot move", ErrInvalid)
 	}
@@ -165,8 +167,8 @@ func (s *Store) Move(tenantName, name string, version int, parent string, w Writ
 	if lost := defaultsLost(before, after.tree(), before.Subtree(name)); len(lost) > 0 {
 		return Project{}, fmt.Errorf("%w: under %s, %s", ErrInUse, display(parent), strings.Join(lost, ", "))
 	}
-	if left := before.leftBehind(name, parent); leaving != nil && len(left) > 0 {
-		if err := leaving(left); err != nil {
+	if leaving != nil {
+		if err := leaving(before, before.leftBehind(name, parent)); err != nil {
 			return Project{}, err
 		}
 	}
