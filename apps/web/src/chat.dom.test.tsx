@@ -603,3 +603,13 @@ test("+ closes the menu it opened, though focus moves to it from the menu first"
   fireEvent.focusOut(within(again).getByRole("searchbox"), { relatedTarget: document.body });
   assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
 });
+
+test("suggestions sit on one line that scrolls sideways, so none is left alone on a line of its own", async () => {
+  const builtin = [...agents, agent("warp-analyst"), agent("warp-builder"), agent("warp-writer")];
+  openChat(workspace("lead"), { agents: builtin });
+  const list = await screen.findByRole("list", { name: chat.suggestions });
+  const classes = list.className.split(/\s+/);
+  assert.ok(classes.includes("flex-nowrap") && classes.includes("overflow-x-auto"), list.className);
+  assert.ok(!classes.includes("flex-wrap"), list.className);
+  for (const li of list.querySelectorAll("li")) assert.ok(li.className.split(/\s+/).includes("shrink-0"), li.className);
+});

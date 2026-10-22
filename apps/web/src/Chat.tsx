@@ -587,19 +587,24 @@ export function Chat({
           the conversation, as a chip, not an @mention.
         */}
         {canRun && starters.length > 0 && draft.trim() === "" && (
-          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto -mt-1 flex w-full max-w-4xl flex-wrap gap-x-4 gap-y-1 px-7">
+          // One line, never wrapping one alone onto a line of its own: on a
+          // narrow screen the row scrolls sideways inside the gutter.
+          <ul
+            aria-label={defaultCopy.chat.suggestions}
+            className="aui-scroll mx-auto -mt-1 flex w-full max-w-4xl flex-nowrap gap-x-4 overflow-x-auto px-7 [scrollbar-width:none]"
+          >
             {starters.map((st) => (
-              <li key={st.agent} className="min-w-0">
+              <li key={st.agent} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => {
                     setSelection((sel) => (sel.agents.includes(st.agent) ? sel : { ...sel, agents: [...sel.agents, st.agent] }));
                     setSeed({ text: st.text });
                   }}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-aui py-1 text-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-aui py-1 text-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   <AgentMark name={st.agent} size={12} />
-                  <span className="truncate">{st.label}</span>
+                  <span>{st.label}</span>
                 </button>
               </li>
             ))}
