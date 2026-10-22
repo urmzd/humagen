@@ -21,6 +21,7 @@ import {
 import type { Run } from "./adapter.ts";
 import { Chat } from "./Chat.tsx";
 import { YourConnections } from "./Connections.tsx";
+import { CONNECT_PERMISSION } from "./connections.ts";
 import { DirectoryPage } from "./Directory.tsx";
 import { InboxPage } from "./InboxPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
@@ -665,7 +666,12 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
           />
         )}
         {route.page === "connections" && (
-          <YourConnections open={route.provider} onOpen={(provider) => go({ page: "connections", provider }, { replace: true })} />
+          <YourConnections
+            open={route.provider}
+            onOpen={(provider) => go({ page: "connections", provider }, { replace: true })}
+            canConnect={can(CONNECT_PERMISSION)}
+            onWhy={() => go({ page: "settings", section: "access", permission: CONNECT_PERMISSION })}
+          />
         )}
         {route.page === "settings" && (
           <Settings
