@@ -1877,7 +1877,13 @@ export class App {
     // Only the client's machine is shown the client's receipts: any other
     // credential would post every announcement again.
     if (!(await this.isMachine())) return shown;
-    const raw = await this.warp.getInboxMessage(id).catch(() => null);
+    // A message gone or hidden from this machine (403, 404) has nothing to
+    // post. Any other failure is warp being away: it is thrown, so the
+    // catch-up is tried again instead of taking the announcement as done.
+    const raw = await this.warp.getInboxMessage(id).catch((e: unknown) => {
+      if (e instanceof WarpError && (e.status === 403 || e.status === 404)) return null;
+      throw e;
+    });
     if (!raw || raw.kind !== "announcement" || isDraft(raw)) return shown;
     const project = raw.source?.project ?? "";
     const at = (await this.bound()).find((b) => b.project === project && b.channel === "general");

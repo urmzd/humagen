@@ -372,7 +372,14 @@ export class FakeWarp implements Warp {
     return posted;
   }
 
+  /** How many reads of one message fail next, as when warp is restarting. */
+  failReads = 0;
+
   async getInboxMessage(id: string) {
+    if (this.failReads > 0) {
+      this.failReads--;
+      throw new WarpError(503, "warp is restarting");
+    }
     // A copy, as a read over HTTP is: a later change does not reach it.
     const m = this.mailbox.get(id) as WireMessage | undefined;
     return m ? structuredClone(m) : null;

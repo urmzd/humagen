@@ -401,6 +401,18 @@ test("a catch-up that could not read warp is tried again until it finishes", asy
   assert.ok(w.logs.some((l) => l.includes("trying again")));
 });
 
+test("an announcement warp could not be read for is tried again, not taken as nothing to post", async () => {
+  const w = bound();
+  w.warp.failReads = 1;
+  missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR) });
+  await watching(w, async () => {});
+  assert.deepEqual(
+    postsIn(w, NEWS).map((p) => p.text),
+    ["Missed"],
+  );
+  assert.ok(w.logs.some((l) => l.includes("trying again")));
+});
+
 test("a bound project the app may not read is skipped, not tried again and again", async () => {
   const w = bound();
   w.warp.bound.set("app", [
