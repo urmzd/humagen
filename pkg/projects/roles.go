@@ -118,16 +118,22 @@ func validMembers(ms []Entry) error {
 }
 
 // DefaultMembers is who a new project has when its creator names nobody:
-// everyone as a member and the creator as owner. For an account-like kind,
-// everyone is a viewer instead. A creator that cannot be an entry, such as
-// the platform file, is left out, so only projects:govern owns the project.
+// everyone as a member and the creator as owner. An account-like project is
+// members only: its creator owns it and nobody else is in it, since a
+// customer account's work is its team's. A creator that cannot be an entry,
+// such as the platform file, is left out, so only projects:govern owns the
+// project; an account the file declares with no members is opened to
+// everyone as a viewer, or nobody but projects:govern would see it.
 func DefaultMembers(like Kind, creator string) []Entry {
-	everyone := Member
-	if like == Account {
-		everyone = Viewer
+	named := creator != Everyone && !strings.HasPrefix(creator, RolePrefix) && validWho(creator) == nil
+	var out []Entry
+	switch {
+	case like != Account:
+		out = append(out, Entry{Who: Everyone, Role: Member})
+	case !named:
+		out = append(out, Entry{Who: Everyone, Role: Viewer})
 	}
-	out := []Entry{{Who: Everyone, Role: everyone}}
-	if creator != Everyone && !strings.HasPrefix(creator, RolePrefix) && validWho(creator) == nil {
+	if named {
 		out = append(out, Entry{Who: creator, Role: Owner})
 	}
 	return out
@@ -157,15 +163,34 @@ func everyoneOf(ms []Entry) Role {
 // member. Owner opens no wider than member; it is ownership, not reach.
 func openness(r Role) int { return min(r.rank(), Member.rank()) }
 
-// checkOpen holds a project's Everyone entry to the tree around it. Every
-// project keeps one of at least viewer, since reads are not confined; a
-// company project, the root among them, is open to everyone as a member; and
-// no project is more open than its parent, or less open than a child.
-func checkOpen(p Project, parent *Project, children []Project) error {
+// checkOpen holds a project's Everyone entry to the tree around it. A project
+// with none is members only: read by its members alone. A company project,
+// the root among them, is open to everyone as a member; no project is more
+// open than its parent, or less open than a child; and ownership flows down,
+// so a project everyone owns has no members-only project anywhere below it,
+// and a members-only project has no project everyone owns above it. The
+// projects below p go with it, so a move under a project everyone owns is
+// held to every members-only project it carries, however deep.
+func checkOpen(tree *Tree, p Project, parent *Project, children []Project) error {
 	star := everyoneOf(p.Members)
+	if owned, ok := ownedAbove(tree, parent); ok {
+		if star == None {
+			return fmt.Errorf("%w: everyone owns %s, and owners above own everything below, so %s cannot be members only; name its owners first", ErrInvalid, display(owned), display(p.Name))
+		}
+		for _, below := range tree.Subtree(p.Name) {
+			if q, ok := tree.Get(below); ok && below != p.Name && everyoneOf(q.Members) == None {
+				return fmt.Errorf("%w: everyone owns %s, and owners above own everything below, so %s cannot go under it while %s is members only; name its owners first", ErrInvalid, display(owned), display(p.Name), display(q.Name))
+			}
+		}
+	}
+	if star == Owner {
+		for _, below := range tree.Subtree(p.Name) {
+			if q, ok := tree.Get(below); ok && below != p.Name && everyoneOf(q.Members) == None {
+				return fmt.Errorf("%w: %s is members only, so everyone cannot own %s above it", ErrInvalid, display(q.Name), display(p.Name))
+			}
+		}
+	}
 	switch {
-	case !star.AtLeast(Viewer):
-		return fmt.Errorf("%w: %s needs an entry for everyone (*) of at least viewer", ErrConfinement, display(p.Name))
 	case p.Kind == Company && !star.AtLeast(Member):
 		return fmt.Errorf("%w: %s is company-wide, so everyone (*) is at least a member", ErrInvalid, display(p.Name))
 	case parent != nil && openness(star) > openness(everyoneOf(parent.Members)):
@@ -179,6 +204,27 @@ func checkOpen(p Project, parent *Project, children []Project) error {
 	return nil
 }
 
+// ownedAbove is the nearest project everyone owns on the chain from parent
+// up to the root, parent included. A nil parent (the root) has none above.
+func ownedAbove(tree *Tree, parent *Project) (string, bool) {
+	if parent == nil {
+		return "", false
+	}
+	if everyoneOf(parent.Members) == Owner {
+		return parent.Name, true
+	}
+	above := tree.Ancestors(parent.Name)
+	if !parent.IsRoot() {
+		above = append(above, Root)
+	}
+	for _, name := range above {
+		if q, ok := tree.Get(name); ok && everyoneOf(q.Members) == Owner {
+			return q.Name, true
+		}
+	}
+	return "", false
+}
+
 // limitOpenness lowers an Everyone entry to what a parent allows, so a
 // project made with the default members fits where it is put.
 func limitOpenness(ms []Entry, parent Project) []Entry {
@@ -187,11 +233,28 @@ func limitOpenness(ms []Entry, parent Project) []Entry {
 		most = Member
 	}
 	if most == None {
-		return ms
+		// Under a members-only project, a new one is members only too.
+		return slices.DeleteFunc(ms, func(m Entry) bool { return m.Who == Everyone })
 	}
 	for i, m := range ms {
 		if m.Who == Everyone && openness(m.Role) > openness(most) {
 			ms[i].Role = most
+		}
+	}
+	return ms
+}
+
+// openUnderOwned keeps a new project with the default members out of being
+// members only where everyone owns a project above it, which owns everything
+// below and so can have nothing members only there: it is opened to everyone
+// as a viewer instead, what the account kind gives where it can.
+func openUnderOwned(tree *Tree, ms []Entry, parent Project) []Entry {
+	if everyoneOf(ms) != None {
+		return ms
+	}
+	for _, q := range tree.Chain(parent.Name) {
+		if everyoneOf(q.Members) == Owner {
+			return append([]Entry{{Who: Everyone, Role: Viewer}}, ms...)
 		}
 	}
 	return ms
@@ -281,6 +344,42 @@ func (t *Tree) Resolve(name string, r Reader) Access {
 	}
 	return a
 }
+
+// DeletedRole returns a reader's role in a project that was deleted, from its
+// tombstone: its members when it was deleted, under its parent as the tree
+// holds the parent now, so a parent made members only since narrows it as it
+// would have. A parent deleted too is read from its own tombstone, through
+// tomb, at most deletedHops levels up. A tombstone that kept no members, a
+// reader with no subject, or a parent found nowhere, has no role.
+// projects:govern is owner, as everywhere.
+func (t *Tree) DeletedRole(x Tombstone, r Reader, tomb func(name string) (Tombstone, bool)) Access {
+	if r.Govern && r.Subject != "" {
+		return Access{Role: Owner, From: Root, Via: ViaGovern}
+	}
+	chain := []Tombstone{x}
+	for len(chain) <= deletedHops && !t.Has(chain[len(chain)-1].Parent) {
+		up, ok := tomb(chain[len(chain)-1].Parent)
+		if !ok {
+			return Access{}
+		}
+		chain = append(chain, up)
+	}
+	last := chain[len(chain)-1]
+	if !t.Has(last.Parent) || r.Subject == "" {
+		return Access{}
+	}
+	a := t.Resolve(last.Parent, r)
+	for i := len(chain) - 1; i >= 0; i-- {
+		if !chain[i].Kept {
+			return Access{}
+		}
+		a = step(Project{Name: chain[i].Name, Parent: chain[i].Parent, Members: chain[i].Members}, a, r, false)
+	}
+	return a
+}
+
+// deletedHops bounds how many deleted parents DeletedRole reads up through.
+const deletedHops = 16
 
 // InheritedOwner is an owner entry on an ancestor, which owns the project too.
 type InheritedOwner struct {
@@ -377,3 +476,7 @@ func (t *Tree) Memberships(r Reader) []string {
 	}
 	return out
 }
+
+// MembersOnly reports a project with no entry for everyone: read by its
+// members alone.
+func MembersOnly(p Project) bool { return everyoneOf(p.Members) == None }

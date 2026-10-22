@@ -55,12 +55,30 @@ func TestOnlyTrustedOriginsNameASchedule(t *testing.T) {
 	record(t, x, "acme", "a", "lead", "cron", 0, meta)
 	record(t, x, "acme", "b", "lead", OriginManual, 0, meta)
 	record(t, x, "acme", "c", "lead", "webhook", 0, meta)
-	got := x.ForSchedule("acme", "nightly", 0)
+	got := x.ForSchedule("acme", "nightly", 0, nil)
 	if len(got) != 2 {
 		t.Fatalf("got %d runs, want the cron and manual ones only", len(got))
 	}
-	if len(x.ForSchedule("globex", "nightly", 0)) != 0 {
+	if len(x.ForSchedule("globex", "nightly", 0, nil)) != 0 {
 		t.Fatal("another tenant saw the schedule's runs")
+	}
+}
+
+// A schedule's runs are found by its name, wherever each was filed, so a
+// reader is given only those they keep, and the ones left out do not use up
+// the limit.
+func TestAScheduleKeepsOnlyTheRunsAReaderKeeps(t *testing.T) {
+	x := NewIndex()
+	record(t, x, "acme", "a", "lead", "cron", 0, map[string]string{"cron_schedule": "weekly", MetaProject: "Open"})
+	record(t, x, "acme", "b", "lead", "cron", time.Second, map[string]string{"cron_schedule": "weekly", MetaProject: "Hidden"})
+	record(t, x, "acme", "c", "lead", "cron", 2*time.Second, map[string]string{"cron_schedule": "weekly", MetaProject: "Hidden"})
+	open := func(r Run) bool { return r.Project != "Hidden" }
+	got := x.ForSchedule("acme", "weekly", 1, open)
+	if len(got) != 1 || got[0].Project != "Open" {
+		t.Fatalf("the reader was given %+v", got)
+	}
+	if all := x.ForSchedule("acme", "weekly", 0, nil); len(all) != 3 {
+		t.Fatalf("with no filter, %d runs", len(all))
 	}
 }
 

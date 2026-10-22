@@ -21,6 +21,7 @@ import (
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/integrations/github"
 	"github.com/urmzd/warp/pkg/integrations/slack"
@@ -66,6 +67,22 @@ func (f *fakes) config() platform.Config {
 		GitHubAPI:      func(token string) github.API { return f.githubFor(token) },
 		ClientInterval: -1,
 	}
+}
+
+// operators is a workspace policy granting the operator role to people by
+// subject, as a client's own connector knows them: by the subject its team
+// maps a Slack user to, with no sign-in.
+func operators(t *testing.T, subjects ...string) *auth.Policy {
+	t.Helper()
+	src := "role viewer { allow read on * }\nrole operator extends viewer { allow write on runs }\n"
+	for _, s := range subjects {
+		src += "grant operator to subject \"" + s + "\"\n"
+	}
+	pol, err := auth.ParsePolicy("test", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pol
 }
 
 // slackClient is a Slack client as a test writes one: the token names its

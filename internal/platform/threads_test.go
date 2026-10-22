@@ -36,14 +36,26 @@ func seePeople(t *testing.T, p *platform.Platform, who ...auth.Principal) {
 // account is everyone's to view only.
 func workIn(t *testing.T, p *platform.Platform, project string, who ...auth.Principal) {
 	t.Helper()
-	pr, err := p.Projects.Get(tenant, project)
-	if err != nil {
-		t.Fatal(err)
+	subjects := make([]string, 0, len(who))
+	for _, w := range who {
+		subjects = append(subjects, w.Subject)
+	}
+	joinAs(t, p, project, projects.Member, subjects...)
+}
+
+// joinAs gives people a role in a project, as its owner would.
+func joinAs(t *testing.T, p *platform.Platform, project string, role projects.Role, subjects ...string) {
+	t.Helper()
+	pr, ok := p.Projects.Tree(tenant).Get(project)
+	if !ok {
+		t.Fatalf("no project %s", project)
+	}
+	members := slices.Clone(pr.Members)
+	for _, s := range subjects {
+		members = append(members, projects.Entry{Who: s, Role: role})
 	}
 	if _, err := p.Projects.Update(tenant, project, pr.Version, ada, time.Now(), func(pr *projects.Project) error {
-		for _, w := range who {
-			pr.Members = append(pr.Members, projects.Entry{Who: w.Subject, Role: projects.Member})
-		}
+		pr.Members = members
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -742,6 +754,52 @@ func TestAConversationAMachineStartedIsOwnedByThePersonWhoFirstPosts(t *testing.
 	}
 }
 
+// Owning a conversation nobody asked in takes a member, as changing it does.
+// A viewer's change, removing themselves, makes them no owner and claims
+// nothing, so a member changes it after them and becomes its owner then,
+// and anyone else who would change it now asks them or a project owner.
+func TestOnlyAMemberBecomesTheOwnerOfAConversationNobodyAskedIn(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	if _, err := p.Projects.Update(tenant, "Globex", 2, ada, time.Now(), func(pr *projects.Project) error {
+		pr.Members = append(pr.Members, projects.Entry{Who: "cy", Role: projects.Member}, projects.Entry{Who: "dee", Role: projects.Member})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-bot", Agent: "lead", Text: "Go", Project: "Globex", Actor: envelope.Actor{ID: "svc-bot", Bot: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run = await(t, p, run.ID, runs.Completed)
+	person := func(subject string) auth.Principal {
+		return auth.Principal{Subject: subject, Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	}
+	vic, cy, dee := person("vic"), person("cy"), person("dee")
+	if _, _, err := p.ProjectRole(vic, "Globex", projects.Member); err == nil {
+		t.Fatal("vic is a member of Globex, so this tests nothing")
+	}
+	rec, _ := p.ThreadRecord(tenant, run.Thread)
+	got, err := p.SetParticipants(t.Context(), vic, run.Thread, platform.ParticipantsUpdate{Version: rec.Version, Remove: []string{"vic"}})
+	if err != nil {
+		t.Fatalf("vic leaving a conversation he is not in: %v", err)
+	}
+	if got.CreatedBy != "" || slices.ContainsFunc(got.Participants, func(pt threads.Participant) bool { return pt.Owner }) {
+		t.Fatalf("vic's change made %q its owner: %+v", got.CreatedBy, got.Participants)
+	}
+	// Any member may still change it, and the first who does owns it.
+	changed, err := p.UpdateThread(t.Context(), cy, run.Thread, platform.ThreadUpdate{Version: got.Version, Title: "Bot report"})
+	if err != nil {
+		t.Fatalf("a member changing it after vic: %v", err)
+	}
+	if changed.CreatedBy != "cy" || changed.Title != "Bot report" || !slices.ContainsFunc(changed.Participants, func(pt threads.Participant) bool { return pt.Owner && pt.Name == "cy" }) {
+		t.Fatalf("after cy's change the thread is %+v", changed)
+	}
+	if _, err := p.UpdateThread(t.Context(), dee, run.Thread, platform.ThreadUpdate{Version: changed.Version, Title: "Mine"}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("another member changing cy's thread = %v", err)
+	}
+}
+
 // A person posts only as themselves. A credential that acts for nobody
 // cannot post, and one that acts for a mapped person posts as them, with that
 // client's Slack people tagged by their own mentions.
@@ -850,11 +908,23 @@ func TestAThreadNoAgentAnsweredIsListedInItsChannel(t *testing.T) {
 	if got := in("Globex", ""); len(got) != 0 {
 		t.Fatalf("Globex lists %v", got)
 	}
-	if _, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "secret"}); !errors.Is(err, threads.ErrPrivate) {
+	// A private thread is listed only for those who take part in it.
+	secret, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "secret"})
+	if err != nil {
 		t.Fatalf("a private thread = %v", err)
 	}
-	if _, err := p.UpdateThread(t.Context(), operator, quiet.Thread.ID, platform.ThreadUpdate{Version: quiet.Thread.Version, Visibility: threads.Private}); !errors.Is(err, threads.ErrPrivate) {
-		t.Fatalf("a thread made private = %v", err)
+	listed := func(who auth.Principal) bool {
+		page, _, err := p.ThreadPageAs(who, runs.ThreadQuery{Projects: []string{"Field"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return slices.ContainsFunc(page, func(s platform.ThreadSummary) bool { return s.ID == secret.Thread.ID })
+	}
+	if !listed(operator) || listed(viewer) {
+		t.Fatalf("a private thread is listed for its owner %v and for another %v", listed(operator), listed(viewer))
+	}
+	if made, err := p.UpdateThread(t.Context(), operator, quiet.Thread.ID, platform.ThreadUpdate{Version: quiet.Thread.Version, Title: quiet.Thread.Title, Visibility: threads.Private}); err != nil || made.Visibility != threads.Private {
+		t.Fatalf("a thread made private = %+v, %v", made, err)
 	}
 	if _, err := p.ArchiveChannel(tenant, "Field", "releases", ada); err != nil {
 		t.Fatal(err)

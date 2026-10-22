@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -140,4 +141,35 @@ func TestAThreadNeverShowsASubjectThatHoldsAnAddress(t *testing.T) {
 	if got := mentions["messages"].([]any); len(got) != 1 || !strings.HasPrefix(got[0].(map[string]any)["subject"].(string), "pat mentioned you") {
 		t.Errorf("ada's mentions are %v", mentions)
 	}
+}
+
+// Which of a Slack client's channels a project answers in is the client's
+// admins' to decide: an owner of a project without clients:write cannot bind
+// a Slack channel to it, and so cannot capture what is said there, but keeps
+// or removes a binding an admin made.
+func TestBindingASlackChannelTakesTheClientsAdmin(t *testing.T) {
+	f := newFixture(t)
+	admin := f.machine(t, "acme", everything...)
+	opal := f.machineAs(t, "opal", "acme", operator...)
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, admin, "POST", "/api/clients", slackApp("app", "A01APP", "svc-app"), http.StatusCreated)
+	want(t, f, opal, "POST", "/api/projects", `{"name":"Mine"}`, http.StatusCreated)
+	for _, tc := range []struct{ method, path, body string }{
+		{"POST", "/api/projects/Mine/channels", `{"name":"grab","slack":{"client":"app","channel":"C0FINANCE"}}`},
+		{"PUT", "/api/projects/Mine/channels/general", `{"version":0,"slack":{"client":"app","channel":"C0FINANCE"}}`},
+	} {
+		if got, out := status(t, f, opal, tc.method, tc.path, tc.body); got != http.StatusForbidden || !strings.Contains(fmt.Sprint(out["error"]), "clients:write") {
+			t.Errorf("an owner binding %s %s = %d %v, want 403", tc.method, tc.path, got, out)
+		}
+	}
+	if b := want(t, f, admin, "GET", "/api/clients/app/bindings", "", http.StatusOK)["bindings"].([]any); len(b) != 0 {
+		t.Fatalf("a refused binding was kept: %v", b)
+	}
+	// An admin binds it; the owner keeps it as it is, then removes it.
+	want(t, f, admin, "PUT", "/api/projects/Mine/channels/general", `{"version":0,"slack":{"client":"app","channel":"C0MINE"}}`, http.StatusOK)
+	want(t, f, opal, "PUT", "/api/projects/Mine/channels/general", `{"version":1,"title":"General","slack":{"client":"app","channel":"C0MINE"}}`, http.StatusOK)
+	if got, out := status(t, f, opal, "PUT", "/api/projects/Mine/channels/general", `{"version":2,"slack":{"client":"app","channel":"C0FINANCE"}}`); got != http.StatusForbidden {
+		t.Fatalf("an owner moving a binding = %d %v", got, out)
+	}
+	want(t, f, opal, "PUT", "/api/projects/Mine/channels/general", `{"version":2,"title":"General"}`, http.StatusOK)
 }

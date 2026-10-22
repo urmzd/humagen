@@ -53,18 +53,23 @@ type tenant struct {
 	threads map[string]*thread
 	// inProject counts the threads of each project, "" the root.
 	inProject map[string]int
-	watchers  map[int]chan Notice
-	nextW     int
+	// surfaces finds a thread by its surface, built from the records.
+	surfaces map[string]string
+	watchers map[int]chan Notice
+	nextW    int
 }
 
 func newTenant() *tenant {
-	return &tenant{threads: map[string]*thread{}, inProject: map[string]int{}, watchers: map[int]chan Notice{}}
+	return &tenant{threads: map[string]*thread{}, inProject: map[string]int{}, surfaces: map[string]string{}, watchers: map[int]chan Notice{}}
 }
 
-// hold adds a thread to a tenant's records.
+// hold adds a thread to a tenant's records, with its surface found.
 func (t *tenant) hold(th *thread) {
 	t.threads[th.rec.ID] = th
 	t.inProject[th.rec.Project]++
+	if th.rec.Surface != nil {
+		t.surfaces[th.rec.Surface.key()] = th.rec.ID
+	}
 }
 
 func (t *tenant) tell(n Notice) {
@@ -119,7 +124,11 @@ func Open(st state.Store) (*Store, error) {
 			if err := rec.validate(); err != nil {
 				return fmt.Errorf("thread %q: %w", key, err)
 			}
-			s.of(tenantName).hold(&thread{rec: rec, surfaces: map[string]int{}})
+			tn := s.of(tenantName)
+			if rec.Surface != nil && tn.surfaces[rec.Surface.key()] != "" {
+				return fmt.Errorf("%w: %q and %q are one surface's thread", ErrInvalid, tn.surfaces[rec.Surface.key()], rec.ID)
+			}
+			tn.hold(&thread{rec: rec, surfaces: map[string]int{}})
 		case strings.HasPrefix(key, keyMessage):
 			var m Message
 			if err := json.Unmarshal(raw, &m); err != nil {
@@ -188,15 +197,12 @@ func (s *Store) find(tenantName, id string) (*thread, error) {
 	return nil, fmt.Errorf("%w: thread %q", ErrNotFound, id)
 }
 
-// writable returns a thread a write may change. A private thread is changed
-// by nothing until read confinement is built.
+// writable returns a thread a write may change. Who may change it is the
+// platform's to decide.
 func (s *Store) writable(tenantName, id string) (*thread, error) {
 	th, err := s.find(tenantName, id)
 	if err != nil {
 		return nil, err
-	}
-	if th.rec.Visibility == Private {
-		return nil, ErrPrivate
 	}
 	return th, nil
 }
@@ -244,8 +250,8 @@ func newID() string {
 // (ErrLimit). The caller holds the lock.
 func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, error) {
 	t = t.clone()
-	if t.Visibility == Private {
-		return Thread{}, ErrPrivate
+	if t.Surface != nil && s.of(tenantName).surfaces[t.Surface.key()] != "" {
+		return Thread{}, fmt.Errorf("%w: that surface's thread is %q", ErrExists, s.of(tenantName).surfaces[t.Surface.key()])
 	}
 	tn := s.of(tenantName)
 	have := tn.threads
@@ -269,7 +275,7 @@ func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, erro
 			p.At = at
 		}
 	}
-	if !t.has(Person, t.CreatedBy) {
+	if t.CreatedBy != "" && !t.has(Person, t.CreatedBy) {
 		t.Participants = append([]Participant{{Kind: Person, Name: t.CreatedBy, At: at}}, t.Participants...)
 	}
 	for i := range t.Participants {
@@ -287,7 +293,9 @@ func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, erro
 // Create writes a thread's record with no messages: the record of a
 // conversation from before threads, the first time anything about it changes,
 // or a thread to post into later. A thread with no id is given a new one. The
-// person who starts it takes part as its owner.
+// person who starts it takes part as its owner. Only the record of a
+// conversation from before threads may name nobody: one no person asked in,
+// changed first by someone who may not own it.
 func (s *Store) Create(tenantName string, t Thread, at time.Time) (Thread, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -304,6 +312,39 @@ func (s *Store) Create(tenantName string, t Thread, at time.Time) (Thread, error
 	tn.hold(&thread{rec: t, surfaces: map[string]int{}})
 	tn.tell(Notice{ID: t.ID, At: at})
 	return t.clone(), nil
+}
+
+// Claim makes by the owner of a thread nobody started, the record of a
+// conversation from before threads that no person asked in: they start it,
+// and take part as its owner. A thread someone started is returned as it is.
+func (s *Store) Claim(tenantName, id, by string, at time.Time) (Thread, error) {
+	if strings.TrimSpace(by) == "" {
+		return Thread{}, fmt.Errorf("%w: a thread is started by someone", ErrInvalid)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	th, err := s.writable(tenantName, id)
+	if err != nil {
+		return Thread{}, err
+	}
+	if th.rec.CreatedBy != "" {
+		return th.rec.clone(), nil
+	}
+	next := th.rec.clone()
+	next.CreatedBy = by
+	if i := slices.IndexFunc(next.Participants, func(p Participant) bool { return p.Kind == Person && p.Name == by }); i >= 0 {
+		next.Participants[i].Owner, next.Participants[i].AddedBy = true, ""
+	} else {
+		next.Participants = append([]Participant{{Kind: Person, Name: by, Owner: true, At: at}}, next.Participants...)
+	}
+	if len(next.Participants) > MaxParticipants {
+		return Thread{}, fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
+	}
+	next.Version, next.UpdatedAt = th.rec.Version+1, at
+	if err := next.validate(); err != nil {
+		return Thread{}, err
+	}
+	return s.rewrite(tenantName, th, next, at)
 }
 
 // Start writes a new thread and its first message in one write. The person
@@ -491,8 +532,8 @@ func (s *Store) rewrite(tenantName string, th *thread, rec Thread, at time.Time)
 
 // Update changes a thread's title, visibility or default. fn edits a copy;
 // the id, place, participants and record fields cannot change, and version
-// must be the current one (ErrVersion). A private thread is refused
-// (ErrPrivate). A change that changes nothing writes nothing.
+// must be the current one (ErrVersion). A change that changes nothing writes
+// nothing.
 func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func(*Thread) error) (Thread, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -509,12 +550,10 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 		return Thread{}, err
 	}
 	switch {
-	case next.ID != cur.ID || next.Project != cur.Project || next.Channel != cur.Channel:
+	case next.ID != cur.ID || next.Project != cur.Project || next.Channel != cur.Channel || !sameSurface(next.Surface, cur.Surface):
 		return Thread{}, fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
 	case !slices.Equal(next.Participants, cur.Participants):
 		return Thread{}, fmt.Errorf("%w: participants are changed on their own", ErrInvalid)
-	case next.Visibility == Private:
-		return Thread{}, ErrPrivate
 	}
 	next.Version, next.CreatedBy, next.CreatedAt, next.UpdatedAt = cur.Version, cur.CreatedBy, cur.CreatedAt, cur.UpdatedAt
 	if err := next.validate(); err != nil {
@@ -574,6 +613,23 @@ func (s *Store) Participants(tenantName, id string, version int, add []Participa
 	}
 	next.Version, next.UpdatedAt = th.rec.Version+1, at
 	return s.rewrite(tenantName, th, next, at)
+}
+
+func sameSurface(a, b *Surface) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
+
+// BySurface returns the thread a surface's thread is, if one was started.
+func (s *Store) BySurface(tenantName string, sf Surface) (Thread, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	tn, ok := s.tenants[tenantName]
+	if !ok {
+		return Thread{}, false
+	}
+	th := tn.threads[tn.surfaces[sf.key()]]
+	if th == nil {
+		return Thread{}, false
+	}
+	return th.rec.clone(), true
 }
 
 // Get returns a thread's record.

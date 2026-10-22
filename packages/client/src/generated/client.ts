@@ -27,6 +27,7 @@ import type {
   GetRunTraceResponse,
   GetUsageResponse,
   InboxCounts,
+  InboxDeliveryInput,
   InboxMessage,
   KnowledgeDocument,
   KnowledgeSource,
@@ -38,6 +39,7 @@ import type {
   ListArtifactVersionsResponse,
   ListArtifactsResponse,
   ListChannelsResponse,
+  ListClientBindingsResponse,
   ListClientsResponse,
   ListEvalRunsResponse,
   ListEvalSuitesResponse,
@@ -1046,7 +1048,10 @@ agents answering the next message are sent.
 
   /** Starts a child run of the run in the path. The caller's agent must be
 allowed to spawn the target, and depth, fan-out and lease limits apply.
-`key` is the call's idempotency key within the run.
+`key` is the call's idempotency key within the run. The call is a turn
+of the run's conversation, filed where it lives, so the caller must be
+a member of the run's project, and in a private thread a participant
+(403); a viewer starts nothing.
  */
   async createCall(id: string, body: CreateCallRequest, options?: RequestOptions): Promise<Run> {
     let path = "/api/runs/{id}/calls";
@@ -1081,6 +1086,10 @@ never reported stopped and then completed.
 Asking a run that has ended changes nothing and answers 200 with the
 run as it stands, so asking twice is safe. Another workspace's run
 answers 404.
+
+It takes whoever asked for the run, the machine of the client that
+raised it, or a member of the run's project (in a private thread a
+participant). A viewer of the project stops nobody else's run (403).
  */
   async stopRun(id: string, options?: RequestOptions): Promise<Run> {
     let path = "/api/runs/{id}/stop";
@@ -1253,11 +1262,12 @@ answers; otherwise the default the thread inherits answers. Each run
 it starts acts for the person the message is posted as, never for
 anyone else in the thread, so a tool that acts as a person uses that
 person's own credential; the run is sent the room up to the message,
-what others said there, ahead of it. A `private` thread is refused
-(409) until reads are confined. A `default` must be able to answer
-in the project (400). Starting a thread takes a member of the
-project: the caller, or the person `act_as` names, as their own role
-there says; a viewer is 403.
+what others said there, ahead of it. A `private` thread is read by
+its participants alone, the person who starts it first; tagging a
+person in it invites them. A `default` must be able to answer in the
+project (400). Starting a thread takes a member of the project: the
+caller, or the person `act_as` names, as their own role there says;
+a viewer is 403.
 
 A workspace holds at most 10,000 threads and a project 2,000, a
 conversation from before threads counting once its record is written
@@ -1265,6 +1275,13 @@ conversation from before threads counting once its record is written
 `postThreadMessage`, and a project takes at most 120 (429). One
 message notifies at most 20 people and roles; a tag it reaches nobody
 for is in `refused`.
+
+With `surface`, a client's machine posts a person's message from a
+Slack thread: into the thread that surface already is, or into a new
+one the platform files from the binding (see SurfaceRef). Posting
+the same message ts again changes nothing. To any other caller the
+client is not found (404); a client's home that is gone is 404 too.
+An agent the client may not route to is refused, never swapped.
  */
   async startThread(body: ThreadInput, options?: RequestOptions): Promise<ThreadPosted> {
     const path = "/api/threads";
@@ -1324,10 +1341,10 @@ as `before`. `answers` is who answers an untagged message here.
   /** The body replaces those three as a whole: one left out is cleared.
 `version` is the one the caller read (0 for a conversation from
 before threads, whose record this writes), so a change made since
-answers 409. `private` is refused (409) until reads are confined. A
-`default` must be able to answer in the thread's project (400).
-Whoever started the thread, while a member of its project, or an
-owner of its project, changes it (403 for anyone else, and for a
+answers 409. Made `private`, the thread is read by its participants
+alone. A `default` must be able to answer in the thread's project
+(400). Whoever started the thread, while a member of its project, or
+an owner of its project, changes it (403 for anyone else, and for a
 starter who is now only a viewer, since its default answers
 everyone's untagged messages there); a conversation from before
 threads that no person asked in is changed first by a member, who
@@ -1355,22 +1372,23 @@ then owns it.
 
   /** Posted as the caller, or as the person `act_as` names through a
 client that maps them, as for `startThread`, and each run it starts
-acts for that person. `after` is the turn it
-follows: a message of the thread, a run answering one, or in a
-conversation from before threads one of its runs; left out, it
-follows the latest. `answers` records the message as a question's
-answer, which resumes the run parked on it; who may answer is
-checked as on every other path, and a refused answer posts nothing.
-An answer, like a reply, is not answered by the thread's default; the
-agents it tags answer it, as for any message. An answer is posted
-only when it is the one the run was given: a question already
-answered, or whose run stopped, is 409 and posts nothing. Posting
-takes a member of the thread's project, as starting a thread does,
-except an answer that tags no one: a viewer may answer what a run
-asked them, but tagging an agent, a person or `@sme` takes a member
-(403 for anything else). A thread holds at most 5,000
-messages: past that, 409 "start a new thread". The rates and caps of
-`startThread` hold here too (429).
+acts for that person. `after` is the turn it follows: a message of
+the thread, a run answering one, or in a conversation from before
+threads one of its runs; left out, it follows the latest. `answers`
+records the message as a question's answer, which resumes the run
+parked on it; who may answer is checked as on every other path, and
+a refused answer posts nothing. An answer, like a reply, is not
+answered by the thread's default; the agents it tags answer it, as
+for any message. An answer is posted only when it is the one the run
+was given: a question already answered, or whose run stopped, is 409
+and posts nothing. Posting takes a member of the thread's project,
+and in a private thread a participant, as starting a thread does,
+except an answer or a reply that tags no one: a viewer may answer
+what a run asked them, or reply to a message that tagged them, but
+tagging an agent, a person or `@sme` takes a member (403 for
+anything else). A thread holds at most 5,000 messages: past that,
+409 "start a new thread". The rates and caps of `startThread` hold
+here too (429).
  */
   async postThreadMessage(id: string, body: ThreadMessageInput, options?: RequestOptions): Promise<ThreadPosted> {
     let path = "/api/threads/{id}/messages";
@@ -1395,10 +1413,11 @@ messages: past that, 409 "start a new thread". The rates and caps of
   /** At most 50 added and removed together, and a thread has at most 50
 participants. An agent added must be available in the thread's
 project, and a person, named by handle, must be in the workspace's
-directory (400). The person who started the thread stays in it. It
-takes a member of the thread's project, and removing anyone but
-oneself takes whoever started the thread or an owner of its project
-(403). `version` is the one the caller read.
+directory (400). The person who started the thread stays in it.
+Adding takes posting there: a member of the thread's project, and in
+a private thread a participant. Removing anyone but oneself takes
+whoever started the thread or an owner of its project (403).
+`version` is the one the caller read.
  */
   async updateThreadParticipants(id: string, body: ThreadParticipantsUpdate, options?: RequestOptions): Promise<Thread> {
     let path = "/api/threads/{id}/participants";
@@ -1548,7 +1567,9 @@ it and the runs it raised are kept. The agent, and the project if one
 is named, must exist now. The whole edit is checked before anything
 changes, so a refused edit leaves the schedule as it was. An edited
 schedule starts afresh from the time of the edit: it does not catch up
-on occurrences of its new expression that fell before it.
+on occurrences of its new expression that fell before it. A schedule
+the platform file declares (`managed: file`) is changed in the file:
+here it answers 409.
  */
   async updateSchedule(name: string, body: Schedule, options?: RequestOptions): Promise<ScheduleView> {
     let path = "/api/schedules/{name}";
@@ -1570,7 +1591,7 @@ on occurrences of its new expression that fell before it.
     });
   }
 
-  /** Delete a schedule */
+  /** A schedule the platform file declares is removed from the file, not here (409). */
   async deleteSchedule(name: string, options?: RequestOptions): Promise<void> {
     let path = "/api/schedules/{name}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -1651,9 +1672,10 @@ for nobody, as the schedule's own clock does, since anyone with
 may do with each part, is decided per message: a memory proposal needs
 `agents:read`, a failure `runs:read`, an alert or a reached limit
 `alerts:read`. `next` is the cursor for the page after this one, or
-null at the end.
+null at the end. A client's machine reads one of its people's inbox
+with `act_as_client` and `act_as_user`, as the Slack app's Home does.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1664,6 +1686,8 @@ null at the end.
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListInboxResponse>("GET", path, {
@@ -1671,7 +1695,7 @@ null at the end.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1682,6 +1706,8 @@ null at the end.
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListInboxResponse>("GET", path, {
@@ -1690,17 +1716,28 @@ null at the end.
   }
 
   /** Announcements count only in `updates`, so the badge, which counts
-`open`, never grows from them.
+`open`, never grows from them. A client's machine counts for one of
+its people with `act_as_client` and `act_as_user`.
  */
-  async getInboxCount(options?: RequestOptions): Promise<InboxCounts> {
-    const path = "/api/inbox/count";
+  async getInboxCount(actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<InboxCounts> {
+    let path = "/api/inbox/count";
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<InboxCounts>("GET", path, {
       ...options,
     });
   }
 
-  async getInboxCountRaw(options?: RequestOptions): Promise<ApiResponse<InboxCounts>> {
-    const path = "/api/inbox/count";
+  async getInboxCountRaw(actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<InboxCounts>> {
+    let path = "/api/inbox/count";
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<InboxCounts>("GET", path, {
       ...options,
     });
@@ -1709,19 +1746,30 @@ null at the end.
   /** A message of a kind the caller may not read answers 404. An
 announcement in the inbox of a project the caller can see is theirs
 to read, mark, snooze and hide, member or not, muted or not, as the
-project's inbox shows it.
+project's inbox shows it. A client's machine reads one for a person
+it maps with `act_as_client` and `act_as_user`.
  */
-  async getInboxMessage(id: string, options?: RequestOptions): Promise<GetInboxMessageResponse> {
+  async getInboxMessage(id: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<GetInboxMessageResponse> {
     let path = "/api/inbox/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<GetInboxMessageResponse>("GET", path, {
       ...options,
     });
   }
 
-  async getInboxMessageRaw(id: string, options?: RequestOptions): Promise<ApiResponse<GetInboxMessageResponse>> {
+  async getInboxMessageRaw(id: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<GetInboxMessageResponse>> {
     let path = "/api/inbox/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<GetInboxMessageResponse>("GET", path, {
       ...options,
     });
@@ -1811,7 +1859,10 @@ people they name; a viewer replies without tagging.
 Answering a question is `answerQuestion` by another route, with the
 same rules: a person the question is not addressed to does not see
 it, and one the runtime refuses is 403. `act_as` answers for a person
-a surface authenticated. Resolving a part that is already resolved
+a surface authenticated, and settles a mention of them (`reply` posts
+in the thread as them, through the client); they must hold
+`runs:write` themselves. A reply in the thread, from anywhere,
+settles the mention too. Resolving a part that is already resolved
 returns the first outcome. `retry` starts a new run, so it can be
 refused by a limit with 429 or 402, and with 409 when the turn's
 project was deleted since. The run acts for whoever the failed turn
@@ -1838,6 +1889,36 @@ own, and pressing it again returns the same one.
     path = path.replace("{id}", encodeURIComponent(String(id)));
     path = path.replace("{part}", encodeURIComponent(String(part)));
     return this.rawRequest<InboxMessage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** A Slack app records the channel and the ts of a message it posted,
+such as an announcement, so that after a restart, an edit or a
+withdrawal it updates that post instead of posting again. Only the
+credential the client names as `slack.machine` may record one: for
+anyone else, and for a message of a kind the caller may not read, the
+answer is 404. Recording the same post again changes nothing. The
+receipt shows in the message's `deliveries`, to that machine only.
+ */
+  async recordInboxDelivery(id: string, client: string, body: InboxDeliveryInput, options?: RequestOptions): Promise<void> {
+    let path = "/api/inbox/{id}/deliveries/{client}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{client}", encodeURIComponent(String(client)));
+    await this.request<void>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async recordInboxDeliveryRaw(id: string, client: string, body: InboxDeliveryInput, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/inbox/{id}/deliveries/{client}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    path = path.replace("{client}", encodeURIComponent(String(client)));
+    return this.rawRequest<void>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,
@@ -2149,7 +2230,10 @@ already raised stay, and so does its cooldown.
     });
   }
 
-  /** Up to 20 runs per suite, newest first. Results are kept on the latest run only. */
+  /** Up to 20 runs per suite, newest first. Results are kept on the latest
+run only. A suite that tests an agent the caller may not read is left
+out, and every route that names it answers 404.
+ */
   async listEvalSuites(options?: RequestOptions): Promise<ListEvalSuitesResponse> {
     const path = "/api/evals";
     return this.request<ListEvalSuitesResponse>("GET", path, {
@@ -2164,7 +2248,11 @@ already raised stay, and so does its cooldown.
     });
   }
 
-  /** What the suite tests must exist now. `created_by` and `updated_at` are set by the server. */
+  /** What the suite tests must exist now. `created_by` and `updated_at` are
+set by the server. An eval runs an agent where it lives, so a suite
+that tries an agent homed in a project takes a member of that project
+(403); one homed where the caller cannot see answers 404.
+ */
   async createEvalSuite(body: EvalSuite, options?: RequestOptions): Promise<EvalSuite> {
     const path = "/api/evals";
     return this.request<EvalSuite>("POST", path, {
@@ -2183,7 +2271,9 @@ already raised stay, and so does its cooldown.
     });
   }
 
-  /** Replace an eval suite */
+  /** As creating one: a suite that tries an agent homed in a project takes
+a member of that project (403).
+ */
   async updateEvalSuite(name: string, body: EvalSuite, options?: RequestOptions): Promise<EvalSuite> {
     let path = "/api/evals/{name}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2221,7 +2311,10 @@ already raised stay, and so does its cooldown.
     });
   }
 
-  /** A suite that is already running answers 409. */
+  /** A suite that is already running answers 409. Its cases are filed
+where the agent lives, so running a suite that tries an agent homed
+in a project takes a member of that project (403).
+ */
   async runEvalSuite(name: string, options?: RequestOptions): Promise<EvalRun> {
     let path = "/api/evals/{name}/run";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2539,8 +2632,9 @@ already raised stay, and so does its cooldown.
   /** Each project comes before its sub-projects, and siblings are ordered by
 name ignoring case. The workspace itself is not in the list:
 `GET /api/projects/~` reads it. Only the projects the caller has a
-role in are listed; until reads are confined to members, that is
-every project. A workspace has at most 500 projects. Each view says
+role in are listed, so a members-only project is listed to its
+members alone, and to `projects:govern`. A workspace has at most 500
+projects. Each view says
 the caller's role (`access`) and what they may do (`actions`).
 `next` is the cursor for the page after this one, or null at the
 end; a cursor is where its last row sat in the tree, so a project
@@ -2895,10 +2989,13 @@ Past 20 channels, 429.
     });
   }
 
-  /** The body replaces those three as a whole: one left out is cleared.
+  /** The body replaces those four as a whole: one left out is cleared.
 `version` is the one the caller read (`general` reads 0 until it is
 first written), so a change made since answers 409. A field the
 platform file sets answers 409. It needs ownership of the project.
+`slack` binds it to a Slack channel of a Slack client in the
+workspace (400 for anything else); a Slack channel bound elsewhere
+answers 409.
  */
   async updateChannel(name: string, channel: string, body: ChannelUpdate, options?: RequestOptions): Promise<ChannelView> {
     let path = "/api/projects/{name}/channels/{channel}";
@@ -3006,13 +3103,13 @@ need `projects:govern` as well.
     });
   }
 
-  /** It needs ownership of the project. Every project keeps an entry for
-everyone (`*`) of at least viewer, a company project one of at least
-member, and no project is more open than its parent or less open
-than a child (400). A list with no `*` entry is 409: members-only
-projects need read confinement, which is not built. The workspace
-and company projects need `projects:govern`; a list the platform
-file sets answers 409.
+  /** It needs ownership of the project. A list with no `*` entry makes
+the project members only: read by its members alone, and by
+`projects:govern`. A company project keeps one of at least member,
+no project is more open than its parent or less open than a child,
+and a members-only project never sits under one everyone owns (400).
+The workspace and company projects need `projects:govern`; a list
+the platform file sets answers 409.
  */
   async setProjectMembers(name: string, body: ProjectMembersInput, options?: RequestOptions): Promise<ProjectMembers> {
     let path = "/api/projects/{name}/members";
@@ -3246,7 +3343,9 @@ end; pass it back as `before`.
     });
   }
 
-  /** List the workspace's limits */
+  /** A limit on an agent or a project the caller may not read is left
+out, as if it did not exist.
+ */
   async listPolicies(options?: RequestOptions): Promise<ListPoliciesResponse> {
     const path = "/api/policies";
     return this.request<ListPoliciesResponse>("GET", path, {
@@ -3308,7 +3407,9 @@ tighten what a wider one allows.
     });
   }
 
-  /** List every change made to the workspace's limits */
+  /** Changes to a limit on an agent or a project the caller may not read
+are left out.
+ */
   async listPolicyHistory(options?: RequestOptions): Promise<ListPolicyHistoryResponse> {
     const path = "/api/policies/history";
     return this.request<ListPolicyHistoryResponse>("GET", path, {
@@ -3323,7 +3424,9 @@ tighten what a wider one allows.
     });
   }
 
-  /** One entry per policy. A workspace with no policies has no entries.
+  /** One entry per policy the caller may read: a limit on an agent or a
+project they may not read is left out. A workspace with no policies
+has no entries.
 `state` is the worst of the enforced limits (runs and concurrency).
 Spend is recorded and not enforced, and `spend.metered` is false,
 because the runtime reports no cost.
@@ -3342,7 +3445,10 @@ because the runtime reports no cost.
     });
   }
 
-  /** The 200 most recent. */
+  /** Of the 200 most recent, those the caller may read: a notice about a
+run filed in a project they may not read, an agent they may not
+read, or a limit on either, is left out.
+ */
   async listUsageNotices(options?: RequestOptions): Promise<ListUsageNoticesResponse> {
     const path = "/api/usage/notices";
     return this.request<ListUsageNoticesResponse>("GET", path, {
@@ -3391,6 +3497,26 @@ because the runtime reports no cost.
     });
   }
 
+  /** Each Slack channel and the channel it is bound to here, by Slack
+channel, at most 200. A binding in a project the caller may not read
+is left out.
+ */
+  async listClientBindings(id: string, options?: RequestOptions): Promise<ListClientBindingsResponse> {
+    let path = "/api/clients/{id}/bindings";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ListClientBindingsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listClientBindingsRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ListClientBindingsResponse>> {
+    let path = "/api/clients/{id}/bindings";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ListClientBindingsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
   /** Get a client */
   async getClient(id: string, options?: RequestOptions): Promise<ClientView> {
     let path = "/api/clients/{id}";
@@ -3408,8 +3534,10 @@ because the runtime reports no cost.
     });
   }
 
-  /** A secret left out is kept. A client the server's configuration owns
-cannot be changed here and answers 409.
+  /** A secret left out is kept, and so is a home in a project the caller
+may not read, which they are not shown: naming none keeps it, and
+naming one they may read replaces it. A client the server's
+configuration owns cannot be changed here and answers 409.
  */
   async updateClient(id: string, body: ClientInput, options?: RequestOptions): Promise<ClientView> {
     let path = "/api/clients/{id}";

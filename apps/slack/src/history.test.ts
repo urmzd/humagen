@@ -6,7 +6,9 @@ import {
   direct,
   mention,
   OTHER_USER,
+  SUBJECT,
   settle,
+  TEAM,
   USER,
   type World,
   world,
@@ -214,4 +216,89 @@ test("manifest: the app asks for what it uses, thread history included", async (
     assert.ok(events.includes(e), `${e} is subscribed`);
   }
   assert.equal(manifest.settings.socket_mode_enabled, true);
+});
+
+/** A world whose app is a client that maps USER to sam and OTHER_USER to dana. */
+function coworking(): World {
+  const w = world({ clientId: "app" });
+  w.warp.clients.set("app", {
+    id: "app",
+    surface: "slack",
+    enabled: true,
+    default_agent: "lead",
+    identity: { team: TEAM },
+    slack: { machine: SUBJECT, people: { [USER]: "sam", [OTHER_USER]: "dana" } },
+  });
+  return w;
+}
+
+test("coworking: a mapped person's mention is their message in the warp thread its Slack thread is", async () => {
+  const w = coworking();
+  await w.app.handle(mention("@helper what changed?", ROOT));
+  await settle();
+  assert.deepEqual(w.warp.posts, [
+    {
+      text: "@helper what changed?",
+      act_as: { client: "app", user: USER },
+      surface: { client: "app", channel: CHANNEL, ts: ROOT, message: ROOT, app_user: BOT },
+    },
+  ]);
+  assert.equal(w.warp.last.agent, "helper", "the platform read the tag");
+  await finish(w);
+  // Slack delivers the event again after a restart: warp has the message, and nothing starts again.
+  const again = w.restart();
+  await again.handle(mention("@helper what changed?", ROOT));
+  await settle();
+  assert.equal(w.warp.started.length, 1);
+});
+
+test("coworking: what people said since the app was last asked goes first, each as its person, posted only", async () => {
+  const w = coworking();
+  withThread(w, THREAD, { [OTHER_USER]: "Dana", [USER]: "Sam" });
+  await w.app.handle(mention("can we stop it safely?", ASK, { thread_ts: ROOT }));
+  await settle();
+  const said = w.warp.posts.filter((p) => p.post_only);
+  assert.ok(said.length > 0, "the room was posted");
+  for (const p of said) {
+    assert.equal(p.surface.ts, ROOT);
+    assert.ok([USER, OTHER_USER].includes(p.act_as.user), "each as its person");
+    assert.ok(
+      !p.text.includes("CI: build") && !p.text.includes("waited on a lock"),
+      "no bot's message, nor the app's",
+    );
+  }
+  const asked = w.warp.posts.at(-1);
+  assert.equal(asked?.surface.message, ASK);
+  assert.equal(asked?.post_only, undefined);
+  assert.equal(
+    asked?.text,
+    "can we stop it safely?",
+    "the question goes alone: the room is in warp",
+  );
+  await finish(w);
+});
+
+test("coworking: tagging only a person starts nothing and says who was told", async () => {
+  const w = coworking();
+  await w.app.handle(mention("@dana can you check?", ROOT));
+  await settle();
+  assert.equal(w.warp.started.length, 0);
+  await w.app.idle();
+  const said = JSON.stringify(
+    w.slack.calls.filter((c) =>
+      /chat\.(postMessage|update|stopStream|appendStream)/.test(c.method),
+    ),
+  );
+  assert.match(said, /Sent to @dana/);
+});
+
+test("coworking: where nothing answers by default, the app says to tag an agent", async () => {
+  const w = coworking();
+  w.warp.noDefault = true;
+  await w.app.handle(mention("what changed?", ROOT));
+  await settle();
+  await w.app.idle();
+  assert.equal(w.warp.started.length, 0);
+  const said = JSON.stringify(w.slack.calls);
+  assert.match(said, /Tag an agent with @/);
 });

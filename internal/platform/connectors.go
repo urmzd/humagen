@@ -21,9 +21,13 @@ import (
 	"github.com/urmzd/fiber/pkg/connector"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/topic"
 
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/authz"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // Clients on a surface.
@@ -195,13 +199,34 @@ func (s *surface) pump(ctx context.Context, st *seat, out chan<- envelope.Tag) {
 // the payload said about tenant, origin or client is overwritten here, and a
 // tag for an agent the client may not route to goes no further.
 //
-// A connector may ask for @auto (its client's default can be auto). stamp
-// resolves it before admission, among the agents available at the root that
-// the client may route to. With none that fits, the tag goes no further.
+// stamp also files the run: in the channel its Slack channel is bound to, or
+// in the client's home, written over whatever the connector said.
+//
+// A message that named no agent reaches stamp as untagged, and the place it
+// is filed in decides who answers it (untaggedFor). A connector may ask for
+// @auto, and so may that default. stamp resolves it before admission, among
+// the agents available where the run is filed that the client may route to.
+// With none that fits, or no default anywhere, the tag goes no further.
+//
+// The run acts for the person the client's team maps the surface's user to,
+// so it is held to what that person may do where it is filed (mayRaise),
+// and goes no further when they may not.
 func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) (envelope.Tag, bool) {
 	c := st.client
+	project, channel, bound := s.p.filedFor(c.Tenant, c, tag.Meta["slack_channel"])
+	person := s.p.surfacePerson(c, tag)
+	if err := s.p.mayRaise(c, person, project, bound); err != nil {
+		s.p.log.Warn("platform: a client's message was refused", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "person", person, "tag", tag.ID, "why", err.Error())
+		return envelope.Tag{}, false
+	}
+	if tag.Agent == untagged {
+		if tag.Agent = s.p.untaggedFor(c, project, channel, tag.Meta["slack_channel"]); tag.Agent == "" {
+			s.p.log.Warn("platform: no default answers an untagged message where a client's run is filed", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "project", project, "channel", channel, "tag", tag.ID)
+			return envelope.Tag{}, false
+		}
+	}
 	if tag.Agent == Auto {
-		choice, err := s.p.autoFor(ctx, c, tag.Text)
+		choice, err := s.p.autoFor(ctx, c, project, tag.Text)
 		if err != nil {
 			s.p.log.Warn("platform: @auto found no agent for a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "tag", tag.ID, "error", err)
 			return envelope.Tag{}, false
@@ -212,16 +237,87 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) (envelo
 		s.p.log.Warn("platform: client may not route to that agent", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "agent", tag.Agent, "tag", tag.ID)
 		return envelope.Tag{}, false
 	}
-	meta := make(map[string]string, len(tag.Meta)+1)
+	meta := make(map[string]string, len(tag.Meta)+3)
 	for k, v := range tag.Meta {
 		meta[k] = v
 	}
 	meta[runs.MetaClient] = c.ID
+	// Where the run is filed is the binding's: the channel a Slack channel
+	// is bound to, or else the client's home. What the connector said is
+	// overwritten, and runs.ProjectOf believes only this.
+	meta[runs.MetaProject], meta[runs.MetaChannel] = project, channel
 	tag.Tenant, tag.Origin, tag.Meta = c.Tenant, s.name, meta
 	// Who the run acts for is the person the client's team maps the
 	// surface's user to, whatever the connector said.
-	tag.Actor.User = s.p.surfacePerson(c, tag)
+	tag.Actor.User = person
 	return tag, true
+}
+
+// mayRaise holds a message a client's own connector raised to what the
+// person it acts for may do, as the API holds a surface that asks for a
+// person (act_as): starting a run for them takes their own runs:write, and
+// filing it in a project takes being a member there. What they hold is what
+// the workspace's policy grants their subject. A Slack channel bound to a
+// project is that project's channel, so only a person the client's team maps
+// asks there; elsewhere someone it maps to nobody is answered for nobody, as
+// before.
+func (p *Platform) mayRaise(c clients.Client, person, project string, bound bool) error {
+	if person == "" {
+		if bound {
+			return fmt.Errorf("%w: only people the client maps ask in a channel bound to a project", ErrForbidden)
+		}
+		return nil
+	}
+	who := p.byPolicy(c.Tenant, person)
+	if !who.Can(auth.RunsWrite) {
+		return fmt.Errorf("%w: %s may not start runs (asking needs %s)", ErrForbidden, person, auth.RunsWrite)
+	}
+	return p.MayFileIn(who, project)
+}
+
+// byPolicy is a person known only by their subject, such as the one a
+// client's own connector maps a Slack user to: the roles the workspace's
+// policy grants that subject, and nothing a sign-in would add.
+func (p *Platform) byPolicy(tenant, subject string) auth.Principal {
+	pol := p.cfg.Policy
+	if pol == nil {
+		pol = auth.DefaultPolicy()
+	}
+	return auth.Principal{Subject: subject, Name: subject, Tenant: tenant, Kind: auth.User, Roles: pol.Roles(authz.Identity{Subject: subject, Tenant: tenant})}.WithPolicy(pol)
+}
+
+// untagged is the default agent a client's in-process Slack connector is
+// given: a name no agent can have (fiber keeps it for control topics), so a
+// message that named no agent reaches stamp as one, and the place it is
+// filed in decides who answers, never the connector.
+const untagged = topic.ControlName
+
+// untaggedFor is who answers a message a client's in-process connector
+// raised naming no agent, where its run is filed: in a bound channel the
+// bound channel's chain decides, its default then its project's, as for a
+// thread there; elsewhere the client's default comes first (placeIn). "" is
+// no default anywhere.
+func (p *Platform) untaggedFor(c clients.Client, project, channel, slackChannel string) string {
+	clientDefault := c.DefaultAgent
+	if c.Surface == clients.Slack && slackChannel != "" {
+		if _, bound := p.Projects.BoundTo(c.Tenant, c.ID, slackChannel); bound {
+			clientDefault = ""
+		}
+	}
+	return p.DefaultAt(c.Tenant, p.placeIn(c.Tenant, threads.Thread{Project: project, Channel: channel}, clientDefault)).Agent
+}
+
+// filedFor is where a client's in-process connector files a run: the
+// channel its Slack channel is bound to, or the client's home. bound says
+// which.
+func (p *Platform) filedFor(tenant string, c clients.Client, slackChannel string) (project, channel string, bound bool) {
+	if c.Surface == clients.Slack && slackChannel != "" {
+		if ch, ok := p.Projects.BoundTo(tenant, c.ID, slackChannel); ok {
+			return ch.Project, ch.Name, true
+		}
+	}
+	h := c.HomeOf()
+	return h.Project, h.Channel, false
 }
 
 // seat returns a tenant's enabled client by id, or nil.
@@ -536,8 +632,13 @@ func (p *Platform) clientOf(tenant, runID string) string {
 	return ""
 }
 
-// admitted is what is known of a run between its admission and its record.
-type admitted struct{ tenant, client string }
+// admitted is what is known of a run between its admission and its record:
+// its tenant, the client that raised it, and where it lives, so its first
+// event reaches only those who may read it.
+type admitted struct {
+	tenant, client string
+	place          Place
+}
 
 func (p *Platform) flushConnections(ctx context.Context) error {
 	tick := time.NewTicker(time.Second)

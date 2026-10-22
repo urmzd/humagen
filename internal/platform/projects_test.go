@@ -37,7 +37,9 @@ var (
 )
 
 // field makes Field with Globex and Initech under it, and Renewals under
-// Globex.
+// Globex. Globex, an account, is open to everyone as a viewer, so what is
+// filed there is everyone's to read, as an account was before projects could
+// be members only.
 func field(t *testing.T, p *platform.Platform) {
 	t.Helper()
 	for _, in := range []platform.ProjectInput{
@@ -48,6 +50,14 @@ func field(t *testing.T, p *platform.Platform) {
 	} {
 		if _, err := p.CreateProject(t.Context(), tenant, ada, in); err != nil {
 			t.Fatal(err)
+		}
+		if in.Name == "Globex" {
+			if _, err := p.Projects.Update(tenant, "Globex", 1, ada, time.Now(), func(pr *projects.Project) error {
+				pr.Members = []projects.Entry{{Who: projects.Everyone, Role: projects.Viewer}, {Who: "ada", Role: projects.Owner}}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 }
@@ -688,14 +698,15 @@ func TestACronRunInAProjectGetsItsContext(t *testing.T) {
 		}
 		await(t, p, r.ID, runs.Completed)
 	}
-	// A cron run is filed nowhere the tag cannot claim: a run from another
-	// origin is not given a project, nor its context.
-	other, err := p.Invoke(ctx, envelope.Tag{ID: "slack-1", Tenant: tenant, Agent: "lead", Origin: "slack", Text: "hi", Meta: map[string]string{runs.MetaProject: "Globex"}})
+	// A cron run is filed nowhere the tag cannot claim: a run from an origin
+	// whose project the server did not write is not given one, nor its
+	// context.
+	other, err := p.Invoke(ctx, envelope.Tag{ID: "jira-1", Tenant: tenant, Agent: "lead", Origin: "jira", Text: "hi", Meta: map[string]string{runs.MetaProject: "Globex"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if other.Project != "" || other.Within != nil || strings.Contains(other.Tag().Text, "GLOBEX-RULE") {
-		t.Fatalf("a slack tag claimed a project: %+v", other)
+		t.Fatalf("a jira tag claimed a project: %+v", other)
 	}
 }
 

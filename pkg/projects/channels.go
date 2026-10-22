@@ -21,6 +21,8 @@ const (
 	MaxChannels    = 20
 	MaxChannelName = 40
 	MaxPurpose     = 200
+	// MaxBindings is how many channels one Slack client is bound to.
+	MaxBindings = 200
 )
 
 // ChannelChanged is what a change to one of a project's channels records.
@@ -40,6 +42,10 @@ type Channel struct {
 	// Default answers an untagged message here: an agent, or "auto". ""
 	// inherits from the project.
 	Default string `json:"default,omitempty"`
+	// Slack binds the channel to one Slack channel of one Slack client: a
+	// Slack thread there is a shared thread here. One Slack channel is bound
+	// to at most one channel in the workspace.
+	Slack *SlackBinding `json:"slack,omitempty"`
 	// Archived keeps the channel and its threads, and takes no new ones.
 	Archived bool `json:"archived,omitempty"`
 	// Managed is ManagedFile when the platform file declares the channel.
@@ -53,6 +59,21 @@ type Channel struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// SlackBinding is a Slack channel a channel is bound to: the Slack client's
+// id here, and the Slack channel's id there.
+type SlackBinding struct {
+	Client  string `json:"client"`
+	Channel string `json:"channel"`
+}
+
+// Binding is one Slack channel a client is bound to, and the channel it is
+// bound to here.
+type Binding struct {
+	SlackChannel string `json:"slack_channel"`
+	Project      string `json:"project"`
+	Channel      string `json:"channel"`
+}
+
 // ChannelChange is a channel before and after a change.
 type ChannelChange struct {
 	Before *Channel `json:"before,omitempty"`
@@ -63,6 +84,10 @@ var (
 	validChannel = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 	// validDefault is an agent's name, as a client's agent list holds it.
 	validDefault = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+	// validClient is a client's id; validSlackChannel a Slack channel's id,
+	// public (C) or private (G): a direct message is never bound.
+	validClient       = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+	validSlackChannel = regexp.MustCompile(`^[CG][A-Z0-9]{2,31}$`)
 )
 
 // ValidChannel reports whether a name can name a channel.
@@ -94,6 +119,12 @@ func (c Channel) validate() error {
 		return fmt.Errorf("%w: a default is an agent's name or auto", ErrInvalid)
 	case c.Name == General && c.Archived:
 		return fmt.Errorf("%w: #%s cannot be archived", ErrInvalid, General)
+	case c.Slack != nil && !validClient.MatchString(c.Slack.Client):
+		return fmt.Errorf("%w: a Slack binding names a client by its id", ErrInvalid)
+	case c.Slack != nil && !validSlackChannel.MatchString(c.Slack.Channel):
+		return fmt.Errorf("%w: a Slack binding names a Slack channel by its id, such as C0123ABCD; a direct message is never bound", ErrInvalid)
+	case c.Slack != nil && c.Archived:
+		return fmt.Errorf("%w: an archived channel is bound to nothing", ErrInvalid)
 	case c.Managed != "" && c.Managed != ManagedFile:
 		return fmt.Errorf("%w: a channel is managed by the file or not at all", ErrInvalid)
 	}
@@ -102,7 +133,73 @@ func (c Channel) validate() error {
 
 // sameChannel reports whether two versions of a channel hold the same fields.
 func sameChannel(a, b Channel) bool {
-	return a.Title == b.Title && a.Purpose == b.Purpose && a.Default == b.Default && a.Archived == b.Archived && a.Managed == b.Managed
+	return a.Title == b.Title && a.Purpose == b.Purpose && a.Default == b.Default && a.Archived == b.Archived && a.Managed == b.Managed &&
+		sameBinding(a.Slack, b.Slack)
+}
+
+func sameBinding(a, b *SlackBinding) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
+}
+
+// checkBinding holds a channel's Slack binding to the rest of the tenant:
+// one Slack channel is bound to one channel, and one client to at most
+// MaxBindings.
+func (t *tenant) checkBinding(c Channel) error {
+	if c.Slack == nil {
+		return nil
+	}
+	n := 0
+	for key, o := range t.channels {
+		if o.Slack == nil || key == channelKey(c.Project, c.Name) || o.Slack.Client != c.Slack.Client {
+			continue
+		}
+		if o.Slack.Channel == c.Slack.Channel {
+			return fmt.Errorf("%w: that Slack channel is bound to #%s in %s", ErrInUse, o.Name, display(o.Project))
+		}
+		n++
+	}
+	if n >= MaxBindings {
+		return fmt.Errorf("%w: a Slack client is bound to at most %d channels", ErrLimit, MaxBindings)
+	}
+	return nil
+}
+
+// Bindings returns the Slack channels a client is bound to, by Slack
+// channel, at most MaxBindings.
+func (s *Store) Bindings(tenantName, client string) []Binding {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []Binding{}
+	t, ok := s.tenants[tenantName]
+	if !ok {
+		return out
+	}
+	for _, c := range t.channels {
+		if c.Slack != nil && c.Slack.Client == client {
+			out = append(out, Binding{SlackChannel: c.Slack.Channel, Project: c.Project, Channel: c.Name})
+		}
+	}
+	slices.SortFunc(out, func(a, b Binding) int { return strings.Compare(a.SlackChannel, b.SlackChannel) })
+	if len(out) > MaxBindings {
+		out = out[:MaxBindings]
+	}
+	return out
+}
+
+// BoundTo returns the channel a client's Slack channel is bound to, if any.
+func (s *Store) BoundTo(tenantName, client, slackChannel string) (Channel, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	t, ok := s.tenants[tenantName]
+	if !ok || client == "" || slackChannel == "" {
+		return Channel{}, false
+	}
+	for _, c := range t.channels {
+		if c.Slack != nil && c.Slack.Client == client && c.Slack.Channel == slackChannel {
+			return c, true
+		}
+	}
+	return Channel{}, false
 }
 
 func chanPtr(c Channel) *Channel { return &c }
@@ -129,6 +226,9 @@ func (t *tenant) checkChannels() error {
 		}
 		if _, ok := t.projects[c.Project]; !ok && c.Project != Root {
 			return fmt.Errorf("%w: the channel %q belongs to %q, which is missing", ErrInvalid, c.Name, c.Project)
+		}
+		if err := t.checkBinding(c); err != nil {
+			return fmt.Errorf("channel %q: %w", key, err)
 		}
 	}
 	return nil
@@ -166,6 +266,10 @@ func (t *tenant) channel(project, name string) (Channel, bool) {
 
 // putChannel writes a channel's record.
 func (w *write) putChannel(c Channel) {
+	if c.Slack != nil {
+		b := *c.Slack
+		c.Slack = &b
+	}
 	w.t.channels[channelKey(c.Project, c.Name)] = c
 	w.put(keyChannel+channelKey(c.Project, c.Name), c)
 }
@@ -252,6 +356,9 @@ func (s *Store) createChannel(tenantName string, c Channel, w Writer, at time.Ti
 	if n := len(tx.t.channelsOf(c.Project)); n >= MaxChannels {
 		return Channel{}, fmt.Errorf("%w: a project has at most %d channels, archived ones included", ErrLimit, MaxChannels)
 	}
+	if err := tx.t.checkBinding(c); err != nil {
+		return Channel{}, err
+	}
 	c.Version, c.CreatedBy, c.CreatedAt, c.UpdatedBy, c.UpdatedAt = 1, w.By, at, w.By, at
 	tx.root(w.By, at)
 	tx.putChannel(c)
@@ -262,7 +369,7 @@ func (s *Store) createChannel(tenantName string, c Channel, w Writer, at time.Ti
 	return c, nil
 }
 
-// UpdateChannel changes a channel's title, purpose or default. fn edits a
+// UpdateChannel changes a channel's title, purpose, default or Slack binding. fn edits a
 // copy; the project, the name, whether it is archived and its management
 // cannot change. version must be the current one (ErrVersion), and general
 // reads 0 until it is first written. An archived channel is not changed, and
@@ -341,7 +448,7 @@ func (s *Store) ArchiveChannel(tenantName, project, name string, w Writer, at ti
 		return cur, nil
 	}
 	next := cur
-	next.Archived = true
+	next.Archived, next.Slack = true, nil
 	return s.replaceChannel(tx, cur, next, w.By, at)
 }
 
@@ -365,7 +472,7 @@ func (s *Store) UpsertChannel(tenantName string, c Channel, by string, at time.T
 		return s.createChannel(tenantName, c, Writer{By: by, Govern: true}, at)
 	}
 	next := cur
-	next.Title, next.Purpose, next.Default, next.Archived, next.Managed = c.Title, c.Purpose, c.Default, false, ManagedFile
+	next.Title, next.Purpose, next.Default, next.Slack, next.Archived, next.Managed = c.Title, c.Purpose, c.Default, c.Slack, false, ManagedFile
 	if sameChannel(cur, next) {
 		return cur, nil
 	}
@@ -393,6 +500,9 @@ func (s *Store) ReleaseChannel(tenantName, project, name, by string, at time.Tim
 // replaceChannel writes next over cur as a new version, with its history
 // entry, in one write.
 func (s *Store) replaceChannel(tx *write, cur, next Channel, by string, at time.Time) (Channel, error) {
+	if err := tx.t.checkBinding(next); err != nil {
+		return Channel{}, err
+	}
 	next.Version, next.UpdatedBy, next.UpdatedAt = cur.Version+1, by, at
 	if next.CreatedAt.IsZero() {
 		next.CreatedBy, next.CreatedAt = by, at

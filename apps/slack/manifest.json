@@ -35,7 +35,7 @@
       }
     ],
     "agent_view": {
-      "agent_description": "Your workspace's agents in Slack. Mention @Warp or message it, and the agent that fits answers."
+      "agent_description": "Your workspace's agents in Slack. Mention @Warp and the agent you want, such as @Warp @analyst, or message it."
     }
   },
   "oauth_config": {

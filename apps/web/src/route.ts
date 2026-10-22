@@ -19,13 +19,17 @@ export const SOURCE_TABS: SourceTab[] = ["documents", "search", "variants", "eva
 export type MonitorTab = "overview" | "rules";
 export const MONITOR_TABS: MonitorTab[] = ["overview", "rules"];
 
+/** The Directory: who and what is in the workspace, for everyone in it. */
+export type DirectoryTab = "people" | "agents" | "projects";
+export const DIRECTORY_TABS: DirectoryTab[] = ["people", "agents", "projects"];
+
 /**
  * A project's tabs. The inbox is the default, so `/projects/{name}` opens what
  * is new there; an unknown tab falls back to it. More arrive with later phases
  * of docs/projects.md.
  */
-export type ProjectTab = "inbox" | "overview" | "context" | "agents" | "channels" | "people" | "limits" | "history";
-export const PROJECT_TABS: ProjectTab[] = ["inbox", "overview", "context", "agents", "channels", "people", "limits", "history"];
+export type ProjectTab = "inbox" | "overview" | "context" | "agents" | "channels" | "schedules" | "people" | "limits" | "history";
+export const PROJECT_TABS: ProjectTab[] = ["inbox", "overview", "context", "agents", "channels", "schedules", "people", "limits", "history"];
 
 /**
  * What a project is for, as the Projects page narrows to it with `?kind=`:
@@ -36,10 +40,6 @@ export type ProjectKindFilter = string;
 const KIND_SHAPE = /^[a-z][a-z0-9-]{0,31}$/;
 /** A kind as an address names it, or nothing when it is not shaped as one. */
 export const kindParam = (value: string | null | undefined): ProjectKindFilter | undefined => (value && KIND_SHAPE.test(value) ? value : undefined);
-
-/** The Directory: who and what is in the workspace, for everyone in it. */
-export type DirectoryTab = "people" | "agents" | "projects";
-export const DIRECTORY_TABS: DirectoryTab[] = ["people", "agents", "projects"];
 
 export type SettingsSection = "profile" | "appearance" | "workspace" | "routing" | "models" | "limits" | "connections" | "access";
 export const SETTINGS_SECTIONS: SettingsSection[] = ["profile", "appearance", "workspace", "routing", "models", "limits", "connections", "access"];

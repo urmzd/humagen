@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/projects"
@@ -37,10 +38,15 @@ func (s *Server) projectMembers(w http.ResponseWriter, r *http.Request, who auth
 }
 
 // putProjectMembers replaces who holds a role in a project, as its owner.
-// Every project keeps an entry for everyone of at least viewer, so every
-// project stays visible: members-only projects are refused until reads are
-// confined to members.
+// A project with no entry for everyone is members only, and the platform
+// decides where one may be (SetProjectMembers).
 func (s *Server) putProjectMembers(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	// A project that is not there is said so before the body is read, as
+	// one the caller may not see is.
+	if !s.P.HasProject(who.Tenant, projects.NameOf(r.PathValue("name"))) {
+		s.problem(w, platform.ErrProjectNotFound)
+		return
+	}
 	var body struct {
 		Version int              `json:"version"`
 		Members []projects.Entry `json:"members"`
