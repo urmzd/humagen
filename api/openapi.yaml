@@ -1219,7 +1219,13 @@ paths:
       operationId: runSchedule
       tags: [schedules]
       summary: Fire a schedule once, now
-      description: The run is attributed to the caller, not to the clock, and works while the schedule is paused.
+      description: |
+        The run is attributed to the caller, not to the clock, and works while
+        the schedule is paused. It acts for the caller only when they wrote
+        what it runs: the schedule's last editor, or its creator while nobody
+        has edited it. Anyone else's press acts for nobody, as the schedule's
+        own clock does, since anyone with `schedules:write` may change its
+        words.
       x-permission: schedules:write
       parameters:
         - {$ref: "#/components/parameters/ScheduleName"}

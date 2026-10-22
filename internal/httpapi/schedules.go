@@ -180,13 +180,23 @@ func (s *Server) pauseSchedule(paused bool) handler {
 }
 
 // runSchedule fires a schedule once, now, on a person's say-so. The run is
-// attributed to that person, not to the clock, acts for them, and works while
-// paused.
+// attributed to that person, not to the clock, and works while paused.
+//
+// It acts for them only when they wrote what it runs: the schedule's last
+// editor, or its creator while nobody has edited it. Anyone with
+// schedules:write may change a schedule's words, so anyone else's press acts
+// for nobody, as the schedule's own clock does: their credentials are never
+// put behind words they did not write, nor are those words run with the
+// credentials of whoever presses next.
 func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	sc, _, err := s.P.Schedules.Get(who.Tenant, r.PathValue("name"))
+	sc, author, err := s.P.Schedules.Authored(who.Tenant, r.PathValue("name"))
 	if err != nil {
 		s.problem(w, err)
 		return
+	}
+	actor := platform.ActorOf(who)
+	if author != who.Subject {
+		actor.User = ""
 	}
 	now := time.Now()
 	run, err := s.P.Invoke(r.Context(), envelope.Tag{
@@ -195,7 +205,7 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 		Agent:  sc.Agent,
 		Origin: runs.OriginManual,
 		Text:   sc.Text,
-		Actor:  platform.ActorOf(who),
+		Actor:  actor,
 		Meta: map[string]string{
 			"cron_schedule": sc.Name, "cron_expression": sc.Expression,
 			runs.MetaProject: sc.Meta[runs.MetaProject],

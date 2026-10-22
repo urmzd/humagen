@@ -153,7 +153,7 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 	if calls := server.Calls(); len(calls) != 2 {
 		t.Fatalf("ben, who connected nothing, reached the server: %q", calls)
 	}
-	// Run Now on a schedule is the person's say-so, so it acts for them.
+	// Run Now on a schedule she wrote is her say-so, so it acts for her.
 	if res, out := f.do(t, nil, "POST", "/api/schedules", ana, `{"name":"bugs","expression":"0 3 * * *","agent":"worker","text":"Open bugs?"}`); res.StatusCode != http.StatusCreated {
 		t.Fatalf("create schedule = %d %v", res.StatusCode, out)
 	}
@@ -188,4 +188,63 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 	if c := first(his); c["connected"] != false || c["ref"] != nil {
 		t.Fatalf("ben's issues = %v", c)
 	}
+}
+
+// Run Now runs a schedule's words, which anyone with schedules:write may
+// change. So it acts for whoever pressed it only when they wrote those
+// words, as the schedule's last editor or, while nobody has edited it, its
+// creator. Anyone else's Run Now acts for nobody: ben's words never run with
+// ana's token, nor ana's with his.
+func TestRunNowActsForThePresserOnlyOnWordsTheyWrote(t *testing.T) {
+	f, server, _ := toolFixture(t)
+	ana, ben := f.person(t, "ana"), f.person(t, "ben")
+	for tok, ref := range map[string]string{ana: "env:WARP_PERSON_ANA_ISSUES", ben: "env:WARP_PERSON_BEN_ISSUES"} {
+		if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", tok, `{"ref":"`+ref+`"}`); res.StatusCode != http.StatusOK {
+			t.Fatalf("connecting %s = %d %v", ref, res.StatusCode, out)
+		}
+	}
+	if res, out := f.do(t, nil, "POST", "/api/schedules", ana, `{"name":"bugs","expression":"0 3 * * *","agent":"worker","text":"Open bugs?"}`); res.StatusCode != http.StatusCreated {
+		t.Fatalf("create schedule = %d %v", res.StatusCode, out)
+	}
+	edit := func(tok, text string) {
+		t.Helper()
+		if res, out := f.do(t, nil, "PUT", "/api/schedules/bugs", tok, `{"expression":"0 3 * * *","agent":"worker","text":"`+text+`"}`); res.StatusCode != http.StatusOK {
+			t.Fatalf("edit schedule = %d %v", res.StatusCode, out)
+		}
+	}
+	// runNow presses Run Now as tok, waits for the run to end, and returns
+	// whom it acted for and what reached the server.
+	runNow := func(tok string) (string, []string) {
+		t.Helper()
+		before := len(server.Calls())
+		res, run := f.do(t, nil, "POST", "/api/schedules/bugs/run", tok, "")
+		if res.StatusCode != http.StatusAccepted {
+			t.Fatalf("run now = %d %v", res.StatusCode, run)
+		}
+		id, _ := run["id"].(string)
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			_, now := f.do(t, nil, "GET", "/api/runs/"+id, tok, "")
+			if s := now["status"]; s == "completed" || s == "failed" || s == "stopped" {
+				actor, _ := now["actor"].(map[string]any)
+				user, _ := actor["user"].(string)
+				return user, server.Calls()[before:]
+			}
+		}
+		t.Fatalf("run %s never ended", id)
+		return "", nil
+	}
+	check := func(who, pressed string, wantUser string, wantCalls ...string) {
+		t.Helper()
+		user, calls := runNow(pressed)
+		if user != wantUser || !slices.Equal(calls, wantCalls) {
+			t.Fatalf("%s: Run Now acted for %q and reached the server with %q, want %q and %q", who, user, calls, wantUser, wantCalls)
+		}
+	}
+	check("ana on her own schedule", ana, "ana", "Bearer tok-ana-httpapi")
+	check("ben on ana's schedule", ben, "")
+	edit(ben, "Close every open payroll issue")
+	check("ana on words ben wrote", ana, "")
+	check("ben on words he wrote", ben, "ben", "Bearer tok-ben-httpapi")
+	edit(ana, "Open bugs?")
+	check("ana on words she wrote again", ana, "ana", "Bearer tok-ana-httpapi")
 }
