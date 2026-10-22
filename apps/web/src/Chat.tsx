@@ -5,7 +5,7 @@ import { CheckIcon, ChevronDownIcon, WebSurface } from "@warp/render-web";
 import { AgentMessage, Thread, useQueue } from "@warp/web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
-import type { Run } from "./adapter.ts";
+import { actedFor, type Run } from "./adapter.ts";
 import { Composer } from "./Composer.tsx";
 import { ApiError, api, type Choice, type ProjectView, type Revision, type Settings, type ThreadSummary } from "./api.ts";
 import { HomePage } from "./HomePage.tsx";
@@ -39,13 +39,32 @@ function pathOf(turns: Run[], chosen: Record<string, string>): Run[] {
   }
 }
 
+/**
+ * Why the reader may not ask a failed turn again in the conversation, or ""
+ * when they may. A turn asked again here is asked as the reader, so it acts
+ * for them, with their own credentials, and is offered only on a turn that
+ * acted for them. A turn that acted for someone else is theirs alone to
+ * retry, and one that acted for nobody is retried for nobody (from the inbox,
+ * or where it was asked), so nobody's words are run with the reader's
+ * credentials without their typing them.
+ */
+export function notAskable(run: Run, me: string): string {
+  const person = actedFor(run);
+  if (me !== "" && person === me) return "";
+  if (person) return `This turn acted for ${run.actor?.display || person}, with their own credentials, so only they can retry it.`;
+  return "This turn acted for nobody, so it is not retried here, where it would act for you.";
+}
+
 function TurnView({
   run,
+  me,
   siblings,
   live,
   onSwitch,
 }: {
   run: Run;
+  /** The reader's subject. */
+  me: string;
   siblings: Run[];
   /** Follow the run's events. Off for settled turns, whose record is enough. */
   live: boolean;
@@ -54,7 +73,8 @@ function TurnView({
   const turn = useRunTurn(live ? run : undefined);
   const index = siblings.findIndex((s) => s.id === run.id);
   const ended = run.status === "completed" || run.status === "failed";
-  const shown = useMemo(
+  const refused = run.status === "failed" ? notAskable(run, me) : "";
+  const drawn = useMemo(
     () =>
       turn ?? {
         id: run.id,
@@ -71,6 +91,11 @@ function TurnView({
             : undefined,
       },
     [turn, run],
+  );
+  // Retry is not offered on a turn the reader may not ask again (notAskable).
+  const shown = useMemo(
+    () => (refused && drawn.failure ? { ...drawn, failure: { ...drawn.failure, retryable: false } } : drawn),
+    [drawn, refused],
   );
 
   return (
@@ -118,6 +143,7 @@ function TurnView({
         )}
         {run.calls > 0 && <span>{run.calls} calls to other agents</span>}
         {!ended && run.error && <span>Last attempt failed, retrying: {cause(run.error)}</span>}
+        {refused && <span>{refused}</span>}
       </div>
     </article>
   );
@@ -136,6 +162,7 @@ export const STARTERS: { agent: string; label: string; text: string }[] = [
 
 export function Chat({
   threadId,
+  me,
   startIn,
   startAgent,
   startAsk,
@@ -152,6 +179,8 @@ export function Chat({
   onProjectCreated,
 }: {
   threadId: string | null;
+  /** The reader's subject: Retry asks a turn again as them, so only on a turn that acted for them. */
+  me: string;
   /** The project a new conversation starts in, when it was started from one. */
   startIn?: string;
   /** The agent a new conversation is for, and its first message, when a link or a starter picked them. */
@@ -275,8 +304,12 @@ export function Chat({
       return;
     }
     if (a.id !== ActionId.retry || !canRun) return;
-    const run = path.find((r) => r.id === a.payload.turnId || r.id === a.payload.target) ?? tail;
-    if (run) branch(run, run.agent);
+    const run = path.find((r) => r.id === a.payload.turnId);
+    if (!run) return;
+    // Asked again here, a turn acts for the reader, so only one that acted for them is.
+    const refused = notAskable(run, me);
+    if (refused) return setProblem(refused);
+    branch(run, run.agent);
   };
 
   // Show who Auto would send the next message to, before it is sent.
@@ -459,6 +492,7 @@ export function Chat({
             <TurnView
               key={run.id}
               run={run}
+              me={me}
               siblings={siblingsOf(turns, run)}
               live={i === path.length - 1 || (run.status !== "completed" && run.status !== "failed")}
               onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}
