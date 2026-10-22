@@ -5,7 +5,7 @@ import { inWords, presets } from "./cron.ts";
 import { ApiError, api, type Revision, type Schedule, type ScheduleView } from "./api.ts";
 import { type ProjectRef, projectOptions, titleIn } from "./projects.ts";
 import { deliverFor, deliverOptions } from "./recap.ts";
-import { AgentMark, agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Section } from "./ui.tsx";
+import { AgentMark, agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Section, textLink } from "./ui.tsx";
 
 /** In UTC, because that is the zone the expression is written in. */
 function when(iso: string): string {
@@ -306,7 +306,7 @@ export function Schedules({
             <dd className="flex items-center gap-2 text-aui-fg">
               <AgentMark name={s.agent} size={14} />
               {onOpenAgent ? (
-                <button type="button" className="underline-offset-2 hover:underline" onClick={() => onOpenAgent(s.agent)}>
+                <button type="button" className={textLink} onClick={() => onOpenAgent(s.agent)}>
                   {s.agent}
                 </button>
               ) : (

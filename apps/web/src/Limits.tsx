@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { amount, binding, byAgent, byRun, type Limit, type Limits, type Measure, measureWord, scopeWords, share } from "./limits.ts";
-import { AgentMark, button, hueOf, LimitField, type Period, UsageMeter } from "./ui.tsx";
-
-const linkish =
-  "rounded-aui-sm text-aui-fg underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-aui-accent";
+import { AgentMark, button, hueOf, LimitField, type Period, UsageMeter, textLink } from "./ui.tsx";
 
 const statusWord: Record<string, string> = {
   accepted: "Queued",
@@ -160,7 +157,7 @@ export function LimitsPanel({
       )}
 
       {onAnalytics && (
-        <button type="button" className={`${linkish} self-start text-aui-xs`} onClick={onAnalytics}>
+        <button type="button" className={`${textLink} self-start text-aui-xs`} onClick={onAnalytics}>
           Open in Analytics
         </button>
       )}

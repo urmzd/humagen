@@ -46,6 +46,7 @@ import {
   agentOptions,
   ago,
   button,
+  Count,
   FlashNote,
   field,
   Label,
@@ -697,8 +698,9 @@ function SubProjects({
   return (
     <section className={section} aria-label={words.subProjects}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={heading}>
-          {words.subProjects} ({detail.children.length})
+        <h2 className={`${heading} flex items-center gap-2`}>
+          {words.subProjects}
+          {detail.children.length > 0 && <Count n={detail.children.length} />}
         </h2>
         {canCreate && room && !adding && (
           <button type="button" className={button} onClick={() => setAdding(true)}>
@@ -792,7 +794,10 @@ function Scheduled({
   return (
     <section className={section}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={heading}>Scheduled ({timed.length})</h2>
+        <h2 className={`${heading} flex items-center gap-2`}>
+          Scheduled
+          {timed.length > 0 && <Count n={timed.length} />}
+        </h2>
         <span className="flex flex-wrap gap-2">
           {recap && canSchedule && recapper && !hasRecap && (
             <button type="button" className={button} onClick={addRecap}>
@@ -1100,7 +1105,7 @@ function Breadcrumb({
       <ol className="flex flex-wrap items-center gap-x-1 text-aui-xs text-aui-muted">
         {detail.ancestors.map((a) => (
           <li key={a.name} className="flex items-center gap-1">
-            <Go to={projectHref(a.name)} onGo={() => onOpen(a.name)} className="rounded-aui hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent">
+            <Go to={projectHref(a.name)} onGo={() => onOpen(a.name)} className="inline-flex min-h-6 items-center rounded-aui hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent">
               {titleOf(a, workspaceName)}
             </Go>
             <span aria-hidden>›</span>

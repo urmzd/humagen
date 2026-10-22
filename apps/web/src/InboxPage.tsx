@@ -1,3 +1,4 @@
+import { defaultCopy } from "@warp/components";
 import { ActionId, type InboxMessage, messageState, openParts, type UiAction } from "@warp/core";
 import { Mailbox, type MailboxShow } from "@warp/web";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
@@ -83,7 +84,10 @@ export function MailboxView({
   onShow,
   messageActions,
   emptyOpen,
+  heading,
 }: {
+  /** 1 where the mailbox is the page, so its title is the page's one h1. */
+  heading?: 1 | 2;
   /** The page's own controls for the message being read, such as Withdraw. */
   messageActions?: (message: PlatformMessage) => ReactNode;
   /** What an empty Open view says, when the default does not fit the page. */
@@ -116,6 +120,7 @@ export function MailboxView({
       toolbar={toolbar}
       listEnd={listEnd}
       openCount={openCount}
+      heading={heading}
       show={show}
       onShow={onShow}
       messageActions={messageActions && ((m) => messageActions(m as PlatformMessage))}
@@ -220,12 +225,17 @@ export function InboxPage({
       <Problem message={inbox.problem} />
       {selected && missing && <Problem message="That message is not here. It may have been removed, or you may not have access to it." />}
 
+      {/* The mailbox draws the page's title; until it is drawn, the page says it here. */}
+      {(inbox.failed || (inbox.loading === "first" && messages.length === 0)) && (
+        <h1 className="font-semibold text-aui-lg text-aui-fg">{defaultCopy.inbox}</h1>
+      )}
       {inbox.failed ? (
         <Empty title="The inbox could not be loaded">It will be tried again when something changes. Reload the page to try now.</Empty>
       ) : inbox.loading === "first" && messages.length === 0 ? (
         <SkeletonRows count={5} height="3rem" className="max-w-md" />
       ) : (
         <MailboxView
+          heading={1}
           messages={messages}
           selectedId={selected}
           onSelect={setSelected}

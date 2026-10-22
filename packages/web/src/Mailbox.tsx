@@ -107,6 +107,12 @@ export interface MailboxProps {
   openCount?: number;
   /** ISO time used to decide whether a snooze has ended. */
   now?: string;
+  /**
+   * The level of the mailbox's title: 1 where the mailbox is the page, as the
+   * console's Inbox is, so the page has its one title; 2 (the default) inside
+   * a page that has its own, such as a project's.
+   */
+  heading?: 1 | 2;
   className?: string;
 }
 
@@ -280,8 +286,10 @@ export function Mailbox({
   onShow,
   openCount,
   now,
+  heading = 2,
   className,
 }: MailboxProps) {
+  const Title = heading === 1 ? "h1" : "h2";
   const copy = defaultCopy;
   const [ownShow, setOwnShow] = useState<MailboxShow>(defaultShow);
   const show = controlledShow === undefined ? ownShow : controlledShow;
@@ -476,7 +484,7 @@ export function Mailbox({
       className={`@container flex min-h-0 min-w-0 flex-col ${className ?? ""}`}
     >
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 pb-3">
-        <h2 className="font-semibold text-aui-lg">{copy.inbox}</h2>
+        <Title className="font-semibold text-aui-lg">{copy.inbox}</Title>
         {count > 0 && (
           <span className="rounded-full bg-aui-accent-soft px-2 py-0.5 font-medium text-aui-2xs text-aui-fg tabular-nums">
             {count} open

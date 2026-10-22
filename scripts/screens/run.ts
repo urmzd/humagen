@@ -238,7 +238,12 @@ async function settled(call: Call, id: string): Promise<void> {
 }
 
 /** Capture one screen, then measure it. */
-async function shoot(page: Page, base: string, vp: Viewport, s: Screen): Promise<Problem[]> {
+async function shoot(
+  page: Page,
+  base: string,
+  vp: Viewport,
+  s: Screen,
+): Promise<{ problems: Problem[]; full: boolean }> {
   await page.goto(`${base}${s.path}`, { waitUntil: "domcontentloaded" });
   // Ready when the page has drawn its title and the loading placeholders are gone.
   await page.waitForSelector("h1", { timeout: 15_000 }).catch(() => {});
@@ -253,14 +258,36 @@ async function shoot(page: Page, base: string, vp: Viewport, s: Screen): Promise
   await sleep(300);
   const file = join(out, vp.name, `${s.name}.png`);
   await page.screenshot({ path: file });
-  return judge(await page.evaluate(collect), vp.rules);
+  const problems = judge(await page.evaluate(collect), vp.rules);
+  // The page scrolls inside its own column, so a screenshot of the window
+  // shows only the first screen. For review, the window is made as tall as
+  // the column's content once more, and that is kept beside it.
+  const extra = await page.evaluate(() => {
+    let most = 0;
+    for (const el of document.querySelectorAll("main *")) {
+      const st = getComputedStyle(el);
+      if (st.overflowY !== "auto" && st.overflowY !== "scroll") continue;
+      most = Math.max(most, el.scrollHeight - el.clientHeight);
+    }
+    return most;
+  });
+  if (extra > 8) {
+    await page.setViewportSize({ width: vp.width, height: Math.min(vp.height + extra, 8000) });
+    await sleep(200);
+    await page.screenshot({ path: join(out, vp.name, `${s.name}.full.png`) });
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+  }
+  return { problems, full: extra > 8 };
 }
 
 interface Result {
   screen: string;
   path: string;
   viewport: Viewport["name"];
+  /** The first screen, as a person sees it on arrival. */
   file: string;
+  /** The whole page, when it scrolls. */
+  full?: string;
   problems: Problem[];
 }
 
@@ -287,12 +314,13 @@ async function capture(
     const page = await context.newPage();
     for (const s of list) {
       const screen = `${s.name}${tag}`;
-      const problems = await shoot(page, base, vp, { ...s, name: screen });
+      const { problems, full } = await shoot(page, base, vp, { ...s, name: screen });
       results.push({
         screen,
         path: s.path,
         viewport: vp.name,
         file: `${vp.name}/${screen}.png`,
+        ...(full ? { full: `${vp.name}/${screen}.full.png` } : {}),
         problems,
       });
       const mark = problems.length ? `FAIL ${problems.length}` : "ok";
@@ -313,7 +341,8 @@ function report(results: Result[]): void {
         const r = results.find((x) => x.screen === name && x.viewport === vp.name);
         if (!r) return "<td></td>";
         const list = r.problems.map((p) => `<li>${p.check}: ${esc(p.detail)}</li>`).join("");
-        return `<td><a href="${r.file}"><img src="${r.file}" loading="lazy" width="${vp.name === "phone" ? 195 : 400}"></a>${list ? `<ul>${list}</ul>` : ""}</td>`;
+        const whole = r.full ? `<br><a href="${r.full}">The whole page</a>` : "";
+        return `<td><a href="${r.file}"><img src="${r.file}" loading="lazy" width="${vp.name === "phone" ? 195 : 400}"></a>${whole}${list ? `<ul>${list}</ul>` : ""}</td>`;
       }).join("");
       return `<tr><th>${esc(name)}</th>${cells}</tr>`;
     })

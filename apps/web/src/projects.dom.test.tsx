@@ -283,7 +283,7 @@ test("the Schedules tab: one rule under the tabs, and each schedule's time in wo
     recent: [],
   };
   open(globexDetail, { tab: "schedules", can: [...everything, "schedules:write"], schedules: [recap] });
-  const heading = await screen.findByRole("heading", { name: "Scheduled (1)" });
+  const heading = await screen.findByRole("heading", { name: "Scheduled 1" });
   const section = heading.closest("section");
   assert.ok(section);
   // The tab strip draws the rule under the tabs. The section draws its own only after another.

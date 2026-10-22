@@ -215,16 +215,22 @@ export function collect(): Snapshot {
     const target = (el.matches("input, select, textarea") && el.closest("label")) || el;
     const whole = target.getBoundingClientRect();
     const st = getComputedStyle(el);
+    // In a sentence: drawn in the flow of a block of text that says more than the control does.
     const block = el.parentElement;
     const inline =
-      st.display === "inline" &&
+      (st.display === "inline" || st.display === "inline-block") &&
       Boolean(
-        block && (block.textContent ?? "").trim().length > (el.textContent ?? "").trim().length,
+        block &&
+          getComputedStyle(block).display === "block" &&
+          (block.textContent ?? "").trim().length > (el.textContent ?? "").trim().length,
       );
     const label = (
-      el.getAttribute("aria-label") ??
-      el.textContent ??
-      el.getAttribute("title") ??
+      el.getAttribute("aria-label") ||
+      el.textContent ||
+      (target !== el ? target.textContent : "") ||
+      el.getAttribute("placeholder") ||
+      el.getAttribute("title") ||
+      el.getAttribute("name") ||
       el.tagName
     )
       .trim()

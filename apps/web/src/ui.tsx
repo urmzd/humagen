@@ -259,7 +259,7 @@ export function Page({
             <button
               type="button"
               onClick={back.onClick}
-              className="self-start rounded-aui text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+              className="inline-flex min-h-6 items-center self-start rounded-aui text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
             >
               ‹ {back.label}
             </button>
@@ -304,6 +304,14 @@ export function Count({ n }: { n: number }) {
  */
 export const textAction =
   "inline-flex min-h-6 items-center gap-1 rounded-aui text-aui-sm font-medium text-aui-fg underline-offset-4 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent";
+
+/**
+ * A control inside a line of text, a row's details or a table cell: "Open the
+ * run", an agent's name, Download. Underlined, so it never reads as plain text,
+ * and a line 24px tall, so it is never too small to press.
+ */
+export const textLink =
+  "inline-block min-h-6 rounded-aui-sm leading-6 text-aui-fg underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-aui-accent";
 
 /**
  * A titled part of a page: a heading, its count, an optional line on it, and
@@ -526,7 +534,7 @@ export function Switch({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <label className="flex items-start justify-between gap-4">
+    <label className="flex min-h-6 items-start justify-between gap-4">
       <span className="min-w-0">
         <span className="block text-aui-sm text-aui-fg">{label}</span>
         {hint && <span className="block text-aui-xs text-aui-muted">{hint}</span>}
@@ -874,7 +882,7 @@ export function SearchField({
             onChange("");
           }
         }}
-        className="min-w-0 flex-1 bg-transparent text-aui-sm text-aui-fg outline-none placeholder:text-aui-muted [&::-webkit-search-cancel-button]:hidden"
+        className="min-w-0 flex-1 self-stretch bg-transparent text-aui-sm text-aui-fg outline-none placeholder:text-aui-muted [&::-webkit-search-cancel-button]:hidden"
       />
       {value ? (
         <button
@@ -1479,7 +1487,7 @@ export function LimitField({
             aria-invalid={bad}
             aria-describedby={hint ? `${id}-hint` : undefined}
             onChange={(e) => type(e.target.value)}
-            className="min-w-0 flex-1 bg-transparent text-aui-sm tabular-nums text-aui-fg outline-none placeholder:text-aui-muted disabled:cursor-not-allowed"
+            className="min-w-0 flex-1 self-stretch bg-transparent text-aui-sm tabular-nums text-aui-fg outline-none placeholder:text-aui-muted disabled:cursor-not-allowed"
           />
         </div>
         <Menu label={`${label} period`} className="w-28 shrink-0" value={period} options={periods} disabled={disabled} onChange={(p) => onChange(value, p)} />
