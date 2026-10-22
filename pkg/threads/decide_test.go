@@ -30,6 +30,13 @@ func TestTheFirstRuleThatAppliesDecides(t *testing.T) {
 		{"post only", threads.Input{PostOnly: true, Default: ignite}, threads.RulePostOnly, []string{}},
 		{"the default", threads.Input{Default: ignite}, threads.RuleDefault, []string{"ignite"}},
 		{"no default", threads.Input{}, threads.RuleDefault, []string{}},
+		{"the console runs only what it tags", threads.Input{TagsOnly: true, Default: ignite}, threads.RuleUntagged, []string{}},
+		{"a tag answers in the console", threads.Input{TagsOnly: true, Mentions: []threads.Mention{agent("scribe")}, Default: ignite}, threads.RuleTagged, []string{"scribe"}},
+		{"people only in the console", threads.Input{TagsOnly: true, Mentions: []threads.Mention{person("okta|dana")}, Default: ignite}, threads.RulePeople, []string{}},
+		{"post only in the console", threads.Input{TagsOnly: true, PostOnly: true, Default: ignite}, threads.RulePostOnly, []string{}},
+		{"a skill with no agent goes to @auto", threads.Input{TagsOnly: true, Mentions: []threads.Mention{skill("triage"), person("okta|dana")}, Default: ignite}, threads.RuleTagged, []string{"auto"}},
+		{"a skill with an agent goes to that agent", threads.Input{Mentions: []threads.Mention{skill("triage"), agent("scribe")}, Default: ignite}, threads.RuleTagged, []string{"scribe"}},
+		{"a refused skill sends nothing to the default", threads.Input{Mentions: []threads.Mention{refused(skill("triage"))}, Default: ignite}, threads.RuleTagged, []string{}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			d := threads.Decide(c.in)
@@ -45,6 +52,8 @@ func TestTheFirstRuleThatAppliesDecides(t *testing.T) {
 		})
 	}
 }
+
+func skill(name string) threads.Mention { return threads.Mention{Kind: threads.Skill, Name: name} }
 
 func TestAtMostThreeAgentsAnswerOneMessage(t *testing.T) {
 	in := threads.Input{Mentions: []threads.Mention{agent("a"), agent("b"), person("okta|dana"), agent("c"), agent("d"), agent("e")}}

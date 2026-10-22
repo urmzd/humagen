@@ -23,8 +23,10 @@ import (
 // A run a message starts in a shared thread acts for the person who posted
 // the message, and for nobody else in the thread: Ana's tag reaches the
 // provider with her token, Ben's later tag in the same thread with his, an
-// untagged message the thread's default answers is its poster's too, and a
-// person who connected nothing gets no tools, with nobody's credential in
+// untagged message in the console reaches it with nobody's, as it starts
+// nothing (a default answering on a surface acts for its poster too:
+// TestOnASurfaceTheDefaultAnswersAndFailsClosed), and a person who connected
+// nothing gets no tools, with nobody's credential in
 // their place. Each run is still sent what the others said in the room.
 func TestARunAMessageStartsActsForThePersonWhoPostedIt(t *testing.T) {
 	w := newWorld(t, platform.Config{})
@@ -65,12 +67,11 @@ func TestARunAMessageStartsActsForThePersonWhoPostedIt(t *testing.T) {
 
 	calls = len(w.server.Calls())
 	third := post(t, w.p, ben, first.Thread.ID, platform.MessageInput{Text: "anything new since?"})
-	if third.Rule != threads.RuleDefault {
-		t.Fatalf("an untagged message was carried out by %q", third.Rule)
+	if third.Rule != threads.RuleUntagged || len(third.Runs) != 0 {
+		t.Fatalf("an untagged message in the console was carried out by %q: %+v", third.Rule, third.Runs)
 	}
-	answer(third, "ben")
-	if got := w.server.Calls()[calls:]; len(got) != 1 || got[0] != bens {
-		t.Fatalf("the default answering ben reached the server with %q", got)
+	if got := w.server.Calls()[calls:]; len(got) != 0 {
+		t.Fatalf("an untagged message reached the server with %q", got)
 	}
 
 	calls = len(w.server.Calls())

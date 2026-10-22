@@ -28,6 +28,7 @@ func (s *Server) threadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/threads/{id}", s.authed(auth.RunsWrite, s.seenThread(s.updateThread)))
 	mux.HandleFunc("POST /api/threads/{id}/messages", s.authed(auth.RunsWrite, s.seenThread(s.postMessage)))
 	mux.HandleFunc("PUT /api/threads/{id}/participants", s.authed(auth.RunsWrite, s.seenThread(s.putParticipants)))
+	mux.HandleFunc("POST /api/threads/{id}/share", s.authed(auth.RunsWrite, s.seenThread(s.shareThread)))
 }
 
 // answers is who answers an untagged message in a place, and where that is
@@ -174,10 +175,6 @@ func (s *Server) startThread(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Visibility == "" && in.Surface == nil {
-		fail(w, http.StatusBadRequest, "visibility is required: shared or private")
-		return
-	}
 	got, err := s.P.StartThread(r.Context(), who, in)
 	if err != nil {
 		s.problem(w, err)
@@ -240,8 +237,13 @@ func (s *Server) getThread(w http.ResponseWriter, r *http.Request, who auth.Prin
 		}
 		limit = n
 	}
-	id := r.PathValue("id")
-	th, turns, next, err := s.P.ThreadTurns(who.Tenant, id, q.Get("before"), limit)
+	s.threadView(w, r, who, r.PathValue("id"), q.Get("before"), limit, http.StatusOK)
+}
+
+// threadView answers a thread as getThread reads it: its record, who answers
+// untagged messages in it, and one page of its turns.
+func (s *Server) threadView(w http.ResponseWriter, r *http.Request, who auth.Principal, id, before string, limit, status int) {
+	th, turns, next, err := s.P.ThreadTurns(who.Tenant, id, before, limit)
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -256,10 +258,25 @@ func (s *Server) getThread(w http.ResponseWriter, r *http.Request, who auth.Prin
 	if next != "" {
 		cursor = &next
 	}
-	ok(w, http.StatusOK, map[string]any{
+	ok(w, status, map[string]any{
 		"thread": th, "turns": turns, "next": cursor,
 		"answers": answers{Agent: d.Agent, From: d.From, Unavailable: why},
 	})
+}
+
+// shareThread makes a conversation shared in a project's channel and adds
+// people to it, then answers the thread as getThread reads it.
+func (s *Server) shareThread(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in platform.ThreadShare
+	if !decode(w, r, &in) {
+		return
+	}
+	id := r.PathValue("id")
+	if _, err := s.P.ShareThread(r.Context(), who, id, in); err != nil {
+		s.problem(w, err)
+		return
+	}
+	s.threadView(w, r, who, id, "", 0, http.StatusOK)
 }
 
 // threadProblem answers the errors of threads, and reports whether err was
@@ -282,6 +299,8 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 		fail(w, http.StatusForbidden, detail(err, platform.ErrThreadAuthor))
 	case errors.Is(err, platform.ErrAnswered):
 		fail(w, http.StatusConflict, detail(err, platform.ErrAnswered))
+	case errors.Is(err, platform.ErrStaysInProject):
+		fail(w, http.StatusConflict, strings.TrimPrefix(err.Error(), "platform: "))
 	case errors.Is(err, platform.ErrAnnouncementGone):
 		fail(w, http.StatusGone, strings.TrimPrefix(err.Error(), "platform: "))
 	case errors.Is(err, threads.ErrLimit):

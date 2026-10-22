@@ -617,8 +617,8 @@ export interface ThreadPage {
   answers: ThreadAnswers;
 }
 
-/** A new thread and its first message. `visibility` is required, except
-with `surface`, where the platform files the thread and project,
+/** A new thread and its first message. `visibility` left out is
+`private`. With `surface` the platform files the thread, and project,
 channel, visibility and default are left out.
  */
 export interface ThreadInput {
@@ -631,10 +631,20 @@ export interface ThreadInput {
   /** Answers untagged messages in the thread, an agent available in the project or `auto`. */
   default?: string;
   text: string;
-  /** Post without any agent answering, unless the message tags one. */
+  /** Post without any agent answering, unless the message tags one. In the console this is what an untagged message does anyway. */
   post_only?: boolean;
   act_as?: ActAs;
   surface?: SurfaceRef;
+}
+
+/** Where a conversation is shared, and the people to add to it. */
+export interface ThreadShare {
+  /** The project it is shared in. Empty keeps the thread's own; `~` is the workspace. */
+  project?: string;
+  /** The project's channel. Empty is `general`. */
+  channel?: string;
+  /** People to add as participants, by handle. */
+  add?: string[];
 }
 
 /** A message posted in a thread. */
@@ -668,10 +678,11 @@ export interface ThreadParticipantsUpdate {
 /** The rule that decided what a message starts, the first that applies:
 `tagged` (the agents it tags answer), `people` (it tags only people
 or experts), `reply` (it answers a question or replies to a
-mention), `post_only`, or `default` (the inherited default answers,
-if there is one).
+mention), `post_only`, `untagged` (posted by a person as themselves,
+as the console does, and it tags no agent, so nothing runs), or
+`default` (the inherited default answers, if there is one).
  */
-export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "default";
+export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "untagged" | "default";
 
 /** What posting a message did. */
 export interface ThreadPosted {

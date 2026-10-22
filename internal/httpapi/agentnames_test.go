@@ -942,13 +942,13 @@ func TestAutoFallsBackPastADefaultItsPosterMayNotRead(t *testing.T) {
 
 	answeredBy := func(id string) string {
 		t.Helper()
-		posted := want(t, f, ana, "POST", "/api/threads/"+id+"/messages", `{"text":"Anything?"}`, http.StatusCreated)
+		posted := want(t, f, ana, "POST", "/api/threads/"+id+"/messages", `{"text":"@auto Anything?"}`, http.StatusCreated)
 		if rs := sliceOf(posted["runs"]); len(rs) == 1 {
 			return fmt.Sprint(obj(rs[0])["agent"])
 		}
 		return mustJSON(t, posted)
 	}
 	if got, without := answeredBy(hidden), answeredBy(plain); got != "helper" || without != "helper" {
-		t.Errorf("Ana's untagged message is answered by %s, and in a thread with auto as its default by %s", got, without)
+		t.Errorf("Ana's @auto is answered by %s, and in a thread with auto as its default by %s", got, without)
 	}
 }
