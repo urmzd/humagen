@@ -427,8 +427,9 @@ An approval of a call that runs with the credential of the person the run
 acts for says so, on the run and in the inbox (`tool.acts_for_person`).
 Anyone it is addressed to may approve it as asked or deny it, but only that
 person may approve it with edited arguments, as fiber enforces: anyone
-else's edit is refused (403). The console says this on the approval and
-offers nobody an edit of such a call. The right is checked before saying whether a part is still open. A
+else's edit is refused (403). Every approval card says this, in the
+console's inbox and on the run, and in the Slack app, and none offers an
+edit of such a call. The right is checked before saying whether a part is still open. A
 change is pushed to the browser as an id only, and only to callers who may see
 that kind.
 

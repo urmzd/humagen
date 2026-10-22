@@ -1,4 +1,3 @@
-import { MessagePartView } from "@warp/components";
 import { ActionId, canAct, type Resolution } from "@warp/core";
 import { DownloadIcon, FileIcon } from "@warp/render-web";
 import type { PartRenderer } from "@warp/web";
@@ -16,8 +15,6 @@ import { ago, button, counted, field, LimitField, type Period, primary, UsageMet
  *   the Artifacts page with every version.
  * - A limit that was reached, so it can say which limit and on what, show the
  *   console's meter, and take any new limit rather than a few offered ones.
- * - An approval of a call that acts as the person the run acts for, so it can
- *   say that only they may change the call, and offer nobody an edit of it.
  */
 
 const link =
@@ -43,10 +40,6 @@ function Record({ resolution }: { resolution: Resolution }) {
 }
 
 const noRight = <p className="text-aui-xs text-aui-muted">You can read this, but someone with more access has to act on it.</p>;
-
-/** Said under an approval of a call that runs with the credential of the person the run acts for. */
-export const actsForPersonNote =
-  "This call uses the credential of the person the run acts for. Only they may change its arguments; anyone else may approve it as asked or deny it.";
 
 const putAway = (message: PlatformMessage) => Boolean(message.dismissedAt || message.snoozedUntil);
 
@@ -91,20 +84,6 @@ export function platformParts(onOpen: (source: Source) => void): Record<string, 
               </button>
             </div>
           )}
-        </div>
-      );
-    },
-    approval: ({ message, part, viewer }) => {
-      if (part.type !== "approval") return null;
-      const mail = message as PlatformMessage;
-      if (!mail.actsForPerson?.includes(part.id)) return <MessagePartView message={message} part={part} viewer={viewer} />;
-      // The card cannot tell whether its reader is the person the call acts
-      // as, so it offers nobody an edit, and says who may change the call.
-      const asked = { ...part, approval: { ...part.approval, editable: false } };
-      return (
-        <div data-testid="part-approval-acts-for-person" className="flex min-w-0 flex-col gap-2">
-          <MessagePartView message={message} part={asked} viewer={viewer} />
-          {part.approval.decision.kind === "pending" && <p className="text-aui-xs text-aui-muted">{actsForPersonNote}</p>}
         </div>
       );
     },
