@@ -109,6 +109,12 @@ type Config struct {
 	// value with warp, kept in Secrets as a client's secret is. Everyone
 	// else may only reference one.
 	CredentialValues map[string]bool
+	// InboxRetention is how long each tenant's inbox keeps what was settled
+	// for everyone before it is dropped, by tenant, as its Platform document
+	// sets workspace.inbox_retention. A tenant with no entry keeps it
+	// inbox.DefaultRetention, and none keeps it less than
+	// inbox.MinRetention.
+	InboxRetention map[string]time.Duration
 	// SlackAPI and GitHubAPI build the API a client writes through from its
 	// token. Nil means the real one over HTTP.
 	SlackAPI  func(token string) slack.API
@@ -852,6 +858,18 @@ func (p *Platform) Run(ctx context.Context) error {
 		}
 	})
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
+	loop("inbox retention", func() error {
+		tick := time.NewTicker(retainEvery)
+		defer tick.Stop()
+		for {
+			p.retainInbox(ctx)
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-tick.C:
+			}
+		}
+	})
 	loop("sandbox sweep", func() error {
 		tick := time.NewTicker(time.Hour)
 		defer tick.Stop()

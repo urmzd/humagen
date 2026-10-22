@@ -492,7 +492,15 @@ A message a caller may not see answers 404, not 403, and is left out of their
 count, and a notice about it never reaches their event stream. Where a
 client's app posted a message (`deliveries`) is shown only to that client's
 machine, wherever the message is read, a project's inbox included, and so is
-each receipt (`delivered`) in the message's history. An
+each receipt (`delivered`) in the message's history. A count is added up
+from counters, one for each bucket of open messages alike in kind,
+addressing and what they are about (and one for each group of messages
+snoozed for everyone, alike in the same), and each is asked of the same rule
+a message is, so it counts only what the caller may see. What was settled
+for everyone is dropped with its record after the workspace's
+`inbox_retention` (90 days by default, at least 7); the log line each
+decision in the inbox writes (`platform: inbox`) is the operator's, and
+stays. An
 announcement's audience (`project:<name>`) and a proposed note's
 (`owners:<name>`) are decided from the project tree at each read, so a revoked
 membership hides past announcements at the next one. Announcements are plain

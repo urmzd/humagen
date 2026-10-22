@@ -317,6 +317,8 @@ func serve(o Options, args []string, d serveDefaults) error {
 		// What a person a client's own connector maps holds: the roles
 		// the policy grants their subject, as for every other caller.
 		Policy: pol,
+		// How long each workspace's inbox keeps what was settled.
+		InboxRetention: inboxRetention(file.cfg),
 	}
 	if len(o.Connections) > 0 {
 		conns := o.Connections

@@ -79,6 +79,35 @@ func (m *Message) delivered(c Change) bool {
 	return true
 }
 
+// deliver applies a receipt and its reverse lookup, as replay does.
+func (t *tenant) deliver(m *Message, c Change) bool {
+	was, had := m.Deliveries[c.By]
+	if !m.delivered(c) {
+		return false
+	}
+	if had && t.byPost[postKey(c.By, was)] == m {
+		delete(t.byPost, postKey(c.By, was))
+	}
+	t.byPost[postKey(c.By, *c.Delivery)] = m
+	return true
+}
+
+// rebuildPosts restores the lookups from kept receipts in delivery order.
+// Clients may reuse a receipt, so message creation order cannot decide it.
+func (t *tenant) rebuildPosts() {
+	t.byPost = map[string]*Message{}
+	for _, m := range t.messages {
+		m.Deliveries = nil
+	}
+	for _, c := range t.log {
+		if c.What == Delivered {
+			if m := t.byID[c.Message]; m != nil {
+				t.deliver(m, c)
+			}
+		}
+	}
+}
+
 // Deliver records where a client posted a message. allow is asked about the
 // message first, under the store's lock: a message it refuses is not found,
 // as one that does not exist.
