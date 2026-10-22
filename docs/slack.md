@@ -13,7 +13,7 @@
 | `/agent`, shortcuts, Home tab | No | Yes, from warp's sandbox manifest |
 | Inbox items about a run | No | In the run's thread, and on Home |
 | Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list. A mapped person's messages are the client's (threads with a surface, below); anyone else's runs are not yet recorded as the client's |
-| Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, else in the client's home | Yes: a mapped person's Slack thread is a warp thread filed by the binding, and announcements reach a bound general channel |
+| Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a warp thread filed by the binding, someone the client maps to nobody is refused in a bound channel, and announcements reach a bound general channel |
 | Mentions of a person | No | In their direct messages with the app, with Open Thread and Reply |
 | Who asked | Recorded on the run | Recorded as the person, when the app's client maps them (`act_as`); else as the app |
 | Questions a run waits on | No | In the run's thread, answered for the person the client maps. See below |

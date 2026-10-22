@@ -1180,15 +1180,17 @@ Shared pieces: `packages/core` gains `HomeModel.updates`, and
   whose `general` channel is bound. It posts it top-level once and records
   `PUT /api/inbox/{id}/deliveries/{client}`, so a restart, an edit or a
   withdrawal updates that post instead of posting again. A reply in its
-  thread starts a shared thread seeded with the announcement. Drafts never
-  reach a channel.
+  thread starts a shared thread seeded with the announcement (after phase 8;
+  see Later phases). Drafts never reach a channel.
 - **App Home.** The shared Home, through `homeView`, replaces the bare
   MailboxView. It shows Needs you (at most 5), What's new (at most 5) and Your
   projects (at most 8), read as the mapped person through `act_as`, within the
-  100-block budget.
+  100-block budget. Phase 8 reads it through `act_as` into the MailboxView;
+  the shared Home follows it (see Later phases).
 - **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
   a tag; otherwise the client's default; otherwise nothing. Threads are filed
-  in the client's home.
+  in the client's home. The client's default answers an untagged comment once
+  fiber's GitHub connector raises one (see Later phases).
 
 Every Slack change passes `pnpm validate:slack`, and
 `TestTheSlackManifestIsWhatWarpGenerates` stays green with no new scope.
@@ -1406,7 +1408,28 @@ phase 2 and experts to phase 3, because addressing and threads need them.
 | 5 | Project inboxes and announcements | Kind `announcement`, `Broadcast` with per-reader hide and snooze, `project:` audiences and `Reader.Projects`, `Count.updates`, `Withdraw(by)`. The project inbox route, post and withdraw routes with rate limits, `prefs.Muted`. Inbox tab, Home "What's new", Updates and "Hide for Me", adapter templates and parity tests. Status rows 470 to 475 | M |
 | 6 | Scheduled agents in projects (recaps) | `deliver` (project or inbox), posting on `ended()`, `agent_posts` and the draft part. `project_changes`, `runs_summary(project)`, the `Summarize` project filter, file-managed schedules in the spec. Schedules tab and "Add Weekly Recap". Status row 465 | M |
 | 7 | Read confinement: members-only projects and private threads | `p.Sees` with 404 on every read path (runs, threads, events, manifest, trace, journal, analytics, artifacts and downloads, schedules, inbox, memory, homed agents). Private threads; members-only projects and the account default; no memory proposals from private threads. A contract sweep reads every GET and the event stream as a non-member. Status row 424 built | L, two PRs |
-| 8 | Slack and GitHub coworking | Channel bindings, client home, surface-keyed threads, addressing, the room's messages, mention and expert DMs, the reply modal. Announcements posted top-level with delivery receipts; App Home on the shared Home through `act_as`; GitHub on the same rule; docs/slack.md. Status rows 381, 382 and 465 | L |
+| 8 | Slack and GitHub coworking | Channel bindings, client home, surface-keyed threads, addressing, the room's messages, mention and expert DMs, the reply modal. Announcements posted top-level with delivery receipts; App Home read through `act_as`; GitHub runs filed in the client's home; docs/slack.md. Status rows 381, 382 and 465 | L |
+
+Phase 8 leaves three pieces for a change of their own after it, each larger
+than the phase holds:
+
+- **App Home on the shared Home.** The Home tab reads the mapped person's own
+  inbox through `act_as` (what needs them and what's new, five each) and shows
+  it as a mailbox. The shared `homeView` has no What's new or Your projects
+  section yet, and its start buttons need handlers in the app.
+- **A reply under an announcement.** Mentioning the app in an announcement's
+  Slack thread starts a shared thread in the bound channel, as any Slack
+  thread there does, but the thread is not seeded with the announcement: the
+  platform would match the Slack thread to the announcement's delivery
+  receipt, which the surface does not carry yet.
+- **GitHub's untagged default.** A comment's `@agent` and an `auto_labels`
+  label tag, and the runs are filed in the client's home, but fiber's GitHub
+  connector raises nothing for an untagged comment, so the client's default
+  answers one only once fiber does.
+
+People a Slack client maps to nobody still ask through the app outside bound
+channels, which reads their tags itself and files the run in the workspace,
+as before; in a bound channel they are refused.
 
 ## Risks
 
