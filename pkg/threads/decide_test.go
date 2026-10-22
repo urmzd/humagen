@@ -114,6 +114,7 @@ func TestSelectedAgentsAnswerUntaggedMessages(t *testing.T) {
 		{"post only", threads.Input{TagsOnly: true, Routed: sel, PostOnly: true}, threads.RulePostOnly, []string{}, nil},
 		{"a reply", threads.Input{TagsOnly: true, Routed: sel, Reply: true}, threads.RuleReply, []string{}, nil},
 		{"none selected", threads.Input{TagsOnly: true}, threads.RuleUntagged, []string{}, nil},
+		{"a surface keeps its default", threads.Input{Routed: sel, Mode: threads.ModeAll, Default: threads.Default{Agent: "lead", From: threads.FromChannel}}, threads.RuleDefault, []string{"lead"}, nil},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			d := threads.Decide(c.in)
