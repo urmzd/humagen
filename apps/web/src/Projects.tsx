@@ -31,6 +31,7 @@ import {
   updateOf,
   WORKSPACE,
 } from "./projects.ts";
+import { ChannelsTab } from "./Room.tsx";
 import { href, PROJECT_TABS, type ProjectTab } from "./route.ts";
 import {
   AgentMark,
@@ -1052,10 +1053,13 @@ export function ProjectPage({
   onSchedulesChanged,
   onAgentsChanged,
   onDeleted,
+  onOpenChannel,
 }: {
   /** "" is the workspace. */
   name: string;
   tab: ProjectTab;
+  /** Open one of the project's channels. */
+  onOpenChannel?: (channel: string) => void;
   onTab: (tab: ProjectTab) => void;
   workspaceName: string;
   /** Every project, for the places a sub-project could go and the title shown while this one loads. */
@@ -1200,6 +1204,8 @@ export function ProjectPage({
         />
       ) : tab === "context" ? (
         <ContextTab key={p.name} detail={detail} workspaceName={workspaceName} canWrite={canWrite} onSaved={changed} />
+      ) : tab === "channels" ? (
+        <ChannelsTab key={p.name} project={p.name} canWrite={canWrite} onOpenChannel={(c) => onOpenChannel?.(c)} />
       ) : (
         // Tasks, what sits below and what holds the project take the wide column; what every task is sent and what runs on a timer sit beside them.
         <div className="grid grid-cols-1 items-start gap-8 @4xl:grid-cols-[minmax(0,1fr)_20rem]">

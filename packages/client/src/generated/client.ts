@@ -10,6 +10,9 @@ import type {
   Artifact,
   CallPolicy,
   CallPolicyInput,
+  ChannelInput,
+  ChannelUpdate,
+  ChannelView,
   Choice,
   ClientInput,
   ClientView,
@@ -21,7 +24,6 @@ import type {
   GetInboxCountResponse,
   GetInboxMessageResponse,
   GetRunTraceResponse,
-  GetThreadResponse,
   GetUsageResponse,
   InboxMessage,
   KnowledgeDocument,
@@ -33,6 +35,7 @@ import type {
   ListAlertsResponse,
   ListArtifactVersionsResponse,
   ListArtifactsResponse,
+  ListChannelsResponse,
   ListClientsResponse,
   ListEvalRunsResponse,
   ListEvalSuitesResponse,
@@ -63,6 +66,7 @@ import type {
   ProjectAgentsInput,
   ProjectAgentsView,
   ProjectDetail,
+  ProjectExperts,
   ProjectInput,
   ProjectUpdate,
   ProjectView,
@@ -84,6 +88,13 @@ import type {
   StorageUsage,
   StreamEventsStreamEvent,
   Summary,
+  Thread,
+  ThreadInput,
+  ThreadMessageInput,
+  ThreadPage,
+  ThreadParticipantsUpdate,
+  ThreadPosted,
+  ThreadUpdate,
   ToolCredential,
   ToolCredentialInput,
   ToolCredentials,
@@ -931,11 +942,21 @@ which projects above it the run would count toward.
 The body takes no metadata: an unknown field answers 400.
 
 Nothing routes on its own. With `agent` left out, the default the
-conversation's place inherits answers: the project's, each
-ancestor's nearest first, then the workspace's. With none set it is
-409, "tag an agent". `auto` is `@auto`. An agent not available in the
+conversation's place inherits answers, the first set of: the
+thread's (`updateThread`), the acting client's when `act_as` names
+one, the channel's (a new conversation is in `general` of its
+project), then the project's, each ancestor's nearest first, and the
+workspace's. With none set it is 409, "tag an agent". `auto` is
+`@auto`, which for a person a client acts for picks only among the
+agents that client may route to. An agent not available in the
 conversation's project, or a default that has stopped being
 available there, is 403.
+
+A follow-up is filed in its conversation's channel. When it follows
+a turn in a shared thread people have posted in, it is sent the room
+up to that turn, people's messages by name and agents' answers by
+theirs, and it is part of the room the agents answering the next
+message are sent.
  */
   async createRun(body: CreateRunRequest, idempotencyKey?: string, options?: RequestOptions): Promise<Run> {
     const path = "/api/runs";
@@ -1160,7 +1181,7 @@ no longer holds the run's first event.
 Pass it back as `before`. A cursor is opaque and belongs to the server
 that issued it.
  */
-  async listThreads(limit?: number, before?: string, agent?: string, origin?: string, standing?: "running" | "failed", project?: string, within?: string, options?: RequestOptions): Promise<ListThreadsResponse> {
+  async listThreads(limit?: number, before?: string, agent?: string, origin?: string, standing?: "running" | "failed", project?: string, within?: string, channel?: string, options?: RequestOptions): Promise<ListThreadsResponse> {
     let path = "/api/threads";
     const _q = new URLSearchParams();
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
@@ -1170,6 +1191,7 @@ that issued it.
     if (standing !== undefined && standing !== null) _q.set("standing", String(standing));
     if (project !== undefined && project !== null) _q.set("project", String(project));
     if (within !== undefined && within !== null) _q.set("within", String(within));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListThreadsResponse>("GET", path, {
@@ -1177,7 +1199,7 @@ that issued it.
     });
   }
 
-  async listThreadsRaw(limit?: number, before?: string, agent?: string, origin?: string, standing?: "running" | "failed", project?: string, within?: string, options?: RequestOptions): Promise<ApiResponse<ListThreadsResponse>> {
+  async listThreadsRaw(limit?: number, before?: string, agent?: string, origin?: string, standing?: "running" | "failed", project?: string, within?: string, channel?: string, options?: RequestOptions): Promise<ApiResponse<ListThreadsResponse>> {
     let path = "/api/threads";
     const _q = new URLSearchParams();
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
@@ -1187,6 +1209,7 @@ that issued it.
     if (standing !== undefined && standing !== null) _q.set("standing", String(standing));
     if (project !== undefined && project !== null) _q.set("project", String(project));
     if (within !== undefined && within !== null) _q.set("within", String(within));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListThreadsResponse>("GET", path, {
@@ -1194,22 +1217,156 @@ that issued it.
     });
   }
 
-  /** A conversation's id is the id of the run that started it. Turns are
-runs: `prev` links each to the turn it follows, and two turns with the
-same `prev` are branches.
+  /** The message is posted as the caller, or as the person `act_as` names
+through a client that maps them; no field names an author, and a
+credential acting for nobody is refused (403). What the message
+starts follows the tag rules: the agents it tags answer, at most 3;
+tagging only people or experts notifies them; posted only, nothing
+answers; otherwise the default the thread inherits answers. A
+`private` thread is refused (409) until reads are confined. A
+`default` must be able to answer in the project (400).
+
+A workspace holds at most 10,000 threads and a project 2,000, a
+conversation from before threads counting once its record is written
+(429). A person posts at most 30 messages a minute, here and in
+`postThreadMessage`, and a project takes at most 120 (429). One
+message notifies at most 20 people and roles; a tag it reaches nobody
+for is in `refused`.
  */
-  async getThread(id: string, options?: RequestOptions): Promise<GetThreadResponse> {
-    let path = "/api/threads/{id}";
-    path = path.replace("{id}", encodeURIComponent(String(id)));
-    return this.request<GetThreadResponse>("GET", path, {
+  async startThread(body: ThreadInput, options?: RequestOptions): Promise<ThreadPosted> {
+    const path = "/api/threads";
+    return this.request<ThreadPosted>("POST", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
 
-  async getThreadRaw(id: string, options?: RequestOptions): Promise<ApiResponse<GetThreadResponse>> {
+  async startThreadRaw(body: ThreadInput, options?: RequestOptions): Promise<ApiResponse<ThreadPosted>> {
+    const path = "/api/threads";
+    return this.rawRequest<ThreadPosted>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** A thread's turns are its people's messages and its agents' runs, in
+the order they were made, oldest first. A run that answers a message
+names it in `message`; runs answering one message answer it side by
+side and are not branches. A conversation from before threads reads
+as shared, in `general` of its project, at version 0, and its id is
+the id of the run that started it.
+
+The first page is the newest 200 turns, or `limit`. `next` is the
+cursor for the turns before them, or null at the start: pass it back
+as `before`. `answers` is who answers an untagged message here.
+ */
+  async getThread(id: string, before?: string, limit?: number, options?: RequestOptions): Promise<ThreadPage> {
     let path = "/api/threads/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
-    return this.rawRequest<GetThreadResponse>("GET", path, {
+    const _q = new URLSearchParams();
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ThreadPage>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getThreadRaw(id: string, before?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ThreadPage>> {
+    let path = "/api/threads/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ThreadPage>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The body replaces those three as a whole: one left out is cleared.
+`version` is the one the caller read (0 for a conversation from
+before threads, whose record this writes), so a change made since
+answers 409. `private` is refused (409) until reads are confined. A
+`default` must be able to answer in the thread's project (400).
+ */
+  async updateThread(id: string, body: ThreadUpdate, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/threads/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateThreadRaw(id: string, body: ThreadUpdate, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/threads/{id}";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Posted as the caller, or as the person `act_as` names through a
+client that maps them, as for `startThread`. `after` is the turn it
+follows: a message of the thread, a run answering one, or in a
+conversation from before threads one of its runs; left out, it
+follows the latest. `answers` records the message as a question's
+answer, which resumes the run parked on it; who may answer is
+checked as on every other path, and a refused answer posts nothing.
+An answer, like a reply, starts no run. A thread holds at most 5,000
+messages: past that, 409 "start a new thread". The rates and caps of
+`startThread` hold here too (429).
+ */
+  async postThreadMessage(id: string, body: ThreadMessageInput, options?: RequestOptions): Promise<ThreadPosted> {
+    let path = "/api/threads/{id}/messages";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ThreadPosted>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async postThreadMessageRaw(id: string, body: ThreadMessageInput, options?: RequestOptions): Promise<ApiResponse<ThreadPosted>> {
+    let path = "/api/threads/{id}/messages";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ThreadPosted>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** At most 50 added and removed together, and a thread has at most 50
+participants. An agent added must be available in the thread's
+project, and a person, named by handle, must be in the workspace's
+directory (400). The person who started the thread stays in it. `version` is the one
+the caller read.
+ */
+  async updateThreadParticipants(id: string, body: ThreadParticipantsUpdate, options?: RequestOptions): Promise<Thread> {
+    let path = "/api/threads/{id}/participants";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<Thread>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateThreadParticipantsRaw(id: string, body: ThreadParticipantsUpdate, options?: RequestOptions): Promise<ApiResponse<Thread>> {
+    let path = "/api/threads/{id}/participants";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<Thread>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
@@ -1220,6 +1377,10 @@ same `prev` are branches.
 - A message with `event: inbox` carries one `InboxNotice` as JSON. It
   names a message and nothing more: fetch it to see what changed. A
   caller is only sent notices for kinds of message they may read.
+- A message with `event: thread` carries one `ThreadNotice` as JSON:
+  a message was posted or settled in a thread, or its record changed.
+  Fetch the thread to see it. Every thread is shared, so a caller who
+  may read conversations is sent each.
 
 A comment line (`: keep-alive`) is sent every 15 seconds. Messages
 carry no `id:` field, so `Last-Event-ID` is not used: to resume, pass
@@ -1429,7 +1590,7 @@ may do with each part, is decided per message: a memory proposal needs
 `alerts:read`. `next` is the cursor for the page after this one, or
 null at the end.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "clarification" | "result" | "mention", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1446,7 +1607,7 @@ null at the end.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "clarification" | "result" | "mention", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1568,6 +1729,10 @@ inbox, and an action the caller lacks the permission for answers 403:
 | `approval` | `approve` (optionally with `arguments`), `deny` | `runs:write` |
 | `choice` | `choose` (with `choice`) | `runs:write` |
 | `reply` | `reply` (with `text`) | `runs:write` |
+| `mention` | `reply` (with `text`), `done` | `runs:write` |
+
+A mention's `reply` posts the words in its thread as the reader,
+which starts no run, and `done` sets it aside.
 
 Answering a question is `answerQuestion` by another route, with the
 same rules: a person the question is not addressed to does not see
@@ -2576,6 +2741,145 @@ and of company projects are changed with `projects:govern` as well.
     path = path.replace("{name}", encodeURIComponent(String(name)));
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** `general` first, then the others by name, archived ones included. A
+project has at most 20, and `general` always, even before it is
+first written (version 0). Each says who answers an untagged
+message in it.
+ */
+  async listChannels(name: string, options?: RequestOptions): Promise<ListChannelsResponse> {
+    let path = "/api/projects/{name}/channels";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ListChannelsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listChannelsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ListChannelsResponse>> {
+    let path = "/api/projects/{name}/channels";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ListChannelsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** A channel's name is lower case letters, digits and dashes, never
+changes, and is unique in the project. A `default` must be able to
+answer in the project (400). The workspace and company projects need
+`projects:govern`. Past 20 channels, 429.
+ */
+  async createChannel(name: string, body: ChannelInput, options?: RequestOptions): Promise<ChannelView> {
+    let path = "/api/projects/{name}/channels";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ChannelView>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async createChannelRaw(name: string, body: ChannelInput, options?: RequestOptions): Promise<ApiResponse<ChannelView>> {
+    let path = "/api/projects/{name}/channels";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ChannelView>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The body replaces those three as a whole: one left out is cleared.
+`version` is the one the caller read (`general` reads 0 until it is
+first written), so a change made since answers 409. A field the
+platform file sets answers 409.
+ */
+  async updateChannel(name: string, channel: string, body: ChannelUpdate, options?: RequestOptions): Promise<ChannelView> {
+    let path = "/api/projects/{name}/channels/{channel}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{channel}", encodeURIComponent(String(channel)));
+    return this.request<ChannelView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateChannelRaw(name: string, channel: string, body: ChannelUpdate, options?: RequestOptions): Promise<ApiResponse<ChannelView>> {
+    let path = "/api/projects/{name}/channels/{channel}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{channel}", encodeURIComponent(String(channel)));
+    return this.rawRequest<ChannelView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** The channel and its threads stay, and it takes no new threads.
+`general` cannot be archived (409), nor can a channel the platform
+file declares.
+ */
+  async archiveChannel(name: string, channel: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/projects/{name}/channels/{channel}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{channel}", encodeURIComponent(String(channel)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async archiveChannelRaw(name: string, channel: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/projects/{name}/channels/{channel}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    path = path.replace("{channel}", encodeURIComponent(String(channel)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Experts are found along the chain: for a topic, the nearest project
+that lists someone for it answers, then the projects above it.
+ */
+  async getProjectExperts(name: string, options?: RequestOptions): Promise<ProjectExperts> {
+    let path = "/api/projects/{name}/experts";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectExperts>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectExpertsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectExperts>> {
+    let path = "/api/projects/{name}/experts";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectExperts>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** At most 50, each a person's subject or `role:<name>` with 1 to 8
+topics. `version` is the project's, as read; a change made since
+answers 409, as does a list the platform file sets. The workspace
+and company projects need `projects:govern`.
+ */
+  async updateProjectExperts(name: string, body: ProjectExperts, options?: RequestOptions): Promise<ProjectExperts> {
+    let path = "/api/projects/{name}/experts";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectExperts>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateProjectExpertsRaw(name: string, body: ProjectExperts, options?: RequestOptions): Promise<ApiResponse<ProjectExperts>> {
+    let path = "/api/projects/{name}/experts";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectExperts>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

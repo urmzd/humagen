@@ -83,7 +83,8 @@ func toolFixture(t *testing.T) (*fixture, *mcpfake.Server, *searcher) {
 	return f, server, model
 }
 
-func (f *fixture) person(t *testing.T, subject string) string {
+// personNamed signs an access token for a person in acme who administers it.
+func (f *fixture) personNamed(t *testing.T, subject string) string {
 	t.Helper()
 	return f.iss.Sign(t, subject, audience, map[string]any{"org": "acme", "groups": []any{"warp-admins"}, "name": subject})
 }
@@ -113,7 +114,7 @@ func (f *fixture) ask(t *testing.T, tok, body string) map[string]any {
 // whoever is signed in.
 func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 	f, server, _ := toolFixture(t)
-	ana, ben := f.person(t, "ana"), f.person(t, "ben")
+	ana, ben := f.personNamed(t, "ana"), f.personNamed(t, "ben")
 	app := f.machine(t, "acme", "warp:runs:read", "warp:runs:write")
 
 	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ana, `{"ref":"env:WARP_PERSON_ANA_ISSUES"}`); res.StatusCode != http.StatusOK || out["connected"] != true {
@@ -195,7 +196,7 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 // still acts for the person the client maps, with their credential.
 func TestTheSlackAppsUntaggedRunForAMappedPersonIsAnsweredByTheDefaultAsThem(t *testing.T) {
 	f, server, _ := toolFixture(t)
-	ana := f.person(t, "ana")
+	ana := f.personNamed(t, "ana")
 	app := f.machine(t, "acme", "warp:runs:read", "warp:runs:write")
 	admin := f.machine(t, "acme", everything...)
 	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ana, `{"ref":"env:WARP_PERSON_ANA_ISSUES"}`); res.StatusCode != http.StatusOK || out["connected"] != true {

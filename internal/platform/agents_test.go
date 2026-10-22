@@ -699,3 +699,36 @@ func TestATurnCannotRunAutoItself(t *testing.T) {
 		t.Fatalf("a run of auto itself = %v", err)
 	}
 }
+
+// @auto for a person a client's credential acts for picks only among the
+// agents the client may route to, whether the turn asks for it or the
+// client's default is auto, and never answers with an agent off its list.
+func TestAutoThroughAClientPicksOnlyAmongItsAgents(t *testing.T) {
+	f := &fakes{}
+	p := startWith(t, f.config())
+	ctx := t.Context()
+	if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{
+		Name: "releaser", Model: "offline", Provider: "offline", SystemPrompt: "x", Description: "Cuts releases and tags versions.",
+	}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "lead"})
+	in := slackClient("app", "A0APP", team, "auto")
+	in.Agents = []string{"helper"}
+	create(t, p, tenant, in)
+	if r, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-free", Agent: "auto", Text: "tag the next release"}); err != nil || r.Agent != "releaser" {
+		t.Fatalf("@auto with no client = %+v, %v", r, err)
+	}
+	for _, c := range []struct{ id, agent string }{{"t-asked", "auto"}, {"t-default", ""}} {
+		r, err := p.Converse(ctx, tenant, platform.Turn{ID: c.id, Agent: c.agent, Text: "tag the next release", Client: "app"})
+		if err == nil && r.Agent != "helper" {
+			t.Fatalf("%s through the client was answered by %s, off its list", c.id, r.Agent)
+		}
+		if err != nil && !errors.Is(err, pick.ErrNoAgent) {
+			t.Fatalf("%s through the client = %v", c.id, err)
+		}
+	}
+	if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-ghost", Agent: "auto", Text: "x", Client: "ghost"}); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("a turn through a client that is not there = %v", err)
+	}
+}

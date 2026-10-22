@@ -277,6 +277,13 @@ its project. A run an agent called has its root's.
   within?: string[];
   /** The Slack app or GitHub installation that raised the run. */
   client?: string;
+  /** The project's channel the conversation is in. Absent is `general`. A called run has its root's. */
+  channel?: string;
+  /** The person's message in a shared thread that the run answers, such
+as `m-3`. Runs that answer one message answer it side by side and
+are not branches.
+ */
+  message?: string;
   /** The run's budget in micro-USD. Zero means unmetered. */
   lease: number;
   /** The budget the run has leased to calls that have not ended, in
@@ -322,7 +329,9 @@ export interface RunList {
 export interface CreateRunRequest {
   /** Who should answer: an agent, or `auto` for `@auto`, which picks
 among the agents available where the conversation is filed. Left
-out, the default the conversation's place inherits answers.
+out, the default the conversation's place inherits answers: the
+thread's, the acting client's, the channel's, then the project
+chain's and the workspace's.
  */
   agent?: string;
   /** The message. It must not be blank. */
@@ -378,7 +387,9 @@ export interface CreateCallRequest {
   lease?: number;
 }
 
-/** One conversation. */
+/** One conversation: what its runs say, with what its record adds. A
+thread people started that no agent has answered yet is one too.
+ */
 export interface ThreadSummary {
   id: string;
   title: string;
@@ -386,7 +397,14 @@ export interface ThreadSummary {
   named: boolean;
   origin: string;
   project?: string;
+  /** The project's channel it is in, `general` when its runs name none. */
+  channel: string;
   agents: string[];
+  /** The people who asked or posted in it, by handle. Someone the directory cannot name, and whose subject holds an address, is left out. */
+  people: string[];
+  visibility: ThreadVisibility;
+  /** How many messages people have posted in it. */
+  messages: number;
   turns: number;
   branches: number;
   /** How many of its runs are in flight. */
@@ -394,6 +412,247 @@ export interface ThreadSummary {
   failed: number;
   created_at: string;
   updated_at: string;
+}
+
+/** Who reads a thread. `shared` is everyone who can see its project.
+`private`, its participants only, is refused until every read path
+is confined.
+ */
+export type ThreadVisibility = "shared" | "private";
+
+/** A person or an agent taking part in a thread. A thread names a
+person by their handle, and is sent one by handle: a subject, the key
+a person signs in with, can hold an address and is never shown. A
+person with no handle, whose subject holds no address, is named by
+their subject; one with neither reads as empty.
+ */
+export interface ThreadParticipant {
+  kind: "person" | "agent";
+  /** A person's handle or an agent's name. */
+  name: string;
+  /** The person who started the thread. */
+  owner?: boolean;
+  /** The handle of the person who added them. */
+  added_by?: string;
+  at: string;
+}
+
+/** A shared thread's record: the channel it is in, who takes part, its
+visibility and an optional default agent. Its turns are its people's
+messages and its agents' runs.
+ */
+export interface Thread {
+  /** `th-` and 16 hex digits, or for a conversation from before threads the id of the run that started it. */
+  id: string;
+  /** The project it is filed in. Empty is the workspace itself. */
+  project: string;
+  channel: string;
+  title?: string;
+  visibility: ThreadVisibility;
+  participants: ThreadParticipant[];
+  /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. */
+  default?: string;
+  /** Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written. */
+  version: number;
+  /** The handle of the person who started it, the first person to ask or post in it. */
+  created_by: string;
+  created_at: string;
+  /** When anything last happened in it. */
+  updated_at: string;
+}
+
+/** One tag in a message, and what it came to. */
+export interface ThreadMention {
+  kind: "agent" | "person" | "sme";
+  /** The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). */
+  name: string;
+  /** The run an agent's tag started. */
+  run?: string;
+  /** Why the tag started or notified nothing. */
+  refused?: string;
+}
+
+/** The question a message answers. */
+export interface ThreadAnswerRef {
+  run: string;
+  question: string;
+}
+
+/** A person's turn in a thread. It starts no run of its own. Its author is always a person. */
+export interface ThreadMessage {
+  /** `m-` and its place in the thread, from 1. */
+  id: string;
+  thread: string;
+  /** The turn it follows. Absent for the first. */
+  prev?: string;
+  /** The handle of the person who posted it. */
+  by: string;
+  /** What they are called, their name in the directory or else their handle. Never an address. */
+  name: string;
+  text: string;
+  mentions: ThreadMention[];
+  answers?: ThreadAnswerRef;
+  /** `console`, or the id of the client it came through. */
+  via: string;
+  surface_id?: string;
+  at: string;
+}
+
+/** One turn of a thread, a person's message or an agent's run. */
+export interface ThreadTurn {
+  kind: "message" | "run";
+  message?: ThreadMessage;
+  run?: Run;
+}
+
+/** Who answers an untagged message in a place, and where that is set:
+`thread`, `client`, `channel`, or `project:<name>` (`project:~` for
+the workspace). An empty agent is nobody. `unavailable` says why the
+default cannot answer, when it has stopped being available.
+ */
+export interface ThreadAnswers {
+  agent: string;
+  from: string;
+  unavailable?: string;
+}
+
+/** A thread and one page of its turns, oldest first. */
+export interface ThreadPage {
+  thread: Thread;
+  turns: ThreadTurn[];
+  /** The cursor for the turns before these, null at the start. */
+  next: string | null;
+  answers: ThreadAnswers;
+}
+
+/** A new shared thread and its first message. */
+export interface ThreadInput {
+  /** Where it is filed. Empty or `~` is the workspace itself. */
+  project?: string;
+  /** The project's channel. Empty is `general`. */
+  channel?: string;
+  visibility: ThreadVisibility;
+  title?: string;
+  /** Answers untagged messages in the thread, an agent available in the project or `auto`. */
+  default?: string;
+  text: string;
+  /** Post without any agent answering, unless the message tags one. */
+  post_only?: boolean;
+  act_as?: ActAs;
+}
+
+/** A message posted in a thread. */
+export interface ThreadMessageInput {
+  text: string;
+  /** The turn it follows. Empty follows the latest. */
+  after?: string;
+  post_only?: boolean;
+  answers?: ThreadAnswerRef;
+  act_as?: ActAs;
+}
+
+/** A thread's title, visibility and default, as a whole. */
+export interface ThreadUpdate {
+  version: number;
+  title?: string;
+  visibility?: ThreadVisibility;
+  default?: string;
+}
+
+/** People and agents to add to a thread and to remove from it. */
+export interface ThreadParticipantsUpdate {
+  version: number;
+  add?: ThreadParticipant[];
+  /** People by handle and agents by name, which no person and agent share. */
+  remove?: string[];
+}
+
+/** The rule that decided what a message starts, the first that applies:
+`tagged` (the agents it tags answer), `people` (it tags only people
+or experts), `reply` (it answers a question or replies to a
+mention), `post_only`, or `default` (the inherited default answers,
+if there is one).
+ */
+export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "default";
+
+/** What posting a message did. */
+export interface ThreadPosted {
+  thread: Thread;
+  message: ThreadMessage;
+  /** The runs it started, at most 3. */
+  runs: Run[];
+  /** Who it was sent to, people and experts by handle and the experts a role names as `role:<name>`. */
+  notified: string[];
+  /** Its tags that started or notified nothing, each saying why. */
+  refused: ThreadMention[];
+  rule: ThreadRule;
+  /** Why no agent answers, when none does. */
+  reason?: string;
+}
+
+/** Says that something happened in a thread, and nothing about what. Fetch the thread to see it. */
+export interface ThreadNotice {
+  id: string;
+  /** The message posted or settled, if one was. */
+  message?: string;
+  at: string;
+}
+
+/** One place in a project where threads live. Its name is its identity
+in the project and never changes. A channel has its project's
+visibility. `general` is in every project and reads as version 0
+until it is first written.
+ */
+export interface Channel {
+  /** The project it is in. Empty is the workspace itself. */
+  project: string;
+  name: string;
+  title?: string;
+  /** Sent to every agent answering in the channel. */
+  purpose?: string;
+  /** Answers untagged messages here, an agent or `auto`. Absent inherits from the project. */
+  default?: string;
+  /** It and its threads stay, and it takes no new threads. */
+  archived?: boolean;
+  /** `file` when the platform file declares the channel. */
+  managed?: string;
+  version: number;
+  created_by?: string;
+  created_at: string;
+  updated_by?: string;
+  updated_at: string;
+}
+
+/** A channel, and who answers an untagged message in it. */
+export type ChannelView = Channel & { answers: ThreadAnswers };
+
+/** A new channel. */
+export interface ChannelInput {
+  /** Lower case letters, digits and dashes, at most 40. It cannot change later. */
+  name: string;
+  title?: string;
+  purpose?: string;
+  default?: string;
+}
+
+/** A channel's title, purpose and default, as a whole. */
+export interface ChannelUpdate {
+  version: number;
+  title?: string;
+  purpose?: string;
+  default?: string;
+}
+
+/** Who answers for some topics in a project, a person by subject or `role:<name>`. */
+export interface ProjectExpert {
+  who: string;
+  topics: string[];
+}
+
+/** The experts a project lists, at the project's version. */
+export interface ProjectExperts {
+  version: number;
+  experts: ProjectExpert[];
 }
 
 /** What a project is for. `company` is company-wide: it sits under the
@@ -432,6 +691,8 @@ instructions of the projects above. The agent's own instructions
 win over them.
  */
   instructions?: string;
+  /** Who answers for some topics here and below. Set with `PUT /api/projects/{name}/experts`. */
+  experts: ProjectExpert[];
   agents: ProjectAgents;
   /** `file` when the platform file declares the project, and absent otherwise. The fields the file sets answer 409 here, and the project cannot be deleted here. */
   managed?: string;
@@ -508,15 +769,19 @@ export interface ProjectChange {
   /** `managed` is the platform file taking the project over or letting
 it go. `agents` is a change to what the project turns on. `home`
 is an agent coming to live in the project, or leaving it: `agent`
-names it and `note` says which.
+names it and `note` says which. `experts` is a change to who the
+project names as experts, and `channel` to one of its channels,
+which `channel` holds before and after.
  */
-  what: "created" | "updated" | "deleted" | "managed" | "agents" | "home";
+  what: "created" | "updated" | "deleted" | "managed" | "agents" | "home" | "experts" | "channel";
   /** The agent a home change is about. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
   note?: string;
   before?: Project;
   after?: Project;
+  /** The channel before and after, on a change to one of the project's channels. */
+  channel?: ProjectChangeChannel;
 }
 
 /** What a project turns on. An agent is available in a project when
@@ -689,8 +954,9 @@ export interface ScheduleView {
 /** What a message is about. `approval` and `clarification` are questions
 a run is waiting on. `result` is the answer of a run nobody was
 waiting on, and `artifact` a file that was published or revised.
+`mention` is a message in a shared thread that tags the reader.
  */
-export type InboxKind = "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact";
+export type InboxKind = "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention";
 
 export type InboxState = "open" | "resolved" | "dismissed" | "snoozed";
 
@@ -882,18 +1148,18 @@ the callee's call policy's approvers, for a call to an agent.
 }
 
 /** One typed part of a message. `type` says which of `text`, `alert`,
-`failure`, `memory`, `budget`, `artifact` or `question` carries the body:
-`approval`, `choice` and `reply` parts carry `question`. A settled
-question's `outcome` is `approve`, `deny`, `choose` (the option in
-`note`), `reply` (the words in `note`), `expired`, `stopped` or
-`closed`.
+`failure`, `memory`, `budget`, `artifact`, `mention` or `question`
+carries the body: `approval`, `choice` and `reply` parts carry
+`question`. A settled question's `outcome` is `approve`, `deny`,
+`choose` (the option in `note`), `reply` (the words in `note`),
+`expired`, `stopped` or `closed`.
  */
 export interface InboxPart {
   id: string;
-  type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply";
+  type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply" | "mention";
   state: "open" | "resolved" | "info";
   /** What this caller may do with the part now. Empty once it is resolved, or when the caller has no permission for any action. */
-  actions: ("acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply")[];
+  actions: ("acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done")[];
   outcome?: InboxOutcome;
   text?: string;
   alert?: InboxAlertPart;
@@ -902,6 +1168,21 @@ export interface InboxPart {
   budget?: InboxBudgetPart;
   artifact?: InboxArtifactPart;
   question?: InboxQuestionPart;
+  mention?: InboxMentionPart;
+}
+
+/** A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which starts no run; `done` sets it aside. The console and the Slack app offer Reply, and set a mention aside by dismissing its message; `done` is the API's. */
+export interface InboxMentionPart {
+  thread: string;
+  /** The message's id within the thread, such as `m-3`. */
+  message: string;
+  /** The thread's project. Empty is the workspace itself. */
+  project: string;
+  channel: string;
+  /** The handle of the person who posted it. A subject is never given, since one can hold an address. */
+  by: string;
+  /** The start of what they wrote. */
+  excerpt: string;
 }
 
 /** One message in the inbox. */
@@ -936,7 +1217,7 @@ export interface InboxChange {
 
 /** What a person decided about a part. */
 export interface Resolution {
-  action: "acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply";
+  action: "acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done";
   /** The proposed notes to keep, with `keep`. */
   ids?: string[];
   /** At most 500 characters. On a denial the model is shown it. */
@@ -1925,6 +2206,11 @@ export interface PreparedCallInputMessagesItem {
   text: string;
 }
 
+export interface ProjectChangeChannel {
+  before?: Channel;
+  after?: Channel;
+}
+
 export interface ClientInputCredentials {
   token?: SecretInput;
   signing_secret?: SecretInput;
@@ -1982,10 +2268,6 @@ export interface ListRunEventsResponse {
 export interface ListThreadsResponse {
   threads: ThreadSummary[];
   next: string | null;
-}
-
-export interface GetThreadResponse {
-  turns: Run[];
 }
 
 export interface ListSchedulesResponse {
@@ -2094,6 +2376,10 @@ export interface ListProjectHistoryResponse {
   next: string | null;
 }
 
+export interface ListChannelsResponse {
+  channels: ChannelView[];
+}
+
 export interface ListPeopleResponse {
   people: Person[];
   next: string | null;
@@ -2121,5 +2407,5 @@ export interface ListClientsResponse {
 }
 
 /** SSE event union type for streaming responses. */
-export type StreamEventsStreamEvent = RunEvent | InboxNotice;
+export type StreamEventsStreamEvent = RunEvent | InboxNotice | ThreadNotice;
 

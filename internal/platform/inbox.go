@@ -41,6 +41,8 @@ const (
 	ActKeep        = "keep"
 	ActDiscard     = "discard"
 	ActRaiseLimit  = "raise_limit"
+	// ActDone sets a mention aside: the person has seen to it.
+	ActDone = "done"
 )
 
 // Resolution is what a person decided about a part.
@@ -79,7 +81,7 @@ func reads(k inbox.Kind) auth.Permission {
 	switch k {
 	case inbox.KindMemory:
 		return auth.AgentsRead
-	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult:
+	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
 		return auth.RunsRead
 	case inbox.KindArtifact:
 		return auth.ArtifactsRead
@@ -92,7 +94,7 @@ func writes(k inbox.Kind) auth.Permission {
 	switch k {
 	case inbox.KindMemory:
 		return auth.AgentsWrite
-	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult:
+	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
 		return auth.RunsWrite
 	case inbox.KindArtifact:
 		return auth.ArtifactsWrite
@@ -113,6 +115,9 @@ func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 		return auth.BillingWrite, true
 	case t == inbox.PartBudget && action == ActAcknowledge:
 		return auth.AlertsWrite, true
+	case t == inbox.PartMention && (action == ActReply || action == ActDone):
+		// Replying posts a message in the thread as the reader.
+		return auth.RunsWrite, true
 	case t == inbox.PartApproval && (action == ActApprove || action == ActDeny),
 		t == inbox.PartChoice && action == ActChoose,
 		t == inbox.PartReply && action == ActReply:
@@ -131,6 +136,7 @@ var offered = map[inbox.PartType][]string{
 	inbox.PartApproval: {ActApprove, ActDeny},
 	inbox.PartChoice:   {ActChoose},
 	inbox.PartReply:    {ActReply},
+	inbox.PartMention:  {ActReply, ActDone},
 }
 
 // allows reports whether who may take an action on a part, and if not, why.
@@ -347,6 +353,12 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			return inbox.Message{}, err
 		}
 		note = fmt.Sprintf("Kept %d of %d", kept, len(part.Memory.Notes))
+	case part.Type == inbox.PartMention && r.Action == ActReply:
+		m, err := p.replyToMention(ctx, who, *part.Mention, r.Text)
+		if err != nil {
+			return inbox.Message{}, err
+		}
+		note = "Replied as " + m.ID
 	case part.Type == inbox.PartBudget:
 		saved, err := p.raiseLimit(who, *part.Budget, r.Limits)
 		if err != nil {

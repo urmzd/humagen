@@ -10,6 +10,7 @@ const OUTCOMES: Record<string, string> = {
   kept: "Kept",
   discarded: "Discarded",
   replied: "Answered",
+  done: "Done",
   retried: "Retried",
   handled: "Handled",
 };
@@ -191,6 +192,7 @@ export const defaultCopy = {
     artifact: "Artifact",
     result: "Result",
     note: "Note",
+    mention: "Mention",
   },
   serviceStatus: {
     operational: "Operational",
@@ -502,7 +504,12 @@ export const defaultCopy = {
       below: (n: number) => `${n} ${n === 1 ? "sub-project" : "sub-projects"}`,
       active: (when: string) => `active ${when}`,
     },
-    tab: { overview: "Overview", context: "Context", agents: "Agents" } as Record<string, string>,
+    tab: {
+      overview: "Overview",
+      context: "Context",
+      agents: "Agents",
+      channels: "Channels",
+    } as Record<string, string>,
     /** A project's Agents tab: what it turns on, and who answers untagged messages. */
     agents: {
       available: "Available here",
@@ -576,6 +583,59 @@ export const defaultCopy = {
       noNotes: "No notes.",
       order:
         "A turn here is sent the workspace's instructions first, then each project's down to this one, then this project's notes, then the notes above it, nearest first, and then the agent's own.",
+    },
+  },
+  /** Channels and shared threads: where people and agents work together in a project. */
+  threads: {
+    /** A channel's title on its page: "#renewals". */
+    channel: (name: string) => `#${name}`,
+    channels: "Channels",
+    channelsLede: "Each holds shared threads. Everyone who can see the project reads them.",
+    newChannel: "New Channel",
+    createChannel: "Create Channel",
+    archiveChannel: "Archive Channel",
+    archived: "Archived",
+    general: "Every project has general. It can't be archived.",
+    channelForm: {
+      heading: "New channel",
+      name: "Name",
+      nameHint: "Can't change later. Lower case letters, digits and dashes.",
+      title: "Title (optional)",
+      purpose: "Purpose (optional)",
+      purposeHint: "Sent to every agent answering here.",
+    },
+    noChannels: "Only general so far.",
+    noThreads: "No threads here yet. Start one below.",
+    moreThreads: "See More",
+    /** Where a thread is, in its meta line: "Shared in Globex › #renewals". */
+    sharedIn: (project: string, channel: string) => `Shared in ${project} › #${channel}`,
+    /** Who takes part, in the meta line. */
+    participants: (n: number) => `${n} ${n === 1 ? "person" : "people"}`,
+    startThread: "Start a thread",
+    reply: "Reply",
+    send: "Send",
+    /** The control that posts a message no agent answers, unless it tags one. */
+    postOnly: "Post Only",
+    postOnlyHint: "Post for people to read. Only an agent you tag answers.",
+    /** Under the composer: who answers a message that tags nobody. */
+    answers: (agent: string) => `@${agent} answers untagged messages. Tag anyone with @.`,
+    nobody: "Nobody answers untagged messages here. Tag an agent with @.",
+    stale: (agent: string, why: string) =>
+      `@${agent} answers untagged messages here, but ${why}. Tag an agent with @.`,
+    /** What a message did, said once it is posted: people by handle, experts a role names as the role. */
+    notified: (names: string[]) =>
+      `Sent to ${names.map((n) => (n.startsWith("role:") ? n : `@${n}`)).join(", ")}.`,
+    refused: (tag: string, why: string) => `${tag}: ${why}`,
+    /** A question an agent asked of a person, shown still in the thread. */
+    asks: (agent: string) => `${agent} asks`,
+    answer: "Answer",
+    answered: "Answered",
+    typeahead: "People and agents to tag",
+    experts: (topic: string) => (topic ? `Experts on ${topic}` : "Every expert here"),
+    olderTurns: "Show Earlier",
+    failed: {
+      post: "The message could not be posted. Try again.",
+      channel: "The channel could not be created.",
     },
   },
 };

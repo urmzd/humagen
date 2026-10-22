@@ -7,14 +7,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import { actedFor, type Run } from "./adapter.ts";
 import { Composer } from "./Composer.tsx";
-import { ApiError, api, type Choice, type ProjectAgentsView, type ProjectView, type Revision, type ThreadSummary } from "./api.ts";
+import { ApiError, api, type Choice, coworking, type ProjectAgentsView, type ProjectView, type Revision, type ThreadPage, type ThreadSummary } from "./api.ts";
 import { answersLine, AUTO, availableOf } from "./availability.ts";
 import { HomePage } from "./HomePage.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
+import { ThreadRoom } from "./Room.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { SessionGaugeFor } from "./SessionGauge.tsx";
-import { AgentMark, AgentTint, cause, Popover, Presence, Problem } from "./ui.tsx";
+import { readFromStart } from "./turns.ts";
+import { AgentMark, AgentTint, cause, isWorking, Popover, Presence, Problem } from "./ui.tsx";
 
 const auto = defaultCopy.auto;
 // Controls in the dock are text, not boxes: they sit under the composer and
@@ -26,11 +28,13 @@ function siblingsOf(turns: Run[], run: Run): Run[] {
 
 /**
  * Walk the conversation from its start, taking one answer at each point: the
- * one the reader chose, or the newest. That walk is the branch on screen.
+ * one the reader chose, or the newest. That walk is the branch on screen. A
+ * conversation too long to be read whole is walked from the oldest turn read.
  */
 function pathOf(turns: Run[], chosen: Record<string, string>): Run[] {
   const path: Run[] = [];
-  let prev = "";
+  const read = new Set(turns.map((t) => t.id));
+  let prev = turns.some((t) => (t.prev ?? "") === "") ? "" : (turns.find((t) => !read.has(t.prev ?? ""))?.prev ?? "");
   for (;;) {
     const options = turns.filter((t) => (t.prev ?? "") === prev);
     const next = options.find((t) => t.id === chosen[prev]) ?? options[options.length - 1];
@@ -167,6 +171,11 @@ export function Chat({
   startIn,
   startAgent,
   startAsk,
+  startChannel,
+  focus,
+  root,
+  workspaceName,
+  onOpenChannel,
   summary,
   tick,
   agents,
@@ -187,6 +196,14 @@ export function Chat({
   /** The agent a new conversation is for, and its first message, when a link or a starter picked them. */
   startAgent?: string;
   startAsk?: string;
+  /** The channel of the project a new conversation starts in, as a shared thread. */
+  startChannel?: string;
+  /** A message of a shared thread to open at. */
+  focus?: string;
+  /** The workspace's own project, which heads the tree, and its name. */
+  root?: ProjectView | null;
+  workspaceName?: string;
+  onOpenChannel?: (project: string, channel: string) => void;
   /** The conversation at a glance, once it exists. */
   summary: ThreadSummary | undefined;
   /** Changes whenever any run starts or ends. */
@@ -205,6 +222,8 @@ export function Chat({
   onProjectCreated: (project: ProjectView) => void;
 }) {
   const [turns, setTurns] = useState<Run[]>([]);
+  // The thread as the platform reads it: its record, and its people's messages besides its runs.
+  const [room, setRoom] = useState<ThreadPage | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   // Who the person chose: an agent, AUTO for @auto, or "" for whoever answers untagged messages here.
   const [agent, setAgent] = useState(startAgent ?? "");
@@ -220,11 +239,19 @@ export function Chat({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {
-    if (!threadId) return setTurns([]);
+    if (!threadId) {
+      setRoom(null);
+      return setTurns([]);
+    }
     let live = true;
-    api
-      .thread(threadId)
-      .then((t) => live && setTurns(t))
+    // The branch on screen is walked from the conversation's start, so every
+    // page is read, not only the newest.
+    readFromStart((before) => coworking.thread(threadId, before))
+      .then((p) => {
+        if (!live) return;
+        setRoom(p);
+        setTurns(p.turns.flatMap((t) => (t.run ? [t.run] : [])));
+      })
       .catch(() => live && setTurns([]));
     return () => {
       live = false;
@@ -240,7 +267,8 @@ export function Chat({
 
   const path = useMemo(() => pathOf(turns, chosen), [turns, chosen]);
   const tail = path[path.length - 1];
-  const tailEnded = !tail || tail.status === "completed" || tail.status === "failed";
+  // A run waiting on a person is still, like one that has ended.
+  const tailWorking = !!tail && isWorking(tail.status);
   // What may answer where the next message goes, and who answers it untagged.
   const where = threadId ? (tail?.project ?? "") : (project ?? "");
   const [here, setHere] = useState<ProjectAgentsView | null>(null);
@@ -294,6 +322,23 @@ export function Chat({
 
   const queue = useQueue({
     onStart: (m) => {
+      // Started in a channel, a conversation is a shared thread: the message
+      // is the person's, and its tags say who answers.
+      if (!threadId && startChannel) {
+        setProblem(null);
+        coworking
+          .start({ project: project ?? "", channel: startChannel, text: m.text })
+          .then((p) => {
+            onChanged();
+            onThread(p.thread.id);
+            queue.turnEnded("done");
+          })
+          .catch((e) => {
+            setProblem(e instanceof ApiError ? e.message : "The message could not be sent.");
+            queue.turnEnded("failed");
+          });
+        return;
+      }
       post(m.text, target, tail?.id)
         .then((run) => {
           waiting.current = run.id;
@@ -483,6 +528,27 @@ export function Chat({
     </div>
   );
 
+  // A thread people have posted in is a room: their messages and the agents' answers, side by side.
+  if (threadId && room && room.thread.id === threadId && room.turns.some((t) => t.message)) {
+    return (
+      <ThreadRoom
+        key={threadId}
+        id={threadId}
+        initial={room}
+        tick={tick}
+        agents={agents}
+        homes={homes}
+        projects={projects ?? []}
+        root={root ?? null}
+        workspaceName={workspaceName ?? ""}
+        canRun={canRun}
+        focus={focus}
+        onOpenChannel={(p, c) => onOpenChannel?.(p, c)}
+        onChanged={onChanged}
+      />
+    );
+  }
+
   if (!threadId || path.length === 0) {
     return (
       <HomePage greeting={greeting} canRun={canRun} hasAgents={agents.length > 0}>
@@ -543,7 +609,7 @@ export function Chat({
         </button>
       </header>
       <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
-        <Thread className="mx-auto w-full max-w-4xl flex-1 px-4" busy={!tailEnded} label="Conversation">
+        <Thread className="mx-auto w-full max-w-4xl flex-1 px-4" busy={tailWorking} label="Conversation">
           {path.map((run, i) => (
             <TurnView
               key={run.id}

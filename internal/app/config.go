@@ -494,10 +494,7 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 	if err != nil {
 		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
 	}
-	declared, owns := projects.Project{Name: projects.Root}, []string(nil)
-	if w.Instructions != nil {
-		declared.Instructions, owns = *w.Instructions, append(owns, projects.FieldInstructions)
-	}
+	declared, owns := fileRoot(w)
 	if w.Agents != nil {
 		declared.Agents, owns = fileAgents(*w.Agents), append(owns, projects.FieldAgents)
 	}
@@ -526,7 +523,7 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 			return fmt.Errorf("platform %q: workspace.projects: let go of %q: %w", tenant, pr.Name, err)
 		}
 	}
-	return nil
+	return applyChannels(p, tenant, w)
 }
 
 // fileProject is a project as the file declares it, and the fields the file
@@ -534,7 +531,7 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 func fileProject(d spec.Project) (projects.Project, []string) {
 	pr := projects.Project{
 		Name: d.Name, Title: d.Title, Description: d.Description, Kind: projects.Kind(d.Kind),
-		Parent: spec.ParentOf(d), Instructions: d.Instructions,
+		Parent: spec.ParentOf(d), Instructions: d.Instructions, Experts: expertsOf(d.Experts),
 	}
 	if a := d.Account; a != nil {
 		pr.Account = &projects.AccountInfo{Customer: a.Customer, ExternalID: a.ExternalID, URL: a.URL}
@@ -550,6 +547,7 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 		projects.FieldParent:       d.Parent != "",
 		projects.FieldAccount:      d.Account != nil,
 		projects.FieldInstructions: d.Instructions != "",
+		projects.FieldExperts:      d.Experts != nil,
 		projects.FieldAgents:       d.Agents != nil,
 	} {
 		if set {

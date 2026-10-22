@@ -31,6 +31,7 @@ export function view(
     ...(opts.customer ? { account: { customer: opts.customer } } : {}),
     ...(opts.instructions ? { instructions: opts.instructions } : {}),
     ...(opts.managed ? { managed: opts.managed } : {}),
+    experts: [],
     agents: { enable: [] },
     version: opts.version ?? 1,
     created_by: "ada",

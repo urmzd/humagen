@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
-import type { ProjectAgentsView, Revision } from "./api.ts";
+import type { ProjectAgentsView, Revision, ThreadPage } from "./api.ts";
 import { Chat } from "./Chat.tsx";
-import { stubFetch } from "./dom.ts";
+import { stubEventSource, stubFetch } from "./dom.ts";
 
 const at = "2026-10-01T09:00:00Z";
 const agent = (name: string, description = ""): Revision => ({
@@ -31,7 +31,10 @@ const workspace = (defaultResolved?: string): ProjectAgentsView => ({
 // The loader imports every DOM file into one process, where a top-level hook
 // runs after other files' tests too, so it acts only on what this file set up.
 let net: ReturnType<typeof stubFetch> | undefined;
+let restoreEvents: (() => void) | undefined;
 afterEach(() => {
+  restoreEvents?.();
+  restoreEvents = undefined;
   if (!net) return;
   cleanup();
   net.restore();
@@ -145,7 +148,6 @@ test("@auto chosen in the menu is sent as auto, not left to the default", async 
   assert.equal(body.agent, "auto");
 });
 
-
 /** A turn in conversation t1 that failed, raised by actor. */
 const failed = (actor: Run["actor"]): Run => ({
   id: "t1",
@@ -168,19 +170,15 @@ const failed = (actor: Run["actor"]): Run => ({
   updated_at: at,
 });
 
-/** A stream that never says anything: the retried run is followed, and nothing here needs its events. */
-class QuietStream {
-  onopen: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  onmessage: ((m: MessageEvent) => void) | null = null;
-  addEventListener() {}
-  close() {}
-}
-(globalThis as { EventSource?: unknown }).EventSource ??= QuietStream;
-
 function open(turn: Run, me: string, turns: Run[] = [turn]) {
+  // A stream that never says anything: the retried run is followed, and nothing here needs its events.
+  restoreEvents ??= stubEventSource();
   net = stubFetch({
-    "GET /api/threads/t1": () => ({ turns }),
+    "GET /api/threads/t1": () => ({
+      thread: { id: "t1", project: turn.project ?? "", channel: "general", visibility: "shared", participants: [], version: 0, created_by: me, created_at: at, updated_at: at },
+      turns: turns.map((run) => ({ kind: "run", run })),
+      next: null,
+    }),
     "GET /api/projects/~/agents": () => workspace("lead"),
     "GET /api/projects/Globex/agents": () => ({ ...workspace(), homes: ["globex-helper"] }),
     "POST /api/runs": (body) => ({ ...turn, id: "t9", text: (body as { text: string }).text, status: "accepted", actor: { id: me, user: me } }),
@@ -257,4 +255,64 @@ test("Retry is not offered on another person's turn, nor on one that acted for n
     net?.restore();
     net = undefined;
   }
+});
+
+const id = "api-r-conversation";
+const helper = agent("helper", "Renewals and billing");
+
+/** The nth turn of one long branch, each following the one before. */
+const run = (n: number) =>
+  ({
+    id: `r${n}`,
+    agent: "helper",
+    status: "completed",
+    text: `question ${n}`,
+    answer: `answer ${n}`,
+    thread: id,
+    prev: n === 0 ? undefined : `r${n - 1}`,
+    calls: 0,
+    created_at: at,
+    updated_at: at,
+  }) as unknown as Run;
+
+const record = { id, project: "", channel: "general", visibility: "shared", participants: [], version: 0, created_by: "ana", created_at: at, updated_at: at };
+
+test("a conversation longer than one page is read from its start, and the next message continues it", async () => {
+  restoreEvents = stubEventSource();
+  // 201 turns: the newest page holds 200, and the first turn is on the page before it.
+  const all = Array.from({ length: 201 }, (_, n) => run(n));
+  const pageOf = (turns: Run[], next: string | null): ThreadPage =>
+    ({ thread: record, turns: turns.map((r) => ({ kind: "run", run: r })), next, answers: { agent: "helper", from: "project:~" } }) as unknown as ThreadPage;
+  net = stubFetch({
+    [`GET /api/threads/${id}`]: (_, q) => (q.get("before") === "c1" ? pageOf(all.slice(0, 1), null) : pageOf(all.slice(1), "c1")),
+    "GET /api/projects/~/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: { agent: "helper", from: "project:~" } }),
+    "GET /api/runs/r200/events": () => ({ events: [] }),
+    "POST /api/runs": () => ({ ...run(201), prev: "r200" }),
+  });
+  render(
+    <Chat
+      threadId={id}
+      me="ana"
+      summary={undefined}
+      tick={0}
+      agents={[helper]}
+      projects={[]}
+      canRun
+      canCreateProject={false}
+      greeting="Hello"
+      onThread={() => {}}
+      onChanged={() => {}}
+      onProjectCreated={() => {}}
+    />,
+  );
+  assert.ok(await screen.findByText("question 200"));
+  assert.ok(screen.getAllByText("question 0").length > 0, "the first turn is shown");
+  assert.equal(screen.queryByText("Hello"), null, "the conversation is not taken for a new one");
+  const box = screen.getByPlaceholderText("Ask helper") as HTMLTextAreaElement;
+  fireEvent.change(box, { target: { value: "and then?" } });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "POST")));
+  const sent = net?.seen.find((s) => s.method === "POST");
+  // Untagged, it names no agent, so the default the conversation inherits answers.
+  assert.deepEqual(sent?.body, { text: "and then?", after: "r200" });
 });

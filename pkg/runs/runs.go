@@ -60,6 +60,19 @@ const (
 	MetaProject = "warp.project"
 )
 
+// Keys the platform's API writes into a tag's Meta to place a run in a
+// shared thread: the project's channel the conversation is in, and the
+// person's message the run answers. Like the conversation keys, they are
+// believed only from the API.
+const (
+	MetaChannel = "warp.channel"
+	MetaMessage = "warp.message"
+)
+
+// DefaultChannel is the channel a conversation is in when nothing filed it in
+// another: its project's general.
+const DefaultChannel = "general"
+
 // MetaWithin is the key the platform writes into a tag's Meta at admission:
 // the ancestors of the run's project, nearest first and comma separated (a
 // project's name holds no comma). The platform overwrites whatever a caller
@@ -188,6 +201,12 @@ type Run struct {
 	// Client is the external client (a Slack or GitHub installation) that
 	// raised the run. A run called by an agent has its root's.
 	Client string `json:"client,omitempty"`
+	// Channel is the project's channel the conversation is in. "" is
+	// DefaultChannel. A run called by an agent has its root's.
+	Channel string `json:"channel,omitempty"`
+	// Message is the person's message in a shared thread that the run
+	// answers. Runs answering one message are side by side, not branches.
+	Message string `json:"message,omitempty"`
 
 	// Lease is the run's budget in micro-USD. Zero means unmetered.
 	Lease int64 `json:"lease"`
@@ -349,6 +368,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	// A run is its own conversation unless the API placed it in one. A run
 	// called by an agent belongs to its root's conversation.
 	thread, prev, picked, text, project, client := runID, "", "", tag.Text, "", ClientOf(tag)
+	channel, message := "", ""
 	// A schedule's project is written by the server when the schedule is
 	// created, so the cron trigger and a person's run-now are believed too.
 	project, within := ProjectOf(tag), WithinOf(tag)
@@ -357,6 +377,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 			thread = v
 		}
 		prev, picked = tag.Meta[MetaPrev], tag.Meta[MetaPicked]
+		channel, message = tag.Meta[MetaChannel], tag.Meta[MetaMessage]
 	}
 	// The agent is sent the conversation so far, or a schedule's text with
 	// its project's context. What was actually asked is kept apart, and is
@@ -365,11 +386,12 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 		text = v
 	}
 	if top, ok := x.runs[root]; ok && parent != "" && top.Tenant == tag.Tenant {
-		thread, project, client, within = top.Thread, top.Project, top.Client, top.Within
+		thread, project, client, within, channel, message = top.Thread, top.Project, top.Client, top.Within, top.Channel, ""
 	}
 	r := &Run{
 		ID: runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: tag.Agent, Rev: rev, Origin: tag.Origin,
 		Text: text, Input: input, Actor: tag.Actor, Thread: thread, Prev: prev, Picked: picked, Project: project, Within: slices.Clone(within), Client: client,
+		Channel: channel, Message: message,
 		Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, Lifecycle: lifecycleOf(parent, edge.Mode),
 		Lease: edge.Lease, Schedule: schedule,
 		Status: Accepted, CreatedAt: tag.At, UpdatedAt: tag.At,
@@ -823,8 +845,14 @@ type ThreadSummary struct {
 	Named   bool   `json:"named"`
 	Origin  string `json:"origin"`
 	Project string `json:"project,omitempty"`
+	// Channel is the project's channel it is in: DefaultChannel when its runs
+	// name none.
+	Channel string `json:"channel"`
 	// Agents is every agent that has answered in it, in order of first reply.
 	Agents []string `json:"agents"`
+	// People is every person who asked in it, by subject, in order of first
+	// turn. A credential that is not a person is not one of them.
+	People []string `json:"people"`
 	Turns  int      `json:"turns"`
 	// Branches is how many turns have more than one answer.
 	Branches int `json:"branches"`
@@ -904,6 +932,9 @@ type ThreadQuery struct {
 	Agent string
 	// Standing keeps conversations that are running or that had a failure.
 	Standing Standing
+	// Channel keeps conversations in one channel, DefaultChannel included
+	// for those whose runs name none.
+	Channel string
 	// Projects, when not nil, keeps conversations filed in one of these
 	// projects: one project, or a project and every project below it. "" is
 	// the root: conversations filed in no project. An empty, non-nil list
@@ -993,6 +1024,8 @@ func (x *Index) ThreadPage(tenant string, q ThreadQuery) ([]ThreadSummary, strin
 			continue
 		case q.Standing == StandingFailed && s.Failed == 0:
 			continue
+		case q.Channel != "" && s.Channel != q.Channel:
+			continue
 		}
 		if q.Before != "" {
 			at := s.UpdatedAt.UnixNano()
@@ -1025,7 +1058,7 @@ func (x *Index) threads(tenant string) []ThreadSummary {
 		}
 		s, ok := byID[r.Thread]
 		if !ok {
-			s = &ThreadSummary{ID: r.Thread, Title: r.Text, Origin: r.Origin, Project: r.Project, CreatedAt: r.CreatedAt}
+			s = &ThreadSummary{ID: r.Thread, Title: r.Text, Origin: r.Origin, Project: r.Project, Channel: cmp.Or(r.Channel, DefaultChannel), People: []string{}, CreatedAt: r.CreatedAt}
 			byID[r.Thread] = s
 			order = append(order, r.Thread)
 		}
@@ -1045,9 +1078,13 @@ func (x *Index) threads(tenant string) []ThreadSummary {
 		if !slices.Contains(s.Agents, r.Agent) {
 			s.Agents = append(s.Agents, r.Agent)
 		}
-		// A second answer at the same point makes that point a branch.
+		if id := r.Actor.ID; id != "" && !r.Actor.Bot && !slices.Contains(s.People, id) {
+			s.People = append(s.People, id)
+		}
+		// A second answer at the same point makes that point a branch. Runs
+		// answering one person's message answer it side by side instead.
 		key := r.Thread + "\x00" + r.Prev
-		if answers[key]++; answers[key] == 2 {
+		if answers[key]++; answers[key] == 2 && r.Message == "" {
 			s.Branches++
 		}
 	}

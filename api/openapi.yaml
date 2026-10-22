@@ -715,11 +715,21 @@ paths:
         The body takes no metadata: an unknown field answers 400.
 
         Nothing routes on its own. With `agent` left out, the default the
-        conversation's place inherits answers: the project's, each
-        ancestor's nearest first, then the workspace's. With none set it is
-        409, "tag an agent". `auto` is `@auto`. An agent not available in the
+        conversation's place inherits answers, the first set of: the
+        thread's (`updateThread`), the acting client's when `act_as` names
+        one, the channel's (a new conversation is in `general` of its
+        project), then the project's, each ancestor's nearest first, and the
+        workspace's. With none set it is 409, "tag an agent". `auto` is
+        `@auto`, which for a person a client acts for picks only among the
+        agents that client may route to. An agent not available in the
         conversation's project, or a default that has stopped being
         available there, is 403.
+
+        A follow-up is filed in its conversation's channel. When it follows
+        a turn in a shared thread people have posted in, it is sent the room
+        up to that turn, people's messages by name and agents' answers by
+        theirs, and it is part of the room the agents answering the next
+        message are sent.
       x-permission: runs:write
       parameters:
         - name: Idempotency-Key
@@ -1027,6 +1037,12 @@ paths:
             it. `~` is the whole workspace. With `project` as well, a
             conversation is kept only when both keep it.
           schema: {type: string, maxLength: 63}
+        - name: channel
+          in: query
+          description: |
+            Only conversations in this channel of their project. A
+            conversation from before threads is in `general`.
+          schema: {type: string, maxLength: 40}
       responses:
         "200":
           description: One page.
@@ -1045,33 +1061,186 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
+    post:
+      operationId: startThread
+      tags: [threads]
+      summary: Start a shared thread in a project's channel, with its first message
+      description: |
+        The message is posted as the caller, or as the person `act_as` names
+        through a client that maps them; no field names an author, and a
+        credential acting for nobody is refused (403). What the message
+        starts follows the tag rules: the agents it tags answer, at most 3;
+        tagging only people or experts notifies them; posted only, nothing
+        answers; otherwise the default the thread inherits answers. A
+        `private` thread is refused (409) until reads are confined. A
+        `default` must be able to answer in the project (400).
+
+        A workspace holds at most 10,000 threads and a project 2,000, a
+        conversation from before threads counting once its record is written
+        (429). A person posts at most 30 messages a minute, here and in
+        `postThreadMessage`, and a project takes at most 120 (429). One
+        message notifies at most 20 people and roles; a tag it reaches nobody
+        for is in `refused`.
+      x-permission: runs:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ThreadInput"}
+      responses:
+        "201":
+          description: The thread, its first message and what it started.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ThreadPosted"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/threads/{id}:
     get:
       operationId: getThread
       tags: [threads]
-      summary: Get every turn of a conversation
+      summary: Read a thread and one page of its turns
       description: |
-        A conversation's id is the id of the run that started it. Turns are
-        runs: `prev` links each to the turn it follows, and two turns with the
-        same `prev` are branches.
+        A thread's turns are its people's messages and its agents' runs, in
+        the order they were made, oldest first. A run that answers a message
+        names it in `message`; runs answering one message answer it side by
+        side and are not branches. A conversation from before threads reads
+        as shared, in `general` of its project, at version 0, and its id is
+        the id of the run that started it.
+
+        The first page is the newest 200 turns, or `limit`. `next` is the
+        cursor for the turns before them, or null at the start: pass it back
+        as `before`. `answers` is who answers an untagged message here.
       x-permission: runs:read
       parameters:
-        - {name: id, in: path, required: true, description: The conversation's id., schema: {type: string}}
+        - {$ref: "#/components/parameters/ThreadID"}
+        - name: before
+          in: query
+          description: The `next` cursor of the previous page.
+          schema: {type: string}
+        - name: limit
+          in: query
+          description: Page size. Defaults to 200, and is at most 200.
+          schema: {type: integer, minimum: 1, maximum: 200}
       responses:
         "200":
-          description: The turns, oldest first.
+          description: The thread and one page of its turns.
           content:
             application/json:
-              schema:
-                type: object
-                required: [turns]
-                properties:
-                  turns:
-                    type: array
-                    items: {$ref: "#/components/schemas/Run"}
+              schema: {$ref: "#/components/schemas/ThreadPage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: updateThread
+      tags: [threads]
+      summary: Change a thread's title, visibility and default
+      description: |
+        The body replaces those three as a whole: one left out is cleared.
+        `version` is the one the caller read (0 for a conversation from
+        before threads, whose record this writes), so a change made since
+        answers 409. `private` is refused (409) until reads are confined. A
+        `default` must be able to answer in the thread's project (400).
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ThreadUpdate"}
+      responses:
+        "200":
+          description: The thread as it now stands.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Thread"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/threads/{id}/messages:
+    post:
+      operationId: postThreadMessage
+      tags: [threads]
+      summary: Post a message in a thread
+      description: |
+        Posted as the caller, or as the person `act_as` names through a
+        client that maps them, as for `startThread`. `after` is the turn it
+        follows: a message of the thread, a run answering one, or in a
+        conversation from before threads one of its runs; left out, it
+        follows the latest. `answers` records the message as a question's
+        answer, which resumes the run parked on it; who may answer is
+        checked as on every other path, and a refused answer posts nothing.
+        An answer, like a reply, starts no run. A thread holds at most 5,000
+        messages: past that, 409 "start a new thread". The rates and caps of
+        `startThread` hold here too (429).
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ThreadMessageInput"}
+      responses:
+        "201":
+          description: The message and what it started.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ThreadPosted"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/threads/{id}/participants:
+    put:
+      operationId: updateThreadParticipants
+      tags: [threads]
+      summary: Add and remove a thread's people and agents
+      description: |
+        At most 50 added and removed together, and a thread has at most 50
+        participants. An agent added must be available in the thread's
+        project, and a person, named by handle, must be in the workspace's
+        directory (400). The person who started the thread stays in it. `version` is the one
+        the caller read.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/ThreadID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ThreadParticipantsUpdate"}
+      responses:
+        "200":
+          description: The thread as it now stands.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Thread"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
 
   /api/events:
@@ -1086,6 +1255,10 @@ paths:
         - A message with `event: inbox` carries one `InboxNotice` as JSON. It
           names a message and nothing more: fetch it to see what changed. A
           caller is only sent notices for kinds of message they may read.
+        - A message with `event: thread` carries one `ThreadNotice` as JSON:
+          a message was posted or settled in a thread, or its record changed.
+          Fetch the thread to see it. Every thread is shared, so a caller who
+          may read conversations is sent each.
 
         A comment line (`: keep-alive`) is sent every 15 seconds. Messages
         carry no `id:` field, so `Last-Event-ID` is not used: to resume, pass
@@ -1126,6 +1299,7 @@ paths:
                 oneOf:
                   - $ref: "#/components/schemas/RunEvent"
                   - $ref: "#/components/schemas/InboxNotice"
+                  - $ref: "#/components/schemas/ThreadNotice"
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -1344,7 +1518,7 @@ paths:
         - name: kind
           in: query
           description: Only messages of this kind. An unknown kind matches nothing.
-          schema: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result]}
+          schema: {type: string, enum: [alert, failure, memory, budget, artifact, approval, clarification, result, mention]}
         - name: unread
           in: query
           description: Only `true` narrows to messages the caller has not read.
@@ -1532,6 +1706,10 @@ paths:
         | `approval` | `approve` (optionally with `arguments`), `deny` | `runs:write` |
         | `choice` | `choose` (with `choice`) | `runs:write` |
         | `reply` | `reply` (with `text`) | `runs:write` |
+        | `mention` | `reply` (with `text`), `done` | `runs:write` |
+
+        A mention's `reply` posts the words in its thread as the reader,
+        which starts no run, and `done` sets it aside.
 
         Answering a question is `answerQuestion` by another route, with the
         same rules: a person the question is not addressed to does not see
@@ -2698,6 +2876,170 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/projects/{name}/channels:
+    get:
+      operationId: listChannels
+      tags: [projects]
+      summary: List a project's channels
+      description: |
+        `general` first, then the others by name, archived ones included. A
+        project has at most 20, and `general` always, even before it is
+        first written (version 0). Each says who answers an untagged
+        message in it.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "200":
+          description: The channels.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [channels]
+                properties:
+                  channels:
+                    type: array
+                    maxItems: 20
+                    items: {$ref: "#/components/schemas/ChannelView"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    post:
+      operationId: createChannel
+      tags: [projects]
+      summary: Add a channel to a project
+      description: |
+        A channel's name is lower case letters, digits and dashes, never
+        changes, and is unique in the project. A `default` must be able to
+        answer in the project (400). The workspace and company projects need
+        `projects:govern`. Past 20 channels, 429.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ChannelInput"}
+      responses:
+        "201":
+          description: The channel.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ChannelView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/channels/{channel}:
+    put:
+      operationId: updateChannel
+      tags: [projects]
+      summary: Change a channel's title, purpose and default
+      description: |
+        The body replaces those three as a whole: one left out is cleared.
+        `version` is the one the caller read (`general` reads 0 until it is
+        first written), so a change made since answers 409. A field the
+        platform file sets answers 409.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+        - {$ref: "#/components/parameters/ChannelName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ChannelUpdate"}
+      responses:
+        "200":
+          description: The channel as it now stands.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ChannelView"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: archiveChannel
+      tags: [projects]
+      summary: Archive a channel
+      description: |
+        The channel and its threads stay, and it takes no new threads.
+        `general` cannot be archived (409), nor can a channel the platform
+        file declares.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+        - {$ref: "#/components/parameters/ChannelName"}
+      responses:
+        "204":
+          description: Archived.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/experts:
+    get:
+      operationId: getProjectExperts
+      tags: [projects]
+      summary: List who a project names as experts, by topic
+      description: |
+        Experts are found along the chain: for a topic, the nearest project
+        that lists someone for it answers, then the projects above it.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "200":
+          description: The project's experts.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectExperts"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: updateProjectExperts
+      tags: [projects]
+      summary: Replace a project's experts
+      description: |
+        At most 50, each a person's subject or `role:<name>` with 1 to 8
+        topics. `version` is the project's, as read; a change made since
+        answers 409, as does a list the platform file sets. The workspace
+        and company projects need `projects:govern`.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectExperts"}
+      responses:
+        "200":
+          description: The experts as they now stand.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectExperts"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/people:
     get:
       operationId: listPeople
@@ -3094,6 +3436,18 @@ components:
       required: true
       description: The project's name, or `~` for the workspace itself. A name never starts with `~`.
       schema: {type: string, maxLength: 63}
+    ChannelName:
+      name: channel
+      in: path
+      required: true
+      description: The channel's name within its project.
+      schema: {type: string, maxLength: 40}
+    ThreadID:
+      name: id
+      in: path
+      required: true
+      description: The thread's id, `th-` and 16 hex digits, or for a conversation from before threads the id of the run that started it.
+      schema: {type: string}
     PersonHandle:
       name: handle
       in: path
@@ -3148,7 +3502,7 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/ErrorBody"}
     TooMany:
-      description: A cap on how many may exist was reached.
+      description: A cap on how many may exist, or on how fast they may be made, was reached.
       content:
         application/json:
           schema: {$ref: "#/components/schemas/ErrorBody"}
@@ -3601,6 +3955,15 @@ components:
         client:
           description: The Slack app or GitHub installation that raised the run.
           type: string
+        channel:
+          description: The project's channel the conversation is in. Absent is `general`. A called run has its root's.
+          type: string
+        message:
+          description: |
+            The person's message in a shared thread that the run answers, such
+            as `m-3`. Runs that answer one message answer it side by side and
+            are not branches.
+          type: string
         lease:
           description: The run's budget in micro-USD. Zero means unmetered.
           type: integer
@@ -3674,7 +4037,9 @@ components:
           description: |
             Who should answer: an agent, or `auto` for `@auto`, which picks
             among the agents available where the conversation is filed. Left
-            out, the default the conversation's place inherits answers.
+            out, the default the conversation's place inherits answers: the
+            thread's, the acting client's, the channel's, then the project
+            chain's and the workspace's.
           type: string
         text:
           description: The message. It must not be blank.
@@ -3802,9 +4167,11 @@ components:
           type: integer
           format: int64
     ThreadSummary:
-      description: One conversation.
+      description: |
+        One conversation: what its runs say, with what its record adds. A
+        thread people started that no agent has answered yet is one too.
       type: object
-      required: [id, title, named, origin, agents, turns, branches, active, failed, created_at, updated_at]
+      required: [id, title, named, origin, channel, agents, people, turns, branches, active, failed, created_at, updated_at, visibility, messages]
       properties:
         id: {type: string}
         title: {type: string}
@@ -3813,9 +4180,20 @@ components:
           type: boolean
         origin: {type: string}
         project: {type: string}
+        channel:
+          description: The project's channel it is in, `general` when its runs name none.
+          type: string
         agents:
           type: array
           items: {type: string}
+        people:
+          description: The people who asked or posted in it, by handle. Someone the directory cannot name, and whose subject holds an address, is left out.
+          type: array
+          items: {type: string}
+        visibility: {$ref: "#/components/schemas/ThreadVisibility"}
+        messages:
+          description: How many messages people have posted in it.
+          type: integer
         turns: {type: integer}
         branches: {type: integer}
         active:
@@ -3824,6 +4202,349 @@ components:
         failed: {type: integer}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+
+    ThreadVisibility:
+      description: |
+        Who reads a thread. `shared` is everyone who can see its project.
+        `private`, its participants only, is refused until every read path
+        is confined.
+      type: string
+      enum: [shared, private]
+    ThreadParticipant:
+      description: |
+        A person or an agent taking part in a thread. A thread names a
+        person by their handle, and is sent one by handle: a subject, the key
+        a person signs in with, can hold an address and is never shown. A
+        person with no handle, whose subject holds no address, is named by
+        their subject; one with neither reads as empty.
+      type: object
+      required: [kind, name, at]
+      properties:
+        kind: {type: string, enum: [person, agent]}
+        name:
+          description: A person's handle or an agent's name.
+          type: string
+          maxLength: 200
+        owner:
+          description: The person who started the thread.
+          type: boolean
+        added_by:
+          description: The handle of the person who added them.
+          type: string
+        at: {type: string, format: date-time}
+    Thread:
+      description: |
+        A shared thread's record: the channel it is in, who takes part, its
+        visibility and an optional default agent. Its turns are its people's
+        messages and its agents' runs.
+      type: object
+      required: [id, project, channel, visibility, participants, version, created_by, created_at, updated_at]
+      properties:
+        id:
+          description: "`th-` and 16 hex digits, or for a conversation from before threads the id of the run that started it."
+          type: string
+        project:
+          description: The project it is filed in. Empty is the workspace itself.
+          type: string
+        channel: {type: string}
+        title: {type: string, maxLength: 200}
+        visibility: {$ref: "#/components/schemas/ThreadVisibility"}
+        participants:
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/ThreadParticipant"}
+        default:
+          description: Answers an untagged message here, an agent or `auto`. Absent inherits from the channel.
+          type: string
+        version:
+          description: Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written.
+          type: integer
+        created_by:
+          description: The handle of the person who started it, the first person to ask or post in it.
+          type: string
+        created_at: {type: string, format: date-time}
+        updated_at:
+          description: When anything last happened in it.
+          type: string
+          format: date-time
+    ThreadMention:
+      description: One tag in a message, and what it came to.
+      type: object
+      required: [kind, name]
+      properties:
+        kind: {type: string, enum: [agent, person, sme]}
+        name:
+          description: The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert).
+          type: string
+        run:
+          description: The run an agent's tag started.
+          type: string
+        refused:
+          description: Why the tag started or notified nothing.
+          type: string
+    ThreadAnswerRef:
+      description: The question a message answers.
+      type: object
+      additionalProperties: false
+      required: [run, question]
+      properties:
+        run: {type: string}
+        question: {type: string}
+    ThreadMessage:
+      description: A person's turn in a thread. It starts no run of its own. Its author is always a person.
+      type: object
+      required: [id, thread, by, name, text, mentions, via, at]
+      properties:
+        id:
+          description: "`m-` and its place in the thread, from 1."
+          type: string
+        thread: {type: string}
+        prev:
+          description: The turn it follows. Absent for the first.
+          type: string
+        by:
+          description: The handle of the person who posted it.
+          type: string
+        name:
+          description: What they are called, their name in the directory or else their handle. Never an address.
+          type: string
+        text: {type: string, maxLength: 8000}
+        mentions:
+          type: array
+          maxItems: 10
+          items: {$ref: "#/components/schemas/ThreadMention"}
+        answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
+        via:
+          description: "`console`, or the id of the client it came through."
+          type: string
+        surface_id: {type: string}
+        at: {type: string, format: date-time}
+    ThreadTurn:
+      description: One turn of a thread, a person's message or an agent's run.
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [message, run]}
+        message: {$ref: "#/components/schemas/ThreadMessage"}
+        run: {$ref: "#/components/schemas/Run"}
+    ThreadAnswers:
+      description: |
+        Who answers an untagged message in a place, and where that is set:
+        `thread`, `client`, `channel`, or `project:<name>` (`project:~` for
+        the workspace). An empty agent is nobody. `unavailable` says why the
+        default cannot answer, when it has stopped being available.
+      type: object
+      required: [agent, from]
+      properties:
+        agent: {type: string}
+        from: {type: string}
+        unavailable: {type: string}
+    ThreadPage:
+      description: A thread and one page of its turns, oldest first.
+      type: object
+      required: [thread, turns, next, answers]
+      properties:
+        thread: {$ref: "#/components/schemas/Thread"}
+        turns:
+          type: array
+          maxItems: 200
+          items: {$ref: "#/components/schemas/ThreadTurn"}
+        next:
+          description: The cursor for the turns before these, null at the start.
+          type: [string, "null"]
+        answers: {$ref: "#/components/schemas/ThreadAnswers"}
+    ThreadInput:
+      description: A new shared thread and its first message.
+      type: object
+      additionalProperties: false
+      required: [visibility, text]
+      properties:
+        project:
+          description: Where it is filed. Empty or `~` is the workspace itself.
+          type: string
+          maxLength: 63
+        channel:
+          description: The project's channel. Empty is `general`.
+          type: string
+          maxLength: 40
+        visibility: {$ref: "#/components/schemas/ThreadVisibility"}
+        title: {type: string, maxLength: 200}
+        default:
+          description: Answers untagged messages in the thread, an agent available in the project or `auto`.
+          type: string
+        text: {type: string, maxLength: 8000}
+        post_only:
+          description: Post without any agent answering, unless the message tags one.
+          type: boolean
+        act_as: {$ref: "#/components/schemas/ActAs"}
+    ThreadMessageInput:
+      description: A message posted in a thread.
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: {type: string, maxLength: 8000}
+        after:
+          description: The turn it follows. Empty follows the latest.
+          type: string
+        post_only: {type: boolean}
+        answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
+        act_as: {$ref: "#/components/schemas/ActAs"}
+    ThreadUpdate:
+      description: A thread's title, visibility and default, as a whole.
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: {type: integer}
+        title: {type: string, maxLength: 200}
+        visibility: {$ref: "#/components/schemas/ThreadVisibility"}
+        default: {type: string}
+    ThreadParticipantsUpdate:
+      description: People and agents to add to a thread and to remove from it.
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: {type: integer}
+        add:
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/ThreadParticipant"}
+        remove:
+          description: People by handle and agents by name, which no person and agent share.
+          type: array
+          maxItems: 50
+          items: {type: string}
+    ThreadRule:
+      description: |
+        The rule that decided what a message starts, the first that applies:
+        `tagged` (the agents it tags answer), `people` (it tags only people
+        or experts), `reply` (it answers a question or replies to a
+        mention), `post_only`, or `default` (the inherited default answers,
+        if there is one).
+      type: string
+      enum: [tagged, people, reply, post_only, default]
+    ThreadPosted:
+      description: What posting a message did.
+      type: object
+      required: [thread, message, runs, notified, refused, rule]
+      properties:
+        thread: {$ref: "#/components/schemas/Thread"}
+        message: {$ref: "#/components/schemas/ThreadMessage"}
+        runs:
+          description: The runs it started, at most 3.
+          type: array
+          maxItems: 3
+          items: {$ref: "#/components/schemas/Run"}
+        notified:
+          description: Who it was sent to, people and experts by handle and the experts a role names as `role:<name>`.
+          type: array
+          items: {type: string}
+        refused:
+          description: Its tags that started or notified nothing, each saying why.
+          type: array
+          items: {$ref: "#/components/schemas/ThreadMention"}
+        rule: {$ref: "#/components/schemas/ThreadRule"}
+        reason:
+          description: Why no agent answers, when none does.
+          type: string
+    ThreadNotice:
+      description: Says that something happened in a thread, and nothing about what. Fetch the thread to see it.
+      type: object
+      required: [id, at]
+      properties:
+        id: {type: string}
+        message:
+          description: The message posted or settled, if one was.
+          type: string
+        at: {type: string, format: date-time}
+    Channel:
+      description: |
+        One place in a project where threads live. Its name is its identity
+        in the project and never changes. A channel has its project's
+        visibility. `general` is in every project and reads as version 0
+        until it is first written.
+      type: object
+      required: [project, name, version, created_at, updated_at]
+      properties:
+        project:
+          description: The project it is in. Empty is the workspace itself.
+          type: string
+        name: {type: string, maxLength: 40}
+        title: {type: string, maxLength: 80}
+        purpose:
+          description: Sent to every agent answering in the channel.
+          type: string
+          maxLength: 200
+        default:
+          description: Answers untagged messages here, an agent or `auto`. Absent inherits from the project.
+          type: string
+        archived:
+          description: It and its threads stay, and it takes no new threads.
+          type: boolean
+        managed:
+          description: "`file` when the platform file declares the channel."
+          type: string
+        version: {type: integer}
+        created_by: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_by: {type: string}
+        updated_at: {type: string, format: date-time}
+    ChannelView:
+      description: A channel, and who answers an untagged message in it.
+      allOf:
+        - {$ref: "#/components/schemas/Channel"}
+        - type: object
+          required: [answers]
+          properties:
+            answers: {$ref: "#/components/schemas/ThreadAnswers"}
+    ChannelInput:
+      description: A new channel.
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          description: Lower case letters, digits and dashes, at most 40. It cannot change later.
+          type: string
+          maxLength: 40
+        title: {type: string, maxLength: 80}
+        purpose: {type: string, maxLength: 200}
+        default: {type: string}
+    ChannelUpdate:
+      description: A channel's title, purpose and default, as a whole.
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: {type: integer}
+        title: {type: string, maxLength: 80}
+        purpose: {type: string, maxLength: 200}
+        default: {type: string}
+    ProjectExpert:
+      description: Who answers for some topics in a project, a person by subject or `role:<name>`.
+      type: object
+      additionalProperties: false
+      required: [who, topics]
+      properties:
+        who: {type: string, maxLength: 200}
+        topics:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items: {type: string, maxLength: 32}
+    ProjectExperts:
+      description: The experts a project lists, at the project's version.
+      type: object
+      additionalProperties: false
+      required: [version, experts]
+      properties:
+        version: {type: integer}
+        experts:
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/ProjectExpert"}
 
     ProjectKind:
       description: |
@@ -3854,7 +4575,7 @@ components:
         a path), which has no title, parent or account: show the workspace's
         name for it. It reads as version 0 until it is first changed.
       type: object
-      required: [name, kind, agents, version, created_at, updated_at]
+      required: [name, kind, experts, agents, version, created_at, updated_at]
       properties:
         name: {type: string, maxLength: 63}
         title:
@@ -3875,6 +4596,11 @@ components:
             win over them.
           type: string
           maxLength: 4000
+        experts:
+          description: Who answers for some topics here and below. Set with `PUT /api/projects/{name}/experts`.
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/ProjectExpert"}
         agents: {$ref: "#/components/schemas/ProjectAgents"}
         managed:
           description: "`file` when the platform file declares the project, and absent otherwise. The fields the file sets answer 409 here, and the project cannot be deleted here."
@@ -4018,9 +4744,11 @@ components:
             `managed` is the platform file taking the project over or letting
             it go. `agents` is a change to what the project turns on. `home`
             is an agent coming to live in the project, or leaving it: `agent`
-            names it and `note` says which.
+            names it and `note` says which. `experts` is a change to who the
+            project names as experts, and `channel` to one of its channels,
+            which `channel` holds before and after.
           type: string
-          enum: [created, updated, deleted, managed, agents, home]
+          enum: [created, updated, deleted, managed, agents, home, experts, channel]
         agent:
           description: The agent a home change is about.
           type: string
@@ -4029,6 +4757,12 @@ components:
           type: string
         before: {$ref: "#/components/schemas/Project"}
         after: {$ref: "#/components/schemas/Project"}
+        channel:
+          description: The channel before and after, on a change to one of the project's channels.
+          type: object
+          properties:
+            before: {$ref: "#/components/schemas/Channel"}
+            after: {$ref: "#/components/schemas/Channel"}
     ProjectAgents:
       description: |
         What a project turns on. An agent is available in a project when
@@ -4291,8 +5025,9 @@ components:
         What a message is about. `approval` and `clarification` are questions
         a run is waiting on. `result` is the answer of a run nobody was
         waiting on, and `artifact` a file that was published or revised.
+        `mention` is a message in a shared thread that tags the reader.
       type: string
-      enum: [alert, failure, memory, budget, approval, clarification, result, artifact]
+      enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention]
     InboxState:
       type: string
       enum: [open, resolved, dismissed, snoozed]
@@ -4552,18 +5287,18 @@ components:
     InboxPart:
       description: |
         One typed part of a message. `type` says which of `text`, `alert`,
-        `failure`, `memory`, `budget`, `artifact` or `question` carries the body:
-        `approval`, `choice` and `reply` parts carry `question`. A settled
-        question's `outcome` is `approve`, `deny`, `choose` (the option in
-        `note`), `reply` (the words in `note`), `expired`, `stopped` or
-        `closed`.
+        `failure`, `memory`, `budget`, `artifact`, `mention` or `question`
+        carries the body: `approval`, `choice` and `reply` parts carry
+        `question`. A settled question's `outcome` is `approve`, `deny`,
+        `choose` (the option in `note`), `reply` (the words in `note`),
+        `expired`, `stopped` or `closed`.
       type: object
       required: [id, type, state, actions]
       properties:
         id: {type: string}
         type:
           type: string
-          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply]
+          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, mention]
         state:
           type: string
           enum: [open, resolved, info]
@@ -4572,7 +5307,7 @@ components:
           type: array
           items:
             type: string
-            enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply]
+            enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done]
         outcome: {$ref: "#/components/schemas/InboxOutcome"}
         text: {type: string}
         alert: {$ref: "#/components/schemas/InboxAlertPart"}
@@ -4581,6 +5316,27 @@ components:
         budget: {$ref: "#/components/schemas/InboxBudgetPart"}
         artifact: {$ref: "#/components/schemas/InboxArtifactPart"}
         question: {$ref: "#/components/schemas/InboxQuestionPart"}
+        mention: {$ref: "#/components/schemas/InboxMentionPart"}
+    InboxMentionPart:
+      description: A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which starts no run; `done` sets it aside. The console and the Slack app offer Reply, and set a mention aside by dismissing its message; `done` is the API's.
+      type: object
+      required: [thread, message, project, channel, by, excerpt]
+      properties:
+        thread: {type: string}
+        message:
+          description: The message's id within the thread, such as `m-3`.
+          type: string
+        project:
+          description: The thread's project. Empty is the workspace itself.
+          type: string
+        channel: {type: string}
+        by:
+          description: The handle of the person who posted it. A subject is never given, since one can hold an address.
+          type: string
+        excerpt:
+          description: The start of what they wrote.
+          type: string
+          maxLength: 300
     InboxMessage:
       description: One message in the inbox.
       type: object
@@ -4625,7 +5381,7 @@ components:
       properties:
         action:
           type: string
-          enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply]
+          enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done]
         ids:
           description: The proposed notes to keep, with `keep`.
           type: array

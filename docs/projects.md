@@ -448,7 +448,19 @@ type Mention struct {
 
 Namespace `threads`: `t:<id>` a thread, `m:<thread>:<seq>` a message,
 `s:<client>:<channel>:<ts>` the surface index. At most 5,000 messages per
-thread (then 409 "start a new thread") and 50 participants.
+thread (then 409 "start a new thread") and 50 participants. A workspace holds
+at most 10,000 threads and a project 2,000 (429), a conversation from before
+threads counting once its record is written. A person's message starts no
+run, so no limit on runs holds it: a person posts at most 30 messages a
+minute and a project takes at most 120 (429), counted in at most 10,000
+windows. One message notifies at most 20 people and roles.
+
+The record keeps a person by subject, the key they sign in with. What a
+thread hands out names them by handle instead (a participant, an author, a
+tag, who was notified, the people in a thread's summary, a mention's `by`),
+and calls them by their name in the directory, or their handle without one,
+so a subject that holds an address is never shown. People are added to and
+removed from a thread by handle.
 
 How it joins the run index:
 
@@ -886,7 +898,7 @@ Tools: `project_changes`, `runs_summary(project)`.
 
 The inbox gains kind `mention`: To is the tagged person and the key is
 `mention:<message>:<subject>`. Its `mention` part is `{thread, message,
-project, channel, by, excerpt (<= 300)}`, with actions `reply` (posts a human
+project, channel, by (the poster's handle), excerpt (<= 300)}`, with actions `reply` (posts a human
 message as the reader; `runs:write`) and `done`.
 
 ### Phase 7

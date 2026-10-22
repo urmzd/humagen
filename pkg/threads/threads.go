@@ -1,0 +1,350 @@
+// Package threads keeps shared threads: the conversations people and agents
+// have together in a project's channel.
+//
+// A thread is a warp conversation with a record: the channel it is in, who
+// takes part, its visibility and an optional default agent. Its turns are of
+// two kinds. A message is a person's turn, kept here, and starts no run of
+// its own. An agent's turn exists only as a run, kept in the run index and
+// pointing at the message it answers. So no record here is ever an agent's
+// words: a message's author is always a person's subject, and nothing in
+// this package writes a turn for an agent.
+//
+// The package also holds what the platform decides with, as pure functions:
+// the tag grammar (Parse), what a message starts (Decide), the defaults set
+// nearer a message than its project (Nearer) and the room's transcript
+// (Transcript).
+//
+// # Default deny
+//
+// A thread is shared: everyone who can see its project reads it. A private
+// thread is refused (ErrPrivate) until every read path is confined, so
+// privacy is never claimed before it is enforced.
+package threads
+
+import (
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/urmzd/warp/pkg/projects"
+)
+
+// Errors a caller can match.
+var (
+	// ErrNotFound reports a thread or a message the tenant does not have.
+	ErrNotFound = errors.New("threads: not found")
+	// ErrExists reports a thread id already taken.
+	ErrExists = errors.New("threads: already exists")
+	// ErrInvalid reports a record the store refuses.
+	ErrInvalid = errors.New("threads: invalid")
+	// ErrVersion reports a write that names a version that is not the
+	// current one.
+	ErrVersion = errors.New("threads: changed since it was read")
+	// ErrFull reports a thread that holds as many messages as it may.
+	ErrFull = errors.New("threads: this thread is full; start a new thread")
+	// ErrPrivate reports a private thread, which is refused until every read
+	// path is confined.
+	ErrPrivate = errors.New("threads: private threads need read confinement, not built")
+	// ErrCursor reports a paging cursor this store did not issue.
+	ErrCursor = errors.New("threads: invalid cursor")
+	// ErrLimit reports a workspace, or a project, that holds as many
+	// threads as it may.
+	ErrLimit = errors.New("threads: limit reached")
+)
+
+// Bounds.
+const (
+	// MaxThreads is how many threads a workspace holds records of, and
+	// MaxProjectThreads how many one project does, its root included. A
+	// conversation from before threads counts once its record is written.
+	MaxThreads        = 10_000
+	MaxProjectThreads = 2_000
+	// MaxMessages is how many messages one thread holds.
+	MaxMessages = 5000
+	// MaxParticipants is how many people and agents take part in one thread.
+	MaxParticipants = 50
+	// MaxText bounds a message, in characters.
+	MaxText = 8000
+	// MaxMentions is how many tags one message holds.
+	MaxMentions = 10
+	// MaxTitle bounds a thread's title, in characters.
+	MaxTitle = 200
+	// MaxName bounds a person's display name and a participant's name.
+	MaxName = 200
+	// MaxSurfaceID bounds a surface's id for a message, such as a Slack ts.
+	MaxSurfaceID = 64
+	// MaxPage bounds one page of messages or threads.
+	MaxPage = 200
+	// DefaultPage is a page of threads when none is asked for.
+	DefaultPage = 50
+)
+
+// Visibility says who reads a thread.
+type Visibility string
+
+const (
+	// Shared is read by everyone who can see the thread's project.
+	Shared Visibility = "shared"
+	// Private is read by its participants only. It is refused (ErrPrivate)
+	// until read confinement is built.
+	Private Visibility = "private"
+)
+
+// Kinds of participant and of mention.
+const (
+	Person = "person"
+	Agent  = "agent"
+	// SME is a tag of a project's experts, for a topic or for any.
+	SME = "sme"
+)
+
+// ViaConsole is a message posted in the console.
+const ViaConsole = "console"
+
+// Participant is a person or an agent taking part in a thread.
+type Participant struct {
+	// Kind is person or agent.
+	Kind string `json:"kind"`
+	// Name is a person's subject or an agent's name.
+	Name string `json:"name"`
+	// Owner is the person who started the thread.
+	Owner   bool      `json:"owner,omitempty"`
+	AddedBy string    `json:"added_by,omitempty"`
+	At      time.Time `json:"at"`
+}
+
+// Thread is one shared thread's record.
+type Thread struct {
+	// ID is the conversation's id: its first run's, for a conversation from
+	// before threads, or "th-" and 16 hex digits.
+	ID string `json:"id"`
+	// Project is the project it is filed in. "" is the root.
+	Project string `json:"project"`
+	// Channel is the project's channel it is in.
+	Channel    string     `json:"channel"`
+	Title      string     `json:"title,omitempty"`
+	Visibility Visibility `json:"visibility"`
+	// Participants are who takes part, in the order they joined.
+	Participants []Participant `json:"participants"`
+	// Default answers an untagged message here: an agent, or "auto". ""
+	// inherits from the channel.
+	Default string `json:"default,omitempty"`
+	// Version counts the edits made to the record: its title, visibility,
+	// default and participants. Posting, and joining by posting, leave it.
+	Version   int       `json:"version"`
+	CreatedBy string    `json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
+	// UpdatedAt is when anything last happened in the thread: an edit or a
+	// message.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// AnswerRef names the question a message answers.
+type AnswerRef struct {
+	Run      string `json:"run"`
+	Question string `json:"question"`
+}
+
+// Mention is one tag in a message.
+type Mention struct {
+	// Kind is agent, person or sme.
+	Kind string `json:"kind"`
+	// Name is the agent ("auto" for @auto), the person's subject or the
+	// topic ("" for every expert). A person nobody goes by keeps the handle
+	// as written.
+	Name string `json:"name"`
+	// Run is the run an agent's tag started.
+	Run string `json:"run,omitempty"`
+	// Refused says why a tag started or notified nothing.
+	Refused string `json:"refused,omitempty"`
+}
+
+// Message is a person's turn in a thread. It starts no run of its own.
+type Message struct {
+	// ID is "m-" and the message's place in the thread, from 1.
+	ID     string `json:"id"`
+	Thread string `json:"thread"`
+	// Prev is the turn it follows: a message of the thread, or the run a
+	// conversation from before threads ended on. "" starts the thread.
+	Prev string `json:"prev,omitempty"`
+	// By is the subject of the person who posted it. Never an agent.
+	By string `json:"by"`
+	// Name is what they were called when they posted.
+	Name     string    `json:"name"`
+	Text     string    `json:"text"`
+	Mentions []Mention `json:"mentions"`
+	// Answers is set when the message is recorded as a question's answer.
+	Answers *AnswerRef `json:"answers,omitempty"`
+	// Via is where it was posted: console, or a client's id.
+	Via string `json:"via"`
+	// SurfaceID is the surface's own id for it, such as a Slack ts. A second
+	// post with the same one is the first.
+	SurfaceID string    `json:"surface_id,omitempty"`
+	At        time.Time `json:"at"`
+}
+
+func (m Message) clone() Message {
+	m.Mentions = cloneMentions(m.Mentions)
+	if m.Answers != nil {
+		a := *m.Answers
+		m.Answers = &a
+	}
+	return m
+}
+
+func cloneMentions(ms []Mention) []Mention {
+	out := make([]Mention, len(ms))
+	copy(out, ms)
+	return out
+}
+
+func (t Thread) clone() Thread {
+	ps := make([]Participant, len(t.Participants))
+	copy(ps, t.Participants)
+	t.Participants = ps
+	return t
+}
+
+// has reports whether someone takes part already.
+func (t Thread) has(kind, name string) bool {
+	for _, p := range t.Participants {
+		if p.Kind == kind && p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	validID = regexp.MustCompile(`^(th-[0-9a-f]{16}|r[0-9a-f]{32})$`)
+	// validRun is a run's id, as a message's Prev or an answer names it.
+	validRun = regexp.MustCompile(`^r[0-9a-f]{32}$`)
+	// validVia is a client's id.
+	validVia = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+)
+
+// ValidID reports whether an id can name a thread.
+func ValidID(id string) bool { return validID.MatchString(id) }
+
+// MessageID is the id of a thread's nth message.
+func MessageID(n int) string { return fmt.Sprintf("m-%d", n) }
+
+func oneLine(s string) bool {
+	return utf8.ValidString(s) && !strings.ContainsFunc(s, unicode.IsControl)
+}
+
+// plain is text of several lines with no other control characters.
+func plain(s string) bool {
+	return utf8.ValidString(s) && !strings.ContainsFunc(s, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' && r != '\r' })
+}
+
+func validDefault(agent string) bool { return agent == "" || projects.ValidDefault(agent) }
+
+func (p Participant) validate() error {
+	switch {
+	case p.Kind != Person && p.Kind != Agent:
+		return fmt.Errorf("%w: a participant is a person or an agent", ErrInvalid)
+	case strings.TrimSpace(p.Name) == "" || utf8.RuneCountInString(p.Name) > MaxName || !oneLine(p.Name):
+		return fmt.Errorf("%w: a participant is named on one line of at most %d characters", ErrInvalid, MaxName)
+	case p.Kind == Agent && !projects.ValidDefault(p.Name):
+		return fmt.Errorf("%w: no agent can be called %q", ErrInvalid, p.Name)
+	case p.Kind == Agent && p.Owner:
+		return fmt.Errorf("%w: a thread is started by a person", ErrInvalid)
+	}
+	return nil
+}
+
+// validate checks a thread's record on its own. A private thread is a valid
+// record, so one written later still loads; writing one is refused.
+func (t Thread) validate() error {
+	switch {
+	case !ValidID(t.ID):
+		return fmt.Errorf("%w: a thread's id is th- and 16 hex digits, or a run's id", ErrInvalid)
+	case t.Project != projects.Root && !projects.ValidName(t.Project):
+		return fmt.Errorf("%w: no project can be called %q", ErrInvalid, t.Project)
+	case !projects.ValidChannel(t.Channel):
+		return fmt.Errorf("%w: no channel can be called %q", ErrInvalid, t.Channel)
+	case t.Visibility != Shared && t.Visibility != Private:
+		return fmt.Errorf("%w: a thread is shared or private", ErrInvalid)
+	case utf8.RuneCountInString(t.Title) > MaxTitle || !oneLine(t.Title):
+		return fmt.Errorf("%w: a thread's title is one line of at most %d characters", ErrInvalid, MaxTitle)
+	case !validDefault(t.Default):
+		return fmt.Errorf("%w: a default is an agent's name or auto", ErrInvalid)
+	case len(t.Participants) > MaxParticipants:
+		return fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
+	case strings.TrimSpace(t.CreatedBy) == "":
+		return fmt.Errorf("%w: a thread is started by someone", ErrInvalid)
+	}
+	seen := map[[2]string]bool{}
+	for _, p := range t.Participants {
+		if err := p.validate(); err != nil {
+			return err
+		}
+		if seen[[2]string{p.Kind, p.Name}] {
+			return fmt.Errorf("%w: %s takes part twice", ErrInvalid, p.Name)
+		}
+		seen[[2]string{p.Kind, p.Name}] = true
+	}
+	return nil
+}
+
+func (m Mention) validate() error {
+	switch {
+	case m.Kind != Agent && m.Kind != Person && m.Kind != SME:
+		return fmt.Errorf("%w: a mention is of an agent, a person or experts", ErrInvalid)
+	case m.Kind != SME && strings.TrimSpace(m.Name) == "":
+		return fmt.Errorf("%w: a mention names someone", ErrInvalid)
+	case utf8.RuneCountInString(m.Name) > MaxName || !oneLine(m.Name) || !oneLine(m.Refused) || len(m.Refused) > 500:
+		return fmt.Errorf("%w: a mention is one line", ErrInvalid)
+	case m.Run != "" && (m.Kind != Agent || !validRun.MatchString(m.Run)):
+		return fmt.Errorf("%w: only an agent's tag starts a run", ErrInvalid)
+	}
+	return nil
+}
+
+// CheckText refuses a message's text that cannot be posted: empty, longer
+// than MaxText, or not plain text. A post checks it before anything reads the
+// text, so nothing is looked up for a message that is refused.
+func CheckText(text string) error {
+	switch {
+	case strings.TrimSpace(text) == "":
+		return fmt.Errorf("%w: a message says something", ErrInvalid)
+	case len(text) > 4*MaxText || utf8.RuneCountInString(text) > MaxText || !plain(text):
+		return fmt.Errorf("%w: a message is at most %d characters", ErrInvalid, MaxText)
+	}
+	return nil
+}
+
+// validate checks a message on its own, as it is posted: not its place in
+// the thread, which the store fills in.
+func (m Message) validate() error {
+	chars := utf8.RuneCountInString
+	switch {
+	case strings.TrimSpace(m.By) == "" || chars(m.By) > MaxName || !oneLine(m.By):
+		return fmt.Errorf("%w: a message is posted by a person", ErrInvalid)
+	case chars(m.Name) > MaxName || !oneLine(m.Name):
+		return fmt.Errorf("%w: a name is one line of at most %d characters", ErrInvalid, MaxName)
+	case CheckText(m.Text) != nil:
+		return CheckText(m.Text)
+	case len(m.Mentions) > MaxMentions:
+		return fmt.Errorf("%w: a message tags at most %d people and agents", ErrInvalid, MaxMentions)
+	case m.Via != ViaConsole && !validVia.MatchString(m.Via):
+		return fmt.Errorf("%w: a message is posted in the console or through a client", ErrInvalid)
+	case chars(m.SurfaceID) > MaxSurfaceID || !oneLine(m.SurfaceID):
+		return fmt.Errorf("%w: a surface id is one line of at most %d characters", ErrInvalid, MaxSurfaceID)
+	case m.Answers != nil && (!validRun.MatchString(m.Answers.Run) || strings.TrimSpace(m.Answers.Question) == "" || !oneLine(m.Answers.Question) || len(m.Answers.Question) > MaxName):
+		return fmt.Errorf("%w: an answer names a run and its question", ErrInvalid)
+	case m.Prev != "" && !validRun.MatchString(m.Prev) && !strings.HasPrefix(m.Prev, "m-"):
+		return fmt.Errorf("%w: a message follows a message of its thread or a run", ErrInvalid)
+	}
+	for _, mention := range m.Mentions {
+		if err := mention.validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}

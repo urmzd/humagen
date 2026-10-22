@@ -279,7 +279,8 @@ export type TemplateId =
   | "limit"
   | "artifact"
   | "result"
-  | "note";
+  | "note"
+  | "mention";
 
 export const TEMPLATES: readonly TemplateId[] = [
   "alert",
@@ -291,6 +292,7 @@ export const TEMPLATES: readonly TemplateId[] = [
   "artifact",
   "result",
   "note",
+  "mention",
 ];
 
 const TEMPLATE_OF_PART: Record<PartType, TemplateId> = {
