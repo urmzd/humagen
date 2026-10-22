@@ -8,6 +8,7 @@ import (
 
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/auth/authtest"
+	"github.com/urmzd/warp/pkg/authz"
 )
 
 // legacyRolePermissions is the hardcoded table the policy language replaced,
@@ -198,6 +199,33 @@ func TestPolicyDoesNotWidenAMachine(t *testing.T) {
 	d := pol.Explain(p, auth.RunsRead)
 	if !d.Allowed || !d.Scope {
 		t.Fatalf("explain: %+v", d)
+	}
+}
+
+// A client relays people: the Slack app asks as the person it maps and
+// relays their clicks. Their roles come from the policy the deployment set,
+// so the machine carries that policy. Before, it fell back to the built-in
+// one, which grants nobody anything, and every mapped person was refused.
+func TestAMachineCarriesThePolicyForThePeopleItMaps(t *testing.T) {
+	iss := authtest.New(t)
+	pol, err := auth.ParsePolicy("people.authz", "role operator { allow read, write on runs }\ngrant operator to subject \"ana\"")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := verifier(t, iss, func(c *auth.OIDCConfig) { c.Policy = pol; c.GroupRoles = nil })
+	p, err := v.Bearer(context.Background(), iss.Sign(t, "slack-app", audience, map[string]any{"scp": []string{"warp:runs:write"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Policy() != pol {
+		t.Fatal("the machine does not carry the deployment's policy")
+	}
+	roles := p.Policy().Roles(authz.Identity{Subject: "ana", Tenant: p.Tenant})
+	if len(roles) != 1 || roles[0] != "operator" {
+		t.Fatalf("ana's roles through the machine = %v, want [operator]", roles)
+	}
+	if len(p.Roles) != 0 || !slices.Equal(p.Granted(), []auth.Permission{auth.RunsWrite}) {
+		t.Fatalf("the machine itself was widened: roles %v, granted %v", p.Roles, p.Granted())
 	}
 }
 
