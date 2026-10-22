@@ -418,7 +418,14 @@ the run was accepted from, and the names are pinned when it starts, so a
 mapping removed later still counts. The platform checks this itself before
 it asks the runtime, because fiber's `AnswerRequest` takes no requester
 alias. A GitHub connector's actor is a login no client maps, so a person
-approving a call their own GitHub event raised is not detected. The right is checked before saying whether a part is still open. A
+approving a call their own GitHub event raised is not detected.
+
+An approval of a call that runs with the credential of the person the run
+acts for says so, on the run and in the inbox (`tool.acts_for_person`).
+Anyone it is addressed to may approve it as asked or deny it, but only that
+person may approve it with edited arguments, as fiber enforces: anyone
+else's edit is refused (403). The console says this on the approval and
+offers nobody an edit of such a call. The right is checked before saying whether a part is still open. A
 change is pushed to the browser as an id only, and only to callers who may see
 that kind.
 

@@ -34,6 +34,12 @@ export type PlatformMessage = InboxMessage & {
   about: Source[];
   /** For each part that is a limit that was reached: which limit, on what, by part id. */
   budgets: Record<string, BudgetData>;
+  /**
+   * The approval parts whose call runs with the credential of the person the
+   * run acts for, by part id. Only that person may change such a call's
+   * arguments, so nobody else is offered an edit of it.
+   */
+  actsForPerson: string[];
 };
 
 /** The server's kinds, in the order the inbox offers them as filters. */
@@ -246,7 +252,15 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
         agent: str(q.agent),
         prompt: str(q.prompt),
         options: list(q.options).map(str),
-        ...(q.tool ? { tool: { name: str(obj(q.tool).name), arguments: obj(q.tool).arguments } } : {}),
+        ...(q.tool
+          ? {
+              tool: {
+                name: str(obj(q.tool).name),
+                arguments: obj(q.tool).arguments,
+                ...(obj(q.tool).acts_for_person === true ? { acts_for_person: true } : {}),
+              },
+            }
+          : {}),
         ...(str(q.expires_at) ? { expires_at: str(q.expires_at) } : {}),
       };
       const settled = settledFromOutcome(out);
@@ -311,6 +325,9 @@ export function fromServer(raw: unknown): PlatformMessage {
         .filter((p) => obj(p).type === "budget")
         .map((p) => [str(obj(p).id), budgetOf(p)]),
     ),
+    actsForPerson: list(m.parts)
+      .filter((p) => obj(p).type === "approval" && obj(obj(obj(p).question).tool).acts_for_person === true)
+      .map((p) => str(obj(p).id)),
   };
 }
 

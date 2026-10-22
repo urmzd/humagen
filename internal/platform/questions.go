@@ -275,7 +275,10 @@ func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Qu
 		part.Agent = q.Agent
 	}
 	if q.Tool != nil {
-		part.Tool = &inbox.QuestionTool{Name: q.Tool.Name, CallID: q.Tool.CallID, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema}
+		part.Tool = &inbox.QuestionTool{
+			Name: q.Tool.Name, CallID: q.Tool.CallID, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema,
+			ActsForPerson: q.Tool.ActsForPerson,
+		}
 	}
 	switch {
 	case q.Kind == payload.QuestionApproval:
@@ -486,7 +489,7 @@ func (p *Platform) settleQuestionsOf(run runs.Run) {
 func questionOf(q inbox.QuestionPart) payload.Question {
 	out := payload.Question{ID: q.ID, Kind: q.Kind, Prompt: q.Prompt, Options: q.Options}
 	if q.Tool != nil {
-		out.Tool = &payload.QuestionTool{Name: q.Tool.Name, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema}
+		out.Tool = &payload.QuestionTool{Name: q.Tool.Name, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema, ActsForPerson: q.Tool.ActsForPerson}
 	}
 	return out
 }

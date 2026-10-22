@@ -4119,6 +4119,9 @@ components:
         schema:
           description: The tool's parameter schema. Edited arguments must satisfy it.
           type: object
+        acts_for_person:
+          description: The call runs with the credential of the person the run acts for, a tool that acts as them. Anyone who may approve it may approve or deny it as asked, but only that person may approve it with edited `arguments`; anyone else's edit is 403, so a surface offers nobody else an edit.
+          type: boolean
     InboxQuestionPart:
       description: A question a run is parked on.
       type: object

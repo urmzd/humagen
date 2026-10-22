@@ -218,7 +218,7 @@ owns who is asked and where.
 
 | Question | Raised by | Answered with |
 |---|---|---|
-| Approval | A call to a tool the agent's spec lists in `approvals` | `approve` (optionally with edited `arguments`, checked against the tool's schema, and for a call that acts as a person, `tool.acts_for_person`, only by that person) or `deny` (with a note the model is shown) |
+| Approval | A call to a tool the agent's spec lists in `approvals` | `approve` (optionally with edited `arguments`, checked against the tool's schema, and for a call that acts as a person, `tool.acts_for_person` on the run and in the inbox, only by that person, so the console offers nobody an edit of it) or `deny` (with a note the model is shown) |
 | Choice | The agent calls `ask_person` with `options` | `choose` one option |
 | Reply | The agent calls `ask_person` without options | `reply` in words |
 

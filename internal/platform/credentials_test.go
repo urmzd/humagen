@@ -609,6 +609,25 @@ func TestAnApproverCannotEditACallThatActsAsThePerson(t *testing.T) {
 	if _, err := w.p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, edited); !errors.Is(err, platform.ErrForbidden) {
 		t.Fatalf("ben edited ana's call: %v", err)
 	}
+	// The inbox says so too, where ben is asked, and refuses his edit there.
+	var msg inbox.Message
+	eventually(t, "the approval reached ben's inbox", func() bool {
+		page, _, _ := w.p.InboxPage(ben, inbox.Query{Kind: inbox.KindApproval})
+		for _, m := range page {
+			if m.Source.Run == run.ID {
+				msg = m
+				return true
+			}
+		}
+		return false
+	})
+	if q := msg.Parts[0].Question; q == nil || q.Tool == nil || !q.Tool.ActsForPerson {
+		t.Fatalf("the inbox's approval does not say the call acts as ana: %+v", q)
+	}
+	inboxEdit := platform.Resolution{Action: platform.ActApprove, Arguments: edited.Arguments}
+	if _, err := w.p.InboxResolve(ctx, ben, msg.ID, msg.Parts[0].ID, inboxEdit); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("ben edited ana's call from the inbox: %v", err)
+	}
 	if got, _ := w.p.Runs.Get(tenant, run.ID); got.Status != runs.Parked {
 		t.Fatalf("a refused edit moved the run to %s", got.Status)
 	}

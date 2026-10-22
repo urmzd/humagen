@@ -388,6 +388,35 @@ test("fromServer: failure, memory and a limit, and an outcome as a resolution", 
   assert.ok(part?.type === "alert" && part.resolution?.outcome === "acknowledge" && part.resolution.by === "Ada");
 });
 
+test("an approval of a call that acts as the person says only they may change it, and offers nobody an edit", () => {
+  const [raw] = wireMail().filter((m) => m.id === "m-approval");
+  assert.ok(raw);
+  const own = (p: unknown) => {
+    const part = p as Record<string, unknown>;
+    if (part.type !== "approval") return part;
+    const question = part.question as Record<string, unknown>;
+    return { ...part, question: { ...question, tool: { ...(question.tool as object), acts_for_person: true } } };
+  };
+  const mail = fromServer({ ...raw, parts: (raw.parts as unknown[]).map(own) });
+  assert.deepEqual(mail.actsForPerson, ["p1"]);
+  const plain = mailOf("m-approval");
+  assert.deepEqual(plain.actsForPerson, []);
+
+  // Were an approval ever offered with an edit, the console would still offer
+  // none on a call that acts as the person.
+  const editable = (m: PlatformMessage): PlatformMessage => ({
+    ...m,
+    parts: m.parts.map((p) => (p.type === "approval" ? { ...p, approval: { ...p.approval, editable: true } } : p)),
+  });
+  const drawn = html(<MailboxView messages={[editable(mail)]} selectedId={mail.id} onSelect={() => {}} onAction={() => {}} onOpen={() => {}} viewer="Ada" />);
+  assert.match(drawn, /Only they may change its arguments/);
+  assert.match(drawn, />Approve</);
+  assert.doesNotMatch(drawn, />Edit</);
+  const other = html(<MailboxView messages={[editable(plain)]} selectedId={plain.id} onSelect={() => {}} onAction={() => {}} onOpen={() => {}} viewer="Ada" />);
+  assert.doesNotMatch(other, /Only they may change its arguments/);
+  assert.match(other, />Edit</, "an approval that does not act as the person is drawn as it was");
+});
+
 test("fromServer: dismissed and snoozed states, and parts it does not know", () => {
   const [wire] = wireMail();
   const base = { ...wire, parts: [...(wire?.parts as unknown[]), { id: "x", type: "hologram", actions: [] }] };

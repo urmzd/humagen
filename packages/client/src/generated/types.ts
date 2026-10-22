@@ -743,6 +743,8 @@ export interface InboxQuestionTool {
   arguments?: unknown;
   /** The tool's parameter schema. Edited arguments must satisfy it. */
   schema?: unknown;
+  /** The call runs with the credential of the person the run acts for, a tool that acts as them. Anyone who may approve it may approve or deny it as asked, but only that person may approve it with edited `arguments`; anyone else's edit is 403, so a surface offers nobody else an edit. */
+  acts_for_person?: boolean;
 }
 
 /** A question a run is parked on. */
