@@ -180,7 +180,8 @@ func (s *Server) pauseSchedule(paused bool) handler {
 }
 
 // runSchedule fires a schedule once, now, on a person's say-so. The run is
-// attributed to that person, not to the clock, and works while paused.
+// attributed to that person, not to the clock, acts for them, and works while
+// paused.
 func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	sc, _, err := s.P.Schedules.Get(who.Tenant, r.PathValue("name"))
 	if err != nil {
@@ -194,7 +195,7 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 		Agent:  sc.Agent,
 		Origin: runs.OriginManual,
 		Text:   sc.Text,
-		Actor:  envelope.Actor{ID: who.Subject, Display: who.Name, Bot: who.Kind == auth.Machine},
+		Actor:  platform.ActorOf(who),
 		Meta: map[string]string{
 			"cron_schedule": sc.Name, "cron_expression": sc.Expression,
 			runs.MetaProject: sc.Meta[runs.MetaProject],

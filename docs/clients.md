@@ -65,10 +65,18 @@ do not approve its calls either: the Slack user is looked up in every Slack
 client of the run's team, not only the one that received the message, and
 the names are pinned when the run starts.
 
+A run asked for this way also acts for the person: a tool that acts as each
+person (`credential_scope: person`, see [the spec](spec.md#tools-that-act-as-you))
+reaches its service with that person's own credential, and the app's own runs,
+asked as itself, act for nobody and get no such tools. A Slack connector's run
+acts for the one person the team's enabled Slack clients map its Slack user
+to; a user two clients map to different people acts for nobody.
+
 The trust model: the credential named as `machine` holds the vote of every
-person mapped here and can raise runs as them. The platform cannot check which
-Slack user really clicked; it trusts the app. Treat that credential like the
-mapped people's own sign-ins. See [security](security.md#rules-the-code-holds).
+person mapped here and can raise runs as them, and so use the tools that act as
+them with their credentials. The platform cannot check which Slack user really
+clicked; it trusts the app. Treat that credential like the mapped people's own
+sign-ins. See [security](security.md#rules-the-code-holds).
 
 ## Routing a request to a client
 

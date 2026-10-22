@@ -20,6 +20,7 @@ import {
 } from "./api.ts";
 import type { Run } from "./adapter.ts";
 import { Chat } from "./Chat.tsx";
+import { YourConnections } from "./Connections.tsx";
 import { InboxPage } from "./InboxPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
 import { Monitor } from "./Monitor.tsx";
@@ -540,6 +541,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onSelect={(artifact) => go({ page: "artifacts", artifact: artifact ?? undefined })}
           />
         )}
+        {route.page === "connections" && (
+          <YourConnections open={route.provider} onOpen={(provider) => go({ page: "connections", provider }, { replace: true })} />
+        )}
         {route.page === "settings" && (
           <Settings
             me={me}
@@ -556,6 +560,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             projects={projectNames}
             onOpenProjects={() => go({ page: "projects" })}
             onOpenWorkspace={() => openProject("")}
+            onConnections={() => go({ page: "connections" })}
           />
         )}
       </main>

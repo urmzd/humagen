@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/urmzd/warp/pkg/credentials"
 )
 
 // Slot names, for a binary registering a kind.
@@ -40,13 +42,22 @@ type System struct {
 
 // SystemSpec is a System document's spec.
 type SystemSpec struct {
-	Server     Server              `json:"server,omitzero"`
-	Auth       Auth                `json:"auth,omitzero"`
-	Stores     Slot                `json:"stores,omitzero"`
-	Bus        Slot                `json:"bus,omitzero"`
-	Blobs      Slot                `json:"blobs,omitzero"`
-	Execution  Execution           `json:"execution,omitzero"`
-	SecretEnv  map[string][]string `json:"secret_env,omitempty"`
+	Server    Server              `json:"server,omitzero"`
+	Auth      Auth                `json:"auth,omitzero"`
+	Stores    Slot                `json:"stores,omitzero"`
+	Bus       Slot                `json:"bus,omitzero"`
+	Blobs     Slot                `json:"blobs,omitzero"`
+	Execution Execution           `json:"execution,omitzero"`
+	SecretEnv map[string][]string `json:"secret_env,omitempty"`
+	// PersonRefs is where each workspace's people may keep their own tool
+	// credentials, by tenant: how the references they give may start, each
+	// naming the person whose references it holds with {subject}
+	// (op://People/{subject}/, keychain:warp-people-{subject}/,
+	// env:WARP_PERSON_{subject}_). The server reads a reference with its
+	// own access, so a person may give only their own: one under a start
+	// with their subject in it. No two starts may share a place, within a
+	// workspace or across two. A tenant not listed may reference nothing.
+	PersonRefs map[string][]string `json:"person_refs,omitempty"`
 	Extensions []Slot              `json:"extensions,omitempty"`
 	// Deploy is where `warp deploy` runs this: local, compose or
 	// kubernetes. It is read by warp deploy, not by the server.
@@ -260,6 +271,16 @@ func (s System) check(kinds Kinds) error {
 				return fmt.Errorf("system: secret_env.%s: %q cannot be referenced by a client", name, v)
 			}
 		}
+	}
+	for name, starts := range sp.PersonRefs {
+		for _, start := range starts {
+			if err := credentials.CheckStart(start); err != nil {
+				return fmt.Errorf("system: person_refs.%s: %w", name, err)
+			}
+		}
+	}
+	if err := credentials.CheckStarts(sp.PersonRefs); err != nil {
+		return fmt.Errorf("system: person_refs: %w", err)
 	}
 	slots := []struct {
 		name string

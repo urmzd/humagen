@@ -98,6 +98,9 @@ spec:
   secret_env:               # variables a workspace's clients may reference, by tenant
     default: [WARP_SLACK_TOKEN]
 
+  person_refs:              # where each workspace's people may keep their own tool credentials, by tenant
+    default: ["op://People/{subject}/", "keychain:warp-people-{subject}/"]   # how their references may start, {subject} being the person's; none listed is none
+
   extensions: []            # process-wide parts a binary registered, each a slot
 
   deploy:                   # slot: local | compose | kubernetes. Read by warp deploy
@@ -135,6 +138,7 @@ spec:
         parent: Field       # a project in this file. Left out: the top level
         kind: account
         account: {customer: Globex Inc, external_id: "sf:0015g00000ABC", url: "https://crm.example.com/globex"}
+    person_credentials: {values: false}   # true lets people store a tool credential's value with warp
 
   models:                   # each a slot: anthropic | openai | ollama
     - name: anthropic       # what an agent names as its provider
@@ -158,6 +162,18 @@ spec:
         credential: {ref: env:DOCS_MCP_TOKEN}
         accept:             # pinned by schema hash; new or changed tools stay pending
           - {name: search, schema_hash: 9f2c4e, class: read}
+    - name: issues          # granted as mcp:issues; each person reaches it as themselves
+      kind: mcp
+      mcp:
+        transport: http
+        endpoint: https://issues.example.com/mcp
+        credential_scope: person   # shared (the default) or person. A person-scoped tool names no credential
+        accept:             # not reached at start, so each tool carries the form its server offers
+          - name: search
+            description: Search issues
+            input_schema: {type: object, properties: {q: {type: string}}}
+            schema_hash: 21877437383c4aa0e8fc28bbe3abc1d801bac704010bcdd62a93e30dafd20ab6
+            class: read
 
   agents:
     - spec:
@@ -209,7 +225,9 @@ builds on:
   the file stays, no longer managed, so it can be changed or deleted in the
   console again.
 - **Models and tools** exist only while the file declares them. A tool's
-  pinned schemas are its acceptance; anything else stays pending.
+  pinned schemas are its acceptance; anything else stays pending. A tool's
+  `credential_scope` says whose credential reaches it: see
+  [Tools that act as you](#tools-that-act-as-you).
 - **GitHub** is a client managed by the file, read-only in the API.
 - Nothing is deleted because it left the file.
 
@@ -269,6 +287,71 @@ checks the file again against the projects the console made. A project's kind
 and parent are fixed when it is created, so a file that names another kind or
 parent for a project that already exists fails the start.
 
+### Tools that act as you
+
+An MCP tool is reached with one of two credentials, as its
+`credential_scope` says:
+
+| `credential_scope` | Reached with | When there is none |
+|---|---|---|
+| `shared` (the default) | its `credential`, the same for every run | nobody's run gets its tools |
+| `person` | the credential of the person the run acts for, which each person connects for themselves in the console (Your connections) or with `PUT /api/me/credentials/{tool}` | that person's run gets no tools from it, and the agent is told they have not connected one |
+
+A person-scoped tool names no `credential`, and one that does is refused: a
+person with no credential of their own is never given a shared one. Its
+server is not reached at start, since there is no credential to reach it
+with, so each tool in `accept` carries its `description` and `input_schema`
+as the server offers them, and is accepted in that form when its
+`schema_hash` is the hash of that schema (`warp config check` prints the
+hash it computed when they differ). A stdio one needs `credential_as`.
+
+Who a run acts for is decided when it is accepted, never by anything said in
+it:
+
+| The run | Acts for |
+|---|---|
+| asked in the console, or through the API with a person's sign-in | that person |
+| asked by the Slack app built on the API for a Slack person its client maps (`act_as`) | the mapped person, never the app |
+| raised by a Slack client's own connector | the one person the team's Slack clients map that Slack user to; none, or two different people, is nobody |
+| Run Now on a schedule | whoever pressed it |
+| asked by a machine as itself, a schedule on its own clock, an eval, housekeeping, or another agent's call | nobody |
+| raised by GitHub | nobody: no client maps GitHub logins to people yet |
+
+A person connects a credential in one of two ways:
+
+- **A reference** (`env:`, `keychain:`, `op://`), which must be the
+  person's own under one of the starts the operator lists for the workspace
+  in `person_refs`. Only the reference is stored. The server reads it when a
+  run uses it, with its own access: its environment, its keychain, the
+  1Password account it signed in to. So every start names the person whose
+  references it holds with `{subject}`, their sign-in subject, and a person
+  may give only a reference under a start with their own subject in it:
+  under `op://People/{subject}/`, Ana (subject `ana`) may give
+  `op://People/ana/issues` and nobody else may. `{subject}` comes once,
+  after a place of the operator's own, and is followed by `/` (by `_` in an
+  `env:` start, `env:WARP_PERSON_{subject}_`, and in a `keychain:` start it
+  is in the service, `keychain:warp-people-{subject}/`). No two starts may
+  share a place, within a workspace or across two, so give each workspace
+  its own. A subject is written as it is, except in an `env:` start, which
+  writes it in capitals (`ana` gives `env:WARP_PERSON_ANA_ISSUES`). A
+  subject with a character a reference cannot hold there (an `env:` start
+  takes lowercase letters and digits; the others take letters, digits, `.`,
+  `_`, `@` and `-`) can give no reference under it, only a value. Keep
+  each person's items under their exact subject, in a place that holds
+  nothing else, and in a store that tells names apart by case. An `env:`
+  start names a `WARP_` variable, never a sign-in secret. A workspace with no
+  entry may reference nothing.
+- **A value**, only when the Platform document sets
+  `workspace.person_credentials.values: true`. The value is stored, in the
+  same secrets store client secrets are kept in: never returned and never
+  logged, and with `stores: {kind: postgres}` kept in the database as
+  written. Guard the database as you would the credentials, or keep values
+  off and use references.
+
+Both are checked again on every run, so a value is not used once values are
+turned off, and a reference is not used once it is no longer the person's
+own under a listed start.
+
 ## Which level a knob lives at
 
 | Concern | Level | Why |
@@ -278,6 +361,8 @@ parent for a project that already exists fails the start.
 | Stores, bus, files | System | where state lives is the operator's choice |
 | Concurrency, depth and fan-out | System | protects the process |
 | Variables a workspace may reference | System | the environment is the process's |
+| Where people may keep their own tool credentials (`person_refs`) | System | a reference is read with the process's own access |
+| Whether people may store a tool credential's value (`workspace.person_credentials`) | Platform | it is the workspace's people's data |
 | Names people see | both | the deployment's, then each workspace's |
 | Models and model policies | Platform | what the workspace's agents run on |
 | MCP tools and pinned schemas | Platform | what its agents may touch |

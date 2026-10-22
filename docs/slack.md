@@ -13,7 +13,7 @@
 | `/agent`, shortcuts, Home tab | No | Yes, from warp's sandbox manifest |
 | Inbox items about a run | No | In the run's thread, and on Home |
 | Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list. Its runs are not yet recorded as the client's, see below |
-| Who asked | Recorded on the run | Recorded as the person, when the app's client maps them (`act_as`); else as the app |
+| Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them, when the app's client maps them (`act_as`); else as the app, acting for nobody. Tools that act as a person use the person's own credential |
 | Questions a run waits on | No | In the run's thread, answered for the person the client maps. See below |
 | Tokens and cost | No | No. See [usage on a turn](clients.md#usage-on-a-turn) |
 

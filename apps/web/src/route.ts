@@ -49,6 +49,8 @@ export type Route =
   | { page: "agents" }
   | { page: "agent"; name: string | null; tab: AgentTab }
   | { page: "artifacts"; artifact?: string }
+  /** Your connections: the tools that act as you, and the credential you gave each. `provider` opens one to connect. */
+  | { page: "connections"; provider?: string }
   | { page: "settings"; section: SettingsSection; permission?: string };
 
 export type Page = Route["page"];
@@ -113,6 +115,8 @@ export function href(r: Route): string {
     }
     case "artifacts":
       return r.artifact ? `/artifacts/${enc(r.artifact)}` : "/artifacts";
+    case "connections":
+      return r.provider ? `/connections/${enc(r.provider)}` : "/connections";
     case "settings": {
       const base = `/settings/${r.section}`;
       return r.section === "access" && r.permission ? `${base}?permission=${enc(r.permission)}` : base;
@@ -206,6 +210,8 @@ function read(pathname: string, search: string): Route {
       };
     case "artifacts":
       return { page: "artifacts", artifact: a };
+    case "connections":
+      return { page: "connections", provider: a };
     case "settings":
       return { page: "settings", section: pick(a, SETTINGS_SECTIONS, "profile"), permission: q.get("permission") ?? undefined };
     default:
