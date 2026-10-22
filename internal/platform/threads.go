@@ -282,11 +282,12 @@ func (p *Platform) DefaultFor(tenant, id, project, channel string) (d threads.De
 // ThreadRecord returns a thread's record. A conversation from before
 // threads has none, and reads as shared, in general of its project, with
 // the people who asked in it and the agents who answered as its
-// participants, at version 0. The first person who asked in it started it:
-// a credential that is no person (a machine's call to POST /api/runs, or a
-// surface's run for someone it maps to nobody) is never a participant, and
-// never the owner. Its record is written the first time anything about it
-// changes.
+// participants, at version 0. The first person who asked in it started it.
+// A person is whom a run acted for (runs.AskedBy), so a connector's run is
+// the person its user is mapped to, never that user, and a credential that
+// is no person (a machine's call to POST /api/runs, or a surface's run for
+// someone it maps to nobody) is never a participant, and never the owner.
+// Its record is written the first time anything about it changes.
 func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 	th, err := p.Threads.Get(tenant, id)
 	if err == nil || !errors.Is(err, threads.ErrNotFound) {
@@ -303,8 +304,8 @@ func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 		CreatedAt: first.CreatedAt, UpdatedAt: first.UpdatedAt,
 	}
 	for _, r := range turns {
-		if !r.Actor.Bot && r.Actor.ID != "" {
-			th.CreatedBy = r.Actor.ID
+		if who := runs.AskedBy(r); who != "" {
+			th.CreatedBy = who
 			break
 		}
 	}
@@ -318,9 +319,7 @@ func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 		th.Participants = append(th.Participants, threads.Participant{Kind: kind, Name: name, Owner: kind == threads.Person && name == th.CreatedBy})
 	}
 	for _, r := range turns {
-		if !r.Actor.Bot {
-			add(threads.Person, r.Actor.ID)
-		}
+		add(threads.Person, runs.AskedBy(r))
 		add(threads.Agent, r.Agent)
 		if r.UpdatedAt.After(th.UpdatedAt) {
 			th.UpdatedAt = r.UpdatedAt

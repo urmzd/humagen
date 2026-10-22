@@ -94,6 +94,26 @@ func WithinOf(tag envelope.Tag) []string {
 // believed.
 const MetaClient = "warp.client"
 
+// AskedBy is the person who asked a run, as its conversation lists its
+// people: the person it acts for (Actor.User), and nobody for a bot,
+// whatever it names. A run recorded before runs kept whom they act for,
+// asked through the API by a person, names them by its actor's id, as every
+// such run did then. Any other run that acts for nobody, a connector's for a
+// user no client maps or a retry asked for nobody, names nobody: "". A
+// connector's actor id is the connector's own user (a Slack user id), never
+// a person here.
+func AskedBy(r Run) string {
+	switch {
+	case r.Actor.Bot:
+		return ""
+	case r.Actor.User != "":
+		return r.Actor.User
+	case r.Origin == OriginAPI && !strings.HasPrefix(r.TagID, "api-retry-"):
+		return r.Actor.ID
+	}
+	return ""
+}
+
 // ClientOf returns the external client that raised a tag, or "".
 func ClientOf(tag envelope.Tag) string {
 	if tag.Origin == "slack" || tag.Origin == "github" {
@@ -1078,8 +1098,8 @@ func (x *Index) threads(tenant string) []ThreadSummary {
 		if !slices.Contains(s.Agents, r.Agent) {
 			s.Agents = append(s.Agents, r.Agent)
 		}
-		if id := r.Actor.ID; id != "" && !r.Actor.Bot && !slices.Contains(s.People, id) {
-			s.People = append(s.People, id)
+		if who := AskedBy(*r); who != "" && !slices.Contains(s.People, who) {
+			s.People = append(s.People, who)
 		}
 		// A second answer at the same point makes that point a branch. Runs
 		// answering one person's message answer it side by side instead.

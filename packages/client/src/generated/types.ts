@@ -400,7 +400,7 @@ export interface ThreadSummary {
   /** The project's channel it is in, `general` when its runs name none. */
   channel: string;
   agents: string[];
-  /** The people who asked or posted in it, by handle. Someone the directory cannot name, and whose subject holds an address, is left out. */
+  /** The people who asked or posted in it, by handle. A run counts as asked by the person it acted for, so a connector's run names the person its user is mapped to, never that user, and a run that acted for nobody names nobody. Someone the directory cannot name, and whose subject holds an address, is left out. */
   people: string[];
   visibility: ThreadVisibility;
   /** How many messages people have posted in it. */

@@ -485,7 +485,7 @@ How it joins the run index:
   `Dana: text` and a run as `ignite: answer`. A run of a conversation from
   before threads still renders as its text and its answer.
 - A conversation with no record reads as shared, in `general` of its project,
-  with its runs' actors as participants. A record is written the first time
+  with the people its runs acted for, and its agents, as participants. A record is written the first time
   anything about it changes. Nothing is migrated in bulk.
 
 ### `pkg/people` (new, phase 2)

@@ -455,6 +455,71 @@ grant operator to subject "grace"
 	}
 }
 
+// A conversation from before threads names its people by whom its runs
+// acted for. A Slack connector's run names the person its Slack user is
+// mapped to, never the Slack user, and one for a Slack user no client maps
+// is nobody's: neither a participant nor the owner, which is the first
+// person who asked. The record written when someone posts says the same.
+func TestAConversationsPeopleAreWhomItsRunsActedFor(t *testing.T) {
+	p := start(t, call.Limits{})
+	ctx := t.Context()
+	slack := func(id string, actor envelope.Actor) runs.Run {
+		t.Helper()
+		// What a Slack client's connector sends once its surface stamped it.
+		r, err := p.Invoke(ctx, envelope.Tag{ID: id, Tenant: tenant, Agent: "lead", Origin: "slack", Text: "hello", Actor: actor})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return await(t, p, r.ID, runs.Completed)
+	}
+	mapped := slack("slack-mapped", envelope.Actor{ID: "U0HUMAN1", Display: "Opal", User: "opal"})
+	stranger := slack("slack-stranger", envelope.Actor{ID: "U0STRANGER", Display: "Stranger"})
+	follow, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-ada", Agent: "lead", Text: "and then?", After: stranger.ID, Actor: platform.ActorOf(admin)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, follow.ID, runs.Completed)
+
+	people := func(th threads.Thread) []string {
+		var out []string
+		for _, who := range th.Participants {
+			if who.Kind == threads.Person {
+				out = append(out, who.Name)
+				if who.Owner != (who.Name == th.CreatedBy) {
+					t.Errorf("%s owns %s: %v", who.Name, th.ID, who.Owner)
+				}
+			}
+		}
+		return out
+	}
+	for _, c := range []struct {
+		run  runs.Run
+		want string
+	}{{mapped, "opal"}, {stranger, "ada"}} {
+		rec, err := p.ThreadRecord(tenant, c.run.Thread)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := people(rec); rec.CreatedBy != c.want || !slices.Equal(got, []string{c.want}) {
+			t.Fatalf("the conversation %s started reads as started by %q, with people %q, want %s", c.run.TagID, rec.CreatedBy, got, c.want)
+		}
+	}
+	sums, _, err := p.ThreadPage(tenant, runs.ThreadQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sum := range sums {
+		if want := map[string]string{mapped.Thread: "opal", stranger.Thread: "ada"}[sum.ID]; !slices.Equal(sum.People, []string{want}) {
+			t.Fatalf("the conversation %s lists %q, want %s", sum.ID, sum.People, want)
+		}
+	}
+	// Posting writes the record as it read.
+	got := post(t, p, operator, stranger.Thread, platform.MessageInput{Text: "me too", PostOnly: true})
+	if got.Thread.CreatedBy != "ada" || slices.Contains(people(got.Thread), "U0STRANGER") {
+		t.Fatalf("the record written is %+v", got.Thread)
+	}
+}
+
 // A conversation from before threads reads as shared, in general of its
 // project, with its people and agents taking part, at version 0. A message
 // posted in it writes its record, follows its last run, and an agent tagged

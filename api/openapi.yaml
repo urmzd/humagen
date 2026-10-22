@@ -4208,7 +4208,7 @@ components:
           type: array
           items: {type: string}
         people:
-          description: The people who asked or posted in it, by handle. Someone the directory cannot name, and whose subject holds an address, is left out.
+          description: The people who asked or posted in it, by handle. A run counts as asked by the person it acted for, so a connector's run names the person its user is mapped to, never that user, and a run that acted for nobody names nobody. Someone the directory cannot name, and whose subject holds an address, is left out.
           type: array
           items: {type: string}
         visibility: {$ref: "#/components/schemas/ThreadVisibility"}
