@@ -48,7 +48,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if g := w.Projects[2]; g.Parent != "Field" || g.Kind != ProjectAccount || g.Account == nil || g.Account.URL != "https://crm.example.com/globex" {
 		t.Fatalf("the example's account project = %+v", g)
 	}
-	if g := w.Projects[2]; len(w.Channels) != 1 || len(w.Experts) != 1 || len(g.Channels) != 1 || g.Channels[0].Default != "auto" || len(g.Experts) != 1 {
+	if g := w.Projects[2]; len(w.Channels) != 1 || len(w.Experts) != 1 || len(g.Channels) != 2 || g.Channels[0].Default != "auto" || g.Channels[1].Slack == nil || len(g.Experts) != 1 {
 		t.Fatalf("the example's channels and experts = %+v %+v %+v", w.Channels, w.Experts, g)
 	}
 }

@@ -524,14 +524,15 @@ func TestACronRunInAProjectGetsItsContext(t *testing.T) {
 		}
 		await(t, p, r.ID, runs.Completed)
 	}
-	// A cron run is filed nowhere the tag cannot claim: a run from another
-	// origin is not given a project, nor its context.
-	other, err := p.Invoke(ctx, envelope.Tag{ID: "slack-1", Tenant: tenant, Agent: "lead", Origin: "slack", Text: "hi", Meta: map[string]string{runs.MetaProject: "Globex"}})
+	// A cron run is filed nowhere the tag cannot claim: a run from an origin
+	// whose project the server did not write is not given one, nor its
+	// context.
+	other, err := p.Invoke(ctx, envelope.Tag{ID: "jira-1", Tenant: tenant, Agent: "lead", Origin: "jira", Text: "hi", Meta: map[string]string{runs.MetaProject: "Globex"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if other.Project != "" || other.Within != nil || strings.Contains(other.Tag().Text, "GLOBEX-RULE") {
-		t.Fatalf("a slack tag claimed a project: %+v", other)
+		t.Fatalf("a jira tag claimed a project: %+v", other)
 	}
 }
 
