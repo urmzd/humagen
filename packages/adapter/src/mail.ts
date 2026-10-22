@@ -480,7 +480,10 @@ export interface Query {
   before?: string;
   state?: "open" | "resolved" | "all";
   kind?: string;
-  /** Only posted announcements, never an agent's draft (`news=true`). */
+  /**
+   * Only posted announcements, never an agent's draft (`news=true`). Only the
+   * person's own inbox (`mailTransport`) takes it; a project's inbox does not.
+   */
   news?: boolean;
 }
 
