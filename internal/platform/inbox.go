@@ -321,17 +321,23 @@ func (p *Platform) inboxGetAs(who auth.Principal, reader inbox.Reader, id string
 	// What a caller may not see does not exist for them: a kind they may
 	// not read, or what lives where they may not read. A surface reading for
 	// a person it maps reads where that person may.
-	seer := p.Seer(who)
-	if reader.Subject != "" && reader.Subject != who.Subject {
-		seer = p.Seer(principalOf(who, reader))
-	}
-	if !who.Can(reads(m.Kind)) || !seer.Message(m) {
+	if !who.Can(reads(m.Kind)) || !p.readerSeer(who, reader).Message(m) {
 		return inbox.Message{}, fmt.Errorf("%w: message %q", inbox.ErrNotFound, id)
 	}
 	if m.State == inbox.Snoozed && !p.now().Before(m.SnoozedUntil) {
 		m.State = inbox.Open
 	}
 	return p.ownDeliveries(who, p.seenBy(p.Projects.Tree(who.Tenant), m, who)), nil
+}
+
+// readerSeer is what reader may read: the caller, or the person a surface
+// reads or answers for, who reads where that person may, never where the
+// surface's credential may.
+func (p *Platform) readerSeer(who auth.Principal, reader inbox.Reader) *Seer {
+	if reader.Subject != "" && reader.Subject != who.Subject {
+		return p.Seer(principalOf(who, reader))
+	}
+	return p.Seer(who)
 }
 
 // InboxRead marks a message read or unread for the caller alone.

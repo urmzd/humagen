@@ -733,6 +733,14 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "no runs:write")
 		return inbox.Message{}, false, fmt.Errorf("%w: %s may not resume runs (answering needs %s)", ErrForbidden, reader.Subject, auth.RunsWrite)
 	}
+	// What the person answering may not read does not exist for them,
+	// whichever route asks, before anything is recorded. A surface's
+	// machine reads every thread on its surface wherever it is filed, so the
+	// route's own check of the caller does not hold the person it answers
+	// for to where they may read.
+	if !p.readerSeer(who, reader).Message(m) {
+		return inbox.Message{}, false, fmt.Errorf("%w: message %q", inbox.ErrNotFound, m.ID)
+	}
 	if q.Kind == payload.QuestionApproval {
 		// Checked here, from the run as it stands, not only from whom the
 		// message was addressed to when it was raised: the runtime does not

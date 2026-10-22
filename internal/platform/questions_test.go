@@ -20,6 +20,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -683,6 +684,76 @@ grant viewer to subject "vic"
 		t.Fatal(err)
 	}
 	await(t, p, run.ID, runs.Completed)
+}
+
+// A person a surface answers for answers only what they may read. The
+// client's machine reads every thread on its surface wherever it is filed,
+// so the route lets it ask about a run in a Slack channel bound to a
+// members-only project, but a mapped person who may not read that project
+// finds nothing to answer there, and nothing is recorded; once a member,
+// they answer it as anyone they may.
+func TestAMappedPersonAnswersOnlyWhatTheyMayRead(t *testing.T) {
+	f := &fakes{}
+	p := stage(t, &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"deployer": {writing("plan.md", "ship"), say("Written.")}},
+		tools: map[string][]string{"deployer": {platform.ToolFileWrite}},
+		shape: map[string]func(*agentspec.AgentSpec){"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
+	}, f.config())
+	in := slackClient("app", "A0APP", team, "deployer")
+	in.Slack.Machine, in.Slack.People = "svc-slack", map[string]string{"U0ADA": "ada", "U0OLU": "olu"}
+	create(t, p, tenant, in)
+	ctx := t.Context()
+	vault, err := p.CreateProject(ctx, tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Vault", Kind: projects.Account})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateChannel(ctx, tenant, "Vault", projects.Writer{By: "ada"}, platform.ChannelInput{Name: "deals", Slack: &projects.SlackBinding{Client: "app", Channel: "C0VAULT"}}); err != nil {
+		t.Fatal(err)
+	}
+	pol, err := auth.ParsePolicy("test", `
+role viewer { allow read on * }
+role operator extends viewer { allow write on runs }
+grant operator to subject "ada"
+grant operator to subject "olu"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine := auth.Principal{Subject: "svc-slack", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.RunsRead, auth.RunsWrite}}.WithPolicy(pol)
+	posted, err := p.StartThread(ctx, machine, platform.ThreadInput{
+		Text: "<@UAPP> @deployer ship the plan", ActAs: &platform.ActAs{Client: "app", User: "U0ADA"},
+		Surface: &platform.SurfaceRef{Client: "app", Channel: "C0VAULT", TS: "1700000000.000100", AppUser: "UAPP"},
+	})
+	if err != nil || len(posted.Runs) != 1 || posted.Thread.Project != "Vault" {
+		t.Fatalf("ada's message in the bound channel: %+v, %v", posted, err)
+	}
+	run := await(t, p, posted.Runs[0].ID, runs.Parked)
+	m := questionFor(t, p, run.ID)
+	if !p.Seer(machine).RunID(run.ID) {
+		t.Fatal("the machine does not read the run on its surface, so this tests nothing")
+	}
+	approve := func() error {
+		_, err := p.AnswerQuestion(ctx, machine, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove, ActAs: &platform.ActAs{Client: "app", User: "U0OLU"}})
+		return err
+	}
+	if err := approve(); !errors.Is(err, inbox.ErrNotFound) {
+		t.Fatalf("olu, who may not read Vault, approved through the app: %v", err)
+	}
+	if got, _ := p.Runs.Get(tenant, run.ID); got.Status != runs.Parked || len(p.Inbox.History(tenant, m.ID)) != 1 {
+		t.Fatalf("a refused answer changed something: %s, %d changes", got.Status, len(p.Inbox.History(tenant, m.ID)))
+	}
+	ada := auth.Principal{Subject: "ada", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	members := append(slices.Clone(vault.Members), projects.Entry{Who: "olu", Role: projects.Member})
+	if _, err := p.SetProjectMembers(ctx, ada, "Vault", vault.Version, members); err != nil {
+		t.Fatal(err)
+	}
+	if err := approve(); err != nil {
+		t.Fatalf("olu, now a member, through the app: %v", err)
+	}
+	await(t, p, run.ID, runs.Completed)
+	if o := outcomeOf(t, p, m.ID); o == nil || o.By != "olu" {
+		t.Fatalf("the approval is recorded as %+v", o)
+	}
 }
 
 // A run a Slack connector raised is the Slack user's, and that user is the

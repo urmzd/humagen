@@ -96,10 +96,12 @@ answers `repeated` and starts nothing again. Outside a bound channel the
 client's default answers an untagged message; the client's allow-list holds
 everywhere, and a client that lists its agents treats `@auto` as a name
 outside the list. The machine reads every thread on its own surface, wherever
-it is filed. A bound channel is a project's channel, so only people the client
-maps post there: anyone else who mentions the app in one is told to ask an
-admin to connect their Slack account, and warp is not asked. Elsewhere they
-ask through the app as before.
+it is filed, but a person it posts or answers for is held to where they may
+read: someone who may not read a project's runs answers no question there,
+even on a card in a channel bound to it. A bound channel is a project's
+channel, so only people the client maps post there: anyone else who mentions
+the app in one is told to ask an admin to connect their Slack account, and
+warp is not asked. Elsewhere they ask through the app as before.
 
 An announcement of a project whose general channel is bound is posted there,
 top-level, once; the app records where (`PUT /api/inbox/{id}/deliveries/{client}`),
