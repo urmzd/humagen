@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/fiber/pkg/envelope"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/warp/internal/platform"
@@ -279,5 +280,34 @@ func TestAReplyInTheThreadSettlesTheMention(t *testing.T) {
 	m, _ := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "ana"))
 	if m.State != inbox.Resolved || m.Parts[0].Outcome == nil || m.Parts[0].Outcome.Action != platform.ActReply {
 		t.Fatalf("after ana replied, her mention is %s, %+v", m.State, m.Parts[0].Outcome)
+	}
+}
+
+// Stopping a run takes whoever asked for it, the machine of the client that
+// raised it, whose surface shows the stop control, or a member where it
+// lives. A viewer of the project stops nobody else's run.
+func TestAViewerStopsOnlyWhatTheyAskedFor(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	asked := runs.Run{ID: "r-1", Tenant: tenant, Project: "Globex", Actor: envelope.Actor{ID: "ana"}, Client: "app"}
+	viewer := func(subject string) auth.Principal {
+		return auth.Principal{Subject: subject, Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	}
+	for _, tc := range []struct {
+		who  auth.Principal
+		run  runs.Run
+		want bool
+	}{
+		{viewer("ana"), asked, true},
+		{viewer("vic"), asked, false},
+		{machine, asked, true},
+		{machine, runs.Run{ID: "r-2", Tenant: tenant, Project: "Globex", Actor: envelope.Actor{ID: "ana"}}, false},
+		{auth.Principal{Subject: "ada", Tenant: tenant, Kind: auth.User}, asked, true},
+		// An agent called the run; a person who shares its name asked nothing.
+		{viewer("lead"), runs.Run{ID: "r-3", Tenant: tenant, Project: "Globex", Actor: envelope.Actor{ID: "lead", Bot: true}}, false},
+	} {
+		err := p.MayStop(tc.who, tc.run)
+		if (err == nil) != tc.want {
+			t.Errorf("%s stopping %s asked by %s = %v, want allowed %v", tc.who.Subject, tc.run.ID, tc.run.Actor.ID, err, tc.want)
+		}
 	}
 }

@@ -663,6 +663,15 @@ func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !decode(w, r, &body) {
 		return
 	}
+	// A call is a turn of the run's conversation, filed where it lives, so
+	// it takes what adding one there takes: a member, and in a private
+	// thread a participant. A viewer starts nothing.
+	if parent, err := s.P.Runs.Get(who.Tenant, r.PathValue("id")); err == nil {
+		if err := s.P.MayFollow(who, parent); err != nil {
+			s.problem(w, err)
+			return
+		}
+	}
 	run, err := s.P.Call(r.Context(), who.Tenant, r.PathValue("id"), call.Request{Key: body.Key, Agent: body.Agent, Text: body.Text, Input: body.Input, Mode: body.Mode, Lease: body.Lease})
 	if err != nil {
 		s.problem(w, err)
@@ -672,9 +681,10 @@ func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 // stopRun asks a run and everything attached to it to stop. Runs it delegated
-// keep going. It does not wait: a run that has not ended yet is answered 202
-// with stopping set, and its stream says how it ended. A run that has ended is
-// answered 200 as it is, so asking twice is safe.
+// keep going. It takes the person who asked for the run, or a member where it
+// lives (Platform.MayStop). It does not wait: a run that has not ended yet is
+// answered 202 with stopping set, and its stream says how it ended. A run that
+// has ended is answered 200 as it is, so asking twice is safe.
 func (s *Server) stopRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	run, err := s.P.StopRun(r.Context(), who, r.PathValue("id"))
 	if err != nil {

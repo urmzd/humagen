@@ -320,6 +320,10 @@ func TestAViewerStartsNothingInAProject(t *testing.T) {
 	for _, tc := range []struct{ method, path, body string }{
 		{"POST", "/api/runs", `{"agent":"helper","text":"Hello","project":"Field"}`},
 		{"POST", "/api/runs", fmt.Sprintf(`{"agent":"helper","text":"And then?","after":%q}`, run["id"])},
+		// A call is a turn of the run's conversation, and stopping someone
+		// else's run is changing the work there.
+		{"POST", fmt.Sprintf("/api/runs/%s/calls", run["id"]), `{"key":"k1","agent":"helper","text":"Spend Field's budget.","mode":"delegate"}`},
+		{"POST", fmt.Sprintf("/api/runs/%s/stop", run["id"]), ""},
 		{"POST", "/api/schedules", schedule("spy")},
 		{"PUT", "/api/schedules/weekly", schedule("weekly")},
 		{"POST", "/api/schedules/weekly/run", ""},
@@ -371,6 +375,45 @@ func TestAViewerStartsNothingInAProject(t *testing.T) {
 	if got, out := status(t, f, opal, "POST", "/api/threads/"+private["thread"].(map[string]any)["id"].(string)+"/messages", `{"text":"@helper and?"}`); got != http.StatusNotFound {
 		t.Errorf("a post in a private thread by someone not in it = %d %v", got, out)
 	}
+}
+
+// An eval tries an agent where it lives, filing its cases in the agent's
+// home, so a viewer of the home neither writes a suite that tries a project
+// agent nor runs one, and a hidden home's agent is not there.
+func TestAViewerTriesNoProjectAgentInAnEval(t *testing.T) {
+	f := newFixture(t)
+	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	bo := f.machineAs(t, "bo", "acme", append(slices.Clone(operator), "warp:evals:read", "warp:evals:write")...)
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Field","members":[{"who":"*","role":"viewer"},{"who":"svc-admin","role":"owner"}]}`, http.StatusCreated)
+	want(t, f, admin, "PUT", "/api/agents/helper/home", `{"project":"Field"}`, http.StatusOK)
+	suite := func(name string) string {
+		return fmt.Sprintf(`{"name":%q,"target":"agent","subject":"helper","cases":[{"id":"c1","input":"Spend Field's budget.","checks":[{"kind":"contains","value":"budget"}]}]}`, name)
+	}
+	want(t, f, admin, "POST", "/api/evals", suite("checks"), http.StatusCreated)
+
+	member := "you need to be a member of Field"
+	for _, tc := range []struct{ method, path, body string }{
+		{"POST", "/api/evals", suite("spy")},
+		{"PUT", "/api/evals/checks", suite("checks")},
+		{"POST", "/api/evals/checks/run", ""},
+	} {
+		if got, out := status(t, f, bo, tc.method, tc.path, tc.body); got != http.StatusForbidden || out["error"] != member {
+			t.Errorf("a viewer %s %s = %d %v, want 403 %s", tc.method, tc.path, got, out, member)
+		}
+	}
+	if runs := want(t, f, admin, "GET", "/api/evals/checks/runs", "", http.StatusOK)["runs"].([]any); len(runs) != 0 {
+		t.Fatalf("the refused run started %v", runs)
+	}
+
+	// A member of the home tries it.
+	want(t, f, admin, "PUT", "/api/projects/Field/members", `{"version":1,"members":[{"who":"*","role":"member"},{"who":"svc-admin","role":"owner"}]}`, http.StatusOK)
+	want(t, f, bo, "POST", "/api/evals/checks/run", "", http.StatusAccepted)
+
+	// A home the caller does not see hides the agent, as before.
+	want(t, f, admin, "PUT", "/api/projects/Field/members", `{"version":2,"members":[{"who":"svc-admin","role":"owner"}]}`, http.StatusOK)
+	want(t, f, bo, "POST", "/api/evals/checks/run", "", http.StatusNotFound)
+	want(t, f, bo, "POST", "/api/evals", suite("spy"), http.StatusNotFound)
 }
 
 // The workspace's notes and a company project's are sent to every agent in a

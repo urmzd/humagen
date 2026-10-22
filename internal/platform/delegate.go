@@ -369,6 +369,8 @@ func (p *Platform) requestStop(ctx context.Context, tenant, runID, cause, by str
 
 // StopRun asks a run to stop at a person's request. Everything attached to it
 // is asked too. What it delegated keeps running and can be stopped by itself.
+// It takes the person who asked for the run, or one who may add a turn where
+// it lives (MayStop).
 //
 // It does not wait for the run. The run it returns is stopping, or already
 // over: stopped, or completed or failed when its turn finished first. A run
@@ -376,6 +378,9 @@ func (p *Platform) requestStop(ctx context.Context, tenant, runID, cause, by str
 func (p *Platform) StopRun(ctx context.Context, who auth.Principal, runID string) (runs.Run, error) {
 	run, err := p.Runs.Get(who.Tenant, runID)
 	if err != nil {
+		return runs.Run{}, err
+	}
+	if err := p.MayStop(who, run); err != nil {
 		return runs.Run{}, err
 	}
 	if run.Status.Terminal() {

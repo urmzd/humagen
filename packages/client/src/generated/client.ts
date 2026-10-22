@@ -986,7 +986,10 @@ message are sent.
 
   /** Starts a child run of the run in the path. The caller's agent must be
 allowed to spawn the target, and depth, fan-out and lease limits apply.
-`key` is the call's idempotency key within the run.
+`key` is the call's idempotency key within the run. The call is a turn
+of the run's conversation, filed where it lives, so the caller must be
+a member of the run's project, and in a private thread a participant
+(403); a viewer starts nothing.
  */
   async createCall(id: string, body: CreateCallRequest, options?: RequestOptions): Promise<Run> {
     let path = "/api/runs/{id}/calls";
@@ -1021,6 +1024,10 @@ never reported stopped and then completed.
 Asking a run that has ended changes nothing and answers 200 with the
 run as it stands, so asking twice is safe. Another workspace's run
 answers 404.
+
+It takes whoever asked for the run, the machine of the client that
+raised it, or a member of the run's project (in a private thread a
+participant). A viewer of the project stops nobody else's run (403).
  */
   async stopRun(id: string, options?: RequestOptions): Promise<Run> {
     let path = "/api/runs/{id}/stop";
@@ -2128,7 +2135,11 @@ out, and every route that names it answers 404.
     });
   }
 
-  /** What the suite tests must exist now. `created_by` and `updated_at` are set by the server. */
+  /** What the suite tests must exist now. `created_by` and `updated_at` are
+set by the server. An eval runs an agent where it lives, so a suite
+that tries an agent homed in a project takes a member of that project
+(403); one homed where the caller cannot see answers 404.
+ */
   async createEvalSuite(body: EvalSuite, options?: RequestOptions): Promise<EvalSuite> {
     const path = "/api/evals";
     return this.request<EvalSuite>("POST", path, {
@@ -2147,7 +2158,9 @@ out, and every route that names it answers 404.
     });
   }
 
-  /** Replace an eval suite */
+  /** As creating one: a suite that tries an agent homed in a project takes
+a member of that project (403).
+ */
   async updateEvalSuite(name: string, body: EvalSuite, options?: RequestOptions): Promise<EvalSuite> {
     let path = "/api/evals/{name}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2185,7 +2198,10 @@ out, and every route that names it answers 404.
     });
   }
 
-  /** A suite that is already running answers 409. */
+  /** A suite that is already running answers 409. Its cases are filed
+where the agent lives, so running a suite that tries an agent homed
+in a project takes a member of that project (403).
+ */
   async runEvalSuite(name: string, options?: RequestOptions): Promise<EvalRun> {
     let path = "/api/evals/{name}/run";
     path = path.replace("{name}", encodeURIComponent(String(name)));

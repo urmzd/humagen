@@ -531,7 +531,9 @@ func (s *Server) putSuite(replace bool) handler {
 				notFound(w)
 				return
 			}
-			_, err = s.P.Agents.Get(r.Context(), who.Tenant, suite.Subject, 0)
+			if err = s.P.MayTry(who, suite.Subject); err == nil {
+				_, err = s.P.Agents.Get(r.Context(), who.Tenant, suite.Subject, 0)
+			}
 		case evals.Knowledge:
 			_, err = s.P.Knowledge.Documents(who.Tenant, suite.Subject)
 		}
@@ -560,7 +562,15 @@ func (s *Server) deleteSuite(w http.ResponseWriter, r *http.Request, who auth.Pr
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// runSuite starts a suite's cases. An agent's are filed where it lives, so a
+// project agent's take a member of its home (Platform.MayTry).
 func (s *Server) runSuite(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if suite, err := s.P.Evals.Get(who.Tenant, r.PathValue("name")); err == nil && suite.Target == evals.Agent {
+		if err := s.P.MayTry(who, suite.Subject); err != nil {
+			s.problem(w, err)
+			return
+		}
+	}
 	run, err := s.P.StartEval(r.Context(), who.Tenant, r.PathValue("name"), who.Subject)
 	if err != nil {
 		s.problem(w, err)

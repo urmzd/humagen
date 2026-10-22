@@ -12,6 +12,7 @@ import (
 	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // Route permission, then project role. Every project route checks one tenant
@@ -282,6 +283,35 @@ func (p *Platform) MayFileIn(who auth.Principal, project string) error {
 	}
 	_, _, err := p.ProjectRole(who, project, projects.Member)
 	return err
+}
+
+// MayTry holds a caller to what trying an agent in an eval takes: the eval
+// files its cases where the agent lives, so a project agent's takes a member
+// of its home, as any run filed there does. A platform agent asks nothing
+// more than the route's permission.
+func (p *Platform) MayTry(who auth.Principal, agent string) error {
+	home, homed := p.Projects.Tree(who.Tenant).Home(agentspec.NormalizeName(agent))
+	if !homed {
+		return nil
+	}
+	return p.MayFileIn(who, home)
+}
+
+// MayStop holds a caller to what stopping a run takes: whoever asked for it
+// (a person, or a credential as itself), the machine of the client that
+// raised it, whose surface shows a stop control, or one who may add a turn
+// where it lives (MayFollow). A viewer reads a project's runs and stops none
+// of anyone else's.
+func (p *Platform) MayStop(who auth.Principal, run runs.Run) error {
+	if who.Subject != "" && run.Actor.ID == who.Subject && run.Actor.Bot == (who.Kind == auth.Machine) {
+		return nil
+	}
+	if run.Client != "" {
+		if c, err := p.Clients.Get(who.Tenant, run.Client); err == nil && machineOf(c, who) {
+			return nil
+		}
+	}
+	return p.MayFollow(who, run)
 }
 
 // Acting is the person a surface's credential asks for, as a principal: the
