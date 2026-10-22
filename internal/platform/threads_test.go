@@ -1039,3 +1039,165 @@ func TestAMessageTooLongToPostIsRefusedAsItArrives(t *testing.T) {
 		t.Fatalf("the thread holds %d turns, %v", len(turns), err)
 	}
 }
+
+// A question for the experts, when the run's chain lists no expert, goes to
+// the owners of the nearest project on that chain that lists any, not to
+// anyone who may resume runs.
+func TestAQuestionForExpertsWithNoExpertGoesToTheNearestOwners(t *testing.T) {
+	c := &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"asker": {asked(map[string]any{"question": "What is the PO number?", "asked_of": "sme:billing"}), say("Filed.")}},
+		tools: map[string][]string{"asker": {"ask_person"}},
+	}
+	p := stage(t, c, platform.Config{})
+	field(t, p)
+	cur, ok := p.ProjectTree(tenant).Get("Renewals")
+	if !ok {
+		t.Fatal("no Renewals")
+	}
+	if _, err := p.Projects.Update(tenant, "Renewals", cur.Version, ada, time.Now(), func(pr *projects.Project) error {
+		pr.Members = []projects.Entry{{Who: projects.Everyone, Role: projects.Viewer}, {Who: olu.Subject, Role: projects.Owner}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: envelope.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	q := questionFor(t, p, run.ID)
+	if !sees(p, olu, q.ID) || sees(p, grace, q.ID) {
+		t.Fatal("the question did not reach Renewals' owner alone")
+	}
+	if !strings.HasPrefix(q.Subject, "asker asks the project's owners: ") {
+		t.Fatalf("the question's subject = %q", q.Subject)
+	}
+	// Whom it is for names the project, to a reader who may see it.
+	if got := askOfRun(t, p, grace, run); got == nil || got.Yours || got.For != platform.ForOwners || got.OwnersOf != "Renewals" {
+		t.Fatalf("someone it is not for: ask = %+v, want it for the owners of Renewals", got)
+	}
+	if got := askOfRun(t, p, olu, run); got == nil || !got.Yours || got.For != platform.ForOwners {
+		t.Fatalf("the owner's ask = %+v", got)
+	}
+}
+
+// askOfRun is the ask a reader is shown on a parked run of a thread.
+func askOfRun(t *testing.T, p *platform.Platform, who auth.Principal, run runs.Run) *platform.Ask {
+	t.Helper()
+	_, turns, _, err := p.ThreadTurns(tenant, run.Thread, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, turn := range p.AsksIn(t.Context(), who, turns) {
+		if turn.Run != nil && turn.Run.ID == run.ID {
+			return turn.Ask
+		}
+	}
+	t.Fatal("the parked run is not in its thread")
+	return nil
+}
+
+// The owners a question for the experts falls back to are those who own the
+// run's project now: an owner entry under a members-only project that does
+// not let its person in grants nothing, so the question goes on up the chain
+// to an owner who can read the run.
+func TestAQuestionForExpertsSkipsOwnersWhoCannotReadTheRun(t *testing.T) {
+	c := &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"asker": {asked(map[string]any{"question": "What is the PO number?", "asked_of": "sme"}), say("Filed.")}},
+		tools: map[string][]string{"asker": {"ask_person"}},
+	}
+	p := stage(t, c, platform.Config{})
+	field(t, p)
+	// Renewals is narrowed first, as a sub-project is never more open.
+	for _, step := range []struct {
+		name    string
+		members []projects.Entry
+	}{
+		{"Renewals", []projects.Entry{{Who: olu.Subject, Role: projects.Owner}}},
+		{"Globex", []projects.Entry{{Who: "ada", Role: projects.Owner}}},
+	} {
+		cur, _ := p.ProjectTree(tenant).Get(step.name)
+		if _, err := p.Projects.Update(tenant, step.name, cur.Version, ada, time.Now(), func(pr *projects.Project) error {
+			pr.Members = step.members
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: envelope.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	q := questionFor(t, p, run.ID)
+	if sees(p, olu, q.ID) || sees(p, grace, q.ID) || !slices.Equal(q.Audience, []string{"ada"}) {
+		t.Fatalf("the question went to %v, want Globex's owner, who owns Renewals from above", q.Audience)
+	}
+	// Globex keeps to its members, so a reader outside it is never told
+	// whose owners the question is for: the project is not named.
+	if got := askOfRun(t, p, grace, run); got == nil || got.For != platform.ForOwners || got.OwnersOf != "" {
+		t.Fatalf("a reader who may not see Globex: ask = %+v, want no project named", got)
+	}
+	if got := askOfRun(t, p, admin, run); got == nil || got.OwnersOf != "Globex" {
+		t.Fatalf("Globex's owner: ask = %+v, want the owners of Globex", got)
+	}
+}
+
+// A question for the experts in a private thread with no expert is not sent
+// to the project's owners, who do not take part in it, but stays with whoever
+// may answer there.
+func TestAQuestionForExpertsInAPrivateThreadStaysWithItsParticipants(t *testing.T) {
+	c := &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"asker": {asked(map[string]any{"question": "What is the PO number?", "asked_of": "sme"}), say("Filed.")}},
+		tools: map[string][]string{"asker": {"ask_person"}},
+	}
+	p := stage(t, c, platform.Config{})
+	field(t, p)
+	posted := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "@asker file it"})
+	if len(posted.Runs) != 1 {
+		t.Fatalf("the thread started %d runs", len(posted.Runs))
+	}
+	run := await(t, p, posted.Runs[0].ID, runs.Parked)
+	q := questionFor(t, p, run.ID)
+	if !sees(p, operator, q.ID) || len(q.Audience) != 0 || sees(p, grace, q.ID) {
+		t.Fatalf("the question in a private thread went to %v, not to who takes part in it", q.Audience)
+	}
+}
+
+// An owner whose way into a members-only project above is a policy role they
+// hold owns the run's project, so the question for the experts reaches them.
+func TestAQuestionForExpertsReachesAnOwnerLetInByARole(t *testing.T) {
+	c := &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"asker": {asked(map[string]any{"question": "What is the PO number?", "asked_of": "sme"}), say("Filed.")}},
+		tools: map[string][]string{"asker": {"ask_person"}},
+	}
+	p := stage(t, c, platform.Config{})
+	field(t, p)
+	if _, err := p.People.Seen(tenant, people.Sighting{Subject: pat.Subject, Name: "Pat", Roles: []string{"operator", "oncall"}, Source: people.SignIn}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		name    string
+		members []projects.Entry
+	}{
+		{"Renewals", []projects.Entry{{Who: pat.Subject, Role: projects.Owner}}},
+		{"Globex", []projects.Entry{{Who: "role:oncall", Role: projects.Member}, {Who: "ada", Role: projects.Owner}}},
+	} {
+		cur, _ := p.ProjectTree(tenant).Get(step.name)
+		if _, err := p.Projects.Update(tenant, step.name, cur.Version, ada, time.Now(), func(pr *projects.Project) error {
+			pr.Members = step.members
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: envelope.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	q := questionFor(t, p, run.ID)
+	if !slices.Equal(q.Audience, []string{pat.Subject}) || !sees(p, pat, q.ID) {
+		t.Fatalf("the question went to %v, want Renewals' owner, let into Globex by a role", q.Audience)
+	}
+}

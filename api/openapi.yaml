@@ -877,11 +877,11 @@ paths:
         - {$ref: "#/components/parameters/RunID"}
         - name: after
           in: query
-          schema: {type: string}
-          description: Last subject returned by the previous page.
+          schema: {type: string, pattern: "^[1-9][0-9]{0,18}$"}
+          description: The `next` cursor of the previous page, a positive number. It is not a subject.
       responses:
         "200":
-          description: Feedback and a cursor for the next page, empty at the end.
+          description: Feedback in the order it was first given (ratings kept before feedback was numbered come first, in the order they were last rated), and a cursor for the next page, empty at the end.
           content:
             application/json:
               schema:
@@ -892,6 +892,7 @@ paths:
                     type: array
                     items: {$ref: "#/components/schemas/RunFeedback"}
                   next: {type: string}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -4925,12 +4926,24 @@ components:
       type: string
       enum: [subagent, handoff, delegate]
     RunFeedback:
-      description: Feedback metadata only. The referenced run owns the prompt, answer and conversation links.
+      description: |
+        Feedback metadata only. The referenced run owns the prompt, answer and
+        conversation links. A rater is named as the platform calls them, by
+        handle and by name, never by the subject they sign in with, which may
+        hold an address.
       type: object
-      required: [run, subject, rating, updated_at]
+      required: [run, by, by_name, mine, rating, updated_at]
       properties:
         run: {type: string}
-        subject: {type: string}
+        by:
+          description: The rater's handle, else their subject when it holds no address (a machine's), else "".
+          type: string
+        by_name:
+          description: What the rater is called, their name, else their handle, else their subject when it holds no address, else "someone". Never an address.
+          type: string
+        mine:
+          description: Whether this is the rating of the person asking.
+          type: boolean
         rating: {type: string, enum: [up, down]}
         reason: {type: string}
         comment: {type: string}
@@ -5451,8 +5464,11 @@ components:
         person the run acts for, by handle, when an answer may reach their
         own credential), the `experts` on `topic` in the run's project (every
         expert when `topic` is absent), the `answerers` its agent's rules
-        name or it asked, or `nobody`, when the rules cannot be read. It
-        names nobody the reader may not see. The runtime still has the last
+        name or it asked, the `owners` of the nearest project on the run's
+        chain that names any, when it asked the experts and there are none
+        (`owners_of` is what that project is called), or `nobody`, when the
+        rules cannot be read. It names nobody, and no project, the reader may
+        not see. The runtime still has the last
         word when an answer is given.
       type: object
       required: [question, yours, for]
@@ -5463,10 +5479,16 @@ components:
         yours: {type: boolean}
         for:
           type: string
-          enum: [anyone, person, experts, answerers, nobody]
+          enum: [anyone, person, experts, answerers, owners, nobody]
         topic: {type: string}
         person:
           description: The handle of the person it is for, with `for` of `person`.
+          type: string
+        owners_of:
+          description: |
+            With `for` of `owners`, what the project whose owners it is for is
+            called: its title, else its name. Absent for the workspace, and
+            for a project the reader may not see.
           type: string
     ThreadAnswers:
       description: |
@@ -6629,6 +6651,32 @@ components:
           description: When they last signed in. Absent for someone who never has.
           type: string
           format: date-time
+        projects:
+          description: |
+            Their own projects, in tree order: each project where an entry
+            naming their subject, or a role they held when last seen, makes
+            them a member or an owner, there or as an owner above. One reached
+            only through everyone is not theirs. Only projects the reader may
+            see are named, and none without `projects:read`. At most 20;
+            absent when there are none.
+          type: array
+          maxItems: 20
+          items: {$ref: "#/components/schemas/PersonProject"}
+        projects_more:
+          description: How many more of their projects the reader may see than are listed. Absent when none.
+          type: integer
+          minimum: 0
+    PersonProject:
+      description: One of a person's own projects.
+      type: object
+      required: [name, role]
+      properties:
+        name: {type: string}
+        title: {type: string}
+        role:
+          description: Their role there.
+          type: string
+          enum: [member, owner]
     Settings:
       description: |
         Workspace settings. The workspace default agent, which answers a

@@ -2,12 +2,15 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 func TestSigningInPutsAPersonInTheDirectoryWithNoEmail(t *testing.T) {
@@ -136,5 +139,69 @@ func TestAPersonsPhotoIsTheirOwn(t *testing.T) {
 	_ = res.Body.Close()
 	if res.StatusCode != http.StatusOK || string(body) != png || res.Header.Get("Content-Type") != "image/png" {
 		t.Fatalf("Ada's photo = %d %q", res.StatusCode, res.Header.Get("Content-Type"))
+	}
+}
+
+// The directory lists each person's own projects, those naming them as a
+// member or an owner, and only the ones the reader may see: a members-only
+// project the reader is not in is never named, nor counted.
+func TestTheDirectoryListsAPersonsProjectsTheReaderMaySee(t *testing.T) {
+	f := newFixture(t)
+	f.p.SeePerson(auth.Principal{Kind: auth.User, Tenant: "acme", Subject: "okta|00u-ada", Name: "Ada"})
+	w := projects.Writer{By: "root", Govern: true}
+	for _, in := range []platform.ProjectInput{
+		{Name: "Field", Title: "Field engineering", Members: []projects.Entry{{Who: projects.Everyone, Role: projects.Viewer}, {Who: "okta|00u-ada", Role: projects.Member}}},
+		{Name: "Ops", Members: []projects.Entry{{Who: projects.Everyone, Role: projects.Member}}},
+		{Name: "Globex", Kind: projects.Account, Members: []projects.Entry{{Who: "okta|00u-ada", Role: projects.Owner}}},
+	} {
+		if _, err := f.p.CreateProject(t.Context(), "acme", w, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	projectsOf := func(tok string) []any {
+		t.Helper()
+		out := want(t, f, tok, "GET", "/api/people", "", http.StatusOK)
+		for _, p := range out["people"].([]any) {
+			if person := p.(map[string]any); person["handle"] == "ada" {
+				got, _ := person["projects"].([]any)
+				return got
+			}
+		}
+		t.Fatalf("Ada is not in the directory: %v", out)
+		return nil
+	}
+	reader := f.machine(t, "acme", "warp:people:read", "warp:projects:read")
+	got := projectsOf(reader)
+	if out := want(t, f, reader, "GET", "/api/people", "", http.StatusOK); strings.Contains(fmt.Sprint(out), "projects_more") {
+		t.Fatalf("a hidden project is counted: %v", out)
+	}
+	if len(got) != 1 || got[0].(map[string]any)["name"] != "Field" || got[0].(map[string]any)["title"] != "Field engineering" || got[0].(map[string]any)["role"] != "member" {
+		t.Fatalf("a reader outside Globex reads Ada's projects as %v, want Field alone", got)
+	}
+	governs := f.machine(t, "acme", "warp:people:read", "warp:projects:read", "warp:projects:govern")
+	if got := projectsOf(governs); len(got) != 2 || got[1].(map[string]any)["name"] != "Globex" || got[1].(map[string]any)["role"] != "owner" {
+		t.Fatalf("projects:govern reads Ada's projects as %v", got)
+	}
+	if got := projectsOf(f.machine(t, "acme", "warp:people:read")); len(got) != 0 {
+		t.Fatalf("a reader without projects:read reads Ada's projects as %v", got)
+	}
+}
+
+// A person in the directory lists at most MaxPersonProjects projects, and
+// counts the rest the reader may see.
+func TestADirectoryPersonsProjectsAreBounded(t *testing.T) {
+	f := newFixture(t)
+	f.p.SeePerson(auth.Principal{Kind: auth.User, Tenant: "acme", Subject: "okta|00u-ada", Name: "Ada"})
+	w := projects.Writer{By: "root", Govern: true}
+	for i := range MaxPersonProjects + 3 {
+		in := platform.ProjectInput{Name: fmt.Sprintf("P%02d", i), Members: []projects.Entry{{Who: projects.Everyone, Role: projects.Viewer}, {Who: "okta|00u-ada", Role: projects.Member}}}
+		if _, err := f.p.CreateProject(t.Context(), "acme", w, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := want(t, f, f.machine(t, "acme", "warp:people:read", "warp:projects:read"), "GET", "/api/people", "", http.StatusOK)
+	ada := out["people"].([]any)[0].(map[string]any)
+	if n := len(ada["projects"].([]any)); n != MaxPersonProjects || ada["projects_more"] != float64(3) {
+		t.Fatalf("Ada lists %d projects and %v more", n, ada["projects_more"])
 	}
 }

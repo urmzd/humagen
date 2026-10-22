@@ -938,6 +938,11 @@ export const defaultCopy = {
           ? `This question is for @${handle}.`
           : "This question is for the person this run acts for.",
       answerers: (agent: string) => `This question is for the people who answer for ${agent}.`,
+      /** A question for the experts where there are none goes to the owners of the nearest project that names any. project is absent when the reader may not see it, or it is the workspace. */
+      owners: (project: string) =>
+        project
+          ? `This question is for the owners of ${project}.`
+          : "This question is for the owners who answer for this project.",
       anyone: "You can read this question, but you can't answer it.",
       nobody: "Nobody can answer this question, because the rules of its run can't be read.",
     },

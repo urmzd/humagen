@@ -80,6 +80,25 @@ changes none. A policy file written before projects had their own permissions
 adds `projects` to the rule that lets operators write runs, as above, or only
 admins make projects.
 
+### Upgrading from before projects had their own permissions
+
+Project routes moved from `runs:*` to `projects:*`. A policy file written
+before then takes this one-line change, or only admins make projects:
+
+```diff
+ role operator extends viewer {
+-  allow write on runs, schedules, alerts, evals, artifacts
++  allow write on runs, schedules, alerts, evals, artifacts, projects
+ }
+```
+
+People are unaffected under the built-in policy, whose viewer reads `*`. A
+machine gets exactly the scopes on its token, so one with explicit scopes
+(the Slack app, CI) needs `warp:projects:read` to list projects.
+`warp config check` warns of a Slack app whose `warp_client` holds
+`warp:runs:read` but not `warp:projects:read`, the one machine a spec
+configures; a CI token's scopes are the identity provider's to check.
+
 ## Project roles
 
 A project role narrows what a permission allows; it never grants one. Every

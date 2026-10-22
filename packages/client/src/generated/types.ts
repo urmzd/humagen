@@ -247,10 +247,19 @@ export type RunStatus = "accepted" | "running" | "parked" | "completed" | "faile
 /** How one agent calls another. A subagent is attached to its caller. A handoff or a delegate is independent. */
 export type CallMode = "subagent" | "handoff" | "delegate";
 
-/** Feedback metadata only. The referenced run owns the prompt, answer and conversation links. */
+/** Feedback metadata only. The referenced run owns the prompt, answer and
+conversation links. A rater is named as the platform calls them, by
+handle and by name, never by the subject they sign in with, which may
+hold an address.
+ */
 export interface RunFeedback {
   run: string;
-  subject: string;
+  /** The rater's handle, else their subject when it holds no address (a machine's), else "". */
+  by: string;
+  /** What the rater is called, their name, else their handle, else their subject when it holds no address, else "someone". Never an address. */
+  by_name: string;
+  /** Whether this is the rating of the person asking. */
+  mine: boolean;
   rating: "up" | "down";
   reason?: string;
   comment?: string;
@@ -592,18 +601,26 @@ whom it is for: `anyone` who may resume runs, one `person` (the
 person the run acts for, by handle, when an answer may reach their
 own credential), the `experts` on `topic` in the run's project (every
 expert when `topic` is absent), the `answerers` its agent's rules
-name or it asked, or `nobody`, when the rules cannot be read. It
-names nobody the reader may not see. The runtime still has the last
+name or it asked, the `owners` of the nearest project on the run's
+chain that names any, when it asked the experts and there are none
+(`owners_of` is what that project is called), or `nobody`, when the
+rules cannot be read. It names nobody, and no project, the reader may
+not see. The runtime still has the last
 word when an answer is given.
  */
 export interface ThreadAsk {
   /** The question's id, `question.id` on the run. */
   question: string;
   yours: boolean;
-  for: "anyone" | "person" | "experts" | "answerers" | "nobody";
+  for: "anyone" | "person" | "experts" | "answerers" | "owners" | "nobody";
   topic?: string;
   /** The handle of the person it is for, with `for` of `person`. */
   person?: string;
+  /** With `for` of `owners`, what the project whose owners it is for is
+called: its title, else its name. Absent for the workspace, and
+for a project the reader may not see.
+ */
+  owners_of?: string;
 }
 
 /** Who answers an untagged message in a place, and where that is set:
@@ -1347,6 +1364,24 @@ grants name. Absent when it holds an email address.
   picture: string | null;
   /** When they last signed in. Absent for someone who never has. */
   seen_at?: string;
+  /** Their own projects, in tree order: each project where an entry
+naming their subject, or a role they held when last seen, makes
+them a member or an owner, there or as an owner above. One reached
+only through everyone is not theirs. Only projects the reader may
+see are named, and none without `projects:read`. At most 20;
+absent when there are none.
+ */
+  projects?: PersonProject[];
+  /** How many more of their projects the reader may see than are listed. Absent when none. */
+  projects_more?: number;
+}
+
+/** One of a person's own projects. */
+export interface PersonProject {
+  name: string;
+  title?: string;
+  /** Their role there. */
+  role: "member" | "owner";
 }
 
 /** Workspace settings. The workspace default agent, which answers a
