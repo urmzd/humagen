@@ -31,9 +31,9 @@ Four rules hold for every field:
 2. **A secret is a reference, never a value.** A credential is written
    `{ref: env:NAME}`, `{ref: keychain:SERVICE/ACCOUNT}` or
    `{ref: op://VAULT/ITEM/FIELD}`, read when it is used and never stored. A bare
-   string where a secret belongs is refused. `env:HUMAGEN_X` and `env:WARP_X`
-   (the prefix before the rename) read one variable: `HUMAGEN_X` when it is set,
-   else `WARP_X` ([upgrading-from-warp.md](upgrading-from-warp.md#settings)).
+   string where a secret belongs is refused. `env:HUMAGEN_X` reads `HUMAGEN_X`,
+   else the old name `WARP_X`, and `env:WARP_X` (the old prefix) reads the same
+   variable ([upgrading-from-warp.md](upgrading-from-warp.md#settings)).
 3. **Every replaceable part is a slot: `kind` plus a block named after it.**
    `kind: postgres` reads `postgres: {...}`. A program built on the `humagen` package
    registers more kinds (`humagen.WithKind`), and the file selects one by name
