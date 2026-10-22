@@ -16,6 +16,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/journal"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -244,12 +245,12 @@ func (s *Server) createRule(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !decode(w, r, &rule) {
 		return
 	}
-	if !s.ruleScopeExists(w, r, who, rule) {
+	if !s.ruleScopeExists(w, r, who, &rule) {
 		return
 	}
 	rule.CreatedBy, rule.CreatedAt = who.Subject, time.Now().UTC()
 	rule.UpdatedBy, rule.UpdatedAt = "", time.Time{}
-	if err := s.P.Alerts.AddRule(who.Tenant, rule); err != nil {
+	if err := s.filed(who.Tenant, rule.Project, func() error { return s.P.Alerts.AddRule(who.Tenant, rule) }); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -282,11 +283,16 @@ func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, who auth.Pri
 		fail(w, http.StatusBadRequest, "a rule's name cannot change; delete it and create another")
 		return
 	}
-	if !s.ruleScopeExists(w, r, who, rule) {
+	if !s.ruleScopeExists(w, r, who, &rule) {
 		return
 	}
 	rule.UpdatedBy, rule.UpdatedAt = who.Subject, time.Now().UTC()
-	stored, err := s.P.Alerts.ReplaceRule(who.Tenant, rule)
+	var stored alerts.Rule
+	err := s.filed(who.Tenant, rule.Project, func() error {
+		var err error
+		stored, err = s.P.Alerts.ReplaceRule(who.Tenant, rule)
+		return err
+	})
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -295,8 +301,11 @@ func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 // ruleScopeExists checks that the agent and the project a rule is scoped to
-// exist in the caller's tenant now, and answers 404 when one does not.
-func (s *Server) ruleScopeExists(w http.ResponseWriter, r *http.Request, who auth.Principal, rule alerts.Rule) bool {
+// exist in the caller's tenant now, and answers 404 when one does not. A rule
+// on "~", the workspace, watches no one project, as one with no project does,
+// so it is stored with none.
+func (s *Server) ruleScopeExists(w http.ResponseWriter, r *http.Request, who auth.Principal, rule *alerts.Rule) bool {
+	rule.Project = projects.NameOf(rule.Project)
 	if rule.Agent != "" {
 		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, rule.Agent, 0); err != nil {
 			s.problem(w, err)

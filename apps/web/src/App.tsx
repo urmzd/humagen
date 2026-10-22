@@ -129,7 +129,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // counter that tells the page to look again, and a message to open first.
   const [inboxCounts, setInboxCounts] = useState({ open: 0, unread: 0 });
   const [inboxTick, setInboxTick] = useState(0);
-  const [projects, setProjects] = useState<ProjectView[]>([]);
+  // The project tree, null until it is read, and the workspace's own view, which heads it.
+  const [projects, setProjects] = useState<ProjectView[] | null>(null);
+  const [root, setRoot] = useState<ProjectView | null>(null);
   const [open, setOpen] = useState(() => stored(SIDEBAR_KEY, window.innerWidth >= 768));
   const [runs, setRuns] = useState<Run[]>([]);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
@@ -192,7 +194,12 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     if (can("alerts:read")) api.alerts().then(setAlerts).catch(() => {});
   }, [can]);
   const loadProjects = useCallback(() => {
-    if (can("runs:read")) api.projects().then(setProjects).catch(() => {});
+    if (!can("projects:read")) return;
+    api.projects().then(setProjects).catch(() => setProjects((was) => was ?? []));
+    api
+      .project("")
+      .then((d) => setRoot(d.project))
+      .catch(() => {});
   }, [can]);
   const loadSources = useCallback(() => {
     if (can("knowledge:read")) api.sources().then(setSources).catch(() => {});
@@ -286,7 +293,10 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   };
   // A new conversation is home: the same empty composer, at the bare address.
   const newChat = (inProject?: string) => go({ page: "new", project: inProject });
-  const openProject = (name: string) => go({ page: "project", name });
+  // "~" is how an address or a message names the workspace, which is the project "".
+  const openProject = (name: string) => go({ page: "project", name: name === "~" ? "" : name, tab: "overview" });
+  const projectNames = useMemo(() => (projects ?? []).map((p) => p.name), [projects]);
+  const workspaceName = workspace?.workspace_name || me.principal.tenant;
   const openAgent = (name: string | null, tab: AgentTab = "prompt") => go({ page: "agent", name, tab });
   const openSettings = (section: SettingsSection) => go({ page: "settings", section });
   // Pinning shows at once and is saved with the person's preferences. If the
@@ -341,14 +351,13 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             tick={tick}
             agents={agents}
             settings={workspace}
+            projects={can("projects:read") ? projects : []}
             canRun={can("runs:write")}
+            canCreateProject={can("projects:write")}
             greeting={greeting(shownName)}
             onProjectCreated={(project) => {
-              setWorkspace((current) =>
-                current ? { ...current, projects: [...current.projects.filter((p) => p.name !== project.name), project] } : current,
-              );
+              setProjects((current) => [...(current ?? []).filter((p) => p.name !== project.name), project]);
               loadProjects();
-              loadAgents();
             }}
             onThread={(id) => go({ page: "task", id }, { replace: route.page === "new" })}
             onChanged={loadRuns}
@@ -357,52 +366,52 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         {route.page === "projects" && (
           <ProjectsPage
             projects={projects}
-            canCreate={can("runs:write")}
+            root={root}
+            workspaceName={workspaceName}
+            q={route.q ?? ""}
+            kind={route.kind}
+            onFilter={(q, kind) => go({ page: "projects", q: q || undefined, kind }, { replace: true })}
+            canCreate={can("projects:write")}
+            canGovern={can("projects:govern")}
             onOpen={openProject}
-            onCreated={(name) => {
+            onCreated={(project) => {
               loadProjects();
-              loadAgents();
-              openProject(name);
+              openProject(project.name);
             }}
           />
         )}
-        {route.page === "project" &&
-          (() => {
-            const current = projects.find((p) => p.name === route.name);
-            return current ? (
-              <ProjectPage
-                key={current.name}
-                project={current}
-                threads={threads}
-                schedules={schedules}
-                agents={agents}
-                canWrite={can("runs:write")}
-                canSchedule={can("schedules:write")}
-                canLimit={can("billing:write")}
-                tick={tick}
-                onBack={() => go({ page: "projects" })}
-                onNewChat={() => newChat(current.name)}
-                onOpenThread={openThread}
-                onChanged={() => {
-                  loadProjects();
-                  loadInbox();
-                }}
-                onSchedulesChanged={loadSchedules}
-                onDeleted={() => {
-                  loadProjects();
-                  loadAgents();
-                  go({ page: "projects" }, { replace: true });
-                }}
-              />
-            ) : (
-              <Missing what="project" name={route.name} onBack={() => go({ page: "projects" })} />
-            );
-          })()}
+        {route.page === "project" && (
+          <ProjectPage
+            key={route.name}
+            name={route.name}
+            tab={route.tab}
+            onTab={(tab) => go({ page: "project", name: route.name, tab }, { replace: true })}
+            workspaceName={workspaceName}
+            projects={projects ?? []}
+            schedules={schedules}
+            agents={agents}
+            can={can}
+            tick={tick}
+            onOpen={openProject}
+            onOpenAll={() => go({ page: "projects" })}
+            onNewChat={() => newChat(route.name || undefined)}
+            onOpenThread={openThread}
+            onChanged={() => {
+              loadProjects();
+              loadInbox();
+            }}
+            onSchedulesChanged={loadSchedules}
+            onDeleted={() => {
+              loadProjects();
+              go({ page: "projects" }, { replace: true });
+            }}
+          />
+        )}
         {route.page === "schedules" && (
           <Schedules
             schedules={schedules}
             agents={agents}
-            projects={projects.map((p) => p.name)}
+            projects={projectNames}
             selected={route.name ?? null}
             onSelect={(name) => go({ page: "schedules", name: name ?? undefined })}
             canWrite={can("schedules:write")}
@@ -418,7 +427,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             alerts={alerts}
             rules={rules}
             agents={agents}
-            projects={projects.map((p) => p.name)}
+            projects={projectNames}
             canWrite={can("alerts:write")}
             canAnalytics={can("runs:read")}
             tick={tick}
@@ -494,7 +503,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               suites={suites}
               rules={rules}
               alerts={alerts}
-              projects={projects.map((p) => p.name)}
+              projects={projectNames}
               stats={route.name ? stats.get(route.name) : undefined}
               baseline={workspace?.baseline ?? ""}
               canWrite={can("agents:write")}
@@ -523,7 +532,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
           <Storage
             signal={tick}
             agents={agents.map((a) => a.spec.name)}
-            projects={projects.map((p) => p.name)}
+            projects={projectNames}
             canDelete={can("artifacts:write")}
             onOpenRun={openRun}
             onOpenThread={openThread}
@@ -544,6 +553,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onExplain={(permission) => go({ page: "settings", section: "access", permission }, { replace: true })}
             onPrefs={setPrefs}
             onWorkspace={setWorkspace}
+            projects={projectNames}
+            onOpenProjects={() => go({ page: "projects" })}
+            onOpenWorkspace={() => openProject("")}
           />
         )}
       </main>

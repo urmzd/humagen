@@ -213,22 +213,31 @@ func (s *Store) List(tenantName string) []Policy {
 	return out
 }
 
-// For returns the policies a run falls under, most specific first: its agent's,
-// the client's that raised it, its project's, then the tenant's. An empty name
-// means the run has no such scope.
-func (s *Store) For(tenantName, project, agent, client string) []Policy {
+// For returns the policies a run falls under, most specific first: its
+// agent's, the client's that raised it, then its project's and each of the
+// project's ancestors' nearest first, then the tenant's. chain is the project
+// and its ancestors, nearest first, the root's "" left out or skipped. An empty
+// agent or client means the run has no such scope. Decide applies them all,
+// so the strictest wins, and a project's limit holds everything below it.
+func (s *Store) For(tenantName string, chain []string, agent, client string) []Policy {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	t, ok := s.tenants[tenantName]
 	if !ok {
 		return nil
 	}
+	want := make([]Scope, 0, len(chain)+3)
+	want = append(want, Scope{Agent, agent}, Scope{Client, client})
+	for _, project := range chain {
+		want = append(want, Scope{Project, project})
+	}
+	want = append(want, Scope{Kind: Tenant})
 	var out []Policy
-	for _, want := range []Scope{{Agent, agent}, {Client, client}, {Project, project}, {Kind: Tenant}} {
-		if want.Kind != Tenant && want.Name == "" {
+	for _, w := range want {
+		if w.Kind != Tenant && w.Name == "" {
 			continue
 		}
-		if i := slices.IndexFunc(t.policies, func(x Policy) bool { return x.Scope == want }); i >= 0 {
+		if i := slices.IndexFunc(t.policies, func(x Policy) bool { return x.Scope == w }); i >= 0 {
 			out = append(out, t.policies[i])
 		}
 	}

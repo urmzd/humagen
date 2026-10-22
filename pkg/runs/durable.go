@@ -78,6 +78,7 @@ func Open(st state.Store) (*Index, error) {
 		r.tag, r.requesters, r.final, r.closed, r.settledUp = s.Tag, s.Requesters, s.Final, s.Closed, s.SettledUp
 		x.runs[r.ID] = &r
 		x.order = append(x.order, r.ID)
+		x.count(&r)
 		p.seqs[r.ID] = s.Seq
 		p.seq = max(p.seq, s.Seq)
 	}

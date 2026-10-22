@@ -30,13 +30,17 @@ func (e *Denied) Error() string { return "platform: " + e.Decision.Reason }
 // Every run passes through here, whatever raised it: a person, a schedule, an
 // eval, or another agent. Only the platform's own housekeeping is exempt, since
 // refusing it would leave a conversation unnamed for a reason nobody chose.
-func (p *Platform) admit(tag envelope.Tag, edge call.Edge, project, client string) error {
+//
+// A run counts toward its project and every ancestor it is within, and is
+// refused by the strictest of their limits, so nothing below a project escapes
+// the project's limit.
+func (p *Platform) admit(tag envelope.Tag, edge call.Edge, project string, within []string, client string) error {
 	if tag.Origin == runs.OriginSystem {
 		return nil
 	}
 	now := p.now()
-	d := policy.Decide(p.applied(tag.Tenant, project, tag.Agent, client, now), policy.Request{Lease: edge.Lease})
-	entry := usage.Entry{Tenant: tag.Tenant, Project: project, Agent: tag.Agent, Client: client, RunID: runtime.RunID(tag.Tenant, tag.ID), At: now}
+	d := policy.Decide(p.applied(tag.Tenant, chainOf(project, within), tag.Agent, client, now), policy.Request{Lease: edge.Lease})
+	entry := usage.Entry{Tenant: tag.Tenant, Project: project, Within: within, Agent: tag.Agent, Client: client, RunID: runtime.RunID(tag.Tenant, tag.ID), At: now}
 	if d.Policy != nil {
 		entry.Scope, entry.Version, entry.Limit, entry.Reason = &d.Policy.Scope, d.Policy.Version, d.Limit, d.Reason
 	}
@@ -72,27 +76,48 @@ func (p *Platform) appendUsage(e usage.Entry) {
 }
 
 // applied is every policy a run in this place falls under, most specific
-// first, with what its scope has used in the policy's current period.
-func (p *Platform) applied(tenant, project, agent, client string, now time.Time) []policy.Applied {
+// first, with what its scope has used in the policy's current period. chain is
+// the run's project and the ancestors it is within, nearest first.
+func (p *Platform) applied(tenant string, chain []string, agent, client string, now time.Time) []policy.Applied {
 	var out []policy.Applied
-	for _, pol := range p.Policies.For(tenant, project, agent, client) {
+	for _, pol := range p.Policies.For(tenant, chain, agent, client) {
 		since := policy.PeriodStart(pol.Period, now)
 		out = append(out, policy.Applied{Policy: pol, Usage: p.Usage.Usage(tenant, pol.Scope, since)})
 	}
 	return out
 }
 
-// placeOf is the project a run is filed under and the external client that
-// raised it. A run called by an agent has its root's of both, so a tree counts
-// against the limits of whatever started it.
-func (p *Platform) placeOf(tag envelope.Tag, edge call.Edge) (project, client string) {
+// placeOf is the project a run is filed under, the ancestors of that project
+// it counts toward, and the external client that raised it. A run called by an
+// agent has its root's of all three, pinned when the root was admitted, so a
+// tree counts against the limits of whatever started it. Otherwise the
+// ancestors are read from the tree now, and pinned with the run.
+//
+// A project the tree no longer holds has no ancestors to read, so a run filed
+// there would count toward none of the limits it was under: it fails closed
+// with ErrProjectDeleted. That covers the next turn of a conversation whose
+// project was deleted, and a turn racing the delete of its project.
+func (p *Platform) placeOf(tag envelope.Tag, edge call.Edge) (project string, within []string, client string, err error) {
 	project, client = runs.ProjectOf(tag), runs.ClientOf(tag)
 	if edge.Parent != "" {
 		if root, err := p.Runs.Get(tag.Tenant, runtime.RunID(tag.Tenant, edge.Root)); err == nil {
-			project, client = root.Project, root.Client
+			return root.Project, root.Within, root.Client, nil
 		}
 	}
-	return project, client
+	tree := p.Projects.Tree(tag.Tenant)
+	if !tree.Has(project) {
+		return "", nil, "", projectDeleted(project)
+	}
+	return project, tree.Ancestors(project), client, nil
+}
+
+// chainOf is a run's project followed by the ancestors it is within, nearest
+// first: the project scopes whose limits it falls under.
+func chainOf(project string, within []string) []string {
+	if project == "" {
+		return nil
+	}
+	return append([]string{project}, within...)
 }
 
 // limitOf is the number a policy sets for one of its limits.

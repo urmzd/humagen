@@ -124,8 +124,17 @@ spec:
   workspace:                # a field left out is left to the console
     baseline: lead
     history: {mode: recent, limit: 8000}
-    projects:
+    instructions: Acme sells warehouse robots. Answer plainly.   # the workspace's own, sent first
+    projects:               # merged into the tree at every start, parents first
       - {name: Launch, description: Everything for the Q4 launch}
+      - name: Field
+        title: Field engineering
+        kind: team          # company | team | account. Left out: team
+        instructions: Customer accounts. Never promise dates.
+      - name: Globex
+        parent: Field       # a project in this file. Left out: the top level
+        kind: account
+        account: {customer: Globex Inc, external_id: "sf:0015g00000ABC", url: "https://crm.example.com/globex"}
 
   models:                   # each a slot: anthropic | openai | ollama
     - name: anthropic       # what an agent names as its provider
@@ -191,6 +200,14 @@ builds on:
   the file declares lasts until the next start.
 - **Workspace** fields that are set are applied; fields left out stay as the
   console left them.
+- **Projects** in the file are created, or taken over when the console made
+  one by that name, parents first, and are managed by the file. A field the
+  file sets is the file's, and the console cannot change it (409); a field
+  it leaves out stays the console's. `workspace.instructions` are the
+  workspace's own in the same way. An unchanged entry makes no new version.
+  A project made in the console survives every start, and one that leaves
+  the file stays, no longer managed, so it can be changed or deleted in the
+  console again.
 - **Models and tools** exist only while the file declares them. A tool's
   pinned schemas are its acceptance; anything else stays pending.
 - **GitHub** is a client managed by the file, read-only in the API.
@@ -224,6 +241,34 @@ start whose `-auth` flag needs one the file does not give.
 Model names are shared across the workspaces in one process: two workspaces
 may declare the same model, but not two different ones under one name.
 
+### Projects
+
+The workspace is the root of a tree of projects, written `~` in the
+console's addresses. Each entry of `workspace.projects` is one project:
+
+| Field | Left out | Rule |
+|-------|----------|------|
+| `name` | required | the identity, never changed: letters, digits, spaces, dashes and underscores, starting with a letter or digit, at most 63, unique ignoring case |
+| `title` | the name | what people see: one line, at most 80 characters |
+| `description` | none | at most 500 characters |
+| `kind` | `team` | `company`, `team` or `account`. A company project sits under the workspace or another company project, and there are at most 10. An account never sits under another account |
+| `parent` | the workspace | another project in this file (`~` is the workspace), at most 4 levels below the workspace |
+| `account` | none | `{customer, external_id, url}`, on an account project only. `url` is https |
+| `instructions` | none | at most 4,000 characters, sent to every agent answering here and below |
+
+`workspace.instructions`, at most 4,000 characters, are sent first, then each
+project's down to the one a conversation is filed in. A later one wins, and a
+turn is sent at most 8,000 characters of them: the farthest are left out
+first, and the turn says which.
+
+`warp config check` refuses a mistake with its path, such as
+`workspace.projects[2].parent: "Feild" is not a project in this file`. A
+parent must be in the same file, because one made only in the console cannot
+be checked before start. A workspace has at most 100 projects, and the start
+checks the file again against the projects the console made. A project's kind
+and parent are fixed when it is created, so a file that names another kind or
+parent for a project that already exists fails the start.
+
 ## Which level a knob lives at
 
 | Concern | Level | Why |
@@ -238,7 +283,8 @@ may declare the same model, but not two different ones under one name.
 | MCP tools and pinned schemas | Platform | what its agents may touch |
 | Agents | Platform | the workspace's own |
 | Slack and GitHub | Platform | its identity on a surface |
-| Baseline, history, projects | Platform | how it behaves |
+| Baseline, history | Platform | how it behaves |
+| Project tree, kinds and instructions | Platform | the workspace's own |
 | Spend and run limits | Platform, in the console | versioned, scoped policies (`pkg/policy`) |
 
 ## Deploying it

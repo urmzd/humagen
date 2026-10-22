@@ -360,6 +360,105 @@ export const defaultCopy = {
       role ? `Signed in as ${name}, ${role}.` : `Signed in as ${name}, with no role yet.`,
     openConsole: (url: string) => `[Open the console](${url}) for runs, schedules and access.`,
   },
+  /** The project tree: its kinds, where a project sits, and what a person does with one. */
+  projects: {
+    title: "Projects",
+    lede: "Where work belongs. A project's instructions, notes and limits reach everything below it.",
+    /** A kind in words, on a row and in a project's meta line. */
+    kind: { company: "Company-wide", team: "Team", account: "Account" } as Record<string, string>,
+    /** The Projects page's groups, in the order they are shown. */
+    group: { company: "Company-wide", team: "Teams", account: "Accounts" } as Record<
+      string,
+      string
+    >,
+    anyKind: "All",
+    kindFilter: "Kind",
+    search: "Search projects",
+    /** The workspace is the root of the tree. */
+    workspace: "The workspace",
+    workspaceHint: "Holds every project. Its instructions and notes reach every agent.",
+    /** Where a row sits when the row above it is not its parent: "in Field › Globex". */
+    within: (path: string[]) => `in ${path.join(" › ")}`,
+    empty: "No projects yet.",
+    emptyCreate: "No projects yet. Make one to keep related tasks together.",
+    noMatch: "No project matches.",
+    allProjects: "All projects",
+    missing: (name: string) => `No project named ${name}`,
+    missingHint: "It may have been deleted, or you may not be allowed to see it.",
+    breadcrumb: "Where this project sits",
+    newProject: "New Project",
+    newSubProject: "New Sub-project",
+    createProject: "Create Project",
+    creating: "Creating…",
+    editProject: "Edit Project",
+    deleteProject: "Delete Project",
+    saveChanges: "Save Changes",
+    saving: "Saving…",
+    cancel: "Cancel",
+    newTask: "New Task",
+    form: {
+      heading: "New project",
+      title: "Title",
+      titleHint: "What people see. It can change.",
+      name: "Name",
+      nameHint: "Can't change later. Letters, digits, spaces, dashes and underscores.",
+      kind: "Kind",
+      parent: "Inside",
+      topLevel: "Top level",
+      description: "Description (optional)",
+      customer: "Customer (optional)",
+      externalId: "Customer id elsewhere (optional)",
+      url: "Link to the customer's record (optional)",
+      governed: "Only those who govern projects make company-wide ones.",
+    },
+    count: {
+      running: (n: number) => `${n} running`,
+      review: (n: number) => `${n} to review`,
+      tasks: (n: number) => `${n} ${n === 1 ? "task" : "tasks"}`,
+      below: (n: number) => `${n} ${n === 1 ? "sub-project" : "sub-projects"}`,
+      active: (when: string) => `active ${when}`,
+    },
+    tab: { overview: "Overview", context: "Context" } as Record<string, string>,
+    tasks: "Tasks",
+    noTasks:
+      "Start a task here to keep its conversation, execution history and shared context in this project.",
+    includeBelow: "Include sub-projects",
+    includeBelowHint: "Also list the tasks filed in the projects below this one.",
+    moreTasks: "See More",
+    subProjects: "Sub-projects",
+    noSubProjects: "Nothing sits below this project yet.",
+    deepest: "Projects go at most four levels deep, so nothing can sit below this one.",
+    limits: "Limits",
+    /** A limit set higher up the tree that also holds this project: "Field's limit also applies here". */
+    limitAbove: (title: string) => `${title}'s limit also applies here`,
+    workspaceLimit: "The workspace's limit also applies here",
+    managed: "The platform file declares this project. Fields it sets can't be changed here.",
+    governed: "Only those who govern projects change the workspace and company-wide projects.",
+    stale: "Someone changed this project since you opened it. Its latest version is shown now.",
+    failed: {
+      create: "The project could not be created. Try again.",
+      save: "The project could not be saved. Try again.",
+      delete: "The project could not be deleted.",
+    },
+    context: {
+      instructions: "Instructions",
+      instructionsHint:
+        "Sent to every agent answering here and below, after the instructions of the projects above. An agent's own instructions win over these.",
+      none: "No instructions.",
+      save: "Save Instructions",
+      saved: "Saved",
+      inherited: "From above",
+      inheritedHint:
+        "What a turn here is also sent, read only. Change it on the project it comes from.",
+      /** One project above, by its title: "From Field". */
+      from: (title: string) => `From ${title}`,
+      nothingAbove: "Nothing above this project sends anything yet.",
+      notes: "Notes",
+      noNotes: "No notes.",
+      order:
+        "A turn here is sent the workspace's instructions first, then each project's down to this one, then this project's notes, then the notes above it, nearest first, and then the agent's own.",
+    },
+  },
 };
 
 export type Copy = typeof defaultCopy;

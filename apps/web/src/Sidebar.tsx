@@ -273,7 +273,7 @@ export function Sidebar({
     { to: { page: "new" }, label: "New", icon: <ComposeIcon />, show: can("runs:write"), active: here("new") },
     // What fired, what waits for a person and what agents published all arrive here, so it comes first.
     { to: { page: "inbox" }, label: "Inbox", icon: <InboxIcon />, show: can("runs:read"), active: here("inbox"), badge: inboxCount },
-    { to: { page: "projects" }, label: "Projects", icon: <FolderIcon />, show: can("runs:read"), active: here("projects", "project") },
+    { to: { page: "projects" }, label: "Projects", icon: <FolderIcon />, show: can("projects:read"), active: here("projects", "project") },
     { to: { page: "schedules" }, label: "Schedules", icon: <ClockIcon />, show: can("schedules:read"), active: here("schedules") },
     {
       to: { page: "monitor", tab: "overview" },

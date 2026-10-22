@@ -2,12 +2,14 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // Billing policies are a workspace's limits. Anyone in the workspace can read
@@ -25,10 +27,14 @@ func (s *Server) listPolicies(w http.ResponseWriter, _ *http.Request, who auth.P
 	ok(w, http.StatusOK, map[string]any{"policies": s.P.Policies.List(who.Tenant)})
 }
 
-// exists checks that a scope names something in the caller's tenant.
+// exists checks that a scope names something in the caller's tenant. The
+// workspace's own limits are the tenant scope, never a project scope.
 func (s *Server) exists(r *http.Request, who auth.Principal, scope policy.Scope) error {
 	switch scope.Kind {
 	case policy.Project:
+		if projects.NameOf(scope.Name) == projects.Root {
+			return fmt.Errorf("%w: the workspace's own limits are the tenant scope", policy.ErrInvalid)
+		}
 		if !s.P.HasProject(who.Tenant, scope.Name) {
 			return platform.ErrProjectNotFound
 		}
@@ -67,11 +73,23 @@ func (s *Server) putPolicy(w http.ResponseWriter, r *http.Request, who auth.Prin
 	if body.Action == "" {
 		body.Action = policy.Block
 	}
-	saved, err := s.P.Policies.Put(who.Tenant, policy.Policy{
-		Scope: body.Scope, Period: body.Period, MaxRuns: body.MaxRuns, MaxConcurrent: body.MaxConcurrent,
-		SpendLimit: body.SpendLimit, MaxLease: body.MaxLease, MaxStorage: body.MaxStorage, MaxTokens: body.MaxTokens,
-		MaxClients: body.MaxClients, MaxClientsPerSurface: body.MaxPerSurface, WarnAt: body.WarnAt, Action: body.Action,
-	}, who.Subject, time.Now())
+	// A project's limit is written while the project is held, so a delete
+	// that checks for its limits cannot miss this one. It holds every
+	// project below it too, which admission reads along the tree.
+	project := ""
+	if body.Scope.Kind == policy.Project {
+		project = body.Scope.Name
+	}
+	var saved policy.Policy
+	err := s.filed(who.Tenant, project, func() error {
+		var err error
+		saved, err = s.P.Policies.Put(who.Tenant, policy.Policy{
+			Scope: body.Scope, Period: body.Period, MaxRuns: body.MaxRuns, MaxConcurrent: body.MaxConcurrent,
+			SpendLimit: body.SpendLimit, MaxLease: body.MaxLease, MaxStorage: body.MaxStorage, MaxTokens: body.MaxTokens,
+			MaxClients: body.MaxClients, MaxClientsPerSurface: body.MaxPerSurface, WarnAt: body.WarnAt, Action: body.Action,
+		}, who.Subject, time.Now())
+		return err
+	})
 	if err != nil {
 		s.problem(w, err)
 		return
