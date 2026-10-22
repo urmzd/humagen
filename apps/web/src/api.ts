@@ -8,6 +8,7 @@ import type {
   ProjectDetail,
   ProjectEntry,
   ProjectInput,
+  ProjectKnowledge,
   ProjectLimitInput,
   ProjectMembers,
   ProjectUpdate,
@@ -38,6 +39,8 @@ export type {
   ProjectInput,
   ProjectKind,
   ProjectKindSpec,
+  ProjectKnowledge,
+  ProjectKnowledgeSource,
   ProjectLimit,
   ProjectLimitInput,
   ProjectMember,
@@ -1189,6 +1192,11 @@ export const coworking = {
   experts: (project: string) => call<{ version: number; experts: ProjectExpert[] }>("GET", `${projectAt(project)}/experts`),
   setExperts: (project: string, version: number, experts: ProjectExpert[]) =>
     call<{ version: number; experts: ProjectExpert[] }>("PUT", `${projectAt(project)}/experts`, { version, experts }),
+  /** The knowledge sources a project names, and what a run filed in it is grounded in. */
+  knowledge: (project: string) => call<ProjectKnowledge>("GET", `${projectAt(project)}/knowledge`),
+  /** Replaces the sources a project names, as a whole, from the version read. */
+  setKnowledge: (project: string, version: number, knowledge: string[]) =>
+    call<ProjectKnowledge>("PUT", `${projectAt(project)}/knowledge`, { version, knowledge }),
   /** One page of a channel's threads, most recently active first. */
   threads: (project: string, channel: string, before?: string) => {
     const q = new URLSearchParams({ project: project === "" ? "~" : project, channel, limit: "30" });

@@ -886,6 +886,30 @@ export const defaultCopy = {
       order:
         "A turn here is sent the workspace's instructions first, then each project's down to this one, then this project's notes, then the notes above it, nearest first, and then the agent's own.",
     },
+    /** A project's knowledge sources, on its Context tab. */
+    knowledge: {
+      heading: "Knowledge",
+      hint: "Workspace sources every run filed here or below is grounded in, besides its agent's own. At most 8.",
+      none: "This project names no sources.",
+      add: "Add Source",
+      /** Shown once 8 are named. */
+      full: "That's 8, the most a project names. Remove one to add another.",
+      save: "Save Knowledge",
+      saved: "Saved",
+      given: "What runs here are grounded in",
+      givenHint:
+        "This project's sources, then each project's above it, nearest first, each once. Read only. Change a source on the project it comes from.",
+      noneGiven: "No project here or above names a source.",
+      fromHere: "From this project",
+      fromWorkspace: "From the workspace",
+      /** A project above, by its title: "From Field engineering". */
+      from: (title: string) => `From ${title}`,
+      managed: "The platform file sets these sources. They can't be changed here.",
+      stale:
+        "Someone changed this project since you opened it. Its latest sources are shown now. Make your change again.",
+      failed: "The sources could not be saved.",
+      readFailed: "The sources could not be read.",
+    },
   },
   /** Channels and shared threads: where people and agents work together in a project. */
   threads: {

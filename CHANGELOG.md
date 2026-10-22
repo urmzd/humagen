@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.19.0 (2026-10-22)
+
+### Features
+
+- **projects**: edit a project's knowledge in the console, guard source deletes, keep source names from the model (#49) ([7509a18](https://github.com/urmzd/warp/commit/7509a1837e894c21645eb67ea26ab1c51e5cbbcc))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.18.0...v0.19.0)
+
+
 ## 0.18.0 (2026-10-22)
 
 ### Features
