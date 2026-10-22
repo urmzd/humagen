@@ -108,7 +108,9 @@ instruction in a prompt. A run is refused at admission when its agent is not
 available in the project it is filed in, whatever started it, and an agent
 that lives in a project is not available in the workspace itself or in any
 project outside its home's subtree. A message posted in the console runs
-only the agents it tags: untagged, it starts nothing, whatever default is set.
+only the agents it tags or, when it tags none, the agents its conversation
+has selected (the best fit, or all of them); with neither it starts nothing,
+whatever default is set.
 A message a client posts from Slack or GitHub that tags no agent goes to the
 default its place inherits, and with none nothing runs: nothing routes on its
 own. Setting the workspace default changes who answers everyone's untagged

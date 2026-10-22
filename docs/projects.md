@@ -33,8 +33,10 @@ Decisions:
    and the tenant, and is refused by the strictest. This lands in phase 1, with
    the first child project.
 4. **No implicit routing.** An agent answers when it is tagged (`@ignite`). In
-   the console that is the only way: an untagged message is a human message
-   and starts no run, whatever default is set. On Slack and GitHub, where
+   the console an untagged message is a human message and starts no run,
+   whatever default is set, unless the person picked agents for the
+   conversation in the + menu: then the best fit among them answers, or all
+   of them. On Slack and GitHub, where
    mentioning the app is what asks, an untagged message goes to the default
    the thread inherits, if one is set, else it starts no run. `@auto` is a built-in agent:
    today's `pkg/pick` and baseline behind an explicit name. The workspace
@@ -1522,14 +1524,15 @@ An unknown tab falls back to the default through `pick`. Names never hold
   Suggestions sit under the bar as quiet text until the person types; a
   pick writes its words and adds its agent as a chip, as a link with
   `?agent=` does. Then
-  two quiet lines from the shared
-  `HomeModel`: "Needs you · 2" (the inbox's `open`, which counts an agent's
-  draft waiting on its owners and never a posted announcement) and "What's
-  new" (up to 5 announcements from your projects, unread first, never an
-  unpublished draft), each linking to `/projects/{name}/inbox?message=` in
-  the project it was filed in. A project's inbox opens by id only a message
+  two titled boxes from the shared `HomeModel`: Needs you, with the inbox's
+  `open` as its count (an agent's draft waiting on its owners counts, a
+  posted announcement never does), its five newest items and Open Inbox; and
+  What's new (up to 5 announcements from your projects, unread first, never
+  an unpublished draft) with See All. Each row links to
+  `/projects/{name}/inbox?message=` in the project it was filed in, and a
+  new person with nothing in either sees one Welcome box. A project's inbox opens by id only a message
   filed in that project.
-- **Inbox.** Announcements sit under Updates with a megaphone template;
+- **Inbox.** Announcements sit under What's new with a megaphone template;
   drafts and mentions sit in Needs you. On a broadcast the header reads "Hide
   for Me", with "Hidden for you. Others still see it." and "Show for Me",
   which brings the reader's own copy back (`POST /api/inbox/{id}/unhide`;

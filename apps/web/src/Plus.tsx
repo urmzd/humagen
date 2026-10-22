@@ -1,6 +1,6 @@
 import { defaultCopy } from "@warp/components";
 import { CheckIcon, FileIcon, FolderIcon, MessageIcon, XIcon } from "@warp/render-web";
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { coworking, type ProjectKindSpec, type ProjectView } from "./api.ts";
 import { ProjectChoices } from "./ProjectPicker.tsx";
 import { above, titleOf } from "./projects.ts";
@@ -26,6 +26,18 @@ export interface Selection {
 /** The most agents a conversation selects, and the most that answer one message side by side (pkg/threads). */
 export const MAX_SELECTED = 5;
 export const MAX_ALL = 3;
+
+/**
+ * The selection with one more agent, as the platform takes it: at most
+ * MAX_SELECTED, and All of Them for MAX_ALL at most, past which the best
+ * fit answers. Null when the selection is full.
+ */
+export function withAgent(s: Selection, name: string): Selection | null {
+  if (s.agents.includes(name)) return s;
+  if (s.agents.length >= MAX_SELECTED) return null;
+  const agents = [...s.agents, name];
+  return { ...s, agents, mode: s.mode === "all" && agents.length > MAX_ALL ? "best_fit" : s.mode };
+}
 
 export const emptySelection: Selection = { agents: [], mode: "best_fit", project: null, channel: "general" };
 
@@ -79,6 +91,17 @@ export function PlusMenu({
 }) {
   const [query, setQuery] = useState("");
   const [choosing, setChoosing] = useState(false);
+  // Back from choosing a project, focus returns to the project's button, so
+  // the arrow keys and Escape keep working in the menu.
+  const projectButton = useRef<HTMLButtonElement>(null);
+  const chose = useRef(false);
+  useEffect(() => {
+    if (choosing) chose.current = true;
+    else if (chose.current) {
+      chose.current = false;
+      (projectButton.current?.disabled ? search.current : projectButton.current)?.focus();
+    }
+  }, [choosing]);
   const [channels, setChannels] = useState<string[] | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -121,11 +144,9 @@ export function PlusMenu({
 
   const full = selection.agents.length >= MAX_SELECTED;
   const toggle = (name: string) => {
-    const on = selection.agents.includes(name);
-    if (!on && full) return;
-    const agents = on ? selection.agents.filter((a) => a !== name) : [...selection.agents, name];
-    // All of Them answers at most three side by side: past that, the best fit does.
-    onChange({ ...selection, agents, mode: selection.mode === "all" && agents.length > MAX_ALL ? "best_fit" : selection.mode });
+    if (selection.agents.includes(name)) return onChange({ ...selection, agents: selection.agents.filter((a) => a !== name) });
+    const next = withAgent(selection, name);
+    if (next) onChange(next);
   };
 
   const q = query.trim().toLowerCase();
@@ -144,6 +165,11 @@ export function PlusMenu({
     const at = items.indexOf(document.activeElement as HTMLElement);
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
+      // Down from the search goes to the agents it narrows.
+      if (e.key === "ArrowDown" && document.activeElement === search.current) {
+        (panel.current?.querySelector<HTMLElement>('[data-plus-item="agent"]:not(:disabled)') ?? items[0])?.focus();
+        return;
+      }
       const next = e.key === "ArrowDown" ? (at + 1) % items.length : (at <= 0 ? items.length : at) - 1;
       items[next]?.focus();
       return;
@@ -240,6 +266,7 @@ export function PlusMenu({
               <p className="px-2.5 pt-1 text-aui-xs font-medium text-aui-muted">{words.project}</p>
               <button
                 type="button"
+                ref={projectButton}
                 data-plus-item="action"
                 className={row}
                 disabled={!!projectFixed}
@@ -304,6 +331,9 @@ export function SelectionChips({
   projectFixed?: boolean;
 }) {
   const { agents, mode, project, channel } = selection;
+  const why = useId();
+  // Why All of Them is not offered, said in words once it is pressed.
+  const [explained, setExplained] = useState(false);
   const p = project ? projects?.find((x) => x.name === project) : undefined;
   const where = project === null ? null : project === "" ? (workspace || words.projectless) : p ? titleOf(p) : project;
   const path = p ? above(p) : [];
@@ -332,20 +362,30 @@ export function SelectionChips({
         </li>
       )}
       {agents.length >= 2 && (
-        <li className="inline-flex items-center" role="group" aria-label={words.routing}>
-          {(["best_fit", "all"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              aria-pressed={mode === m}
-              disabled={m === "all" && agents.length > MAX_ALL}
-              title={m === "best_fit" ? words.bestFitHint : agents.length > MAX_ALL ? words.allMax(MAX_ALL) : words.allHint}
-              onClick={() => onChange({ ...selection, mode: m })}
-              className="rounded-aui px-1.5 py-1 text-aui-xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-fg aria-pressed:underline disabled:opacity-50"
-            >
-              {m === "best_fit" ? words.bestFit : words.all}
-            </button>
-          ))}
+        <li className="inline-flex flex-wrap items-center" role="group" aria-label={words.routing}>
+          {(["best_fit", "all"] as const).map((m) => {
+            // Past three agents, All of Them is not offered, and says why when pressed.
+            const off = m === "all" && agents.length > MAX_ALL;
+            return (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={mode === m}
+                aria-disabled={off || undefined}
+                aria-describedby={off ? why : undefined}
+                title={m === "best_fit" ? words.bestFitHint : off ? words.allMax(MAX_ALL) : words.allHint}
+                onClick={() => (off ? setExplained(true) : onChange({ ...selection, mode: m }))}
+                className="min-h-6 rounded-aui px-1.5 py-1 text-aui-xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-fg aria-pressed:underline aria-disabled:opacity-50"
+              >
+                {m === "best_fit" ? words.bestFit : words.all}
+              </button>
+            );
+          })}
+          {agents.length > MAX_ALL && (
+            <span id={why} role="status" className={explained ? "px-1.5 text-aui-xs text-aui-muted" : "sr-only"}>
+              {words.allMax(MAX_ALL)}
+            </span>
+          )}
         </li>
       )}
     </ul>

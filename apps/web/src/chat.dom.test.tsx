@@ -6,6 +6,7 @@ import type { Run } from "./adapter.ts";
 import type { ProjectAgentsView, Revision, ThreadPage } from "./api.ts";
 import { Chat } from "./Chat.tsx";
 import { globex } from "./projects.fixtures.ts";
+import { saidFor } from "./conflicts.ts";
 import { stubEventSource, stubFetch } from "./dom.ts";
 
 const at = "2026-10-01T09:00:00Z";
@@ -616,4 +617,50 @@ test("suggestions keep to one line, a phone showing the first two, so none is le
     rows.map((c) => c.includes("hidden") && c.includes("sm:block")),
     [false, false, true],
   );
+});
+
+test("a suggestion adds its agent as the + menu would: All of Them gives way past three, and a full selection says so", async () => {
+  const builtin = [agent("a1"), agent("a2"), agent("a3"), agent("a4"), agent("a5"), agent("warp-writer")];
+  openChat({ ...workspace(), available: { all: true, names: [] } }, { agents: builtin, startAgent: "a1" });
+  await waitFor(() => assert.deepEqual(chips(), ["a1"]));
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: chat.menu });
+  for (const n of ["a2", "a3"]) fireEvent.click(await within(menu).findByRole("checkbox", { name: new RegExp(`^${n}`) }));
+  fireEvent.keyDown(menu, { key: "Escape" });
+  fireEvent.click(screen.getByRole("button", { name: chat.all }));
+  fireEvent.click(within(await screen.findByRole("list", { name: chat.suggestions })).getByRole("button", { name: /Write a report/ }));
+  await waitFor(() => assert.deepEqual(chips().slice(0, 4), ["a1", "a2", "a3", "warp-writer"]));
+  assert.equal(screen.getByRole("button", { name: chat.bestFit }).getAttribute("aria-pressed"), "true");
+  // Five selected, a suggestion for another agent is refused in words.
+  fireEvent.click(screen.getByRole("button", { name: chat.removeAgent("warp-writer") }));
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  const full = await screen.findByRole("dialog", { name: chat.menu });
+  for (const n of ["a4", "a5"]) fireEvent.click(await within(full).findByRole("checkbox", { name: new RegExp(`^${n}`) }));
+  fireEvent.keyDown(full, { key: "Escape" });
+  assert.deepEqual(chips().slice(0, 5), ["a1", "a2", "a3", "a4", "a5"]);
+  // The suggestions come back once the box is empty again.
+  fireEvent.change(box(), { target: { value: "" } });
+  fireEvent.click(within(await screen.findByRole("list", { name: chat.suggestions })).getByRole("button", { name: /Write a report/ }));
+  assert.ok(await screen.findByText(chat.maxAgents(5)));
+  assert.ok(!chips().includes("warp-writer"));
+});
+
+test("Home's first message says what it did in the conversation it opens", async () => {
+  const { opened } = openChat(workspace("lead"));
+  net?.restore();
+  net = stubFetch({
+    "GET /api/projects/~/agents": () => workspace("lead"),
+    "POST /api/threads": (body) => ({
+      thread: { id: "th-00000000000000ad", project: "", channel: "general", visibility: "private", participants: [], version: 1, created_by: "ada", created_at: at, updated_at: at },
+      message: { id: "m-1", thread: "th-00000000000000ad", by: "ada", name: "Ada", text: (body as { text: string }).text, mentions: [], via: "console", at },
+      runs: [],
+      notified: [],
+      refused: [{ kind: "agent", name: "nobody", refused: "no agent is called nobody" }],
+      rule: "tagged",
+    }),
+  });
+  fireEvent.change(box(), { target: { value: "@nobody hello" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ad"]));
+  assert.equal(saidFor("th-00000000000000ad"), "@nobody: no agent is called nobody");
 });

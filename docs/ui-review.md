@@ -167,7 +167,7 @@ the model and ordering in `packages/core` (such as `HomeModel`,
 | Back link | Where the page sits: the list it came from | `Page`'s `back` | Navigation between siblings; use tabs |
 | Tabs | The parts of one thing, each with an address in `route.ts` | `Tabs` | Filters over one list; use chips |
 | Chips | Selections and attachments: a kind filter, a file to send, a tag on a row | `KindChips`, `Chip`, the composer's attachments | Actions, and one choice on its own (a lone pill reads as a stray control) |
-| Text controls under the composer | Project, agent and attachments under the chat bar, as text, never boxes | The composer (`Composer.tsx`) | Anywhere else |
+| Text controls under the composer | Choices under the chat bar, such as Best Fit or All of Them, as text, never boxes; the + menu's agents, project and channel, and attachments, are chips | The composer (`Composer.tsx`) | Anywhere else |
 | Count | How many there are, beside its label in a heading or a tab, never on its own and never a status color. Hidden at zero. Read as "Needs you, 3" | `Count`, `Section count`, `Tabs` | A count that is the content, such as a figure on Monitor; use `Stat` |
 | Empty | What a list or box says when it has nothing, in words, with what to do next | `Empty` on a page, a quiet line in a box | Hiding the section: an empty box says so, rather than vanishing |
 | Loading | A list being read, at the height it will have | `SkeletonRows`, or a still "Loading" line where something waits on a person | Spinners; anything that moves on Home or in the inbox |
@@ -210,7 +210,7 @@ the patterns above, with the layout checks below.
 | Every page on a phone | The sidebar button sat 8px from the edge, inside the gutter | It sits on the 16px gutter |
 | Settings on a phone | The section strip scrolled under both screen edges | The strip scrolls inside the gutter |
 | Inbox | The page had no h1: the mailbox's title was an h2, and the page was the one top-level screen without `Page` | The Inbox is a `Page`, as docs/projects.md asks: its title and open count are the page's, and the mailbox leaves out its own (`heading={false}`), with Open, Resolved and All at the end of the filters' row |
-| Project | The meta line did not say who answers there | It names the lead, the agent that answers what tags no agent, with its `AgentMark`: "Account · in Field · Lead globex-helper" |
+| Project | The meta line did not say who answers there | It names the lead, the agent that answers a Slack or GitHub message that tags no agent, with its `AgentMark`: "Account · in Field · Lead globex-helper" |
 | Pages with a back link, project crumbs | "‹ All projects" and the crumbs were 18px tall text | 24px tall, still text |
 | Artifacts, Monitor, Limits | Three copies of a "linkish" style, 18px tall | One `textLink`, 24px tall |
 | Monitor, Schedules, Directory, an agent's Access | Agent names, "Open run" and project links were 18 to 20px tall, and some only underlined on hover, so they read as plain text | `textLink`, or a 24px line |

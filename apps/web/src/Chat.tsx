@@ -11,8 +11,9 @@ import { ApiError, api, coworking, type ProjectView, type Revision, type ThreadA
 import { askedOf, copyFor } from "./asks.ts";
 import { useCompletion } from "./completion.ts";
 import { HomePage } from "./HomePage.tsx";
-import { emptySelection, PlusMenu, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
-import { ThreadRoom, topicsOf } from "./Room.tsx";
+import { emptySelection, MAX_SELECTED, PlusMenu, withAgent, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
+import { postedLine, ThreadRoom, topicsOf } from "./Room.tsx";
+import { rememberSaid } from "./conflicts.ts";
 import { useRunTurn } from "./Runs.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { SessionGaugeFor } from "./SessionGauge.tsx";
@@ -414,6 +415,8 @@ export function Chat({
             ...(selection.agents.length > 0 ? { agents: selection.agents, mode: selection.mode } : {}),
           })
           .then((p) => {
+            // What the first message did is said in the conversation it opens.
+            rememberSaid(p.thread.id, postedLine(p));
             onThread(p.thread.id);
             done();
           })
@@ -596,7 +599,10 @@ export function Chat({
                 <button
                   type="button"
                   onClick={() => {
-                    setSelection((sel) => (sel.agents.includes(st.agent) ? sel : { ...sel, agents: [...sel.agents, st.agent] }));
+                    // The same rule as the + menu: a full selection says so, and All of Them gives way past three.
+                    const next = withAgent(selection, st.agent);
+                    if (!next) return setProblem(defaultCopy.chat.maxAgents(MAX_SELECTED));
+                    setSelection(next);
                     setSeed({ text: st.text });
                   }}
                   className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-aui py-1 text-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"

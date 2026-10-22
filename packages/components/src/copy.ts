@@ -772,7 +772,7 @@ export const defaultCopy = {
     emptyCreate: "No projects yet. Make one to keep related conversations together.",
     noMatch: "No project matches.",
     allProjects: "All projects",
-    /** Before the agent that answers a project's untagged messages, in its meta line: "Lead globex-helper". */
+    /** Before the agent that answers a project's untagged Slack and GitHub messages, in its meta line: "Lead globex-helper". */
     lead: "Lead",
     missing: (name: string) => `No project named ${name}`,
     missingHint: "It may have been deleted, or you may not be allowed to see it.",
@@ -1038,6 +1038,12 @@ export const defaultCopy = {
     shareConflict:
       "An agent has already answered in this conversation, so it stays in its project. Share it there, in any of its channels.",
     shareFailed: "The conversation could not be shared. Try again.",
+    /** The server would not move it to another channel: an agent has already run in it. */
+    shareChannelFixed:
+      "An agent has already answered in this conversation, so it stays in its channel.",
+    /** Someone else changed the conversation since the page read it. */
+    changedMeanwhile:
+      "Someone changed this conversation just now. It shows as it is now; try again.",
     experts: (topic: string) => (topic ? `Experts on ${topic}` : "Every expert here"),
     olderTurns: "Show Earlier",
     failed: {
