@@ -956,6 +956,8 @@ test("a message that tags an agent starts its run, shown with the agent's answer
     // Both messages are there: the one that started nothing, then the one that tagged helper.
     assert.equal(screen.getAllByRole("article", { name: "Message from Ana" }).length, 2);
   } finally {
+    // Unmounted before the stream goes, so no live run opens one after it.
+    cleanup();
     restore();
   }
 });
