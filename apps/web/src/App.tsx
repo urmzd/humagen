@@ -382,6 +382,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             startAsk={route.page === "new" ? route.ask : undefined}
             startChannel={route.page === "new" ? route.channel : undefined}
             focus={route.page === "task" ? route.message : undefined}
+            sharing={route.page === "task" && !!route.share}
+            onSharing={(open) => thread && go({ page: "task", id: thread, ...(open ? { share: true } : {}) }, { replace: !open })}
             root={root}
             workspaceName={workspaceName}
             onOpenChannel={(project, channel) => go({ page: "channel", project, channel })}

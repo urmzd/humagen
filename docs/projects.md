@@ -1220,7 +1220,7 @@ docs/spec.md gains:
 | `{page: "projects"; q?; kind?}` | `/projects`, `?q=`, `?kind=account` |
 | `{page: "project"; name; tab; message?}` | `/projects/{name}` (default tab), `/projects/{name}/{tab}`, `?message=<id>` |
 | `{page: "channel"; project; channel}` | `/projects/{name}/channels/{channel}` |
-| `{page: "task"; id; message?}` | `/tasks/{id}` (unchanged), `?message=<id>` |
+| `{page: "task"; id; message?; share?}` | `/tasks/{id}` (unchanged), `?message=<id>`, `/tasks/{id}/share` (the Share dialog open) |
 | `{page: "new"; project?; channel?; agent?; ask?}` | `/?project=&channel=&agent=&ask=` |
 
 `PROJECT_TABS` grow by phase:
@@ -1275,23 +1275,40 @@ An unknown tab falls back to the default through `pick`. Names never hold
   - History: the paged change log.
 - **Channel.** A `Page` titled `#renewals`, with the project in the meta.
   Threads are listed newest first and paged on the server, each with its
-  title, AgentMarks of its agents and avatars of its people. A composer at the
-  bottom starts a shared thread. Under it, in text: "globex-helper answers
-  untagged messages. Tag anyone with @."
+  title, AgentMarks of its agents and avatars of its people. The chat bar at
+  the bottom starts a shared thread in the channel. Nothing under it says who
+  answers: an agent runs only when a message tags it.
 - **Thread.** Today's conversation view, with:
   - human messages with the person's avatar and name, agent answers with
     their AgentMark, and replies to one message shown together;
   - participants in the meta, and "Shared in Globex › #renewals" or
     "Private" in words;
-  - an `@` typeahead over available agents (AgentMark), `@auto`, people
-    (avatar) and `@sme:<topic>`;
-  - under the composer, in text, who will answer ("@ignite answers" or
-    "Nobody answers; tag an agent"), and a "Post Only" control;
+  - one chat bar, the same as Home's, with completion: `@` over available
+    agents (AgentMark), `@auto`, people (never the person typing) and the
+    mention kinds (`@sme:`, `@skill:`, read from `GET /api/mentions`),
+    which complete further to their items (`GET /api/mentions?kind=`); `$`
+    over the project's skills (`GET /api/skills`). Tab or Enter picks the
+    highlighted item, the arrow keys move, Escape closes. Each kind keeps a
+    place in the list's eight;
+  - no Post Only, no Private and no line saying who answers: a message
+    starts a run only for the agents it tags (`@agent`, `@auto`, or `$skill`,
+    which goes to `@auto` when no agent is tagged), with the conversation so
+    far as its context. An untagged message shows as posted;
+  - a private conversation's header says "Private" and offers "Share", which
+    opens a dialog at `/tasks/{id}/share`: the project (only while no agent
+    has run in it; the server's 409 is said in words), the channel (general
+    by default) and people to add, completed as they are typed. It calls
+    `POST /api/threads/{id}/share` and then reads as shared there, with no
+    Share;
   - a question addressed to an expert shown still, with "Reply".
 
   Nothing waiting on a person animates; a mark shows thinking only while its
   run is live.
-- **Home.** The prompt-first composer, then two quiet lines from the shared
+- **Home.** The prompt-first chat bar, which starts a private conversation
+  (`POST /api/threads`, `visibility: private`, in the picked project's
+  general) and opens it at `/tasks/{id}`; there is no menu of who answers.
+  A starter or a link with `?agent=` writes the agent's tag in the bar. Then
+  two quiet lines from the shared
   `HomeModel`: "Needs you · 2" (the inbox's `open`, which counts an agent's
   draft waiting on its owners and never a posted announcement) and "What's
   new" (up to 5 announcements from your projects, unread first, never an
@@ -1309,10 +1326,9 @@ An unknown tab falls back to the default through `pick`. Names never hold
   Withdraw, as it was never announced. The Inbox adopts `Page` for its
   title. The badge counts `open` only.
 - **Composer ProjectPicker.** Reads `GET /api/projects`, shows paths and kind
-  words, and searches name, title, description and customer. With a project
-  chosen, a channel select appears. The agent menu lists only available
-  agents, with `@auto` first when the default is auto. The Auto switch
-  becomes the `@auto` tag. "Create Project" in Title Case.
+  words, and searches name, title, description and customer. Completion
+  offers only the agents available in the picked project, `@auto` among
+  them; there is no agent menu. "Create Project" in Title Case.
 - **Settings › Workspace.** The projects editor goes, replaced by links to
   Projects and to the root (`/projects/~`). The baseline control on the
   agent page becomes "Workspace Default" on the root's Agents tab.
@@ -1324,7 +1340,7 @@ Copy goes in `packages/components/src/copy.ts`:
 - kind names;
 - buttons "New Project", "New Sub-project", "Move Project", "Post
   Announcement", "Add Weekly Recap", "Hide for Me", "Publish", "Discard
-  Draft", "Post Only", "Add Person", "Name Owners", "New Channel", "Lives
+  Draft", "Share", "Add Person", "Name Owners", "New Channel", "Lives
   Here", "Workspace Default";
 - sentence-case empty states ("New announcements land here. What you hid is
   under Resolved.").

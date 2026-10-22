@@ -896,7 +896,31 @@ export const defaultCopy = {
       "This turn acted for nobody, so anyone who may start runs can retry it from the inbox.",
     answer: "Answer",
     answered: "Answered",
-    typeahead: "People and agents to tag",
+    typeahead: "People, agents and skills to tag",
+    /** A mention kind, as completion offers `@kind:`: its title, or what it is. */
+    mentionKind: (kind: string, title?: string) => title || `Mention by ${kind}`,
+    /** The chat bar's prompt in a conversation. Nothing runs until a message tags an agent. */
+    message: "Message. Tag an agent with @ to ask it",
+    /** Home's chat bar: it starts a private conversation. */
+    newMessage: "Start a private conversation. Tag an agent with @, a skill with $",
+    /** The control at the top of a private conversation that shares it in a project's channel. */
+    share: "Share",
+    shareTitle: "Share this conversation",
+    shareLede:
+      "Everyone who can see the project reads it in the channel. The agents you tagged stay in it, and the people you add are told.",
+    shareProject: "Project",
+    /** Under the project, once an agent has run in the conversation. */
+    shareProjectFixed: "The project can't change once an agent has answered here.",
+    shareChannel: "Channel",
+    shareAdd: "People to add",
+    shareAddHint: "Type a name or a handle",
+    /** The people picked to add, as a list. */
+    shareAdding: "Adding",
+    shareRemove: (handle: string) => `Remove @${handle}`,
+    /** The server would not move it to another project: an agent has already run in it. */
+    shareConflict:
+      "An agent has already answered in this conversation, so it stays in its project. Share it there, in any of its channels.",
+    shareFailed: "The conversation could not be shared. Try again.",
     experts: (topic: string) => (topic ? `Experts on ${topic}` : "Every expert here"),
     olderTurns: "Show Earlier",
     failed: {
