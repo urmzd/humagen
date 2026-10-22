@@ -6,6 +6,7 @@ import { ApiError, api, type Me, type ModelPolicy, type Preferences, type Revisi
 import { ModelChain, POLICY, chainProblem, starterPolicy } from "./ModelChain.tsx";
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
+import type { PrefsRead } from "./preferences.ts";
 import { agentOptions, button, card, field, Label, Menu, Problem, primary, Segmented, SkeletonRows, Switch, pageLede, pageTitle } from "./ui.tsx";
 
 export type Section = SettingsSection;
@@ -48,9 +49,6 @@ const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
   e.preventDefault();
   go();
 };
-
-/** Whether a person's saved preferences have been read: still reading, read, or not readable. */
-export type PrefsRead = "reading" | "read" | "failed";
 
 export function Settings({
   me,

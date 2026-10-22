@@ -19,7 +19,10 @@ afterEach(() => {
 
 const everything = ["projects:read", "projects:write", "projects:govern", "runs:read", "runs:write", "billing:read", "schedules:read"];
 
-function open(detail: ProjectDetail, opts: { tab?: ProjectTab; can?: string[]; routes?: Record<string, (body: unknown) => unknown> } = {}) {
+function open(
+  detail: ProjectDetail,
+  opts: { tab?: ProjectTab; can?: string[]; routes?: Record<string, (body: unknown) => unknown>; onMute?: (project: string, muted: boolean) => Promise<void> } = {},
+) {
   const address = detail.project.name === "" ? "~" : encodeURIComponent(detail.project.name);
   net = stubFetch({
     [`GET /api/projects/${address}`]: () => detail,
@@ -52,6 +55,7 @@ function open(detail: ProjectDetail, opts: { tab?: ProjectTab; can?: string[]; r
       onChanged={noop}
       onSchedulesChanged={noop}
       onDeleted={noop}
+      onMute={opts.onMute}
     />,
   );
   return { opened };
@@ -78,6 +82,19 @@ test("a project page shows where it sits, what sits below it, and every limit ab
 
   // Its tasks are read from the server, filed in this project only.
   assert.ok(net.seen.some((r) => r.method === "GET" && r.path === "/api/threads?limit=20&project=Globex"));
+});
+
+test("Mute Project says so beside it when the mute could not be saved", async () => {
+  const asked: [string, boolean][] = [];
+  open(globexDetail, {
+    onMute: (project, muted) => {
+      asked.push([project, muted]);
+      return Promise.reject(new Error("the preferences could not be read"));
+    },
+  });
+  fireEvent.click(await screen.findByRole("button", { name: "Mute Project" }));
+  await screen.findByText("Could not mute. Try again.");
+  assert.deepEqual(asked, [["Globex", true]]);
 });
 
 test("Move Project sends the new parent by its name, spaces and all", async () => {

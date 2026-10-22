@@ -9,12 +9,13 @@ import {
   SettingsIcon,
   Tooltip,
 } from "@warp/render-web";
+import { defaultCopy } from "@warp/components";
 import { type MouseEvent, type ReactNode, type SVGProps, useState } from "react";
 import type { Me, Preferences, ThreadSummary } from "./api.ts";
 import { type Page as RoutePage, type Route, href } from "./route.ts";
 import { Avatar } from "./Settings.tsx";
 import { type Standing, useRecents } from "./recents.ts";
-import { AgentMark, Popover, SkeletonRows } from "./ui.tsx";
+import { AgentMark, type Flash, FlashNote, Popover, SkeletonRows, useFlash } from "./ui.tsx";
 
 // Glyphs outside the shared icon set. Same grid and stroke.
 function glyph(d: ReactNode) {
@@ -163,24 +164,31 @@ function Choices<T extends string>({
   );
 }
 
-/** One conversation in the Pinned or Tasks list. The pin sits beside it, shown on hover or focus. */
+/**
+ * One conversation in the Pinned or Tasks list. The pin sits beside it, shown
+ * on hover or focus, and a pin that did not take says so above it.
+ */
 function TaskRow({
   task,
   current,
   pinned,
   onSelect,
   onPin,
+  flash = null,
 }: {
   task: ThreadSummary;
   current: boolean;
   pinned: boolean;
   onSelect: () => void;
   onPin?: () => void;
+  flash?: Flash | null;
 }) {
   const title = task.title || "Untitled task";
   const state = task.active > 0 ? "In progress" : task.failed > 0 ? "Needs attention" : "Finished";
   return (
-    <li className="group relative warp-enter">
+    // A row that is saying something sits over its neighbours and over the
+    // section's label, which sticks above the first row, so the note shows.
+    <li className={`group relative warp-enter ${flash ? "z-20" : ""}`}>
       <button
         type="button"
         onClick={onSelect}
@@ -209,6 +217,7 @@ function TaskRow({
           <PinIcon size={14} fill={pinned ? "currentColor" : "none"} />
         </button>
       )}
+      {onPin && <FlashNote flash={flash} align="right" />}
     </li>
   );
 }
@@ -252,7 +261,8 @@ export function Sidebar({
   threads: ThreadSummary[];
   /** Pinned task ids, most recently pinned first. */
   pinned: string[];
-  onPin: (id: string, pin: boolean) => void;
+  /** Resolves once the pin is saved, and rejects when it could not be. */
+  onPin: (id: string, pin: boolean) => Promise<void>;
   inboxCount: number;
   /** Updates are arriving. When false, the sidebar says so. */
   live: boolean;
@@ -270,6 +280,17 @@ export function Sidebar({
   // ends, which is the signal to fetch the first page again.
   const { threads: recents, hasMore, loading, failed, stalled, retry, more } = useRecents(agent, standing, threads);
   const filters = (agent ? 1 : 0) + (standing ? 1 : 0);
+  // A pin that did not take is said beside the task it was for, in whichever
+  // list the task is in by then.
+  const { flash, say, clear: unsay } = useFlash();
+  const [flashed, setFlashed] = useState<string | null>(null);
+  const togglePin = (id: string, on: boolean) => {
+    unsay();
+    onPin(id, on).catch(() => {
+      setFlashed(id);
+      say(on ? defaultCopy.pins.pinFailed : defaultCopy.pins.unpinFailed, true);
+    });
+  };
 
   // Every page is hidden from someone who may not read it, so nothing in the
   // menu answers with a refusal. Work comes first, then what watches it, then
@@ -358,7 +379,15 @@ export function Sidebar({
           <Label>Pinned</Label>
           <ul className="px-2">
             {pinnedRows.map((t) => (
-              <TaskRow key={t.id} task={t} current={isCurrent(t)} pinned onSelect={() => go({ page: "task", id: t.id })} onPin={() => onPin(t.id, false)} />
+              <TaskRow
+                key={t.id}
+                task={t}
+                current={isCurrent(t)}
+                pinned
+                onSelect={() => go({ page: "task", id: t.id })}
+                onPin={() => togglePin(t.id, false)}
+                flash={flashed === t.id ? flash : null}
+              />
             ))}
           </ul>
         </section>
@@ -450,7 +479,8 @@ export function Sidebar({
                 current={isCurrent(t)}
                 pinned={false}
                 onSelect={() => go({ page: "task", id: t.id })}
-                onPin={canPin ? () => onPin(t.id, true) : undefined}
+                onPin={canPin ? () => togglePin(t.id, true) : undefined}
+                flash={flashed === t.id ? flash : null}
               />
             ))}
             {/* Older conversations arrive a page at a time, when asked for. */}

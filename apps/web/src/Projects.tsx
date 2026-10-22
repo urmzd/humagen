@@ -1160,7 +1160,8 @@ export function ProjectPage({
   inboxTick?: unknown;
   /** The projects whose announcements stay out of the reader's own inbox. */
   muted?: string[];
-  onMute?: (project: string, muted: boolean) => void;
+  /** Resolves once the change is saved, and rejects when it could not be. */
+  onMute?: (project: string, muted: boolean) => Promise<void>;
   /** Open what an inbox message is about. */
   onOpenSource?: (source: Source) => void;
   workspaceName: string;
@@ -1190,6 +1191,8 @@ export function ProjectPage({
   const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState<string | null>(null);
   const [reads, setReads] = useState(0);
+  // A mute that did not take says so beside its button.
+  const { flash: muteFlash, say: sayMute, clear: clearMute } = useFlash();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
   useEffect(() => {
@@ -1260,9 +1263,21 @@ export function ProjectPage({
       actions={
         <>
           {!root && onMute && (
-            <button type="button" className={button} onClick={() => onMute(p.name, !isMuted)}>
-              {isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute}
-            </button>
+            <span className="relative inline-flex">
+              <button
+                type="button"
+                className={button}
+                onClick={() => {
+                  clearMute();
+                  onMute(p.name, !isMuted).catch(() =>
+                    sayMute(isMuted ? defaultCopy.announcements.unmuteFailed : defaultCopy.announcements.muteFailed, true),
+                  );
+                }}
+              >
+                {isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute}
+              </button>
+              <FlashNote flash={muteFlash} align="left" />
+            </span>
           )}
           {canWrite && !root && !editing && (
             <button type="button" className={button} onClick={() => setEditing(true)}>

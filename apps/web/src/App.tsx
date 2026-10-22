@@ -29,11 +29,12 @@ import { Monitor } from "./Monitor.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
 import { ChannelPage } from "./Room.tsx";
 import { Schedules } from "./Schedules.tsx";
-import { type PrefsRead, Settings } from "./Settings.tsx";
+import { Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import { updatesOf } from "@warp/adapter";
 import { HomeLines } from "./HomePage.tsx";
+import { usePreferences } from "./preferences.ts";
 import { type Source as About, type PlatformMessage, transport as mail } from "./mail.ts";
 import { type AgentTab, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { Page, primary } from "./ui.tsx";
@@ -156,19 +157,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const [sources, setSources] = useState<Source[]>([]);
   const [suites, setSuites] = useState<SuiteView[]>([]);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [prefs, setPrefs] = useState<Preferences>({
-    display_name: "",
-    theme: "system",
-    accent: "purple",
-    has_photo: false,
-    photo_version: 0,
-    pinned: [],
-    muted: [],
-  });
-  // Whether the saved preferences were read. Until they are, the defaults
-  // above only draw the page: a save sends every field, so nothing is saved
-  // over values not read yet.
-  const [prefsRead, setPrefsRead] = useState<PrefsRead>("reading");
+  // Until the saved preferences are read, defaults only draw the page: a save
+  // sends every field, so nothing is saved over values not read yet.
+  const { prefs, prefsRead, setPrefs, pin, mute } = usePreferences();
   // The reader's own open announcements, for What's new on Home.
   const [announced, setAnnounced] = useState<PlatformMessage[]>([]);
   const [day, setDay] = useState<Summary | null>(null);
@@ -268,14 +259,6 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     loadRuns();
     loadAgents();
     loadSources();
-    // Preferences are optional: render immediately with defaults while they load.
-    api
-      .preferences()
-      .then((p) => {
-        setPrefs(p);
-        setPrefsRead("read");
-      })
-      .catch(() => setPrefsRead("failed"));
   }, [loadRuns, loadAgents, loadSources]);
 
   // One stream for the whole tenant keeps every list current. Lifecycle and
@@ -343,18 +326,6 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const workspaceName = workspace?.workspace_name || me.principal.tenant;
   const openAgent = (name: string | null, tab: AgentTab = "prompt") => go({ page: "agent", name, tab });
   const openSettings = (section: SettingsSection) => go({ page: "settings", section });
-  // Pinning shows at once and is saved with the person's preferences. If the
-  // save fails, the sidebar goes back to what the server has.
-  const pin = (id: string, on: boolean) => {
-    if (prefsRead !== "read") return;
-    const next = on ? [id, ...prefs.pinned.filter((p) => p !== id)] : prefs.pinned.filter((p) => p !== id);
-    const before = prefs;
-    setPrefs({ ...prefs, pinned: next });
-    api
-      .savePreferences({ display_name: prefs.display_name, theme: prefs.theme, accent: prefs.accent, pinned: next })
-      .then(setPrefs)
-      .catch(() => setPrefs(before));
-  };
   // What a message is about, opened where it lives.
   const openSource = (source: About) =>
     source.kind === "run"
@@ -368,17 +339,6 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             : source.kind === "artifact"
               ? go({ page: "artifacts", artifact: source.id })
               : go({ page: "monitor", tab: "rules" });
-  // Muting shows at once and is saved with the person's preferences.
-  const mute = (project: string, on: boolean) => {
-    if (prefsRead !== "read") return;
-    const next = on ? [...prefs.muted.filter((p) => p !== project), project] : prefs.muted.filter((p) => p !== project);
-    const before = prefs;
-    setPrefs({ ...prefs, muted: next });
-    api
-      .savePreferences({ display_name: prefs.display_name, theme: prefs.theme, accent: prefs.accent, muted: next })
-      .then(setPrefs)
-      .catch(() => setPrefs(before));
-  };
   const stats = useMemo(() => new Map((day?.by_agent ?? []).map((g) => [g.name, g])), [day]);
   const agentName = route.page === "agent" ? route.name : null;
   const editing = agents.find((a) => a.spec.name === agentName) ?? null;

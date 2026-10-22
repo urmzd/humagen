@@ -3,8 +3,9 @@ import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Me, Preferences } from "./api.ts";
 import { stubFetch } from "./dom.ts";
+import type { PrefsRead } from "./preferences.ts";
 import type { SettingsSection } from "./route.ts";
-import { type PrefsRead, Settings } from "./Settings.tsx";
+import { Settings } from "./Settings.tsx";
 
 // The loader imports every DOM file into one process, where a top-level hook
 // runs after other files' tests too, so it acts only on what this file set up.

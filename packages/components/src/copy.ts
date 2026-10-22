@@ -216,8 +216,16 @@ export const defaultCopy = {
     mute: "Mute Project",
     unmute: "Unmute Project",
     muted: "Muted. Its announcements stay out of your inbox and stay in the project's.",
+    /** Beside Mute Project, when the change could not be saved, or the preferences it is saved with could not be read. */
+    muteFailed: "Could not mute. Try again.",
+    unmuteFailed: "Could not unmute. Try again.",
     rootNotMuted: "The workspace's announcements are for everyone, so they can't be muted.",
     tooMany: (n: number) => `At most ${n} announcements a day are posted here. Try again tomorrow.`,
+  },
+  /** A task pinned to the top of the sidebar. Said beside its pin when the change could not be saved, or the preferences it is saved with could not be read. */
+  pins: {
+    pinFailed: "Could not pin. Try again.",
+    unpinFailed: "Could not unpin. Try again.",
   },
   /** Who holds a role in a project, and what it lets them do. */
   roles: {
