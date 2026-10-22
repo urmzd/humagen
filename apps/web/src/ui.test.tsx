@@ -62,7 +62,7 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
       can={(p) => all.includes(p)}
       threads={[task("t1", "Quarterly report"), task("t2", "Fix the build")]}
       pinned={[]}
-      onPin={() => {}}
+      onPin={async () => {}}
       inboxCount={0}
       live
       onSignOut={() => {}}

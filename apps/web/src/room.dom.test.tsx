@@ -172,6 +172,7 @@ test("a channel lists its threads, and its composer starts a shared thread there
       workspaceName="Acme"
       canRun
       onOpenProject={() => {}}
+      onOpenProjects={() => {}}
       onOpenThread={(id) => opened.push(id)}
     />,
   );
@@ -212,6 +213,7 @@ test("a viewer of a project reads its channel and its threads, and is offered no
       workspaceName="Acme"
       canRun
       onOpenProject={() => {}}
+      onOpenProjects={() => {}}
       onOpenThread={() => {}}
     />,
   );
@@ -279,6 +281,7 @@ test("Private in a channel starts a thread only the people in it read, and its r
       workspaceName="Acme"
       canRun
       onOpenProject={() => {}}
+      onOpenProjects={() => {}}
       onOpenThread={() => {}}
     />,
   );
@@ -713,4 +716,67 @@ test("a run a message in the room answered is read from its journal, so its ques
   } finally {
     restore();
   }
+});
+
+test("a channel of a project the reader may not see reads as the project's own page does: no channel, no threads, no composer", async () => {
+  // Initech is members only and the reader is not one: every read of it
+  // answers 404, which stubFetch gives a route it was not told.
+  net = stubFetch({ "GET /api/people": () => ({ people: [], next: null }) });
+  let back = 0;
+  render(
+    <ChannelPage
+      project="Initech"
+      channel="general"
+      tick={0}
+      agents={[helper]}
+      projects={tree}
+      root={null}
+      workspaceName="Acme"
+      canRun
+      onOpenProject={() => {}}
+      onOpenProjects={() => back++}
+      onOpenThread={() => {}}
+    />,
+  );
+  assert.ok(await screen.findByRole("heading", { level: 1, name: defaultCopy.projects.missing("Initech") }));
+  assert.ok(screen.getByText(defaultCopy.projects.missingHint));
+  assert.ok(!screen.queryByText("not found"));
+  assert.ok(!screen.queryByText(words.channel("general")));
+  assert.ok(!screen.queryByPlaceholderText(words.startThread));
+  assert.ok(!screen.queryByText(words.startPrivate));
+  assert.ok(!screen.queryByText(words.nobody));
+  fireEvent.click(screen.getByRole("button", { name: `‹ ${defaultCopy.projects.allProjects}` }));
+  assert.equal(back, 1);
+});
+
+test("a channel its project does not hold says so, and offers no composer", async () => {
+  net = stubFetch({
+    "GET /api/projects/Globex/channels": () => ({
+      channels: [{ project: "Globex", name: "general", version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } }],
+    }),
+    "GET /api/threads": () => ({ threads: [], next: null }),
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/people": () => ({ people: [], next: null }),
+  });
+  let back = 0;
+  render(
+    <ChannelPage
+      project="Globex"
+      channel="renewals"
+      tick={0}
+      agents={[helper]}
+      projects={tree}
+      root={null}
+      workspaceName="Acme"
+      canRun
+      onOpenProject={() => back++}
+      onOpenProjects={() => {}}
+      onOpenThread={() => {}}
+    />,
+  );
+  assert.ok(await screen.findByRole("heading", { level: 1, name: words.missingChannel }));
+  assert.ok(screen.getByText("This project has no channel named #renewals. Its Channels tab lists the ones it has."));
+  assert.ok(!screen.queryByPlaceholderText(words.startThread));
+  fireEvent.click(screen.getByRole("button", { name: "‹ Globex" }));
+  assert.equal(back, 1);
 });

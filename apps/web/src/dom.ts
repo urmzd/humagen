@@ -12,11 +12,11 @@ export interface Seen {
 
 /**
  * Replaces fetch with routes answered in memory: "GET /api/agents/x/history"
- * maps to the JSON returned for it. A route is matched by its path alone, and
- * is handed the request's query to read, and may answer with a Response of
- * its own, such as a 403. A route left out answers 404, so a
- * test sees a request it did not expect. Returns what was requested, and a
- * way to put the real fetch back.
+ * maps to the JSON returned for it, or to a promise of it, to answer later.
+ * A route is matched by its path alone, and is handed the request's query to
+ * read, and may answer with a Response of its own, such as a 403. A route
+ * left out answers 404, so a test sees a request it did not expect. Returns
+ * what was requested, and a way to put the real fetch back.
  */
 export function stubFetch(routes: Record<string, (body: unknown, query: URLSearchParams) => unknown>): { seen: Seen[]; restore: () => void } {
   const real = globalThis.fetch;
@@ -28,7 +28,7 @@ export function stubFetch(routes: Record<string, (body: unknown, query: URLSearc
     seen.push({ method, path: url.pathname + url.search, body });
     const route = routes[`${method} ${url.pathname}`];
     if (!route) return new Response(JSON.stringify({ error: "not stubbed" }), { status: 404 });
-    const out = route(body, url.searchParams);
+    const out = await route(body, url.searchParams);
     // A route may answer with a whole Response, such as a refusal.
     if (out instanceof Response) return out;
     return out === undefined ? new Response(null, { status: 204 }) : new Response(JSON.stringify(out), { status: 200 });

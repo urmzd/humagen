@@ -226,8 +226,16 @@ export const defaultCopy = {
     mute: "Mute Project",
     unmute: "Unmute Project",
     muted: "Muted. Its announcements stay out of your inbox and stay in the project's.",
+    /** Beside Mute Project, when the change could not be saved, or the preferences it is saved with could not be read. */
+    muteFailed: "Could not mute. Try again.",
+    unmuteFailed: "Could not unmute. Try again.",
     rootNotMuted: "The workspace's announcements are for everyone, so they can't be muted.",
     tooMany: (n: number) => `At most ${n} announcements a day are posted here. Try again tomorrow.`,
+  },
+  /** A task pinned to the top of the sidebar. Said beside its pin when the change could not be saved, or the preferences it is saved with could not be read. */
+  pins: {
+    pinFailed: "Could not pin. Try again.",
+    unpinFailed: "Could not unpin. Try again.",
   },
   /** Who holds a role in a project, and what it lets them do. */
   roles: {
@@ -805,6 +813,14 @@ export const defaultCopy = {
       purposeHint: "Sent to every agent answering here.",
     },
     noChannels: "Only general so far.",
+    /** A channel's page, when the project holds no channel by that name. The name wraps in the line under the title. */
+    missingChannel: "No such channel",
+    missingChannelHint: (name: string) =>
+      `This project has no channel named #${name}. Its Channels tab lists the ones it has.`,
+    /** A task the reader may not read reads as one that does not exist, as a project does. */
+    missingTask: "No such task",
+    /** A task that could not be read for a reason other than its not being there. */
+    readFailed: "This task could not be read. Reload to try again.",
     /** A channel bound to Slack, in its row: which app, and which Slack channel. */
     boundTo: (client: string, slackChannel: string) =>
       `In Slack through ${client}, channel ${slackChannel}`,

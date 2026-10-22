@@ -7,6 +7,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -987,11 +988,20 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusServiceUnavailable, "this server cannot interrupt a run; it will start nothing more and ends when its current work does")
 	case errors.As(err, &tooBig):
 		fail(w, http.StatusRequestEntityTooLarge, "request is too large")
+	case errors.Is(err, context.Canceled):
+		// The caller went away, as a browser does when a page moves on, and
+		// what it asked stopped with it. Nothing went wrong here.
+		s.Log.Debug("httpapi: request cancelled", "error", err)
+		fail(w, statusClientClosed, "the request was cancelled")
 	default:
 		s.Log.Error("httpapi: internal error", "error", err)
 		fail(w, http.StatusInternalServerError, "something went wrong on our side")
 	}
 }
+
+// statusClientClosed answers a request its caller cancelled. Nobody reads
+// it; it keeps the request out of the server's own errors (5xx).
+const statusClientClosed = 499
 
 // detail is what an error says after the error it wraps, for an answer: the
 // project store's "projects: in use: "Launch" is still used by the schedule

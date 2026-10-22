@@ -1,3 +1,4 @@
+import { doing } from "./access.ts";
 import type { ToolCredential, ToolCredentials } from "./api.ts";
 
 /** How a credential can be given here. */
@@ -54,3 +55,13 @@ export function whereReferences(starts: string[]): string {
   if (starts.length === 0) return "This workspace lets nobody reference a credential.";
   return `A reference here starts with ${starts.join(", ")}. Only the reference is stored.`;
 }
+
+/**
+ * The permission giving or removing a credential takes: a credential is used
+ * only by a run that acts for its person, so connecting one takes what
+ * starting a run does.
+ */
+export const CONNECT_PERMISSION = "runs:write";
+
+/** Said in place of Connect to someone who may not connect. */
+export const cannotConnect = `Connecting a credential takes permission to ${doing[CONNECT_PERMISSION]}, which you don't have. An admin can give it to you.`;

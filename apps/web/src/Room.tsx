@@ -589,6 +589,7 @@ export function ChannelPage({
   workspaceName,
   canRun,
   onOpenProject,
+  onOpenProjects,
   onOpenThread,
 }: {
   project: string;
@@ -604,21 +605,34 @@ export function ChannelPage({
   workspaceName: string;
   canRun: boolean;
   onOpenProject: () => void;
+  /** Every project: where a channel of a project that is not there leads back to. */
+  onOpenProjects: () => void;
   onOpenThread: (id: string) => void;
 }) {
   const [info, setInfo] = useState<Channel | null>(null);
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // What is not there: the project, for the reader (a project they may not
+  // see answers as one that does not exist), or the channel in it.
+  const [missing, setMissing] = useState<"project" | "channel" | null>(null);
   const tags = useTags(project, agents, homes, topicsOf(projects, root, project), me);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {
     let live = true;
+    const gone = (e: unknown) => e instanceof ApiError && e.status === 404;
     coworking
       .channels(project)
-      .then((cs) => live && setInfo(cs.find((c) => c.name === channel) ?? null))
-      .catch(() => {});
+      .then((cs) => {
+        if (!live) return;
+        const found = cs.find((c) => c.name === channel) ?? null;
+        setInfo(found);
+        setMissing(found ? null : "channel");
+      })
+      .catch((e) => {
+        if (live && gone(e)) setMissing("project");
+      });
     coworking
       .threads(project, channel)
       .then((p) => {
@@ -626,7 +640,11 @@ export function ChannelPage({
         setThreads(p.threads);
         setNext(p.next);
       })
-      .catch((e) => live && setProblem(e instanceof ApiError ? e.message : defaultCopy.failure.internal()));
+      .catch((e) => {
+        if (!live) return;
+        if (gone(e)) setMissing("project");
+        else setProblem(e instanceof ApiError ? e.message : defaultCopy.failure.internal());
+      });
     return () => {
       live = false;
     };
@@ -644,6 +662,23 @@ export function ChannelPage({
   };
 
   const where = projectTitle(projects, project, workspaceName);
+  // Said as the project's own page says it, and nothing more: no channel,
+  // no threads, no composer.
+  if (missing === "project") {
+    const p = defaultCopy.projects;
+    return (
+      <Page title={p.missing(project === "" ? "~" : project)} lede={p.missingHint} back={{ label: p.allProjects, onClick: onOpenProjects }}>
+        {null}
+      </Page>
+    );
+  }
+  if (missing === "channel") {
+    return (
+      <Page title={words.missingChannel} lede={words.missingChannelHint(channel)} back={{ label: where, onClick: onOpenProject }}>
+        {null}
+      </Page>
+    );
+  }
   return (
     <Page
       title={words.channel(channel)}
@@ -666,8 +701,9 @@ export function ChannelPage({
           {words.moreThreads}
         </button>
       )}
-      {canRun && !info?.archived && !postsIn(projects, project) && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
-      {canRun && !info?.archived && postsIn(projects, project) && (
+      {/* Only a channel known to be there is posted in. */}
+      {canRun && info && !info.archived && !postsIn(projects, project) && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
+      {canRun && info && !info.archived && postsIn(projects, project) && (
         <RoomComposer
           placeholder={words.startThread}
           answers={info?.answers}

@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ToolCredential } from "./api.ts";
 import { ConnectForm, ConnectionCard } from "./Connections.tsx";
-import { destination, standing, startsAllowed, ways, whereReferences } from "./connections.ts";
+import { cannotConnect, destination, standing, startsAllowed, ways, whereReferences } from "./connections.ts";
 
 const html = (el: ReactElement) => renderToStaticMarkup(el);
 const text = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
@@ -82,4 +82,16 @@ test("what you stand with is said in words", () => {
   assert.match(standing(issues), /^Not connected/);
   assert.match(standing(byRef), /reads op:\/\/People\/ana\/issues each time a run uses it/);
   assert.match(standing(stored), /stored with warp/);
+});
+
+test("someone who may not connect is shown where they stand with each tool, and nothing to press", () => {
+  for (const c of [issues, byRef, stored]) {
+    const out = text(
+      html(<ConnectionCard connection={c} ways={["reference", "value"]} references={["op://People/"]} canConnect={false} open onOpen={noop} onCancel={noop} onSave={noop} onRemove={noop} />),
+    );
+    assert.match(out, /connected/i);
+    assert.doesNotMatch(out, /\bConnect\b|Replace|Remove|Cancel|type="password"/);
+    assert.doesNotMatch(html(<ConnectionCard connection={c} ways={["reference"]} references={["op://People/"]} canConnect={false} open onOpen={noop} onCancel={noop} onSave={noop} onRemove={noop} />), /<input|<button/);
+  }
+  assert.equal(cannotConnect, "Connecting a credential takes permission to run agents, which you don't have. An admin can give it to you.");
 });
