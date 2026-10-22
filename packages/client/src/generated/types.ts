@@ -708,9 +708,9 @@ selected; `best_fit` when two or more are selected and none is named.
 export type ThreadMode = "best_fit" | "all";
 
 /** A thread's title, visibility, default and selected agents, as a
-whole, and where a private conversation is. Changing only `agents`,
-`mode`, `project` and `channel` takes anyone who may post in the
-thread; anything else takes whoever started it, while a member, or an
+whole, and where a private conversation is. Changing only `agents` and
+`mode` takes anyone who may post in the thread; anything else,
+moving it included, takes whoever started it, while a member, or an
 owner of its project. The selected agents and default must be able
 to answer where the thread is after the change.
  */
@@ -725,8 +725,9 @@ export interface ThreadUpdate {
   mode?: ThreadMode;
   /** Moves a private conversation to this project, `~` the workspace;
 empty keeps its own. It stays private (`shareThread` shares one).
-Takes anyone who may post in it and a member of the project it
-goes to (403; one the caller cannot see is 404), and is refused
+Takes what sharing it takes: whoever started it, while a member,
+or an owner of its project, and a member of the project it goes
+to (403; one the caller cannot see is 404), and is refused
 once a run has been filed in it (409, "a conversation that has
 runs stays in its project"). A shared thread, or one on a
 surface, does not move here (400).
