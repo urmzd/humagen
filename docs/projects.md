@@ -256,15 +256,14 @@ a skill package, and the tests hold the two to saige's parser.
 - **A person names one** with `$<name>` or `@skill:<name>`. Every run the
   message starts is told to use it: when the message is accepted,
   `answerMessage` pins each skill's instructions into the run's tag as
-  `warp.skills`, so every attempt, after a restart too, is told the same
-  whatever the projects declare later. Admission drops the key from every
-  tag but a root run the platform's API raised, which only the platform
-  does, so no connector, schedule, caller or calling agent can put
-  instructions in a run, and a run an agent calls is not told its caller's
-  skills.
+  `_warp.skills`, a private key fiber keeps out of every prompt and record, so
+  every attempt, after a restart too, is told the same whatever the projects
+  declare later. Admission drops the key from every tag but a root run the
+  platform's API raised, which only the platform does, so no connector,
+  schedule, caller or calling agent can put instructions in a run, and a run
+  an agent calls is not told its caller's skills.
 - **The executor seam** (`callExecutor.resolve`) takes the pinned skills out
-  of the request's copy of the meta, which fiber writes into the prompt as
-  it is, and puts their instructions ahead of the turn under a line that
+  of the request's copy of the meta and puts their instructions ahead of the turn under a line that
   ranks them below the agent's own instructions and says the platform
   enforces limits whatever they say. The run's record keeps what was asked.
 - **`@auto` picks** with the message and each skill's description, so a
@@ -304,7 +303,7 @@ An agent's turn is given, in this order:
 
 | # | Layer | Source | Bound |
 |---|---|---|---|
-| 0 | The skills the message names, each under its name, after a line that ranks them below the agent's instructions | the pinned `warp.skills` | 8,000 characters each, at most 4 named and a client's command |
+| 0 | The skills the message names, each under its name, after a line that ranks them below the agent's instructions | the pinned `_warp.skills` | 8,000 characters each, at most 4 named and a client's command |
 | 1 | Project instructions, root first, then each project down to the thread's, then the channel's purpose and the experts line | `Project.Instructions`, `Channel.Purpose` | 4,000 characters per project, 8,000 in all; the farthest ancestors are dropped first, with "(instructions of Acme not sent)" |
 | 2 | Project memory, the thread's project first, then its ancestors | `pkg/memory` owners `project:<name>`, and `project:` for the root | own notes as today (at most 15,000 characters); ancestors share 6,000, nearest first, with "(n more notes from Field not sent)" |
 | 3 | The agent's instructions | the pinned revision's `AgentSpec.SystemPrompt`, which fiber sends as the system message | fiber's |

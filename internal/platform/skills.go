@@ -29,10 +29,12 @@ import (
 //     instructions into the run's tag (runs.MetaSkills), so every attempt of
 //     the run, after a restart too, is told the same whatever the projects
 //     declare later; admission drops the key from every other tag (pin);
+//   - the key is private (runs.MetaSkills), so fiber writes it into no
+//     prompt and no record of one, a run stopped before it starts included;
 //   - before fiber reads the request, withSkills takes the pinned skills out
-//     of the request's copy of the tag's meta, which fiber writes into the
-//     prompt, and puts their instructions ahead of the turn's text, under a
-//     line that says they rank below the agent's own instructions.
+//     of the request's copy of the tag's meta and puts their instructions
+//     ahead of the turn's text, under a line that says they rank below the
+//     agent's own instructions.
 //
 // A Slack client's command whose name is a skill's on the chain uses that
 // skill too: the client posts "/<name> ..." as the message, and the runs it
@@ -180,7 +182,7 @@ const skillsPrecedence = "The person asked you to use these skills for this turn
 
 // withSkills puts the instructions of the skills a run's tag was pinned with
 // ahead of the request's text, and takes them out of the request's copy of
-// the meta, which fiber writes into the prompt as it is. The run's tag keeps
+// the meta, so nothing past this seam carries them twice. The run's tag keeps
 // them, so a later attempt reads them again. A pinned value that does not
 // read is refused: only the platform writes it.
 func withSkills(req runtime.Request) (runtime.Request, error) {

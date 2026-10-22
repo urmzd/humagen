@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/anchor/pkg/ledger"
+	dqueue "github.com/urmzd/anchor/pkg/queue"
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
@@ -465,5 +467,65 @@ func TestARetryKeepsACommandsSkill(t *testing.T) {
 	th.Surface = nil
 	if got := p.SkillNamesOf(tenant, th, dm.Message); len(got) != 1 || got[0] != "review" {
 		t.Fatalf("a retry finds %v", got)
+	}
+}
+
+// A run stopped before its attempt starts records the prompt it would have
+// been sent, and the keys warp pins privately are not written into it as
+// trigger context: neither the skills' instructions, nor the sources'
+// names. The run's tag keeps them, as fiber keeps a private key wherever the
+// tag is.
+func TestARunStoppedBeforeItStartsJournalsNoPinnedKeys(t *testing.T) {
+	c := &cast{says: map[string][][]saigetypes.Delta{"blocker": {say("Done.")}, "helper": {say("Help.")}}, gates: map[string]chan struct{}{"blocker": make(chan struct{})}}
+	led := ledger.NewMemory()
+	p := stage(t, c, platform.Config{Concurrency: 1, Backends: platform.Backends{Ledger: led, Queue: dqueue.NewMemory()}})
+	ctx := t.Context()
+	field(t, p)
+	declare(t, p, "Field", "review")
+	name(t, p, "Field", "zqx-playbook")
+	blocker, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-block", Agent: "blocker", Text: "Hold the slot"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, blocker.ID, runs.Running)
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "@helper $review the renewal"})
+	if len(got.Runs) != 1 {
+		t.Fatalf("the message started %+v", got.Runs)
+	}
+	queued := got.Runs[0]
+	if _, err := p.StopRun(ctx, admin, queued.ID); err != nil {
+		t.Fatal(err)
+	}
+	c.release("blocker")
+	stopped := await(t, p, queued.ID, runs.Stopped)
+	if len(pinned(t, stopped)) != 1 || stopped.Tag().Meta[runs.MetaSources] != "zqx-playbook" {
+		t.Fatalf("the run's tag lost what was pinned: %v", stopped.Tag().Meta)
+	}
+	for _, key := range []string{runs.MetaSkills, runs.MetaSources, runs.MetaRouted} {
+		if !strings.HasPrefix(key, envelope.PrivateMetaPrefix) {
+			t.Errorf("%s is not a private key", key)
+		}
+	}
+	run, records, err := led.Load(ctx, queued.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs := []string{string(run.Output)}
+	for _, r := range records {
+		outputs = append(outputs, string(r.Output))
+	}
+	recorded := strings.Join(outputs, "\n")
+	if !strings.Contains(recorded, "the renewal") {
+		t.Fatalf("the stopped run recorded no prompt: %s", recorded)
+	}
+	for _, leak := range []string{"CANARY-review", "zqx-playbook", "warp.skills", "warp.sources"} {
+		if strings.Contains(recorded, leak) {
+			t.Errorf("the stopped run's record holds %q: %s", leak, recorded)
+		}
+	}
+	for _, e := range p.Journal.Events(tenant, []string{queued.ID}) {
+		if strings.Contains(string(e.Payload), "CANARY-review") {
+			t.Errorf("%s event holds the skill's instructions", e.Kind)
+		}
 	}
 }
