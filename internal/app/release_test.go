@@ -75,11 +75,15 @@ func TestReleaseNotesArePostedWhereTurnedOn(t *testing.T) {
 	if got := p.Inbox.OpenOf("globex", inbox.KindAnnouncement); len(got) != 0 {
 		t.Fatalf("a workspace that left it off was posted %+v", got)
 	}
-	// Nothing posts without a workspace that turns it on, or without a
-	// changelog.
-	postReleaseNotes(p, spec.Config{}, "0.16.0", releaseChangelog, quiet)
-	postReleaseNotes(p, cfg, "0.16.0", "", quiet)
-	if got := p.Inbox.OpenOf("globex", inbox.KindAnnouncement); len(got) != 0 {
+
+	// On a platform that has posted nothing, nothing posts where the
+	// workspace leaves it off, or without a changelog.
+	fresh := newProjectsPlatform(t)
+	off := spec.Config{Platforms: []spec.Platform{{Metadata: spec.Metadata{Name: "acme"}}}}
+	postReleaseNotes(fresh, off, "0.16.0", releaseChangelog, quiet)
+	postReleaseNotes(fresh, spec.Config{}, "0.16.0", releaseChangelog, quiet)
+	postReleaseNotes(fresh, cfg, "0.16.0", "", quiet)
+	if got := fresh.Inbox.OpenOf("acme", inbox.KindAnnouncement); len(got) != 0 {
 		t.Fatalf("posted %+v", got)
 	}
 }
