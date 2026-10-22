@@ -17,12 +17,14 @@ import (
 // policy must reproduce it exactly, so that a deployment with no policy file
 // behaves as it did.
 var legacyRolePermissions = map[auth.Role][]auth.Permission{
-	auth.Viewer: {auth.AgentsRead, auth.RunsRead, auth.SchedulesRead, auth.AlertsRead, auth.KnowledgeRead, auth.EvalsRead, auth.BillingRead, auth.ArtifactsRead, auth.ClientsRead, auth.ProjectsRead},
+	auth.Viewer: {auth.AgentsRead, auth.RunsRead, auth.SchedulesRead, auth.AlertsRead, auth.KnowledgeRead, auth.EvalsRead, auth.BillingRead, auth.ArtifactsRead, auth.ClientsRead, auth.ProjectsRead,
+		// Added with the directory: "read on *" has always covered it.
+		auth.PeopleRead},
 	auth.Operator: {
 		auth.AgentsRead, auth.RunsRead, auth.RunsWrite, auth.SchedulesRead, auth.SchedulesWrite,
 		auth.AlertsRead, auth.AlertsWrite, auth.KnowledgeRead, auth.EvalsRead, auth.EvalsWrite,
 		auth.BillingRead, auth.ArtifactsRead, auth.ArtifactsWrite, auth.ClientsRead,
-		auth.ProjectsRead, auth.ProjectsWrite,
+		auth.ProjectsRead, auth.ProjectsWrite, auth.PeopleRead,
 	},
 	auth.Admin: auth.Permissions(),
 }

@@ -80,6 +80,21 @@ changes none. A policy file written before projects had their own permissions
 adds `projects` to the rule that lets operators write runs, as above, or only
 admins make projects.
 
+The directory has one permission, `people:read`: seeing who is in the
+workspace, by name, handle, picture and roles. `allow read on *` holds it, so
+every built-in role does, and a policy file that lists reads by resource adds
+`people`. A grant to a subject (`grant operator to subject "okta|00u1ana"`)
+also puts that person in the directory before they first sign in. With
+tenants from a claim (`-tenant-claim`, `tenant.claim`) it does not: the one
+policy is every tenant's and a grant names no tenant, so a person enters a
+workspace's directory by signing in to it, or by a client of it mapping them.
+
+Setting the workspace default agent, the root's `default`, is a change to the
+workspace itself, so it needs `projects:govern` as well as `projects:write`.
+Managers held it through `agents:write` while it was a setting called the
+baseline; `role steward` above, or `allow govern on projects` on `manager`,
+gives it back to them.
+
 ## Configure
 
 ```sh

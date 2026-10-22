@@ -21,6 +21,7 @@ import (
 	"github.com/urmzd/warp/pkg/journal"
 	"github.com/urmzd/warp/pkg/knowledge"
 	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/people"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/prefs"
 	"github.com/urmzd/warp/pkg/projects"
@@ -126,6 +127,9 @@ func (p *Platform) openStores(cfg Config) error {
 	// A deleted name is forgotten only once nothing is filed under it.
 	p.Projects, err = projects.Open(st, projects.WithFiled(p.filedUnder))
 	keep("projects", err)
+	// An agent's name is a handle no person is given.
+	p.People, err = people.Open(st, people.WithTaken(p.agentTaken))
+	keep("people", err)
 	p.Policies, err = policy.Open(st)
 	keep("policies", err)
 	p.CallPolicies, err = callpolicy.Open(st)
@@ -141,6 +145,11 @@ func (p *Platform) openStores(cfg Config) error {
 		// Projects once lived in settings; they move before anything reads
 		// either.
 		keep("projects", p.migrateProjects())
+	}
+	if len(errs) == 0 {
+		// The baseline becomes the workspace's default, on the root the
+		// projects' move may just have written.
+		keep("agents", p.migrateBaseline())
 	}
 
 	p.Clients, p.secrets = cfg.Clients, cfg.Secrets

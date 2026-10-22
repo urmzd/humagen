@@ -22,7 +22,7 @@ The built-in one declares these four, and the group flags grant them:
 
 | Role | Permissions |
 |------|-------------|
-| `viewer` | `agents:read`, `runs:read`, `schedules:read`, `alerts:read`, `knowledge:read`, `evals:read`, `billing:read`, `artifacts:read`, `clients:read`, `projects:read` |
+| `viewer` | `agents:read`, `runs:read`, `schedules:read`, `alerts:read`, `knowledge:read`, `evals:read`, `billing:read`, `artifacts:read`, `clients:read`, `projects:read`, `people:read` |
 | `operator` | viewer, plus `runs:write`, `schedules:write`, `alerts:write`, `evals:write`, `artifacts:write`, `projects:write` |
 | `manager` | operator, plus `agents:write`, `knowledge:write`. Writing agents covers their call policies, so a manager is the natural approver of calls between agents |
 | `admin` | manager, plus `billing:write`, `clients:write`, `projects:govern` |
@@ -49,6 +49,32 @@ changes every other project, and every project is visible to everyone holding
 A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:
 `runs:*` no longer covers them.
+
+Which agents may run where is a policy the platform enforces, never an
+instruction in a prompt. A run is refused at admission when its agent is not
+available in the project it is filed in, whatever started it, and an agent
+that lives in a project is not available in the workspace itself or in any
+project outside its home's subtree. A message that tags no agent goes to the
+default its place inherits, and with none nothing runs: nothing routes on its
+own. Setting the workspace default changes who answers everyone's untagged
+messages, so it needs `projects:govern`; to keep the old split where managers
+set it, add `role:manager` as an owner of the workspace once project roles
+exist, or grant them `govern on projects`.
+
+The directory (`people:read`, which every built-in role holds) shows each
+person's name, handle, roles and picture to everyone in the workspace. No
+email address is asked for or shown, and a name that is an address is not
+kept as a name. A subject is kept as the identity provider gives it, since it
+is the key a person signs in with, and can hold an address: a Tailscale login
+does, and so can the subject a Slack people map names. The directory leaves
+such a subject out and never searches subjects. A picture is only one a
+person uploaded themselves, served by warp: reading the directory sends
+nobody else a request. People are recorded when they make a request holding
+any permission, when a client maps a Slack person to them, and when the
+policy grants a role to their subject, unless tenants come from a claim: a
+grant names no tenant, so it puts nobody in a directory they may not belong
+to. A machine is not a person. A policy that should not list someone grants
+them no role.
 
 A webhook from Slack or GitHub is not a `Principal`. It is authorized by the
 signing secret of the [client](clients.md) it is for, and takes its tenant from

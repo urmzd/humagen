@@ -1075,6 +1075,37 @@ test("a client for another team, or one that is gone, routes to nothing", async 
   assert.equal(v.warp.asked.length, 0);
 });
 
+test("a message that names no agent leaves the choice to the platform's default", async () => {
+  const w = world({ defaultAgent: undefined });
+  await deliver(w, mention("what changed?", TS));
+  assert.equal(w.warp.asked[0]?.agent, "", "the app picks nobody itself");
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await w.app.idle();
+});
+
+test("with no default anywhere, the person is asked to tag an agent, for example one this app may reach", async () => {
+  const w = world({ defaultAgent: undefined });
+  w.warp.refuse = new WarpError(409, "tag an agent: nothing answers in the workspace by default");
+  await deliver(w, mention("what changed?", TS));
+  await w.app.idle();
+  assert.equal(w.warp.runs.size, 0);
+  const said = textIn(blocksOf(w.slack.of("chat.postMessage")[0]));
+  assert.match(said, new RegExp(defaultCopy.auto.tagOne("helper")));
+  assert.ok(
+    !said.includes("nothing answers in the workspace"),
+    "the platform's words are not shown",
+  );
+  collect("tag an agent", w.slack);
+
+  // A named agent that is refused for another reason is not told to tag one.
+  const v = world();
+  v.warp.refuse = new WarpError(409, "conflict");
+  await deliver(v, mention("@helper hi", TS));
+  await v.app.idle();
+  assert.ok(!textIn(blocksOf(v.slack.of("chat.postMessage")[0])).includes("Tag an agent"));
+});
+
 test("a run a limit refuses is shown in warp's words, and warp's are kept in the log", async () => {
   const w = world();
   w.warp.refuse = new WarpError(429, "the workspace reached 200 runs today", {
