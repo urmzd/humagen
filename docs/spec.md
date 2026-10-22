@@ -518,7 +518,8 @@ bound to the workspace's general.
 `workspace.inbox_retention` is how long the workspace's inbox keeps what was
 settled for everyone: a message resolved, dismissed or withdrawn. It is whole
 days, such as `90d`, or a duration, such as `2160h`; left out, it is 90
-days, and it is at least `7d` (`warp config check` refuses less). At start
+days, and it is at least `7d` and at most 100 years (`warp config check`
+refuses less or more). At start
 and every hour after, warp drops each message settled longer ago than that,
 with everything recorded about it: its outcomes, who read or hid it, and
 where a client posted it. What is open or snoozed is never dropped, nor a

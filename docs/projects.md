@@ -792,11 +792,11 @@ days by default (see Retention and counts).
 
 ### Retention and counts (phase 9)
 
-`workspace.inbox_retention` (default `90d`, at least `7d`; whole days or a Go
-duration such as `2160h`) is how long a workspace's inbox keeps what was
-settled for everyone. The platform passes it in `Config.InboxRetention`, and
-at start and every hour after `inbox.Store.Retain` drops what was settled
-before then.
+`workspace.inbox_retention` (default `90d`, at least `7d`, at most 100 years;
+whole days or a Go duration such as `2160h`) is how long a workspace's inbox
+keeps what was settled for everyone. The platform passes it in
+`Config.InboxRetention`, and at start and every hour after
+`inbox.Store.Retain` drops what was settled before then.
 
 - **What goes.** A message resolved, dismissed or withdrawn for everyone
   before the cut, with no question in it that a run still waits on, and
@@ -1607,7 +1607,7 @@ phase 2 and experts to phase 3, because addressing and threads need them.
   one. Rate limits bound posts. What was settled for everyone is dropped
   after the workspace's retention (90 days by default) with its record,
   and `Count` adds up counters kept per bucket of open messages, never
-  reading a settled one (phase 9). What stays is what is open: an
+  reading a settled one (phase 9). What stays is what is open or snoozed: an
   announcement nobody withdraws stays, with every reader's marks on it, and
   the inbox is still held whole in memory.
 - **Addressing is not confidentiality.** Expert questions are routed to
