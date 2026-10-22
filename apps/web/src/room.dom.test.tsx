@@ -1048,6 +1048,10 @@ test("the project is fixed once an agent has run, and a project the server will 
   fireEvent.change(within(dialog).getByLabelText(words.shareProject), { target: { value: "Initech" } });
   fireEvent.click(within(dialog).getByRole("button", { name: words.share }));
   assert.ok(await within(dialog).findByText(words.shareConflict));
+  // The refused project goes back to where the conversation is, and stays.
+  const moved = within(dialog).getByLabelText(new RegExp(`^${words.shareProject}`)) as HTMLSelectElement;
+  assert.equal(moved.value, "Globex");
+  assert.equal(moved.disabled, true);
   // Still private, and the dialog stays open to share it where it is.
   assert.ok(screen.getByText(words.private));
 });

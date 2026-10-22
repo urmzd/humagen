@@ -36,6 +36,11 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
 
   useEffect(() => {
     let live = true;
+    // A lookup for the project before is not this one's.
+    window.clearTimeout(timer.current);
+    asked.current++;
+    setNames(null);
+    setPeople([]);
     coworking
       .available(project)
       .then((a) => live && setNames(a.available))

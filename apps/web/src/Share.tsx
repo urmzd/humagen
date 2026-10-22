@@ -49,6 +49,7 @@ function PeopleToAdd({
     .filter((p) => !leaveOut.includes(p.subject) && !leaveOut.includes(p.handle) && !value.some((v) => v.subject === p.subject))
     .slice(0, 8);
   const listed = open && shown.length > 0;
+  const current = Math.min(active, shown.length - 1);
 
   const pick = (p: DirectoryPerson) => {
     onChange([...value, p]);
@@ -64,7 +65,7 @@ function PeopleToAdd({
       setActive((i) => (i + (e.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length);
     } else if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
-      const p = shown[Math.min(active, shown.length - 1)];
+      const p = shown[current];
       if (p) pick(p);
     } else if (e.key === "Escape") {
       // Closes the list, not the dialog.
@@ -103,7 +104,7 @@ function PeopleToAdd({
           aria-expanded={listed}
           aria-controls={listed ? list : undefined}
           aria-autocomplete="list"
-          aria-activedescendant={listed ? `${list}-${active}` : undefined}
+          aria-activedescendant={listed ? `${list}-${current}` : undefined}
           onChange={(e) => look(e.target.value)}
           onKeyDown={onKeyDown}
           onBlur={() => setOpen(false)}
@@ -121,7 +122,7 @@ function PeopleToAdd({
                 key={p.subject}
                 id={`${list}-${i}`}
                 role="option"
-                aria-selected={i === active}
+                aria-selected={i === current}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   pick(p);
@@ -165,6 +166,8 @@ export function ShareDialog({
   onClose: () => void;
 }) {
   const [project, setProject] = useState(thread.project);
+  // The server refused a move (409): the project stays where it is.
+  const [fixed, setFixed] = useState(hasRuns);
   const [channels, setChannels] = useState<Channel[] | null>(null);
   const [channel, setChannel] = useState("general");
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
@@ -172,14 +175,17 @@ export function ShareDialog({
   const [busy, setBusy] = useState(false);
   const heading = useId();
   const first = useRef<HTMLSelectElement>(null);
+  const second = useRef<HTMLSelectElement>(null);
 
+  // The first control that can change takes focus, so Escape closes from it.
   useEffect(() => {
-    first.current?.focus();
-  }, []);
+    (hasRuns ? second.current : first.current)?.focus();
+  }, [hasRuns]);
 
   useEffect(() => {
     let live = true;
     setChannel("general");
+    setChannels(null);
     coworking
       .channels(project)
       .then((cs) => live && setChannels(cs.filter((c) => !c.archived)))
@@ -204,7 +210,12 @@ export function ShareDialog({
       })
       .catch((e) => {
         setBusy(false);
-        if (e instanceof ApiError && e.status === 409) setProblem(words.shareConflict);
+        // A 409 on a move is the project fixed by a run; any other says its own reason.
+        if (e instanceof ApiError && e.status === 409 && project !== thread.project) {
+          setProblem(words.shareConflict);
+          setProject(thread.project);
+          setFixed(true);
+        }
         else if (e instanceof ApiError && e.status === 403) setProblem(defaultCopy.noPermission);
         else setProblem(e instanceof ApiError ? e.message : words.shareFailed);
       });
@@ -238,8 +249,8 @@ export function ShareDialog({
         }}
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Label text={words.shareProject} hint={hasRuns ? words.shareProjectFixed : undefined}>
-            <select ref={first} className={field} value={project} disabled={hasRuns} onChange={(e) => setProject(e.target.value)}>
+          <Label text={words.shareProject} hint={fixed ? words.shareProjectFixed : undefined}>
+            <select ref={first} className={field} value={project} disabled={fixed} onChange={(e) => setProject(e.target.value)}>
               <option value="">{workspaceName || defaultCopy.projects.workspace}</option>
               {projects
                 .filter((p) => p.name !== "")
@@ -251,7 +262,7 @@ export function ShareDialog({
             </select>
           </Label>
           <Label text={words.shareChannel}>
-            <select className={field} value={channel} onChange={(e) => setChannel(e.target.value)}>
+            <select ref={second} className={field} value={channel} onChange={(e) => setChannel(e.target.value)}>
               {names.map((n) => (
                 <option key={n} value={n}>
                   {words.channel(n)}

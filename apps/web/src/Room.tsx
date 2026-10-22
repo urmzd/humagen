@@ -372,6 +372,11 @@ export function ThreadRoom({
   // A private conversation is shared from its header, by someone who posts in it.
   const shareable = posts && th.visibility === "private" && !th.surface && !!onSharing;
   const hasRuns = turns.some((t) => t.run);
+  const shareButton = useRef<HTMLButtonElement>(null);
+  // The Share address of a conversation that can't be shared is the conversation's.
+  useEffect(() => {
+    if (sharing && !shareable) onSharing?.(false);
+  }, [sharing, shareable, onSharing]);
   const people = th.participants.filter((p) => p.kind === "person");
   const answering = th.participants.filter((p) => p.kind === "agent").map((p) => p.name);
   const title =
@@ -451,8 +456,10 @@ export function ThreadRoom({
         </p>
         {shareable && (
           <button
+            ref={shareButton}
             type="button"
             className={`${button} shrink-0`}
+            aria-haspopup="dialog"
             aria-expanded={sharing}
             onClick={() => onSharing?.(!sharing)}
           >
@@ -468,7 +475,10 @@ export function ThreadRoom({
             projects={projects.filter((p) => postsIn(projects, p.name))}
             workspaceName={workspaceName}
             me={me}
-            onClose={() => onSharing?.(false)}
+            onClose={() => {
+              onSharing?.(false);
+              shareButton.current?.focus();
+            }}
             onShared={(p) => {
               setPage(p);
               setTurns((t) => mergeTurns(t, p.turns));

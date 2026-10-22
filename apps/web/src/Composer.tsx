@@ -134,6 +134,8 @@ export function Composer({
   const [typing, setTyping] = useState<Typing | null>(null);
   const [active, setActive] = useState(0);
   const shown = tags && typing ? matching(tags.options, typing.query, 8, typing.sigil) : [];
+  // The highlighted option, kept inside the list as it shrinks under the caret.
+  const current = Math.max(0, Math.min(active, shown.length - 1));
 
   // What is being tagged at the caret, read after every change and every
   // move of the caret.
@@ -214,9 +216,10 @@ export function Composer({
         setActive((i) => (i + (e.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length);
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      // Enter with a modifier sends or adds a line, as it does with the list closed.
+      if ((e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) || e.key === "Tab") {
         e.preventDefault();
-        const option = shown[Math.min(active, shown.length - 1)];
+        const option = shown[current];
         if (option) pickTag(option);
         return;
       }
@@ -291,7 +294,7 @@ export function Composer({
               key={`${o.kind}:${o.token}`}
               id={`composer-tag-${i}`}
               role="option"
-              aria-selected={i === active}
+              aria-selected={i === current}
               onMouseDown={(e) => {
                 // Keep the text box's focus and caret while picking.
                 e.preventDefault();
@@ -360,7 +363,7 @@ export function Composer({
         aria-expanded={tags ? shown.length > 0 : undefined}
         aria-controls={tags && shown.length > 0 ? "composer-tags" : undefined}
         aria-autocomplete={tags ? "list" : undefined}
-        aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${active}` : undefined}
+        aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${current}` : undefined}
         className="max-h-[260px] min-h-14 w-full resize-none bg-transparent px-3 pt-2 text-aui-lg text-aui-fg outline-none placeholder:text-aui-muted"
       />
       {notice && (
