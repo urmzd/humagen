@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/clients"
@@ -312,4 +313,62 @@ func mustJSON(t *testing.T, v any) string {
 		t.Fatal(err)
 	}
 	return string(raw)
+}
+
+// A title or memory agent that lives in a project is asked only about the
+// turns there and below, whose readers all read it. A turn anywhere else
+// gets no housekeeping run, so nobody who reads that turn is shown a run of
+// an agent they may not read.
+func TestAHousekeepingAgentThatLivesInAProjectServesOnlyItsTurns(t *testing.T) {
+	f := newFixtureWith(t, platform.Config{OfflineHooks: true})
+	owner := f.machine(t, "acme", everything...)
+	reader := f.machineAs(t, "svc-ops", "acme", "warp:runs:read", "warp:runs:write", "warp:agents:read")
+	secretAgent(t, f, owner)
+	_, st := read(t, f, owner, "/api/settings")
+	st["title_agent"], st["memory_agent"] = "spy", "spy"
+	want(t, f, owner, "PUT", "/api/settings", mustJSON(t, st), http.StatusOK)
+
+	outside := want(t, f, reader, "POST", "/api/runs", `{"agent":"helper","text":"hello there"}`, http.StatusAccepted)["id"].(string)
+	ended(t, f, reader, outside)
+	inside := want(t, f, owner, "POST", "/api/runs", `{"agent":"helper","text":"plan the vault","project":"Secret"}`, http.StatusAccepted)["id"].(string)
+	ended(t, f, owner, inside)
+
+	// The turn in Secret is titled and taught from, by spy.
+	hooks := func() (title, memory bool) {
+		_, raw := get(t, f, owner, "/api/runs?limit=200")
+		return strings.Contains(raw, `"sys-title-`+inside+`"`), strings.Contains(raw, `"sys-memory-`+inside+`"`)
+	}
+	for i := 0; ; i++ {
+		if title, memory := hooks(); title && memory {
+			break
+		}
+		if i == 400 {
+			_, raw := get(t, f, owner, "/api/runs?limit=200")
+			t.Fatalf("the turn in Secret had no housekeeping: %s", raw)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	// The turn outside it is not.
+	if _, raw := get(t, f, owner, "/api/runs?limit=200"); strings.Contains(raw, "sys-title-"+outside) || strings.Contains(raw, "sys-memory-"+outside) {
+		t.Errorf("spy was asked about a turn outside Secret: %s", raw)
+	}
+	for _, path := range []string{"/api/runs?limit=200", "/api/runs/" + outside, "/api/threads", "/api/analytics"} {
+		if code, raw := get(t, f, reader, path); code != http.StatusOK || strings.Contains(raw, "spy") {
+			t.Errorf("%s shows the reader spy: %d %s", path, code, raw)
+		}
+	}
+	// The conversation of its own a housekeeping run makes is read where
+	// the turn it serves is.
+	_, all := read(t, f, owner, "/api/runs?limit=200")
+	for _, r := range sliceOf(all["runs"]) {
+		if run := obj(r); run["origin"] == "system" {
+			path := "/api/threads/" + run["thread"].(string)
+			if code, raw := get(t, f, reader, path); code != http.StatusNotFound {
+				t.Errorf("%s, a housekeeping run's conversation in Secret, reads to the reader as %d %s", path, code, raw)
+			}
+			if code, _ := get(t, f, owner, path); code != http.StatusOK {
+				t.Errorf("%s reads to the owner as %d", path, code)
+			}
+		}
+	}
 }

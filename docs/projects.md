@@ -574,9 +574,11 @@ because every run passes through admission:
   and the root for a platform agent, so the home's limits count it and the
   runs it calls are checked there, as for any run of that agent.
 
-Housekeeping (`OriginSystem`) is exempt, as it is from admission. Earlier
-checks use the same function and give the same answer sooner: writing a
-schedule, a default or a tag, and `GET /api/pick`.
+Housekeeping (`OriginSystem`) is exempt, as it is from admission. It is read
+where the turn it serves is, so a title or memory agent that lives in a
+project is asked only about the turns there and below, whose readers all read
+it. Earlier checks use the same function and give the same answer sooner:
+writing a schedule, a default or a tag, and `GET /api/pick`.
 
 ### Homes
 

@@ -80,6 +80,20 @@ func TestAPrivateThreadsHousekeepingStaysInIt(t *testing.T) {
 	if p.Seer(outsider).Run(hook) || !p.Seer(operator).Run(hook) {
 		t.Fatalf("a housekeeping run is read where its turn is not: outsider %v, owner %v", p.Seer(outsider).Run(hook), p.Seer(operator).Run(hook))
 	}
+	// So is the conversation of its own it makes, which has no record.
+	if p.Seer(outsider).Conversation(hook.Thread, "") || !p.Seer(operator).Conversation(hook.Thread, "") {
+		t.Fatalf("a housekeeping run's conversation is read where its turn is not")
+	}
+	listed := func(who auth.Principal) bool {
+		page, _, err := p.ThreadPageAs(who, runs.ThreadQuery{Limit: runs.MaxThreadPage})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return slices.ContainsFunc(page, func(s platform.ThreadSummary) bool { return s.ID == hook.Thread })
+	}
+	if listed(outsider) || !listed(operator) {
+		t.Fatalf("a housekeeping run's conversation is listed where its turn is not: outsider %v, owner %v", listed(outsider), listed(operator))
+	}
 
 	// The private thread sent nothing to be remembered.
 	time.Sleep(100 * time.Millisecond)

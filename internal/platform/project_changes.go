@@ -91,11 +91,13 @@ func (p *Platform) openFor(tenant, own string) func(project string) bool {
 
 // openWork keeps what a summary of a run filed in own may read for everyone
 // it reaches: not a private thread, which only its participants read, and
-// only a project openFor allows.
+// only a project openFor allows, each judged where the run lives
+// (placeOfRun), so a housekeeping run counts with the turn it serves.
 func (p *Platform) openWork(tenant, own string) func(runs.Run) bool {
 	open := p.openFor(tenant, own)
 	return func(r runs.Run) bool {
-		return open(r.Project) && !p.privateThread(tenant, r.Thread)
+		at := placeOfRun(r)
+		return open(at.Project) && !p.privateThread(tenant, at.Thread)
 	}
 }
 

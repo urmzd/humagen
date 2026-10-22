@@ -23,6 +23,8 @@ import (
 // request of its own, as a run with origin "system", and files the answer when
 // it comes back. They are ordinary runs: they show on the Runs page, they are
 // traced, and they can fail without affecting the conversation they serve.
+// Each is read where the turn it serves is, and an agent that lives in a
+// project is asked only about the turns there and below.
 //
 // Both are off until a workspace chooses an agent for them, and neither runs on
 // the offline provider, whose answer is a notice and not a title or a fact.
@@ -203,6 +205,14 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 		return
 	}
 	if rev.Spec.Provider == "offline" && !p.cfg.OfflineHooks {
+		return
+	}
+	// The run is read where the turn is, so an agent that lives in a project
+	// is asked only about the turns there and below. Everyone who reads such
+	// a turn reads the project the agent lives in, so its run is never shown
+	// to someone who may not read the agent.
+	tree := p.Projects.Tree(turn.Tenant)
+	if home, homed := tree.Home(agent); homed && !onChain(tree, turn.Project, home) {
 		return
 	}
 	_, err = p.Invoke(ctx, envelope.Tag{

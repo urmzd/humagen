@@ -69,10 +69,12 @@ type hidden struct {
 
 // confined is the fixture every sweep reads in: acme also offers a tool that
 // acts as each person, so the routes naming one have something to hide from
-// another workspace.
+// another workspace, and housekeeping runs on the offline provider, so a
+// title agent is asked.
 func confined(t *testing.T) *fixture {
 	t.Helper()
 	return newFixtureWith(t, platform.Config{
+		OfflineHooks: true,
 		Ext: platform.Extensions{ToolProviders: []platform.ToolProviderSeed{{Provider: toolprovider.Provider{
 			Tenant: "acme", Name: canaryProvider, Transport: toolprovider.TransportHTTP,
 			Endpoint: "https://issues.example.com/mcp", CredentialScope: toolprovider.ScopePerson,
@@ -186,14 +188,32 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		h.openProject = "Open"
 		must("POST", "/api/projects", `{"name":"`+h.openProject+`"}`, http.StatusCreated)
 		must("PUT", "/api/projects/"+h.openProject+"/agents", `{"version":1,"enable":["mover"],"allow":["mover","`+h.agent+`"]}`, http.StatusOK)
-		// And the workspace's title agent is the hidden agent. It is never
-		// asked, as it runs on the offline provider.
+		// And the workspace's title agent is the hidden agent. It titles a
+		// conversation in the hidden project, and its run, and the
+		// conversation of its own that run makes, are hidden with it. It is
+		// not asked about one in Open, which the outsider reads.
 		settings := must("GET", "/api/settings", "", http.StatusOK)
 		settings["title_agent"] = h.agent
 		raw, _ := json.Marshal(settings)
 		if out := must("PUT", "/api/settings", string(raw), http.StatusOK); out["title_agent"] != h.agent {
 			t.Fatalf("the owner does not see the title agent: %v", out)
 		}
+		titled := str(must("POST", "/api/runs", `{"agent":"`+h.agent+`","text":"Titled `+marker+`.","project":"`+h.project+`"}`, http.StatusAccepted), "id")
+		ended(t, f, owner, titled)
+		ended(t, f, owner, str(must("POST", "/api/runs", `{"agent":"mover","text":"Open work.","project":"`+h.openProject+`"}`, http.StatusAccepted), "id"))
+		hook := ""
+		for i := 0; hook == ""; i++ {
+			if i == 400 {
+				t.Fatal("the hidden title agent was not asked about the hidden conversation")
+			}
+			for _, r := range sliceOf(must("GET", "/api/runs?limit=200", "", http.StatusOK)["runs"]) {
+				if run := obj(r); run["tag_id"] == "sys-title-"+titled {
+					hook = str(run, "id")
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		ended(t, f, owner, hook)
 	}
 	if out := must("GET", "/api/clients/"+bound+"/bindings", "", http.StatusOK); !strings.Contains(fmt.Sprint(out), h.channel) {
 		t.Fatalf("the owner does not see the hidden channel's binding: %v", out)

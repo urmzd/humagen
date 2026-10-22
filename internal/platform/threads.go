@@ -1397,7 +1397,7 @@ func (p *Platform) ThreadPage(tenant string, q runs.ThreadQuery) ([]ThreadSummar
 // full of those, so a hidden conversation never shortens one.
 func (p *Platform) ThreadPageAs(who auth.Principal, q runs.ThreadQuery) ([]ThreadSummary, string, error) {
 	seer := p.Seer(who)
-	return p.threadPage(who.Tenant, q, func(s ThreadSummary) bool { return seer.Place(Place{Project: s.Project, Thread: s.ID}) })
+	return p.threadPage(who.Tenant, q, func(s ThreadSummary) bool { return seer.Conversation(s.ID, s.Project) })
 }
 
 func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(ThreadSummary) bool) ([]ThreadSummary, string, error) {

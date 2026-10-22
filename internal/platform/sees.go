@@ -76,6 +76,17 @@ func placeOfRun(r runs.Run) Place {
 	return Place{Project: r.Project, Thread: r.Thread}
 }
 
+// placeOfConversation is where a conversation lives: its project, from its
+// record, in the conversation itself. A housekeeping run is a conversation of
+// its own, with no record, and it lives where its run does: with the turn it
+// serves, whose words it was sent.
+func (p *Platform) placeOfConversation(tenant, id, project string) Place {
+	if r, err := p.Runs.Get(tenant, id); err == nil && r.Origin == runs.OriginSystem && r.Thread == id {
+		return placeOfRun(r)
+	}
+	return Place{Project: project, Thread: id}
+}
+
 // privateThread reports a conversation only its participants read.
 func (p *Platform) privateThread(tenant, id string) bool {
 	th, err := p.Threads.Get(tenant, id)
@@ -193,6 +204,12 @@ func (s *Seer) hosting(client string) bool {
 	v := err == nil && machineOf(c, s.who)
 	s.hosts[client] = v
 	return v
+}
+
+// Conversation reports whether the reader sees a conversation, by its id and
+// the project its record files it in (ThreadRecord).
+func (s *Seer) Conversation(id, project string) bool {
+	return s.Place(s.p.placeOfConversation(s.who.Tenant, id, project))
 }
 
 // Run reports whether the reader sees a run: where its conversation lives.
