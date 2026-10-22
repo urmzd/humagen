@@ -204,14 +204,25 @@ kinds, and they are kept differently:
   run uses it, with the server's own access: its environment, its keychain,
   the 1Password account it signed in to. So a person could name anything the
   server can read, and the operator lists, per tenant, where references may
-  start (`person_refs`, `-person-refs`). Nothing is listed by default, so
-  nobody may reference anything until the operator says where. An `env:`
-  start names a `WARP_` variable and never a sign-in secret, as a client's
-  reference must. Anyone in the workspace may name anything under a listed
-  start, so list only a vault or keychain service where that is acceptable.
-  A reference is not read when it is given, so connecting one says nothing
-  about whether it names anything, and a refused reference gets one message
-  whatever the reason.
+  start (`person_refs`, `-person-refs`), each start naming the person whose
+  references it holds with `{subject}`: `op://People/{subject}/`. A person
+  may give only their own, a reference under a start with their subject in
+  it, so Ben cannot connect `op://People/ana/issues` and have his runs act
+  with Ana's token. This is checked when the reference is given and again
+  on every turn that uses it. `{subject}` is followed by a separator a
+  subject there cannot contain (`/`, or `_` in an `env:` start, which takes
+  only lowercase letters and digits and writes them in capitals, so no two
+  subjects are written alike), and no two starts may share a place,
+  within a tenant or across two, so no reference is under two people's
+  starts. Nothing is listed by default, so nobody may reference anything
+  until the operator says where. An `env:` start names a `WARP_` variable
+  and never a sign-in secret, as a client's reference must. The binding is
+  only as good as the place: keep each person's items under their exact
+  subject, in a vault, keychain service or variable prefix that holds
+  nothing else, and in a store that tells names apart by case. A reference
+  is not read when it is given, so connecting one says nothing about whether
+  it names anything, and a refused reference gets one message whatever the
+  reason.
 - **A value is stored.** Only where the Platform document sets
   `workspace.person_credentials.values: true`, which is off by default. It is
   kept with the same protections a client's secret has: in the same secrets
@@ -221,8 +232,8 @@ kinds, and they are kept differently:
   written, so guard the database as you would the credentials.
 
 Both are checked again each time a run uses them: a stored value is not used
-once the workspace turns values off, and a reference is not used once its
-start is no longer listed. A person sees where their credential is sent (the
+once the workspace turns values off, and a reference is not used once it
+is no longer the person's own under a listed start. A person sees where their credential is sent (the
 endpoint of an http provider) before they connect it.
 
 ## Dev auth

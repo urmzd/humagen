@@ -92,7 +92,7 @@ spec:
     default: [WARP_SLACK_TOKEN]
 
   person_refs:              # where each workspace's people may keep their own tool credentials, by tenant
-    default: ["op://People/", "keychain:warp-people/"]   # how their references may start; none listed is none
+    default: ["op://People/{subject}/", "keychain:warp-people-{subject}/"]   # how their references may start, {subject} being the person's; none listed is none
 
   extensions: []            # process-wide parts a binary registered, each a slot
 
@@ -235,14 +235,28 @@ it:
 
 A person connects a credential in one of two ways:
 
-- **A reference** (`env:`, `keychain:`, `op://`), which must start with one
-  of the starts the operator lists for the workspace in `person_refs`. Only
-  the reference is stored. The server reads it when a run uses it, with its
-  own access: its environment, its keychain, the 1Password account it signed
-  in to. So anyone in the workspace may name anything under a listed start;
-  list only a vault or keychain service where that is fine (on a laptop, your
-  own). An `env:` start names a `WARP_` variable, never a sign-in secret. A
-  workspace with no entry may reference nothing.
+- **A reference** (`env:`, `keychain:`, `op://`), which must be the
+  person's own under one of the starts the operator lists for the workspace
+  in `person_refs`. Only the reference is stored. The server reads it when a
+  run uses it, with its own access: its environment, its keychain, the
+  1Password account it signed in to. So every start names the person whose
+  references it holds with `{subject}`, their sign-in subject, and a person
+  may give only a reference under a start with their own subject in it:
+  under `op://People/{subject}/`, Ana (subject `ana`) may give
+  `op://People/ana/issues` and nobody else may. `{subject}` comes once,
+  after a place of the operator's own, and is followed by `/` (by `_` in an
+  `env:` start, `env:WARP_PERSON_{subject}_`, and in a `keychain:` start it
+  is in the service, `keychain:warp-people-{subject}/`). No two starts may
+  share a place, within a workspace or across two, so give each workspace
+  its own. A subject is written as it is, except in an `env:` start, which
+  writes it in capitals (`ana` gives `env:WARP_PERSON_ANA_ISSUES`). A
+  subject with a character a reference cannot hold there (an `env:` start
+  takes lowercase letters and digits; the others take letters, digits, `.`,
+  `_`, `@` and `-`) can give no reference under it, only a value. Keep
+  each person's items under their exact subject, in a place that holds
+  nothing else, and in a store that tells names apart by case. An `env:`
+  start names a `WARP_` variable, never a sign-in secret. A workspace with no
+  entry may reference nothing.
 - **A value**, only when the Platform document sets
   `workspace.person_credentials.values: true`. The value is stored, in the
   same secrets store client secrets are kept in: never returned and never
@@ -251,7 +265,8 @@ A person connects a credential in one of two ways:
   off and use references.
 
 Both are checked again on every run, so a value is not used once values are
-turned off, and a reference is not used once its start is no longer listed.
+turned off, and a reference is not used once it is no longer the person's
+own under a listed start.
 
 ## Which level a knob lives at
 

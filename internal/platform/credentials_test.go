@@ -38,9 +38,9 @@ var (
 	slackApp = auth.Principal{Subject: "svc-slack", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.RunsWrite}}
 
 	environment = map[string]string{
-		"WARP_PERSON_ANA":   "tok-ana-7f3a",
-		"WARP_PERSON_BEN":   "tok-ben-91c2",
-		"WARP_SHARED_TOKEN": "tok-shared-55e0",
+		"WARP_PERSON_ANA_ISSUES": "tok-ana-7f3a",
+		"WARP_PERSON_BEN_ISSUES": "tok-ben-91c2",
+		"WARP_SHARED_TOKEN":      "tok-shared-55e0",
 	}
 )
 
@@ -158,7 +158,7 @@ func newWorldOn(t *testing.T, cfg platform.Config, server *mcpfake.Server, provi
 		return v, ok
 	}}.MCP()
 	if cfg.CredentialRefs == nil {
-		cfg.CredentialRefs = map[string][]string{tenant: {"env:WARP_PERSON_"}}
+		cfg.CredentialRefs = map[string][]string{tenant: {"env:WARP_PERSON_{subject}_"}}
 	}
 	if cfg.CredentialValues == nil {
 		cfg.CredentialValues = map[string]bool{tenant: true}
@@ -247,13 +247,13 @@ func TestEachPersonsRunReachesTheProviderWithTheirOwnCredential(t *testing.T) {
 
 func eachPersonsOwn(t *testing.T, b platform.Backends) {
 	w := newWorld(t, platform.Config{Backends: b})
-	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA"})
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
 	w.connect(t, ben, credentials.Input{Value: benValue})
 
 	for _, c := range []struct {
 		who  auth.Principal
 		want string
-	}{{ana, "Bearer " + environment["WARP_PERSON_ANA"]}, {ben, "Bearer " + benValue}, {ana, "Bearer " + environment["WARP_PERSON_ANA"]}} {
+	}{{ana, "Bearer " + environment["WARP_PERSON_ANA_ISSUES"]}, {ben, "Bearer " + benValue}, {ana, "Bearer " + environment["WARP_PERSON_ANA_ISSUES"]}} {
 		before := len(w.server.Calls())
 		run := w.ask(t, "api-"+c.who.Subject+fmt.Sprint(before), platform.ActorOf(c.who))
 		calls := w.server.Calls()[before:]
@@ -261,7 +261,7 @@ func eachPersonsOwn(t *testing.T, b platform.Backends) {
 			t.Fatalf("%s's run reached the server with %d calls %q", c.who.Subject, len(calls), calls)
 		}
 		for _, r := range w.server.Requests() {
-			if r != "Bearer "+environment["WARP_PERSON_ANA"] && r != "Bearer "+benValue {
+			if r != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] && r != "Bearer "+benValue {
 				t.Fatalf("a request reached the server with %q", r)
 			}
 		}
@@ -269,7 +269,7 @@ func eachPersonsOwn(t *testing.T, b platform.Backends) {
 			t.Fatalf("%s's run answered %q", c.who.Subject, run.Answer)
 		}
 	}
-	w.leaks(t, environment["WARP_PERSON_ANA"], benValue)
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"], benValue)
 }
 
 // A person with no credential gets no tools from the provider, the model is
@@ -290,7 +290,7 @@ func TestAPersonWithNoCredentialGetsNoToolsAndNothingFallsBackToTheSharedOne(t *
 	if err != nil || rec.Scope() != toolprovider.ScopePerson || rec.CredentialRef != "" {
 		t.Fatalf("the record was not made person-scoped: %+v, %v", rec, err)
 	}
-	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA"})
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
 
 	before := len(w.server.Requests())
 	for i, actor := range []envelope.Actor{
@@ -322,14 +322,14 @@ func TestAPersonWithNoCredentialGetsNoToolsAndNothingFallsBackToTheSharedOne(t *
 	// ana, who has, reaches it as herself, and never as the provider was.
 	w.ask(t, "api-ana", platform.ActorOf(ana))
 	for _, r := range w.server.Requests()[before:] {
-		if r != "Bearer "+environment["WARP_PERSON_ANA"] {
+		if r != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] {
 			t.Fatalf("after the change, a request reached the server with %q", r)
 		}
 	}
 	if len(w.server.Requests()[before:]) == 0 {
 		t.Fatal("ana's run never reached the server")
 	}
-	w.leaks(t, environment["WARP_SHARED_TOKEN"], environment["WARP_PERSON_ANA"])
+	w.leaks(t, environment["WARP_SHARED_TOKEN"], environment["WARP_PERSON_ANA_ISSUES"])
 }
 
 // A machine asking as itself acts for nobody, even when a credential is held
@@ -337,10 +337,10 @@ func TestAPersonWithNoCredentialGetsNoToolsAndNothingFallsBackToTheSharedOne(t *
 func TestAMachinesOwnRunActsForNobody(t *testing.T) {
 	w := newWorld(t, platform.Config{})
 	// Written straight into the store: ConnectTool refuses a machine.
-	if _, err := w.p.Credentials.Put(tenant, slackApp.Subject, "issues", credentials.Input{Ref: "env:WARP_PERSON_ANA"}, time.Now()); err != nil {
+	if _, err := w.p.Credentials.Put(tenant, slackApp.Subject, "issues", credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.p.ConnectTool(t.Context(), slackApp, "issues", credentials.Input{Ref: "env:WARP_PERSON_ANA"}); !errors.Is(err, platform.ErrForbidden) {
+	if _, err := w.p.ConnectTool(t.Context(), slackApp, "issues", credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"}); !errors.Is(err, platform.ErrForbidden) {
 		t.Fatalf("a machine connected a credential: %v", err)
 	}
 	w.ask(t, "api-app", platform.ActorOf(slackApp))
@@ -358,7 +358,7 @@ func TestASlackConnectorsRunActsForTheMappedPerson(t *testing.T) {
 	f := &fakes{}
 	cfg := f.config()
 	w := newWorld(t, cfg)
-	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA"})
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
 	in := slackClient("help-app", "A0HELP", team, "worker")
 	create(t, w.p, tenant, in)
 	// The people map is on the client the Slack app built on the API signs
@@ -373,7 +373,7 @@ func TestASlackConnectorsRunActsForTheMappedPerson(t *testing.T) {
 	}
 	eventually(t, "the mapped person's run reached the server as her", func() bool {
 		calls := w.server.Calls()
-		return len(calls) == 1 && calls[0] == "Bearer "+environment["WARP_PERSON_ANA"]
+		return len(calls) == 1 && calls[0] == "Bearer "+environment["WARP_PERSON_ANA_ISSUES"]
 	})
 	r, ok := runOf(w.p, tenant, "worker")
 	if !ok || r.Actor.User != "ana" || r.Actor.ID != "U0HUMAN1" {
@@ -396,7 +396,7 @@ func TestASlackConnectorsRunActsForTheMappedPerson(t *testing.T) {
 	if calls := w.server.Calls(); len(calls) != 1 {
 		t.Fatalf("an unmapped Slack user's run reached the server: %q", calls)
 	}
-	w.leaks(t, environment["WARP_PERSON_ANA"])
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
 }
 
 // Two clients mapping one Slack user to two people make the run act for
@@ -404,7 +404,7 @@ func TestASlackConnectorsRunActsForTheMappedPerson(t *testing.T) {
 func TestASlackUserMappedToTwoPeopleActsForNobody(t *testing.T) {
 	f := &fakes{}
 	w := newWorld(t, f.config())
-	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA"})
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
 	w.connect(t, ben, credentials.Input{Value: benValue})
 	create(t, w.p, tenant, slackClient("help-app", "A0HELP", team, "worker"))
 	for id, who := range map[string]string{"one": "ana", "two": "ben"} {
@@ -432,7 +432,7 @@ func TestASlackUserMappedToTwoPeopleActsForNobody(t *testing.T) {
 // and only for a provider that takes a person's own.
 func TestWhatAPersonMayConnect(t *testing.T) {
 	w := newWorld(t, platform.Config{
-		CredentialRefs:   map[string][]string{tenant: {"env:WARP_PERSON_", "op://People/"}},
+		CredentialRefs:   map[string][]string{tenant: {"env:WARP_PERSON_{subject}_", "op://People/{subject}/"}},
 		CredentialValues: map[string]bool{tenant: false},
 	})
 	if _, err := w.p.ToolProviders.PutProvider(t.Context(), toolprovider.Provider{
@@ -441,13 +441,17 @@ func TestWhatAPersonMayConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := t.Context()
-	for _, ref := range []string{"env:WARP_PERSON_ANA", "op://People/ana/issues"} {
+	for _, ref := range []string{"env:WARP_PERSON_ANA_ISSUES", "op://People/ana/issues"} {
 		if _, err := w.p.ConnectTool(ctx, ana, "issues", credentials.Input{Ref: ref}); err != nil {
 			t.Errorf("%s was refused: %v", ref, err)
 		}
 	}
 	var refusals []string
-	for _, ref := range []string{"env:WARP_SHARED_TOKEN", "env:ANTHROPIC_API_KEY", "env:WARP_OIDC_CLIENT_SECRET", "keychain:issues", "op://Infra/db/password", "op://PeopleX/a/b"} {
+	for _, ref := range []string{
+		"env:WARP_SHARED_TOKEN", "env:ANTHROPIC_API_KEY", "env:WARP_OIDC_CLIENT_SECRET", "keychain:issues", "op://Infra/db/password", "op://PeopleX/a/b",
+		// Under a listed start, but somebody else's.
+		"env:WARP_PERSON_BEN_ISSUES", "op://People/ben/issues", "op://People/an/issues", "op://People/ana.b/issues",
+	} {
 		_, err := w.p.ConnectTool(ctx, ana, "issues", credentials.Input{Ref: ref})
 		if !errors.Is(err, credentials.ErrInvalid) {
 			t.Errorf("%s was not refused: %v", ref, err)
@@ -463,17 +467,17 @@ func TestWhatAPersonMayConnect(t *testing.T) {
 	if _, err := w.p.ConnectTool(ctx, ana, "issues", credentials.Input{Value: "tok"}); !errors.Is(err, platform.ErrForbidden) {
 		t.Errorf("a value was kept where the workspace keeps none: %v", err)
 	}
-	if _, err := w.p.ConnectTool(ctx, ana, "wiki", credentials.Input{Ref: "env:WARP_PERSON_ANA"}); !errors.Is(err, platform.ErrNotPersonScoped) {
+	if _, err := w.p.ConnectTool(ctx, ana, "wiki", credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"}); !errors.Is(err, platform.ErrNotPersonScoped) {
 		t.Errorf("a credential was given for a shared provider: %v", err)
 	}
 	for _, name := range []string{"ghost", "Not A Name"} {
-		if _, err := w.p.ConnectTool(ctx, ana, name, credentials.Input{Ref: "env:WARP_PERSON_ANA"}); !errors.Is(err, platform.ErrProviderNotFound) {
+		if _, err := w.p.ConnectTool(ctx, ana, name, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"}); !errors.Is(err, platform.ErrProviderNotFound) {
 			t.Errorf("a credential was given for %q: %v", name, err)
 		}
 	}
 	other := ana
 	other.Tenant = "globex"
-	if _, err := w.p.ConnectTool(ctx, other, "issues", credentials.Input{Ref: "env:WARP_PERSON_ANA"}); !errors.Is(err, platform.ErrProviderNotFound) {
+	if _, err := w.p.ConnectTool(ctx, other, "issues", credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"}); !errors.Is(err, platform.ErrProviderNotFound) {
 		t.Errorf("another workspace's person connected to this one's provider: %v", err)
 	}
 
@@ -482,8 +486,12 @@ func TestWhatAPersonMayConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(list.Providers) != 1 || list.Providers[0].Provider != "issues" || !list.Providers[0].Connected ||
-		list.Providers[0].Ref != "op://People/ana/issues" || list.Values || len(list.References) != 2 {
+		list.Providers[0].Ref != "op://People/ana/issues" || list.Values ||
+		!slices.Equal(list.References, []string{"env:WARP_PERSON_ANA_", "op://People/ana/"}) {
 		t.Fatalf("ana's credentials = %+v", list)
+	}
+	if theirs, _ := w.p.ToolCredentials(ctx, slackApp); len(theirs.References) != 0 {
+		t.Fatalf("a machine was told where it may reference: %q", theirs.References)
 	}
 	if theirs, _ := w.p.ToolCredentials(ctx, ben); theirs.Providers[0].Connected {
 		t.Fatal("ben sees ana's credential as his")
@@ -496,16 +504,60 @@ func TestWhatAPersonMayConnect(t *testing.T) {
 	}
 }
 
+// A reference is only ever the person's own: under a start every person
+// shares, Ben can neither connect Ana's reference nor, had one been kept
+// under his name some other way, have his runs reach the provider with it.
+func TestNobodyConnectsAnotherPersonsReference(t *testing.T) {
+	w := newWorld(t, platform.Config{})
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	_, err := w.p.ConnectTool(t.Context(), ben, "issues", credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	if !errors.Is(err, credentials.ErrInvalid) {
+		t.Fatalf("ben connected ana's reference: %v", err)
+	}
+	if theirs, _ := w.p.ToolCredentials(t.Context(), ben); theirs.Providers[0].Connected {
+		t.Fatal("ben holds a credential after his refusal")
+	}
+	// Written straight into the store, as an older server would have kept it.
+	if _, err := w.p.Credentials.Put(tenant, ben.Subject, "issues", credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	w.ask(t, "api-ben", platform.ActorOf(ben))
+	if got := w.server.Requests(); len(got) != 0 {
+		t.Fatalf("ben's run reached the server with %q", got)
+	}
+	if !strings.Contains(w.log.String(), "not this person's own") {
+		t.Fatal("the unused reference was not logged")
+	}
+	w.ask(t, "api-ana", platform.ActorOf(ana))
+	if calls := w.server.Calls(); len(calls) != 1 || calls[0] != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] {
+		t.Fatalf("ana's run reached the server with %q", calls)
+	}
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
+}
+
+// Starts that could put one reference under two people's are refused before
+// the platform starts.
+func TestAPlatformRefusesStartsThatNameNobody(t *testing.T) {
+	for name, refs := range map[string]map[string][]string{
+		"a start for everyone":      {tenant: {"env:WARP_PERSON_"}},
+		"two workspaces, one place": {tenant: {"op://People/{subject}/"}, "globex": {"op://People/{subject}/"}},
+	} {
+		if _, err := platform.New(platform.Config{CredentialRefs: refs}); !errors.Is(err, credentials.ErrInvalid) {
+			t.Errorf("%s: New = %v", name, err)
+		}
+	}
+}
+
 // A credential the workspace no longer allows is not used, however it was
 // kept: a value once values are turned off, and a reference from somewhere
 // no longer listed.
 func TestACredentialTheWorkspaceNoLongerAllowsIsNotUsed(t *testing.T) {
 	w := newWorld(t, platform.Config{
-		CredentialRefs:   map[string][]string{tenant: {"env:WARP_PERSON_BEN"}},
+		CredentialRefs:   map[string][]string{tenant: {"op://People/{subject}/"}},
 		CredentialValues: map[string]bool{tenant: false},
 	})
 	at := time.Now()
-	if _, err := w.p.Credentials.Put(tenant, "ana", "issues", credentials.Input{Ref: "env:WARP_PERSON_ANA"}, at); err != nil {
+	if _, err := w.p.Credentials.Put(tenant, "ana", "issues", credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"}, at); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := w.p.Credentials.Put(tenant, "ben", "issues", credentials.Input{Value: benValue}, at); err != nil {
@@ -516,7 +568,7 @@ func TestACredentialTheWorkspaceNoLongerAllowsIsNotUsed(t *testing.T) {
 	if got := w.server.Requests(); len(got) != 0 {
 		t.Fatalf("a credential the workspace does not allow reached the server: %q", got)
 	}
-	w.leaks(t, environment["WARP_PERSON_ANA"], benValue)
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"], benValue)
 }
 
 // The run a signed-in person asks for records them as who it acts for, and

@@ -105,9 +105,10 @@ func secretRefs(raw, tenant string, env func(string) string) (map[string][]strin
 }
 
 // personRefs is where each tenant's people may keep their own tool
-// credentials: how the references they give may start. It is read from
-// -person-refs, written "tenant=START,START;tenant=START". A tenant not
-// listed may reference nothing.
+// credentials: how the references they give may start, each with
+// {subject} where the person's subject goes. It is read from -person-refs,
+// written "tenant=START,START;tenant=START". A tenant not listed may
+// reference nothing, and no two starts may share a place.
 func personRefs(raw string) (map[string][]string, error) {
 	out := map[string][]string{}
 	for _, entry := range strings.Split(raw, ";") {
@@ -125,6 +126,9 @@ func personRefs(raw string) (map[string][]string, error) {
 			}
 			out[name] = append(out[name], start)
 		}
+	}
+	if err := credentials.CheckStarts(out); err != nil {
+		return nil, fmt.Errorf("-person-refs: %w", err)
 	}
 	return out, nil
 }

@@ -77,6 +77,9 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"a person-scoped tool without its form": {plat + "  tools: [{name: d, kind: mcp, mcp: {transport: http, endpoint: 'https://a', credential_scope: person, accept: [{name: s, schema_hash: abc}]}}]\n",
 			"tools[0] \"d\": accept[0] \"s\""},
 		"a person reference the server cannot confine": {sys + "  person_refs: {default: ['env:ANTHROPIC_']}\n", "person_refs.default"},
+		"a person reference that is nobody's own":      {sys + "  person_refs: {default: ['op://People/']}\n", "person_refs.default"},
+		"two workspaces' people in one place": {sys + "  person_refs: {default: ['op://People/{subject}/'], globex: ['op://People/{subject}/']}\n",
+			"could name one reference for two people"},
 	} {
 		path := filepath.Join(t.TempDir(), "warp.yaml")
 		mustWriteFile(t, path, []byte(tc.body), 0o600)
@@ -148,7 +151,7 @@ func TestAPersonScopedToolDeclaresItsWholeForm(t *testing.T) {
 		})}}},
 	}}}}
 	cfg.System.Defaults()
-	cfg.System.Spec.PersonRefs = map[string][]string{"default": {"op://People/"}}
+	cfg.System.Spec.PersonRefs = map[string][]string{"default": {"op://People/{subject}/"}}
 	b, err := Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -169,7 +172,7 @@ func TestAPersonScopedToolDeclaresItsWholeForm(t *testing.T) {
 	if err != nil || again.SchemaHash != full.SchemaHash {
 		t.Fatalf("the schema came back differently: %s", tool.Accept[0].InputSchema)
 	}
-	if !got.Platforms[0].Spec.Workspace.PersonCredentials.Values || got.System.Spec.PersonRefs["default"][0] != "op://People/" {
+	if !got.Platforms[0].Spec.Workspace.PersonCredentials.Values || got.System.Spec.PersonRefs["default"][0] != "op://People/{subject}/" {
 		t.Fatalf("round trip lost something:\n%s", b)
 	}
 }

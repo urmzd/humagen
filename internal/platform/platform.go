@@ -94,8 +94,10 @@ type Config struct {
 	SecretRefs map[string][]string
 	// CredentialRefs is which references each tenant's people may give for
 	// their own tool credentials, by tenant: each entry is how a reference
-	// starts ("op://People/", "keychain:warp-people/", "env:WARP_PERSON_").
-	// A reference is read with this process's own access (its environment,
+	// starts, naming the person whose it is ("op://People/{subject}/",
+	// "keychain:warp-people-{subject}/", "env:WARP_PERSON_{subject}_"), and
+	// a person may give only their own (credentials.CheckStarts, Owns). A
+	// reference is read with this process's own access (its environment,
 	// its keychain, the 1Password account it signed in to), so this is the
 	// server's configuration and nothing in the API can change it. A tenant
 	// with no entry may reference nothing.
@@ -260,6 +262,9 @@ func New(cfg Config) (*Platform, error) {
 	}
 	if err := cfg.Backends.check(); err != nil {
 		return nil, err
+	}
+	if err := credentials.CheckStarts(cfg.CredentialRefs); err != nil {
+		return nil, fmt.Errorf("platform: CredentialRefs: %w", err)
 	}
 	p := &Platform{
 		cfg: cfg, log: log, now: now,

@@ -197,7 +197,7 @@ export interface ToolCredentials {
   providers: ToolCredential[];
   /** Whether this workspace lets people store a credential's value with warp. Off, people give only a reference to where it is kept. */
   values: boolean;
-  /** How the references this workspace's people may give start, as the operator listed them. Empty means no reference can be given. */
+  /** How the references the caller may give start, their own under each start the operator listed, with the caller's subject in place of `{subject}`. A start the caller's subject cannot be written in is left out, and a machine gets none. Empty means no reference can be given. */
   references: string[];
 }
 

@@ -41,7 +41,10 @@ import (
 //     client maps GitHub logins.
 //
 // A person gives their credential through ConnectTool, as a reference or, where
-// the workspace allows it, a value (pkg/credentials).
+// the workspace allows it, a value (pkg/credentials). A reference is only
+// ever the person's own: under a start the operator listed, with their
+// subject in it (credentials.Owns), checked when it is given and again on
+// every turn that uses it.
 
 // ErrNotPersonScoped refuses a credential for a provider every run reaches
 // with the workspace's own credential.
@@ -98,13 +101,15 @@ func (p *Platform) surfacePerson(c clients.Client, tag envelope.Tag) string {
 	return person
 }
 
-// refAllowed reports whether tenant's people may give ref: it is a
-// reference, it starts with one of the starts the operator listed for the
-// tenant, and an env: one names a WARP_ variable that is not a sign-in
-// secret, as a client's must.
-func (p *Platform) refAllowed(tenant, ref string) bool {
+// refAllowed reports whether subject, one of tenant's people, may give ref:
+// it is a reference, it is theirs under one of the starts the operator
+// listed for the tenant (credentials.Owns: the start with their subject in
+// it), and an env: one names a WARP_ variable that is not a sign-in secret,
+// as a client's must. Nobody else's subject makes it theirs, so a person
+// cannot give a reference to somebody else's credential.
+func (p *Platform) refAllowed(tenant, subject, ref string) bool {
 	parsed, err := credref.Parse(ref)
-	if err != nil || tenant == "" {
+	if err != nil || tenant == "" || subject == "" {
 		return false
 	}
 	if parsed.Scheme == credref.Env {
@@ -113,8 +118,21 @@ func (p *Platform) refAllowed(tenant, ref string) bool {
 		}
 	}
 	return slices.ContainsFunc(p.cfg.CredentialRefs[tenant], func(start string) bool {
-		return start != "" && strings.HasPrefix(parsed.Raw, start)
+		return credentials.Owns(start, subject, parsed.Raw)
 	})
+}
+
+// ownStarts is how the references subject may give start: each of the
+// tenant's starts with their subject in it, leaving out a start their
+// subject cannot be written in.
+func (p *Platform) ownStarts(tenant, subject string) []string {
+	out := []string{}
+	for _, start := range p.cfg.CredentialRefs[tenant] {
+		if own, ok := credentials.Expand(start, subject); ok {
+			out = append(out, own)
+		}
+	}
+	return out
 }
 
 // personCredential is the credential the person a run acts for holds for a
@@ -143,8 +161,8 @@ func (p *Platform) personCredential(_ context.Context, tenant string, prov toolp
 		}
 		return mcptools.PersonCredential{Secret: mcptools.NewSecret(v)}, nil
 	}
-	if !p.refAllowed(tenant, c.Ref) {
-		p.log.Warn("platform: a credential reference is not used: this workspace's people may not reference it",
+	if !p.refAllowed(tenant, person, c.Ref) {
+		p.log.Warn("platform: a credential reference is not used: it is not this person's own under a start this workspace lists",
 			"tenant", tenant, "person", person, "provider", prov.Name)
 		return mcptools.PersonCredential{}, mcptools.ErrNoPersonCredential
 	}
@@ -176,8 +194,9 @@ type ToolCredentials struct {
 	Providers []ToolCredential `json:"providers"`
 	// Values reports whether this workspace lets people store a value.
 	Values bool `json:"values"`
-	// References are the starts of the references this workspace's people
-	// may give.
+	// References is how the references the person asking may give start:
+	// the starts the operator listed for the workspace, with their subject
+	// in place of credentials.SubjectField. A machine gives none.
 	References []string `json:"references"`
 }
 
@@ -192,12 +211,9 @@ func (p *Platform) ToolCredentials(ctx context.Context, who auth.Principal) (Too
 	if err != nil {
 		return ToolCredentials{}, err
 	}
-	out := ToolCredentials{
-		Providers: []ToolCredential{}, Values: p.cfg.CredentialValues[who.Tenant],
-		References: slices.Clone(p.cfg.CredentialRefs[who.Tenant]),
-	}
-	if out.References == nil {
-		out.References = []string{}
+	out := ToolCredentials{Providers: []ToolCredential{}, Values: p.cfg.CredentialValues[who.Tenant], References: []string{}}
+	if who.Kind != auth.Machine {
+		out.References = p.ownStarts(who.Tenant, who.Subject)
 	}
 	for _, prov := range all {
 		if prov.Scope() != toolprovider.ScopePerson {
@@ -260,10 +276,11 @@ var ErrProviderNotFound = errors.New("platform: tool provider not found")
 // place of the one they had. A person gives it for themselves only: the
 // route takes no subject, and a machine has no credentials of its own.
 //
-// A reference must start with one of the starts the operator listed for the
-// workspace, and is not read here, so connecting says nothing about whether
-// it names anything. A value is accepted only where the workspace lets people
-// store one, and is then kept as a client's secret is.
+// A reference must be the caller's own under one of the starts the operator
+// listed for the workspace, the start with their subject in it, and is not
+// read here, so connecting says nothing about whether it names anything. A
+// value is accepted only where the workspace lets people store one, and is
+// then kept as a client's secret is.
 func (p *Platform) ConnectTool(ctx context.Context, who auth.Principal, provider string, in credentials.Input) (ToolCredential, error) {
 	// Looked up first, so another workspace's provider is not found
 	// whoever asks.
@@ -280,7 +297,7 @@ func (p *Platform) ConnectTool(ctx context.Context, who auth.Principal, provider
 	switch {
 	case in.Value != "" && !p.cfg.CredentialValues[who.Tenant]:
 		return ToolCredential{}, fmt.Errorf("%w: this workspace does not keep people's credentials; give a reference to where yours is kept", ErrForbidden)
-	case in.Ref != "" && !p.refAllowed(who.Tenant, in.Ref):
+	case in.Ref != "" && !p.refAllowed(who.Tenant, who.Subject, in.Ref):
 		return ToolCredential{}, errPersonRef
 	}
 	held, err := p.Credentials.Put(who.Tenant, who.Subject, prov.Name, in, p.now())

@@ -146,7 +146,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	seed := fs.Bool("seed", d.seed, "create example agents that need no model key")
 	builtinProvider := fs.String("builtin-provider", "", `model provider for the agents the platform provides, such as "anthropic" or "ollama". Empty means none are provided`)
 	builtinModel := fs.String("builtin-model", "", "model for the agents the platform provides")
-	personRefsFlag := fs.String("person-refs", "", `how the references each tenant's people may give for their own tool credentials start, as "tenant=op://People/,keychain:warp-people/;tenant=env:WARP_PERSON_". The server reads them with its own access. A tenant not listed may reference nothing`)
+	personRefsFlag := fs.String("person-refs", "", `how the references each tenant's people may give for their own tool credentials start, with {subject} where each person's subject goes, as "tenant=op://People/{subject}/,keychain:warp-people-{subject}/;tenant=env:WARP_PERSON_{subject}_". The server reads them with its own access, so a person may give only their own. A tenant not listed may reference nothing`)
 	secretRefsFlag := fs.String("secret-refs", "", `environment variables each tenant's clients may reference as secrets, as "tenant=NAME,NAME;tenant=NAME". A tenant not listed may reference none`)
 	agentSpecs := fs.String("agent-specs", "", "comma-separated agent JSON files to register on startup")
 	var specFiles files

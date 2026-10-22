@@ -50,10 +50,13 @@ type SystemSpec struct {
 	Execution Execution           `json:"execution,omitzero"`
 	SecretEnv map[string][]string `json:"secret_env,omitempty"`
 	// PersonRefs is where each workspace's people may keep their own tool
-	// credentials, by tenant: how the references they give may start
-	// (op://People/, keychain:warp-people/, env:WARP_PERSON_). The server
-	// reads a reference with its own access, so a person may name anything
-	// under a start listed here. A tenant not listed may reference nothing.
+	// credentials, by tenant: how the references they give may start, each
+	// naming the person whose references it holds with {subject}
+	// (op://People/{subject}/, keychain:warp-people-{subject}/,
+	// env:WARP_PERSON_{subject}_). The server reads a reference with its
+	// own access, so a person may give only their own: one under a start
+	// with their subject in it. No two starts may share a place, within a
+	// workspace or across two. A tenant not listed may reference nothing.
 	PersonRefs map[string][]string `json:"person_refs,omitempty"`
 	Extensions []Slot              `json:"extensions,omitempty"`
 	// Deploy is where `warp deploy` runs this: local, compose or
@@ -275,6 +278,9 @@ func (s System) check(kinds Kinds) error {
 				return fmt.Errorf("system: person_refs.%s: %w", name, err)
 			}
 		}
+	}
+	if err := credentials.CheckStarts(sp.PersonRefs); err != nil {
+		return fmt.Errorf("system: person_refs: %w", err)
 	}
 	slots := []struct {
 		name string

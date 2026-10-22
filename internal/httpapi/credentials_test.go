@@ -52,7 +52,7 @@ func (m *searcher) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 func toolFixture(t *testing.T) (*fixture, *mcpfake.Server, *searcher) {
 	t.Helper()
 	server, model := mcpfake.New(t), &searcher{}
-	tokens := map[string]string{"WARP_PERSON_ANA": "tok-ana-httpapi", "WARP_PERSON_BEN": "tok-ben-httpapi"}
+	tokens := map[string]string{"WARP_PERSON_ANA_ISSUES": "tok-ana-httpapi", "WARP_PERSON_BEN_ISSUES": "tok-ben-httpapi"}
 	f := newFixtureWith(t, platform.Config{
 		AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOllama, func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil })},
 		Ext: platform.Extensions{
@@ -61,7 +61,7 @@ func toolFixture(t *testing.T) (*fixture, *mcpfake.Server, *searcher) {
 			}, Accept: server.Tools(t)}},
 			Resolver: credref.Resolver{LookupEnv: func(name string) (string, bool) { v, ok := tokens[name]; return v, ok }}.MCP(),
 		},
-		CredentialRefs: map[string][]string{"acme": {"env:WARP_PERSON_"}},
+		CredentialRefs: map[string][]string{"acme": {"env:WARP_PERSON_{subject}_"}},
 		SlackAPI:       func(string) slackflow.API { return slackflow.NewFake() },
 		ClientInterval: -1,
 	})
@@ -116,11 +116,14 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 	ana, ben := f.person(t, "ana"), f.person(t, "ben")
 	app := f.machine(t, "acme", "warp:runs:read", "warp:runs:write")
 
-	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ana, `{"ref":"env:WARP_PERSON_ANA"}`); res.StatusCode != http.StatusOK || out["connected"] != true {
+	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ana, `{"ref":"env:WARP_PERSON_ANA_ISSUES"}`); res.StatusCode != http.StatusOK || out["connected"] != true {
 		t.Fatalf("ana connecting = %d %v", res.StatusCode, out)
 	}
-	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", app, `{"ref":"env:WARP_PERSON_BEN"}`); res.StatusCode != http.StatusForbidden {
+	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", app, `{"ref":"env:WARP_PERSON_BEN_ISSUES"}`); res.StatusCode != http.StatusForbidden {
 		t.Fatalf("the app connected a credential of its own: %d %v", res.StatusCode, out)
+	}
+	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ben, `{"ref":"env:WARP_PERSON_ANA_ISSUES"}`); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("ben connected ana's reference: %d %v", res.StatusCode, out)
 	}
 
 	run := f.ask(t, app, `{"agent":"worker","text":"Open bugs?","act_as":{"client":"slack-app","user":"U0ADA"}}`)
@@ -179,7 +182,7 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 		}
 		return list[0].(map[string]any)
 	}
-	if c := first(mine); c["connected"] != true || c["ref"] != "env:WARP_PERSON_ANA" || c["endpoint"] != server.URL {
+	if c := first(mine); c["connected"] != true || c["ref"] != "env:WARP_PERSON_ANA_ISSUES" || c["endpoint"] != server.URL {
 		t.Fatalf("ana's issues = %v", c)
 	}
 	if c := first(his); c["connected"] != false || c["ref"] != nil {

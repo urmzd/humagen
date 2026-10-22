@@ -231,16 +231,3 @@ func TestAFailedWriteChangesNothing(t *testing.T) {
 		t.Fatal("a failed delete dropped the value")
 	}
 }
-
-func TestOnlyAStartTheServerCanConfineIsAccepted(t *testing.T) {
-	for _, ok := range []string{"env:WARP_PERSON_", "env:WARP_ADA_GITHUB", "keychain:warp-people/", "keychain:warp", "op://People/", "op://People/ada/"} {
-		if err := credentials.CheckStart(ok); err != nil {
-			t.Errorf("%s was refused: %v", ok, err)
-		}
-	}
-	for _, bad := range []string{"", "env:", "env:ANTHROPIC_", "env:WARP_OIDC_", "env:WARP_OIDC", "env:WARP_A-B", "keychain:", "op://", "vault:x", "op://a,op://b", "op://a;b"} {
-		if err := credentials.CheckStart(bad); !errors.Is(err, credentials.ErrInvalid) {
-			t.Errorf("%q was accepted", bad)
-		}
-	}
-}

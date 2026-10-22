@@ -16,8 +16,8 @@ kind: System
 spec:
   auth: {kind: dev, tenant: {claim: org}}
   person_refs:
-    default: ["op://People/", "env:WARP_PERSON_"]
-    globex: ["keychain:globex-people/"]
+    default: ["op://People/{subject}/", "env:WARP_PERSON_{subject}_"]
+    globex: ["keychain:globex-people-{subject}/"]
 ---
 api_version: warp/v1
 kind: Platform
@@ -59,12 +59,12 @@ func TestTheFilesPersonScopedToolsAndWhatPeopleMayGive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const flag = "-person-refs=default=op://People/,env:WARP_PERSON_;globex=keychain:globex-people/"
+	const flag = "-person-refs=default=op://People/{subject}/,env:WARP_PERSON_{subject}_;globex=keychain:globex-people-{subject}/"
 	if !slices.Contains(l.args, flag) {
 		t.Fatalf("the System's person_refs became %q", l.args)
 	}
 	refs, err := personRefs(flag[len("-person-refs="):])
-	if err != nil || len(refs["default"]) != 2 || refs["globex"][0] != "keychain:globex-people/" {
+	if err != nil || len(refs["default"]) != 2 || refs["globex"][0] != "keychain:globex-people-{subject}/" {
 		t.Fatalf("person refs = %v, %v", refs, err)
 	}
 	if values := personValues(l.cfg); !values["default"] || values["globex"] {
@@ -97,13 +97,19 @@ func TestTheFilesPersonScopedToolsAndWhatPeopleMayGive(t *testing.T) {
 	}
 }
 
-// Where people may keep their credentials is the operator's to say, and
-// only somewhere the server can confine.
+// Where people may keep their credentials is the operator's to say, only
+// somewhere the server can confine, and only as each person's own place.
 func TestPersonReferencesAreGivenToTenantsByTheOperator(t *testing.T) {
 	if got, err := personRefs(""); err != nil || len(got) != 0 {
 		t.Fatalf("with nothing configured, nobody may reference anything: %v, %v", got, err)
 	}
-	for _, raw := range []string{"acme", "=op://People/", "acme=", "acme=env:ANTHROPIC_API_KEY", "acme=env:WARP_OIDC_CLIENT_SECRET", "acme=vault:x", "acme=op://"} {
+	for _, raw := range []string{
+		"acme", "=op://People/{subject}/", "acme=", "acme=env:ANTHROPIC_API_KEY", "acme=env:WARP_OIDC_CLIENT_SECRET", "acme=vault:x", "acme=op://",
+		// A start that names nobody is everyone's.
+		"acme=op://People/", "acme=env:WARP_PERSON_",
+		// Two workspaces in one place.
+		"acme=op://People/{subject}/;globex=op://People/{subject}/",
+	} {
 		if _, err := personRefs(raw); err == nil {
 			t.Errorf("-person-refs %q was accepted", raw)
 		}

@@ -847,7 +847,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "issues", Transport: toolprovider.TransportHTTP, Endpoint: "https://issues.example.com/mcp", CredentialScope: toolprovider.ScopePerson}},
 			{Provider: toolprovider.Provider{Tenant: "acme", Name: "wiki", Transport: toolprovider.TransportHTTP, Endpoint: "https://wiki.example.com/mcp", CredentialRef: "env:WIKI_TOKEN"}},
 		}},
-		CredentialRefs:   map[string][]string{"acme": {"op://People/"}},
+		CredentialRefs:   map[string][]string{"acme": {"op://People/{subject}/"}},
 		CredentialValues: map[string]bool{"acme": true},
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
@@ -877,6 +877,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Errorf("a stored value was listed: %s", listed.raw)
 	}
 	c.call(ana, "PUT", mine, "/api/me/credentials/issues", `{"ref":"op://Infra/db/password"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", mine, "/api/me/credentials/issues", `{"ref":"op://People/ben/issues"}`, http.StatusBadRequest)
 	c.call(ana, "PUT", mine, "/api/me/credentials/issues", `{"ref":"op://People/a/b","value":"v"}`, http.StatusBadRequest)
 	c.call(ana, "PUT", mine, "/api/me/credentials/wiki", `{"ref":"op://People/ana/wiki"}`, http.StatusBadRequest)
 	c.call(ana, "PUT", mine, "/api/me/credentials/ghost", `{"ref":"op://People/ana/ghost"}`, http.StatusNotFound)
