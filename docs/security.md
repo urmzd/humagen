@@ -37,7 +37,9 @@ under them, and because reusing the name of a deleted project adopts the
 conversations still filed under it. `projects:govern` grants nothing on its
 own: every project route checks `projects:read` or `projects:write` first, and
 govern is asked for on top, for the workspace, a company project, its notes, or
-a deleted name. Its notes are asked the same through every route that changes
+a deleted name. A deleted name's tombstone is never forgotten while
+conversations or files are still filed under it, so later deletes cannot clear
+the way to adopting them. Its notes are asked the same through every route that changes
 them: the project's memory routes and the inbox. The agent memory routes reach
 an agent's own notes only, and answer 404 for a project's memory owner
 (`project:<name>`, and `project:` for the workspace). Then the caller's role on
@@ -186,6 +188,9 @@ no permission, grants nothing.
 - **A proposed memory is not a memory.** What the memory agent writes is held
   as pending and is not sent to any agent until a person approves it, unless
   the workspace turned approval off. This is saige's default for memory writes.
+  What it writes for the workspace or a company project waits for someone
+  holding `projects:govern` even then: the turn that taught it needed only
+  `runs:write`, and turning approval off needs only `agents:write`.
 - **Memory refuses personal data.** Every note, from a person or an agent,
   passes saige's memory policy, which rejects text its detector finds personal
   data in.

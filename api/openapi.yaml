@@ -2679,7 +2679,10 @@ paths:
         Its conversations keep its name, and are adopted only if someone
         holding `projects:govern` creates it again. The workspace cannot be
         deleted (400), a company project needs `projects:govern`, and a
-        project the platform file declares is removed there (409).
+        project the platform file declares is removed there (409). A
+        workspace remembers at most 1,000 deleted names, and forgets one only
+        when nothing is filed under it: when every one it remembers still has
+        conversations or files, the delete is refused with 429.
       x-permission: projects:write
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -2691,6 +2694,7 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/projects/{name}/agents:
     get:

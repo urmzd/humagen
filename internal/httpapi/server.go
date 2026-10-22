@@ -637,13 +637,12 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 	// Inbox changes ride the same stream as a named event, so a reader that
 	// only listens for run events never sees them. A notice names a message
 	// and nothing more: the reader fetches it and is shown what they may see.
-	// Both kinds are watched before the stream opens, so a reader that
-	// connects and then acts is told of what it did.
+	// The watches start before the stream is answered, as the run events'
+	// subscription does, so a reader that acts once it is connected cannot
+	// miss the notice its action raises: the inbox's, and the threads', whose
+	// notices name a thread and the message posted or settled.
 	notices, unwatch := s.P.Inbox.Watch(who.Tenant)
 	defer unwatch()
-	// So do threads: a notice names a thread and the message posted or
-	// settled. Every thread is shared until reads are confined, so whoever
-	// may read conversations is told of each.
 	posts, unwatchThreads := s.P.WatchThreads(who.Tenant)
 	defer unwatchThreads()
 

@@ -2589,7 +2589,10 @@ schedules, alert rules or limits point at the project. A delete never drops a li
 Its conversations keep its name, and are adopted only if someone
 holding `projects:govern` creates it again. The workspace cannot be
 deleted (400), a company project needs `projects:govern`, and a
-project the platform file declares is removed there (409).
+project the platform file declares is removed there (409). A
+workspace remembers at most 1,000 deleted names, and forgets one only
+when nothing is filed under it: when every one it remembers still has
+conversations or files, the delete is refused with 429.
  */
   async deleteProject(name: string, options?: RequestOptions): Promise<void> {
     let path = "/api/projects/{name}";

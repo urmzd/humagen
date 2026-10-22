@@ -167,7 +167,7 @@ func TestOlderRecordsReadAsEveryoneOwns(t *testing.T) {
 	}
 	// The migration writes the same entries.
 	m := projects.NewStore()
-	if err := m.Import("acme", []projects.Project{{Name: "Ops"}}, "migration", t0); err != nil {
+	if err := m.Import("acme", []projects.Project{{Name: "Ops"}}, nil, "migration", t0); err != nil {
 		t.Fatal(err)
 	}
 	if ops, _ := m.Get("acme", "Ops"); !slices.Equal(ops.Members, members("*=owner")) {

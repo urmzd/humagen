@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -95,6 +96,8 @@ type settings struct {
 	kept *state.Table[storedSettings]
 	// legacy is the projects a tenant's settings still held when they were
 	// read, by tenant, until the migration moves them to the project store.
+	// A tenant whose record an earlier version wrote is here even when the
+	// array was null.
 	legacy map[string][]legacyProject
 	// baselines is the baseline agent a tenant's settings still named when
 	// they were read, by tenant, until the migration makes it the root's
@@ -105,10 +108,11 @@ type settings struct {
 // storedSettings is a tenant's settings as they are written. Settings once
 // held the workspace's projects, because one struct was both the wire and the
 // record. LegacyProjects reads them back for the migration into the project
-// store, and is never written again.
+// store, and is never written again. It is raw so a record an earlier version
+// wrote is told apart even when its array is null.
 type storedSettings struct {
 	Settings
-	LegacyProjects []legacyProject `json:"projects,omitempty"`
+	LegacyProjects json.RawMessage `json:"projects,omitempty"`
 	// LegacyBaseline is the agent that once answered when nobody chose one.
 	// The root's default replaces it: the migration reads it once, and it is
 	// never written again.
@@ -131,7 +135,11 @@ func (s *settings) open(st state.Store) error {
 	err := s.kept.Load(func(tenant, _ string, v storedSettings) error {
 		s.by[tenant] = v.Settings
 		if v.LegacyProjects != nil {
-			s.legacy[tenant] = v.LegacyProjects
+			var held []legacyProject
+			if err := json.Unmarshal(v.LegacyProjects, &held); err != nil {
+				return fmt.Errorf("the projects of %q: %w", tenant, err)
+			}
+			s.legacy[tenant] = held
 		}
 		if v.LegacyBaseline != nil {
 			s.baselines[tenant] = *v.LegacyBaseline

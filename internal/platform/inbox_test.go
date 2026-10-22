@@ -248,6 +248,61 @@ func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 	}
 }
 
+// With the workspace keeping what the memory agent writes without asking, an
+// agent's notes and a team project's are kept as they come, and a company
+// project's still wait for someone holding projects:govern: the turn that
+// taught them needed only runs:write, and agents:write turns the setting on.
+func TestAutoApproveStillAsksGovernForACompanyProjectsNotes(t *testing.T) {
+	p := withMemoryAgent(t)
+	ctx := t.Context()
+	if err := p.SetSettings(ctx, tenant, platform.Settings{MemoryAgent: "scribe", MemoryAutoApprove: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, govern, platform.ProjectInput{Name: "News", Kind: projects.Company}); err != nil {
+		t.Fatal(err)
+	}
+	// The manager owns News, and still is offered nothing on its proposals.
+	if _, err := p.SetProjectMembers(ctx, admin, "News", 1, []projects.Entry{
+		{Who: projects.Everyone, Role: projects.Member}, {Who: "root", Role: projects.Owner}, {Who: "mo", Role: projects.Owner},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Launch"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ id, project, owner string }{
+		{"api-launch", "Launch", memory.ProjectOwner("Launch")},
+		{"api-root", "", "lead"},
+	} {
+		first, err := p.Converse(ctx, tenant, platform.Turn{ID: c.id, Agent: "lead", Text: "Plan the launch", Project: c.project})
+		if err != nil {
+			t.Fatal(err)
+		}
+		await(t, p, first.ID, runs.Completed)
+		within(t, c.owner+"'s notes are written", func() bool { return len(p.Memory.List(tenant, c.owner)) > 0 })
+		for _, n := range p.Memory.List(tenant, c.owner) {
+			if n.Status != memory.Approved {
+				t.Fatalf("with approval off, %s's note waits: %+v", c.owner, n)
+			}
+		}
+	}
+
+	msg := proposed(t, p, "api-news", "News")
+	notes := p.Memory.List(tenant, memory.ProjectOwner("News"))
+	if len(notes) == 0 || len(notes) != len(msg.Parts[0].Memory.Notes) {
+		t.Fatalf("News holds %+v, and the inbox proposes %+v", notes, msg.Parts[0].Memory.Notes)
+	}
+	for _, n := range notes {
+		if n.Status != memory.Pending {
+			t.Fatalf("a company project's note was kept unasked: %+v", n)
+		}
+	}
+	manager := auth.Principal{Subject: "mo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	if seen, err := p.InboxGet(manager, msg.ID); err != nil || len(seen.Parts[0].Actions) != 0 {
+		t.Fatalf("a manager is offered %v on News's proposals (%v)", seen.Parts[0].Actions, err)
+	}
+}
+
 // Proposals dealt with on the agent's own page close their message.
 func TestMemoryDecidedElsewhereClosesItsMessage(t *testing.T) {
 	p, msg := proposals(t)

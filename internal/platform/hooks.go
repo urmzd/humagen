@@ -126,6 +126,7 @@ func (p *Platform) fileHook(run runs.Run) {
 	case hookMemory:
 		kept := 0
 		var proposed []memory.Note
+		unasked := p.Settings(run.Tenant).MemoryAutoApprove && p.mayKeepUnasked(run.Tenant, target)
 		for _, line := range strings.Split(run.Answer, "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.EqualFold(strings.Trim(line, ".-* "), "none") || kept == 3 {
@@ -135,9 +136,11 @@ func (p *Platform) fileHook(run runs.Run) {
 				continue
 			}
 			// A proposal waits for a person unless the workspace chose
-			// otherwise. Text that carries personal data is not kept at all.
+			// otherwise, and always for the workspace's and a company
+			// project's notes, which need projects:govern. Text that
+			// carries personal data is not kept at all.
 			status := memory.Pending
-			if p.Settings(run.Tenant).MemoryAutoApprove {
+			if unasked {
 				status = memory.Approved
 			}
 			if note, err := p.Memory.Add(run.Tenant, target, line, memory.Consolidated, status, run.ID, run.UpdatedAt); err == nil {

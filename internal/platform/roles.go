@@ -191,7 +191,7 @@ func (p *Platform) AddProjectNote(who auth.Principal, name, text string) (memory
 	// wide part of the tree is sent, are changed with projects:govern: an
 	// owner without it proposes, as a member does.
 	owner := memory.ProjectOwner(name)
-	if access.Role == projects.Owner && (!wideNotes(pr) || who.Can(auth.ProjectsGovern)) {
+	if access.Role == projects.Owner && (!governedNotes(pr) || who.Can(auth.ProjectsGovern)) {
 		return p.Memory.Add(who.Tenant, owner, text, memory.Person, memory.Approved, who.Subject, p.now())
 	}
 	note, err := p.Memory.Add(who.Tenant, owner, text, memory.Person, memory.Pending, who.Subject, p.now())
