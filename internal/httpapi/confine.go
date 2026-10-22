@@ -77,6 +77,35 @@ func (s *Server) seenAgent(h handler) handler {
 	}
 }
 
+// seenAlert guards a route under /api/alerts/{id}: the run that raised the
+// alert, or its project, and its agent. An alert that does not exist is left
+// to the handler, which says so in the same words.
+func (s *Server) seenAlert(h handler) handler {
+	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		id := r.PathValue("id")
+		for _, a := range s.P.Alerts.Alerts(who.Tenant) {
+			if a.ID == id && !s.P.Seer(who).Alert(a) {
+				notFound(w)
+				return
+			}
+		}
+		h(w, r, who)
+	}
+}
+
+// seenRule guards a route under /api/alert-rules/{name}: the project and the
+// agent the rule watches. One that does not exist is left to the handler.
+func (s *Server) seenRule(h handler) handler {
+	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		rule, err := s.P.Alerts.Rule(who.Tenant, r.PathValue("name"))
+		if err == nil && !s.P.Seer(who).Rule(rule) {
+			notFound(w)
+			return
+		}
+		h(w, r, who)
+	}
+}
+
 // seenProject guards a route under /api/projects/{name}: a project the caller
 // has no role in reads as one that does not exist. One that does not exist is
 // left to the handler.

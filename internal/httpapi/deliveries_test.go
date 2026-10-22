@@ -89,3 +89,26 @@ func TestOnlyAClientsMachineRecordsAndSeesItsDeliveries(t *testing.T) {
 		t.Errorf("the first machine's page shows %v", d)
 	}
 }
+
+// An announcement a Slack app posts to the channel its project is bound to
+// keeps its receipt: the app's machine records where it posted it, as it
+// reads it, and reads the receipt back, so an edit or a withdrawal updates
+// that post rather than posting again.
+func TestAnAnnouncementsSlackPostKeepsItsReceipt(t *testing.T) {
+	f, ana, _, _ := acmeNews(t)
+	admin, one := f.machine(t, "acme", everything...), f.signedAs(t, "svc-one")
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, admin, "POST", "/api/clients", slackApp("one", "A01ONE", "svc-one"), http.StatusCreated)
+	want(t, f, admin, "PUT", "/api/projects/Field/channels/general", `{"version":0,"slack":{"client":"one","channel":"C01GEN"}}`, http.StatusOK)
+	want(t, f, ana, "POST", "/api/projects/Field/announcements", `{"subject":"Field offsite","text":"Lisbon, in May."}`, http.StatusCreated)
+	page := want(t, f, one, "GET", "/api/inbox?kind=announcement", "", http.StatusOK)["messages"].([]any)
+	if len(page) != 1 {
+		t.Fatalf("the app's machine reads %v", page)
+	}
+	id := page[0].(map[string]any)["id"].(string)
+	want(t, f, one, "PUT", "/api/inbox/"+id+"/deliveries/one", `{"channel":"C01GEN","ts":"1700000000.000100"}`, http.StatusNoContent)
+	got := want(t, f, one, "GET", "/api/inbox/"+id, "", http.StatusOK)["message"].(map[string]any)
+	if d, _ := got["deliveries"].(map[string]any)["one"].(map[string]any); d["channel"] != "C01GEN" || d["ts"] != "1700000000.000100" {
+		t.Fatalf("the receipt reads back as %v", got["deliveries"])
+	}
+}

@@ -32,11 +32,11 @@ func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/runs/{id}/manifest", s.authed(auth.RunsRead, s.seenRun(s.manifest)))
 
 	mux.HandleFunc("GET /api/alerts", s.authed(auth.AlertsRead, s.listAlerts))
-	mux.HandleFunc("POST /api/alerts/{id}/ack", s.authed(auth.AlertsWrite, s.ackAlert))
+	mux.HandleFunc("POST /api/alerts/{id}/ack", s.authed(auth.AlertsWrite, s.seenAlert(s.ackAlert)))
 	mux.HandleFunc("GET /api/alert-rules", s.authed(auth.AlertsRead, s.listRules))
 	mux.HandleFunc("POST /api/alert-rules", s.authed(auth.AlertsWrite, s.createRule))
-	mux.HandleFunc("PUT /api/alert-rules/{name}", s.authed(auth.AlertsWrite, s.updateRule))
-	mux.HandleFunc("DELETE /api/alert-rules/{name}", s.authed(auth.AlertsWrite, s.deleteRule))
+	mux.HandleFunc("PUT /api/alert-rules/{name}", s.authed(auth.AlertsWrite, s.seenRule(s.updateRule)))
+	mux.HandleFunc("DELETE /api/alert-rules/{name}", s.authed(auth.AlertsWrite, s.seenRule(s.deleteRule)))
 
 	mux.HandleFunc("GET /api/evals", s.authed(auth.EvalsRead, s.listSuites))
 	mux.HandleFunc("POST /api/evals", s.authed(auth.EvalsWrite, s.putSuite(false)))
@@ -249,7 +249,7 @@ func treeUsage(tree []runs.Run) payload.Usage {
 func (s *Server) listAlerts(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
 	ok(w, http.StatusOK, map[string]any{"alerts": orEmpty(slices.DeleteFunc(s.P.Alerts.Alerts(who.Tenant), func(a alerts.Alert) bool {
-		return !seer.Project(a.Project) || (a.Agent != "" && !seer.Agent(a.Agent))
+		return !seer.Alert(a)
 	}))})
 }
 
@@ -265,7 +265,7 @@ func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Princ
 func (s *Server) listRules(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
 	ok(w, http.StatusOK, map[string]any{"rules": orEmpty(slices.DeleteFunc(s.P.Alerts.Rules(who.Tenant), func(r alerts.Rule) bool {
-		return !seer.Project(r.Project) || (r.Agent != "" && !seer.Agent(r.Agent))
+		return !seer.Rule(r)
 	}))})
 }
 
@@ -330,19 +330,26 @@ func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 // ruleScopeExists checks that the agent and the project a rule is scoped to
-// exist in the caller's tenant now, and answers 404 when one does not. A rule
-// on "~", the workspace, watches no one project, as one with no project does,
-// so it is stored with none.
+// exist in the caller's tenant now, and that the caller may read them, and
+// answers 404 when one does not, or is hidden from them, alike. A rule filed
+// in a project takes a member of it, as other work filed there does
+// (MayFileIn). A rule on "~", the workspace, watches no one project, as one
+// with no project does, so it is stored with none.
 func (s *Server) ruleScopeExists(w http.ResponseWriter, r *http.Request, who auth.Principal, rule *alerts.Rule) bool {
 	rule.Project = projects.NameOf(rule.Project)
+	seer := s.P.Seer(who)
 	if rule.Agent != "" {
-		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, rule.Agent, 0); err != nil {
-			s.problem(w, err)
+		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, rule.Agent, 0); err != nil || !seer.Agent(rule.Agent) {
+			notFound(w)
 			return false
 		}
 	}
-	if rule.Project != "" && !s.P.HasProject(who.Tenant, rule.Project) {
+	if rule.Project != "" && (!s.P.HasProject(who.Tenant, rule.Project) || !seer.Project(rule.Project)) {
 		s.problem(w, platform.ErrProjectNotFound)
+		return false
+	}
+	if err := s.P.MayFileIn(who, rule.Project); err != nil {
+		s.problem(w, err)
 		return false
 	}
 	return true

@@ -8,6 +8,7 @@ import (
 
 	"github.com/urmzd/warp/pkg/call"
 
+	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/evals"
@@ -239,6 +240,27 @@ func (s *Seer) Notice(e usage.Entry) bool {
 // agent where they see the agent.
 func (s *Seer) Suite(suite evals.Suite) bool {
 	return suite.Target != evals.Agent || s.Agent(suite.Subject)
+}
+
+// Alert reports whether the reader sees an alert: the run that raised it,
+// where it lives, when the index holds it, else its project; and its agent.
+// A run's alert in a private thread is its participants'.
+func (s *Seer) Alert(a alerts.Alert) bool {
+	if a.Agent != "" && !s.Agent(a.Agent) {
+		return false
+	}
+	if a.RunID != "" {
+		if at, ok := s.p.placeOfRunID(s.who.Tenant, a.RunID); ok {
+			return s.Place(at)
+		}
+	}
+	return s.Project(a.Project)
+}
+
+// Rule reports whether the reader sees an alert rule: the project and the
+// agent it watches.
+func (s *Seer) Rule(r alerts.Rule) bool {
+	return s.Project(r.Project) && (r.Agent == "" || s.Agent(r.Agent))
 }
 
 // Artifact reports whether the reader sees a published file.

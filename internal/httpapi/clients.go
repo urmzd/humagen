@@ -117,6 +117,10 @@ func (s *Server) createClient(w http.ResponseWriter, r *http.Request, who auth.P
 	if !decode(w, r, &body) {
 		return
 	}
+	if err := s.P.SeesHome(who, body.input().Client); err != nil {
+		s.problem(w, err)
+		return
+	}
 	c, err := s.P.CreateClient(r.Context(), who.Tenant, who.Subject, body.input())
 	if err != nil {
 		s.problem(w, err)
@@ -128,6 +132,10 @@ func (s *Server) createClient(w http.ResponseWriter, r *http.Request, who auth.P
 func (s *Server) updateClient(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body clientBody
 	if !decode(w, r, &body) {
+		return
+	}
+	if err := s.P.SeesHome(who, body.input().Client); err != nil {
+		s.problem(w, err)
 		return
 	}
 	c, err := s.P.UpdateClient(r.Context(), who.Tenant, r.PathValue("id"), who.Subject, body.input())

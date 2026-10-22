@@ -6,6 +6,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // What a client's own surface host, such as the Slack app, records through
@@ -23,14 +24,16 @@ func machineOf(c clients.Client, who auth.Principal) bool {
 // RecordDelivery records where a client posted an inbox message, such as the
 // channel and ts of an announcement it posted to Slack, so it updates that
 // post later instead of posting again. The message must be one the machine
-// may read itself: of a kind it may read, and addressed to it.
+// may read itself, as it reads it: of a kind it may read, addressed to it or
+// to a project it has a role in (an announcement's audience), and about
+// what it may read.
 func (p *Platform) RecordDelivery(who auth.Principal, id, client string, d inbox.Delivery) error {
 	c, err := p.Clients.Get(who.Tenant, client)
 	if err != nil || !machineOf(c, who) {
 		return fmt.Errorf("%w: %q", clients.ErrNotFound, client)
 	}
 	d.At = p.now()
-	reader, seer := readerOf(who), p.Seer(who)
+	reader, seer := p.sharedReader(p.Projects.Tree(who.Tenant), who), p.Seer(who)
 	return p.Inbox.Deliver(who.Tenant, id, c.ID, d, func(m inbox.Message) bool { return who.Can(reads(m.Kind)) && m.For(reader) && seer.Message(m) })
 }
 
@@ -72,6 +75,19 @@ func (p *Platform) checkHome(tenant string, c clients.Client) error {
 	}
 	if ch.Archived {
 		return fmt.Errorf("%w: the home channel #%s is archived", clients.ErrInvalid, h.Channel)
+	}
+	return nil
+}
+
+// SeesHome holds a client's home to who sets it: a home in a project the
+// caller cannot see answers exactly as one in a project that is not there.
+func (p *Platform) SeesHome(who auth.Principal, c clients.Client) error {
+	if c.Home == nil {
+		return nil
+	}
+	h := c.HomeOf()
+	if h.Project != projects.Root && p.HasProject(who.Tenant, h.Project) && !p.Seer(who).Project(h.Project) {
+		return fmt.Errorf("%w: the home %q is not a project in this workspace", clients.ErrInvalid, c.Home.Project)
 	}
 	return nil
 }
