@@ -144,3 +144,104 @@ platform's parts.
     cooldown, and watch spend.
 - **Schedules:** each one has a page with its upcoming times and recent runs,
   and it can be edited without losing either.
+
+## Patterns
+
+The console is built from a small set of usage patterns. A change uses one of
+them; it does not add a new kind of UI. Web-only layout lives in
+`apps/web/src/ui.tsx`. Anything Slack also draws lives in the shared packages:
+the model and ordering in `packages/core` (such as `HomeModel`,
+`orderNotifications`, `HOME_NEEDS`), the words in
+`packages/components/src/copy.ts`.
+
+| Pattern | What it is for | Renders it | When not to use it |
+|---|---|---|---|
+| Page | One screen with one title (its only h1), a line on what it is for, its own actions on the right and tabs under it | `Page` | A pane inside another page; there the title is an h2. Home's title is its greeting, drawn by `HomePage` |
+| Section | A titled part of a page: a heading, its count, a hint and its actions | `Section` | A single line or a single control; put it in the page or the section above |
+| Box | A section that stands on its own as a panel, such as Home's Needs you | `Section box` (the `card` panel) | Every part of a long page; boxes inside boxes |
+| Row that opens something | A list item whose whole row is the control: what it is on the first line, who, where or when under it | `RowButton`, or a button in a `rows` list | Rows that hold several controls of their own; put those controls at the row's end |
+| Text action | A section's way to the rest, in Title Case: Open Inbox, See All | `textAction` | The page's main action, which is a `primary` button |
+| Text link | A control inside a line of text, a row's details or a table cell: an agent's name, Open the run, Download. Underlined and 24px tall | `textLink` | Anything a person reaches for first; give it a button |
+| Back link | Where the page sits: the list it came from | `Page`'s `back` | Navigation between siblings; use tabs |
+| Tabs | The parts of one thing, each with an address in `route.ts` | `Tabs` | Filters over one list; use chips |
+| Chips | Selections and attachments: a kind filter, a file to send, a tag on a row | `KindChips`, `Chip`, the composer's attachments | Actions, and one choice on its own (a lone pill reads as a stray control) |
+| Text controls under the composer | Project, agent and attachments under the chat bar, as text, never boxes | The composer (`Composer.tsx`) | Anywhere else |
+| Count | How many there are, beside its label in a heading or a tab, never on its own and never a status color. Hidden at zero | `Count`, `Section count`, `Tabs` | A count that is the content, such as a figure on Monitor; use `Stat` |
+| Empty | What a list or box says when it has nothing, in words, with what to do next | `Empty` on a page, a quiet line in a box | Hiding the section: an empty box says so, rather than vanishing |
+| Loading | A list being read, at the height it will have | `SkeletonRows`, or a still "Loading" line where something waits on a person | Spinners; anything that moves on Home or in the inbox |
+| Error | What could not be done, and where to look instead | `Problem` for a failed action, a quiet line in a box for a failed read | Toasts that vanish before they are read |
+
+Agents are told apart by color (`AgentMark`), never by letters in boxes.
+Anything waiting on a person does not animate.
+
+## Home under the chat bar
+
+October 22, 2026. The owner sent a phone screenshot of Home: under the chat bar,
+a lone starter pill and, far below, a bare line, "Needs you · 1", that read as
+text rather than a way into the inbox.
+
+Home now has two boxes under the chat bar, side by side on a desktop and
+stacked on a phone:
+
+- **Needs you** lists the five newest things waiting on the person, each a row
+  with who raised it and when, read with `needs=true` on `GET /api/inbox`. The
+  heading carries the count of all of them, and Open Inbox goes to the rest.
+- **What's new** lists announcements from the person's projects, unread first
+  and marked "Unread" for screen readers as well as by the dot, with where each
+  was posted. See All opens the inbox's announcements.
+- A box with nothing in it says so. A person with nothing in either sees one
+  Welcome box saying what Home is for.
+- While Home reads, each box says "Loading" without moving; a read that failed
+  says the inbox has it all.
+
+The starter prompts and the chat bar belong to the conversation work and were
+not changed here.
+
+## Audit at phone and desktop width
+
+October 22, 2026. Every console page and tab at 390x844 and 1280x800, against
+the patterns above, with the layout checks below.
+
+| Where | What broke the patterns | Fix |
+|---|---|---|
+| Home | "Needs you · N" was a bare line that read as text; What's new had no box or way to the rest | The two boxes above |
+| Every page on a phone | The sidebar button sat 8px from the edge, inside the gutter | It sits on the 16px gutter |
+| Settings on a phone | The section strip scrolled under both screen edges | The strip scrolls inside the gutter |
+| Inbox | The page had no h1: the mailbox's title was an h2 | The mailbox takes a heading level; the Inbox page's is its h1, including while it loads |
+| Pages with a back link, project crumbs | "‹ All projects" and the crumbs were 18px tall text | 24px tall, still text |
+| Artifacts, Monitor, Limits | Three copies of a "linkish" style, 18px tall | One `textLink`, 24px tall |
+| Monitor, Schedules, Directory, an agent's Access | Agent names, "Open run" and project links were 18 to 20px tall, and some only underlined on hover, so they read as plain text | `textLink`, or a 24px line |
+| Search fields, limit fields | The 20px input was the only target inside a 32px frame | The input fills its frame |
+| Switches | The label, which is the target, was 20px tall | 24px at least |
+| Project Overview | Counts written "Sub-projects (0)" and "Scheduled (0)" | `Count` beside the heading, hidden at zero |
+
+Left as they are: the mailbox's "3 open" and its group counts use the shared
+web package's own styles, and the run history panel beside a conversation
+writes its counts as "Running (2)"; both sit next to the conversation work.
+
+## Checking a UI change
+
+`make screens` builds warp and the console, starts warp on a free loopback port
+with the development sign-in, the seeded agents and state in memory, adds
+announcements, failed runs and a schedule through the API, and captures every
+page and tab at 390x844 and 1280x800. It uses an installed Chromium or Chrome
+(`CHROMIUM` names one) and downloads none. Screenshots go to `.screens/`, which
+git ignores: `index.html` shows phone and desktop side by side, and a page that
+scrolls also gets `name.full.png`. `SCREENS_ONLY=home,inbox` captures only those.
+
+The run fails when a screen breaks a layout check (`scripts/screens/checks.ts`,
+a pure function of the measured page, tested in `checks.test.ts`):
+
+- No horizontal overflow: the document is exactly as wide as the window.
+- On a phone, no text or control past the 16px gutter.
+- No control under 24 by 24 pixels (WCAG 2.5.8). A link inside a sentence is
+  exempt; a field or checkbox is measured by its label.
+- Exactly one h1 on every page.
+- No line of text over another in the main column.
+
+The CI job "Console screens" runs it on every pull request that changes
+`apps/web`, `packages` or `scripts/screens`, and uploads `.screens/` as the
+`console-screens` artifact.
+
+Every UI change lists the screens it changes, with the before and after
+screenshots from `make screens`, in its pull request.
