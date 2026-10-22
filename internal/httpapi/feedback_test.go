@@ -97,7 +97,7 @@ func TestFeedbackNamesRatersAndNeverShowsAnAddress(t *testing.T) {
 	if !strings.Contains(out, `"by_name":"Ada Lovelace"`) || !strings.Contains(out, `"mine":false`) {
 		t.Fatalf("the list does not name the rater: %s", out)
 	}
-	for _, bad := range []string{address, "0", "-1", "x"} {
+	for _, bad := range []string{address, "0", "-1", "x", "007", "+5"} {
 		if res, _ := f.do(t, nil, "GET", path+"?after="+bad, admin, ""); res.StatusCode != http.StatusBadRequest {
 			t.Fatalf("after=%s: %d", bad, res.StatusCode)
 		}

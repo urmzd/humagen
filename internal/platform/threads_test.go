@@ -1128,7 +1128,45 @@ func TestAQuestionForExpertsInAPrivateThreadStaysWithItsParticipants(t *testing.
 	}
 	run := await(t, p, posted.Runs[0].ID, runs.Parked)
 	q := questionFor(t, p, run.ID)
-	if !sees(p, operator, q.ID) {
+	if !sees(p, operator, q.ID) || len(q.Audience) != 0 || sees(p, grace, q.ID) {
 		t.Fatalf("the question in a private thread went to %v, not to who takes part in it", q.Audience)
+	}
+}
+
+// An owner whose way into a members-only project above is a policy role they
+// hold owns the run's project, so the question for the experts reaches them.
+func TestAQuestionForExpertsReachesAnOwnerLetInByARole(t *testing.T) {
+	c := &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"asker": {asked(map[string]any{"question": "What is the PO number?", "asked_of": "sme"}), say("Filed.")}},
+		tools: map[string][]string{"asker": {"ask_person"}},
+	}
+	p := stage(t, c, platform.Config{})
+	field(t, p)
+	if _, err := p.People.Seen(tenant, people.Sighting{Subject: pat.Subject, Name: "Pat", Roles: []string{"operator", "oncall"}, Source: people.SignIn}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		name    string
+		members []projects.Entry
+	}{
+		{"Renewals", []projects.Entry{{Who: pat.Subject, Role: projects.Owner}}},
+		{"Globex", []projects.Entry{{Who: "role:oncall", Role: projects.Member}, {Who: "ada", Role: projects.Owner}}},
+	} {
+		cur, _ := p.ProjectTree(tenant).Get(step.name)
+		if _, err := p.Projects.Update(tenant, step.name, cur.Version, ada, time.Now(), func(pr *projects.Project) error {
+			pr.Members = step.members
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: envelope.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	q := questionFor(t, p, run.ID)
+	if !slices.Equal(q.Audience, []string{pat.Subject}) || !sees(p, pat, q.ID) {
+		t.Fatalf("the question went to %v, want Renewals' owner, let into Globex by a role", q.Audience)
 	}
 }

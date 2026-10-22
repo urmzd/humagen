@@ -84,7 +84,7 @@ func (s *Server) listFeedback(w http.ResponseWriter, r *http.Request, who auth.P
 	var after int64
 	if raw := r.URL.Query().Get("after"); raw != "" {
 		n, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || n < 1 {
+		if err != nil || n < 1 || strconv.FormatInt(n, 10) != raw {
 			fail(w, http.StatusBadRequest, "after is the next cursor of the page before")
 			return
 		}

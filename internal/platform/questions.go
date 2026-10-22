@@ -326,19 +326,28 @@ func (p *Platform) expertsAsked(run runs.Run, q payload.Question) (experts []str
 // owners do not take part in it, so the question stays with whoever may
 // answer there. Nil when no project on the chain names one.
 func (p *Platform) nearestOwners(run runs.Run) []string {
-	if p.privateThread(run.Tenant, run.Thread) {
+	at := placeOfRun(run)
+	if p.privateThread(run.Tenant, at.Thread) {
 		return nil
 	}
 	tree := p.Projects.Tree(run.Tenant)
 	owns := func(who string) bool {
+		// A person with the roles they held when last seen, as the
+		// directory knows them.
 		r := projects.Reader{Subject: who}
 		if role, ok := strings.CutPrefix(who, projects.RolePrefix); ok {
-			// The holders of a role, as one who holds that role alone.
+			// The holders of a role, as one who holds that role alone: one
+			// let in above by another role they also hold is passed over,
+			// which errs toward the owners above.
 			r = projects.Reader{Subject: who, Roles: []string{role}}
+		} else if p.People != nil {
+			if known, err := p.People.Get(run.Tenant, who); err == nil {
+				r.Roles = known.Roles
+			}
 		}
-		return tree.Resolve(run.Project, r).Role == projects.Owner
+		return tree.Resolve(at.Project, r).Role == projects.Owner
 	}
-	for _, pr := range tree.Chain(run.Project) {
+	for _, pr := range tree.Chain(at.Project) {
 		var out []string
 		for _, m := range pr.Members {
 			if m.Role == projects.Owner && m.Who != projects.Everyone && !slices.Contains(out, m.Who) && owns(m.Who) {
