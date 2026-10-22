@@ -354,3 +354,106 @@ func TestTheFilesGitHubClientFollowsTheFileAtEveryStart(t *testing.T) {
 		t.Fatalf("the file took over the console's client: %+v", kept)
 	}
 }
+
+// A section that turns GitHub off turns off the client an earlier start kept.
+// The record stays the file's and stops answering, so a signed hook is
+// answered 404 as for no client, and the next start keeps it off without a new
+// version. Turning it off needs none of the section's other fields. Turning
+// the section back on brings the client back. A console client of that id is
+// left as it is.
+func TestEnabledFalseTurnsTheFilesGitHubClientOff(t *testing.T) {
+	vars := map[string]string{EnvGitHubToken: "ghs-file", EnvGitHubSecret: "file-github-secret-of-16-bytes"}
+	start := func(st state.Store) *platform.Platform {
+		p, err := platform.New(platform.Config{
+			Workspace:  t.TempDir(),
+			Backends:   platform.Backends{State: st},
+			Env:        func(name string) (string, bool) { v, ok := vars[name]; return v, ok },
+			SecretRefs: map[string][]string{"acme": {EnvGitHubToken, EnvGitHubSecret}},
+			GitHubAPI:  func(string) github.API { return github.NewFake() },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = p.Close() })
+		return p
+	}
+	on := spec.GitHub{
+		Enabled: true, Owners: []string{"acme"},
+		Token: &spec.Ref{Ref: "env:" + EnvGitHubToken}, WebhookSecret: &spec.Ref{Ref: "env:" + EnvGitHubSecret},
+	}
+	off := on
+	off.Enabled = false
+	apply := func(p *platform.Platform, g spec.GitHub) clients.Client {
+		t.Helper()
+		doc := spec.Platform{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{Surfaces: spec.Surfaces{GitHub: &g}}}
+		if err := applyPlatforms(t.Context(), p, spec.Config{Platforms: []spec.Platform{doc}}, slog.Default()); err != nil {
+			t.Fatal(err)
+		}
+		c, err := p.Clients.Get("acme", "file-github")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	ping := func(p *platform.Platform) int {
+		t.Helper()
+		body := `{"zen":"Keep it logically awesome.","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"}}`
+		mac := hmac.New(sha256.New, []byte(vars[EnvGitHubSecret]))
+		mac.Write([]byte(body))
+		r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(body))
+		r.Header.Set(signature.HeaderGitHubSignature, "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		r.Header.Set("X-GitHub-Event", "ping")
+		r.Header.Set("X-GitHub-Delivery", "ping-1")
+		w := httptest.NewRecorder()
+		p.IngressHandler().ServeHTTP(w, r)
+		return w.Code
+	}
+
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		if c, p := apply(start(st), on), start(st); !c.Enabled || ping(p) != http.StatusOK {
+			t.Fatalf("the first start kept %+v, which does not answer", c)
+		}
+		p := start(st)
+		c := apply(p, off)
+		if c.Enabled || c.Managed != clients.ManagedFile || c.Version != 2 {
+			t.Fatalf("after the file turned GitHub off, the client is %+v", c)
+		}
+		if code := ping(p); code != http.StatusNotFound {
+			t.Fatalf("a client the file turned off answered a signed hook with %d", code)
+		}
+		p = start(st)
+		if again := apply(p, spec.GitHub{Enabled: false}); again.Enabled || again.Version != 2 {
+			t.Fatalf("a second start with GitHub off made %+v", again)
+		}
+		if code := ping(p); code != http.StatusNotFound {
+			t.Fatalf("after a restart, the client the file turned off answered %d", code)
+		}
+		p = start(st)
+		if back := apply(p, on); !back.Enabled || back.Version != 3 || ping(p) != http.StatusOK {
+			t.Fatalf("turned back on, the client is %+v", back)
+		}
+	})
+
+	// With no client yet, turning it off makes none.
+	none := start(state.NewMemory())
+	doc := spec.Platform{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{Surfaces: spec.Surfaces{GitHub: &off}}}
+	if err := applyPlatforms(t.Context(), none, spec.Config{Platforms: []spec.Platform{doc}}, slog.Default()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := none.Clients.Get("acme", "file-github"); !errors.Is(err, clients.ErrNotFound) {
+		t.Fatalf("turning GitHub off made a client: %v", err)
+	}
+
+	// A console client of that id is not the file's to turn off.
+	console := start(state.NewMemory())
+	if _, err := console.CreateClient(t.Context(), "acme", "admin", platform.ClientInput{
+		Client: clients.Client{ID: "file-github", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}}},
+		Token:  clients.SecretInput{Value: "ghs-console"}, SigningSecret: clients.SecretInput{Value: "console-secret-of-16-bytes"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if kept := apply(console, off); !kept.Enabled || kept.Managed != "" || kept.Version != 1 {
+		t.Fatalf("the file turned off the console's client: %+v", kept)
+	}
+}

@@ -160,6 +160,38 @@ func (p *Platform) ApplyClient(_ context.Context, tenant, by string, in ClientIn
 	return p.replace(old, c, by, in)
 }
 
+// TurnOffClient turns off the client a Platform document declares and turns
+// off. The record stays, still the file's, and stops answering. It reads no
+// secret, so a section that turns a client off needs nothing else. With no
+// client of that id, nothing is made. One already off makes no new version. A
+// client of that id the file does not manage is left as it is and answers
+// ErrExists.
+func (p *Platform) TurnOffClient(_ context.Context, tenant, id, by string) error {
+	p.clientsMu.Lock()
+	defer p.clientsMu.Unlock()
+
+	old, err := p.Clients.Get(tenant, id)
+	switch {
+	case errors.Is(err, clients.ErrNotFound):
+		return nil
+	case err != nil:
+		return err
+	case old.Managed != clients.ManagedFile:
+		return fmt.Errorf("%w: %q is not the file's", clients.ErrExists, id)
+	case !old.Enabled:
+		return nil
+	}
+	c := old
+	c.Enabled = false
+	saved, err := p.Clients.Update(tenant, c, p.now())
+	if err != nil {
+		return err
+	}
+	p.seat(saved, nil)
+	p.log.Info("platform: client updated", "tenant", tenant, "client", id, "version", saved.Version, "enabled", saved.Enabled, "by", by)
+	return nil
+}
+
 // sameRecord reports two client records that read the same once written.
 func sameRecord(a, b clients.Client) bool {
 	ja, err := json.Marshal(a)

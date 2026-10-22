@@ -275,9 +275,11 @@ builds on:
   [Tools that act as you](#tools-that-act-as-you).
 - **GitHub** is a client managed by the file, `file-github`, read-only in
   the API. The one an earlier start kept is changed to what the file says, so
-  a field added later, such as `login`, takes effect at the next start. An
-  unchanged section makes no new version. A client of that id made in the
-  console is left as it is.
+  a field added later, such as `login`, takes effect at the next start.
+  `enabled: false` turns it off: it stays the file's and answers no webhook
+  until the file turns it on again. A section that leaves the file leaves the
+  client as it is, still answering. An unchanged section makes no new
+  version. A client of that id made in the console is left as it is.
 - Nothing is deleted because it left the file.
 
 ### The Slack app
