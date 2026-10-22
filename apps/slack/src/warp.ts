@@ -135,6 +135,8 @@ export interface InboxNotice {
   kind: string;
   state: string;
   updated_at: string;
+  /** To this app's machine only: the person it maps a mention or a question is addressed to. */
+  for?: ActAs;
 }
 
 export type StreamItem =
@@ -204,6 +206,27 @@ export interface Warp {
   postThread(body: ThreadPostRequest, options?: CallOptions): Promise<ThreadPosted>;
   /** One inbox message as the platform sends it, or null when it does not exist for this caller. */
   getInboxMessage(id: string, options?: CallOptions): Promise<WireMessage | null>;
+  /** Where a warp thread is on a client's surface, or null when it is on none or does not exist here. */
+  threadSurface(
+    id: string,
+    options?: CallOptions,
+  ): Promise<{ client: string; channel: string; ts: string } | null>;
+  /** One inbox message read for a person the client maps, or null when it is not theirs to read. */
+  inboxMessageFor(id: string, actAs: ActAs, options?: CallOptions): Promise<WireMessage | null>;
+  /** Act on a part of a person's message, for them: a mention's reply or done, a question's answer. */
+  resolveFor(
+    id: string,
+    part: string,
+    body: Record<string, unknown>,
+    actAs: ActAs,
+    options?: CallOptions,
+  ): Promise<WireMessage>;
+  /** Post a person's message in a warp thread, for them, after the message it follows. */
+  postMessageFor(
+    thread: string,
+    body: { text: string; after?: string; act_as: ActAs },
+    options?: CallOptions,
+  ): Promise<ThreadPosted>;
   /** The Slack channels a client is bound to. */
   bindings(client: string, options?: CallOptions): Promise<Binding[]>;
   /** Record where the app posted an inbox message, so it edits that post later. */
@@ -346,7 +369,9 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | stopRun | `POST /api/runs/{id}/stop` |
  * | answerQuestion | `POST /api/runs/{id}/questions/{question}/answer` |
  * | postThread | `POST /api/threads` with a surface |
- * | getInboxMessage | `GET /api/inbox/{id}` |
+ * | getInboxMessage, inboxMessageFor | `GET /api/inbox/{id}`, for a person with `act_as_client` and `act_as_user` |
+ * | resolveFor | `POST /api/inbox/{id}/parts/{part}/resolve` with `act_as` |
+ * | postMessageFor | `POST /api/threads/{id}/messages` with `act_as` |
  * | bindings | `GET /api/clients/{id}/bindings` |
  * | recordDelivery | `PUT /api/inbox/{id}/deliveries/{client}` |
  * | inboxFor | `GET /api/inbox` with `act_as_client` and `act_as_user` |
@@ -493,6 +518,27 @@ export function httpWarp(cfg: {
       }
     },
     postThread: (body) => http<ThreadPosted>("POST", "/api/threads", body),
+    threadSurface: (id) =>
+      orNull(
+        http<{ thread: { surface?: { client: string; channel: string; ts: string } } }>(
+          "GET",
+          `/api/threads/${enc(id)}?limit=1`,
+        ),
+      ).then((page) => page?.thread.surface ?? null),
+    inboxMessageFor: (id, actAs) =>
+      orNull(
+        http<{ message: WireMessage }>(
+          "GET",
+          `/api/inbox/${enc(id)}?${new URLSearchParams({ act_as_client: actAs.client, act_as_user: actAs.user })}`,
+        ),
+      ).then((r) => r?.message ?? null),
+    resolveFor: (id, part, body, actAs) =>
+      http<WireMessage>("POST", `/api/inbox/${enc(id)}/parts/${enc(part)}/resolve`, {
+        ...body,
+        act_as: actAs,
+      }),
+    postMessageFor: (thread, body) =>
+      http<ThreadPosted>("POST", `/api/threads/${enc(thread)}/messages`, body),
     getInboxMessage: (id) =>
       orNull(http<{ message: WireMessage }>("GET", `/api/inbox/${enc(id)}`)).then(
         (r) => r?.message ?? null,

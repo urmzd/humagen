@@ -27,10 +27,13 @@ import {
   type UiAction,
 } from "@warp/core";
 import {
+  decodeReplyModal,
   decodeSlackAction,
   LIMITS,
+  type ReplyTarget,
   reactionChanges,
   renderToSlack,
+  replyModal,
   type SerializeResult,
   suggestedPrompts,
 } from "@warp/render-slack";
@@ -53,6 +56,7 @@ import {
   type ThreadPosted,
   type Warp,
   WarpError,
+  type WireMessage,
 } from "./warp.ts";
 
 /**
@@ -301,6 +305,8 @@ export class App {
   private bindings: { at: number; list: Binding[] } | null = null;
   /** Announcements being posted right now, so two notices post one. */
   private readonly announcing = new Set<string>();
+  /** Where each mention or question sent to a person's direct messages was posted, to keep it current. */
+  private readonly told = new Recent<{ channel: string; ts: string }>(2_000);
   private readonly flushMs: number;
   private readonly pollMs: number;
   private readonly stallMs: number;
@@ -1133,6 +1139,12 @@ export class App {
     // A click on an inbox message names the message. Anything else names a run.
     const message = await this.warp.inbox.get(ui.payload.turnId).catch(() => null);
     if (message) return this.onMail(p, ui, message);
+    // One addressed to the person who clicked is read for them, through the client.
+    const as = await this.actAs(p.user.id);
+    const mine = as
+      ? await this.warp.inboxMessageFor(ui.payload.turnId, as).catch(() => null)
+      : null;
+    if (mine && as) return this.onPersonal(p, ui, mine, as);
     if (answers(ui)) return this.onAnswer(p, ui);
     if (ui.id === ActionId.retry || ui.id === ActionId.resume) {
       const run = await this.warp.getRun(ui.payload.turnId);
@@ -1259,7 +1271,11 @@ export class App {
       return this.whisper(p, defaultCopy.notYours);
     }
     if (part?.type === "reply" && ui.id === ActionId.reply && !ui.payload.text) {
-      return this.whisper(p, this.words.replyInConsole);
+      return this.askForReply(
+        p,
+        await this.warp.getInboxMessage(message.id).catch(() => null),
+        part.id,
+      );
     }
     // A failed turn is asked again here, where its answer can be shown, when the thread is this app's.
     let request = toRequest(message, ui);
@@ -1297,6 +1313,32 @@ export class App {
         ts: p.message.ts,
         ...(p.message.thread_ts ? { threadTs: p.message.thread_ts } : {}),
       });
+    }
+  }
+
+  /**
+   * The reply modal was sent: the words post in the thread as the person,
+   * through the client, which settles their mention there, or answer the
+   * question a run waits on. Someone the client does not map is not asked
+   * for at all.
+   */
+  private async onReply(user: string, text: string, target: ReplyTarget): Promise<void> {
+    const as = await this.actAs(user);
+    if (!as) {
+      this.log(`a reply from ${user} was not sent: this client does not map them to anyone`);
+      return;
+    }
+    try {
+      if ("thread" in target) {
+        await this.warp.postMessageFor(target.thread, { text, after: target.message, act_as: as });
+      } else {
+        await this.warp.answerQuestion(
+          { run: target.run, question: target.question, body: { action: "reply", text } },
+          as,
+        );
+      }
+    } catch (e) {
+      this.log(`a reply from ${user} was refused: ${(e as Error).message}`);
     }
   }
 
@@ -1404,8 +1446,124 @@ export class App {
     }
   }
 
+  /** A person's message as a direct message with the app: the message, and where it was said. */
+  private personalView(raw: WireMessage) {
+    const view = renderToSlack(<MessageView message={forSlack(fromServer(raw))} />);
+    const thread = raw.source?.thread;
+    const url = thread ? this.href(`/tasks/${encodeURIComponent(thread)}`) : undefined;
+    const blocks = url
+      ? [
+          ...view.blocks,
+          {
+            type: "context",
+            elements: [{ type: "mrkdwn", text: `<${url}|${this.words.openThread}>` }],
+          },
+        ]
+      : view.blocks;
+    return { text: (view.text || raw.subject).slice(0, LIMITS.fallbackText), blocks };
+  }
+
+  /**
+   * A mention or a question addressed to a person the client maps reaches
+   * them in a direct message with the app, with Reply, and is kept current
+   * as it is settled. One raised in a Slack thread of this app's is not:
+   * Slack told them there.
+   */
+  private async tell(notice: InboxNotice): Promise<void> {
+    const as = notice.for;
+    if (!as || as.client !== this.opts.clientId) return;
+    const raw = await this.warp.inboxMessageFor(notice.id, as).catch(() => null);
+    if (!raw) return;
+    const view = this.personalView(raw);
+    const told = this.told.get(raw.id);
+    if (told) {
+      await this.slack.call("chat.update", { channel: told.channel, ts: told.ts, ...view });
+      return;
+    }
+    if (raw.state !== "open") return;
+    const thread = raw.source?.thread;
+    const surface = thread ? await this.warp.threadSurface(thread).catch(() => null) : null;
+    if (surface?.client === this.opts.clientId) return;
+    const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
+      channel: as.user,
+      ...view,
+    });
+    this.told.set(raw.id, { channel: sent.channel ?? as.user, ts: sent.ts });
+  }
+
+  /** What a Reply on a message writes to: the thread a mention was in, or the question a run waits on. */
+  private replyTarget(raw: WireMessage, partId: string): ReplyTarget | null {
+    const part = raw.parts.find((x) => (x as { id?: string }).id === partId) as
+      | {
+          type: string;
+          mention?: { thread?: string; message?: string };
+          question?: { id?: string };
+        }
+      | undefined;
+    if (part?.type === "mention" && part.mention?.thread && part.mention.message) {
+      return { thread: part.mention.thread, message: part.mention.message };
+    }
+    const run = (raw.source as { run?: string } | undefined)?.run;
+    if (part?.type === "reply" && run && part.question?.id)
+      return { run, question: part.question.id };
+    return null;
+  }
+
+  /** Open the reply modal for a Reply that carries no words, or say where to reply instead. */
+  private async askForReply(p: ActionPayload, raw: WireMessage | null, partId: string) {
+    const target = raw ? this.replyTarget(raw, partId) : null;
+    if (!target || !p.trigger_id) return this.whisper(p, this.words.replyInConsole);
+    const excerpt = (
+      raw?.parts.find((x) => (x as { id?: string }).id === partId) as
+        | { mention?: { excerpt?: string } }
+        | undefined
+    )?.mention?.excerpt;
+    await this.slack.call("views.open", {
+      trigger_id: p.trigger_id,
+      view: replyModal(target, excerpt ? { context: excerpt } : {}),
+    });
+  }
+
+  /**
+   * A click on a person's own message, read for them through the client:
+   * Reply opens the reply modal, and anything else is done for them.
+   */
+  private async onPersonal(p: ActionPayload, ui: UiAction, raw: WireMessage, as: ActAs) {
+    const message = fromServer(raw);
+    const part = message.parts.find((x) => partMatches(x, ui.payload.target));
+    if (part && ui.id === ActionId.reply && !ui.payload.text)
+      return this.askForReply(p, raw, part.id);
+    const request = toRequest(message, ui);
+    if (request?.call !== "resolve") return;
+    let updated: WireMessage;
+    try {
+      updated = await this.warp.resolveFor(
+        message.id,
+        request.partId,
+        { action: request.action, ...request.values },
+        as,
+      );
+    } catch (e) {
+      this.log(`inbox ${message.id} was not settled for ${as.user}: ${(e as Error).message}`);
+      const status = e instanceof WarpError ? e.status : 0;
+      return this.whisper(
+        p,
+        status === 403 ? defaultCopy.noPermission : defaultCopy.failure.internal(),
+      );
+    }
+    const channel = p.channel?.id ?? p.container?.channel_id;
+    if (channel && p.message?.ts) {
+      await this.slack.call("chat.update", {
+        channel,
+        ts: p.message.ts,
+        ...this.personalView(updated),
+      });
+    }
+  }
+
   /** An inbox message changed. One about a run in this app's thread is shown there, once, and kept current. */
   private async onNotice(notice: InboxNotice): Promise<void> {
+    if (notice.for) return this.tell(notice);
     if (notice.kind === "announcement") return this.announce(notice.id);
     const message = await this.warp.inbox.get(notice.id).catch(() => null);
     if (!message) return;
@@ -1554,6 +1712,8 @@ export class App {
       });
       return;
     }
+    const reply = p.type === "view_submission" && p.view ? decodeReplyModal(p.view) : null;
+    if (reply) return this.onReply(p.user.id, reply.text, reply.target);
     if (p.type !== "view_submission" || p.view?.callback_id !== ENTRY.form) return;
     const text = p.view.state?.values?.text?.value?.value?.trim() ?? "";
     if (!text) return;
@@ -1608,6 +1768,7 @@ interface InteractivePayload {
   message?: { ts: string; thread_ts?: string; text?: string };
   view?: {
     callback_id: string;
+    private_metadata?: string;
     state?: { values?: Record<string, Record<string, { value?: string }>> };
   };
 }

@@ -306,6 +306,62 @@ export class FakeWarp implements Warp {
     return (this.mailbox.get(id) as WireMessage | undefined) ?? null;
   }
 
+  /** The surface of each warp thread the fake started from one. */
+  async threadSurface(id: string) {
+    for (const [where, thread] of this.surfaces) {
+      if (thread !== id) continue;
+      const [client = "", channel = "", ts = ""] = where.split("/");
+      return { client, channel, ts };
+    }
+    return null;
+  }
+
+  async inboxMessageFor(id: string, actAs: ActAs) {
+    this.readFor.push(actAs);
+    const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user];
+    const m = subject ? (this.personal.get(subject) ?? []).find((x) => x.id === id) : undefined;
+    return (m as WireMessage | undefined) ?? null;
+  }
+
+  /** Every action taken for someone on their own messages. */
+  readonly resolvedFor: { id: string; part: string; body: Record<string, unknown>; as: ActAs }[] =
+    [];
+
+  async resolveFor(id: string, part: string, body: Record<string, unknown>, actAs: ActAs) {
+    this.resolvedFor.push({ id, part, body, as: actAs });
+    const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user] ?? "";
+    const m = (this.personal.get(subject) ?? []).find((x) => x.id === id);
+    if (!m) throw new WarpError(404, "not found");
+    m.state = "resolved";
+    m.parts = (m.parts as Record<string, unknown>[]).map((p) =>
+      p.id === part
+        ? {
+            ...p,
+            state: "resolved",
+            actions: [],
+            outcome: { action: body.action, by: subject, at: this.at() },
+          }
+        : p,
+    );
+    return m as WireMessage;
+  }
+
+  /** Every message posted in a thread for someone. */
+  readonly postedFor: { thread: string; body: { text: string; after?: string; act_as: ActAs } }[] =
+    [];
+
+  async postMessageFor(thread: string, body: { text: string; after?: string; act_as: ActAs }) {
+    this.postedFor.push({ thread, body });
+    return {
+      thread: { id: thread, project: "", channel: "general", visibility: "shared" },
+      message: { id: "m-9", text: body.text },
+      runs: [],
+      notified: [],
+      refused: [],
+      rule: "reply",
+    } satisfies ThreadPosted;
+  }
+
   async bindings(client: string) {
     if (!this.clients.has(client)) throw new WarpError(404, "not found");
     return this.bound.get(client) ?? [];
@@ -496,6 +552,19 @@ export class FakeWarp implements Warp {
       kind: String(message.kind),
       state: String(message.state),
       updated_at: this.at(),
+    });
+  }
+
+  /** Put a message in a person's own inbox, and tell the app's machine for whom. */
+  tellFor(subject: string, actAs: ActAs, message: Record<string, unknown>) {
+    const mine = this.personal.get(subject) ?? [];
+    this.personal.set(subject, [...mine.filter((m) => m.id !== message.id), message]);
+    this.notes.push({
+      id: String(message.id),
+      kind: String(message.kind),
+      state: String(message.state),
+      updated_at: this.at(),
+      for: actAs,
     });
   }
 
