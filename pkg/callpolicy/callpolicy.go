@@ -164,6 +164,35 @@ func (p Policy) Normalize() Policy {
 // Validate checks a normalized policy on its own. known reports whether an
 // agent exists in the policy's tenant; every agent a list names must.
 func (p Policy) Validate(known func(string) bool) error {
+	if err := p.ValidateShape(known); err != nil {
+		return err
+	}
+	return p.withinLimits(Policy{})
+}
+
+// withinLimits checks how many names each list holds. A list of allow or
+// trusted holds at most MaxNames, or more only when every name past them is
+// one stored already holds in that list: names kept for writers who were
+// not shown them (PutKeeping), which a writer shown them saves as read.
+func (p Policy) withinLimits(stored Policy) error {
+	for _, list := range []struct {
+		field         string
+		names, stored []string
+		max           int
+	}{{"allow", p.Allow, stored.Allow, MaxNames}, {"trusted", p.Trusted, stored.Trusted, MaxNames}, {"approvers", p.Approvers, nil, MaxApprovers}} {
+		if len(list.names) <= list.max {
+			continue
+		}
+		if list.stored == nil || slices.ContainsFunc(list.names, func(n string) bool { return !slices.Contains(list.stored, n) }) {
+			return fmt.Errorf("%w: %s holds at most %d names", ErrInvalid, list.field, list.max)
+		}
+	}
+	return nil
+}
+
+// ValidateShape is Validate without the limits on how many names each list
+// holds, which PutKeeping checks against the stored policy.
+func (p Policy) ValidateShape(known func(string) bool) error {
 	switch {
 	case p.Agent == "":
 		return fmt.Errorf("%w: a policy names the agent it belongs to", ErrInvalid)
@@ -186,9 +215,6 @@ func (p Policy) Validate(known func(string) bool) error {
 		agents bool
 		max    int
 	}{{"allow", p.Allow, true, MaxNames}, {"trusted", p.Trusted, true, MaxNames}, {"approvers", p.Approvers, false, MaxApprovers}} {
-		if len(list.names) > list.max {
-			return fmt.Errorf("%w: %s holds at most %d names", ErrInvalid, list.field, list.max)
-		}
 		seen := map[string]bool{}
 		for _, n := range list.names {
 			switch {
@@ -270,6 +296,64 @@ func (s *Store) Put(tenant string, p Policy, known func(string) bool, by string,
 	prev, exists := t[p.Agent]
 	if !exists && len(t) >= MaxPolicies {
 		return Policy{}, fmt.Errorf("%w: a workspace holds at most %d call policies", ErrLimit, MaxPolicies)
+	}
+	p.Version = prev.Version + 1
+	p.UpdatedBy, p.UpdatedAt = by, at.UTC()
+	if err := s.kept.Put(tenant, p.Agent, p); err != nil {
+		return Policy{}, fmt.Errorf("callpolicy: write: %w", err)
+	}
+	t[p.Agent] = clone(p)
+	return clone(p), nil
+}
+
+// PutKeeping is Put for a writer who is not shown every agent the stored
+// policy names. p is normalized and validated on its own, and under the
+// store's lock its lists are held to MaxNames as the writer wrote them, or
+// past it only with names the stored lists hold (withinLimits). Then,
+// keep is given the stored policy (the default when there is none) and
+// returns the names to keep in allow and in trusted, which are added after
+// p's own when p's mode still has that list and p does not name them
+// already. A kept name counts toward no limit, since its writer was not
+// shown it; a list names each agent once, so it never holds more than the
+// workspace's agents. Doing this under the lock means a name another writer
+// keeps between the read and the write is never lost.
+func (s *Store) PutKeeping(tenant string, p Policy, known func(string) bool, keep func(stored Policy) (allow, trusted []string), by string, at time.Time) (Policy, error) {
+	p = p.Normalize()
+	if err := p.ValidateShape(known); err != nil {
+		return Policy{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.tenants[tenant]
+	if t == nil {
+		t = map[string]Policy{}
+		s.tenants[tenant] = t
+	}
+	prev, exists := t[p.Agent]
+	if !exists && len(t) >= MaxPolicies {
+		return Policy{}, fmt.Errorf("%w: a workspace holds at most %d call policies", ErrLimit, MaxPolicies)
+	}
+	stored := Default(p.Agent)
+	if exists {
+		stored = clone(prev)
+	}
+	if err := p.withinLimits(stored); err != nil {
+		return Policy{}, err
+	}
+	allow, trusted := keep(stored)
+	add := func(into, from []string) []string {
+		for _, n := range from {
+			if !slices.Contains(into, n) {
+				into = append(into, n)
+			}
+		}
+		return into
+	}
+	if p.Callers == Listed {
+		p.Allow = add(p.Allow, allow)
+	}
+	if p.Approval == Unlisted {
+		p.Trusted = add(p.Trusted, trusted)
 	}
 	p.Version = prev.Version + 1
 	p.UpdatedBy, p.UpdatedAt = by, at.UTC()

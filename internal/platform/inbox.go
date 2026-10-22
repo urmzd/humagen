@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/urmzd/fiber/pkg/registry"
+
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
@@ -831,6 +833,9 @@ func (p *Platform) retry(ctx context.Context, who auth.Principal, runID string) 
 	t := Turn{
 		ID:    "api-retry-" + strconv.Itoa(len(who.Subject)) + "-" + who.Subject + "-" + run.ID,
 		Agent: run.Agent, Text: run.Text, After: run.Prev, Actor: actor,
+		// An agent moved since into a project they may not read is one that
+		// is not there.
+		Sees: p.Seer(who).Agent,
 	}
 	// The retry is the person retrying's turn, so what it teaches the
 	// project is kept unasked only if they could keep it themselves.
@@ -858,7 +863,10 @@ func (p *Platform) retryAnswer(ctx context.Context, tenant string, run runs.Run,
 	if err != nil {
 		return runs.Run{}, err
 	}
-	return p.answerMessage(ctx, tenant, th, m, "", t.Agent, t.Actor, t.ID, t.KeepsNotes)
+	if t.Agent != Auto && !t.Sees(t.Agent) {
+		return runs.Run{}, fmt.Errorf("%w: %q", registry.ErrNotFound, t.Agent)
+	}
+	return p.answerMessage(ctx, tenant, th, m, "", t.Agent, t.Actor, t.ID, t.KeepsNotes, t.Sees)
 }
 
 // decideMemory keeps the chosen proposals and discards the rest.

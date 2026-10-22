@@ -337,8 +337,8 @@ func (s *Store) Claim(tenantName, id, by string, at time.Time) (Thread, error) {
 	} else {
 		next.Participants = append([]Participant{{Kind: Person, Name: by, Owner: true, At: at}}, next.Participants...)
 	}
-	if len(next.Participants) > MaxParticipants {
-		return Thread{}, fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
+	if len(next.Participants) > MaxHeld {
+		return Thread{}, fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
 	}
 	next.Version, next.UpdatedAt = th.rec.Version+1, at
 	if err := next.validate(); err != nil {
@@ -431,7 +431,7 @@ func (s *Store) Post(tenantName, id string, m Message, at time.Time) (Message, b
 	m.ID, m.Thread = MessageID(n), id
 	rec := th.rec.clone()
 	rec.UpdatedAt = at
-	if !rec.has(Person, m.By) && len(rec.Participants) < MaxParticipants {
+	if !rec.has(Person, m.By) && len(rec.Participants) < MaxHeld {
 		rec.Participants = append(rec.Participants, Participant{Kind: Person, Name: m.By, At: at})
 	}
 	b := s.batch()
@@ -507,7 +507,7 @@ func (s *Store) Join(tenantName, id string, ps []Participant, at time.Time) (Thr
 		if err := p.validate(); err != nil {
 			return Thread{}, err
 		}
-		if !rec.has(p.Kind, p.Name) && len(rec.Participants) < MaxParticipants {
+		if !rec.has(p.Kind, p.Name) && len(rec.Participants) < MaxHeld {
 			rec.Participants = append(rec.Participants, p)
 		}
 	}
@@ -567,11 +567,15 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 }
 
 // Participants adds and removes people and agents. add and remove hold at
-// most MaxParticipants between them, and the thread at most MaxParticipants
-// after; version must be the current one (ErrVersion). The person who
-// started the thread stays in it. Adding someone already there, or removing
-// someone who is not, changes nothing.
-func (s *Store) Participants(tenantName, id string, version int, add []Participant, remove []string, by string, at time.Time) (Thread, error) {
+// most MaxParticipants between them, and a change that grows the ones
+// counted reports true for (every one, when it is nil) leaves at most
+// MaxParticipants of them,
+// and at most MaxHeld in all; version must be the current one (ErrVersion).
+// counted is who the writer is shown, so one they were not shown counts
+// toward no limit they are told of. The person who started the thread stays
+// in it. Adding someone already there, or removing someone who is not,
+// changes nothing.
+func (s *Store) Participants(tenantName, id string, version int, add []Participant, remove []string, counted func(Participant) bool, by string, at time.Time) (Thread, error) {
 	if len(add)+len(remove) > MaxParticipants {
 		return Thread{}, fmt.Errorf("%w: at most %d people and agents are added or removed at once", ErrInvalid, MaxParticipants)
 	}
@@ -605,8 +609,26 @@ func (s *Store) Participants(tenantName, id string, version int, add []Participa
 			next.Participants = append(next.Participants, p)
 		}
 	}
-	if len(next.Participants) > MaxParticipants {
+	shownOf := func(ps []Participant) int {
+		if counted == nil {
+			return len(ps)
+		}
+		n := 0
+		for _, p := range ps {
+			if counted(p) {
+				n++
+			}
+		}
+		return n
+	}
+	// People who post and agents who answer join past MaxParticipants, so a
+	// change is refused only when it grows what the writer counts past it.
+	shown := shownOf(next.Participants)
+	switch {
+	case shown > MaxParticipants && shown > shownOf(th.rec.Participants):
 		return Thread{}, fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
+	case len(next.Participants) > MaxHeld:
+		return Thread{}, fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
 	}
 	if slices.Equal(next.Participants, th.rec.Participants) {
 		return next, nil

@@ -101,13 +101,17 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 			schema([]string{"name"}, map[string]string{"name": "The agent's name"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
 				name := strings.TrimSpace(arg(args, "name"))
-				if !p.agentOpenFor(req.Tenant, p.ownProject(req.Tenant, req.RunID))(name) {
+				open := p.agentOpenFor(req.Tenant, p.ownProject(req.Tenant, req.RunID))
+				if !open(name) {
 					return "", fmt.Errorf("%w: %q", registry.ErrNotFound, name)
 				}
 				rev, err := p.Agents.Get(ctx, req.Tenant, name, 0)
 				if err != nil {
 					return "", err
 				}
+				// Nor are the agents it may call named past what everyone
+				// the answer reaches may read.
+				rev = revisionShown(rev, open)
 				b, _ := json.MarshalIndent(map[string]any{"rev": rev.Rev, "spec": rev.Spec}, "", "  ")
 				return string(b), nil
 			}),
@@ -136,7 +140,10 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 	}
 }
 
-// runsSummary is runs_summary's answer: compact JSON a model can read and quote.
+// runsSummary is runs_summary's answer: compact JSON a model can read and
+// quote. It reads only runs the answer may read (scope), and a run names the
+// agent that ran it, so its rows name that agent, even one moved since into
+// a project the readers may not read.
 func (p *Platform) runsSummary(tenant string, window time.Duration, agent string, scope runs.SummaryQuery) (string, error) {
 	until := p.now()
 	bucket := time.Hour
@@ -265,15 +272,12 @@ func (p *Platform) alertsReport(tenant, own string) (string, error) {
 }
 
 // agentOpenFor reports, for a tool of a run filed in own, whether an agent
-// may be read for everyone its answer reaches: a platform agent, or one that
-// lives in a project openFor allows. One living in a members-only project
-// other than own reads as one that is not there.
+// may be read for everyone its answer reaches: the one rule a recap names
+// agents by (agentsEveryoneReads), a platform agent or one that lives in a
+// project everyone who reads own reads, own's chain included. Any other
+// reads as one that is not there.
 func (p *Platform) agentOpenFor(tenant, own string) func(name string) bool {
-	open, tree := p.openFor(tenant, own), p.ProjectTree(tenant)
-	return func(name string) bool {
-		home, homed := tree.Home(agentspec.NormalizeName(name))
-		return !homed || open(home)
-	}
+	return p.agentsEveryoneReads(tenant, own)
 }
 
 // agentsReport is list_agents' answer for a run filed in own, bounded to the

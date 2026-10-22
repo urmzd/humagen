@@ -51,13 +51,53 @@ projects under it and proposes notes, an owner changes it (see
 role in answers 404, and so does everything that lives in it: its runs,
 threads, events, files, notes, schedules, inbox messages, limits and eval
 suites, and the agents that live there, each answering exactly as an object
-that does not exist. A client, a project's lists of agents and the
-workspace's settings leave out an agent that lives there, and a change to
-them keeps what the caller was not shown. A request that names such an agent,
-there or as the agent a run, a schedule or a thread asks, answers as one
-naming an agent that does not exist. A model policy such an agent
-runs on is not removed, and the refusal does not name the agent. A private
-thread is read by its participants alone.
+that does not exist.
+
+An agent that lives there is named to a reader who may not read it in one
+way only: as the agent that ran a run they may read. A run names the agent
+that ran it, which was available where it ran, even one moved since. So does
+what is built only from such runs: a conversation's agents, the agents that
+joined a thread by answering there, a tag in a thread that started a run, analytics and the analyst's summaries by
+agent and their slowest runs, a recap's rows of what was done, and a filter
+of runs by agent. That is history the reader may already read, so one page
+never hides a name another shows.
+
+Everything that names an agent as configuration, or as a choice going
+forward, leaves it out, as if it were not there: a client, a project's lists
+of agents, the workspace's settings, an agent's spec (the agents it may call,
+the approvals of those calls, and who may approve when every approval is
+left out, with the hash of what is shown), an agent's call policy (the
+callers it admits and trusts), the definition in a run's manifest, a
+channel's default and its history, a thread's default, the agents added to it
+by name who never answered there, and the tags in its turns that started
+nothing, the lists of
+agents available, and a project's history. A default left out is passed over
+for the reader, as if it were not set: who answers there, for them, is the
+next default along, as it would be were it not set, so neither what they read
+nor what their messages do tells it apart from none. A refusal that an agent
+is not available somewhere says where it lives only when everyone in the
+workspace reads that project, since it reaches whoever reads where it was
+made.
+
+A change to any of them keeps what the caller was not shown, in place. A
+spec's is kept against the revision the write expects, a call policy's under
+its store's lock, and a channel's and a thread's default under theirs, so an
+entry another writer adds meanwhile is kept too; a client's and the
+settings' are kept against what was read when the write began. What the
+caller was not shown counts toward no limit they are told of: a call
+policy's lists hold more than 100 callers only with ones already stored, and
+a change that adds to a thread leaves at most 50 participants they are
+shown, of at most 100 in all. Who may approve a spec's kept approvals is
+kept with them when the writer was shown none of its approvals or wrote
+none, so it guards them still; a writer shown no approvals who adds one
+then reads back the approvers kept, which tells them a hidden approval
+exists, never whose. A request that names such an
+agent, there or as the agent a run, a call, a schedule or a thread asks,
+answers as one naming an agent that does not exist. Moving an agent into a
+project is refused while a project's, a channel's or a client's default
+would lose it; a thread's default is kept and left out instead. A model
+policy such an agent runs on is not removed, and the refusal does not name
+the agent. A private thread is read by its participants alone.
 
 A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:

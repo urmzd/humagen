@@ -43,7 +43,7 @@ func TestRestart(t *testing.T) {
 		if _, err := s.Update("acme", th.ID, 1, t0, func(t *threads.Thread) error { t.Title = "Renewal"; return nil }); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.Participants("acme", th.ID, 2, []threads.Participant{{Kind: threads.Agent, Name: "ignite"}}, nil, "dana", t0); err != nil {
+		if _, err := s.Participants("acme", th.ID, 2, []threads.Participant{{Kind: threads.Agent, Name: "ignite"}}, nil, nil, "dana", t0); err != nil {
 			t.Fatal(err)
 		}
 		legacy, err := s.Create("acme", threads.Thread{ID: run, Project: "", Channel: "general", Visibility: threads.Shared, CreatedBy: "eve"}, t0)
@@ -140,7 +140,7 @@ func TestAFailedWriteChangesNothing(t *testing.T) {
 	if _, err := s.Update("acme", th.ID, 1, t0, func(t *threads.Thread) error { t.Title = "x"; return nil }); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Update = %v", err)
 	}
-	if _, err := s.Participants("acme", th.ID, 1, []threads.Participant{{Kind: threads.Agent, Name: "ignite"}}, nil, "dana", t0); !errors.Is(err, statetest.ErrInjected) {
+	if _, err := s.Participants("acme", th.ID, 1, []threads.Participant{{Kind: threads.Agent, Name: "ignite"}}, nil, nil, "dana", t0); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Participants = %v", err)
 	}
 	if _, err := s.Join("acme", th.ID, []threads.Participant{{Kind: threads.Agent, Name: "ignite"}}, t0); !errors.Is(err, statetest.ErrInjected) {

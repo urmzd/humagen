@@ -44,9 +44,12 @@ type channelView struct {
 	Answers answers `json:"answers"`
 }
 
-func (s *Server) channelView(tenant string, c projects.Channel) channelView {
-	d, why, _ := s.P.DefaultFor(tenant, "", c.Project, c.Name)
-	return channelView{Channel: c, Answers: answers{Agent: d.Agent, From: d.From, Unavailable: why}}
+// channelView is a channel as the caller is shown it: its default and who
+// answers there name no agent they may not read (platform.Seer.Channel,
+// platform.DefaultForAs).
+func (s *Server) channelView(who auth.Principal, c projects.Channel) channelView {
+	d, why, _ := s.P.DefaultForAs(who, "", c.Project, c.Name)
+	return channelView{Channel: s.P.Seer(who).Channel(c), Answers: answers{Agent: d.Agent, From: d.From, Unavailable: why}}
 }
 
 func (s *Server) listChannels(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -62,7 +65,7 @@ func (s *Server) listChannels(w http.ResponseWriter, r *http.Request, who auth.P
 	}
 	out := make([]channelView, 0, len(list))
 	for _, c := range list {
-		out = append(out, s.channelView(who.Tenant, c))
+		out = append(out, s.channelView(who, c))
 	}
 	ok(w, http.StatusOK, map[string]any{"channels": out})
 }
@@ -86,7 +89,7 @@ func (s *Server) createChannel(w http.ResponseWriter, r *http.Request, who auth.
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, s.channelView(who.Tenant, c))
+	ok(w, http.StatusCreated, s.channelView(who, c))
 }
 
 func (s *Server) updateChannel(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -108,7 +111,7 @@ func (s *Server) updateChannel(w http.ResponseWriter, r *http.Request, who auth.
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.channelView(who.Tenant, c))
+	ok(w, http.StatusOK, s.channelView(who, c))
 }
 
 // archiveChannel archives a channel. It and its threads stay, and general
@@ -180,7 +183,7 @@ func (s *Server) startThread(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, s.P.ShowPosted(who.Tenant, got))
+	ok(w, http.StatusCreated, s.P.Seer(who).Posted(s.P.ShowPosted(who.Tenant, got)))
 }
 
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -193,7 +196,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, s.P.ShowPosted(who.Tenant, got))
+	ok(w, http.StatusCreated, s.P.Seer(who).Posted(s.P.ShowPosted(who.Tenant, got)))
 }
 
 func (s *Server) updateThread(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -206,7 +209,7 @@ func (s *Server) updateThread(w http.ResponseWriter, r *http.Request, who auth.P
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.P.ShowThread(who.Tenant, got))
+	ok(w, http.StatusOK, s.P.Seer(who).Thread(s.P.ShowThread(who.Tenant, got)))
 }
 
 func (s *Server) putParticipants(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -219,7 +222,7 @@ func (s *Server) putParticipants(w http.ResponseWriter, r *http.Request, who aut
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.P.ShowThread(who.Tenant, got))
+	ok(w, http.StatusOK, s.P.Seer(who).Thread(s.P.ShowThread(who.Tenant, got)))
 }
 
 // getThread reads a thread: its record, who answers untagged messages in
@@ -243,8 +246,11 @@ func (s *Server) getThread(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	d, why, _ := s.P.DefaultFor(who.Tenant, id, "", "")
-	th, turns = s.P.ShowTurns(who.Tenant, th, turns)
+	// What it names of agents is what the caller may read.
+	seer := s.P.Seer(who)
+	d, why, _ := s.P.DefaultForAs(who, id, "", "")
+	turns = seer.Turns(th, turns)
+	th, turns = s.P.ShowTurns(who.Tenant, seer.Thread(th), turns)
 	turns = s.P.AsksIn(r.Context(), who, turns)
 	var cursor *string
 	if next != "" {

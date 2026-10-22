@@ -17,7 +17,7 @@ func (s *Server) getCallPolicy(w http.ResponseWriter, r *http.Request, who auth.
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, callPolicyView{Policy: pol, UpdatedByName: s.P.NameOf(who.Tenant, pol.UpdatedBy)})
+	ok(w, http.StatusOK, callPolicyView{Policy: s.P.Seer(who).CallPolicy(pol), UpdatedByName: s.P.NameOf(who.Tenant, pol.UpdatedBy)})
 }
 
 // callPolicyBody is what a caller writes: a policy without the agent, which
@@ -44,7 +44,9 @@ func (s *Server) putCallPolicy(w http.ResponseWriter, r *http.Request, who auth.
 		s.problem(w, err)
 		return
 	}
-	pol, err := s.P.SetCallPolicy(r.Context(), who.Tenant, r.PathValue("name"), who.Subject, callpolicy.Policy{
+	// An agent the caller may not read is not one, and the callers it lists
+	// that they were not shown stay.
+	pol, err := s.P.SetCallPolicyBy(r.Context(), who, r.PathValue("name"), callpolicy.Policy{
 		Callers: body.Callers, Allow: body.Allow, Approval: body.Approval, Trusted: body.Trusted,
 		Approvers: body.Approvers, SelfApproval: body.SelfApproval, ExpiresSeconds: body.ExpiresSeconds,
 	})
@@ -52,7 +54,7 @@ func (s *Server) putCallPolicy(w http.ResponseWriter, r *http.Request, who auth.
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, callPolicyView{Policy: pol, UpdatedByName: s.P.NameOf(who.Tenant, pol.UpdatedBy)})
+	ok(w, http.StatusOK, callPolicyView{Policy: s.P.Seer(who).CallPolicy(pol), UpdatedByName: s.P.NameOf(who.Tenant, pol.UpdatedBy)})
 }
 
 // reachable answers, for the agent in the path as a caller, every other agent
