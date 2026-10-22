@@ -231,10 +231,14 @@ export interface Warp {
     at: { channel: string; ts: string },
     options?: CallOptions,
   ): Promise<void>;
-  /** One page of a person's inbox, read for them through the client that maps them. */
+  /**
+   * One page of a person's inbox, read for them through the client that maps
+   * them. `needs` leaves out posted announcements before the page is cut, so
+   * the page holds what `open` counts.
+   */
   inboxFor(
     actAs: ActAs,
-    query: { state?: string; kind?: string; limit?: number },
+    query: { state?: string; kind?: string; needs?: boolean; limit?: number },
     options?: CallOptions,
   ): Promise<{
     messages: Record<string, unknown>[];
@@ -552,6 +556,7 @@ export function httpWarp(cfg: {
       const q = new URLSearchParams({ act_as_client: actAs.client, act_as_user: actAs.user });
       if (query.state) q.set("state", query.state);
       if (query.kind) q.set("kind", query.kind);
+      if (query.needs) q.set("needs", "true");
       if (query.limit) q.set("limit", String(query.limit));
       return http("GET", `/api/inbox?${q}`);
     },

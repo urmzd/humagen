@@ -161,7 +161,10 @@ their projects (`GET /api/projects`, both with `act_as_client` and
 `act_as_user`), so it holds only what that person may read. It shows at most
 five messages that need them, newest first, with the rest counted as warp
 counts what may need them (`open`): an agent's draft waiting on them as an
-owner is one of them, and a posted announcement is not. What's new holds
+owner is one of them, and a posted announcement is not. They are read
+with `needs=true`, which leaves posted announcements out before the page
+is cut, so however much news is newer the rows and their count agree.
+What's new holds
 five announcements of their projects, unread first, posted ones only. Your
 projects holds the projects that name them, which warp marks `mine`: they
 are a member or an owner there through an entry for their subject or a

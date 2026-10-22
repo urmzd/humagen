@@ -1835,7 +1835,9 @@ export class App {
   /** The shared Home's model for a person the client maps, everything in it read as them. */
   private async homeFor(user: string, mapped: { as: ActAs; person: string }) {
     const [mine, news, projects, names, build] = await Promise.all([
-      this.warp.inboxFor(mapped.as, { state: "open", limit: 30 }),
+      // What needs them, posted announcements left out before the page is
+      // cut, so however much news is newer the rows agree with the total.
+      this.warp.inboxFor(mapped.as, { state: "open", needs: true, limit: 30 }),
       this.warp.inboxFor(mapped.as, { state: "open", kind: "announcement", limit: 20 }),
       this.warp.projectsFor(mapped.as).catch((e: Error): WireProject[] | null => {
         this.log(`Home shows no projects for ${user}: ${e.message}`);

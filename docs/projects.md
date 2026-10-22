@@ -1270,7 +1270,9 @@ and its total, What's new and Your projects to the same on both renderers.
 - **App Home.** The shared Home, through `homeView`, replaces the bare
   MailboxView for a person the client maps. It shows Needs you (at most 5,
   the rest counted as the inbox's `open` counts them: an agent's draft
-  waiting on its owners is one, a posted announcement is not), What's new
+  waiting on its owners is one, a posted announcement is not, and read with
+`needs=true` so that news newer than them never pushes them off the page),
+What's new
   (at most 5 posted announcements) and Your projects, read as the mapped
   person through `act_as` (`GET /api/inbox` and `GET /api/projects` with
   `act_as_client` and `act_as_user`), within the 100-block budget. Your

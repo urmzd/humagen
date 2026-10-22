@@ -358,6 +358,35 @@ test("an agent's draft waits in Needs you, counted as warp counts it, and is not
   );
 });
 
+test("however much news is newer, Needs you shows what needs her and agrees with its total", async () => {
+  const w = mapping();
+  // Thirty open announcements, every one newer than the one mention: a page
+  // of the thirty newest open messages would hold none of what needs her.
+  const news = Array.from({ length: 30 }, (_, i) =>
+    announcementMail({
+      id: `m-news-${i}`,
+      subject: `News ${i}`,
+      at: `2026-10-10T00:${String(i).padStart(2, "0")}:00Z`,
+      updated_at: `2026-10-10T00:${String(i).padStart(2, "0")}:00Z`,
+    }),
+  );
+  w.warp.personal.set("ana", [...news.reverse(), mentionMail()]);
+  await w.app.handle(homeOpened(USER));
+  await settle();
+  const blocks = published(w);
+  const rows = under(blocks, defaultCopy.home.needsYou)
+    .filter((b) => b.type === "section")
+    .map((b) => b.text?.text ?? "");
+  assert.equal(rows.length, 1, JSON.stringify(rows));
+  assert.match(rows[0] ?? "", /^\*Ana\* mentioned you in #renewals/);
+  const text = JSON.stringify(blocks);
+  assert.ok(!text.includes("more in the inbox"), "one needs her, and it is shown");
+  assert.ok(
+    w.warp.inboxQueries.some((q) => q.needs === true && !q.kind),
+    JSON.stringify(w.warp.inboxQueries),
+  );
+});
+
 test("What's new names where it was posted by its title, in a project that is not one of hers too", async () => {
   const w = mapping();
   w.warp.personal.set("ana", [

@@ -174,6 +174,8 @@ export class FakeWarp implements Warp {
   readonly personal = new Map<string, Record<string, unknown>[]>();
   /** Every inbox read made for someone, and for whom. */
   readonly readFor: ActAs[] = [];
+  /** Each inbox page asked for, in order. */
+  readonly inboxQueries: { state?: string; kind?: string; needs?: boolean; limit?: number }[] = [];
   /** Each mapped person's projects, by subject: every one they see, `mine` on those that name them. */
   readonly projects = new Map<string, WireProject[]>();
   /** Every projects read made for someone, and for whom. */
@@ -404,23 +406,30 @@ export class FakeWarp implements Warp {
       m.deliveries = { ...((m.deliveries as object) ?? {}), [client]: { ...at, at: this.at() } };
   }
 
-  async inboxFor(actAs: ActAs, query: { state?: string; kind?: string; limit?: number }) {
+  async inboxFor(
+    actAs: ActAs,
+    query: { state?: string; kind?: string; needs?: boolean; limit?: number },
+  ) {
     this.readFor.push(actAs);
+    this.inboxQueries.push(query);
     const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user];
     if (!subject) throw new WarpError(403, "that person is not mapped to anyone in this workspace");
     const all = this.personal.get(subject) ?? [];
+    // A posted announcement is news; an agent's draft, which waits on its
+    // owners, is not, though it shares the kind.
+    const drafted = (m: Record<string, unknown>) =>
+      Array.isArray(m.parts) && m.parts.some((p) => (p as { type?: unknown }).type === "draft");
+    const posted = (m: Record<string, unknown>) => m.kind === "announcement" && !drafted(m);
     const mine = all.filter(
       (m) =>
         (!query.kind || m.kind === query.kind) &&
+        (!query.needs || !posted(m)) &&
         (query.state === "all" || m.state === (query.state ?? "open")),
     );
     // The counts are the whole inbox's, as warp's are: posted announcements
-    // count only as updates, and an agent's draft, which waits on its owners,
-    // counts as open.
+    // count only as updates, and an agent's draft counts as open.
     const open = all.filter((m) => m.state === "open");
-    const drafted = (m: Record<string, unknown>) =>
-      Array.isArray(m.parts) && m.parts.some((p) => (p as { type?: unknown }).type === "draft");
-    const news = open.filter((m) => m.kind === "announcement" && !drafted(m));
+    const news = open.filter(posted);
     return {
       messages: mine.slice(0, query.limit ?? 50),
       open: open.length - news.length,
