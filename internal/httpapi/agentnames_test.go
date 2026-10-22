@@ -319,8 +319,8 @@ func mustJSON(t *testing.T, v any) string {
 // A title or memory agent that lives in a project is asked only about the
 // turns there and below, whose readers all read it. A turn anywhere else
 // gets no housekeeping run, so nobody who reads that turn is shown a run of
-// an agent they may not read. Settings that name the agent in another
-// spelling keep its own name, and serve the same.
+// an agent they may not read, and no count tells them of one. Settings that
+// name the agent in another spelling keep its own name, and serve the same.
 func TestAHousekeepingAgentThatLivesInAProjectServesOnlyItsTurns(t *testing.T) {
 	for _, spelled := range []string{"spy", "Spy"} {
 		t.Run(spelled, func(t *testing.T) { housekeepingServesOnlyItsTurns(t, spelled) })
@@ -330,7 +330,7 @@ func TestAHousekeepingAgentThatLivesInAProjectServesOnlyItsTurns(t *testing.T) {
 func housekeepingServesOnlyItsTurns(t *testing.T, spelled string) {
 	f := newFixtureWith(t, platform.Config{OfflineHooks: true})
 	owner := f.machine(t, "acme", everything...)
-	reader := f.machineAs(t, "svc-ops", "acme", "warp:runs:read", "warp:runs:write", "warp:agents:read")
+	reader := f.machineAs(t, "svc-ops", "acme", "warp:runs:read", "warp:runs:write", "warp:agents:read", "warp:projects:read")
 	secretAgent(t, f, owner)
 	_, st := read(t, f, owner, "/api/settings")
 	st["title_agent"], st["memory_agent"] = spelled, spelled
@@ -341,6 +341,15 @@ func housekeepingServesOnlyItsTurns(t *testing.T, spelled string) {
 
 	outside := want(t, f, reader, "POST", "/api/runs", `{"agent":"helper","text":"hello there"}`, http.StatusAccepted)["id"].(string)
 	ended(t, f, reader, outside)
+	counted := func() map[string]any {
+		t.Helper()
+		_, d := read(t, f, reader, "/api/projects/~")
+		return obj(d["project"])
+	}
+	before := counted()
+	if before["conversations"] != 1.0 {
+		t.Fatalf("the workspace counts %v conversations for the reader, not their own one", before["conversations"])
+	}
 	inside := want(t, f, owner, "POST", "/api/runs", `{"agent":"helper","text":"plan the vault","project":"Secret"}`, http.StatusAccepted)["id"].(string)
 	ended(t, f, owner, inside)
 
@@ -373,6 +382,12 @@ func housekeepingServesOnlyItsTurns(t *testing.T, spelled string) {
 		if code, raw := get(t, f, reader, path); code != http.StatusOK || strings.Contains(strings.ToLower(raw), "spy") {
 			t.Errorf("%s shows the reader spy: %d %s", path, code, raw)
 		}
+	}
+	// The workspace's counts say nothing of the conversations spy's runs
+	// made, which the reader is not shown.
+	if after := counted(); after["conversations"] != before["conversations"] || after["active_at"] != before["active_at"] {
+		t.Errorf("the workspace counted %v conversations, last active %v, for the reader after the turn in Secret, and %v, last active %v, before",
+			after["conversations"], after["active_at"], before["conversations"], before["active_at"])
 	}
 	// The conversation of its own a housekeeping run makes is read where
 	// the turn it serves is.

@@ -1,6 +1,9 @@
 package runs
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // ProjectCount is what a project holds in the index: the conversations filed
 // in it, how many of their runs are in flight, and when any of them last
@@ -29,10 +32,16 @@ type counters struct {
 	// each is each tenant's count of each conversation on its own, by
 	// thread, so a reader's counts can leave out those they may not read.
 	each map[string]map[string]*ProjectCount
+	// system is each tenant's conversations that a run of origin system
+	// opened, in the order they were recorded.
+	system map[string][]string
 }
 
 func newCounters() counters {
-	return counters{by: map[string]map[string]*ProjectCount{}, filed: map[string]string{}, each: map[string]map[string]*ProjectCount{}}
+	return counters{
+		by: map[string]map[string]*ProjectCount{}, filed: map[string]string{}, each: map[string]map[string]*ProjectCount{},
+		system: map[string][]string{},
+	}
 }
 
 // one is a conversation's own count.
@@ -98,6 +107,9 @@ func (x *Index) count(r *Run) {
 	n := x.counts.of(r.Tenant, project)
 	if !known {
 		n.Threads++
+		if r.Origin == OriginSystem {
+			x.counts.system[r.Tenant] = append(x.counts.system[r.Tenant], r.Thread)
+		}
 	}
 	n.add(r)
 	x.counts.one(r.Tenant, r.Thread).add(r)
@@ -148,4 +160,14 @@ func (x *Index) ProjectCountsWhere(tenant string, keep func(thread string) bool)
 		out[project] = sum
 	}
 	return out
+}
+
+// SystemThreads returns the conversations a run of origin system opened in a
+// tenant, in the order they were recorded. The platform reads such a
+// conversation where the turn its run serves is, not where it is filed, so
+// a reader's counts can leave out the ones they may not read.
+func (x *Index) SystemThreads(tenant string) []string {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	return slices.Clone(x.counts.system[tenant])
 }

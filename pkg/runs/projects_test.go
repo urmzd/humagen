@@ -178,6 +178,49 @@ func TestProjectCountsAreReadBackAfterARestart(t *testing.T) {
 	})
 }
 
+// The conversations runs of origin system opened are known, in the order
+// they were recorded and again after a restart. A run that joins a
+// conversation opens none, and neither does a run of another origin.
+func TestSystemThreadsAreTheConversationsSystemRunsOpened(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		x, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		busy(t, x, "acme")
+		record := func(tenant, id, origin string, meta map[string]string) string {
+			t.Helper()
+			runID := runtime.RunID(tenant, id)
+			if err := x.Record(runID, envelope.Tag{ID: id, Tenant: tenant, Agent: "scribe", Origin: origin, Text: "title it", Meta: meta, At: t0.Add(time.Minute)}, 1); err != nil {
+				t.Fatal(err)
+			}
+			return runID
+		}
+		title := record("acme", "sys-title-a", OriginSystem, nil)
+		memory := record("acme", "sys-memory-a", OriginSystem, map[string]string{MetaProject: "Field"})
+		record("acme", "api-again", OriginAPI, map[string]string{MetaThread: title, MetaPrev: title})
+		record("globex", "sys-title-b", OriginSystem, nil)
+		if got := x.SystemThreads("acme"); !slices.Equal(got, []string{title, memory}) {
+			t.Fatalf("acme's system threads = %v, want %v", got, []string{title, memory})
+		}
+		if got := x.SystemThreads("initech"); len(got) != 0 {
+			t.Fatalf("a tenant with no runs has system threads %v", got)
+		}
+		sameCounts(t, x, "acme")
+		if err := x.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		again, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := again.SystemThreads("acme"); !slices.Equal(got, []string{title, memory}) {
+			t.Fatalf("after a restart acme's system threads = %v", got)
+		}
+	})
+}
+
 func TestProjectCountsHoldUnderRacingRunsAndReaders(t *testing.T) {
 	x := NewIndex()
 	var wg sync.WaitGroup

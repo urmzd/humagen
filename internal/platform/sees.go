@@ -302,15 +302,27 @@ func (s *Seer) MemoryOwner(owner string) bool {
 
 // ProjectCounts is what each of the reader's workspace's projects holds that
 // they may read, by name: the run index's counts, leaving out the private
-// threads they take no part in, so a count says nothing of a thread the
-// reader is not shown. A project the reader may not see is the caller's to
-// leave out.
+// threads they take no part in and the conversations of housekeeping runs
+// that serve a turn they may not read, so a count says nothing of a
+// conversation the reader is not shown. A project the reader may not see is
+// the caller's to leave out.
 func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCount {
 	seer := p.Seer(who)
+	if seer.govern {
+		return p.Runs.ProjectCounts(who.Tenant)
+	}
 	hidden := map[string]bool{}
 	for _, th := range p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return th.Visibility == threads.Private }) {
 		if !seer.Place(Place{Project: th.Project, Thread: th.ID}) {
 			hidden[th.ID] = true
+		}
+	}
+	// A housekeeping run's conversation has no record and is counted at the
+	// workspace, where its run is filed. It is read, as it is listed, where
+	// the turn it serves is.
+	for _, id := range p.Runs.SystemThreads(who.Tenant) {
+		if !seer.Conversation(id, "") {
+			hidden[id] = true
 		}
 	}
 	if len(hidden) == 0 {

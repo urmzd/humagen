@@ -94,6 +94,22 @@ func TestAPrivateThreadsHousekeepingStaysInIt(t *testing.T) {
 	if listed(outsider) || !listed(operator) {
 		t.Fatalf("a housekeeping run's conversation is listed where its turn is not: outsider %v, owner %v", listed(outsider), listed(operator))
 	}
+	// And it is counted, at the workspace where it is filed, only for those
+	// it is listed for.
+	shown := func(who auth.Principal) (counted, listed int) {
+		page, _, err := p.ThreadPageAs(who, runs.ThreadQuery{Projects: []string{projects.Root}, Limit: runs.MaxThreadPage})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p.ProjectCounts(who)[projects.Root].Threads, len(page)
+	}
+	if counted, listed := shown(outsider); counted != 0 || listed != 0 {
+		t.Fatalf("the workspace counts %d conversations for the outsider, who is shown %d there", counted, listed)
+	}
+	eventually(t, "the workspace counts the owner what they are shown there", func() bool {
+		counted, listed := shown(operator)
+		return counted > 0 && counted == listed
+	})
 
 	// The private thread sent nothing to be remembered.
 	time.Sleep(100 * time.Millisecond)
