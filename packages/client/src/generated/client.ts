@@ -1368,11 +1368,12 @@ and a `$skill` with no agent tagged goes to `@auto`; tagging only
 people or experts notifies them; posted only, nothing answers. A
 message a person posts as themselves, as the console does, runs only
 the agents it tags: untagged, it starts nothing (rule `untagged`),
-whatever the thread's, channel's or project's default. Otherwise, a
-message a client posts, the default the thread inherits answers.
-`visibility` left out is `private` (with no `surface`): the
-conversation is its starter's alone until they share it
-(`shareThread`). Each run
+whatever the thread's, channel's or project's default. Otherwise,
+for a message a client posts, the default the thread inherits
+answers. `visibility` left out, by a person posting as themselves,
+is `private`: the conversation is its starter's alone until they
+share it (`shareThread`). A client posting with `act_as` and no
+`surface` names it (400). Each run
 it starts acts for the person the message is posted as, never for
 anyone else in the thread, so a tool that acts as a person uses that
 person's own credential; the run is sent the room up to the message,
@@ -1586,7 +1587,8 @@ conversation shared, or moving one, also takes whoever started it,
 while a member of its project, or an owner of its project (403), so
 someone tagged into a private conversation does not publish it; it
 goes only into a project the caller is a member of (403; one they
-cannot see is 404), to a channel that is not archived (400). On a
+cannot see is 404), to a channel it has (404) that is not archived
+(400). On a
 thread shared already where it is, any participant who may post
 there adds people. The thread moves only while no run has been filed
 in it: a conversation that has runs stays in its project and its

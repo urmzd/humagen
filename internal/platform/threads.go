@@ -636,9 +636,10 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err := threads.CheckText(in.Text); err != nil {
 		return Posted{}, err
 	}
-	if in.Visibility == "" && on == nil {
-		// A conversation starts private, its starter's alone, until they
-		// share it (ShareThread).
+	if in.Visibility == "" && on == nil && in.ActAs == nil {
+		// A conversation a person starts as themselves, as in the console,
+		// starts private, its starter's alone, until they share it
+		// (ShareThread). A client names its visibility.
 		in.Visibility = threads.Private
 	}
 	switch in.Visibility {

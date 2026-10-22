@@ -124,7 +124,7 @@ One grammar, parsed by the platform for every surface (`pkg/threads`):
 | `@sme` or `@sme:<topic>` | the project's experts (for that topic) are notified |
 | `<@U…>` (Slack only) | the Slack person, mapped to a subject through the client's `slack.people` |
 
-A `$<skill>` (the skills change adds it to the grammar) tells the agents the
+A `$<skill>` tells the agents the
 message tags to use that skill; with no agent tagged it goes to `@auto`.
 
 What a message starts, first rule that applies:

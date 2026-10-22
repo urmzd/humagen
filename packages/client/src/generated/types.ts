@@ -618,7 +618,8 @@ export interface ThreadPage {
 }
 
 /** A new thread and its first message. `visibility` left out is
-`private`. With `surface` the platform files the thread, and project,
+`private` for a person posting as themselves, and required with
+`act_as` and no `surface`. With `surface` the platform files the thread, and project,
 channel, visibility and default are left out.
  */
 export interface ThreadInput {
