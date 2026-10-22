@@ -159,3 +159,47 @@ func TestRacingAnnouncementsStopAtTheProjectsCap(t *testing.T) {
 		t.Fatalf("posted %d, refused %d; want 20 and 20", made, refused)
 	}
 }
+
+// Whoever posts an announcement has read it, so it never waits in their own
+// Updates. A viewer who hid it in the project's inbox is told it is hidden
+// for them alone, and brings it back; nobody else's copy changes.
+func TestAnAnnouncementIsReadByItsAuthorAndAHiddenOneComesBack(t *testing.T) {
+	p := newsPlatform(t)
+	ada := auth.Principal{Subject: "ada", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	bo := auth.Principal{Subject: "bo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	cy := auth.Principal{Subject: "cy", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	m, err := p.PostAnnouncement(ada, "Globex", platform.Announcement{Subject: "Renewal signed", Text: "Three more years."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Unread {
+		t.Fatal("the author is answered with their own announcement unread")
+	}
+	if got, err := p.InboxGet(ada, m.ID); err != nil || got.Unread {
+		t.Fatalf("the author reads it unread=%v, %v", got.Unread, err)
+	}
+	if got, _ := p.InboxGet(cy, m.ID); !got.Unread {
+		t.Fatal("a member has nothing to read")
+	}
+	if got, err := p.InboxDismiss(bo, m.ID); err != nil || got.State != inbox.Dismissed || !got.Hidden {
+		t.Fatalf("bo's hidden copy = %s, hidden %v, %v", got.State, got.Hidden, err)
+	}
+	page, _, err := p.ProjectInbox(bo, "Globex", false, inbox.Query{State: inbox.All})
+	if err != nil || len(page) != 1 || !page[0].Hidden {
+		t.Fatalf("Globex's inbox for bo = %+v, %v", page, err)
+	}
+	if got, _ := p.InboxGet(cy, m.ID); got.State != inbox.Open || got.Hidden {
+		t.Fatalf("cy's copy = %s, hidden %v", got.State, got.Hidden)
+	}
+	if got, err := p.InboxUnhide(bo, m.ID); err != nil || got.State != inbox.Open || got.Hidden {
+		t.Fatalf("bo brings it back = %s, hidden %v, %v", got.State, got.Hidden, err)
+	}
+	// Bringing back what is not hidden answers it as it is.
+	if got, err := p.InboxUnhide(cy, m.ID); err != nil || got.State != inbox.Open {
+		t.Fatalf("cy brings back what she never hid = %s, %v", got.State, err)
+	}
+	other := auth.Principal{Subject: "bo", Tenant: "globex", Kind: auth.User, Roles: []auth.Role{auth.Admin}}
+	if _, err := p.InboxUnhide(other, m.ID); !errors.Is(err, inbox.ErrNotFound) {
+		t.Fatalf("another workspace brings it back: %v", err)
+	}
+}

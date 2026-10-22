@@ -1797,6 +1797,31 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/inbox/{id}/unhide:
+    post:
+      operationId: unhideInboxMessage
+      tags: [inbox]
+      summary: Bring back an announcement the caller hid for themselves
+      description: |
+        An announcement the caller hid or snoozed (`hidden`) is open for them
+        again, as everyone else has it. Only their own copy changes, so it
+        needs what hiding it needs. One they never set aside, or one withdrawn
+        for everyone, is answered as it is. Any other message is set aside for
+        everyone, and is not brought back this way (400).
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/MessageID"}
+      responses:
+        "200":
+          description: The message, as the caller now has it.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/InboxMessage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/inbox/{id}/parts/{part}/resolve:
     post:
       operationId: resolveInboxPart
@@ -6281,7 +6306,15 @@ components:
         state: {$ref: "#/components/schemas/InboxState"}
         snoozed_until: {type: string, format: date-time}
         unread:
-          description: Whether this caller has read it. Read state is per person.
+          description: |
+            Whether this caller has read it. Read state is per person, and
+            whoever posted an announcement has read it.
+          type: boolean
+        hidden:
+          description: |
+            The caller hid or snoozed this announcement for themselves, so
+            `state` is theirs alone and everyone else still has it. Left out
+            otherwise. `unhideInboxMessage` brings it back.
           type: boolean
         source: {$ref: "#/components/schemas/InboxSource"}
         parts:
@@ -6301,7 +6334,7 @@ components:
         by: {type: string}
         what:
           type: string
-          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered]
+          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden]
         part: {type: string}
         action: {type: string}
         note: {type: string}

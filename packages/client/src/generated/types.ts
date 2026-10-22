@@ -1465,8 +1465,15 @@ export interface InboxMessage {
   severity: InboxSeverity;
   state: InboxState;
   snoozed_until?: string;
-  /** Whether this caller has read it. Read state is per person. */
+  /** Whether this caller has read it. Read state is per person, and
+whoever posted an announcement has read it.
+ */
   unread: boolean;
+  /** The caller hid or snoozed this announcement for themselves, so
+`state` is theirs alone and everyone else still has it. Left out
+otherwise. `unhideInboxMessage` brings it back.
+ */
+  hidden?: boolean;
   source: InboxSource;
   parts: InboxPart[];
   /** Where the reading client posted the message, by client id. Shown only to that client's machine. */
@@ -1478,7 +1485,7 @@ export interface InboxChange {
   message: string;
   at: string;
   by?: string;
-  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered";
+  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden";
   part?: string;
   action?: string;
   note?: string;
