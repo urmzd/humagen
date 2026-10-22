@@ -2684,7 +2684,8 @@ client's machine lists one of its people's projects with
 `act_as_client` and `act_as_user`, as the Slack app's Home does: the
 projects that person has a role in, each with their role, their
 actions and what they may read in it. The person must hold
-`projects:read` themselves.
+`projects:read` themselves. `mine` marks the projects that name the
+caller, which Home lists as theirs.
  */
   async listProjects(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListProjectsResponse> {
     let path = "/api/projects";
