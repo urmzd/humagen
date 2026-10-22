@@ -814,7 +814,10 @@ paths:
       description: |
         Starts a child run of the run in the path. The caller's agent must be
         allowed to spawn the target, and depth, fan-out and lease limits apply.
-        `key` is the call's idempotency key within the run.
+        `key` is the call's idempotency key within the run. The call is a turn
+        of the run's conversation, filed where it lives, so the caller must be
+        a member of the run's project, and in a private thread a participant
+        (403); a viewer starts nothing.
       x-permission: runs:write
       parameters:
         - {$ref: "#/components/parameters/RunID"}
@@ -856,6 +859,10 @@ paths:
         Asking a run that has ended changes nothing and answers 200 with the
         run as it stands, so asking twice is safe. Another workspace's run
         answers 404.
+
+        It takes whoever asked for the run, the machine of the client that
+        raised it, or a member of the run's project (in a private thread a
+        participant). A viewer of the project stops nobody else's run (403).
       x-permission: runs:write
       parameters:
         - {$ref: "#/components/parameters/RunID"}
@@ -1096,11 +1103,12 @@ paths:
         it starts acts for the person the message is posted as, never for
         anyone else in the thread, so a tool that acts as a person uses that
         person's own credential; the run is sent the room up to the message,
-        what others said there, ahead of it. A `private` thread is refused
-        (409) until reads are confined. A `default` must be able to answer
-        in the project (400). Starting a thread takes a member of the
-        project: the caller, or the person `act_as` names, as their own role
-        there says; a viewer is 403.
+        what others said there, ahead of it. A `private` thread is read by
+        its participants alone, the person who starts it first; tagging a
+        person in it invites them. A `default` must be able to answer in the
+        project (400). Starting a thread takes a member of the project: the
+        caller, or the person `act_as` names, as their own role there says;
+        a viewer is 403.
 
         A workspace holds at most 10,000 threads and a project 2,000, a
         conversation from before threads counting once its record is written
@@ -1108,6 +1116,13 @@ paths:
         `postThreadMessage`, and a project takes at most 120 (429). One
         message notifies at most 20 people and roles; a tag it reaches nobody
         for is in `refused`.
+
+        With `surface`, a client's machine posts a person's message from a
+        Slack thread: into the thread that surface already is, or into a new
+        one the platform files from the binding (see SurfaceRef). Posting
+        the same message ts again changes nothing. To any other caller the
+        client is not found (404); a client's home that is gone is 404 too.
+        An agent the client may not route to is refused, never swapped.
       x-permission: runs:write
       requestBody:
         required: true
@@ -1124,7 +1139,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -1174,10 +1188,10 @@ paths:
         The body replaces those three as a whole: one left out is cleared.
         `version` is the one the caller read (0 for a conversation from
         before threads, whose record this writes), so a change made since
-        answers 409. `private` is refused (409) until reads are confined. A
-        `default` must be able to answer in the thread's project (400).
-        Whoever started the thread, while a member of its project, or an
-        owner of its project, changes it (403 for anyone else, and for a
+        answers 409. Made `private`, the thread is read by its participants
+        alone. A `default` must be able to answer in the thread's project
+        (400). Whoever started the thread, while a member of its project, or
+        an owner of its project, changes it (403 for anyone else, and for a
         starter who is now only a viewer, since its default answers
         everyone's untagged messages there); a conversation from before
         threads that no person asked in is changed first by a member, who
@@ -1212,22 +1226,23 @@ paths:
       description: |
         Posted as the caller, or as the person `act_as` names through a
         client that maps them, as for `startThread`, and each run it starts
-        acts for that person. `after` is the turn it
-        follows: a message of the thread, a run answering one, or in a
-        conversation from before threads one of its runs; left out, it
-        follows the latest. `answers` records the message as a question's
-        answer, which resumes the run parked on it; who may answer is
-        checked as on every other path, and a refused answer posts nothing.
-        An answer, like a reply, is not answered by the thread's default; the
-        agents it tags answer it, as for any message. An answer is posted
-        only when it is the one the run was given: a question already
-        answered, or whose run stopped, is 409 and posts nothing. Posting
-        takes a member of the thread's project, as starting a thread does,
-        except an answer that tags no one: a viewer may answer what a run
-        asked them, but tagging an agent, a person or `@sme` takes a member
-        (403 for anything else). A thread holds at most 5,000
-        messages: past that, 409 "start a new thread". The rates and caps of
-        `startThread` hold here too (429).
+        acts for that person. `after` is the turn it follows: a message of
+        the thread, a run answering one, or in a conversation from before
+        threads one of its runs; left out, it follows the latest. `answers`
+        records the message as a question's answer, which resumes the run
+        parked on it; who may answer is checked as on every other path, and
+        a refused answer posts nothing. An answer, like a reply, is not
+        answered by the thread's default; the agents it tags answer it, as
+        for any message. An answer is posted only when it is the one the run
+        was given: a question already answered, or whose run stopped, is 409
+        and posts nothing. Posting takes a member of the thread's project,
+        and in a private thread a participant, as starting a thread does,
+        except an answer or a reply that tags no one: a viewer may answer
+        what a run asked them, or reply to a message that tagged them, but
+        tagging an agent, a person or `@sme` takes a member (403 for
+        anything else). A thread holds at most 5,000 messages: past that,
+        409 "start a new thread". The rates and caps of `startThread` hold
+        here too (429).
       x-permission: runs:write
       parameters:
         - {$ref: "#/components/parameters/ThreadID"}
@@ -1259,10 +1274,11 @@ paths:
         At most 50 added and removed together, and a thread has at most 50
         participants. An agent added must be available in the thread's
         project, and a person, named by handle, must be in the workspace's
-        directory (400). The person who started the thread stays in it. It
-        takes a member of the thread's project, and removing anyone but
-        oneself takes whoever started the thread or an owner of its project
-        (403). `version` is the one the caller read.
+        directory (400). The person who started the thread stays in it.
+        Adding takes posting there: a member of the thread's project, and in
+        a private thread a participant. Removing anyone but oneself takes
+        whoever started the thread or an owner of its project (403).
+        `version` is the one the caller read.
       x-permission: runs:write
       parameters:
         - {$ref: "#/components/parameters/ThreadID"}
@@ -1453,7 +1469,9 @@ paths:
         is named, must exist now. The whole edit is checked before anything
         changes, so a refused edit leaves the schedule as it was. An edited
         schedule starts afresh from the time of the edit: it does not catch up
-        on occurrences of its new expression that fell before it.
+        on occurrences of its new expression that fell before it. A schedule
+        the platform file declares (`managed: file`) is changed in the file:
+        here it answers 409.
       x-permission: schedules:write
       parameters:
         - {$ref: "#/components/parameters/ScheduleName"}
@@ -1472,12 +1490,14 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
     delete:
       operationId: deleteSchedule
       tags: [schedules]
       summary: Delete a schedule
+      description: A schedule the platform file declares is removed from the file, not here (409).
       x-permission: schedules:write
       parameters:
         - {$ref: "#/components/parameters/ScheduleName"}
@@ -1487,6 +1507,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/schedules/{name}/pause:
     post:
@@ -1565,7 +1586,8 @@ paths:
         may do with each part, is decided per message: a memory proposal needs
         `agents:read`, a failure `runs:read`, an alert or a reached limit
         `alerts:read`. `next` is the cursor for the page after this one, or
-        null at the end.
+        null at the end. A client's machine reads one of its people's inbox
+        with `act_as_client` and `act_as_user`, as the Slack app's Home does.
       x-permission: runs:read
       parameters:
         - name: state
@@ -1606,6 +1628,8 @@ paths:
             (`source.project`), `~` for the workspace. A project the caller
             cannot see is 404.
           schema: {type: string, maxLength: 63}
+        - {$ref: "#/components/parameters/ActAsClient"}
+        - {$ref: "#/components/parameters/ActAsUser"}
       responses:
         "200":
           description: One page, with the caller's counts.
@@ -1636,16 +1660,22 @@ paths:
       summary: Count the caller's open and unread messages, and the announcements they have not read
       description: |
         Announcements count only in `updates`, so the badge, which counts
-        `open`, never grows from them.
+        `open`, never grows from them. A client's machine counts for one of
+        its people with `act_as_client` and `act_as_user`.
       x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ActAsClient"}
+        - {$ref: "#/components/parameters/ActAsUser"}
       responses:
         "200":
           description: The counts.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/InboxCounts"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/inbox/{id}:
     get:
@@ -1656,10 +1686,13 @@ paths:
         A message of a kind the caller may not read answers 404. An
         announcement in the inbox of a project the caller can see is theirs
         to read, mark, snooze and hide, member or not, muted or not, as the
-        project's inbox shows it.
+        project's inbox shows it. A client's machine reads one for a person
+        it maps with `act_as_client` and `act_as_user`.
       x-permission: runs:read
       parameters:
         - {$ref: "#/components/parameters/MessageID"}
+        - {$ref: "#/components/parameters/ActAsClient"}
+        - {$ref: "#/components/parameters/ActAsUser"}
       responses:
         "200":
           description: The message and its history.
@@ -1680,6 +1713,7 @@ paths:
                     type: array
                     maxItems: 100
                     items: {$ref: "#/components/schemas/InboxChange"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -1794,7 +1828,10 @@ paths:
         Answering a question is `answerQuestion` by another route, with the
         same rules: a person the question is not addressed to does not see
         it, and one the runtime refuses is 403. `act_as` answers for a person
-        a surface authenticated. Resolving a part that is already resolved
+        a surface authenticated, and settles a mention of them (`reply` posts
+        in the thread as them, through the client); they must hold
+        `runs:write` themselves. A reply in the thread, from anywhere,
+        settles the mention too. Resolving a part that is already resolved
         returns the first outcome. `retry` starts a new run, so it can be
         refused by a limit with 429 or 402, and with 409 when the turn's
         project was deleted since. The run acts for whoever the failed turn
@@ -1826,6 +1863,37 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "402": {$ref: "#/components/responses/Refused"}
         "429": {$ref: "#/components/responses/Refused"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/inbox/{id}/deliveries/{client}:
+    put:
+      operationId: recordInboxDelivery
+      tags: [inbox]
+      summary: Record where a client posted a message
+      description: |
+        A Slack app records the channel and the ts of a message it posted,
+        such as an announcement, so that after a restart, an edit or a
+        withdrawal it updates that post instead of posting again. Only the
+        credential the client names as `slack.machine` may record one: for
+        anyone else, and for a message of a kind the caller may not read, the
+        answer is 404. Recording the same post again changes nothing. The
+        receipt shows in the message's `deliveries`, to that machine only.
+      x-permission: runs:write
+      parameters:
+        - {$ref: "#/components/parameters/MessageID"}
+        - {name: client, in: path, required: true, description: The id of the client that posted it., schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/InboxDeliveryInput"}
+      responses:
+        "204":
+          description: Recorded.
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
 
@@ -2165,7 +2233,10 @@ paths:
       operationId: listEvalSuites
       tags: [evals]
       summary: List eval suites with their recent runs
-      description: Up to 20 runs per suite, newest first. Results are kept on the latest run only.
+      description: |
+        Up to 20 runs per suite, newest first. Results are kept on the latest
+        run only. A suite that tests an agent the caller may not read is left
+        out, and every route that names it answers 404.
       x-permission: evals:read
       responses:
         "200":
@@ -2186,7 +2257,11 @@ paths:
       operationId: createEvalSuite
       tags: [evals]
       summary: Create an eval suite
-      description: What the suite tests must exist now. `created_by` and `updated_at` are set by the server.
+      description: |
+        What the suite tests must exist now. `created_by` and `updated_at` are
+        set by the server. An eval runs an agent where it lives, so a suite
+        that tries an agent homed in a project takes a member of that project
+        (403); one homed where the caller cannot see answers 404.
       x-permission: evals:write
       requestBody:
         required: true
@@ -2211,6 +2286,9 @@ paths:
       operationId: updateEvalSuite
       tags: [evals]
       summary: Replace an eval suite
+      description: |
+        As creating one: a suite that tries an agent homed in a project takes
+        a member of that project (403).
       x-permission: evals:write
       parameters:
         - {$ref: "#/components/parameters/SuiteName"}
@@ -2250,7 +2328,10 @@ paths:
       operationId: runEvalSuite
       tags: [evals]
       summary: Start a run of an eval suite
-      description: A suite that is already running answers 409.
+      description: |
+        A suite that is already running answers 409. Its cases are filed
+        where the agent lives, so running a suite that tries an agent homed
+        in a project takes a member of that project (403).
       x-permission: evals:write
       parameters:
         - {$ref: "#/components/parameters/SuiteName"}
@@ -2647,8 +2728,9 @@ paths:
         Each project comes before its sub-projects, and siblings are ordered by
         name ignoring case. The workspace itself is not in the list:
         `GET /api/projects/~` reads it. Only the projects the caller has a
-        role in are listed; until reads are confined to members, that is
-        every project. A workspace has at most 500 projects. Each view says
+        role in are listed, so a members-only project is listed to its
+        members alone, and to `projects:govern`. A workspace has at most 500
+        projects. Each view says
         the caller's role (`access`) and what they may do (`actions`).
         `next` is the cursor for the page after this one, or null at the
         end; a cursor is where its last row sat in the tree, so a project
@@ -3072,12 +3154,15 @@ paths:
     put:
       operationId: updateChannel
       tags: [projects]
-      summary: Change a channel's title, purpose and default
+      summary: Change a channel's title, purpose, default and Slack binding
       description: |
-        The body replaces those three as a whole: one left out is cleared.
+        The body replaces those four as a whole: one left out is cleared.
         `version` is the one the caller read (`general` reads 0 until it is
         first written), so a change made since answers 409. A field the
         platform file sets answers 409. It needs ownership of the project.
+        `slack` binds it to a Slack channel of a Slack client in the
+        workspace (400 for anything else); a Slack channel bound elsewhere
+        answers 409.
       x-permission: projects:write
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -3195,13 +3280,13 @@ paths:
       tags: [projects]
       summary: Replace who holds a role in a project
       description: |
-        It needs ownership of the project. Every project keeps an entry for
-        everyone (`*`) of at least viewer, a company project one of at least
-        member, and no project is more open than its parent or less open
-        than a child (400). A list with no `*` entry is 409: members-only
-        projects need read confinement, which is not built. The workspace
-        and company projects need `projects:govern`; a list the platform
-        file sets answers 409.
+        It needs ownership of the project. A list with no `*` entry makes
+        the project members only: read by its members alone, and by
+        `projects:govern`. A company project keeps one of at least member,
+        no project is more open than its parent or less open than a child,
+        and a members-only project never sits under one everyone owns (400).
+        The workspace and company projects need `projects:govern`; a list
+        the platform file sets answers 409.
       x-permission: projects:write
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -3485,12 +3570,14 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
-
   /api/policies:
     get:
       operationId: listPolicies
       tags: [billing]
       summary: List the workspace's limits
+      description: |
+        A limit on an agent or a project the caller may not read is left
+        out, as if it did not exist.
       x-permission: billing:read
       responses:
         "200":
@@ -3560,6 +3647,9 @@ paths:
       operationId: listPolicyHistory
       tags: [billing]
       summary: List every change made to the workspace's limits
+      description: |
+        Changes to a limit on an agent or a project the caller may not read
+        are left out.
       x-permission: billing:read
       responses:
         "200":
@@ -3582,7 +3672,9 @@ paths:
       tags: [billing]
       summary: Report usage against every limit, for the current period
       description: |
-        One entry per policy. A workspace with no policies has no entries.
+        One entry per policy the caller may read: a limit on an agent or a
+        project they may not read is left out. A workspace with no policies
+        has no entries.
         `state` is the worst of the enforced limits (runs and concurrency).
         Spend is recorded and not enforced, and `spend.metered` is false,
         because the runtime reports no cost.
@@ -3607,7 +3699,10 @@ paths:
       operationId: listUsageNotices
       tags: [billing]
       summary: List recent refusals and warnings from the usage ledger
-      description: The 200 most recent.
+      description: |
+        Of the 200 most recent, those the caller may read: a notice about a
+        run filed in a project they may not read, an agent they may not
+        read, or a limit on either, is left out.
       x-permission: billing:read
       responses:
         "200":
@@ -3671,6 +3766,35 @@ paths:
         "429": {$ref: "#/components/responses/TooMany"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/clients/{id}/bindings:
+    get:
+      operationId: listClientBindings
+      tags: [clients]
+      summary: List the Slack channels a client is bound to
+      description: |
+        Each Slack channel and the channel it is bound to here, by Slack
+        channel, at most 200. A binding in a project the caller may not read
+        is left out.
+      x-permission: clients:read
+      parameters:
+        - {$ref: "#/components/parameters/ClientID"}
+      responses:
+        "200":
+          description: The bindings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bindings]
+                properties:
+                  bindings:
+                    type: array
+                    maxItems: 200
+                    items: {$ref: "#/components/schemas/ClientBinding"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/clients/{id}:
     get:
       operationId: getClient
@@ -3694,8 +3818,10 @@ paths:
       tags: [clients]
       summary: Replace a client's record
       description: |
-        A secret left out is kept. A client the server's configuration owns
-        cannot be changed here and answers 409.
+        A secret left out is kept, and so is a home in a project the caller
+        may not read, which they are not shown: naming none keeps it, and
+        naming one they may read replaces it. A client the server's
+        configuration owns cannot be changed here and answers 409.
       x-permission: clients:write
       parameters:
         - {$ref: "#/components/parameters/ClientID"}
@@ -3758,6 +3884,20 @@ components:
         (`-auth=dev`, loopback only) every request is the same admin and no
         credential is needed.
   parameters:
+    ActAsClient:
+      name: act_as_client
+      in: query
+      description: |
+        With `act_as_user`, read for a person of this client: only the
+        credential the client names as its `slack.machine` may, and the
+        person, mapped through the client's people, must hold `runs:read`
+        themselves. Another caller is told the client is not found.
+      schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,39}$"}
+    ActAsUser:
+      name: act_as_user
+      in: query
+      description: The Slack user id of the person, with `act_as_client`.
+      schema: {type: string, maxLength: 32}
     ProviderName:
       name: provider
       in: path
@@ -4588,8 +4728,7 @@ components:
     ThreadVisibility:
       description: |
         Who reads a thread. `shared` is everyone who can see its project.
-        `private`, its participants only, is refused until every read path
-        is confined.
+        `private` is its participants only, and `projects:govern`.
       type: string
       enum: [shared, private]
     ThreadParticipant:
@@ -4638,6 +4777,7 @@ components:
         default:
           description: Answers an untagged message here, an agent or `auto`. Absent inherits from the channel.
           type: string
+        surface: {$ref: "#/components/schemas/ThreadSurface"}
         version:
           description: Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written.
           type: integer
@@ -4736,10 +4876,13 @@ components:
           type: [string, "null"]
         answers: {$ref: "#/components/schemas/ThreadAnswers"}
     ThreadInput:
-      description: A new shared thread and its first message.
+      description: |
+        A new thread and its first message. `visibility` is required, except
+        with `surface`, where the platform files the thread and project,
+        channel, visibility and default are left out.
       type: object
       additionalProperties: false
-      required: [visibility, text]
+      required: [text]
       properties:
         project:
           description: Where it is filed. Empty or `~` is the workspace itself.
@@ -4759,6 +4902,7 @@ components:
           description: Post without any agent answering, unless the message tags one.
           type: boolean
         act_as: {$ref: "#/components/schemas/ActAs"}
+        surface: {$ref: "#/components/schemas/SurfaceRef"}
     ThreadMessageInput:
       description: A message posted in a thread.
       type: object
@@ -4772,6 +4916,7 @@ components:
         post_only: {type: boolean}
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         act_as: {$ref: "#/components/schemas/ActAs"}
+        surface: {$ref: "#/components/schemas/SurfaceRef"}
     ThreadUpdate:
       description: A thread's title, visibility and default, as a whole.
       type: object
@@ -4831,6 +4976,9 @@ components:
         reason:
           description: Why no agent answers, when none does.
           type: string
+        repeated:
+          description: The message was posted before, by its surface's id. This is what it did then; nothing was started again.
+          type: boolean
     ThreadNotice:
       description: Says that something happened in a thread, and nothing about what. Fetch the thread to see it.
       type: object
@@ -4862,6 +5010,7 @@ components:
         default:
           description: Answers untagged messages here, an agent or `auto`. Absent inherits from the project.
           type: string
+        slack: {$ref: "#/components/schemas/SlackBinding"}
         archived:
           description: It and its threads stay, and it takes no new threads.
           type: boolean
@@ -4894,8 +5043,9 @@ components:
         title: {type: string, maxLength: 80}
         purpose: {type: string, maxLength: 200}
         default: {type: string}
+        slack: {$ref: "#/components/schemas/SlackBinding"}
     ChannelUpdate:
-      description: A channel's title, purpose and default, as a whole.
+      description: A channel's title, purpose, default and Slack binding, as a whole.
       type: object
       additionalProperties: false
       required: [version]
@@ -4904,6 +5054,78 @@ components:
         title: {type: string, maxLength: 80}
         purpose: {type: string, maxLength: 200}
         default: {type: string}
+        slack: {$ref: "#/components/schemas/SlackBinding"}
+    SlackBinding:
+      description: |
+        The Slack channel a channel is bound to: a Slack thread there is a
+        shared thread here. The client is a Slack client of the workspace,
+        whose bot must already be in the channel, so no scope widens. One
+        Slack channel is bound to at most one channel of the workspace, and
+        a direct message is never bound. Archiving a channel unbinds it.
+        Binding one, or binding a channel elsewhere, takes `clients:write`
+        besides owning the project (403 without): which of a client's Slack
+        channels a project answers in is the client's admins' to decide, as
+        every new thread there is filed in the project. Keeping a binding
+        as it is, or removing it, takes only the owner.
+      type: object
+      additionalProperties: false
+      required: [client, channel]
+      properties:
+        client:
+          description: The Slack client's id.
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{0,39}$"
+        channel:
+          description: The Slack channel's id, public (C) or private (G).
+          type: string
+          pattern: "^[CG][A-Z0-9]{2,31}$"
+    ClientBinding:
+      description: One Slack channel a client is bound to, and the channel it is bound to here.
+      type: object
+      required: [slack_channel, project, channel]
+      properties:
+        slack_channel: {type: string}
+        project:
+          description: The project. Empty is the workspace itself.
+          type: string
+        channel: {type: string}
+    SurfaceRef:
+      description: |
+        Where on a client's surface a message was posted: for Slack, the
+        channel, the thread's ts and the message's own. Only the credential
+        the client names as its `slack.machine` sends one, with `act_as` of
+        that client. The thread is found by its surface, or started and filed
+        where the platform says: the channel the Slack channel is bound to,
+        shared, or else the client's home, private for a direct message or
+        the assistant pane. The text is Slack's own: the app's mention is
+        dropped, a mapped bot or person is their tag, and anyone else is
+        plain and refused.
+      type: object
+      additionalProperties: false
+      required: [client, channel, ts]
+      properties:
+        client: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,39}$"}
+        channel: {type: string, maxLength: 100}
+        ts:
+          description: The thread's, the ts of its first message.
+          type: string
+          maxLength: 100
+        message:
+          description: The message's own ts, which makes a second post of it change nothing. Absent is `ts`.
+          type: string
+          maxLength: 64
+        app_user:
+          description: The app's own bot user id, whose mention is not a tag.
+          type: string
+          maxLength: 32
+    ThreadSurface:
+      description: The thread on a client's surface this thread is. It never changes.
+      type: object
+      required: [client, channel, ts]
+      properties:
+        client: {type: string}
+        channel: {type: string}
+        ts: {type: string}
     ProjectExpert:
       description: Who answers for some topics in a project, a person by subject or `role:<name>`.
       type: object
@@ -5015,18 +5237,23 @@ components:
             win over them.
           type: string
           maxLength: 4000
-        experts:
-          description: Who answers for some topics here and below. Set with `PUT /api/projects/{name}/experts`.
-          type: array
-          maxItems: 50
-          items: {$ref: "#/components/schemas/ProjectExpert"}
+        agent_posts:
+          description: |
+            What a scheduled agent's announcement here does: `publish` posts it,
+            `review` holds it as a draft for the project's owners. Absent
+            inherits the default: review at the workspace and in company
+            projects, which everyone reads, and publish in team and account
+            projects.
+          type: string
+          enum: [publish, review]
         members:
           description: |
             Who holds a role here. `*` is everyone who can see the parent (at
             the workspace, everyone holding `projects:read`), `role:<name>`
             the holders of a policy role, anything else a subject. An owner
-            here owns everything below. Every project keeps a `*` entry of at
-            least viewer, so every project stays visible.
+            here owns everything below. A project with no `*` entry is
+            members only: read by its members alone. A new account project
+            is members only unless everyone owns a project above it.
           type: array
           maxItems: 100
           items: {$ref: "#/components/schemas/ProjectEntry"}
@@ -5035,6 +5262,11 @@ components:
           type: array
           maxItems: 16
           items: {$ref: "#/components/schemas/ProjectKindSpec"}
+        experts:
+          description: Who answers for some topics here and below. Set with `PUT /api/projects/{name}/experts`.
+          type: array
+          maxItems: 50
+          items: {$ref: "#/components/schemas/ProjectExpert"}
         agents: {$ref: "#/components/schemas/ProjectAgents"}
         archived:
           description: An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived.
@@ -5082,10 +5314,10 @@ components:
               maxItems: 4
               items: {$ref: "#/components/schemas/ProjectStep"}
             children:
-              description: How many sub-projects it has.
+              description: How many sub-projects it has that the caller may see.
               type: integer
             conversations:
-              description: How many conversations are filed in it, its sub-projects' not counted.
+              description: How many conversations are filed in it that the caller may read, its sub-projects' not counted. A private thread the caller takes no part in is not counted, nor its runs below.
               type: integer
             active:
               description: How many runs in those conversations are in flight.
@@ -5180,7 +5412,8 @@ components:
       description: |
         What an owner may change on a project. Title, description, account
         and instructions are replaced as a whole: one left out is cleared.
-        `kind`, `archived`, `announce` and `kinds` change only when given.
+        `kind`, `archived`, `announce`, `kinds` and `agent_posts` change only
+        when given.
       type: object
       required: [version]
       properties:
@@ -5207,6 +5440,10 @@ components:
           type: array
           maxItems: 16
           items: {$ref: "#/components/schemas/ProjectKindSpec"}
+        agent_posts:
+          description: What a scheduled agent's announcement here does, `publish` or `review`. Empty takes the kind's default.
+          type: string
+          enum: ["", publish, review]
     ProjectAccess:
       description: A caller's role in a project, where it comes from, and the entry or rule that gave it.
       type: object
@@ -5324,7 +5561,7 @@ components:
           type: string
           enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, channel]
         agent:
-          description: The agent a home change is about.
+          description: The agent a `home` change is about.
           type: string
         note:
           description: Says more, such as that a project created under a deleted name adopts its old conversations.
@@ -5573,6 +5810,17 @@ components:
           description: What the schedule is for, at most 500 characters. The agent is not shown it.
           type: string
           maxLength: 500
+        deliver:
+          description: |
+            Where the answer of each run goes. Left out, it stays on the run.
+            `inbox` sends it to the schedule's creator as a result. `project`
+            posts it in the schedule's project as an announcement from the
+            agent, its first line the subject: it needs a project (`~` for
+            the workspace) where the agent is available (400 without one). A
+            project whose `agent_posts` is `review` holds it as a draft for
+            its owners instead. An answer of NONE goes nowhere.
+          type: string
+          enum: [inbox, project]
     ScheduleView:
       description: A schedule with whether it is running, when it fires next, and how its recent occurrences went.
       type: object
@@ -5584,7 +5832,15 @@ components:
         text: {type: string}
         project: {type: string}
         description: {type: string}
+        deliver:
+          description: Where the answer of each run goes. Absent when it stays on the run.
+          type: string
+          enum: [inbox, project]
         paused: {type: boolean}
+        managed:
+          description: "`file` while the platform file declares the schedule: it can be paused, resumed and run here, and changing or deleting it answers 409."
+          type: string
+          enum: [file]
         created_by: {type: string}
         updated_by:
           description: Who last changed the schedule. Absent until it is changed.
@@ -5595,7 +5851,7 @@ components:
           type: array
           items: {type: string, format: date-time}
         recent:
-          description: Up to 20 recent runs.
+          description: "Up to 20 recent runs the caller may read, newest first. A schedule's runs are found by its name, so they are those of every schedule that has had it, each where it was filed: one moved out of a project, or a name used again, lists only those the caller may read where they live."
           type: array
           items: {$ref: "#/components/schemas/Run"}
 
@@ -5638,7 +5894,8 @@ components:
         waiting on, and `artifact` a file that was published or revised.
         `mention` is a message in a shared thread that tags the reader, and
         `announcement` news posted in a project, which reaches the members
-        of that project and of every project below it.
+        of that project and of every project below it, or an agent's post
+        held as a draft for the project's owners.
       type: string
       enum: [alert, failure, memory, budget, approval, clarification, result, artifact, mention, announcement]
     InboxState:
@@ -5656,6 +5913,15 @@ components:
         kind: {$ref: "#/components/schemas/InboxKind"}
         state: {$ref: "#/components/schemas/InboxState"}
         updated_at: {type: string, format: date-time}
+        for:
+          description: |
+            To a client's machine only: the person it maps whom a mention or a
+            question is addressed to, by subject or by a role they hold, so it
+            reads the message for them (`act_as_client`, `act_as_user`) and
+            tells them in Slack. A message to several people it maps, such as
+            experts named by a role, is one notice for each, at most 20.
+          allOf:
+            - {$ref: "#/components/schemas/ActAs"}
     InboxFrom:
       type: object
       required: [kind, name]
@@ -5664,6 +5930,9 @@ components:
           description: What sent the message, such as `agent`, `rule` or `system`.
           type: string
         name: {type: string}
+        approved_by:
+          description: The person who published an agent's draft, by subject. Absent on what an agent posted itself.
+          type: string
     CallPolicyInput:
       description: Which agents may call an agent, and which of those calls a person approves.
       type: object
@@ -5907,21 +6176,56 @@ components:
             note or edit. Said as it stood when the question was raised;
             answering checks again.
           type: string
+    InboxDraftPart:
+      description: A post an agent wrote for a project, waiting for one of its owners.
+      type: object
+      required: [project, agent, run, subject]
+      properties:
+        project:
+          description: Where it would be posted. Empty is the root.
+          type: string
+        agent: {type: string}
+        run: {type: string}
+        subject: {type: string, maxLength: 150}
+        text: {type: string, maxLength: 4000}
+    InboxDelivery:
+      description: Where one client posted a message.
+      type: object
+      required: [channel, ts, at]
+      properties:
+        channel: {type: string}
+        ts: {type: string}
+        at: {type: string, format: date-time}
+    InboxDeliveryInput:
+      description: Where a client posted a message.
+      type: object
+      required: [channel, ts]
+      properties:
+        channel:
+          description: Where it was posted, such as a Slack channel id. 1 to 64 characters, no spaces.
+          type: string
+          minLength: 1
+          maxLength: 64
+        ts:
+          description: The post there, such as a Slack message ts. 1 to 64 characters, no spaces.
+          type: string
+          minLength: 1
+          maxLength: 64
     InboxPart:
       description: |
         One typed part of a message. `type` says which of `text`, `alert`,
-        `failure`, `memory`, `budget`, `artifact`, `mention` or `question`
-        carries the body: `approval`, `choice` and `reply` parts carry
-        `question`. A settled question's `outcome` is `approve`, `deny`,
-        `choose` (the option in `note`), `reply` (the words in `note`),
-        `expired`, `stopped` or `closed`.
+        `failure`, `memory`, `budget`, `artifact`, `draft`, `mention` or
+        `question` carries the body: `approval`, `choice` and `reply` parts
+        carry `question`. A settled question's `outcome` is `approve`,
+        `deny`, `choose` (the option in `note`), `reply` (the words in
+        `note`), `expired`, `stopped` or `closed`.
       type: object
       required: [id, type, state, actions]
       properties:
         id: {type: string}
         type:
           type: string
-          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, mention]
+          enum: [text, alert, failure, memory, budget, artifact, approval, choice, reply, draft, mention]
         state:
           type: string
           enum: [open, resolved, info]
@@ -5930,7 +6234,7 @@ components:
           type: array
           items:
             type: string
-            enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done]
+            enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done, publish]
         outcome: {$ref: "#/components/schemas/InboxOutcome"}
         text: {type: string}
         alert: {$ref: "#/components/schemas/InboxAlertPart"}
@@ -5939,6 +6243,7 @@ components:
         budget: {$ref: "#/components/schemas/InboxBudgetPart"}
         artifact: {$ref: "#/components/schemas/InboxArtifactPart"}
         question: {$ref: "#/components/schemas/InboxQuestionPart"}
+        draft: {$ref: "#/components/schemas/InboxDraftPart"}
         mention: {$ref: "#/components/schemas/InboxMentionPart"}
     InboxMentionPart:
       description: A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which the thread's default does not answer (one that tags anyone takes a member of the thread's project); `done` sets it aside. The console and the Slack app offer Reply, and set a mention aside by dismissing its message; `done` is the API's.
@@ -5982,6 +6287,10 @@ components:
         parts:
           type: array
           items: {$ref: "#/components/schemas/InboxPart"}
+        deliveries:
+          description: Where the reading client posted the message, by client id. Shown only to that client's machine.
+          type: object
+          additionalProperties: {$ref: "#/components/schemas/InboxDelivery"}
     InboxChange:
       description: One thing that happened to a message.
       type: object
@@ -5992,7 +6301,7 @@ components:
         by: {type: string}
         what:
           type: string
-          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn]
+          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered]
         part: {type: string}
         action: {type: string}
         note: {type: string}
@@ -6003,8 +6312,12 @@ components:
       required: [action]
       properties:
         action:
+          description: |
+            `publish` posts an agent's draft as the announcement it wrote, and
+            `discard` drops it; only an owner of the draft's project decides
+            one (403 for anyone else who can see it).
           type: string
-          enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done]
+          enum: [acknowledge, retry, keep, discard, raise_limit, approve, deny, choose, reply, done, publish]
         ids:
           description: The proposed notes to keep, with `keep`.
           type: array
@@ -6748,6 +7061,10 @@ components:
           oneOf:
             - $ref: "#/components/schemas/GitHubOptions"
             - type: "null"
+        home:
+          oneOf:
+            - $ref: "#/components/schemas/ClientHome"
+            - type: "null"
         enabled:
           description: Defaults to true.
           type: [boolean, "null"]
@@ -6756,6 +7073,22 @@ components:
           properties:
             token: {$ref: "#/components/schemas/SecretInput"}
             signing_secret: {$ref: "#/components/schemas/SecretInput"}
+    ClientHome:
+      description: |
+        Where a client files the threads it starts outside a channel bound to
+        one: direct messages, the assistant pane, an unbound channel, a GitHub
+        issue. Absent, they are filed in the workspace's `general` channel.
+        The channel must be one of the project's, not archived.
+      type: object
+      required: [project]
+      properties:
+        project:
+          description: A project's name, or `~` for the workspace. It must exist.
+          type: string
+        channel:
+          description: A channel of that project. Absent is `general`.
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{0,39}$"
     ClientView:
       description: A Slack app or GitHub installation the workspace answers through, and the limits on the runs it raises.
       type: object
@@ -6780,6 +7113,10 @@ components:
           additionalProperties: {type: string}
         slack: {$ref: "#/components/schemas/SlackOptions"}
         github: {$ref: "#/components/schemas/GitHubOptions"}
+        home:
+          description: Absent when the client has none, and when it is in a project the caller may not read.
+          allOf:
+            - $ref: "#/components/schemas/ClientHome"
         enabled: {type: boolean}
         managed:
           description: Set on a client the server's configuration owns, which the API cannot change.

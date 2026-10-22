@@ -200,11 +200,11 @@ func (t *tenant) load(key string, raw json.RawMessage) error {
 		// A change from before roles shows the project as it read then.
 		for _, side := range []*Project{c.Before, c.After} {
 			if side != nil {
-				side.Agents = side.Agents.listed()
-				side.Experts = cloneExperts(side.Experts)
 				if side.Members == nil {
 					side.Members = legacyMembers(side.Name)
 				}
+				side.Agents = side.Agents.listed()
+				side.Experts = cloneExperts(side.Experts)
 			}
 		}
 		t.history = append(t.history, c)
@@ -496,7 +496,7 @@ func (s *Store) place(tree *Tree, p Project, w Writer) error {
 			return err
 		}
 	}
-	return checkOpen(p, &parent, nil)
+	return checkOpen(tree, p, &parent, nil)
 }
 
 // Create adds a project. Its name must be free ignoring case, deleted names
@@ -531,6 +531,7 @@ func (s *Store) create(tenantName string, p Project, w Writer, at time.Time, cre
 		p.Members = DefaultMembers(tree.Like(p.Kind), creator)
 		if parent, ok := tree.Get(p.Parent); ok {
 			p.Members = limitOpenness(p.Members, parent)
+			p.Members = openUnderOwned(tree, p.Members, parent)
 		}
 	}
 	if err := p.validate(); err != nil {
@@ -728,6 +729,8 @@ func sameField(a, b Project, field string) bool {
 		return (a.Account == nil) == (b.Account == nil) && (a.Account == nil || *a.Account == *b.Account)
 	case FieldInstructions:
 		return a.Instructions == b.Instructions
+	case FieldAgentPosts:
+		return a.AgentPosts == b.AgentPosts
 	case FieldExperts:
 		return sameExperts(a.Experts, b.Experts)
 	case FieldMembers:
@@ -781,7 +784,7 @@ func (s *Store) Delete(tenantName, name string, w Writer, at time.Time, inUse fu
 	delete(tx.t.projects, name)
 	tx.delete(keyProject + name)
 	tx.dropChannels(name)
-	if err := tx.bury(Tombstone{Name: name, By: w.By, At: at}); err != nil {
+	if err := tx.bury(Tombstone{Name: name, By: w.By, At: at, Parent: cur.Parent, Members: slices.Clone(cur.Members), Kept: true}); err != nil {
 		return err
 	}
 	tx.record(Change{At: at, By: w.By, Project: name, What: Deleted, Before: ptr(cur)})
@@ -858,6 +861,8 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 			next.Members = slices.Clone(p.Members)
 		case FieldKinds:
 			next.Kinds = slices.Clone(p.Kinds)
+		case FieldAgentPosts:
+			next.AgentPosts = p.AgentPosts
 		case FieldAgents:
 			next.Agents = p.Agents.canonical()
 		}

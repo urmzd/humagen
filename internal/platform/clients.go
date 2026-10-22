@@ -59,6 +59,9 @@ func (p *Platform) CreateClient(_ context.Context, tenant, by string, in ClientI
 	if err := c.Validate(); err != nil {
 		return clients.Client{}, err
 	}
+	if err := p.checkHome(tenant, c); err != nil {
+		return clients.Client{}, err
+	}
 	if s := p.surfaces[string(c.Surface)]; s.seat(tenant, c.ID) != nil {
 		return clients.Client{}, fmt.Errorf("%w: %q", clients.ErrExists, c.ID)
 	}
@@ -110,6 +113,9 @@ func (p *Platform) UpdateClient(_ context.Context, tenant, id, by string, in Cli
 		c.Surface = old.Surface
 	}
 	if err := c.Validate(); err != nil {
+		return clients.Client{}, err
+	}
+	if err := p.checkHome(tenant, c); err != nil {
 		return clients.Client{}, err
 	}
 	creds, secrets, err := p.credentials(tenant, id, old.Credentials, in)
@@ -293,7 +299,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		}
 		cfg := slack.Config{
 			API: api, Verifier: signature.NewSlack(secrets.signing), Team: c.Identity.Team,
-			Bots: c.Bots, Agents: agents, DefaultAgent: c.DefaultAgent,
+			Bots: c.Bots, Agents: agents, DefaultAgent: untagged,
 			Interval: p.cfg.ClientInterval, Log: p.log,
 		}
 		if c.Slack != nil {

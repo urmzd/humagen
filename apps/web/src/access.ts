@@ -51,11 +51,11 @@ export const doing: Record<string, string> = {
   "artifacts:write": "delete stored files",
   "clients:read": "see connections",
   "clients:write": "manage connections",
+  "people:read": "see who is in the workspace",
   "projects:read": "see projects",
   "projects:write": "make and change projects",
   // Break-glass: owner of every project, the workspace and company projects included.
   "projects:govern": "own every project",
-  "people:read": "see who is in the workspace",
 };
 
 // The changes worth naming on the home page, most telling first. A viewer

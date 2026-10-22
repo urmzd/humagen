@@ -77,6 +77,45 @@ func TestRestart(t *testing.T) {
 	})
 }
 
+// The record of a conversation from before threads that no person asked in
+// may name nobody as its owner, and is read back so across a restart. The
+// first who claims it owns it, taking part as its owner, and a claim after
+// that changes nothing. A thread started with a message always has one.
+func TestARecordNobodyStartedIsKeptSoUntilClaimed(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		agentOnly := threads.Thread{ID: run, Project: "Globex", Channel: "general", Visibility: threads.Shared, Participants: []threads.Participant{{Kind: threads.Agent, Name: "lead"}}}
+		rec, err := s.Create("acme", agentOnly, t0)
+		if err != nil || rec.CreatedBy != "" || len(rec.Participants) != 1 || rec.Participants[0].Owner {
+			t.Fatalf("a record nobody started = %+v, %v", rec, err)
+		}
+		if _, _, err := s.Start("acme", shared("Globex", "general"), threads.Message{Text: "x"}, t0); !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("a thread started by nobody = %v", err)
+		}
+		again, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := again.Get("acme", run); err != nil || !reflect.DeepEqual(got, rec) {
+			t.Fatalf("after a restart = %+v, %v, want %+v", got, err, rec)
+		}
+		claimed, err := again.Claim("acme", run, "cy", t0.Add(time.Minute))
+		if err != nil || claimed.CreatedBy != "cy" || claimed.Version != rec.Version+1 || len(claimed.Participants) != 2 || !claimed.Participants[0].Owner || claimed.Participants[0].Name != "cy" {
+			t.Fatalf("claimed = %+v, %v", claimed, err)
+		}
+		if got, err := again.Claim("acme", run, "dee", t0.Add(2*time.Minute)); err != nil || !reflect.DeepEqual(got, claimed) {
+			t.Fatalf("a second claim = %+v, %v", got, err)
+		}
+		if _, err := again.Claim("acme", run, " ", t0); !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("a claim by nobody = %v", err)
+		}
+	})
+}
+
 func TestAFailedWriteChangesNothing(t *testing.T) {
 	f := statetest.NewFaulty(state.NewMemory())
 	s, err := threads.Open(f)

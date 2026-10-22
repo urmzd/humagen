@@ -31,10 +31,10 @@ export function view(
     ...(opts.customer ? { account: { customer: opts.customer } } : {}),
     ...(opts.instructions ? { instructions: opts.instructions } : {}),
     ...(opts.managed ? { managed: opts.managed } : {}),
+    members: [{ who: "*", role: "member" }],
     experts: [],
     agents: { enable: [] },
     // Fixtures read as a workspace admin's: owner everywhere, every action.
-    members: [{ who: "*", role: "member" }],
     access: { role: "owner", from: "", via: "projects:govern" },
     actions: ["create", "propose", "notes", "edit", "move", "archive", "delete", "limits", "announce"],
     version: opts.version ?? 1,

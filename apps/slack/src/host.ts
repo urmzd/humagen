@@ -29,6 +29,8 @@ export const words = {
   notInChannel: "I'm not in this channel yet. Invite me with `/invite`, then try again.",
   // warp: needs a reply modal for questions; until then this says where to answer.
   replyInConsole: "Replies to this question are typed in the console for now.",
+  /** Under a mention or a question sent to a person's direct messages: where it was said. */
+  openThread: "Open Thread",
   // warp: belongs in copy.ts, as copy.interrupted.
   interrupted: "This answer was cut off when the app restarted. Please ask again.",
   // What the agent is told about a thread's messages that were not addressed to it.

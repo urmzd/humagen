@@ -16,9 +16,9 @@
 //
 // # Default deny
 //
-// A thread is shared: everyone who can see its project reads it. A private
-// thread is refused (ErrPrivate) until every read path is confined, so
-// privacy is never claimed before it is enforced.
+// A thread is shared, read by everyone who can see its project, or private,
+// read by its participants alone: the platform's read rule confines every
+// read path to them.
 package threads
 
 import (
@@ -46,7 +46,10 @@ var (
 	ErrVersion = errors.New("threads: changed since it was read")
 	// ErrFull reports a thread that holds as many messages as it may.
 	ErrFull = errors.New("threads: this thread is full; start a new thread")
-	// ErrPrivate reports a private thread, which is refused until every read
+	// ErrPrivate reported a private thread while reads were not confined.
+	// Nothing raises it any more.
+	//
+	// Deprecated: private threads are accepted.
 	// path is confined.
 	ErrPrivate = errors.New("threads: private threads need read confinement, not built")
 	// ErrCursor reports a paging cursor this store did not issue.
@@ -89,8 +92,7 @@ type Visibility string
 const (
 	// Shared is read by everyone who can see the thread's project.
 	Shared Visibility = "shared"
-	// Private is read by its participants only. It is refused (ErrPrivate)
-	// until read confinement is built.
+	// Private is read by its participants only.
 	Private Visibility = "private"
 )
 
@@ -133,14 +135,47 @@ type Thread struct {
 	// Default answers an untagged message here: an agent, or "auto". ""
 	// inherits from the channel.
 	Default string `json:"default,omitempty"`
+	// Surface is the one thread elsewhere this thread is, such as a Slack
+	// thread: a client, its channel there and the thread's own id. It is
+	// fixed when the thread is started, and one surface is one thread.
+	Surface *Surface `json:"surface,omitempty"`
 	// Version counts the edits made to the record: its title, visibility,
 	// default and participants. Posting, and joining by posting, leave it.
-	Version   int       `json:"version"`
+	Version int `json:"version"`
+	// CreatedBy is the person who started the thread, its owner. A record
+	// of a conversation from before threads that no person asked in, which
+	// a change by someone who may not own it wrote, has none until a member
+	// changes it (Store.Claim).
 	CreatedBy string    `json:"created_by"`
 	CreatedAt time.Time `json:"created_at"`
 	// UpdatedAt is when anything last happened in the thread: an edit or a
 	// message.
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Surface is a thread on a client's surface: for Slack, the client's id, the
+// Slack channel and the ts of the thread's first message.
+type Surface struct {
+	Client  string `json:"client"`
+	Channel string `json:"channel"`
+	TS      string `json:"ts"`
+}
+
+// key is where a surface is found.
+func (s Surface) key() string { return s.Client + "\x00" + s.Channel + "\x00" + s.TS }
+
+// validSurface is a surface's channel or thread id: one token of what Slack
+// and GitHub write, at most 100 characters.
+var validSurface = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/#-]{0,99}$`)
+
+// Validate checks a surface's ids.
+func (s Surface) Validate() error { return s.validate() }
+
+func (s Surface) validate() error {
+	if !validVia.MatchString(s.Client) || !validSurface.MatchString(s.Channel) || !validSurface.MatchString(s.TS) {
+		return fmt.Errorf("%w: a surface is a client's id, a channel and a thread's id there", ErrInvalid)
+	}
+	return nil
 }
 
 // AnswerRef names the question a message answers.
@@ -206,6 +241,10 @@ func (t Thread) clone() Thread {
 	ps := make([]Participant, len(t.Participants))
 	copy(ps, t.Participants)
 	t.Participants = ps
+	if t.Surface != nil {
+		sf := *t.Surface
+		t.Surface = &sf
+	}
 	return t
 }
 
@@ -276,8 +315,13 @@ func (t Thread) validate() error {
 		return fmt.Errorf("%w: a default is an agent's name or auto", ErrInvalid)
 	case len(t.Participants) > MaxParticipants:
 		return fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
-	case strings.TrimSpace(t.CreatedBy) == "":
+	case t.CreatedBy != "" && strings.TrimSpace(t.CreatedBy) == "":
 		return fmt.Errorf("%w: a thread is started by someone", ErrInvalid)
+	}
+	if t.Surface != nil {
+		if err := t.Surface.validate(); err != nil {
+			return err
+		}
 	}
 	seen := map[[2]string]bool{}
 	for _, p := range t.Participants {

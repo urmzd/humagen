@@ -235,6 +235,9 @@ type Client struct {
 
 	Slack  *SlackOptions  `json:"slack,omitempty"`
 	GitHub *GitHubOptions `json:"github,omitempty"`
+	// Home is where the client files threads it starts outside a bound
+	// channel. Nil is the root's general channel; see HomeOf.
+	Home *Home `json:"home,omitempty"`
 
 	// Enabled is false for a client that exists and answers nothing.
 	Enabled bool `json:"enabled"`
@@ -378,6 +381,11 @@ func (c Client) Validate() error {
 	id := c.Identity
 	if id.AppID != "" && !extPattern.MatchString(id.AppID) {
 		return bad("the app id is not an identifier")
+	}
+	if c.Home != nil {
+		if err := c.Home.validate(); err != nil {
+			return err
+		}
 	}
 	if c.Surface == Slack {
 		return c.validateSlack()
@@ -534,6 +542,10 @@ func (c Client) clone() Client {
 			g.AutoLabels = labels
 		}
 		c.GitHub = &g
+	}
+	if c.Home != nil {
+		h := *c.Home
+		c.Home = &h
 	}
 	return c
 }

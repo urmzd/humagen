@@ -224,6 +224,44 @@ func TestAConversationInADeletedProjectIsReadNotContinued(t *testing.T) {
 	}
 }
 
+// A project's view counts only what its caller may read: no sub-project
+// they may not see, and no private thread they take no part in, so a count
+// says nothing of what is hidden from them.
+func TestAProjectsCountsLeaveOutWhatTheCallerMayNotRead(t *testing.T) {
+	f := newFixture(t)
+	acme := f.machine(t, "acme", everything...)
+	want(t, f, acme, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, acme, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
+	want(t, f, acme, "POST", "/api/projects", `{"name":"Secret","parent":"Field"}`, http.StatusCreated)
+	want(t, f, acme, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
+	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
+	bo := f.person(t, "acme", "00u-bo", "Bo", "warp-operators")
+	private := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","visibility":"private","text":"@helper between us"}`, http.StatusCreated)
+	ended(t, f, ana, private["runs"].([]any)[0].(map[string]any)["id"].(string))
+	ended(t, f, bo, want(t, f, bo, "POST", "/api/runs", `{"agent":"helper","text":"go","project":"Field"}`, http.StatusAccepted)["id"].(string))
+	field := func(tok string) (listed, detail map[string]any) {
+		t.Helper()
+		for _, v := range want(t, f, tok, "GET", "/api/projects", "", http.StatusOK)["projects"].([]any) {
+			if v.(map[string]any)["name"] == "Field" {
+				listed = v.(map[string]any)
+			}
+		}
+		return listed, want(t, f, tok, "GET", "/api/projects/Field", "", http.StatusOK)["project"].(map[string]any)
+	}
+	for _, c := range []struct {
+		who                     string
+		tok                     string
+		conversations, children float64
+	}{{"bo", bo, 1, 0}, {"ana", ana, 2, 0}, {"the owner of Secret", acme, 2, 1}} {
+		listed, detail := field(c.tok)
+		for _, v := range []map[string]any{listed, detail} {
+			if v["conversations"] != c.conversations || v["children"] != c.children {
+				t.Errorf("%s reads Field with %v conversations and %v sub-projects, want %v and %v", c.who, v["conversations"], v["children"], c.conversations, c.children)
+			}
+		}
+	}
+}
+
 // A project's view counts what is filed in it and not in its sub-projects,
 // and the conversation filters keep one project, or a project and everything
 // below it.

@@ -22,8 +22,10 @@ export * from "./feedback";
 export * from "./forms";
 export * from "./lifecycle";
 export { escapeAnnouncement, escapeSlackText, plainDate, toMrkdwn, toPlain } from "./mrkdwn";
+export * from "./reply";
 export { breakMarkdown, nextBreak } from "./split";
 export * from "./stream";
+export { escapeMentions } from "./untrusted";
 
 export interface RenderOptions extends SerializeOptions {
   /** Where the blocks will be posted. Changes which blocks are legal. Default "message". */

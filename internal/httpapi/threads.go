@@ -17,16 +17,16 @@ import (
 // caller's role on the project: seeing it reads its channels and experts,
 // owning it changes them, and posting in a thread takes a member.
 func (s *Server) threadRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/projects/{name}/channels", s.authed(auth.ProjectsRead, s.listChannels))
-	mux.HandleFunc("POST /api/projects/{name}/channels", s.authed(auth.ProjectsWrite, s.createChannel))
-	mux.HandleFunc("PUT /api/projects/{name}/channels/{channel}", s.authed(auth.ProjectsWrite, s.updateChannel))
-	mux.HandleFunc("DELETE /api/projects/{name}/channels/{channel}", s.authed(auth.ProjectsWrite, s.archiveChannel))
-	mux.HandleFunc("GET /api/projects/{name}/experts", s.authed(auth.ProjectsRead, s.getExperts))
-	mux.HandleFunc("PUT /api/projects/{name}/experts", s.authed(auth.ProjectsWrite, s.putExperts))
+	mux.HandleFunc("GET /api/projects/{name}/channels", s.authed(auth.ProjectsRead, s.seenProject(s.listChannels)))
+	mux.HandleFunc("POST /api/projects/{name}/channels", s.authed(auth.ProjectsWrite, s.seenProject(s.createChannel)))
+	mux.HandleFunc("PUT /api/projects/{name}/channels/{channel}", s.authed(auth.ProjectsWrite, s.seenProject(s.updateChannel)))
+	mux.HandleFunc("DELETE /api/projects/{name}/channels/{channel}", s.authed(auth.ProjectsWrite, s.seenProject(s.archiveChannel)))
+	mux.HandleFunc("GET /api/projects/{name}/experts", s.authed(auth.ProjectsRead, s.seenProject(s.getExperts)))
+	mux.HandleFunc("PUT /api/projects/{name}/experts", s.authed(auth.ProjectsWrite, s.seenProject(s.putExperts)))
 	mux.HandleFunc("POST /api/threads", s.authed(auth.RunsWrite, s.startThread))
-	mux.HandleFunc("PUT /api/threads/{id}", s.authed(auth.RunsWrite, s.updateThread))
-	mux.HandleFunc("POST /api/threads/{id}/messages", s.authed(auth.RunsWrite, s.postMessage))
-	mux.HandleFunc("PUT /api/threads/{id}/participants", s.authed(auth.RunsWrite, s.putParticipants))
+	mux.HandleFunc("PUT /api/threads/{id}", s.authed(auth.RunsWrite, s.seenThread(s.updateThread)))
+	mux.HandleFunc("POST /api/threads/{id}/messages", s.authed(auth.RunsWrite, s.seenThread(s.postMessage)))
+	mux.HandleFunc("PUT /api/threads/{id}/participants", s.authed(auth.RunsWrite, s.seenThread(s.putParticipants)))
 }
 
 // answers is who answers an untagged message in a place, and where that is
@@ -76,6 +76,10 @@ func (s *Server) createChannel(w http.ResponseWriter, r *http.Request, who auth.
 		return
 	}
 	name := pr.Name
+	if err := s.P.MayBind(who, name, "", in.Slack); err != nil {
+		s.problem(w, err)
+		return
+	}
 	c, err := s.P.CreateChannel(r.Context(), who.Tenant, name, writer(who), in)
 	if err != nil {
 		s.problem(w, err)
@@ -94,6 +98,10 @@ func (s *Server) updateChannel(w http.ResponseWriter, r *http.Request, who auth.
 		return
 	}
 	name := pr.Name
+	if err := s.P.MayBind(who, name, r.PathValue("channel"), in.Slack); err != nil {
+		s.problem(w, err)
+		return
+	}
 	c, err := s.P.UpdateChannel(r.Context(), who.Tenant, name, r.PathValue("channel"), writer(who), in)
 	if err != nil {
 		s.problem(w, err)
@@ -162,8 +170,8 @@ func (s *Server) startThread(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Visibility == "" {
-		fail(w, http.StatusBadRequest, "visibility is required: shared")
+	if in.Visibility == "" && in.Surface == nil {
+		fail(w, http.StatusBadRequest, "visibility is required: shared or private")
 		return
 	}
 	got, err := s.P.StartThread(r.Context(), who, in)
@@ -256,8 +264,6 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 		fail(w, http.StatusConflict, "already exists")
 	case errors.Is(err, threads.ErrFull):
 		fail(w, http.StatusConflict, "this thread is full; start a new thread")
-	case errors.Is(err, threads.ErrPrivate):
-		fail(w, http.StatusConflict, "private threads need read confinement, not built")
 	case errors.Is(err, threads.ErrVersion):
 		fail(w, http.StatusConflict, detail(err, threads.ErrVersion)+"; reload and try again")
 	case errors.Is(err, threads.ErrInvalid):

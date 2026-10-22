@@ -73,7 +73,7 @@ func (s *Store) admit(t *tenant, cur, next Project) error {
 		if err := kindsHeld(t.projects, cur.Kinds, next.Kinds); err != nil {
 			return err
 		}
-		return checkOpen(next, nil, children)
+		return checkOpen(tree, next, nil, children)
 	}
 	if next.Parent != cur.Parent {
 		if err := s.movable(tree, next.Name, next.Parent); err != nil {
@@ -89,7 +89,7 @@ func (s *Store) admit(t *tenant, cur, next Project) error {
 			return err
 		}
 	}
-	return checkOpen(next, &parent, children)
+	return checkOpen(tree, next, &parent, children)
 }
 
 // companyRoom refuses one more company project past the cap.

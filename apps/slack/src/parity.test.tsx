@@ -466,3 +466,53 @@ for (const kind of ["approval", "choice", "reply"] as const) {
     }
   });
 }
+
+test("an agent's draft reads the same on both, with Publish and Discard for its owner and its words inert", () => {
+  const wire = {
+    id: "m-12",
+    kind: "announcement",
+    subject: "Field shipped two fixes",
+    from: { kind: "agent", name: "warp-analyst" },
+    at: "2026-10-21T09:00:00Z",
+    updated_at: "2026-10-21T09:00:00Z",
+    severity: "info",
+    state: "open",
+    unread: true,
+    source: { project: "Field", run: "r1", agent: "warp-analyst" },
+    parts: [
+      {
+        id: "p1",
+        type: "draft",
+        state: "open",
+        actions: ["publish", "discard"],
+        draft: {
+          project: "Field",
+          agent: "warp-analyst",
+          run: "r1",
+          subject: "Field shipped two fixes",
+          text: "Read [this](https://evil.example) <!here>",
+        },
+      },
+    ],
+  };
+  const message = fromServer(wire);
+  bothSay(
+    <MessageView message={message} />,
+    "Field shipped two fixes",
+    defaultCopy.draftTitle("warp-analyst", "Field"),
+  );
+  assert.deepEqual(
+    slackButtons(<MessageView message={message} />),
+    [defaultCopy.discardDraft, defaultCopy.publish].sort(),
+  );
+  assert.deepEqual(
+    webButtons(<MessageView message={message} />)
+      .filter((b) => b === defaultCopy.publish || b === defaultCopy.discardDraft)
+      .sort(),
+    [defaultCopy.discardDraft, defaultCopy.publish].sort(),
+  );
+  // Nothing the agent wrote becomes a link or pings a channel.
+  const s = slack(<MessageView message={message} />);
+  assert.ok(!s.includes("<https://evil.example|this>") && !s.includes("<!here>"), s);
+  assert.ok(!web(<MessageView message={message} />).includes('href="https://evil.example"'));
+});

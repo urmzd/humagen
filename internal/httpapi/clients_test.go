@@ -391,3 +391,59 @@ func TestTheAPIRefusesASecretReferenceItsTenantWasNotGiven(t *testing.T) {
 		t.Fatalf("globex has %d clients, want only its own", n)
 	}
 }
+
+// A client's home in a project the caller may not read is not shown to
+// them, as nothing in that project is. Their change that names no home
+// keeps it, as one that sends no secrets keeps those, and a home they may
+// read replaces it.
+func TestAClientsHomeIsShownOnlyWhereTheCallerMayReadIt(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	writer := f.machineAs(t, "svc-ops", "acme", "warp:clients:read", "warp:clients:write")
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, owner, "POST", "/api/projects", `{"name":"Secret"}`, http.StatusCreated)
+	want(t, f, owner, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
+	want(t, f, owner, "POST", "/api/projects/Secret/channels", `{"name":"ops"}`, http.StatusCreated)
+	homed := func(home string) string {
+		return strings.Replace(slackApp("app", "A01APP", "svc-acme"), `"slack":`, home+`"slack":`, 1)
+	}
+	want(t, f, owner, "POST", "/api/clients", homed(`"home":{"project":"Secret","channel":"ops"},`), http.StatusCreated)
+	home := func(tok string) string {
+		t.Helper()
+		_, one := get(t, f, tok, "/api/clients/app")
+		_, list := get(t, f, tok, "/api/clients")
+		if strings.Contains(one, "Secret") != strings.Contains(list, "Secret") {
+			t.Fatalf("the client and the list disagree about its home: %s, %s", one, list)
+		}
+		var c struct {
+			Home *struct{ Project string } `json:"home"`
+		}
+		if err := json.Unmarshal([]byte(one), &c); err != nil {
+			t.Fatal(err)
+		}
+		if c.Home == nil {
+			return ""
+		}
+		return c.Home.Project
+	}
+	if got := home(owner); got != "Secret" {
+		t.Fatalf("the owner reads the home as %q", got)
+	}
+	if got := home(writer); got != "" {
+		t.Fatalf("a writer who may not read Secret reads the home as %q", got)
+	}
+	// The writer saves the client as they read it, with no home: it keeps it.
+	if out := want(t, f, writer, "PUT", "/api/clients/app", homed(""), http.StatusOK); out["home"] != nil {
+		t.Fatalf("the writer's save answered with the home %v", out["home"])
+	}
+	if got := home(owner); got != "Secret" {
+		t.Fatalf("after the writer's save, the home is %q", got)
+	}
+	// Naming a home in Secret answers as naming a project that is not there.
+	want(t, f, writer, "PUT", "/api/clients/app", homed(`"home":{"project":"Secret","channel":"ops"},`), http.StatusBadRequest)
+	// A home they may read replaces it.
+	want(t, f, writer, "PUT", "/api/clients/app", homed(`"home":{"project":"~"},`), http.StatusOK)
+	if got := home(owner); got != "~" {
+		t.Fatalf("after the writer named the workspace, the home is %q", got)
+	}
+}

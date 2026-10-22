@@ -42,6 +42,10 @@ type Workspace struct {
 	// to every agent answering anywhere in it. Set here, the console cannot
 	// change them.
 	Instructions *string `json:"instructions,omitempty"`
+	// Agents are the workspace's own, the root project's: which agents are
+	// available everywhere, and the workspace default, which answers a
+	// message that tags no agent. Set here, the console cannot change them.
+	Agents *Agents `json:"agents,omitempty"`
 	// Members are who holds a role in the workspace itself, the root
 	// project. Set here, the console cannot change them. Left out, everyone
 	// is a member, and projects:govern owns it.
@@ -49,10 +53,6 @@ type Workspace struct {
 	// ProjectKinds are the workspace's own kinds, each a name over team or
 	// account. Set here, the console cannot change them.
 	ProjectKinds []ProjectKind `json:"project_kinds,omitempty"`
-	// Agents are the workspace's own, the root project's: which agents are
-	// available everywhere, and the workspace default, which answers a
-	// message that tags no agent. Set here, the console cannot change them.
-	Agents *Agents `json:"agents,omitempty"`
 	// Projects are merged into the tree at every start, parents first.
 	Projects []Project `json:"projects,omitempty"`
 	// Channels are the workspace's own, the root project's, besides
@@ -62,6 +62,10 @@ type Workspace struct {
 	// unless a project nearer names someone for the topic. Set here, even
 	// as [], the console cannot change them.
 	Experts []Expert `json:"experts,omitempty"`
+	// AgentPosts is what becomes of what an agent scheduled in the
+	// workspace itself posts: publish, or review (the default) by its
+	// owners. Set here, the console cannot change it.
+	AgentPosts *string `json:"agent_posts,omitempty"`
 	// PersonCredentials is what people may give for the tools that take
 	// their own credential.
 	PersonCredentials *PersonCredentials `json:"person_credentials,omitempty"`
@@ -146,6 +150,33 @@ type Project struct {
 	// Experts are who answers for some topics here and below. Set here,
 	// even as [], the console cannot change them.
 	Experts []Expert `json:"experts,omitempty"`
+	// AgentPosts is what becomes of what an agent scheduled here posts:
+	// publish, or review by the project's owners. Left out, it is the
+	// console's, and a new project takes its kind's default.
+	AgentPosts string `json:"agent_posts,omitempty"`
+	// Schedules are agents scheduled here, filed in the project. They are
+	// the file's: the console cannot change or delete them, only pause,
+	// resume and run them.
+	Schedules []Schedule `json:"schedules,omitempty"`
+}
+
+// Schedule is an agent scheduled in a project: a recap is one that posts
+// its answer to the project.
+type Schedule struct {
+	// Name is letters, digits, dashes and underscores, unique across the
+	// deployment, since every run it raises carries it.
+	Name string `json:"name"`
+	// Cron is a 5-field cron expression, in UTC.
+	Cron  string `json:"cron"`
+	Agent string `json:"agent"`
+	// Text is what the agent is asked each time.
+	Text string `json:"text"`
+	// Description says what the schedule is for. The agent is not shown it.
+	Description string `json:"description,omitempty"`
+	// Deliver is where each answer goes: project, posted in the project
+	// (or held for its owners, as agent_posts says). Left out, it stays on
+	// the run.
+	Deliver string `json:"deliver,omitempty"`
 }
 
 // Channel is one place in a project where threads live. Its title, purpose
@@ -160,6 +191,16 @@ type Channel struct {
 	// Default answers untagged messages in the channel: an agent, or auto.
 	// Left out, the project's default answers.
 	Default string `json:"default,omitempty"`
+	// Slack binds the channel to a Slack channel of a Slack client: a Slack
+	// thread there is a shared thread here. The client is named by its id
+	// and need not exist yet; until it does the binding binds nothing.
+	Slack *ChannelSlack `json:"slack,omitempty"`
+}
+
+// ChannelSlack is the Slack channel a channel is bound to.
+type ChannelSlack struct {
+	Client  string `json:"client"`
+	Channel string `json:"channel"`
 }
 
 // Expert is who answers for some topics: a person by subject, or
@@ -392,6 +433,9 @@ func (p Platform) check(kinds Kinds) error {
 		return fmt.Errorf("%s: %w", where, err)
 	}
 	if err := checkAgents(sp); err != nil {
+		return fmt.Errorf("%s: %w", where, err)
+	}
+	if err := checkSchedules(sp); err != nil {
 		return fmt.Errorf("%s: %w", where, err)
 	}
 	seen := map[string]bool{}

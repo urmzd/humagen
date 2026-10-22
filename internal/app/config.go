@@ -432,6 +432,9 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 		if err := applyHomes(ctx, p, doc); err != nil {
 			return err
 		}
+		if err := applySchedules(p, tenant, doc.Spec.Workspace); err != nil {
+			return err
+		}
 		if err := applyWorkspace(ctx, p, doc); err != nil {
 			return err
 		}
@@ -494,13 +497,16 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 	if err != nil {
 		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
 	}
-	file, owns := fileRoot(w)
+	declared, owns := fileRoot(w)
+	if w.AgentPosts != nil {
+		declared.AgentPosts, owns = *w.AgentPosts, append(owns, projects.FieldAgentPosts)
+	}
 	if w.Agents != nil {
-		file.Agents, owns = fileAgents(*w.Agents), append(owns, projects.FieldAgents)
+		declared.Agents, owns = fileAgents(*w.Agents), append(owns, projects.FieldAgents)
 	}
 	switch {
 	case len(owns) > 0:
-		_, err = p.Projects.Upsert(tenant, file, owns, fileWriter, now)
+		_, err = p.Projects.Upsert(tenant, declared, owns, fileWriter, now)
 	case root.Managed == projects.ManagedFile:
 		_, err = p.Projects.Release(tenant, projects.Root, fileWriter, now)
 	}
@@ -531,16 +537,16 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 func fileProject(d spec.Project) (projects.Project, []string) {
 	pr := projects.Project{
 		Name: d.Name, Title: d.Title, Description: d.Description, Kind: projects.Kind(d.Kind),
-		Parent: spec.ParentOf(d), Instructions: d.Instructions, Experts: expertsOf(d.Experts),
+		Parent: spec.ParentOf(d), Instructions: d.Instructions, Experts: expertsOf(d.Experts), AgentPosts: d.AgentPosts,
 	}
 	if a := d.Account; a != nil {
 		pr.Account = &projects.AccountInfo{Customer: a.Customer, ExternalID: a.ExternalID, URL: a.URL}
 	}
-	if d.Members != nil {
-		pr.Members = membersOf(d.Members)
-	}
 	if d.Agents != nil {
 		pr.Agents = fileAgents(*d.Agents)
+	}
+	if d.Members != nil {
+		pr.Members = membersOf(d.Members)
 	}
 	var owns []string
 	for field, set := range map[string]bool{
@@ -550,24 +556,16 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 		projects.FieldParent:       d.Parent != "",
 		projects.FieldAccount:      d.Account != nil,
 		projects.FieldInstructions: d.Instructions != "",
+		projects.FieldAgentPosts:   d.AgentPosts != "",
 		projects.FieldExperts:      d.Experts != nil,
-		projects.FieldMembers:      d.Members != nil,
 		projects.FieldAgents:       d.Agents != nil,
+		projects.FieldMembers:      d.Members != nil,
 	} {
 		if set {
 			owns = append(owns, field)
 		}
 	}
 	return pr, owns
-}
-
-// membersOf is a list of members as the store keeps them.
-func membersOf(ms []spec.Member) []projects.Entry {
-	out := make([]projects.Entry, 0, len(ms))
-	for _, m := range ms {
-		out = append(out, projects.Entry{Who: m.Who, Role: projects.Role(m.Role)})
-	}
-	return out
 }
 
 // fileAgents is a project's agents as the file declares them.
@@ -617,6 +615,15 @@ func applyHomes(ctx context.Context, p *platform.Platform, doc spec.Platform) er
 		}
 	}
 	return nil
+}
+
+// membersOf is a list of members as the store keeps them.
+func membersOf(ms []spec.Member) []projects.Entry {
+	out := make([]projects.Entry, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, projects.Entry{Who: m.Who, Role: projects.Role(m.Role)})
+	}
+	return out
 }
 
 // parentsFirst is the order to apply the file's projects in: by how deep

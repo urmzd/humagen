@@ -17,7 +17,7 @@ import { useInbox } from "./inbox.ts";
 import { KindChips, MailboxView } from "./InboxPage.tsx";
 import { type PlatformMessage, projectInbox, type Source } from "./mail.ts";
 import { ago, button, Empty, field, Label, Menu, Problem, primary, SkeletonRows, Switch } from "./ui.tsx";
-import { updateOf } from "./projects.ts";
+import { titleOf, updateOf } from "./projects.ts";
 
 const copy = defaultCopy;
 const section = "flex flex-col gap-2 border-aui-border border-t pt-5 first:border-t-0 first:pt-0";
@@ -199,8 +199,12 @@ function whoOf(who: string): string {
 
 /**
  * Who holds a role in a project: its members, the owners of the projects
- * above it, and, for an owner, a way to change them. Everyone keeps at least
- * viewer, since every project stays visible.
+ * above it, and, for an owner, a way to change them. Without an entry for
+ * everyone it is members only; a company-wide project keeps everyone as at
+ * least a member. An owner of an account everyone can see is asked whether
+ * to make it members only, and nothing is closed for them. Under a project
+ * everyone owns, ownership flows down, so everyone sees it: nothing offers to
+ * close it, and the tab says where to name owners first.
  */
 export function ProjectPeople({ project, onChanged }: { project: ProjectView; onChanged: () => void }) {
   const [members, setMembers] = useState<ProjectMembers | null>(null);
@@ -224,6 +228,12 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
   if (!members) return problem ? <Problem message={problem} /> : <SkeletonRows count={3} />;
   const shown = draft ?? members.members;
   const everyoneOwns = shown.some((m) => m.who === "*" && m.role === "owner");
+  // Everyone owning a project above owns this one too, so it stays open.
+  const ownedAbove = members.inherited.find((o) => o.who === "*");
+  const open = shown.some((m) => m.who === "*");
+  const company = project.kind === "company" || project.name === "";
+  const keepsEveryone = company || ownedAbove !== undefined;
+  const nudge = editable && open && !everyoneOwns && !ownedAbove && project.kind === "account" && !draft;
   const change = (next: ProjectEntry[]) => setDraft(next);
   const save = () =>
     api
@@ -245,6 +255,20 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
           {editable ? ` ${copy.roles.nameOwners} below.` : ""}
         </p>
       )}
+      {!open && <p className="max-w-xl text-aui-sm text-aui-muted">{copy.project.membersOnly}</p>}
+      {ownedAbove && !everyoneOwns && (
+        <p className="max-w-xl text-aui-sm text-aui-muted">
+          {copy.project.everyoneOwnsAbove(ownedAbove.from === "" ? "the workspace" : ownedAbove.from)}
+        </p>
+      )}
+      {nudge && (
+        <p className="flex max-w-xl flex-wrap items-center gap-3 text-aui-sm text-aui-muted">
+          {copy.project.visibleToEveryone(titleOf(project))}
+          <button type="button" className={button} onClick={() => change(shown.filter((m) => m.who !== "*"))}>
+            {copy.project.makeMembersOnly}
+          </button>
+        </p>
+      )}
       <section className={section}>
         <h2 className={heading}>{copy.project.members}</h2>
         <ul>
@@ -262,7 +286,7 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
                 ) : (
                   <span className="text-aui-xs text-aui-muted">{copy.roles[m.role]}</span>
                 )}
-                {editable && m.who !== "*" && (
+                {editable && (m.who !== "*" || !keepsEveryone) && (
                   <button type="button" className={button} onClick={() => change(shown.filter((x) => x.who !== m.who))}>
                     {copy.project.remove}
                   </button>
@@ -271,7 +295,7 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
             </li>
           ))}
         </ul>
-        {editable && <p className="text-aui-xs text-aui-muted">{copy.project.everyoneNeeded}</p>}
+        {editable && company && <p className="text-aui-xs text-aui-muted">{copy.project.everyoneNeeded}</p>}
         {editable && (
           <form
             className="flex flex-wrap items-end gap-2"

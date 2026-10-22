@@ -86,7 +86,14 @@ export function settled(turn: Turn, run: Run): TurnEvent[] {
   }
 }
 
-/** What asking a turn again means to the platform: the same words, to the same agent, from the same point in the conversation. */
+/**
+ * What asking a turn again means to the platform: the same words, to the same
+ * agent, from the same point in the conversation. A run that answers a
+ * person's message in a thread follows that message, which a turn cannot
+ * follow through the API, so it is asked again after the run itself, in the
+ * same conversation.
+ */
 export function retryOf(run: Run): { agent: string; text: string; after?: string } {
-  return { agent: run.agent, text: run.text, ...(run.prev ? { after: run.prev } : {}) };
+  const after = run.message ? run.id : run.prev;
+  return { agent: run.agent, text: run.text, ...(after ? { after } : {}) };
 }

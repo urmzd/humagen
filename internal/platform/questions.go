@@ -611,11 +611,7 @@ func (p *Platform) mapped(who auth.Principal, subject string) inbox.Reader {
 // themselves. The credential holding it is not enough: a viewer is no
 // approver because a machine relays their click.
 func mayResume(who auth.Principal, person inbox.Reader) bool {
-	roles := make([]auth.Role, 0, len(person.Roles))
-	for _, r := range person.Roles {
-		roles = append(roles, auth.Role(r))
-	}
-	return auth.Principal{Subject: person.Subject, Tenant: who.Tenant, Kind: auth.User, Roles: roles}.WithPolicy(who.Policy()).Can(auth.RunsWrite)
+	return principalOf(who, person).Can(auth.RunsWrite)
 }
 
 // isSelfApproval reports whether the person answering, or the credential
@@ -736,6 +732,14 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 	if a.ActAs != nil && !mayResume(who, reader) {
 		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "no runs:write")
 		return inbox.Message{}, false, fmt.Errorf("%w: %s may not resume runs (answering needs %s)", ErrForbidden, reader.Subject, auth.RunsWrite)
+	}
+	// What the person answering may not read does not exist for them,
+	// whichever route asks, before anything is recorded. A surface's
+	// machine reads every thread on its surface wherever it is filed, so the
+	// route's own check of the caller does not hold the person it answers
+	// for to where they may read.
+	if !p.readerSeer(who, reader).Message(m) {
+		return inbox.Message{}, false, fmt.Errorf("%w: message %q", inbox.ErrNotFound, m.ID)
 	}
 	if q.Kind == payload.QuestionApproval {
 		// Checked here, from the run as it stands, not only from whom the

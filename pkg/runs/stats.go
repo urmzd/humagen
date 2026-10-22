@@ -86,6 +86,12 @@ const MaxBuckets = 240
 // Summarize aggregates a tenant's runs that started in [since, until). bucket
 // is widened if the window would need more than MaxBuckets of them.
 func (x *Index) Summarize(tenant string, since, until time.Time, bucket time.Duration) Summary {
+	return x.summarize(tenant, since, until, bucket, nil)
+}
+
+// summarize is Summarize over the runs keep accepts, or every run when keep
+// is nil. keep is called under the index's read lock.
+func (x *Index) summarize(tenant string, since, until time.Time, bucket time.Duration, keep func(*Run) bool) Summary {
 	if bucket <= 0 {
 		bucket = time.Minute
 	}
@@ -117,7 +123,7 @@ func (x *Index) Summarize(tenant string, since, until time.Time, bucket time.Dur
 	x.mu.RLock()
 	for _, id := range x.order {
 		r := x.runs[id]
-		if r.Tenant != tenant || r.CreatedAt.Before(since) || !r.CreatedAt.Before(until) {
+		if r.Tenant != tenant || r.CreatedAt.Before(since) || !r.CreatedAt.Before(until) || keep != nil && !keep(r) {
 			continue
 		}
 		var b *Bucket
@@ -199,12 +205,17 @@ func percentile(sorted []int64, p int) int64 {
 }
 
 // ForSchedule returns a tenant's runs raised by one schedule, newest first.
-func (x *Index) ForSchedule(tenant, schedule string, limit int) []Run {
+// A schedule's runs are found by its name, so they are those of every
+// schedule that has had the name, wherever each run was filed. keep, when
+// set, is asked about each, and the runs it refuses are left out and do not
+// count toward limit: those a reader may not see. It is given a copy, under
+// the index's read lock, so it must not call the index.
+func (x *Index) ForSchedule(tenant, schedule string, limit int, keep func(Run) bool) []Run {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
 	var out []Run
 	for _, id := range slices.Backward(x.order) {
-		if r := x.runs[id]; r.Tenant == tenant && r.Schedule == schedule {
+		if r := x.runs[id]; r.Tenant == tenant && r.Schedule == schedule && (keep == nil || keep(*r)) {
 			out = append(out, *r)
 			if limit > 0 && len(out) == limit {
 				break

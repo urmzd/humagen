@@ -56,6 +56,10 @@ var (
 	// roleName is the role a member entry names, as the project store
 	// takes it.
 	roleName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,63}$`)
+	// clientID is a client's id, and slackChannel a Slack channel's,
+	// public (C) or private (G): a direct message is never bound.
+	clientID     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+	slackChannel = regexp.MustCompile(`^[CG][A-Z0-9]{2,31}$`)
 )
 
 // checkProjects holds the workspace's instructions and project tree to what
@@ -69,11 +73,10 @@ var (
 //  4. a kind is company, team, account or one of project_kinds, and each of
 //     those behaves as team or account;
 //  5. members are "*", "role:<name>" or a subject, each with viewer, member
-//     or owner, at most 100 and no one twice; until reads are confined to
-//     members, every list the file sets has an entry for everyone of at
-//     least viewer, a company project's (the workspace's too) of at least
-//     member, and no project is more open than a parent the file also gives
-//     members.
+//     or owner, at most 100 and no one twice; a list with no entry for
+//     everyone makes the project members only, a company project's (the
+//     workspace's too) has one of at least member, and no project is more
+//     open than a parent the file also gives members.
 //
 // The fields' bounds are checked as well. A project the console made cannot
 // be seen from here, so the store checks again when the file is applied.
@@ -85,6 +88,9 @@ func checkProjects(w Workspace) error {
 	}
 	if err := checkChannels(w.Channels); err != nil {
 		return fmt.Errorf("workspace.%w", err)
+	}
+	if err := checkBindings(w); err != nil {
+		return err
 	}
 	if err := checkExperts(w.Experts); err != nil {
 		return fmt.Errorf("workspace.%w", err)
@@ -193,8 +199,30 @@ func checkProjects(w Workspace) error {
 			}
 			return fmt.Errorf("%s.members: %q would be more open than %s; a project is never more open than its parent", at(i), p.Name, name)
 		}
+		// A members-only project is read by its members alone, and owners
+		// above own everything below: none sits under one everyone owns.
+		if p.Members != nil && openness(p.Members) == 0 {
+			for j := parent[i]; j >= 0; j = parent[j] {
+				if everyoneOwns(ps[j].Members) {
+					return fmt.Errorf("%s.members: everyone owns %q, which owns everything below it, so %q cannot be members only", at(i), ps[j].Name, p.Name)
+				}
+			}
+			if everyoneOwns(w.Members) {
+				return fmt.Errorf("%s.members: everyone owns the workspace, which owns everything below it, so %q cannot be members only", at(i), p.Name)
+			}
+		}
 	}
 	return nil
+}
+
+// everyoneOwns reports a list whose entry for everyone is owner.
+func everyoneOwns(ms []Member) bool {
+	for _, m := range ms {
+		if m.Who == everyoneEntry {
+			return m.Role == RoleOwner
+		}
+	}
+	return false
 }
 
 // checkKinds checks the workspace's own kinds, and returns what every kind
@@ -252,9 +280,7 @@ func checkMembers(ms []Member, like string) error {
 		seen[m.Who] = true
 	}
 	switch {
-	case star == "":
-		return fmt.Errorf(`: an entry for everyone ("*") of at least viewer is needed: members-only projects need read confinement, which is not built`)
-	case like == ProjectCompany && star == RoleViewer:
+	case like == ProjectCompany && (star == "" || star == RoleViewer):
 		return fmt.Errorf(`: a company project is open to everyone ("*") as a member at least`)
 	}
 	return nil
@@ -366,12 +392,48 @@ func checkChannels(cs []Channel) error {
 		if c.Default != "" && !defaultName.MatchString(c.Default) {
 			return fmt.Errorf("%s.default: %q is not an agent's name or auto", at, c.Default)
 		}
+		if b := c.Slack; b != nil {
+			if !clientID.MatchString(b.Client) {
+				return fmt.Errorf("%s.slack.client: %q is not a client's id", at, b.Client)
+			}
+			if !slackChannel.MatchString(b.Channel) {
+				return fmt.Errorf("%s.slack.channel: %q is not a Slack channel's id, such as C0123ABCD; a direct message is never bound", at, b.Channel)
+			}
+		}
 	}
 	if _, declared := seen[generalChannel]; !declared {
 		total++
 	}
 	if total > maxChannels {
 		return fmt.Errorf("channels: a project has at most %d channels, general among them, not %d", maxChannels, total)
+	}
+	return nil
+}
+
+// checkBindings checks that the file binds each Slack channel of a client
+// to one channel.
+func checkBindings(w Workspace) error {
+	seen := map[ChannelSlack]string{}
+	check := func(at string, cs []Channel) error {
+		for i, c := range cs {
+			if c.Slack == nil {
+				continue
+			}
+			path := fmt.Sprintf("%s.channels[%d].slack.channel", at, i)
+			if first, dup := seen[*c.Slack]; dup {
+				return fmt.Errorf("%s: %s of %s is bound at %s already", path, c.Slack.Channel, c.Slack.Client, first)
+			}
+			seen[*c.Slack] = path
+		}
+		return nil
+	}
+	if err := check("workspace", w.Channels); err != nil {
+		return err
+	}
+	for i, p := range w.Projects {
+		if err := check(fmt.Sprintf("workspace.projects[%d]", i), p.Channels); err != nil {
+			return err
+		}
 	}
 	return nil
 }

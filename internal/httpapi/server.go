@@ -89,29 +89,29 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.deleteToolCredential))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
-	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.reviseAgent)))
-	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.putAgentHome)))
-	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.agentHistory)))
-	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, agentNamed(s.getCallPolicy)))
-	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, agentNamed(s.putCallPolicy)))
-	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, agentNamed(s.reachable)))
-	mux.HandleFunc("GET /api/agents/{name}/memory", s.authed(auth.AgentsRead, agentNamed(s.listMemory)))
-	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, agentNamed(s.addMemory)))
-	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, agentNamed(s.removeMemory)))
-	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, agentNamed(s.approveMemory)))
+	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
+	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
+	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
+	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getCallPolicy))))
+	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putCallPolicy))))
+	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.reachable))))
+	mux.HandleFunc("GET /api/agents/{name}/memory", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.listMemory))))
+	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.addMemory))))
+	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.removeMemory))))
+	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.approveMemory))))
 	mux.HandleFunc("GET /api/memory/pending", s.authed(auth.AgentsRead, s.pendingMemory))
 	mux.HandleFunc("GET /api/runs", s.authed(auth.RunsRead, s.listRuns))
 	mux.HandleFunc("POST /api/runs", s.authed(auth.RunsWrite, s.createRun))
 	mux.HandleFunc("GET /api/threads", s.authed(auth.RunsRead, s.listThreads))
-	mux.HandleFunc("GET /api/threads/{id}", s.authed(auth.RunsRead, s.getThread))
+	mux.HandleFunc("GET /api/threads/{id}", s.authed(auth.RunsRead, s.seenThread(s.getThread)))
 	mux.HandleFunc("GET /api/pick", s.authed(auth.AgentsRead, s.pickAgent))
 	mux.HandleFunc("GET /api/settings", s.authed(auth.AgentsRead, s.getSettings))
 	mux.HandleFunc("PUT /api/settings", s.authed(auth.AgentsWrite, s.putSettings))
-	mux.HandleFunc("GET /api/runs/{id}", s.authed(auth.RunsRead, s.getRun))
-	mux.HandleFunc("GET /api/runs/{id}/tree", s.authed(auth.RunsRead, s.runTree))
-	mux.HandleFunc("POST /api/runs/{id}/calls", s.authed(auth.RunsWrite, s.createCall))
-	mux.HandleFunc("POST /api/runs/{id}/stop", s.authed(auth.RunsWrite, s.stopRun))
-	mux.HandleFunc("POST /api/runs/{id}/questions/{question}/answer", s.authed(auth.RunsWrite, s.answerQuestion))
+	mux.HandleFunc("GET /api/runs/{id}", s.authed(auth.RunsRead, s.seenRun(s.getRun)))
+	mux.HandleFunc("GET /api/runs/{id}/tree", s.authed(auth.RunsRead, s.seenRun(s.runTree)))
+	mux.HandleFunc("POST /api/runs/{id}/calls", s.authed(auth.RunsWrite, s.seenRun(s.createCall)))
+	mux.HandleFunc("POST /api/runs/{id}/stop", s.authed(auth.RunsWrite, s.seenRun(s.stopRun)))
+	mux.HandleFunc("POST /api/runs/{id}/questions/{question}/answer", s.authed(auth.RunsWrite, s.seenRun(s.answerQuestion)))
 	mux.HandleFunc("GET /api/schedules", s.authed(auth.SchedulesRead, s.listSchedules))
 	mux.HandleFunc("POST /api/schedules", s.authed(auth.SchedulesWrite, s.createSchedule))
 	mux.HandleFunc("PUT /api/schedules/{name}", s.authed(auth.SchedulesWrite, s.updateSchedule))
@@ -233,12 +233,17 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 	for i, rev := range all {
 		names[i] = rev.Spec.Name
 	}
+	// An agent that lives in a project the caller cannot see is left out,
+	// and so is every project they cannot see that enables an agent.
+	seer := s.P.Seer(who)
+	all = slices.DeleteFunc(all, func(rev agentspec.Revision) bool { return !seer.Agent(rev.Spec.Name) })
+	names = slices.DeleteFunc(names, func(n string) bool { return !seer.Agent(n) })
 	homes, enabled := map[string]string{}, map[string][]string{}
 	for name, place := range s.P.AgentPlaces(who.Tenant, names) {
 		if place.Home != "" {
 			homes[name] = place.Home
 		}
-		enabled[name] = place.EnabledIn
+		enabled[name] = slices.DeleteFunc(place.EnabledIn, func(p string) bool { return !seer.Project(projects.NameOf(p)) })
 	}
 	ok(w, http.StatusOK, map[string]any{"agents": orEmpty(all), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled})
 }
@@ -271,6 +276,16 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 }
 
 func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if platform.IsBuiltin(r.PathValue("name")) {
+		fail(w, http.StatusForbidden, "this agent is provided by the platform and cannot be edited")
+		return
+	}
+	// One that is not there is said so before the body is read, as one the
+	// caller may not see is, so neither tells them apart.
+	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, r.PathValue("name"), 0); err != nil {
+		s.problem(w, err)
+		return
+	}
 	var body struct {
 		Spec        agentspec.AgentSpec `json:"spec"`
 		ExpectedRev int                 `json:"expected_rev"`
@@ -403,7 +418,11 @@ func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.
 		Note    memory.Note `json:"note"`
 	}
 	out := []proposal{}
+	seer := s.P.Seer(who)
 	for _, p := range s.P.Memory.Pending(who.Tenant) {
+		if !seer.MemoryOwner(p.Agent) {
+			continue
+		}
 		if project, isProject := memory.OwnerProject(p.Agent); isProject {
 			// The workspace's own notes are the root's, named as a path
 			// names it.
@@ -431,7 +450,8 @@ func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(s.P.Runs.List(who.Tenant, 200))})
+	seer := s.P.Seer(who)
+	ok(w, http.StatusOK, map[string]any{"runs": orEmpty(slices.DeleteFunc(s.P.Runs.List(who.Tenant, 200), func(r runs.Run) bool { return !seer.Run(r) }))})
 }
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -479,15 +499,29 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		asks, actor, client = person, platform.PersonActor(person.Subject), body.ActAs.Client
 	}
 	// Starting work in a project, or adding a turn to work there, takes
-	// being a member of it. A follow-up is filed where its conversation
-	// is. A turn that follows nothing, or names no project there is, is
-	// Converse's to refuse.
+	// being a member of it. A project the person may not see answers as
+	// one that is not there. A follow-up is filed where its conversation
+	// is: a turn after a run the caller may not read answers as one after
+	// a run that is not there, and adding one takes what posting where it
+	// lives takes, a member, and in a private thread a participant. A turn
+	// that follows nothing, or names no project there is, is Converse's to
+	// refuse.
+	if body.After == "" && body.Project != "" && s.P.HasProject(who.Tenant, projects.NameOf(body.Project)) && !s.P.Seer(asks).Project(projects.NameOf(body.Project)) {
+		s.problem(w, platform.NoProjectCalled(body.Project))
+		return
+	}
 	project := body.Project
 	if body.After != "" {
-		project = ""
-		if prev, err := s.P.Runs.Get(who.Tenant, body.After); err == nil {
-			project = prev.Project
+		prev, err := s.P.Runs.Get(who.Tenant, body.After)
+		if err != nil || !s.P.Seer(who).Run(prev) {
+			notFound(w)
+			return
 		}
+		if err := s.P.MayFollow(asks, prev); err != nil {
+			s.problem(w, err)
+			return
+		}
+		project = prev.Project
 	}
 	if !s.P.HasProject(who.Tenant, projects.NameOf(project)) {
 		project = ""
@@ -531,7 +565,7 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 		return
 	}
 	var found bool
-	if query.Projects, found = s.projectsWithin(w, who.Tenant, q.Get("project"), q.Get("within")); !found {
+	if query.Projects, found = s.projectsWithin(w, who, q.Get("project"), q.Get("within")); !found {
 		return
 	}
 	if raw := q.Get("limit"); raw != "" {
@@ -548,7 +582,7 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 		fail(w, http.StatusBadRequest, "standing is running or failed")
 		return
 	}
-	page, next, err := s.P.ThreadPage(who.Tenant, query)
+	page, next, err := s.P.ThreadPageAs(who, query)
 	if err != nil {
 		fail(w, http.StatusBadRequest, "before is not a cursor this server issued")
 		return
@@ -564,6 +598,10 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 // "~" or nothing for the workspace, and why.
 func (s *Server) pickAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
+	if !s.P.Seer(who).Project(projects.NameOf(q.Get("project"))) {
+		notFound(w)
+		return
+	}
 	choice, err := s.P.Pick(r.Context(), who.Tenant, q.Get("project"), q.Get("q"))
 	if err != nil {
 		s.problem(w, err)
@@ -638,6 +676,15 @@ func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !decode(w, r, &body) {
 		return
 	}
+	// A call is a turn of the run's conversation, filed where it lives, so
+	// it takes what adding one there takes: a member, and in a private
+	// thread a participant. A viewer starts nothing.
+	if parent, err := s.P.Runs.Get(who.Tenant, r.PathValue("id")); err == nil {
+		if err := s.P.MayFollow(who, parent); err != nil {
+			s.problem(w, err)
+			return
+		}
+	}
 	run, err := s.P.Call(r.Context(), who.Tenant, r.PathValue("id"), call.Request{Key: body.Key, Agent: body.Agent, Text: body.Text, Input: body.Input, Mode: body.Mode, Lease: body.Lease})
 	if err != nil {
 		s.problem(w, err)
@@ -647,9 +694,10 @@ func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 // stopRun asks a run and everything attached to it to stop. Runs it delegated
-// keep going. It does not wait: a run that has not ended yet is answered 202
-// with stopping set, and its stream says how it ended. A run that has ended is
-// answered 200 as it is, so asking twice is safe.
+// keep going. It takes the person who asked for the run, or a member where it
+// lives (Platform.MayStop). It does not wait: a run that has not ended yet is
+// answered 202 with stopping set, and its stream says how it ended. A run that
+// has ended is answered 200 as it is, so asking twice is safe.
 func (s *Server) stopRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	run, err := s.P.StopRun(r.Context(), who, r.PathValue("id"))
 	if err != nil {
@@ -693,16 +741,12 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 	// Inbox changes ride the same stream as a named event, so a reader that
 	// only listens for run events never sees them. A notice names a message
 	// and nothing more: the reader fetches it and is shown what they may see.
-	// The watch starts before the stream is answered, as the run events'
+	// The watches start before the stream is answered, as the run events'
 	// subscription does, so a reader that acts once it is connected cannot
-	// miss the notice its action raises.
+	// miss the notice its action raises: the inbox's, and the threads', whose
+	// notices name a thread and the message posted or settled.
 	notices, unwatch := s.P.Inbox.Watch(who.Tenant)
 	defer unwatch()
-
-	// So do threads: a notice names a thread and the message posted or
-	// settled. Every thread is shared until reads are confined, so whoever
-	// may read conversations is told of each. They are watched before the
-	// stream is answered too.
 	posts, unwatchThreads := s.P.WatchThreads(who.Tenant)
 	defer unwatchThreads()
 
@@ -733,6 +777,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 		}
 	}()
 
+	// What the reader may read is decided once a run, from a snapshot of the
+	// tree taken again every refresh, so a role taken away stops the next
+	// run's events within one.
+	gate := newRunGate(s.P, who)
 	tick := time.NewTicker(heartbeat)
 	defer tick.Stop()
 	for {
@@ -743,17 +791,29 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			// A notice reaches only a reader the message is for, so an id
 			// from a project they cannot see, or an announcement for
 			// others, never reaches their stream.
+			sent := []any{n}
 			if !s.P.InboxNoticeFor(who, n) {
-				continue
+				// A client's machine hears of a message addressed to
+				// people it maps, once for each of them, to tell them
+				// in Slack.
+				sent = sent[:0]
+				for _, as := range s.P.SurfaceNoticesFor(who, n) {
+					sent = append(sent, inboxNotice{Notice: n, For: &as})
+				}
 			}
-			b, err := json.Marshal(n)
-			if err != nil {
-				continue
-			}
-			if _, err := fmt.Fprintf(w, "event: inbox\ndata: %s\n\n", b); err != nil {
-				return
+			for _, one := range sent {
+				b, err := json.Marshal(one)
+				if err != nil {
+					continue
+				}
+				if _, err := fmt.Fprintf(w, "event: inbox\ndata: %s\n\n", b); err != nil {
+					return
+				}
 			}
 		case n := <-posts:
+			if !s.P.SeesThread(who, n.ID) {
+				continue
+			}
 			b, err := json.Marshal(n)
 			if err != nil {
 				continue
@@ -770,6 +830,9 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 				// The client reconnects and resumes. A consumer that fell
 				// behind is ended here rather than fed a gap.
 				return
+			}
+			if !gate.seen(e.RunID) {
+				continue
 			}
 			b, err := json.Marshal(e)
 			if err != nil {
@@ -794,7 +857,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	}
 	switch {
 	case errors.Is(err, runs.ErrNotFound), errors.Is(err, registry.ErrNotFound), errors.Is(err, platform.ErrScheduleNotFound),
-		errors.Is(err, platform.ErrProjectNotFound),
+		errors.Is(err, platform.ErrProjectNotFound), errors.Is(err, errNotSeen),
 		errors.Is(err, alerts.ErrNotFound), errors.Is(err, knowledge.ErrNotFound), errors.Is(err, evals.ErrNotFound),
 		errors.Is(err, memory.ErrNotFound), errors.Is(err, policy.ErrNotFound), errors.Is(err, inbox.ErrNotFound),
 		errors.Is(err, artifacts.ErrNotFound), errors.Is(err, clients.ErrNotFound),
@@ -816,6 +879,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, clients.ErrManaged):
 		fail(w, http.StatusConflict, "that client is configured by the server and cannot be changed here")
+	case errors.Is(err, platform.ErrScheduleManaged):
+		fail(w, http.StatusConflict, detail(err, platform.ErrScheduleManaged))
 	case errors.Is(err, clients.ErrInvalid), errors.Is(err, callpolicy.ErrInvalid):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, projects.ErrInvalid):

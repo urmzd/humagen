@@ -183,12 +183,15 @@ type Nearer struct {
 	From  string `json:"from"`
 }
 
-// Place is where a message is posted, for deciding who answers it.
+// Place is where a message is posted, for deciding who answers it, and
+// where anything else lives, for deciding who may read it (Sees).
 type Place struct {
 	// Project is where the message's conversation is filed. "" is the root.
 	Project string
 	// Nearer are the defaults set nearer than the project, nearest first.
 	Nearer []Nearer
+	// Thread is the conversation it belongs to, or "".
+	Thread string
 }
 
 // Answerer is who answers a message, and how they were chosen.
@@ -280,9 +283,9 @@ func (p *Platform) resolveAgent(ctx context.Context, tenant string, at Place, as
 // autoFor is @auto for a message a client raised: it picks among the agents
 // available where the client files its runs that the client may route to.
 // Until clients have a home, that is the root.
-func (p *Platform) autoFor(ctx context.Context, c clients.Client, text string) (pick.Choice, error) {
+func (p *Platform) autoFor(ctx context.Context, c clients.Client, project, text string) (pick.Choice, error) {
 	tree := p.Projects.Tree(c.Tenant)
-	at := Place{Project: projects.Root}
+	at := Place{Project: project}
 	fallback := namedDefault(tree, at)
 	if !c.Routes(fallback) {
 		fallback = ""

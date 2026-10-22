@@ -102,8 +102,9 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 		"a member with no role": {tree(`{name: Field, members: [{who: "*", role: member}, {who: ana, role: boss}]}`), `workspace.projects[0].members[1].role: "boss" is not a role`},
 		"a role with a space":   {tree(`{name: Field, members: [{who: "*", role: member}, {who: "role:field eng", role: owner}]}`), `workspace.projects[0].members[1].who: "role:field eng" names no role`},
 		"one person twice":      {tree(`{name: Field, members: [{who: "*", role: member}, {who: ana, role: owner}, {who: ana, role: member}]}`), `workspace.projects[0].members[2].who: "ana" is listed twice`},
-		"members only": {
-			tree(`{name: Field, members: [{who: ana, role: owner}]}`), `workspace.projects[0].members: an entry for everyone ("*") of at least viewer is needed: members-only projects need read confinement`,
+		"members only under a project everyone owns": {
+			tree(`{name: Field, members: [{who: "*", role: owner}]}`, `{name: Globex, parent: Field, members: [{who: ana, role: owner}]}`),
+			`workspace.projects[1].members: everyone owns "Field", which owns everything below it, so "Globex" cannot be members only`,
 		},
 		"a company project for viewers": {tree(`{name: News, kind: company, members: [{who: "*", role: viewer}]}`), `workspace.projects[0].members: a company project is open to everyone ("*") as a member at least`},
 		"the workspace for viewers":     {"    members: [{who: \"*\", role: viewer}]\n", `workspace.members: a company project is open to everyone ("*") as a member at least`},
@@ -128,6 +129,13 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 		"a long purpose":               {tree(`{name: Field, channels: [{name: ops, purpose: ` + strings.Repeat("p", 201) + `}]}`), `workspace.projects[0].channels[0].purpose: at most 200 characters, not 201`},
 		"a default that is no name":    {tree(`{name: Field, channels: [{name: ops, default: "@ignite"}]}`), `workspace.projects[0].channels[0].default: "@ignite" is not an agent's name or auto`},
 		"a workspace channel misnamed": {"    channels: [{name: \"news room\"}]\n", `workspace.channels[0].name: "news room" is not a channel name`},
+		// A Slack binding names a client and a Slack channel, bound once.
+		"a binding to a direct message": {tree(`{name: Field, channels: [{name: ops, slack: {client: slack-acme, channel: D0123}}]}`), `workspace.projects[0].channels[0].slack.channel: "D0123" is not a Slack channel's id`},
+		"a binding to a client's title": {tree(`{name: Field, channels: [{name: ops, slack: {client: Slack Acme, channel: C0123}}]}`), `workspace.projects[0].channels[0].slack.client: "Slack Acme" is not a client's id`},
+		"one Slack channel bound twice": {
+			tree(`{name: Field, channels: [{name: ops, slack: {client: slack-acme, channel: C0123}}]}`, `{name: Launch, channels: [{name: general, slack: {client: slack-acme, channel: C0123}}]}`),
+			`workspace.projects[1].channels[0].slack.channel: C0123 of slack-acme is bound at workspace.projects[0].channels[0].slack.channel already`,
+		},
 		// Experts: who, 1 to 8 topics, at most 50.
 		"an expert with no topics":    {tree(`{name: Field, experts: [{who: "okta|00u1ana", topics: []}]}`), `workspace.projects[0].experts[0].topics: from 1 to 8 topics, not 0`},
 		"an expert topic in capitals": {tree(`{name: Field, experts: [{who: "okta|00u1ana", topics: [Billing]}]}`), `workspace.projects[0].experts[0].topics[0]: "Billing" is not a topic`},

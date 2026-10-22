@@ -26,10 +26,50 @@ type counters struct {
 	// filed is the project each conversation is filed in, by tenant and
 	// thread.
 	filed map[string]string
+	// each is each tenant's count of each conversation on its own, by
+	// thread, so a reader's counts can leave out those they may not read.
+	each map[string]map[string]*ProjectCount
 }
 
 func newCounters() counters {
-	return counters{by: map[string]map[string]*ProjectCount{}, filed: map[string]string{}}
+	return counters{by: map[string]map[string]*ProjectCount{}, filed: map[string]string{}, each: map[string]map[string]*ProjectCount{}}
+}
+
+// one is a conversation's own count.
+func (c counters) one(tenant, thread string) *ProjectCount {
+	t, ok := c.each[tenant]
+	if !ok {
+		t = map[string]*ProjectCount{}
+		c.each[tenant] = t
+	}
+	n, ok := t[thread]
+	if !ok {
+		n = &ProjectCount{Threads: 1}
+		t[thread] = n
+	}
+	return n
+}
+
+// add counts a run in a count: one more in flight unless it has ended, and
+// its change as the latest activity.
+func (n *ProjectCount) add(r *Run) {
+	if !r.Status.Terminal() {
+		n.Active++
+	}
+	if r.UpdatedAt.After(n.ActiveAt) {
+		n.ActiveAt = r.UpdatedAt
+	}
+}
+
+// settle follows a run that was in flight: one fewer once it has ended, and
+// its change as the latest activity.
+func (n *ProjectCount) settle(r *Run) {
+	if r.Status.Terminal() {
+		n.Active--
+	}
+	if r.UpdatedAt.After(n.ActiveAt) {
+		n.ActiveAt = r.UpdatedAt
+	}
 }
 
 func (c counters) of(tenant, project string) *ProjectCount {
@@ -59,25 +99,16 @@ func (x *Index) count(r *Run) {
 	if !known {
 		n.Threads++
 	}
-	if !r.Status.Terminal() {
-		n.Active++
-	}
-	if r.UpdatedAt.After(n.ActiveAt) {
-		n.ActiveAt = r.UpdatedAt
-	}
+	n.add(r)
+	x.counts.one(r.Tenant, r.Thread).add(r)
 }
 
 // recount follows a run that was in flight and may have changed: it leaves
 // the count of runs in flight once it has ended, and its change is the
 // project's latest activity. The caller holds the lock.
 func (x *Index) recount(r *Run) {
-	n := x.counts.of(r.Tenant, x.counts.filed[r.Tenant+"\x00"+r.Thread])
-	if r.Status.Terminal() {
-		n.Active--
-	}
-	if r.UpdatedAt.After(n.ActiveAt) {
-		n.ActiveAt = r.UpdatedAt
-	}
+	x.counts.of(r.Tenant, x.counts.filed[r.Tenant+"\x00"+r.Thread]).settle(r)
+	x.counts.one(r.Tenant, r.Thread).settle(r)
 }
 
 // ProjectCounts returns what each of a tenant's projects holds, by name. ""
@@ -90,6 +121,31 @@ func (x *Index) ProjectCounts(tenant string) map[string]ProjectCount {
 	out := make(map[string]ProjectCount, len(x.counts.by[tenant]))
 	for name, n := range x.counts.by[tenant] {
 		out[name] = *n
+	}
+	return out
+}
+
+// ProjectCountsWhere is ProjectCounts over the conversations keep holds,
+// by thread id: those a reader may read. It reads every conversation of
+// the tenant once, so a caller with nothing to leave out asks ProjectCounts.
+// keep is called under the index's read lock, so it must not call the
+// index.
+func (x *Index) ProjectCountsWhere(tenant string, keep func(thread string) bool) map[string]ProjectCount {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	out := map[string]ProjectCount{}
+	for thread, n := range x.counts.each[tenant] {
+		if !keep(thread) {
+			continue
+		}
+		project := x.counts.filed[tenant+"\x00"+thread]
+		sum := out[project]
+		sum.Threads += n.Threads
+		sum.Active += n.Active
+		if n.ActiveAt.After(sum.ActiveAt) {
+			sum.ActiveAt = n.ActiveAt
+		}
+		out[project] = sum
 	}
 	return out
 }
