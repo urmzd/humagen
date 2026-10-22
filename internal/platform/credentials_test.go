@@ -803,9 +803,16 @@ func TestWhatAPersonsCredentialReachedIsNotTaughtToMemory(t *testing.T) {
 // the failed run and the inbox message about it.
 func (w *world) failure(t *testing.T, id string, actor envelope.Actor) (runs.Run, inbox.Message) {
 	t.Helper()
+	return w.failing(t, platform.Turn{ID: id, Agent: "worker", Text: "Any open bugs?", Actor: actor})
+}
+
+// failing sends turn while the model fails, and waits for the failure to
+// reach the inbox.
+func (w *world) failing(t *testing.T, turn platform.Turn) (runs.Run, inbox.Message) {
+	t.Helper()
 	w.model.fail(true)
 	defer w.model.fail(false)
-	r, err := w.p.Converse(t.Context(), tenant, platform.Turn{ID: id, Agent: "worker", Text: "Any open bugs?", Actor: actor})
+	r, err := w.p.Converse(t.Context(), tenant, turn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -931,4 +938,37 @@ func TestARetryActsOnlyForThePersonTheTurnActedFor(t *testing.T) {
 		t.Fatalf("ben pressing twice = %s (%v), want his first %s", joined.ID, err, first.ID)
 	}
 	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"], benValue)
+}
+
+// A message that tagged no agent was answered by the default where it was
+// posted, and acted for the person who sent it. Its retry asks the agent that
+// answered it again, for the same person, whatever the default is now: once
+// the workspace has no default, an untagged message starts nothing, and the
+// retry still runs, as Ana, with her own credential.
+func TestARetryOfAnUntaggedTurnAsksTheAgentThatAnsweredForTheSamePerson(t *testing.T) {
+	w := newWorld(t, platform.Config{Backoff: func(int) time.Duration { return time.Millisecond }})
+	ctx := t.Context()
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	setAgents(t, w.p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "worker"})
+
+	failed, msg := w.failing(t, platform.Turn{ID: "api-ana-untagged", Text: "Any open bugs?", Actor: platform.ActorOf(ana)})
+	if failed.Agent != "worker" || failed.Actor.User != "ana" {
+		t.Fatalf("the untagged turn was answered by %q for %+v", failed.Agent, failed.Actor)
+	}
+	setAgents(t, w.p, "~", platform.AgentsInput{Enable: []string{"*"}})
+	if _, err := w.p.Converse(ctx, tenant, platform.Turn{ID: "api-ana-untagged-now", Text: "Any open bugs?", Actor: platform.ActorOf(ana)}); !errors.Is(err, platform.ErrNoDefault) {
+		t.Fatalf("an untagged turn with no default = %v", err)
+	}
+	done, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, platform.Resolution{Action: platform.ActRetry})
+	if err != nil {
+		t.Fatalf("ana retrying her untagged turn: %v", err)
+	}
+	again := retried(t, w, done)
+	if again.Agent != "worker" || again.Actor.User != "ana" || again.Answer != "Done." {
+		t.Fatalf("ana's retry = agent %q, actor %+v, answer %q", again.Agent, again.Actor, again.Answer)
+	}
+	if calls := w.server.Calls(); len(calls) != 1 || calls[0] != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] {
+		t.Fatalf("ana's retry reached the server with %q", calls)
+	}
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
 }
