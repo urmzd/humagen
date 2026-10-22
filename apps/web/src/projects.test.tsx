@@ -5,8 +5,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { defaultCopy as copy } from "@warp/components";
 import type { Me, Preferences, ProjectChange, Settings as Workspace } from "./api.ts";
 import { ProjectChoices, ProjectPicker, placeOf } from "./ProjectPicker.tsx";
+import { KnowledgeLists, MAX_KNOWLEDGE } from "./ProjectKnowledge.tsx";
 import { ProjectsPage } from "./Projects.tsx";
-import { east, field, globex, initech, news, renewals, retail, stores, tree, view, workspace } from "./projects.fixtures.ts";
+import { east, field, globex, globexKnowledge, initech, knowledgeSources, news, renewals, retail, stores, tree, view, workspace } from "./projects.fixtures.ts";
 import { kindsUnder, nameFrom, narrowAt, treeOf, updateOf, validName, WORKSPACE } from "./projects.ts";
 import { Settings } from "./Settings.tsx";
 
@@ -219,4 +220,58 @@ test("every kind of change in a project's history reads as words", () => {
     channel: true,
   };
   for (const what of Object.keys(kinds)) assert.ok(copy.project.what[what], `no words for a ${what} change`);
+});
+
+const knowledgeOf = (opts: { editable?: boolean; fileOwned?: boolean; draft?: string[]; project?: string } = {}) =>
+  html(
+    <KnowledgeLists
+      project={opts.project ?? "Globex"}
+      view={globexKnowledge}
+      titles={{ "": "Acme", Field: "Field engineering" }}
+      sources={knowledgeSources}
+      draft={opts.draft ?? globexKnowledge.knowledge}
+      editable={opts.editable ?? false}
+      fileOwned={opts.fileOwned ?? false}
+    />,
+  );
+
+test("knowledge: an owner who reads knowledge gets an editor of the sources the project names", () => {
+  const out = knowledgeOf({ editable: true });
+  assert.match(out, />Add Source</);
+  assert.match(out, />Save Knowledge</);
+  assert.match(out, /aria-label="Remove globex-contracts"/);
+  assert.doesNotMatch(out, /The platform file sets/);
+});
+
+test("knowledge: at the cap of 8 nothing more can be added", () => {
+  const names = Array.from({ length: MAX_KNOWLEDGE }, (_, i) => `source-${i}`);
+  const out = knowledgeOf({ editable: true, draft: names });
+  assert.doesNotMatch(out, />Add Source</);
+  assert.match(out, /the most a project names/);
+});
+
+test("knowledge: a member sees the sources the project names, read only", () => {
+  const out = knowledgeOf();
+  assert.match(out, /<li[^>]*>globex-contracts<\/li>/);
+  assert.doesNotMatch(out, /Add Source|Save Knowledge|Remove globex-contracts/);
+});
+
+test("knowledge: what runs here are grounded in says where each source comes from, nearest first", () => {
+  const out = knowledgeOf();
+  assert.match(out, /What runs here are grounded in/);
+  const given = [...out.matchAll(/<span class="min-w-0[^"]*">([^<]+)<\/span><span[^>]*>([^<]+)<\/span>/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(given, [
+    ["globex-contracts", "From this project"],
+    ["field-playbook", "From Field engineering"],
+    ["handbook", "From the workspace"],
+  ]);
+  // On the workspace itself, what it names is its own.
+  assert.match(knowledgeOf({ project: "" }), /handbook<\/span><span[^>]*>From this project</);
+});
+
+test("knowledge: a list the platform file sets is read only, and says so", () => {
+  const out = knowledgeOf({ editable: true, fileOwned: true });
+  assert.match(out, /The platform file sets these sources\./);
+  assert.doesNotMatch(out, /Add Source|Save Knowledge/);
+  assert.match(out, /<li[^>]*>globex-contracts<\/li>/);
 });

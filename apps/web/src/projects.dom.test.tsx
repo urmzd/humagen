@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { Note, Policy, ProjectDetail, ScheduleView } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
-import { east, field, globex, globexDetail, platform, renewals, retail, stores, tree, workspace } from "./projects.fixtures.ts";
+import { east, field, globex, globexDetail, globexKnowledge, knowledgeSources, platform, renewals, retail, stores, tree, workspace } from "./projects.fixtures.ts";
 import type { ProjectTab } from "./route.ts";
 
 const at = "2026-10-01T09:00:00Z";
@@ -294,3 +294,88 @@ test("the Schedules tab: one rule under the tabs, and each schedule's time in wo
   assert.equal(screen.getByText("Mondays at 08:09 UTC").getAttribute("title"), "9 8 * * 1", "the expression is a hover away");
 });
 
+
+const knows = [...everything, "knowledge:read"];
+const knowledgeRoutes = (more: Record<string, (body: unknown) => unknown> = {}) => ({
+  "GET /api/projects/Globex/knowledge": () => globexKnowledge,
+  "GET /api/knowledge": () => ({ sources: knowledgeSources }),
+  ...more,
+});
+
+test("the Context tab: an owner who reads knowledge adds a workspace source and saves the list as a whole from the version read", async () => {
+  const puts: unknown[] = [];
+  open(globexDetail, {
+    tab: "context",
+    can: knows,
+    routes: knowledgeRoutes({
+      "PUT /api/projects/Globex/knowledge": (body) => (puts.push(body), { ...globexKnowledge, version: 5, knowledge: ["globex-contracts", "pricing"] }),
+    }),
+  });
+  const section = await screen.findByRole("region", { name: "Knowledge" });
+  await within(section).findByRole("button", { name: "Remove globex-contracts" });
+  const save = within(section).getByRole("button", { name: "Save Knowledge" }) as HTMLButtonElement;
+  assert.ok(save.disabled, "nothing to save yet");
+  fireEvent.click(await within(section).findByRole("button", { name: /^Add Source/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "pricing" }));
+  fireEvent.click(save);
+  await waitFor(() => assert.equal(puts.length, 1));
+  assert.deepEqual(puts[0], { version: 4, knowledge: ["globex-contracts", "pricing"] });
+  await within(section).findByText("Saved");
+});
+
+test("the Context tab: a member who reads knowledge sees what the project names and what runs are grounded in, read only", async () => {
+  const member = { ...globex, access: { role: "member" as const, from: "Globex", via: "*" }, actions: ["propose" as const] };
+  open({ ...globexDetail, project: member }, { tab: "context", can: knows, routes: knowledgeRoutes() });
+  const section = await screen.findByRole("region", { name: "Knowledge" });
+  await within(section).findByText("globex-contracts");
+  assert.ok(!within(section).queryByRole("button", { name: /^Add Source/ }));
+  assert.ok(!within(section).queryByRole("button", { name: "Save Knowledge" }));
+  const given = within(screen.getByRole("list", { name: "What runs here are grounded in" }))
+    .getAllByRole("listitem")
+    .map((li) => li.textContent);
+  assert.deepEqual(given, ["globex-contractsFrom this project", "field-playbookFrom Field engineering", "handbookFrom the workspace"]);
+  assert.ok(!net.seen.some((r) => r.path === "/api/knowledge"), "the workspace's sources are read only to choose from");
+});
+
+test("the Context tab shows nothing about knowledge to a reader without knowledge:read, and asks for none", async () => {
+  open(globexDetail, { tab: "context", routes: knowledgeRoutes() });
+  await screen.findByRole("textbox", { name: "Instructions" });
+  assert.ok(!screen.queryByRole("region", { name: "Knowledge" }));
+  assert.ok(!screen.queryByText(/grounded in/));
+  assert.ok(!net.seen.some((r) => r.path.includes("knowledge")));
+});
+
+test("the Context tab: a knowledge list the platform file sets turns read only once it is refused", async () => {
+  open(globexDetail, {
+    tab: "context",
+    can: knows,
+    routes: knowledgeRoutes({
+      "PUT /api/projects/Globex/knowledge": () =>
+        new Response(JSON.stringify({ error: "managed by the platform file: the platform file sets knowledge on \"Globex\"" }), { status: 409 }),
+    }),
+  });
+  const section = await screen.findByRole("region", { name: "Knowledge" });
+  await within(section).findByRole("button", { name: "Remove globex-contracts" });
+  fireEvent.click(within(section).getByRole("button", { name: "Remove globex-contracts" }));
+  fireEvent.click(within(section).getByRole("button", { name: "Save Knowledge" }));
+  await within(section).findByText("The platform file sets these sources. They can't be changed here.");
+  assert.ok(!within(section).queryByRole("button", { name: "Save Knowledge" }));
+  assert.ok(within(section).getByText("globex-contracts"), "what the file sets is shown again");
+});
+
+test("the Context tab: a knowledge list changed since it was read shows the latest and says so", async () => {
+  let reads = 0;
+  open(globexDetail, {
+    tab: "context",
+    can: knows,
+    routes: knowledgeRoutes({
+      "GET /api/projects/Globex/knowledge": () => (reads++ === 0 ? globexKnowledge : { ...globexKnowledge, version: 6, knowledge: ["handbook"] }),
+      "PUT /api/projects/Globex/knowledge": () => new Response(JSON.stringify({ error: "version conflict" }), { status: 409 }),
+    }),
+  });
+  const section = await screen.findByRole("region", { name: "Knowledge" });
+  fireEvent.click(await within(section).findByRole("button", { name: "Remove globex-contracts" }));
+  fireEvent.click(within(section).getByRole("button", { name: "Save Knowledge" }));
+  await within(section).findByText("Someone changed this project's sources since you opened them. The latest are shown now.");
+  assert.ok(within(section).getByRole("button", { name: "Remove handbook" }));
+});

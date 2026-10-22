@@ -421,7 +421,7 @@ func (s *Server) createSource(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 func (s *Server) deleteSource(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	if err := s.P.Knowledge.Delete(who.Tenant, r.PathValue("name")); err != nil {
+	if err := s.P.DeleteSource(who, r.PathValue("name")); err != nil {
 		s.problem(w, err)
 		return
 	}

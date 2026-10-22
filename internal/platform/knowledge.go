@@ -1,9 +1,11 @@
 package platform
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/envelope"
@@ -98,6 +100,33 @@ func withSources(req runtime.Request) runtime.Request {
 	spec.Sources = sources
 	req.Revision.Spec = spec
 	return req
+}
+
+// ErrSourceInUse is a knowledge source a project the caller can see still
+// names.
+var ErrSourceInUse = errors.New("platform: knowledge source in use")
+
+// DeleteSource deletes a knowledge source and its documents. It is refused
+// while a project the caller can see names it (ErrSourceInUse), with those
+// projects named, so a team's runs do not lose their grounding unannounced.
+// A project the caller cannot see does not hold it up and is not named: it
+// keeps the name, which grounds nothing, as a source the platform file names
+// before the console fills it does, until its owners drop it or a source of
+// that name is made again. So neither the refusal nor its words reveal a
+// project hidden from the caller.
+func (p *Platform) DeleteSource(who auth.Principal, name string) error {
+	tree := p.Projects.Tree(who.Tenant)
+	seer := p.Seer(who)
+	var by []string
+	for _, pr := range append([]projects.Project{tree.Root()}, tree.Projects()...) {
+		if slices.Contains(pr.Knowledge, name) && seer.Project(pr.Name) {
+			by = append(by, titleOf(pr, p.Settings(who.Tenant).WorkspaceName))
+		}
+	}
+	if len(by) > 0 {
+		return fmt.Errorf("%w: %s names %q; stop naming it there first", ErrSourceInUse, strings.Join(by, ", "), name)
+	}
+	return p.Knowledge.Delete(who.Tenant, name)
 }
 
 // ProjectKnowledge is the knowledge sources a project names, at the project's

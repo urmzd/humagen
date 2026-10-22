@@ -21,6 +21,7 @@ import (
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/knowledge"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
@@ -388,5 +389,49 @@ func TestAKnowledgeWriteAnswersWithWhatItWrote(t *testing.T) {
 		if err := <-errs; err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// A source a project names is not deleted from under it: the delete is
+// refused, naming the projects the caller can see. A project hidden from the
+// caller neither holds the delete up nor is named, and keeps a name that
+// grounds nothing.
+func TestASourceAProjectNamesIsNotDeletedFromUnderIt(t *testing.T) {
+	p := startWith(t, platform.Config{})
+	ctx := t.Context()
+	ada := projects.Writer{By: "ada"}
+	for _, in := range []platform.ProjectInput{
+		{Name: "Field"},
+		{Name: "Secret", Members: []projects.Entry{{Who: "ada", Role: projects.Owner}}},
+	} {
+		if _, err := p.CreateProject(ctx, tenant, ada, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shelf(t, p, map[string]string{"playbook": "Paula", "pricing": "Priya", "spare": "Sam"})
+	name(t, p, "Field", "playbook")
+	name(t, p, "Secret", "pricing")
+	bo := auth.Principal{Subject: "bo", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.ProjectsRead, auth.KnowledgeRead, auth.KnowledgeWrite}}
+
+	err := p.DeleteSource(bo, "playbook")
+	if !errors.Is(err, platform.ErrSourceInUse) || !strings.Contains(err.Error(), "Field") {
+		t.Fatalf("deleting a source Field names = %v", err)
+	}
+	if !slices.ContainsFunc(p.Knowledge.List(tenant), func(s knowledge.Source) bool { return s.Name == "playbook" }) {
+		t.Fatal("a refused delete deleted the source")
+	}
+	if err := p.DeleteSource(bo, "pricing"); err != nil {
+		t.Fatalf("deleting a source only a project hidden from the caller names = %v", err)
+	}
+	if err := p.DeleteSource(bo, "spare"); err != nil {
+		t.Fatalf("deleting a source no project names = %v", err)
+	}
+	if pr, _ := p.Projects.Get(tenant, "Secret"); !slices.Equal(pr.Knowledge, []string{"pricing"}) {
+		t.Fatalf("Secret's knowledge after the delete = %v", pr.Knowledge)
+	}
+
+	name(t, p, "Field")
+	if err := p.DeleteSource(bo, "playbook"); err != nil {
+		t.Fatalf("deleting a source no longer named = %v", err)
 	}
 }
