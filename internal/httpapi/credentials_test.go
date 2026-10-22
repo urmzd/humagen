@@ -248,3 +248,29 @@ func TestRunNowActsForThePresserOnlyOnWordsTheyWrote(t *testing.T) {
 	edit(ana, "Open bugs?")
 	check("ana on words she wrote again", ana, "ana", "Bearer tok-ana-httpapi")
 }
+
+// The Slack app names no agent when its client reaches every agent and sets
+// no default of its own: the default the workspace sets answers, and the run
+// still acts for the person the client maps, with their credential.
+func TestTheSlackAppsUntaggedRunForAMappedPersonIsAnsweredByTheDefaultAsThem(t *testing.T) {
+	f, server, _ := toolFixture(t)
+	ana := f.person(t, "ana")
+	app := f.machine(t, "acme", "warp:runs:read", "warp:runs:write")
+	admin := f.machine(t, "acme", everything...)
+	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ana, `{"ref":"env:WARP_PERSON_ANA_ISSUES"}`); res.StatusCode != http.StatusOK || out["connected"] != true {
+		t.Fatalf("ana connecting = %d %v", res.StatusCode, out)
+	}
+	_, cur := f.do(t, nil, "GET", "/api/projects/~/agents", admin, "")
+	body := fmt.Sprintf(`{"version":%v,"enable":["*"],"default":"worker"}`, cur["version"])
+	if res, out := f.do(t, nil, "PUT", "/api/projects/~/agents", admin, body); res.StatusCode != http.StatusOK {
+		t.Fatalf("set the workspace default = %d %v", res.StatusCode, out)
+	}
+
+	run := f.ask(t, app, `{"text":"Open bugs?","act_as":{"client":"slack-app","user":"U0ADA"}}`)
+	if actor, _ := run["actor"].(map[string]any); run["agent"] != "worker" || actor["user"] != "ana" || actor["bot"] == true {
+		t.Fatalf("the app's untagged run for U0ADA = agent %v, actor %v", run["agent"], run["actor"])
+	}
+	if calls := server.Calls(); len(calls) != 1 || calls[0] != "Bearer tok-ana-httpapi" {
+		t.Fatalf("the app's untagged run for ana reached the server with %q", calls)
+	}
+}

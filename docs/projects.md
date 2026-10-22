@@ -469,8 +469,9 @@ Handle, SeenAt}`, written at sign-in and when a client maps a Slack person. At
 most 5,000 per tenant. `Handle` is `^[a-z0-9][a-z0-9._-]{0,31}$`, unique per
 tenant across people and agent names. A new agent named like a handle is
 refused (409 "a person goes by @dana"), and a colliding handle at first
-sign-in gets a suffix. `auto` and `sme` are reserved. No email is kept or
-shown.
+sign-in gets a suffix. `auto` and `sme` are reserved. No email is asked for
+or shown: a subject that holds an address (a Tailscale login) is kept as the
+key it is, left out of the directory, and subjects are never searched.
 
 ### Changes to existing stores
 
@@ -533,7 +534,10 @@ because every run passes through admission:
 - called runs: `placeOf` gives them their root's project, so a call made in
   Globex reaches only agents available in Globex. Spawn lists, call policies,
   limits and leases still decide every call first; this only narrows;
-- Slack and GitHub tags, once the platform files them (phase 8).
+- Slack and GitHub tags, once the platform files them (phase 8);
+- evals: a case is filed where its agent lives, its home for a project agent
+  and the root for a platform agent, so the home's limits count it and the
+  runs it calls are checked there, as for any run of that agent.
 
 Housekeeping (`OriginSystem`) is exempt, as it is from admission. Earlier
 checks use the same function and give the same answer sooner: writing a
@@ -572,7 +576,12 @@ bound Slack channel the bound warp channel's chain decides. The client's
 allow-list (`client.Routes`) still filters the result: a default the client
 may not route to is refused, never swapped. A GitHub label in `auto_labels`
 names an agent, so it is a tag. fiber's in-process connectors may set an
-agent of `auto`; `surface.stamp` resolves it with `@auto` before admission.
+agent of `auto`; `surface.stamp` resolves it with `@auto` before admission,
+among the agents the client may route to. The Slack app built on the API
+cannot have its list applied by the platform (`POST /api/runs` takes no
+client), so it sends `auto` only for a client whose list is `*`: a client that
+lists its agents treats `@auto`, and a default of `auto`, as names outside the
+list.
 `stamp` also writes `warp.project` and `warp.channel` from the binding, and
 `runs.ProjectOf` believes them for `slack` and `github` origins, because
 ingress overwrites whatever a connector put there (phase 8).

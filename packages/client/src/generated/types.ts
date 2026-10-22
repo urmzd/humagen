@@ -17,7 +17,7 @@ export interface Refusal {
   resets_at?: string;
 }
 
-export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "projects:read" | "projects:write" | "projects:govern";
+export type Permission = "agents:read" | "agents:write" | "runs:read" | "runs:write" | "schedules:read" | "schedules:write" | "alerts:read" | "alerts:write" | "knowledge:read" | "knowledge:write" | "evals:read" | "evals:write" | "billing:read" | "billing:write" | "artifacts:read" | "artifacts:write" | "clients:read" | "clients:write" | "projects:read" | "projects:write" | "projects:govern" | "people:read";
 
 /** An authenticated caller. The tenant is the workspace everything they touch is confined to. */
 export interface Principal {
@@ -141,9 +141,10 @@ export interface Revision {
   created_by: string;
 }
 
-/** Which agent would answer a message, and why. */
+/** Which agent @auto would pick for a message, and why. */
 export interface Choice {
   agent: string;
+  /** A sentence a person reads, such as "Picked by @auto: matched billing." */
   reason: string;
   matched?: string[];
 }
@@ -319,7 +320,10 @@ export interface RunList {
 }
 
 export interface CreateRunRequest {
-  /** Who should answer. Empty or `auto` lets the platform pick. */
+  /** Who should answer: an agent, or `auto` for `@auto`, which picks
+among the agents available where the conversation is filed. Left
+out, the default the conversation's place inherits answers.
+ */
   agent?: string;
   /** The message. It must not be blank. */
   text: string;
@@ -428,6 +432,7 @@ instructions of the projects above. The agent's own instructions
 win over them.
  */
   instructions?: string;
+  agents: ProjectAgents;
   /** `file` when the platform file declares the project, and absent otherwise. The fields the file sets answer 409 here, and the project cannot be deleted here. */
   managed?: string;
   /** Counts writes, from 1. A change names the version it read. */
@@ -500,18 +505,121 @@ export interface ProjectChange {
   /** Who made the change. `migration` for projects moved out of settings. */
   by: string;
   project: string;
-  /** `managed` is the platform file taking the project over or letting it go. */
-  what: "created" | "updated" | "deleted" | "managed";
+  /** `managed` is the platform file taking the project over or letting
+it go. `agents` is a change to what the project turns on. `home`
+is an agent coming to live in the project, or leaving it: `agent`
+names it and `note` says which.
+ */
+  what: "created" | "updated" | "deleted" | "managed" | "agents" | "home";
+  /** The agent a home change is about. */
+  agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
   note?: string;
   before?: Project;
   after?: Project;
 }
 
-/** Workspace settings. */
+/** What a project turns on. An agent is available in a project when
+something on its chain offers it (an `enable` list, `*` for every
+platform agent, or the agent living there or above) and every `allow`
+list on the chain permits it. The zero value adds nothing.
+ */
+export interface ProjectAgents {
+  /** Platform agents available here and below. `*` alone is every platform agent. */
+  enable: string[];
+  /** When set, the only agents that may run here and below. Absent narrows nothing. */
+  allow?: string[];
+  /** Answers a message that tags no agent, here and below. An agent or `auto`. Absent inherits. */
+  default?: string;
+}
+
+/** Which agents may run in a project. */
+export interface AgentAvailability {
+  /** Every platform agent, because `*` is enabled on the chain and no allow list narrows it. */
+  all: boolean;
+  /** With `all`, the agents living on the chain, which `*` never reaches; without, every agent available. */
+  names: string[];
+}
+
+/** One agent available in a project, and where it comes from. */
+export interface AgentOffer {
+  /** The agent, or `*` for every platform agent. */
+  agent: string;
+  /** The nearest project on the chain that enables it, or the one it lives in. `~` is the workspace. */
+  from: string;
+  /** Set when the agent lives in `from`. */
+  home?: boolean;
+}
+
+/** Who answers a message that tags no agent, and where that default is set. */
+export interface DefaultResolved {
+  /** An agent, or `auto`. */
+  agent: string;
+  /** `project:<name>`, or `project:~` for the workspace. */
+  from: string;
+}
+
+/** A project's agents as a person reads them. */
+export interface ProjectAgentsView {
+  /** The project's version, which a change names. */
+  version: number;
+  enable: string[];
+  allow?: string[];
+  default?: string;
+  available: AgentAvailability;
+  /** Each available agent and where it comes from, `*` first when every platform agent is. */
+  offers: AgentOffer[];
+  /** The agents that live here. */
+  homes: string[];
+  /** Who answers an untagged message here, or null when nothing does. */
+  default_resolved: DefaultResolved | null;
+}
+
+/** What a project turns on, as a whole. A list left out is cleared. */
+export interface ProjectAgentsInput {
+  /** The version the caller read. */
+  version: number;
+  enable?: string[];
+  allow?: string[];
+  default?: string;
+}
+
+/** Where an agent lives and which projects enable it. */
+export interface AgentPlace {
+  /** The project it lives in. Absent for a platform agent. */
+  home?: string;
+  /** The projects whose enable list names it, or holds `*` for a platform agent. `~` is the workspace. */
+  enabled_in: string[];
+}
+
+/** Where an agent now lives. */
+export type AgentHome = { agent: string } & AgentPlace;
+
+/** One person in the directory. No email address is shown: a subject
+that holds one, as a Tailscale login does, is left out.
+ */
+export interface Person {
+  /** Who they are to the identity provider, which member entries and
+grants name. Absent when it holds an email address.
+ */
+  subject?: string;
+  /** The name they chose for themselves, or signed in with. Absent until one is known. */
+  name?: string;
+  /** How they are tagged, unique in the workspace across people and agents. */
+  handle: string;
+  /** The workspace roles they held when last seen. */
+  roles: string[];
+  /** Where their own photo is served, or null without one. */
+  picture: string | null;
+  /** When they last signed in. Absent for someone who never has. */
+  seen_at?: string;
+}
+
+/** Workspace settings. The workspace default agent, which answers a
+message that tags none, is the root's `default`
+(`GET /api/projects/~/agents`).
+ */
 export interface Settings {
-  /** The agent that answers when the picker matches none. */
-  baseline: string;
   /** Whether an agent is sent the conversation so far. */
   history: "recent" | "none";
   history_limit: number;
@@ -1835,11 +1943,17 @@ export interface ManifestUsage {
 export interface ListAgentsResponse {
   agents: Revision[];
   builtin: string[];
+  homes: Record<string, string>;
+  enabled_in: Record<string, string[]>;
 }
 
 export interface ReviseAgentBody {
   spec: AgentSpec;
   expected_rev: number;
+}
+
+export interface SetAgentHomeBody {
+  project?: string;
 }
 
 export interface ListAgentRevisionsResponse {
@@ -1977,6 +2091,11 @@ export interface ListProjectsResponse {
 
 export interface ListProjectHistoryResponse {
   changes: ProjectChange[];
+  next: string | null;
+}
+
+export interface ListPeopleResponse {
+  people: Person[];
   next: string | null;
 }
 

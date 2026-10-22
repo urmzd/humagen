@@ -55,6 +55,9 @@ func eachBackend(t *testing.T, fn func(t *testing.T, first platform.Backends, ag
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Released here when the test does not restart. Releasing
+			// twice is harmless.
+			t.Cleanup(func() { _ = release() })
 			return b, func() platform.Backends {
 				if err := release(); err != nil {
 					t.Fatal(err)
@@ -123,11 +126,19 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 			}
 		}
 		cfg := p.Settings(tenant)
-		cfg.Baseline, cfg.WorkspaceName = "lead", "Acme Ops"
+		cfg.WorkspaceName = "Acme Ops"
 		if err := p.SetSettings(ctx, tenant, cfg); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Launch"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.SetProjectAgents(ctx, tenant, "~", projects.Writer{By: "ada", Govern: true}, platform.AgentsInput{
+			Version: p.ProjectTree(tenant).Root().Version, Enable: []string{"*"}, Default: "lead",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := p.SetAgentHome(ctx, tenant, "helper", "Launch", projects.Writer{By: "ada"}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := p.MarkSetup(tenant, "ada"); err != nil {
@@ -174,8 +185,14 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 			t.Fatalf("the agent after restart: %v", err)
 		}
 		s := q.Settings(tenant)
-		if s.Baseline != "lead" || s.WorkspaceName != "Acme Ops" || s.SetupBy != "ada" || s.SetupAt.IsZero() {
+		if s.WorkspaceName != "Acme Ops" || s.SetupBy != "ada" || s.SetupAt.IsZero() {
 			t.Fatalf("settings after restart = %+v", s)
+		}
+		if d, _ := q.ProjectTree(tenant).DefaultOf(projects.Root); d != "lead" {
+			t.Fatalf("the workspace default after restart = %q, want lead", d)
+		}
+		if home, _ := q.ProjectTree(tenant).Home("helper"); home != "Launch" {
+			t.Fatalf("helper lives in %q after restart, want Launch", home)
 		}
 		if l := q.Projects.List(tenant); len(l) != 1 || l[0].Name != "Launch" || l[0].CreatedBy != "ada" {
 			t.Fatalf("projects after restart = %+v", l)

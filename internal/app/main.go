@@ -307,6 +307,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 		if spec.Model == "" {
 			return fmt.Errorf("agent spec %s needs a model or WARP_AGENT_MODEL", path)
 		}
+		if err := checkNewAgentName(ctx, p, *tenant, spec.Name); err != nil {
+			return fmt.Errorf("agent spec %s: %w", path, err)
+		}
 		if err := registerSpec(ctx, p.Agents, *tenant, spec); err != nil {
 			return fmt.Errorf("agent spec %s: %w", path, err)
 		}
@@ -322,6 +325,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err := applyPlatforms(ctx, p, file.cfg, log); err != nil {
 		return err
 	}
+	// After the agents, so an agent the file or the seed names keeps its
+	// name and a person whose handle would be it gets a suffix.
+	seeGranted(p, *tenant, *tenantClaim, pol, log)
 	extensions, err := fileRunners(ctx, o, file.cfg)
 	if err != nil {
 		return err
@@ -479,13 +485,16 @@ func seedAgents(ctx context.Context, p *platform.Platform, tenant string) error 
 			return fmt.Errorf("seed %s: %w", spec.Name, err)
 		}
 	}
-	// The lead answers when nobody picked an agent and none matched. Settings
-	// kept from an earlier start are left as they are.
-	if cfg := p.Settings(tenant); cfg.Baseline != "" || p.ProjectTree(tenant).Len() > 0 || !cfg.SetupAt.IsZero() {
+	// The lead answers a message that tags no agent. A workspace kept from
+	// an earlier start is left as it is.
+	tree := p.ProjectTree(tenant)
+	if cfg := p.Settings(tenant); tree.Root().Version > 0 || tree.Len() > 0 || !cfg.SetupAt.IsZero() {
 		return nil
 	}
-	if err := p.SetSettings(ctx, tenant, platform.Settings{Baseline: "lead"}); err != nil {
-		return fmt.Errorf("seed baseline: %w", err)
+	if _, err := p.SetProjectAgents(ctx, tenant, projects.RootAddress, projects.Writer{By: "seed", Govern: true}, platform.AgentsInput{
+		Version: tree.Root().Version, Enable: []string{projects.Everyone}, Default: "lead",
+	}); err != nil {
+		return fmt.Errorf("seed the workspace default: %w", err)
 	}
 	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "seed"}, platform.ProjectInput{
 		Name: "Launch", Description: "Everything for the Q4 launch",

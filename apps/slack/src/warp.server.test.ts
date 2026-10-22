@@ -115,10 +115,18 @@ test("the stand-in client against the real routes", { skip: !enabled }, async ()
   const next = await c.createRun({ agent: "", text: "and then?", after: run.id }, `${key}-2`);
   assert.equal(next.thread, run.id);
   assert.equal(next.prev, run.id);
-  assert.ok(next.picked, "an empty agent is the platform's picker");
+  // -seed makes the lead the Workspace Default: it answers what tags no agent.
+  assert.equal(next.agent, "lead", "an empty agent is the default the workspace sets");
+  assert.ok(!next.picked, "a default that names an agent picks nothing");
   await finish(c, next);
   const turns = (await c.getThread(run.id))?.turns;
   assert.deepEqual(turns?.map((t) => t.id).sort(), [run.id, next.id].sort());
+
+  // auto is the platform's picker, which says why it chose.
+  const picked = await c.createRun({ agent: "auto", text: "do one task well" }, `${key}-auto`);
+  assert.ok(["lead", "helper"].includes(picked.agent), picked.agent);
+  assert.ok(picked.picked, "auto says why it picked");
+  await finish(c, picked);
 
   assert.equal(await c.getRun("api-dev-no-such-run"), null);
   assert.equal(await c.getThread("api-dev-no-such-run"), null);

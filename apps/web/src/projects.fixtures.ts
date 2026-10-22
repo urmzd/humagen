@@ -31,6 +31,7 @@ export function view(
     ...(opts.customer ? { account: { customer: opts.customer } } : {}),
     ...(opts.instructions ? { instructions: opts.instructions } : {}),
     ...(opts.managed ? { managed: opts.managed } : {}),
+    agents: { enable: [] },
     version: opts.version ?? 1,
     created_by: "ada",
     created_at: at,
@@ -49,6 +50,7 @@ export function view(
 /** The workspace itself, as GET /api/projects/~ reads it. */
 export const workspace: ProjectView = {
   ...view("", { kind: "company", instructions: "Acme sells warehouse robots. Answer plainly." }),
+  agents: { enable: ["*"], default: "auto" },
   depth: 0,
   path: [],
   version: 3,
