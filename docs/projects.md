@@ -787,7 +787,7 @@ cursor. Inbox retention for closed broadcasts is a follow-up (see Risks).
   shows it, and Hide for Me hides one reader's copy.
 - The Slack app connects after the start, and catches up on a bound
   project's announcements when it does, so the notes reach a channel bound
-  to the workspace's general. A reply under their post starts a thread
+  to the workspace's general before that start. A reply under their post starts a thread
   seeded with them, from warp (`ThreadAnnouncement.kind` `system`, `by`
   `warp`), which the room shows without a person's or an agent's mark and
   a run is sent as `warp (system)`.
@@ -1260,13 +1260,17 @@ what needs the reader from the platform's reads (`updatesOf`, `projectsOf`,
   bound project's newest 50 announcements in the project's inbox, where its
   machine is shown its own receipts, edits a post whose announcement
   changed since its receipt (`updated_at` after its `at`), and posts, oldest
-  first, an open one with no receipt from the last 24 hours and no older
-  than the oldest it has a receipt for, so nothing from before the binding
-  and nothing days late. A withdrawn post says only that it was withdrawn,
-  and the app records the same post again, which moves the receipt's `at`
-  on. So a restart, a reconnect, an edit or a withdrawal updates that post
-  instead of posting again, and a notice during a catch-up posts nothing
-  twice. A reply in its thread starts a shared thread seeded with the
+  first, an open one with no receipt from the last 24 hours and announced
+  no earlier than the binding was made (`bound_at` on the binding), so
+  nothing from before the binding and nothing days late. A withdrawn post
+  says only that it was withdrawn, and the app records the same post again,
+  which moves the receipt's `at` on. So a restart, a reconnect, an edit or a
+  withdrawal updates that post instead of posting again, and a notice during
+  a catch-up posts nothing twice. A change to an announcement older than
+  the newest 50, made while the app was not listening, is not caught up on:
+  its post keeps what it said, withdrawn words included. The app does all
+  this only when its client names its credential as the machine, and a
+  catch-up that did not finish is tried again with backoff. A reply in its thread starts a shared thread seeded with the
   announcement. Slack delivers a reply in a channel thread only when it
   mentions the app, so the reply that mentions it posts, with the post's
   surface, into the thread the platform finds by that post's receipt: in

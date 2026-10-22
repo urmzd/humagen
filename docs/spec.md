@@ -509,7 +509,8 @@ Dockerfile does), else the version Go records for warp's module
 imports warp at that version). It counts against the workspace's 20
 announcements a day; a start past them posts it at the next start. The
 Slack app connects after the start and catches up when it does, so it posts
-them in a channel bound to the workspace's general, where a reply under
+them in a channel bound to the workspace's general, once it was bound
+before that start, where a reply under
 them starts a thread seeded with them, from warp ([Slack](slack.md)).
 
 ## Which level a knob lives at

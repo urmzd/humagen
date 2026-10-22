@@ -131,18 +131,32 @@ and compares them with its receipts:
   it (`updated_at` after the receipt's `at`), as when it was withdrawn, is
   edited, and its receipt recorded again;
 - an open announcement it has no receipt for is posted, oldest first, when it
-  was announced in the last 24 hours and no earlier than the oldest one in
-  that page it has a receipt for.
+  was announced in the last 24 hours and no earlier than the Slack channel
+  was bound there (`bound_at` on `GET /api/clients/{id}/bindings`, kept while
+  the binding holds and moved when it is made again or moved).
 
 So the release notes warp posts at start (`workspace.release_notes`), before
-the app connects, reach a channel bound to the workspace's general. The
-bounds keep a reconnect to one read a bound project, and keep from the
-channel what is no longer news: a post a day late reads as new, and what
-was announced before the app posted there, such as before the channel was
-bound, is not posted at all. What falls outside them stays in warp's inbox
-and on the Home tab. Only bound projects are caught up on: once a Slack
+the app connects, reach a channel bound to the workspace's general, once it
+was bound before that start. The bounds keep a reconnect to one read a
+bound project, and keep from the channel what is no longer news: a post a
+day late reads as new, and what was announced before the channel was bound,
+or while it was unbound, is not posted at all. What falls outside them
+stays in warp's inbox and on the Home tab. A change is caught up on only in
+the newest 50: an older announcement edited or withdrawn while the app was
+not listening keeps its post as it was, withdrawn words included, until a
+later notice about it. Only bound projects are caught up on: once a Slack
 channel is unbound, or bound to another project, its old posts are left as
-they are. A notice that comes during a catch-up never posts twice: the app
+they are.
+
+The app catches up, and posts announcements at all, only when its client
+names the app's own credential as its machine (`slack.machine`): warp shows
+the client's receipts to that credential alone, so any other would post
+everything again. It logs that it skipped the catch-up and why. A catch-up
+that could not read warp, or could not bring a post up to date for a reason
+other than Slack refusing it, is tried again after 5 seconds, then twice as
+long each time up to 5 minutes, until one finishes. A post Slack refuses to
+edit, such as one deleted there, is logged and holds up no other. A notice
+that comes during a catch-up never posts twice: the app
 looks at one announcement at a time, reads it afresh each time, receipt and
 all, and posts only what has none. A post whose receipt warp did not take,
 as when it went away just then, is recorded at the next look rather than
