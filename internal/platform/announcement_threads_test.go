@@ -106,10 +106,26 @@ func TestAReplyToAnAnnouncementsSlackPostStartsAThreadSeededWithIt(t *testing.T)
 		t.Fatalf("the reply is shown as %q's", shown[1].Message.By)
 	}
 
-	later, err := p.StartThread(t.Context(), machine, fromSlack(newsChannel, newsPost, "1700000000.000300", "<@UAPP> thanks, posted only"))
+	// An untagged reply is answered by the channel's chain, as any message
+	// there: general's default, never the client's.
+	gen, err := p.Projects.Channel(tenant, "Field", projects.General)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.UpdateChannel(t.Context(), tenant, "Field", projects.General, ada, platform.ChannelUpdate{Version: gen.Version, Default: "lead", Slack: gen.Slack}); err != nil {
+		t.Fatal(err)
+	}
+	later, err := p.StartThread(t.Context(), machine, fromSlack(newsChannel, newsPost, "1700000000.000300", "<@UAPP> and the dates?"))
 	if err != nil || later.Thread.ID != th.ID || later.Message.ID != "m-2" {
 		t.Fatalf("a later reply = %+v, %v", later, err)
 	}
+	if later.Rule != threads.RuleDefault || len(later.Runs) != 1 || later.Runs[0].Agent != "lead" || later.Runs[0].Actor.User != "ana" {
+		t.Fatalf("an untagged reply started %+v (%s)", later.Runs, later.Rule)
+	}
+	if text := later.Runs[0].Tag().Text; !strings.Contains(text, "\nAda (@ada): (announcement: Field offsite) Lisbon, in May. @helper book it\nAna (@ana): @lead what does it mean for renewals?\nlead (agent): ") {
+		t.Fatalf("the later reply's run was sent:\n%s", text)
+	}
+	await(t, p, later.Runs[0].ID, runs.Completed)
 }
 
 // A recap is the announcement of the agent a schedule ran, and the thread a
