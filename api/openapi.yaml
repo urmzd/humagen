@@ -216,13 +216,22 @@ paths:
     get:
       operationId: listToolCredentials
       tags: [credentials]
-      summary: The tools that act as the caller, and whether the caller has connected each
+      summary: The caller or mapped person's tool connections
       description: >-
         Lists the workspace's person-scoped tool providers, at most 64, with
         whether the caller has connected a credential for each and how it is
         held. A value is never shown. A machine holds no credentials, so it
         sees every provider unconnected.
       x-permission: runs:read
+      parameters:
+        - name: act_as_client
+          in: query
+          schema: {type: string}
+          description: Client whose machine is acting for a mapped Slack person.
+        - name: act_as_user
+          in: query
+          schema: {type: string}
+          description: Slack user of that client. Both identity parameters are required together.
       responses:
         "200":
           description: The providers and what the workspace lets people give.
@@ -248,6 +257,14 @@ paths:
         403: each person connects their own.
       x-permission: runs:write
       parameters:
+        - name: act_as_client
+          in: query
+          schema: {type: string}
+          description: Client whose machine is acting for a mapped Slack person.
+        - name: act_as_user
+          in: query
+          schema: {type: string}
+          description: Slack user of that client. Both identity parameters are required together.
         - $ref: "#/components/parameters/ProviderName"
       requestBody:
         required: true
@@ -274,6 +291,14 @@ paths:
       description: Removes it, and the value if it was one. The caller's runs then get no tools from the provider.
       x-permission: runs:write
       parameters:
+        - name: act_as_client
+          in: query
+          schema: {type: string}
+          description: Client whose machine is acting for a mapped Slack person.
+        - name: act_as_user
+          in: query
+          schema: {type: string}
+          description: Slack user of that client. Both identity parameters are required together.
         - $ref: "#/components/parameters/ProviderName"
       responses:
         "204": {description: Removed.}
@@ -777,6 +802,14 @@ paths:
       summary: Get a run
       x-permission: runs:read
       parameters:
+        - name: act_as_client
+          in: query
+          schema: {type: string}
+          description: Client whose machine is reading for a mapped Slack person.
+        - name: act_as_user
+          in: query
+          schema: {type: string}
+          description: Slack user of that client. Both parameters go together.
         - {$ref: "#/components/parameters/RunID"}
       responses:
         "200":
@@ -784,6 +817,68 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Run"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/runs/{id}/feedback:
+    put:
+      operationId: saveRunFeedback
+      tags: [runs]
+      summary: Save a rating and optional reason and comment linked to a run
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/RunID"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [rating]
+              properties:
+                rating: {type: string, enum: [up, down]}
+                reason: {type: string, maxLength: 80}
+                comment: {type: string, maxLength: 4000}
+                act_as: {$ref: "#/components/schemas/ActAs"}
+      responses:
+        "200":
+          description: The caller's feedback. Retrieve context through the referenced run.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RunFeedback"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    get:
+      operationId: listRunFeedback
+      tags: [runs]
+      summary: Collect feedback for a visible run, at most 200 records per page
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/RunID"}
+        - name: after
+          in: query
+          schema: {type: string}
+          description: Last subject returned by the previous page.
+      responses:
+        "200":
+          description: Feedback and a cursor for the next page, empty at the end.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [feedback, next]
+                properties:
+                  feedback:
+                    type: array
+                    items: {$ref: "#/components/schemas/RunFeedback"}
+                  next: {type: string}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -4497,6 +4592,17 @@ components:
       description: How one agent calls another. A subagent is attached to its caller. A handoff or a delegate is independent.
       type: string
       enum: [subagent, handoff, delegate]
+    RunFeedback:
+      description: Feedback metadata only. The referenced run owns the prompt, answer and conversation links.
+      type: object
+      required: [run, subject, rating, updated_at]
+      properties:
+        run: {type: string}
+        subject: {type: string}
+        rating: {type: string, enum: [up, down]}
+        reason: {type: string}
+        comment: {type: string}
+        updated_at: {type: string, format: date-time}
     Run:
       description: One run and its place in the call tree and in its conversation.
       type: object
@@ -4899,11 +5005,25 @@ components:
       properties:
         run: {type: string}
         question: {type: string}
+    Attachment:
+      type: object
+      required: [digest, media_type, size]
+      properties:
+        digest: {type: string}
+        media_type: {type: string}
+        size: {type: integer, format: int64}
+        name: {type: string}
+        alt: {type: string}
+        origin: {type: string}
+        unread: {type: string}
     ThreadMessage:
       description: A person's turn in a thread. It starts no run of its own. Its author is always a person.
       type: object
       required: [id, thread, by, name, text, mentions, via, at]
       properties:
+        attachments:
+          type: array
+          items: {$ref: "#/components/schemas/Attachment"}
         id:
           description: "`m-` and its place in the thread, from 1."
           type: string
@@ -5251,6 +5371,9 @@ components:
       additionalProperties: false
       required: [client, channel, ts]
       properties:
+        files:
+          type: boolean
+          description: Ingest files from the verified Slack message as agent attachments.
         client: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,39}$"}
         channel: {type: string, maxLength: 100}
         ts:

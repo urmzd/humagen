@@ -39,12 +39,14 @@ import (
 	saigetypes "github.com/urmzd/saige/agent/types"
 	"go.yaml.in/yaml/v4"
 
+	"github.com/urmzd/fiber/pkg/attachment"
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/evals"
+	"github.com/urmzd/warp/pkg/feedback"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/journal"
 	"github.com/urmzd/warp/pkg/knowledge"
@@ -617,6 +619,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		}{}, written: true},
 		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"ToolCredentials": {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true},
+		"RunFeedback": {typ: feedback.Record{}}, "Attachment": {typ: attachment.Attachment{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
 		"InboxNotice": {typ: inboxNotice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
 		"InboxOutcome": {typ: inbox.Outcome{}}, "InboxLimits": {typ: inbox.Limits{}}, "InboxAlertPart": {typ: inbox.AlertPart{}},
@@ -974,6 +977,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if done := c.settled(acme, id); done.str("status") != "completed" || done.str("answer") == "" {
 		t.Fatalf("the first turn = %s", done.raw)
 	}
+	c.call(acme, "PUT", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback", `{"rating":"down","reason":"incomplete","comment":"Please add sources"}`, http.StatusOK)
+	c.call(acme, "GET", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback", "", http.StatusOK)
 	next := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"And again","after":"`+id+`"}`, http.StatusAccepted)
 	if next.str("thread") != first.str("thread") || next.str("prev") != id {
 		t.Errorf("the follow-up is not in the first turn's conversation: %s", next.raw)
@@ -1037,6 +1042,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if ask["question"] != question || ask["yours"] != true || ask["for"] != "answerers" {
 		t.Errorf("the parked run's ask = %v in %s", ask, room.raw)
 	}
+	c.call(acme, "PUT", "/api/runs/{id}/feedback", "/api/runs/"+parked.str("id")+"/feedback", `{"rating":"up"}`, http.StatusConflict)
 	answer := "/api/runs/{id}/questions/{question}/answer"
 	at := "/api/runs/" + parked.str("id") + "/questions/" + question + "/answer"
 	c.call(acme, "GET", "/api/inbox", "/api/inbox?kind=clarification", "", http.StatusOK)
@@ -1702,7 +1708,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
 	}
 	valid := map[string]string{
-		"/api/agents/{name}": revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
+		"/api/runs/{id}/feedback": `{"rating":"up"}`,
+		"/api/agents/{name}":      revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
 		"/api/clients/{id}": `{"name":"Support","surface":"slack","identity":{"team":"T01ABCDEF"}}`, "/api/evals/{name}": `{"name":"smoke","target":"agent","subject":"helper","cases":[]}`,
 		"/api/inbox/{id}/read": `{}`, "/api/inbox/{id}/snooze": `{"until":"2999-01-01T00:00:00Z"}`,
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,

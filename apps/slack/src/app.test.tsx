@@ -1437,8 +1437,8 @@ test("the Home tab shows a person what waits on them, and an operator the whole 
   collect("home", w.slack);
 });
 
-test("a rating is kept in the log until warp can store one", async () => {
-  const w = world();
+test("a rating opens a comment modal and is saved even when skipped", async () => {
+  const w = mapped();
   await deliver(w, mention("quick", TS));
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Done." });
@@ -1450,8 +1450,123 @@ test("a rating is kept in the log until warp can store one", async () => {
     click(blocksOf(final), defaultCopy.notHelpful, { ts: String(final?.ts), threadTs: TS }),
   );
   await w.app.idle();
-  assert.ok(w.logs.some((l) => l.endsWith(`by ${USER}: down`)));
-  assert.equal(w.slack.calls.length, before, "nothing is promised that cannot be kept");
+  assert.equal(w.warp.feedback.length, 1);
+  assert.equal(w.warp.feedback[0]?.body.rating, "down");
+  const modal = w.slack.of("views.open").at(-1)?.view as {
+    callback_id: string;
+    private_metadata: string;
+  };
+  assert.equal(modal.callback_id, "aui.feedback.modal");
+  assert.ok(w.slack.calls.length > before);
+  await deliver(
+    w,
+    interactive({
+      type: "view_submission",
+      user: { id: USER },
+      view: {
+        ...modal,
+        state: {
+          values: {
+            comment: { value: { value: "Needs sources" } },
+            reason: { value: { selected_option: { value: "incomplete" } } },
+          },
+        },
+      },
+    }),
+  );
+  assert.equal(w.warp.feedback.at(-1)?.body.comment, "Needs sources");
+  assert.equal(w.warp.feedback.at(-1)?.body.reason, "incomplete");
+  collect("feedback", w.slack);
+});
+
+test("like also opens the comment modal and saves the positive rating", async () => {
+  const w = mapped();
+  await deliver(w, mention("quick", TS));
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Done." });
+  await w.app.idle();
+  const final = w.slack.of("chat.stopStream")[0];
+  await deliver(
+    w,
+    click(blocksOf(final), defaultCopy.helpful, { ts: String(final?.ts), threadTs: TS }),
+  );
+  assert.equal(w.warp.feedback[0]?.body.rating, "up");
+  assert.equal(w.slack.of("views.open").length, 1);
+  collect("positive feedback", w.slack);
+});
+
+test("a file-only DM is ingested through its verified surface message", async () => {
+  const w = mapped();
+  await deliver(w, direct("", TS, { subtype: "file_share", files: [{ id: "F01" }] }));
+  assert.equal(w.warp.posts.length, 1);
+  assert.equal(w.warp.posts[0]?.surface.files, true);
+  assert.match(w.warp.posts[0]?.text ?? "", /attached files/);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Read the file." });
+  await w.app.idle();
+});
+
+test("configured skills are registered, listed and invoked; unknown skills start nothing", async () => {
+  const w = mapped();
+  const client = w.warp.clients.get(CLIENT);
+  assert.ok(client?.slack);
+  client.slack.commands = [{ name: "summarize", description: "Summarize a topic" }];
+  await deliver(w, command("", { command: "/skill" }));
+  assert.match(String(w.slack.responses.at(-1)?.body.text), /summarize/);
+  await deliver(w, command("missing task", { command: "/skill" }));
+  assert.equal(w.warp.started.length, 0);
+  await deliver(w, mention("hello", TS));
+  assert.equal(w.slack.of("agents.conversations.setCommands").length, 1);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Done." });
+  await w.app.idle();
+  await deliver(w, command("summarize this topic", { command: "/skill" }));
+  assert.match(w.warp.last.text, /summarize this topic/);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Summary." });
+  await w.app.idle();
+});
+
+test("account controls load privately and submit as the mapped person", async () => {
+  const w = mapped();
+  await deliver(w, command("connections"));
+  assert.equal(w.slack.of("views.open").length, 1);
+  assert.equal(w.slack.of("views.update").length, 1);
+  for (const operation of ["connect", "disconnect"]) {
+    await deliver(
+      w,
+      interactive({
+        type: "view_submission",
+        user: { id: USER },
+        view: {
+          callback_id: "warp.connections",
+          state: {
+            values: {
+              provider: { value: { value: "github" } },
+              reference: { value: { value: "env:WARP_PERSON_ANA_GITHUB" } },
+              operation: { value: { selected_option: { value: operation } } },
+            },
+          },
+        },
+      }),
+    );
+  }
+  assert.equal(w.warp.connectionCalls.length, 2);
+  assert.deepEqual(w.warp.connectionCalls[0]?.as, { client: CLIENT, user: USER });
+  collect("connections", w.slack);
+});
+
+test("a finished answer publishes as a canvas only in its own channel", async () => {
+  const w = mapped();
+  await deliver(w, mention("Explain", TS));
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "The answer." });
+  await w.app.idle();
+  await deliver(w, command(`canvas ${w.warp.last.id}`, { channel_id: "C0OTHER" }));
+  assert.equal(w.slack.of("canvases.create").length, 0);
+  await deliver(w, command(`canvas ${w.warp.last.id}`));
+  assert.equal(w.slack.of("canvases.create").length, 1);
+  assert.deepEqual(w.slack.of("canvases.access.set")[0]?.channel_ids, [CHANNEL]);
 });
 
 test(

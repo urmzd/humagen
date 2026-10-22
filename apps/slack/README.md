@@ -35,6 +35,11 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 | `/agent <question>` | A new thread in the channel. `/agent help` lists who can be asked. |
 | **Ask the agent** shortcut | The app's messages with you. |
 | **Ask agent about this** on a message | That message's thread. On your own message it asks as you; on anyone else's, or a bot's, it asks through the app, for nobody, so their words are never run as you. Under a dev sign-in, where the app's own credential is the person `dev`, asking through the app acts for `dev`. |
+| Like or dislike | Opens a comment modal immediately. The rating is saved even if you choose Skip. Dislike also offers a reason. Requires a mapped workspace account. |
+| `/skill` or `/agent skills` | Lists this client's configured skills. `/skill name arguments` invokes one; code channels also offer each configured slash command dynamically. |
+| `/agent connections` | Opens your private provider status and connect/disconnect controls. Supply an allowed secret reference; keep tokens out of Slack. |
+| `/agent canvas RUN_ID` | Publishes a finished answer from this channel as a Slack canvas, shared with the channel (or just you in a DM). |
+| Uploaded files and images | A mapped person's triggering message is reread through its client on the server and ingested as agent attachments, including file-only DMs. Unread files are explained to the agent. |
 | Stop button | Stops the run, confirms in the thread, sets the session to active. |
 | Home tab | For a person the client maps, the shared Home read as them: what needs them, what's new in their projects and their projects, with Ask a Question, Build an Agent and Search Context. Anyone else sees what is waiting on them in warp's inbox. |
 
@@ -45,6 +50,32 @@ message sent while a turn is running waits for it, as in the console.
 
 Bot messages, the app's own messages, edits and joins never start a run.
 Deliveries from any team but `SLACK_TEAM_ID` are ignored.
+
+## Feedback and files
+
+Feedback stores the run ID, the person's identity, rating, reason, comment and
+update time. The prompt and answer stay on the run; retrieve them through
+`GET /api/runs/{id}`, and use its thread and message references for conversation
+context. These reads enforce the source records' current access permissions.
+`GET /api/runs/{id}/feedback` collects up to 200 records per page; pass `after` from the previous response's
+`next` to continue. One person has one latest rating per run. Skipping the
+modal preserves an existing comment. The store uses the configured state backend,
+so use Postgres to keep feedback across server restarts.
+
+File intake requires a configured Slack client whose bot token can read the
+message, and `files:read`. Bytes live in the server workspace's `attachments`
+directory as tenant-scoped, content-addressed blobs. Fiber bounds file count,
+bytes and fetch time, checks content types, and resolves the references for the
+model. The app supplies only a message location, never a download URL or digest.
+Files from another person's Slack message are refused. Reinstall or reauthorize
+the Slack app after applying the updated manifest to grant file and canvas scopes
+and register `/skill`.
+
+Skills use the existing client's `slack.commands` list; the agent receives the
+configured command and its arguments through the normal run path. Changes appear
+in a code channel on its next message after the client cache refreshes (30 seconds).
+Ordinary Slack channels use `/skill`; Slack's dynamic command API applies only to
+code channels. This does not install new agent skills or grant additional tools.
 
 ## Thread history
 

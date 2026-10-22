@@ -29,9 +29,13 @@ import {
   type UiAction,
 } from "@warp/core";
 import {
+  CONNECTIONS_MODAL,
+  connectionsModal,
+  decodeFeedbackModal,
   decodeReplyModal,
   decodeSlackAction,
   escapeMentions,
+  feedbackModal,
   homeView,
   LIMITS,
   type ReplyTarget,
@@ -111,6 +115,7 @@ export interface AppOptions {
 }
 
 interface Job {
+  files?: boolean;
   session: Session;
   text: string;
   /** The message that asked. Lifecycle reactions go on it. */
@@ -519,7 +524,8 @@ export class App {
     const asked =
       event.type === "app_mention" || (event.type === "message" && event.channel_type === "im");
     // Loop prevention: a bot's message, this app's own, an edit or a join never starts a run.
-    if (!asked || event.subtype || event.bot_id || !event.user) return;
+    if (!asked || (event.subtype && event.subtype !== "file_share") || event.bot_id || !event.user)
+      return;
     if (event.user === this.opts.botUser || !event.channel || !event.ts) return;
     const session: Session = {
       team: this.opts.team,
@@ -527,16 +533,38 @@ export class App {
       threadTs: event.thread_ts ?? event.ts,
     };
     const text = (event.text ?? "").replaceAll(`<@${this.opts.botUser}>`, " ").trim();
-    if (!text) return;
+    if (!text && !event.files?.length) return;
+    await this.offerSkills(event.channel);
     this.enqueue({
+      files: Boolean(event.files?.length),
       session,
-      text,
+      text: text || "Please review the attached files.",
       triggerTs: event.ts,
       user: event.user,
       key: eventKey(session, event.ts),
       // A direct message is always addressed to the app, so only a channel thread has more to read.
       history: event.type === "app_mention" && session.threadTs !== event.ts,
     });
+  }
+
+  private readonly skillChannels = new Map<string, string>();
+
+  /** Slack supports dynamic commands in code channels. Other channels use /skill. */
+  private async offerSkills(channel: string) {
+    const commands = (await this.routing()).client?.slack?.commands ?? [];
+    if (!commands.length && !this.skillChannels.has(channel)) return;
+    const signature = JSON.stringify(commands);
+    if (this.skillChannels.get(channel) === signature) return;
+    try {
+      await this.slack.call("agents.conversations.setCommands", { channel_id: channel, commands });
+    } catch (error) {
+      if (!(error instanceof SlackError) || error.code !== "not_agent_channel") {
+        this.log("Skill commands could not be registered; /skill remains available.");
+        return;
+      }
+    }
+    if (this.skillChannels.size >= 4096) this.skillChannels.clear();
+    this.skillChannels.set(channel, signature);
   }
 
   /** Offer this deployment's suggested prompts. Without any, Slack is not asked. */
@@ -734,6 +762,8 @@ export class App {
               ? this.copy.threads.notTheirsInBound
               : this.copy.threads.unmappedInBound,
           });
+        if (job.files)
+          throw new WarpError(403, "Files need a connected workspace account and client.");
         placed = await this.place(job);
         // Warp already has a run for this Slack event: it was answered before a restart.
         if (placed === "duplicate") return "done" as const;
@@ -823,6 +853,7 @@ export class App {
       ts: job.session.threadTs,
       message: messageTs,
       app_user: this.opts.botUser,
+      ...(job.files ? { files: true } : {}),
     };
   }
 
@@ -1229,7 +1260,7 @@ export class App {
     if (p.trigger_id && this.seen.has(dedupe)) return;
     this.seen.set(dedupe, true);
 
-    if (ui.id === ActionId.feedback) return this.onFeedback(ui, p.user.id);
+    if (ui.id === ActionId.feedback) return this.onFeedback(ui, p);
     // The Home tab's own controls, and Review on an item it shows.
     if (ui.payload.turnId === HOME_ID) return this.onHome(p, ui);
     if (ui.id === ActionId.open && (p.view?.type === "home" || p.container?.type === "view"))
@@ -1326,15 +1357,52 @@ export class App {
     return "started";
   }
 
-  /**
-   * A rating has nowhere to be stored yet: warp has no route for one, and
-   * Slack's rating control shows no selection to redraw. It is written to the
-   * log, so it is not lost while that is built.
-   */
-  private onFeedback(ui: UiAction, user: string) {
+  /** Open while the trigger is fresh; a skipped modal still keeps the rating. */
+  private async onFeedback(ui: UiAction, p: ActionPayload) {
     const event = feedbackEvent(ui);
-    if (event?.type === "feedback") {
-      this.log(`feedback on ${ui.payload.turnId} by ${user}: ${event.rating ?? "cleared"}`);
+    if (event?.type !== "feedback" || !event.rating) return;
+    const modal = p.trigger_id
+      ? this.slack.call("views.open", {
+          trigger_id: p.trigger_id,
+          view: feedbackModal({ turnId: ui.payload.turnId, rating: event.rating }),
+        })
+      : Promise.resolve();
+    const saved = this.saveFeedback(ui.payload.turnId, p.user.id, event.rating);
+    const results = await Promise.allSettled([modal, saved]);
+    if (results.some((r) => r.status === "rejected")) {
+      this.log(`feedback could not be completed for ${ui.payload.turnId}`);
+      await this.whisper(p, "Your feedback could not be saved or opened. Please try again.");
+    }
+  }
+
+  private readonly feedbackSaves = new Map<string, Promise<unknown>>();
+
+  private async saveFeedback(
+    run: string,
+    user: string,
+    rating: "up" | "down",
+    comment?: string,
+    reason?: string,
+  ) {
+    const key = `${run}/${user}`;
+    const previous = this.feedbackSaves.get(key) ?? Promise.resolve();
+    const saved = previous
+      .catch(() => {})
+      .then(async () => {
+        const as = await this.actAs(user);
+        if (!as) throw new Error("Feedback needs a connected workspace account");
+        return this.warp.saveFeedback(run, {
+          rating,
+          ...(comment ? { comment } : {}),
+          ...(reason ? { reason } : {}),
+          act_as: as,
+        });
+      });
+    this.feedbackSaves.set(key, saved);
+    try {
+      return await saved;
+    } finally {
+      if (this.feedbackSaves.get(key) === saved) this.feedbackSaves.delete(key);
     }
   }
 
@@ -1935,12 +2003,49 @@ export class App {
   }
 
   private async onCommand(c: CommandPayload): Promise<void> {
-    if (c.command !== ENTRY.command) return;
     if (c.trigger_id) {
       if (this.seen.has(`command-${c.trigger_id}`)) return;
       this.seen.set(`command-${c.trigger_id}`, true);
     }
+    if (c.command !== ENTRY.command && c.command !== "/skill") {
+      const skills = (await this.routing()).client?.slack?.commands ?? [];
+      const skill = skills.find((skill) => `/${skill.name}` === c.command);
+      if (!skill) return;
+      return this.start(
+        { channel: c.channel_id, user: c.user_id },
+        `/${skill.name} ${(c.text ?? "").trim()}`,
+        c.response_url,
+      );
+    }
     const text = (c.text ?? "").trim();
+    if (c.command === "/skill" || text === "skills" || text.startsWith("skill ")) {
+      const skills = (await this.routing()).client?.slack?.commands ?? [];
+      const args = c.command === "/skill" ? text : text === "skills" ? "" : text.slice(6).trim();
+      const [name, ...rest] = args.split(/\s+/);
+      if (!name || args === "skills" || args === "help") {
+        await this.slack.respond(c.response_url, {
+          response_type: "ephemeral",
+          text: skills.length
+            ? skills.map((skill) => `/${skill.name}: ${skill.description}`).join("\n")
+            : "No skills are configured for this app.",
+        });
+        return;
+      }
+      if (!skills.some((skill) => skill.name === name)) {
+        await this.slack.respond(c.response_url, {
+          response_type: "ephemeral",
+          text: "That skill is not available in this app. Use /skill to see available skills.",
+        });
+        return;
+      }
+      return this.start(
+        { channel: c.channel_id, user: c.user_id },
+        `/${name} ${rest.join(" ")}`.trim(),
+        c.response_url,
+      );
+    }
+    if (text === "connections") return this.openConnections(c);
+    if (text.startsWith("canvas ")) return this.publishCanvas(c, text.slice(7).trim());
     if (!text || text === "help") {
       // Who can be asked, in the platform's own words.
       // warp: needs an AgentList component (name, description), as the console's agent menu shows.
@@ -1957,6 +2062,65 @@ export class App {
       return;
     }
     await this.start({ channel: c.channel_id, user: c.user_id }, text, c.response_url);
+  }
+
+  private async openConnections(c: CommandPayload) {
+    const opened = await this.slack.call<{ view: { id: string } }>("views.open", {
+      trigger_id: c.trigger_id,
+      view: connectionsModal(undefined, c.channel_id),
+    });
+    const as = await this.actAs(c.user_id);
+    if (!as) {
+      await this.slack.call("views.update", {
+        view_id: opened.view.id,
+        view: connectionsModal(
+          [],
+          c.channel_id,
+          "Ask a workspace administrator to connect your Slack identity to a workspace account.",
+        ),
+      });
+      return;
+    }
+    const status = await this.warp.connections(as);
+    await this.slack.call("views.update", {
+      view_id: opened.view.id,
+      view: connectionsModal(status.providers, c.channel_id),
+    });
+  }
+
+  private async publishCanvas(c: CommandPayload, id: string) {
+    const as = await this.actAs(c.user_id);
+    const run = as ? await this.warp.getRunFor(id, as) : null;
+    const session = run && (await this.sessionOfRun(run));
+    if (
+      !run ||
+      !session ||
+      session.team !== this.opts.team ||
+      session.channel !== c.channel_id ||
+      !terminal(run.status) ||
+      !run.answer
+    ) {
+      await this.slack.respond(c.response_url, {
+        response_type: "ephemeral",
+        text: "Choose a finished answer from this channel: /agent canvas RUN_ID.",
+      });
+      return;
+    }
+    const canvas = await this.slack.call<{ canvas_id: string }>("canvases.create", {
+      title: `${run.agent}: ${run.text.slice(0, 100)}`,
+      document_content: { type: "markdown", markdown: run.answer },
+    });
+    await this.slack.call("canvases.access.set", {
+      canvas_id: canvas.canvas_id,
+      ...(c.channel_id.startsWith("D")
+        ? { user_ids: [c.user_id] }
+        : { channel_ids: [c.channel_id] }),
+      access_level: "read",
+    });
+    await this.slack.respond(c.response_url, {
+      response_type: "ephemeral",
+      text: `Canvas: https://app.slack.com/docs/${this.opts.team}/${canvas.canvas_id}`,
+    });
   }
 
   private async onInteractive(p: InteractivePayload): Promise<void> {
@@ -1990,6 +2154,42 @@ export class App {
       });
       return;
     }
+    if (p.type === "view_submission" && p.view?.callback_id === CONNECTIONS_MODAL) {
+      const as = await this.actAs(p.user.id);
+      if (!as) throw new Error("Connections need a mapped workspace account");
+      const values = p.view.state?.values;
+      const provider = (
+        values?.provider?.value?.selected_option?.value ?? values?.provider?.value?.value
+      )?.trim();
+      const operation = values?.operation?.value?.selected_option?.value;
+      if (!provider) return;
+      let text = "Connection updated.";
+      try {
+        if (operation === "disconnect") await this.warp.disconnect(provider, as);
+        else {
+          const ref = values?.reference?.value?.value?.trim();
+          if (!ref) throw new Error("A credential reference is required");
+          await this.warp.connect(provider, ref, as);
+        }
+      } catch {
+        text =
+          "Your connection could not be updated. Open /agent connections and check the provider and your allowed credential reference.";
+      }
+      if (p.view.private_metadata)
+        await this.slack.call("chat.postEphemeral", {
+          channel: p.view.private_metadata,
+          user: p.user.id,
+          text,
+        });
+      return;
+    }
+    const feedback = p.type === "view_submission" && p.view ? decodeFeedbackModal(p.view) : null;
+    if (feedback) {
+      const { turnId, target, text, option } = feedback.payload;
+      if (target === "up" || target === "down")
+        await this.saveFeedback(turnId, p.user.id, target, text, option);
+      return;
+    }
     const reply = p.type === "view_submission" && p.view ? decodeReplyModal(p.view) : null;
     if (reply) return this.onReply(p.user.id, reply.text, reply.target);
     if (p.type !== "view_submission" || p.view?.callback_id !== ENTRY.form) return;
@@ -2015,6 +2215,7 @@ function teamOf(type: string, p: Record<string, unknown>): string | undefined {
 
 interface SlackEvent {
   type: string;
+  files?: { id: string }[];
   subtype?: string;
   channel?: string;
   channel_id?: string;
@@ -2049,7 +2250,12 @@ interface InteractivePayload {
   view?: {
     callback_id: string;
     private_metadata?: string;
-    state?: { values?: Record<string, Record<string, { value?: string }>> };
+    state?: {
+      values?: Record<
+        string,
+        Record<string, { value?: string | null; selected_option?: { value: string } | null }>
+      >;
+    };
   };
 }
 

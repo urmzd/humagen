@@ -191,10 +191,29 @@ describe("renderToSlack", () => {
 });
 
 describe("feedbackModal", () => {
+  it("ignores malformed modal metadata without losing the event handler", () => {
+    for (const private_metadata of [
+      "{",
+      "null",
+      "[]",
+      '{"turnId":"t","rating":"invalid"}',
+      '{"turnId":4,"rating":"up"}',
+    ]) {
+      expect(
+        decodeFeedbackModal({
+          callback_id: "aui.feedback.modal",
+          private_metadata,
+          state: { values: { comment: { value: { value: "hello" } } } },
+        }),
+      ).toBeNull();
+    }
+  });
+
   it("carries the turn and rating, and asks only optional questions", () => {
     const view = feedbackModal({ turnId: "turn-1", rating: "down" });
     expect(JSON.parse(view.private_metadata)).toEqual({ turnId: "turn-1", rating: "down" });
     expect(view.title.text).toBe("What went wrong?");
+    expect(view.blocks.at(-1)).toMatchObject({ element: { max_length: 3000 } });
     expect(view.close.text).toBe("Skip");
     expect(view.blocks.map((b) => [b.block_id, b.optional])).toEqual([
       ["reason", true],

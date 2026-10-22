@@ -3,7 +3,7 @@ import { ActionId, type UiAction } from "@warp/core";
 /**
  * The comment prompt that follows a rating on Slack. Feedback buttons can't
  * ask anything themselves, so the host opens this modal on the click's
- * trigger_id. The rating is already recorded by then: submitting adds a
+ * trigger_id. The host saves the rating alongside opening it: submitting adds a
  * comment, and closing the modal ("Skip") adds nothing and loses nothing.
  */
 
@@ -86,6 +86,7 @@ export function feedbackModal(
           type: "plain_text_input",
           action_id: "value",
           multiline: true,
+          max_length: 3000,
           placeholder: plain(l.placeholder, 150),
         },
       },
@@ -108,10 +109,15 @@ export function decodeFeedbackModal(view: {
   };
 }): UiAction | null {
   if (view.callback_id !== FEEDBACK_MODAL || !view.private_metadata) return null;
-  const { turnId, rating } = JSON.parse(view.private_metadata) as {
-    turnId: string;
-    rating: "up" | "down";
-  };
+  let metadata: unknown;
+  try {
+    metadata = JSON.parse(view.private_metadata);
+  } catch {
+    return null;
+  }
+  if (!metadata || typeof metadata !== "object") return null;
+  const { turnId, rating } = metadata as { turnId?: unknown; rating?: unknown };
+  if (typeof turnId !== "string" || !turnId || (rating !== "up" && rating !== "down")) return null;
   const text = view.state?.values?.comment?.value?.value?.trim();
   const option = view.state?.values?.reason?.value?.selected_option?.value;
   if (!text && !option) return null;
