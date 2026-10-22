@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.20.0 (2026-10-22)
+
+### Features
+
+- **console**: chat by mention, private conversations with Share, the + menu with Best Fit and All of Them, skills, Conversations, Home boxes and UI patterns (#50) ([909edd3](https://github.com/urmzd/warp/commit/909edd31a0e648ed8f17d69da282b7f214cafb69))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.19.0...v0.20.0)
+
+
 ## 0.19.0 (2026-10-22)
 
 ### Features
