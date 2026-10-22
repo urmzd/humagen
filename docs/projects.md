@@ -107,7 +107,11 @@ parent.
   only while no run has been filed in it ("a conversation that has runs stays
   in its project"), and a thread on a Slack or GitHub surface stays where and
   as its binding filed it. A mention raised in it is read where it is now.
-  Shared is not made private again.
+  A default or a selected agent that cannot answer where it goes is dropped
+  in the same write. A message posted just before a move starts nothing for
+  a poster who may not post where the conversation went, and says so. Only a
+  participant moves one, so a governor who reads it without taking part does
+  not. Shared is not made private again.
 - A thread may select agents to answer its untagged messages: `agents` (at
   most 5, each available in the thread's project) and `mode`, `best_fit` or
   `all`. The console shows them as chips beside the composer, apart from

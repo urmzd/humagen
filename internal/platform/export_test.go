@@ -145,3 +145,7 @@ func (p *Platform) SkillNamesOf(tenant string, th threads.Thread, m threads.Mess
 	}
 	return out
 }
+
+// BeforeCarryOut runs fn after each message is posted and before what it
+// starts is decided, as a share landing then would.
+func (p *Platform) BeforeCarryOut(fn func()) { p.beforeCarryOut = fn }
