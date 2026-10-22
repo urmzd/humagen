@@ -4,7 +4,7 @@ import { type Alert, type AlertRule, ApiError, alertRuleEdit, api, type Revision
 import { Analytics } from "./Analytics.tsx";
 import { type ProjectRef, projectOptions, titleIn } from "./projects.ts";
 import type { MonitorTab } from "./route.ts";
-import { agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Tabs, useStrip } from "./ui.tsx";
+import { agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Tabs, useStrip, textLink } from "./ui.tsx";
 
 const kindLabel: Record<AlertRule["kind"], string> = {
   run_failed: "A run fails",
@@ -44,9 +44,6 @@ export function describe(r: AlertRule, projects: readonly ProjectRef[] = []): st
       return `When ${r.threshold}% or more of ${scope}'s runs fail over ${span(r.window_seconds)}, with at least ${r.min_runs} runs.`;
   }
 }
-
-const linkish =
-  "rounded-aui-sm text-aui-fg underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-aui-accent";
 
 /** Severity as a word and a mark, so it never depends on color alone. */
 function Severity({ level }: { level: AlertRule["severity"] }) {
@@ -281,7 +278,7 @@ export function Monitor({
                       {fired.slice(0, 3).map((a) => (
                         <li key={a.id} className="flex items-baseline gap-3 py-0.5 text-aui-sm">
                           {onOpenAlert ? (
-                            <button type="button" className={`${linkish} min-w-0 truncate text-left`} onClick={() => onOpenAlert(a)}>
+                            <button type="button" className={`${textLink} min-w-0 truncate text-left`} onClick={() => onOpenAlert(a)}>
                               {a.title}
                             </button>
                           ) : (

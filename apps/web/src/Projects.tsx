@@ -46,6 +46,7 @@ import {
   agentOptions,
   ago,
   button,
+  Count,
   FlashNote,
   field,
   Label,
@@ -697,8 +698,9 @@ function SubProjects({
   return (
     <section className={section} aria-label={words.subProjects}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={heading}>
-          {words.subProjects} ({detail.children.length})
+        <h2 className={`${heading} flex items-center gap-2`}>
+          {words.subProjects}
+          {detail.children.length > 0 && <Count n={detail.children.length} />}
         </h2>
         {canCreate && room && !adding && (
           <button type="button" className={button} onClick={() => setAdding(true)}>
@@ -792,7 +794,10 @@ function Scheduled({
   return (
     <section className={section}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={heading}>Scheduled ({timed.length})</h2>
+        <h2 className={`${heading} flex items-center gap-2`}>
+          Scheduled
+          {timed.length > 0 && <Count n={timed.length} />}
+        </h2>
         <span className="flex flex-wrap gap-2">
           {recap && canSchedule && recapper && !hasRecap && (
             <button type="button" className={button} onClick={addRecap}>
@@ -1100,7 +1105,7 @@ function Breadcrumb({
       <ol className="flex flex-wrap items-center gap-x-1 text-aui-xs text-aui-muted">
         {detail.ancestors.map((a) => (
           <li key={a.name} className="flex items-center gap-1">
-            <Go to={projectHref(a.name)} onGo={() => onOpen(a.name)} className="rounded-aui hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent">
+            <Go to={projectHref(a.name)} onGo={() => onOpen(a.name)} className="inline-flex min-h-6 items-center rounded-aui hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent">
               {titleOf(a, workspaceName)}
             </Go>
             <span aria-hidden>›</span>
@@ -1193,6 +1198,8 @@ export function ProjectPage({
   const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState<string | null>(null);
   const [reads, setReads] = useState(0);
+  // The agent that answers what tags no agent here, for the meta line. Left out until read.
+  const [lead, setLead] = useState<string | null>(null);
   // A mute that did not take says so beside its button.
   const { flash: muteFlash, say: sayMute, clear: clearMute } = useFlash();
 
@@ -1209,6 +1216,10 @@ export function ProjectPage({
       .catch((e) => {
         if (live && e instanceof ApiError && e.status === 404) setMissing(true);
       });
+    api
+      .projectAgents(name)
+      .then((v) => live && setLead(v.default_resolved?.agent || null))
+      .catch(() => {});
     return () => {
       live = false;
     };
@@ -1259,7 +1270,23 @@ export function ProjectPage({
       back={back}
       icon={<FolderIcon size={28} />}
       title={titleOf(p, workspaceName)}
-      meta={<span>{meta}</span>}
+      meta={
+        <span className="inline-flex flex-wrap items-center gap-x-1.5">
+          {meta}
+          {lead && (
+            <>
+              <span aria-hidden>·</span>
+              {words.lead}
+              {lead === "auto" ? "@auto" : (
+                <span className="inline-flex items-center gap-1">
+                  <AgentMark name={lead} size={12} />
+                  {lead}
+                </span>
+              )}
+            </>
+          )}
+        </span>
+      }
       crumbs={root ? undefined : <Breadcrumb detail={detail} workspaceName={workspaceName} onOpen={onOpen} />}
       lede={root ? words.workspaceHint : p.description}
       actions={

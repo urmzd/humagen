@@ -354,7 +354,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const editing = agents.find((a) => a.spec.name === agentName) ?? null;
   const shownName = prefs?.display_name || me.principal.name || "";
   const updates = useMemo((): Loaded<HomeUpdate[]> | undefined => {
-    if (!can("projects:read")) return undefined;
+    // The inbox, where announcements are read, needs runs:read too.
+    if (!can("runs:read") || !can("projects:read")) return undefined;
     if (announced.state !== "ready") return announced;
     const titles = new Map((projects ?? []).map((p) => [p.name, p.title || p.name]));
     return {
@@ -430,6 +431,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               <HomeBoxes
                 notifications={notifications}
                 updates={updates}
+                canStart={can("runs:write") && agents.length > 0}
                 onOpen={(n) => go({ page: "inbox", message: n.id })}
                 onInbox={() => go({ page: "inbox" })}
                 onUpdate={(u) => go({ page: "project", name: u.project, tab: "inbox", message: u.id })}

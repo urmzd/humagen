@@ -1,10 +1,11 @@
+import { defaultCopy } from "@warp/components";
 import { ActionId, type InboxMessage, messageState, openParts, type UiAction } from "@warp/core";
 import { Mailbox, type MailboxShow } from "@warp/web";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useHeld, useInbox } from "./inbox.ts";
 import { platformParts } from "./MailParts.tsx";
 import { kinds, type PlatformMessage, type Source, shownAbout, type Transport, transport as platform } from "./mail.ts";
-import { AgentMark, Empty, Problem, SkeletonRows, Stroke, type StrokeState, useStrip } from "./ui.tsx";
+import { AgentMark, Empty, Page, Problem, SkeletonRows, Stroke, type StrokeState, useStrip } from "./ui.tsx";
 
 /** The id in the address, so a message can be linked to. */
 function linked(): string | null {
@@ -83,7 +84,10 @@ export function MailboxView({
   onShow,
   messageActions,
   emptyOpen,
+  heading,
 }: {
+  /** `false` where the page is the inbox, so its title and count are the page's. */
+  heading?: 2 | false;
   /** The page's own controls for the message being read, such as Withdraw. */
   messageActions?: (message: PlatformMessage) => ReactNode;
   /** What an empty Open view says, when the default does not fit the page. */
@@ -116,6 +120,7 @@ export function MailboxView({
       toolbar={toolbar}
       listEnd={listEnd}
       openCount={openCount}
+      heading={heading}
       show={show}
       onShow={onShow}
       messageActions={messageActions && ((m) => messageActions(m as PlatformMessage))}
@@ -213,7 +218,8 @@ export function InboxPage({
   }
 
   return (
-    <div data-testid="inbox" className="warp-fade flex min-h-0 flex-1 flex-col gap-3 px-5 pt-8 pb-4 md:px-10">
+    <Page title={defaultCopy.inbox} meta={open > 0 ? <span>{defaultCopy.mailbox.openCount(open)}</span> : undefined}>
+      <div data-testid="inbox" className="flex min-h-0 flex-1 flex-col gap-3">
       <p className="sr-only" aria-live="polite">
         {open === 0 ? "Nothing is waiting on you." : `${open} open, ${unread} unread.`}
       </p>
@@ -226,6 +232,7 @@ export function InboxPage({
         <SkeletonRows count={5} height="3rem" className="max-w-md" />
       ) : (
         <MailboxView
+          heading={false}
           messages={messages}
           selectedId={selected}
           onSelect={setSelected}
@@ -252,6 +259,7 @@ export function InboxPage({
           }
         />
       )}
-    </div>
+      </div>
+    </Page>
   );
 }

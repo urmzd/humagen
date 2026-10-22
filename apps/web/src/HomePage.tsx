@@ -37,7 +37,9 @@ export type Loaded<T> = { state: "loading" } | { state: "failed" } | { state: "r
  * one box. A box left out is one the person may not read. Nothing here moves:
  * it waits on the person.
  */
-export function HomeBoxes({ notifications, updates, onOpen, onInbox, onUpdate, onUpdates }: {
+export function HomeBoxes({ notifications, updates, canStart = true, onOpen, onInbox, onUpdate, onUpdates }: {
+  /** Whether the person can start a conversation above, which the welcome tells them to. */
+  canStart?: boolean;
   notifications?: Loaded<HomeModel["notifications"]>;
   updates?: Loaded<NonNullable<HomeModel["updates"]>>;
   onOpen: (item: HomeNotification) => void;
@@ -51,13 +53,14 @@ export function HomeBoxes({ notifications, updates, onOpen, onInbox, onUpdate, o
   const items = notifications?.state === "ready" ? orderNotifications(notifications.value.items).slice(0, HOME_NEEDS) : [];
   const total = notifications?.state === "ready" ? Math.max(notifications.value.inbox?.total ?? 0, notifications.value.items.length) : 0;
   const news = updates?.state === "ready" ? orderUpdates(updates.value) : [];
+  const marked = news.some((u) => u.unread);
   const ready = (l?: Loaded<unknown>) => l === undefined || l.state === "ready";
   const column = "mx-auto w-full max-w-4xl px-4 pt-8";
   if (ready(notifications) && ready(updates) && total === 0 && news.length === 0) {
     return (
       <div className={column}>
         <Section box title={c.welcome.title}>
-          <p className="max-w-[62ch] text-aui-sm text-aui-muted">{c.welcome.text}</p>
+          <p className="max-w-[62ch] text-aui-sm text-aui-muted">{canStart ? c.welcome.text : c.welcome.quiet}</p>
         </Section>
       </div>
     );
@@ -111,7 +114,8 @@ export function HomeBoxes({ notifications, updates, onOpen, onInbox, onUpdate, o
                 <li key={u.id}>
                   <RowButton
                     onClick={() => onUpdate(u)}
-                    lead={u.unread ? <span aria-hidden className="size-1.5 rounded-full bg-aui-accent" /> : null}
+                    // The mark's column is kept only when some row is marked, so the rows line up either way.
+                    lead={marked ? u.unread ? <span aria-hidden className="size-1.5 rounded-full bg-aui-accent" /> : null : undefined}
                     title={
                       <>
                         {u.unread && <span className="sr-only">{copy.mailbox.unread}: </span>}

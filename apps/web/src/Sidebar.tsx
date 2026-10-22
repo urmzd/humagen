@@ -553,7 +553,7 @@ export function DrawerButton({ open, inboxCount, onOpen }: { open: boolean; inbo
       data-testid="drawer-button"
       onClick={onOpen}
       aria-label={inboxCount > 0 ? `Open sidebar, ${inboxCount} need you` : "Open sidebar"}
-      className="fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-2 z-30 inline-flex size-9 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent md:hidden"
+      className="fixed top-[calc(0.5rem+env(safe-area-inset-top))] left-4 z-30 inline-flex size-9 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent md:hidden"
     >
       <PanelLeftOpenIcon size={20} />
       {inboxCount > 0 && <span aria-hidden className="absolute top-1.5 right-1.5 size-2 rounded-full bg-aui-accent" />}

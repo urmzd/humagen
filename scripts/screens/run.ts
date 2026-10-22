@@ -228,6 +228,17 @@ async function emptied(call: Call): Promise<void> {
   if (quiet < 5) throw new Error("the inbox did not stay empty");
 }
 
+/** Ids the screen list is checked against before anything is seeded. */
+const ids0 = { task: "", artifact: "", schedule: "" };
+
+async function waitFor(ok: () => Promise<boolean>, failure: string): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    if (await ok()) return;
+    await sleep(100);
+  }
+  throw new Error(failure);
+}
+
 async function settled(call: Call, id: string): Promise<void> {
   for (let i = 0; i < 100; i++) {
     const r = await call<{ status: string }>("GET", `/api/runs/${id}`);
@@ -238,7 +249,12 @@ async function settled(call: Call, id: string): Promise<void> {
 }
 
 /** Capture one screen, then measure it. */
-async function shoot(page: Page, base: string, vp: Viewport, s: Screen): Promise<Problem[]> {
+async function shoot(
+  page: Page,
+  base: string,
+  vp: Viewport,
+  s: Screen,
+): Promise<{ problems: Problem[]; full: boolean }> {
   await page.goto(`${base}${s.path}`, { waitUntil: "domcontentloaded" });
   // Ready when the page has drawn its title and the loading placeholders are gone.
   await page.waitForSelector("h1", { timeout: 15_000 }).catch(() => {});
@@ -253,14 +269,36 @@ async function shoot(page: Page, base: string, vp: Viewport, s: Screen): Promise
   await sleep(300);
   const file = join(out, vp.name, `${s.name}.png`);
   await page.screenshot({ path: file });
-  return judge(await page.evaluate(collect), vp.rules);
+  const problems = judge(await page.evaluate(collect), vp.rules);
+  // The page scrolls inside its own column, so a screenshot of the window
+  // shows only the first screen. For review, the window is made as tall as
+  // the column's content once more, and that is kept beside it.
+  const extra = await page.evaluate(() => {
+    let most = 0;
+    for (const el of document.querySelectorAll("main *")) {
+      const st = getComputedStyle(el);
+      if (st.overflowY !== "auto" && st.overflowY !== "scroll") continue;
+      most = Math.max(most, el.scrollHeight - el.clientHeight);
+    }
+    return most;
+  });
+  if (extra > 8) {
+    await page.setViewportSize({ width: vp.width, height: Math.min(vp.height + extra, 8000) });
+    await sleep(200);
+    await page.screenshot({ path: join(out, vp.name, `${s.name}.full.png`) });
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+  }
+  return { problems, full: extra > 8 };
 }
 
 interface Result {
   screen: string;
   path: string;
   viewport: Viewport["name"];
+  /** The first screen, as a person sees it on arrival. */
   file: string;
+  /** The whole page, when it scrolls. */
+  full?: string;
   problems: Problem[];
 }
 
@@ -287,12 +325,13 @@ async function capture(
     const page = await context.newPage();
     for (const s of list) {
       const screen = `${s.name}${tag}`;
-      const problems = await shoot(page, base, vp, { ...s, name: screen });
+      const { problems, full } = await shoot(page, base, vp, { ...s, name: screen });
       results.push({
         screen,
         path: s.path,
         viewport: vp.name,
         file: `${vp.name}/${screen}.png`,
+        ...(full ? { full: `${vp.name}/${screen}.full.png` } : {}),
         problems,
       });
       const mark = problems.length ? `FAIL ${problems.length}` : "ok";
@@ -313,7 +352,8 @@ function report(results: Result[]): void {
         const r = results.find((x) => x.screen === name && x.viewport === vp.name);
         if (!r) return "<td></td>";
         const list = r.problems.map((p) => `<li>${p.check}: ${esc(p.detail)}</li>`).join("");
-        return `<td><a href="${r.file}"><img src="${r.file}" loading="lazy" width="${vp.name === "phone" ? 195 : 400}"></a>${list ? `<ul>${list}</ul>` : ""}</td>`;
+        const whole = r.full ? `<br><a href="${r.full}">The whole page</a>` : "";
+        return `<td><a href="${r.file}"><img src="${r.file}" loading="lazy" width="${vp.name === "phone" ? 195 : 400}"></a>${whole}${list ? `<ul>${list}</ul>` : ""}</td>`;
       }).join("");
       return `<tr><th>${esc(name)}</th>${cells}</tr>`;
     })
@@ -325,11 +365,22 @@ function report(results: Result[]): void {
 }
 
 async function main(): Promise<void> {
+  // A mistyped name would otherwise capture nothing and pass.
+  const unknown = only.filter((n) => n !== "home-new" && !screens(ids0).some((s) => s.name === n));
+  if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
+  // Only a folder this script wrote, or a new one, is cleared.
+  if (existsSync(out) && readdirSync(out).length > 0 && !existsSync(join(out, "report.json"))) {
+    throw new Error(
+      `${out} is not empty and holds no report.json, so it is not cleared. Set SCREENS_OUT to another folder.`,
+    );
+  }
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
+  const executablePath = chromiumPath();
   const { base, proc, dir } = await startWarp(await freePort());
-  const browser = await chromium.launch({ executablePath: chromiumPath(), args: ["--no-sandbox"] });
+  let browser: Browser | undefined;
   try {
+    browser = await chromium.launch({ executablePath, args: ["--no-sandbox"] });
     const call = api(base);
     const results: Result[] = [];
 
@@ -384,6 +435,11 @@ async function main(): Promise<void> {
       const r = await call<{ id: string }>("POST", "/api/runs", { agent: a.name, text: a.text });
       await settled(call, r.id);
     }
+    // Each failure's alert reaches the inbox after its run ends.
+    await waitFor(
+      async () => (await call<{ open: number }>("GET", "/api/inbox/count")).open >= broken.length,
+      "the alerts did not reach the inbox",
+    );
     await call("POST", "/api/schedules", {
       name: "weekly-summary",
       expression: "0 9 * * 1",
@@ -411,7 +467,7 @@ async function main(): Promise<void> {
       process.exitCode = 1;
     }
   } finally {
-    await browser.close();
+    await browser?.close();
     proc.kill();
     rmSync(dir, { recursive: true, force: true });
   }

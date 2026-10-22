@@ -49,12 +49,12 @@ const noop = () => {};
 const boxes = (props: Partial<Parameters<typeof HomeBoxes>[0]>) =>
   renderToStaticMarkup(<HomeBoxes onOpen={noop} onInbox={noop} onUpdate={noop} onUpdates={noop} {...props} />);
 /** The text of each box's heading, in order. */
-const headings = (html: string) => [...html.matchAll(/<h2[^>]*>(.*?)<\/h2>/g)].map((m) => (m[1] ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+const headings = (html: string) => [...html.matchAll(/<h2[^>]*>(.*?)<\/h2>/g)].map((m) => (m[1] ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").replace(/ ,/g, ",").trim());
 
 test("Needs you is a box of the five newest things waiting on the person, from whom, with the count of all of them and the way to the rest", () => {
   const items = [need("m-1", 50), need("m-2", 5, "any-run-fails", "triage failed"), need("m-3", 40), need("m-4", 30), need("m-5", 20), need("m-6", 10)];
   const html = boxes({ notifications: ready({ items, inbox: { total: 9 } }), updates: ready([update("a-1", "Launch moves", "Launch", true)]) });
-  assert.deepEqual(headings(html), ["Needs you 9", "What&#x27;s new"]);
+  assert.deepEqual(headings(html), ["Needs you, 9", "What&#x27;s new"]);
   assert.match(html, />Open Inbox</);
   const shown = [...html.matchAll(/published (report-m-\d)\.md|(triage failed)/g)].map((m) => m[1] ?? m[2]);
   // Newest first, at most five: the oldest (m-1) is counted, not listed.
@@ -105,7 +105,7 @@ test("while Home reads, its boxes say so without moving, and a read that failed 
 
 test("a box the person may not read is left out, and with neither there is nothing", () => {
   const html = boxes({ notifications: ready({ items: [need("m-1", 5)], inbox: { total: 1 } }) });
-  assert.deepEqual(headings(html), ["Needs you 1"]);
+  assert.deepEqual(headings(html), ["Needs you, 1"]);
   assert.equal(boxes({}), "");
 });
 

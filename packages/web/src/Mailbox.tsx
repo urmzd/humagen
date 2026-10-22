@@ -107,6 +107,12 @@ export interface MailboxProps {
   openCount?: number;
   /** ISO time used to decide whether a snooze has ended. */
   now?: string;
+  /**
+   * The mailbox's own title and count: an h2 (the default) inside a page that
+   * has its own title, such as a project's; `false` where the host's page is
+   * the inbox and its title and count are the page's, as the console's Inbox is.
+   */
+  heading?: 2 | false;
   className?: string;
 }
 
@@ -280,6 +286,7 @@ export function Mailbox({
   onShow,
   openCount,
   now,
+  heading = 2,
   className,
 }: MailboxProps) {
   const copy = defaultCopy;
@@ -469,38 +476,53 @@ export function Mailbox({
   );
 
   const nothingOpen = show === "open" && !filter;
+  const showControl = (
+    <>
+      {/* Open, resolved or all: a quiet segmented control, never a native select. */}
+      {show && (
+        <fieldset className="ml-auto inline-flex shrink-0 rounded-aui border border-aui-border p-0.5">
+          <legend className="sr-only">{copy.show.label}</legend>
+          {(Object.keys(SHOW) as MailboxShow[]).map((id) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={show === id}
+              onClick={() => setShow(id)}
+              className="h-6 rounded-aui-sm px-2.5 text-aui-muted text-aui-xs transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-subtle aria-pressed:text-aui-fg motion-reduce:transition-none"
+            >
+              {copy.show[id]}
+            </button>
+          ))}
+        </fieldset>
+      )}
+    </>
+  );
 
   return (
     <section
       aria-label={copy.inbox}
       className={`@container flex min-h-0 min-w-0 flex-col ${className ?? ""}`}
     >
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 pb-3">
-        <h2 className="font-semibold text-aui-lg">{copy.inbox}</h2>
-        {count > 0 && (
-          <span className="rounded-full bg-aui-accent-soft px-2 py-0.5 font-medium text-aui-2xs text-aui-fg tabular-nums">
-            {count} open
-          </span>
-        )}
-        {/* Open, resolved or all: a quiet segmented control, never a native select. */}
-        {show && (
-          <fieldset className="ml-auto inline-flex shrink-0 rounded-aui border border-aui-border p-0.5">
-            <legend className="sr-only">{copy.show.label}</legend>
-            {(Object.keys(SHOW) as MailboxShow[]).map((id) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={show === id}
-                onClick={() => setShow(id)}
-                className="h-6 rounded-aui-sm px-2.5 text-aui-muted text-aui-xs transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-subtle aria-pressed:text-aui-fg motion-reduce:transition-none"
-              >
-                {copy.show[id]}
-              </button>
-            ))}
-          </fieldset>
-        )}
-      </header>
-      {toolbar && <div className="min-w-0 pb-2">{toolbar}</div>}
+      {heading !== false && (
+        <header className="flex flex-wrap items-center gap-x-3 gap-y-2 pb-3">
+          <h2 className="font-semibold text-aui-lg">{copy.inbox}</h2>
+          {count > 0 && (
+            <span className="rounded-full bg-aui-accent-soft px-2 py-0.5 font-medium text-aui-2xs text-aui-fg tabular-nums">
+              {count} open
+            </span>
+          )}
+          {showControl}
+        </header>
+      )}
+      {heading === false
+        ? // With no title of its own, the show control sits at the end of the filters' row.
+          (toolbar || show) && (
+            <div className="flex min-w-0 flex-wrap items-center gap-2 pb-2">
+              <div className="min-w-0 flex-1">{toolbar}</div>
+              {showControl}
+            </div>
+          )
+        : toolbar && <div className="min-w-0 pb-2">{toolbar}</div>}
       <div className="flex min-h-0 min-w-0 flex-1 border-aui-border border-t">
         <div
           className={`min-h-0 w-full min-w-0 flex-col @2xl:flex @2xl:w-[22rem] @2xl:shrink-0 @2xl:border-aui-border @2xl:border-r @2xl:pr-2 @5xl:w-[26rem] ${selected ? "hidden" : "flex"}`}

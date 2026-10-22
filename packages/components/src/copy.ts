@@ -146,6 +146,8 @@ export const defaultCopy = {
     `${used} of ${limit} used${period ? ` this ${period}` : ""}.${needs ? ` This run needs ${needs} more.` : ""}`,
   noPermission: "You can read this, but you don't have permission to resolve it.",
   mailbox: {
+    /** How many are open, beside the Inbox's title. */
+    openCount: (n: number) => `${n} open`,
     empty: "Nothing here",
     emptyHint: "Approvals, questions, alerts and new artifacts arrive here, and are resolved here.",
     emptyOpen: "You're all caught up",
@@ -689,6 +691,8 @@ export const defaultCopy = {
     welcome: {
       title: "Welcome",
       text: "Ask an agent above to start. When an agent needs you, or someone posts in one of your projects, it shows here.",
+      /** For a person who cannot start a conversation here. */
+      quiet: "When an agent needs you, or someone posts in one of your projects, it shows here.",
     },
     yourProjects: "Your projects",
     noProjects: "You are not in any project yet.",
@@ -753,6 +757,8 @@ export const defaultCopy = {
     emptyCreate: "No projects yet. Make one to keep related conversations together.",
     noMatch: "No project matches.",
     allProjects: "All projects",
+    /** Before the agent that answers a project's untagged messages, in its meta line: "Lead globex-helper". */
+    lead: "Lead",
     missing: (name: string) => `No project named ${name}`,
     missingHint: "It may have been deleted, or you may not be allowed to see it.",
     breadcrumb: "Where this project sits",
