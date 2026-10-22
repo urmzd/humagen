@@ -25,6 +25,8 @@ func TestTheFirstRuleThatAppliesDecides(t *testing.T) {
 		{"a refused agent sends nothing to the default", threads.Input{Mentions: []threads.Mention{refused(agent("scribe"))}, Default: ignite}, threads.RuleTagged, []string{}},
 		{"people only", threads.Input{Mentions: []threads.Mention{person("okta|dana")}, Default: ignite}, threads.RulePeople, []string{}},
 		{"experts only", threads.Input{Mentions: []threads.Mention{sme("billing")}, Default: ignite}, threads.RulePeople, []string{}},
+		{"a role only", threads.Input{Mentions: []threads.Mention{role("sre")}, Default: ignite}, threads.RulePeople, []string{}},
+		{"a skill with @auto added", threads.Input{Mentions: threads.WithSkillAgent([]threads.Mention{skillOf("review")}), Default: ignite}, threads.RuleTagged, []string{"auto"}},
 		{"a tag that names nobody is still a person's", threads.Input{Mentions: []threads.Mention{{Kind: threads.Person, Name: "ignit", Refused: "no one goes by @ignit"}}, Default: ignite}, threads.RulePeople, []string{}},
 		{"a reply", threads.Input{Reply: true, PostOnly: true, Default: ignite}, threads.RuleReply, []string{}},
 		{"post only", threads.Input{PostOnly: true, Default: ignite}, threads.RulePostOnly, []string{}},
