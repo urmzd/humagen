@@ -29,7 +29,6 @@ var wholeFiles = []struct{ pattern, why string }{
 	{"deploy/helm/check.sh", "checks that a warp release keeps its names"},
 	{".gitignore", "where deploy wrote before the rename"},
 	{".dockerignore", "where deploy wrote before the rename"},
-	{".rename/*", "working notes, removed before merge"},
 	{"*_test.go", "tests exercise the old names"},
 	{"*.test.ts", "tests exercise the old names"},
 	{"*.test.tsx", "tests exercise the old names"},
