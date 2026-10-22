@@ -528,15 +528,10 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 			return
 		}
 		if !person.Can(auth.RunsWrite) {
-			s.problem(w, fmt.Errorf("%w: %s may not start runs (asking needs %s)", platform.ErrForbidden, person.Subject, auth.RunsWrite))
+			s.problem(w, fmt.Errorf("%w: %s may not start runs (asking needs %s)", platform.ErrForbidden, s.P.NameOf(who.Tenant, person.Subject), auth.RunsWrite))
 			return
 		}
 		asks, actor, client = person, platform.PersonActor(person.Subject), body.ActAs.Client
-	}
-	// The person a run acts for is called what the directory calls them,
-	// never by their subject, which can hold an address.
-	if actor.User != "" {
-		actor.Display = s.P.NameOf(who.Tenant, actor.User)
 	}
 	// Starting work in a project, or adding a turn to work there, takes
 	// being a member of it. A project the person may not see answers as

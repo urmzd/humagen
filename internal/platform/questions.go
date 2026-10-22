@@ -733,7 +733,7 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 	}
 	if a.ActAs != nil && !mayResume(who, reader) {
 		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "no runs:write")
-		return inbox.Message{}, false, fmt.Errorf("%w: %s may not resume runs (answering needs %s)", ErrForbidden, reader.Subject, auth.RunsWrite)
+		return inbox.Message{}, false, fmt.Errorf("%w: %s may not resume runs (answering needs %s)", ErrForbidden, p.NameOf(who.Tenant, reader.Subject), auth.RunsWrite)
 	}
 	// What the person answering may not read does not exist for them,
 	// whichever route asks, before anything is recorded. A surface's
@@ -752,7 +752,7 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 			return inbox.Message{}, false, err
 		} else if self {
 			p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "self-approval")
-			return inbox.Message{}, false, fmt.Errorf("%w: %s asked for this work, so someone else must approve its calls", ErrForbidden, reader.Subject)
+			return inbox.Message{}, false, fmt.Errorf("%w: %s asked for this work, so someone else must approve its calls", ErrForbidden, p.NameOf(who.Tenant, reader.Subject))
 		}
 	}
 	// Checked here, from the run and its callers as they stand, as well as
@@ -762,7 +762,7 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 		return inbox.Message{}, false, err
 	}
 	if !m.For(reader) {
-		return inbox.Message{}, false, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)
+		return inbox.Message{}, false, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, p.NameOf(who.Tenant, reader.Subject))
 	}
 	viewAs := func(recorded bool) (inbox.Message, bool, error) {
 		got, err := p.inboxGetAs(who, reader, m.ID)
@@ -807,7 +807,7 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 	switch {
 	case errors.Is(err, runtime.ErrNotAllowed):
 		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID)
-		return inbox.Message{}, false, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)
+		return inbox.Message{}, false, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, p.NameOf(who.Tenant, reader.Subject))
 	case errors.Is(err, runtime.ErrInvalid):
 		return inbox.Message{}, false, fmt.Errorf("%w: %s", ErrAction, strings.TrimPrefix(err.Error(), "runtime: invalid: "))
 	case errors.Is(err, runtime.ErrNoQuestion):

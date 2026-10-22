@@ -80,7 +80,9 @@ function ownerOf(run: Run, siblings: Run[]): string {
 export function notAskable(run: Run, me: string, siblings: Run[]): string {
   const person = ownerOf(run, siblings);
   if (me !== "" && person === me) return "";
-  if (person) return `This turn acted for ${run.actor?.display || person}, so only they can retry it.`;
+  // The person by what the run calls them, never by subject, which can hold
+  // an address: a run recorded with no name for them names nobody.
+  if (person) return `This turn acted for ${run.actor?.display || "someone else"}, so only they can retry it.`;
   return "This turn acted for nobody, so it is not retried here, where it would act for you.";
 }
 
