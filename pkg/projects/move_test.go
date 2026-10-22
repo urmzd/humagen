@@ -112,11 +112,14 @@ func TestMoveIsCheckedAndRecorded(t *testing.T) {
 	if same, err := s.Move("acme", "Globex", 1, "Field", ada, t0, nil); err != nil || same.Version != 1 {
 		t.Fatalf("a move to the same parent = %+v, %v", same, err)
 	}
-	// leaving hears the ancestors left behind, under the lock, and can
-	// refuse.
+	// leaving hears the tree before the move and the ancestors left
+	// behind, under the lock, and can refuse.
 	mustCreate(t, s, "acme", team("Renewals", "Globex"), ada)
 	var heard []string
-	refuse := func(left []string) error {
+	refuse := func(before *projects.Tree, left []string) error {
+		if p, _ := before.Get("Renewals"); p.Parent != "Globex" {
+			t.Errorf("the tree before the move holds Renewals under %q", p.Parent)
+		}
 		heard = left
 		return fmt.Errorf("%w: leaving %s needs billing:write", projects.ErrForbidden, strings.Join(left, ", "))
 	}
@@ -129,10 +132,13 @@ func TestMoveIsCheckedAndRecorded(t *testing.T) {
 	if r, _ := s.Get("acme", "Renewals"); r.Parent != "Globex" || r.Version != 1 {
 		t.Fatalf("a refused move moved: %+v", r)
 	}
-	// Going down within the chain leaves nothing, so leaving is not asked.
+	// Going down within the chain leaves nothing, and leaving is still
+	// asked, since new projects come above it: a limit below can change
+	// hands.
+	var left []string
 	asked := false
-	if _, err := s.Move("acme", "Platform", 1, "Field", ada, t0, func([]string) error { asked = true; return nil }); err != nil || asked {
-		t.Fatalf("moving under a sibling = %v, asked %v", err, asked)
+	if _, err := s.Move("acme", "Platform", 1, "Field", ada, t0, func(_ *projects.Tree, l []string) error { asked, left = true, l; return nil }); err != nil || !asked || len(left) != 0 {
+		t.Fatalf("moving under a sibling = %v, asked %v with %q", err, asked, left)
 	}
 	h, _ := s.History("acme", "Platform", 1, 0)
 	if h[0].What != projects.Moved || h[0].Before.Parent != "" || h[0].After.Parent != "Field" {

@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { Note, Policy, ProjectDetail } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
-import { east, field, globex, globexDetail, renewals, retail, stores, tree, workspace } from "./projects.fixtures.ts";
+import { east, field, globex, globexDetail, platform, renewals, retail, stores, tree, workspace } from "./projects.fixtures.ts";
 import type { ProjectTab } from "./route.ts";
 
 const at = "2026-10-01T09:00:00Z";
@@ -78,6 +78,19 @@ test("a project page shows where it sits, what sits below it, and every limit ab
 
   // Its tasks are read from the server, filed in this project only.
   assert.ok(net.seen.some((r) => r.method === "GET" && r.path === "/api/threads?limit=20&project=Globex"));
+});
+
+test("Move Project sends the new parent by its name, spaces and all", async () => {
+  const platformDetail: ProjectDetail = { project: platform, ancestors: [workspace], children: [], limits: [] };
+  open(platformDetail, { routes: { "POST /api/projects/Platform/move": () => platform } });
+  fireEvent.click(await screen.findByRole("button", { name: "Move Project" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Move under:/ }));
+  fireEvent.click(await screen.findByRole("option", { name: /^Globex renewals/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Move" }));
+  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "POST")));
+  const move = net.seen.find((r) => r.method === "POST");
+  assert.equal(move?.path, "/api/projects/Platform/move");
+  assert.deepEqual(move?.body, { version: 1, parent: "Globex renewals" });
 });
 
 test("the Limits tab says, in words, every limit above a project", async () => {

@@ -223,28 +223,29 @@ func (p *Platform) ProjectMemoryOwner(tenant, name string) (string, error) {
 
 // MayChangeNotes reports whether who may add, approve or remove a project's
 // notes, by any route: the project's memory routes and the inbox alike. It
-// takes projects:write and owning the project, and for the workspace and
+// takes projects:write and ownership of the project, and for the workspace and
 // company projects, whose notes every agent in a wide part of the tree is
 // sent, projects:govern as well, as changing the project does. A project the
-// tenant does not have is projects.ErrNotFound.
+// caller cannot see is projects.ErrNotFound, and one they may not change
+// projects.ErrForbidden, saying what it needs.
 func (p *Platform) MayChangeNotes(who auth.Principal, name string) error {
 	return p.mayChangeNotes(p.Projects.Tree(who.Tenant), who, name)
 }
 
 func (p *Platform) mayChangeNotes(tree *projects.Tree, who auth.Principal, name string) error {
 	name = projects.NameOf(name)
-	pr, ok := tree.Get(name)
-	if !ok {
-		return fmt.Errorf("%w: %q", projects.ErrNotFound, name)
+	pr, _, err := p.projectRole(tree, who, name, projects.Viewer)
+	if err != nil {
+		return err
 	}
 	if !who.Can(auth.ProjectsWrite) {
-		return fmt.Errorf("%w: changing a project's notes needs %s", ErrForbidden, auth.ProjectsWrite)
+		return fmt.Errorf("%w: changing a project's notes needs %s", projects.ErrForbidden, auth.ProjectsWrite)
+	}
+	if _, _, err := p.projectRole(tree, who, name, projects.Owner); err != nil {
+		return err
 	}
 	if governedNotes(pr) && !who.Can(auth.ProjectsGovern) {
 		return fmt.Errorf("%w: the notes of the workspace and of company projects are changed with %s", projects.ErrForbidden, auth.ProjectsGovern)
-	}
-	if !ownsNotes(tree, who, name) {
-		return fmt.Errorf("%w: changing a project's notes needs %s, and %s", ErrForbidden, auth.ProjectsWrite, roleNeeded(projects.Owner, titleOf(pr, p.Settings(who.Tenant).WorkspaceName)))
 	}
 	return nil
 }

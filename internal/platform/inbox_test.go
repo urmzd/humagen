@@ -3,6 +3,7 @@ package platform_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -157,22 +158,21 @@ func TestInboxDecidesProposedMemory(t *testing.T) {
 // A proposal for a project's notes is the project's to decide, as its own
 // memory routes ask: projects:write and owning the project, and
 // projects:govern as well for a company project's and the workspace's, which
-// every agent in a wide part of the tree is sent. agents:write is not a way
-// around either, and neither is owning a company project.
+// every agent in a wide part of the tree is sent. The message reaches the
+// project's owners only, and agents:write is not a way around either rule.
 func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 	p := withMemoryAgent(t)
 	ctx := t.Context()
 	manager := auth.Principal{Subject: "mo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
-	if _, err := p.CreateProject(ctx, tenant, govern, platform.ProjectInput{Name: "News", Kind: projects.Company}); err != nil {
-		t.Fatal(err)
-	}
-	// The manager owns News, and still may not change its notes.
-	if _, err := p.SetProjectMembers(ctx, admin, "News", 1, []projects.Entry{
-		{Who: projects.Everyone, Role: projects.Member}, {Who: "root", Role: projects.Owner}, {Who: "mo", Role: projects.Owner},
+	outsider := auth.Principal{Subject: "max", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	if _, err := p.CreateProject(ctx, tenant, govern, platform.ProjectInput{
+		Name: "News", Kind: projects.Company, Members: []projects.Entry{{Who: "*", Role: projects.Member}, {Who: "mo", Role: projects.Owner}},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: operator.Subject}, platform.ProjectInput{Name: "Launch"}); err != nil {
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{
+		Name: "Launch", Members: []projects.Entry{{Who: "*", Role: projects.Member}, {Who: "opal", Role: projects.Owner}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	news, launch := proposed(t, p, "api-news", "News"), proposed(t, p, "api-launch", "Launch")
@@ -186,12 +186,16 @@ func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 		return n
 	}
 
-	// A company project's: a manager holds agents:write and projects:write,
-	// and owns it, not govern, and is offered nothing.
+	// A company project's: a manager who owns it holds agents:write and
+	// projects:write, not govern, and is offered nothing. One who does not
+	// own it is not sent it.
 	part := news.Parts[0]
 	seen, err := p.InboxGet(manager, news.ID)
-	if err != nil || len(seen.Parts[0].Actions) != 0 {
-		t.Fatalf("a manager is offered %v on a company project's proposals (%v)", seen.Parts[0].Actions, err)
+	if err != nil {
+		t.Fatalf("News's owner reading its proposals = %v", err)
+	}
+	if len(seen.Parts[0].Actions) != 0 {
+		t.Fatalf("a manager is offered %v on a company project's proposals", seen.Parts[0].Actions)
 	}
 	for _, action := range []string{platform.ActKeep, platform.ActDiscard} {
 		r := platform.Resolution{Action: action, IDs: []string{part.Memory.Notes[0].ID}}
@@ -199,24 +203,26 @@ func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 			t.Fatalf("a manager's %s on a company project's proposals = %v, want forbidden", action, err)
 		}
 	}
+	if _, err := p.InboxGet(outsider, news.ID); !errors.Is(err, inbox.ErrNotFound) {
+		t.Fatalf("a manager who owns nothing reading News's proposals = %v, want not found", err)
+	}
 	if n := pending(memory.ProjectOwner("News")); n != len(part.Memory.Notes) {
 		t.Fatalf("a refused decision changed News's proposals: %d pending", n)
 	}
-	if seen, _ := p.InboxGet(admin, news.ID); len(seen.Parts[0].Actions) != 2 {
-		t.Fatalf("an admin is offered %v", seen.Parts[0].Actions)
+	if seen, _ := p.InboxGet(admin, news.ID); len(seen.Parts) == 0 || len(seen.Parts[0].Actions) != 2 {
+		t.Fatalf("an admin is offered %+v", seen.Parts)
 	}
 	if _, err := p.InboxResolve(ctx, admin, news.ID, part.ID, platform.Resolution{Action: platform.ActKeep, IDs: []string{part.Memory.Notes[0].ID}}); err != nil {
 		t.Fatal(err)
 	}
 
-	// A team project's: projects:write and owning it are enough, without
-	// agents:write. A viewer is not shown its owners' proposals at all.
+	// A team project's: projects:write and owning it, without agents:write.
 	part = launch.Parts[0]
-	if seen, err := p.InboxGet(viewer, launch.ID); err == nil {
-		t.Fatalf("a viewer is shown %+v", seen)
+	if _, err := p.InboxGet(viewer, launch.ID); !errors.Is(err, inbox.ErrNotFound) {
+		t.Fatalf("a viewer reading Launch's proposals = %v, want not found", err)
 	}
-	if seen, _ := p.InboxGet(operator, launch.ID); len(seen.Parts[0].Actions) != 2 {
-		t.Fatalf("an operator is offered %v on a team project's proposals", seen.Parts[0].Actions)
+	if seen, err := p.InboxGet(operator, launch.ID); err != nil || len(seen.Parts[0].Actions) != 2 {
+		t.Fatalf("Launch's owner, an operator, is offered %+v (%v)", seen.Parts, err)
 	}
 	if _, err := p.InboxResolve(ctx, operator, launch.ID, part.ID, platform.Resolution{Action: platform.ActDiscard}); err != nil {
 		t.Fatalf("an operator discarding a team project's proposals = %v", err)
@@ -225,7 +231,7 @@ func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 		t.Fatalf("%d of Launch's proposals outlived the discard", n)
 	}
 
-	// The workspace's own: govern again.
+// The workspace's own: govern again.
 	note, err := p.Memory.Add(tenant, memory.ProjectOwner(""), "Everyone ships on Tuesdays.", memory.Consolidated, memory.Pending, "run-x", time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -258,12 +264,8 @@ func TestAutoApproveStillAsksGovernForACompanyProjectsNotes(t *testing.T) {
 	if err := p.SetSettings(ctx, tenant, platform.Settings{MemoryAgent: "scribe", MemoryAutoApprove: true}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.CreateProject(ctx, tenant, govern, platform.ProjectInput{Name: "News", Kind: projects.Company}); err != nil {
-		t.Fatal(err)
-	}
-	// The manager owns News, and still is offered nothing on its proposals.
-	if _, err := p.SetProjectMembers(ctx, admin, "News", 1, []projects.Entry{
-		{Who: projects.Everyone, Role: projects.Member}, {Who: "root", Role: projects.Owner}, {Who: "mo", Role: projects.Owner},
+	if _, err := p.CreateProject(ctx, tenant, govern, platform.ProjectInput{
+		Name: "News", Kind: projects.Company, Members: []projects.Entry{{Who: "*", Role: projects.Member}, {Who: "mo", Role: projects.Owner}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +301,7 @@ func TestAutoApproveStillAsksGovernForACompanyProjectsNotes(t *testing.T) {
 	}
 	manager := auth.Principal{Subject: "mo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
 	if seen, err := p.InboxGet(manager, msg.ID); err != nil || len(seen.Parts[0].Actions) != 0 {
-		t.Fatalf("a manager is offered %v on News's proposals (%v)", seen.Parts[0].Actions, err)
+		t.Fatalf("News's owner, a manager, is offered %+v on its proposals (%v)", seen.Parts, err)
 	}
 }
 
@@ -334,6 +336,19 @@ func TestMemoryDecidedElsewhereClosesItsMessage(t *testing.T) {
 // refusing is a model that fails every call at once.
 type refusing struct{ saigetypes.Provider }
 
+// spoken reports whether an operator's inbox holds a message about a run.
+func spoken(p *platform.Platform, run string) bool {
+	page, _, _ := p.InboxPage(operator, inbox.Query{})
+	for _, m := range page {
+		for _, part := range m.Parts {
+			if m.Source.Run == run || (part.Failure != nil && part.Failure.Run == run) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (refusing) Stream(context.Context, saigetypes.Request) (<-chan saigetypes.Delta, error) {
 	return nil, errors.New("the model is unavailable")
 }
@@ -364,11 +379,14 @@ func TestInboxHoldsFailures(t *testing.T) {
 		deadline := time.Now().Add(60 * time.Second)
 		for {
 			got, _ := p.Runs.Get(tenant, r.ID)
-			if got.Status == runs.Failed {
+			// A run is failed before its ending is dealt with, so the
+			// message about it is waited for as well. Every message here
+			// reaches an operator.
+			if got.Status == runs.Failed && spoken(p, got.ID) {
 				return got
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("run is still %q", got.Status)
+				t.Fatalf("run is %q, and spoken of in the inbox: %v", got.Status, spoken(p, got.ID))
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -467,5 +485,113 @@ func TestInboxHoldsFailures(t *testing.T) {
 	}
 	if got, _ := p.InboxGet(operator, page[0].ID); got.State != inbox.Resolved || got.Parts[0].Outcome.By != admin.Subject {
 		t.Fatalf("after an ack by someone not notified the message is %+v", got)
+	}
+}
+
+// A proposal for the notes of an agent that lives in a project is decided as
+// the agent's own memory routes decide it: agents:write, and ownership of its
+// home as well, so the inbox is no way around the home's owners.
+func TestKeepingAHomedAgentsNotesNeedsItsHome(t *testing.T) {
+	p, msg := proposals(t)
+	ctx := t.Context()
+	part := msg.Parts[0]
+	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "ada"}, platform.ProjectInput{
+		Name: "Field", Members: []projects.Entry{{Who: "*", Role: projects.Member}, {Who: "own", Role: projects.Owner}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetAgentHome(ctx, tenant, "lead", "Field", projects.Writer{By: "ada"}); err != nil {
+		t.Fatal(err)
+	}
+	manager := auth.Principal{Subject: "mo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	owner := auth.Principal{Subject: "own", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	keep := platform.Resolution{Action: platform.ActKeep, IDs: []string{part.Memory.Notes[0].ID}}
+
+	seen, err := p.InboxGet(manager, msg.ID)
+	if err != nil || len(seen.Parts[0].Actions) != 0 {
+		t.Fatalf("a manager who does not own Field is offered %v (%v)", seen.Parts[0].Actions, err)
+	}
+	if _, err := p.InboxResolve(ctx, manager, msg.ID, part.ID, keep); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a manager who does not own Field keeping = %v, want forbidden", err)
+	}
+	if seen, err := p.InboxGet(owner, msg.ID); err != nil || len(seen.Parts[0].Actions) != 2 {
+		t.Fatalf("Field's owner is offered %v (%v)", seen.Parts[0].Actions, err)
+	}
+	if done, err := p.InboxResolve(ctx, owner, msg.ID, part.ID, keep); err != nil || done.Parts[0].Outcome.By != "own" {
+		t.Fatalf("Field's owner keeping = %+v, %v", done, err)
+	}
+}
+
+// Retrying a failed turn starts it again, so it takes what starting one there
+// takes: being a member of the project it is filed in, whoever asked it
+// first. A viewer of the project reads the failure and may acknowledge it,
+// but is not offered Retry and is refused it; a member's retry starts the
+// turn again in the project.
+func TestRetryingAFailedTurnInAProjectTakesAMember(t *testing.T) {
+	p := startWith(t, platform.Config{
+		Backoff: func(int) time.Duration { return time.Millisecond },
+		AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) {
+			return refusing{}, nil
+		})},
+	})
+	ctx := t.Context()
+	broken := agentspec.AgentSpec{Name: "broken", Model: "offline", Provider: "offline", SystemPrompt: "x"}
+	if _, err := p.Agents.Create(ctx, tenant, broken, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{
+		Name: "Globex", Kind: projects.Account,
+		Members: []projects.Entry{{Who: "*", Role: projects.Viewer}, {Who: "ada", Role: projects.Owner}, {Who: "mel", Role: projects.Member}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-globex", Agent: "broken", Text: "Plan the renewal", Project: "Globex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, first.ID, runs.Failed)
+	var msg inbox.Message
+	within(t, "the failure reached the inbox", func() bool {
+		page, _, _ := p.InboxPage(admin, inbox.Query{Kind: inbox.KindFailure})
+		for _, m := range page {
+			if m.Source.Run == first.ID {
+				msg = m
+				return true
+			}
+		}
+		return false
+	})
+	part := msg.Parts[0]
+	retry := platform.Resolution{Action: platform.ActRetry}
+
+	// opal is an operator, so holds runs:write, and only a viewer of Globex.
+	seen, err := p.InboxGet(operator, msg.ID)
+	if err != nil || !slices.Equal(seen.Parts[0].Actions, []string{platform.ActAcknowledge}) {
+		t.Fatalf("a viewer of Globex is offered %+v (%v)", seen.Parts, err)
+	}
+	if _, err := p.InboxResolve(ctx, operator, msg.ID, part.ID, retry); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a viewer of Globex retrying = %v, want forbidden", err)
+	}
+	for _, r := range p.Runs.List(tenant, 10) {
+		if r.ID != first.ID {
+			t.Fatalf("a refused retry started %+v", r)
+		}
+	}
+
+	member := auth.Principal{Subject: "mel", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	if seen, err := p.InboxGet(member, msg.ID); err != nil || !slices.Equal(seen.Parts[0].Actions, []string{platform.ActRetry, platform.ActAcknowledge}) {
+		t.Fatalf("a member of Globex is offered %+v (%v)", seen.Parts, err)
+	}
+	if _, err := p.InboxResolve(ctx, member, msg.ID, part.ID, retry); err != nil {
+		t.Fatalf("a member of Globex retrying = %v", err)
+	}
+	var again []runs.Run
+	for _, r := range p.Runs.List(tenant, 10) {
+		if r.ID != first.ID {
+			again = append(again, r)
+		}
+	}
+	if len(again) != 1 || again[0].Project != "Globex" || again[0].Actor.ID != "mel" {
+		t.Fatalf("the retry is %+v, want one run filed in Globex for mel", again)
 	}
 }

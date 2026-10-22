@@ -82,16 +82,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/access/explain", s.authed("", s.explainAccess))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
-	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, s.seenAgent(s.reviseAgent)))
-	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, s.seenAgent(s.putAgentHome)))
-	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, s.seenAgent(s.agentHistory)))
-	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, s.seenAgent(s.getCallPolicy)))
-	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, s.seenAgent(s.putCallPolicy)))
-	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, s.seenAgent(s.reachable)))
-	mux.HandleFunc("GET /api/agents/{name}/memory", s.authed(auth.AgentsRead, s.seenAgent(s.listMemory)))
-	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, s.seenAgent(s.addMemory)))
-	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, s.seenAgent(s.removeMemory)))
-	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, s.seenAgent(s.approveMemory)))
+	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
+	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putAgentHome))))
+	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.agentHistory))))
+	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.getCallPolicy))))
+	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.putCallPolicy))))
+	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.reachable))))
+	mux.HandleFunc("GET /api/agents/{name}/memory", s.authed(auth.AgentsRead, agentNamed(s.seenAgent(s.listMemory))))
+	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.addMemory))))
+	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.removeMemory))))
+	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.approveMemory))))
 	mux.HandleFunc("GET /api/memory/pending", s.authed(auth.AgentsRead, s.pendingMemory))
 	mux.HandleFunc("GET /api/runs", s.authed(auth.RunsRead, s.listRuns))
 	mux.HandleFunc("POST /api/runs", s.authed(auth.RunsWrite, s.createRun))
@@ -150,6 +150,21 @@ func headers(next http.Handler) http.Handler {
 }
 
 type handler func(w http.ResponseWriter, r *http.Request, who auth.Principal)
+
+// agentNamed answers 404 for a path that names an agent other than by its
+// canonical name, in lower case with no spaces around it, as the registry and
+// every store keep it. Every check on the agent, its home's owners and
+// whether the platform provides it among them, then reads the name the
+// change is made under, so another spelling of it is no way around one.
+func agentNamed(h handler) handler {
+	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		if name := r.PathValue("name"); name != agentspec.NormalizeName(name) {
+			fail(w, http.StatusNotFound, fmt.Sprintf("no agent called %q: agents are named in lower case", name))
+			return
+		}
+		h(w, r, who)
+	}
+}
 
 // authed authenticates, authorizes, bounds the body, and records every change.
 // An empty permission means any signed-in caller.
@@ -314,6 +329,20 @@ func (s *Server) agentOwner(w http.ResponseWriter, r *http.Request, who auth.Pri
 	return name, true
 }
 
+// agentToChange is agentOwner for a change to what the agent remembers. An
+// agent that lives in a project is that project's to change, as its spec is.
+func (s *Server) agentToChange(w http.ResponseWriter, r *http.Request, who auth.Principal) (string, bool) {
+	owner, found := s.agentOwner(w, r, who)
+	if !found {
+		return "", false
+	}
+	if err := s.P.OwnsHome(who, owner); err != nil {
+		s.problem(w, err)
+		return "", false
+	}
+	return owner, true
+}
+
 func (s *Server) listMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	owner, found := s.agentOwner(w, r, who)
 	if !found {
@@ -329,7 +358,7 @@ func (s *Server) addMemory(w http.ResponseWriter, r *http.Request, who auth.Prin
 	if !decode(w, r, &body) {
 		return
 	}
-	owner, found := s.agentOwner(w, r, who)
+	owner, found := s.agentToChange(w, r, who)
 	if !found {
 		return
 	}
@@ -351,7 +380,7 @@ func (s *Server) approveMemory(w http.ResponseWriter, r *http.Request, who auth.
 	if !decode(w, r, &body) {
 		return
 	}
-	owner, found := s.agentOwner(w, r, who)
+	owner, found := s.agentToChange(w, r, who)
 	if !found {
 		return
 	}
@@ -392,7 +421,7 @@ func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.
 }
 
 func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	owner, found := s.agentOwner(w, r, who)
+	owner, found := s.agentToChange(w, r, who)
 	if !found {
 		return
 	}
@@ -435,13 +464,34 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	}
 	actor := envelope.Actor{ID: who.Subject, Display: who.Name, Bot: who.Kind == auth.Machine}
 	client := ""
+	// Whose role on the project counts: the caller's, or the person a
+	// surface acts for, never the credential's.
+	asks := who
 	if body.ActAs != nil {
-		person, err := s.P.ActsFor(who, *body.ActAs)
+		person, err := s.P.Acting(who, *body.ActAs)
 		if err != nil {
 			s.problem(w, err)
 			return
 		}
-		actor, client = envelope.Actor{ID: person, Display: person}, body.ActAs.Client
+		asks, actor, client = person, envelope.Actor{ID: person.Subject, Display: person.Subject}, body.ActAs.Client
+	}
+	// Starting work in a project, or adding a turn to work there, takes
+	// being a member of it. A follow-up is filed where its conversation
+	// is. A turn that follows nothing, or names no project there is, is
+	// Converse's to refuse.
+	project := body.Project
+	if body.After != "" {
+		project = ""
+		if prev, err := s.P.Runs.Get(who.Tenant, body.After); err == nil {
+			project = prev.Project
+		}
+	}
+	if !s.P.HasProject(who.Tenant, projects.NameOf(project)) {
+		project = ""
+	}
+	if err := s.P.MayFileIn(asks, project); err != nil {
+		s.problem(w, err)
+		return
 	}
 	// A caller that retries sends the same key and joins the run it started.
 	id := "api-r-" + token()[:22]

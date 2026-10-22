@@ -335,13 +335,12 @@ func TestALegacyScheduleFiledInADroppedProjectStillRunsAfterTheUpgrade(t *testin
 // Keeping what something still names never passes the cap: the start fails,
 // naming what it would have kept, and changes nothing.
 func TestKeepingWhatIsStillNamedFailsTheStartPastTheCap(t *testing.T) {
+	// One short of the cap, so the two projects the settings hold pass it.
+	named := projects.DefaultCaps().Projects - 1
 	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
 		st := open(t)
-		// One name fewer than the cap is kept, beside the settings' two
-		// projects: one past it.
-		many := projects.DefaultCaps().Projects - 1
 		fileOutsideTheTree(t, st, func(p *platform.Platform) error {
-			for i := range many {
+			for i := range named {
 				if _, err := p.Policies.Put(tenant, policy.Policy{Scope: policy.Scope{Kind: policy.Project, Name: fmt.Sprintf("P%03d", i)}, Period: policy.Day, MaxRuns: 5, Action: policy.Block}, "ada", time.Now()); err != nil {
 					return err
 				}
@@ -350,8 +349,8 @@ func TestKeepingWhatIsStillNamedFailsTheStartPastTheCap(t *testing.T) {
 		})
 		legacySettings(t, st, tenant, time.Time{})
 		_, err := newOn(t, st)
-		if !errors.Is(err, projects.ErrLimit) || !strings.Contains(err.Error(), `"P000"`) || !strings.Contains(err.Error(), fmt.Sprintf(`"P%03d"`, many-1)) {
-			t.Fatalf("a start that would keep %d names beside 2 projects = %v", many, err)
+		if !errors.Is(err, projects.ErrLimit) || !strings.Contains(err.Error(), `"P000"`) || !strings.Contains(err.Error(), fmt.Sprintf(`"P%03d"`, named-1)) {
+			t.Fatalf("a start that would keep %d names beside 2 projects = %v", named, err)
 		}
 		if recs, err := st.Load(t.Context(), "projects"); err != nil || len(recs) != 0 {
 			t.Fatalf("a refused import left %d records (%v)", len(recs), err)

@@ -250,11 +250,17 @@ func clipRunes(s string, limit int) string {
 	return s
 }
 
+// decidesDrafts reports whether a caller decides an agent's drafts in a
+// project: the right to change projects, and ownership of the project.
+func decidesDrafts(tree *projects.Tree, who auth.Principal, project string) bool {
+	return who.Can(auth.ProjectsWrite) && tree.Resolve(project, ReaderOf(who)).Role == projects.Owner
+}
+
 // ownsDraft refuses anyone but an owner of the draft's project: publishing
 // puts the agent's words in front of everyone it reaches.
 func (p *Platform) ownsDraft(who auth.Principal, d inbox.DraftPart) error {
 	tree := p.Projects.Tree(who.Tenant)
-	if ownsNotes(tree, who, d.Project) {
+	if decidesDrafts(tree, who, d.Project) {
 		return nil
 	}
 	return fmt.Errorf("%w: deciding a draft needs projects:write, and you need to own %s", ErrForbidden, p.whereOf(who.Tenant, tree, d.Project))

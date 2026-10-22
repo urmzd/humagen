@@ -187,6 +187,9 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 	}
 
 	wait("both surfaces were answered", func() bool { return len(slackFake.Messages()) >= 1 && len(githubFake.Comments()) == 1 })
+	// Slack's first message can be the placeholder it posts before the run
+	// is admitted, so the runs are waited for too.
+	wait("both runs were admitted", func() bool { return len(p.Runs.List("trial", 10)) == 2 })
 	origins := map[string]string{}
 	for _, run := range p.Runs.List("trial", 10) {
 		origins[run.Origin] = run.Client

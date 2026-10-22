@@ -62,9 +62,10 @@ that lives in a project is not available in the workspace itself or in any
 project outside its home's subtree. A message that tags no agent goes to the
 default its place inherits, and with none nothing runs: nothing routes on its
 own. Setting the workspace default changes who answers everyone's untagged
-messages, so it needs `projects:govern`; to keep the old split where managers
-set it, add `role:manager` as an owner of the workspace once project roles
-exist, or grant them `govern on projects`.
+messages, so it needs `projects:govern`. Owning the workspace is not enough,
+since the workspace itself is changed only with govern: to keep the old split
+where managers set it, grant them `govern on projects`, or a role that holds it
+such as `steward` in [authorization](authorization.md#example).
 
 The directory (`people:read`, which every built-in role holds) shows each
 person's name, handle, roles and picture to everyone in the workspace. No
@@ -322,8 +323,8 @@ decided per message:
 | Kind | To see | To settle |
 |------|--------|-----------|
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
-| Failed run | `runs:read` | `runs:write` |
-| Proposed memory | `agents:read` | `agents:write` for an agent's; a project's, `projects:write` and owning the project, and `projects:govern` as well for the workspace's and a company project's |
+| Failed run | `runs:read` | `runs:write` to acknowledge; retrying a turn filed in a project needs a member of it as well |
+| Proposed memory | `agents:read` | `agents:write` for an agent's, and owning its home for one that lives in a project; `projects:write` and owning the project for a project's, and `projects:govern` as well for the workspace's and a company project's |
 | Announcement | `projects:read`, and a member of its project or one below it (anyone who reads the project's own inbox) | hiding or snoozing it is the reader's own (`projects:read`); withdrawing it is its author's or an owner's (`projects:write`) |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |
 | A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to reply in the thread as themselves or set it aside |

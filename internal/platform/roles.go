@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/urmzd/fiber/pkg/agentspec"
+
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
@@ -90,8 +92,11 @@ func (p *Platform) SetProjectMembers(_ context.Context, who auth.Principal, name
 
 // MoveProject puts a project, and everything under it, under another
 // parent. It needs ownership of the project and membership of the new
-// parent. A move never escapes a limit: leaving an ancestor that holds one
-// needs billing:write too.
+// parent. A move never escapes a limit, so without billing:write it is
+// refused when it leaves an ancestor that holds one, and when the project or
+// one below it holds a limit an owner set that the caller could not change
+// before the move: an owner's limit is changed by whoever owns the project
+// above it, and a move puts new projects above.
 func (p *Platform) MoveProject(_ context.Context, who auth.Principal, name string, version int, parent string) (projects.Project, error) {
 	name, parent = projects.NameOf(name), projects.NameOf(parent)
 	tree := p.Projects.Tree(who.Tenant)
@@ -101,13 +106,22 @@ func (p *Platform) MoveProject(_ context.Context, who auth.Principal, name strin
 	if _, _, err := p.projectRole(tree, who, parent, projects.Member); err != nil {
 		return projects.Project{}, err
 	}
-	leaving := func(left []string) error {
+	reader := ReaderOf(who)
+	leaving := func(before *projects.Tree, left []string) error {
 		if who.Can(auth.BillingWrite) {
 			return nil
 		}
 		for _, a := range left {
 			if p.hasProjectLimit(who.Tenant, a) {
 				return fmt.Errorf("%w: %s has a limit, and leaving it needs billing:write, so a move never escapes a limit", projects.ErrForbidden, a)
+			}
+		}
+		for _, limited := range p.ownerLimited(who.Tenant, before.Subtree(name)) {
+			lp, _ := before.Get(limited)
+			if before.Resolve(lp.Parent, reader).Role != projects.Owner {
+				above, _ := before.Get(lp.Parent)
+				return fmt.Errorf("%w: %s has a limit only an owner of %s changes, and moving it needs billing:write, so a move never escapes a limit",
+					projects.ErrForbidden, limited, display(above))
 			}
 		}
 		return nil
@@ -120,6 +134,17 @@ func (p *Platform) hasProjectLimit(tenant, name string) bool {
 	return slices.ContainsFunc(p.Policies.For(tenant, []string{name}, "", ""), func(pol policy.Policy) bool {
 		return pol.Scope == policy.Scope{Kind: policy.Project, Name: name}
 	})
+}
+
+// ownerLimited is the projects among names that hold a limit an owner set.
+func (p *Platform) ownerLimited(tenant string, names []string) []string {
+	var out []string
+	for _, pol := range p.Policies.For(tenant, names, "", "") {
+		if pol.Scope.Kind == policy.Project && pol.ByOwner() {
+			out = append(out, pol.Scope.Name)
+		}
+	}
+	return out
 }
 
 // SetProjectLimit sets a tighten-only limit on a project, as an owner of a
@@ -177,13 +202,14 @@ func (p *Platform) ownerAbove(who auth.Principal, name string) ([]string, error)
 	return tree.Ancestors(name), nil
 }
 
-// AddProjectNote adds a note to a project's shared memory. An owner's note is
-// in use at once. A member's is a proposal: it waits, and the project's
-// owners are asked in the inbox to keep or discard it. So is an owner's in
-// the workspace or a company project without projects:govern.
+// AddProjectNote adds a note to a project's shared memory. The note of one
+// who may change the project's notes (MayChangeNotes) is in use at once. Any
+// other member's is a proposal: it waits, and the project's owners are asked
+// in the inbox to keep or discard it. So is an owner's note on the workspace
+// or a company project without projects:govern.
 func (p *Platform) AddProjectNote(who auth.Principal, name, text string) (memory.Note, error) {
 	name = projects.NameOf(name)
-	pr, access, err := p.ProjectRole(who, name, projects.Member)
+	pr, _, err := p.ProjectRole(who, name, projects.Member)
 	if err != nil {
 		return memory.Note{}, err
 	}
@@ -191,7 +217,7 @@ func (p *Platform) AddProjectNote(who auth.Principal, name, text string) (memory
 	// wide part of the tree is sent, are changed with projects:govern: an
 	// owner without it proposes, as a member does.
 	owner := memory.ProjectOwner(name)
-	if access.Role == projects.Owner && (!governedNotes(pr) || who.Can(auth.ProjectsGovern)) {
+	if p.MayChangeNotes(who, name) == nil {
 		return p.Memory.Add(who.Tenant, owner, text, memory.Person, memory.Approved, who.Subject, p.now())
 	}
 	note, err := p.Memory.Add(who.Tenant, owner, text, memory.Person, memory.Pending, who.Subject, p.now())
@@ -220,20 +246,52 @@ func memoryProject(part inbox.Part) (string, bool) {
 	return memory.OwnerProject(part.Memory.Owner)
 }
 
-// ownsNotes reports whether a caller may decide a project's notes: the right
-// to change projects, and ownership of the project.
-func ownsNotes(tree *projects.Tree, who auth.Principal, project string) bool {
-	return who.Can(auth.ProjectsWrite) && tree.Resolve(project, ReaderOf(who)).Role == projects.Owner
+// MayFileIn holds a caller to being at least a member of the project work is
+// filed in: a new conversation, a turn in one, or a schedule and what it runs.
+// A viewer reads a project and starts nothing in it. The workspace, "" or "~",
+// asks nothing more than the route's permission. A project the caller cannot
+// see is projects.ErrNotFound.
+func (p *Platform) MayFileIn(who auth.Principal, project string) error {
+	project = projects.NameOf(project)
+	if project == projects.Root {
+		return nil
+	}
+	_, _, err := p.ProjectRole(who, project, projects.Member)
+	return err
+}
+
+// Acting is the person a surface's credential asks for, as a principal: the
+// person its client maps the surface's user to, with the roles the
+// workspace's policy grants their subject, so their own role on a project is
+// what is checked, never the credential's. Anyone it does not map is refused.
+func (p *Platform) Acting(who auth.Principal, as ActAs) (auth.Principal, error) {
+	person, _, err := p.answerer(who, &as)
+	if err != nil {
+		return auth.Principal{}, err
+	}
+	roles := make([]auth.Role, 0, len(person.Roles))
+	for _, r := range person.Roles {
+		roles = append(roles, auth.Role(r))
+	}
+	return auth.Principal{Subject: person.Subject, Name: person.Subject, Tenant: who.Tenant, Kind: auth.User, Roles: roles}.WithPolicy(who.Policy()), nil
 }
 
 // OwnsHome holds a caller to owning the project an agent lives in, when it
-// lives in one: changing a project agent, or where it lives, is changing that
-// project. A platform agent, which lives nowhere, needs nothing more.
+// lives in one: changing a project agent, what it may call, what it remembers,
+// or where it lives, is changing that project. A platform agent, which lives
+// nowhere, needs nothing more.
 func (p *Platform) OwnsHome(who auth.Principal, agent string) error {
-	home, homed := p.Projects.Tree(who.Tenant).Home(agent)
+	return p.ownsHome(p.Projects.Tree(who.Tenant), who, agent)
+}
+
+func (p *Platform) ownsHome(tree *projects.Tree, who auth.Principal, agent string) error {
+	// Homes are kept by the agent's canonical name, which is what the
+	// registry and every store resolve a name to, so a name in another
+	// case or with spaces around it is the same agent here too.
+	home, homed := tree.Home(agentspec.NormalizeName(agent))
 	if !homed {
 		return nil
 	}
-	_, _, err := p.ProjectRole(who, home, projects.Owner)
+	_, _, err := p.projectRole(tree, who, home, projects.Owner)
 	return err
 }

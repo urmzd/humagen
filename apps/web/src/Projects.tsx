@@ -9,6 +9,7 @@ import {
   type ProjectAccount,
   type ProjectDetail,
   type ProjectKind,
+  type ProjectKindSpec,
   type ProjectView,
   type Revision,
   type ScheduleView,
@@ -21,10 +22,12 @@ import { ProjectHistory, ProjectInbox, ProjectLimits, ProjectPeople } from "./Pr
 import {
   above,
   accountOf,
+  groupWord,
   INDENT_PX,
-  KINDS,
+  kindsOf,
   kindsUnder,
   kindWord,
+  likeOf,
   MAX_DEPTH,
   nameFrom,
   narrowAt,
@@ -105,8 +108,14 @@ export function factsOf(p: ProjectView): string {
 }
 
 /** A project in words under its title: its kind, its customer, and where it sits when the tree does not show it. */
-function aboutOf(p: ProjectView, path: string[]): string {
-  return [kindWord(p.kind), p.account?.customer, path.length > 0 ? words.within(path) : null].filter(Boolean).join(" · ");
+function aboutOf(p: ProjectView, path: string[], kinds: ProjectKindSpec[]): string {
+  return [kindWord(p.kind, kinds), p.account?.customer, path.length > 0 ? words.within(path) : null].filter(Boolean).join(" · ");
+}
+
+/** The workspace's own kinds, as a project page reads them: from the workspace, first among its ancestors. */
+function kindsIn(detail: ProjectDetail): ProjectKindSpec[] {
+  const workspace = detail.project.name === "" ? detail.project : detail.ancestors.find((a) => a.name === "");
+  return workspace?.kinds ?? [];
 }
 
 function ProjectRow({
@@ -144,7 +153,8 @@ function ProjectRow({
 
 /**
  * Every project, as a tree grouped by kind: Company-wide, then Teams, then
- * Accounts. The workspace itself heads Company-wide. A project is opened from
+ * Accounts, then the workspace's own kinds by title. The workspace itself
+ * heads Company-wide. A project is opened from
  * here, and made from here with an inline form.
  */
 export function ProjectsPage({
@@ -179,7 +189,8 @@ export function ProjectsPage({
   const measured = useNarrow();
   const narrow = forced ?? measured;
   const [adding, setAdding] = useState(false);
-  const groups = projects ? treeOf(projects, { narrow, q, kind }) : [];
+  const kinds = root?.kinds ?? [];
+  const groups = projects ? treeOf(projects, { narrow, q, kind, kinds }) : [];
   const showRoot = root !== null && !q.trim() && (!kind || kind === "company");
   const shown = showRoot && !groups.some((g) => g.kind === "company") ? [{ kind: "company" as const, title: words.group.company ?? "", rows: [] }, ...groups] : groups;
 
@@ -198,6 +209,7 @@ export function ProjectsPage({
       {adding && (
         <NewProject
           places={projects ?? []}
+          kinds={kinds}
           canGovern={canGovern}
           onCancel={() => setAdding(false)}
           onCreated={(p) => {
@@ -211,7 +223,7 @@ export function ProjectsPage({
         <Segmented
           label={words.kindFilter}
           value={kind ?? "all"}
-          options={[{ id: "all", label: words.anyKind }, ...KINDS.map((k) => ({ id: k, label: words.group[k] ?? k }))]}
+          options={[{ id: "all", label: words.anyKind }, ...kindsOf(kinds, projects ?? []).map((k) => ({ id: k, label: groupWord(k, kinds) }))]}
           onChange={(next) => onFilter(q, next === "all" ? undefined : (next as ProjectKind))}
         />
       </div>
@@ -241,7 +253,7 @@ export function ProjectsPage({
                   key={r.project.name}
                   to={projectHref(r.project.name)}
                   title={titleOf(r.project)}
-                  about={aboutOf(r.project, r.path)}
+                  about={aboutOf(r.project, r.path, kinds)}
                   facts={factsOf(r.project)}
                   indent={r.indent}
                   onOpen={() => onOpen(r.project.name)}
@@ -261,6 +273,7 @@ export function ProjectsPage({
  */
 export function NewProject({
   places,
+  kinds: own = [],
   parent: fixed,
   canGovern,
   onCreated,
@@ -268,6 +281,8 @@ export function NewProject({
 }: {
   /** The projects it could sit under. */
   places: ProjectView[];
+  /** The workspace's own kinds, offered after warp's where they may sit. */
+  kinds?: ProjectKindSpec[];
   /** Where it goes, when that is decided: a sub-project's parent. */
   parent?: Place & { title?: string };
   canGovern: boolean;
@@ -285,7 +300,7 @@ export function NewProject({
   const [problem, setProblem] = useState<string | null>(null);
 
   const parent: Place = fixed ?? places.find((p) => p.name === parentName) ?? WORKSPACE;
-  const kinds = kindsUnder(parent, canGovern);
+  const kinds = kindsUnder(parent, canGovern, own);
   const kind = kinds.includes(want) ? want : (kinds[0] ?? "team");
   const shownName = named ? name : nameFrom(title);
   const roomy = places.filter((p) => p.depth < MAX_DEPTH);
@@ -297,7 +312,7 @@ export function NewProject({
     if (saving) return;
     const chosen = shownName.trim();
     const shownTitle = title.trim();
-    const account = kind === "account" ? accountOf({ customer }) : undefined;
+    const account = likeOf(kind, own) === "account" ? accountOf({ customer }) : undefined;
     setSaving(true);
     setProblem(null);
     api
@@ -362,7 +377,7 @@ export function NewProject({
                 ...roomy.map((p) => ({
                   value: p.name,
                   label: titleOf(p),
-                  hint: [kindWord(p.kind), above(p).length > 0 ? words.within(above(p)) : null].filter(Boolean).join(" · "),
+                  hint: [kindWord(p.kind, own), above(p).length > 0 ? words.within(above(p)) : null].filter(Boolean).join(" · "),
                 })),
               ]}
               onChange={setParentName}
@@ -374,7 +389,7 @@ export function NewProject({
           <Segmented
             label={words.form.kind}
             value={kind}
-            options={kinds.map((k) => ({ id: k, label: kindWord(k) }))}
+            options={kinds.map((k) => ({ id: k, label: kindWord(k, own) }))}
             onChange={setWant}
           />
         </div>
@@ -384,7 +399,7 @@ export function NewProject({
       <Label text={words.form.description}>
         <input className={field} value={description} maxLength={500} disabled={saving} onChange={(e) => setDescription(e.target.value)} />
       </Label>
-      {kind === "account" && (
+      {likeOf(kind, own) === "account" && (
         <Label text={words.form.customer}>
           <input className={field} value={customer} maxLength={120} disabled={saving} onChange={(e) => setCustomer(e.target.value)} />
         </Label>
@@ -675,7 +690,8 @@ function SubProjects({
 }) {
   const [adding, setAdding] = useState(false);
   const here = detail.project;
-  const room = here.depth < MAX_DEPTH && kindsUnder(here, canGovern).length > 0;
+  const kinds = kindsIn(detail);
+  const room = here.depth < MAX_DEPTH && kindsUnder(here, canGovern, kinds).length > 0;
   return (
     <section className={section} aria-label={words.subProjects}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -691,6 +707,7 @@ function SubProjects({
       {adding && (
         <NewProject
           places={places}
+          kinds={kinds}
           parent={here}
           canGovern={canGovern}
           onCancel={() => setAdding(false)}
@@ -709,7 +726,7 @@ function SubProjects({
               key={c.name}
               to={projectHref(c.name)}
               title={titleOf(c)}
-              about={[aboutOf(c, []), c.children > 0 ? words.count.below(c.children) : null].filter(Boolean).join(" · ")}
+              about={[aboutOf(c, [], kinds), c.children > 0 ? words.count.below(c.children) : null].filter(Boolean).join(" · ")}
               facts={factsOf(c)}
               indent={0}
               onOpen={() => onOpen(c.name)}
@@ -1223,7 +1240,7 @@ export function ProjectPage({
   const isMuted = muted.includes(p.name);
   const parent = detail.ancestors[detail.ancestors.length - 1];
   const back = parent && parent.name !== "" ? { label: titleOf(parent), onClick: () => onOpen(parent.name) } : { label: words.allProjects, onClick: onOpenAll };
-  const meta = root ? words.workspace : [kindWord(p.kind), p.account?.customer, p.depth > 1 ? words.within(above(p)) : null].filter(Boolean).join(" · ");
+  const meta = root ? words.workspace : [kindWord(p.kind, kindsIn(detail)), p.account?.customer, p.depth > 1 ? words.within(above(p)) : null].filter(Boolean).join(" · ");
   const ownScope = root ? ({ kind: "tenant" } as const) : ({ kind: "project", name: p.name } as const);
   const chain = detail.limits
     .filter((l) => l.from !== p.name)

@@ -135,11 +135,11 @@ func TestAnAgentNamedWorkspaceNeverReachesTheWorkspacesNotes(t *testing.T) {
 	// A manager: agents:write and projects:write, not projects:govern.
 	manager := f.machine(t, "acme", append([]string{"warp:agents:write"}, operator...)...)
 	want(t, f, admin, "POST", "/api/projects", `{"name":"News","kind":"company"}`, http.StatusCreated)
-	// Without govern a note for the workspace is a proposal, kept only with
-	// govern: it reaches no agent, and an admin removes it.
-	proposal := want(t, f, manager, "POST", "/api/projects/~/memory", `{"text":"Proposed."}`, http.StatusCreated)
+	// The manager is a member of the workspace, so their note is only a
+	// proposal, which they may not keep.
+	proposal := want(t, f, manager, "POST", "/api/projects/~/memory", `{"text":"Smuggled."}`, http.StatusCreated)
 	if proposal["status"] != "pending" {
-		t.Fatalf("a manager's note for the workspace = %v, want a proposal", proposal)
+		t.Fatalf("a manager's note on the workspace = %v, want a proposal", proposal)
 	}
 	want(t, f, manager, "POST", "/api/projects/~/memory/approve", `{"ids":["`+proposal["id"].(string)+`"]}`, http.StatusForbidden)
 	want(t, f, admin, "DELETE", "/api/projects/~/memory/"+proposal["id"].(string), "", http.StatusNoContent)

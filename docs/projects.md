@@ -777,19 +777,19 @@ need `projects:govern`.
 | See a project, its inbox, channels, instructions, memory, experts | `projects:read` | viewer |
 | Create a project under P (top level: P is the root) | `projects:write` | member of P. Company kind: `projects:govern` |
 | Edit title, description, instructions, account | `projects:write` | owner |
-| Move | `projects:write` | owner, and member of the new parent. Leaving an ancestor that holds a policy also needs `billing:write`: a move never escapes a limit |
+| Move | `projects:write` | owner, and member of the new parent. Leaving an ancestor that holds a policy also needs `billing:write`, and so does moving a project that holds, or has below it, an owner's limit the caller could not change before (they do not own the parent it was set from): a move never escapes a limit |
 | Archive, delete | `projects:write` | owner |
 | Members, experts, channels, agents (`enable`, `allow`, `default`), `announce`, `agent_posts` | `projects:write` | owner |
 | Make an agent live here | `agents:write` | owner of the new and old home |
-| Edit a homed agent | `agents:write` | owner of its home |
+| Edit a homed agent: its spec, call policy and notes, in its routes and the inbox | `agents:write` | owner of its home |
 | Propose a project note (stored pending, owners approve in the inbox) | `projects:write` | member |
-| Add an approved note, approve, remove | `projects:write` | owner |
+| Add an approved note, approve, remove, in the memory routes and the inbox | `projects:write` | owner; the workspace and company projects: `projects:govern` too, and an owner without it proposes |
 | Set any project's limit | `billing:write` (unchanged) | none |
 | Set a tighten-only limit on a descendant (`Authority: owner`; never touches an admin policy) | `projects:write` | owner of a strict ancestor |
 | Post an announcement | `projects:write` | `announce` (default owner) |
 | Withdraw an announcement | `projects:write` | its author or an owner |
 | Publish or discard an agent's draft | `runs:read` (the inbox resolve route) | `needs(draft, publish)` is `projects:write`, then owner |
-| Schedule in P, run now | `schedules:write` | member; the agent available in P |
+| Schedule in P, change, pause, delete or run one filed there | `schedules:write` | member; the agent available in P |
 | Read a shared thread and its runs | `runs:read` | viewer |
 | Read a private thread and its runs (phase 7) | `runs:read` | participant, or `projects:govern` |
 | Start a thread, post a message | `runs:write` | member; in a private thread, participant |
@@ -1261,9 +1261,11 @@ everyone. Make it members only?"). Nothing is closed automatically.
 
   Settings shows "Workspace Default: @auto, set by the upgrade". An admin can
   clear it.
-- Setting the workspace default moves from `agents:write` (managers) to the
-  root's owners (`projects:govern`, admins by default). To keep the old
-  split, an admin adds `role:manager` as a root owner. The CHANGELOG says so.
+- Setting the workspace default moves from `agents:write` (managers) to
+  `projects:govern` (admins by default), since it changes the workspace
+  itself. Owning the root is not enough: to keep the old split, an admin
+  grants managers `govern on projects`, or a role that holds it (`steward` in
+  docs/authorization.md).
 
 ### Phases 4 and 5: inbox
 
@@ -1416,8 +1418,8 @@ phase 2 and experts to phase 3, because addressing and threads need them.
 - **Breaking contract and rights.**
   - `Settings.projects` leaves the wire.
   - Project routes move to `projects:*`.
-  - The baseline goes, and managers lose the workspace default to root
-    owners.
+  - The baseline goes, and managers lose the workspace default to
+    `projects:govern`.
   - An untagged API run with no default is 409.
 
   All of it is flagged as breaking, with release notes and a `config check`

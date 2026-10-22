@@ -404,7 +404,8 @@ paths:
         needs the callee in its own spawn allowlist, so a policy can only
         narrow what callers' specs allow. An unknown mode, an agent name that
         does not exist, more than 100 callers or 32 approvers, or a field that does not
-        apply to the chosen mode is 400.
+        apply to the chosen mode is 400. An agent that lives in a project is
+        that project's to change: without owning its home it is 403.
       x-permission: agents:write
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
@@ -483,7 +484,12 @@ paths:
       operationId: addAgentMemory
       tags: [agents]
       summary: Write a note an agent is sent with every turn
-      description: A note a person writes is approved at once. A note carrying personal data is refused with 400.
+      description: |
+        A note a person writes is approved at once. A note carrying personal
+        data is refused with 400. An agent that lives in a project is that
+        project's to change: without owning its home it is 403, here and on
+        approving and removing its notes. A name that is a project's memory
+        owner is no agent's, and answers 404.
       x-permission: agents:write
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
@@ -644,7 +650,9 @@ paths:
         `@auto`, which for a person a client acts for picks only among the
         agents that client may route to. An agent not available in the
         conversation's project, or a default that has stopped being
-        available there, is 403.
+        available there, is 403. So is a conversation in a project where the
+        caller, or the person `act_as` names, is only a viewer: starting work
+        in a project, or adding a turn to work filed there, needs a member.
 
         A follow-up is filed in its conversation's channel. When it follows
         a turn in a shared thread people have posted in, it is sent the room
@@ -1298,7 +1306,11 @@ paths:
       operationId: createSchedule
       tags: [schedules]
       summary: Create a schedule
-      description: The agent, and the project if one is named, must exist now.
+      description: |
+        The agent, and the project if one is named, must exist now. Filing a
+        schedule in a project needs a member of it, as starting a
+        conversation there does: a viewer is 403. So does changing, pausing,
+        resuming, running or deleting one filed there.
       x-permission: schedules:write
       requestBody:
         required: true
@@ -1325,7 +1337,8 @@ paths:
       summary: Change a schedule
       description: |
         Replaces the schedule's expression, agent, text, project and
-        description. The name cannot change: a `name` in the body must match
+        description. A schedule filed in a project, or moved into one, is
+        changed by a member of it. The name cannot change: a `name` in the body must match
         the path, or be left out. Whether the schedule is paused, who created
         it and the runs it raised are kept. The agent, and the project if one
         is named, must exist now. The whole edit is checked before anything
@@ -1412,7 +1425,7 @@ paths:
       operationId: runSchedule
       tags: [schedules]
       summary: Fire a schedule once, now
-      description: The run is attributed to the caller, not to the clock, and works while the schedule is paused.
+      description: The run is attributed to the caller, not to the clock, and works while the schedule is paused. A schedule filed in a project is run by a member of it.
       x-permission: schedules:write
       parameters:
         - {$ref: "#/components/parameters/ScheduleName"}
@@ -1536,9 +1549,11 @@ paths:
       tags: [inbox]
       summary: Get a message and the record of what was done to it
       description: |
-        A message of a kind the caller may not read answers 404. A client's
-        machine reads one for a person it maps with `act_as_client` and
-        `act_as_user`.
+        A message of a kind the caller may not read answers 404. An
+        announcement in the inbox of a project the caller can see is theirs
+        to read, mark, snooze and hide, member or not, muted or not, as the
+        project's inbox shows it. A client's machine reads one for a person
+        it maps with `act_as_client` and `act_as_user`.
       x-permission: runs:read
       parameters:
         - {$ref: "#/components/parameters/MessageID"}
@@ -2842,7 +2857,10 @@ paths:
       tags: [projects]
       summary: Write or propose a note shared by every agent in a project
       description: |
-        An owner writing a note is its approval. A member's note is a
+        An owner writing a note is its approval, except on the workspace
+        and company projects, whose notes every agent in a wide part of the
+        tree is sent: there it takes `projects:govern` as well. Any other
+        member's note, an owner's there without govern included, is a
         proposal: it waits, and the project's owners are asked in their
         inbox to keep or discard it. A viewer is 403.
       x-permission: projects:write
@@ -2870,7 +2888,7 @@ paths:
       operationId: approveProjectMemory
       tags: [projects]
       summary: Approve notes proposed for a project
-      description: It needs ownership of the project.
+      description: It needs ownership of the project, and `projects:govern` as well for the workspace and company projects.
       x-permission: projects:write
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -2896,7 +2914,7 @@ paths:
       operationId: removeProjectMemory
       tags: [projects]
       summary: Remove a project note
-      description: It needs ownership of the project.
+      description: It needs ownership of the project, and `projects:govern` as well for the workspace and company projects.
       x-permission: projects:write
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -2968,9 +2986,10 @@ paths:
       description: |
         It needs ownership of the project and membership of the new parent.
         400 for a parent inside the project, past four levels, archived, or
-        one that breaks a kind or openness rule; 403 for leaving a project
-        that holds a limit without `billing:write`, since a move never
-        escapes a limit; 409 for a stale version, a parent the platform file
+        one that breaks a kind or openness rule; 403 without `billing:write`
+        for leaving a project that holds a limit, or for moving one that
+        holds (or has below it) a limit an owner set that the caller could
+        not change before, since a move never escapes a limit; 409 for a stale version, a parent the platform file
         sets, or a default below it that would stop being available. The
         workspace cannot move.
       x-permission: projects:write

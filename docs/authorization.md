@@ -109,11 +109,12 @@ and then `{who: "role:field-eng", role: member}` on the project.
 |---|---|---|
 | See a project, its inbox, history, members and notes | `projects:read` | viewer |
 | Create a project under it | `projects:write` | member (company kind: `projects:govern`) |
-| Propose a note, which its owners keep or discard | `projects:write` | member |
+| Propose a note, which its owners keep or discard | `projects:write` | member (an owner of the workspace or a company project without `projects:govern` proposes too) |
+| Start a conversation in it, add a turn to one there, retry a failed turn there from the inbox, or file, change, pause, run or delete a schedule there | `runs:write`, `schedules:write` | member (a surface's `act_as` is checked as the person it names; a retry is checked as whoever retries, not who first asked) |
 | Change it: title, description, instructions, account, kind, archiving, members, the agents it turns on, who may announce; add, keep or remove notes; delete it | `projects:write` | owner (the workspace and company projects: `projects:govern` too) |
 | Make an agent live in it, or move one out | `agents:write` | owner of the project it comes to and of the one it leaves |
-| Edit an agent that lives in it | `agents:write` | owner |
-| Move it | `projects:write` | owner, and member of the new parent; leaving a project that holds a limit needs `billing:write` |
+| Edit an agent that lives in it: its spec, call policy and notes, keeping or discarding its proposals in the inbox too | `agents:write` | owner (the agent's routes take its canonical name, in lower case, and answer 404 for another spelling) |
+| Move it | `projects:write` | owner, and member of the new parent; leaving a project that holds a limit needs `billing:write`, and so does moving one that holds, or has below it, an owner's limit set from a parent the caller does not own |
 | Set a tighten-only limit on it | `projects:write` | owner of a project above it |
 | Post an announcement | `projects:write` | the project's `announce` role, owner by default |
 | Withdraw an announcement | `projects:write` | its author, or owner |

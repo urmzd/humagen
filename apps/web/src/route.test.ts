@@ -16,6 +16,8 @@ test("every route survives a round trip through its address", () => {
     { page: "projects", q: "globex" },
     { page: "projects", kind: "account" },
     { page: "projects", q: "renewals", kind: "team" },
+    // A kind the workspace defines has an address too.
+    { page: "projects", kind: "partner" },
     { page: "project", name: "Q4 launch", tab: "inbox" },
     { page: "project", name: "Q4 launch", tab: "inbox", message: "m7" },
     { page: "project", name: "Q4 launch", tab: "overview" },
@@ -105,7 +107,7 @@ test("a project's Agents tab has its own path, the workspace's included", () => 
 
 test("a project tab or kind it does not know falls back to the default", () => {
   assert.deepEqual(at("/projects/Globex/bogus"), { page: "project", name: "Globex", tab: "inbox" });
-  assert.deepEqual(at("/projects?kind=planet"), { page: "projects" });
+  assert.deepEqual(at("/projects?kind=Planet!"), { page: "projects" });
   assert.deepEqual(at("/projects?q="), { page: "projects" });
   assert.deepEqual(at("/?view=projects"), { page: "projects" });
 });

@@ -110,8 +110,10 @@ func TestClientSecretsNeverAppearInAResponseOrALog(t *testing.T) {
 	if code := postSlack(t, f, signingSecret, body); code != http.StatusOK {
 		t.Fatalf("webhook answered %d", code)
 	}
+	// The first message can be the placeholder the surface posts before the
+	// run is admitted, so the run is waited for too.
 	deadline := time.Now().Add(10 * time.Second)
-	for len(fake.Messages()) == 0 {
+	for len(fake.Messages()) == 0 || len(f.p.Runs.List("acme", 1)) == 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("the client never answered")
 		}

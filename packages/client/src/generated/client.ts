@@ -692,7 +692,8 @@ for an agent that does not exist in the caller's workspace.
 needs the callee in its own spawn allowlist, so a policy can only
 narrow what callers' specs allow. An unknown mode, an agent name that
 does not exist, more than 100 callers or 32 approvers, or a field that does not
-apply to the chosen mode is 400.
+apply to the chosen mode is 400. An agent that lives in a project is
+that project's to change: without owning its home it is 403.
  */
   async putCallPolicy(name: string, body: CallPolicyInput, options?: RequestOptions): Promise<CallPolicy> {
     let path = "/api/agents/{name}/call-policy";
@@ -756,7 +757,12 @@ and on every agent memory route.
     });
   }
 
-  /** A note a person writes is approved at once. A note carrying personal data is refused with 400. */
+  /** A note a person writes is approved at once. A note carrying personal
+data is refused with 400. An agent that lives in a project is that
+project's to change: without owning its home it is 403, here and on
+approving and removing its notes. A name that is a project's memory
+owner is no agent's, and answers 404.
+ */
   async addAgentMemory(name: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
     let path = "/api/agents/{name}/memory";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -902,7 +908,9 @@ workspace's. With none set it is 409, "tag an agent". `auto` is
 `@auto`, which for a person a client acts for picks only among the
 agents that client may route to. An agent not available in the
 conversation's project, or a default that has stopped being
-available there, is 403.
+available there, is 403. So is a conversation in a project where the
+caller, or the person `act_as` names, is only a viewer: starting work
+in a project, or adding a turn to work filed there, needs a member.
 
 A follow-up is filed in its conversation's channel. When it follows
 a turn in a shared thread people have posted in, it is sent the room
@@ -1426,7 +1434,11 @@ is 400.
     });
   }
 
-  /** The agent, and the project if one is named, must exist now. */
+  /** The agent, and the project if one is named, must exist now. Filing a
+schedule in a project needs a member of it, as starting a
+conversation there does: a viewer is 403. So does changing, pausing,
+resuming, running or deleting one filed there.
+ */
   async createSchedule(body: Schedule, options?: RequestOptions): Promise<ScheduleView> {
     const path = "/api/schedules";
     return this.request<ScheduleView>("POST", path, {
@@ -1446,7 +1458,8 @@ is 400.
   }
 
   /** Replaces the schedule's expression, agent, text, project and
-description. The name cannot change: a `name` in the body must match
+description. A schedule filed in a project, or moved into one, is
+changed by a member of it. The name cannot change: a `name` in the body must match
 the path, or be left out. Whether the schedule is paused, who created
 it and the runs it raised are kept. The agent, and the project if one
 is named, must exist now. The whole edit is checked before anything
@@ -1527,7 +1540,7 @@ here it answers 409.
     });
   }
 
-  /** The run is attributed to the caller, not to the clock, and works while the schedule is paused. */
+  /** The run is attributed to the caller, not to the clock, and works while the schedule is paused. A schedule filed in a project is run by a member of it. */
   async runSchedule(name: string, options?: RequestOptions): Promise<Run> {
     let path = "/api/schedules/{name}/run";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -1619,9 +1632,11 @@ its people with `act_as_client` and `act_as_user`.
     });
   }
 
-  /** A message of a kind the caller may not read answers 404. A client's
-machine reads one for a person it maps with `act_as_client` and
-`act_as_user`.
+  /** A message of a kind the caller may not read answers 404. An
+announcement in the inbox of a project the caller can see is theirs
+to read, mark, snooze and hide, member or not, muted or not, as the
+project's inbox shows it. A client's machine reads one for a person
+it maps with `act_as_client` and `act_as_user`.
  */
   async getInboxMessage(id: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<GetInboxMessageResponse> {
     let path = "/api/inbox/{id}";
@@ -2730,7 +2745,10 @@ it.
     });
   }
 
-  /** An owner writing a note is its approval. A member's note is a
+  /** An owner writing a note is its approval, except on the workspace
+and company projects, whose notes every agent in a wide part of the
+tree is sent: there it takes `projects:govern` as well. Any other
+member's note, an owner's there without govern included, is a
 proposal: it waits, and the project's owners are asked in their
 inbox to keep or discard it. A viewer is 403.
  */
@@ -2754,7 +2772,7 @@ inbox to keep or discard it. A viewer is 403.
     });
   }
 
-  /** It needs ownership of the project. */
+  /** It needs ownership of the project, and `projects:govern` as well for the workspace and company projects. */
   async approveProjectMemory(name: string, body: NoteSelection, options?: RequestOptions): Promise<Approved> {
     let path = "/api/projects/{name}/memory/approve";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2775,7 +2793,7 @@ inbox to keep or discard it. A viewer is 403.
     });
   }
 
-  /** It needs ownership of the project. */
+  /** It needs ownership of the project, and `projects:govern` as well for the workspace and company projects. */
   async removeProjectMemory(name: string, id: string, options?: RequestOptions): Promise<void> {
     let path = "/api/projects/{name}/memory/{id}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2841,9 +2859,10 @@ the platform file sets answers 409.
 
   /** It needs ownership of the project and membership of the new parent.
 400 for a parent inside the project, past four levels, archived, or
-one that breaks a kind or openness rule; 403 for leaving a project
-that holds a limit without `billing:write`, since a move never
-escapes a limit; 409 for a stale version, a parent the platform file
+one that breaks a kind or openness rule; 403 without `billing:write`
+for leaving a project that holds a limit, or for moving one that
+holds (or has below it) a limit an owner set that the caller could
+not change before, since a move never escapes a limit; 409 for a stale version, a parent the platform file
 sets, or a default below it that would stop being available. The
 workspace cannot move.
  */

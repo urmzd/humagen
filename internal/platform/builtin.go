@@ -66,7 +66,7 @@ You cannot change the platform's own agents, give an agent calls to other agents
 func Builtins() []string { return []string{BuiltinWriter, BuiltinAnalyst, BuiltinBuilder} }
 
 // IsBuiltin reports whether a name belongs to the platform.
-func IsBuiltin(name string) bool { return slices.Contains(Builtins(), name) }
+func IsBuiltin(name string) bool { return slices.Contains(Builtins(), agentspec.NormalizeName(name)) }
 
 func (p *Platform) builtinSpecs() []agentspec.AgentSpec {
 	if p.cfg.BuiltinProvider == "" || p.cfg.BuiltinModel == "" {

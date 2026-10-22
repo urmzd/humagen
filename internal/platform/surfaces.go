@@ -85,11 +85,7 @@ func (p *Platform) ActingFor(who auth.Principal, as ActAs) (auth.Principal, erro
 	if err != nil || !machineOf(c, who) {
 		return auth.Principal{}, fmt.Errorf("%w: %q", clients.ErrNotFound, as.Client)
 	}
-	subject, ok := c.ActsFor(who.Subject, as.User)
-	if !ok {
-		return auth.Principal{}, fmt.Errorf("%w: that person is not mapped to anyone in this workspace", ErrForbidden)
-	}
-	return personOf(who, p.mapped(who, subject)), nil
+	return p.Acting(who, as)
 }
 
 // personOf is the principal a person a surface reads or acts for is: their

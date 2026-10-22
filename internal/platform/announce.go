@@ -92,13 +92,16 @@ func (p *Platform) WithdrawAnnouncement(who auth.Principal, project, id string) 
 	if !author && access.Role != projects.Owner {
 		return fmt.Errorf("%w: its author withdraws it, or %s", projects.ErrForbidden, roleNeeded(projects.Owner, titleOf(pr, p.Settings(who.Tenant).WorkspaceName)))
 	}
-	if m.State == inbox.Resolved || m.State == inbox.Dismissed {
-		return nil
-	}
-	if _, _, err := p.Inbox.Withdraw(who.Tenant, id, who.Subject, "Withdrawn by "+who.Subject, p.now()); err != nil {
+	// m is the caller's own view, where an announcement they hid for
+	// themselves reads as closed. Whether it is closed for everyone is the
+	// store's to say, so withdrawing one already withdrawn changes nothing.
+	_, changed, err := p.Inbox.Withdraw(who.Tenant, id, who.Subject, "Withdrawn by "+who.Subject, p.now())
+	if err != nil {
 		return err
 	}
-	p.audit(who, m, "", "withdraw", "")
+	if changed {
+		p.audit(who, m, "", "withdraw", "")
+	}
 	return nil
 }
 

@@ -155,20 +155,24 @@ var offered = map[inbox.PartType][]string{
 }
 
 // allows reports whether who may take an action on a part, and if not, why.
-// An action needs what needs says, except a proposal for a project's notes:
-// that is the project's to decide, by MayChangeNotes, as its own memory
-// routes ask, so the inbox is no way around a project's owners or
-// projects:govern. An agent's draft is its project's owners' to decide.
+// An action needs what needs says, except a proposal for notes, which is
+// decided as the notes' own memory routes decide it: a project's by
+// MayChangeNotes (projects:write, ownership, and projects:govern for the
+// workspace's and a company project's), and an agent's that lives in a
+// project by ownership of its home as well. A retry starts a turn, so it
+// takes what starting one there takes: being a member of the project the
+// failed turn is filed in. So the inbox is no way around any of them.
+// An agent's draft is its project's owners' to decide.
 func (p *Platform) allows(tree *projects.Tree, who auth.Principal, part inbox.Part, action string) error {
 	perm, known := needs(part.Type, action)
 	if !known {
 		return fmt.Errorf("%w: a %s part does not take %q", ErrAction, part.Type, action)
 	}
-	if project, isProject := memoryProject(part); isProject {
+	if project, ok := memoryProject(part); ok {
 		return p.mayChangeNotes(tree, who, project)
 	}
 	if part.Type == inbox.PartDraft && part.Draft != nil {
-		if !ownsNotes(tree, who, part.Draft.Project) {
+		if !decidesDrafts(tree, who, part.Draft.Project) {
 			pr, _ := tree.Get(part.Draft.Project)
 			return fmt.Errorf("%w: %s needs projects:write, and %s", ErrForbidden, action, roleNeeded(projects.Owner, titleOf(pr, p.Settings(who.Tenant).WorkspaceName)))
 		}
@@ -177,7 +181,30 @@ func (p *Platform) allows(tree *projects.Tree, who auth.Principal, part inbox.Pa
 	if !who.Can(perm) {
 		return fmt.Errorf("%w: %s needs %s", ErrForbidden, action, perm)
 	}
+	if part.Type == inbox.PartMemory && part.Memory != nil {
+		return p.ownsHome(tree, who, part.Memory.Owner)
+	}
+	if part.Type == inbox.PartFailure && action == ActRetry && part.Failure != nil {
+		return p.mayRetry(tree, who, part.Failure.Run)
+	}
 	return nil
+}
+
+// mayRetry holds a retry of a failed turn to MayFileIn: the person retrying
+// must be a member of the project the turn is filed in, whoever asked it
+// first. A run the index does not hold is not retried. A project the tree no
+// longer holds is Converse's to refuse, saying it was deleted.
+func (p *Platform) mayRetry(tree *projects.Tree, who auth.Principal, runID string) error {
+	run, err := p.Runs.Get(who.Tenant, runID)
+	if err != nil {
+		return err
+	}
+	project := projects.NameOf(run.Project)
+	if project == projects.Root || !tree.Has(project) {
+		return nil
+	}
+	_, _, err = p.projectRole(tree, who, project, projects.Member)
+	return err
 }
 
 // seenBy fills in what a reader may do with each part.
@@ -259,9 +286,28 @@ func (p *Platform) InboxCount(who auth.Principal) inbox.Counts {
 	return p.Inbox.Count(who.Tenant, p.inboxQuery(p.Projects.Tree(who.Tenant), who, inbox.Query{}))
 }
 
-// InboxGet returns one message as a person sees it.
+// InboxGet returns one message as a person sees it: one in their own inbox,
+// or an announcement in the inbox of a project they can see, which a viewer
+// reads there, and so does a member who muted the project. Reading it,
+// hiding it and snoozing it go through here, so whatever a project's inbox
+// shows a reader they may also act on.
 func (p *Platform) InboxGet(who auth.Principal, id string) (inbox.Message, error) {
-	return p.inboxGetAs(who, p.inboxReader(p.Projects.Tree(who.Tenant), who), id)
+	return p.inboxGetAs(who, p.sharedReader(p.Projects.Tree(who.Tenant), who), id)
+}
+
+// sharedReader is inboxReader with every project the person can see, so an
+// announcement in any of those projects' inboxes reaches them, member or
+// not, muted or not. Only announcements are addressed to a project, so it
+// reaches nothing else further. It reads one message; their own inbox and
+// its notices keep inboxReader, so they are sent nothing more.
+func (p *Platform) sharedReader(tree *projects.Tree, who auth.Principal) inbox.Reader {
+	r := p.inboxReader(tree, who)
+	for name, a := range tree.Roles(ReaderOf(who)) {
+		if a.Role != projects.None && !slices.Contains(r.Projects, name) {
+			r.Projects = append(r.Projects, name)
+		}
+	}
+	return r
 }
 
 // inboxGetAs returns one message as it is shown to reader, with the actions

@@ -31,9 +31,15 @@ export const DIRECTORY_TABS: DirectoryTab[] = ["people", "agents", "projects"];
 export type ProjectTab = "inbox" | "overview" | "context" | "agents" | "people" | "limits" | "history" | "schedules" | "channels";
 export const PROJECT_TABS: ProjectTab[] = ["inbox", "overview", "context", "agents", "people", "limits", "history", "schedules", "channels"];
 
-/** What a project is for, as the Projects page narrows to it with `?kind=`. */
-export type ProjectKindFilter = "company" | "team" | "account";
-export const PROJECT_KINDS: ProjectKindFilter[] = ["company", "team", "account"];
+/**
+ * What a project is for, as the Projects page narrows to it with `?kind=`:
+ * one of warp's kinds, or one the workspace defines, which has the same
+ * shape. A value of any other shape falls back to every kind.
+ */
+export type ProjectKindFilter = string;
+const KIND_SHAPE = /^[a-z][a-z0-9-]{0,31}$/;
+/** A kind as an address names it, or nothing when it is not shaped as one. */
+export const kindParam = (value: string | null | undefined): ProjectKindFilter | undefined => (value && KIND_SHAPE.test(value) ? value : undefined);
 
 export type SettingsSection = "profile" | "appearance" | "workspace" | "routing" | "models" | "limits" | "connections" | "access";
 export const SETTINGS_SECTIONS: SettingsSection[] = ["profile", "appearance", "workspace", "routing", "models", "limits", "connections", "access"];
@@ -203,7 +209,7 @@ function read(pathname: string, search: string): Route {
     case "tasks":
       return a ? { page: "task", id: a, message: q.get("message") || undefined } : { page: "new" };
     case "projects": {
-      if (!a) return { page: "projects", q: q.get("q") || undefined, kind: oneOf(q.get("kind"), PROJECT_KINDS) };
+      if (!a) return { page: "projects", q: q.get("q") || undefined, kind: kindParam(q.get("kind")) };
       // A channel is a page of its own, under the project's Channels tab.
       if (b === "channels" && parts[3]) return { page: "channel", project: a === "~" ? "" : a, channel: parts[3] };
       const tab = pick(b, PROJECT_TABS, "inbox");

@@ -126,6 +126,9 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 		fail(w, http.StatusBadRequest, "a schedule's name cannot change; delete it and create another")
 		return
 	}
+	if !s.filedBy(w, who, old) {
+		return
+	}
 	meta, valid := s.scheduleMeta(w, r, who, body, maps.Clone(old.Meta))
 	if !valid {
 		return
@@ -146,11 +149,25 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 	ok(w, http.StatusOK, s.viewOf(sc, time.Now()))
 }
 
+// filedBy holds the caller to being a member of the project a stored
+// schedule files its runs in, as filing one there did, before they change,
+// pause, delete or run it; or answers 404 for a project they cannot see and
+// 403 for a viewer.
+func (s *Server) filedBy(w http.ResponseWriter, who auth.Principal, sc cron.Schedule) bool {
+	if err := s.P.MayFileIn(who, sc.Meta[runs.MetaProject]); err != nil {
+		s.problem(w, err)
+		return false
+	}
+	return true
+}
+
 // scheduleMeta checks that what a schedule names exists in the caller's
 // tenant now, and returns meta with its project set. A schedule runs an agent
 // with nobody present, so a missing agent is refused now rather than failing
 // every occurrence later, and so is one not available in the schedule's
 // project. "~" is the workspace, which files a schedule in no project.
+// Filing one in a project takes being a member of it, as starting a
+// conversation there does.
 func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.Principal, body schedule, meta map[string]string) (map[string]string, bool) {
 	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, body.Agent, 0); err != nil {
 		s.problem(w, err)
@@ -176,10 +193,11 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 			s.problem(w, platform.ErrProjectNotFound)
 			return nil, false
 		}
+		if err := s.P.MayFileIn(who, project); err != nil {
+			s.problem(w, err)
+			return nil, false
+		}
 		meta[runs.MetaProject] = project
-	}
-	if !s.inProject(w, who, meta[runs.MetaProject]) {
-		return nil, false
 	}
 	// The agent must be available where the schedule files its runs, or
 	// every occurrence would be refused. It is the answer admission would
@@ -197,7 +215,12 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 func (s *Server) deleteSchedule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	if _, found := s.scheduleIn(w, who, r.PathValue("name")); !found {
+	sc, _, err := s.P.Schedules.Get(who.Tenant, r.PathValue("name"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	if !s.filedBy(w, who, sc) {
 		return
 	}
 	if err := s.P.Schedules.Remove(who.Tenant, r.PathValue("name")); err != nil {
@@ -210,15 +233,19 @@ func (s *Server) deleteSchedule(w http.ResponseWriter, r *http.Request, who auth
 func (s *Server) pauseSchedule(paused bool) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 		name := r.PathValue("name")
-		if _, found := s.scheduleIn(w, who, name); !found {
+		sc, _, err := s.P.Schedules.Get(who.Tenant, name)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		if !s.filedBy(w, who, sc) {
 			return
 		}
 		if err := s.P.Schedules.SetPaused(who.Tenant, name, paused); err != nil {
 			s.problem(w, err)
 			return
 		}
-		sc, _, err := s.P.Schedules.Get(who.Tenant, name)
-		if err != nil {
+		if sc, _, err = s.P.Schedules.Get(who.Tenant, name); err != nil {
 			s.problem(w, err)
 			return
 		}
@@ -257,18 +284,6 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 	ok(w, http.StatusAccepted, run)
 }
 
-// inProject holds a write on a schedule to its project: the caller needs to be
-// a member of the project the schedule is filed in, the workspace's included
-// ("" is the workspace, where everyone is a member unless it says otherwise).
-// A project the caller cannot see answers as one that does not exist.
-func (s *Server) inProject(w http.ResponseWriter, who auth.Principal, project string) bool {
-	if _, _, err := s.P.ProjectRole(who, projects.NameOf(project), projects.Member); err != nil {
-		s.problem(w, err)
-		return false
-	}
-	return true
-}
-
 // scheduleIn is one of the caller's schedules, held to its project.
 func (s *Server) scheduleIn(w http.ResponseWriter, who auth.Principal, name string) (cron.Schedule, bool) {
 	sc, _, err := s.P.Schedules.Get(who.Tenant, name)
@@ -276,5 +291,5 @@ func (s *Server) scheduleIn(w http.ResponseWriter, who auth.Principal, name stri
 		s.problem(w, err)
 		return cron.Schedule{}, false
 	}
-	return sc, s.inProject(w, who, sc.Meta[runs.MetaProject])
+	return sc, s.filedBy(w, who, sc)
 }

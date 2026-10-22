@@ -721,9 +721,9 @@ export const api = {
   projectMembers: (name: string) => call<ProjectMembers>("GET", `/api/projects/${projectPath(name)}/members`),
   setProjectMembers: (name: string, version: number, members: ProjectEntry[]) =>
     call<ProjectMembers>("PUT", `/api/projects/${projectPath(name)}/members`, { version, members }),
-  /** Put a project under another, "" for the top level. */
+  /** Put a project under another, "" for the top level. The parent is a name in the body, never encoded as a path is. */
   moveProject: (name: string, version: number, parent: string) =>
-    call<ProjectView>("POST", `/api/projects/${projectPath(name)}/move`, { version, parent: projectPath(parent) }),
+    call<ProjectView>("POST", `/api/projects/${projectPath(name)}/move`, { version, parent: parent === "" ? "~" : parent }),
   projectHistory: (name: string, before?: string) =>
     call<{ changes: ProjectChange[]; next: string | null }>(
       "GET",
