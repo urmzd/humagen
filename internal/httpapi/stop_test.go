@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,10 +15,11 @@ import (
 )
 
 // holding is a model that says something and then holds its call open until
-// it is cancelled.
-type holding struct{}
+// it is cancelled. said, when it is set, is called once the turn has taken
+// what it said.
+type holding struct{ said func() }
 
-func (holding) Stream(ctx context.Context, _ saigetypes.Request) (<-chan saigetypes.Delta, error) {
+func (h holding) Stream(ctx context.Context, _ saigetypes.Request) (<-chan saigetypes.Delta, error) {
 	out := make(chan saigetypes.Delta)
 	go func() {
 		defer close(out)
@@ -31,6 +33,9 @@ func (holding) Stream(ctx context.Context, _ saigetypes.Request) (<-chan saigety
 				return
 			}
 		}
+		if h.said != nil {
+			h.said()
+		}
 		<-ctx.Done()
 	}()
 	return out, nil
@@ -41,8 +46,12 @@ func (holding) Stream(ctx context.Context, _ saigetypes.Request) (<-chan saigety
 // and cause, once the runtime confirms it. Another tenant gets a 404, and a
 // second stop is a 200 that changes nothing.
 func TestStoppingARunIsAcceptedThenConfirmed(t *testing.T) {
+	// A run reads running before its model has said anything, so the stop
+	// waits for the model too: the partial answer is then known.
+	said := make(chan struct{})
+	model := holding{said: sync.OnceFunc(func() { close(said) })}
 	f := newFixtureWith(t, platform.Config{AgentOptions: []agentrt.Option{
-		agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return holding{}, nil }),
+		agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil }),
 	}})
 	all := []string{"warp:agents:write", "warp:runs:read", "warp:runs:write"}
 	acme, globex := f.machine(t, "acme", all...), f.machine(t, "globex", all...)
@@ -61,6 +70,11 @@ func TestStoppingARunIsAcceptedThenConfirmed(t *testing.T) {
 			t.Fatalf("run never started: %v", read())
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	select {
+	case <-said:
+	case <-time.After(time.Until(deadline)):
+		t.Fatal("the model never said anything")
 	}
 
 	if res, _ := f.do(t, nil, "POST", "/api/runs/"+id+"/stop", globex, ""); res.StatusCode != http.StatusNotFound {
