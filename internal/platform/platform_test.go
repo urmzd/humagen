@@ -66,9 +66,10 @@ func tag(id, agent string) envelope.Tag {
 	return envelope.Tag{ID: id, Tenant: tenant, Agent: agent, Origin: "api", Text: "hello"}
 }
 
+// await waits for a run to reach a status, and returns as soon as it does.
 func await(t *testing.T, p *platform.Platform, runID string, want runs.Status) runs.Run {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		r, err := p.Runs.Get(tenant, runID)
 		if err == nil && r.Status == want {

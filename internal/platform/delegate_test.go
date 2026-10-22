@@ -237,10 +237,12 @@ func stage(t *testing.T, c *cast, cfg platform.Config) *platform.Platform {
 	return p
 }
 
-// called waits for a run of an agent under a root to reach a status.
+// called waits for a run of an agent under a root to reach a status. It
+// returns as soon as one does; the wait is long because a loaded runner
+// takes seconds over a tree of calls.
 func called(t *testing.T, p *platform.Platform, root, agent string, want runs.Status) runs.Run {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		tree, _ := p.Runs.Tree(tenant, root)
 		for _, r := range tree {
