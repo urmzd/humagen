@@ -252,8 +252,6 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 		fail(w, http.StatusConflict, "already exists")
 	case errors.Is(err, threads.ErrFull):
 		fail(w, http.StatusConflict, "this thread is full; start a new thread")
-	case errors.Is(err, threads.ErrPrivate):
-		fail(w, http.StatusConflict, "private threads need read confinement, not built")
 	case errors.Is(err, threads.ErrVersion):
 		fail(w, http.StatusConflict, detail(err, threads.ErrVersion)+"; reload and try again")
 	case errors.Is(err, threads.ErrInvalid):
