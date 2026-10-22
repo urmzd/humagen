@@ -1045,7 +1045,7 @@ test("the project is fixed once an agent has run, and a project the server will 
     "GET /api/projects/Initech/channels": () => ({ channels: [] }),
     "GET /api/runs/r1/events": () => ({ events: [] }),
     "POST /api/threads/th-00000000000000aa/share": () =>
-      new Response(JSON.stringify({ error: "this thread has runs, so its project can't change" }), { status: 409 }),
+      new Response(JSON.stringify({ error: "a conversation that has runs stays in its project" }), { status: 409 }),
   });
   render(<Sharing initial={ran} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
@@ -1063,7 +1063,7 @@ test("the project is fixed once an agent has run, and a project the server will 
     "GET /api/projects/Globex/channels": () => ({ channels: [] }),
     "GET /api/projects/Initech/channels": () => ({ channels: [] }),
     "POST /api/threads/th-00000000000000aa/share": () =>
-      new Response(JSON.stringify({ error: "this thread has runs, so its project can't change" }), { status: 409 }),
+      new Response(JSON.stringify({ error: "a conversation that has runs stays in its project" }), { status: 409 }),
   });
   render(<Sharing initial={mine} />);
   fireEvent.click(await screen.findByRole("button", { name: words.share }));
@@ -1104,7 +1104,8 @@ test("agents checked in a conversation's + menu are saved on the thread, and an 
     cleanup();
 
     // Read back, the selection is the thread's, for everyone in it; a run its message did not tag was routed.
-    const routed: ThreadPage = { ...mine, thread: saved, turns: [...mine.turns, { kind: "run", run: routedRun }] };
+    const leadRun = { ...(routedRun as object), id: "r3b", agent: "lead", answer: "On track." } as never;
+    const routed: ThreadPage = { ...mine, thread: saved, turns: [...mine.turns, { kind: "run", run: routedRun }, { kind: "run", run: leadRun }] };
     current = routed;
     render(
       <ThreadRoom id={mine.thread.id} me="ana" initial={routed} tick={0} agents={[helper, lead]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
@@ -1209,10 +1210,17 @@ test("All of Them is offered for three agents at most, and a conversation checks
   assert.ok(screen.getByText(defaultCopy.chat.maxAgents(5)));
   cleanup();
   render(<SelectionChips selection={{ ...sel, agents: ["a1", "a2", "a3", "a4"] }} onChange={() => {}} />);
-  assert.equal((screen.getByRole("button", { name: defaultCopy.chat.all }) as HTMLButtonElement).disabled, true);
+  const all = screen.getByRole("button", { name: defaultCopy.chat.all });
+  assert.equal(all.getAttribute("aria-disabled"), "true");
+  // Why is said to a screen reader at once, and in words on the page once it is pressed.
+  const why = document.getElementById(all.getAttribute("aria-describedby") ?? "");
+  assert.equal(why?.textContent, defaultCopy.chat.allMax(3));
+  assert.match(why?.className ?? "", /sr-only/);
+  fireEvent.click(all);
+  assert.doesNotMatch(document.getElementById(all.getAttribute("aria-describedby") ?? "")?.className ?? "", /sr-only/);
   cleanup();
   render(<SelectionChips selection={{ ...sel, agents: ["a1", "a2", "a3"] }} onChange={() => {}} />);
-  assert.equal((screen.getByRole("button", { name: defaultCopy.chat.all }) as HTMLButtonElement).disabled, false);
+  assert.equal(screen.getByRole("button", { name: defaultCopy.chat.all }).getAttribute("aria-disabled"), null);
 });
 
 test("a shared conversation's project can't change from the + menu, which says why; a private one's can", async () => {
@@ -1272,4 +1280,142 @@ test("an answer says it was routed as its run recorded it, whatever the conversa
   } finally {
     restore();
   }
+});
+
+test("what a post did names a refused tag as written, with its kind, and says why the selected agents did not all answer", () => {
+  const message = { id: "m-9", thread: "t", by: "ana", name: "Ana", text: "@team:finance and $triage, please", mentions: [], via: "console", at };
+  const posted = (over: object) => ({ thread: mine.thread, message, runs: [], notified: [], refused: [], rule: "tagged", ...over }) as never;
+  assert.equal(postedLine(posted({ refused: [{ kind: "role", name: "finance", refused: "nobody holds it" }] })), "@team:finance: nobody holds it");
+  assert.equal(postedLine(posted({ refused: [{ kind: "skill", name: "triage", refused: "there is no skill called triage" }] })), "$triage: there is no skill called triage");
+  assert.equal(postedLine(posted({ rule: "routed", reason: "No selected agent could answer: lead is not available here." })), "No selected agent could answer: lead is not available here.");
+  // An untagged message where nothing is selected says nothing.
+  assert.equal(postedLine(posted({ rule: "untagged", reason: "Nothing runs until you tag an agent." })), "");
+});
+
+test("a channel's first message says what it did in the conversation it opens", async () => {
+  const opened: string[] = [];
+  const first = { id: "m-1", thread: "th-00000000000000cc", by: "ana", name: "Ana", text: "@dana can you look?", mentions: [], via: "console", at };
+  net = stubFetch({
+    "GET /api/projects/Globex/channels": () => ({ channels: [{ project: "Globex", name: "renewals", version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } }] }),
+    "GET /api/threads": () => ({ threads: [], next: null }),
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "POST /api/threads": () => ({ thread: { ...page.thread, id: "th-00000000000000cc" }, message: first, runs: [], notified: ["dana"], refused: [], rule: "people" }),
+    "GET /api/threads/th-00000000000000cc": () => ({ ...page, thread: { ...page.thread, id: "th-00000000000000cc" }, turns: [{ kind: "message", message: first }] }),
+  });
+  render(<ChannelPage project="Globex" channel="renewals" tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenProject={() => {}} onOpenProjects={() => {}} onOpenThread={(id) => opened.push(id)} />);
+  const box = await screen.findByPlaceholderText(words.startThread);
+  fireEvent.change(box, { target: { value: first.text } });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000cc"]));
+  cleanup();
+  const room: ThreadPage = { ...page, thread: { ...page.thread, id: "th-00000000000000cc" }, turns: [{ kind: "message", message: first }] };
+  render(<ThreadRoom id={room.thread.id} me="ana" initial={room} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />);
+  assert.ok(await screen.findByText(words.notified(["dana"])));
+});
+
+test("Share keeps the channel a conversation is in, which can't change once an agent has run, and says why in words", async () => {
+  const ran: ThreadPage = { ...mine, thread: { ...mine.thread, channel: "deals" }, turns: [...mine.turns, page.turns[1] as ThreadTurn] };
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => ran,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: ["general", "deals"].map((name) => ({ project: "Globex", name, version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } })) }),
+    "GET /api/runs/r1/events": () => ({ events: [] }),
+    "POST /api/threads/th-00000000000000aa/share": () => new Response(JSON.stringify({ error: "a conversation that has runs stays in its channel" }), { status: 409 }),
+  });
+  render(<Sharing initial={ran} />);
+  fireEvent.click(await screen.findByRole("button", { name: words.share }));
+  const dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  const channel = within(dialog).getByLabelText(words.shareChannel) as HTMLSelectElement;
+  await waitFor(() => assert.equal(channel.value, "deals"));
+  assert.equal(channel.disabled, true);
+  fireEvent.click(within(dialog).getByRole("button", { name: words.share }));
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "POST")));
+  assert.deepEqual(net?.seen.find((s) => s.method === "POST")?.body, { channel: "deals" });
+  assert.ok(await within(dialog).findByText(words.shareChannelFixed));
+  assert.ok(!within(dialog).queryByText(/stays in its channel$/));
+});
+
+test("a change to the + selection someone else beat says so in words and reads the conversation again", async () => {
+  let reads = 0;
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => {
+      reads++;
+      return { ...mine, thread: { ...mine.thread, version: 3, agents: ["helper"] } };
+    },
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+    "PUT /api/threads/th-00000000000000aa": () =>
+      new Response(JSON.stringify({ error: 'changed since it was read: "th-00000000000000aa" is at version 3, not 1; reload and try again' }), { status: 409 }),
+  });
+  render(<ThreadRoom id={mine.thread.id} me="ana" initial={mine} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />);
+  await waitFor(() => assert.ok(reads >= 1));
+  const before = reads;
+  fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
+  fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
+  assert.ok(await screen.findByText(words.changedMeanwhile));
+  assert.ok(!screen.queryByText(/version 3/));
+  await waitFor(() => assert.ok(reads > before, "the conversation is read again"));
+});
+
+test("an answer routed to the one agent a message went to says only where it went", async () => {
+  const restore = stubEventSource();
+  try {
+    const lone: ThreadPage = {
+      ...mine,
+      turns: [...mine.turns, { kind: "run", run: { id: "r7", agent: "helper", status: "completed", answer: "Done.", text: "q", message: "m-1", prev: "m-1", thread: "th-00000000000000aa", calls: 0, routed: "all", created_at: at, updated_at: at } as never }],
+    };
+    net = stubFetch({
+      "GET /api/threads/th-00000000000000aa": () => lone,
+      "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    });
+    render(<ThreadRoom id={lone.thread.id} me="ana" initial={lone} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />);
+    assert.ok(await screen.findByText(defaultCopy.chat.routed("helper")));
+    assert.ok(!screen.queryByText(defaultCopy.chat.routedAll("helper")));
+    cleanup();
+  } finally {
+    restore();
+  }
+});
+
+test("in the + menu, down from the search goes to the first agent, and back from choosing a project focus is on the project", async () => {
+  net = stubFetch({
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+    "GET /api/projects/Initech/channels": () => ({ channels: [] }),
+  });
+  let sel: Selection = { agents: [], mode: "best_fit", project: "Globex", channel: "general" };
+  const { rerender } = render(
+    <PlusMenu agents={[{ name: "helper" }, { name: "lead" }]} selection={sel} onChange={(n) => (sel = n)} onAttach={() => {}} onClose={() => {}} projects={tree} />,
+  );
+  const search = screen.getByRole("searchbox", { name: defaultCopy.chat.findAgent });
+  search.focus();
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  assert.equal(document.activeElement?.textContent, "helper");
+  fireEvent.click(screen.getByRole("button", { name: /Globex/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /^Initech/ }));
+  rerender(<PlusMenu agents={[{ name: "helper" }, { name: "lead" }]} selection={sel} onChange={(n) => (sel = n)} onAttach={() => {}} onClose={() => {}} projects={tree} />);
+  await waitFor(() => assert.match(document.activeElement?.textContent ?? "", /Initech/));
+  // Escape from the chooser comes back to the project too.
+  fireEvent.click(screen.getByRole("button", { name: /Initech/ }));
+  await screen.findByRole("searchbox", { name: defaultCopy.projects.search });
+  fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+  await waitFor(() => assert.match(document.activeElement?.textContent ?? "", /Initech/));
+  assert.ok(screen.getByRole("dialog", { name: defaultCopy.chat.menu }), "the menu stays open");
+});
+
+test("a mention kind that resolves to people never offers the person typing", async () => {
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => mine,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/mentions": (_, q) =>
+      q.get("kind") === "who" ? { items: [{ name: "ana-s", description: "Ana" }, { name: "dana", description: "Dana Scully" }] } : { kinds: [{ kind: "who", title: "People", resolves: "people" }] },
+    "GET /api/people": () => ({ people: [{ subject: "ana", name: "Ana", handle: "ana-s", picture: null }] }),
+  });
+  render(<ThreadRoom id={mine.thread.id} me="ana" initial={mine} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />);
+  const box = (await screen.findByPlaceholderText(words.message)) as HTMLTextAreaElement;
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.path.startsWith("/api/mentions?project="))));
+  fireEvent.change(box, { target: { value: "@who:" } });
+  const list = await screen.findByRole("listbox");
+  await waitFor(() => assert.ok(list.textContent?.includes("@who:dana"), list.textContent ?? ""));
+  assert.ok(!list.textContent?.includes("@who:ana-s"), list.textContent ?? "");
 });

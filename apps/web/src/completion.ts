@@ -36,6 +36,8 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
   const timer = useRef<number | undefined>(undefined);
   // The newest lookup alone may answer: an older one that returns late is dropped.
   const asked = useRef(0);
+  // The kinds read for the project, for a lookup made as one is typed.
+  const kindsNow = useRef<MentionKind[] | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -54,7 +56,11 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
       .catch(() => live && setSkills([]));
     coworking
       .mentionKinds(project)
-      .then((k) => live && setKinds(k))
+      .then((k) => {
+        if (!live) return;
+        kindsNow.current = k;
+        setKinds(k);
+      })
       .catch(() => live && setKinds(null));
     setItems([]);
     return () => {
@@ -71,10 +77,21 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
       timer.current = window.setTimeout(() => {
         if (colon > 0) {
           const kind = t.query.slice(0, colon);
-          coworking
-            .mentionItems(project, kind, t.query.slice(colon + 1))
-            .then((got: MentionItem[]) => {
-              if (n === asked.current) setItems(got.slice(0, 20).map((i) => ({ kind, name: i.name, ...(i.description ? { description: i.description } : {}) })));
+          const q = t.query.slice(colon + 1);
+          // A kind that resolves to people never offers the person typing.
+          // Items name people by handle, so the directory's own lookup of the
+          // same words says which handle is theirs.
+          const people = kindsNow.current?.find((k) => k.kind === kind)?.resolves === "people";
+          Promise.all([
+            coworking.mentionItems(project, kind, q),
+            people ? coworking.people(q, 21).catch(() => [] as DirectoryPerson[]) : Promise.resolve([] as DirectoryPerson[]),
+          ])
+            .then(([got, found]: [MentionItem[], DirectoryPerson[]]) => {
+              if (n !== asked.current) return;
+              const mine = new Set(found.filter((p) => p.subject === me).map((p) => p.handle));
+              mine.add(me);
+              const kept = people ? got.filter((i) => !mine.has(i.name)) : got;
+              setItems(kept.slice(0, 20).map((i) => ({ kind, name: i.name, ...(i.description ? { description: i.description } : {}) })));
             })
             .catch(() => n === asked.current && setItems([]));
           return;
@@ -86,7 +103,7 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
           .catch(() => n === asked.current && setPeople([]));
       }, 150);
     },
-    [project],
+    [project, me],
   );
   useEffect(() => () => window.clearTimeout(timer.current), []);
 

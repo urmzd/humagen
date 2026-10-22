@@ -20,10 +20,12 @@ import {
   type ThreadPosted,
   type ThreadSummary,
   type ThreadAsk,
+  type ThreadMention,
   type ThreadTurn,
 } from "./api.ts";
 import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { type Completion, useCompletion } from "./completion.ts";
+import { conflictOf, rememberSaid, saidFor } from "./conflicts.ts";
 import { Composer } from "./Composer.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { useRunTurn } from "./Runs.tsx";
@@ -81,14 +83,33 @@ function answersShort(a: ThreadAnswers | undefined): string {
 }
 
 /**
- * What a posted message did, in one line: who it was sent to, and why a tag
- * started nothing. A message that tags nobody is just posted, so it says
- * nothing: nobody was meant to answer it.
+ * A refused tag as the message wrote it: `$review`, `@sme:billing`, or an
+ * item of a mention kind with its kind (`@role:finance`, `@team:finance`),
+ * read from the message's own words where they name it.
+ */
+function written(r: ThreadMention, text: string): string {
+  if (r.kind === "sme") return `@sme${r.name ? `:${r.name}` : ""}`;
+  if (r.kind === "skill") return text.includes(`$${r.name}`) ? `$${r.name}` : `@skill:${r.name}`;
+  if (r.kind === "role" || r.kind === "person") {
+    const esc = r.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const kind = new RegExp(`@([a-z][a-z0-9-]{0,31}):${esc}(?![A-Za-z0-9._-])`).exec(text)?.[1];
+    if (kind) return `@${kind}:${r.name}`;
+    if (r.kind === "role") return `@role:${r.name}`;
+  }
+  return `@${r.name}`;
+}
+
+/**
+ * What a posted message did, in one line: who it was sent to, why a tag
+ * started nothing, and why the conversation's selected agents did not all
+ * answer. A message that tags nobody, where nothing is selected, is just
+ * posted, so it says nothing: nobody was meant to answer it.
  */
 export function postedLine(p: ThreadPosted): string {
   const parts: string[] = [];
   if (p.notified.length > 0) parts.push(words.notified(p.notified));
-  for (const r of p.refused) parts.push(words.refused(r.kind === "sme" ? `@sme${r.name ? `:${r.name}` : ""}` : `@${r.name}`, r.refused ?? ""));
+  for (const r of p.refused) parts.push(words.refused(written(r, p.message?.text ?? ""), r.refused ?? ""));
+  if (p.rule === "routed" && p.reason) parts.push(p.reason);
   return parts.join(" ");
 }
 
@@ -117,12 +138,15 @@ export function topicsOf(projects: ProjectView[], root: ProjectView | null, name
  * says who answers: nobody does until a message tags an agent.
  */
 function RoomComposer({
+  thread,
   placeholder,
   tags,
   autoFocus,
   plus,
   onPost,
 }: {
+  /** The conversation it posts in, whose first message, posted where it started, may have said something. */
+  thread?: string;
   placeholder: string;
   tags: Completion;
   autoFocus?: boolean;
@@ -130,14 +154,16 @@ function RoomComposer({
   onPost: (text: string) => Promise<ThreadPosted>;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
-  const [said, setSaid] = useState("");
+  const [said, setSaid] = useState(() => (thread ? saidFor(thread) : ""));
   // People's messages never wait for an agent: each is posted as it is sent.
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
       onPost(m.text)
         .then((p) => {
-          setSaid(postedLine(p));
+          const line = postedLine(p);
+          setSaid(line);
+          if (thread) rememberSaid(thread, line);
           queue.turnEnded("done");
         })
         .catch((e) => {
@@ -430,7 +456,23 @@ export function ThreadRoom({
       .catch((e) => {
         saving.current = { busy: false, next: null };
         setShown(null);
-        setProblem(e instanceof ApiError && e.status === 409 && moved ? words.shareConflict : e instanceof ApiError ? e.message : defaultCopy.chat.saveFailed);
+        // Each refusal in the console's own words, never the server's, which
+        // names ids and versions. Changed by someone else, it is read again.
+        const why = conflictOf(e);
+        if (why === "version") {
+          setProblem(words.changedMeanwhile);
+          coworking
+            .thread(id)
+            .then((p) => {
+              latest.current = p.thread;
+              setPage(p);
+              setTurns((t) => mergeTurns(t, p.turns));
+            })
+            .catch(() => {});
+        } else if (why === "project") setProblem(words.shareConflict);
+        else if (why === "channel") setProblem(words.shareChannelFixed);
+        else if (e instanceof ApiError && e.status === 403) setProblem(defaultCopy.noPermission);
+        else setProblem(defaultCopy.chat.saveFailed);
       });
   };
   const select = (next: Selection) => {
@@ -443,7 +485,9 @@ export function ThreadRoom({
   // it, so an older answer keeps its line whatever the selection becomes.
   const routedOf = (run: Run): string | undefined => {
     const c = defaultCopy.chat;
-    if (run.routed === "all") return c.routedAll(run.agent);
+    // A message routed to one agent alone says only where it went, whatever the mode was.
+    const alone = run.message ? turns.filter((t) => t.run?.message === run.message && t.run?.routed).length <= 1 : false;
+    if (run.routed === "all") return alone ? c.routed(run.agent) : c.routedAll(run.agent);
     // The best fit of one agent was not picked from others, and says only where it went.
     if (run.routed === "best_fit") return run.picked ? c.routedBest(run.agent) : c.routed(run.agent);
     return undefined;
@@ -595,6 +639,7 @@ export function ThreadRoom({
         {canRun && !posts && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
         {posts && (
           <RoomComposer
+            thread={id}
             placeholder={selection.agents.length > 0 ? placeholderFor(selection) : th.visibility === "private" ? words.message : words.channel(th.channel)}
             tags={tags}
             plus={{
@@ -807,6 +852,7 @@ export function ChannelPage({
             coworking
               .start({ project, channel, text, visibility: "shared", ...(picked.agents.length > 0 ? { agents: picked.agents, mode: picked.mode } : {}) })
               .then((p) => {
+                rememberSaid(p.thread.id, postedLine(p));
               onOpenThread(p.thread.id);
               return p;
             })
