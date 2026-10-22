@@ -206,6 +206,7 @@ function ChatBar({
   projects,
   root,
   me,
+  handle,
   plus,
   onAvailable,
   ...rest
@@ -218,9 +219,10 @@ function ChatBar({
   projects: ProjectView[] | null;
   root: ProjectView | null;
   me: string;
+  handle?: string;
   plus?: (available: { name: string; description?: string }[] | null) => NonNullable<Parameters<typeof Composer>[0]["plus"]>;
 }) {
-  const tags = useCompletion(project, agents, homes, topicsOf(projects ?? [], root, project), me);
+  const tags = useCompletion(project, agents, homes, topicsOf(projects ?? [], root, project), me, handle);
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per list read
   useEffect(() => {
     if (tags.agents) onAvailable?.(tags.agents);
@@ -239,6 +241,7 @@ function ChatBar({
 export function Chat({
   threadId,
   me,
+  handle = "",
   startIn,
   startAgent,
   startAsk,
@@ -267,6 +270,8 @@ export function Chat({
   threadId: string | null;
   /** The reader's subject: Retry asks a turn again as them, so only on a turn that acted for them. */
   me: string;
+  /** How the platform names the reader (GET /api/me handle), which a thread names its starter by. */
+  handle?: string;
   /** The project a new conversation starts in, when it was started from one. */
   startIn?: string;
   /** The agent a new conversation is for, and its first message, when a link or a starter picked them. */
@@ -483,6 +488,7 @@ export function Chat({
         projects={projects}
         root={root ?? null}
         me={me}
+        handle={handle}
         placeholder={!threadId ? (startChannel ? words.startThread : placeholderFor(selection)) : words.message}
         queue={queue}
         autoFocus={!threadId}
@@ -548,6 +554,7 @@ export function Chat({
         key={threadId}
         id={threadId}
         me={me}
+        handle={handle}
         initial={room}
         tick={tick}
         agents={agents}

@@ -337,6 +337,7 @@ const noHomes: Record<string, string> = {};
 export function ThreadRoom({
   id,
   me,
+  handle = "",
   initial,
   tick,
   agents,
@@ -354,6 +355,8 @@ export function ThreadRoom({
   id: string;
   /** The reader's subject: a failed answer is theirs to retry when it acted for them. */
   me: string;
+  /** How the platform names the reader (GET /api/me handle), which a thread names its starter by. */
+  handle?: string;
   /** The page already read, so the room shows at once. */
   initial: ThreadPage;
   tick: number;
@@ -412,18 +415,20 @@ export function ThreadRoom({
   };
 
   const th = page.thread;
-  const tags = useCompletion(th.project, agents, homes, topicsOf(projects, root, th.project), me);
+  const tags = useCompletion(th.project, agents, homes, topicsOf(projects, root, th.project), me, handle);
+  // A thread names its starter as the platform names people elsewhere: by handle, which a subject holding an address is not.
+  const started = th.created_by === me || (!!handle && th.created_by === handle);
   const posts = canRun && postsIn(projects, th.project);
   // A private conversation is published from its header by its starter, or
   // an owner of its project, as the server holds them to it.
   const owner = (th.project === "" ? root : projects.find((p) => p.name === th.project))?.access?.role === "owner";
-  const shareable = posts && th.visibility === "private" && !th.surface && !!onSharing && (th.created_by === me || owner);
+  const shareable = posts && th.visibility === "private" && !th.surface && !!onSharing && (started || owner);
   const hasRuns = turns.some((t) => t.run);
   // What the + menu selected for the conversation, shown at once and saved on the thread.
   const saved: Selection = { agents: th.agents ?? [], mode: th.mode ?? "best_fit", project: th.project, channel: th.channel };
   const [shown, setShown] = useState<Selection | null>(null);
   const selection = shown ?? saved;
-  const fixedWhy = hasRuns ? defaultCopy.threads.shareProjectFixed : th.surface ? defaultCopy.chat.projectFromSlack : th.visibility === "shared" ? defaultCopy.chat.projectShared : th.created_by !== me && !owner ? defaultCopy.chat.projectStarter : undefined;
+  const fixedWhy = hasRuns ? defaultCopy.threads.shareProjectFixed : th.surface ? defaultCopy.chat.projectFromSlack : th.visibility === "shared" ? defaultCopy.chat.projectShared : !started && !owner ? defaultCopy.chat.projectStarter : undefined;
   // One save at a time: a change made while one is in flight waits for it,
   // then is saved from the version it answered, so quick changes never
   // send a version already gone.
@@ -595,6 +600,7 @@ export function ThreadRoom({
             projects={projects.filter((p) => postsIn(projects, p.name))}
             workspaceName={workspaceName}
             me={me}
+            handle={handle}
             onClose={() => {
               onSharing?.(false);
               shareButton.current?.focus();
@@ -713,6 +719,7 @@ export function ChannelPage({
   project,
   channel,
   me = "",
+  handle = "",
   tick,
   agents,
   homes = noHomes,
@@ -728,6 +735,8 @@ export function ChannelPage({
   channel: string;
   /** The reader's subject, whom the typeahead leaves out. */
   me?: string;
+  /** How the platform names the reader, whom completion leaves out. */
+  handle?: string;
   tick: number;
   agents: Revision[];
   /** Where each agent that lives in a project lives, by name. */
@@ -748,7 +757,7 @@ export function ChannelPage({
   // What is not there: the project, for the reader (a project they may not
   // see answers as one that does not exist), or the channel in it.
   const [missing, setMissing] = useState<"project" | "channel" | null>(null);
-  const tags = useCompletion(project, agents, homes, topicsOf(projects, root, project), me);
+  const tags = useCompletion(project, agents, homes, topicsOf(projects, root, project), me, handle);
   // The agents the + menu picked for the thread this channel's chat bar starts.
   const [picked, setPicked] = useState<Selection>(emptySelection);
 

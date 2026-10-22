@@ -1419,3 +1419,28 @@ test("a mention kind that resolves to people never offers the person typing", as
   await waitFor(() => assert.ok(list.textContent?.includes("@who:dana"), list.textContent ?? ""));
   assert.ok(!list.textContent?.includes("@who:ana-s"), list.textContent ?? "");
 });
+
+test("a starter whose subject holds an address is known by their handle: Share and the move are theirs, and completion leaves them out", async () => {
+  const pats: ThreadPage = { ...mine, thread: { ...mine.thread, created_by: "pat", participants: [{ kind: "person", name: "pat", owner: true, at }] } };
+  const member = tree.map((p) => (p.name === "Globex" ? { ...p, access: { role: "member" as const, from: "Globex", via: "*" } } : p));
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => pats,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+    // The directory leaves out a subject that holds an address.
+    "GET /api/people": () => ({ people: [{ handle: "pat", name: "Pat", picture: null }, { subject: "00u-dana", handle: "dana", name: "Dana", picture: null }] }),
+  });
+  render(
+    <ThreadRoom id={pats.thread.id} me="tailscale:pat@example.com" handle="pat" initial={pats} tick={0} agents={[helper]} projects={member} root={null} workspaceName="Acme" canRun sharing={false} onSharing={() => {}} onOpenChannel={() => {}} onChanged={() => {}} />,
+  );
+  assert.ok(await screen.findByRole("button", { name: words.share }), "the starter may share it");
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
+  assert.ok(!within(menu).queryByText(defaultCopy.chat.projectStarter), "the starter may move it");
+  fireEvent.keyDown(menu, { key: "Escape" });
+  const box = screen.getByPlaceholderText(words.message) as HTMLTextAreaElement;
+  fireEvent.change(box, { target: { value: "@" } });
+  const list = await screen.findByRole("listbox");
+  await waitFor(() => assert.ok(list.textContent?.includes("@dana"), list.textContent ?? ""));
+  assert.ok(!list.textContent?.includes("@pat"), list.textContent ?? "");
+});

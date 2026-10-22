@@ -65,6 +65,12 @@ export interface Me {
   permissions: Permission[] | null;
   /** The caller is an admin in a workspace nobody has set up yet. */
   first_admin: boolean;
+  /** How the platform names the caller elsewhere, as a thread's
+`created_by` and its participants name people: their handle, or
+their subject when they have none and it holds no address. Empty
+when neither.
+ */
+  handle?: string;
 }
 
 export interface AgentSource {

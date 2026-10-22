@@ -399,6 +399,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             key={thread ?? `new:${route.page === "new" ? `${route.project ?? ""}:${route.channel ?? ""}:${route.agent ?? ""}:${route.ask ?? ""}` : ""}`}
             threadId={thread}
             me={me.principal.subject}
+            handle={me.handle ?? ""}
             startIn={route.page === "new" ? route.project : undefined}
             startAgent={route.page === "new" ? route.agent : undefined}
             startAsk={route.page === "new" ? route.ask : undefined}
@@ -509,6 +510,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             project={route.project}
             channel={route.channel}
             me={me.principal.subject}
+            handle={me.handle ?? ""}
             tick={tick}
             agents={agents}
             homes={homes}

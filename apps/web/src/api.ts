@@ -77,6 +77,8 @@ export interface Me {
   permissions: string[];
   /** The caller is an admin in a workspace nobody has set up yet. */
   first_admin?: boolean;
+  /** How threads and participants name the caller: their handle, or a subject holding no address. */
+  handle?: string;
 }
 
 /** Why the caller may or may not do one thing. Only ever about the caller. */
