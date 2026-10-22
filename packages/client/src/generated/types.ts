@@ -478,6 +478,13 @@ export interface Thread {
   participants: ThreadParticipant[];
   /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set. */
   default?: string;
+  /** The agents selected to answer the thread's untagged messages, at
+most 5. A message that tags an agent is answered by the agents it
+tags instead. An agent the caller may not read is left out, as if
+not selected. Absent when none is selected.
+ */
+  agents?: string[];
+  mode?: ThreadMode;
   surface?: ThreadSurface;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
@@ -637,6 +644,9 @@ export interface ThreadInput {
   title?: string;
   /** Answers untagged messages in the thread, an agent available in the project or `auto`. */
   default?: string;
+  /** Agents selected to answer the thread's untagged messages, at most 5, each available in the project (400; one the caller may not read is as one that does not exist). `all` takes at most 3. */
+  agents?: string[];
+  mode?: ThreadMode;
   text: string;
   /** Post without any agent answering, unless the message tags one. In the console this is what an untagged message does anyway. */
   post_only?: boolean;
@@ -665,13 +675,28 @@ export interface ThreadMessageInput {
   surface?: SurfaceRef;
 }
 
-/** A thread's title, visibility and default, as a whole. */
+/** How a thread's selected agents answer an untagged message:
+`best_fit`, the one of them that fits it best, picked as `@auto`
+picks among them alone (the run's `picked` says why), or `all`, each
+of them side by side, at most 3. Absent with fewer than two agents
+selected; `best_fit` when two or more are selected and none is named.
+ */
+export type ThreadMode = "best_fit" | "all";
+
+/** A thread's title, visibility, default and selected agents, as a
+whole. Changing only `agents` and `mode` takes anyone who may post in
+the thread; anything else takes whoever started it, while a member,
+or an owner of its project.
+ */
 export interface ThreadUpdate {
   version: number;
   title?: string;
   visibility?: ThreadVisibility;
   /** Empty keeps a default the caller was not shown, one naming an agent that lives in a project they may not read. */
   default?: string;
+  /** The selected agents, as a whole; a selected agent the caller was not shown is kept. Each must be an agent available in the thread's project (400; one the caller may not read is as one that does not exist). */
+  agents?: string[];
+  mode?: ThreadMode;
 }
 
 /** People and agents to add to a thread and to remove from it. */
@@ -685,11 +710,13 @@ export interface ThreadParticipantsUpdate {
 /** The rule that decided what a message starts, the first that applies:
 `tagged` (the agents it tags answer), `people` (it tags only people
 or experts), `reply` (it answers a question or replies to a
-mention), `post_only`, `untagged` (posted by a person as themselves,
-as the console does, and it tags no agent, so nothing runs), or
-`default` (the inherited default answers, if there is one).
+mention), `post_only`, `routed` (it tags no agent, and the thread's
+selected agents answer it, see `ThreadMode`), `untagged` (posted by
+a person as themselves, as the console does, and it tags no agent,
+so nothing runs), or `default` (the inherited default answers, if
+there is one).
  */
-export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "untagged" | "default";
+export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" | "untagged" | "default";
 
 /** What posting a message did. */
 export interface ThreadPosted {

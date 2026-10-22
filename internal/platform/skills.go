@@ -76,13 +76,15 @@ func startsForSkills(ms []threads.Mention) []threads.Mention {
 // message that names a skill and tags no agent starts @auto
 // (startsForSkills), unless it was posted only: the @auto a skill starts is
 // not written, so a person who chose to post only is taken at their word.
-func skillTags(ms []threads.Mention, surfaced, postOnly bool) ([]threads.Mention, error) {
+// In a thread with selected agents (routed) the skill goes to them instead
+// (threads.Decide), so no @auto is added.
+func skillTags(ms []threads.Mention, surfaced, postOnly, routed bool) ([]threads.Mention, error) {
 	if !surfaced {
 		if err := threads.UnknownSkill(ms); err != nil {
 			return nil, err
 		}
 	}
-	if postOnly {
+	if postOnly || routed {
 		return ms, nil
 	}
 	return startsForSkills(ms), nil

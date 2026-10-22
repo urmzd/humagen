@@ -2,8 +2,11 @@ package platform_test
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/urmzd/fiber/pkg/envelope"
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
@@ -247,5 +250,31 @@ func TestAMentionIsReadWhereItsConversationWent(t *testing.T) {
 		if p.Seer(who).Message(m) != p.SeesThread(who, id) {
 			t.Errorf("%s reads the mention: %v, and the conversation: %v", who.Subject, p.Seer(who).Message(m), p.SeesThread(who, id))
 		}
+	}
+}
+
+// A conversation from before threads reads with as many participants as a
+// thread holds, not only as many as one writer adds.
+func TestAConversationFromBeforeThreadsHoldsAsManyParticipantsAsAThread(t *testing.T) {
+	p := start(t, call.Limits{})
+	ctx := t.Context()
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-0", Agent: "lead", Text: "hi", Actor: envelope.Actor{ID: "p0", User: "p0"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, first.ID, runs.Completed)
+	const people = threads.MaxParticipants + 10
+	for i := 1; i < people; i++ {
+		who := fmt.Sprintf("p%d", i)
+		if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-" + who, Agent: "lead", Text: "and?", After: first.ID, Actor: envelope.Actor{ID: who, User: who}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec, err := p.ThreadRecord(tenant, first.Thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(rec.Participants); n != people+1 {
+		t.Fatalf("the record holds %d participants, want %d people and the agent", n, people)
 	}
 }

@@ -17,6 +17,7 @@ import (
 
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/pick"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/threads"
@@ -59,9 +60,13 @@ type ThreadInput struct {
 	Visibility threads.Visibility `json:"visibility"`
 	Title      string             `json:"title,omitempty"`
 	// Default answers untagged messages in the thread: an agent, or auto.
-	Default  string `json:"default,omitempty"`
-	Text     string `json:"text"`
-	PostOnly bool   `json:"post_only,omitempty"`
+	Default string `json:"default,omitempty"`
+	// Agents are selected to answer the thread's untagged messages, and Mode
+	// how (threads.Routing).
+	Agents   []string `json:"agents,omitempty"`
+	Mode     string   `json:"mode,omitempty"`
+	Text     string   `json:"text"`
+	PostOnly bool     `json:"post_only,omitempty"`
 	// ActAs is the person a surface's credential posts for.
 	ActAs *ActAs `json:"act_as,omitempty"`
 	// Surface is where on a client's surface the message was posted, sent
@@ -91,13 +96,18 @@ type MessageInput struct {
 	reply bool
 }
 
-// ThreadUpdate changes a thread's title, visibility or default, as a whole.
+// ThreadUpdate changes a thread's title, visibility, default and routing,
+// as a whole.
 type ThreadUpdate struct {
 	// Version is the one read. A conversation with no record reads 0.
 	Version    int                `json:"version"`
 	Title      string             `json:"title"`
 	Visibility threads.Visibility `json:"visibility"`
 	Default    string             `json:"default"`
+	// Agents and Mode are the thread's selected agents and how they answer
+	// (threads.Routing). A selected agent the caller is not shown is kept.
+	Agents []string `json:"agents,omitempty"`
+	Mode   string   `json:"mode,omitempty"`
 }
 
 // ParticipantsUpdate adds and removes people and agents.
@@ -533,7 +543,7 @@ func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 		}
 	}
 	add := func(kind, name string) {
-		if name == "" || len(th.Participants) >= threads.MaxParticipants {
+		if name == "" || len(th.Participants) >= threads.MaxHeld {
 			return
 		}
 		if slices.ContainsFunc(th.Participants, func(x threads.Participant) bool { return x.Kind == kind && x.Name == name }) {
@@ -634,6 +644,31 @@ func (p *Platform) checkDefault(ctx context.Context, tenant, project, agent stri
 	return nil
 }
 
+// checkRouting normalizes a thread's selected agents (threads.Routing) and
+// refuses one that cannot answer in the project: an agent that does not
+// exist, or one its writer may not read (sees, nil for every agent), as the
+// same "there is no agent", and one not available there.
+func (p *Platform) checkRouting(ctx context.Context, tenant, project string, agents []string, mode string, sees func(string) bool) ([]string, string, error) {
+	agents, mode, err := threads.Routing(agents, mode)
+	if err != nil {
+		return nil, "", fmt.Errorf("%w: %s", projects.ErrInvalid, detailOf(err, threads.ErrInvalid))
+	}
+	for _, a := range agents {
+		if _, err := p.Agents.Get(ctx, tenant, a, 0); err != nil || (sees != nil && !sees(a)) {
+			return nil, "", fmt.Errorf("%w: there is no agent called %s", projects.ErrInvalid, a)
+		}
+		if reason := p.tagRefusal(tenant, project, a); reason != "" {
+			return nil, "", fmt.Errorf("%w: %s, so it cannot answer there", projects.ErrInvalid, reason)
+		}
+	}
+	return agents, mode, nil
+}
+
+// detailOf is an error's words after its sentinel's.
+func detailOf(err, sentinel error) string {
+	return strings.TrimPrefix(err.Error(), sentinel.Error()+": ")
+}
+
 // StartThread starts a shared thread in a project's channel with its first
 // message, and starts what the message calls for.
 func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in ThreadInput) (Posted, error) {
@@ -680,6 +715,10 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err := p.checkDefault(ctx, who.Tenant, project, in.Default, seer.Agent); err != nil {
 		return Posted{}, err
 	}
+	routed, mode, err := p.checkRouting(ctx, who.Tenant, project, in.Agents, in.Mode, seer.Agent)
+	if err != nil {
+		return Posted{}, err
+	}
 	if err := p.posts.take(who.Tenant, by, project, p.now()); err != nil {
 		return Posted{}, err
 	}
@@ -687,6 +726,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	text, unmapped := in.Text, []threads.Mention(nil)
 	rec := threads.Thread{
 		Project: project, Channel: ch.Name, Title: strings.TrimSpace(in.Title), Visibility: in.Visibility, Default: in.Default, CreatedBy: by,
+		Agents: routed, Mode: mode,
 	}
 	first := threads.Message{By: by, Name: name, Via: via}
 	if on != nil {
@@ -698,7 +738,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
-	if mentions, err = skillTags(mentions, on != nil, in.PostOnly); err != nil {
+	if mentions, err = skillTags(mentions, on != nil, in.PostOnly, len(routed) > 0); err != nil {
 		return Posted{}, err
 	}
 	if on != nil && on.ref.Files {
@@ -779,7 +819,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
-	if mentions, err = skillTags(mentions, on != nil, in.PostOnly); err != nil {
+	if mentions, err = skillTags(mentions, on != nil, in.PostOnly, len(th.Agents) > 0); err != nil {
 		return Posted{}, err
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
@@ -918,6 +958,11 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	mu.RLock()
 	defer mu.RUnlock()
 	if cur, err := p.Threads.Get(tenant, th.ID); err == nil {
+		if cur.Project != th.Project {
+			// Shared into another project since it was posted: whether the
+			// poster may keep notes was asked of the project it left.
+			keeps = false
+		}
 		th = cur
 	}
 	def, unavailable := p.defaultOf(tenant, th, sees)
@@ -925,7 +970,13 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	// they tag: no default answers them. A client's surface keeps its
 	// defaults, where mentioning the app is what asks.
 	tagsOnly := m.Via == threads.ViaConsole
-	d := threads.Decide(threads.Input{Mentions: m.Mentions, Reply: reply, PostOnly: postOnly, TagsOnly: tagsOnly, Default: def, Unavailable: unavailable})
+	// The thread's selected agents answer an untagged message, those the
+	// poster may read: one they may not is passed over for them.
+	routed, mode := slices.DeleteFunc(slices.Clone(th.Agents), func(a string) bool { return sees != nil && !sees(a) }), th.Mode
+	if len(routed) < 2 {
+		mode = ""
+	}
+	d := threads.Decide(threads.Input{Mentions: m.Mentions, Reply: reply, PostOnly: postOnly, TagsOnly: tagsOnly, Routed: routed, Mode: mode, Default: def, Unavailable: unavailable})
 	out := Posted{Runs: []runs.Run{}, Notified: []string{}, Refused: []threads.Mention{}, Rule: d.Rule, Reason: d.Reason}
 	mentions := d.Mentions
 	// The runs a message starts act for the person who posted it, and for
@@ -936,7 +987,7 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	actor := envelope.Actor{ID: m.By, Display: m.Name, User: m.By}
 	var answered []threads.Participant
 	start := func(agent string) (runs.Run, error) {
-		run, err := p.answerMessage(ctx, tenant, th, m, via, agent, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
+		run, err := p.answerMessage(ctx, tenant, th, m, via, agent, d.Among, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
 		if err == nil {
 			out.Runs = append(out.Runs, run)
 			answered = append(answered, threads.Participant{Kind: threads.Agent, Name: run.Agent, AddedBy: m.By})
@@ -956,6 +1007,16 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 				continue
 			}
 			mn.Run = run.ID
+		}
+	case d.Rule == threads.RuleRouted:
+		var refused []string
+		for _, agent := range d.Agents {
+			if _, err := start(agent); err != nil {
+				refused = append(refused, refusalOf(err))
+			}
+		}
+		if len(refused) > 0 {
+			out.Reason = "The selected agents could not all answer: " + strings.Join(refused, "; ") + "."
 		}
 	case d.Default && len(d.Agents) == 1:
 		if _, err := start(d.Agents[0]); err != nil {
@@ -1024,13 +1085,14 @@ func answerTagID(thread, message, agent string) string {
 }
 
 // answerMessage starts an agent answering a person's message, as the run
-// tagID names: @auto picks the agent first. The agent is sent its context and
+// tagID names: @auto picks the agent first, among the agents among names
+// alone when it names any (a thread's selected agents, best fit). The agent is sent its context and
 // the room's transcript up to the message, then the message. via is the
 // client whose credential posted the message for its poster, if one did.
 // keeps pins that the person it acts for may change the project's notes, as
 // a turn does (Turn.KeepsNotes). sees is the agents that person may read:
 // @auto never falls back to one they may not read.
-func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, actor envelope.Actor, tagID string, keeps bool, sees func(string) bool) (runs.Run, error) {
+func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, actor envelope.Actor, tagID string, keeps bool, sees func(string) bool) (runs.Run, error) {
 	if err := p.mayRoute(tenant, th, via, agent); err != nil {
 		return runs.Run{}, err
 	}
@@ -1043,7 +1105,14 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	skills := p.skillsOfMessage(tenant, th, m, via)
 	pinSkills(meta, skills)
-	if agent == Auto {
+	if agent == Auto && len(among) > 0 {
+		who, err := p.bestFit(ctx, tenant, th.Project, pickText(m.Text, skills), among, sees)
+		if err != nil {
+			return runs.Run{}, err
+		}
+		agent = who.Agent
+		meta[runs.MetaPicked] = who.Reason
+	} else if agent == Auto {
 		who, err := p.resolveAgent(ctx, tenant, placeSeen(p.placeOfThread(tenant, th), sees), Auto, pickText(m.Text, skills), sees)
 		if err != nil {
 			return runs.Run{}, err
@@ -1060,6 +1129,22 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 		ID: tagID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
 		Text: p.contextIn(tenant, th.Project, th.Channel, agent, body), Attachments: m.Attachments, Actor: actor, Meta: meta,
 	})
+}
+
+// bestFit is the one of a thread's selected agents that fits a message best,
+// as @auto picks (pkg/pick), among them alone and those the poster may read;
+// when none fits, the first of them available in the project.
+func (p *Platform) bestFit(ctx context.Context, tenant, project, text string, among []string, sees func(string) bool) (pick.Choice, error) {
+	tree := p.Projects.Tree(tenant)
+	keep := func(a string) bool { return slices.Contains(among, a) && (sees == nil || sees(a)) }
+	fallback := ""
+	for _, a := range among {
+		if keep(a) && tree.IsAvailable(project, a) {
+			fallback = a
+			break
+		}
+	}
+	return p.auto(ctx, tenant, tree, project, text, fallback, keep)
 }
 
 // mayRoute holds an agent answering a message to the allow-lists of the
@@ -1207,10 +1292,18 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 		case threads.Role:
 			to = []string{projects.RolePrefix + mn.Name}
 		}
-		reached, cut := false, false
+		reached, cut, blocked := false, false, false
 		for _, who := range to {
 			if who == m.By || slices.Contains(sent, who) {
 				reached = true
+				continue
+			}
+			// Only someone who can read the conversation is told of it: a
+			// person at least a viewer of its project (whom a private
+			// thread then invites), and a role's holders only in a shared
+			// thread, which a role cannot be invited to.
+			if !p.mayBeTold(tenant, tree, th, who) {
+				blocked = true
 				continue
 			}
 			if len(sent) >= MaxNotified {
@@ -1230,11 +1323,41 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 			sent = append(sent, who)
 			reached = true
 		}
-		if cut && !reached {
+		switch {
+		case cut && !reached:
 			mn.Refused = fmt.Sprintf("a message notifies at most %d people", MaxNotified)
+		case blocked && !reached && mn.Kind == threads.Person:
+			mn.Refused = "they cannot read this project, so they were not told"
+		case blocked && !reached && th.Visibility == threads.Private:
+			mn.Refused = "a role is told only in a shared conversation; share it first, or tag people"
+		case blocked && !reached:
+			mn.Refused = "nobody it names can read this project, so nobody was told"
 		}
 	}
 	return sent
+}
+
+// mayBeTold reports whether someone a message tags may be told of it: a
+// person who is at least a viewer of the thread's project, as their roles in
+// the directory and the workspace's policy make them, and a role
+// ("role:<name>") only in a shared thread, since a private one is read by
+// its participants and a role is none.
+func (p *Platform) mayBeTold(tenant string, tree *projects.Tree, th threads.Thread, who string) bool {
+	if strings.HasPrefix(who, projects.RolePrefix) {
+		return th.Visibility != threads.Private
+	}
+	person := p.byPolicy(tenant, who)
+	if p.People != nil {
+		if known, err := p.People.Get(tenant, who); err == nil {
+			for _, r := range known.Roles {
+				if !slices.Contains(person.Roles, auth.Role(r)) {
+					person.Roles = append(person.Roles, auth.Role(r))
+				}
+			}
+		}
+	}
+	reader := ReaderOf(person)
+	return reader.Govern || tree.Resolve(th.Project, reader).Role.AtLeast(projects.Viewer)
 }
 
 // raiseMention puts a mention in the inbox of the person or experts tagged.
@@ -1292,27 +1415,46 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	if err != nil {
 		return threads.Thread{}, err
 	}
-	if err := p.mayChangeThread(who, th); err != nil {
+	seer := p.Seer(who)
+	// A default naming an agent the caller may not read was not shown to
+	// them, so naming none keeps it; and so is a selected agent.
+	shown := seer.threadAgents(th)
+	keepsDefault := in.Default == th.Default || in.Default == "" && th.Default != "" && !shown(th.Default)
+	if strings.TrimSpace(in.Title) == th.Title && cmp.Or(in.Visibility, th.Visibility) == th.Visibility && keepsDefault {
+		// Only which agents answer changes: anyone who may post here
+		// selects them, as they may tag them.
+		if err := p.changesThread(who, th); err != nil {
+			return threads.Thread{}, err
+		}
+		if err := p.MayPost(who, Place{Project: th.Project, Thread: th.ID}); err != nil {
+			return threads.Thread{}, err
+		}
+	} else if err := p.mayChangeThread(who, th); err != nil {
 		return threads.Thread{}, err
 	}
 	if in.Version != th.Version {
 		return threads.Thread{}, fmt.Errorf("%w: %q is at version %d, not %d", threads.ErrVersion, id, th.Version, in.Version)
 	}
-	seer := p.Seer(who)
 	if err := p.checkDefault(ctx, who.Tenant, th.Project, in.Default, seer.Agent); err != nil {
 		return threads.Thread{}, err
+	}
+	hidden := slices.DeleteFunc(slices.Clone(th.Agents), shown)
+	routed, mode, err := p.checkRouting(ctx, who.Tenant, th.Project, slices.DeleteFunc(slices.Clone(in.Agents), func(a string) bool { return slices.Contains(hidden, a) }), in.Mode, seer.Agent)
+	if err != nil {
+		return threads.Thread{}, err
+	}
+	if routed, mode, err = threads.Routing(append(routed, hidden...), cmp.Or(mode, th.Mode, in.Mode)); err != nil {
+		return threads.Thread{}, fmt.Errorf("%w: %s", projects.ErrInvalid, detailOf(err, threads.ErrInvalid))
 	}
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return threads.Thread{}, err
 	}
-	// A default naming an agent the caller may not read was not shown to
-	// them, so naming none keeps it.
-	shown := seer.threadAgents(th)
 	return p.Threads.Update(who.Tenant, id, th.Version, p.now(), func(t *threads.Thread) error {
 		t.Title, t.Visibility = strings.TrimSpace(in.Title), cmp.Or(in.Visibility, t.Visibility)
-		if in.Default != "" || t.Default == "" || shown(t.Default) {
+		if !keepsDefault || in.Default != "" {
 			t.Default = in.Default
 		}
+		t.Agents, t.Mode = routed, mode
 		return nil
 	})
 }
@@ -1437,6 +1579,11 @@ func (l *threadLocks) of(tenant, id string) *sync.RWMutex {
 // the thread names that cannot answer where it moves is cleared. Shared stays
 // shared: nothing here makes a thread private again.
 func (p *Platform) ShareThread(ctx context.Context, who auth.Principal, id string, in ThreadShare) (threads.Thread, error) {
+	// Held from the first read to the write, so no run of the thread starts
+	// meanwhile and a run starting is not a change the share trips over.
+	mu := p.moves.of(who.Tenant, id)
+	mu.Lock()
+	defer mu.Unlock()
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
 		return threads.Thread{}, err
@@ -1487,9 +1634,6 @@ func (p *Platform) ShareThread(ctx context.Context, who auth.Principal, id strin
 	}
 	shown := p.Seer(who).participantShownNow(th)
 	counted := func(pt threads.Participant) bool { return pt.Kind != threads.Agent || shown(pt.Name) }
-	mu := p.moves.of(who.Tenant, id)
-	mu.Lock()
-	defer mu.Unlock()
 	if moves {
 		if _, err := p.Runs.Conversation(who.Tenant, id); err == nil {
 			if project != th.Project {
