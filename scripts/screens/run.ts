@@ -58,6 +58,10 @@ interface Ids {
   routedChat: string;
 }
 
+/** Opens a page's More menu. */
+const more = (page: Page) =>
+  page.getByRole("button", { name: "More", exact: true }).click({ timeout: 5_000 });
+
 /** The chat bar's textarea. */
 const bar = (page: Page) => page.locator("form[aria-label='Message'] textarea");
 const plus = (page: Page) => page.getByRole("button", { name: "Add files, agents or a project" });
@@ -148,6 +152,8 @@ function screens(ids: Ids): Screen[] {
       name: `project-${tab}`,
       path: tab === "inbox" ? "/projects/Launch" : `/projects/Launch/${tab}`,
     })),
+    { name: "project-more", path: "/projects/Launch", act: more },
+    { name: "schedule-more", path: `/schedules/${ids.schedule}`, act: more },
     { name: "workspace", path: "/projects/~" },
     { name: "inbox", path: "/inbox" },
     { name: "schedules", path: "/schedules" },
