@@ -1,6 +1,6 @@
 import { defaultCopy } from "@warp/components";
 import { CheckIcon, FileIcon, FolderIcon, MessageIcon, XIcon } from "@warp/render-web";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { coworking, type ProjectKindSpec, type ProjectView } from "./api.ts";
 import { ProjectChoices } from "./ProjectPicker.tsx";
 import { above, titleOf } from "./projects.ts";
@@ -78,6 +78,19 @@ export function PlusMenu({
   const offersProject = projects !== undefined;
   const project = selection.project;
 
+  // It opens toward the side of the chat bar with more room, and no taller
+  // than that room, so on a phone it never runs off the screen.
+  const [place, setPlace] = useState<{ up: boolean; max: number }>({ up: true, max: 448 });
+  useLayoutEffect(() => {
+    const bar = panel.current?.parentElement?.closest("form") ?? panel.current?.parentElement;
+    if (!bar) return;
+    const r = bar.getBoundingClientRect();
+    const above = r.top - 8;
+    const below = window.innerHeight - r.bottom - 8;
+    const up = above >= below;
+    setPlace({ up, max: Math.max(160, Math.min(448, up ? above : below)) });
+  }, []);
+
   useEffect(() => {
     search.current?.focus();
   }, []);
@@ -138,7 +151,8 @@ export function PlusMenu({
       role="dialog"
       aria-label={words.menu}
       onKeyDown={onKeyDown}
-      className="absolute bottom-full left-0 z-30 mb-1 flex max-h-[min(28rem,70vh)] w-full max-w-sm flex-col overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1.5 shadow-lg"
+      style={{ maxHeight: place.max }}
+      className={`absolute left-0 z-30 flex w-full max-w-sm flex-col overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1.5 shadow-lg ${place.up ? "bottom-full mb-1" : "top-full mt-1"}`}
     >
       {choosing && projects !== undefined ? (
         <ProjectChoices

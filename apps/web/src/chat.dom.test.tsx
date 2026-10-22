@@ -546,3 +546,26 @@ test("a task the reader may not read reads as one that does not exist, never as 
   assert.ok(!screen.queryByRole("textbox"));
   assert.ok(!net?.seen.some((r) => r.method === "POST"));
 });
+
+test("completion and the + menu open toward the side of the chat bar with room, so on a phone neither runs off the screen", async () => {
+  const real = HTMLFormElement.prototype.getBoundingClientRect;
+  const height = window.innerHeight;
+  // A phone's Home: the chat bar near the top of a tall screen.
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: 844 });
+  HTMLFormElement.prototype.getBoundingClientRect = () => ({ top: 220, bottom: 330, left: 16, right: 374, width: 358, height: 110, x: 16, y: 220, toJSON() {} }) as DOMRect;
+  try {
+    openChat(workspace("lead"));
+    fireEvent.change(box(), { target: { value: "@" } });
+    const list = await screen.findByRole("listbox");
+    assert.match(list.className, /(^|\s)top-full(\s|$)/, list.className);
+    assert.ok(Number.parseInt(list.style.maxHeight, 10) <= 844 - 330 - 8, list.style.maxHeight);
+    fireEvent.keyDown(box(), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+    const menu = await screen.findByRole("dialog", { name: chat.menu });
+    assert.match(menu.className, /(^|\s)top-full(\s|$)/, menu.className);
+    assert.ok(Number.parseInt(menu.style.maxHeight, 10) <= 844 - 330 - 8, menu.style.maxHeight);
+  } finally {
+    HTMLFormElement.prototype.getBoundingClientRect = real;
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
+  }
+});

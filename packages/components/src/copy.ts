@@ -456,8 +456,8 @@ export const defaultCopy = {
     /** The chat bar's prompt with nothing selected, with one agent, and with several. */
     placeholder: "Message, or @ an agent",
     placeholderOne: (agent: string) => `Message ${agent}`,
-    placeholderBest: (n: number) => `Message, and the best fit of ${n} agents answers`,
-    placeholderAll: (n: number) => `Message, and all ${n} agents answer`,
+    placeholderBest: (_n: number) => "Message, and the agent that fits best answers",
+    placeholderAll: (n: number) => (n === 2 ? "Message, and both agents answer" : `Message, and all ${n} agents answer`),
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedBest: (agent: string) => `Routed to ${agent}, the best fit`,
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
