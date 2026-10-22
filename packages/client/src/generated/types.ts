@@ -701,9 +701,11 @@ selected; `best_fit` when two or more are selected and none is named.
 export type ThreadMode = "best_fit" | "all";
 
 /** A thread's title, visibility, default and selected agents, as a
-whole. Changing only `agents` and `mode` takes anyone who may post in
-the thread; anything else takes whoever started it, while a member,
-or an owner of its project.
+whole, and where a private conversation is. Changing only `agents`,
+`mode`, `project` and `channel` takes anyone who may post in the
+thread; anything else takes whoever started it, while a member, or an
+owner of its project. The selected agents and default must be able
+to answer where the thread is after the change.
  */
 export interface ThreadUpdate {
   version: number;
@@ -714,6 +716,17 @@ export interface ThreadUpdate {
   /** The selected agents, as a whole; a selected agent the caller was not shown is kept. Each must be an agent available in the thread's project (400; one the caller may not read is as one that does not exist). */
   agents?: string[];
   mode?: ThreadMode;
+  /** Moves a private conversation to this project, `~` the workspace;
+empty keeps its own. It stays private (`shareThread` shares one).
+Takes anyone who may post in it and a member of the project it
+goes to (403; one the caller cannot see is 404), and is refused
+once a run has been filed in it (409, "a conversation that has
+runs stays in its project"). A shared thread, or one on a
+surface, does not move here (400).
+ */
+  project?: string;
+  /** The channel it moves to, by the same rule; empty keeps its own in its own project, and is `general` in another. An archived channel is 400, one the project does not have 404. */
+  channel?: string;
 }
 
 /** People and agents to add to a thread and to remove from it. */
