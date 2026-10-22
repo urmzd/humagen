@@ -76,7 +76,9 @@ may reference `HUMAGEN_OIDC*` or `WARP_OIDC*`.
 
 The Slack app reads its own settings the same way (`WARP_TENANT`, `WARP_URL`,
 `WARP_TOKEN`, `WARP_OIDC_*` and the rest), and logs a note for each at start.
-The console's dev server reads `HUMAGEN_API`, else `WARP_API` with a warning.
+The server passes the Slack app it launches its settings under both names, so
+an app directory from before the rename still starts. The console's dev
+server reads `HUMAGEN_API`, else `WARP_API` with a warning.
 The test settings (`HUMAGEN_POSTGRES_TEST_URL`, `HUMAGEN_TEST_S3_*`) fall back
 too. `HUMAGEN_TEST_COMMAND`, `HUMAGEN_SERVER_TEST` and `deploy/helm/check.sh`'s
 `HUMAGEN` override do not: they are development tools.
