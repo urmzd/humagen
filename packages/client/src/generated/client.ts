@@ -1270,8 +1270,8 @@ messages: past that, 409 "start a new thread".
 
   /** At most 50 added and removed together, and a thread has at most 50
 participants. An agent added must be available in the thread's
-project, and a person must be in the workspace's directory (400).
-The person who started the thread stays in it. `version` is the one
+project, and a person, named by handle, must be in the workspace's
+directory (400). The person who started the thread stays in it. `version` is the one
 the caller read.
  */
   async updateThreadParticipants(id: string, body: ThreadParticipantsUpdate, options?: RequestOptions): Promise<Thread> {

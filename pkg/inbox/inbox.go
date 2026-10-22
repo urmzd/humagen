@@ -215,7 +215,8 @@ type MentionPart struct {
 	// Project is the thread's project, "" the root, and Channel its channel.
 	Project string `json:"project"`
 	Channel string `json:"channel"`
-	// By is the subject of the person who posted it.
+	// By is the handle of the person who posted it, as the thread shows
+	// them: never a subject, which can hold an address.
 	By string `json:"by"`
 	// Excerpt is the start of what they wrote, at most MaxExcerpt.
 	Excerpt string `json:"excerpt"`

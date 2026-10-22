@@ -450,6 +450,13 @@ Namespace `threads`: `t:<id>` a thread, `m:<thread>:<seq>` a message,
 `s:<client>:<channel>:<ts>` the surface index. At most 5,000 messages per
 thread (then 409 "start a new thread") and 50 participants.
 
+The record keeps a person by subject, the key they sign in with. What a
+thread hands out names them by handle instead (a participant, an author, a
+tag, who was notified, the people in a thread's summary, a mention's `by`),
+and calls them by their name in the directory, or their handle without one,
+so a subject that holds an address is never shown. People are added to and
+removed from a thread by handle.
+
 How it joins the run index:
 
 - A tagged agent's run has `Prev` = the message and `warp.message` meta = the
@@ -884,7 +891,7 @@ Tools: `project_changes`, `runs_summary(project)`.
 
 The inbox gains kind `mention`: To is the tagged person and the key is
 `mention:<message>:<subject>`. Its `mention` part is `{thread, message,
-project, channel, by, excerpt (<= 300)}`, with actions `reply` (posts a human
+project, channel, by (the poster's handle), excerpt (<= 300)}`, with actions `reply` (posts a human
 message as the reader; `runs:write`) and `done`.
 
 ### Phase 7

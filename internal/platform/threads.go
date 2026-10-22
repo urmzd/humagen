@@ -85,9 +85,10 @@ type ThreadUpdate struct {
 // ParticipantsUpdate adds and removes people and agents.
 type ParticipantsUpdate struct {
 	Version int `json:"version"`
-	// Add names people by subject and agents by name, as participants.
+	// Add names people by handle and agents by name, as participants.
 	Add []threads.Participant `json:"add,omitempty"`
-	// Remove names them by subject or name.
+	// Remove names them by handle or name, which no person and agent
+	// share.
 	Remove []string `json:"remove,omitempty"`
 }
 
@@ -97,8 +98,8 @@ type Posted struct {
 	Message threads.Message `json:"message"`
 	// Runs are the runs it started, at most threads.MaxRuns.
 	Runs []runs.Run `json:"runs"`
-	// Notified is who it was sent to: people by subject, experts by subject
-	// or role.
+	// Notified is who it was sent to: people and experts by subject, the
+	// experts a role names as the role. ShowPosted names them by handle.
 	Notified []string `json:"notified"`
 	// Refused are its tags that started or notified nothing, each saying
 	// why.
@@ -142,7 +143,7 @@ func (p *Platform) author(who auth.Principal, as *ActAs) (subject, name, via str
 		if who.Kind == auth.Machine {
 			return "", "", "", nil, fmt.Errorf("%w: a credential posts only for a person it acts for (act_as)", ErrThreadAuthor)
 		}
-		return who.Subject, cmp.Or(who.Name, who.Subject), threads.ViaConsole, nil, nil
+		return who.Subject, p.nameOf(who.Tenant, who.Subject), threads.ViaConsole, nil, nil
 	}
 	reader, _, err := p.answerer(who, as)
 	if err != nil {
@@ -161,15 +162,11 @@ func (p *Platform) author(who auth.Principal, as *ActAs) (subject, name, via str
 	return reader.Subject, p.nameOf(who.Tenant, reader.Subject), c.ID, slack, nil
 }
 
-// nameOf is what a person is called: their name in the directory, or their
-// subject.
+// nameOf is what a person is called when they post: their name in the
+// directory, which is never an address, else their handle, else their
+// subject when it holds no address (see shower.name).
 func (p *Platform) nameOf(tenant, subject string) string {
-	if p.People != nil {
-		if who, err := p.People.Get(tenant, subject); err == nil && who.Name != "" {
-			return who.Name
-		}
-	}
-	return subject
+	return p.shower(tenant).name(subject)
 }
 
 // tagLookup resolves the names a message tags, within one tenant.
@@ -791,21 +788,22 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 }
 
 // raiseMention puts a mention in the inbox of the person or experts tagged.
+// It names the poster as the thread shows them, never by subject.
 func (p *Platform) raiseMention(tenant string, th threads.Thread, m threads.Message, to string, mn threads.Mention) {
+	s := p.shower(tenant)
+	shown := s.message(m)
 	where := "#" + th.Channel
-	subject := fmt.Sprintf("%s mentioned you in %s", cmp.Or(m.Name, m.By), where)
+	subject := fmt.Sprintf("%s mentioned you in %s", shown.Name, where)
 	if mn.Kind == threads.SME {
-		subject = fmt.Sprintf("%s asked the experts in %s", cmp.Or(m.Name, m.By), where)
+		subject = fmt.Sprintf("%s asked the experts in %s", shown.Name, where)
 		if mn.Name != "" {
-			subject = fmt.Sprintf("%s asked the %s experts in %s", cmp.Or(m.Name, m.By), mn.Name, where)
+			subject = fmt.Sprintf("%s asked the %s experts in %s", shown.Name, mn.Name, where)
 		}
 	}
 	msg := inbox.Message{
-		Kind: inbox.KindMention, Subject: subject, From: inbox.From{Kind: "person", Name: cmp.Or(m.Name, m.By)}, Severity: inbox.Info,
+		Kind: inbox.KindMention, Subject: subject, From: inbox.From{Kind: "person", Name: shown.Name}, Severity: inbox.Info,
 		Source: inbox.Source{Thread: th.ID, Project: th.Project},
-		Parts: []inbox.Part{{Type: inbox.PartMention, Mention: &inbox.MentionPart{
-			Thread: th.ID, Message: m.ID, Project: th.Project, Channel: th.Channel, By: m.By, Excerpt: inbox.Excerpt(m.Text),
-		}}},
+		Parts:  []inbox.Part{{Type: inbox.PartMention, Mention: s.mentionOf(th, m)}},
 	}
 	// A person is sent their own; experts named by a role share one.
 	if strings.HasPrefix(to, projects.RolePrefix) {
@@ -857,7 +855,8 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 
 // SetParticipants adds and removes a thread's people and agents. An agent
 // added must be available in the thread's project, and a person must be in
-// the workspace's directory.
+// the workspace's directory. People are named by handle, as a thread shows
+// them, and kept by subject.
 func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id string, in ParticipantsUpdate) (threads.Thread, error) {
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
@@ -869,7 +868,8 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 	if len(in.Add)+len(in.Remove) > threads.MaxParticipants {
 		return threads.Thread{}, fmt.Errorf("%w: at most %d people and agents are added or removed at once", threads.ErrInvalid, threads.MaxParticipants)
 	}
-	for _, a := range in.Add {
+	add := make([]threads.Participant, len(in.Add))
+	for i, a := range in.Add {
 		switch a.Kind {
 		case threads.Agent:
 			if _, err := p.Agents.Get(ctx, who.Tenant, a.Name, 0); err != nil {
@@ -879,18 +879,34 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 				return threads.Thread{}, fmt.Errorf("%w: %s", threads.ErrInvalid, reason)
 			}
 		case threads.Person:
-			if p.People == nil {
-				return threads.Thread{}, fmt.Errorf("%w: no one in this workspace is %s", threads.ErrInvalid, a.Name)
+			subject, found := p.byHandle(who.Tenant, a.Name)
+			if !found {
+				return threads.Thread{}, fmt.Errorf("%w: no one in this workspace goes by @%s", threads.ErrInvalid, a.Name)
 			}
-			if _, err := p.People.Get(who.Tenant, a.Name); err != nil {
-				return threads.Thread{}, fmt.Errorf("%w: no one in this workspace is %s", threads.ErrInvalid, a.Name)
-			}
+			a.Name = subject
 		}
+		add[i] = a
+	}
+	remove := make([]string, len(in.Remove))
+	for i, name := range in.Remove {
+		if subject, found := p.byHandle(who.Tenant, name); found {
+			name = subject
+		}
+		remove[i] = name
 	}
 	if th, err = p.recordOf(who.Tenant, id, who.Subject); err != nil {
 		return threads.Thread{}, err
 	}
-	return p.Threads.Participants(who.Tenant, id, th.Version, in.Add, in.Remove, who.Subject, p.now())
+	return p.Threads.Participants(who.Tenant, id, th.Version, add, remove, who.Subject, p.now())
+}
+
+// byHandle is the subject of the person who goes by a handle.
+func (p *Platform) byHandle(tenant, handle string) (string, bool) {
+	if p.People == nil || handle == "" {
+		return "", false
+	}
+	who, err := p.People.ByHandle(tenant, handle)
+	return who.Subject, err == nil
 }
 
 // MaxTurnPage is how many turns one read of a thread returns.

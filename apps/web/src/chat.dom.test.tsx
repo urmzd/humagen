@@ -25,7 +25,7 @@ const run = (n: number) =>
     updated_at: at,
   }) as unknown as Run;
 
-const record = { id, project: "", channel: "general", visibility: "shared", participants: [], version: 0, created_by: "00u-ana", created_at: at, updated_at: at };
+const record = { id, project: "", channel: "general", visibility: "shared", participants: [], version: 0, created_by: "ana", created_at: at, updated_at: at };
 
 let net: ReturnType<typeof stubFetch> | undefined;
 let restoreEvents: (() => void) | undefined;

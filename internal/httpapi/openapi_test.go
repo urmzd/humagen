@@ -1292,8 +1292,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "PUT", "/api/threads/{id}", threadPath, `{"version":1,"title":"stale"}`, http.StatusConflict)
 	c.call(ana, "PUT", "/api/threads/{id}", threadPath, `{"version":2,"default":"ghost"}`, http.StatusBadRequest)
 	participants := "/api/threads/{id}/participants"
-	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"add":[{"kind":"person","name":"00u-vic","at":"2026-01-01T00:00:00Z"}]}`, http.StatusOK)
-	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"remove":["00u-vic"]}`, http.StatusConflict)
+	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"add":[{"kind":"person","name":"vic","at":"2026-01-01T00:00:00Z"}]}`, http.StatusOK)
+	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"remove":["vic"]}`, http.StatusConflict)
 	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":3,"add":[{"kind":"person","name":"nobody","at":"2026-01-01T00:00:00Z"}]}`, http.StatusBadRequest)
 	// A mention, read by the person it tags: replied to, set aside, and
 	// refused to a viewer, who may read it but not act on it.

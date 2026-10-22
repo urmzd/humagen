@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -35,7 +37,7 @@ func TestNoRouteLetsAnyonePostAsSomeoneElse(t *testing.T) {
 		t.Fatalf("starting a thread = %d %v", res.StatusCode, out)
 	}
 	msg := out["message"].(map[string]any)
-	if msg["by"] != "00u-ana" || msg["name"] != "Ana" || msg["via"] != "console" {
+	if msg["by"] != "ana" || msg["name"] != "Ana" || msg["via"] != "console" {
 		t.Fatalf("posted as %v", msg)
 	}
 	id := out["thread"].(map[string]any)["id"].(string)
@@ -81,7 +83,61 @@ func TestAMentionIsRepliedToFromTheInbox(t *testing.T) {
 		t.Fatalf("the thread holds %v", page)
 	}
 	reply := turns[1].(map[string]any)["message"].(map[string]any)
-	if reply["by"] != "00u-bo" || reply["prev"] != "m-1" || reply["text"] != "Checked: it renews in May." {
+	if reply["by"] != "bo" || reply["prev"] != "m-1" || reply["text"] != "Checked: it renews in May." {
 		t.Fatalf("the reply is %v", reply)
+	}
+}
+
+// A subject can hold an address, as a Tailscale login does. A thread never
+// shows one: whoever posts and whoever is tagged is named by their handle,
+// and called by their name or else their handle, in what posting answers,
+// in the thread, in the list of threads and in the mention the tag raises.
+func TestAThreadNeverShowsASubjectThatHoldsAnAddress(t *testing.T) {
+	f := newFixture(t)
+	pat := f.person(t, "acme", "tailscale:pat@example.com", "", "warp-admins")
+	ada := f.person(t, "acme", "tailscale:ada@example.com", "Ada", "warp-admins")
+	res, posted := f.do(t, nil, "POST", "/api/threads", pat, `{"visibility":"shared","text":"@ada can you check the renewal?"}`)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("tagging ada = %d %v", res.StatusCode, posted)
+	}
+	id := posted["thread"].(map[string]any)["id"].(string)
+	if res, out := f.do(t, nil, "PUT", "/api/threads/"+id+"/participants", pat, `{"version":1,"add":[{"kind":"person","name":"ada","at":"2026-01-01T00:00:00Z"}]}`); res.StatusCode != http.StatusOK {
+		t.Fatalf("adding ada by handle = %d %v", res.StatusCode, out)
+	}
+	_, page := f.do(t, nil, "GET", "/api/threads/"+id, ada, "")
+	_, list := f.do(t, nil, "GET", "/api/threads", ada, "")
+	_, mentions := f.do(t, nil, "GET", "/api/inbox?kind=mention", ada, "")
+	// The inbox says to whom a message is, which only that reader is sent.
+	for what, out := range map[string]map[string]any{"posting": posted, "the thread": page, "the list": list, "the mention": mentions} {
+		raw, err := json.Marshal(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if shown := strings.ReplaceAll(string(raw), `"to":"tailscale:ada@example.com"`, ""); strings.Contains(shown, "example.com") {
+			t.Errorf("%s shows an address: %s", what, raw)
+		}
+	}
+	msg := posted["message"].(map[string]any)
+	if msg["by"] != "pat" || msg["name"] != "pat" {
+		t.Errorf("the message is by %v, called %v", msg["by"], msg["name"])
+	}
+	if notified, _ := posted["notified"].([]any); len(notified) != 1 || notified[0] != "ada" {
+		t.Errorf("notified %v", posted["notified"])
+	}
+	th := page["thread"].(map[string]any)
+	if th["created_by"] != "pat" {
+		t.Errorf("the thread was started by %v", th["created_by"])
+	}
+	var people []string
+	for _, p := range th["participants"].([]any) {
+		if who := p.(map[string]any); who["kind"] == "person" {
+			people = append(people, who["name"].(string))
+		}
+	}
+	if strings.Join(people, ",") != "pat,ada" {
+		t.Errorf("the people in it are %v", people)
+	}
+	if got := mentions["messages"].([]any); len(got) != 1 || !strings.HasPrefix(got[0].(map[string]any)["subject"].(string), "pat mentioned you") {
+		t.Errorf("ada's mentions are %v", mentions)
 	}
 }

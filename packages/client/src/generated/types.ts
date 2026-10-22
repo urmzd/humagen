@@ -365,7 +365,7 @@ export interface ThreadSummary {
   /** The project's channel it is in, `general` when its runs name none. */
   channel: string;
   agents: string[];
-  /** The people who asked or posted in it, by subject. */
+  /** The people who asked or posted in it, by handle. Someone the directory cannot name, and whose subject holds an address, is left out. */
   people: string[];
   visibility: ThreadVisibility;
   /** How many messages people have posted in it. */
@@ -385,13 +385,19 @@ is confined.
  */
 export type ThreadVisibility = "shared" | "private";
 
-/** A person or an agent taking part in a thread. */
+/** A person or an agent taking part in a thread. A thread names a
+person by their handle, and is sent one by handle: a subject, the key
+a person signs in with, can hold an address and is never shown. A
+person with no handle, whose subject holds no address, is named by
+their subject; one with neither reads as empty.
+ */
 export interface ThreadParticipant {
   kind: "person" | "agent";
-  /** A person's subject or an agent's name. */
+  /** A person's handle or an agent's name. */
   name: string;
   /** The person who started the thread. */
   owner?: boolean;
+  /** The handle of the person who added them. */
   added_by?: string;
   at: string;
 }
@@ -413,6 +419,7 @@ export interface Thread {
   default?: string;
   /** Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written. */
   version: number;
+  /** The handle of the person who started it, the first person to ask or post in it. */
   created_by: string;
   created_at: string;
   /** When anything last happened in it. */
@@ -422,7 +429,7 @@ export interface Thread {
 /** One tag in a message, and what it came to. */
 export interface ThreadMention {
   kind: "agent" | "person" | "sme";
-  /** The agent (`auto` for @auto), the person's subject, or the experts' topic (empty for every expert). */
+  /** The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). */
   name: string;
   /** The run an agent's tag started. */
   run?: string;
@@ -443,8 +450,9 @@ export interface ThreadMessage {
   thread: string;
   /** The turn it follows. Absent for the first. */
   prev?: string;
-  /** The subject of the person who posted it. */
+  /** The handle of the person who posted it. */
   by: string;
+  /** What they are called, their name in the directory or else their handle. Never an address. */
   name: string;
   text: string;
   mentions: ThreadMention[];
@@ -520,7 +528,7 @@ export interface ThreadUpdate {
 export interface ThreadParticipantsUpdate {
   version: number;
   add?: ThreadParticipant[];
-  /** People by subject and agents by name. */
+  /** People by handle and agents by name, which no person and agent share. */
   remove?: string[];
 }
 
@@ -538,7 +546,7 @@ export interface ThreadPosted {
   message: ThreadMessage;
   /** The runs it started, at most 3. */
   runs: Run[];
-  /** Who it was sent to, people by subject and experts by subject or role. */
+  /** Who it was sent to, people and experts by handle and the experts a role names as `role:<name>`. */
   notified: string[];
   /** Its tags that started or notified nothing, each saying why. */
   refused: ThreadMention[];
@@ -1134,7 +1142,7 @@ export interface InboxMentionPart {
   /** The thread's project. Empty is the workspace itself. */
   project: string;
   channel: string;
-  /** The subject of the person who posted it. */
+  /** The handle of the person who posted it. A subject is never given, since one can hold an address. */
   by: string;
   /** The start of what they wrote. */
   excerpt: string;

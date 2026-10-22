@@ -486,7 +486,7 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if next != "" {
 		cursor = &next
 	}
-	ok(w, http.StatusOK, map[string]any{"threads": page, "next": cursor})
+	ok(w, http.StatusOK, map[string]any{"threads": s.P.ShowSummaries(who.Tenant, page), "next": cursor})
 }
 
 // pickAgent previews which agent @auto would pick for a message in a project,

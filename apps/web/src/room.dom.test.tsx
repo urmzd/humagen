@@ -4,7 +4,7 @@ import { defaultCopy } from "@warp/components";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Revision, ThreadPage, ThreadTurn } from "./api.ts";
 import { stubEventSource, stubFetch } from "./dom.ts";
-import { ChannelPage, ChannelsTab, ThreadRoom } from "./Room.tsx";
+import { ChannelPage, ChannelsTab, postedLine, ThreadRoom } from "./Room.tsx";
 import { globex, tree } from "./projects.fixtures.ts";
 
 const words = defaultCopy.threads;
@@ -18,18 +18,18 @@ const page: ThreadPage = {
     channel: "renewals",
     visibility: "shared",
     participants: [
-      { kind: "person", name: "00u-ana", owner: true, at },
+      { kind: "person", name: "ana", owner: true, at },
       { kind: "agent", name: "helper", at },
     ],
     version: 1,
-    created_by: "00u-ana",
+    created_by: "ana",
     created_at: at,
     updated_at: at,
   },
   turns: [
     {
       kind: "message",
-      message: { id: "m-1", thread: "th-0123456789abcdef", by: "00u-ana", name: "Ana", text: "@helper when does Globex renew?", mentions: [{ kind: "agent", name: "helper", run: "r1" }], via: "console", at },
+      message: { id: "m-1", thread: "th-0123456789abcdef", by: "ana", name: "Ana", text: "@helper when does Globex renew?", mentions: [{ kind: "agent", name: "helper", run: "r1" }], via: "console", at },
     },
     {
       kind: "run",
@@ -87,6 +87,11 @@ test("a shared thread shows people by name and agents by theirs, where it is sha
   assert.deepEqual(opened, ["Globex/renewals"]);
 });
 
+test("what a post did names people by handle and experts a role names by the role, never by a subject", () => {
+  const posted = { ...page, message: page.turns[0]?.message, runs: [], notified: ["ada", "role:finance"], refused: [], rule: "people" } as never;
+  assert.equal(postedLine(posted), "Sent to @ada, role:finance.");
+});
+
 test("@ opens the typeahead, a pick writes the tag, and Post Only posts as the person and nothing more", async () => {
   room({ "POST /api/threads/th-0123456789abcdef/messages": () => ({ ...page, message: page.turns[0]?.message, runs: [], notified: [], refused: [], rule: "post_only" }) });
   const box = (await screen.findByPlaceholderText(words.channel("renewals"))) as HTMLTextAreaElement;
@@ -110,7 +115,7 @@ test("a channel lists its threads, and its composer starts a shared thread there
       channels: [{ project: "Globex", name: "renewals", purpose: "Renewal work", version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } }],
     }),
     "GET /api/threads": () => ({
-      threads: [{ id: "th-0123456789abcdef", title: "Globex renewal", named: true, origin: "api", project: "Globex", channel: "renewals", agents: ["helper"], people: ["00u-ana"], visibility: "shared", messages: 2, turns: 1, branches: 0, active: 0, failed: 0, created_at: at, updated_at: at }],
+      threads: [{ id: "th-0123456789abcdef", title: "Globex renewal", named: true, origin: "api", project: "Globex", channel: "renewals", agents: ["helper"], people: ["ana"], visibility: "shared", messages: 2, turns: 1, branches: 0, active: 0, failed: 0, created_at: at, updated_at: at }],
       next: null,
     }),
     "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
@@ -205,7 +210,7 @@ test("a run waiting on a person, such as an expert's answer, is shown still", as
 test("turns read earlier stay when the newest page moves on", async () => {
   const message = (n: number): ThreadTurn => ({
     kind: "message",
-    message: { id: `m-${n}`, thread: "th-0123456789abcdef", by: "00u-ana", name: "Ana", text: `turn ${n}`, mentions: [], via: "console", at },
+    message: { id: `m-${n}`, thread: "th-0123456789abcdef", by: "ana", name: "Ana", text: `turn ${n}`, mentions: [], via: "console", at },
   });
   const newest: ThreadPage = { ...page, turns: [message(2), message(3)], next: "c2" };
   const moved: ThreadPage = { ...page, turns: [message(3), message(4)], next: "c3" };

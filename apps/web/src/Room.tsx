@@ -363,7 +363,14 @@ export function ThreadRoom({
           >
             {words.sharedIn(projectTitle(projects, th.project, workspaceName), th.channel)}
           </button>
-          <span title={people.map((p) => p.name).join(", ")}>{words.participants(people.length)}</span>
+          <span
+            title={people
+              .filter((p) => p.name)
+              .map((p) => `@${p.name}`)
+              .join(", ")}
+          >
+            {words.participants(people.length)}
+          </span>
           {answering.map((a) => (
             <span key={a} className="inline-flex items-center gap-1">
               <AgentMark name={a} size={14} />
