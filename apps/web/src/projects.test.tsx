@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Me, Preferences, Settings as Workspace } from "./api.ts";
+import { defaultCopy as copy } from "@warp/components";
+import type { Me, Preferences, ProjectChange, Settings as Workspace } from "./api.ts";
 import { ProjectChoices, ProjectPicker, placeOf } from "./ProjectPicker.tsx";
 import { ProjectsPage } from "./Projects.tsx";
 import { east, field, globex, initech, news, renewals, retail, stores, tree, view, workspace } from "./projects.fixtures.ts";
@@ -199,4 +200,23 @@ test("settings no longer edit projects: the workspace section links to Projects 
   assert.doesNotMatch(out, /No projects yet/);
   assert.match(out, /href="\/projects"[^>]*>Open Projects</);
   assert.match(out, /href="\/projects\/~"[^>]*>Open the Workspace</);
+});
+
+test("every kind of change in a project's history reads as words", () => {
+  // Listing each kind as a key makes typecheck name one the API adds.
+  const kinds: Record<ProjectChange["what"], true> = {
+    created: true,
+    updated: true,
+    deleted: true,
+    managed: true,
+    moved: true,
+    archived: true,
+    members: true,
+    agents: true,
+    home: true,
+    experts: true,
+    knowledge: true,
+    channel: true,
+  };
+  for (const what of Object.keys(kinds)) assert.ok(copy.project.what[what], `no words for a ${what} change`);
 });

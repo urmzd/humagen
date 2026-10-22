@@ -3,6 +3,7 @@ package platform_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -293,5 +294,57 @@ func TestAHousekeepingRunIsGivenNoKnowledge(t *testing.T) {
 	})
 	if title.Origin != runs.OriginSystem || title.Tag().Meta[runs.MetaSources] != "" {
 		t.Fatalf("the housekeeping run %+v was pinned %q", title, title.Tag().Meta[runs.MetaSources])
+	}
+}
+
+// A write answers with the version it wrote, or the one it found when it
+// changed nothing: a write that lands right after it does not change what it
+// answers.
+func TestAKnowledgeWriteAnswersWithWhatItWrote(t *testing.T) {
+	p := startWith(t, platform.Config{})
+	ctx := t.Context()
+	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Field"}); err != nil {
+		t.Fatal(err)
+	}
+	shelf(t, p, map[string]string{"playbook": "Paula", "pricing": "Priya"})
+	name(t, p, projects.Root, "pricing")
+	reader := auth.Principal{Subject: "ada", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.ProjectsRead, auth.ProjectsWrite, auth.KnowledgeRead}}
+	w := projects.Writer{By: "ada"}
+	lists := [][]string{{"playbook"}, {"pricing", "playbook"}}
+	errs := make(chan error, len(lists))
+	for _, mine := range lists {
+		go func() {
+			for range 1000 {
+				pr, err := p.Projects.Get(tenant, "Field")
+				if err != nil {
+					errs <- err
+					return
+				}
+				got, err := p.SetProjectKnowledge(reader, "Field", w, platform.KnowledgeInput{Version: pr.Version, Knowledge: mine})
+				if errors.Is(err, projects.ErrVersion) {
+					continue
+				}
+				if err != nil {
+					errs <- err
+					return
+				}
+				want := []projects.KnowledgeSource{{Name: mine[0], From: "Field"}}
+				if len(mine) == 2 {
+					want = append(want, projects.KnowledgeSource{Name: mine[1], From: "Field"})
+				} else {
+					want = append(want, projects.KnowledgeSource{Name: "pricing", From: projects.Root})
+				}
+				if !slices.Equal(got.Knowledge, mine) || (got.Version != pr.Version && got.Version != pr.Version+1) || !slices.Equal(got.Given, want) {
+					errs <- fmt.Errorf("writing %v from version %d answered %+v", mine, pr.Version, got)
+					return
+				}
+			}
+			errs <- nil
+		}()
+	}
+	for range lists {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
 	}
 }

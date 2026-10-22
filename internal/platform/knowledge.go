@@ -150,10 +150,45 @@ func (p *Platform) SetProjectKnowledge(who auth.Principal, project string, w pro
 			return ProjectKnowledge{}, fmt.Errorf("%w: there is no knowledge source called %q", projects.ErrInvalid, n)
 		}
 	}
-	if _, err := p.Projects.SetKnowledge(who.Tenant, projects.NameOf(project), in.Version, in.Knowledge, w, p.now()); err != nil {
+	pr, err := p.Projects.SetKnowledge(who.Tenant, projects.NameOf(project), in.Version, in.Knowledge, w, p.now())
+	if err != nil {
 		return ProjectKnowledge{}, err
 	}
-	return p.ProjectKnowledgeAs(who, project)
+	return knowledgeOf(pr, p.Projects.Tree(who.Tenant)), nil
+}
+
+// knowledgeOf is the answer to a write: the version written and the sources
+// it names, then what a run filed there is given, the project's own sources
+// first and its parent's chain after. It is built from the version written,
+// not read back, so a write or delete that follows it does not change what
+// this one answers.
+func knowledgeOf(pr projects.Project, tree *projects.Tree) ProjectKnowledge {
+	out := ProjectKnowledge{Version: pr.Version, Knowledge: slices.Clone(pr.Knowledge), Given: []projects.KnowledgeSource{}}
+	if out.Knowledge == nil {
+		out.Knowledge = []string{}
+	}
+	var above []projects.KnowledgeSource
+	if !pr.IsRoot() {
+		above = tree.Knowledge(pr.Parent)
+	}
+	for _, s := range append(projectSources(pr), above...) {
+		if len(out.Given) == projects.MaxRunKnowledge {
+			break
+		}
+		if !slices.ContainsFunc(out.Given, func(g projects.KnowledgeSource) bool { return g.Name == s.Name }) {
+			out.Given = append(out.Given, s)
+		}
+	}
+	return out
+}
+
+// projectSources is the sources a project names, each credited to it.
+func projectSources(pr projects.Project) []projects.KnowledgeSource {
+	out := make([]projects.KnowledgeSource, 0, len(pr.Knowledge))
+	for _, n := range pr.Knowledge {
+		out = append(out, projects.KnowledgeSource{Name: n, From: pr.Name})
+	}
+	return out
 }
 
 // Knowledge reports whether the reader sees the workspace's knowledge
