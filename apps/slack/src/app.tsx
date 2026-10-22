@@ -334,6 +334,18 @@ type Again = "started" | "not-theirs" | "not-yours" | "elsewhere" | "not-routed"
 /** What a direct message to one person about one inbox message is kept by. */
 const toldKey = (as: ActAs, message: string) => `${as.user}\u0000${message}`;
 
+/**
+ * Whether a press is on a message the app sent the person who pressed as
+ * theirs, by tell or by Review: those are posted top-level in their messages
+ * with the app, whose Slack ids start with D. An inbox message shown on a run
+ * is always in the run's thread.
+ */
+const sentToThem = (p: ActionPayload): boolean => {
+  const at = p.message;
+  const channel = p.channel?.id ?? p.container?.channel_id ?? "";
+  return !!at && channel.startsWith("D") && (!at.thread_ts || at.thread_ts === at.ts);
+};
+
 export class App {
   private readonly threads = new Map<string, Thread>();
   /** Slack deliveries already taken, so a redelivery in this process does nothing. */
@@ -1213,14 +1225,19 @@ export class App {
     if (ui.payload.turnId === HOME_ID) return this.onHome(p, ui);
     if (ui.id === ActionId.open && (p.view?.type === "home" || p.container?.type === "view"))
       return this.review(p, ui.payload.turnId);
+    const as = await this.actAs(p.user.id);
+    const readFor = (who: ActAs) =>
+      this.warp.inboxMessageFor(ui.payload.turnId, who).catch(() => null);
+    // A message the app sent the person as theirs is theirs to act on, even
+    // where the app may read it too: it is read and done for them.
+    const sent = sentToThem(p);
+    let mine = as && sent ? await readFor(as) : null;
+    if (mine && as) return this.onPersonal(p, ui, mine, as);
     // A click on an inbox message names the message. Anything else names a run.
     const message = await this.warp.inbox.get(ui.payload.turnId).catch(() => null);
     if (message) return this.onMail(p, ui, message);
     // One addressed to the person who clicked is read for them, through the client.
-    const as = await this.actAs(p.user.id);
-    const mine = as
-      ? await this.warp.inboxMessageFor(ui.payload.turnId, as).catch(() => null)
-      : null;
+    mine = as && !sent ? await readFor(as) : null;
     if (mine && as) return this.onPersonal(p, ui, mine, as);
     if (answers(ui)) return this.onAnswer(p, ui);
     if (ui.id === ActionId.retry || ui.id === ActionId.resume) {
@@ -1368,6 +1385,31 @@ export class App {
 
   // The inbox
 
+  /**
+   * Retry on an inbox failure. A retry is always this app's, so its answer
+   * shows in the run's thread and the client's agents are checked: warp is
+   * never asked to retry on its own, and the message is only acknowledged.
+   * Only a failed run can be asked again, and a Retry on anything else is
+   * refused. The part to acknowledge, or null when nothing was asked.
+   */
+  private async retried(
+    p: ActionPayload,
+    part: PlatformMessage["parts"][number] | undefined,
+    clickedTs?: string,
+  ): Promise<string | null> {
+    if (part?.type !== "failure") {
+      await this.refuseRetry(p, "elsewhere");
+      return null;
+    }
+    const run = part.failure.reference ? await this.warp.getRun(part.failure.reference) : null;
+    const outcome = run ? await this.again(run, p.user.id, clickedTs) : "elsewhere";
+    if (outcome !== "started") {
+      await this.refuseRetry(p, outcome);
+      return null;
+    }
+    return part.id;
+  }
+
   /** Whether a Slack person may settle an inbox message here: they asked for the run, or they are an operator. */
   private maySettle(user: string, message: PlatformMessage): boolean {
     if ((this.opts.operators ?? []).includes(user)) return true;
@@ -1396,14 +1438,9 @@ export class App {
     if (request?.call === "resolve" && as)
       request = { ...request, values: { ...request.values, act_as: as } };
     if (ui.id === ActionId.retry) {
-      // Only a failed run can be asked again. A Retry on anything else is refused.
-      if (part?.type !== "failure") return this.refuseRetry(p, "elsewhere");
-      // A retry is always this app's, so its answer shows where it was asked and the
-      // client's agents are checked. Warp is never asked to retry on its own.
-      const run = part.failure.reference ? await this.warp.getRun(part.failure.reference) : null;
-      const outcome = run ? await this.again(run, p.user.id, p.message?.ts) : "elsewhere";
-      if (outcome !== "started") return this.refuseRetry(p, outcome);
-      request = { call: "resolve", partId: part.id, action: "acknowledge" };
+      const partId = await this.retried(p, part, p.message?.ts);
+      if (!partId) return;
+      request = { call: "resolve", partId, action: "acknowledge" };
     }
     if (!request) return;
     let updated: PlatformMessage;
@@ -1691,7 +1728,13 @@ export class App {
     const part = message.parts.find((x) => partMatches(x, ui.payload.target));
     if (part && ui.id === ActionId.reply && !ui.payload.text)
       return this.askForReply(p, raw, part.id);
-    const request = toRequest(message, ui);
+    let request = toRequest(message, ui);
+    if (ui.id === ActionId.retry) {
+      // Pressed in their messages with the app, so the turn asked again is shown in the run's thread.
+      const partId = await this.retried(p, part);
+      if (!partId) return;
+      request = { call: "resolve", partId, action: "acknowledge" };
+    }
     if (request?.call !== "resolve") return;
     let updated: WireMessage;
     try {

@@ -3,10 +3,16 @@ import { test } from "node:test";
 import { defaultCopy } from "@warp/components";
 import { LIMITS } from "@warp/render-slack";
 import {
+  alertMail,
   announcementMail,
+  CHANNEL,
+  click,
+  DM,
+  failureMail,
   homeClick,
   homeOpened,
   interactive,
+  mention,
   mentionMail,
   OTHER_USER,
   SUBJECT,
@@ -39,8 +45,8 @@ const ANAS: WireProject[] = [
 ];
 
 /** An app that is the client "app", mapping USER to ana, with the console's address unless it is "". */
-function mapping(publicUrl = CONSOLE): World {
-  const w = world({ clientId: "app", ...(publicUrl ? { publicUrl } : {}) });
+function mapping(publicUrl = CONSOLE, operators: string[] = []): World {
+  const w = world({ clientId: "app", operators, ...(publicUrl ? { publicUrl } : {}) });
   w.warp.clients.set("app", {
     id: "app",
     surface: "slack",
@@ -218,6 +224,83 @@ test("without a console address, Review sends an item to the person's messages, 
   assert.match(JSON.stringify(dm?.blocks), /can you confirm the renewal date/);
   assert.match(JSON.stringify(dm?.blocks), new RegExp(`"${defaultCopy.reply}"`));
   assert.deepEqual(w.warp.readFor.at(-1), { client: "app", user: USER });
+});
+
+/** Press Review on the Home tab, and return the message it sent the person. */
+async function reviewed(w: World) {
+  await w.app.handle(homeOpened(USER));
+  await settle();
+  await w.app.handle(homeClick(published(w), defaultCopy.home.review));
+  await w.app.idle();
+  const dm = w.slack.of("chat.postMessage").at(-1);
+  assert.equal(dm?.channel, USER);
+  return (dm?.blocks ?? []) as unknown[];
+}
+
+for (const operators of [[], [USER]]) {
+  const who = operators.length ? "an operator" : "anyone";
+  test(`a press in what Review sent is the person's own, for ${who}, even where the app may read it too`, async () => {
+    const w = mapping("", operators);
+    // An alert that notifies nobody: the app's machine may read it as well as ana.
+    w.warp.personal.set("ana", [alertMail()]);
+    w.warp.mailbox.set("m-alert", alertMail());
+    const blocks = await reviewed(w);
+    await w.app.handle(
+      click(blocks, defaultCopy.acknowledge, { channel: DM, ts: "1800000009.000100" }),
+    );
+    await w.app.idle();
+    assert.deepEqual(w.warp.resolvedFor, [
+      {
+        id: "m-alert",
+        part: "p1",
+        body: { action: "acknowledge" },
+        as: { client: "app", user: USER },
+      },
+    ]);
+    assert.deepEqual(w.warp.resolved, [], "never settled with the app's own credential");
+    assert.deepEqual(w.slack.of("chat.postEphemeral"), [], "nobody is told no");
+    const edit = w.slack.of("chat.update").at(-1);
+    assert.equal(edit?.channel, DM, "the message is kept current where it was pressed");
+  });
+}
+
+test("Retry in what Review sent asks again as the person, in the run's thread, and acknowledges it as them", async () => {
+  const w = mapping("");
+  w.warp.personal.set("ana", []);
+  await w.app.handle(mention("deploy it", "1700000000.000100"));
+  await settle();
+  const run = w.warp.last.id;
+  assert.equal(w.warp.runs.get(run)?.actor?.user, "ana");
+  w.warp.emit(run, "lifecycle.accepted");
+  w.warp.emit(run, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
+  await settle();
+  await w.app.idle();
+  // A failed run's message names no audience: the app's machine may read it too.
+  w.warp.personal.set("ana", [failureMail(run)]);
+  w.warp.mailbox.set("m-failure", failureMail(run));
+  const blocks = await reviewed(w);
+  const reacted = w.slack.of("reactions.add").length;
+  await w.app.handle(click(blocks, defaultCopy.retry, { channel: DM, ts: "1800000009.000100" }));
+  await settle();
+  assert.equal(w.warp.started.length, 2, "asked again");
+  assert.deepEqual(w.warp.started[1]?.act_as, { client: "app", user: USER });
+  // The turn asked again is shown in the run's own thread, not on the message in their messages.
+  const seen = w.slack.of("reactions.add").slice(reacted);
+  assert.ok(seen.length > 0);
+  for (const r of seen) assert.deepEqual([r.channel, r.timestamp], [CHANNEL, "1700000000.000100"]);
+  assert.deepEqual(w.warp.resolvedFor, [
+    {
+      id: "m-failure",
+      part: "p1",
+      body: { action: "acknowledge" },
+      as: { client: "app", user: USER },
+    },
+  ]);
+  assert.deepEqual(w.warp.resolved, [], "warp is never asked to retry, nor the app to settle it");
+  w.warp.emit(w.warp.last.id, "lifecycle.accepted");
+  w.warp.emit(w.warp.last.id, "lifecycle.completed", { text: "ok" });
+  await settle();
+  await w.app.idle();
 });
 
 test("a person whose projects cannot be read sees the rest of their Home", async () => {

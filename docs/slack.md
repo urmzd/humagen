@@ -133,7 +133,9 @@ the projects they have a role in, where something happened most recently
 first, archived ones left out and the rest counted. Each opens its page in the
 console when the app has the console's address (`WARP_PUBLIC_URL`); without
 one, Review sends a message to the person's direct messages with the app,
-where it can be answered. Ask a Question and Build an Agent open a form, and
+where it can be answered. A press there is the person's own, done for them
+through the client even where the app may read the message too, and Retry
+asks the run again in its own thread. Ask a Question and Build an Agent open a form, and
 the words are posted as the person in their direct messages with the app,
 as the shortcut's are; Build an Agent tags `@warp-builder`, and is offered
 only where the client may reach it. Search Context opens the console. The tab
