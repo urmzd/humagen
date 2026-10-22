@@ -188,8 +188,8 @@ function TurnView({
  * message in the chat bar.
  */
 export const STARTERS: { agent: string; label: string; text: string }[] = [
-  { agent: "warp-analyst", label: "How did my agents do today?", text: "How did my agents do today?" },
-  { agent: "warp-builder", label: "Build a new agent", text: "Help me build an agent that " },
+  { agent: "warp-analyst", label: "How are my agents doing?", text: "How did my agents do today?" },
+  { agent: "warp-builder", label: "Build an agent", text: "Help me build an agent that " },
   { agent: "warp-writer", label: "Write a report", text: "Write a one-page report on " },
 ];
 
@@ -587,14 +587,12 @@ export function Chat({
           the conversation, as a chip, not an @mention.
         */}
         {canRun && starters.length > 0 && draft.trim() === "" && (
-          // One line, never wrapping one alone onto a line of its own: on a
-          // narrow screen the row scrolls sideways inside the gutter.
-          <ul
-            aria-label={defaultCopy.chat.suggestions}
-            className="aui-scroll mx-auto -mt-1 flex w-full max-w-4xl flex-nowrap gap-x-4 overflow-x-auto px-7 [scrollbar-width:none]"
-          >
-            {starters.map((st) => (
-              <li key={st.agent} className="shrink-0">
+          // One line, never one left alone on a line of its own: a phone
+          // shows the first two, which fit inside its gutter, and a wider
+          // screen all of them.
+          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto -mt-1 flex w-full max-w-4xl flex-nowrap gap-x-4 overflow-hidden px-7">
+            {starters.map((st, i) => (
+              <li key={st.agent} className={`shrink-0 ${i >= 2 ? "hidden sm:block" : ""}`}>
                 <button
                   type="button"
                   onClick={() => {
