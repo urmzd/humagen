@@ -34,7 +34,7 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 | A mention in a channel | The mention's thread. |
 | `/agent <question>` | A new thread in the channel. `/agent help` lists who can be asked. |
 | **Ask the agent** shortcut | The app's messages with you. |
-| **Ask agent about this** on a message | That message's thread. |
+| **Ask agent about this** on a message | That message's thread. On your own message it asks as you; on anyone else's, or a bot's, it asks through the app, for nobody, so their words are never run as you. |
 | Stop button | Stops the run, confirms in the thread, sets the session to active. |
 | Home tab | What is waiting on you in warp's inbox. |
 
@@ -56,6 +56,14 @@ are left out. Each message goes ahead of the question with who wrote it, by
 display name when the app has `users:read`, else as a mention. At most the
 newest 30 messages and 6000 characters go with one turn. A direct message is
 always addressed to the app, so it reads no history.
+
+The history goes ahead of the asker's own words, and the run acts for the
+asker, as any mention does: they asked in that thread, and the agent reads
+what others said there, each with who said it, as it reads a tool's result.
+So a request someone else made in the thread is acted on with the asker's
+credentials only when the asker's own words ask for it, as "go ahead" does.
+Asking about someone else's message with the shortcut is different: their
+words are the whole request, so it acts for nobody (above).
 
 The run takes only text, so the history travels in the question and shows as
 part of it in the console. Reading a thread needs `channels:history`,

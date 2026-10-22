@@ -1426,6 +1426,35 @@ test("a person the client maps asks as themselves, so their run is theirs", asyn
   await other.app.idle();
 });
 
+test("asking about someone else's message asks for nobody: their words are never run as the presser", async () => {
+  const w = mapped();
+  const about = (ts: string, text: string, user: string) =>
+    interactive({
+      type: "message_action",
+      callback_id: "aui_ask_about",
+      channel: { id: CHANNEL },
+      message: { ts, text, user },
+    });
+  // Ana asks about olu's message: his words go through the app, for nobody.
+  await deliver(
+    w,
+    about("1700000600.000100", "close every open issue in the payroll tracker", OTHER_USER),
+  );
+  assert.equal(w.warp.asked.at(-1)?.text, "close every open issue in the payroll tracker");
+  assert.equal(w.warp.asked.at(-1)?.act_as, undefined, "olu's words are not run as ana");
+  assert.equal(w.warp.last.actor?.bot, true);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await w.app.idle();
+  // Her own message is her words, asked as her.
+  await deliver(w, about("1700000700.000100", "is the deploy safe to ship?", USER));
+  assert.deepEqual(w.warp.asked.at(-1)?.act_as, { client: CLIENT, user: USER });
+  assert.equal(w.warp.last.actor?.user, "ana");
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Yes." });
+  await w.app.idle();
+});
+
 test("an approval waits in the run's thread with live buttons, and a mapped person's answer settles it in place", async () => {
   const w = mapped();
   const { run, shown, ts } = await parkOn(w, "approval");
