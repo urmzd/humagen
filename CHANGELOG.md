@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.0 (2026-10-22)
+
+### Features
+
+- **slack**: add uploads, skill commands, canvases and feedback collection (#47) ([37857f8](https://github.com/urmzd/warp/commit/37857f8cfb2a65d855823b687236a367f8b46bdd))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.16.0...v0.17.0)
+
+
 ## 0.16.0 (2026-10-22)
 
 ### Features
