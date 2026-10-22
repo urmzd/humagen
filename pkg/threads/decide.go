@@ -89,15 +89,17 @@ type Decision struct {
 //  1. a message that tags agents or @auto is answered by each tagged agent
 //     that can answer, at most MaxRuns, and by no default, even when none
 //     can;
-//  2. one that tags only people or experts starts no run;
+//  2. one that tags only people, experts or a role starts no run;
 //  3. so does one that answers a question or replies to a mention;
 //  4. and one posted only;
 //  5. otherwise the inherited default answers. With none, or with one that
 //     has stopped being available, no agent answers, and the reason says so.
 //
 // A refused tag still counts as a tag of its kind, so a tag that names
-// nobody never sends the message to the default instead. Decide is a pure
-// function of its input.
+// nobody never sends the message to the default instead. A skill is no tag of
+// anyone: a message that names one and tags no agent starts @auto, which the
+// platform adds to its tags before deciding (WithSkillAgent). Decide is a
+// pure function of its input.
 func Decide(in Input) Decision {
 	ms := cloneMentions(in.Mentions)
 	agents, tagged, people := []string{}, false, false
@@ -113,7 +115,7 @@ func Decide(in Input) Decision {
 				continue
 			}
 			agents = append(agents, m.Name)
-		case Person, SME:
+		case Person, SME, Role:
 			people = true
 		}
 	}

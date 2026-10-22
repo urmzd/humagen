@@ -84,6 +84,9 @@ const (
 	MaxText = 8000
 	// MaxMentions is how many tags one message holds.
 	MaxMentions = 10
+	// MaxSkills is how many skills one message names. They are tags, so
+	// they count toward MaxMentions too.
+	MaxSkills = 4
 	// MaxTitle bounds a thread's title, in characters.
 	MaxTitle = 200
 	// MaxName bounds a person's display name and a participant's name.
@@ -112,6 +115,12 @@ const (
 	Agent  = "agent"
 	// SME is a tag of a project's experts, for a topic or for any.
 	SME = "sme"
+	// Skill is a skill a message names, $<name> or @skill:<name>: the runs
+	// it starts are told to use it. It notifies nobody.
+	Skill = "skill"
+	// Role is a tag of the people holding a policy role, through a mention
+	// kind that resolves roles, such as @oncall:sre.
+	Role = "role"
 )
 
 // ViaConsole is a message posted in the console.
@@ -202,11 +211,11 @@ type AnswerRef struct {
 
 // Mention is one tag in a message.
 type Mention struct {
-	// Kind is agent, person or sme.
+	// Kind is agent, person, sme, skill or role.
 	Kind string `json:"kind"`
-	// Name is the agent ("auto" for @auto), the person's subject or the
-	// topic ("" for every expert). A person nobody goes by keeps the handle
-	// as written.
+	// Name is the agent ("auto" for @auto), the person's subject, the topic
+	// ("" for every expert), the skill or the role. A person nobody goes by
+	// keeps the handle as written.
 	Name string `json:"name"`
 	// Run is the run an agent's tag started.
 	Run string `json:"run,omitempty"`
@@ -362,8 +371,8 @@ func (t Thread) validate() error {
 
 func (m Mention) validate() error {
 	switch {
-	case m.Kind != Agent && m.Kind != Person && m.Kind != SME:
-		return fmt.Errorf("%w: a mention is of an agent, a person or experts", ErrInvalid)
+	case m.Kind != Agent && m.Kind != Person && m.Kind != SME && m.Kind != Skill && m.Kind != Role:
+		return fmt.Errorf("%w: a mention is of an agent, a person, experts, a skill or a role", ErrInvalid)
 	case m.Kind != SME && strings.TrimSpace(m.Name) == "":
 		return fmt.Errorf("%w: a mention names someone", ErrInvalid)
 	case utf8.RuneCountInString(m.Name) > MaxName || !oneLine(m.Name) || !oneLine(m.Refused) || len(m.Refused) > 500:

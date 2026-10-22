@@ -76,6 +76,10 @@ const (
 
 var validRoleName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,63}$`)
 
+// ValidRole reports whether a name can name a policy role, as a member entry
+// role:<name> names it.
+func ValidRole(name string) bool { return validRoleName.MatchString(name) }
+
 // validWho checks one entry's who.
 func validWho(who string) error {
 	switch {
