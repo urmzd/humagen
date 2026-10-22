@@ -34,7 +34,7 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 | A mention in a channel | The mention's thread. |
 | `/agent <question>` | A new thread in the channel. `/agent help` lists who can be asked. |
 | **Ask the agent** shortcut | The app's messages with you. |
-| **Ask agent about this** on a message | That message's thread. On your own message it asks as you; on anyone else's, or a bot's, it asks through the app, for nobody, so their words are never run as you. |
+| **Ask agent about this** on a message | That message's thread. On your own message it asks as you; on anyone else's, or a bot's, it asks through the app, for nobody, so their words are never run as you. Under a dev sign-in, where the app's own credential is the person `dev`, asking through the app acts for `dev`. |
 | Stop button | Stops the run, confirms in the thread, sets the session to active. |
 | Home tab | What is waiting on you in warp's inbox. |
 
