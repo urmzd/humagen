@@ -345,6 +345,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
           <Chat
             key={thread ?? `new:${route.page === "new" ? `${route.project ?? ""}:${route.agent ?? ""}:${route.ask ?? ""}` : ""}`}
             threadId={thread}
+            me={me.principal.subject}
             startIn={route.page === "new" ? route.project : undefined}
             startAgent={route.page === "new" ? route.agent : undefined}
             startAsk={route.page === "new" ? route.ask : undefined}
