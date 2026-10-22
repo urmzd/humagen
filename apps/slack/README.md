@@ -117,11 +117,18 @@ Every button in Slack acts with the app's rights, so each extra scope lets the
 people in the loop do more: `agents:write` keeps or discards memories,
 `alerts:read` and `alerts:write` show and acknowledge alerts. Only the person
 who asked for the run, or someone in `SLACK_OPERATORS`, may settle an inbox
-item or ask a turn again (a Retry is always the app's own, never warp's,
-so its answer shows in the thread); a retry stays the first asker's, and is checked
-against the client's agents again. When who asked is not known (after a
-restart), only an operator may. A reached limit is shown, not raised: raise it
-in the console.
+item. When who asked is not known (after a restart), only an operator may. A
+reached limit is shown, not raised: raise it in the console.
+
+Retry and Resume ask a turn again (always the app's own, never warp's, so its
+answer shows in the thread) for whoever the turn acted for, as warp's record
+of the run says, and are checked against the client's agents again. A turn
+that acted for a person used that person's own tool credentials, so only a
+Slack person the client maps to them may ask it again, and it is asked as
+them (`act_as`); anyone else, an operator included, is told so and nothing
+starts. A turn that acted for nobody is asked again for nobody, by the person
+who asked or an operator, and after a restart by an operator only. Each
+person's press is a run of its own, and pressing again joins it.
 
 A question a run waits on is shown in its thread with warp's card and
 buttons. A click is answered through warp as the Slack person, only when
@@ -167,7 +174,9 @@ journal file serves one process.
 Kept in memory, and lost on restart:
 
 - Who asked for each run. After a restart only operators can settle that run's
-  inbox items or retry it, and Home shows a person nothing until they ask again.
+  inbox items or retry it for nobody, and Home shows a person nothing until
+  they ask again. Whom a run acted for is warp's record, so the person a turn
+  acted for may still retry it.
 - Which inbox messages were posted to a thread. A change to one after a
   restart is not reflected in the thread.
 - The queue of messages waiting behind a turn.

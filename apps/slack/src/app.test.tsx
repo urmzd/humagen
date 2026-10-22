@@ -435,9 +435,10 @@ async function failedTurn(w: World) {
   return { run, blocks: blocksOf(final), ts: String(final?.ts) };
 }
 
-test("only the person who asked, or an operator, may ask a turn again", async () => {
+test("a turn that acted for nobody is asked again, for nobody, by the person who asked or an operator", async () => {
   const w = world({ operators: ["U03ABCDEF"] });
   const { run, blocks, ts } = await failedTurn(w);
+  assert.equal(w.warp.runs.get(run)?.actor?.bot, true, "the app asked as itself, for nobody");
 
   // Someone else in the channel is told no, and nothing starts.
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: OTHER_USER }));
@@ -449,9 +450,10 @@ test("only the person who asked, or an operator, may ask a turn again", async ()
   );
   assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.user, OTHER_USER);
 
-  // An operator may. The new run stays the first asker's.
+  // An operator may. The new run acts for nobody, as the turn did, and stays the first asker's to settle.
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }));
   assert.equal(w.warp.started.length, 2);
+  assert.equal(w.warp.started[1]?.act_as, undefined);
   const retried = w.warp.last.id;
   assert.equal(w.warp.last.prev ?? w.warp.last.thread, run);
   await emit(w, "lifecycle.accepted");
@@ -497,6 +499,96 @@ test("after a restart, who asked is not known, so only an operator may ask again
   );
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }), app);
   assert.equal(w.warp.started.length, 2);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await app.idle();
+});
+
+// Retry and Resume ask a turn again for whom it acted for, as Retry in warp's
+// inbox does: a turn that acted for a person only by that person, as
+// themselves; a turn that acted for nobody for nobody, whoever presses it.
+// Warp's record says whom a turn acted for, so a restart changes nothing.
+const OPERATOR = "U03ABCDEF";
+const NOT_THEIRS =
+  "This turn used the credentials of the person it acted for, so only they can retry it.";
+
+/** A Retry or Resume pressed on a turn, as Slack sends it. */
+function pressed(id: "retry" | "resume", run: string, user: string) {
+  return interactive({
+    type: "block_actions",
+    user: { id: user, team_id: TEAM },
+    channel: { id: CHANNEL },
+    container: { type: "message", channel_id: CHANNEL },
+    message: { ts: "1800000008.000100", thread_ts: TS },
+    actions: [{ action_id: `aui.${id}#0`, value: JSON.stringify({ turnId: run, target: run }) }],
+  });
+}
+
+test("a turn that acted for a person is asked again only by them, as themselves, after a restart too", async () => {
+  const w = mapped({ operators: [OPERATOR] });
+  const { run, blocks, ts } = await failedTurn(w);
+  assert.equal(w.warp.runs.get(run)?.actor?.user, "ana");
+
+  // Olu, whom the client maps to someone else, and an operator: refused, nothing starts.
+  for (const user of [OTHER_USER, OPERATOR]) {
+    await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user }));
+    await deliver(w, pressed("resume", run, user));
+    await w.app.idle();
+    assert.equal(w.warp.started.length, 1, user);
+    assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, NOT_THEIRS);
+    assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.user, user);
+  }
+
+  // Ana asks it again, as herself.
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }));
+  assert.equal(w.warp.started.length, 2);
+  assert.deepEqual(w.warp.started[1]?.act_as, { client: CLIENT, user: USER });
+  assert.equal(w.warp.last.actor?.user, "ana");
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Deployed." });
+  await w.app.idle();
+
+  // After a restart nobody here remembers who asked, and nothing changes:
+  // the operator is still refused, and ana pressing again joins her retry.
+  const app = w.restart();
+  await deliver(w, pressed("retry", run, OPERATOR), app);
+  await app.idle();
+  assert.equal(w.warp.started.length, 2);
+  assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, NOT_THEIRS);
+  await deliver(w, pressed("retry", run, USER), app);
+  await app.idle();
+  assert.equal(w.warp.started.length, 2, "her second press joins her first retry");
+});
+
+test("a turn that acted for nobody is asked again for nobody, and each person's press is its own run", async () => {
+  // Olu is an operator the client maps. The person who asks is not mapped.
+  const w = mapped({ operators: [OTHER_USER, OPERATOR] });
+  await deliver(w, mention("deploy it", TS, { user: "U05UNMAPPED" }));
+  const run = w.warp.last.id;
+  assert.equal(w.warp.asked[0]?.act_as, undefined);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
+  await w.app.idle();
+
+  // After a restart, so who asked is not known: each operator's press is a
+  // run of its own, and each acts for nobody, never for whoever pressed.
+  const app = w.restart();
+  await deliver(w, pressed("retry", run, OTHER_USER), app);
+  assert.equal(w.warp.started.length, 2);
+  assert.equal(
+    w.warp.started[1]?.act_as,
+    undefined,
+    "olu's credential is not put behind the words",
+  );
+  assert.equal(w.warp.last.actor?.bot, true);
+  const first = w.warp.last.id;
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await app.idle();
+  await deliver(w, pressed("resume", run, OPERATOR), app);
+  assert.equal(w.warp.started.length, 3, "a second person's press does not join the first's run");
+  assert.notEqual(w.warp.last.id, first);
+  assert.equal(w.warp.started[2]?.act_as, undefined);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await app.idle();
@@ -1295,8 +1387,8 @@ test("asking from the shortcut form cannot make the app notify a whole channel",
 
 const CLIENT = "app";
 /** A world whose app is a client that maps USER to ana and OTHER_USER to olu. */
-function mapped(): World {
-  const w = world({ clientId: CLIENT });
+function mapped(opts: Parameters<typeof world>[0] = {}): World {
+  const w = world({ clientId: CLIENT, ...opts });
   w.warp.clients.set(CLIENT, {
     id: CLIENT,
     surface: "slack",
