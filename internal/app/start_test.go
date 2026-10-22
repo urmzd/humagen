@@ -76,6 +76,92 @@ func TestStartWorksWithNothingConfigured(t *testing.T) {
 	}
 }
 
+// Help, or a flag start does not know, asks nothing and writes nothing,
+// whatever stdin is, and /dev/null is not a terminal to ask on.
+func TestStartHelpAsksNothingAndWritesNothing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WARP_HOME", home)
+	devnull, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer devnull.Close()
+	// The flag set prints its usage to stderr, which the test does not need.
+	stderr := os.Stderr
+	os.Stderr = devnull
+	defer func() { os.Stderr = stderr }()
+	if interactive(devnull) {
+		t.Errorf("%s is taken for a terminal", os.DevNull)
+	}
+	for _, args := range [][]string{{"-h"}, {"--help"}, {"-setup", "-h"}, {"-addr", "127.0.0.1:0", "-help"}, {"-setup", "-no-such-flag"}} {
+		var out bytes.Buffer
+		if err := start(Options{}, args, devnull, &out); err == nil {
+			t.Errorf("start %v ran", args)
+		}
+		if _, err := os.Stat(filepath.Join(home, "warp.yaml")); !os.IsNotExist(err) {
+			t.Fatalf("start %v wrote warp.yaml: %v", args, err)
+		}
+		if out.Len() != 0 {
+			t.Errorf("start %v said %q", args, out.String())
+		}
+	}
+	// Help asked for is not a failure.
+	if code := Execute(Options{}, []string{"start", "-h"}); code != 0 {
+		t.Errorf("warp start -h exited %d", code)
+	}
+}
+
+// start says it found no console only when it serves none: a console -web
+// names is served, and one turned off was turned off on purpose.
+func TestStartSaysThereIsNoConsoleOnlyWhenNoneIsServed(t *testing.T) {
+	t.Setenv("WARP_HOME", t.TempDir())
+	t.Setenv(envWebDir, "")
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	web := t.TempDir()
+	if err := os.WriteFile(filepath.Join(web, "index.html"), []byte("<!doctype html><title>the console</title>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run := func(args ...string) (said, page string) {
+		t.Helper()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var out bytes.Buffer
+		addrs := make(chan string, 1)
+		done := make(chan error, 1)
+		o := Options{ctx: ctx, ready: func(a string) { addrs <- a }}
+		go func() {
+			done <- start(o, append([]string{"-yes", "-addr", "127.0.0.1:0"}, args...), strings.NewReader(""), &out)
+		}()
+		select {
+		case addr := <-addrs:
+			if resp, err := http.Get("http://" + addr + "/"); err == nil {
+				b, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				page = string(b)
+			}
+		case err := <-done:
+			t.Fatalf("start %v returned before listening: %v", args, err)
+		case <-time.After(30 * time.Second):
+			t.Fatalf("start %v did not listen", args)
+		}
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatalf("start %v: %v", args, err)
+		}
+		return out.String(), page
+	}
+	const note = "no built console found"
+	if said, page := run("-web", web); strings.Contains(said, note) || !strings.Contains(page, "the console") {
+		t.Errorf("with -web: said %q, served %q", said, page)
+	}
+	if said, _ := run(); !strings.Contains(said, note) {
+		t.Errorf("with no console anywhere, start said %q", said)
+	}
+	if said, _ := run("-web="); strings.Contains(said, note) {
+		t.Errorf("with the console turned off, start said %q", said)
+	}
+}
+
 func TestSetupWithNoAnswersWritesAWorkingSpec(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
 	// Every answer is the default except "y" to a model provider, which

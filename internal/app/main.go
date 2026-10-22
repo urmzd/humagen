@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"maps"
 	"net"
@@ -77,7 +78,12 @@ const usage = `usage: warp start [-f PATH] [flags]     run the platform here; no
 // Execute runs the warp command tree with args (os.Args[1:]) and returns the
 // process exit code.
 func Execute(o Options, args []string) int {
-	if err := run(o, args); err != nil {
+	err := run(o, args)
+	// Help asked for is printed by the flag set, and is not a failure.
+	if errors.Is(err, flag.ErrHelp) {
+		return 0
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "warp:", err)
 		return 1
 	}
@@ -132,6 +138,13 @@ type serveDefaults struct {
 	web  string
 	// files are read when the command line names none.
 	files []string
+	// prepare, when set, runs once the command line is known to parse and
+	// before any file is read: start's first-run questions. Help, or a flag
+	// serve does not know, never reaches it.
+	prepare func() error
+	// notes, when set, is where serve tells the person at a terminal what
+	// it chose for them: that it found no console to serve.
+	notes io.Writer
 }
 
 func serve(o Options, args []string, d serveDefaults) error {
@@ -174,11 +187,21 @@ func serve(o Options, args []string, d serveDefaults) error {
 	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// The command line is checked before anything is asked, read or
+	// written, so -h, or a flag misspelled, does only what parsing does.
+	if probe(fs, args) != nil {
+		return fs.Parse(args)
+	}
 	// The spec's System document becomes the flags' defaults, so a flag
 	// typed on the command line wins over the file.
 	paths := scanFiles(args)
 	if len(paths) == 0 {
 		paths = d.files
+		if d.prepare != nil {
+			if err := d.prepare(); err != nil {
+				return err
+			}
+		}
 	}
 	keys := credref.Default
 	file, err := loadFiles(ctx, o, paths, keys)
@@ -187,6 +210,11 @@ func serve(o Options, args []string, d serveDefaults) error {
 	}
 	if err := fs.Parse(append(file.args, args...)); err != nil {
 		return err
+	}
+	// Said once every flag is known: a console -web or the file names is
+	// served, and one turned off was turned off on purpose.
+	if d.notes != nil && *webDir == "" && !given(fs, "web") {
+		fmt.Fprintln(d.notes, "warp: no built console found (run pnpm --filter @warp/console build, or set WARP_WEB_DIR); serving the API only")
 	}
 	getenv := overlay(file.env, os.Getenv)
 	// A Slack app calls this server's API, so it needs a credential for the
