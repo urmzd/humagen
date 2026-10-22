@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -224,21 +226,18 @@ func (p *Platform) mayKeepUnasked(tenant, owner string) bool {
 const migration = "migration"
 
 // migrateProjects moves the projects each tenant kept in its settings into the
-// project store. For each tenant whose settings still hold them, one write
-// imports them all as teams at the top level, with the root, and then the
-// settings are written again without them. A tenant whose store already has
-// records is past the first write, so only the second is made: stopping
-// between the two is repaired at the next start. A failed import fails the
-// start and changes nothing.
+// project store. For each tenant whose settings an earlier version wrote, one
+// write imports them all as teams at the top level, with the root and with
+// every name a schedule, an alert rule or a limit still points at that the
+// settings no longer held, and then the settings are written again without
+// them. A tenant whose store already has records is past the first write, so
+// only the second is made: stopping between the two is repaired at the next
+// start. A failed import fails the start and changes nothing, and one past the
+// cap names what it would have kept.
 func (p *Platform) migrateProjects() error {
 	p.settings.mu.Lock()
 	defer p.settings.mu.Unlock()
-	tenants := make([]string, 0, len(p.settings.legacy))
-	for t := range p.settings.legacy {
-		tenants = append(tenants, t)
-	}
-	slices.Sort(tenants)
-	for _, tenant := range tenants {
+	for _, tenant := range slices.Sorted(maps.Keys(p.settings.legacy)) {
 		if !p.Projects.Stored(tenant) {
 			cfg := p.settings.by[tenant]
 			at := cfg.SetupAt
@@ -249,10 +248,18 @@ func (p *Platform) migrateProjects() error {
 			for _, lp := range p.settings.legacy[tenant] {
 				ps = append(ps, projects.Project{Name: lp.Name, Description: lp.Description})
 			}
-			if err := p.Projects.Import(tenant, ps, migration, at); err != nil {
-				return fmt.Errorf("platform: move the projects of %q out of its settings: %w", tenant, err)
+			kept := p.stillNamed(tenant, ps)
+			// A record whose array was null held no projects: there is
+			// nothing to import unless something still names one.
+			if p.settings.legacy[tenant] != nil || len(kept) > 0 {
+				if err := p.Projects.Import(tenant, ps, kept, migration, at); err != nil {
+					if len(kept) > 0 {
+						return fmt.Errorf("platform: move the projects of %q out of its settings, keeping %s, which a schedule, an alert rule or a limit still names: %w", tenant, names(kept), err)
+					}
+					return fmt.Errorf("platform: move the projects of %q out of its settings: %w", tenant, err)
+				}
+				p.log.Info("platform: projects moved out of settings", "tenant", tenant, "projects", len(ps), "kept", names(kept))
 			}
-			p.log.Info("platform: projects moved out of settings", "tenant", tenant, "projects", len(ps))
 		}
 		if err := p.settings.put(tenant, p.settings.by[tenant]); err != nil {
 			return fmt.Errorf("platform: clear the projects of %q from its settings: %w", tenant, err)
@@ -260,6 +267,63 @@ func (p *Platform) migrateProjects() error {
 		delete(p.settings.legacy, tenant)
 	}
 	return nil
+}
+
+// stillNamed is every name a tenant's schedules, alert rules and limits still
+// point at that the projects about to be imported lack: projects an earlier
+// version dropped from settings, by a delete or at start, while things stayed
+// filed in them. Each is kept, so nothing that ran before the upgrade is
+// refused after it and nothing is left pointing at a name the tree does not
+// hold. A name the tree cannot hold (not a project's name, or one name
+// ignoring case with another) is logged and left, and what points at it is
+// refused until it is changed.
+func (p *Platform) stillNamed(tenant string, ps []projects.Project) []projects.Project {
+	by := map[string][]string{}
+	add := func(name, what string) {
+		if name != projects.Root {
+			by[name] = append(by[name], what)
+		}
+	}
+	for _, sc := range p.Schedules.List(tenant) {
+		add(sc.Meta[runs.MetaProject], "the schedule "+sc.Name)
+	}
+	for _, r := range p.Alerts.Rules(tenant) {
+		add(r.Project, "the alert rule "+r.Name)
+	}
+	for _, pol := range p.Policies.List(tenant) {
+		if pol.Scope.Kind == policy.Project {
+			add(pol.Scope.Name, "its limits")
+		}
+	}
+	taken := map[string]string{}
+	for _, pr := range ps {
+		taken[strings.ToLower(pr.Name)] = pr.Name
+	}
+	var kept []projects.Project
+	for _, name := range slices.Sorted(maps.Keys(by)) {
+		have, clash := taken[strings.ToLower(name)]
+		switch {
+		case have == name:
+			continue
+		case clash:
+			p.log.Warn("platform: a name something still points at is one name with a project, ignoring case, and is not kept", "tenant", tenant, "project", name, "with", have, "named by", strings.Join(by[name], ", "))
+		case !projects.ValidName(name):
+			p.log.Warn("platform: a name something still points at cannot name a project, and is not kept", "tenant", tenant, "project", name, "named by", strings.Join(by[name], ", "))
+		default:
+			taken[strings.ToLower(name)] = name
+			kept = append(kept, projects.Project{Name: name})
+		}
+	}
+	return kept
+}
+
+// names lists projects' names, quoted, for a message.
+func names(ps []projects.Project) string {
+	out := make([]string, len(ps))
+	for i, pr := range ps {
+		out[i] = strconv.Quote(pr.Name)
+	}
+	return strings.Join(out, ", ")
 }
 
 // filedUnder is what the project store asks before it forgets a deleted name:

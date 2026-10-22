@@ -205,6 +205,10 @@ const (
 // AdoptsNote is recorded on a project created under a deleted name.
 const AdoptsNote = "adopts its old conversations"
 
+// KeptNote is recorded on a project an Import keeps because something outside
+// the tree still names it.
+const KeptNote = "kept because a schedule, an alert rule or a limit still names it"
+
 // Change is one entry of the record of what changed.
 type Change struct {
 	Seq     int64     `json:"seq"`

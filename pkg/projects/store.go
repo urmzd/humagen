@@ -736,22 +736,25 @@ func (s *Store) Release(tenantName, name, by string, at time.Time) (Project, err
 }
 
 // Import writes a tenant's first records in one write: the root, and every
-// project given as a team at the top level, each with its history entry. It
-// is how the projects a workspace kept in its settings move here, and it is
+// project in ps and kept as a team at the top level, each with its history
+// entry. It is how the projects a workspace kept in its settings (ps) move
+// here, with the names something outside the tree still points at that
+// settings no longer held (kept), whose entries say so with KeptNote. It is
 // refused (ErrExists) once the tenant has written anything, so running it
-// again changes nothing.
-func (s *Store) Import(tenantName string, ps []Project, by string, at time.Time) error {
+// again changes nothing, and refused whole (ErrLimit) when the two together
+// pass the cap.
+func (s *Store) Import(tenantName string, ps, kept []Project, by string, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx := s.begin(tenantName)
 	if tx.t.stored() {
 		return fmt.Errorf("%w: %q already has projects", ErrExists, tenantName)
 	}
-	if len(ps) > s.caps.Projects {
-		return fmt.Errorf("%w: a workspace has at most %d projects", ErrLimit, s.caps.Projects)
+	if n := len(ps) + len(kept); n > s.caps.Projects {
+		return fmt.Errorf("%w: a workspace has at most %d projects, and this one would have %d", ErrLimit, s.caps.Projects, n)
 	}
 	tx.root(by, at)
-	for _, p := range ps {
+	add := func(p Project, note string) error {
 		p = Project{Name: p.Name, Description: legacyText(p.Description, MaxDescription), Kind: Team}
 		if err := p.validate(); err != nil {
 			return fmt.Errorf("%q: %w", p.Name, err)
@@ -761,7 +764,18 @@ func (s *Store) Import(tenantName string, ps []Project, by string, at time.Time)
 		}
 		p.Version, p.CreatedBy, p.CreatedAt, p.UpdatedBy, p.UpdatedAt = 1, by, at, by, at
 		tx.project(p)
-		tx.record(Change{At: at, By: by, Project: p.Name, What: Created, After: ptr(p)})
+		tx.record(Change{At: at, By: by, Project: p.Name, What: Created, Note: note, After: ptr(p)})
+		return nil
+	}
+	for _, p := range ps {
+		if err := add(p, ""); err != nil {
+			return err
+		}
+	}
+	for _, p := range kept {
+		if err := add(p, KeptNote); err != nil {
+			return err
+		}
 	}
 	return tx.commit()
 }
