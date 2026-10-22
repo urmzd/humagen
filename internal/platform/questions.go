@@ -206,26 +206,62 @@ func (p *Platform) selfApprovers(run runs.Run, selfApproval bool) []string {
 // read is addressed to it, so it lands nowhere rather than everywhere.
 const nobody = "\x00nobody"
 
+// Whom a question is for, as a surface may say it to someone it is not
+// for (Ask.For).
+const (
+	// ForAnyone is anyone in the workspace who may resume runs.
+	ForAnyone = "anyone"
+	// ForPerson is one person: the person the run acts for, whose own
+	// credential an answer may reach.
+	ForPerson = "person"
+	// ForExperts is the experts on a topic of the project the run is filed
+	// in, or every expert there for no topic.
+	ForExperts = "experts"
+	// ForAnswerers is the people the agent's rules name, or whom it asked.
+	ForAnswerers = "answerers"
+	// ForNobody is nobody: the rules of the run, or of a run that called
+	// it, cannot be read.
+	ForNobody = "nobody"
+)
+
+// addressee is whom a question is for, as addressOf decided it: a kind
+// (ForAnyone and the rest), the experts' topic, or the person by subject.
+type addressee struct {
+	kind   string
+	topic  string
+	person string
+}
+
 // addressOf decides who a question is for: the people who may answer it,
-// narrowed to whom the agent asked when that is one of them.
-func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Question) (audience, excluded []string) {
+// narrowed to whom the agent asked when that is one of them. to says whom
+// that is, in a way a surface can say it.
+func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Question) (audience, excluded []string, to addressee) {
 	rev, err := p.Agents.Get(ctx, run.Tenant, run.Agent, run.Rev)
 	if err != nil {
 		p.log.Warn("platform: a question's rules could not be read, so it is addressed to nobody", "run", run.ID, "question", q.ID, "error", err)
-		return []string{nobody}, nil
+		return []string{nobody}, nil, addressee{kind: ForNobody}
 	}
 	if q.Kind != payload.QuestionApproval {
 		// A reply or a choice steers the run, and its callers, so one whose
 		// answer may reach a person's own credential asks them alone
 		// (maySteer), even when it asks the experts: an expert's words
 		// would reach the person's tools with the person's credential.
-		if person := p.steeredFor(ctx, run); person != "" {
-			return []string{person}, nil
+		switch person := p.steeredFor(ctx, run); person {
+		case "":
+		case nobody:
+			return []string{person}, nil, addressee{kind: ForNobody}
+		default:
+			return []string{person}, nil, addressee{kind: ForPerson, person: person}
 		}
-		if experts, asked := p.expertsAsked(run, q); asked {
-			return expertAudience(rev.Spec.Answerers, experts), nil
+		if experts, topic, asked := p.expertsAsked(run, q); asked {
+			audience = expertAudience(rev.Spec.Answerers, experts)
+			if slices.ContainsFunc(audience, func(who string) bool { return slices.Contains(experts, who) }) {
+				return audience, nil, addressee{kind: ForExperts, topic: topic}
+			}
+			return audience, nil, addresseeOf(audience)
 		}
-		return audienceOf(rev.Spec.Answerers, q), nil
+		audience = audienceOf(rev.Spec.Answerers, q)
+		return audience, nil, addresseeOf(audience)
 	}
 	// A call held by the callee's policy names its own approvers, which
 	// replace the caller spec's for this one question, as the runtime
@@ -236,24 +272,34 @@ func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Questi
 	}
 	// Whoever asked for the call does not approve it, and neither does
 	// whoever asked for the work it is part of.
-	return audienceOf(allowed, q), p.selfApprovers(run, self)
+	audience = audienceOf(allowed, q)
+	return audience, p.selfApprovers(run, self), addresseeOf(audience)
+}
+
+// addresseeOf is whom an audience is, when it is not the experts or one
+// person: anyone when it names nobody, else the people the rules name.
+func addresseeOf(audience []string) addressee {
+	if len(audience) == 0 {
+		return addressee{kind: ForAnyone}
+	}
+	return addressee{kind: ForAnswerers}
 }
 
 // expertsAsked is who a question that asks the project's experts is for:
 // asked_of "sme:<topic>" names the experts for the topic, and "sme" any
 // expert, of the nearest project on the run's chain that lists one. asked is
 // false for a question that asks someone else.
-func (p *Platform) expertsAsked(run runs.Run, q payload.Question) (experts []string, asked bool) {
+func (p *Platform) expertsAsked(run runs.Run, q payload.Question) (experts []string, topic string, asked bool) {
 	who := strings.TrimSpace(q.AskedOf)
 	topic, ok := strings.CutPrefix(who, threads.SMEName+":")
 	switch {
 	case who == threads.SMEName:
 		topic = ""
 	case !ok || !projects.ValidTopic(topic):
-		return nil, false
+		return nil, "", false
 	}
 	experts, _ = p.Projects.Tree(run.Tenant).ExpertsFor(run.Project, topic)
-	return experts, true
+	return experts, topic, true
 }
 
 // expertAudience is who a question for experts is addressed to: the experts,
@@ -308,14 +354,31 @@ func audienceOf(allowed []string, q payload.Question) (audience []string) {
 // raiseQuestion puts a question a run is parked on in the inbox, once. via is
 // the run whose stream showed it, when that is not the run that asked.
 func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Question, via string) (inbox.Message, bool) {
-	partType, kind, ok := questionParts(q.Kind)
-	if !ok || q.ID == "" {
+	if _, _, ok := questionParts(q.Kind); !ok || q.ID == "" {
 		return inbox.Message{}, false
 	}
 	key := questionKey(run.ID, q.ID)
 	if m, ok := p.Inbox.ByKey(run.Tenant, key); ok {
 		return m, true
 	}
+	msg, _ := p.questionMessage(ctx, run, q, via)
+	at := q.At
+	if at.IsZero() {
+		at = p.now()
+	}
+	m, raised := p.raiseInbox(run.Tenant, key, msg, at)
+	if raised {
+		p.log.Info("platform: question raised", "tenant", run.Tenant, "run", run.ID, "question", q.ID, "kind", q.Kind,
+			"audience", strings.Join(msg.Audience, ","), "message", m.ID)
+		p.wakeAtExpiry(run.Tenant, run.ID, q)
+	}
+	return m, true
+}
+
+// questionMessage is the inbox message a question is raised as, addressed
+// to the people it is for, and whom that is.
+func (p *Platform) questionMessage(ctx context.Context, run runs.Run, q payload.Question, via string) (inbox.Message, addressee) {
+	partType, kind, _ := questionParts(q.Kind)
 	part := &inbox.QuestionPart{
 		Run: run.ID, ID: q.ID, Kind: q.Kind, Agent: run.Agent, Prompt: q.Prompt, Options: slices.Clone(q.Options),
 		AskedOf: q.AskedOf, ExpiresAt: q.ExpiresAt, AskedAt: q.At, Via: via,
@@ -344,7 +407,17 @@ func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Qu
 	case q.Default != nil:
 		part.Default = q.Default.Text
 	}
-	subject := part.Agent + " asks: " + oneLine(q.Prompt, 80)
+	audience, excluded, to := p.addressOf(ctx, run, q)
+	// The subject says whom the agent asked when that is not the reader
+	// alone, so an expert knows why it reached them.
+	asks := " asks: "
+	if to.kind == ForExperts {
+		asks = " asks the experts: "
+		if to.topic != "" {
+			asks = " asks the " + to.topic + " experts: "
+		}
+	}
+	subject := part.Agent + asks + headline(q.Prompt, maxQuestionSubject)
 	severity := inbox.Info
 	if q.Kind == payload.QuestionApproval {
 		severity = inbox.Warning
@@ -352,23 +425,37 @@ func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Qu
 			subject = part.Agent + " wants to run " + q.Tool.Name
 		}
 	}
-	audience, excluded := p.addressOf(ctx, run, q)
-	at := q.At
-	if at.IsZero() {
-		at = p.now()
-	}
-	m, raised := p.raiseInbox(run.Tenant, key, inbox.Message{
+	return inbox.Message{
 		Kind: kind, Subject: subject, From: inbox.From{Kind: "agent", Name: part.Agent}, Severity: severity,
 		Audience: audience, Excluded: excluded,
 		Source: inbox.Source{Run: run.ID, Thread: run.Thread, Agent: run.Agent, Project: run.Project, Target: questionTarget(q)},
 		Parts:  []inbox.Part{{Type: partType, Question: part}},
-	}, at)
-	if raised {
-		p.log.Info("platform: question raised", "tenant", run.Tenant, "run", run.ID, "question", q.ID, "kind", q.Kind,
-			"audience", strings.Join(audience, ","), "message", m.ID)
-		p.wakeAtExpiry(run.Tenant, run.ID, q)
+	}, to
+}
+
+// maxQuestionSubject bounds how much of a question its message's subject
+// holds, in bytes. The whole question is the message's part.
+const maxQuestionSubject = 80
+
+// headline is text as one line, at most limit bytes: its lines are joined,
+// so a question asked below a line of context is still in it, and a longer
+// one is cut at a word and ends with an ellipsis, so a subject never stops
+// part of the way through without saying so.
+func headline(text string, limit int) string {
+	line := strings.Trim(strings.Join(strings.Fields(text), " "), "\"'`.")
+	if len(line) <= limit {
+		return line
 	}
-	return m, true
+	const more = "…"
+	cut := clip(line, limit-len(more))
+	// A cut that ends a word is kept; one inside a word goes back to the
+	// space before it.
+	if line[len(cut)] != ' ' {
+		if i := strings.LastIndexByte(cut, ' '); i > len(cut)/2 {
+			cut = cut[:i]
+		}
+	}
+	return strings.TrimRight(cut, " ,;:-") + more
 }
 
 // recordWait bounds how long an answer waits for the runtime to record a
@@ -704,6 +791,49 @@ func (p *Platform) AnswerQuestion(ctx context.Context, who auth.Principal, runID
 	return p.answer(ctx, who, m, a)
 }
 
+// checkAnswer reports whether reader may give answer a to the question q of
+// message m, and if not, why: what answerFirst checks of the person
+// answering before it asks the runtime, which has the last word. who is the
+// caller, the reader's surface when it answers for them. logged says the
+// answer is being given, so a refusal is logged.
+func (p *Platform) checkAnswer(ctx context.Context, who auth.Principal, reader inbox.Reader, m inbox.Message, q inbox.QuestionPart, a QuestionAnswer, logged bool) error {
+	refused := func(why string) {
+		if logged {
+			p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", why)
+		}
+	}
+	// What the person answering may not read does not exist for them,
+	// whichever route asks, before anything is recorded. A surface's
+	// machine reads every thread on its surface wherever it is filed, so the
+	// route's own check of the caller does not hold the person it answers
+	// for to where they may read.
+	if !p.readerSeer(who, reader).Message(m) {
+		return fmt.Errorf("%w: message %q", inbox.ErrNotFound, m.ID)
+	}
+	if q.Kind == payload.QuestionApproval {
+		// Checked here, from the run as it stands, not only from whom the
+		// message was addressed to when it was raised: the runtime does not
+		// know a requester by the names a client maps them to, nor who
+		// started the tree.
+		if self, err := p.isSelfApproval(ctx, who.Tenant, q, reader.Subject, who.Subject); err != nil {
+			return err
+		} else if self {
+			refused("self-approval")
+			return fmt.Errorf("%w: %s asked for this work, so someone else must approve its calls", ErrForbidden, reader.Subject)
+		}
+	}
+	// Checked here, from the run and its callers as they stand, as well as
+	// by whom the message was addressed to when it was raised.
+	if err := p.maySteer(ctx, who.Tenant, q, a, reader.Subject); err != nil {
+		refused("not the person the run acts for")
+		return err
+	}
+	if !m.For(reader) {
+		return fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)
+	}
+	return nil
+}
+
 // answer is AnswerQuestion once the message is known.
 func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Message, a QuestionAnswer) (inbox.Message, error) {
 	got, _, err := p.answerFirst(ctx, who, m, a)
@@ -733,34 +863,8 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "no runs:write")
 		return inbox.Message{}, false, fmt.Errorf("%w: %s may not resume runs (answering needs %s)", ErrForbidden, reader.Subject, auth.RunsWrite)
 	}
-	// What the person answering may not read does not exist for them,
-	// whichever route asks, before anything is recorded. A surface's
-	// machine reads every thread on its surface wherever it is filed, so the
-	// route's own check of the caller does not hold the person it answers
-	// for to where they may read.
-	if !p.readerSeer(who, reader).Message(m) {
-		return inbox.Message{}, false, fmt.Errorf("%w: message %q", inbox.ErrNotFound, m.ID)
-	}
-	if q.Kind == payload.QuestionApproval {
-		// Checked here, from the run as it stands, not only from whom the
-		// message was addressed to when it was raised: the runtime does not
-		// know a requester by the names a client maps them to, nor who
-		// started the tree.
-		if self, err := p.isSelfApproval(ctx, who.Tenant, q, reader.Subject, who.Subject); err != nil {
-			return inbox.Message{}, false, err
-		} else if self {
-			p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "self-approval")
-			return inbox.Message{}, false, fmt.Errorf("%w: %s asked for this work, so someone else must approve its calls", ErrForbidden, reader.Subject)
-		}
-	}
-	// Checked here, from the run and its callers as they stand, as well as
-	// by whom the message was addressed to when it was raised.
-	if err := p.maySteer(ctx, who.Tenant, q, a, reader.Subject); err != nil {
-		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "not the person the run acts for")
+	if err := p.checkAnswer(ctx, who, reader, m, q, a, true); err != nil {
 		return inbox.Message{}, false, err
-	}
-	if !m.For(reader) {
-		return inbox.Message{}, false, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)
 	}
 	viewAs := func(recorded bool) (inbox.Message, bool, error) {
 		got, err := p.inboxGetAs(who, reader, m.ID)

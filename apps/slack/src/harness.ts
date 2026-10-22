@@ -758,6 +758,29 @@ export function memoryMail(run: string): Record<string, unknown> {
   };
 }
 
+/** The warp thread a run started from a mention is in. */
+export const RUN_THREAD = "th-5a1c0ffee0d15ea5";
+
+/**
+ * A delegated run's answer, as the platform's inbox sends it: about the run
+ * and the thread it is in. An artifact, a recap and a draft carry the same.
+ */
+export function resultMail(run: string): Record<string, unknown> {
+  return {
+    id: "m-result",
+    kind: "result",
+    subject: "lead finished: check the deploy",
+    from: { kind: "agent", name: "lead" },
+    at: "2026-10-09T00:10:00Z",
+    updated_at: "2026-10-09T00:10:00Z",
+    severity: "info",
+    state: "open",
+    unread: true,
+    source: { run, thread: RUN_THREAD, agent: "lead", project: "Globex" },
+    parts: [{ id: "p1", type: "text", state: "info", text: "The deploy is green." }],
+  };
+}
+
 /** A failed run no rule caught, as the platform's inbox sends it. */
 export function failureMail(run: string): Record<string, unknown> {
   return {
@@ -770,7 +793,8 @@ export function failureMail(run: string): Record<string, unknown> {
     severity: "warning",
     state: "open",
     unread: true,
-    source: { run, agent: "lead" },
+    // A run is in a thread, as the platform sends one it started for a mention.
+    source: { run, thread: RUN_THREAD, agent: "lead" },
     parts: [
       {
         id: "p1",
@@ -919,7 +943,7 @@ export function questionMail(
     severity: kind === "approval" ? "warning" : "info",
     state: outcome ? "resolved" : "open",
     unread: true,
-    source: { run, agent: "lead" },
+    source: { run, thread: RUN_THREAD, agent: "lead" },
     parts: [
       {
         id: "p1",

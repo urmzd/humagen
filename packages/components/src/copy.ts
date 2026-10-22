@@ -38,6 +38,8 @@ export const defaultCopy = {
   cancelled: "Cancelled, the request was stopped.",
   somethingElse: "Something Else",
   answeredBy: (by: string, choice: string, time: string) => `${by} chose ${choice} · ${time}`,
+  /** A question answered in words, not by picking one of its options. */
+  repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" · ${time}`,
   declinedBy: (by: string, time: string) => `Declined by ${by} · ${time}`,
   approvalNeeded: (summary: string) => `Approval needed: ${summary}`,
   inputNeeded: (question: string) => `Input needed: ${question}`,
@@ -808,6 +810,26 @@ export const defaultCopy = {
     refused: (tag: string, why: string) => `${tag}: ${why}`,
     /** A question an agent asked of a person, shown still in the thread. */
     asks: (agent: string) => `${agent} asks`,
+    /** A run's status, to someone its question is not for. */
+    waitingOnOthers: "Waiting for an answer",
+    /** Under a question, to someone it is not for: whom it is for. */
+    questionFor: {
+      experts: (topic: string) =>
+        topic
+          ? `This question is for the ${topic} experts.`
+          : "This question is for this project's experts.",
+      person: (handle: string) =>
+        handle
+          ? `This question is for @${handle}.`
+          : "This question is for the person this run acts for.",
+      answerers: (agent: string) => `This question is for the people who answer for ${agent}.`,
+      anyone: "You can read this question, but you can't answer it.",
+      nobody: "Nobody can answer this question, because the rules of its run can't be read.",
+    },
+    /** A thread started in Slack, in its meta line. */
+    inSlack: "Also in Slack",
+    /** A message posted in Slack, beside when it was posted. */
+    fromSlack: "From Slack",
     /** A failed answer to the reader's own message: it is asked again for them from their inbox. */
     retryFromInbox: "Retry it from your inbox, where it answers your message again.",
     /** A failed turn that acted for nobody, such as a machine's from before threads: it is retried for nobody, by anyone who may start runs. */

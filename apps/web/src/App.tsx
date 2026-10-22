@@ -498,6 +498,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             key={`${route.project}/${route.channel}`}
             project={route.project}
             channel={route.channel}
+            me={me.principal.subject}
             tick={tick}
             agents={agents}
             homes={homes}

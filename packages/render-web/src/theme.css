@@ -253,6 +253,18 @@
   min-width: 0;
 }
 
+/*
+ * A row of actions is a fieldset with none of a fieldset's own box. The reset
+ * is here, in this layer, rather than as utilities on the element: a utility
+ * sits in a later layer and would beat the card rules below, which give the
+ * row of a question or an approval its border, padding and place in the card.
+ */
+[data-aui="actions"] {
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
 /* Interrupt cards: the prompt text, its preview, the buttons, and the meta line read as one card. */
 .aui-stack > [data-aui="text"]:has(+ [data-aui-block="approval"], + [data-aui-block="clarification"]),
 .aui-stack > [data-aui="text"]:has(+ [data-aui="fields"] + [data-aui-block="approval"]) {

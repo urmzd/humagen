@@ -396,3 +396,18 @@ test("a turn from before warp said whom a run acts for is not the reader's when 
   fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
   await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
 });
+
+test("a follow-up on a run's page goes to the agent that ran it, not the place's default, unless the person picks another", async () => {
+  // lead answers untagged messages here, and helper took the last turn.
+  const ana = { id: "ana", display: "Ana", user: "ana" };
+  open({ ...answered(ana), agent: "helper" }, "ana");
+  const box = (await screen.findByPlaceholderText("Ask helper")) as HTMLTextAreaElement;
+  fireEvent.change(box, { target: { value: "and the week before?" } });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+  assert.deepEqual(net?.seen.find((r) => r.method === "POST" && r.path === "/api/runs")?.body, { agent: "helper", text: "and the week before?", after: "t1" });
+  close();
+  // An agent that may no longer answer here is not asked: the default is.
+  open({ ...answered(ana), agent: "globex-helper" }, "ana");
+  assert.ok(await screen.findByPlaceholderText("Ask lead"));
+});

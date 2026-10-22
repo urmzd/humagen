@@ -1,6 +1,6 @@
 import { answerOfAction, answers as isAnswer } from "@warp/adapter/question";
 import { defaultCopy } from "@warp/components";
-import { ActionId, type UiAction } from "@warp/core";
+import type { UiAction } from "@warp/core";
 import { WebSurface } from "@warp/render-web";
 import { AgentMessage, Thread as ThreadList, useQueue } from "@warp/web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,8 +18,10 @@ import {
   type ThreadPage,
   type ThreadPosted,
   type ThreadSummary,
+  type ThreadAsk,
   type ThreadTurn,
 } from "./api.ts";
+import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { availableOf } from "./availability.ts";
 import { Composer } from "./Composer.tsx";
 import { itemActions } from "./itemActions.tsx";
@@ -119,13 +121,15 @@ export function topicsOf(projects: ProjectView[], root: ProjectView | null, name
  * What a message in a project can tag: @auto, the agents that can answer
  * there, people as their names are typed, and experts by topic. With `*`,
  * an agent that lives in a project is offered only where the platform lists
- * it, on its home's chain: `*` never reaches it.
+ * it, on its home's chain: `*` never reaches it. The person posting is
+ * never offered: a tag of oneself tells nobody anything.
  */
 function useTags(
   project: string,
   agents: Revision[],
   homes: Record<string, string>,
   topics: string[],
+  me: string,
 ): { label: string; options: TagOption[]; onQuery: (q: string) => void } {
   const [names, setNames] = useState<{ all: boolean; names: string[] } | null>(null);
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
@@ -143,8 +147,9 @@ function useTags(
   const onQuery = useCallback((q: string) => {
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
+      // One more than the list shows, for the poster, who is left out.
       coworking
-        .people(q)
+        .people(q, 9)
         .then(setPeople)
         .catch(() => setPeople([]));
     }, 150);
@@ -159,8 +164,9 @@ function useTags(
       ),
     );
     const here = agents.filter((a) => offered.has(a.spec.name)).map((a) => ({ name: a.spec.name, description: a.spec.description }));
-    return tagOptions(here, people, topics, { auto: defaultCopy.auto.description, experts: words.experts });
-  }, [agents, homes, names, people, topics]);
+    const others = people.filter((p) => p.subject !== me && p.handle !== me);
+    return tagOptions(here, others, topics, { auto: defaultCopy.auto.description, experts: words.experts });
+  }, [agents, homes, names, people, topics, me]);
   return { label: words.typeahead, options, onQuery };
 }
 
@@ -268,6 +274,7 @@ function MessageView({ m, focused }: { m: ThreadMessage; focused: boolean }) {
         <p className="flex flex-wrap items-baseline gap-x-2 text-aui-xs text-aui-muted">
           <span className="font-medium text-aui-fg">{m.name || m.by}</span>
           <time dateTime={m.at}>{ago(m.at)}</time>
+          {m.surface_id && <span>{words.fromSlack}</span>}
           {m.answers && <span>{words.answered}</span>}
         </p>
         <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{m.text}</p>
@@ -292,8 +299,13 @@ function retryInRoom(run: Run, me: string): string {
   return person === me ? words.retryFromInbox : defaultCopy.retryOnlyTheirs;
 }
 
-/** An agent's turn: what it answered, as the conversation view shows it. */
-function AnswerView({ run, me, live }: { run: Run; me: string; live: boolean }) {
+/**
+ * An agent's turn: what it answered, as the conversation view shows it. A
+ * question it waits on is offered to the reader only when it is theirs
+ * (ask), and an answer the platform refused says why under it, where it was
+ * given.
+ */
+function AnswerView({ run, me, live, ask, refused }: { run: Run; me: string; live: boolean; ask?: ThreadAsk; refused?: Refusal }) {
   const turn = useRunTurn(live ? run : undefined);
   const drawn = useMemo(
     () =>
@@ -310,10 +322,10 @@ function AnswerView({ run, me, live }: { run: Run; me: string; live: boolean }) 
       },
     [turn, run],
   );
-  const shown = useMemo(
-    () => (drawn.failure ? { ...drawn, failure: { ...drawn.failure, retryNotOffered: retryInRoom(run, me) } } : drawn),
-    [drawn, run, me],
-  );
+  const shown = useMemo(() => {
+    const asked = askedOf(drawn, ask);
+    return asked.failure ? { ...asked, failure: { ...asked.failure, retryNotOffered: retryInRoom(run, me) } } : asked;
+  }, [drawn, run, me, ask]);
   return (
     <article id={`turn-${run.id}`} className="flex flex-col gap-2" aria-label={`Answered by ${run.agent}`}>
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
@@ -323,8 +335,13 @@ function AnswerView({ run, me, live }: { run: Run; me: string; live: boolean }) 
       {/* The answer names its agent; why @auto chose it is said above it. */}
       {run.picked && <p className="pl-11 text-aui-xs text-aui-muted">{run.picked}</p>}
       <AgentTint name={run.agent}>
-        <AgentMessage turn={shown} itemActions={itemActions(run)} capabilities={{ regenerate: false }} />
+        <AgentMessage turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} />
       </AgentTint>
+      {refused && stillAsks(shown, refused.question) && (
+        <div className="pl-11">
+          <Problem message={refused.why} />
+        </div>
+      )}
     </article>
   );
 }
@@ -376,6 +393,9 @@ export function ThreadRoom({
   // The cursor for the turns before the oldest one read.
   const [before, setBefore] = useState<string | null>(initial.next);
   const [problem, setProblem] = useState<string | null>(null);
+  // Why an answer to a run's question was not taken, by run: said under it
+  // while that question still waits, and gone once anyone settles it.
+  const [refusals, setRefusals] = useState<Record<string, Refusal>>({});
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {
@@ -405,11 +425,14 @@ export function ThreadRoom({
   };
 
   const th = page.thread;
-  const tags = useTags(th.project, agents, homes, topicsOf(projects, root, th.project));
+  const tags = useTags(th.project, agents, homes, topicsOf(projects, root, th.project), me);
   const people = th.participants.filter((p) => p.kind === "person");
   const answering = th.participants.filter((p) => p.kind === "agent").map((p) => p.name);
   const title = th.title || turns.find((t) => t.message)?.message?.text || turns[0]?.run?.text || words.channel(th.channel);
   const last = turns[turns.length - 1];
+  // A run a message in the room answers asked someone something: its steps
+  // and its question are read from its journal, though turns came after it.
+  const asked = new Set(turns.flatMap((t) => (t.message?.answers ? [t.message.answers.run] : [])));
   // A run waiting on a person, such as an expert's answer, is shown still.
   const busy = turns.some((t) => t.run && isWorking(t.run.status));
 
@@ -418,24 +441,36 @@ export function ThreadRoom({
     const answer = answerOfAction(a);
     if (!answer) return;
     setProblem(null);
+    setRefusals(({ [answer.run]: _, ...rest }) => rest);
     // A reply in words is said in the room, as the person's message, and
     // recorded as the question's answer. A choice or an approval is a click.
-    const text = a.id === ActionId.reply ? a.payload.text?.trim() : undefined;
+    // It answers the question on the card it was given in: the run's
+    // stream draws that card, and moves on before the room's record of the
+    // run does.
+    const text = answer.body.action === "reply" ? answer.body.text : undefined;
     const run = turns.find((t) => t.run && t.run.id === answer.run)?.run;
-    const done =
-      text && run?.question
-        ? coworking.post(id, { text, answers: { run: run.id, question: run.question.id } })
-        : api.answer(answer);
+    const done = text && run ? coworking.post(id, { text, answers: { run: run.id, question: answer.question } }) : api.answer(answer);
+    // A refusal is said under the question, where the words typed for it
+    // are still in its box.
     done
       .then(onChanged)
-      .catch((e) => setProblem(e instanceof ApiError && e.status === 403 ? defaultCopy.noPermission : e instanceof ApiError ? e.message : defaultCopy.failure.internal()));
+      .catch((e) =>
+        setRefusals((r) => ({
+          ...r,
+          [answer.run]: {
+            question: answer.question,
+            why: e instanceof ApiError && e.status === 403 ? defaultCopy.noPermission : e instanceof ApiError ? e.message : defaultCopy.failure.internal(),
+          },
+        })),
+      );
   };
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
+      {/* On a narrow screen the title has a line of its own, and where it is shared wraps under it. */}
       <header className="relative z-10 mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-4 pb-2">
-        <h1 className="min-w-0 flex-1 truncate text-aui-lg font-semibold text-aui-fg">{title}</h1>
-        <p className="flex shrink-0 flex-wrap items-center gap-x-3 text-aui-xs text-aui-muted">
+        <h1 className="w-full min-w-0 truncate text-aui-lg font-semibold text-aui-fg sm:w-auto sm:flex-1">{title}</h1>
+        <p className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-aui-xs text-aui-muted sm:shrink-0">
           {th.visibility === "private" ? (
             <span>{words.private}</span>
           ) : (
@@ -447,6 +482,7 @@ export function ThreadRoom({
               {words.sharedIn(projectTitle(projects, th.project, workspaceName), th.channel)}
             </button>
           )}
+          {th.surface && <span>{words.inSlack}</span>}
           <span
             title={people
               .filter((p) => p.name)
@@ -474,7 +510,14 @@ export function ThreadRoom({
             t.message ? (
               <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} />
             ) : t.run ? (
-              <AnswerView key={t.run.id} run={t.run} me={me} live={t === last || (t.run.status !== "completed" && t.run.status !== "failed")} />
+              <AnswerView
+                key={t.run.id}
+                run={t.run}
+                me={me}
+                ask={t.ask}
+                refused={refusals[t.run.id]}
+                live={t === last || asked.has(t.run.id) || (t.run.status !== "completed" && t.run.status !== "failed")}
+              />
             ) : null,
           )}
         </ThreadList>
@@ -537,6 +580,7 @@ function ThreadRow({ t, onOpen }: { t: ThreadSummary; onOpen: () => void }) {
 export function ChannelPage({
   project,
   channel,
+  me = "",
   tick,
   agents,
   homes = noHomes,
@@ -549,6 +593,8 @@ export function ChannelPage({
 }: {
   project: string;
   channel: string;
+  /** The reader's subject, whom the typeahead leaves out. */
+  me?: string;
   tick: number;
   agents: Revision[];
   /** Where each agent that lives in a project lives, by name. */
@@ -564,7 +610,7 @@ export function ChannelPage({
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const tags = useTags(project, agents, homes, topicsOf(projects, root, project));
+  const tags = useTags(project, agents, homes, topicsOf(projects, root, project), me);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {

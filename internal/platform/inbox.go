@@ -18,6 +18,7 @@ import (
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // The inbox is one state seen from two sides. An alert and the message about
@@ -207,8 +208,23 @@ func (p *Platform) mayRetryIn(tree *projects.Tree, who auth.Principal, runID str
 	return err
 }
 
-// seenBy fills in what a reader may do with each part.
+// seenBy fills in what a reader may do with each part, and what the thread
+// it is about is called, when they may read that thread.
 func (p *Platform) seenBy(tree *projects.Tree, m inbox.Message, who auth.Principal) inbox.Message {
+	m.Source.ThreadTitle = ""
+	id := m.Source.Thread
+	if id == "" && m.Source.Run != "" {
+		// A message about a run, such as a recap's announcement, is about
+		// the conversation the run is in.
+		if r, err := p.Runs.Get(who.Tenant, m.Source.Run); err == nil {
+			id = r.Thread
+		}
+	}
+	if id != "" {
+		if th, err := p.ThreadRecord(who.Tenant, id); err == nil && p.Seer(who).Place(Place{Project: th.Project, Thread: id}) {
+			m.Source.ThreadTitle = p.threadTitle(who.Tenant, th)
+		}
+	}
 	for i := range m.Parts {
 		part := &m.Parts[i]
 		part.Actions = []string{}
@@ -225,6 +241,23 @@ func (p *Platform) seenBy(tree *projects.Tree, m inbox.Message, who auth.Princip
 		}
 	}
 	return m
+}
+
+// threadTitle is what a thread is called: its title, else the start of its
+// first message, else of what its first run was asked, as its room heads it.
+func (p *Platform) threadTitle(tenant string, th threads.Thread) string {
+	if th.Title != "" {
+		return th.Title
+	}
+	if th.Version > 0 {
+		if msgs, _, err := p.Threads.Messages(tenant, th.ID, "", 1); err == nil && len(msgs) > 0 {
+			return headline(msgs[0].Text, threads.MaxTitle)
+		}
+	}
+	if turns, err := p.Runs.Conversation(tenant, th.ID); err == nil && len(turns) > 0 {
+		return headline(turns[0].Text, threads.MaxTitle)
+	}
+	return ""
 }
 
 // readerOf is who a person is to the inbox: their subject and their roles,

@@ -268,15 +268,20 @@ export function ClarificationCard({
 }: { turnId: string; clarification: Clarification } & WithCopy) {
   const { answer, options } = clarification;
   if (answer.kind === "answered") {
-    const choice = options
-      .filter((o) => answer.optionIds.includes(o.id))
-      .map((o) => o.label)
-      .concat(answer.other ? [`"${answer.other}"`] : [])
-      .join(", ");
+    const picked = options.filter((o) => answer.optionIds.includes(o.id)).map((o) => o.label);
+    // Words typed instead of a pick read as an answer, not a choice.
+    const line =
+      picked.length === 0 && answer.other
+        ? copy.repliedBy(answer.by, answer.other, timeToken(answer.at))
+        : copy.answeredBy(
+            answer.by,
+            picked.concat(answer.other ? [`"${answer.other}"`] : []).join(", "),
+            timeToken(answer.at),
+          );
     return (
       <>
         <Text text={clarification.question} />
-        <Context items={[copy.answeredBy(answer.by, choice, timeToken(answer.at))]} />
+        <Context items={[line]} />
       </>
     );
   }
@@ -295,6 +300,15 @@ export function ClarificationCard({
         <Context
           items={[withReason(copy.declinedBy(answer.by, timeToken(answer.at)), answer.reason)]}
         />
+      </>
+    );
+  }
+  // Someone it is not for reads it, and is told whom it is for.
+  if (clarification.forOthers) {
+    return (
+      <>
+        <Text text={clarification.question} />
+        <Context items={[clarification.forOthers]} />
       </>
     );
   }
@@ -454,6 +468,13 @@ export function AttachmentView({ attachment }: { attachment: Attachment }) {
   return <Terminal {...run} />;
 }
 
+/** Whether a question still waits on a person: not yet answered, or asked about. */
+function waitingOn(i: Interrupt): boolean {
+  return i.type === "approval"
+    ? i.decision.kind === "pending" || i.decision.kind === "asked"
+    : i.answer.kind === "pending";
+}
+
 /** Plan title tracks where the run is, then ends as the outcome. */
 export function planTitle(turn: Turn, copy: Copy = defaultCopy): string {
   switch (turn.status) {
@@ -591,7 +612,11 @@ export function TurnView({
 } & WithCopy) {
   const final = turn.status === "done";
   const owned = taskOwned(turn);
-  const pendingApprovals = turn.interrupts.filter(
+  // A question that was settled is part of how the answer came about, so it
+  // sits between the steps and the answer. One still open waits below it.
+  const settled = turn.interrupts.filter((i) => !waitingOn(i));
+  const open = turn.interrupts.filter(waitingOn);
+  const pendingApprovals = open.filter(
     (i): i is ApprovalT => i.type === "approval" && i.decision.kind === "pending",
   );
   // One link: the session, where a person goes to see the run. The source's own page
@@ -615,6 +640,9 @@ export function TurnView({
         />
       )}
       {!streamed && <TaskList turn={turn} copy={copy} />}
+      {settled.map((i) => (
+        <InterruptCard key={i.id} turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
+      ))}
       {!streamed && turn.text && (
         <Markdown
           text={linkCitations(turn.text, turn.citations)}
@@ -632,7 +660,7 @@ export function TurnView({
       ) : pendingApprovals.length > 1 ? (
         <>
           <ApprovalBatch turnId={turn.id} approvals={pendingApprovals} copy={copy} />
-          {turn.interrupts
+          {open
             .filter((i) => !pendingApprovals.includes(i as ApprovalT))
             .map((i) => (
               <InterruptCard
@@ -645,7 +673,7 @@ export function TurnView({
             ))}
         </>
       ) : (
-        turn.interrupts.map((i) =>
+        open.map((i) =>
           owned.has(i.id) && i.type === "approval" && i.decision.kind === "pending" ? (
             <Only key={i.id} surface="slack">
               <InterruptCard turnId={turn.id} interrupt={i} viewer={viewer} copy={copy} />
