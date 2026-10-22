@@ -46,7 +46,6 @@ import (
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/evals"
-	"github.com/urmzd/warp/pkg/feedback"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/journal"
 	"github.com/urmzd/warp/pkg/knowledge"
@@ -620,7 +619,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		}{}, written: true},
 		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"ToolCredentials": {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true},
-		"RunFeedback": {typ: feedback.Record{}}, "Attachment": {typ: attachment.Attachment{}},
+		"RunFeedback": {typ: shownFeedback{}}, "Attachment": {typ: attachment.Attachment{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
 		"InboxNotice": {typ: inboxNotice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
 		"InboxOutcome": {typ: inbox.Outcome{}}, "InboxLimits": {typ: inbox.Limits{}}, "InboxAlertPart": {typ: inbox.AlertPart{}},
@@ -980,6 +979,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(acme, "PUT", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback", `{"rating":"down","reason":"incomplete","comment":"Please add sources"}`, http.StatusOK)
 	c.call(acme, "GET", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback", "", http.StatusOK)
+	c.call(acme, "GET", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback?after=ada@example.com", "", http.StatusBadRequest)
 	next := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"And again","after":"`+id+`"}`, http.StatusAccepted)
 	if next.str("thread") != first.str("thread") || next.str("prev") != id {
 		t.Errorf("the follow-up is not in the first turn's conversation: %s", next.raw)

@@ -247,10 +247,19 @@ export type RunStatus = "accepted" | "running" | "parked" | "completed" | "faile
 /** How one agent calls another. A subagent is attached to its caller. A handoff or a delegate is independent. */
 export type CallMode = "subagent" | "handoff" | "delegate";
 
-/** Feedback metadata only. The referenced run owns the prompt, answer and conversation links. */
+/** Feedback metadata only. The referenced run owns the prompt, answer and
+conversation links. A rater is named as the platform calls them, by
+handle and by name, never by the subject they sign in with, which may
+hold an address.
+ */
 export interface RunFeedback {
   run: string;
-  subject: string;
+  /** The rater's handle, or "" for a person known by no name that can be shown. */
+  by: string;
+  /** What the rater is called, their name or else their handle, never an address. */
+  by_name: string;
+  /** Whether this is the rating of the person asking. */
+  mine: boolean;
   rating: "up" | "down";
   reason?: string;
   comment?: string;

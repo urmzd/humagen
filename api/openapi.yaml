@@ -878,10 +878,10 @@ paths:
         - name: after
           in: query
           schema: {type: string}
-          description: Last subject returned by the previous page.
+          description: The `next` cursor of the previous page. It is not a subject.
       responses:
         "200":
-          description: Feedback and a cursor for the next page, empty at the end.
+          description: Feedback in the order it was first given, and a cursor for the next page, empty at the end.
           content:
             application/json:
               schema:
@@ -892,6 +892,7 @@ paths:
                     type: array
                     items: {$ref: "#/components/schemas/RunFeedback"}
                   next: {type: string}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -4711,12 +4712,24 @@ components:
       type: string
       enum: [subagent, handoff, delegate]
     RunFeedback:
-      description: Feedback metadata only. The referenced run owns the prompt, answer and conversation links.
+      description: |
+        Feedback metadata only. The referenced run owns the prompt, answer and
+        conversation links. A rater is named as the platform calls them, by
+        handle and by name, never by the subject they sign in with, which may
+        hold an address.
       type: object
-      required: [run, subject, rating, updated_at]
+      required: [run, by, by_name, mine, rating, updated_at]
       properties:
         run: {type: string}
-        subject: {type: string}
+        by:
+          description: The rater's handle, or "" for a person known by no name that can be shown.
+          type: string
+        by_name:
+          description: What the rater is called, their name or else their handle, never an address.
+          type: string
+        mine:
+          description: Whether this is the rating of the person asking.
+          type: boolean
         rating: {type: string, enum: [up, down]}
         reason: {type: string}
         comment: {type: string}
