@@ -262,7 +262,7 @@ export function Monitor({
                   <p className="pt-1 text-aui-xs text-aui-muted">
                     Watches {r.agent ? r.agent : "every agent"}{r.project ? ` in ${r.project}` : ""}. Raises a {r.severity === "critical" ? "critical" : "warning"} message for {audience(r)}
                     {r.cooldown_seconds ? `, then stays quiet for ${span(r.cooldown_seconds)}` : ""}
-                    {r.created_by ? `. Made by ${r.created_by}.` : "."}
+                    {r.created_by ? `. Made by ${r.created_by_name || r.created_by}.` : "."}
                   </p>
                 </div>
 
@@ -284,7 +284,7 @@ export function Monitor({
                             <span className="min-w-0 truncate text-aui-fg">{a.title}</span>
                           )}
                           <span className="shrink-0 text-aui-xs text-aui-muted">
-                            {ago(a.at)}, {a.acked_by ? `acknowledged by ${a.acked_by}` : "open"}
+                            {ago(a.at)}, {a.acked_by ? `acknowledged by ${a.acked_by_name || a.acked_by}` : "open"}
                           </span>
                         </li>
                       ))}

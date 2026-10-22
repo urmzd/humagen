@@ -663,9 +663,11 @@ func (p *Platform) maySteer(ctx context.Context, tenant string, q inbox.Question
 	case person == nobody:
 		return fmt.Errorf("%w: the run that called this one cannot be read, so nobody may answer what it asks", ErrForbidden)
 	case q.Kind == payload.QuestionApproval:
-		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may edit its calls or add a note the agent reads; approve or deny it as asked", ErrForbidden, person, person)
+		name := p.NameOf(tenant, person)
+		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may edit its calls or add a note the agent reads; approve or deny it as asked", ErrForbidden, name, name)
 	default:
-		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may answer what it asks", ErrForbidden, person, person)
+		name := p.NameOf(tenant, person)
+		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may answer what it asks", ErrForbidden, name, name)
 	}
 }
 

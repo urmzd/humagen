@@ -537,7 +537,7 @@ function SharedMemory({
               <span className="min-w-0">
                 <span className="block text-aui-sm text-aui-fg">{n.text}</span>
                 <span className="block text-aui-xs text-aui-muted">
-                  {n.source === "person" ? `Written by ${n.by}` : "Proposed by the memory agent and approved"}, {ago(n.at)}
+                  {n.source === "person" ? `Written by ${n.by_name || n.by}` : "Proposed by the memory agent and approved"}, {ago(n.at)}
                 </span>
               </span>
               {canWrite && (

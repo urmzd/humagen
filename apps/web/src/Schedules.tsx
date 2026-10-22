@@ -282,7 +282,7 @@ export function Schedules({
           <>
             <Chip>{s.paused ? "Paused" : "Active"}</Chip>
             <span>{inWords(s.expression)}</span>
-            {s.created_by && <span>Made by {s.created_by}</span>}
+            {s.created_by && <span>Made by {s.created_by_name || s.created_by}</span>}
           </>
         }
         actions={

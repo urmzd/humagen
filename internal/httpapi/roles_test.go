@@ -66,7 +66,7 @@ func TestAProjectRoleOnlyNarrowsATenantPermission(t *testing.T) {
 	}
 	// An account is members only: Bo, a viewer of Field, does not see it.
 	ms := want(t, f, ana, "GET", "/api/projects/Globex/members", "", http.StatusOK)
-	if fmt.Sprint(ms["members"]) != "[map[role:owner who:ana]]" || fmt.Sprint(ms["inherited"]) != "[map[from:Field who:ana]]" {
+	if fmt.Sprint(ms["members"]) != "[map[name:ana role:owner who:ana]]" || fmt.Sprint(ms["inherited"]) != "[map[from:Field name:ana who:ana]]" {
 		t.Fatalf("Globex's members = %v", ms)
 	}
 	want(t, f, bo, "GET", "/api/projects/Globex/members", "", http.StatusNotFound)

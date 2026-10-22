@@ -29,6 +29,7 @@ export interface WireQuestion {
 export interface Settled {
   /** approve, deny, choose, reply, expired, stopped or closed. */
   action: string;
+  /** Who answered, as a person reads it: their name, or `system`. */
   by?: string;
   at: string;
   /** The option chosen, the words replied, a note on a decision, or why nobody answered. */
@@ -42,10 +43,13 @@ export function settledOf(answer: {
   text?: string;
   note?: string;
   by?: string;
+  /** What whoever answered is called; `by` is their subject, which is never shown. */
+  by_name?: string;
   at?: string;
   expired?: boolean;
 }): Settled {
   const at = answer.at ?? "";
+  const by = answer.by_name || answer.by;
   if (answer.expired) {
     // The same words the platform settles the inbox message with.
     const went = answer.choice || answer.text;
@@ -58,18 +62,19 @@ export function settledOf(answer: {
     return { action: "expired", at, note };
   }
   if (answer.decision === "approve" || answer.decision === "deny") {
-    return { action: answer.decision, by: answer.by, at, ...(answer.note ? { note: answer.note } : {}) };
+    return { action: answer.decision, by, at, ...(answer.note ? { note: answer.note } : {}) };
   }
-  if (answer.choice) return { action: "choose", by: answer.by, at, note: answer.choice };
-  return { action: "reply", by: answer.by, at, note: answer.text ?? "" };
+  if (answer.choice) return { action: "choose", by, at, note: answer.choice };
+  return { action: "reply", by, at, note: answer.text ?? "" };
 }
 
-/** An inbox part's outcome as a settlement. */
-export function settledFromOutcome(outcome: { action?: unknown; by?: unknown; at?: unknown; note?: unknown }): Settled | undefined {
+/** An inbox part's outcome as a settlement, whoever decided it by what they are called. */
+export function settledFromOutcome(outcome: { action?: unknown; by?: unknown; by_name?: unknown; at?: unknown; note?: unknown }): Settled | undefined {
   const action = typeof outcome.action === "string" ? outcome.action : "";
   if (!action) return undefined;
   const text = (v: unknown) => (typeof v === "string" ? v : "");
-  return { action, by: text(outcome.by) || undefined, at: text(outcome.at), ...(text(outcome.note) ? { note: text(outcome.note) } : {}) };
+  const by = text(outcome.by) === "system" ? "system" : text(outcome.by_name) || text(outcome.by);
+  return { action, by: by || undefined, at: text(outcome.at), ...(text(outcome.note) ? { note: text(outcome.note) } : {}) };
 }
 
 const NOBODY = "Nobody";

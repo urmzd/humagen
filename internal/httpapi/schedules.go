@@ -37,12 +37,15 @@ type scheduleView struct {
 	Paused bool `json:"paused"`
 	// Managed is "file" while the platform file declares the schedule: it
 	// can be paused, resumed and run, not changed or deleted.
-	Managed   string      `json:"managed,omitempty"`
-	CreatedBy string      `json:"created_by,omitempty"`
-	UpdatedBy string      `json:"updated_by,omitempty"`
-	UpdatedAt time.Time   `json:"updated_at,omitzero"`
-	Next      []time.Time `json:"next"`
-	Recent    []runs.Run  `json:"recent"`
+	Managed   string `json:"managed,omitempty"`
+	CreatedBy string `json:"created_by,omitempty"`
+	// CreatedByName is what the person who made it is called. CreatedBy
+	// names them by subject; the console shows the name.
+	CreatedByName string      `json:"created_by_name,omitempty"`
+	UpdatedBy     string      `json:"updated_by,omitempty"`
+	UpdatedAt     time.Time   `json:"updated_at,omitzero"`
+	Next          []time.Time `json:"next"`
+	Recent        []runs.Run  `json:"recent"`
 }
 
 // viewOf is a schedule as the reader seer stands for reads it. Its recent
@@ -57,13 +60,14 @@ func (s *Server) viewOf(seer *platform.Seer, sc cron.Schedule, now time.Time) sc
 			Name: sc.Name, Expression: sc.Expression, Agent: sc.Agent, Text: sc.Text,
 			Project: sc.Meta[runs.MetaProject], Description: about.Description, Deliver: sc.Meta[platform.MetaDeliver],
 		},
-		Paused:    s.P.Schedules.Paused(sc.Name),
-		Managed:   about.Managed,
-		CreatedBy: sc.Meta["created_by"],
-		UpdatedBy: about.UpdatedBy,
-		UpdatedAt: about.UpdatedAt,
-		Next:      []time.Time{},
-		Recent:    orEmpty(s.P.Runs.ForSchedule(sc.Tenant, sc.Name, 20, seer.Run)),
+		Paused:        s.P.Schedules.Paused(sc.Name),
+		Managed:       about.Managed,
+		CreatedBy:     sc.Meta["created_by"],
+		CreatedByName: s.P.NameOf(sc.Tenant, sc.Meta["created_by"]),
+		UpdatedBy:     about.UpdatedBy,
+		UpdatedAt:     about.UpdatedAt,
+		Next:          []time.Time{},
+		Recent:        orEmpty(s.P.Runs.ForSchedule(sc.Tenant, sc.Name, 20, seer.Run)),
 	}
 	if !v.Paused {
 		v.Next = orEmpty(platform.Upcoming(sc.Expression, now, 3))

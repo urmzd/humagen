@@ -8,6 +8,7 @@ import {
   type PolicyScope,
   type ProjectChange,
   type ProjectEntry,
+  type ProjectMember,
   type ProjectMembers,
   type ProjectRole,
   type ProjectView,
@@ -68,7 +69,7 @@ export function ProjectInbox({
     selected?.kind === "announcement" &&
     messageState(selected) !== "resolved" &&
     project.actions.length > 0 &&
-    (owner || (selected.from.kind === "person" && selected.from.name === me));
+    (owner || (selected.from.kind === "person" && selected.sender === me));
 
   const post = (e: FormEvent) => {
     e.preventDefault();
@@ -190,11 +191,23 @@ export function ProjectInbox({
   );
 }
 
-/** Who a member entry is, in words. */
-function whoOf(who: string): string {
+/**
+ * Who a member entry is, in words: a person by what the platform calls them
+ * (`name`), never by the subject the entry keeps them by. An entry typed in
+ * here and not saved yet has no name, and reads as it was typed.
+ */
+function whoOf(entry: { who: string; name?: string }): string {
+  const { who } = entry;
   if (who === "*") return copy.roles.everyone;
   if (who.startsWith("role:")) return `Everyone who holds ${who.slice(5)}`;
-  return who;
+  return entry.name || who;
+}
+
+/** A project above this one by its title, as its breadcrumb names it. */
+export function aboveTitle(project: Pick<ProjectView, "path">, name: string): string {
+  if (name === "") return copy.project.theWorkspace;
+  const step = project.path.find((s) => s.name === name);
+  return step ? titleOf(step) : name;
 }
 
 /**
@@ -208,7 +221,7 @@ function whoOf(who: string): string {
  */
 export function ProjectPeople({ project, onChanged }: { project: ProjectView; onChanged: () => void }) {
   const [members, setMembers] = useState<ProjectMembers | null>(null);
-  const [draft, setDraft] = useState<ProjectEntry[] | null>(null);
+  const [draft, setDraft] = useState<ProjectMember[] | null>(null);
   const [who, setWho] = useState("");
   const [role, setRole] = useState<ProjectRole>("member");
   const [problem, setProblem] = useState<string | null>(null);
@@ -234,10 +247,16 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
   const company = project.kind === "company" || project.name === "";
   const keepsEveryone = company || ownedAbove !== undefined;
   const nudge = editable && open && !everyoneOwns && !ownedAbove && project.kind === "account" && !draft;
-  const change = (next: ProjectEntry[]) => setDraft(next);
+  const change = (next: ProjectMember[]) => setDraft(next);
+  // A change names who holds a role by the entry alone: what a person is
+  // called is the platform's to say.
   const save = () =>
     api
-      .setProjectMembers(name, members.version, shown)
+      .setProjectMembers(
+        name,
+        members.version,
+        shown.map(({ who, role }): ProjectEntry => ({ who, role })),
+      )
       .then((m) => {
         setMembers(m);
         setDraft(null);
@@ -258,7 +277,7 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
       {!open && <p className="max-w-xl text-aui-sm text-aui-muted">{copy.project.membersOnly}</p>}
       {ownedAbove && !everyoneOwns && (
         <p className="max-w-xl text-aui-sm text-aui-muted">
-          {copy.project.everyoneOwnsAbove(ownedAbove.from === "" ? "the workspace" : ownedAbove.from)}
+          {copy.project.everyoneOwnsAbove(aboveTitle(project, ownedAbove.from))}
         </p>
       )}
       {nudge && (
@@ -274,11 +293,11 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
         <ul>
           {shown.map((m) => (
             <li key={m.who} className="flex flex-wrap items-center justify-between gap-3 border-aui-border border-t py-2 first:border-t-0">
-              <span className="min-w-0 text-aui-sm text-aui-fg">{whoOf(m.who)}</span>
+              <span className="min-w-0 text-aui-sm text-aui-fg">{whoOf(m)}</span>
               <span className="flex items-center gap-2">
                 {editable ? (
                   <Menu
-                    label={`${copy.project.role}: ${whoOf(m.who)}`}
+                    label={`${copy.project.role}: ${whoOf(m)}`}
                     value={m.role}
                     options={roleOptions}
                     onChange={(r) => change(shown.map((x) => (x.who === m.who ? { ...x, role: r } : x)))}
@@ -353,8 +372,8 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
           <ul>
             {members.inherited.map((o) => (
               <li key={`${o.from}:${o.who}`} className="flex items-center justify-between gap-3 border-aui-border border-t py-2 first:border-t-0">
-                <span className="text-aui-sm text-aui-fg">{whoOf(o.who)}</span>
-                <span className="text-aui-xs text-aui-muted">{copy.roles.ownerFrom(o.from === "" ? "the workspace" : o.from)}</span>
+                <span className="min-w-0 text-aui-sm text-aui-fg">{whoOf(o)}</span>
+                <span className="text-aui-xs text-aui-muted">{copy.roles.ownerFrom(aboveTitle(project, o.from))}</span>
               </li>
             ))}
           </ul>
@@ -394,7 +413,7 @@ export function ProjectHistory({ project, tick }: { project: ProjectView; tick?:
               {c.note ? `, ${c.note}` : ""}
             </span>
             <span className="text-aui-xs text-aui-muted">
-              {c.by}, {ago(c.at)}
+              {c.by_name || c.by}, {ago(c.at)}
             </span>
           </li>
         ))}

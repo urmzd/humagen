@@ -282,6 +282,8 @@ export const defaultCopy = {
     proposeHint: "Your note is a proposal. The project's owners keep or discard it in their inbox.",
     members: "Members",
     ownersAbove: "Owners from above",
+    /** The project above that an owner entry is on, when it is the workspace. */
+    theWorkspace: "the workspace",
     remove: "Remove",
     who: "Who",
     whoHint: "A person's subject, or role:<name> for everyone who holds a role.",

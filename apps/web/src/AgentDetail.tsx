@@ -485,7 +485,7 @@ export function AgentDetail({
               {revision.spec.provider} / {revision.spec.model}
             </span>
             <span>
-              Saved {ago(revision.created_at)} by {revision.created_by}
+              Saved {ago(revision.created_at)} by {revision.created_by_name || revision.created_by}
             </span>
             {workspaceDefault === name && <Chip>{defaultCopy.workspaceDefault}</Chip>}
           </>
@@ -909,7 +909,7 @@ export function AgentDetail({
                     <span className="min-w-0">
                       <span className="block text-aui-sm text-aui-fg">{n.text}</span>
                       <span className="block text-aui-xs text-aui-muted">
-                        {n.source === "person" ? `Written by ${n.by}` : "Proposed by the memory agent and approved"}, {ago(n.at)}
+                        {n.source === "person" ? `Written by ${n.by_name || n.by}` : "Proposed by the memory agent and approved"}, {ago(n.at)}
                       </span>
                     </span>
                     {canWrite && (
@@ -1007,7 +1007,7 @@ export function AgentDetail({
                       <span className="text-aui-sm font-medium text-aui-fg">Revision {h.rev}</span>
                       {h.rev === revision.rev && <Chip>Current</Chip>}
                       <span className="text-aui-xs text-aui-muted">
-                        {ago(h.created_at)} by {h.created_by}
+                        {ago(h.created_at)} by {h.created_by_name || h.created_by}
                       </span>
                       <span className="text-aui-xs text-aui-muted">
                         {h.spec.provider} / {h.spec.model}

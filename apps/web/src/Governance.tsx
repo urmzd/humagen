@@ -208,7 +208,7 @@ export function CallPolicyEditor({ agent, agents, canWrite }: { agent: string; a
       <Problem message={problem} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-aui-xs text-aui-muted">
-          {saved.version === 0 ? "Not set yet: any agent that lists it may call it." : `Saved ${saved.updated_at ? ago(saved.updated_at) : ""}${saved.updated_by ? ` by ${saved.updated_by}` : ""}. Applies to calls from now on.`}
+          {saved.version === 0 ? "Not set yet: any agent that lists it may call it." : `Saved ${saved.updated_at ? ago(saved.updated_at) : ""}${saved.updated_by ? ` by ${saved.updated_by_name || saved.updated_by}` : ""}. Applies to calls from now on.`}
         </span>
         {canWrite && (
           <span className="flex gap-2">

@@ -76,6 +76,29 @@ func (s *shower) name(subject string) string {
 	return cmp.Or(who.Name, who.Handle, who.ShownSubject(), someone)
 }
 
+// Names calls the people of one tenant as the console shows them. Every
+// route that names a person by subject, the key the platform keeps them by,
+// sends what Names calls them beside it, so a reader sees a name and never a
+// subject that holds an address. It looks each subject up in the directory
+// once, and is made for one answer.
+type Names struct{ s *shower }
+
+// Names is how one answer in a tenant calls people.
+func (p *Platform) Names(tenant string) Names { return Names{s: p.shower(tenant)} }
+
+// Of is what a subject is called: the person's name, else their handle,
+// else the subject itself when it holds no address (a machine's, or a word
+// such as system), else someone. No subject is called nothing.
+func (n Names) Of(subject string) string {
+	if subject == "" {
+		return ""
+	}
+	return n.s.name(subject)
+}
+
+// NameOf is what a person is called, for one name (see Names).
+func (p *Platform) NameOf(tenant, subject string) string { return p.Names(tenant).Of(subject) }
+
 // who names whoever a message was sent to: a person or an expert by key,
 // and the experts a role names as the role.
 func (s *shower) who(to string) string {
@@ -124,10 +147,17 @@ func (s *shower) mentions(ms []threads.Mention) []threads.Mention {
 }
 
 func (s *shower) message(m threads.Message) threads.Message {
-	// A name kept before names were checked could be the subject.
-	if m.Name == "" || strings.Contains(m.Name, "@") {
-		m.Name = s.name(m.By)
+	// A message is called what its poster is called now, as everywhere else
+	// shows them: one who had no name yet when they posted (only a handle,
+	// or a subject recorded from a grant) and has given one since reads by
+	// it. A poster the directory does not know keeps the name they posted
+	// under, unless it was kept before names were checked and is an address.
+	who := s.person(m.By)
+	kept := m.Name
+	if strings.Contains(kept, "@") {
+		kept = ""
 	}
+	m.Name = cmp.Or(who.Name, kept, who.Handle, who.ShownSubject(), someone)
 	m.By = s.key(m.By)
 	m.Mentions = s.mentions(m.Mentions)
 	return m

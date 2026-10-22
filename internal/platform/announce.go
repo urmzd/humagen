@@ -73,7 +73,7 @@ func (p *Platform) PostAnnouncement(who auth.Principal, project string, a Announ
 		return inbox.Message{}, err
 	}
 	p.audit(who, m, "", "announce", "")
-	return p.seenBy(tree, m, who), nil
+	return p.seenBy(tree, p.Names(who.Tenant), m, who), nil
 }
 
 // WithdrawAnnouncement withdraws an announcement for everyone. Its author or
@@ -96,7 +96,7 @@ func (p *Platform) WithdrawAnnouncement(who auth.Principal, project, id string) 
 	// m is the caller's own view, where an announcement they hid for
 	// themselves reads as closed. Whether it is closed for everyone is the
 	// store's to say, so withdrawing one already withdrawn changes nothing.
-	_, changed, err := p.Inbox.Withdraw(who.Tenant, id, who.Subject, "Withdrawn by "+who.Subject, p.now())
+	_, changed, err := p.Inbox.Withdraw(who.Tenant, id, who.Subject, "Withdrawn by "+p.NameOf(who.Tenant, who.Subject), p.now())
 	if err != nil {
 		return err
 	}
@@ -130,8 +130,9 @@ func (p *Platform) ProjectInbox(who auth.Principal, project string, children boo
 		q.Projects = tree.Subtree(pr.Name)
 	}
 	msgs, next, err := p.Inbox.Page(who.Tenant, p.inboxQuery(tree, who, q))
+	names := p.Names(who.Tenant)
 	for i := range msgs {
-		msgs[i] = p.seenBy(tree, msgs[i], who)
+		msgs[i] = p.seenBy(tree, names, msgs[i], who)
 	}
 	return msgs, next, err
 }
