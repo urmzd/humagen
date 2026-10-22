@@ -1,3 +1,4 @@
+import { defaultCopy } from "@warp/components";
 import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
@@ -249,7 +250,22 @@ export function useReach(agent: string | null, signal?: unknown): Reach[] | null
  * would call it. Each is answered here, in its task, or in the inbox; an answer
  * in one place settles it everywhere. Only what the reader may answer is listed.
  */
-export function ApprovalQueue({ agent, onOpenTask, onCount }: { agent: string; onOpenTask?: (thread: string) => void; onCount?: (n: number) => void }) {
+/**
+ * An agent's approvals waiting on a person. viewer is the signed-in person's
+ * subject: a run whose answers may reach someone's own credentials takes a
+ * note only from them (`steered_for`), so nobody else is offered one.
+ */
+export function ApprovalQueue({
+  agent,
+  viewer,
+  onOpenTask,
+  onCount,
+}: {
+  agent: string;
+  viewer?: string;
+  onOpenTask?: (thread: string) => void;
+  onCount?: (n: number) => void;
+}) {
   const [state, setState] = useState<"open" | "resolved">("open");
   const [items, setItems] = useState<QueuedApproval[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -267,13 +283,17 @@ export function ApprovalQueue({ agent, onOpenTask, onCount }: { agent: string; o
   }, [agent, state, onCount]);
   useEffect(load, [load]);
 
+  // Anyone may add a note, unless the run takes words only from its person.
+  const mayNote = (q: { steered_for?: string }) => !q.steered_for || q.steered_for === viewer;
+
   const decide = (m: QueuedApproval, action: "approve" | "deny") => {
     const q = m.parts.find((p) => p.question)?.question;
     if (!q) return;
     setBusy(m.id);
     setProblem(null);
+    const note = mayNote(q) ? notes[m.id]?.trim() || undefined : undefined;
     api
-      .answer({ run: q.run, question: q.id, body: { action, note: notes[m.id]?.trim() || undefined } })
+      .answer({ run: q.run, question: q.id, body: { action, note } })
       .then(load)
       .catch((e) => setProblem(e instanceof ApiError ? e.message : "The answer was not taken."))
       .finally(() => setBusy(null));
@@ -325,13 +345,15 @@ export function ApprovalQueue({ agent, onOpenTask, onCount }: { agent: string; o
                   )}
                   {state === "open" && q && (
                     <>
-                      <input
-                        aria-label="Note with the answer"
-                        className={`${field} h-8 max-w-xs flex-1`}
-                        placeholder="Note (optional)"
-                        value={notes[m.id] ?? ""}
-                        onChange={(e) => setNotes((n) => ({ ...n, [m.id]: e.target.value }))}
-                      />
+                      {mayNote(q) && (
+                        <input
+                          aria-label="Note with the answer"
+                          className={`${field} h-8 max-w-xs flex-1`}
+                          placeholder="Note (optional)"
+                          value={notes[m.id] ?? ""}
+                          onChange={(e) => setNotes((n) => ({ ...n, [m.id]: e.target.value }))}
+                        />
+                      )}
                       <button type="button" className={button} disabled={busy === m.id} onClick={() => decide(m, "deny")}>
                         Deny
                       </button>
@@ -343,6 +365,12 @@ export function ApprovalQueue({ agent, onOpenTask, onCount }: { agent: string; o
                   {q?.expires_at && state === "open" && <span className="text-aui-xs text-aui-muted">Denied {ago(q.expires_at)} if nobody answers</span>}
                   {state === "resolved" && <span className="text-aui-xs text-aui-muted">{m.state}</span>}
                 </div>
+                {q?.tool?.acts_for_person && <p className="text-aui-xs text-aui-muted">{defaultCopy.actsForPerson}</p>}
+                {state === "open" && q && !mayNote(q) && (
+                  <p className="text-aui-xs text-aui-muted">
+                    Only {q.steered_for} may add a note: this run uses their own credentials. Approve or deny it as asked.
+                  </p>
+                )}
               </li>
             );
           })}

@@ -458,7 +458,7 @@ decided per message:
 | Failed run | `runs:read` | `runs:write`, and to retry a turn that acted for a person, being that person ([Tool credentials](#tool-credentials)); retrying a turn filed in a project needs a member of it as well |
 | Proposed memory | `agents:read` | `agents:write` for an agent's, and owning its home for one that lives in a project; `projects:write` and owning the project for a project's, and `projects:govern` as well for the workspace's and a company project's |
 | Announcement | `projects:read`, and a member of its project or one below it (anyone who reads the project's own inbox) | hiding or snoozing it is the reader's own (`projects:read`); withdrawing it is its author's or an owner's (`projects:write`) |
-| A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer; where the answer may reach the credentials of the person a run acts for, a choice or reply only by that person, and an approval with edited arguments or a note only by them |
+| A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer; where the answer may reach the credentials of the person a run acts for, a choice or reply only by that person, and an approval with edited arguments or a note only by them (the question names them as `steered_for`) |
 | A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to set it aside, and a member of the thread's project as well to reply in the thread as themselves |
 
 A message a caller may not see answers 404, not 403, and is left out of their
@@ -497,8 +497,8 @@ acts for says so, on the run and in the inbox (`tool.acts_for_person`).
 Anyone it is addressed to may approve it as asked or deny it, but only that
 person may approve it with edited arguments, as fiber enforces: anyone
 else's edit is refused (403). Every approval card says this, in the
-console's inbox and on the run, and in the Slack app, and none offers an
-edit of such a call.
+console's inbox, on the run and in an agent's approval queue, and in the
+Slack app, and none offers an edit of such a call.
 
 A reply or a choice steers what a run does next, unlike approving a call as
 it was asked, and so do an approval's note, which the model is shown on a
@@ -512,7 +512,9 @@ found), that person alone says anything to it: its reply and choice
 questions are addressed to them, anyone else's answer is refused (403), and
 anyone else may approve or deny its calls only as asked, with no edit and no
 note (403 with either). Each is checked on the run, in the inbox and through
-a surface's `act_as`, before the runtime is asked. So nothing anyone else
+a surface's `act_as`, before the runtime is asked. The question names that
+person (`steered_for`, as it stood when it was asked), so the console's
+approval queue offers nobody else a note, and says why. So nothing anyone else
 says in answer to such a run, or to a run it called, nor their pick of the
 options, reaches the person's tools with their credential. Any other run,
 one that acts for nobody, or reaches only shared credentials, and was called

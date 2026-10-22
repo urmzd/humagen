@@ -1280,6 +1280,15 @@ the callee's call policy's approvers, for a call to an agent.
   approvers?: string[];
   /** Goes with `approvers`. */
   self_approval?: boolean;
+  /** The person whose own credentials an answer may reach, when there
+is one: the run, or a run that called it, acts for them and is
+granted a tool that takes their own credential. Only they reply,
+choose, or approve with edited `arguments` or a `note`; anyone
+else approves or denies as asked, and a surface offers them no
+note or edit. Said as it stood when the question was raised;
+answering checks again.
+ */
+  steered_for?: string;
 }
 
 /** One typed part of a message. `type` says which of `text`, `alert`,

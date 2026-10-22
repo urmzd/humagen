@@ -933,7 +933,16 @@ export interface QueuedApproval {
   source: { run?: string; agent?: string; target?: string; thread?: string; project?: string };
   parts: {
     id: string;
-    question?: { run: string; id: string; prompt: string; approvers?: string[]; expires_at?: string };
+    question?: {
+      run: string;
+      id: string;
+      prompt: string;
+      approvers?: string[];
+      expires_at?: string;
+      tool?: { name: string; acts_for_person?: boolean };
+      /** The person whose own credentials an answer may reach: only they add a note. */
+      steered_for?: string;
+    };
   }[];
 }
 

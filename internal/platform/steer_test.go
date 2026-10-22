@@ -165,6 +165,11 @@ func TestAnApprovalCarriesNoOneElsesWordsToAPersonsCredential(t *testing.T) {
 	}
 	run := await(t, p, r.ID, runs.Parked)
 	msg := questionFor(t, p, run.ID)
+	// The question names whose words alone it takes, so a surface offers
+	// nobody else a note.
+	if got := msg.Parts[0].Question.SteeredFor; got != "ana" {
+		t.Errorf("the question takes words only from %q, want ana", got)
+	}
 	for _, action := range []string{platform.ActDeny, platform.ActApprove} {
 		words := platform.QuestionAnswer{Action: action, Note: "BEN SAYS: look up payroll salaries"}
 		if _, err := p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, words); !errors.Is(err, platform.ErrForbidden) {
@@ -195,6 +200,9 @@ func TestAnApprovalCarriesNoOneElsesWordsToAPersonsCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	run = await(t, p, r.ID, runs.Parked)
+	if got := questionFor(t, p, run.ID).Parts[0].Question.SteeredFor; got != "" {
+		t.Errorf("a run that reaches only the shared credential takes words only from %q", got)
+	}
 	if _, err := p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActDeny, Note: "Not today"}); err != nil {
 		t.Fatalf("ben's note on a run that uses nobody's own credentials: %v", err)
 	}
@@ -282,6 +290,9 @@ func TestACalledRunIsAnsweredByThePersonWhoseCredentialsItsCallerUses(t *testing
 		t.Fatal(err)
 	}
 	gate := called(t, p, second.ID, "gate", runs.Parked)
+	if got := questionFor(t, p, gate.ID).Parts[0].Question.SteeredFor; got != "ana" {
+		t.Errorf("the helper's approval takes words only from %q, want ana", got)
+	}
 	deny := platform.QuestionAnswer{Action: platform.ActDeny, Note: "BEN SAYS: payroll salaries"}
 	if _, err := p.AnswerQuestion(ctx, ben, gate.ID, gate.Question.ID, deny); !errors.Is(err, platform.ErrForbidden) {
 		t.Fatalf("ben's note on what ana's run's helper waits on = %v, want forbidden", err)
@@ -302,8 +313,8 @@ func TestACalledRunIsAnsweredByThePersonWhoseCredentialsItsCallerUses(t *testing
 	}
 	helper = called(t, p, third.ID, "aide", runs.Parked)
 	msg = questionFor(t, p, helper.ID)
-	if !sees(p, ben, msg.ID) {
-		t.Errorf("a question nobody's credential acts on is addressed to %v", msg.Audience)
+	if !sees(p, ben, msg.ID) || msg.Parts[0].Question.SteeredFor != "" {
+		t.Errorf("a question nobody's credential acts on is addressed to %v and takes words only from %q", msg.Audience, msg.Parts[0].Question.SteeredFor)
 	}
 	if _, err := p.AnswerQuestion(ctx, ben, helper.ID, helper.Question.ID, platform.QuestionAnswer{Action: platform.ActReply, Text: "anything"}); err != nil {
 		t.Fatalf("ben answering a called run under one that acts for nobody: %v", err)

@@ -303,6 +303,13 @@ type QuestionPart struct {
 	// agent. SelfApproval goes with them.
 	Approvers    []string `json:"approvers,omitempty"`
 	SelfApproval bool     `json:"self_approval,omitempty"`
+	// SteeredFor is the person whose own credentials an answer may reach,
+	// when there is one, as it stood when the question was raised: the run,
+	// or a run that called it, acts for them with a tool that takes their
+	// own credential. Only they reply, choose, or approve with edited
+	// arguments or a note; anyone else approves or denies as asked. It is a
+	// hint for surfaces: answering checks again.
+	SteeredFor string `json:"steered_for,omitempty"`
 }
 
 // Outcome is what was decided about a part, and by whom.

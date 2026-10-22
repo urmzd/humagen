@@ -622,6 +622,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               onOpenProject={openProject}
               policies={workspace?.model_policies ?? []}
               onManagePolicies={() => openSettings("models")}
+              viewer={me.principal.subject}
             />
           ))}
         {route.page === "directory" && (

@@ -19,4 +19,4 @@ import { loadTests } from "./testload.ts";
 // The DOM stays registered for the life of the process, because node:test
 // may still be running the tests after this module returns.
 GlobalRegistrator.register({ url: "http://localhost:5173/" });
-await loadTests(["/src/storage.dom.test.tsx", "/src/agents.dom.test.tsx", "/src/projects.dom.test.tsx", "/src/directory.dom.test.tsx", "/src/room.dom.test.tsx", "/src/chat.dom.test.tsx", "/src/roles.dom.test.tsx"]);
+await loadTests(["/src/storage.dom.test.tsx", "/src/agents.dom.test.tsx", "/src/projects.dom.test.tsx", "/src/directory.dom.test.tsx", "/src/room.dom.test.tsx", "/src/chat.dom.test.tsx", "/src/roles.dom.test.tsx", "/src/governance.dom.test.tsx"]);

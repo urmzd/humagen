@@ -324,6 +324,12 @@ func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Qu
 	if q.Agent != "" {
 		part.Agent = q.Agent
 	}
+	// Who alone may say anything to it, so a surface offers nobody else a
+	// note or an edit (maySteer). A run whose caller cannot be read takes
+	// words from nobody, which is not said.
+	if person := p.steeredFor(ctx, run); person != nobody {
+		part.SteeredFor = person
+	}
 	if q.Tool != nil {
 		part.Tool = &inbox.QuestionTool{
 			Name: q.Tool.Name, CallID: q.Tool.CallID, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema,
