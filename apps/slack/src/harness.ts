@@ -142,6 +142,11 @@ export class FakeWarp implements Warp {
   readonly answered: { answer: AnswerRequest; as: ActAs }[] = [];
   /** Set to refuse the next answer, as warp does someone who may not answer. */
   refuseAnswer: WarpError | null = null;
+  /**
+   * Set when the app's own credential is a person, as under dev sign-in: what
+   * it asks as itself then acts for that person, as warp's ActorOf records it.
+   */
+  person = false;
   private readonly feeds = new Map<string, Feed<StreamItem>>();
   private readonly notes = new Feed<InboxNotice>();
   private seq = new Map<string, number>();
@@ -184,7 +189,9 @@ export class FakeWarp implements Warp {
     }
     // As the real route does: a person the client maps is the run's actor, so
     // it acts for them; anyone else is asked for by the app, for nobody.
-    let actor: Run["actor"] = { id: SUBJECT, bot: true };
+    let actor: Run["actor"] = this.person
+      ? { id: SUBJECT, display: "Developer", user: SUBJECT }
+      : { id: SUBJECT, bot: true };
     if (t.act_as) {
       const person = this.clients.get(t.act_as.client)?.slack?.people?.[t.act_as.user];
       if (!person) throw new WarpError(403, "this client does not map that person");
