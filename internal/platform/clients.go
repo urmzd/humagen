@@ -1,7 +1,9 @@
 package platform
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -47,7 +49,11 @@ func (p *Platform) ClientCaps(tenant string) clients.Caps {
 func (p *Platform) CreateClient(_ context.Context, tenant, by string, in ClientInput) (clients.Client, error) {
 	p.clientsMu.Lock()
 	defer p.clientsMu.Unlock()
+	return p.create(tenant, by, in)
+}
 
+// create is CreateClient, with clientsMu held.
+func (p *Platform) create(tenant, by string, in ClientInput) (clients.Client, error) {
 	c := in.Client
 	if c.ID == "" {
 		c.ID = clients.Slug(c.Name)
@@ -109,6 +115,65 @@ func (p *Platform) UpdateClient(_ context.Context, tenant, id, by string, in Cli
 	}
 	c := in.Client
 	c.ID, c.Tenant, c.Managed = id, tenant, ""
+	return p.replace(old, c, by, in)
+}
+
+// ApplyClient makes the client a Platform document declares what the document
+// says: created when there is none, and replaced when the one an earlier start
+// kept differs, so a field added to the document takes effect at the next
+// start. An unchanged record keeps its version and its connector. The record
+// is marked ManagedFile and its secrets are references, as the file gives
+// them. A client of that id the file does not manage is left as it is and
+// answers ErrExists.
+func (p *Platform) ApplyClient(_ context.Context, tenant, by string, in ClientInput) (clients.Client, error) {
+	if in.Token.Ref == "" || in.SigningSecret.Ref == "" || in.Token.Value != "" || in.SigningSecret.Value != "" {
+		return clients.Client{}, fmt.Errorf("%w: a client the file declares names its secrets by reference", clients.ErrInvalid)
+	}
+	p.clientsMu.Lock()
+	defer p.clientsMu.Unlock()
+
+	in.Managed = clients.ManagedFile
+	if in.ID == "" {
+		in.ID = clients.Slug(in.Name)
+	}
+	old, err := p.Clients.Get(tenant, in.ID)
+	if errors.Is(err, clients.ErrNotFound) {
+		return p.create(tenant, by, in)
+	}
+	if err != nil {
+		return clients.Client{}, err
+	}
+	if old.Managed != clients.ManagedFile {
+		return clients.Client{}, fmt.Errorf("%w: %q is not the file's", clients.ErrExists, in.ID)
+	}
+	c := in.Client
+	c.Tenant = tenant
+	same := c
+	same.Credentials = clients.Credentials{
+		Token:         clients.SecretRef{Set: true, Ref: in.Token.Ref},
+		SigningSecret: clients.SecretRef{Set: true, Ref: in.SigningSecret.Ref},
+	}
+	same.Version, same.CreatedBy, same.CreatedAt, same.UpdatedAt = old.Version, old.CreatedBy, old.CreatedAt, old.UpdatedAt
+	if sameRecord(same, old) {
+		return old, nil
+	}
+	return p.replace(old, c, by, in)
+}
+
+// sameRecord reports two client records that read the same once written.
+func sameRecord(a, b clients.Client) bool {
+	ja, err := json.Marshal(a)
+	if err != nil {
+		return false
+	}
+	jb, err := json.Marshal(b)
+	return err == nil && a.Tenant == b.Tenant && bytes.Equal(ja, jb)
+}
+
+// replace puts c in the place of old, with clientsMu held: the record, its
+// secrets and its connector.
+func (p *Platform) replace(old, c clients.Client, by string, in ClientInput) (clients.Client, error) {
+	tenant, id := old.Tenant, old.ID
 	if c.Surface == "" {
 		c.Surface = old.Surface
 	}

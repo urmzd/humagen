@@ -649,8 +649,9 @@ func parentsFirst(ps []spec.Project) []int {
 }
 
 // applyGitHub seats the file's GitHub installation as a client the API cannot
-// change. Its secrets are env: references, which is all a client's secret
-// may be; the operator lists the variables in secret_env.
+// change, and makes the one an earlier start kept follow the file. Its secrets
+// are env: references, which is all a client's secret may be; the operator
+// lists the variables in secret_env.
 func applyGitHub(ctx context.Context, p *platform.Platform, tenant string, g spec.GitHub, log *slog.Logger) error {
 	for name, r := range map[string]*spec.Ref{"token": g.Token, "webhook_secret": g.WebhookSecret} {
 		if !strings.HasPrefix(r.Ref, "env:") {
@@ -667,9 +668,9 @@ func applyGitHub(ctx context.Context, p *platform.Platform, tenant string, g spe
 		Token:         clients.SecretInput{Ref: g.Token.Ref},
 		SigningSecret: clients.SecretInput{Ref: g.WebhookSecret.Ref},
 	}
-	_, err := p.CreateClient(ctx, tenant, "file", in)
+	_, err := p.ApplyClient(ctx, tenant, "file", in)
 	if errors.Is(err, clients.ErrExists) {
-		log.Info("github client from the file already exists; left as it is", "tenant", tenant)
+		log.Warn("github client from the file not applied: another client answers for it", "tenant", tenant, "error", err)
 		return nil
 	}
 	if err != nil {
