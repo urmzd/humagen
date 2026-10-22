@@ -1,0 +1,147 @@
+package platform_test
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
+)
+
+var bo = auth.Principal{Subject: "bo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+
+// A conversation the console starts with no visibility named is private:
+// its starter's alone, the first participant, read by nobody else in the
+// project.
+func TestAConversationStartsPrivate(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator, bo)
+	got, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Initech", Text: "a thought"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := got.Thread
+	if th.Visibility != threads.Private || th.Channel != projects.General || len(th.Participants) != 1 || th.Participants[0].Name != "opal" || !th.Participants[0].Owner {
+		t.Fatalf("the conversation started as %+v", th)
+	}
+	if p.SeesThread(bo, th.ID) {
+		t.Fatal("another member reads a private conversation")
+	}
+	shared, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Initech", Visibility: threads.Shared, Text: "for everyone"})
+	if err != nil || shared.Thread.Visibility != threads.Shared || !p.SeesThread(bo, shared.Thread.ID) {
+		t.Fatalf("a conversation started shared = %+v, %v", shared.Thread, err)
+	}
+}
+
+// Sharing a private conversation moves it into a channel of a project, general
+// by default, and makes it shared there, so everyone who sees that project
+// reads it; the people it names join it. Only a participant who is a member
+// where it goes shares it, and it moves to another project only while it has
+// no runs.
+func TestSharingAConversationMakesItSharedInAChannel(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator, bo)
+	workIn(t, p, "Field", operator)
+	seePeople(t, p, operator, bo, vic)
+	ctx := t.Context()
+
+	got, err := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Initech", Text: "drafting the plan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := got.Thread.ID
+	post(t, p, operator, id, platform.MessageInput{Text: "a second thought"})
+
+	// Someone who cannot read it is told it is not there.
+	if _, err := p.ShareThread(ctx, bo, id, platform.ThreadShare{}); !errors.Is(err, threads.ErrNotFound) {
+		t.Fatalf("a person who cannot read it shared it: %v", err)
+	}
+	// A name nobody goes by is refused, and nothing changes.
+	if _, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{Add: []string{"nobody"}}); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("adding nobody = %v", err)
+	}
+	// A project the person is not a member of takes nothing.
+	if _, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{Project: "Renewals"}); !errors.Is(err, projects.ErrForbidden) && !errors.Is(err, projects.ErrNotFound) {
+		t.Fatalf("shared into a project its sharer is not a member of: %v", err)
+	}
+	if th, _ := p.Threads.Get(tenant, id); th.Visibility != threads.Private || th.Project != "Initech" {
+		t.Fatalf("a refused share changed the thread to %+v", th)
+	}
+
+	cy := auth.Principal{Subject: "cy", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	workIn(t, p, "Field", cy)
+	if p.SeesThread(cy, id) {
+		t.Fatal("a member of Field reads a private conversation before it is shared")
+	}
+	// Shared into Field's general, with vic added.
+	th, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{Project: "Field", Add: []string{"vic"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th.Visibility != threads.Shared || th.Project != "Field" || th.Channel != projects.General || th.Version != got.Thread.Version+1 {
+		t.Fatalf("shared, the thread is %+v", th)
+	}
+	if !slicesHas(th.Participants, "vic") || !slicesHas(th.Participants, "opal") {
+		t.Fatalf("participants are %+v", th.Participants)
+	}
+	if !p.SeesThread(cy, id) {
+		t.Fatal("the shared thread is not read by a member where it was shared")
+	}
+	if msgs, _, err := p.Threads.Messages(tenant, id, "", 10); err != nil || len(msgs) != 2 {
+		t.Fatalf("the conversation's messages moved with it: %d, %v", len(msgs), err)
+	}
+	// It is now a shared thread in Field: a tagged agent answers there, and
+	// once it has, the thread stays in Field.
+	asked := post(t, p, operator, id, platform.MessageInput{Text: "@helper what do you think?"})
+	if len(asked.Runs) != 1 || asked.Runs[0].Project != "Field" {
+		t.Fatalf("the tag started %+v", asked.Runs)
+	}
+	await(t, p, asked.Runs[0].ID, runs.Completed)
+	if _, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{Project: "Initech"}); !errors.Is(err, platform.ErrStaysInProject) {
+		t.Fatalf("a conversation with runs moved: %v", err)
+	}
+	// Sharing again where it is adds people and changes nothing else.
+	again, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{Add: []string{"bo"}})
+	if err != nil || again.Project != "Field" || again.Visibility != threads.Shared || !slicesHas(again.Participants, "bo") {
+		t.Fatalf("sharing again = %+v, %v", again, err)
+	}
+	// Someone who reads it but takes no part does not share it.
+	if _, err := p.ShareThread(ctx, cy, id, platform.ThreadShare{}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a reader who takes no part shared it: %v", err)
+	}
+}
+
+// A channel that is archived takes no conversation shared into it.
+func TestSharingIntoAnArchivedChannelIsRefused(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator)
+	if _, err := p.CreateChannel(t.Context(), tenant, "Initech", ada, platform.ChannelInput{Name: "old"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.ArchiveChannel(tenant, "Initech", "old", ada); err != nil {
+		t.Fatal(err)
+	}
+	got, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Initech", Text: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.ShareThread(t.Context(), operator, got.Thread.ID, platform.ThreadShare{Channel: "old"}); !errors.Is(err, projects.ErrInvalid) {
+		t.Fatalf("shared into an archived channel: %v", err)
+	}
+}
+
+func slicesHas(ps []threads.Participant, name string) bool {
+	for _, pt := range ps {
+		if pt.Kind == threads.Person && pt.Name == name {
+			return true
+		}
+	}
+	return false
+}

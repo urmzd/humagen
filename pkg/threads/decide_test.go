@@ -32,6 +32,12 @@ func TestTheFirstRuleThatAppliesDecides(t *testing.T) {
 		{"post only", threads.Input{PostOnly: true, Default: ignite}, threads.RulePostOnly, []string{}},
 		{"the default", threads.Input{Default: ignite}, threads.RuleDefault, []string{"ignite"}},
 		{"no default", threads.Input{}, threads.RuleDefault, []string{}},
+		{"the console runs only what it tags", threads.Input{TagsOnly: true, Default: ignite}, threads.RuleUntagged, []string{}},
+		{"a tag answers in the console", threads.Input{TagsOnly: true, Mentions: []threads.Mention{agent("scribe")}, Default: ignite}, threads.RuleTagged, []string{"scribe"}},
+		{"people only in the console", threads.Input{TagsOnly: true, Mentions: []threads.Mention{person("okta|dana")}, Default: ignite}, threads.RulePeople, []string{}},
+		{"post only in the console", threads.Input{TagsOnly: true, PostOnly: true, Default: ignite}, threads.RulePostOnly, []string{}},
+		{"a skill in the console goes to @auto", threads.Input{TagsOnly: true, Mentions: threads.WithSkillAgent([]threads.Mention{skillOf("triage"), person("okta|dana")}), Default: ignite}, threads.RuleTagged, []string{"auto"}},
+		{"a skill with an agent goes to that agent", threads.Input{TagsOnly: true, Mentions: threads.WithSkillAgent([]threads.Mention{skillOf("triage"), agent("scribe")}), Default: ignite}, threads.RuleTagged, []string{"scribe"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			d := threads.Decide(c.in)

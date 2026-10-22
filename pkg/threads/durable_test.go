@@ -221,3 +221,51 @@ func TestOpenRefusesRecordsThatAreNotThreads(t *testing.T) {
 		})
 	}
 }
+
+// Sharing a thread moves it and makes it shared in one write, which is kept:
+// read back, it is where it was shared, with whom it added, and its old
+// project lists it no more. A thread on a surface stays where it was started.
+func TestShareIsKept(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		private := shared("Globex", "general")
+		private.Visibility = threads.Private
+		th, _ := start(t, s, "acme", private, msg("dana", "a draft"))
+		got, err := s.Share("acme", th.ID, "Field", "renewals", []threads.Participant{{Kind: threads.Person, Name: "ana"}}, nil, "dana", t0.Add(time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Project != "Field" || got.Channel != "renewals" || got.Visibility != threads.Shared || got.Version != th.Version+1 || len(got.Participants) != 2 || got.Participants[1].AddedBy != "dana" {
+			t.Fatalf("shared, the thread is %+v", got)
+		}
+		same, err := s.Share("acme", th.ID, "Field", "renewals", nil, nil, "dana", t0.Add(2*time.Minute))
+		if err != nil || same.Version != got.Version {
+			t.Fatalf("sharing it again where it is = %+v, %v", same, err)
+		}
+		again, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kept, _ := everything(t, again, "acme", th.ID); !reflect.DeepEqual(kept, got) {
+			t.Fatalf("read back, the thread is %+v, not %+v", kept, got)
+		}
+		for _, c := range []struct {
+			project string
+			n       int
+		}{{"Field", 1}, {"Globex", 0}} {
+			if list, _, err := again.List("acme", threads.Query{Project: c.project}); err != nil || len(list) != c.n {
+				t.Fatalf("%s lists %d threads, %v", c.project, len(list), err)
+			}
+		}
+		onSlack := shared("Globex", "general")
+		onSlack.Surface = &threads.Surface{Client: "app", Channel: "C01", TS: "1700.1"}
+		sl, _ := start(t, again, "acme", onSlack, msg("dana", "from slack"))
+		if _, err := again.Share("acme", sl.ID, "Field", "general", nil, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("a surface's thread moved: %v", err)
+		}
+	})
+}
