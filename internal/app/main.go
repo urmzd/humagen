@@ -45,7 +45,7 @@ type Options struct {
 	Version Version
 	// Changelog is warp's CHANGELOG.md, which the warp package embeds. A
 	// workspace that sets workspace.release_notes is posted the running
-	// release's features from it.
+	// release's breaking changes and features from it.
 	Changelog string
 	// Ext is added to whatever a providers file declares. A name declared
 	// by both is an error rather than an override.

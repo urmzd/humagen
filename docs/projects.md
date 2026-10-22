@@ -759,15 +759,18 @@ cursor. Inbox retention for closed broadcasts is a follow-up (see Risks).
 
 - The module root package embeds CHANGELOG.md, the one package that can
   reach it, and `internal/release` reads it: a release is a `## 0.16.0
-  (date)` heading, and its `feat` entries are its `### Features` group, each
-  without its markup and commit link. Breaking changes and fixes are not
-  posted.
+  (date)` heading, and its `feat` entries are its `### Breaking` and
+  `### Features` groups, each entry without its markup and commit link. The
+  release tool files a breaking `feat` under Breaking alone and does not
+  write an entry's type, so a breaking change of another type is posted
+  too. Fixes and the rest are not posted.
 - The running version is what a release build stamps with `-ldflags`, which
   counts only in warp's own binary, else the module version Go records for
   warp, in its binary or in a program that imports it. `dev`, a local build
   and a pseudo-version are not releases, and post nothing.
 - At each start, once the Platform documents are applied, each workspace
-  that sets it is posted the release, unless it has no features.
+  that sets it is posted the release, unless it has no breaking changes
+  and no features.
   `inbox.Store.PostOnce` checks the key under the inbox lock: an
   announcement ever raised under it, withdrawn or not, is kept, so a restart
   or a later process on the same database posts nothing. It is an

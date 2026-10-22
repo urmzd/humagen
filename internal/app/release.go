@@ -10,10 +10,10 @@ import (
 )
 
 // postReleaseNotes posts what the release this process runs brings, its
-// features in the changelog, in the inbox of each workspace whose Platform
-// document sets workspace.release_notes. Each workspace is posted a release
-// once (Platform.PostReleaseNotes). A build that is not a release, or a
-// release with no features, posts nothing. A post that fails is logged and
+// breaking changes and features in the changelog, in the inbox of each
+// workspace whose Platform document sets workspace.release_notes. Each
+// workspace is posted a release once (Platform.PostReleaseNotes). A build
+// that is not a release, or a release of fixes alone, posts nothing. A post that fails is logged and
 // tried again at the next start, and the server starts either way.
 func postReleaseNotes(p *platform.Platform, cfg spec.Config, version, changelog string, log *slog.Logger) {
 	var tenants []string
@@ -26,7 +26,7 @@ func postReleaseNotes(p *platform.Platform, cfg spec.Config, version, changelog 
 		return
 	}
 	n, ok := release.Find(changelog, version)
-	if !ok || len(n.Features) == 0 {
+	if !ok || !n.News() {
 		return
 	}
 	a := platform.Announcement{Subject: n.Subject(), Text: n.Text(inbox.MaxText)}

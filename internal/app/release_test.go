@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -14,9 +15,18 @@ import (
 	"github.com/urmzd/warp/pkg/state/statetest"
 )
 
-// releaseChangelog is two releases as the release tool writes them: one
-// with a feature, one with only a fix.
+// releaseChangelog is three releases as the release tool writes them: one
+// whose only entry is breaking, one with a feature, and one with only a fix.
 const releaseChangelog = `# Changelog
+
+## 0.17.0 (2026-11-09)
+
+### Breaking
+
+- **inbox**: a breaking change (#48) ([abcdef0](https://github.com/urmzd/warp/commit/abcdef01))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.16.0...v0.17.0)
+
 
 ## 0.16.0 (2026-11-02)
 
@@ -44,9 +54,9 @@ const releaseText = "- projects: release notes in the workspace's inbox (#45)\n\
 	"Full changelog: https://github.com/urmzd/warp/compare/v0.15.0...v0.16.0"
 
 // Release notes are off unless the workspace turns them on, and only a
-// release with features posts: a build that is not a release, a release the
-// changelog does not list and a release of fixes post nothing. A release is
-// posted once, from warp, in the workspace's own inbox.
+// release with breaking changes or features posts: a build that is not a
+// release, a release the changelog does not list and a release of fixes post
+// nothing. A release is posted once, from warp, in the workspace's own inbox.
 func TestReleaseNotesArePostedWhereTurnedOn(t *testing.T) {
 	p := newProjectsPlatform(t)
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -74,6 +84,16 @@ func TestReleaseNotesArePostedWhereTurnedOn(t *testing.T) {
 	}
 	if got := p.Inbox.OpenOf("globex", inbox.KindAnnouncement); len(got) != 0 {
 		t.Fatalf("a workspace that left it off was posted %+v", got)
+	}
+	// A release whose only entry is breaking, as the release tool files a
+	// breaking feat, posts it.
+	postReleaseNotes(p, cfg, "v0.17.0", releaseChangelog, quiet)
+	got = p.Inbox.OpenOf("acme", inbox.KindAnnouncement)
+	i := slices.IndexFunc(got, func(m inbox.Message) bool { return m.Key == "release:0.17.0" })
+	if len(got) != 2 || i < 0 || got[i].Subject != "What's new in warp 0.17.0" || len(got[i].Parts) != 1 ||
+		got[i].Parts[0].Text != "Breaking changes:\n- inbox: a breaking change (#48)\n\n"+
+			"Full changelog: https://github.com/urmzd/warp/compare/v0.16.0...v0.17.0" {
+		t.Fatalf("0.17.0 posted %+v", got)
 	}
 
 	// On a platform that has posted nothing, nothing posts where the

@@ -14,13 +14,18 @@ import (
 // Module is warp's module path.
 const Module = "github.com/urmzd/warp"
 
-// Notes is what one release brings, as the changelog lists it.
+// Notes is what one release brings, as the changelog lists it. Each entry
+// is plain text: the scope, then the summary, without the commit link
+// ("projects: project roles (#43)").
 type Notes struct {
 	// Version is the release as its heading writes it, such as "0.15.0".
 	Version string
-	// Features are its feat entries, the changelog's Features group, each
-	// as plain text: the scope, then the summary, without the commit link
-	// ("projects: project roles (#43)").
+	// Breaking are its breaking changes, the changelog's Breaking group.
+	// The release tool files a breaking feat there and not under Features,
+	// and does not write an entry's type, so a breaking change of another
+	// type is here too.
+	Breaking []string
+	// Features are its other feat entries, the changelog's Features group.
 	Features []string
 	// Compare links to the release's full changelog, when it has one.
 	Compare string
@@ -39,8 +44,12 @@ var (
 	plain = regexp.MustCompile(`^v?(\d+\.\d+\.\d+)$`)
 )
 
-// features is the group the release tool writes feat entries under.
-const features = "Features"
+// The groups the release tool writes a release's news under: a breaking
+// change of any type, and every other feat.
+const (
+	breakingGroup = "Breaking"
+	featuresGroup = "Features"
+)
 
 // Parse reads every release in a changelog the release tool wrote, in the
 // order it lists them, newest first. A second-level heading that names no
@@ -65,7 +74,11 @@ func Parse(changelog string) []Notes {
 		switch {
 		case strings.HasPrefix(line, "### "):
 			group = strings.TrimSpace(line[len("### "):])
-		case strings.HasPrefix(line, "- ") && strings.EqualFold(group, features):
+		case strings.HasPrefix(line, "- ") && strings.EqualFold(group, breakingGroup):
+			if e := entry(line[len("- "):]); e != "" {
+				cur.Breaking = append(cur.Breaking, e)
+			}
+		case strings.HasPrefix(line, "- ") && strings.EqualFold(group, featuresGroup):
 			if e := entry(line[len("- "):]); e != "" {
 				cur.Features = append(cur.Features, e)
 			}
@@ -99,31 +112,54 @@ func Find(changelog, version string) (Notes, bool) {
 	return Notes{}, false
 }
 
+// News is whether the release brings anything to post: a breaking change
+// or a feature. A release of fixes alone does not.
+func (n Notes) News() bool { return len(n.Breaking)+len(n.Features) > 0 }
+
 // Subject is the announcement's subject line.
 func (n Notes) Subject() string { return "What's new in warp " + n.Version }
 
-// Text is the announcement's text: each feature on a line of its own, then
-// the link to the full changelog. It is at most limit characters: the
-// features that do not fit are counted on a last line instead.
+// Text is the announcement's text: the breaking changes under "Breaking
+// changes:", then the features, under "Features:" when there are breaking
+// changes before them, each entry on a line of its own, then the link to
+// the full changelog. It is at most limit characters: the entries that do
+// not fit, the last ones first, are counted on a last line instead.
 func (n Notes) Text(limit int) string {
 	link := ""
 	if n.Compare != "" {
 		link = "\n\nFull changelog: " + n.Compare
 	}
-	for shown := len(n.Features); shown >= 0; shown-- {
-		var b strings.Builder
-		for _, f := range n.Features[:shown] {
-			b.WriteString("- " + f + "\n")
+	all := len(n.Breaking) + len(n.Features)
+	for shown := all; shown >= 0; shown-- {
+		breaking := n.Breaking[:min(shown, len(n.Breaking))]
+		features := n.Features[:shown-len(breaking)]
+		var groups []string
+		if len(breaking) > 0 {
+			groups = append(groups, "Breaking changes:\n"+lines(breaking))
 		}
-		if more := len(n.Features) - shown; more > 0 {
-			fmt.Fprintf(&b, "And %d more.\n", more)
+		if len(features) > 0 {
+			group := lines(features)
+			if len(n.Breaking) > 0 {
+				group = "Features:\n" + group
+			}
+			groups = append(groups, group)
 		}
-		if text := strings.TrimSuffix(b.String(), "\n") + link; utf8.RuneCountInString(text) <= limit {
+		text := strings.Join(groups, "\n\n")
+		if more := all - shown; more > 0 {
+			if text != "" {
+				text += "\n"
+			}
+			text += fmt.Sprintf("And %d more.", more)
+		}
+		if text += link; utf8.RuneCountInString(text) <= limit {
 			return text
 		}
 	}
-	return fmt.Sprintf("%d new features.", len(n.Features))
+	return fmt.Sprintf("%d changes.", all)
 }
+
+// lines is entries as a list, each on a line of its own.
+func lines(entries []string) string { return "- " + strings.Join(entries, "\n- ") }
 
 // Running is the release of warp this binary runs, as the changelog's
 // headings write it, or "" for a build that is not a release: "dev", a

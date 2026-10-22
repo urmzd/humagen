@@ -156,7 +156,7 @@ spec:
         agents: {allow: [globex-helper, lead], default: globex-helper}  # narrows: only these run here and below
         members: [{who: "okta|00u1ana", role: owner}]   # no "*": members only, read by its members alone
     person_credentials: {values: false}   # true lets people store a tool credential's value with warp
-    release_notes: true     # each release's new features, posted once in the workspace's inbox from warp
+    release_notes: true     # each release's breaking changes and features, posted once in the workspace's inbox from warp
 
   models:                   # each a slot: anthropic | openai | ollama
     - name: anthropic       # what an agent names as its provider
@@ -482,17 +482,19 @@ the project and the projects below it.
 
 `workspace.release_notes: true` (off by default) posts what the release of
 warp this process runs brings in the workspace's own inbox, as an
-announcement from warp: "What's new in warp 0.16.0", then each entry of the
-release's Features group in the changelog the binary carries
-(`CHANGELOG.md`), and the link to the full changelog. Breaking changes and
-fixes are not posted. It reaches everyone who reads the workspace, shows in
+announcement from warp: "What's new in warp 0.16.0", then the release's
+breaking changes and its features, its Breaking and Features groups in the
+changelog the binary carries (`CHANGELOG.md`), and the link to the full
+changelog. The release tool files every breaking change under Breaking, a
+breaking feature included, so a breaking change of any type is posted.
+Fixes are not posted. It reaches everyone who reads the workspace, shows in
 What's new and in the workspace's inbox like any announcement there, and
 each reader hides it for themselves.
 
 Each release is posted once, at the start that first runs it: a restart, a
 later process on the same database, or a withdrawal never posts it again.
 With memory stores every start is a new inbox, so it is posted at each
-start. A release with no features posts nothing, and so does a build that is
+start. A release of fixes alone posts nothing, and so does a build that is
 not a release: `dev`, a local build or a pseudo-version. The release is the
 version a release build stamps (`-ldflags "-X main.version=v0.16.0"`, as the
 Dockerfile does), else the version Go records for warp's module

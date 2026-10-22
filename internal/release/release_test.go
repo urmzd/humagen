@@ -54,9 +54,10 @@ const changelog = `# Changelog
 [Full Changelog](https://github.com/urmzd/warp/compare/v0.13.0...v0.13.1)
 `
 
-// A release's features are its Features group alone, each without its
-// markup or commit link, and its compare link is kept.
-func TestAReleaseIsItsFeatures(t *testing.T) {
+// A release's news is its Breaking group, where the release tool files a
+// breaking feat, and its Features group, each entry without its markup or
+// commit link, and its compare link is kept. Fixes and the rest are not news.
+func TestAReleaseIsItsBreakingChangesAndFeatures(t *testing.T) {
 	all := Parse(changelog)
 	var versions []string
 	for _, n := range all {
@@ -66,27 +67,41 @@ func TestAReleaseIsItsFeatures(t *testing.T) {
 		t.Fatalf("releases = %q", versions)
 	}
 	n, ok := Find(changelog, "v0.14.0")
-	want := []string{
+	wantBreaking := []string{"one spec, warp start and warp deploy (#36)"}
+	wantFeatures := []string{
 		"projects: project roles, project inboxes and announcements (#43)",
 		"inbox templates, Monitor and Context",
 	}
-	if !ok || !slices.Equal(n.Features, want) || n.Compare != "https://github.com/urmzd/warp/compare/v0.13.1...v0.14.0" {
+	if !ok || !n.News() || !slices.Equal(n.Breaking, wantBreaking) || !slices.Equal(n.Features, wantFeatures) ||
+		n.Compare != "https://github.com/urmzd/warp/compare/v0.13.1...v0.14.0" {
 		t.Fatalf("0.14.0 = %+v, %v", n, ok)
 	}
 	if n.Subject() != "What's new in warp 0.14.0" {
 		t.Errorf("subject = %q", n.Subject())
 	}
-	wantText := "- projects: project roles, project inboxes and announcements (#43)\n" +
+	wantText := "Breaking changes:\n" +
+		"- one spec, warp start and warp deploy (#36)\n\n" +
+		"Features:\n" +
+		"- projects: project roles, project inboxes and announcements (#43)\n" +
 		"- inbox templates, Monitor and Context\n\n" +
 		"Full changelog: https://github.com/urmzd/warp/compare/v0.13.1...v0.14.0"
 	if got := n.Text(4000); got != wantText {
 		t.Errorf("text = %q, want %q", got, wantText)
 	}
-	// Breaking changes and fixes are not features.
-	for _, v := range []string{"0.15.0", "0.13.1"} {
-		if n, ok := Find(changelog, v); !ok || len(n.Features) != 0 {
-			t.Errorf("%s = %+v, %v", v, n, ok)
-		}
+	// A release of breaking changes alone is news, and lists them.
+	n, ok = Find(changelog, "0.15.0")
+	if !ok || !n.News() || !slices.Equal(n.Breaking, []string{"projects: recaps, read confinement, Slack and GitHub coworking (#44)"}) || len(n.Features) != 0 {
+		t.Fatalf("0.15.0 = %+v, %v", n, ok)
+	}
+	wantText = "Breaking changes:\n" +
+		"- projects: recaps, read confinement, Slack and GitHub coworking (#44)\n\n" +
+		"Full changelog: https://github.com/urmzd/warp/compare/v0.14.0...v0.15.0"
+	if got := n.Text(4000); got != wantText {
+		t.Errorf("0.15.0 text = %q, want %q", got, wantText)
+	}
+	// Fixes are not news.
+	if n, ok := Find(changelog, "0.13.1"); !ok || n.News() || len(n.Breaking)+len(n.Features) != 0 {
+		t.Errorf("0.13.1 = %+v, %v", n, ok)
 	}
 	for _, v := range []string{"0.12.0", "dev", ""} {
 		if _, ok := Find(changelog, v); ok {
@@ -98,8 +113,8 @@ func TestAReleaseIsItsFeatures(t *testing.T) {
 // A heading that names no version starts no release and ends the one
 // before it, and a release with no compare link has none.
 func TestAnUnversionedHeadingStartsNoRelease(t *testing.T) {
-	all := Parse("## 0.2.0\n\n### Features\n\n- one\n\n## Unreleased\n\n### Features\n\n- not yet\n")
-	if len(all) != 1 || !slices.Equal(all[0].Features, []string{"one"}) || all[0].Compare != "" {
+	all := Parse("## 0.2.0\n\n### Features\n\n- one\n\n## Unreleased\n\n### Breaking\n\n- not yet\n\n### Features\n\n- nor this\n")
+	if len(all) != 1 || !slices.Equal(all[0].Features, []string{"one"}) || len(all[0].Breaking) != 0 || all[0].Compare != "" {
 		t.Fatalf("releases = %+v", all)
 	}
 	if got := all[0].Text(4000); got != "- one" {
@@ -107,7 +122,7 @@ func TestAnUnversionedHeadingStartsNoRelease(t *testing.T) {
 	}
 }
 
-// Features past the limit are counted, never cut mid-line.
+// Entries past the limit are counted, never cut mid-line.
 func TestTheTextFitsItsLimit(t *testing.T) {
 	n := Notes{Version: "1.0.0", Compare: "https://example.com/compare"}
 	for range 300 {
@@ -129,6 +144,30 @@ func TestTheTextFitsItsLimit(t *testing.T) {
 	}
 	if more := lines[shown]; more != "And "+strconv.Itoa(300-shown)+" more." || lines[len(lines)-1] != "Full changelog: https://example.com/compare" {
 		t.Fatalf("after %d features: %q", shown, lines[shown:])
+	}
+
+	// Breaking changes come first, and what does not fit of either group
+	// is counted together: each text below is the longest that fits in
+	// fewer characters than the one before it.
+	b, f := "- "+strings.Repeat("b", 20), "- "+strings.Repeat("f", 20)
+	n = Notes{Version: "1.0.0", Breaking: []string{b[2:], b[2:]}, Features: []string{f[2:], f[2:], f[2:]}}
+	wants := []string{
+		"Breaking changes:\n" + b + "\n" + b + "\n\nFeatures:\n" + f + "\n" + f + "\n" + f,
+		"Breaking changes:\n" + b + "\n" + b + "\n\nFeatures:\n" + f + "\n" + f + "\nAnd 1 more.",
+		"Breaking changes:\n" + b + "\n" + b + "\n\nFeatures:\n" + f + "\nAnd 2 more.",
+		"Breaking changes:\n" + b + "\n" + b + "\nAnd 3 more.",
+		"Breaking changes:\n" + b + "\nAnd 4 more.",
+		"And 5 more.",
+		"5 changes.",
+	}
+	for i, want := range wants {
+		limit := utf8.RuneCountInString(want)
+		if i > 0 {
+			limit = utf8.RuneCountInString(wants[i-1]) - 1
+		}
+		if got := n.Text(limit); got != want {
+			t.Errorf("at %d: %q, want %q", limit, got, want)
+		}
 	}
 }
 
