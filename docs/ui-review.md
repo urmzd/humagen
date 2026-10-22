@@ -218,6 +218,7 @@ the patterns above, with the layout checks below.
 | Switches | The label, which is the target, was 20px tall | 24px at least |
 | Project Overview | Counts written "Sub-projects (0)" and "Scheduled (0)" | `Count` beside the heading, hidden at zero |
 | Project, Schedule | Six and four boxed buttons in the header, three rows of them on a phone, Delete beside the everyday ones | `PageActions`: New Conversation and Run Now are the primary actions, the rest are under More, Archive and Delete last after a rule. Each keeps its permission check and does what its button did |
+| Project Context, Knowledge | The new knowledge editor drew its own headings, and with no sources in the workspace it showed only a disabled Save Knowledge, without saying why | Two `Section`s, as the rest of the tab; with nothing to name it says the workspace has no sources yet. `make screens` seeds two sources and captures the project's and the workspace's Context tabs |
 | Inbox | The same announcements were "What's new" on Home and "Updates" in the inbox | "What's new" in both; the address is unchanged |
 | Home, Slack Home | An urgent item looked like any other | An item above normal says so in words before when it came ("Urgent · just now"); a normal one says nothing more |
 

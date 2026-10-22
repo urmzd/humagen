@@ -893,6 +893,8 @@ export const defaultCopy = {
       heading: "Knowledge",
       hint: "Workspace sources every run filed here or below is grounded in, besides its agent's own. At most 8.",
       none: "This project names no sources.",
+      /** An owner with nothing to choose: the workspace has no sources yet. */
+      noSources: "The workspace has no sources yet. Add one under Context to name it here.",
       add: "Add Source",
       /** Shown once 8 are named. */
       full: "That's 8, the most a project names. Remove one to add another.",

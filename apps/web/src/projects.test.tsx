@@ -244,6 +244,24 @@ test("knowledge: an owner who reads knowledge gets an editor of the sources the 
   assert.doesNotMatch(out, /The platform file sets/);
 });
 
+test("knowledge: an owner in a workspace with no sources is told so, and offered no Save with nothing to save", () => {
+  const out = html(
+    <KnowledgeLists
+      project="Globex"
+      view={{ ...globexKnowledge, knowledge: [] }}
+      titles={{}}
+      sources={[]}
+      draft={[]}
+      editable
+      fileOwned={false}
+    />,
+  );
+  assert.match(out, /The workspace has no sources yet/);
+  assert.doesNotMatch(out, /Save Knowledge|Add Source/);
+  // Both parts are titled sections, as the rest of the Context tab is.
+  assert.equal([...out.matchAll(/<section aria-labelledby=/g)].length, 2);
+});
+
 test("knowledge: at the cap of 8 nothing more can be added", () => {
   const names = Array.from({ length: MAX_KNOWLEDGE }, (_, i) => `source-${i}`);
   const out = knowledgeOf({ editable: true, draft: names });
