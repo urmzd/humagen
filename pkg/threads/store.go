@@ -275,7 +275,7 @@ func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, erro
 			p.At = at
 		}
 	}
-	if !t.has(Person, t.CreatedBy) {
+	if t.CreatedBy != "" && !t.has(Person, t.CreatedBy) {
 		t.Participants = append([]Participant{{Kind: Person, Name: t.CreatedBy, At: at}}, t.Participants...)
 	}
 	for i := range t.Participants {
@@ -293,7 +293,9 @@ func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, erro
 // Create writes a thread's record with no messages: the record of a
 // conversation from before threads, the first time anything about it changes,
 // or a thread to post into later. A thread with no id is given a new one. The
-// person who starts it takes part as its owner.
+// person who starts it takes part as its owner. Only the record of a
+// conversation from before threads may name nobody: one no person asked in,
+// changed first by someone who may not own it.
 func (s *Store) Create(tenantName string, t Thread, at time.Time) (Thread, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -310,6 +312,39 @@ func (s *Store) Create(tenantName string, t Thread, at time.Time) (Thread, error
 	tn.hold(&thread{rec: t, surfaces: map[string]int{}})
 	tn.tell(Notice{ID: t.ID, At: at})
 	return t.clone(), nil
+}
+
+// Claim makes by the owner of a thread nobody started, the record of a
+// conversation from before threads that no person asked in: they start it,
+// and take part as its owner. A thread someone started is returned as it is.
+func (s *Store) Claim(tenantName, id, by string, at time.Time) (Thread, error) {
+	if strings.TrimSpace(by) == "" {
+		return Thread{}, fmt.Errorf("%w: a thread is started by someone", ErrInvalid)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	th, err := s.writable(tenantName, id)
+	if err != nil {
+		return Thread{}, err
+	}
+	if th.rec.CreatedBy != "" {
+		return th.rec.clone(), nil
+	}
+	next := th.rec.clone()
+	next.CreatedBy = by
+	if i := slices.IndexFunc(next.Participants, func(p Participant) bool { return p.Kind == Person && p.Name == by }); i >= 0 {
+		next.Participants[i].Owner, next.Participants[i].AddedBy = true, ""
+	} else {
+		next.Participants = append([]Participant{{Kind: Person, Name: by, Owner: true, At: at}}, next.Participants...)
+	}
+	if len(next.Participants) > MaxParticipants {
+		return Thread{}, fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
+	}
+	next.Version, next.UpdatedAt = th.rec.Version+1, at
+	if err := next.validate(); err != nil {
+		return Thread{}, err
+	}
+	return s.rewrite(tenantName, th, next, at)
 }
 
 // Start writes a new thread and its first message in one write. The person

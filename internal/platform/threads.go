@@ -498,12 +498,19 @@ func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 
 // recordOf returns a thread's stored record, writing the one a
 // conversation from before threads reads as the first time it is needed.
-// by is the person the change is made by, the record's owner when no
-// person asked in the conversation.
+// by is who becomes its owner when no person asked in the conversation, as
+// claimant answers for the person making the change: "" leaves it with none,
+// for the first member who changes it to become one.
 func (p *Platform) recordOf(tenant, id, by string) (threads.Thread, error) {
 	th, err := p.ThreadRecord(tenant, id)
-	if err != nil || th.Version > 0 {
+	if err != nil {
 		return th, err
+	}
+	if th.Version > 0 {
+		if th.CreatedBy == "" && by != "" {
+			return p.Threads.Claim(tenant, id, by, p.now())
+		}
+		return th, nil
 	}
 	th.CreatedBy = cmp.Or(th.CreatedBy, by)
 	for i := range th.Participants {
@@ -515,6 +522,19 @@ func (p *Platform) recordOf(tenant, id, by string) (threads.Thread, error) {
 		return p.Threads.Get(tenant, id)
 	}
 	return stored, err
+}
+
+// claimant is who becomes the owner of a conversation from before threads
+// that no person asked in, when a change they make writes its record: the
+// person making it, while they are a member of its project, as changing the
+// thread takes of them then (mayChangeThread). Anyone else, a viewer who
+// answers what they were asked or removes themselves, leaves it with no
+// owner, for a member to become one.
+func (p *Platform) claimant(who auth.Principal, project string) string {
+	if p.MayFileIn(who, project) != nil {
+		return ""
+	}
+	return who.Subject
 }
 
 // placeFor checks where a person starts a new thread: a project of the
@@ -694,7 +714,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		a := *in.Answers
 		msg.Answers = &a
 	}
-	if th, err = p.recordOf(who.Tenant, id, by); err != nil {
+	if th, err = p.recordOf(who.Tenant, id, p.claimant(person, th.Project)); err != nil {
 		return Posted{}, err
 	}
 	m, fresh, err := p.Threads.Post(who.Tenant, th.ID, msg, p.now())
@@ -1174,7 +1194,7 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	if err := p.checkDefault(ctx, who.Tenant, th.Project, in.Default); err != nil {
 		return threads.Thread{}, err
 	}
-	if th, err = p.recordOf(who.Tenant, id, who.Subject); err != nil {
+	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return threads.Thread{}, err
 	}
 	return p.Threads.Update(who.Tenant, id, th.Version, p.now(), func(t *threads.Thread) error {
@@ -1240,7 +1260,7 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 			return threads.Thread{}, err
 		}
 	}
-	if th, err = p.recordOf(who.Tenant, id, who.Subject); err != nil {
+	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return threads.Thread{}, err
 	}
 	return p.Threads.Participants(who.Tenant, id, th.Version, add, remove, who.Subject, p.now())

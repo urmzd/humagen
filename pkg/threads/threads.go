@@ -141,7 +141,11 @@ type Thread struct {
 	Surface *Surface `json:"surface,omitempty"`
 	// Version counts the edits made to the record: its title, visibility,
 	// default and participants. Posting, and joining by posting, leave it.
-	Version   int       `json:"version"`
+	Version int `json:"version"`
+	// CreatedBy is the person who started the thread, its owner. A record
+	// of a conversation from before threads that no person asked in, which
+	// a change by someone who may not own it wrote, has none until a member
+	// changes it (Store.Claim).
 	CreatedBy string    `json:"created_by"`
 	CreatedAt time.Time `json:"created_at"`
 	// UpdatedAt is when anything last happened in the thread: an edit or a
@@ -311,7 +315,7 @@ func (t Thread) validate() error {
 		return fmt.Errorf("%w: a default is an agent's name or auto", ErrInvalid)
 	case len(t.Participants) > MaxParticipants:
 		return fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
-	case strings.TrimSpace(t.CreatedBy) == "":
+	case t.CreatedBy != "" && strings.TrimSpace(t.CreatedBy) == "":
 		return fmt.Errorf("%w: a thread is started by someone", ErrInvalid)
 	}
 	if t.Surface != nil {
