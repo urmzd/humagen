@@ -348,3 +348,57 @@ func TestAConversationFromBeforeThreadsHoldsAsManyParticipantsAsAThread(t *testi
 		t.Fatalf("the record holds %d participants, want %d people and the agent", n, people)
 	}
 }
+
+// A share adds only people who can read the project the conversation goes
+// to, says who it did not add and why, and tells each person it added in
+// their inbox, once, where the conversation is read.
+func TestSharingTellsThePeopleItAddsAndAddsOnlyWhoCanRead(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator, bo)
+	seePeople(t, p, operator, bo, admin)
+	ctx := t.Context()
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Vault"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Projects.Update(tenant, "Vault", 1, ada, time.Now(), func(pr *projects.Project) error {
+		pr.Members = []projects.Entry{{Who: "opal", Role: projects.Member}, {Who: "ada", Role: projects.Owner}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Initech", Title: "Renewal plan", Text: "a draft"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := got.Thread.ID
+	shared, err := p.Share(ctx, operator, id, platform.ThreadShare{Project: "Vault", Add: []string{"bo", "ada"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slicesHas(shared.Thread.Participants, "bo") || !slicesHas(shared.Thread.Participants, "ada") {
+		t.Fatalf("participants are %+v", shared.Thread.Participants)
+	}
+	if len(shared.NotAdded) != 1 || shared.NotAdded[0].Handle != "bo" || shared.NotAdded[0].Reason != "they cannot read this project, so they were not added" {
+		t.Fatalf("not added = %+v", shared.NotAdded)
+	}
+	told, ok := p.Inbox.ByKey(tenant, platform.AddedKey(id, "ada"))
+	if !ok || told.To != "ada" || told.Subject != "Opal added you to Renewal plan in Vault #general" || len(told.Parts) != 1 || told.Parts[0].Mention == nil || told.Parts[0].Mention.Message != "m-1" {
+		t.Fatalf("ada was told %+v, %v", told, ok)
+	}
+	if !p.Seer(admin).Message(told) || p.Seer(bo).Message(told) {
+		t.Fatal("the message telling ada is not read where the conversation is")
+	}
+	if _, ok := p.Inbox.ByKey(tenant, platform.AddedKey(id, "bo")); ok {
+		t.Fatal("bo, who was not added, was told")
+	}
+	if _, ok := p.Inbox.ByKey(tenant, platform.AddedKey(id, "opal")); ok {
+		t.Fatal("the sharer was told they added themselves")
+	}
+	if _, err := p.Share(ctx, operator, id, platform.ThreadShare{Add: []string{"ada"}}); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := p.Inbox.ByKey(tenant, platform.AddedKey(id, "ada")); again.ID != told.ID || !again.UpdatedAt.Equal(told.UpdatedAt) {
+		t.Fatalf("ada was told again: %+v", again)
+	}
+}

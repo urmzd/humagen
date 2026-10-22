@@ -1460,6 +1460,40 @@ func (p *Platform) raiseMention(tenant string, th threads.Thread, m threads.Mess
 	p.raiseInbox(tenant, inbox.MentionKey(th.ID, m.ID, to), msg, m.At)
 }
 
+// AddedKey is the key of the inbox message that tells a person they were
+// added to a conversation: raised once a person and thread.
+func AddedKey(thread, subject string) string { return "added:" + thread + ":" + subject }
+
+// raiseAdded tells a person in their inbox that they were added to a
+// conversation, once: "Ana added you to Renewal plan in Globex #general".
+// It is a mention of the conversation's latest message, so it is read where
+// the conversation is, by whoever may read it, and Reply posts after it. A
+// conversation with no message yet is not told of.
+func (p *Platform) raiseAdded(tenant string, th threads.Thread, by, to string) {
+	m, err := p.Threads.Last(tenant, th.ID)
+	if err != nil {
+		return
+	}
+	s := p.shower(tenant)
+	title := cmp.Or(inbox.Excerpt(th.Title), "a conversation")
+	if r := []rune(title); len(r) > 60 {
+		title = string(r[:59]) + "…"
+	}
+	where := projects.RootAddress
+	if pr, ok := p.Projects.Tree(tenant).Get(th.Project); ok && th.Project != projects.Root {
+		where = cmp.Or(pr.Title, pr.Name)
+	} else if th.Project == projects.Root {
+		where = "the workspace"
+	}
+	msg := inbox.Message{
+		Kind: inbox.KindMention, Subject: fmt.Sprintf("%s added you to %s in %s #%s", s.name(by), title, where, th.Channel),
+		From: inbox.From{Kind: "person", Name: s.name(by)}, Severity: inbox.Info, To: to,
+		Source: inbox.Source{Thread: th.ID, Project: th.Project},
+		Parts:  []inbox.Part{{Type: inbox.PartMention, Mention: s.mentionOf(th, m)}},
+	}
+	p.raiseInbox(tenant, AddedKey(th.ID, to), msg, p.now())
+}
+
 // replyToMention posts the reader's reply to a message that mentioned them,
 // as a human message the default does not answer. Only the agents it tags
 // answer it, and tagging takes a member (postNeed).
@@ -1700,6 +1734,37 @@ func (l *threadLocks) of(tenant, id string) *sync.RWMutex {
 // the thread names that cannot answer where it moves is cleared. Shared stays
 // shared: nothing here makes a thread private again.
 func (p *Platform) ShareThread(ctx context.Context, who auth.Principal, id string, in ThreadShare) (threads.Thread, error) {
+	got, err := p.Share(ctx, who, id, in)
+	return got.Thread, err
+}
+
+// NotAdded is a person a share names who was not added, and why, in words
+// that say nothing the sharer may not see.
+type NotAdded struct {
+	Handle string `json:"handle"`
+	Reason string `json:"reason"`
+}
+
+// Shared is what a share did: the thread as it stands, and the people it
+// named who were not added.
+type Shared struct {
+	Thread   threads.Thread `json:"thread"`
+	NotAdded []NotAdded     `json:"not_added"`
+}
+
+// Share is ShareThread, saying who was not added. A person named who cannot
+// read the project the conversation is shared in is not added, as a tag
+// does not reach them (mayBeTold); each person added is told in their inbox,
+// once (raiseAdded).
+func (p *Platform) Share(ctx context.Context, who auth.Principal, id string, in ThreadShare) (Shared, error) {
+	th, err := p.share(ctx, who, id, in)
+	if err != nil {
+		return Shared{}, err
+	}
+	return th, nil
+}
+
+func (p *Platform) share(ctx context.Context, who auth.Principal, id string, in ThreadShare) (Shared, error) {
 	// Held from the first read to the write, so no run of the thread starts
 	// meanwhile and a run starting is not a change the share trips over.
 	mu := p.moves.of(who.Tenant, id)
@@ -1707,16 +1772,16 @@ func (p *Platform) ShareThread(ctx context.Context, who auth.Principal, id strin
 	defer mu.Unlock()
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
-		return threads.Thread{}, err
+		return Shared{}, err
 	}
 	if err := p.changesThread(who, th); err != nil {
-		return threads.Thread{}, err
+		return Shared{}, err
 	}
 	if !takesPart(th, who.Subject) {
-		return threads.Thread{}, fmt.Errorf("%w: only its participants share a conversation", projects.ErrForbidden)
+		return Shared{}, fmt.Errorf("%w: only its participants share a conversation", projects.ErrForbidden)
 	}
 	if len(in.Add) > threads.MaxParticipants {
-		return threads.Thread{}, fmt.Errorf("%w: at most %d people are added at once", threads.ErrInvalid, threads.MaxParticipants)
+		return Shared{}, fmt.Errorf("%w: at most %d people are added at once", threads.ErrInvalid, threads.MaxParticipants)
 	}
 	project, channel := th.Project, cmp.Or(in.Channel, th.Channel)
 	if in.Project != "" && projects.NameOf(in.Project) != th.Project {
@@ -1725,27 +1790,36 @@ func (p *Platform) ShareThread(ctx context.Context, who auth.Principal, id strin
 	moves := project != th.Project || channel != th.Channel
 	if moves || th.Visibility == threads.Private {
 		if err := p.mayChangeThread(who, th); err != nil {
-			return threads.Thread{}, err
+			return Shared{}, err
 		}
 		got, ch, err := p.placeFor(who, project, channel)
 		if err != nil {
-			return threads.Thread{}, err
+			return Shared{}, err
 		}
 		project, channel = got, ch.Name
 		moves = project != th.Project || channel != th.Channel
 	} else if err := p.MayPost(who, Place{Project: th.Project, Thread: th.ID}); err != nil {
-		return threads.Thread{}, err
+		return Shared{}, err
 	}
+	// Only someone who can read the project it is shared in is added, as
+	// only they are told of a tag (mayBeTold); the sharer is told who was
+	// not, as a tag's poster is.
+	tree := p.Projects.Tree(who.Tenant)
 	add := make([]threads.Participant, 0, len(in.Add))
+	notAdded := []NotAdded{}
 	for _, handle := range in.Add {
 		subject, found := p.byHandle(who.Tenant, handle)
 		if !found {
-			return threads.Thread{}, fmt.Errorf("%w: no one in this workspace goes by @%s", threads.ErrInvalid, handle)
+			return Shared{}, fmt.Errorf("%w: no one in this workspace goes by @%s", threads.ErrInvalid, handle)
+		}
+		if !p.mayBeTold(who.Tenant, tree, threads.Thread{Project: project, Visibility: threads.Shared}, subject) {
+			notAdded = append(notAdded, NotAdded{Handle: handle, Reason: "they cannot read this project, so they were not added"})
+			continue
 		}
 		add = append(add, threads.Participant{Kind: threads.Person, Name: subject})
 	}
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
-		return threads.Thread{}, err
+		return Shared{}, err
 	}
 	def := th.Default
 	if project != th.Project && def != "" && def != Auto && p.tagRefusal(who.Tenant, project, def) != "" {
@@ -1766,12 +1840,21 @@ func (p *Platform) ShareThread(ctx context.Context, who auth.Principal, id strin
 	if moves {
 		if _, err := p.Runs.Conversation(who.Tenant, id); err == nil {
 			if project != th.Project {
-				return threads.Thread{}, ErrStaysInProject
+				return Shared{}, ErrStaysInProject
 			}
-			return threads.Thread{}, ErrStaysInChannel
+			return Shared{}, ErrStaysInChannel
 		}
 	}
-	return p.Threads.Share(who.Tenant, id, th.Version, project, channel, def, agents, mode, add, counted, who.Subject, p.now())
+	stored, err := p.Threads.Share(who.Tenant, id, th.Version, project, channel, def, agents, mode, add, counted, who.Subject, p.now())
+	if err != nil {
+		return Shared{}, err
+	}
+	for _, a := range add {
+		if a.Name != who.Subject && !takesPart(th, a.Name) && takesPart(stored, a.Name) {
+			p.raiseAdded(who.Tenant, stored, who.Subject, a.Name)
+		}
+	}
+	return Shared{Thread: stored, NotAdded: notAdded}, nil
 }
 
 // byHandle is the subject of the person who goes by a handle.
