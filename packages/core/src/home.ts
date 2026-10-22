@@ -130,6 +130,44 @@ export function notificationsFromWaiting(waiting: HomeWaiting[]): HomeNotificati
   };
 }
 
+/** One announcement from a project the person belongs to, for What's new. */
+export interface HomeUpdate {
+  /** The inbox message's id. */
+  id: string;
+  /** The project it was posted in, by name: "" is the workspace itself. */
+  project: string;
+  /** The project as people see it: its title, or the workspace's name. */
+  projectTitle: string;
+  subject: string;
+  /** Who posted it: a person, or an agent scheduled in the project. */
+  from: { kind: "person" | "agent" | "system"; name: string };
+  /** When it was posted, ISO. */
+  at: string;
+  unread: boolean;
+  /** Where it opens on the web, such as the project's inbox with it selected. */
+  url?: string;
+}
+
+/** How many announcements What's new shows. The rest are in the inbox. */
+export const HOME_UPDATES_MAX = 5;
+
+/**
+ * What's new in the order Home shows it: unread first, then newest first,
+ * and by id when two arrive together; at most `HOME_UPDATES_MAX`.
+ */
+export function orderUpdates(items: HomeUpdate[]): HomeUpdate[] {
+  const time = (u: HomeUpdate) => {
+    const t = Date.parse(u.at);
+    return Number.isNaN(t) ? 0 : t;
+  };
+  return [...items]
+    .sort(
+      (a, b) =>
+        Number(b.unread) - Number(a.unread) || time(b) - time(a) || a.id.localeCompare(b.id),
+    )
+    .slice(0, HOME_UPDATES_MAX);
+}
+
 /** Which agent answers the person's direct messages. */
 export interface HomeAnsweredBy {
   agents: { id: string; name: string }[];
@@ -203,6 +241,8 @@ export interface HomeModel {
   starts: HomeStart[];
   /** What needs this person: inbox items and open alerts. */
   notifications: HomeNotifications;
+  /** What's new: announcements from the person's projects. Leave out to hide it. */
+  updates?: HomeUpdate[];
   /** @deprecated Use `notifications`. Read only when `notifications` is absent. */
   waiting?: HomeWaiting[];
   /** Leave out when the person can't choose. */

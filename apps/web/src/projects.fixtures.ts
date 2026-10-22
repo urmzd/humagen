@@ -33,6 +33,10 @@ export function view(
     ...(opts.managed ? { managed: opts.managed } : {}),
     experts: [],
     agents: { enable: [] },
+    // Fixtures read as a workspace admin's: owner everywhere, every action.
+    members: [{ who: "*", role: "member" }],
+    access: { role: "owner", from: "", via: "projects:govern" },
+    actions: ["create", "propose", "notes", "edit", "move", "archive", "delete", "limits", "announce"],
     version: opts.version ?? 1,
     created_by: "ada",
     created_at: at,
@@ -92,3 +96,14 @@ export const globexDetail: ProjectDetail = {
     { scope: { kind: "tenant" }, from: "" },
   ],
 };
+
+/** A project as the server sends it, with whatever a test needs set: a member of it by default, with no actions. */
+export function projectView(p: Partial<ProjectView> & { name: string }): ProjectView {
+  return {
+    ...view(p.name),
+    members: [{ who: "*", role: "member" }],
+    access: { role: "member", from: "", via: "*" },
+    actions: [],
+    ...p,
+  };
+}

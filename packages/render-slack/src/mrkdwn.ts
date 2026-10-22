@@ -36,6 +36,18 @@ export function escapeSlackText(text: string): string {
     .join("");
 }
 
+/**
+ * Announcement text for Slack, which pings nobody: every `&`, `<` and `>` is
+ * an entity, so user mentions (`<@U123>`), `<!here>`, `<!channel>`,
+ * `<!everyone>`, `<!subteam^…>` and links are shown as typed, and a bare
+ * `@here`, `@channel` or `@everyone` is broken with a zero-width space.
+ * Announcements reach a whole project and may be written by a model, so,
+ * unlike `escapeSlackText`, not even a user mention is kept.
+ */
+export function escapeAnnouncement(text: string): string {
+  return escapeHtml(text).replace(/@(here|channel|everyone)\b/gi, "@\u200B$1");
+}
+
 /** Whether the whole string is one user mention, such as `<@U123>`. */
 export function isMention(text: string): boolean {
   return /^<@[UW][A-Z0-9]+(?:\|[^<>]*)?>$/.test(text);

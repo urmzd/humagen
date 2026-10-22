@@ -3,7 +3,7 @@ import { defaultCopy } from "@warp/components";
 import { ActionId, type UiAction } from "@warp/core";
 import { CheckIcon, ChevronDownIcon, WebSurface } from "@warp/render-web";
 import { AgentMessage, Thread, useQueue } from "@warp/web";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import { actedFor, type Run } from "./adapter.ts";
 import { Composer } from "./Composer.tsx";
@@ -211,7 +211,10 @@ export function Chat({
   onThread,
   onChanged,
   onProjectCreated,
+  home,
 }: {
+  /** Quiet lines under the prompt on Home: what needs the person, and what is new. */
+  home?: ReactNode;
   threadId: string | null;
   /** The reader's subject: Retry asks a turn again as them, so only on a turn that acted for them. */
   me: string;
@@ -576,7 +579,7 @@ export function Chat({
 
   if (!threadId || path.length === 0) {
     return (
-      <HomePage greeting={greeting} canRun={canRun} hasAgents={agents.length > 0}>
+      <HomePage greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={home}>
         {composer}
         {canRun && starters.length > 0 && (
           <ul aria-label="Start with" className="mx-auto flex w-full max-w-4xl flex-wrap justify-center gap-2 px-4">

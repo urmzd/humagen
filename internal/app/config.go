@@ -494,13 +494,13 @@ func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error 
 	if err != nil {
 		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
 	}
-	declared, owns := fileRoot(w)
+	file, owns := fileRoot(w)
 	if w.Agents != nil {
-		declared.Agents, owns = fileAgents(*w.Agents), append(owns, projects.FieldAgents)
+		file.Agents, owns = fileAgents(*w.Agents), append(owns, projects.FieldAgents)
 	}
 	switch {
 	case len(owns) > 0:
-		_, err = p.Projects.Upsert(tenant, declared, owns, fileWriter, now)
+		_, err = p.Projects.Upsert(tenant, file, owns, fileWriter, now)
 	case root.Managed == projects.ManagedFile:
 		_, err = p.Projects.Release(tenant, projects.Root, fileWriter, now)
 	}
@@ -536,6 +536,9 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 	if a := d.Account; a != nil {
 		pr.Account = &projects.AccountInfo{Customer: a.Customer, ExternalID: a.ExternalID, URL: a.URL}
 	}
+	if d.Members != nil {
+		pr.Members = membersOf(d.Members)
+	}
 	if d.Agents != nil {
 		pr.Agents = fileAgents(*d.Agents)
 	}
@@ -548,6 +551,7 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 		projects.FieldAccount:      d.Account != nil,
 		projects.FieldInstructions: d.Instructions != "",
 		projects.FieldExperts:      d.Experts != nil,
+		projects.FieldMembers:      d.Members != nil,
 		projects.FieldAgents:       d.Agents != nil,
 	} {
 		if set {
@@ -555,6 +559,15 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 		}
 	}
 	return pr, owns
+}
+
+// membersOf is a list of members as the store keeps them.
+func membersOf(ms []spec.Member) []projects.Entry {
+	out := make([]projects.Entry, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, projects.Entry{Who: m.Who, Role: projects.Role(m.Role)})
+	}
+	return out
 }
 
 // fileAgents is a project's agents as the file declares them.

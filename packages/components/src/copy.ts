@@ -195,6 +195,121 @@ export const defaultCopy = {
     result: "Result",
     note: "Note",
     mention: "Mention",
+    announcement: "Announcement",
+  },
+  /** Announcements: news posted in a project's inbox, read under Updates. */
+  announcements: {
+    post: "Post Announcement",
+    withdraw: "Withdraw",
+    hideForMe: "Hide for Me",
+    hiddenForYou: "Hidden for you. Others still see it.",
+    empty: "Nothing has been announced here yet.",
+    includeSubProjects: "Include Sub-projects",
+    postedIn: (project: string) => `Posted in ${project}`,
+    withdrawnBy: (who: string) => `Withdrawn by ${who}`,
+    mute: "Mute Project",
+    unmute: "Unmute Project",
+    muted: "Muted. Its announcements stay out of your inbox and stay in the project's.",
+    rootNotMuted: "The workspace's announcements are for everyone, so they can't be muted.",
+    tooMany: (n: number) => `At most ${n} announcements a day are posted here. Try again tomorrow.`,
+  },
+  /** Who holds a role in a project, and what it lets them do. */
+  roles: {
+    viewer: "Viewer",
+    member: "Member",
+    owner: "Owner",
+    everyone: "Everyone in the workspace",
+    addPerson: "Add Person",
+    nameOwners: "Name Owners",
+    moveProject: "Move Project",
+    archive: "Archive Project",
+    unarchive: "Restore Project",
+    ownerFrom: (project: string) => `Owner from ${project}`,
+    everyoneOwns:
+      "Everyone in the workspace owns this project. Name owners to narrow who can change it.",
+    needOwner: (project: string) => `You need to own ${project}`,
+    archived: "Archived. Nothing new can be added under it.",
+  },
+  /** A project's page: its tabs, its kinds in words, and what each tab says. */
+  project: {
+    tabs: {
+      inbox: "Inbox",
+      overview: "Overview",
+      context: "Context",
+      people: "People",
+      limits: "Limits",
+      history: "History",
+    },
+    /** A kind in words. A workspace's own kind shows its title. */
+    kind: (kind: string, title?: string) =>
+      kind === "company"
+        ? "Company-wide"
+        : kind === "team"
+          ? "Team"
+          : kind === "account"
+            ? "Account"
+            : (title ?? kind),
+    in: (parent: string) => `in ${parent}`,
+    /** The caller's role, in words: "You own it". */
+    yourRole: (role: string) =>
+      role === "owner"
+        ? "You own it"
+        : role === "member"
+          ? "You are a member"
+          : role === "viewer"
+            ? "You can view it"
+            : "",
+    allProjects: "All projects",
+    newSubProject: "New Sub-project",
+    newTask: "New Task",
+    deleteProject: "Delete Project",
+    move: "Move",
+    moveUnder: "Move under",
+    topLevel: "The top level",
+    subProjects: "Sub-projects",
+    noSubProjects: "No sub-projects yet.",
+    instructions: "Instructions",
+    instructionsHint:
+      "Sent to every agent answering here and below, after the instructions of the projects above.",
+    noInstructions: "No instructions of its own.",
+    saveInstructions: "Save Instructions",
+    proposeHint: "Your note is a proposal. The project's owners keep or discard it in their inbox.",
+    members: "Members",
+    ownersAbove: "Owners from above",
+    remove: "Remove",
+    who: "Who",
+    whoHint: "A person's subject, or role:<name> for everyone who holds a role.",
+    role: "Role",
+    saveMembers: "Save Members",
+    everyoneNeeded: "Everyone keeps at least viewer here, since every project stays visible.",
+    limitFrom: (project: string) => `${project}'s limit also applies here.`,
+    workspaceLimit: "The workspace's own limit applies here too.",
+    ownerLimit: "A tighter limit, as an owner above",
+    ownerLimitHint:
+      "It can only be tighter than every limit over this project. An admin's limit is changed under Settings.",
+    period: "Each",
+    maxRuns: "Most runs",
+    setLimit: "Set Limit",
+    removeLimit: "Remove Limit",
+    what: {
+      created: "Created",
+      updated: "Changed",
+      deleted: "Deleted",
+      managed: "Taken over or let go by the platform file",
+      moved: "Moved",
+      archived: "Archived or restored",
+      members: "Members changed",
+      agents: "Agents changed",
+      home: "An agent's home changed",
+      experts: "Experts changed",
+      channel: "A channel changed",
+    } as Record<string, string>,
+    noHistory: "Nothing has changed here yet.",
+    older: "Show Older",
+    subject: "Subject",
+    text: "What to say",
+    warning: "Mark as a warning",
+    whoAnnounces: "Who may announce",
   },
   serviceStatus: {
     operational: "Operational",
@@ -413,6 +528,9 @@ export const defaultCopy = {
             : "Alert"
         : "Inbox",
     moreWaiting: (n: number) => `${n} more in the inbox`,
+    whatsNew: "What's new",
+    nothingNew: "Nothing new from your projects.",
+    moreUpdates: (n: number) => `${n} more under Updates`,
     moreAlerts: (n: number) => `${n} more open alert${n === 1 ? "" : "s"}`,
     review: "Review",
     whoAnswers: "Who answers you",
@@ -608,6 +726,9 @@ export const defaultCopy = {
     },
     noChannels: "Only general so far.",
     noThreads: "No threads here yet. Start one below.",
+    /** Under a room or a channel, for a viewer of its project. */
+    viewerOnly:
+      "You can view this project. Its members post here; you answer what you're asked from your inbox.",
     moreThreads: "See More",
     /** Where a thread is, in its meta line: "Shared in Globex › #renewals". */
     sharedIn: (project: string, channel: string) => `Shared in ${project} › #${channel}`,

@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/state"
 )
 
@@ -37,6 +38,9 @@ const MaxPinned = 50
 
 // maxPinID bounds one pinned conversation's id, in bytes.
 const maxPinID = 128
+
+// MaxMuted bounds how many projects a person can mute.
+const MaxMuted = 100
 
 // Theme is how the console is drawn.
 type Theme string
@@ -69,11 +73,15 @@ type Preferences struct {
 	// most recently pinned first. Only ids are kept: a conversation the
 	// person can no longer read is simply not shown.
 	Pinned []string `json:"pinned"`
+	// Muted is the projects whose announcements are left out of the
+	// person's own inbox. They stay in each project's inbox, and the
+	// workspace itself cannot be muted.
+	Muted []string `json:"muted"`
 }
 
 // Defaults is what a person has before they choose anything.
 func Defaults() Preferences {
-	return Preferences{Theme: System, Accent: Accents[0], Pinned: []string{}}
+	return Preferences{Theme: System, Accent: Accents[0], Pinned: []string{}, Muted: []string{}}
 }
 
 type photo struct {
@@ -114,6 +122,9 @@ func Open(st state.Store) (*Store, error) {
 	if err := s.kept.Load(func(tenant, subject string, p Preferences) error {
 		if p.Pinned == nil {
 			p.Pinned = []string{}
+		}
+		if p.Muted == nil {
+			p.Muted = []string{}
 		}
 		s.by[key(tenant, subject)] = &entry{Preferences: p}
 		return nil
@@ -252,6 +263,41 @@ func (s *Store) SetPinned(tenant, subject string, ids []string) (Preferences, er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.change(tenant, subject, false, func(e *entry) { e.Pinned = next })
+}
+
+// CleanMuted checks a list of muted projects and drops repeats, keeping the
+// first. Each is a project's name; the workspace, "" or "~", is never muted,
+// since what it announces is for everyone.
+func CleanMuted(names []string) ([]string, error) {
+	if len(names) > MaxMuted {
+		return nil, fmt.Errorf("%w: at most %d projects can be muted", ErrInvalid, MaxMuted)
+	}
+	seen := make(map[string]bool, len(names))
+	next := make([]string, 0, len(names))
+	for _, name := range names {
+		switch {
+		case name == projects.Root || name == projects.RootAddress:
+			return nil, fmt.Errorf("%w: the workspace cannot be muted", ErrInvalid)
+		case !projects.ValidName(name):
+			return nil, fmt.Errorf("%w: a muted project is named by its name", ErrInvalid)
+		}
+		if !seen[name] {
+			seen[name] = true
+			next = append(next, name)
+		}
+	}
+	return next, nil
+}
+
+// SetMuted replaces the projects a person has muted.
+func (s *Store) SetMuted(tenant, subject string, names []string) (Preferences, error) {
+	next, err := CleanMuted(names)
+	if err != nil {
+		return Preferences{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.change(tenant, subject, false, func(e *entry) { e.Muted = next })
 }
 
 // MarkOnboarded records that a person has been through the first-run questions.

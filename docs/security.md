@@ -39,12 +39,20 @@ own: every project route checks `projects:read` or `projects:write` first, and
 govern is asked for on top, for the workspace, a company project, its notes, or
 a deleted name. A deleted name's tombstone is never forgotten while
 conversations or files are still filed under it, so later deletes cannot clear
-the way to adopting them. Its notes are asked the same through every route that changes
-them: the project's memory routes and the inbox. The agent memory routes reach
-an agent's own notes only, and answer 404 for a project's memory owner
-(`project:<name>`, and `project:` for the workspace). Projects have no roles yet, so anyone holding `projects:write`
-changes every other project, and every project is visible to everyone holding
-`projects:read`.
+the way to adopting them. Then the caller's role on the project decides, and
+only narrows: a viewer reads, a member creates projects under it and proposes
+notes, an owner changes it (see [Project roles](authorization.md#project-roles)).
+A project the caller has no role in answers 404. A project's notes are asked
+the same through every route that changes them: the project's memory routes,
+the inbox, and the memory agent, which keeps what it learns from a turn
+unasked only when the workspace chose that and the person the turn was for may
+change those notes themselves. The agent memory routes reach an agent's own
+notes only, and answer 404 for a project's memory owner (`project:<name>`, and
+`project:` for the workspace). Reads are not confined to members yet: every
+project keeps an entry for everyone of at least viewer, and a members-only
+project is refused (409), so a role never claims a privacy that is not
+enforced. A project's runs, threads and memory stay readable by everyone with
+the permission to read them.
 
 A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:
@@ -57,9 +65,10 @@ that lives in a project is not available in the workspace itself or in any
 project outside its home's subtree. A message that tags no agent goes to the
 default its place inherits, and with none nothing runs: nothing routes on its
 own. Setting the workspace default changes who answers everyone's untagged
-messages, so it needs `projects:govern`; to keep the old split where managers
-set it, add `role:manager` as an owner of the workspace once project roles
-exist, or grant them `govern on projects`.
+messages, so it needs `projects:govern`. Owning the workspace is not enough,
+since the workspace itself is changed only with govern: to keep the old split
+where managers set it, grant them `govern on projects`, or a role that holds it
+such as `steward` in [authorization](authorization.md#example).
 
 The directory (`people:read`, which every built-in role holds) shows each
 person's name, handle, roles and picture to everyone in the workspace. No
@@ -136,9 +145,10 @@ no permission, grants nothing.
   API answers a question, or asks for a run, for a Slack person (`act_as`) only
   through a Slack client that names the app's own credential as its `machine`
   and maps that person in `people`. Anyone unmapped is refused (403) and the
-  app does not ask. To answer, the mapped person's own grant (what the policy
-  grants their subject) must include `runs:write`, as well as the
-  credential's. The answer is recorded as the mapped principal, with the
+  app does not ask. To answer, to ask for a run or to post in a thread for
+  them, the mapped person's own grant (what the policy grants their subject)
+  must include `runs:write`, as well as the credential's: a workspace viewer
+  starts nothing because a machine relays their words. The answer is recorded as the mapped principal, with the
   credential as `Via`: a credential never approves a call in a run it raised
   as itself, whoever it names. Mapping a person is `clients:write`.
 - **A person posts only as themselves.** A message in a shared thread is
@@ -155,7 +165,7 @@ no permission, grants nothing.
   app is trusted to say truthfully which Slack user clicked; the platform
   cannot check it. A mapped person's roles are what the policy grants their
   subject: a click carries no groups, so a role held only through a group
-  does not count, and such a person cannot answer from Slack. Keep that credential as you would those people's sign-ins,
+  does not count, and such a person cannot answer, ask or post from Slack. Keep that credential as you would those people's sign-ins,
   map only people who use that Slack workspace, and remove a mapping when
   someone leaves.
 - **A tool that acts as a person uses that person's credential and no
@@ -246,7 +256,7 @@ from answers, run events, what the model was sent and the server log.
 | asked about with the Slack app's message shortcut | the person who pressed it, when the message is theirs. On anyone else's message, or a bot's, nobody: the app asks as itself, since the message's words are the whole request and were not the presser's. Asking as itself acts for whoever the app's own credential is, so where that is a person, as under a dev sign-in (an empty `WARP_TOKEN` against `-auth=dev`, where every request is `dev`'s), it acts for that person. A mention in a channel thread differs: the thread's messages go ahead of the asker's own words, each with who wrote it, and the run acts for the asker, who asked there |
 | raised by a Slack client's connector | the one person the team's enabled Slack clients map the Slack user to; none, or two different people, is nobody |
 | started by a message in a shared thread: an agent it tags, `@auto`, or the default it inherits | the person who posted the message, or the person a client's credential posted it for (`act_as`), and never another participant. Like a mention in a Slack channel thread, the run is sent the room up to the message, what others said there each with who said it, ahead of the poster's own words, as it reads a tool's result: a request someone else made in the thread is acted on with the poster's credentials only when the poster's own words ask for it, as "go ahead" does. Each earlier turn is one line, its line breaks made spaces, after who took it: a person by name and by handle, which no one else has, an agent marked as one. The room is fenced off from the poster's words, which follow with who posted them, so no one can write a line that reads as the poster's, nor pass for them by display name, which anyone may share and which may be an agent's (`TestNoOneInTheRoomPutsWordsInThePostersMouth`). What the run finds is posted in the thread, which everyone who reads the project reads. A failed answer is retried only by the poster, from their inbox, as an answer to the same message; a room offers no Retry or Regenerate of its own. A follow-up asked through the API after a turn in such a thread acts for whoever asks it, and is sent the room the same way: each earlier follow-up with who asked it, or as acting for nobody, and its own words with who asks them (`TestAFollowUpInARoomNamesWhoAskedEachTurn`) |
-| Run Now on a schedule | whoever pressed it, when they wrote what it runs: whoever last changed its text, or its creator while nobody has, and nobody else has since chosen its agent. Saving a schedule without changing its text writes none of it, so moving someone else's to another time does not make it yours. Anyone with `schedules:write` may change a schedule's words, so anyone else's press acts for nobody, as the schedule's own clock does: one person's words never run with another's credential, nor on an agent someone else chose for them. A schedule edited before warp kept who wrote it acts for nobody until its text is written again |
+| Run Now on a schedule | whoever pressed it, when they wrote what it runs: whoever last changed its text, or its creator while nobody has, and nobody else has since chosen its agent or its project, whose instructions and notes go ahead of its text. Saving a schedule without changing its text writes none of it, so moving someone else's to another time does not make it yours. Anyone with `schedules:write` may change a schedule's words, so anyone else's press acts for nobody, as the schedule's own clock does: one person's words never run with another's credential, nor on an agent or in a project someone else chose for them. What a project itself says, its instructions and notes, is still written by whoever may change that project, as for every turn filed in it. A schedule edited before warp kept who wrote it acts for nobody until its text is written again |
 | Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person: in the inbox signed in as themselves, where anyone else is not offered Retry (the card says only that person can retry it) and is refused (403), and in the Slack app by a Slack person its client maps to them, asked for with `act_as`, where anyone else, an operator included, is refused. So one person's words never run with another's credential, nor a person's credential on someone else's choice. The exception is a turn the Slack app asked as itself, which it asks again the same way, through the app, by the person who asked or an operator: where the app's own credential is a person, as under a dev sign-in, such a turn acted for that person, and its retry acts for them again. A turn that acted for nobody is retried for nobody: in the inbox by anyone with `runs:write`, in the Slack app by the person who asked or an operator, and only an operator once a restart has made the app forget who asked. Each person's retry is a run of its own, and pressing again joins it |
 | Retry or Regenerate in a console conversation | the person pressing it, as anything they send there, so each is offered only on a turn that acted for them: on anyone else's, or one that acted for nobody, neither is offered, and a failed turn says why instead. A turn recorded before warp said whom a run acts for counts as the person's who asked it under their own name from the console or the API, unless its words were someone else's: an earlier turn's at the same point, asked by anyone else, which is what the console's Retry and Regenerate asked then. One a machine asked for a person (the Slack app's `act_as`, its message shortcut included) and a retry warp asked for nobody count as nobody's |
 | asked by a machine as itself, a schedule on its own clock, an eval, housekeeping, a call from another agent, GitHub | nobody |
@@ -446,13 +456,19 @@ decided per message:
 | Kind | To see | To settle |
 |------|--------|-----------|
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
-| Failed run | `runs:read` | `runs:write`, and to retry a turn that acted for a person, being that person ([Tool credentials](#tool-credentials)) |
-| Proposed memory | `agents:read` | `agents:write` for an agent's; `projects:write` for a project's, and `projects:govern` as well for the workspace's and a company project's |
-| A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer; where the answer may reach the credentials of the person a run acts for, a choice or reply only by that person, and an approval with edited arguments or a note only by them |
-| A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to reply in the thread as themselves or set it aside |
+| Failed run | `runs:read` | `runs:write`, and to retry a turn that acted for a person, being that person ([Tool credentials](#tool-credentials)); retrying a turn filed in a project needs a member of it as well |
+| Proposed memory | `agents:read` | `agents:write` for an agent's, and owning its home for one that lives in a project; `projects:write` and owning the project for a project's, and `projects:govern` as well for the workspace's and a company project's |
+| Announcement | `projects:read`, and a member of its project or one below it (anyone who reads the project's own inbox) | hiding or snoozing it is the reader's own (`projects:read`); withdrawing it is its author's or an owner's (`projects:write`) |
+| A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer; where the answer may reach the credentials of the person a run acts for, a choice or reply only by that person, and an approval with edited arguments or a note only by them (the question names them as `steered_for`) |
+| A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to set it aside or to reply in the thread as themselves, which takes seeing the thread's project; a reply that tags anyone takes a member of it, since its tags start the agents and tell the people they name as any message's do |
 
 A message a caller may not see answers 404, not 403, and is left out of their
-count. A question is addressed to the people its run's pinned spec lets answer
+count, and a notice about it never reaches their event stream. An
+announcement's audience (`project:<name>`) and a proposed note's
+(`owners:<name>`) are decided from the project tree at each read, so a revoked
+membership hides past announcements at the next one. Announcements are plain
+text; surfaces escape Slack mention syntax before showing them, and at most 20
+a project and 200 a workspace are posted a day. A question is addressed to the people its run's pinned spec lets answer
 it (`approvers` or `answerers`, by subject or `role:<name>`), and never to the
 person who asked for an approval's run or its tree. A question asked of
 `sme:<topic>` goes to the experts its project's chain names for the topic,
@@ -482,8 +498,8 @@ acts for says so, on the run and in the inbox (`tool.acts_for_person`).
 Anyone it is addressed to may approve it as asked or deny it, but only that
 person may approve it with edited arguments, as fiber enforces: anyone
 else's edit is refused (403). Every approval card says this, in the
-console's inbox and on the run, and in the Slack app, and none offers an
-edit of such a call.
+console's inbox, on the run and in an agent's approval queue, and in the
+Slack app, and none offers an edit of such a call.
 
 A reply or a choice steers what a run does next, unlike approving a call as
 it was asked, and so do an approval's note, which the model is shown on a
@@ -497,20 +513,39 @@ found), that person alone says anything to it: its reply and choice
 questions are addressed to them, anyone else's answer is refused (403), and
 anyone else may approve or deny its calls only as asked, with no edit and no
 note (403 with either). Each is checked on the run, in the inbox and through
-a surface's `act_as`, before the runtime is asked. So one person's words, or
-their pick of the options, never reach another person's tools with that
-person's credential. Any other run, one that acts for nobody, or reaches
-only shared credentials, and was called by none that reaches a person's, is
-answered by whoever `answerers` and `approvers` allow.
+a surface's `act_as`, before the runtime is asked. The question names that
+person (`steered_for`, as it stood when it was asked), so the console's
+approval queue offers nobody else a note, and says why. So nothing anyone else
+says in answer to such a run, or to a run it called, nor their pick of the
+options, reaches the person's tools with their credential. Any other run,
+one that acts for nobody, or reaches only shared credentials, and was called
+by none that reaches a person's, is answered by whoever `answerers` and
+`approvers` allow.
 
-`answerers` still decides who may answer at all. When it leaves out the
-person such a run acts for, nobody may answer its reply or choice: the
-question is addressed to that person, the runtime refuses them, and warp
-refuses everyone else. The run waits until the question expires (a day by
-default) and takes its default, or someone stops it, the same fail-closed
-outcome as `approvers` naming only the person who asked, without
-`self_approval`. On an agent granted a person-scoped tool provider, leave
-`answerers` unset, or name everyone who uses the agent.
+`answerers` still decides who may answer at all: the asking run's own, so
+a called agent's for what a called run asks. When it leaves out the person
+whose credentials the answer may reach, nobody may answer its reply or
+choice: the question is addressed to that person, the runtime refuses them,
+and warp refuses everyone else. The run waits until the question expires (a
+day by default) and takes its default, or someone stops it, the same
+fail-closed outcome as `approvers` naming only the person who asked, without
+`self_approval`. On an agent granted a person-scoped tool provider, and on
+every agent it may call, directly or through another, leave `answerers`
+unset, or name everyone who uses the agent.
+
+That covers what a run is answered, not what a later turn reads. Each turn
+of a conversation in the console or the API is sent the conversation so
+far: every earlier turn's words, whoever asked them, and its answer. Anyone
+with `runs:write` may add a turn to any conversation in the workspace, and
+an earlier turn whose run reached no person's own credential was answered by
+whoever its `answerers` and `approvers` allowed, so its answer can carry
+someone else's words. When a person continues the conversation with an
+agent granted a person-scoped tool, that turn reads all of it with their
+credential. They see those turns and answers before they continue, as in a
+Slack thread, but unlike there the transcript the agent is sent does not
+say who wrote each turn, and an answer drawn from someone else's reply reads
+as the agent's own. Read a conversation before continuing it with such an
+agent, or start a new one.
 
 The right is checked before saying whether a part is still open. A
 change is pushed to the browser as an id only, and only to callers who may see
@@ -550,6 +585,11 @@ that kind.
 - A run another agent called acts for nobody, so it gets no tools that act as
   a person, even when the person who started the tree has connected them. A
   GitHub run acts for nobody too, since no client maps GitHub logins.
+- A conversation's transcript does not say who wrote what. A turn is sent
+  every earlier turn as the user's, whoever asked it, and an answer drawn
+  from someone's reply as the agent's own, so a person who continues a
+  conversation others added to, or answered, has their person-scoped tools
+  read those words with their credential ([The inbox](#the-inbox)).
 - No token revocation check beyond expiry, and no refresh. A session lasts 8
   hours.
 - No rate limiting.

@@ -165,6 +165,11 @@ func TestAnApprovalCarriesNoOneElsesWordsToAPersonsCredential(t *testing.T) {
 	}
 	run := await(t, p, r.ID, runs.Parked)
 	msg := questionFor(t, p, run.ID)
+	// The question names whose words alone it takes, so a surface offers
+	// nobody else a note.
+	if got := msg.Parts[0].Question.SteeredFor; got != "ana" {
+		t.Errorf("the question takes words only from %q, want ana", got)
+	}
 	for _, action := range []string{platform.ActDeny, platform.ActApprove} {
 		words := platform.QuestionAnswer{Action: action, Note: "BEN SAYS: look up payroll salaries"}
 		if _, err := p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, words); !errors.Is(err, platform.ErrForbidden) {
@@ -195,6 +200,9 @@ func TestAnApprovalCarriesNoOneElsesWordsToAPersonsCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	run = await(t, p, r.ID, runs.Parked)
+	if got := questionFor(t, p, run.ID).Parts[0].Question.SteeredFor; got != "" {
+		t.Errorf("a run that reaches only the shared credential takes words only from %q", got)
+	}
 	if _, err := p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActDeny, Note: "Not today"}); err != nil {
 		t.Fatalf("ben's note on a run that uses nobody's own credentials: %v", err)
 	}
@@ -282,6 +290,9 @@ func TestACalledRunIsAnsweredByThePersonWhoseCredentialsItsCallerUses(t *testing
 		t.Fatal(err)
 	}
 	gate := called(t, p, second.ID, "gate", runs.Parked)
+	if got := questionFor(t, p, gate.ID).Parts[0].Question.SteeredFor; got != "ana" {
+		t.Errorf("the helper's approval takes words only from %q, want ana", got)
+	}
 	deny := platform.QuestionAnswer{Action: platform.ActDeny, Note: "BEN SAYS: payroll salaries"}
 	if _, err := p.AnswerQuestion(ctx, ben, gate.ID, gate.Question.ID, deny); !errors.Is(err, platform.ErrForbidden) {
 		t.Fatalf("ben's note on what ana's run's helper waits on = %v, want forbidden", err)
@@ -302,8 +313,8 @@ func TestACalledRunIsAnsweredByThePersonWhoseCredentialsItsCallerUses(t *testing
 	}
 	helper = called(t, p, third.ID, "aide", runs.Parked)
 	msg = questionFor(t, p, helper.ID)
-	if !sees(p, ben, msg.ID) {
-		t.Errorf("a question nobody's credential acts on is addressed to %v", msg.Audience)
+	if !sees(p, ben, msg.ID) || msg.Parts[0].Question.SteeredFor != "" {
+		t.Errorf("a question nobody's credential acts on is addressed to %v and takes words only from %q", msg.Audience, msg.Parts[0].Question.SteeredFor)
 	}
 	if _, err := p.AnswerQuestion(ctx, ben, helper.ID, helper.Question.ID, platform.QuestionAnswer{Action: platform.ActReply, Text: "anything"}); err != nil {
 		t.Fatalf("ben answering a called run under one that acts for nobody: %v", err)
@@ -357,4 +368,51 @@ func TestAnswerersThatLeaveOutThePersonLeaveNobodyToAnswer(t *testing.T) {
 		m, err := w.p.InboxGet(ana, msg.ID)
 		return err == nil && m.Parts[0].State != inbox.PartOpen
 	})
+}
+
+// What a called run asks is ana's alone when her run called it, but the
+// called agent's own answerers still decide who may answer at all, as the
+// runtime reads them. When they leave her out, nobody may: the question
+// waits, addressed to her, until it expires or the tree is stopped, and
+// nothing reaches the server. So an agent that one granted a person-scoped
+// tool may call needs answerers that name everyone who uses it, or none.
+func TestACalledAgentsAnswerersThatLeaveOutThePersonLeaveNobodyToAnswer(t *testing.T) {
+	p, server, _ := steeredWorld(t, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
+	ctx := t.Context()
+	rev, err := p.Agents.Get(ctx, tenant, "aide", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := rev.Spec
+	spec.Answerers = []string{"ben"}
+	if _, err := p.Agents.Revise(ctx, tenant, spec, rev.Rev, "test"); err != nil {
+		t.Fatal(err)
+	}
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-boss-answerers", Agent: "boss", Text: "Look something up for me", Actor: platform.ActorOf(ana)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	helper := called(t, p, first.ID, "aide", runs.Parked)
+	msg := questionFor(t, p, helper.ID)
+	if !slices.Equal(msg.Audience, []string{"ana"}) {
+		t.Errorf("addressed to %v, want ana", msg.Audience)
+	}
+	// The runtime refuses ana, whom the helper's answerers leave out, and
+	// warp refuses ben.
+	for _, by := range []auth.Principal{ana, ben} {
+		reply := platform.QuestionAnswer{Action: platform.ActReply, Text: by.Subject + "'s words"}
+		if _, err := p.AnswerQuestion(ctx, by, helper.ID, helper.Question.ID, reply); !errors.Is(err, platform.ErrForbidden) {
+			t.Fatalf("%s answered = %v, want forbidden", by.Subject, err)
+		}
+	}
+	if got, _ := p.Runs.Get(tenant, helper.ID); got.Status != runs.Parked {
+		t.Fatalf("the helper is %s, want still waiting", got.Status)
+	}
+	if got := server.Calls(); len(got) != 0 {
+		t.Fatalf("the server was reached with %q", got)
+	}
+	if _, err := p.StopRun(ctx, ana, first.ID); err != nil {
+		t.Fatalf("stopping the run: %v", err)
+	}
+	await(t, p, first.ID, runs.Stopped)
 }

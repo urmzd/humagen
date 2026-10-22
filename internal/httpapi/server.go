@@ -89,16 +89,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.deleteToolCredential))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
-	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, s.reviseAgent))
-	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, s.putAgentHome))
-	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, s.agentHistory))
-	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, s.getCallPolicy))
-	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, s.putCallPolicy))
-	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, s.reachable))
-	mux.HandleFunc("GET /api/agents/{name}/memory", s.authed(auth.AgentsRead, s.listMemory))
-	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, s.addMemory))
-	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, s.removeMemory))
-	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, s.approveMemory))
+	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.reviseAgent)))
+	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.putAgentHome)))
+	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.agentHistory)))
+	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, agentNamed(s.getCallPolicy)))
+	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, agentNamed(s.putCallPolicy)))
+	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, agentNamed(s.reachable)))
+	mux.HandleFunc("GET /api/agents/{name}/memory", s.authed(auth.AgentsRead, agentNamed(s.listMemory)))
+	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, agentNamed(s.addMemory)))
+	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, agentNamed(s.removeMemory)))
+	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, agentNamed(s.approveMemory)))
 	mux.HandleFunc("GET /api/memory/pending", s.authed(auth.AgentsRead, s.pendingMemory))
 	mux.HandleFunc("GET /api/runs", s.authed(auth.RunsRead, s.listRuns))
 	mux.HandleFunc("POST /api/runs", s.authed(auth.RunsWrite, s.createRun))
@@ -157,6 +157,21 @@ func headers(next http.Handler) http.Handler {
 }
 
 type handler func(w http.ResponseWriter, r *http.Request, who auth.Principal)
+
+// agentNamed answers 404 for a path that names an agent other than by its
+// canonical name, in lower case with no spaces around it, as the registry and
+// every store keep it. Every check on the agent, its home's owners and
+// whether the platform provides it among them, then reads the name the
+// change is made under, so another spelling of it is no way around one.
+func agentNamed(h handler) handler {
+	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		if name := r.PathValue("name"); name != agentspec.NormalizeName(name) {
+			fail(w, http.StatusNotFound, fmt.Sprintf("no agent called %q: agents are named in lower case", name))
+			return
+		}
+		h(w, r, who)
+	}
+}
 
 // authed authenticates, authorizes, bounds the body, and records every change.
 // An empty permission means any signed-in caller.
@@ -271,6 +286,11 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		fail(w, http.StatusForbidden, "this agent is provided by the platform and cannot be edited")
 		return
 	}
+	// An agent that lives in a project is that project's to change.
+	if err := s.P.OwnsHome(who, body.Spec.Name); err != nil {
+		s.problem(w, err)
+		return
+	}
 	if err := s.P.CheckAgentModel(who.Tenant, body.Spec); err != nil {
 		s.problem(w, err)
 		return
@@ -311,6 +331,20 @@ func (s *Server) agentOwner(w http.ResponseWriter, r *http.Request, who auth.Pri
 	return name, true
 }
 
+// agentToChange is agentOwner for a change to what the agent remembers. An
+// agent that lives in a project is that project's to change, as its spec is.
+func (s *Server) agentToChange(w http.ResponseWriter, r *http.Request, who auth.Principal) (string, bool) {
+	owner, found := s.agentOwner(w, r, who)
+	if !found {
+		return "", false
+	}
+	if err := s.P.OwnsHome(who, owner); err != nil {
+		s.problem(w, err)
+		return "", false
+	}
+	return owner, true
+}
+
 func (s *Server) listMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	owner, found := s.agentOwner(w, r, who)
 	if !found {
@@ -326,7 +360,7 @@ func (s *Server) addMemory(w http.ResponseWriter, r *http.Request, who auth.Prin
 	if !decode(w, r, &body) {
 		return
 	}
-	owner, found := s.agentOwner(w, r, who)
+	owner, found := s.agentToChange(w, r, who)
 	if !found {
 		return
 	}
@@ -348,7 +382,7 @@ func (s *Server) approveMemory(w http.ResponseWriter, r *http.Request, who auth.
 	if !decode(w, r, &body) {
 		return
 	}
-	owner, found := s.agentOwner(w, r, who)
+	owner, found := s.agentToChange(w, r, who)
 	if !found {
 		return
 	}
@@ -385,7 +419,7 @@ func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.
 }
 
 func (s *Server) removeMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	owner, found := s.agentOwner(w, r, who)
+	owner, found := s.agentToChange(w, r, who)
 	if !found {
 		return
 	}
@@ -426,24 +460,52 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	// The run acts for the caller, or for the person a surface asks for:
-	// their credentials are the ones its person-scoped tools use.
+	// their credentials are the ones its person-scoped tools use, and their
+	// own permission and role on the project are the ones that count, never
+	// the credential's, as for posting and answering for them.
 	actor := platform.ActorOf(who)
 	client := ""
+	asks := who
 	if body.ActAs != nil {
-		person, err := s.P.ActsFor(who, *body.ActAs)
+		person, err := s.P.Acting(who, *body.ActAs)
 		if err != nil {
 			s.problem(w, err)
 			return
 		}
-		actor, client = platform.PersonActor(person), body.ActAs.Client
+		if !person.Can(auth.RunsWrite) {
+			s.problem(w, fmt.Errorf("%w: %s may not start runs (asking needs %s)", platform.ErrForbidden, person.Subject, auth.RunsWrite))
+			return
+		}
+		asks, actor, client = person, platform.PersonActor(person.Subject), body.ActAs.Client
+	}
+	// Starting work in a project, or adding a turn to work there, takes
+	// being a member of it. A follow-up is filed where its conversation
+	// is. A turn that follows nothing, or names no project there is, is
+	// Converse's to refuse.
+	project := body.Project
+	if body.After != "" {
+		project = ""
+		if prev, err := s.P.Runs.Get(who.Tenant, body.After); err == nil {
+			project = prev.Project
+		}
+	}
+	if !s.P.HasProject(who.Tenant, projects.NameOf(project)) {
+		project = ""
+	}
+	if err := s.P.MayFileIn(asks, project); err != nil {
+		s.problem(w, err)
+		return
 	}
 	// A caller that retries sends the same key and joins the run it started.
 	id := "api-r-" + token()[:22]
 	if key := r.Header.Get("Idempotency-Key"); key != "" {
 		id = APITagID(who.Subject, key)
 	}
+	// What the memory agent learns from the turn is kept unasked, when the
+	// workspace chose that, only if the person could keep it themselves.
+	keeps := project != "" && s.P.MayChangeNotes(asks, project) == nil
 	run, err := s.P.Converse(r.Context(), who.Tenant, platform.Turn{
-		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor, Client: client,
+		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor, Client: client, KeepsNotes: keeps,
 	})
 	if err != nil {
 		s.problem(w, err)
@@ -678,7 +740,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 		case <-r.Context().Done():
 			return
 		case n := <-notices:
-			if !platform.InboxSees(who, n.Kind) {
+			// A notice reaches only a reader the message is for, so an id
+			// from a project they cannot see, or an announcement for
+			// others, never reaches their stream.
+			if !s.P.InboxNoticeFor(who, n) {
 				continue
 			}
 			b, err := json.Marshal(n)
@@ -767,6 +832,14 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, projects.ErrVersion)+"; reload and try again")
 	case errors.Is(err, projects.ErrForbidden):
 		fail(w, http.StatusForbidden, detail(err, projects.ErrForbidden))
+	case errors.Is(err, projects.ErrConfinement):
+		// "members-only projects need read confinement, not built: Globex
+		// needs an entry for everyone (*) of at least viewer".
+		fail(w, http.StatusConflict, strings.TrimPrefix(err.Error(), "projects: "))
+	case errors.Is(err, policy.ErrAdmin):
+		fail(w, http.StatusConflict, detail(err, policy.ErrAdmin))
+	case errors.Is(err, inbox.ErrLimit):
+		fail(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, callpolicy.ErrLimit):
 		fail(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, pick.ErrNoAgent):

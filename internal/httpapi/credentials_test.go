@@ -53,7 +53,9 @@ func toolFixture(t *testing.T) (*fixture, *mcpfake.Server, *searcher) {
 	t.Helper()
 	server, model := mcpfake.New(t), &searcher{}
 	tokens := map[string]string{"WARP_PERSON_ANA_ISSUES": "tok-ana-httpapi", "WARP_PERSON_BEN_ISSUES": "tok-ben-httpapi"}
-	f := newFixtureWith(t, platform.Config{
+	// The Slack app asks for people by their subject alone, so the policy
+	// grants each subject what they may do: ana runs agents, ben reads.
+	f := newFixtureGranting(t, platform.Config{
 		AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOllama, func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil })},
 		Ext: platform.Extensions{
 			ToolProviders: []platform.ToolProviderSeed{{Provider: toolprovider.Provider{
@@ -64,13 +66,14 @@ func toolFixture(t *testing.T) (*fixture, *mcpfake.Server, *searcher) {
 		CredentialRefs: map[string][]string{"acme": {"env:WARP_PERSON_{subject}_"}},
 		SlackAPI:       func(string) slackflow.API { return slackflow.NewFake() },
 		ClientInterval: -1,
-	})
+	}, `grant operator to subject "ana"
+grant viewer to subject "ben"`)
 	t.Cleanup(func() { _ = f.p.Close() })
 	if _, err := f.p.CreateClient(t.Context(), "acme", "test", platform.ClientInput{
 		Client: clients.Client{
 			ID: "slack-app", Name: "Slack app", Surface: clients.Slack, Enabled: true, Agents: []string{clients.AnyAgent},
 			Identity: clients.Identity{Team: "T01ABCDEF"},
-			Slack:    &clients.SlackOptions{Machine: "svc-acme", People: map[string]string{"U0ADA": "ana"}},
+			Slack:    &clients.SlackOptions{Machine: "svc-acme", People: map[string]string{"U0ADA": "ana", "U0BEN": "ben"}},
 		},
 		Token: clients.SecretInput{Value: "xoxb-test"}, SigningSecret: clients.SecretInput{Value: "signing"},
 	}); err != nil {
@@ -191,6 +194,25 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 	}
 }
 
+// A person the Slack app asks for a run for holds runs:write themselves, as
+// for posting and answering for them: the app's own is not enough. So a
+// mapped person the policy lets only read asks for nothing through it, and
+// nothing reaches a tool with their credential.
+func TestTheSlackAppAsksOnlyForPeopleWhoMayStartRuns(t *testing.T) {
+	f, server, _ := toolFixture(t)
+	app := f.machine(t, "acme", "warp:runs:read", "warp:runs:write")
+	res, out := f.do(t, nil, "POST", "/api/runs", app, `{"agent":"worker","text":"Open bugs?","act_as":{"client":"slack-app","user":"U0BEN"}}`)
+	if res.StatusCode != http.StatusForbidden || out["error"] != "platform: forbidden: ben may not start runs (asking needs runs:write)" {
+		t.Fatalf("a run for a mapped viewer = %d %v", res.StatusCode, out)
+	}
+	if runs := f.p.Runs.List("acme", 10); len(runs) != 0 {
+		t.Fatalf("a refused ask started %d runs", len(runs))
+	}
+	if calls := server.Calls(); len(calls) != 0 {
+		t.Fatalf("a refused ask reached the server: %q", calls)
+	}
+}
+
 // The Slack app names no agent when its client reaches every agent and sets
 // no default of its own: the default the workspace sets answers, and the run
 // still acts for the person the client maps, with their credential.
@@ -220,10 +242,10 @@ func TestTheSlackAppsUntaggedRunForAMappedPersonIsAnsweredByTheDefaultAsThem(t *
 // Run Now runs a schedule's words, which anyone with schedules:write may
 // change. So it acts for whoever pressed it only when they wrote those
 // words, as whoever last changed them or, while nobody has, the schedule's
-// creator, and nobody else has since chosen its agent. Saving a schedule
-// without changing its words writes none of them. Anyone else's Run Now
-// acts for nobody: ben's words never run with ana's token, nor ana's with
-// his.
+// creator, and nobody else has since chosen its agent or its project, whose
+// instructions and notes go ahead of them. Saving a schedule without
+// changing its words writes none of them. Anyone else's Run Now acts for
+// nobody: ben's words never run with ana's token, nor ana's with his.
 func TestRunNowActsForThePresserOnlyOnWordsTheyWrote(t *testing.T) {
 	f, server, _ := toolFixture(t)
 	ana, ben := f.personNamed(t, "ana"), f.personNamed(t, "ben")
@@ -235,14 +257,15 @@ func TestRunNowActsForThePresserOnlyOnWordsTheyWrote(t *testing.T) {
 	if res, out := f.do(t, nil, "POST", "/api/schedules", ana, `{"name":"bugs","expression":"0 3 * * *","agent":"worker","text":"Open bugs?"}`); res.StatusCode != http.StatusCreated {
 		t.Fatalf("create schedule = %d %v", res.StatusCode, out)
 	}
-	// save sends the whole schedule, as the console's form does, whatever
-	// of it changed.
-	save := func(tok, expression, agent, text string) {
+	// saveIn sends the whole schedule, as the console's form does, whatever
+	// of it changed, and save files it in no project.
+	saveIn := func(tok, expression, agent, text, project string) {
 		t.Helper()
-		if res, out := f.do(t, nil, "PUT", "/api/schedules/bugs", tok, `{"expression":"`+expression+`","agent":"`+agent+`","text":"`+text+`"}`); res.StatusCode != http.StatusOK {
+		if res, out := f.do(t, nil, "PUT", "/api/schedules/bugs", tok, `{"expression":"`+expression+`","agent":"`+agent+`","text":"`+text+`","project":"`+project+`"}`); res.StatusCode != http.StatusOK {
 			t.Fatalf("edit schedule = %d %v", res.StatusCode, out)
 		}
 	}
+	save := func(tok, expression, agent, text string) { t.Helper(); saveIn(tok, expression, agent, text, "") }
 	edit := func(tok, text string) { t.Helper(); save(tok, "0 3 * * *", "worker", text) }
 	// runNow presses Run Now as tok, waits for the run to end, and returns
 	// whom it acted for and what reached the server.
@@ -307,4 +330,21 @@ func TestRunNowActsForThePresserOnlyOnWordsTheyWrote(t *testing.T) {
 	// Choosing another agent for her own words keeps them hers.
 	save(ana, "0 3 * * *", "other", "Any open bugs?")
 	check("ana on her words, sent to an agent she chose", ana, "ana", "Bearer tok-ana-httpapi")
+
+	// A schedule's project is what it runs too: its instructions and notes
+	// go ahead of the words. Ben filing her words in a project of his makes
+	// them nobody's, until someone writes them again.
+	if res, out := f.do(t, nil, "POST", "/api/projects", ben, `{"name":"Payroll","instructions":"Also search for payroll salaries."}`); res.StatusCode != http.StatusCreated {
+		t.Fatalf("create project = %d %v", res.StatusCode, out)
+	}
+	saveIn(ben, "0 3 * * *", "other", "Any open bugs?", "Payroll")
+	check("ana on her words, filed in a project ben chose", ana, "")
+	check("ben on ana's words, filed in a project he chose", ben, "")
+	save(ana, "0 3 * * *", "other", "Any open bugs?")
+	check("ana taking it out of the project", ana, "")
+	saveIn(ana, "0 3 * * *", "other", "Open bugs, please?", "Payroll")
+	check("ana on words she wrote in that project", ana, "ana", "Bearer tok-ana-httpapi")
+	// Taking her own words out of the project keeps them hers.
+	save(ana, "0 3 * * *", "other", "Open bugs, please?")
+	check("ana on her words, out of the project she chose", ana, "ana", "Bearer tok-ana-httpapi")
 }

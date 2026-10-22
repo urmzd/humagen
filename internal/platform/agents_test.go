@@ -381,6 +381,28 @@ func TestAClientThatRoutesToAnAgentKeepsItFromLeavingTheRoot(t *testing.T) {
 	}
 }
 
+// An agent is one agent under every spelling of its name, as the registry
+// resolves it: owning its home is asked under each, a platform agent is the
+// platform's under each, and none is available under any but its own.
+func TestAnAgentIsTheSameAgentUnderEverySpellingOfItsName(t *testing.T) {
+	p := start(t, call.Limits{})
+	globexHelper(t, p)
+	bo := auth.Principal{Subject: "bo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	for _, name := range []string{"globex-helper", "Globex-Helper", "GLOBEX-HELPER", " globex-helper", "globex-helper\t"} {
+		if err := p.OwnsHome(bo, name); !errors.Is(err, projects.ErrForbidden) {
+			t.Errorf("OwnsHome(bo, %q) = %v, want forbidden", name, err)
+		}
+	}
+	for _, name := range []string{platform.BuiltinWriter, "Warp-Writer", " WARP-WRITER "} {
+		if !platform.IsBuiltin(name) {
+			t.Errorf("%q is not the platform's", name)
+		}
+	}
+	if _, err := p.Invoke(t.Context(), inProject("spelled", "Globex-Helper", "Globex")); !errors.Is(err, platform.ErrNotAvailable) {
+		t.Fatalf("a run of Globex-Helper in Globex = %v, want ErrNotAvailable", err)
+	}
+}
+
 func TestThePlatformsOwnAgentsLiveNowhere(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
@@ -730,5 +752,81 @@ func TestAutoThroughAClientPicksOnlyAmongItsAgents(t *testing.T) {
 	}
 	if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-ghost", Agent: "auto", Text: "x", Client: "ghost"}); !errors.Is(err, platform.ErrForbidden) {
 		t.Fatalf("a turn through a client that is not there = %v", err)
+	}
+}
+
+// A move never leaves what the projects it moves run without its agent: a
+// channel's default or a thread's, which would answer nothing, an agent that
+// lives there, which would be available nowhere, or a schedule filed there,
+// whose every occurrence admission would refuse. Each is named, and the move
+// is refused until none is left.
+func TestAMoveNeverLeavesWhatItsProjectsRunWithoutTheirAgent(t *testing.T) {
+	p := start(t, call.Limits{})
+	ctx := t.Context()
+	w := projects.Writer{By: "ada", Govern: true}
+	if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "scout", Model: "offline", Provider: "offline", SystemPrompt: "Scout."}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []platform.ProjectInput{{Name: "A"}, {Name: "B"}, {Name: "X", Parent: "A"}} {
+		if _, err := p.CreateProject(ctx, tenant, w, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b, _ := p.Projects.Get(tenant, "B")
+	if _, err := p.SetProjectAgents(ctx, tenant, "B", w, platform.AgentsInput{Version: b.Version, Enable: []string{}, Allow: []string{"helper"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateChannel(ctx, tenant, "X", w, platform.ChannelInput{Name: "c", Default: "lead"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetAgentHome(ctx, tenant, "scout", "X", w); err != nil {
+		t.Fatal(err)
+	}
+	th := startThread(t, p, admin, platform.ThreadInput{Project: "X", Title: "Renewal", Default: "lead", Text: "hello", PostOnly: true}).Thread
+	if err := p.Schedules.Add(cron.Schedule{Name: "nightly", Expression: "0 3 * * *", Agent: "lead", Text: "sum", Tenant: tenant,
+		Meta: map[string]string{runs.MetaProject: "X"}}, platform.About{}); err != nil {
+		t.Fatal(err)
+	}
+	move := func(want ...string) {
+		t.Helper()
+		x, _ := p.Projects.Get(tenant, "X")
+		_, err := p.MoveProject(ctx, admin, "X", x.Version, "B")
+		if len(want) == 0 {
+			if err != nil {
+				t.Fatalf("the move = %v", err)
+			}
+			return
+		}
+		if !errors.Is(err, projects.ErrInUse) {
+			t.Fatalf("the move = %v, want in use", err)
+		}
+		for _, s := range want {
+			if !strings.Contains(err.Error(), s) {
+				t.Fatalf("the move = %v, want it to name %q", err, s)
+			}
+		}
+		if x, _ := p.Projects.Get(tenant, "X"); x.Parent != "A" {
+			t.Fatalf("a refused move put X under %q", x.Parent)
+		}
+	}
+
+	move("the default of #c in X, lead, would not be available", "scout, which lives in X, would not be available there")
+	if _, err := p.ArchiveChannel(tenant, "X", "c", w); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetAgentHome(ctx, tenant, "scout", "", w); err != nil {
+		t.Fatal(err)
+	}
+	move("the schedule nightly, which runs lead in X, would be refused every time",
+		fmt.Sprintf(`the default of the thread "Renewal" (%s) in X, lead, would not be available`, th.ID))
+	if err := p.Schedules.Remove(tenant, "nightly"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.UpdateThread(ctx, admin, th.ID, platform.ThreadUpdate{Version: th.Version, Title: th.Title, Visibility: th.Visibility}); err != nil {
+		t.Fatal(err)
+	}
+	move()
+	if err := p.Available(tenant, "X", "lead"); !errors.Is(err, platform.ErrNotAvailable) {
+		t.Fatalf("lead in X after the move = %v", err)
 	}
 }

@@ -12,8 +12,11 @@
 import {
   ActionId,
   type ArtifactKind,
+  type HomeUpdate,
   type InboxMessage,
   type MessagePart,
+  messageState,
+  orderUpdates,
   partMatches,
   partTarget,
   type Resolution,
@@ -28,7 +31,7 @@ export type Source = { kind: "run" | "thread" | "rule" | "agent" | "project" | "
 
 /** A mailbox message, plus what only the platform knows about it. */
 export type PlatformMessage = InboxMessage & {
-  /** What the message is, for the server's kind filter: alert, failure, memory, budget, artifact. */
+  /** What the message is, for the server's kind filter: alert, failure, memory, budget, artifact, announcement. */
   kind: string;
   /** Everything it is about, as things the console can open by kind and id. */
   about: Source[];
@@ -47,6 +50,7 @@ export const kinds: { id: string; label: string }[] = [
   { id: "artifact", label: "Artifacts" },
   { id: "result", label: "Results" },
   { id: "mention", label: "Mentions" },
+  { id: "announcement", label: "Announcements" },
 ];
 
 /**
@@ -64,6 +68,7 @@ const templateOf: Record<string, TemplateId> = {
   result: "result",
   artifact: "artifact",
   mention: "mention",
+  announcement: "announcement",
 };
 
 const artifactKinds: ArtifactKind[] = ["document", "spreadsheet", "presentation", "image", "pdf", "html", "code", "data", "archive"];
@@ -449,4 +454,62 @@ export function mailTransport(http: Http): Transport {
       return fromServer(await http("POST", `${to}/parts/${encodeURIComponent(r.partId)}/resolve`, { action: r.action, ...r.values }));
     },
   };
+}
+
+/** A project's address in a route: `~` is the workspace. */
+const projectAt = (project: string) => `/api/projects/${project === "" || project === "~" ? "~" : encodeURIComponent(project)}`;
+
+/**
+ * A project's inbox, over the inbox's own calls: it lists what is filed in the
+ * project (and, with `children`, in the projects below it), and reads and
+ * answers each message as the inbox does. Everyone who can see the project
+ * reads it, so its totals are counted from what is loaded, not the reader's
+ * whole inbox. Resolved is read as everything, less what is still open.
+ */
+export function projectTransport(http: Http, project: string, children = false): Transport {
+  const inbox = mailTransport(http);
+  return {
+    ...inbox,
+    list: async (q) => {
+      const params = new URLSearchParams({ limit: String(q.limit), state: q.state === "open" || q.state === undefined ? "open" : "all" });
+      if (children) params.set("children", "true");
+      if (q.before) params.set("before", q.before);
+      if (q.kind) params.set("kind", q.kind);
+      const page = await http<{ messages: unknown[]; next: string | null }>("GET", `${projectAt(project)}/inbox?${params}`);
+      let messages = (page.messages ?? []).map(fromServer);
+      if (q.state === "resolved") messages = messages.filter((m) => messageState(m) !== "open");
+      const open = messages.filter((m) => messageState(m) === "open");
+      return { messages, next: page.next ?? null, open: open.length, unread: open.filter((m) => m.unread).length };
+    },
+  };
+}
+
+/**
+ * What's new on Home, from a page of the reader's own announcements: the open
+ * ones, unread first and then newest, at most five. `titles` names a project
+ * as people see it ("" is the workspace), and `url` is where one opens.
+ */
+export function updatesOf(
+  messages: PlatformMessage[],
+  titles: (project: string) => string,
+  url?: (project: string, id: string) => string,
+): HomeUpdate[] {
+  return orderUpdates(
+    messages
+      .filter((m) => m.kind === "announcement" && messageState(m) === "open")
+      .map((m) => {
+        const project = m.about.find((s) => s.kind === "project")?.id ?? "";
+        const kind = m.from.kind === "person" || m.from.kind === "agent" ? m.from.kind : "system";
+        return {
+          id: m.id,
+          project,
+          projectTitle: titles(project),
+          subject: m.subject,
+          from: { kind, name: m.from.name },
+          at: m.at,
+          unread: Boolean(m.unread),
+          ...(url ? { url: url(project, m.id) } : {}),
+        };
+      }),
+  );
 }
