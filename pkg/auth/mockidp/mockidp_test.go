@@ -154,15 +154,15 @@ func TestAuthorizationCodeFlowThroughTheVerifier(t *testing.T) {
 func TestDefaultPersonasUnderTheDefaultPolicy(t *testing.T) {
 	s := start(t, nil)
 	v := verifier(t, s)
-	viewer := []auth.Permission{auth.AgentsRead, auth.RunsRead, auth.SchedulesRead, auth.AlertsRead, auth.KnowledgeRead, auth.EvalsRead, auth.BillingRead, auth.ArtifactsRead, auth.ClientsRead, auth.ProjectsRead}
-	operator := []auth.Permission{auth.AgentsRead, auth.RunsRead, auth.RunsWrite, auth.SchedulesRead, auth.SchedulesWrite, auth.AlertsRead, auth.AlertsWrite, auth.KnowledgeRead, auth.EvalsRead, auth.EvalsWrite, auth.BillingRead, auth.ArtifactsRead, auth.ArtifactsWrite, auth.ClientsRead, auth.ProjectsRead, auth.ProjectsWrite}
+	viewer := []auth.Permission{auth.AgentsRead, auth.RunsRead, auth.SchedulesRead, auth.AlertsRead, auth.KnowledgeRead, auth.EvalsRead, auth.BillingRead, auth.ArtifactsRead, auth.ClientsRead, auth.ProjectsRead, auth.PeopleRead}
+	operator := []auth.Permission{auth.AgentsRead, auth.RunsRead, auth.RunsWrite, auth.SchedulesRead, auth.SchedulesWrite, auth.AlertsRead, auth.AlertsWrite, auth.KnowledgeRead, auth.EvalsRead, auth.EvalsWrite, auth.BillingRead, auth.ArtifactsRead, auth.ArtifactsWrite, auth.ClientsRead, auth.ProjectsRead, auth.ProjectsWrite, auth.PeopleRead}
 	for _, tc := range []struct {
 		subject string
 		want    []auth.Permission
 	}{
 		{"mock-viewer", viewer},
 		{"mock-operator", operator},
-		{"mock-manager", []auth.Permission{auth.AgentsRead, auth.AgentsWrite, auth.RunsRead, auth.RunsWrite, auth.SchedulesRead, auth.SchedulesWrite, auth.AlertsRead, auth.AlertsWrite, auth.KnowledgeRead, auth.KnowledgeWrite, auth.EvalsRead, auth.EvalsWrite, auth.BillingRead, auth.ArtifactsRead, auth.ArtifactsWrite, auth.ClientsRead, auth.ProjectsRead, auth.ProjectsWrite}},
+		{"mock-manager", []auth.Permission{auth.AgentsRead, auth.AgentsWrite, auth.RunsRead, auth.RunsWrite, auth.SchedulesRead, auth.SchedulesWrite, auth.AlertsRead, auth.AlertsWrite, auth.KnowledgeRead, auth.KnowledgeWrite, auth.EvalsRead, auth.EvalsWrite, auth.BillingRead, auth.ArtifactsRead, auth.ArtifactsWrite, auth.ClientsRead, auth.ProjectsRead, auth.ProjectsWrite, auth.PeopleRead}},
 		{"mock-admin", auth.Permissions()},
 		{"mock-nobody", nil},
 	} {

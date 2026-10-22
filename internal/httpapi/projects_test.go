@@ -1,12 +1,17 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/state"
 )
 
 // operator is what the built-in operator role holds, as a machine's scopes:
@@ -380,5 +385,46 @@ func TestFilingUnderAProjectAndDeletingItCannotBothWin(t *testing.T) {
 		default:
 			t.Fatalf("limit %d: putting = %d, deleting = %d", i, put, deleted)
 		}
+	}
+}
+
+// TestAProjectWrittenBeforeProjectsHadAgentsIsServedAsTheSpecSays seeds the
+// records a workspace kept before projects had agents, the root, a project
+// and their history with no enable list, and reads them as the console does.
+func TestAProjectWrittenBeforeProjectsHadAgentsIsServedAsTheSpecSays(t *testing.T) {
+	st := state.NewMemory()
+	at := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	root := map[string]any{"name": "", "kind": "company", "version": 1, "created_by": "migration", "created_at": at, "updated_at": at}
+	field := map[string]any{"name": "Field", "kind": "team", "version": 1, "created_by": "ada", "created_at": at, "updated_at": at}
+	var ops []state.Op
+	for i, rec := range []struct {
+		key string
+		v   any
+	}{
+		{"p:", root},
+		{"p:Field", field},
+		{"h:" + state.Seq(1), map[string]any{"seq": 1, "at": at, "by": "migration", "project": "", "what": "created", "after": root}},
+		{"h:" + state.Seq(2), map[string]any{"seq": 2, "at": at, "by": "ada", "project": "Field", "what": "created", "after": field}},
+	} {
+		raw, err := json.Marshal(rec.v)
+		if err != nil {
+			t.Fatal(i, err)
+		}
+		ops = append(ops, state.Put("acme", rec.key, raw))
+	}
+	if err := st.Write(t.Context(), "projects", ops...); err != nil {
+		t.Fatal(err)
+	}
+	f := newFixtureWith(t, platform.Config{Backends: platform.Backends{State: st}})
+	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
+	tok := f.machine(t, "acme", everything...)
+	c.call(tok, "GET", "/api/projects", "/api/projects", "", http.StatusOK)
+	c.call(tok, "GET", "/api/projects/{name}", "/api/projects/Field", "", http.StatusOK)
+	c.call(tok, "GET", "/api/projects/{name}", "/api/projects/~", "", http.StatusOK)
+	c.call(tok, "GET", "/api/projects/{name}/history", "/api/projects/Field/history", "", http.StatusOK)
+	// The upgrade's own change to the root records the root as it read.
+	h := c.call(tok, "GET", "/api/projects/{name}/history", "/api/projects/~/history", "", http.StatusOK)
+	if changes, _ := h.field("changes").([]any); len(changes) != 2 {
+		t.Fatalf("the root's history = %s, want the upgrade's change and the creation", h.raw)
 	}
 }

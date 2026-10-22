@@ -168,6 +168,8 @@ func serveFor(t *testing.T, o Options, args ...string) string {
 	case a := <-addrs:
 		return a
 	case err := <-done:
+		// The cleanup waits on done, so what serve returned is put back.
+		done <- nil
 		t.Fatalf("serve returned before listening: %v", err)
 	case <-time.After(30 * time.Second):
 		t.Fatal("serve did not listen")
@@ -205,7 +207,7 @@ kind: Platform
 metadata: {name: default, display_name: Acme}
 spec:
   workspace:
-    baseline: greeter
+    agents: {enable: ["*"], default: greeter}
     projects: [{name: Launch}]
   models:
     - {name: house, kind: house-model, house-model: {voice: calm}}
@@ -227,8 +229,11 @@ spec:
 	if body := get(t, "http://"+addr+"/api/agents"); !strings.Contains(body, `"greeter"`) {
 		t.Errorf("the file's agent is not there: %s", body)
 	}
-	if body := get(t, "http://"+addr+"/api/settings"); !strings.Contains(body, `"workspace_name":"Acme"`) || !strings.Contains(body, `"baseline":"greeter"`) {
+	if body := get(t, "http://"+addr+"/api/settings"); !strings.Contains(body, `"workspace_name":"Acme"`) {
 		t.Errorf("the file's workspace is not applied: %s", body)
+	}
+	if body := get(t, "http://"+addr+"/api/projects/~/agents"); !strings.Contains(body, `"default":"greeter"`) {
+		t.Errorf("the file's workspace default is not applied: %s", body)
 	}
 }
 

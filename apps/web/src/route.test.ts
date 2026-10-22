@@ -38,6 +38,9 @@ test("every route survives a round trip through its address", () => {
     { page: "agent", name: "lead", tab: "context" },
     { page: "artifacts" },
     { page: "artifacts", artifact: "art-2" },
+    { page: "directory", tab: "people" },
+    { page: "directory", tab: "agents" },
+    { page: "directory", tab: "projects" },
     { page: "settings", section: "profile" },
     { page: "settings", section: "access", permission: "runs:read" },
   ];
@@ -53,6 +56,14 @@ test("deep links name pages by path", () => {
   assert.equal(href({ page: "inbox", kind: "alert" }), "/inbox?kind=alert");
 });
 
+test("the Directory opens on People, and each tab has its own path", () => {
+  assert.equal(href({ page: "directory", tab: "people" }), "/directory");
+  assert.equal(href({ page: "directory", tab: "agents" }), "/directory/agents");
+  assert.equal(href({ page: "directory", tab: "projects" }), "/directory/projects");
+  assert.deepEqual(at("/directory/people"), { page: "directory", tab: "people" });
+  assert.deepEqual(at("/directory/bogus"), { page: "directory", tab: "people" });
+});
+
 test("a project's address is its name, ~ is the workspace, and the default tab has no segment", () => {
   assert.equal(href({ page: "project", name: "Globex", tab: "overview" }), "/projects/Globex");
   assert.equal(href({ page: "project", name: "Globex", tab: "context" }), "/projects/Globex/context");
@@ -61,6 +72,13 @@ test("a project's address is its name, ~ is the workspace, and the default tab h
   assert.equal(href({ page: "project", name: "", tab: "context" }), "/projects/~/context");
   assert.deepEqual(at("/projects/~"), { page: "project", name: "", tab: "overview" });
   assert.equal(href({ page: "projects", q: "globex", kind: "account" }), "/projects?q=globex&kind=account");
+});
+
+test("a project's Agents tab has its own path, the workspace's included", () => {
+  assert.equal(href({ page: "project", name: "Globex", tab: "agents" }), "/projects/Globex/agents");
+  assert.equal(href({ page: "project", name: "", tab: "agents" }), "/projects/~/agents");
+  assert.deepEqual(at("/projects/~/agents"), { page: "project", name: "", tab: "agents" });
+  assert.deepEqual(at("/projects/Globex/agents"), { page: "project", name: "Globex", tab: "agents" });
 });
 
 test("a project tab or kind it does not know falls back to the default", () => {

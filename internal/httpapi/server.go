@@ -38,6 +38,7 @@ import (
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/knowledge"
 	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/people"
 	"github.com/urmzd/warp/pkg/pick"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/prefs"
@@ -82,6 +83,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, s.reviseAgent))
+	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, s.putAgentHome))
 	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, s.agentHistory))
 	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, s.getCallPolicy))
 	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, s.putCallPolicy))
@@ -116,6 +118,7 @@ func (s *Server) Handler() http.Handler {
 	s.observeRoutes(mux)
 	s.preferenceRoutes(mux)
 	s.projectRoutes(mux)
+	s.peopleRoutes(mux)
 	s.billingRoutes(mux)
 	s.clientRoutes(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) { fail(w, http.StatusNotFound, "no such route") })
@@ -161,6 +164,11 @@ func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 			fail(w, http.StatusForbidden, fmt.Sprintf("you need %s", perm))
 			return
 		}
+		// Whoever signs in with something they may do is in the
+		// workspace's directory. Nothing is written while nothing changed.
+		if len(who.Granted()) > 0 {
+			s.P.SeePerson(who)
+		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 		if r.Method != http.MethodGet {
 			s.Log.Info("httpapi: change", "subject", who.Subject, "kind", who.Kind, "tenant", who.Tenant,
@@ -196,7 +204,20 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 		page.Token = next
 	}
 	// builtin names the agents the platform provides, which cannot be edited.
-	ok(w, http.StatusOK, map[string]any{"agents": orEmpty(all), "builtin": platform.Builtins()})
+	// homes says where each agent that lives in a project lives, and
+	// enabled_in which projects enable each agent, "~" for the workspace.
+	names := make([]string, len(all))
+	for i, rev := range all {
+		names[i] = rev.Spec.Name
+	}
+	homes, enabled := map[string]string{}, map[string][]string{}
+	for name, place := range s.P.AgentPlaces(who.Tenant, names) {
+		if place.Home != "" {
+			homes[name] = place.Home
+		}
+		enabled[name] = place.EnabledIn
+	}
+	ok(w, http.StatusOK, map[string]any{"agents": orEmpty(all), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled})
 }
 
 func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -206,6 +227,12 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	if platform.IsBuiltin(spec.Name) {
 		fail(w, http.StatusForbidden, "that name belongs to an agent the platform provides")
+		return
+	}
+	// A tag names an agent or a person, so a new agent cannot take a name a
+	// person goes by, or one the platform keeps.
+	if err := s.P.CheckAgentName(who.Tenant, spec.Name); err != nil {
+		s.problem(w, err)
 		return
 	}
 	if err := s.P.CheckAgentModel(who.Tenant, spec); err != nil {
@@ -367,7 +394,9 @@ func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Princ
 
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
-		// Agent is who should answer. Empty or "auto" lets the platform pick.
+		// Agent is who should answer. "auto" is @auto, which picks among the
+		// agents available where the conversation is filed. Empty is the
+		// default the conversation's place inherits; with none, 409.
 		Agent string `json:"agent"`
 		Text  string `json:"text"`
 		// After is the turn this message follows. Empty starts a conversation.
@@ -460,9 +489,11 @@ func (s *Server) getThread(w http.ResponseWriter, r *http.Request, who auth.Prin
 	ok(w, http.StatusOK, map[string]any{"turns": turns})
 }
 
-// pickAgent previews which agent would answer a message, and why.
+// pickAgent previews which agent @auto would pick for a message in a project,
+// "~" or nothing for the workspace, and why.
 func (s *Server) pickAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	choice, err := s.P.Pick(r.Context(), who.Tenant, r.URL.Query().Get("q"))
+	q := r.URL.Query()
+	choice, err := s.P.Pick(r.Context(), who.Tenant, q.Get("project"), q.Get("q"))
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -475,10 +506,20 @@ func (s *Server) getSettings(w http.ResponseWriter, _ *http.Request, who auth.Pr
 }
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	var next platform.Settings
-	if !decode(w, r, &next) {
+	var body struct {
+		platform.Settings
+		// Baseline is gone: the workspace's default agent replaces it. It
+		// is read only to say so.
+		Baseline *string `json:"baseline"`
+	}
+	if !decode(w, r, &body) {
 		return
 	}
+	if body.Baseline != nil {
+		fail(w, http.StatusBadRequest, "baseline is now the workspace default: set it with PUT /api/projects/~/agents")
+		return
+	}
+	next := body.Settings
 	before := s.P.Settings(who.Tenant)
 	if err := s.P.SetSettings(r.Context(), who.Tenant, next); err != nil {
 		s.problem(w, err)
@@ -492,8 +533,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request, who auth.Pr
 		return
 	}
 	s.Log.Info("httpapi: settings changed", "subject", who.Subject, "tenant", who.Tenant,
-		"workspace_before", before.WorkspaceName, "workspace_after", saved.WorkspaceName,
-		"baseline_before", before.Baseline, "baseline_after", saved.Baseline, "first_setup", before.SetupAt.IsZero())
+		"workspace_before", before.WorkspaceName, "workspace_after", saved.WorkspaceName, "first_setup", before.SetupAt.IsZero())
 	ok(w, http.StatusOK, saved)
 }
 
@@ -699,7 +739,17 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 	case errors.Is(err, callpolicy.ErrLimit):
 		fail(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, pick.ErrNoAgent):
-		fail(w, http.StatusBadRequest, "no agent matched this message and no baseline agent is set, so choose an agent")
+		fail(w, http.StatusConflict, "no agent fits; tag one")
+	case errors.Is(err, platform.ErrNoDefault):
+		fail(w, http.StatusConflict, detail(err, platform.ErrNoDefault))
+	case errors.Is(err, platform.ErrNotAvailable):
+		fail(w, http.StatusForbidden, detail(err, platform.ErrNotAvailable))
+	case errors.Is(err, platform.ErrNameTaken):
+		fail(w, http.StatusConflict, detail(err, platform.ErrNameTaken))
+	case errors.Is(err, people.ErrNotFound):
+		fail(w, http.StatusNotFound, "not found")
+	case errors.Is(err, people.ErrInvalid):
+		fail(w, http.StatusBadRequest, detail(err, people.ErrInvalid))
 	case errors.Is(err, platform.ErrSettings), errors.Is(err, platform.ErrModelPolicy):
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, platform.ErrModelPolicyInUse):

@@ -1,3 +1,4 @@
+import { defaultCopy } from "@warp/components";
 import { type FormEvent, type MouseEvent, useRef, useState } from "react";
 import { AccessExplain } from "./AccessExplain.tsx";
 import { href, type SettingsSection } from "./route.ts";
@@ -63,6 +64,7 @@ export function Settings({
   onWorkspace,
   onOpenProjects,
   onOpenWorkspace,
+  onOpenWorkspaceAgents = onOpenWorkspace,
 }: {
   me: Me;
   prefs: Preferences;
@@ -82,6 +84,8 @@ export function Settings({
   onOpenProjects: () => void;
   /** Opens the workspace's own project, where its instructions and notes are. */
   onOpenWorkspace: () => void;
+  /** Opens the workspace's Agents tab, where the Workspace Default is. */
+  onOpenWorkspaceAgents?: () => void;
 }) {
   const setSection = onSection;
   const [problem, setProblem] = useState<string | null>(null);
@@ -145,25 +149,22 @@ export function Settings({
             <>
               <header className="pb-2">
                 <h1 className={pageTitle}>Agent routing</h1>
-                <p className={pageLede}>New requests use the automatic router. You can also choose an agent in the prompt.</p>
+                <p className={pageLede}>A message goes to the agent it tags. One that tags none goes to the default where it is posted, which can be @auto.</p>
               </header>
               <section className={`${card} flex flex-col gap-3`}>
-                <h2 className="text-aui-sm font-medium text-aui-fg">Automatic router</h2>
+                <h2 className="text-aui-sm font-medium text-aui-fg">@auto</h2>
                 <p className="text-aui-sm text-aui-muted">
-                  Matches requests to agent names, descriptions and instructions. Names and descriptions carry more weight.
-                  When agents tie or none match, the fallback answers.
+                  Matches a message to the names, descriptions and instructions of the agents available where it is posted.
+                  Names and descriptions carry more weight. When agents tie or none match, the nearest default that names an
+                  agent answers.
                 </p>
-                {workspace && (
-                  <Label text="Fallback agent" hint="Set an available agent so unmatched requests can run.">
-                    <Menu
-                      label="Fallback agent"
-                      value={workspace.baseline}
-                      disabled={!canAdmin}
-                      options={agentOptions(agents.map((a) => a.spec.name), "None")}
-                      onChange={(baseline) => saveWorkspace({ baseline })}
-                    />
-                  </Label>
-                )}
+                <p className="text-aui-sm text-aui-muted">
+                  {defaultCopy.workspaceDefault} answers a message that tags no agent, unless a project sets its own. It lives on the
+                  workspace's Agents tab.
+                </p>
+                <a href={href({ page: "project", name: "", tab: "agents" })} className={`${button} self-start`} onClick={follow(onOpenWorkspaceAgents)}>
+                  {defaultCopy.workspaceDefault}
+                </a>
               </section>
               <section className={`${card} flex flex-col gap-3`}>
                 <h2 className="text-aui-sm font-medium text-aui-fg">Agent capabilities</h2>

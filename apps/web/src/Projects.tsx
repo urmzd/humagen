@@ -14,6 +14,7 @@ import {
   type ThreadSummary,
 } from "./api.ts";
 import { ScopeLimits } from "./Billing.tsx";
+import { ProjectAgentsTab } from "./ProjectAgents.tsx";
 import {
   above,
   accountOf,
@@ -1039,6 +1040,8 @@ export function ProjectPage({
   projects,
   schedules,
   agents,
+  homes = {},
+  enabledIn = {},
   can,
   tick,
   onOpen,
@@ -1047,6 +1050,7 @@ export function ProjectPage({
   onOpenThread,
   onChanged,
   onSchedulesChanged,
+  onAgentsChanged,
   onDeleted,
 }: {
   /** "" is the workspace. */
@@ -1058,6 +1062,9 @@ export function ProjectPage({
   projects: ProjectView[];
   schedules: ScheduleView[];
   agents: Revision[];
+  /** Where each agent that lives in a project lives, and which projects enable each. */
+  homes?: Record<string, string>;
+  enabledIn?: Record<string, string[]>;
   can: (permission: string) => boolean;
   /** Changes when runs do, so what the project holds is read again. */
   tick?: number;
@@ -1067,6 +1074,8 @@ export function ProjectPage({
   onOpenThread: (id: string) => void;
   onChanged: () => void;
   onSchedulesChanged: () => void;
+  /** Where an agent lives, or what a project enables, changed. */
+  onAgentsChanged?: () => void;
   onDeleted: () => void;
 }) {
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
@@ -1173,7 +1182,23 @@ export function ProjectPage({
         />
       )}
 
-      {tab === "context" ? (
+      {tab === "agents" ? (
+        <ProjectAgentsTab
+          key={p.name}
+          name={p.name}
+          workspaceName={workspaceName}
+          agents={agents}
+          homes={homes}
+          enabledIn={enabledIn}
+          projects={projects}
+          canWrite={canWrite}
+          canHome={can("agents:write") && (!governed || can("projects:govern"))}
+          onChanged={() => {
+            changed();
+            onAgentsChanged?.();
+          }}
+        />
+      ) : tab === "context" ? (
         <ContextTab key={p.name} detail={detail} workspaceName={workspaceName} canWrite={canWrite} onSaved={changed} />
       ) : (
         // Tasks, what sits below and what holds the project take the wide column; what every task is sent and what runs on a timer sit beside them.

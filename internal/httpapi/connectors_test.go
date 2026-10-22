@@ -112,6 +112,9 @@ func TestSignedIntegrationsRunThroughThePlatformAndAppearInItsConsoleAPI(t *test
 				t.Fatalf("webhook: %d %s", w.Code, w.Body.String())
 			}
 			wait(func() bool { return replies() == 1 })
+			// The first reply can be the surface's placeholder, posted
+			// before the run is admitted, so the run is waited for too.
+			wait(func() bool { return len(p.Runs.List("acme", 1)) == 1 })
 			w = httptest.NewRecorder()
 			h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/runs", nil))
 			if w.Code != 200 || !strings.Contains(w.Body.String(), "helper") {
