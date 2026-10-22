@@ -1480,7 +1480,8 @@ An unknown tab falls back to the default through `pick`. Names never hold
     /api/threads` as `agents` and `mode` (`best_fit` or `all`) and saved
     with `PUT /api/threads/{id}`, so it shows for everyone in it after a
     reload. An answer an agent gave because it was selected, not tagged,
-    says "Routed to helper, the best fit". With nothing selected the prompt
+    says "Routed to helper, the best fit", read from the run's `routed`,
+    so it stays whatever the selection becomes. With nothing selected the prompt
     reads "Message, or @ an agent";
   - no Post Only, no Private and no line saying who answers: a message
     starts a run only for the agents it tags (`@agent`, `@auto`, or `$skill`,
