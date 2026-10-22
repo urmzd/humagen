@@ -333,6 +333,12 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 	}
 	env := map[string]string{}
 	for _, v := range c.env {
+		// A reference deploy carries is passed by exact name: its value is
+		// the one carry read, never another variable of the shell's.
+		if _, carried := c.values[v]; carried {
+			env[v] = "${" + v + ":-}"
+			continue
+		}
 		env[v] = interpolate(v)
 	}
 	services := map[string]any{legacy.DeployName: svc}

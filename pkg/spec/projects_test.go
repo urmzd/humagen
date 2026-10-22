@@ -91,7 +91,7 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 		"a kind like company": {
 			"    project_kinds: [{name: division, like: company}]\n", `workspace.project_kinds[0].like: "company" is not team or account`,
 		},
-		"a built-in kind defined again": {"    project_kinds: [{name: team, like: team}]\n", `workspace.project_kinds[0].name: "team" is a kind humagen defines`},
+		"a built-in kind defined again": {"    project_kinds: [{name: team, like: team}]\n", `workspace.project_kinds[0].name: "team" is a kind Humagen defines`},
 		"a kind defined twice": {
 			"    project_kinds: [{name: partner, like: account}, {name: partner, like: team}]\n", `workspace.project_kinds[1].name: "partner" is defined twice`,
 		},

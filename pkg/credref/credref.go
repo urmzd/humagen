@@ -103,7 +103,8 @@ func Parse(raw string) (Ref, error) {
 // Resolver reads references. The zero value reads the real environment and
 // runs the real tools; tests replace the fields.
 type Resolver struct {
-	// LookupEnv reads a variable. Nil means os.LookupEnv.
+	// LookupEnv reads a variable. Nil means legacy.LookupEnv: a name under
+	// HUMAGEN_ or the old WARP_ reads either, the new one winning.
 	LookupEnv func(string) (string, bool)
 	// Run runs a command and returns its standard output. Nil runs it.
 	Run func(ctx context.Context, name string, args ...string) ([]byte, error)

@@ -34,7 +34,7 @@ test("a tool that acts as you says whether you connected it, and how", () => {
   // A stored value is never part of what the page has, so it says where it is
   // and nothing more.
   const value = text(card(stored));
-  assert.match(value, /stored with humagen/);
+  assert.match(value, /stored with Humagen/);
   assert.doesNotMatch(value, /op:\/\//);
 });
 
@@ -81,7 +81,7 @@ test("a reference from outside the workspace's starts is caught before it is sen
 test("what you stand with is said in words", () => {
   assert.match(standing(issues), /^Not connected/);
   assert.match(standing(byRef), /reads op:\/\/People\/ana\/issues each time a run uses it/);
-  assert.match(standing(stored), /stored with humagen/);
+  assert.match(standing(stored), /stored with Humagen/);
 });
 
 test("someone who may not connect is shown where they stand with each tool, and nothing to press", () => {
