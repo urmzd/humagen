@@ -481,7 +481,8 @@ decided per message:
 A message a caller may not see answers 404, not 403, and is left out of their
 count, and a notice about it never reaches their event stream. A count is
 added up from counters, one for each bucket of open messages alike in kind,
-addressing and what they are about, and each bucket is asked of the same
+addressing and what they are about (and one for each group of messages
+snoozed for everyone, alike in the same), and each is asked of the same
 rule a message is, so it counts only what the caller may see. What was
 settled for everyone is dropped with its record after the workspace's
 `inbox_retention` (90 days by default, at least 7); the log line each

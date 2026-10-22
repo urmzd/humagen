@@ -519,10 +519,9 @@ bound to the workspace's general.
 settled for everyone: a message resolved, dismissed or withdrawn. It is whole
 days, such as `90d`, or a duration, such as `2160h`; left out, it is 90
 days, and it is at least `7d` and at most 100 years (`warp config check`
-refuses less or more). At start
-and every hour after, warp drops each message settled longer ago than that,
-with everything recorded about it: its outcomes, who read or hid it, and
-where a client posted it. What is open or snoozed is never dropped, nor a
+refuses less or more). At start and every hour after, warp drops each
+message settled longer ago than that, with everything recorded about it:
+its outcomes, who read or hid it, and where a client posted it. What is open or snoozed is never dropped, nor a
 question a run still waits on, and an announcement stays while it is open
 for anyone, however many readers hid their own copy. Message ids are never
 issued again, and release notes dropped this way are not posted again.
@@ -531,7 +530,9 @@ The badge and `Count.updates` use counters maintained as inbox changes
 apply and rebuilt on replay. Open messages share buckets by kind,
 addressing and source. Each reader's read and hidden marks reduce those
 counts. The same read rule checks each bucket, so counts reveal only what
-the reader may see. Snoozes whose time has passed are added separately.
+the reader may see. Snoozes whose time has passed are added separately;
+messages snoozed for everyone are grouped as buckets are, and the read rule
+checks each group once.
 Settled messages are never scanned to answer a count.
 
 Once a withdrawn announcement is dropped, a reply under its Slack post

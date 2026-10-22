@@ -805,7 +805,7 @@ keeps what was settled for everyone. The platform passes it in
   An announcement stays while it is open for anyone, whoever hid their own
   copy.
 - **The record.** Each change is kept under its own key, as before, and a
-  retention step deletes the dropped messages' keys and writes the tenant's
+  retention step deletes the dropped messages' records and writes the tenant's
   cut (key `cut`) in one write, all or none, at most 5,000 operations a step,
   including the cut. The cut holds the number of the last id issued and the
   keys of announcements posted once. If one message has more history than
@@ -813,8 +813,8 @@ keeps what was settled for everyone. The platform passes it in
   Replay reads the cut first and skips those records, so an interrupted
   cleanup never brings a message back. It applies each kept raise under
   the id its record names, with `-state=postgres` as in memory. The inbox
-  changes only once its step is written; a step that cannot be written changes nothing
-  and is tried again at the next pass.
+  changes only once its step is written; a step that cannot be written
+  changes nothing and is tried again at the next pass.
 - **What never repeats.** No message id is issued again, and a key posted
   once (`release:<version>`) is never posted again (`PostOnce`, which reads
   the cut's keys). Receipts and keys of what is kept still find it; those
@@ -828,8 +828,9 @@ keeps what was settled for everyone. The platform passes it in
   them they read or, for a broadcast, hid. A count asks who may see each
   bucket once, as the read rule asks of a message (`Query.Sees`,
   `Visible`, `For`), and adds up what is left. What reopens by itself with
-  time is read one by one: messages snoozed for everyone, and the reader's
-  own snoozes of broadcasts. A settled message is never read.
+  time is read one by one: messages snoozed for everyone, kept in groups
+  alike as buckets are, so the read rule is asked once for each group, and
+  the reader's own snoozes of broadcasts. A settled message is never read.
 
 ## Permissions
 
