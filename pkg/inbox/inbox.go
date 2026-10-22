@@ -208,6 +208,12 @@ type QuestionTool struct {
 	Arguments json.RawMessage `json:"arguments,omitempty"`
 	// Schema is the tool's parameter schema. Edited arguments must satisfy it.
 	Schema json.RawMessage `json:"schema,omitempty"`
+	// ActsForPerson reports that the call runs with the credential of the
+	// person the run acts for, a tool that acts as them. Anyone who may
+	// approve it may approve or deny it as asked, but only that person may
+	// approve it with edited arguments, so a surface offers nobody else an
+	// edit.
+	ActsForPerson bool `json:"acts_for_person,omitempty"`
 }
 
 // QuestionPart is a question a run is parked on.
