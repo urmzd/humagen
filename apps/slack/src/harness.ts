@@ -18,6 +18,7 @@ import {
   type Binding,
   type ClientRecord,
   type InboxNotice,
+  type Receipt,
   type RunRequest,
   type StreamItem,
   type ThreadPosted,
@@ -69,6 +70,8 @@ export class FakeSlack implements SlackApi {
     if (method === "conversations.replies") {
       return { ok: true, messages: this.replies.get(`${args.channel}/${args.ts}`) ?? [] } as T;
     }
+    if (method === "views.open") return { ok: true, view: { id: "V01" } } as T;
+    if (method === "canvases.create") return { ok: true, canvas_id: "F01" } as T;
     if (method === "users.info") {
       const name = this.users.get(String(args.user));
       return { ok: true, ...(name ? { user: { profile: { display_name: name } } } : {}) } as T;
@@ -136,6 +139,23 @@ const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64");
 
 /** A warp that keeps runs, conversations and an inbox in memory, shaped like the real API. */
 export class FakeWarp implements Warp {
+  async getRunFor(id: string, _as: ActAs) {
+    return this.runs.get(id) ?? null;
+  }
+  connectionCalls: { provider: string; ref?: string; as: ActAs }[] = [];
+  async connections(_as: ActAs) {
+    return { providers: [{ provider: "github", connected: false }], references: [], values: false };
+  }
+  async connect(provider: string, ref: string, as: ActAs) {
+    this.connectionCalls.push({ provider, ref, as });
+  }
+  async disconnect(provider: string, as: ActAs) {
+    this.connectionCalls.push({ provider, as });
+  }
+  readonly feedback: { run: string; body: import("./warp.ts").FeedbackInput }[] = [];
+  async saveFeedback(run: string, body: import("./warp.ts").FeedbackInput) {
+    this.feedback.push({ run, body });
+  }
   readonly runs = new Map<string, Run>();
   /** Every turn asked for, including ones that joined an existing run. */
   readonly asked: Asked[] = [];
@@ -174,7 +194,15 @@ export class FakeWarp implements Warp {
   readonly personal = new Map<string, Record<string, unknown>[]>();
   /** Every inbox read made for someone, and for whom. */
   readonly readFor: ActAs[] = [];
-  /** Each mapped person's projects, by subject, as act_as lists them. */
+  /** Each inbox page asked for, in order. */
+  readonly inboxQueries: {
+    state?: string;
+    kind?: string;
+    needs?: boolean;
+    news?: boolean;
+    limit?: number;
+  }[] = [];
+  /** Each mapped person's projects, by subject: every one they see, `mine` on those that name them. */
   readonly projects = new Map<string, WireProject[]>();
   /** Every projects read made for someone, and for whom. */
   readonly projectsReadFor: ActAs[] = [];
@@ -188,11 +216,26 @@ export class FakeWarp implements Warp {
   private readonly feeds = new Map<string, Feed<StreamItem>>();
   private readonly notes = new Feed<InboxNotice>();
   private seq = new Map<string, number>();
-  private clock = Date.parse("2026-10-09T00:00:00Z");
+  /**
+   * warp's clock, which the app's is too (world()). It starts after every
+   * fixture's own times, so what the fake records, such as a receipt, comes
+   * after the messages it is about, as it does in warp.
+   */
+  private clock = Date.parse("2026-10-09T01:00:00Z");
 
   private at() {
     this.clock += 1000;
     return new Date(this.clock).toISOString();
+  }
+
+  /** What time it is for warp, as the app reads it. */
+  now() {
+    return this.clock;
+  }
+
+  /** A time some way back on warp's clock, for a message raised then. */
+  ago(ms: number) {
+    return new Date(this.clock - ms).toISOString();
   }
 
   private feed(id: string) {
@@ -348,8 +391,17 @@ export class FakeWarp implements Warp {
     return posted;
   }
 
+  /** How many reads of one message fail next, as when warp is restarting. */
+  failReads = 0;
+
   async getInboxMessage(id: string) {
-    return (this.mailbox.get(id) as WireMessage | undefined) ?? null;
+    if (this.failReads > 0) {
+      this.failReads--;
+      throw new WarpError(503, "warp is restarting");
+    }
+    // A copy, as a read over HTTP is: a later change does not reach it.
+    const m = this.mailbox.get(id) as WireMessage | undefined;
+    return m ? structuredClone(m) : null;
   }
 
   /** The surface of each warp thread the fake started from one. */
@@ -397,30 +449,94 @@ export class FakeWarp implements Warp {
     return this.bound.get(client) ?? [];
   }
 
+  /** Set to make the next receipt fail, as when warp goes away after a post. */
+  refuseDelivery: WarpError | null = null;
+
+  /**
+   * As the real route does: the same post recorded again moves the receipt's
+   * time on only when the message changed since, and otherwise changes nothing.
+   */
   async recordDelivery(message: string, client: string, at: { channel: string; ts: string }) {
-    this.deliveries.push({ message, client, ...at });
+    if (this.refuseDelivery) {
+      const e = this.refuseDelivery;
+      this.refuseDelivery = null;
+      throw e;
+    }
     const m = this.mailbox.get(message);
+    const have = (m?.deliveries as Record<string, Receipt> | undefined)?.[client];
+    if (
+      have?.channel === at.channel &&
+      have.ts === at.ts &&
+      !(Date.parse(String(m?.updated_at)) > Date.parse(have.at ?? ""))
+    )
+      return;
+    this.deliveries.push({ message, client, ...at });
     if (m)
       m.deliveries = { ...((m.deliveries as object) ?? {}), [client]: { ...at, at: this.at() } };
   }
 
-  async inboxFor(actAs: ActAs, query: { state?: string; kind?: string; limit?: number }) {
+  /** Every read of a project's announcements, by project. */
+  readonly newsReads: string[] = [];
+
+  /** How many reads of a project's announcements fail next, as when warp is restarting. */
+  failNews = 0;
+  /** Projects whose inbox the app's machine may not read: 404, as for a project it cannot see. */
+  readonly unseen = new Set<string>();
+
+  /** As the project's inbox pages them for the app's machine: newest first, withdrawn ones too. */
+  async announcements(project: string, limit: number) {
+    this.newsReads.push(project);
+    if (this.failNews > 0) {
+      this.failNews--;
+      throw new WarpError(503, "warp is restarting");
+    }
+    if (this.unseen.has(project)) throw new WarpError(404, "no such project");
+    return [...this.mailbox.values()]
+      .filter(
+        (m) => m.kind === "announcement" && (m.source as { project?: string })?.project === project,
+      )
+      .sort((a, b) => Date.parse(String(b.at)) - Date.parse(String(a.at)))
+      .slice(0, limit) as WireMessage[];
+  }
+
+  /**
+   * Change a message for everyone, as warp does, without telling anyone: a
+   * notice the stream would have carried while the app was not listening.
+   */
+  quietly(id: string, change: Record<string, unknown>) {
+    const m = this.mailbox.get(id);
+    if (m) Object.assign(m, change, { updated_at: this.at() });
+  }
+
+  async inboxFor(
+    actAs: ActAs,
+    query: { state?: string; kind?: string; needs?: boolean; news?: boolean; limit?: number },
+  ) {
     this.readFor.push(actAs);
+    this.inboxQueries.push(query);
     const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user];
     if (!subject) throw new WarpError(403, "that person is not mapped to anyone in this workspace");
     const all = this.personal.get(subject) ?? [];
+    // A posted announcement is news; an agent's draft, which waits on its
+    // owners, is not, though it shares the kind.
+    const drafted = (m: Record<string, unknown>) =>
+      Array.isArray(m.parts) && m.parts.some((p) => (p as { type?: unknown }).type === "draft");
+    const posted = (m: Record<string, unknown>) => m.kind === "announcement" && !drafted(m);
     const mine = all.filter(
       (m) =>
         (!query.kind || m.kind === query.kind) &&
+        (!query.needs || !posted(m)) &&
+        (!query.news || posted(m)) &&
         (query.state === "all" || m.state === (query.state ?? "open")),
     );
-    // The counts are the whole inbox's, as warp's are: announcements count only as updates.
+    // The counts are the whole inbox's, as warp's are: posted announcements
+    // count only as updates, and an agent's draft counts as open.
     const open = all.filter((m) => m.state === "open");
-    const news = open.filter((m) => m.kind === "announcement");
+    const news = open.filter(posted);
     return {
       messages: mine.slice(0, query.limit ?? 50),
       open: open.length - news.length,
-      unread: open.filter((m) => m.kind !== "announcement" && m.unread).length,
+      unread: open.filter((m) => !news.includes(m) && m.unread).length,
       updates: news.filter((m) => m.unread).length,
     };
   }
@@ -429,9 +545,9 @@ export class FakeWarp implements Warp {
     this.projectsReadFor.push(actAs);
     const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user];
     if (!subject) throw new WarpError(403, "that person is not mapped to anyone in this workspace");
-    const mine = this.projects.get(subject);
-    if (!mine) throw new WarpError(403, "that person cannot read projects");
-    return mine;
+    const seen = this.projects.get(subject);
+    if (!seen) throw new WarpError(403, "that person cannot read projects");
+    return seen;
   }
 
   async getThread(id: string) {
@@ -443,8 +559,19 @@ export class FakeWarp implements Warp {
     return this.feed(run.id).read(options.signal ?? new AbortController().signal);
   }
 
-  notices(options: { signal?: AbortSignal }) {
-    return this.notes.read(options.signal ?? new AbortController().signal);
+  /** What the app does each time its notices stream opens, for reopen(). */
+  private opened: (() => void) | undefined;
+
+  notices(options: { signal?: AbortSignal; opened?: () => void }) {
+    this.opened = options.opened;
+    const read = this.notes.read(options.signal ?? new AbortController().signal);
+    options.opened?.();
+    return read;
+  }
+
+  /** The notices stream reconnects, having carried nothing while it was closed. */
+  reopen() {
+    this.opened?.();
   }
 
   /**
@@ -594,6 +721,10 @@ export class FakeWarp implements Warp {
 
   /** Put a message in the inbox and announce it. */
   raise(message: Record<string, unknown>) {
+    const was = this.mailbox.get(String(message.id));
+    // A change is a change for everyone, as warp's updated_at says.
+    if (was && was !== message && was.updated_at === message.updated_at)
+      message = { ...message, updated_at: this.at() };
     this.mailbox.set(String(message.id), message);
     this.notes.push({
       id: String(message.id),
@@ -651,6 +782,7 @@ export function world(opts: Partial<AppOptions> = {}, from?: Pick<World, "slack"
       defaultAgent: "lead",
       flushMs: 0,
       pollMs: 20,
+      now: () => warp.now(),
       log: (line) => logs.push(line),
       ...opts,
     });
@@ -1048,6 +1180,38 @@ export function announcementMail(over: Record<string, unknown> = {}): Record<str
     unread: true,
     source: { project: "Field" },
     parts: [{ id: "p1", type: "text", state: "info", actions: [], text: "Lisbon, in May." }],
+    ...over,
+  };
+}
+
+/** An agent's post held for Field's owners, as the platform's inbox sends it to one. */
+export function draftMail(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "m-draft",
+    kind: "announcement",
+    subject: "Field shipped two fixes",
+    from: { kind: "agent", name: "warp-analyst" },
+    at: "2026-10-09T00:45:00Z",
+    updated_at: "2026-10-09T00:45:00Z",
+    severity: "info",
+    state: "open",
+    unread: true,
+    source: { project: "Field", run: "r-recap", agent: "warp-analyst" },
+    parts: [
+      {
+        id: "p1",
+        type: "draft",
+        state: "open",
+        actions: ["publish", "discard"],
+        draft: {
+          project: "Field",
+          agent: "warp-analyst",
+          run: "r-recap",
+          subject: "Field shipped two fixes",
+          text: "The export is faster.",
+        },
+      },
+    ],
     ...over,
   };
 }

@@ -91,6 +91,28 @@ func TestOnlyAClientsMachineRecordsAndSeesItsDeliveries(t *testing.T) {
 	if d, _ := page["messages"].([]any)[0].(map[string]any)["deliveries"].(map[string]any); len(d) != 1 || d["one"] == nil {
 		t.Errorf("the first machine's page shows %v", d)
 	}
+	// A receipt is the client's own mark in the message's history too: which
+	// client posted it, where and when is shown to that client's machine alone.
+	delivered := func(tok string) []string {
+		t.Helper()
+		_, out := f.do(t, nil, "GET", "/api/inbox/"+id, tok, "")
+		by := []string{}
+		for _, c := range out["history"].([]any) {
+			if c := c.(map[string]any); c["what"] == "delivered" {
+				by = append(by, c["by"].(string))
+			}
+		}
+		return by
+	}
+	if got := delivered(one); len(got) != 1 || got[0] != "one" {
+		t.Errorf("the first machine's history shows receipts by %v", got)
+	}
+	if got := delivered(two); len(got) != 1 || got[0] != "two" {
+		t.Errorf("the second machine's history shows receipts by %v", got)
+	}
+	if got := delivered(ada); len(got) != 0 {
+		t.Errorf("a person's history shows receipts by %v", got)
+	}
 }
 
 // An announcement a Slack app posts to the channel its project is bound to
@@ -131,6 +153,55 @@ func TestAnAnnouncementWhereTheAppOnlyViewsKeepsItsReceipt(t *testing.T) {
 	got := want(t, f, one, "GET", "/api/inbox/"+id, "", http.StatusOK)["message"].(map[string]any)
 	if d, _ := got["deliveries"].(map[string]any)["one"].(map[string]any); d["ts"] != "1700000000.000200" {
 		t.Fatalf("the receipt reads back as %v", got["deliveries"])
+	}
+}
+
+// A Slack app catches up on a bound project's announcements from the
+// project's own inbox, newest first and withdrawn ones too. There, as
+// wherever a message is read, a client's machine is shown its own client's
+// receipt, and another client's machine and a person are shown none.
+func TestAProjectsInboxShowsOnlyTheReadersOwnReceipts(t *testing.T) {
+	f, ana, _, _ := acmeNews(t)
+	admin := f.machine(t, "acme", everything...)
+	one, two := f.signedAs(t, "svc-one"), f.signedAs(t, "svc-two")
+	dana := f.person(t, "acme", "dana", "Dana", "warp-admins")
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	for _, c := range []string{slackApp("one", "A01ONE", "svc-one"), slackApp("two", "A01TWO", "svc-two")} {
+		want(t, f, admin, "POST", "/api/clients", c, http.StatusCreated)
+	}
+	want(t, f, admin, "PUT", "/api/projects/Globex/channels/general", `{"version":0,"slack":{"client":"one","channel":"C01GLX"}}`, http.StatusOK)
+	id := want(t, f, ana, "POST", "/api/projects/Globex/announcements", `{"subject":"Renewal signed","text":"Three more years."}`, http.StatusCreated)["id"].(string)
+	want(t, f, one, "PUT", "/api/inbox/"+id+"/deliveries/one", `{"channel":"C01GLX","ts":"1700000000.000200"}`, http.StatusNoContent)
+	want(t, f, two, "PUT", "/api/inbox/"+id+"/deliveries/two", `{"channel":"C02GLX","ts":"1700000000.000300"}`, http.StatusNoContent)
+	want(t, f, ana, "DELETE", "/api/projects/Globex/announcements/"+id, "", http.StatusNoContent)
+
+	receipts := func(tok string) map[string]any {
+		t.Helper()
+		page := want(t, f, tok, "GET", "/api/projects/Globex/inbox?kind=announcement&state=all", "", http.StatusOK)["messages"].([]any)
+		if len(page) != 1 || page[0].(map[string]any)["id"] != id {
+			t.Fatalf("Globex's inbox reads %v", page)
+		}
+		d, _ := page[0].(map[string]any)["deliveries"].(map[string]any)
+		return d
+	}
+	if d := receipts(one); len(d) != 1 || d["one"].(map[string]any)["ts"] != "1700000000.000200" {
+		t.Errorf("the first machine reads %v", d)
+	}
+	if d := receipts(two); len(d) != 1 || d["two"].(map[string]any)["ts"] != "1700000000.000300" {
+		t.Errorf("the second machine reads %v", d)
+	}
+	for name, tok := range map[string]string{"its author": ana, "a person": dana} {
+		if d := receipts(tok); d != nil {
+			t.Errorf("%s reads %v", name, d)
+		}
+	}
+	// Once the app has edited its post to say it was withdrawn, it records
+	// the same post again, and the receipt says so from then on.
+	before := receipts(one)["one"].(map[string]any)["at"]
+	want(t, f, one, "PUT", "/api/inbox/"+id+"/deliveries/one", `{"channel":"C01GLX","ts":"1700000000.000200"}`, http.StatusNoContent)
+	after := receipts(one)["one"].(map[string]any)
+	if after["at"] == before || after["ts"] != "1700000000.000200" {
+		t.Errorf("the post recorded again after the withdrawal reads %v, recorded first at %v", after, before)
 	}
 }
 
@@ -186,4 +257,37 @@ func TestAnAnnouncementsSlackThreadIsReadAsTheSpecSays(t *testing.T) {
 	gone := posted("Vault closed", "1700000000.000500")
 	want(t, f, ana, "DELETE", "/api/projects/Vault/announcements/"+gone, "", http.StatusNoContent)
 	c.call(app, "POST", "/api/threads", "/api/threads", reply("1700000000.000500", "1700000000.000600"), http.StatusGone)
+}
+
+// A reply under the post of warp's own release notes, in the workspace's
+// bound general channel, starts a thread whose first turn is from warp
+// itself, as the spec says: kind system, by warp.
+func TestReleaseNotesSeedAThreadAsTheSpecSays(t *testing.T) {
+	f := newFixtureGranting(t, platform.Config{}, `grant operator to subject "ana"`)
+	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
+	admin, app := f.machine(t, "acme", everything...), f.signedAs(t, "svc-one")
+	ana := f.person(t, "acme", "ana", "Ana", "warp-operators")
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	client := strings.Replace(slackApp("one", "A01ONE", "svc-one"), `"machine":"svc-one"`, `"machine":"svc-one","people":{"U01ANA":"ana"}`, 1)
+	want(t, f, admin, "POST", "/api/clients", client, http.StatusCreated)
+	want(t, f, admin, "PUT", "/api/projects/~/channels/general", `{"version":0,"slack":{"client":"one","channel":"C01ALL"}}`, http.StatusOK)
+	notes, _, err := f.p.PostReleaseNotes("acme", "0.16.0", platform.Announcement{Subject: "What's new in warp 0.16.0", Text: "- Slack catch-up"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want(t, f, app, "PUT", "/api/inbox/"+notes.ID+"/deliveries/one", `{"channel":"C01ALL","ts":"1700000000.000100"}`, http.StatusNoContent)
+	reply := `{"text":"<@UAPP> what is catch-up?","post_only":true,"act_as":{"client":"one","user":"U01ANA"},"surface":{"client":"one","channel":"C01ALL","ts":"1700000000.000100","message":"1700000000.000200","app_user":"UAPP"}}`
+	started := c.call(app, "POST", "/api/threads", "/api/threads", reply, http.StatusCreated)
+	th := obj(started.field("thread"))
+	if th["announcement"] != notes.ID || th["project"] != "" {
+		t.Fatalf("the reply started %s", started.raw)
+	}
+	page := c.call(ana, "GET", "/api/threads/{id}", "/api/threads/"+th["id"].(string), "", http.StatusOK)
+	turns := sliceOf(page.field("turns"))
+	if len(turns) < 2 || obj(turns[0])["kind"] != "announcement" {
+		t.Fatalf("the thread reads %s", page.raw)
+	}
+	if a := obj(obj(turns[0])["announcement"]); a["kind"] != "system" || a["by"] != "warp" || a["name"] != nil || a["subject"] != "What's new in warp 0.16.0" {
+		t.Fatalf("its first turn is %v", a)
+	}
 }

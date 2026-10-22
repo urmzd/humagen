@@ -110,7 +110,7 @@ func (p *Platform) waitForCall(ctx context.Context, parent runtime.Request, req 
 	var release sync.Once
 	defer release.Do(func() { p.waiting.Add(-1) })
 
-	child, err := p.call(ctx, parent.Tenant, parent.RunID, req, true)
+	child, err := p.call(ctx, parent.Tenant, parent.RunID, req, true, nil)
 	if err != nil {
 		return "", err
 	}
@@ -234,7 +234,7 @@ func (p *Platform) delegateTool(req runtime.Request, action func(payload.Action)
 			target, text := arg(args, "agent"), arg(args, "text")
 			child, err := p.call(ctx, req.Tenant, req.RunID, call.Request{
 				Key: callKey("delegate", target, text), Agent: target, Text: text, Mode: call.Delegate,
-			}, true)
+			}, true, nil)
 			if err != nil {
 				return "", err
 			}

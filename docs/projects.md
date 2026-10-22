@@ -707,7 +707,8 @@ ingress overwrites whatever a connector put there (phase 8).
   shared and records who withdrew.
 - `Count` returns `{open, unread, updates}`. Broadcasts count only in
   `updates`; every existing kind counts exactly as today, so the badge and the
-  phone's dot never grow from announcements.
+  phone's dot never grow from announcements. From phase 9 it adds up
+  counters instead of reading every message (see Retention and counts).
 
 ### Fan-out, decided when read
 
@@ -785,7 +786,8 @@ rendering, and the run that wrote the text is one click away.
 
 20 announcements per project per day and 200 per tenant per day (429). 20 open
 drafts per project. A project inbox page is at most 200 (default 30) with a
-cursor. Inbox retention for closed broadcasts is a follow-up (see Risks).
+cursor. What was settled for everyone is kept for the inbox's retention, 90
+days by default (see Retention and counts).
 
 ### Release notes (phase 9)
 
@@ -808,10 +810,60 @@ cursor. Inbox retention for closed broadcasts is a follow-up (see Risks).
   that sets it is posted the release, unless it has no breaking changes
   and no features.
   `inbox.Store.PostOnce` checks the key under the inbox lock: an
-  announcement ever raised under it, withdrawn or not, is kept, so a restart
-  or a later process on the same database posts nothing. It is an
+  announcement ever raised under it, withdrawn or not, is kept, and its key
+  outlives it once retention drops it, so a restart or a later process on
+  the same database posts nothing. Caller keys cannot start with `announce:`,
+  which ordinary posts use for their own keys. It is an
   announcement like any other in the root: everyone reads it, What's new
   shows it, and Hide for Me hides one reader's copy.
+- The Slack app connects after the start, and catches up on a bound
+  project's announcements when it does, so the notes reach a channel bound
+  to the workspace's general before that start. A reply under their post starts a thread
+  seeded with them, from warp (`ThreadAnnouncement.kind` `system`, `by`
+  `warp`), which the room shows without a person's or an agent's mark and
+  a run is sent as `warp (system)`.
+
+### Retention and counts (phase 9)
+
+`workspace.inbox_retention` (default `90d`, at least `7d`, at most 100 years;
+whole days or a Go duration such as `2160h`) is how long a workspace's inbox
+keeps what was settled for everyone. The platform passes it in
+`Config.InboxRetention`, and at start and every hour after
+`inbox.Store.Retain` drops what was settled before then.
+
+- **What goes.** A message resolved, dismissed or withdrawn for everyone
+  before the cut, with no question in it that a run still waits on, and
+  every change recorded about it: its raise, its outcomes, each reader's
+  reads and hides, and each client's receipts. Nothing open or snoozed goes.
+  An announcement stays while it is open for anyone, whoever hid their own
+  copy.
+- **The record.** Each change is kept under its own key, as before, and a
+  retention step deletes the dropped messages' records and writes the tenant's
+  cut (key `cut`) in one write, all or none, at most 5,000 operations a step,
+  including the cut. The cut holds the number of the last id issued and the
+  keys of announcements posted once. If one message has more history than
+  a step can delete, the cut also names it while later steps delete the rest.
+  Replay reads the cut first and skips those records, so an interrupted
+  cleanup never brings a message back. It applies each kept raise under
+  the id its record names, with `-state=postgres` as in memory. The inbox
+  changes only once its step is written; a step that cannot be written
+  changes nothing and is tried again at the next pass.
+- **What never repeats.** No message id is issued again, and a key posted
+  once (`release:<version>`) is never posted again (`PostOnce`, which reads
+  the cut's keys). Receipts and keys of what is kept still find it; those
+  of what was dropped find nothing, so a reply under the Slack post of an
+  announcement withdrawn and dropped starts a thread as any other there,
+  and a thread seeded with one no longer shows it.
+- **Counts.** `Count` is answered from counters kept as changes apply and
+  rebuilt on replay. The open messages are kept in buckets alike in kind,
+  addressing and what they are about (`Source`'s run, project, thread and
+  agent), each with how many it holds and, for each reader, how many of
+  them they read or, for a broadcast, hid. A count asks who may see each
+  bucket once, as the read rule asks of a message (`Query.Sees`,
+  `Visible`, `For`), and adds up what is left. What reopens by itself with
+  time is read one by one: messages snoozed for everyone, kept in groups
+  alike as buckets are, so the read rule is asked once for each group, and
+  the reader's own snoozes of broadcasts. A settled message is never read.
 
 ## Permissions
 
@@ -1001,22 +1053,41 @@ One predicate, `p.Sees(who, place)`, filters every read of:
 - schedules and the inbox;
 - memory and pending memory;
 - `/api/agents` (homed agents);
-- the agents a client, a project's lists and the workspace's settings name.
+- the agents a client, a project's lists and the workspace's settings name;
+- the agents a spec may call, its approvals of those calls and who may
+  approve them, a call policy's `allow` and `trusted`, a run manifest's
+  definition, a channel's default, and a thread's default, the agents added
+  to it by name and the tags in its turns.
 
 A hidden object answers 404. A hidden agent a record names is left out of it,
 a change keeps it, and naming one, in any spelling of its name, answers as
-naming no agent.
+naming no agent: as a spec's spawn entry, a call policy's caller, a call's
+target, or a run's, a schedule's or a thread's agent. A default the asker may
+not read is passed over for them, as if it were not set. A run names the
+agent that ran it, which was available where it ran, and so does what is
+built only from runs the reader may read: a conversation's agents, the
+agents that answered in a thread, analytics and the analyst's summaries by
+agent, and a recap's rows of what was done. A refusal names where an agent
+lives only when everyone reads that project.
 
 ### Phase 8
 
 | Route | Permission | Notes |
 |---|---|---|
-| `PUT /api/projects/{name}/channels/{channel}` | `projects:write` | gains `slack {client, channel}`; owner; the client must be a Slack client in the tenant; binding a Slack channel, or moving a binding, also takes `clients:write` (403), as every new thread there is filed in the project; keeping or removing one takes only the owner |
-| `GET /api/clients/{id}/bindings` | `clients:read` | `[{slack_channel, project, channel}]`, at most 200 |
+| `PUT /api/projects/{name}/channels/{channel}` | `projects:write` | gains `slack {client, channel}`; owner; the client must be a Slack client in the tenant; binding a Slack channel, or moving a binding, also takes `clients:write` (403), as every new thread there is filed in the project; keeping or removing one takes only the owner. The channel gains `bound_at`: set when a binding is made or moved, kept while it holds, absent while unbound |
+| `GET /api/clients/{id}/bindings` | `clients:read` | `[{slack_channel, project, channel, bound_at}]`, at most 200; `bound_at` is when the binding was made, and the Slack app catches up on nothing announced before it. A binding made before warp kept the time reads as bound at its channel's last change |
 | `PUT /api/clients/{id}` | `clients:write` | gains `home {project, channel}` |
+| `POST /api/clients`, `PUT /api/clients/{id}` | `clients:write` | `github` gains `login`, the app's own GitHub login (`warp[bot]`); one that is not a GitHub login is 400. A comment that mentions it and names no agent asks the client's default, then its home channel's chain (docs/github.md) |
 | `POST /api/threads`, `POST /api/threads/{id}/messages` | `runs:write` | gain `surface {client, channel, ts}`: find or create the thread by surface. The platform files it from the binding, never from a request field, and only for the client's `slack.machine` |
-| `PUT /api/inbox/{id}/deliveries/{client}` | `runs:write` | `{channel, ts}` → 204; only the client's machine |
-| `GET /api/inbox`, `GET /api/inbox/count` | `runs:read` | gain `act_as` for a client's machine, resolved through `Client.ActsFor` |
+| `POST /api/threads` | `runs:write` | a surface at the channel and ts of an announcement's Slack post, as the client's receipt records, starts a thread seeded with it where the Slack channel's binding files it in the announcement's project; `Thread` gains `announcement`, its inbox id. There a reply to one that was withdrawn, or to a draft, is 410 and starts nothing. Filed anywhere else, it starts as any other thread |
+| `GET /api/threads/{id}` | `runs:read` | a seeded thread's turns start with the announcement as it stands when read: `ThreadTurn.kind` gains `announcement`, and `ThreadAnnouncement {id, kind (person, agent), by, name?, subject?, text?, withdrawn?, at}`. A withdrawn one says only that |
+| `PUT /api/inbox/{id}/deliveries/{client}` | `runs:write` | `{channel, ts}` → 204; only the client's machine. The same post again after the message changed moves the receipt's `at` on, so it says the post shows it; otherwise it changes nothing |
+| `GET /api/projects/{name}/inbox`, `GET /api/inbox/{id}` | `projects:read` / `runs:read` | show a client's machine its own client's receipts (`deliveries`, and `delivered` in a message's history) and nobody else any, as every inbox read does: the Slack app catches up from the project's inbox |
+| `GET /api/inbox`, `GET /api/inbox/count`, `GET /api/inbox/{id}` | `runs:read` | gain `act_as_client` and `act_as_user` for a client's machine, resolved through `Client.ActsFor`; the person must hold `runs:read` themselves (403) |
+| `GET /api/inbox` | `runs:read` | gains `needs=true`, what `open` counts: posted announcements are left out before the page is cut, and an agent's draft is kept. The Slack Home's Needs you reads it. And `news=true`, what `updates` counts: posted announcements alone, never a draft. What's new reads it, in the console and in Slack |
+| `GET /api/events` | `runs:read` | an `inbox` notice to a client's machine gains `for {client, user}`: the person it maps whom a mention or a question is addressed to, by subject or by a role they hold, one notice for each, at most 20 |
+| `GET /api/projects` | `projects:read` | gains `act_as_client` and `act_as_user` for a client's machine, as the inbox does: the projects that person may see, each as they see it. The person must hold `projects:read` themselves (403); one without the other is 400 |
+| `GET /api/projects`, `GET /api/projects/{name}` | `projects:read` | each `ProjectView` gains `mine`: whether the project names the caller, which is what Your projects lists (see App Home under Slack) |
 
 ### Phase 9
 
@@ -1024,9 +1095,15 @@ naming no agent.
 |---|---|---|
 | `GET /api/projects/{name}/knowledge` | `projects:read` | `{version, knowledge (<= 8), given: [{name, from}] (<= 16)}`: what the project names, and what a run filed there is given, nearest first. Both empty for a caller without `knowledge:read` |
 | `PUT /api/projects/{name}/knowledge` | `projects:write` | `{version, knowledge}`; owner, and `knowledge:read` (403); each newly named a source the workspace has (400); 409 stale version or a list the file sets |
+| `GET /api/threads/{id}` | `runs:read` | a thread seeded with a release's notes starts with them from warp: `ThreadAnnouncement.kind` gains `system`, with `by: warp` and no `name` |
+| `GET /api/inbox/{id}` | `runs:read` | a message retention dropped is 404, as one that never was. Its receipts go with it, so a reply under its Slack post starts a thread as any other (`POST /api/threads`), and a thread seeded with it no longer starts with it |
 
 `Project` gains `knowledge`, left out for a caller without `knowledge:read`,
-and `ProjectChange.what` gains `knowledge`.
+and `ProjectChange.what` gains `knowledge`. Release notes and retention add
+no route and change no shape: they are `workspace.release_notes` and
+`workspace.inbox_retention` in the Platform document, and
+`GET /api/inbox/count` answers the same `{open, unread, updates}`, added up
+from counters.
 
 ### Contract upkeep, every phase
 
@@ -1058,6 +1135,7 @@ spec:
     project_kinds: [{name: partner, title: Partner, like: account}]      # phase 2
     agent_posts: review                     # phase 5
     release_notes: false                    # phase 9
+    inbox_retention: 90d                    # phase 9
     channels: [{name: announcements, purpose: Company news}]             # phase 6
     projects:
       - name: Field
@@ -1214,10 +1292,12 @@ An unknown tab falls back to the default through `pick`. Names never hold
   Nothing waiting on a person animates; a mark shows thinking only while its
   run is live.
 - **Home.** The prompt-first composer, then two quiet lines from the shared
-  `HomeModel`: "Needs you · 2" and "What's new" (up to 5 announcements from
-  your projects, unread first, never an unpublished draft), each linking to
-  `/projects/{name}/inbox?message=` in the project it was filed in. A
-  project's inbox opens by id only a message filed in that project.
+  `HomeModel`: "Needs you · 2" (the inbox's `open`, which counts an agent's
+  draft waiting on its owners and never a posted announcement) and "What's
+  new" (up to 5 announcements from your projects, unread first, never an
+  unpublished draft), each linking to `/projects/{name}/inbox?message=` in
+  the project it was filed in. A project's inbox opens by id only a message
+  filed in that project.
 - **Inbox.** Announcements sit under Updates with a megaphone template;
   drafts and mentions sit in Needs you. On a broadcast the header reads "Hide
   for Me", with "Hidden for you. Others still see it." and "Show for Me",
@@ -1253,7 +1333,10 @@ Shared pieces: `packages/core` gains `HomeModel.updates` and
 `HomeModel.projects`, and `packages/adapter` maps `announcement`, `draft` and
 `mention` (`kinds`, `templateOf`) and makes What's new, Your projects and
 what needs the reader from the platform's reads (`updatesOf`, `projectsOf`,
-`notificationsOf`), with parity tests in `apps/slack/src/parity.test.tsx`.
+`notificationsOf`): a posted announcement is What's new and an agent's draft
+is what needs its owners, and Your projects keeps the views marked `mine`.
+Parity tests in `apps/slack/src/parity.test.tsx` hold Needs you, its rows
+and its total, What's new and Your projects to the same on both renderers.
 
 ### Slack (one app per client)
 
@@ -1291,14 +1374,29 @@ what needs the reader from the platform's reads (`updatesOf`, `projectsOf`,
   the question's answer.
 - **Announcements.** The app's `watchInbox` sees an announcement of a project
   whose `general` channel is bound. It posts it top-level once and records
-  `PUT /api/inbox/{id}/deliveries/{client}`, so a restart, an edit or a
-  withdrawal updates that post instead of posting again. A reply in its
-  thread starts a shared thread seeded with the announcement. Slack delivers
-  a reply in a channel thread only when it mentions the app, so the reply
-  that mentions it posts, with the post's surface, into the thread the
-  platform finds by that post's receipt: in the bound channel, its turns
-  start with the announcement from whoever posted it (the scheduled agent
-  for a recap), then the reply as the person's own message, answered by the
+  `PUT /api/inbox/{id}/deliveries/{client}`, and the receipt is the record
+  of the post. The event stream does not replay, so each time it opens, at
+  the start and after every reconnect, the app catches up: it reads each
+  bound project's newest 50 announcements in the project's inbox, where its
+  machine is shown its own receipts, edits a post whose announcement
+  changed since its receipt (`updated_at` after its `at`), and posts, oldest
+  first, an open one with no receipt from the last 24 hours and announced
+  no earlier than the binding was made (`bound_at` on the binding), so
+  nothing from before the binding and nothing days late. A withdrawn post
+  says only that it was withdrawn, and the app records the same post again,
+  which moves the receipt's `at` on. So a restart, a reconnect, an edit or a
+  withdrawal updates that post instead of posting again, and a notice during
+  a catch-up posts nothing twice. A change to an announcement older than
+  the newest 50, made while the app was not listening, is not caught up on:
+  its post keeps what it said, withdrawn words included. The app does all
+  this only when its client names its credential as the machine, and a
+  catch-up that did not finish is tried again with backoff. A reply in its thread starts a shared thread seeded with the
+  announcement. Slack delivers a reply in a channel thread only when it
+  mentions the app, so the reply that mentions it posts, with the post's
+  surface, into the thread the platform finds by that post's receipt: in
+  the bound channel, its turns start with the announcement from whoever
+  posted it (the scheduled agent for a recap, warp itself for release
+  notes), then the reply as the person's own message, answered by the
   channel's chain. A later reply finds the same thread, and once the
   announcement is withdrawn the thread says only that. A reply under one
   withdrawn before anyone replied starts nothing, and drafts never reach a
@@ -1306,18 +1404,27 @@ what needs the reader from the platform's reads (`updatesOf`, `projectsOf`,
   seeded: after the Slack channel is bound to another project, or unbound, a
   reply under an old post starts a thread there as any other.
 - **App Home.** The shared Home, through `homeView`, replaces the bare
-  MailboxView for a person the client maps. It shows Needs you (at most 5),
-  What's new (at most 5) and Your projects (at most 8, where something
-  happened most recently first, archived ones left out), read as the mapped
-  person through `act_as` (`GET /api/inbox` and `GET /api/projects` with
-  `act_as_client` and `act_as_user`), within the 100-block budget. Each opens
-  in the console when the app has its address. Without it, Review sends what
-  needs the person to their messages with the app, and What's new and Your
-  projects are shown to read. Ask a Question and Build an Agent open a form
-  whose words are posted as the person in their messages with the app, Build
-  an Agent tagging `@warp-builder` where the client reaches it; Search
-  Context opens the console. Someone the client maps to nobody keeps the
-  mailbox.
+  MailboxView for a person the client maps. It shows Needs you (at most 5, the
+  rest counted as the inbox's `open` counts them: an agent's draft waiting on
+  its owners is one, a posted announcement is not, and read with `needs=true`
+  so that news newer than them never pushes them off the page), What's new (at
+  most 5 posted announcements, read with `news=true`) and Your projects, read
+  as the mapped person through `act_as` (`GET /api/inbox` and `GET
+  /api/projects` with `act_as_client` and `act_as_user`), within the 100-block
+  budget. Your projects are the projects that name the person (`mine` on each
+  view): they are a member or an owner through an entry for their subject or a
+  `role:<name>` they hold, on the project or as an owner of a project above
+  it. Access only through `*`, or only through `projects:govern`, does not
+  count, and neither does an entry in a project they could not see without
+  `projects:govern`. At most 8, where something happened most recently first
+  and then in tree order, archived ones left out, the rest counted in "N more
+  in Projects", which links the console's Projects. Each opens in the console
+  when the app has its address. Without it, Review sends what needs the person
+  to their messages with the app, and What's new and Your projects are shown
+  to read. Ask a Question and Build an Agent open a form whose words are
+  posted as the person in their messages with the app, Build an Agent tagging
+  `@warp-builder` where the client reaches it; Search Context opens the
+  console. Someone the client maps to nobody keeps the mailbox.
 - **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
   a tag; otherwise the client's default; otherwise nothing. As Slack delivers
   only what mentions the app, a comment that names no agent asks the client
@@ -1436,6 +1543,21 @@ Existing Slack conversations keep their run-derived mapping. A thread gains a
 surface record the first time the app is mentioned in it after the upgrade.
 Channels are bound only by a project owner.
 
+### Phase 9: retention
+
+No migration. Retention's first pass runs at the first start after the
+upgrade and drops what was settled more than 90 days before, or the
+workspace's `inbox_retention`. Records written before phase 9 replay as they
+did: their raises already name their ids. Older broadcasts carry no flag
+that distinguishes an ordinary post from `PostOnce`, so their keys are kept
+conservatively after retention, and a release posted before phase 9 is not
+posted again once it is dropped. New ordinary posts need no permanent key.
+
+No rollback after the first pass. A build from before phase 9 keys its next
+change by how many changes it loaded and numbers its next id by how many
+raises it loaded, so on a record retention has cut it would overwrite kept
+changes and issue ids again. Roll back only to a build with phase 9.
+
 ### Docs in the same PRs
 
 - docs/architecture.md#status, existing rows:
@@ -1535,13 +1657,14 @@ phase 2 and experts to phase 3, because addressing and threads need them.
 
 | # | Phase | Scope | Size |
 |---|---|---|---|
-| 2 | Explicit addressing, agents in projects, and the directory | `Agents{enable, allow, default}`, homes and the home route, `available(P)`, the one admission check. `@auto` as a reserved built-in over `pkg/pick`, defaults along the chain, the baseline migration. `POST /api/runs` without an agent, `GET /api/pick?project=`, `stamp` resolving `auto`, the Slack app's picker path removed. `pkg/people` and `GET /api/people` (who is in the workspace: name, handle, picture, roles, projects), from sign-ins, client people maps and the policy; a Directory in the console with People, Agents (platform and project agents, where each lives and is enabled, its handle and color) and Projects (the tree, kinds, what each holds), readable by everyone with `people:read`, `agents:read` and `projects:read`. Agents tab, composer menu and `@auto`, agent Access tab; spec `agents` and `agents[].project`. Status rows 407 and new rows | M-L |
-| 3 | Channels and shared threads | Channels on the record and their routes. `pkg/threads` with records, human messages, the tag grammar, participants, and defaults per channel and thread. Runs answering messages and the room transcript. Experts on projects (data and routes). Mentions in the inbox with Reply; `@sme` and `ask_person` addressed to experts; replies recorded as answers. Thread SSE and a paged `GET /api/threads/{id}`. Channel and Thread views with the `@` typeahead and Post Only. Shared threads only. Status row 404 and new rows | L |
-| 4 | People and project roles | Members, `Resolve` and the intersection rule on every project route. Members propose notes and owners approve them. Owner-set tighten-only limits with `Policy.Authority`. Move (subtree check under the lock, the `billing:write` rule) and archive. Custom kinds; paged listing and the 500 cap. People, History and Limits tabs. Every project stays visible: `*` required. Status rows 421 and 424 | L |
-| 5 | Project inboxes and announcements | Kind `announcement`, `Broadcast` with per-reader hide and snooze, `project:` audiences and `Reader.Projects`, `Count.updates`, `Withdraw(by)`. The project inbox route, post and withdraw routes with rate limits, `prefs.Muted`. Inbox tab, Home "What's new", Updates and "Hide for Me", adapter templates and parity tests. Status rows 470 to 475 | M |
-| 6 | Scheduled agents in projects (recaps) | `deliver` (project or inbox), posting on `ended()`, `agent_posts` and the draft part. `project_changes`, `runs_summary(project)`, the `Summarize` project filter, file-managed schedules in the spec. Schedules tab and "Add Weekly Recap". Status row 465 | M |
-| 7 | Read confinement: members-only projects and private threads | `p.Sees` with 404 on every read path (runs, threads, events, manifest, trace, journal, analytics, artifacts and downloads, schedules, inbox, memory, homed agents). Private threads; members-only projects and the account default; no memory proposals from private threads. A contract sweep reads every GET and the event stream as a non-member. Status row 424 built | L, two PRs |
-| 8 | Slack and GitHub coworking | Channel bindings, client home, surface-keyed threads, addressing, the room's messages, mention and expert DMs, the reply modal. Announcements posted top-level with delivery receipts; App Home on the shared Home through `act_as`; GitHub on the same rule; docs/slack.md. Status rows 381, 382 and 465 | L |
+| 2 | Explicit addressing, agents in projects, and the directory | `Agents{enable, allow, default}`, homes and the home route, `available(P)`, the one admission check. `@auto` as a reserved built-in over `pkg/pick`, defaults along the chain, the baseline migration. `POST /api/runs` without an agent, `GET /api/pick?project=`, `stamp` resolving `auto`, the Slack app's picker path removed. `pkg/people` and `GET /api/people` (who is in the workspace: name, handle, picture, roles, projects), from sign-ins, client people maps and the policy; a Directory in the console with People, Agents (platform and project agents, where each lives and is enabled, its handle and color) and Projects (the tree, kinds, what each holds), readable by everyone with `people:read`, `agents:read` and `projects:read`. Agents tab, composer menu and `@auto`, agent Access tab; spec `agents` and `agents[].project`. Status row "`@auto`, the built-in router" (once `pkg/pick`), and the new rows "Agents in projects", "Defaults along the chain" and "`pkg/people` and the Directory's people" | M-L |
+| 3 | Channels and shared threads | Channels on the record and their routes. `pkg/threads` with records, human messages, the tag grammar, participants, and defaults per channel and thread. Runs answering messages and the room transcript. Experts on projects (data and routes). Mentions in the inbox with Reply; `@sme` and `ask_person` addressed to experts; replies recorded as answers. Thread SSE and a paged `GET /api/threads/{id}`. Channel and Thread views with the `@` typeahead and Post Only. Shared threads only. Status row "Conversations", and the new rows "Channels on the project record", "Shared threads, tagging and the room", "Experts on projects" and "Mentions in the inbox" | L |
+| 4 | People and project roles | Members, `Resolve` and the intersection rule on every project route. Members propose notes and owners approve them. Owner-set tighten-only limits with `Policy.Authority`. Move (subtree check under the lock, the `billing:write` rule) and archive. Custom kinds; paged listing and the 500 cap. People, History and Limits tabs. Every project stays visible: `*` required. Status rows "Limits set by a project's owner" and "Project membership and per-project access" | L |
+| 5 | Project inboxes and announcements | Kind `announcement`, `Broadcast` with per-reader hide and snooze, `project:` audiences and `Reader.Projects`, `Count.updates`, `Withdraw(by)`. The project inbox route, post and withdraw routes with rate limits, `prefs.Muted`. Inbox tab, Home "What's new", Updates and "Hide for Me", adapter templates and parity tests. Status rows "`pkg/inbox`" through "Messages addressed to one person, one role, a project's members or its owners", and the new row "Project inboxes and announcements" | M |
+| 6 | Scheduled agents in projects (recaps) | `deliver` (project or inbox), posting on `ended()`, `agent_posts` and the draft part. `project_changes`, `runs_summary(project)`, the `Summarize` project filter, file-managed schedules in the spec. Schedules tab and "Add Weekly Recap". Status row "Schedule delivery", and the new row "Scheduled agents in projects (recaps)" | M |
+| 7 | Read confinement: members-only projects and private threads | `p.Sees` with 404 on every read path (runs, threads, events, manifest, trace, journal, analytics, artifacts and downloads, schedules, inbox, memory, homed agents). Private threads; members-only projects and the account default; no memory proposals from private threads. A contract sweep reads every GET and the event stream as a non-member. Status row "Project membership and per-project access" built, and the new row "Read confinement" | L, two PRs |
+| 8 | Slack and GitHub coworking | Channel bindings, client home, surface-keyed threads, addressing, the room's messages, mention and expert DMs, the reply modal. Announcements posted top-level with delivery receipts; App Home on the shared Home through `act_as`; GitHub on the same rule; docs/slack.md. Status rows "Slack app (`apps/slack`)", "Questions in Slack" and "Schedule delivery", and the new row "Slack and GitHub coworking in projects" | L |
+| 9 | Release notes, knowledge sources inherited down the tree, inbox retention and per-reader counters | Built. Release notes: `workspace.release_notes` posts a release's breaking changes and features once, in the root's inbox from warp (`PostOnce`, keyed `release:<version>`); the Slack app's catch-up brings them to a Slack channel bound to the workspace's general, where a reply starts a thread seeded with them. Knowledge: a project, the workspace included, names at most 8 of the workspace's sources (`Project.Knowledge`, `GET` and `PUT /api/projects/{name}/knowledge`, and the file's `knowledge`), and a run is grounded in its chain's, nearest first, at most 16, pinned at accept as `warp.sources` and added through `callExecutor.resolve`, with no fiber change. The console neither shows nor edits them yet. Retention: `workspace.inbox_retention` (90 days by default) drops what was settled for everyone, with its records, at start and every hour, in steps under a cut that replay reads first; `Count` adds up counters kept per bucket of open messages. The inbox is still held whole in memory. Status rows "Release notes in the workspace's inbox", "Knowledge sources inherited down the project tree" and "Inbox retention and per-reader counts" | M |
 
 ## Risks
 
@@ -1591,10 +1714,14 @@ phase 2 and experts to phase 3, because addressing and threads need them.
   everywhere else. The route answers 409 while anything outside the new
   subtree uses the agent, and the console counts the projects that lose it.
   Schedules that lose their agent fail visibly.
-- **Inbox growth.** The inbox has no retention and `Count` scans every
-  message. Broadcasts add one message per post, not one per person, and
-  per-reader state adds one change for each person who hides one. Rate limits
-  bound posts; retention and per-reader counters are phase 9.
+- **Inbox growth.** Broadcasts add one message per post, not one per
+  person, and per-reader state adds one change for each person who hides
+  one. Rate limits bound posts. What was settled for everyone is dropped
+  after the workspace's retention (90 days by default) with its record,
+  and `Count` adds up counters kept per bucket of open messages, never
+  reading a settled one (phase 9). What stays is what is open or snoozed: an
+  announcement nobody withdraws stays, with every reader's marks on it, and
+  the inbox is still held whole in memory.
 - **Addressing is not confidentiality.** Expert questions are routed to
   experts, but anyone fiber's `answerers` check admits may still answer
   through the run, as today. A project that needs a closed set of answerers

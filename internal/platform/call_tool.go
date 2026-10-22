@@ -54,7 +54,7 @@ func (p *Platform) callAgentTool(parent runtime.Request, report func(payload.Act
 	// Offered are the agents both sides agree to: the caller's spawn
 	// allowlist, narrowed to the callees whose policy admits it. An agent
 	// that would refuse is never offered.
-	targets := p.callTargets(parent.Tenant, parent.Revision.Spec.Name, parent.Revision.Spec.Access.Spawn)
+	targets := p.callTargets(parent.Tenant, parent.RunID, parent.Revision.Spec.Name, parent.Revision.Spec.Access.Spawn)
 	described := "Targets: " + strings.Join(targets, ", ")
 	if len(targets) == 0 {
 		described = "No agent accepts calls from you right now, so any call will be refused."
@@ -116,7 +116,7 @@ func (p *Platform) callAgentTool(parent runtime.Request, report func(payload.Act
 			if wire.Mode == call.Subagent {
 				return p.waitForCall(ctx, parent, req, ToolCallAgent, report)
 			}
-			child, err := p.call(ctx, parent.Tenant, parent.RunID, req, true)
+			child, err := p.call(ctx, parent.Tenant, parent.RunID, req, true, nil)
 			if err != nil {
 				return "", err
 			}

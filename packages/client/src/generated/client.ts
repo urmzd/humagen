@@ -54,6 +54,7 @@ import type {
   ListProjectsResponse,
   ListReachableAgentsResponse,
   ListRunEventsResponse,
+  ListRunFeedbackResponse,
   ListSchedulesResponse,
   ListThreadsResponse,
   ListUsageNoticesResponse,
@@ -86,8 +87,10 @@ import type {
   ReviseAgentBody,
   Revision,
   Run,
+  RunFeedback,
   RunList,
   SaveKnowledgeVariantBody,
+  SaveRunFeedbackBody,
   Schedule,
   ScheduleView,
   SearchKnowledgeResponse,
@@ -565,24 +568,39 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
   }
 
   /** Lists the workspace's person-scoped tool providers, at most 64, with whether the caller has connected a credential for each and how it is held. A value is never shown. A machine holds no credentials, so it sees every provider unconnected. */
-  async listToolCredentials(options?: RequestOptions): Promise<ToolCredentials> {
-    const path = "/api/me/credentials";
+  async listToolCredentials(actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ToolCredentials> {
+    let path = "/api/me/credentials";
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<ToolCredentials>("GET", path, {
       ...options,
     });
   }
 
-  async listToolCredentialsRaw(options?: RequestOptions): Promise<ApiResponse<ToolCredentials>> {
-    const path = "/api/me/credentials";
+  async listToolCredentialsRaw(actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ToolCredentials>> {
+    let path = "/api/me/credentials";
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<ToolCredentials>("GET", path, {
       ...options,
     });
   }
 
   /** Sets the caller's credential for a person-scoped provider, in place of the one they had. A reference must start with one of the starts the operator listed for the workspace, and is not read here; any reason it cannot be used is answered with one message. A value is accepted only where the workspace keeps them (403 otherwise), and is stored; a reference that replaces a value forgets it. A provider the workspace reaches with its own credential is 400, and a machine is 403: each person connects their own. */
-  async putToolCredential(provider: string, body: ToolCredentialInput, options?: RequestOptions): Promise<ToolCredential> {
+  async putToolCredential(provider: string, body: ToolCredentialInput, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ToolCredential> {
     let path = "/api/me/credentials/{provider}";
     path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<ToolCredential>("PUT", path, {
       body,
       contentType: "application/json",
@@ -590,9 +608,14 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     });
   }
 
-  async putToolCredentialRaw(provider: string, body: ToolCredentialInput, options?: RequestOptions): Promise<ApiResponse<ToolCredential>> {
+  async putToolCredentialRaw(provider: string, body: ToolCredentialInput, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ToolCredential>> {
     let path = "/api/me/credentials/{provider}";
     path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<ToolCredential>("PUT", path, {
       body,
       contentType: "application/json",
@@ -601,23 +624,36 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
   }
 
   /** Removes it, and the value if it was one. The caller's runs then get no tools from the provider. */
-  async deleteToolCredential(provider: string, options?: RequestOptions): Promise<void> {
+  async deleteToolCredential(provider: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<void> {
     let path = "/api/me/credentials/{provider}";
     path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     await this.request<void>("DELETE", path, {
       ...options,
     });
   }
 
-  async deleteToolCredentialRaw(provider: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+  async deleteToolCredentialRaw(provider: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<void>> {
     let path = "/api/me/credentials/{provider}";
     path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<void>("DELETE", path, {
       ...options,
     });
   }
 
-  /** The latest revision of every agent in the workspace. Not paged. */
+  /** The latest revision of every agent in the workspace the caller may
+read: one that lives in a project they may not read is left out, and
+so is every agent it names in another's spec. Not paged.
+ */
   async listAgents(options?: RequestOptions): Promise<ListAgentsResponse> {
     const path = "/api/agents";
     return this.request<ListAgentsResponse>("GET", path, {
@@ -634,7 +670,8 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
 
   /** A tag names an agent or a person, so an agent cannot take a name a
 person in the workspace goes by ("a person goes by @dana"), nor
-`auto` or `sme`: each is 409.
+`auto` or `sme`: each is 409. Every agent `access.spawn` names must
+exist and be one the caller may read (400).
  */
   async createAgent(body: AgentSpec, options?: RequestOptions): Promise<Revision> {
     const path = "/api/agents";
@@ -656,6 +693,9 @@ person in the workspace goes by ("a person goes by @dana"), nor
 
   /** Writes a new revision. `expected_rev` is the revision the caller
 edited from: if someone else revised the agent since, the answer is 409.
+Every agent `access.spawn` names must exist and be one the caller may
+read, or one it already names that they are shown (400); the agents
+they were not shown, and the approvals of calls to them, are kept.
  */
   async reviseAgent(name: string, body: ReviseAgentBody, options?: RequestOptions): Promise<Revision> {
     let path = "/api/agents/{name}";
@@ -684,8 +724,9 @@ makes it a platform agent again, available wherever it is enabled.
 
 Refused with 409, naming them, while something outside the new home
 would lose the agent: a project's default, enable or allow list, a
-schedule filed elsewhere, an alert rule watching it elsewhere, or a
-client that routes to it. Homing an agent into or out of a company
+channel's default (an archived channel's aside), a schedule filed
+elsewhere, an alert rule watching it elsewhere, or a client that
+routes to it. Homing an agent into or out of a company
 project needs `projects:govern`. The platform's own agents live
 nowhere (400).
  */
@@ -728,7 +769,9 @@ nowhere (400).
 
   /** The agent's stored call policy, or the default an agent with none has
 (`version` 0): any caller its own spec allows, without approval. 404
-for an agent that does not exist in the caller's workspace.
+for an agent that does not exist in the caller's workspace. An agent
+that lives in a project the caller may not read is left out of
+`allow` and `trusted`.
  */
   async getCallPolicy(name: string, options?: RequestOptions): Promise<CallPolicy> {
     let path = "/api/agents/{name}/call-policy";
@@ -749,9 +792,12 @@ for an agent that does not exist in the caller's workspace.
   /** Replaces the agent's call policy. The callee decides: a caller also
 needs the callee in its own spawn allowlist, so a policy can only
 narrow what callers' specs allow. An unknown mode, an agent name that
-does not exist, more than 100 callers or 32 approvers, or a field that does not
-apply to the chosen mode is 400. An agent that lives in a project is
-that project's to change: without owning its home it is 403.
+does not exist or lives in a project the caller may not read, more
+than 100 callers or 32 approvers, or a field that does not apply to
+the chosen mode is 400. The callers the caller was not shown are kept
+in `allow` while `callers` is `listed`, and in `trusted` while
+`approval` is `unlisted`. An agent that lives in a project is that
+project's to change: without owning its home it is 403.
  */
   async putCallPolicy(name: string, body: CallPolicyInput, options?: RequestOptions): Promise<CallPolicy> {
     let path = "/api/agents/{name}/call-policy";
@@ -1015,18 +1061,74 @@ agents answering the next message are sent.
   }
 
   /** Get a run */
-  async getRun(id: string, options?: RequestOptions): Promise<Run> {
+  async getRun(id: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<Run> {
     let path = "/api/runs/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<Run>("GET", path, {
       ...options,
     });
   }
 
-  async getRunRaw(id: string, options?: RequestOptions): Promise<ApiResponse<Run>> {
+  async getRunRaw(id: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<Run>> {
     let path = "/api/runs/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<Run>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Collect feedback for a visible run, at most 200 records per page */
+  async listRunFeedback(id: string, after?: string, options?: RequestOptions): Promise<ListRunFeedbackResponse> {
+    let path = "/api/runs/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListRunFeedbackResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listRunFeedbackRaw(id: string, after?: string, options?: RequestOptions): Promise<ApiResponse<ListRunFeedbackResponse>> {
+    let path = "/api/runs/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListRunFeedbackResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Save a rating and optional reason and comment linked to a run */
+  async saveRunFeedback(id: string, body: SaveRunFeedbackBody, options?: RequestOptions): Promise<RunFeedback> {
+    let path = "/api/runs/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<RunFeedback>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async saveRunFeedbackRaw(id: string, body: SaveRunFeedbackBody, options?: RequestOptions): Promise<ApiResponse<RunFeedback>> {
+    let path = "/api/runs/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<RunFeedback>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }
@@ -1050,6 +1152,8 @@ agents answering the next message are sent.
 
   /** Starts a child run of the run in the path. The caller's agent must be
 allowed to spawn the target, and depth, fan-out and lease limits apply.
+A target that lives in a project the caller may not read is refused as
+one the spawn allowlist does not name (403).
 `key` is the call's idempotency key within the run. The call is a turn
 of the run's conversation, filed where it lives, so the caller must be
 a member of the run's project, and in a private thread a participant
@@ -1426,8 +1530,11 @@ here too (429).
     });
   }
 
-  /** At most 50 added and removed together, and a thread has at most 50
-participants. An agent added must be available in the thread's
+  /** At most 50 added and removed together, and a change that adds leaves
+at most 50 participants, counting the ones the caller is shown: an
+agent they were not shown is kept, and counts toward neither. People
+who post and agents who answer join on their own past 50, and a
+thread holds at most 100 in all. An agent added must be available in the thread's
 project, and a person, named by handle, must be in the workspace's
 directory (400). The person who started the thread stays in it.
 Adding takes posting there: a member of the thread's project, and in
@@ -1696,7 +1803,7 @@ may do with each part, is decided per message: a memory proposal needs
 null at the end. A client's machine reads one of its people's inbox
 with `act_as_client` and `act_as_user`, as the Slack app's Home does.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1709,6 +1816,8 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     if (project !== undefined && project !== null) _q.set("project", String(project));
     if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
     if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    if (needs !== undefined && needs !== null) _q.set("needs", String(needs));
+    if (news !== undefined && news !== null) _q.set("news", String(news));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListInboxResponse>("GET", path, {
@@ -1716,7 +1825,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1729,6 +1838,8 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     if (project !== undefined && project !== null) _q.set("project", String(project));
     if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
     if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    if (needs !== undefined && needs !== null) _q.set("needs", String(needs));
+    if (news !== undefined && news !== null) _q.set("news", String(news));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListInboxResponse>("GET", path, {
@@ -1943,8 +2054,11 @@ such as an announcement, so that after a restart, an edit or a
 withdrawal it updates that post instead of posting again. Only the
 credential the client names as `slack.machine` may record one: for
 anyone else, and for a message of a kind the caller may not read, the
-answer is 404. Recording the same post again changes nothing. The
-receipt shows in the message's `deliveries`, to that machine only.
+answer is 404. Recording the same post again after the message
+changed (its `updated_at` is after the receipt's `at`) says the post
+now shows it as it stands, and moves the receipt's `at` on; otherwise
+it changes nothing. The receipt shows in the message's `deliveries`,
+to that machine only, wherever the message is read.
  */
   async recordInboxDelivery(id: string, client: string, body: InboxDeliveryInput, options?: RequestOptions): Promise<void> {
     let path = "/api/inbox/{id}/deliveries/{client}";
@@ -2684,9 +2798,10 @@ end; a cursor is where its last row sat in the tree, so a project
 deleted between pages neither breaks nor shifts the paging. A
 client's machine lists one of its people's projects with
 `act_as_client` and `act_as_user`, as the Slack app's Home does: the
-projects that person has a role in, each with their role, their
-actions and what they may read in it. The person must hold
-`projects:read` themselves.
+projects that person may see, each with their role, their actions
+and what they may read in it. The person must hold
+`projects:read` themselves. `mine` marks the projects that name the
+caller, which Home lists as theirs.
  */
   async listProjects(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListProjectsResponse> {
     let path = "/api/projects";
@@ -3049,7 +3164,10 @@ Past 20 channels, 429.
     });
   }
 
-  /** The body replaces those four as a whole: one left out is cleared.
+  /** The body replaces those four as a whole: one left out is cleared,
+except a default the caller was not shown, one naming an agent that
+lives in a project they may not read, which is kept. Naming such an
+agent is 400, in the words for one that does not exist.
 `version` is the one the caller read (`general` reads 0 until it is
 first written), so a change made since answers 409. A field the
 platform file sets answers 409. It needs ownership of the project.
@@ -3325,8 +3443,10 @@ questions, results, files, proposed notes, mentions and announcements. Everyone
 who can see the project reads it, so an announcement here reaches
 every reader, member or not; a message addressed to someone in
 particular still reaches only them, and each kind still needs its
-own permission. `next` is the cursor for the page after this one, or
-null at the end.
+own permission. A client's machine is shown its own client's
+receipts (`deliveries`), and nobody else any, so a Slack app catches
+up here on the announcements it may have missed. `next` is the cursor
+for the page after this one, or null at the end.
  */
   async getProjectInbox(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<GetProjectInboxResponse> {
     let path = "/api/projects/{name}/inbox";

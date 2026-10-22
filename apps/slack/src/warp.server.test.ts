@@ -47,10 +47,26 @@ before(async () => {
   const env = Object.fromEntries(
     ["PATH", "HOME", "TMPDIR"].flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : [])),
   );
-  server = spawn(bin, ["serve", "-auth=dev", "-seed", "-addr", `127.0.0.1:${port}`], {
-    cwd: dir,
-    env,
-    stdio: ["ignore", "ignore", "pipe"],
+  server = spawn(
+    bin,
+    [
+      "serve",
+      "-auth=dev",
+      "-seed",
+      "-workspace",
+      join(dir, "workspace"),
+      "-addr",
+      `127.0.0.1:${port}`,
+    ],
+    {
+      cwd: dir,
+      env,
+      stdio: ["ignore", "ignore", "pipe"],
+    },
+  );
+  let startup = "";
+  server.stderr?.on("data", (chunk) => {
+    startup = (startup + String(chunk)).slice(-4000);
   });
   for (let i = 0; i < 100; i++) {
     const up = await fetch(`${base}/healthz`).then(
@@ -60,7 +76,7 @@ before(async () => {
     if (up) return;
     await new Promise((r) => setTimeout(r, 100));
   }
-  throw new Error("warp did not start");
+  throw new Error(`warp did not start: ${startup}`);
 });
 
 after(() => {
@@ -137,12 +153,17 @@ test("the stand-in client against the real routes", { skip: !enabled }, async ()
   const page = await c.inbox.list({ limit: 5, state: "open" });
   assert.ok(Array.isArray(page.messages));
 
-  // The inbox-only stream opens and closes cleanly.
+  // A catch-up reads the workspace's announcements, withdrawn ones too.
+  assert.ok(Array.isArray(await c.announcements("", 5)));
+
+  // The inbox-only stream opens, says so, and closes cleanly.
   const quiet = new AbortController();
   setTimeout(() => quiet.abort(), 300);
-  for await (const _ of c.notices({ signal: quiet.signal })) {
+  let opened = 0;
+  for await (const _ of c.notices({ signal: quiet.signal, opened: () => opened++ })) {
     // Nothing is raised here.
   }
+  assert.equal(opened, 1);
 });
 
 test(

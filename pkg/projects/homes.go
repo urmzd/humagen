@@ -47,8 +47,8 @@ func homeNames(homes map[string]home) map[string]string {
 // enabled. The agent's existence is the registry's to check, before calling.
 //
 // It is refused (ErrInUse, naming them) while anything would lose the agent:
-// a default, an enable list or an allow list in the tree that names it, and
-// whatever inUse names. inUse is given the tree as it is and as it would be,
+// a default, an enable list or an allow list in the tree that names it, a
+// channel's default (an archived channel's aside), and whatever inUse names. inUse is given the tree as it is and as it would be,
 // runs under the store's lock, and must not call the store. Homing in or out
 // of a company project needs projects:govern. The record and its history are
 // one write: a change on the new home, and one on the old.
@@ -85,7 +85,7 @@ func (s *Store) SetHome(tenantName, agent, project string, w Writer, at time.Tim
 		tx.put(keyHome+agent, h)
 	}
 	after := build(tx.t.projects, homeNames(tx.t.homes))
-	users := losing(before, after, agent)
+	users := append(losing(before, after, agent), channelsLosing(tx.t, before, after, agent)...)
 	if inUse != nil {
 		users = append(users, inUse(before, after)...)
 	}
@@ -128,6 +128,27 @@ func losing(before, after *Tree, agent string) []string {
 		if slices.Contains(a.Allow, agent) && anywhere(before, name) && !anywhere(after, name) {
 			out = append(out, "the allow list of "+display(name))
 		}
+	}
+	return out
+}
+
+// channelsLosing names the channels whose default is an agent that would
+// stop being available in the channel's project when it moves from before
+// to after, as losing names a project's default. An archived channel takes
+// no new threads and its default cannot change, so it holds no move back.
+func channelsLosing(t *tenant, before, after *Tree, agent string) []string {
+	var channels []Channel
+	for _, c := range t.channels {
+		if c.Default == agent && !c.Archived && before.IsAvailable(c.Project, agent) && !after.IsAvailable(c.Project, agent) {
+			channels = append(channels, c)
+		}
+	}
+	slices.SortFunc(channels, func(a, b Channel) int {
+		return strings.Compare(channelKey(a.Project, a.Name), channelKey(b.Project, b.Name))
+	})
+	out := make([]string, 0, len(channels))
+	for _, c := range channels {
+		out = append(out, fmt.Sprintf("the default of #%s in %s", c.Name, display(c.Project)))
 	}
 	return out
 }

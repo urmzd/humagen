@@ -28,6 +28,8 @@ import (
 	drun "github.com/urmzd/anchor/pkg/run"
 	"github.com/urmzd/anchor/pkg/worker"
 	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/attachment/resolve"
+	filesblob "github.com/urmzd/fiber/pkg/blob"
 	"github.com/urmzd/fiber/pkg/bus"
 	"github.com/urmzd/fiber/pkg/connector"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
@@ -52,6 +54,7 @@ import (
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/evals"
+	"github.com/urmzd/warp/pkg/feedback"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/integrations/github"
 	"github.com/urmzd/warp/pkg/integrations/slack"
@@ -109,6 +112,12 @@ type Config struct {
 	// value with warp, kept in Secrets as a client's secret is. Everyone
 	// else may only reference one.
 	CredentialValues map[string]bool
+	// InboxRetention is how long each tenant's inbox keeps what was settled
+	// for everyone before it is dropped, by tenant, as its Platform document
+	// sets workspace.inbox_retention. A tenant with no entry keeps it
+	// inbox.DefaultRetention, and none keeps it less than
+	// inbox.MinRetention.
+	InboxRetention map[string]time.Duration
 	// SlackAPI and GitHubAPI build the API a client writes through from its
 	// token. Nil means the real one over HTTP.
 	SlackAPI  func(token string) slack.API
@@ -169,6 +178,8 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	files filesblob.Store
+
 	cfg Config
 	log *slog.Logger
 	now func() time.Time
@@ -180,6 +191,7 @@ type Platform struct {
 	Alerts    *alerts.Engine
 	Knowledge *knowledge.Store
 	Evals     *evals.Store
+	Feedback  *feedback.Store
 	Prefs     *prefs.Store
 	Memory    *memory.Store
 	// Projects is each tenant's tree of projects.
@@ -303,6 +315,20 @@ func New(cfg Config) (*Platform, error) {
 	if p.ledger == nil {
 		p.ledger, p.queue = ledger.NewMemory(), dqueue.NewMemory()
 	}
+	dir := cfg.Workspace
+	if dir == "" {
+		base, err := os.UserCacheDir()
+		if err != nil {
+			base = os.TempDir()
+		}
+		dir = filepath.Join(base, "warp", "workspace")
+	}
+	files, err := filesblob.NewFS(filepath.Join(dir, "attachments"))
+	if err != nil {
+		return nil, fmt.Errorf("platform: attachments: %w", err)
+	}
+	p.files = files
+	p.closers = append(p.closers, files.Close)
 	// Every store is in memory, reading back what Backends.State holds.
 	if err := p.openStores(cfg); err != nil {
 		return nil, err
@@ -430,7 +456,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 		// A run waiting on an attached run of the same agent holds one of
 		// that agent's nodes, so there are as many as there are places.
 		runtime.WithReplicas(p.slots()),
-		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions)...),
+		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions, []agentrt.Option{agentrt.WithAttachments(resolve.New(p.files))})...),
 		runtime.WithSandboxLogger(p.log),
 	)
 	if err != nil {
@@ -554,7 +580,14 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 // caller, the tree's limits must allow the call, and the caller's remaining
 // budget must cover the lease.
 func (p *Platform) Call(ctx context.Context, tenant, runID string, req call.Request) (runs.Run, error) {
-	return p.call(ctx, tenant, runID, req, false)
+	return p.call(ctx, tenant, runID, req, false, nil)
+}
+
+// CallAs is Call as who asks it: an agent who may not read is not among the
+// agents the caller's spec is shown to them to call, so it is refused as one
+// its spawn allowlist does not name.
+func (p *Platform) CallAs(ctx context.Context, who auth.Principal, runID string, req call.Request) (runs.Run, error) {
+	return p.call(ctx, who.Tenant, runID, req, false, p.Seer(who).Agent)
 }
 
 // call is Call. With grant, a call from a run that holds a lease and asked for
@@ -565,8 +598,9 @@ func (p *Platform) Call(ctx context.Context, tenant, runID string, req call.Requ
 // it, and for anything else still in flight. Everything is trued up when the
 // call settles. That is how an agent's own calls (tagging, delegate_task)
 // lease budget, since a model never names an amount. A caller with nothing
-// left is refused.
-func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Request, grant bool) (runs.Run, error) {
+// left is refused. sees, when set, is the agents whoever asks may read (see
+// CallAs).
+func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Request, grant bool, sees func(string) bool) (runs.Run, error) {
 	p.calls.Lock()
 	defer p.calls.Unlock()
 
@@ -578,7 +612,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err != nil {
 		return runs.Run{}, fmt.Errorf("platform: caller's spec: %w", err)
 	}
-	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) {
+	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
 	}
 	// The callee agrees too: its call policy must admit the caller.
@@ -852,6 +886,18 @@ func (p *Platform) Run(ctx context.Context) error {
 		}
 	})
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
+	loop("inbox retention", func() error {
+		tick := time.NewTicker(retainEvery)
+		defer tick.Stop()
+		for {
+			p.retainInbox(ctx)
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-tick.C:
+			}
+		}
+	})
 	loop("sandbox sweep", func() error {
 		tick := time.NewTicker(time.Hour)
 		defer tick.Stop()

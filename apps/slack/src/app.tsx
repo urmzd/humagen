@@ -12,7 +12,15 @@ import {
   retryOf,
   toRequest,
 } from "@warp/adapter";
-import { type Copy, defaultCopy, Home, MailboxView, MessageView, TurnView } from "@warp/components";
+import {
+  AnnouncementPost,
+  type Copy,
+  defaultCopy,
+  Home,
+  MailboxView,
+  MessageView,
+  TurnView,
+} from "@warp/components";
 import {
   ActionId,
   emptyQueue,
@@ -29,9 +37,13 @@ import {
   type UiAction,
 } from "@warp/core";
 import {
+  CONNECTIONS_MODAL,
+  connectionsModal,
+  decodeFeedbackModal,
   decodeReplyModal,
   decodeSlackAction,
   escapeMentions,
+  feedbackModal,
   homeView,
   LIMITS,
   type ReplyTarget,
@@ -55,6 +67,7 @@ import {
   type Binding,
   type ClientRecord,
   type InboxNotice,
+  type Receipt,
   type Run,
   type StreamItem,
   type SurfaceRef,
@@ -107,10 +120,18 @@ export interface AppOptions {
    * seconds to wrap up by default.
    */
   stopWaitMs?: number;
+  /** What time it is, in milliseconds since the epoch. Left out, the system's clock. */
+  now?: () => number;
+  /**
+   * How long to wait before trying a catch-up that did not finish again,
+   * doubled after each failure up to five minutes. 5 seconds by default.
+   */
+  catchUpRetryMs?: number;
   log?: (line: string) => void;
 }
 
 interface Job {
+  files?: boolean;
   session: Session;
   text: string;
   /** The message that asked. Lifecycle reactions go on it. */
@@ -328,6 +349,64 @@ const sleep = (ms: number, signal: AbortSignal) =>
 
 const short = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 20);
 
+/**
+ * How far back a catch-up posts an announcement this app has no receipt for:
+ * a restart, a deploy or a night without the app. An older one stays in
+ * warp's inbox and the Home tab, as a post days late would read as news.
+ */
+export const CATCH_UP_WINDOW_MS = 24 * 60 * 60_000;
+
+/** How many of a bound project's newest announcements a catch-up reads: one page. */
+export const CATCH_UP_PAGE = 50;
+
+/** Why an announcement is looked at: a notice says it changed, or a catch-up found it behind. */
+type Look = "notice" | "catch-up";
+
+const isDraft = (m: WireMessage) => m.parts.some((p) => p.type === "draft");
+
+/** Whether a message changed after its receipt last said the post shows it. */
+const changedSince = (m: WireMessage, r: Receipt) =>
+  Date.parse(m.updated_at ?? "") > Date.parse(r.at ?? "");
+
+/**
+ * What a catch-up brings up to date, of one page of a bound project's
+ * announcements as this client's machine reads them, newest first: their
+ * ids, oldest first, so the channel reads in order. One with this client's
+ * receipt is edited when it changed since the receipt, as when it was
+ * withdrawn. One without is posted when it is open, from the last
+ * CATCH_UP_WINDOW_MS, and announced no earlier than the Slack channel was
+ * bound (`boundAt`): what came before never reached the channel, and is not
+ * news there now. A binding that does not say when it was made posts
+ * nothing new. A draft never reaches a channel.
+ */
+export function catchUpOn(
+  page: WireMessage[],
+  client: string,
+  now: number,
+  boundAt: string | undefined,
+): string[] {
+  const news = page.filter((m) => m.kind === "announcement" && !isDraft(m));
+  const due: string[] = [];
+  for (const m of news.toReversed()) {
+    const receipt = m.deliveries?.[client];
+    if (receipt ? changedSince(m, receipt) : isNews(m, now, boundAt)) due.push(m.id);
+  }
+  return due;
+}
+
+/**
+ * Whether an announcement with no post yet is news in a channel bound at
+ * `boundAt`: open, from the last CATCH_UP_WINDOW_MS, and announced no
+ * earlier than the binding. A binding that does not say when it was made,
+ * or says a time before any announcement could be, makes nothing news.
+ */
+export function isNews(m: WireMessage, now: number, boundAt: string | undefined): boolean {
+  const bound = Date.parse(boundAt ?? "");
+  if (Number.isNaN(bound) || bound < Date.parse("2000-01-01T00:00:00Z")) return false;
+  const since = Math.max(now - CATCH_UP_WINDOW_MS, bound);
+  return m.state === "open" && Date.parse(m.at ?? "") >= since;
+}
+
 /** What asking a turn again came to. */
 type Again = "started" | "not-theirs" | "not-yours" | "elsewhere" | "not-routed";
 
@@ -359,8 +438,21 @@ export class App {
   private agentList: { at: number; agents: Agent[] } | null = null;
   private clientRecord: { at: number; client: ClientRecord | null } | null = null;
   private bindings: { at: number; list: Binding[] } | null = null;
-  /** Announcements being posted right now, so two notices post one. */
-  private readonly announcing = new Set<string>();
+  /**
+   * Announcements being brought up to date right now, and why to look again
+   * once that is done: a notice or a catch-up that comes meanwhile waits its
+   * turn, so two never post one twice.
+   */
+  private readonly announcing = new Map<string, { again: Look | null; done: Promise<void> }>();
+  /**
+   * Announcements this process posted whose receipt warp did not take, so
+   * the next look records it instead of posting again.
+   */
+  private readonly unrecorded = new Recent<{ channel: string; ts: string }>(2_000);
+  /** Whether a catch-up is running, and whether another is due once it ends. */
+  private catching: { again: boolean } | null = null;
+  /** Whether catch-ups are being run until one finishes, and whether another open came meanwhile. */
+  private catchingUp: { again: boolean } | null = null;
   /**
    * Where each mention or question sent to a person's direct messages was
    * posted, by person and message, to keep it current. A question to a role
@@ -447,13 +539,146 @@ export class App {
     await this.track(work);
   }
 
-  /** Follow the inbox for as long as the signal allows, and show what concerns this app's threads. */
+  /**
+   * Follow the inbox for as long as the signal allows, and show what concerns
+   * this app's threads. The stream does not replay what it missed, so each
+   * time it opens, at the start and after every reconnect, the app catches up
+   * on the announcements of its bound channels.
+   */
   async watchInbox(signal: AbortSignal): Promise<void> {
-    for await (const notice of this.warp.notices({ signal })) {
+    const opened = () => {
+      this.track(this.catchUpUntilDone(signal));
+    };
+    for await (const notice of this.warp.notices({ signal, opened })) {
       await this.track(
         this.onNotice(notice).catch((e: Error) => this.log(`inbox notice failed: ${e.message}`)),
       );
     }
+  }
+
+  /**
+   * Catch up until a catch-up finishes, waiting longer after each one that
+   * did not: a missed announcement is news for a day, and the next reconnect
+   * may be days away. An open that comes meanwhile is caught up on once the
+   * one under way ends.
+   */
+  private async catchUpUntilDone(signal: AbortSignal): Promise<void> {
+    if (this.catchingUp) {
+      this.catchingUp.again = true;
+      return;
+    }
+    const run = { again: true };
+    this.catchingUp = run;
+    const base = this.opts.catchUpRetryMs ?? 5_000;
+    let wait = base;
+    try {
+      while (run.again && !signal.aborted) {
+        run.again = false;
+        const done = await this.catchUp().catch((e: Error) => {
+          this.log(`catch-up failed: ${e.message}`);
+          return false;
+        });
+        if (done) {
+          wait = base;
+          continue;
+        }
+        this.log(`catch-up did not finish; trying again in ${Math.round(wait / 1000)}s`);
+        await sleep(wait, signal);
+        wait = Math.min(wait * 2, 5 * 60_000);
+        run.again = true;
+      }
+    } finally {
+      this.catchingUp = null;
+    }
+  }
+
+  /**
+   * Bring the posts of every project whose general channel is bound here up
+   * to date with what was announced, edited or withdrawn while the app was
+   * not listening: each project's newest CATCH_UP_PAGE announcements are read
+   * as the app's machine reads them, and compared with this client's
+   * receipts (catchUpOn). The receipt is the record, so a notice that comes
+   * meanwhile changes nothing it does. One catch-up runs at a time, and one
+   * asked for meanwhile runs once it ends. It answers whether it finished:
+   * false when warp could not be read, or a post was not brought up to date
+   * for a reason other than Slack refusing it, such as a post deleted there.
+   * An app whose client does not name its credential as the client's
+   * machine catches up on nothing: warp shows it no receipts, so it would
+   * post everything again.
+   */
+  async catchUp(): Promise<boolean> {
+    const client = this.opts.clientId;
+    if (!client) return true;
+    if (this.catching) {
+      this.catching.again = true;
+      return true;
+    }
+    const run = { again: true };
+    this.catching = run;
+    let done = true;
+    try {
+      while (run.again) {
+        run.again = false;
+        // Read afresh: a channel bound while the app was away counts now, and so does a new machine.
+        this.clientRecord = null;
+        this.bindings = null;
+        if (!(await this.isMachine())) {
+          this.log(
+            `catch-up skipped: client ${client} is disabled or does not name this app's credential as its machine`,
+          );
+          return done;
+        }
+        const generals = (await this.bound()).filter((b) => b.channel === "general");
+        for (const b of generals) {
+          let page: WireMessage[];
+          try {
+            page = await this.warp.announcements(b.project, CATCH_UP_PAGE);
+          } catch (e) {
+            this.log(`announcements of ${b.project || "~"} were not read: ${(e as Error).message}`);
+            // A project the machine may not read, or a token without
+            // projects:read, answers the same next time: only warp being
+            // away is tried again.
+            if (!(e instanceof WarpError && (e.status === 403 || e.status === 404))) done = false;
+            continue;
+          }
+          const due = catchUpOn(page, client, (this.opts.now ?? Date.now)(), b.bound_at);
+          // A post whose receipt warp did not take is looked at whatever became of it.
+          for (const m of page)
+            if (this.unrecorded.has(m.id) && !due.includes(m.id)) due.push(m.id);
+          for (const id of due) {
+            // One post Slack refuses to edit, such as one deleted there, holds up no other.
+            await this.announce(id, "catch-up").catch((e: Error) => {
+              this.log(`announcement ${id} was not brought up to date: ${e.message}`);
+              // Slack refusing an edit, or warp refusing this machine (403,
+              // 404), answers the same next time: only warp being away is
+              // tried again.
+              const lasting =
+                e instanceof SlackError ||
+                (e instanceof WarpError && (e.status === 403 || e.status === 404));
+              if (!lasting) done = false;
+            });
+          }
+        }
+      }
+      return done;
+    } finally {
+      this.catching = null;
+    }
+  }
+
+  /**
+   * Whether warp names this app's credential as its enabled client's
+   * machine. Only then does warp show it the client's receipts and take new
+   * ones, so only then does it post announcements.
+   */
+  private async isMachine(): Promise<boolean> {
+    const client = (await this.routing()).client;
+    return (
+      !!client &&
+      client.enabled &&
+      client.surface === "slack" &&
+      client.slack?.machine === this.opts.subject
+    );
   }
 
   // Routing
@@ -519,7 +744,8 @@ export class App {
     const asked =
       event.type === "app_mention" || (event.type === "message" && event.channel_type === "im");
     // Loop prevention: a bot's message, this app's own, an edit or a join never starts a run.
-    if (!asked || event.subtype || event.bot_id || !event.user) return;
+    if (!asked || (event.subtype && event.subtype !== "file_share") || event.bot_id || !event.user)
+      return;
     if (event.user === this.opts.botUser || !event.channel || !event.ts) return;
     const session: Session = {
       team: this.opts.team,
@@ -527,16 +753,38 @@ export class App {
       threadTs: event.thread_ts ?? event.ts,
     };
     const text = (event.text ?? "").replaceAll(`<@${this.opts.botUser}>`, " ").trim();
-    if (!text) return;
+    if (!text && !event.files?.length) return;
+    await this.offerSkills(event.channel);
     this.enqueue({
+      files: Boolean(event.files?.length),
       session,
-      text,
+      text: text || "Please review the attached files.",
       triggerTs: event.ts,
       user: event.user,
       key: eventKey(session, event.ts),
       // A direct message is always addressed to the app, so only a channel thread has more to read.
       history: event.type === "app_mention" && session.threadTs !== event.ts,
     });
+  }
+
+  private readonly skillChannels = new Map<string, string>();
+
+  /** Slack supports dynamic commands in code channels. Other channels use /skill. */
+  private async offerSkills(channel: string) {
+    const commands = (await this.routing()).client?.slack?.commands ?? [];
+    if (!commands.length && !this.skillChannels.has(channel)) return;
+    const signature = JSON.stringify(commands);
+    if (this.skillChannels.get(channel) === signature) return;
+    try {
+      await this.slack.call("agents.conversations.setCommands", { channel_id: channel, commands });
+    } catch (error) {
+      if (!(error instanceof SlackError) || error.code !== "not_agent_channel") {
+        this.log("Skill commands could not be registered; /skill remains available.");
+        return;
+      }
+    }
+    if (this.skillChannels.size >= 4096) this.skillChannels.clear();
+    this.skillChannels.set(channel, signature);
   }
 
   /** Offer this deployment's suggested prompts. Without any, Slack is not asked. */
@@ -734,6 +982,8 @@ export class App {
               ? this.copy.threads.notTheirsInBound
               : this.copy.threads.unmappedInBound,
           });
+        if (job.files)
+          throw new WarpError(403, "Files need a connected workspace account and client.");
         placed = await this.place(job);
         // Warp already has a run for this Slack event: it was answered before a restart.
         if (placed === "duplicate") return "done" as const;
@@ -823,6 +1073,7 @@ export class App {
       ts: job.session.threadTs,
       message: messageTs,
       app_user: this.opts.botUser,
+      ...(job.files ? { files: true } : {}),
     };
   }
 
@@ -1229,7 +1480,7 @@ export class App {
     if (p.trigger_id && this.seen.has(dedupe)) return;
     this.seen.set(dedupe, true);
 
-    if (ui.id === ActionId.feedback) return this.onFeedback(ui, p.user.id);
+    if (ui.id === ActionId.feedback) return this.onFeedback(ui, p);
     // The Home tab's own controls, and Review on an item it shows.
     if (ui.payload.turnId === HOME_ID) return this.onHome(p, ui);
     if (ui.id === ActionId.open && (p.view?.type === "home" || p.container?.type === "view"))
@@ -1326,15 +1577,52 @@ export class App {
     return "started";
   }
 
-  /**
-   * A rating has nowhere to be stored yet: warp has no route for one, and
-   * Slack's rating control shows no selection to redraw. It is written to the
-   * log, so it is not lost while that is built.
-   */
-  private onFeedback(ui: UiAction, user: string) {
+  /** Open while the trigger is fresh; a skipped modal still keeps the rating. */
+  private async onFeedback(ui: UiAction, p: ActionPayload) {
     const event = feedbackEvent(ui);
-    if (event?.type === "feedback") {
-      this.log(`feedback on ${ui.payload.turnId} by ${user}: ${event.rating ?? "cleared"}`);
+    if (event?.type !== "feedback" || !event.rating) return;
+    const modal = p.trigger_id
+      ? this.slack.call("views.open", {
+          trigger_id: p.trigger_id,
+          view: feedbackModal({ turnId: ui.payload.turnId, rating: event.rating }),
+        })
+      : Promise.resolve();
+    const saved = this.saveFeedback(ui.payload.turnId, p.user.id, event.rating);
+    const results = await Promise.allSettled([modal, saved]);
+    if (results.some((r) => r.status === "rejected")) {
+      this.log(`feedback could not be completed for ${ui.payload.turnId}`);
+      await this.whisper(p, "Your feedback could not be saved or opened. Please try again.");
+    }
+  }
+
+  private readonly feedbackSaves = new Map<string, Promise<unknown>>();
+
+  private async saveFeedback(
+    run: string,
+    user: string,
+    rating: "up" | "down",
+    comment?: string,
+    reason?: string,
+  ) {
+    const key = `${run}/${user}`;
+    const previous = this.feedbackSaves.get(key) ?? Promise.resolve();
+    const saved = previous
+      .catch(() => {})
+      .then(async () => {
+        const as = await this.actAs(user);
+        if (!as) throw new Error("Feedback needs a connected workspace account");
+        return this.warp.saveFeedback(run, {
+          rating,
+          ...(comment ? { comment } : {}),
+          ...(reason ? { reason } : {}),
+          act_as: as,
+        });
+      });
+    this.feedbackSaves.set(key, saved);
+    try {
+      return await saved;
+    } finally {
+      if (this.feedbackSaves.get(key) === saved) this.feedbackSaves.delete(key);
     }
   }
 
@@ -1595,44 +1883,146 @@ export class App {
    * posted there, top-level, once. Where it went is recorded in warp, so a
    * restart, an edit or a withdrawal updates that post instead of posting
    * again. A draft never reaches a channel, and one withdrawn before it was
-   * posted is not posted.
+   * posted is not posted. A notice and a catch-up both come here, one look
+   * at a time for each announcement, and each look reads it afresh, receipt
+   * and all: a look asked for meanwhile waits for the one under way.
    */
-  private async announce(id: string): Promise<void> {
+  private announce(id: string, why: Look = "notice"): Promise<void> {
     const client = this.opts.clientId;
-    if (!client || this.announcing.has(id)) return;
-    this.announcing.add(id);
-    try {
-      const raw = await this.warp.getInboxMessage(id).catch(() => null);
-      if (!raw || raw.kind !== "announcement" || raw.parts.some((p) => p.type === "draft")) return;
-      const project = raw.source?.project ?? "";
-      const at = (await this.bound()).find((b) => b.project === project && b.channel === "general");
-      if (!at) return;
-      const safe = untrustedAnnouncement(raw);
-      const view = renderToSlack(<MessageView message={forSlack(fromServer(safe))} />);
-      const text = (view.text || safe.subject).slice(0, LIMITS.fallbackText);
-      const receipt = raw.deliveries?.[client];
-      if (receipt) {
-        await this.slack.call("chat.update", {
-          channel: receipt.channel,
-          ts: receipt.ts,
-          text,
-          blocks: view.blocks,
-        });
-        return;
-      }
-      if (raw.state !== "open") return;
-      const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
-        channel: at.slack_channel,
-        text,
-        blocks: view.blocks,
-      });
-      await this.warp.recordDelivery(id, client, {
-        channel: sent.channel ?? at.slack_channel,
-        ts: sent.ts,
-      });
-    } finally {
-      this.announcing.delete(id);
+    if (!client) return Promise.resolve();
+    const busy = this.announcing.get(id);
+    if (busy) {
+      if (busy.again !== "notice") busy.again = why;
+      // The look asked for is the one under way's to make: its outcome is this one's.
+      return busy.done;
     }
+    const turn: { again: Look | null; done: Promise<void> } = {
+      again: why,
+      done: Promise.resolve(),
+    };
+    this.announcing.set(id, turn);
+    turn.done = this.looks(id, client, turn).finally(() => this.announcing.delete(id));
+    return turn.done;
+  }
+
+  /** The looks at one announcement, one after another, for as long as another is asked for. */
+  private async looks(id: string, client: string, turn: { again: Look | null }): Promise<void> {
+    // What the post shows after each look, so a look asked for meanwhile
+    // leaves alone a post that already shows the announcement as it stands.
+    let shown: string | undefined;
+    // A look that fails does not drop one asked for meanwhile: that one
+    // reads everything afresh, and only the last look's failure is told.
+    let failed: unknown = null;
+    while (turn.again) {
+      const look = turn.again;
+      turn.again = null;
+      try {
+        shown = await this.announceOnce(id, client, look, shown);
+        failed = null;
+      } catch (e) {
+        failed = e;
+      }
+    }
+    if (failed) throw failed;
+  }
+
+  /**
+   * One look at an announcement, which answers the `updated_at` its post
+   * shows after it. With this client's receipt, the post is edited: on a
+   * notice unless the last look already showed it as it stands, on a
+   * catch-up when it changed since the receipt. Once the post shows a
+   * change, the receipt is recorded again, so it says so. Without one, an
+   * open announcement is posted and its receipt recorded, then read once
+   * more: a withdrawal between the first read and the receipt is older than
+   * the receipt, and the post is edited for it now.
+   */
+  private async announceOnce(
+    id: string,
+    client: string,
+    look: Look,
+    shown: string | undefined,
+  ): Promise<string | undefined> {
+    // Only the client's machine is shown the client's receipts: any other
+    // credential would post every announcement again.
+    if (!(await this.isMachine())) return shown;
+    // A message gone or hidden from this machine (403, 404) has nothing to
+    // post. Any other failure is warp being away: it is thrown, so the
+    // catch-up is tried again instead of taking the announcement as done.
+    const raw = await this.warp.getInboxMessage(id).catch((e: unknown) => {
+      if (e instanceof WarpError && (e.status === 403 || e.status === 404)) return null;
+      throw e;
+    });
+    if (!raw || raw.kind !== "announcement" || isDraft(raw)) return shown;
+    const project = raw.source?.project ?? "";
+    const at = (await this.bound()).find((b) => b.project === project && b.channel === "general");
+    if (!at) return shown;
+    const receipt = raw.deliveries?.[client];
+    // A receipt warp took though its answer was lost needs no remembering.
+    if (receipt) this.unrecorded.delete(id);
+    const posted = this.unrecorded.get(id);
+    if (!receipt && posted) {
+      // Posted by this process, and warp did not take the receipt then.
+      await this.warp.recordDelivery(id, client, posted);
+      this.unrecorded.delete(id);
+      await this.slack.call("chat.update", { ...posted, ...this.newsView(raw) });
+      return this.keepUp(id, client, posted, raw.updated_at);
+    }
+    if (receipt) {
+      const changed = changedSince(raw, receipt);
+      if (look === "catch-up" ? !changed : raw.updated_at === shown) return shown;
+      const where = { channel: receipt.channel, ts: receipt.ts };
+      await this.slack.call("chat.update", { ...where, ...this.newsView(raw) });
+      if (!changed) return raw.updated_at;
+      await this.warp.recordDelivery(id, client, where);
+      return this.keepUp(id, client, where, raw.updated_at);
+    }
+    // Only what a catch-up would post is posted: an old announcement a
+    // notice names is not news in the channel now.
+    if (!isNews(raw, (this.opts.now ?? Date.now)(), at.bound_at)) return shown;
+    const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
+      channel: at.slack_channel,
+      ...this.newsView(raw),
+    });
+    const where = { channel: sent.channel ?? at.slack_channel, ts: sent.ts };
+    this.unrecorded.set(id, where);
+    await this.warp.recordDelivery(id, client, where);
+    this.unrecorded.delete(id);
+    return this.keepUp(id, client, where, raw.updated_at);
+  }
+
+  /**
+   * After a receipt is recorded, read the announcement once more: warp
+   * dates a receipt when it takes it, so a change between the read the post
+   * shows and the receipt would read as older than the receipt, and no
+   * catch-up would see it. A change found is shown and recorded, at most
+   * three times over.
+   */
+  private async keepUp(
+    id: string,
+    client: string,
+    where: { channel: string; ts: string },
+    shown: string | undefined,
+  ): Promise<string | undefined> {
+    for (let i = 0; i < 3; i++) {
+      const now = await this.warp.getInboxMessage(id).catch(() => null);
+      if (!now || now.updated_at === shown) return shown;
+      await this.slack.call("chat.update", { ...where, ...this.newsView(now) });
+      await this.warp.recordDelivery(id, client, where);
+      shown = now.updated_at;
+    }
+    return shown;
+  }
+
+  /**
+   * An announcement as its channel post shows it: its words made unable to
+   * ping anyone, or once withdrawn only that it was.
+   */
+  private newsView(raw: WireMessage): { text: string; blocks: unknown[] } {
+    const safe = untrustedAnnouncement(raw);
+    const view = renderToSlack(
+      <AnnouncementPost message={forSlack(fromServer(safe))} copy={this.copy} />,
+    );
+    return { text: (view.text || safe.subject).slice(0, LIMITS.fallbackText), blocks: view.blocks };
   }
 
   /**
@@ -1804,8 +2194,9 @@ export class App {
   /**
    * The Home tab. A person the client maps sees the shared Home, read as
    * them through the client (act_as): at most five that need them, what's
-   * new in their projects and their projects, each opening in the console,
-   * and ways to start. Their projects are left out when they cannot be read.
+   * new in their projects and the projects that name them, each opening in
+   * the console, and ways to start. Their projects are left out when they
+   * cannot be read.
    * Without a mapping the tab is the mailbox, as it always was: an operator
    * sees the whole inbox the app may read, and anyone else what they may
    * settle.
@@ -1834,8 +2225,11 @@ export class App {
   /** The shared Home's model for a person the client maps, everything in it read as them. */
   private async homeFor(user: string, mapped: { as: ActAs; person: string }) {
     const [mine, news, projects, names, build] = await Promise.all([
-      this.warp.inboxFor(mapped.as, { state: "open", limit: 30 }),
-      this.warp.inboxFor(mapped.as, { state: "open", kind: "announcement", limit: 20 }),
+      // What needs them, posted announcements left out before the page is
+      // cut, so however much news is newer the rows agree with the total.
+      this.warp.inboxFor(mapped.as, { state: "open", needs: true, limit: 30 }),
+      // Posted announcements only, so drafts never crowd them off the page.
+      this.warp.inboxFor(mapped.as, { state: "open", news: true, limit: 20 }),
       this.warp.projectsFor(mapped.as).catch((e: Error): WireProject[] | null => {
         this.log(`Home shows no projects for ${user}: ${e.message}`);
         return null;
@@ -1848,8 +2242,12 @@ export class App {
       person: { id: user, name: names.get(user) ?? mapped.person },
       assistant: { name, handle: names.get(this.opts.botUser) ?? name },
       intro: this.words.homeIntro,
-      inbox: mine,
-      // An agent may have written an announcement: its words ping nobody here either.
+      // An agent may have written what either list holds, a draft, a
+      // question or an announcement: its words ping nobody here either.
+      inbox: {
+        ...mine,
+        messages: mine.messages.map((m) => untrustedAnnouncement(m as WireMessage)),
+      },
       announcements: news.messages.map((m) => untrustedAnnouncement(m as WireMessage)),
       projects,
       workspace: this.opts.tenant,
@@ -1935,12 +2333,49 @@ export class App {
   }
 
   private async onCommand(c: CommandPayload): Promise<void> {
-    if (c.command !== ENTRY.command) return;
     if (c.trigger_id) {
       if (this.seen.has(`command-${c.trigger_id}`)) return;
       this.seen.set(`command-${c.trigger_id}`, true);
     }
+    if (c.command !== ENTRY.command && c.command !== "/skill") {
+      const skills = (await this.routing()).client?.slack?.commands ?? [];
+      const skill = skills.find((skill) => `/${skill.name}` === c.command);
+      if (!skill) return;
+      return this.start(
+        { channel: c.channel_id, user: c.user_id },
+        `/${skill.name} ${(c.text ?? "").trim()}`,
+        c.response_url,
+      );
+    }
     const text = (c.text ?? "").trim();
+    if (c.command === "/skill" || text === "skills" || text.startsWith("skill ")) {
+      const skills = (await this.routing()).client?.slack?.commands ?? [];
+      const args = c.command === "/skill" ? text : text === "skills" ? "" : text.slice(6).trim();
+      const [name, ...rest] = args.split(/\s+/);
+      if (!name || args === "skills" || args === "help") {
+        await this.slack.respond(c.response_url, {
+          response_type: "ephemeral",
+          text: skills.length
+            ? skills.map((skill) => `/${skill.name}: ${skill.description}`).join("\n")
+            : "No skills are configured for this app.",
+        });
+        return;
+      }
+      if (!skills.some((skill) => skill.name === name)) {
+        await this.slack.respond(c.response_url, {
+          response_type: "ephemeral",
+          text: "That skill is not available in this app. Use /skill to see available skills.",
+        });
+        return;
+      }
+      return this.start(
+        { channel: c.channel_id, user: c.user_id },
+        `/${name} ${rest.join(" ")}`.trim(),
+        c.response_url,
+      );
+    }
+    if (text === "connections") return this.openConnections(c);
+    if (text.startsWith("canvas ")) return this.publishCanvas(c, text.slice(7).trim());
     if (!text || text === "help") {
       // Who can be asked, in the platform's own words.
       // warp: needs an AgentList component (name, description), as the console's agent menu shows.
@@ -1957,6 +2392,65 @@ export class App {
       return;
     }
     await this.start({ channel: c.channel_id, user: c.user_id }, text, c.response_url);
+  }
+
+  private async openConnections(c: CommandPayload) {
+    const opened = await this.slack.call<{ view: { id: string } }>("views.open", {
+      trigger_id: c.trigger_id,
+      view: connectionsModal(undefined, c.channel_id),
+    });
+    const as = await this.actAs(c.user_id);
+    if (!as) {
+      await this.slack.call("views.update", {
+        view_id: opened.view.id,
+        view: connectionsModal(
+          [],
+          c.channel_id,
+          "Ask a workspace administrator to connect your Slack identity to a workspace account.",
+        ),
+      });
+      return;
+    }
+    const status = await this.warp.connections(as);
+    await this.slack.call("views.update", {
+      view_id: opened.view.id,
+      view: connectionsModal(status.providers, c.channel_id),
+    });
+  }
+
+  private async publishCanvas(c: CommandPayload, id: string) {
+    const as = await this.actAs(c.user_id);
+    const run = as ? await this.warp.getRunFor(id, as) : null;
+    const session = run && (await this.sessionOfRun(run));
+    if (
+      !run ||
+      !session ||
+      session.team !== this.opts.team ||
+      session.channel !== c.channel_id ||
+      !terminal(run.status) ||
+      !run.answer
+    ) {
+      await this.slack.respond(c.response_url, {
+        response_type: "ephemeral",
+        text: "Choose a finished answer from this channel: /agent canvas RUN_ID.",
+      });
+      return;
+    }
+    const canvas = await this.slack.call<{ canvas_id: string }>("canvases.create", {
+      title: `${run.agent}: ${run.text.slice(0, 100)}`,
+      document_content: { type: "markdown", markdown: run.answer },
+    });
+    await this.slack.call("canvases.access.set", {
+      canvas_id: canvas.canvas_id,
+      ...(c.channel_id.startsWith("D")
+        ? { user_ids: [c.user_id] }
+        : { channel_ids: [c.channel_id] }),
+      access_level: "read",
+    });
+    await this.slack.respond(c.response_url, {
+      response_type: "ephemeral",
+      text: `Canvas: https://app.slack.com/docs/${this.opts.team}/${canvas.canvas_id}`,
+    });
   }
 
   private async onInteractive(p: InteractivePayload): Promise<void> {
@@ -1990,6 +2484,42 @@ export class App {
       });
       return;
     }
+    if (p.type === "view_submission" && p.view?.callback_id === CONNECTIONS_MODAL) {
+      const as = await this.actAs(p.user.id);
+      if (!as) throw new Error("Connections need a mapped workspace account");
+      const values = p.view.state?.values;
+      const provider = (
+        values?.provider?.value?.selected_option?.value ?? values?.provider?.value?.value
+      )?.trim();
+      const operation = values?.operation?.value?.selected_option?.value;
+      if (!provider) return;
+      let text = "Connection updated.";
+      try {
+        if (operation === "disconnect") await this.warp.disconnect(provider, as);
+        else {
+          const ref = values?.reference?.value?.value?.trim();
+          if (!ref) throw new Error("A credential reference is required");
+          await this.warp.connect(provider, ref, as);
+        }
+      } catch {
+        text =
+          "Your connection could not be updated. Open /agent connections and check the provider and your allowed credential reference.";
+      }
+      if (p.view.private_metadata)
+        await this.slack.call("chat.postEphemeral", {
+          channel: p.view.private_metadata,
+          user: p.user.id,
+          text,
+        });
+      return;
+    }
+    const feedback = p.type === "view_submission" && p.view ? decodeFeedbackModal(p.view) : null;
+    if (feedback) {
+      const { turnId, target, text, option } = feedback.payload;
+      if (target === "up" || target === "down")
+        await this.saveFeedback(turnId, p.user.id, target, text, option);
+      return;
+    }
     const reply = p.type === "view_submission" && p.view ? decodeReplyModal(p.view) : null;
     if (reply) return this.onReply(p.user.id, reply.text, reply.target);
     if (p.type !== "view_submission" || p.view?.callback_id !== ENTRY.form) return;
@@ -2015,6 +2545,7 @@ function teamOf(type: string, p: Record<string, unknown>): string | undefined {
 
 interface SlackEvent {
   type: string;
+  files?: { id: string }[];
   subtype?: string;
   channel?: string;
   channel_id?: string;
@@ -2049,7 +2580,12 @@ interface InteractivePayload {
   view?: {
     callback_id: string;
     private_metadata?: string;
-    state?: { values?: Record<string, Record<string, { value?: string }>> };
+    state?: {
+      values?: Record<
+        string,
+        Record<string, { value?: string | null; selected_option?: { value: string } | null }>
+      >;
+    };
   };
 }
 

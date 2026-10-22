@@ -46,7 +46,11 @@ export interface ClientRecord {
   agents?: string[];
   identity?: { team?: string; app_id?: string };
   /** The credential that may act for Slack people, and who each of them is in the workspace. */
-  slack?: { machine?: string; people?: Record<string, string> };
+  slack?: {
+    machine?: string;
+    people?: Record<string, string>;
+    commands?: { name: string; description: string; argument_hint?: string }[];
+  };
 }
 
 /** A Slack person this app speaks for, as the client that maps them names them. */
@@ -77,6 +81,7 @@ export interface RunRequest {
  * machine sends one, and the platform files the thread from the binding.
  */
 export interface SurfaceRef {
+  files?: boolean;
   client: string;
   channel: string;
   ts: string;
@@ -111,11 +116,27 @@ export interface WireMessage {
   kind: string;
   state: string;
   subject: string;
+  /** When it was raised, which never changes. */
+  at?: string;
+  /** When it last changed for everyone, such as when it was withdrawn. */
+  updated_at?: string;
+  /** Set aside by the reader alone: its state is theirs, not everyone's. */
+  hidden?: boolean;
   source?: { project?: string; thread?: string };
   parts: { type: string }[];
   /** Where this app recorded posting it, by client. Only the client's own machine is shown its own. */
-  deliveries?: Record<string, { channel: string; ts: string }>;
+  deliveries?: Record<string, Receipt>;
   [field: string]: unknown;
+}
+
+/**
+ * Where a client posted a message, and when it last said the post shows the
+ * message as it stands: a message updated after `at` has changed since.
+ */
+export interface Receipt {
+  channel: string;
+  ts: string;
+  at?: string;
 }
 
 /** A Slack channel the client is bound to, and the channel it is bound to in warp. */
@@ -123,6 +144,8 @@ export interface Binding {
   slack_channel: string;
   project: string;
   channel: string;
+  /** When the Slack channel was bound there. Nothing announced before it is caught up on. */
+  bound_at?: string;
 }
 
 /** Every call takes an optional signal, as the generated client's methods do. */
@@ -169,7 +192,23 @@ export class WarpError extends Error {
  * this interface answers null for a 404, the generated client throws: the
  * swap wraps those three calls.
  */
+export interface FeedbackInput {
+  rating: "up" | "down";
+  reason?: string;
+  comment?: string;
+  act_as?: ActAs;
+}
+
+export interface ToolConnections {
+  providers: { provider: string; connected: boolean; endpoint?: string }[];
+  references: string[];
+  values: boolean;
+}
 export interface Warp {
+  connections(as: ActAs): Promise<ToolConnections>;
+  connect(provider: string, ref: string, as: ActAs): Promise<unknown>;
+  disconnect(provider: string, as: ActAs): Promise<void>;
+  saveFeedback(run: string, body: FeedbackInput): Promise<unknown>;
   getMe(options?: CallOptions): Promise<Me>;
   listAgents(options?: CallOptions): Promise<{ agents: Revision[]; builtin?: string[] }>;
   /** One client record, or null when it does not exist for this caller. */
@@ -178,6 +217,7 @@ export interface Warp {
   createRun(body: RunRequest, idempotencyKey?: string, options?: CallOptions): Promise<Run>;
   /** A run's record, or null when it does not exist for this caller. */
   getRun(id: string, options?: CallOptions): Promise<Run | null>;
+  getRunFor(id: string, as: ActAs): Promise<Run | null>;
   /**
    * The agents' turns of a conversation, its newest 200, or null when there
    * is no such conversation. People's messages in a shared thread are left
@@ -198,8 +238,13 @@ export interface Warp {
     run: { agent: string; id: string },
     options: CallOptions & { from?: number },
   ): AsyncIterable<StreamItem>;
-  /** Inbox notices alone, for as long as the signal allows. */
-  notices(options: CallOptions): AsyncIterable<InboxNotice>;
+  /**
+   * Inbox notices alone, for as long as the signal allows. The stream does
+   * not replay what it missed while it was closed: `opened` is called each
+   * time it opens, first and after every reconnect, so the caller can catch
+   * up on what changed meanwhile.
+   */
+  notices(options: CallOptions & { opened?: () => void }): AsyncIterable<InboxNotice>;
   /**
    * Post a Slack person's message into the warp thread its Slack thread is,
    * found by its surface or started where the platform files it.
@@ -231,10 +276,22 @@ export interface Warp {
     at: { channel: string; ts: string },
     options?: CallOptions,
   ): Promise<void>;
-  /** One page of a person's inbox, read for them through the client that maps them. */
+  /**
+   * The newest announcements of a project, withdrawn ones too, as this app's
+   * own credential reads them in the project's inbox ("" is the
+   * workspace's): at most `limit`, newest first, each with this client's
+   * receipt when it has one.
+   */
+  announcements(project: string, limit: number, options?: CallOptions): Promise<WireMessage[]>;
+  /**
+   * One page of a person's inbox, read for them through the client that maps
+   * them. `needs` leaves out posted announcements before the page is cut, so
+   * the page holds what `open` counts; `news` keeps only posted
+   * announcements, what `updates` counts.
+   */
   inboxFor(
     actAs: ActAs,
-    query: { state?: string; kind?: string; limit?: number },
+    query: { state?: string; kind?: string; needs?: boolean; news?: boolean; limit?: number },
     options?: CallOptions,
   ): Promise<{
     messages: Record<string, unknown>[];
@@ -243,8 +300,9 @@ export interface Warp {
     updates?: number;
   }>;
   /**
-   * Every project a person has a role in, each as they see it, read for them
-   * through the client that maps them: at most the 500 a workspace holds.
+   * Every project a person may see, each as they see it and `mine` on the
+   * ones that name them, read for them through the client that maps them: at
+   * most the 500 a workspace holds.
    */
   projectsFor(actAs: ActAs, options?: CallOptions): Promise<WireProject[]>;
   /**
@@ -373,6 +431,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | resolveFor | `POST /api/inbox/{id}/parts/{part}/resolve` with `act_as` |
  * | bindings | `GET /api/clients/{id}/bindings` |
  * | recordDelivery | `PUT /api/inbox/{id}/deliveries/{client}` |
+ * | announcements | `GET /api/projects/{name}/inbox?kind=announcement&state=all` |
  * | inboxFor | `GET /api/inbox` with `act_as_client` and `act_as_user` |
  * | projectsFor | `GET /api/projects` with `act_as_client` and `act_as_user`, every page |
  * | inbox | `GET /api/inbox`, `GET /api/inbox/{id}`, `POST /api/inbox/{id}/read`, `/dismiss`, `/snooze`, `/parts/{part}/resolve` |
@@ -450,12 +509,14 @@ export function httpWarp(cfg: {
   /**
    * One topic's stream, reopened whenever it ends. Every open replays what the
    * bus still holds, so run events are told apart by their sequence number and
-   * each is handed on once.
+   * each is handed on once. Inbox notices are not replayed: `opened` is
+   * called once each open is answered, before anything on it is handed on.
    */
   async function* stream(
     topic: string,
     signal: AbortSignal,
     from?: number,
+    opened?: () => void,
   ): AsyncGenerator<StreamItem> {
     const seen = new Map<string, number>();
     while (!signal.aborted) {
@@ -468,6 +529,7 @@ export function httpWarp(cfg: {
         if (!res.ok || !res.body) {
           throw new WarpError(res.status, `the event stream answered ${res.status}`);
         }
+        opened?.();
         for await (const frame of frames(res.body)) {
           let parsed: unknown;
           try {
@@ -496,6 +558,30 @@ export function httpWarp(cfg: {
 
   const never = new AbortController().signal;
   return {
+    connections: (as) =>
+      http(
+        "GET",
+        `/api/me/credentials?${new URLSearchParams({ act_as_client: as.client, act_as_user: as.user })}`,
+      ),
+    connect: (provider, ref, as) =>
+      http(
+        "PUT",
+        `/api/me/credentials/${enc(provider)}?${new URLSearchParams({ act_as_client: as.client, act_as_user: as.user })}`,
+        { ref },
+      ),
+    disconnect: (provider, as) =>
+      http(
+        "DELETE",
+        `/api/me/credentials/${enc(provider)}?${new URLSearchParams({ act_as_client: as.client, act_as_user: as.user })}`,
+      ),
+    saveFeedback: (run, body) => http("PUT", `/api/runs/${enc(run)}/feedback`, body),
+    getRunFor: (id, as) =>
+      orNull(
+        http(
+          "GET",
+          `/api/runs/${enc(id)}?${new URLSearchParams({ act_as_client: as.client, act_as_user: as.user })}`,
+        ),
+      ),
     getMe: () => http<Me>("GET", "/api/me"),
     listAgents: () => http<{ agents: Revision[]; builtin?: string[] }>("GET", "/api/agents"),
     getClient: (id) => orNull(http<ClientRecord>("GET", `/api/clients/${enc(id)}`)),
@@ -513,7 +599,12 @@ export function httpWarp(cfg: {
       stream(`agent:${run.agent}:${run.id}`, options.signal ?? never, options.from),
     notices: async function* (options) {
       // No agent can be named this, so the topic carries no run and the stream is the inbox's alone.
-      for await (const item of stream("agent:_inbox", options.signal ?? never)) {
+      for await (const item of stream(
+        "agent:_inbox",
+        options.signal ?? never,
+        undefined,
+        options.opened,
+      )) {
         if (item.type === "inbox") yield item.notice;
       }
     },
@@ -547,10 +638,19 @@ export function httpWarp(cfg: {
       ),
     recordDelivery: (message, client, at) =>
       http<void>("PUT", `/api/inbox/${enc(message)}/deliveries/${enc(client)}`, at),
+    announcements: (project, limit) => {
+      const q = new URLSearchParams({ kind: "announcement", state: "all", limit: String(limit) });
+      return http<{ messages: WireMessage[] }>(
+        "GET",
+        `/api/projects/${enc(project || "~")}/inbox?${q}`,
+      ).then((r) => r.messages);
+    },
     inboxFor: (actAs, query) => {
       const q = new URLSearchParams({ act_as_client: actAs.client, act_as_user: actAs.user });
       if (query.state) q.set("state", query.state);
       if (query.kind) q.set("kind", query.kind);
+      if (query.needs) q.set("needs", "true");
+      if (query.news) q.set("news", "true");
       if (query.limit) q.set("limit", String(query.limit));
       return http("GET", `/api/inbox?${q}`);
     },

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/state"
@@ -45,7 +46,7 @@ func TestASlackChannelIsBoundToOneChannel(t *testing.T) {
 	if c, ok := s.BoundTo("acme", "slack-acme", "C0123"); !ok || c.Name != "renewals" || c.Project != "Field" {
 		t.Fatalf("C0123 is bound to %+v, %v", c, ok)
 	}
-	if got := s.Bindings("acme", "slack-acme"); !reflect.DeepEqual(got, []projects.Binding{{SlackChannel: "C0123", Project: "Field", Channel: "renewals"}}) {
+	if got := s.Bindings("acme", "slack-acme"); !reflect.DeepEqual(got, []projects.Binding{{SlackChannel: "C0123", Project: "Field", Channel: "renewals", BoundAt: t0}}) {
 		t.Fatalf("slack-acme's bindings = %+v", got)
 	}
 	if _, err := s.ArchiveChannel("acme", "Field", "renewals", ada, t0); err != nil {
@@ -96,5 +97,60 @@ func TestBindingsSurviveARestart(t *testing.T) {
 		if c, ok := again.BoundTo("acme", "slack-acme", "C0123"); !ok || c.Name != projects.General {
 			t.Fatalf("after a restart C0123 is bound to %+v, %v", c, ok)
 		}
+		if got := again.Bindings("acme", "slack-acme"); len(got) != 1 || !got[0].BoundAt.Equal(t0) {
+			t.Fatalf("after a restart the binding reads %+v, want bound at %v", got, t0)
+		}
 	})
+}
+
+// A binding says when it was made: a change that keeps it keeps the time,
+// moving it to another Slack channel or client starts it again, and
+// unbinding and binding again is a new binding. A client's app posts nothing
+// announced before then.
+func TestABindingSaysWhenItWasMade(t *testing.T) {
+	s := projects.NewStore()
+	mustCreate(t, s, "acme", team("Field", ""), ada)
+	write := func(at time.Time, fn func(*projects.Channel)) projects.Channel {
+		t.Helper()
+		c, err := s.Channel("acme", "Field", projects.General)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err = s.UpdateChannel("acme", "Field", projects.General, c.Version, ada, at, func(c *projects.Channel) error {
+			fn(c)
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	boundAt := func() time.Time {
+		t.Helper()
+		got := s.Bindings("acme", "slack-acme")
+		if len(got) != 1 {
+			t.Fatalf("bindings = %+v", got)
+		}
+		return got[0].BoundAt
+	}
+	t1, t2, t3, t4, t5 := t0.Add(time.Hour), t0.Add(2*time.Hour), t0.Add(3*time.Hour), t0.Add(4*time.Hour), t0.Add(5*time.Hour)
+	write(t1, func(c *projects.Channel) { c.Slack = bind("slack-acme", "C0123") })
+	if got := boundAt(); !got.Equal(t1) {
+		t.Fatalf("bound at %v, want %v", got, t1)
+	}
+	write(t2, func(c *projects.Channel) { c.Title = "News"; c.BoundAt = t5 })
+	if got := boundAt(); !got.Equal(t1) {
+		t.Fatalf("after a change that keeps the binding, bound at %v, want %v", got, t1)
+	}
+	write(t3, func(c *projects.Channel) { c.Slack = bind("slack-acme", "C0456") })
+	if got := boundAt(); !got.Equal(t3) {
+		t.Fatalf("after moving the binding, bound at %v, want %v", got, t3)
+	}
+	if c := write(t4, func(c *projects.Channel) { c.Slack = nil }); !c.BoundAt.IsZero() {
+		t.Fatalf("an unbound channel reads bound at %v", c.BoundAt)
+	}
+	write(t5, func(c *projects.Channel) { c.Slack = bind("slack-acme", "C0456") })
+	if got := boundAt(); !got.Equal(t5) {
+		t.Fatalf("bound again, bound at %v, want %v", got, t5)
+	}
 }

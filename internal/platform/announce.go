@@ -144,7 +144,9 @@ func display(pr projects.Project) string {
 // see the project reads: what is filed in it, and with children what is filed
 // in the projects below it too. There an announcement reaches every reader,
 // member or not, and a message addressed to someone in particular still
-// reaches only them.
+// reaches only them. As everywhere a message is read, a client's machine is
+// shown its own client's receipts and nobody else any: a Slack app catches
+// up on a bound project's announcements from this page.
 func (p *Platform) ProjectInbox(who auth.Principal, project string, children bool, q inbox.Query) ([]inbox.Message, string, error) {
 	tree := p.Projects.Tree(who.Tenant)
 	pr, _, err := p.projectRole(tree, who, projects.NameOf(project), projects.Viewer)
@@ -158,7 +160,7 @@ func (p *Platform) ProjectInbox(who auth.Principal, project string, children boo
 	msgs, next, err := p.Inbox.Page(who.Tenant, p.inboxQuery(tree, who, q))
 	names := p.Names(who.Tenant)
 	for i := range msgs {
-		msgs[i] = p.seenBy(tree, names, msgs[i], who)
+		msgs[i] = p.ownDeliveries(who, p.seenBy(tree, names, msgs[i], who))
 	}
 	return msgs, next, err
 }

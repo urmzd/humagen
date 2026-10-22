@@ -289,6 +289,44 @@ func TestMembershipsReachMembersAndTheirAncestors(t *testing.T) {
 	}
 }
 
+// A person's own projects are the ones that name them: a member or owner
+// entry for their subject or a role they hold, there or as owner above.
+// Everyone's entry and projects:govern name nobody, even where they grant
+// more than the entry that does, and an entry on a project hidden from the
+// reader without projects:govern names nobody either.
+func TestNamedIsWhereAnEntryNamesTheReader(t *testing.T) {
+	s := projects.NewStore()
+	mustCreate(t, s, "acme", with(team("Field", ""), members("*=member", "role:field-eng=member", "ada=owner")), ada)
+	mustCreate(t, s, "acme", with(projects.Project{Name: "Globex", Parent: "Field", Kind: projects.Account}, members("*=viewer", "cy=member")), ada)
+	mustCreate(t, s, "acme", with(team("Renewals", "Globex"), members("*=viewer", "fay=viewer")), ada)
+	mustCreate(t, s, "acme", with(team("Platform", ""), members("*=owner", "bo=member")), ada)
+	mustCreate(t, s, "acme", with(team("Secret", ""), members("ed=owner")), ada)
+	mustCreate(t, s, "acme", with(team("Inner", "Secret"), members("ed=owner", "ana=member")), ada)
+	tree := s.Tree("acme")
+	for _, c := range []struct {
+		name string
+		r    projects.Reader
+		want []string
+	}{
+		{"an owner by name owns everything below too", projects.Reader{Subject: "ada"}, []string{"Field", "Globex", "Renewals"}},
+		{"a member by name, and not where everyone is", projects.Reader{Subject: "cy"}, []string{"Globex"}},
+		{"a member by a role they hold", projects.Reader{Subject: "dee", Roles: []string{"field-eng"}}, []string{"Field"}},
+		{"a machine holds no role", projects.Reader{Subject: "dee", Roles: []string{"field-eng"}, Machine: true}, []string{}},
+		{"a viewer by name is not named", projects.Reader{Subject: "fay"}, []string{}},
+		{"named as a member where everyone owns", projects.Reader{Subject: "bo"}, []string{"Platform"}},
+		{"govern names nobody", projects.Reader{Subject: "bo", Govern: true}, []string{"Platform"}},
+		{"govern alone is no project", projects.Reader{Subject: "root", Govern: true}, []string{}},
+		{"an entry under a project hidden from them names nobody", projects.Reader{Subject: "ana", Govern: true}, []string{}},
+		{"an owner of a members-only project", projects.Reader{Subject: "ed"}, []string{"Secret", "Inner"}},
+		{"everyone's entries alone are nobody's", projects.Reader{Subject: "gil"}, []string{}},
+		{"no subject", projects.Reader{Roles: []string{"field-eng"}}, []string{}},
+	} {
+		if got := tree.Named(c.r); !slices.Equal(got, c.want) {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 // What a deleted project held is read by whom it was read by when it was
 // deleted, under its parent as the parent stands now: a members-only child's
 // members still read it and nobody else does, and a parent made members only

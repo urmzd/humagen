@@ -209,7 +209,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     api.inboxCount().then(setInboxCounts).catch(() => {});
     if (can("projects:read"))
       mail
-        .list({ limit: 20, state: "open", kind: "announcement" })
+        .list({ limit: 20, state: "open", news: true })
         .then((page) => setAnnounced(page.messages))
         .catch(() => {});
     setInboxTick((t) => t + 1);

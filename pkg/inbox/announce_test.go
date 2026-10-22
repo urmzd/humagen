@@ -248,6 +248,54 @@ func TestBroadcastsCountOnlyInUpdates(t *testing.T) {
 	}
 }
 
+// Needs pages what may need a reader, what Open counts: posted announcements
+// are left out before the page is cut, however many are newer, and an
+// agent's draft for the project's owners stays. News pages the posts alone.
+func TestNeedsLeavesOutBroadcastsBeforeThePageIsCut(t *testing.T) {
+	s := NewStore()
+	alert := raise(s, "alert:1", t0, Part{Type: PartAlert})
+	draft, _ := two(s.Raise(acme, "draft:r1", Message{
+		Kind: KindAnnouncement, Subject: "This week", From: From{Kind: "agent", Name: "recap"},
+		Audience: []string{OwnersAudience("Field")}, Source: Source{Project: "Field"},
+		Parts: []Part{{Type: PartDraft, Draft: &DraftPart{Project: "Field", Agent: "recap", Subject: "This week", Text: "Two fixes."}}},
+	}, t0.Add(time.Second)))
+	var news Message
+	for i := range 3 {
+		news = post(t, s, "Field", fmt.Sprint("News ", i), t0.Add(time.Duration(2+i)*time.Second))
+	}
+	q := readerIn("ada", "Field")
+	q.ReaderOwns, q.Limit = []string{"Field"}, 2
+	if got := ids(t, s, q); len(got) != 2 || slices.Contains(got, draft.ID) || slices.Contains(got, alert.ID) {
+		t.Fatalf("the newest two = %q, want two announcements", got)
+	}
+	q.Needs = true
+	if got := ids(t, s, q); !slices.Equal(got, []string{draft.ID, alert.ID}) {
+		t.Fatalf("what needs ada = %q, want the draft and the alert", got)
+	}
+	if c := s.Count(acme, q); c != (Counts{Open: 2, Unread: 2, Updates: 3}) {
+		t.Fatalf("counts = %+v", c)
+	}
+	// News is the other side: the posted announcements alone, the draft left
+	// out however new it is.
+	q.Needs, q.News, q.Limit = false, true, 0
+	if got := ids(t, s, q); len(got) != 3 || slices.Contains(got, draft.ID) || slices.Contains(got, alert.ID) {
+		t.Fatalf("ada's news = %q, want the three posts", got)
+	}
+	q.News, q.Needs, q.Limit = false, true, 2
+	// An announcement she hid is still news, not something that needs her.
+	if _, _, err := s.Dismiss(acme, news.ID, "ada", t0); err != nil {
+		t.Fatal(err)
+	}
+	q.State = Dismissed
+	if got := ids(t, s, q); len(got) != 0 {
+		t.Fatalf("what needs ada, hidden = %q", got)
+	}
+	q.Needs = false
+	if got := ids(t, s, q); !slices.Equal(got, []string{news.ID}) {
+		t.Fatalf("what ada hid = %q", got)
+	}
+}
+
 func TestRacingPostsStopAtTheDailyCaps(t *testing.T) {
 	s := NewStore()
 	var wg sync.WaitGroup
@@ -468,17 +516,17 @@ func TestAReadersOwnMarksStayOutOfAnotherReadersHistory(t *testing.T) {
 		}
 		return out
 	}
-	if got := whats(s.HistoryFor(acme, m.ID, "bo")); !slices.Equal(got, []string{"raised dana"}) {
+	if got := whats(s.HistoryFor(acme, m.ID, "bo", nil)); !slices.Equal(got, []string{"raised dana"}) {
 		t.Fatalf("another reader is shown %q", got)
 	}
-	if got := whats(s.HistoryFor(acme, m.ID, "dee")); !slices.Equal(got, []string{"raised dana", "snoozed dee", "read dee", "dismissed dee"}) {
+	if got := whats(s.HistoryFor(acme, m.ID, "dee", nil)); !slices.Equal(got, []string{"raised dana", "snoozed dee", "read dee", "dismissed dee"}) {
 		t.Fatalf("dee is shown %q", got)
 	}
 	// dana's own read of what she posted is a mark like any other.
 	if n := len(s.History(acme, m.ID)); n != 6 {
 		t.Fatalf("the record holds %d changes, want every mark once", n)
 	}
-	if got := whats(s.HistoryFor(acme, m.ID, "dana")); !slices.Equal(got, []string{"raised dana", "read dana"}) {
+	if got := whats(s.HistoryFor(acme, m.ID, "dana", nil)); !slices.Equal(got, []string{"raised dana", "read dana"}) {
 		t.Fatalf("dana is shown %q", got)
 	}
 
@@ -490,11 +538,11 @@ func TestAReadersOwnMarksStayOutOfAnotherReadersHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got := s.HistoryFor(acme, other.ID, "dee")
+	got := s.HistoryFor(acme, other.ID, "dee", nil)
 	if len(got) != MaxHistory || !got[len(got)-1].Until.Equal(t0.Add(time.Duration(MaxHistory+20)*time.Minute)) {
 		t.Fatalf("dee is shown %d changes, the last %+v", len(got), got[len(got)-1])
 	}
-	if got := s.HistoryFor(acme, other.ID, "bo"); len(got) != 1 {
+	if got := s.HistoryFor(acme, other.ID, "bo", nil); len(got) != 1 {
 		t.Fatalf("another reader is shown %d changes", len(got))
 	}
 }
@@ -650,10 +698,10 @@ func TestAReaderBringsBackWhatTheyHid(t *testing.T) {
 		}
 		return out
 	}
-	if got := whats(s.HistoryFor(acme, m.ID, "cy")); !slices.Equal(got, []string{"raised dana"}) {
+	if got := whats(s.HistoryFor(acme, m.ID, "cy", nil)); !slices.Equal(got, []string{"raised dana"}) {
 		t.Fatalf("cy is shown %q", got)
 	}
-	if got := whats(s.HistoryFor(acme, m.ID, "ada")); !slices.Equal(got, []string{"raised dana", "dismissed ada", "unhidden ada", "dismissed ada"}) {
+	if got := whats(s.HistoryFor(acme, m.ID, "ada", nil)); !slices.Equal(got, []string{"raised dana", "dismissed ada", "unhidden ada", "dismissed ada"}) {
 		t.Fatalf("ada is shown %q", got)
 	}
 	rebuilt := Rebuild(s.Changes(acme))

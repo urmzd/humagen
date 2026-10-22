@@ -32,6 +32,8 @@ import (
 
 // SurfaceRef is where a message was posted on a client's surface.
 type SurfaceRef struct {
+	// Files asks the platform to ingest files from this verified Slack message.
+	Files bool `json:"files,omitempty"`
 	// Client is the client whose surface it is.
 	Client string `json:"client"`
 	// Channel is the Slack channel, or for a direct message the conversation.
@@ -207,10 +209,10 @@ func closedForAll(m inbox.Message) bool {
 }
 
 // seedOf is the announcement a thread was started from, as it stands when
-// the thread is read: who posted it, a person or an agent, and what it
-// says, or only that it was withdrawn. It is read under the thread's own
-// read rule, which is the announcement's project's, as announcementAt
-// filed it.
+// the thread is read: who posted it, a person, an agent or warp itself for
+// a release's notes, and what it says, or only that it was withdrawn. It is
+// read under the thread's own read rule, which is the announcement's
+// project's, as announcementAt filed it.
 func (p *Platform) seedOf(tenant string, th threads.Thread) (threads.Announcement, bool) {
 	if th.Announcement == "" {
 		return threads.Announcement{}, false
@@ -225,6 +227,8 @@ func (p *Platform) seedOf(tenant string, th threads.Thread) (threads.Announcemen
 		a.Kind = threads.Person
 	case "agent":
 		a.Kind = threads.Agent
+	case "system":
+		a.Kind = threads.System
 	default:
 		return threads.Announcement{}, false
 	}

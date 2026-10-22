@@ -18,6 +18,7 @@ export {
   type SerializeOptions,
   type SerializeResult,
 } from "./blocks";
+export * from "./connections";
 export * from "./feedback";
 export * from "./forms";
 export * from "./lifecycle";

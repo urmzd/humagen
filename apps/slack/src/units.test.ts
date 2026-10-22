@@ -225,7 +225,13 @@ test("createRun sends only the body the route accepts, with the key as a header"
 });
 
 test("a person's projects are read for them through the client, every page", async () => {
-  const project = (name: string) => ({ name, kind: "team", path: [{ name }], active: 0 });
+  const project = (name: string) => ({
+    name,
+    kind: "team",
+    path: [{ name }],
+    active: 0,
+    mine: true,
+  });
   const { fn, asked } = fakeFetch([
     json({ projects: [project("Field")], next: "c1" }),
     json({ projects: [project("Launch")], next: null }),
@@ -305,6 +311,56 @@ test("the event stream hands each event on once across a reconnect, and ends on 
   }
   assert.deepEqual(got, ["lifecycle.accepted", "inbox:m1", "lifecycle.completed"]);
   assert.equal(asked[0]?.url, "http://warp.test/api/events?topic=agent%3Alead%3Ar1");
+});
+
+test("the inbox stream says each time it opens, first and after every reconnect, before what it carries", async () => {
+  const sse =
+    (...parts: string[]) =>
+    () =>
+      new Response(stream(...parts), { status: 200 });
+  const notice = (id: string) =>
+    `event: inbox\ndata: ${JSON.stringify({ id, kind: "announcement", state: "open" })}\n\n`;
+  const { fn, asked } = fakeFetch([
+    sse(notice("m1")),
+    () => new Response("unavailable", { status: 503 }),
+    sse(notice("m2")),
+  ]);
+  const c = httpWarp({
+    baseUrl: "http://warp.test",
+    token: staticToken(),
+    fetch: fn,
+    reconnectMs: 0,
+  });
+  const stop = new AbortController();
+  const seen: string[] = [];
+  for await (const n of c.notices({ signal: stop.signal, opened: () => seen.push("opened") })) {
+    seen.push(n.id);
+    if (n.id === "m2") stop.abort();
+  }
+  // A stream that answered 503 never opened, so it says nothing.
+  assert.deepEqual(seen, ["opened", "m1", "opened", "m2"]);
+  assert.equal(asked.length, 3);
+});
+
+test("a project's announcements are read newest first from its inbox, withdrawn ones too, the workspace's as ~", async () => {
+  const { fn, asked } = fakeFetch([
+    json({ messages: [{ id: "m2", kind: "announcement" }], next: null }),
+    json({ messages: [], next: null }),
+  ]);
+  const c = httpWarp({ baseUrl: "http://warp.test", token: staticToken(), fetch: fn });
+  assert.deepEqual(
+    (await c.announcements("Field", 50)).map((m) => m.id),
+    ["m2"],
+  );
+  assert.deepEqual(await c.announcements("", 50), []);
+  assert.equal(
+    asked[0]?.url,
+    "http://warp.test/api/projects/Field/inbox?kind=announcement&state=all&limit=50",
+  );
+  assert.equal(
+    asked[1]?.url,
+    "http://warp.test/api/projects/~/inbox?kind=announcement&state=all&limit=50",
+  );
 });
 
 test("an event stream the caller may not read is an error, not a retry loop", async () => {

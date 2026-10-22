@@ -84,8 +84,11 @@ func (s *Server) readingInbox(w http.ResponseWriter, r *http.Request, who auth.P
 // listInbox pages the caller's inbox, newest first.
 //
 // state is open (the default), resolved, dismissed, snoozed or all. kind,
-// unread, alert, agent, project, limit and before are optional. alert finds
-// the message about one alert, in any state. agent keeps the messages an agent
+// unread, needs, news, alert, agent, project, limit and before are optional.
+// needs keeps what open counts: every message but a posted announcement, an
+// agent's draft included. news keeps only posted announcements, what updates
+// counts. alert finds the message about one alert, in any
+// state. agent keeps the messages an agent
 // raised or whose call would reach it: with kind=approval, that agent's
 // approval queue. project keeps what is filed in one project, "~" for the
 // workspace, of what the caller's own inbox holds. The answer carries next,
@@ -96,7 +99,7 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	q := r.URL.Query()
-	query := inbox.Query{State: inbox.State(q.Get("state")), Kind: inbox.Kind(q.Get("kind")), Before: q.Get("before"), Unread: q.Get("unread") == "true", Alert: q.Get("alert"), Agent: q.Get("agent")}
+	query := inbox.Query{State: inbox.State(q.Get("state")), Kind: inbox.Kind(q.Get("kind")), Before: q.Get("before"), Unread: q.Get("unread") == "true", Needs: q.Get("needs") == "true", News: q.Get("news") == "true", Alert: q.Get("alert"), Agent: q.Get("agent")}
 	// Asking after one alert means its message, wherever it stands.
 	if query.Alert != "" && query.State == "" {
 		query.State = inbox.All
@@ -158,8 +161,8 @@ func (s *Server) getInbox(w http.ResponseWriter, r *http.Request, who auth.Princ
 		return
 	}
 	// Each reader is shown what changed the message for everyone and their
-	// own marks, never another reader's.
-	ok(w, http.StatusOK, map[string]any{"message": m, "history": s.P.Inbox.HistoryFor(who.Tenant, m.ID, who.Subject)})
+	// own marks, never another reader's, nor another client's receipts.
+	ok(w, http.StatusOK, map[string]any{"message": m, "history": s.P.InboxHistory(who, m.ID)})
 }
 
 func (s *Server) readInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {

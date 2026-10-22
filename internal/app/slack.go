@@ -93,13 +93,14 @@ func slackManifest(name, command string) SlackManifest {
 		{Name: "Ask " + name, Type: "global", CallbackID: "aui_ask", Description: "Ask from anywhere. The answer arrives in the app's messages."},
 		{Name: "Ask " + name + " about this", Type: "message", CallbackID: "aui_ask_about", Description: "Answer in this message's thread, using the message as the question."},
 	}
-	m.Features.SlashCommands = []slackCommand{{Command: command, Description: "Ask " + name + " in this channel", UsageHint: "[question] or help"}}
+	m.Features.SlashCommands = []slackCommand{{Command: command, Description: "Ask " + name + " in this channel", UsageHint: "[question], skills, connections or canvas RUN_ID"}, {Command: "/skill", Description: "Run a configured agent skill", UsageHint: "[name] [arguments]"}}
 	// Slack delivers a channel message to the app only when it mentions the
 	// app, so the agent is named after it.
 	m.Features.AgentView.Description = "Your workspace's agents in Slack. Mention @" + name + " and the agent you want, such as @" + name + " @analyst, or message it."
 	m.OAuth.Scopes.Bot = []string{
 		"app_mentions:read", "assistant:write", "channels:history", "chat:write", "commands",
 		"groups:history", "im:history", "mpim:history", "reactions:write", "users:read",
+		"files:read", "canvases:write",
 	}
 	m.Settings.Events.Bot = []string{"agent_session_stopped", "app_home_opened", "app_mention", "assistant_thread_started", "message.im"}
 	m.Settings.Interactivity.Enabled = true
