@@ -221,12 +221,6 @@ export interface Warp {
     actAs: ActAs,
     options?: CallOptions,
   ): Promise<WireMessage>;
-  /** Post a person's message in a warp thread, for them, after the message it follows. */
-  postMessageFor(
-    thread: string,
-    body: { text: string; after?: string; act_as: ActAs },
-    options?: CallOptions,
-  ): Promise<ThreadPosted>;
   /** The Slack channels a client is bound to. */
   bindings(client: string, options?: CallOptions): Promise<Binding[]>;
   /** Record where the app posted an inbox message, so it edits that post later. */
@@ -371,7 +365,6 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | postThread | `POST /api/threads` with a surface |
  * | getInboxMessage, inboxMessageFor | `GET /api/inbox/{id}`, for a person with `act_as_client` and `act_as_user` |
  * | resolveFor | `POST /api/inbox/{id}/parts/{part}/resolve` with `act_as` |
- * | postMessageFor | `POST /api/threads/{id}/messages` with `act_as` |
  * | bindings | `GET /api/clients/{id}/bindings` |
  * | recordDelivery | `PUT /api/inbox/{id}/deliveries/{client}` |
  * | inboxFor | `GET /api/inbox` with `act_as_client` and `act_as_user` |
@@ -537,8 +530,6 @@ export function httpWarp(cfg: {
         ...body,
         act_as: actAs,
       }),
-    postMessageFor: (thread, body) =>
-      http<ThreadPosted>("POST", `/api/threads/${enc(thread)}/messages`, body),
     getInboxMessage: (id) =>
       orNull(http<{ message: WireMessage }>("GET", `/api/inbox/${enc(id)}`)).then(
         (r) => r?.message ?? null,

@@ -346,22 +346,6 @@ export class FakeWarp implements Warp {
     return m as WireMessage;
   }
 
-  /** Every message posted in a thread for someone. */
-  readonly postedFor: { thread: string; body: { text: string; after?: string; act_as: ActAs } }[] =
-    [];
-
-  async postMessageFor(thread: string, body: { text: string; after?: string; act_as: ActAs }) {
-    this.postedFor.push({ thread, body });
-    return {
-      thread: { id: thread, project: "", channel: "general", visibility: "shared" },
-      message: { id: "m-9", text: body.text },
-      runs: [],
-      notified: [],
-      refused: [],
-      rule: "reply",
-    } satisfies ThreadPosted;
-  }
-
   async bindings(client: string) {
     if (!this.clients.has(client)) throw new WarpError(404, "not found");
     return this.bound.get(client) ?? [];

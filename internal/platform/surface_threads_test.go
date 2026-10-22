@@ -311,3 +311,42 @@ func TestAViewerStopsOnlyWhatTheyAskedFor(t *testing.T) {
 		}
 	}
 }
+
+// A reply to a mention is a human response, so the reply a Slack person
+// sends from the modal in their direct messages, through their inbox, posts
+// in the thread as them and starts no run, though the thread has a default.
+// Replying asks only what being mentioned does: a viewer who was tagged
+// replies too.
+func TestASlackReplyToAMentionStartsNoRun(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	got := startThread(t, p, admin, platform.ThreadInput{Project: "Globex", Default: "helper", Text: "@ana can you check the price?", PostOnly: true})
+	if got.Thread.Default != "helper" || len(got.Runs) != 0 {
+		t.Fatalf("the thread is %+v and started %+v", got.Thread, got.Runs)
+	}
+	ana, err := p.Acting(machine, platform.ActAs{Client: "app", User: "U0ANA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.MayPost(ana, platform.Place{Project: "Globex"}); err == nil {
+		t.Fatal("ana is a member of Globex; the test needs a viewer")
+	}
+	mention, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "ana"))
+	if !ok {
+		t.Fatal("ana was not told of the mention")
+	}
+	if _, err := p.InboxResolve(t.Context(), machine, mention.ID, mention.Parts[0].ID, platform.Resolution{
+		Action: platform.ActReply, Text: "Checked: it holds.", ActAs: &platform.ActAs{Client: "app", User: "U0ANA"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reply, err := p.Threads.Message(tenant, got.Thread.ID, "m-2")
+	if err != nil || reply.By != "ana" || reply.Via != "app" || reply.Prev != "m-1" {
+		t.Fatalf("the reply is %+v, %v", reply, err)
+	}
+	if turns, err := p.Runs.Conversation(tenant, got.Thread.ID); !errors.Is(err, runs.ErrNotFound) || len(turns) != 0 {
+		t.Fatalf("the reply started %+v, %v", turns, err)
+	}
+	if m, _ := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "ana")); m.State != inbox.Resolved {
+		t.Fatalf("after the reply the mention is %s", m.State)
+	}
+}

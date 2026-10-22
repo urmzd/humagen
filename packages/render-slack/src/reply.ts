@@ -4,15 +4,19 @@ import { defaultCopy } from "@warp/components";
  * The reply modal: what "Reply" opens on a mention or an expert's question
  * sent to a person's DM with the app. It is one text field. What the words
  * answer travels in `private_metadata` as ids, never content, and comes back
- * on submit, so the host posts them as that person: a human message in the
- * thread, or the question's answer.
+ * on submit, so the host sends them as that person: a reply to the mention
+ * in their inbox, which posts a human message in the thread and starts no
+ * run, or the question's answer.
  */
 
 /** `callback_id` of `replyModal`; match it on view_submission. */
 export const REPLY_MODAL = "aui.reply.modal";
 
-/** What a reply answers: a message in a thread, or a question a run is waiting on. */
-export type ReplyTarget = { thread: string; message: string } | { run: string; question: string };
+/**
+ * What a reply answers: the mention part of a message in the person's inbox,
+ * or a question a run is waiting on.
+ */
+export type ReplyTarget = { inbox: string; part: string } | { run: string; question: string };
 
 /** The modal's words. Defaults are `copy.replyModal` from @warp/components. */
 export interface ReplyModalLabels {
@@ -47,8 +51,7 @@ function targetOf(raw: string | undefined): ReplyTarget | null {
   if (typeof parsed !== "object" || parsed === null) return null;
   const o = parsed as Record<string, unknown>;
   const keys = Object.keys(o).sort().join(",");
-  if (keys === "message,thread" && id(o.thread) && id(o.message))
-    return { thread: o.thread, message: o.message };
+  if (keys === "inbox,part" && id(o.inbox) && id(o.part)) return { inbox: o.inbox, part: o.part };
   if (keys === "question,run" && id(o.run) && id(o.question))
     return { run: o.run, question: o.question };
   return null;
@@ -67,9 +70,9 @@ export function replyModal(
   const meta =
     "question" in target
       ? { run: target.run, question: target.question }
-      : { thread: target.thread, message: target.message };
+      : { inbox: target.inbox, part: target.part };
   if (!targetOf(JSON.stringify(meta)))
-    throw new RangeError("a reply names a thread and a message, or a run and a question");
+    throw new RangeError("a reply names an inbox message and its part, or a run and a question");
   const blocks: object[] = [];
   if (context) blocks.push({ type: "context", elements: [plain(context, 2000)] });
   blocks.push({

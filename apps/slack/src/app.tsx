@@ -1344,10 +1344,10 @@ export class App {
   }
 
   /**
-   * The reply modal was sent: the words post in the thread as the person,
-   * through the client, which settles their mention there, or answer the
-   * question a run waits on. Someone the client does not map is not asked
-   * for at all.
+   * The reply modal was sent: the words reply to the person's mention, as
+   * them, through the client, which posts a human message in the thread that
+   * starts no run and settles the mention; or they answer the question a run
+   * waits on. Someone the client does not map is not asked for at all.
    */
   private async onReply(user: string, text: string, target: ReplyTarget): Promise<void> {
     const as = await this.actAs(user);
@@ -1356,8 +1356,20 @@ export class App {
       return;
     }
     try {
-      if ("thread" in target) {
-        await this.warp.postMessageFor(target.thread, { text, after: target.message, act_as: as });
+      if ("inbox" in target) {
+        const updated = await this.warp.resolveFor(
+          target.inbox,
+          target.part,
+          { action: "reply", text },
+          as,
+        );
+        const told = this.told.get(updated.id);
+        if (told)
+          await this.slack.call("chat.update", {
+            channel: told.channel,
+            ts: told.ts,
+            ...this.personalView(updated),
+          });
       } else {
         await this.warp.answerQuestion(
           { run: target.run, question: target.question, body: { action: "reply", text } },
@@ -1524,18 +1536,15 @@ export class App {
     this.told.set(raw.id, { channel: sent.channel ?? as.user, ts: sent.ts });
   }
 
-  /** What a Reply on a message writes to: the thread a mention was in, or the question a run waits on. */
+  /**
+   * What a Reply on a message writes to: the mention, replied to through the
+   * person's inbox, or the question a run waits on.
+   */
   private replyTarget(raw: WireMessage, partId: string): ReplyTarget | null {
     const part = raw.parts.find((x) => (x as { id?: string }).id === partId) as
-      | {
-          type: string;
-          mention?: { thread?: string; message?: string };
-          question?: { id?: string };
-        }
+      | { type: string; question?: { id?: string } }
       | undefined;
-    if (part?.type === "mention" && part.mention?.thread && part.mention.message) {
-      return { thread: part.mention.thread, message: part.mention.message };
-    }
+    if (part?.type === "mention") return { inbox: raw.id, part: partId };
     const run = (raw.source as { run?: string } | undefined)?.run;
     if (part?.type === "reply" && run && part.question?.id)
       return { run, question: part.question.id };

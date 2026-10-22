@@ -11,11 +11,11 @@ const submitted = (view: View, value: string | null) => ({
 describe("replyModal", () => {
   it("is one text field, with what it answers as ids in its metadata", () => {
     const view = replyModal(
-      { thread: "th-1", message: "m-7" },
+      { inbox: "in-7", part: "p1" },
       { context: "Dana mentioned you in #renewals" },
     );
     expect(view.callback_id).toBe(REPLY_MODAL);
-    expect(JSON.parse(view.private_metadata)).toEqual({ thread: "th-1", message: "m-7" });
+    expect(JSON.parse(view.private_metadata)).toEqual({ inbox: "in-7", part: "p1" });
     const inputs = view.blocks.filter((b) => (b as { type: string }).type === "input");
     expect(inputs).toHaveLength(1);
     expect(view.title.text.length).toBeLessThanOrEqual(24);
@@ -36,7 +36,7 @@ describe("replyModal", () => {
   });
 
   it("refuses a submission that is empty, not its own, or names no exact target", () => {
-    const view = replyModal({ thread: "th-1", message: "m-7" });
+    const view = replyModal({ inbox: "in-7", part: "p1" });
     expect(decodeReplyModal(submitted(view, "   "))).toBeNull();
     expect(decodeReplyModal(submitted(view, null))).toBeNull();
     expect(decodeReplyModal({ ...submitted(view, "hi"), callback_id: "aui_form" })).toBeNull();
@@ -44,8 +44,9 @@ describe("replyModal", () => {
       "",
       "not json",
       "[]",
-      '{"thread":"th-1"}',
-      '{"thread":"th-1","message":"m-7","run":"r1"}',
+      '{"inbox":"in-7"}',
+      '{"inbox":"in-7","part":"p1","run":"r1"}',
+      '{"thread":"th-1","message":"m-7"}',
       '{"run":"r1","question":7}',
     ]) {
       expect(decodeReplyModal({ ...submitted(view, "hi"), private_metadata: meta })).toBeNull();
@@ -53,6 +54,6 @@ describe("replyModal", () => {
   });
 
   it("refuses to build a modal for no target", () => {
-    expect(() => replyModal({ thread: "", message: "m-7" })).toThrow(RangeError);
+    expect(() => replyModal({ inbox: "", part: "p1" })).toThrow(RangeError);
   });
 });

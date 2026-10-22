@@ -127,7 +127,7 @@ export function views(): { name: string; view: object }[] {
     {
       name: "reply.mention@modal",
       view: replyModal(
-        { thread: "th-1", message: "m-7" },
+        { inbox: "in-7", part: "p1" },
         { context: "Dana mentioned you in Globex › #renewals" },
       ),
     },

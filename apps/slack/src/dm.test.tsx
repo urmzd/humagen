@@ -56,7 +56,7 @@ test("a mention of a person the client maps reaches their direct messages, with 
   );
 });
 
-test("Reply opens the reply modal, and sending it posts in the thread as the person", async () => {
+test("Reply opens the reply modal, and sending it replies to the mention as the person, through their inbox", async () => {
   const w = mapping();
   await watching(w, async () => {
     w.warp.tellFor("dana", { client: "app", user: USER }, mentionMail());
@@ -69,10 +69,7 @@ test("Reply opens the reply modal, and sending it posts in the thread as the per
   const opened = w.slack.of("views.open").at(-1);
   const view = opened?.view as { callback_id: string; private_metadata: string };
   assert.ok(view, "the modal opened");
-  assert.deepEqual(JSON.parse(view.private_metadata), {
-    thread: "th-0123456789abcdef",
-    message: "m-3",
-  });
+  assert.deepEqual(JSON.parse(view.private_metadata), { inbox: "m-mention", part: "p1" });
   await w.app.handle(
     interactive({
       type: "view_submission",
@@ -80,12 +77,23 @@ test("Reply opens the reply modal, and sending it posts in the thread as the per
     }),
   );
   await settle();
-  assert.deepEqual(w.warp.postedFor, [
+  // A reply to a mention is a human response: sent through the inbox, so
+  // the platform posts it in the thread and starts no run, whatever the
+  // thread's default.
+  assert.deepEqual(w.warp.resolvedFor, [
     {
-      thread: "th-0123456789abcdef",
-      body: { text: "May 3, confirmed.", after: "m-3", act_as: { client: "app", user: USER } },
+      id: "m-mention",
+      part: "p1",
+      body: { action: "reply", text: "May 3, confirmed." },
+      as: { client: "app", user: USER },
     },
   ]);
+  const edit = w.slack.of("chat.update").at(-1);
+  assert.equal(edit?.channel, DM, "the direct message is kept current");
+  assert.ok(
+    !JSON.stringify(edit?.blocks).includes(`"${defaultCopy.reply}"`),
+    "nothing left to reply to",
+  );
 });
 
 test("once the person has replied, the direct message is kept current", async () => {
