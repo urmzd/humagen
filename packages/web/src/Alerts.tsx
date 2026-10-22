@@ -1,4 +1,4 @@
-import { SystemAlertView } from "@warp/components";
+import { SystemAlertView } from "@humagen/components";
 import {
   type ActionHandler,
   ActionId,
@@ -7,7 +7,7 @@ import {
   formatUsd,
   type StopState,
   type SystemAlert,
-} from "@warp/core";
+} from "@humagen/core";
 import {
   ActionContext,
   AlertOctagonIcon,
@@ -19,7 +19,7 @@ import {
   Spinner,
   WebSurface,
   XIcon,
-} from "@warp/render-web";
+} from "@humagen/render-web";
 import {
   type ReactNode,
   useContext,

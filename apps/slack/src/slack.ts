@@ -2,7 +2,7 @@
  * Everything this app asks of Slack: Web API calls, and a Socket Mode
  * connection that delivers events without a public URL.
  *
- * The Web API client follows the one in warp's Slack sandbox: JSON bodies,
+ * The Web API client follows the one in humagen's Slack sandbox: JSON bodies,
  * typed errors, and waiting out a 429 for as long as Slack says.
  */
 

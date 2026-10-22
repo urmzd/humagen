@@ -12,7 +12,7 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/humagen/internal/platform"
 )
 
 // Every route that names a person by subject, the key the platform keeps
@@ -37,8 +37,8 @@ func namesFixture(t *testing.T) (f *fixture, ana, pat string) {
 			}}, nil
 		}),
 	}})
-	ana = f.person(t, "acme", "00u-ana", "Ana Lima", "warp-admins")
-	pat = f.person(t, "acme", patSubject, "", "warp-admins")
+	ana = f.person(t, "acme", "00u-ana", "Ana Lima", "humagen-admins")
+	pat = f.person(t, "acme", patSubject, "", "humagen-admins")
 	want(t, f, pat, "POST", "/api/projects", `{"name":"Field","title":"Field engineering"}`, http.StatusCreated)
 	want(t, f, ana, "POST", "/api/projects", `{"name":"Globex","parent":"Field"}`, http.StatusCreated)
 	return f, ana, pat
@@ -100,7 +100,7 @@ func TestProjectsCallTheirPeopleByName(t *testing.T) {
 
 	// A member's note is a proposal, and its owners are told who made it by
 	// name.
-	lee := f.person(t, "acme", "okta|lee", "Lee Wong", "warp-operators")
+	lee := f.person(t, "acme", "okta|lee", "Lee Wong", "humagen-operators")
 	want(t, f, lee, "POST", "/api/projects/Globex/memory", `{"text":"Globex wants a site visit."}`, http.StatusCreated)
 	proposals := want(t, f, ana, "GET", "/api/inbox?kind=memory", "", http.StatusOK)["messages"].([]any)
 	if len(proposals) != 1 || proposals[0].(map[string]any)["subject"] != "Lee Wong proposed a note for Globex" {
@@ -251,13 +251,13 @@ func TestWhoAnsweredAQuestionIsCalledByName(t *testing.T) {
 // console shows them.
 func TestAMessageIsCalledWhatItsPosterIsCalledNow(t *testing.T) {
 	f := newFixture(t)
-	kim := f.person(t, "acme", "okta|kim", "", "warp-admins")
+	kim := f.person(t, "acme", "okta|kim", "", "humagen-admins")
 	posted := want(t, f, kim, "POST", "/api/threads", `{"visibility":"shared","text":"hello","post_only":true}`, http.StatusCreated)
 	if m := posted["message"].(map[string]any); m["name"] != "kim" {
 		t.Fatalf("a poster with no name is called %v", m["name"])
 	}
 	id := posted["thread"].(map[string]any)["id"].(string)
-	kim = f.person(t, "acme", "okta|kim", "Kim Park", "warp-admins")
+	kim = f.person(t, "acme", "okta|kim", "Kim Park", "humagen-admins")
 	page := want(t, f, kim, "GET", "/api/threads/"+id, "", http.StatusOK)
 	if m := page["turns"].([]any)[0].(map[string]any)["message"].(map[string]any); m["name"] != "Kim Park" || m["by"] != "kim-park" {
 		t.Errorf("the message is by %v, called %v", m["by"], m["name"])
@@ -287,9 +287,9 @@ func TestAMentionIsFromItsPosterAsTheThreadCallsThem(t *testing.T) {
 	f := newFixture(t)
 	// Lee Wong signs in as "lee" and goes by lee-wong; the second person's
 	// subject makes the handle lee, which is Lee Wong's subject.
-	f.person(t, "acme", "lee", "Lee Wong", "warp-admins")
-	other := f.person(t, "acme", "okta|lee", "", "warp-admins")
-	zed := f.person(t, "acme", "okta|zed", "Zed Park", "warp-admins")
+	f.person(t, "acme", "lee", "Lee Wong", "humagen-admins")
+	other := f.person(t, "acme", "okta|lee", "", "humagen-admins")
+	zed := f.person(t, "acme", "okta|zed", "Zed Park", "humagen-admins")
 	want(t, f, other, "POST", "/api/threads", `{"visibility":"shared","text":"@zed-park look","post_only":true}`, http.StatusCreated)
 	from := func() (map[string]any, map[string]any) {
 		t.Helper()
@@ -309,7 +309,7 @@ func TestAMentionIsFromItsPosterAsTheThreadCallsThem(t *testing.T) {
 	}
 
 	// The poster gives a name, and their handle is made again from it.
-	f.person(t, "acme", "okta|lee", "Lee Ross", "warp-admins")
+	f.person(t, "acme", "okta|lee", "Lee Ross", "humagen-admins")
 	m, sender = from()
 	if sender["display"] != "Lee Ross" || m["subject"] != "Lee Ross mentioned you in #general" {
 		t.Errorf("the mention is %q, from %v", m["subject"], sender)

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 // must is a call's value, for tests whose engine writes nowhere that fails.

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // Change is one entry in a tenant's policy history: who changed which scope's

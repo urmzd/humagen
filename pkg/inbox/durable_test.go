@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 // two is Raise's message and whether it was raised, for a store that writes

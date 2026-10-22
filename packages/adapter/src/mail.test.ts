@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ActionId, messageAsks, messageTemplate, type UiAction } from "@warp/core";
+import { ActionId, messageAsks, messageTemplate, type UiAction } from "@humagen/core";
 import { fromServer, kinds, MailError, mailTransport, notificationsOf, projectOf, projectTransport, shownAbout, toRequest, updatesOf } from "./mail.ts";
 
 /** An announcement as the platform sends it: a broadcast in a project's inbox, only there to be read. */

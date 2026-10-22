@@ -1,4 +1,4 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { type MouseEvent, useEffect, useState } from "react";
 import { ApiError, api, type Person, type ProjectKindSpec, type ProjectView, type Revision } from "./api.ts";
 import { nameOfAddress } from "./availability.ts";

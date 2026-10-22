@@ -1,7 +1,7 @@
 /**
- * Everything this app asks of warp, and a hand-written client for it.
+ * Everything this app asks of humagen, and a hand-written client for it.
  *
- * The rest of the app depends on the `Warp` interface only. `httpWarp`
+ * The rest of the app depends on the `Humagen` interface only. `httpHumagen`
  * is a stand-in for the client generated from the platform's OpenAPI document:
  * when that client lands, this file is the one that changes.
  */
@@ -14,7 +14,7 @@ import {
   type Run,
   type Transport,
   type WireProject,
-} from "@warp/adapter";
+} from "@humagen/adapter";
 
 export type { BusEvent, Run, WireProject };
 
@@ -139,7 +139,7 @@ export interface Receipt {
   at?: string;
 }
 
-/** A Slack channel the client is bound to, and the channel it is bound to in warp. */
+/** A Slack channel the client is bound to, and the channel it is bound to in humagen. */
 export interface Binding {
   slack_channel: string;
   project: string;
@@ -175,7 +175,7 @@ export interface Refusal {
   policy?: { scope?: { kind: string; name?: string }; version?: number; period?: string };
 }
 
-export class WarpError extends Error {
+export class HumagenError extends Error {
   constructor(
     readonly status: number,
     message: string,
@@ -187,8 +187,8 @@ export class WarpError extends Error {
 }
 
 /**
- * What this app asks of warp. The names and shapes follow the generated
- * `@warp/client` (`createClient`), so swapping it in is mechanical. Where
+ * What this app asks of humagen. The names and shapes follow the generated
+ * `@humagen/client` (`createClient`), so swapping it in is mechanical. Where
  * this interface answers null for a 404, the generated client throws: the
  * swap wraps those three calls.
  */
@@ -204,7 +204,7 @@ export interface ToolConnections {
   references: string[];
   values: boolean;
 }
-export interface Warp {
+export interface Humagen {
   connections(as: ActAs): Promise<ToolConnections>;
   connect(provider: string, ref: string, as: ActAs): Promise<unknown>;
   disconnect(provider: string, as: ActAs): Promise<void>;
@@ -246,13 +246,13 @@ export interface Warp {
    */
   notices(options: CallOptions & { opened?: () => void }): AsyncIterable<InboxNotice>;
   /**
-   * Post a Slack person's message into the warp thread its Slack thread is,
+   * Post a Slack person's message into the humagen thread its Slack thread is,
    * found by its surface or started where the platform files it.
    */
   postThread(body: ThreadPostRequest, options?: CallOptions): Promise<ThreadPosted>;
   /** One inbox message as the platform sends it, or null when it does not exist for this caller. */
   getInboxMessage(id: string, options?: CallOptions): Promise<WireMessage | null>;
-  /** Where a warp thread is on a client's surface, or null when it is on none or does not exist here. */
+  /** Where a humagen thread is on a client's surface, or null when it is on none or does not exist here. */
   threadSurface(
     id: string,
     options?: CallOptions,
@@ -323,7 +323,7 @@ export const staticToken =
     token || undefined;
 
 /**
- * An OAuth client-credentials grant, which is how a machine gets a warp
+ * An OAuth client-credentials grant, which is how a machine gets a humagen
  * token from the identity provider. The token is kept until a minute before it
  * expires, and asked for again when the platform refuses it.
  */
@@ -358,7 +358,7 @@ export function clientCredentials(cfg: {
     };
     if (!res.ok || !data.access_token) {
       // The provider's own words may carry the request back, so they are not repeated.
-      throw new WarpError(res.status, "the identity provider did not issue a token");
+      throw new HumagenError(res.status, "the identity provider did not issue a token");
     }
     held = { token: data.access_token, until: now() + ((data.expires_in ?? 300) - 60) * 1000 };
     return held.token;
@@ -436,13 +436,13 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | projectsFor | `GET /api/projects` with `act_as_client` and `act_as_user`, every page |
  * | inbox | `GET /api/inbox`, `GET /api/inbox/{id}`, `POST /api/inbox/{id}/read`, `/dismiss`, `/snooze`, `/parts/{part}/resolve` |
  */
-export function httpWarp(cfg: {
+export function httpHumagen(cfg: {
   baseUrl: string;
   token: TokenSource;
   fetch?: typeof fetch;
   /** How long to wait before reopening an event stream that ended. */
   reconnectMs?: number;
-}): Warp {
+}): Humagen {
   const base = cfg.baseUrl.replace(/\/+$/, "");
   const call = cfg.fetch ?? fetch;
 
@@ -480,7 +480,7 @@ export function httpWarp(cfg: {
     const data = (await res.json().catch(() => ({}))) as { error?: string } & Refusal;
     if (!res.ok) {
       const refused = res.status === 429 || res.status === 402;
-      throw new WarpError(
+      throw new HumagenError(
         res.status,
         data.error ?? `Request failed (${res.status})`,
         refused
@@ -501,7 +501,7 @@ export function httpWarp(cfg: {
     try {
       return await work;
     } catch (e) {
-      if (e instanceof WarpError && e.status === 404) return null;
+      if (e instanceof HumagenError && e.status === 404) return null;
       throw e;
     }
   };
@@ -527,7 +527,7 @@ export function httpWarp(cfg: {
           headers: { accept: "text/event-stream" },
         });
         if (!res.ok || !res.body) {
-          throw new WarpError(res.status, `the event stream answered ${res.status}`);
+          throw new HumagenError(res.status, `the event stream answered ${res.status}`);
         }
         opened?.();
         for await (const frame of frames(res.body)) {
@@ -550,7 +550,7 @@ export function httpWarp(cfg: {
       } catch (e) {
         if (signal.aborted) return;
         // Not found and not allowed do not get better by asking again.
-        if (e instanceof WarpError && [400, 401, 403, 404].includes(e.status)) throw e;
+        if (e instanceof HumagenError && [400, 401, 403, 404].includes(e.status)) throw e;
       }
       await sleep(cfg.reconnectMs ?? 1000, signal);
     }

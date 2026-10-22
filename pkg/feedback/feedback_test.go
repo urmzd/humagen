@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/feedback"
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/feedback"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 func TestFeedbackSurvivesRestartAndScopesPeopleAndTenants(t *testing.T) {

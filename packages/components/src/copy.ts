@@ -1050,12 +1050,12 @@ export const defaultCopy = {
       post: "The message could not be posted. Try again.",
       channel: "The channel could not be created.",
     },
-    /** In a Slack channel bound to a project, to someone the app maps to nobody in warp. */
+    /** In a Slack channel bound to a project, to someone the app maps to nobody in humagen. */
     unmappedInBound:
-      "This channel is a project's channel in warp, and only people warp knows post in it. Ask an admin to connect your Slack account.",
+      "This channel is a project's channel in humagen, and only people humagen knows post in it. Ask an admin to connect your Slack account.",
     /** In a Slack channel bound to a project, to someone asking about another person's message. */
     notTheirsInBound:
-      "This channel is a project's channel in warp, where a message is asked only as its writer's own. Ask in the thread in your own words.",
+      "This channel is a project's channel in humagen, where a message is asked only as its writer's own. Ask in the thread in your own words.",
   },
 };
 

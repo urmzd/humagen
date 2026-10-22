@@ -13,8 +13,8 @@ import (
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // prepareCall resolves references once, before accepting the child. The tag

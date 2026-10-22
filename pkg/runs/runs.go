@@ -25,8 +25,8 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/usage"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/usage"
 )
 
 // ErrNotFound reports a run that does not exist in the caller's tenant. A run

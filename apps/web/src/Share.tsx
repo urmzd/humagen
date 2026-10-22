@@ -1,4 +1,4 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { conflictOf } from "./conflicts.ts";
 import { ApiError, type Channel, coworking, type DirectoryPerson, type ProjectView, type Thread, type ThreadPage } from "./api.ts";
@@ -240,7 +240,7 @@ export function ShareDialog({
           onClose();
         }
       }}
-      className="warp-glass mx-auto flex w-full max-w-4xl flex-col gap-3 rounded-aui-lg p-4"
+      className="humagen-glass mx-auto flex w-full max-w-4xl flex-col gap-3 rounded-aui-lg p-4"
     >
       <h2 id={heading} className="text-aui-base font-semibold text-aui-fg">
         {words.shareTitle}

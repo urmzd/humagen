@@ -122,7 +122,7 @@ func TestOnlyAMemberSchedulesInAProject(t *testing.T) {
 	f := newFixture(t)
 	ada := f.signedAs(t, "ada")
 	// Bob may do everything but govern projects, which owns them all.
-	bob := f.iss.Sign(t, "bob", audience, map[string]any{"org": "acme", "scp": slices.DeleteFunc(slices.Clone(everything), func(s string) bool { return s == "warp:projects:govern" })})
+	bob := f.iss.Sign(t, "bob", audience, map[string]any{"org": "acme", "scp": slices.DeleteFunc(slices.Clone(everything), func(s string) bool { return s == "humagen:projects:govern" })})
 	f.do(t, nil, "POST", "/api/agents", ada, helperSpec)
 	if res, out := f.do(t, nil, "POST", "/api/projects", ada, `{"name":"Field"}`); res.StatusCode != http.StatusCreated {
 		t.Fatalf("project = %d %v", res.StatusCode, out)

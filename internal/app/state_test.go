@@ -43,7 +43,7 @@ func TestStateFlags(t *testing.T) {
 	if _, _, err := openState(t.Context(), parse(nil, "-state=disk"), envOf(nil), quiet); err == nil {
 		t.Fatal("an unknown kind was accepted")
 	}
-	secret := "postgres://warp:hunter2@[::1:bad"
+	secret := "postgres://humagen:hunter2@[::1:bad"
 	_, _, err = openState(t.Context(), parse(map[string]string{postgresURLEnv: secret}), envOf(map[string]string{postgresURLEnv: secret}), quiet)
 	if err == nil || strings.Contains(err.Error(), "hunter2") {
 		t.Fatalf("a malformed URL = %v", err)
@@ -72,18 +72,18 @@ func TestRegisterSpecRevisesWhatIsKept(t *testing.T) {
 }
 
 func TestASpecOnPostgresKeepsItsAgentsAcrossARestart(t *testing.T) {
-	url := os.Getenv("WARP_POSTGRES_TEST_URL")
+	url := os.Getenv("HUMAGEN_POSTGRES_TEST_URL")
 	if url == "" {
-		t.Skip("WARP_POSTGRES_TEST_URL is not set")
+		t.Skip("HUMAGEN_POSTGRES_TEST_URL is not set")
 	}
 	t.Setenv("SPEC_TEST_PG", url)
-	path := filepath.Join(t.TempDir(), "warp.yaml")
-	if err := os.WriteFile(path, []byte(`api_version: warp/v1
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: humagen/v1
 kind: System
 spec:
   stores: {kind: postgres, postgres: {url: {ref: "env:SPEC_TEST_PG"}}}
 ---
-api_version: warp/v1
+api_version: humagen/v1
 kind: Platform
 metadata: {name: default}
 `), 0o600); err != nil {

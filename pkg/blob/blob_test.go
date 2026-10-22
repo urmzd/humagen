@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/blob"
-	"github.com/urmzd/warp/pkg/blob/blobtest"
+	"github.com/urmzd/humagen/pkg/blob"
+	"github.com/urmzd/humagen/pkg/blob/blobtest"
 )
 
 func TestMemory(t *testing.T) {

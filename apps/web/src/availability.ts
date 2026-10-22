@@ -4,7 +4,7 @@
  * the composer, a project's Agents tab, an agent's Access tab and the
  * Directory.
  */
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import type { AgentOffer, DefaultResolved, ProjectAgentsView, ProjectView } from "./api.ts";
 
 const place = defaultCopy.agentPlace;

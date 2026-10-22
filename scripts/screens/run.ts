@@ -2,13 +2,13 @@
  * Captures every main console screen at phone and desktop width, and fails
  * when one breaks the layout checks in checks.ts.
  *
- * It starts warp on a free loopback port with the development sign-in, the
+ * It starts humagen on a free loopback port with the development sign-in, the
  * seeded agents on the offline provider and state in memory, adds a little
  * more through the API (announcements, a failed run whose alert waits in the
  * inbox, a schedule), and serves the built console from apps/web/dist. Run it
  * with `make screens`, which builds both first.
  *
- * Settings, all optional: WARP_BIN (the warp binary), WARP_WEB (the built
+ * Settings, all optional: HUMAGEN_BIN (the humagen binary), HUMAGEN_WEB (the built
  * console), SCREENS_OUT (where screenshots go, .screens at the root),
  * CHROMIUM (a Chromium or Chrome to use instead of the first one found),
  * SCREENS_ONLY (a comma-separated list of screen names).
@@ -24,8 +24,8 @@ import { collect, DESKTOP, judge, PHONE, type Problem, type Rules } from "./chec
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
-const bin = resolve(process.env.WARP_BIN ?? join(repo, "bin/warp"));
-const web = resolve(process.env.WARP_WEB ?? join(repo, "apps/web/dist"));
+const bin = resolve(process.env.HUMAGEN_BIN ?? join(repo, "bin/humagen"));
+const web = resolve(process.env.HUMAGEN_WEB ?? join(repo, "apps/web/dist"));
 const out = resolve(process.env.SCREENS_OUT ?? join(repo, ".screens"));
 const only = (process.env.SCREENS_ONLY ?? "").split(",").filter(Boolean);
 
@@ -247,15 +247,17 @@ function freePort(): Promise<number> {
 
 const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
-/** warp with seeded agents, no sign-in and nothing kept, in a directory of its own. */
-async function startWarp(port: number): Promise<{ base: string; proc: ChildProcess; dir: string }> {
+/** humagen with seeded agents, no sign-in and nothing kept, in a directory of its own. */
+async function startHumagen(
+  port: number,
+): Promise<{ base: string; proc: ChildProcess; dir: string }> {
   if (!existsSync(bin))
-    throw new Error(`No warp binary at ${bin}. Run make build, or set WARP_BIN.`);
+    throw new Error(`No humagen binary at ${bin}. Run make build, or set HUMAGEN_BIN.`);
   if (!existsSync(join(web, "index.html")))
     throw new Error(
-      `No built console at ${web}. Run pnpm --filter @warp/console build, or set WARP_WEB.`,
+      `No built console at ${web}. Run pnpm --filter @humagen/console build, or set HUMAGEN_WEB.`,
     );
-  const dir = mkdtempSync(join(tmpdir(), "warp-screens-"));
+  const dir = mkdtempSync(join(tmpdir(), "humagen-screens-"));
   const env = { ...process.env };
   // A model key would let the agents seeded to fail succeed.
   for (const k of Object.keys(env)) if (/_API_KEY$/.test(k)) delete env[k];
@@ -282,7 +284,7 @@ async function startWarp(port: number): Promise<{ base: string; proc: ChildProce
   proc.stderr?.on("data", keep);
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 100; i++) {
-    if (proc.exitCode !== null) throw new Error(`warp exited with ${proc.exitCode}:\n${log}`);
+    if (proc.exitCode !== null) throw new Error(`humagen exited with ${proc.exitCode}:\n${log}`);
     try {
       const r = await fetch(`${base}/api/me`);
       if (r.ok) return { base, proc, dir };
@@ -292,7 +294,7 @@ async function startWarp(port: number): Promise<{ base: string; proc: ChildProce
     await sleep(100);
   }
   proc.kill();
-  throw new Error(`warp did not start:\n${log}`);
+  throw new Error(`humagen did not start:\n${log}`);
 }
 
 /** One call to the API, failing loudly: a seed that did not land would make every screen lie. */
@@ -433,7 +435,7 @@ async function shoot(
   await page.waitForSelector("h1", { timeout: 15_000 }).catch(() => {});
   await page
     .waitForFunction(
-      () => !document.querySelector("[aria-busy='true'], .warp-skeleton"),
+      () => !document.querySelector("[aria-busy='true'], .humagen-skeleton"),
       undefined,
       { timeout: 5_000 },
     )
@@ -551,7 +553,7 @@ async function main(): Promise<void> {
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   const executablePath = chromiumPath();
-  const { base, proc, dir } = await startWarp(await freePort());
+  const { base, proc, dir } = await startHumagen(await freePort());
   let browser: Browser | undefined;
   try {
     browser = await chromium.launch({ executablePath, args: ["--no-sandbox"] });
@@ -559,7 +561,7 @@ async function main(): Promise<void> {
     const results: Result[] = [];
 
     // A person with nothing waiting and nothing new: Home's welcome. The
-    // seeded files reach the inbox just after warp starts listening, so it
+    // seeded files reach the inbox just after humagen starts listening, so it
     // is cleared until it stays empty.
     await emptied(call);
     if (only.length === 0 || only.includes("home-new")) {

@@ -1,4 +1,4 @@
-import { ActionId, type UiAction } from "@warp/core";
+import { ActionId, type UiAction } from "@humagen/core";
 
 /**
  * The comment prompt that follows a rating on Slack. Feedback buttons can't

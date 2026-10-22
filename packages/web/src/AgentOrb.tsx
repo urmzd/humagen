@@ -1,4 +1,4 @@
-import type { AgentActivity, Turn, TurnStatus } from "@warp/core";
+import type { AgentActivity, Turn, TurnStatus } from "@humagen/core";
 import type { CSSProperties } from "react";
 
 /**

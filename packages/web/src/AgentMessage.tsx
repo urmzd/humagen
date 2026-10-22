@@ -1,5 +1,5 @@
-import { type Copy, defaultCopy, type TurnCapabilities, TurnView } from "@warp/components";
-import { ActionId, formatTokens, formatUsd, type Turn, type Usage } from "@warp/core";
+import { type Copy, defaultCopy, type TurnCapabilities, TurnView } from "@humagen/components";
+import { ActionId, formatTokens, formatUsd, type Turn, type Usage } from "@humagen/core";
 import {
   ActionContext,
   CopyButton,
@@ -15,7 +15,7 @@ import {
   THINKING_VERBS,
   TurnMetaContext,
   useVerbSequence,
-} from "@warp/render-web";
+} from "@humagen/render-web";
 import { useContext, useMemo, useState } from "react";
 import { AgentOrb, type OrbState, turnOrbState } from "./AgentOrb";
 import { StopBanner } from "./Alerts";

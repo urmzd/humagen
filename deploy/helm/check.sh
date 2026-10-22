@@ -1,26 +1,26 @@
 #!/usr/bin/env sh
 # Checks the chart: lints it, renders it with each values file in ci/ (and the
 # Flux override), validates the manifests with kubeconform when it is on PATH,
-# and runs `warp config check` on the warp.yaml each render puts in its
-# ConfigMap, so the chart cannot render a spec warp refuses.
+# and runs `humagen config check` on the humagen.yaml each render puts in its
+# ConfigMap, so the chart cannot render a spec humagen refuses.
 #
 #   deploy/helm/check.sh            # from the repository root; make chart-check
 #
-# HELM, KUBECONFORM and WARP override the commands used.
+# HELM, KUBECONFORM and HUMAGEN override the commands used.
 set -eu
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
-chart="$root/deploy/helm/warp"
+chart="$root/deploy/helm/humagen"
 helm=${HELM:-helm}
 kubeconform=${KUBECONFORM:-kubeconform}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-if [ -n "${WARP:-}" ]; then
-	warp=$WARP
+if [ -n "${HUMAGEN:-}" ]; then
+	humagen=$HUMAGEN
 else
-	(cd "$root" && go build -o "$work/warp" ./cmd/warp)
-	warp="$work/warp"
+	(cd "$root" && go build -o "$work/humagen" ./cmd/humagen)
+	humagen="$work/humagen"
 fi
 
 "$helm" lint --strict "$chart" -f "$chart/ci/default-values.yaml"
@@ -29,28 +29,28 @@ for values in "$chart"/ci/*.yaml "$root/deploy/flux/app/values.yaml"; do
 	name=$(basename "$(dirname "$values")")-$(basename "$values" .yaml)
 	out="$work/$name.yaml"
 	"$helm" lint --strict "$chart" -f "$values" >/dev/null
-	"$helm" template warp "$chart" -f "$values" >"$out"
+	"$helm" template humagen "$chart" -f "$values" >"$out"
 	if command -v "$kubeconform" >/dev/null 2>&1; then
 		"$kubeconform" -strict -summary "$out"
 	else
 		echo "kubeconform not found: skipping schema checks for $name"
 	fi
-	# The ConfigMap's warp.yaml, as the pod would read it.
-	python3 -I - "$out" "$work/$name.warp.yaml" <<'EOF'
+	# The ConfigMap's humagen.yaml, as the pod would read it.
+	python3 -I - "$out" "$work/$name.humagen.yaml" <<'EOF'
 import sys, yaml
 for doc in yaml.safe_load_all(open(sys.argv[1])):
-    if doc and doc.get("kind") == "ConfigMap" and "warp.yaml" in doc.get("data", {}):
-        open(sys.argv[2], "w").write(doc["data"]["warp.yaml"])
+    if doc and doc.get("kind") == "ConfigMap" and "humagen.yaml" in doc.get("data", {}):
+        open(sys.argv[2], "w").write(doc["data"]["humagen.yaml"])
         break
 else:
-    sys.exit("no ConfigMap with warp.yaml in " + sys.argv[1])
+    sys.exit("no ConfigMap with humagen.yaml in " + sys.argv[1])
 EOF
-	"$warp" config check -f "$work/$name.warp.yaml"
+	"$humagen" config check -f "$work/$name.humagen.yaml"
 done
 
 # What the chart must refuse.
 refuse() {
-	if "$helm" template warp "$chart" -f "$chart/ci/default-values.yaml" "$@" >/dev/null 2>&1; then
+	if "$helm" template humagen "$chart" -f "$chart/ci/default-values.yaml" "$@" >/dev/null 2>&1; then
 		echo "rendered, but should have refused: $*"
 		exit 1
 	fi

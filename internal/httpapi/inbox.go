@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // The inbox routes ask only for runs:read, which every role has. What a caller

@@ -1,5 +1,11 @@
-import { defaultCopy } from "@warp/components";
-import { decodeAction, encodeAction, formatAmount, parseAmount, type UiAction } from "@warp/core";
+import { defaultCopy } from "@humagen/components";
+import {
+  decodeAction,
+  encodeAction,
+  formatAmount,
+  parseAmount,
+  type UiAction,
+} from "@humagen/core";
 
 /**
  * The ways into an agent besides a direct message or a mention, and the forms
@@ -26,7 +32,7 @@ const plain = (text: string, max: number) => ({
   text: text.length <= max ? text : `${text.slice(0, max - 1)}…`,
 });
 
-/** The form's words. Defaults are `copy.askForm` from @warp/components. */
+/** The form's words. Defaults are `copy.askForm` from @humagen/components. */
 export interface AskFormLabels {
   title: string;
   label: string;
@@ -94,7 +100,7 @@ export function decodeAskForm<M = { kind: string }>(view: {
   return meta ? { text, meta } : null;
 }
 
-/** The modal's words. Defaults come from `defaultCopy` in @warp/components. */
+/** The modal's words. Defaults come from `defaultCopy` in @humagen/components. */
 export interface AmountModalLabels {
   title: string;
   label: string;

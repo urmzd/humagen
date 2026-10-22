@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { HOME_PROJECTS_MAX } from "@warp/core";
+import { HOME_PROJECTS_MAX } from "@humagen/core";
 import { projectsOf, type WireProject } from "./home.ts";
 
 /** Projects as `GET /api/projects` lists them, in the tree's order. */

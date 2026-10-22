@@ -26,12 +26,13 @@ import (
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/credref"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 // Factory builds a registered kind from its block. What it returns depends on
@@ -123,7 +124,7 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	if len(paths) == 0 {
 		return l, nil
 	}
-	cfg, err := spec.Load(paths...)
+	cfg, err := loadSpec(o, paths...)
 	if err != nil {
 		return l, err
 	}
@@ -131,7 +132,7 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		return l, err
 	}
 	l.cfg, l.any = cfg, true
-	// The stores' default comes from $WARP_POSTGRES_URL, so the file sets
+	// The stores' default comes from $HUMAGEN_POSTGRES_URL, so the file sets
 	// -state only when it says.
 	declaredStores := cfg.System.Spec.Stores.Kind
 	sys := cfg.System
@@ -171,8 +172,8 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 	switch sp.Auth.Kind {
 	case "oidc":
 		b, _ := spec.Block[spec.OIDC](sp.Auth.Slot)
-		l.env["WARP_OIDC_ISSUER"], l.env["WARP_OIDC_CLIENT_ID"], l.env["WARP_OIDC_AUDIENCE"] = b.Issuer, b.ClientID, b.Audience
-		if err := secret("WARP_OIDC_CLIENT_SECRET", b.ClientSecret); err != nil {
+		l.env["HUMAGEN_OIDC_ISSUER"], l.env["HUMAGEN_OIDC_CLIENT_ID"], l.env["HUMAGEN_OIDC_AUDIENCE"] = b.Issuer, b.ClientID, b.Audience
+		if err := secret("HUMAGEN_OIDC_CLIENT_SECRET", b.ClientSecret); err != nil {
 			return l, err
 		}
 	case "mock":
@@ -266,8 +267,8 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 // Environment variables the server reads for its stores and bus, which a
 // System document's references fill.
 const (
-	envPostgres = "WARP_POSTGRES_URL"
-	envRedis    = "WARP_REDIS_URL"
+	envPostgres = "HUMAGEN_POSTGRES_URL"
+	envRedis    = "HUMAGEN_REDIS_URL"
 )
 
 // overlay reads vars first, then the process environment.
@@ -707,10 +708,10 @@ func slackApps(cfg spec.Config, keys credref.Resolver, getenv func(string) strin
 	return out
 }
 
-// configCmd is `warp config check|print -f PATH`.
+// configCmd is `humagen config check|print -f PATH`.
 func configCmd(o Options, args []string, out io.Writer) error {
 	if len(args) == 0 || (args[0] != "check" && args[0] != "print") {
-		return errors.New("usage: warp config check|print -f PATH [-f PATH]")
+		return errors.New("usage: humagen config check|print -f PATH [-f PATH]")
 	}
 	fs := flag.NewFlagSet("config", flag.ContinueOnError)
 	var paths files
@@ -719,14 +720,18 @@ func configCmd(o Options, args []string, out io.Writer) error {
 		return err
 	}
 	if len(paths) == 0 {
-		if def := defaultSpec(os.Getenv); def != "" {
+		def, err := defaultSpec(o.notes)
+		if err != nil {
+			return err
+		}
+		if def != "" {
 			paths = append(paths, def)
 		}
 	}
 	var cfg spec.Config
 	if len(paths) > 0 {
 		var err error
-		if cfg, err = spec.Load(paths...); err != nil {
+		if cfg, err = loadSpec(o, paths...); err != nil {
 			return err
 		}
 	}
@@ -742,7 +747,7 @@ func configCmd(o Options, args []string, out io.Writer) error {
 		}
 		var unset []string
 		for _, v := range c.env {
-			if _, ok := c.values[v]; !ok && os.Getenv(v) == "" {
+			if _, ok := c.values[v]; !ok && legacy.Getenv(v) == "" {
 				unset = append(unset, v)
 			}
 		}
@@ -772,25 +777,52 @@ func machineWarnings(cfg spec.Config) []string {
 	var out []string
 	for _, p := range cfg.Platforms {
 		s := p.Spec.Surfaces.Slack
-		if s == nil || !s.Enabled || s.WarpClient == nil {
+		if s == nil || !s.Enabled || s.HumagenClient == nil {
 			continue
 		}
-		scopes := s.WarpClient.Scopes
-		if slices.Contains(scopes, auth.ScopePrefix+string(auth.RunsRead)) && !slices.Contains(scopes, auth.ScopePrefix+string(auth.ProjectsRead)) {
-			out = append(out, fmt.Sprintf("platform %q: the Slack app's warp_client has %s%s but not %s%s, so it lists no projects; add %s%s (see docs/authorization.md)",
+		scopes := s.HumagenClient.Scopes
+		has := func(p auth.Permission) bool {
+			return slices.Contains(scopes, auth.ScopePrefix+string(p)) || slices.Contains(scopes, legacy.ScopePrefix+string(p))
+		}
+		if slices.ContainsFunc(scopes, func(sc string) bool { return strings.HasPrefix(sc, legacy.ScopePrefix) }) {
+			out = append(out, fmt.Sprintf("platform %q: the Slack app's humagen_client asks for scopes under %s, the old prefix, which still works; change them to %s once your identity provider defines those",
+				p.Metadata.Name, legacy.ScopePrefix, auth.ScopePrefix))
+		}
+		if has(auth.RunsRead) && !has(auth.ProjectsRead) {
+			out = append(out, fmt.Sprintf("platform %q: the Slack app's humagen_client has %s%s but not %s%s, so it lists no projects; add %s%s (see docs/authorization.md)",
 				p.Metadata.Name, auth.ScopePrefix, auth.RunsRead, auth.ScopePrefix, auth.ProjectsRead, auth.ScopePrefix, auth.ProjectsRead))
 		}
 	}
 	return out
 }
 
-// defaultSpec is warp.yaml in the config directory, when there is one.
-func defaultSpec(getenv func(string) string) string {
-	path := configDir(getenv) + string(os.PathSeparator) + "warp.yaml"
-	if _, err := os.Stat(path); err == nil {
-		return path
+// loadSpec is spec.Load, noting each name from before the rename the files
+// still use.
+func loadSpec(o Options, paths ...string) (spec.Config, error) {
+	cfg, err := spec.Load(paths...)
+	for _, n := range cfg.Notes {
+		o.notes.Add("%s", n)
 	}
-	return ""
+	return cfg, err
+}
+
+// specPath is the spec start and setup read and write when no file is named:
+// humagen.yaml in HUMAGEN_HOME, else in the user config directory, or the old
+// warp.yaml where an earlier release kept it (legacy.SpecFile).
+func specPath(n *legacy.Notes) (string, error) {
+	return legacy.SpecFile(os.Getenv, os.UserConfigDir, n)
+}
+
+// defaultSpec is specPath when the file is there, else "".
+func defaultSpec(n *legacy.Notes) (string, error) {
+	path, err := specPath(n)
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	}
+	return "", nil
 }
 
 // fileRunners builds the System document's extensions.

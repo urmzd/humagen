@@ -14,12 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/warp/pkg/credref"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 // SlackManifest is a Slack app manifest: what the Slack app asks Slack for.
-// warp writes it, so the scopes and events always match what the app it runs
+// humagen writes it, so the scopes and events always match what the app it runs
 // uses, and apps/slack/manifest.json is this output, checked by a test.
 type SlackManifest struct {
 	Metadata struct {
@@ -108,23 +108,23 @@ func slackManifest(name, command string) SlackManifest {
 	return m
 }
 
-// slackCmd is `warp slack manifest`. With -f, the name and command come from
+// slackCmd is `humagen slack manifest`. With -f, the name and command come from
 // the spec: the workspace's Slack surface, else its display name, else the
 // deployment's. Flags win.
 func slackCmd(args []string, out io.Writer) error {
 	if len(args) == 0 || args[0] != "manifest" {
-		return errors.New("usage: warp slack manifest [-f PATH] [-workspace NAME] [-name NAME] [-command /agent]")
+		return errors.New("usage: humagen slack manifest [-f PATH] [-workspace NAME] [-name NAME] [-command /agent]")
 	}
 	fs := flag.NewFlagSet("slack manifest", flag.ContinueOnError)
 	var paths files
 	fs.Var(&paths, "f", "a spec file or directory to take the name and command from")
 	workspace := fs.String("workspace", "", "with -f, which Platform document. Empty means the first with Slack")
-	name := fs.String("name", "", `the app's name in Slack. Empty means the spec's, else "Warp"`)
+	name := fs.String("name", "", `the app's name in Slack. Empty means the spec's, else "Humagen"`)
 	command := fs.String("command", "", `the slash command. Empty means the spec's, else "/agent"`)
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	n, c := "Warp", "/agent"
+	n, c := "Humagen", "/agent"
 	if len(paths) > 0 {
 		cfg, err := spec.Load(paths...)
 		if err != nil {
@@ -167,7 +167,7 @@ func slackCmd(args []string, out io.Writer) error {
 }
 
 // slackApp runs the Slack app (apps/slack) as a client of this server: it
-// dials Slack over Socket Mode and calls warp's API like the console does, so
+// dials Slack over Socket Mode and calls humagen's API like the console does, so
 // there is no public endpoint and no second backend. It is started and
 // stopped with the server; its tokens are read from where the choices say
 // they are kept and handed to it in its environment, never written down.
@@ -179,10 +179,10 @@ type slackApp struct {
 	dir string
 }
 
-// slackDir finds apps/slack: WARP_SLACK_APP_DIR, else under the working
+// slackDir finds apps/slack: HUMAGEN_SLACK_APP_DIR, else under the working
 // directory or beside the binary.
 func slackDir(getenv func(string) string) string {
-	if d := strings.TrimSpace(getenv("WARP_SLACK_APP_DIR")); d != "" {
+	if d := strings.TrimSpace(getenv("HUMAGEN_SLACK_APP_DIR")); d != "" {
 		return d
 	}
 	for _, r := range searchRoots() {
@@ -198,7 +198,7 @@ func slackDir(getenv func(string) string) string {
 // slackPassEnv are the variables of this process the Slack app is given when
 // they are set: what Node needs to run, to trust a CA and to reach Slack
 // through a proxy, and the app's own optional settings. Nothing else is
-// passed, since warp's environment holds its database URL, its sign-in
+// passed, since humagen's environment holds its database URL, its sign-in
 // secret and its model keys, and the app runs npm dependencies.
 var slackPassEnv = []string{
 	"PATH", "HOME", "TMPDIR", "TZ", "XDG_STATE_HOME",
@@ -227,26 +227,26 @@ func (s *slackApp) env(ctx context.Context, url, publicURL string, lookup func(s
 	env = append(env,
 		"SLACK_BOT_TOKEN="+bot, "SLACK_APP_TOKEN="+app, "SLACK_TEAM_ID="+s.choice.Team,
 		"SLACK_OPERATORS="+strings.Join(s.choice.Operators, ","),
-		"WARP_URL="+url, "WARP_TENANT="+s.tenant, "WARP_PUBLIC_URL="+publicURL,
+		"HUMAGEN_URL="+url, "HUMAGEN_TENANT="+s.tenant, "HUMAGEN_PUBLIC_URL="+publicURL,
 	)
-	// How the app signs in to warp's API (apps/slack/src/config.ts).
-	if c := s.choice.WarpClient; c != nil {
+	// How the app signs in to humagen's API (apps/slack/src/config.ts).
+	if c := s.choice.HumagenClient; c != nil {
 		secret, err := s.keys.Resolve(ctx, c.ClientSecret.Ref)
 		if err != nil {
-			return nil, fmt.Errorf("warp_client.client_secret: %w", err)
+			return nil, fmt.Errorf("humagen_client.client_secret: %w", err)
 		}
-		env = append(env, "WARP_OIDC_TOKEN_URL="+c.TokenURL, "WARP_OIDC_CLIENT_ID="+c.ClientID,
-			"WARP_OIDC_CLIENT_SECRET="+secret, "WARP_OIDC_SCOPES="+strings.Join(c.Scopes, " "))
+		env = append(env, "HUMAGEN_OIDC_TOKEN_URL="+c.TokenURL, "HUMAGEN_OIDC_CLIENT_ID="+c.ClientID,
+			"HUMAGEN_OIDC_CLIENT_SECRET="+secret, "HUMAGEN_OIDC_SCOPES="+strings.Join(c.Scopes, " "))
 		if c.Audience != "" {
-			env = append(env, "WARP_OIDC_AUDIENCE="+c.Audience)
+			env = append(env, "HUMAGEN_OIDC_AUDIENCE="+c.Audience)
 		}
 	}
-	if s.choice.WarpToken.Set() {
-		token, err := s.keys.Resolve(ctx, s.choice.WarpToken.Ref)
+	if s.choice.HumagenToken.Set() {
+		token, err := s.keys.Resolve(ctx, s.choice.HumagenToken.Ref)
 		if err != nil {
-			return nil, fmt.Errorf("warp_token: %w", err)
+			return nil, fmt.Errorf("humagen_token: %w", err)
 		}
-		env = append(env, "WARP_TOKEN="+token)
+		env = append(env, "HUMAGEN_TOKEN="+token)
 	}
 	return env, nil
 }
@@ -258,7 +258,7 @@ func (s *slackApp) env(ctx context.Context, url, publicURL string, lookup func(s
 // server it is a client of keeps running.
 func (s *slackApp) run(ctx context.Context, url, publicURL string, log *slog.Logger) error {
 	if s.dir == "" {
-		return errors.New("apps/slack not found; set WARP_SLACK_APP_DIR or run from a checkout")
+		return errors.New("apps/slack not found; set HUMAGEN_SLACK_APP_DIR or run from a checkout")
 	}
 	node, err := exec.LookPath("node")
 	if err != nil {

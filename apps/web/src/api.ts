@@ -1,4 +1,4 @@
-import { type AnswerRequest, answerPath } from "@warp/adapter/question";
+import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
   AgentHome,
   Person,
@@ -439,7 +439,7 @@ export interface Client {
     guides?: boolean;
     mutations?: boolean;
     read_repositories?: string[];
-    /** The app's own login. Once warp's GitHub connector reads it, a comment that mentions it and names no agent is answered by the default; until then it changes nothing. */
+    /** The app's own login. Once humagen's GitHub connector reads it, a comment that mentions it and names no agent is answered by the default; until then it changes nothing. */
     login?: string;
   };
   /** Where the client files threads it starts outside a bound channel. Absent, the workspace's general. */
@@ -524,7 +524,7 @@ export interface ToolCredential {
 /** The tools that act as you, and what this workspace lets people give for them. */
 export interface ToolCredentials {
   providers: ToolCredential[];
-  /** Whether you may store the credential itself with warp. */
+  /** Whether you may store the credential itself with humagen. */
   values: boolean;
   /** How the references you may give start. Empty means none can be given. */
   references: string[];
@@ -1071,8 +1071,8 @@ export interface ThreadMessage {
 
 /**
  * The announcement a thread was started from, as it stands now: who posted
- * it, a person by handle, an agent by name, or warp itself (`system`, by
- * `warp`) for a release's notes, and what it says. A withdrawn one says
+ * it, a person by handle, an agent by name, or humagen itself (`system`, by
+ * `humagen`) for a release's notes, and what it says. A withdrawn one says
  * nothing more.
  */
 export interface ThreadAnnouncement {

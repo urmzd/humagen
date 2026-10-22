@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/usage"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/usage"
 )
 
 // Billing policies are a workspace's limits. Anyone in the workspace can read

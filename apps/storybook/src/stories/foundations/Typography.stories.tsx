@@ -1,6 +1,6 @@
+import { Markdown } from "@humagen/primitives";
+import { Shimmer, ShimmerVerb, Spinner, StatusIcon, useVerbSequence } from "@humagen/render-web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Markdown } from "@warp/primitives";
-import { Shimmer, ShimmerVerb, Spinner, StatusIcon, useVerbSequence } from "@warp/render-web";
 import { Canvas } from "../../support";
 
 const meta = {

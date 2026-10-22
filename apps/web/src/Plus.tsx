@@ -1,5 +1,5 @@
-import { defaultCopy } from "@warp/components";
-import { CheckIcon, FileIcon, FolderIcon, MessageIcon, XIcon } from "@warp/render-web";
+import { defaultCopy } from "@humagen/components";
+import { CheckIcon, FileIcon, FolderIcon, MessageIcon, XIcon } from "@humagen/render-web";
 import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { coworking, type ProjectKindSpec, type ProjectView } from "./api.ts";
 import { ProjectChoices } from "./ProjectPicker.tsx";

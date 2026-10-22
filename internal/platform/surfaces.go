@@ -3,10 +3,10 @@ package platform
 import (
 	"fmt"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // What a client's own surface host, such as the Slack app, records through

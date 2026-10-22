@@ -2,7 +2,7 @@
  * What a person may do, and why, in words. Pure: the platform decides, this
  * only phrases the decision for the home page and the Access panel.
  */
-import type { HomeAccess } from "@warp/core";
+import type { HomeAccess } from "@humagen/core";
 import type { AccessDecision, Me } from "./api.ts";
 
 /** Every permission, in the order the platform lists them. */

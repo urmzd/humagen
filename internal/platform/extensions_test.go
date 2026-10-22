@@ -11,8 +11,8 @@ import (
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/agentspec"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 func TestAnExtensionProviderRunsAnAgent(t *testing.T) {

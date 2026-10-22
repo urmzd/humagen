@@ -1,4 +1,4 @@
-import { emptyTurn, reduce, type Turn, type TurnEvent } from "@warp/core";
+import { emptyTurn, reduce, type Turn, type TurnEvent } from "@humagen/core";
 import { adapter, type BusEvent, type Run, turnOf } from "./run.ts";
 
 /**
@@ -11,7 +11,7 @@ export interface Follower {
   readonly turn: Turn;
   /** Fold one of the run's events in. */
   apply(e: BusEvent): Turn;
-  /** Fold warp events in directly, for what a surface itself knows, such as a stop it asked for. */
+  /** Fold humagen events in directly, for what a surface itself knows, such as a stop it asked for. */
   push(...events: TurnEvent[]): Turn;
   /**
    * Bring the turn in line with the run's record. The ledger decides whether a

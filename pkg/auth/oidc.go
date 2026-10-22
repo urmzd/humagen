@@ -8,13 +8,14 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
-	"github.com/urmzd/warp/pkg/authz"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/authz"
 )
 
 // ScopePrefix namespaces this platform's scopes at the identity provider, so a
-// machine is issued "warp:runs:write" rather than a bare "runs:write" that
+// machine is issued "humagen:runs:write" rather than a bare "runs:write" that
 // another API on the same authorization server might also define.
-const ScopePrefix = "warp:"
+const ScopePrefix = "humagen:"
 
 // OIDCConfig describes the identity provider. It works with any OpenID Connect
 // provider. For Okta, Issuer is the authorization server, for example
@@ -184,9 +185,13 @@ func (v *Verifier) Bearer(ctx context.Context, raw string) (Principal, error) {
 	// the roles the policy grants them, not the built-in policy's.
 	p := Principal{Subject: tok.Subject, Tenant: tenant, Kind: Machine, Name: str(claims["cid"]), policy: v.policy}
 	for _, s := range scopes(claims) {
+		// The old prefix is still honoured: the identity provider mints the
+		// token, so its scopes change when its operator renames them.
 		name, ok := strings.CutPrefix(s, ScopePrefix)
 		if !ok {
-			continue
+			if name, ok = strings.CutPrefix(s, legacy.ScopePrefix); !ok {
+				continue
+			}
 		}
 		for _, perm := range Permissions() {
 			if string(perm) == name {

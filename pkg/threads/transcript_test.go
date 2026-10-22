@@ -7,8 +7,8 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 func answered(agent, message, answer string) runs.Run {
@@ -155,7 +155,7 @@ func TestTheTranscriptKeepsTheNewestTurnsThatFit(t *testing.T) {
 }
 
 // The announcement a thread was started from is the first line, after who
-// posted it, a person by name and handle, an agent marked as one or warp
+// posted it, a person by name and handle, an agent marked as one or humagen
 // marked as the system, and never after the person whose reply started the
 // thread. A withdrawn one says nothing of what it said.
 func TestAnAnnouncementIsTheLineOfWhoeverPostedIt(t *testing.T) {
@@ -163,14 +163,14 @@ func TestAnAnnouncementIsTheLineOfWhoeverPostedIt(t *testing.T) {
 	byDana := threads.AnnouncementTurn(threads.Announcement{Kind: threads.Person, By: "okta|dana", Name: "Dana", Subject: "Field offsite", Text: "Lisbon,\nin May."})
 	byRecap := threads.AnnouncementTurn(threads.Announcement{Kind: threads.Agent, By: "recap", Subject: "Weekly recap", Text: "Two renewals closed."})
 	withdrawn := threads.AnnouncementTurn(threads.Announcement{Kind: threads.Person, By: "okta|dana", Name: "Dana", Withdrawn: true})
-	release := threads.AnnouncementTurn(threads.Announcement{Kind: threads.System, By: "warp", Subject: "What's new in warp 0.16.0", Text: "- Projects\n- Slack catch-up"})
+	release := threads.AnnouncementTurn(threads.Announcement{Kind: threads.System, By: "humagen", Subject: "What's new in humagen 0.16.0", Text: "- Projects\n- Slack catch-up"})
 	for name, c := range map[string]struct {
 		seed threads.Turn
 		line string
 	}{
 		"a person's":  {byDana, "Dana (@dana): (announcement: Field offsite) Lisbon, in May."},
 		"an agent's":  {byRecap, "recap (agent): (announcement: Weekly recap) Two renewals closed."},
-		"a release's": {release, "warp (system): (announcement: What's new in warp 0.16.0) - Projects - Slack catch-up"},
+		"a release's": {release, "humagen (system): (announcement: What's new in humagen 0.16.0) - Projects - Slack catch-up"},
 		"a withdrawn": {withdrawn, "Dana (@dana): (announcement, since withdrawn)"},
 	} {
 		got := threads.Ask([]threads.Turn{c.seed, reply}, 10_000, people, threads.Asker{Person: "okta|ana", Name: "Ana"}, "and the dates?")

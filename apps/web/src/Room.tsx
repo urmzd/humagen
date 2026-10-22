@@ -1,8 +1,8 @@
-import { answerOfAction, answers as isAnswer } from "@warp/adapter/question";
-import { defaultCopy } from "@warp/components";
-import type { UiAction } from "@warp/core";
-import { WebSurface } from "@warp/render-web";
-import { AgentMessage, Thread as ThreadList, useQueue } from "@warp/web";
+import { answerOfAction, answers as isAnswer } from "@humagen/adapter/question";
+import { defaultCopy } from "@humagen/components";
+import type { UiAction } from "@humagen/core";
+import { WebSurface } from "@humagen/render-web";
+import { AgentMessage, Thread as ThreadList, useQueue } from "@humagen/web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { actedFor, type Run } from "./adapter.ts";
 import {
@@ -215,9 +215,9 @@ function MessageView({ m, focused }: { m: ThreadMessage; focused: boolean }) {
 
 /**
  * The announcement a thread was started from, ahead of its first message:
- * from the person who posted it, the agent a schedule ran, or warp itself
+ * from the person who posted it, the agent a schedule ran, or humagen itself
  * for a release's notes, never from whoever replied. A withdrawn one says
- * only that. Warp needs no mark, as in the inbox, so its column stays empty.
+ * only that. Humagen needs no mark, as in the inbox, so its column stays empty.
  */
 function AnnouncementView({ a }: { a: ThreadAnnouncement }) {
   const who = a.kind === "person" ? a.name || a.by : a.by;
@@ -311,7 +311,7 @@ function AnswerView({
     <article id={`turn-${run.id}`} className="flex flex-col gap-2" aria-label={`Answered by ${run.agent}`}>
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
       {!run.message && (
-        <p className="warp-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
+        <p className="humagen-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
       )}
       {/* The answer names its agent; why @auto chose it is said above it. */}
       {(routed || run.picked) && <p className="pl-11 text-aui-xs text-aui-muted">{[routed, run.picked].filter(Boolean).join(". ")}</p>}

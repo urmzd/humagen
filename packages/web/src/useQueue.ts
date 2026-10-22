@@ -5,7 +5,7 @@ import {
   type QueueMode,
   type QueueState,
   queueReduce,
-} from "@warp/core";
+} from "@humagen/core";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 let seq = 0;

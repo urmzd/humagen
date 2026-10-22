@@ -1,4 +1,4 @@
-// Package slack composes fiber's Slack transport with warp's session
+// Package slack composes fiber's Slack transport with humagen's session
 // lifecycle and command-discovery policy. Wire APIs and signed decoding stay upstream.
 package slack
 

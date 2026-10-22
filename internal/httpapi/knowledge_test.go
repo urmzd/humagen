@@ -35,13 +35,13 @@ func TestAProjectsKnowledgeIsNamedByOwnersAndShownToWhoReadsKnowledge(t *testing
 	}
 
 	// A member is not an owner.
-	member := f.person(t, "acme", "00u-bo", "Bo", "warp-operators")
+	member := f.person(t, "acme", "00u-bo", "Bo", "humagen-operators")
 	if code, out := status(t, f, member, "PUT", "/api/projects/Globex/knowledge", fmt.Sprintf(`{"version":%v,"knowledge":[]}`, got["version"])); code != http.StatusForbidden || out["error"] != "you need to own Globex" {
 		t.Fatalf("a member naming Globex's sources = %d %v", code, out)
 	}
 
 	// Someone who owns every project and may not read knowledge.
-	blind := f.machineAs(t, "svc-blind", "acme", "warp:projects:read", "warp:projects:write", "warp:projects:govern")
+	blind := f.machineAs(t, "svc-blind", "acme", "humagen:projects:read", "humagen:projects:write", "humagen:projects:govern")
 	shown := want(t, f, blind, "GET", "/api/projects/Globex/knowledge", "", http.StatusOK)
 	if fmt.Sprint(shown["knowledge"]) != "[]" || fmt.Sprint(shown["given"]) != "[]" {
 		t.Fatalf("knowledge shown to a reader without knowledge:read = %v", shown)

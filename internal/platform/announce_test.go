@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // posted is when the announcements here are posted.

@@ -1,7 +1,7 @@
+import type { TaskStatus } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { Code, Terminal } from "@humagen/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { TaskStatus } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { Code, Terminal } from "@warp/primitives";
 import { Canvas, slackPrimitive } from "../../support";
 
 type Args = { command: string; status: TaskStatus; exitCode?: number; output: string };

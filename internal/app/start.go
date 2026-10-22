@@ -10,27 +10,16 @@ import (
 	"strings"
 
 	"golang.org/x/term"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
-// configDir is where start and setup keep warp.yaml: WARP_HOME, else the
-// user's config directory.
-func configDir(getenv func(string) string) string {
-	if d := strings.TrimSpace(getenv("WARP_HOME")); d != "" {
-		return d
-	}
-	base, err := os.UserConfigDir()
-	if err != nil {
-		base = "."
-	}
-	return filepath.Join(base, "warp")
-}
-
 // envWebDir names a built console, overriding the search.
-const envWebDir = "WARP_WEB_DIR"
+const envWebDir = "HUMAGEN_WEB_DIR"
 
 // start runs the platform with nothing configured: dev sign-in, memory
 // stores, disk files, seeded example agents and the console. It reads
-// warp.yaml from the config directory when there is one, and on a terminal
+// humagen.yaml from the config directory when there is one, and on a terminal
 // with none it asks the first-run questions, every one with a default Enter
 // accepts. Every serve flag works here too and wins over the file. These are
 // a laptop's defaults; serve keeps a server's.
@@ -57,13 +46,16 @@ func start(o Options, args []string, in io.Reader, out io.Writer) error {
 	// Example agents are seeded only when nothing is configured: a spec
 	// declares its own agents.
 	d := serveDefaults{auth: "dev", seed: true, web: webDir(os.Getenv), notes: out}
-	path := filepath.Join(configDir(os.Getenv), "warp.yaml")
+	path, err := specPath(o.notes)
+	if err != nil {
+		return err
+	}
 	if len(scanFiles(rest)) > 0 {
 		d.seed = false
 	} else {
 		_, err := os.Stat(path)
 		exists := err == nil
-		// The questions are asked, and warp.yaml written, only once serve
+		// The questions are asked, and humagen.yaml written, only once serve
 		// knows its command line parses: -h, or a flag it does not know,
 		// asks and writes nothing.
 		setup := *ask || (!exists && !*yes && interactive(in))
@@ -75,7 +67,7 @@ func start(o Options, args []string, in io.Reader, out io.Writer) error {
 						return err
 					}
 				}
-				fmt.Fprintf(out, "warp: reading %s\n", path)
+				fmt.Fprintf(out, "humagen: reading %s\n", path)
 				return nil
 			}
 		}
@@ -83,7 +75,7 @@ func start(o Options, args []string, in io.Reader, out io.Writer) error {
 	return serve(o, rest, d)
 }
 
-// webDir finds a built console: WARP_WEB_DIR, else apps/web/dist under the
+// webDir finds a built console: HUMAGEN_WEB_DIR, else apps/web/dist under the
 // working directory or beside the binary.
 func webDir(getenv func(string) string) string {
 	if d := strings.TrimSpace(getenv(envWebDir)); d != "" {
@@ -99,14 +91,15 @@ func webDir(getenv func(string) string) string {
 	return ""
 }
 
-// searchRoots are where a checkout or an install keeps warp's other parts.
+// searchRoots are where a checkout or an install keeps humagen's other parts.
 func searchRoots() []string {
 	var roots []string
 	if wd, err := os.Getwd(); err == nil {
 		roots = append(roots, wd)
 	}
 	if exe, err := os.Executable(); err == nil {
-		roots = append(roots, filepath.Dir(exe), filepath.Join(filepath.Dir(exe), "share", "warp"))
+		// share/warp is where an install made before the rename keeps them.
+		roots = append(roots, filepath.Dir(exe), filepath.Join(filepath.Dir(exe), "share", "humagen"), filepath.Join(filepath.Dir(exe), "share", legacy.ShareDir))
 	}
 	return roots
 }

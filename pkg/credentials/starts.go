@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // Where a person's references may point.
@@ -15,12 +17,12 @@ import (
 // keychain, the 1Password account it signed in to. So the operator lists,
 // per workspace, how the references its people give may start (System
 // person_refs), and every start names the person whose references it holds
-// with SubjectField: "op://People/{subject}/", "keychain:warp-{subject}/",
-// "env:WARP_PERSON_{subject}_". A reference is a person's own only under a
+// with SubjectField: "op://People/{subject}/", "keychain:humagen-{subject}/",
+// "env:HUMAGEN_PERSON_{subject}_". A reference is a person's own only under a
 // start with their subject in place of SubjectField (Owns), so nobody can
 // connect a reference that names somebody else's credential and have their
 // runs act with it. An env: start writes the subject in capitals, as the
-// variables a reference may name are written: "ana" is WARP_PERSON_ANA_.
+// variables a reference may name are written: "ana" is HUMAGEN_PERSON_ANA_.
 //
 // That holds because no reference can be under two people's starts:
 //
@@ -55,7 +57,7 @@ var (
 // of the operator's own and followed by '/' (by '_' in an env: start, and in
 // a keychain: start inside the service, before the account). With a person
 // in it, it is one of the three schemes and, for env:, the start of the name
-// of a WARP_ variable that is not a sign-in secret, which is what a client's
+// of a HUMAGEN_ variable that is not a sign-in secret, which is what a client's
 // reference may name too.
 func CheckStart(start string) error {
 	before, after, found := strings.Cut(start, SubjectField)
@@ -65,15 +67,18 @@ func CheckStart(start string) error {
 	case !found || strings.Contains(after, SubjectField):
 		return fmt.Errorf("%w: %q: a start names the person whose references it holds once, with %s, so nobody can give another's", ErrInvalid, start, SubjectField)
 	}
-	// The scheme is judged with a person in place.
+	// The scheme is judged with a person in place, and an env: start under
+	// the old WARP_ prefix as the same start under HUMAGEN_, which is the
+	// variable it reads (legacy.Lookup).
+	before = canonical(before)
 	sample := before + "X" + after
 	var root string
 	switch {
 	case strings.HasPrefix(sample, "env:"):
-		root = "env:WARP_"
+		root = "env:" + legacy.Prefix
 		name := strings.TrimPrefix(sample, "env:")
-		if !strings.HasPrefix(name, "WARP_") || strings.HasPrefix(name, "WARP_OIDC") || strings.ContainsFunc(name, notEnvRune) {
-			return fmt.Errorf("%w: %q: an env: start names a WARP_ variable, in capitals, that is not a sign-in secret", ErrInvalid, start)
+		if !strings.HasPrefix(name, legacy.Prefix) || legacy.SignInSecret(name) || strings.ContainsFunc(name, notEnvRune) {
+			return fmt.Errorf("%w: %q: an env: start names a HUMAGEN_ variable, in capitals, that is not a sign-in secret", ErrInvalid, start)
 		}
 		if !strings.HasPrefix(after, "_") {
 			return fmt.Errorf("%w: %q: in an env: start, %s is followed by _", ErrInvalid, start, SubjectField)
@@ -89,7 +94,7 @@ func CheckStart(start string) error {
 			return fmt.Errorf("%w: %q: in an op:// start, %s is followed by /", ErrInvalid, start, SubjectField)
 		}
 	default:
-		return fmt.Errorf("%w: %q: a start is env:WARP_NAME, keychain:SERVICE or op://VAULT, or the start of one, with %s in it", ErrInvalid, start, SubjectField)
+		return fmt.Errorf("%w: %q: a start is env:HUMAGEN_NAME, keychain:SERVICE or op://VAULT, or the start of one, with %s in it", ErrInvalid, start, SubjectField)
 	}
 	// A subject right after the scheme could be any variable, service or
 	// vault the server has, its own included.
@@ -112,7 +117,7 @@ func CheckStarts(byTenant map[string][]string) error {
 				return fmt.Errorf("%s: %w", tenant, err)
 			}
 			before, _, _ := strings.Cut(s, SubjectField)
-			all = append(all, start{tenant, s, before})
+			all = append(all, start{tenant, s, canonical(before)})
 		}
 	}
 	for i, a := range all {
@@ -141,7 +146,7 @@ func Expand(start, subject string) (string, bool) {
 		fits, written = envSubject, strings.ToUpper(subject)
 	}
 	own := strings.Replace(start, SubjectField, written, 1)
-	if !fits.MatchString(subject) || strings.HasPrefix(own, "env:WARP_OIDC") {
+	if !fits.MatchString(subject) || (strings.HasPrefix(own, "env:") && legacy.SignInSecret(strings.TrimPrefix(own, "env:"))) {
 		return "", false
 	}
 	return own, true
@@ -152,7 +157,18 @@ func Expand(start, subject string) (string, bool) {
 // not that it parses.
 func Owns(start, subject, ref string) bool {
 	own, ok := Expand(start, subject)
-	return ok && strings.HasPrefix(ref, own)
+	return ok && strings.HasPrefix(canonical(ref), canonical(own))
+}
+
+// canonical is a reference or the start of one with an env: name under the
+// old WARP_ prefix written under HUMAGEN_, so the two spellings of one
+// variable compare equal: starts, references and grants written before the
+// rename keep naming what they named.
+func canonical(ref string) string {
+	if name, ok := strings.CutPrefix(ref, "env:"); ok {
+		return "env:" + legacy.Canonical(name)
+	}
+	return ref
 }
 
 func notEnvRune(r rune) bool {

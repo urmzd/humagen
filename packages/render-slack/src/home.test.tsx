@@ -1,6 +1,6 @@
-import { Home } from "@warp/components";
-import { ActionId, ANY_AGENT, HOME_ID, type HomeModel } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
+import { Home } from "@humagen/components";
+import { ActionId, ANY_AGENT, HOME_ID, type HomeModel } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
 import { describe, expect, it } from "vitest";
 import { type Block, decodeSlackAction, homeView, LIMITS } from "./index";
 
@@ -59,7 +59,9 @@ describe("homeView", () => {
     }
     // Eight rows, then a count: the rest live in the inbox.
     expect(JSON.stringify(view.blocks)).toContain("52 more in the inbox");
-    expect(warnings).toEqual(["header clipped from 214 to 150 chars"]);
+    // The header's length depends on the product's name, so only its clipping is pinned.
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^header clipped from \d+ to 150 chars$/);
   });
 
   it("shows three buttons, and Ask a Question asks for words in a form", () => {
@@ -199,7 +201,7 @@ describe("Home notifications on Slack", () => {
     const [first] = homeView(<Home home={fx.home} />).view.blocks.filter(
       (b) => b.type === "header",
     );
-    expect((first?.text as { text: string }).text).toBe("Hi Ada, I'm Warp.");
+    expect((first?.text as { text: string }).text).toBe("Hi Ada, I'm Humagen.");
   });
 });
 

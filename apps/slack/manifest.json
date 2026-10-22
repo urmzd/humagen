@@ -4,7 +4,7 @@
     "minor_version": 1
   },
   "display_information": {
-    "name": "Warp",
+    "name": "Humagen",
     "description": "Your workspace's agents in Slack. Ask a question, or review what one is waiting on.",
     "background_color": "#2b50c8"
   },
@@ -15,18 +15,18 @@
       "messages_tab_read_only_enabled": false
     },
     "bot_user": {
-      "display_name": "warp",
+      "display_name": "humagen",
       "always_online": true
     },
     "shortcuts": [
       {
-        "name": "Ask Warp",
+        "name": "Ask Humagen",
         "type": "global",
         "callback_id": "aui_ask",
         "description": "Ask from anywhere. The answer arrives in the app's messages."
       },
       {
-        "name": "Ask Warp about this",
+        "name": "Ask Humagen about this",
         "type": "message",
         "callback_id": "aui_ask_about",
         "description": "Answer in this message's thread, using the message as the question."
@@ -35,7 +35,7 @@
     "slash_commands": [
       {
         "command": "/agent",
-        "description": "Ask Warp in this channel",
+        "description": "Ask Humagen in this channel",
         "usage_hint": "[question], skills, connections or canvas RUN_ID",
         "should_escape": false
       },
@@ -47,7 +47,7 @@
       }
     ],
     "agent_view": {
-      "agent_description": "Your workspace's agents in Slack. Mention @Warp and the agent you want, such as @Warp @analyst, or message it."
+      "agent_description": "Your workspace's agents in Slack. Mention @Humagen and the agent you want, such as @Humagen @analyst, or message it."
     }
   },
   "oauth_config": {

@@ -6,14 +6,14 @@ exports[`homeView > renders the alertsOnly Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Hi Ada, I'm Warp.",
+        "text": "Hi Ada, I'm Humagen.",
         "type": "plain_text",
       },
       "type": "header",
     },
     {
       "text": {
-        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "text": "I run this workspace's agents. Mention *@Humagen* in a channel, send me a message, or start from here.",
         "type": "mrkdwn",
       },
       "type": "section",
@@ -349,14 +349,14 @@ exports[`homeView > renders the default Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Hi Ada, I'm Warp.",
+        "text": "Hi Ada, I'm Humagen.",
         "type": "plain_text",
       },
       "type": "header",
     },
     {
       "text": {
-        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "text": "I run this workspace's agents. Mention *@Humagen* in a channel, send me a message, or start from here.",
         "type": "mrkdwn",
       },
       "type": "section",
@@ -710,14 +710,14 @@ exports[`homeView > renders the empty Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Hi Ada, I'm Warp.",
+        "text": "Hi Ada, I'm Humagen.",
         "type": "plain_text",
       },
       "type": "header",
     },
     {
       "text": {
-        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "text": "I run this workspace's agents. Mention *@Humagen* in a channel, send me a message, or start from here.",
         "type": "mrkdwn",
       },
       "type": "section",
@@ -967,14 +967,14 @@ exports[`homeView > renders the noConnect Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Hi Ada, I'm Warp.",
+        "text": "Hi Ada, I'm Humagen.",
         "type": "plain_text",
       },
       "type": "header",
     },
     {
       "text": {
-        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "text": "I run this workspace's agents. Mention *@Humagen* in a channel, send me a message, or start from here.",
         "type": "mrkdwn",
       },
       "type": "section",
@@ -1317,14 +1317,14 @@ exports[`homeView > renders the noGrants Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Hi Ada, I'm Warp.",
+        "text": "Hi Ada, I'm Humagen.",
         "type": "plain_text",
       },
       "type": "header",
     },
     {
       "text": {
-        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "text": "I run this workspace's agents. Mention *@Humagen* in a channel, send me a message, or start from here.",
         "type": "mrkdwn",
       },
       "type": "section",
@@ -1551,14 +1551,14 @@ exports[`homeView > renders the overflow Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Hi Ada, I'm Warp.",
+        "text": "Hi Ada, I'm Humagen.",
         "type": "plain_text",
       },
       "type": "header",
     },
     {
       "text": {
-        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "text": "I run this workspace's agents. Mention *@Humagen* in a channel, send me a message, or start from here.",
         "type": "mrkdwn",
       },
       "type": "section",
@@ -2122,14 +2122,14 @@ exports[`homeView > renders the readFor Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Hi Ada, I'm Warp.",
+        "text": "Hi Ada, I'm Humagen.",
         "type": "plain_text",
       },
       "type": "header",
     },
     {
       "text": {
-        "text": "I hand your questions to this workspace's agents. Mention *@warp* in a channel, send me a message, or start from here.",
+        "text": "I hand your questions to this workspace's agents. Mention *@humagen* in a channel, send me a message, or start from here.",
         "type": "mrkdwn",
       },
       "type": "section",
@@ -2340,14 +2340,14 @@ exports[`homeView > renders the unlinked Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Hi Ada, I'm Warp.",
+        "text": "Hi Ada, I'm Humagen.",
         "type": "plain_text",
       },
       "type": "header",
     },
     {
       "text": {
-        "text": "I run this workspace's agents. Mention *@Warp* in a channel, send me a message, or start from here.",
+        "text": "I run this workspace's agents. Mention *@Humagen* in a channel, send me a message, or start from here.",
         "type": "mrkdwn",
       },
       "type": "section",

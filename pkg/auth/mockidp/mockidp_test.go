@@ -19,12 +19,12 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/auth/mockidp"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/auth/mockidp"
 )
 
 const (
-	audience = "api://warp"
+	audience = "api://humagen"
 	redirect = "http://127.0.0.1:9/auth/callback"
 )
 
@@ -52,14 +52,14 @@ func start(t *testing.T, mut func(*mockidp.Config)) *mockidp.Server {
 	return s
 }
 
-// verifier is the platform's real verifier, configured the way cmd/warp
+// verifier is the platform's real verifier, configured the way cmd/humagen
 // configures it for the mock, with the built-in policy and default groups.
 func verifier(t *testing.T, s *mockidp.Server) *auth.Verifier {
 	t.Helper()
 	v, err := auth.NewVerifier(context.Background(), auth.OIDCConfig{
 		Issuer: s.Issuer(), ClientID: mockidp.DevClientID, Audience: audience, TenantClaim: "tenant",
 		GroupRoles: map[string]auth.Role{
-			"warp-admins": auth.Admin, "warp-managers": auth.Manager, "warp-operators": auth.Operator, "warp-viewers": auth.Viewer,
+			"humagen-admins": auth.Admin, "humagen-managers": auth.Manager, "humagen-operators": auth.Operator, "humagen-viewers": auth.Viewer,
 		},
 	})
 	if err != nil {
@@ -197,7 +197,7 @@ func TestMachineTokenThroughBearer(t *testing.T) {
 		t.Fatalf("granted %v", p.Granted())
 	}
 
-	cc.Scopes = []string{"warp:runs:read"}
+	cc.Scopes = []string{"humagen:runs:read"}
 	tok, err = cc.Token(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -207,7 +207,7 @@ func TestMachineTokenThroughBearer(t *testing.T) {
 	}
 
 	for name, c := range map[string]clientcredentials.Config{
-		"scope it was not given": {ClientID: "mock-ci", ClientSecret: "mock-ci-secret", Scopes: []string{"warp:agents:write"}},
+		"scope it was not given": {ClientID: "mock-ci", ClientSecret: "mock-ci-secret", Scopes: []string{"humagen:agents:write"}},
 		"wrong secret":           {ClientID: "mock-ci", ClientSecret: "nope"},
 		"web client":             {ClientID: mockidp.DevClientID, ClientSecret: mockidp.DevClientSecret},
 	} {
@@ -263,7 +263,7 @@ func TestVerifierRejections(t *testing.T) {
 		}
 		raw, err := jwt.Signed(signer).Claims(map[string]any{
 			"iss": s.Issuer(), "sub": "mock-admin", "aud": audience, "tenant": "acme",
-			"groups": []string{"warp-admins"}, "iat": time.Now().Unix(), "exp": time.Now().Add(time.Hour).Unix(),
+			"groups": []string{"humagen-admins"}, "iat": time.Now().Unix(), "exp": time.Now().Add(time.Hour).Unix(),
 		}).Serialize()
 		if err != nil {
 			t.Fatal(err)
@@ -341,7 +341,7 @@ func TestStartRefusals(t *testing.T) {
 		"a public name":             func(c *mockidp.Config) { c.Addr = "example.com:0" },
 		"ipv6 loopback":             func(c *mockidp.Config) { c.Addr = "[::1]:0" },
 		"private address":           func(c *mockidp.Config) { c.Addr = "10.0.0.1:0" },
-		"non-loopback redirect":     func(c *mockidp.Config) { c.RedirectURIs = []string{"https://warp.example.com/auth/callback"} },
+		"non-loopback redirect":     func(c *mockidp.Config) { c.RedirectURIs = []string{"https://humagen.example.com/auth/callback"} },
 		"redirect with credentials": func(c *mockidp.Config) { c.RedirectURIs = []string{"http://u:p@127.0.0.1:9/cb"} },
 		"no audience":               func(c *mockidp.Config) { c.Audience = "" },
 		"no client secret":          func(c *mockidp.Config) { c.ClientSecret = "" },

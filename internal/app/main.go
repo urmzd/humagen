@@ -1,6 +1,6 @@
-// Package app is the warp command tree and the process's composition root:
+// Package app is the humagen command tree and the process's composition root:
 // it turns a command line, files and an environment into a running platform.
-// The module root package warp is its public face, so a program that adds
+// The module root package humagen is its public face, so a program that adds
 // providers or stores imports it and passes options instead of forking.
 package app
 
@@ -25,26 +25,27 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/registry"
 
-	"github.com/urmzd/warp/internal/httpapi"
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/internal/release"
-	"github.com/urmzd/warp/pkg/alerts"
-	"github.com/urmzd/warp/pkg/blob"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/credref"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/internal/httpapi"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/release"
+	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/blob"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
-// Version is the build metadata `warp version` reports.
+// Version is the build metadata `humagen version` reports.
 type Version struct {
 	Version, Commit, Date string
 }
 
-// Options is what a program built on warp passes to Execute: its build
-// metadata and what it adds to the platform. The warp package fills it.
+// Options is what a program built on humagen passes to Execute: its build
+// metadata and what it adds to the platform. The humagen package fills it.
 type Options struct {
 	Version Version
-	// Changelog is warp's CHANGELOG.md, which the warp package embeds. A
+	// Changelog is humagen's CHANGELOG.md, which the humagen package embeds. A
 	// workspace that sets workspace.release_notes is posted the running
 	// release's breaking changes and features from it.
 	Changelog string
@@ -69,27 +70,49 @@ type Options struct {
 	ctx       context.Context
 	ready     func(addr string)
 	slackDone func(tenant string, err error)
+
+	// notes are said once each at start, about an old name in use.
+	notes *legacy.Notes
 }
 
-const usage = `usage: warp start [-f PATH] [flags]     run the platform here; no file needs no configuration
-       warp serve [-f PATH] [flags]     run it as a server: OIDC sign-in, nothing seeded, no questions
-       warp deploy [-f PATH] [-o DIR]  run it where the spec's deploy says: local, compose or kubernetes
-       warp setup                      answer a few questions and write warp.yaml
-       warp config check|print -f PATH check a spec, or print it with every default
-       warp slack manifest [flags]     print the Slack app manifest
-       warp authz check FILE | authz explain [flags] PERMISSION
-       warp version`
+const usage = `usage: humagen start [-f PATH] [flags]     run the platform here; no file needs no configuration
+       humagen serve [-f PATH] [flags]     run it as a server: OIDC sign-in, nothing seeded, no questions
+       humagen deploy [-f PATH] [-o DIR]  run it where the spec's deploy says: local, compose or kubernetes
+       humagen setup                      answer a few questions and write humagen.yaml
+       humagen config check|print -f PATH check a spec, or print it with every default
+       humagen slack manifest [flags]     print the Slack app manifest
+       humagen authz check FILE | authz explain [flags] PERMISSION
+       humagen version`
 
-// Execute runs the warp command tree with args (os.Args[1:]) and returns the
+// Execute runs the humagen command tree with args (os.Args[1:]) and returns the
 // process exit code.
 func Execute(o Options, args []string) int {
+	return execute(o, args, sys{Environ: os.Environ, Setenv: os.Setenv, Stderr: os.Stderr, Arg0: os.Args[0]})
+}
+
+// sys is what execute reads of the process, so a test can give its own.
+type sys struct {
+	Environ func() []string
+	Setenv  func(k, v string) error
+	Stderr  io.Writer
+	Arg0    string
+}
+
+// execute is Execute over s. Before any command runs, a setting under its
+// old WARP_ name is copied to its HUMAGEN_ one and each old name in use is
+// noted on stderr, so every command, and a program built on humagen, reads
+// one set of names.
+func execute(o Options, args []string, s sys) int {
+	o.notes = legacy.NewNotes(s.Stderr)
+	legacy.FromCommand(s.Arg0, o.notes)
+	legacy.AdoptEnv(s.Environ(), s.Setenv, o.notes)
 	err := run(o, args)
 	// Help asked for is printed by the flag set, and is not a failure.
 	if errors.Is(err, flag.ErrHelp) {
 		return 0
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "warp:", err)
+		fmt.Fprintln(s.Stderr, "humagen:", err)
 		return 1
 	}
 	return 0
@@ -118,7 +141,7 @@ func run(o Options, args []string) error {
 	case "deploy":
 		return deployCmd(o, args[1:], os.Stdin, os.Stdout)
 	case "setup":
-		return setupCmd(args[1:], os.Stdin, os.Stdout)
+		return setupCmd(o, args[1:], os.Stdin, os.Stdout)
 	case "slack":
 		return slackCmd(args[1:], os.Stdout)
 	case "config":
@@ -177,14 +200,14 @@ func serve(o Options, args []string, d serveDefaults) error {
 	seed := fs.Bool("seed", d.seed, "create example agents that need no model key")
 	builtinProvider := fs.String("builtin-provider", "", `model provider for the agents the platform provides, such as "anthropic" or "ollama". Empty means none are provided`)
 	builtinModel := fs.String("builtin-model", "", "model for the agents the platform provides")
-	personRefsFlag := fs.String("person-refs", "", `how the references each tenant's people may give for their own tool credentials start, with {subject} where each person's subject goes, as "tenant=op://People/{subject}/,keychain:warp-people-{subject}/;tenant=env:WARP_PERSON_{subject}_". The server reads them with its own access, so a person may give only their own. A tenant not listed may reference nothing`)
+	personRefsFlag := fs.String("person-refs", "", `how the references each tenant's people may give for their own tool credentials start, with {subject} where each person's subject goes, as "tenant=op://People/{subject}/,keychain:humagen-people-{subject}/;tenant=env:HUMAGEN_PERSON_{subject}_". The server reads them with its own access, so a person may give only their own. A tenant not listed may reference nothing`)
 	secretRefsFlag := fs.String("secret-refs", "", `environment variables each tenant's clients may reference as secrets, as "tenant=NAME,NAME;tenant=NAME". A tenant not listed may reference none`)
 	agentSpecs := fs.String("agent-specs", "", "comma-separated agent JSON files to register on startup")
 	var specFiles files
 	fs.Var(&specFiles, "f", "a spec file or directory of System and Platform documents (docs/spec.md); repeatable. Flags win over it")
 	workspaceDir := fs.String("workspace", "", "directory agents write their files under. Empty means the user cache directory")
 	concurrency := fs.Int("concurrency", 1, "how many runs execute at once")
-	busKind := fs.String("bus", "memory", `the event bus: "memory", or "redis" at WARP_REDIS_URL`)
+	busKind := fs.String("bus", "memory", `the event bus: "memory", or "redis" at HUMAGEN_REDIS_URL`)
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	parent := o.ctx
 	if parent == nil {
@@ -202,7 +225,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if len(paths) == 0 {
 		paths = d.files
 		// Asked before serve takes Ctrl-C for itself: a person who presses
-		// it at a question has stopped warp, and nothing is written.
+		// it at a question has stopped humagen, and nothing is written.
 		if d.prepare != nil {
 			if err := d.prepare(); err != nil {
 				return err
@@ -222,7 +245,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	// Said once every flag is known: a console -web or the file names is
 	// served, and one turned off was turned off on purpose.
 	if d.notes != nil && *webDir == "" && !given(fs, "web") {
-		fmt.Fprintln(d.notes, "warp: no built console found (run pnpm --filter @warp/console build, or set WARP_WEB_DIR); serving the API only")
+		fmt.Fprintln(d.notes, "humagen: no built console found (run pnpm --filter @humagen/console build, or set HUMAGEN_WEB_DIR); serving the API only")
 	}
 	getenv := overlay(file.env, os.Getenv)
 	// A Slack app calls this server's API, so it needs a credential for the
@@ -241,6 +264,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 		return err
 	}
 	maps.Copy(groupRoles, file.roles)
+	if *authMode == "oidc" || *authMode == "okta" {
+		noteOldGroups(groupRoles, o.notes)
+	}
 	ac := authConfig{
 		mode: *authMode, addr: *addr, publicURL: *publicURL,
 		tenant: *tenant, tenantClaim: *tenantClaim, groups: *groupsClaim,
@@ -289,7 +315,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		ext.Resolver = keys.MCP()
 	}
 	// Every store, the agent registry and the run ledger: memory, or the one
-	// Postgres the spec or $WARP_POSTGRES_URL names.
+	// Postgres the spec or $HUMAGEN_POSTGRES_URL names.
 	backends, releaseState, err := openState(ctx, stateKind, getenv, log, ext.ProviderNames()...)
 	if err != nil {
 		return err
@@ -299,7 +325,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Backends: backends,
 		// A client may keep its secrets in this process's environment, under
 		// the names the operator gave its tenant.
-		Env:        os.LookupEnv,
+		Env:        legacy.LookupEnv,
 		SecretRefs: refs,
 		// People's own tool credentials: references from where the
 		// operator allows, values where the workspace keeps them.
@@ -346,10 +372,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 			return fmt.Errorf("agent spec %s: %w", path, err)
 		}
 		if spec.Model == "YOUR_MODEL_ID" {
-			spec.Model = os.Getenv("WARP_AGENT_MODEL")
+			spec.Model = legacy.Getenv("HUMAGEN_AGENT_MODEL")
 		}
 		if spec.Model == "" {
-			return fmt.Errorf("agent spec %s needs a model or WARP_AGENT_MODEL", path)
+			return fmt.Errorf("agent spec %s needs a model or HUMAGEN_AGENT_MODEL", path)
 		}
 		if err := checkNewAgentName(ctx, p, *tenant, spec.Name); err != nil {
 			return fmt.Errorf("agent spec %s: %w", path, err)

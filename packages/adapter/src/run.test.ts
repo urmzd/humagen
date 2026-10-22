@@ -219,8 +219,8 @@ test("parallel helpers correlate by call ID even when they start out of order", 
 
 test("a surface that is not the platform's own origin places file links itself", () => {
   const published = ev("action.taken", { name: "publish_artifact", data: { id: "art-7", title: "report.md", kind: "document", mime: "text/markdown", size: 19, version: 1 } });
-  const [abs] = adapter({ href: (path) => `https://warp.example.com${path}` })(published);
-  assert.equal(abs?.type === "attachment.upserted" && abs.attachment.type === "artifact" && abs.attachment.downloadUrl, "https://warp.example.com/api/artifacts/art-7/content");
+  const [abs] = adapter({ href: (path) => `https://humagen.example.com${path}` })(published);
+  assert.equal(abs?.type === "attachment.upserted" && abs.attachment.type === "artifact" && abs.attachment.downloadUrl, "https://humagen.example.com/api/artifacts/art-7/content");
   const [none] = adapter({ href: () => undefined })(published);
   assert.equal(none?.type === "attachment.upserted" && none.attachment.type === "artifact" && none.attachment.url, undefined);
   assert.equal(none?.type === "attachment.upserted" && none.attachment.type === "artifact" && none.attachment.phase, "ready");

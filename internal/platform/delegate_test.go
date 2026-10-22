@@ -15,11 +15,11 @@ import (
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/artifacts"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // gated is a scripted model that does not answer until it is let through, so

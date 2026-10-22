@@ -1,8 +1,8 @@
+import { ActionId, type InboxItem, openCount, type UiAction } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { NowContext } from "@humagen/render-web";
+import { Inbox, InboxButton } from "@humagen/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ActionId, type InboxItem, openCount, type UiAction } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { NowContext } from "@warp/render-web";
-import { Inbox, InboxButton } from "@warp/web";
 import { useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { type ActionArgs, FIXTURE_NOW, slack } from "../../support";

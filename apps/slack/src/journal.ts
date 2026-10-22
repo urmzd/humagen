@@ -2,13 +2,14 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { words } from "./host.ts";
+import { JOURNAL_DIR } from "./legacy.ts";
 import { type SlackApi, SlackError } from "./slack.ts";
 
 /**
  * Streams this process opened in Slack and has not closed yet, kept in a
  * small file so the next process can close them. A stream left open after a
  * crash, a kill or a lost machine shows as still typing in its thread until
- * Slack gives up on it. Warp's API has nowhere to keep this, so the app
+ * Slack gives up on it. Humagen's API has nowhere to keep this, so the app
  * keeps it beside itself.
  *
  * The file holds only Slack coordinates: a channel, a message and its
@@ -37,7 +38,7 @@ const keyOf = (channel: string, ts: string) => `${channel}/${ts}`;
 /** Where the journal lives by default: the user's state directory, one file per team. */
 export function defaultJournalPath(team: string, env = process.env): string {
   const base = env.XDG_STATE_HOME?.trim() || join(homedir(), ".local", "state");
-  return join(base, "warp-slack", `streams-${team}.json`);
+  return join(base, JOURNAL_DIR, `streams-${team}.json`);
 }
 
 /** A journal in memory, for tests and for when no file may be written. */

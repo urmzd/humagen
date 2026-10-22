@@ -1,6 +1,6 @@
+import { ActionId, type Rating } from "@humagen/core";
+import { Feedback } from "@humagen/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ActionId, type Rating } from "@warp/core";
-import { Feedback } from "@warp/primitives";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slackPrimitive } from "../../support";
 

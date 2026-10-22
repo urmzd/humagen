@@ -1,6 +1,6 @@
-import { defaultCopy } from "@warp/components";
-import { ArrowUpIcon, FileIcon, XIcon } from "@warp/render-web";
-import { type QueueControls, QueueStrip } from "@warp/web";
+import { defaultCopy } from "@humagen/components";
+import { ArrowUpIcon, FileIcon, XIcon } from "@humagen/render-web";
+import { type QueueControls, QueueStrip } from "@humagen/web";
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { insertTag, matching, sigilOf, type TagOption, type Typing, tagAt } from "./tags.ts";
 import { AgentMark } from "./ui.tsx";

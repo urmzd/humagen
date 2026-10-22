@@ -1,5 +1,5 @@
-// Package spec is warp's configuration language: versioned documents of two
-// kinds, each with one owner. A System document says how and where warp runs
+// Package spec is humagen's configuration language: versioned documents of two
+// kinds, each with one owner. A System document says how and where humagen runs
 // (listeners, sign-in, stores, bus, files, limits, extensions) and belongs to
 // whoever runs the process. A Platform document says what one workspace
 // offers (its models, tools, agents, surfaces and settings) and belongs to
@@ -32,11 +32,12 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/urmzd/warp/pkg/credref"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/credref"
 )
 
 // APIVersion is the version of the language this package reads.
-const APIVersion = "warp/v1"
+const APIVersion = "humagen/v1"
 
 // Document kinds.
 const (
@@ -52,6 +53,9 @@ var ErrInvalid = errors.New("spec: invalid")
 type Config struct {
 	System    System     `json:"system"`
 	Platforms []Platform `json:"platforms,omitempty"`
+	// Notes are what the files said under a name from before the rename,
+	// which still works: one line each, for the person at start.
+	Notes []string `json:"-"`
 }
 
 // Metadata names a document's subject.
@@ -275,6 +279,9 @@ func Load(paths ...string) (Config, error) {
 		if err != nil {
 			return cfg, fmt.Errorf("%s: %w", f, err)
 		}
+		for _, n := range docs.Notes {
+			cfg.Notes = append(cfg.Notes, f+": "+n)
+		}
 		if docs.hasSystem {
 			if haveSystem {
 				return cfg, fmt.Errorf("%s: %w: a second System document", f, ErrInvalid)
@@ -321,7 +328,11 @@ func Parse(b []byte) (parsed, error) {
 		if err := strictJSON(raw, &h); err != nil {
 			return out, fmt.Errorf("document %d: %w", i, err)
 		}
-		if h.APIVersion != APIVersion {
+		switch h.APIVersion {
+		case APIVersion:
+		case legacy.APIVersion:
+			out.Notes = append(out.Notes, fmt.Sprintf("document %d: api_version %s still works; write %s", i, legacy.APIVersion, APIVersion))
+		default:
 			return out, fmt.Errorf("document %d: %w: api_version is %q, want %q", i, ErrInvalid, h.APIVersion, APIVersion)
 		}
 		where := fmt.Sprintf("document %d (%s %s)", i, h.Kind, h.Metadata.Name)
@@ -340,6 +351,13 @@ func Parse(b []byte) (parsed, error) {
 			if err := decodeSpec(h.Spec, &p.Spec); err != nil {
 				return out, fmt.Errorf("%s: spec: %w", where, err)
 			}
+			notes, err := p.Spec.Surfaces.Slack.adoptOld()
+			if err != nil {
+				return out, fmt.Errorf("%s: spec: %w", where, err)
+			}
+			for _, n := range notes {
+				out.Notes = append(out.Notes, where+": "+n)
+			}
 			out.Platforms = append(out.Platforms, p)
 		default:
 			return out, fmt.Errorf("document %d: %w: kind is %s or %s, not %q", i, ErrInvalid, KindSystem, KindPlatform, h.Kind)
@@ -356,13 +374,33 @@ func decodeSpec(raw json.RawMessage, v any) error {
 }
 
 // Marshal writes a config as YAML documents, System first, in the order the
-// fields are declared, so a file warp writes reads like one a person wrote.
-func Marshal(cfg Config) ([]byte, error) {
+// fields are declared, so a file humagen writes reads like one a person wrote.
+func Marshal(cfg Config) ([]byte, error) { return marshal(cfg, APIVersion) }
+
+// MarshalOld is Marshal in the language as it was before the rename
+// (api_version warp/v1, surfaces.slack.warp_client and warp_token), which
+// this package still reads. setup writes a spec it found under its old name
+// this way, so the release before the rename can still read it.
+func MarshalOld(cfg Config) ([]byte, error) {
+	out := cfg
+	out.Platforms = make([]Platform, len(cfg.Platforms))
+	for i, p := range cfg.Platforms {
+		if s := p.Spec.Surfaces.Slack; s != nil {
+			old := *s
+			old.OldClient, old.OldToken, old.HumagenClient, old.HumagenToken = s.HumagenClient, s.HumagenToken, nil, nil
+			p.Spec.Surfaces.Slack = &old
+		}
+		out.Platforms[i] = p
+	}
+	return marshal(out, legacy.APIVersion)
+}
+
+func marshal(cfg Config, version string) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
 	write := func(kind string, md Metadata, spec any) error {
-		doc := []kv{{"api_version", APIVersion}, {"kind", kind}, {"metadata", md}, {"spec", spec}}
+		doc := []kv{{"api_version", version}, {"kind", kind}, {"metadata", md}, {"spec", spec}}
 		node, err := toNode(doc)
 		if err != nil {
 			return err

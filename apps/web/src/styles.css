@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "@warp/render-web/theme.css";
+@import "@humagen/render-web/theme.css";
 
 @source "../../../packages/render-web/src";
 @source "../../../packages/web/src";
@@ -19,58 +19,58 @@ body,
 }
 
 /*
- * The console's own layer. warp owns the tokens for what it renders. The
+ * The console's own layer. humagen owns the tokens for what it renders. The
  * console adds three things: a display face for titles and figures, flat
  * planes for its chrome and panels, and the run tape.
  */
 @theme inline {
-  --font-warp-display: "Bricolage Grotesque Variable", "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-humagen-display: "Bricolage Grotesque Variable", "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
 }
 
 :root {
-  /* warp names Figtree. The console ships it, so it is never a fallback. */
+  /* humagen names Figtree. The console ships it, so it is never a fallback. */
   --font-aui-sans: "Figtree Variable", "Figtree", ui-sans-serif, system-ui, sans-serif;
   /* The sidebar's plane and a panel's plane, each one step off the page. */
-  --warp-plane: oklch(0.975 0 0);
-  --warp-panel: oklch(1 0 0);
-  --warp-rule: oklch(0.07 0 0 / 9%);
+  --humagen-plane: oklch(0.975 0 0);
+  --humagen-panel: oklch(1 0 0);
+  --humagen-rule: oklch(0.07 0 0 / 9%);
   /* Finished work is drawn in ink. Color is kept for what needs a look. */
-  --warp-ink: oklch(0.07 0 0 / 42%);
-  --warp-ink-faint: oklch(0.07 0 0 / 14%);
-  --warp-glass-border: oklch(0.2 0.02 250 / 12%);
-  --warp-bevel: inset 0 1px 0 oklch(1 0 0 / 60%);
+  --humagen-ink: oklch(0.07 0 0 / 42%);
+  --humagen-ink-faint: oklch(0.07 0 0 / 14%);
+  --humagen-glass-border: oklch(0.2 0.02 250 / 12%);
+  --humagen-bevel: inset 0 1px 0 oklch(1 0 0 / 60%);
   /* Lightness of an agent's color, set so it reads on either surface. */
-  --warp-mark-l: 0.5;
+  --humagen-mark-l: 0.5;
   /*
    * Strokes. The neutral one is the rule. The agent one takes an agent's hue
    * at a lightness and chroma checked against both planes for every hue:
    * at least 3.9:1 here and 6.6:1 in the dark theme.
    */
-  --warp-stroke: var(--warp-rule);
-  --warp-stroke-l: 0.55;
-  --warp-stroke-c: 0.14;
+  --humagen-stroke: var(--humagen-rule);
+  --humagen-stroke-l: 0.55;
+  --humagen-stroke-c: 0.14;
   /*
    * Motion. Three lengths: a press or a hover, a menu or a row, a drawer or a
    * page. One curve for arriving, which settles gently, and a quicker one for
    * leaving, which gets out of the way.
    */
-  --warp-dur-fast: 110ms;
-  --warp-dur: 180ms;
-  --warp-dur-slow: 260ms;
-  --warp-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --warp-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --humagen-dur-fast: 110ms;
+  --humagen-dur: 180ms;
+  --humagen-dur-slow: 260ms;
+  --humagen-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --humagen-ease-in: cubic-bezier(0.4, 0, 1, 1);
 }
 html[data-theme="dark"] {
-  --warp-plane: oklch(0.105 0 0);
-  --warp-panel: oklch(0.115 0 0);
-  --warp-rule: oklch(1 0 0 / 9%);
-  --warp-ink: oklch(1 0 0 / 46%);
-  --warp-ink-faint: oklch(1 0 0 / 13%);
-  --warp-glass-border: oklch(1 0 0 / 9%);
-  --warp-bevel: inset 0 1px 0 oklch(1 0 0 / 7%);
-  --warp-mark-l: 0.78;
-  --warp-stroke-l: 0.68;
-  --warp-stroke-c: 0.13;
+  --humagen-plane: oklch(0.105 0 0);
+  --humagen-panel: oklch(0.115 0 0);
+  --humagen-rule: oklch(1 0 0 / 9%);
+  --humagen-ink: oklch(1 0 0 / 46%);
+  --humagen-ink-faint: oklch(1 0 0 / 13%);
+  --humagen-glass-border: oklch(1 0 0 / 9%);
+  --humagen-bevel: inset 0 1px 0 oklch(1 0 0 / 7%);
+  --humagen-mark-l: 0.78;
+  --humagen-stroke-l: 0.68;
+  --humagen-stroke-c: 0.13;
 }
 
 body {
@@ -85,8 +85,8 @@ body {
  * Titles and figures. The face is narrowed a little so a long title and a
  * column of numbers both sit tight, and figures line up in columns.
  */
-.warp-display {
-  font-family: var(--font-warp-display);
+.humagen-display {
+  font-family: var(--font-humagen-display);
   font-variation-settings: "wdth" 86;
   font-optical-sizing: auto;
   font-variant-numeric: tabular-nums;
@@ -94,14 +94,14 @@ body {
 }
 
 /* A panel groups things that belong together. It is flat: one plane, one rule. */
-.warp-glass {
-  background: var(--warp-panel);
-  border: 1px solid var(--warp-rule);
+.humagen-glass {
+  background: var(--humagen-panel);
+  border: 1px solid var(--humagen-rule);
 }
 
 /* Chrome beside the page: its own plane, no blur. */
-.warp-glass-bar {
-  background: var(--warp-plane);
+.humagen-glass-bar {
+  background: var(--humagen-plane);
 }
 
 /*
@@ -110,14 +110,14 @@ body {
  * behind glass is lost whenever the page under it is fading in, which left a
  * menu's rows over a legible title.
  */
-.warp-glass-pop {
+.humagen-glass-pop {
   background: var(--aui-pop);
-  border: 1px solid var(--warp-glass-border);
-  box-shadow: 0 18px 50px oklch(0 0 0 / 0.22), var(--warp-bevel);
+  border: 1px solid var(--humagen-glass-border);
+  box-shadow: 0 18px 50px oklch(0 0 0 / 0.22), var(--humagen-bevel);
 }
 
 /* The project picker is taller than other panels, and scrolls. */
-.warp-project-picker .warp-glass-pop {
+.humagen-project-picker .humagen-glass-pop {
   width: min(20rem, calc(100vw - 8rem));
   max-height: min(32rem, calc(100dvh - 6rem));
   overflow-y: auto;
@@ -129,21 +129,21 @@ body {
  * as more to scroll to. `useStrip` in ui.tsx says which ends, as data-more,
  * and keeps the chosen item clear of the fade.
  */
-.warp-strip {
-  --warp-strip-fade: 2rem;
+.humagen-strip {
+  --humagen-strip-fade: 2rem;
   overscroll-behavior-x: contain;
 }
-.warp-strip[data-more="end"] {
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--warp-strip-fade)), transparent);
-  mask-image: linear-gradient(to right, #000 calc(100% - var(--warp-strip-fade)), transparent);
+.humagen-strip[data-more="end"] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--humagen-strip-fade)), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--humagen-strip-fade)), transparent);
 }
-.warp-strip[data-more="start"] {
-  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - var(--warp-strip-fade)), transparent);
-  mask-image: linear-gradient(to left, #000 calc(100% - var(--warp-strip-fade)), transparent);
+.humagen-strip[data-more="start"] {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - var(--humagen-strip-fade)), transparent);
+  mask-image: linear-gradient(to left, #000 calc(100% - var(--humagen-strip-fade)), transparent);
 }
-.warp-strip[data-more="both"] {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--warp-strip-fade), #000 calc(100% - var(--warp-strip-fade)), transparent);
-  mask-image: linear-gradient(to right, transparent, #000 var(--warp-strip-fade), #000 calc(100% - var(--warp-strip-fade)), transparent);
+.humagen-strip[data-more="both"] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--humagen-strip-fade), #000 calc(100% - var(--humagen-strip-fade)), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 var(--humagen-strip-fade), #000 calc(100% - var(--humagen-strip-fade)), transparent);
 }
 
 /*
@@ -151,59 +151,59 @@ body {
  * Height is how long the run took. A finished run is ink, and only a run that
  * failed, is running, or is waiting on a person takes a color.
  */
-.warp-tape {
-  --warp-tape-h: 1.75rem;
+.humagen-tape {
+  --humagen-tape-h: 1.75rem;
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
   gap: 2px;
-  height: var(--warp-tape-h);
-  border-bottom: 1px solid var(--warp-rule);
+  height: var(--humagen-tape-h);
+  border-bottom: 1px solid var(--humagen-rule);
   overflow: hidden;
 }
-.warp-tick {
+.humagen-tick {
   flex: 0 0 auto;
   width: 4px;
-  height: calc(3px + (var(--warp-tape-h) - 3px) * var(--t, 0));
+  height: calc(3px + (var(--humagen-tape-h) - 3px) * var(--t, 0));
   padding: 0;
   border: 0;
   border-radius: 1px 1px 0 0;
-  background: var(--warp-ink);
+  background: var(--humagen-ink);
 }
-.warp-tick[data-status="failed"] {
+.humagen-tick[data-status="failed"] {
   background: var(--aui-bad);
 }
-.warp-tick[data-status="running"] {
+.humagen-tick[data-status="running"] {
   background: var(--aui-accent);
-  animation: warp-tick-live 1.6s ease-in-out infinite;
+  animation: humagen-tick-live 1.6s ease-in-out infinite;
 }
 /* Waiting on a person: colored, and still. */
-.warp-tick[data-status="parked"] {
+.humagen-tick[data-status="parked"] {
   background: var(--aui-warn);
 }
-.warp-tick[data-status="accepted"] {
-  background: var(--warp-ink-faint);
+.humagen-tick[data-status="accepted"] {
+  background: var(--humagen-ink-faint);
 }
 /* A slot no run has filled yet keeps the ruler's rhythm. */
-.warp-tick[data-status="none"] {
+.humagen-tick[data-status="none"] {
   height: 2px;
-  background: var(--warp-ink-faint);
+  background: var(--humagen-ink-faint);
 }
-button.warp-tick {
+button.humagen-tick {
   cursor: pointer;
 }
-button.warp-tick:hover,
-button.warp-tick:focus-visible {
+button.humagen-tick:hover,
+button.humagen-tick:focus-visible {
   outline: 2px solid var(--aui-fg);
   outline-offset: 1px;
 }
-@keyframes warp-tick-live {
+@keyframes humagen-tick-live {
   50% {
     opacity: 0.45;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .warp-tick[data-status="running"] {
+  .humagen-tick[data-status="running"] {
     animation: none;
   }
 }
@@ -218,69 +218,69 @@ button.warp-tick:focus-visible {
  * idle is thin and quiet, done is thin, working is thick and breathes, waiting
  * on a person is thick, dashed and still, and failed is thick and red.
  */
-.warp-stroke {
-  --warp-stroke-color: var(--warp-stroke);
-  --warp-stroke-w: 1px;
-  --warp-stroke-style: solid;
+.humagen-stroke {
+  --humagen-stroke-color: var(--humagen-stroke);
+  --humagen-stroke-w: 1px;
+  --humagen-stroke-style: solid;
   position: relative;
 }
-.warp-stroke[data-agent] {
-  --warp-stroke-color: oklch(var(--warp-stroke-l) var(--warp-stroke-c) var(--warp-hue));
+.humagen-stroke[data-agent] {
+  --humagen-stroke-color: oklch(var(--humagen-stroke-l) var(--humagen-stroke-c) var(--humagen-hue));
 }
-.warp-stroke[data-agent][data-state="idle"] {
-  --warp-stroke-color: oklch(var(--warp-stroke-l) var(--warp-stroke-c) var(--warp-hue) / 60%);
+.humagen-stroke[data-agent][data-state="idle"] {
+  --humagen-stroke-color: oklch(var(--humagen-stroke-l) var(--humagen-stroke-c) var(--humagen-hue) / 60%);
 }
-.warp-stroke:is([data-state="working"], [data-state="waiting"], [data-state="failed"]) {
-  --warp-stroke-w: 2px;
+.humagen-stroke:is([data-state="working"], [data-state="waiting"], [data-state="failed"]) {
+  --humagen-stroke-w: 2px;
 }
-.warp-stroke[data-state="waiting"] {
-  --warp-stroke-style: dashed;
+.humagen-stroke[data-state="waiting"] {
+  --humagen-stroke-style: dashed;
 }
-.warp-stroke[data-state="failed"] {
-  --warp-stroke-color: var(--aui-bad);
+.humagen-stroke[data-state="failed"] {
+  --humagen-stroke-color: var(--aui-bad);
 }
-.warp-stroke::before {
+.humagen-stroke::before {
   content: "";
   position: absolute;
   pointer-events: none;
-  border: 0 var(--warp-stroke-style) var(--warp-stroke-color);
+  border: 0 var(--humagen-stroke-style) var(--humagen-stroke-color);
 }
-.warp-stroke[data-edge="start"]::before {
+.humagen-stroke[data-edge="start"]::before {
   inset: 0 auto 0 0;
-  border-left-width: var(--warp-stroke-w);
+  border-left-width: var(--humagen-stroke-w);
 }
-.warp-stroke[data-edge="under"]::before {
+.humagen-stroke[data-edge="under"]::before {
   inset: auto 0 0 0;
-  border-bottom-width: var(--warp-stroke-w);
+  border-bottom-width: var(--humagen-stroke-w);
 }
-.warp-stroke[data-edge="around"]::before {
+.humagen-stroke[data-edge="around"]::before {
   inset: 0;
-  border-width: var(--warp-stroke-w);
+  border-width: var(--humagen-stroke-w);
   border-radius: inherit;
 }
 /* A change of state eases from one line to the next. Arriving at waiting does not: it is simply there. */
-.warp-stroke::before {
+.humagen-stroke::before {
   transition:
-    border-color var(--warp-dur) var(--warp-ease-out),
-    opacity var(--warp-dur) var(--warp-ease-out);
+    border-color var(--humagen-dur) var(--humagen-ease-out),
+    opacity var(--humagen-dur) var(--humagen-ease-out);
 }
-.warp-stroke[data-state="waiting"]::before {
+.humagen-stroke[data-state="waiting"]::before {
   transition: none;
 }
 /* Only work in flight moves. Waiting on a person never does. */
-.warp-stroke[data-state="working"]::before {
-  animation: warp-stroke-work 1.8s ease-in-out infinite;
+.humagen-stroke[data-state="working"]::before {
+  animation: humagen-stroke-work 1.8s ease-in-out infinite;
 }
-@keyframes warp-stroke-work {
+@keyframes humagen-stroke-work {
   50% {
     opacity: 0.4;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .warp-stroke[data-state="working"]::before {
+  .humagen-stroke[data-state="working"]::before {
     animation: none;
   }
-  .warp-stroke::before {
+  .humagen-stroke::before {
     transition: none;
   }
 }
@@ -289,14 +289,14 @@ button.warp-tick:focus-visible {
  * Motion classes. Each moves only transform and opacity, runs once, and never
  * holds up the next click: nothing here blocks input while it plays.
  *
- * - warp-press: a control gives a little under the pointer.
- * - warp-enter: a row or a panel that has just appeared rises into place.
- * - warp-fade: a page or a pane that replaced another fades in.
- * - warp-pop: a menu or a popover grows from the control that opened it.
- * - warp-drawer: a panel slides in from the edge it lives on.
- * - warp-note: a brief confirmation beside a control.
+ * - humagen-press: a control gives a little under the pointer.
+ * - humagen-enter: a row or a panel that has just appeared rises into place.
+ * - humagen-fade: a page or a pane that replaced another fades in.
+ * - humagen-pop: a menu or a popover grows from the control that opened it.
+ * - humagen-drawer: a panel slides in from the edge it lives on.
+ * - humagen-note: a brief confirmation beside a control.
  *
- * warp-pop, warp-drawer and warp-note also leave: set data-leaving="true" for as
+ * humagen-pop, humagen-drawer and humagen-note also leave: set data-leaving="true" for as
  * long as the leaving takes, then unmount. `usePresence` in ui.tsx does this.
  *
  * What arrives fills backwards and lets go when it is done: it ends on the
@@ -305,102 +305,102 @@ button.warp-tick:focus-visible {
  * glass inside it, a tooltip or a citation, would be lost. What leaves holds
  * its last frame until it is unmounted.
  */
-.warp-press {
+.humagen-press {
   transition-property: color, background-color, border-color, opacity, transform;
-  transition-duration: var(--warp-dur-fast);
-  transition-timing-function: var(--warp-ease-out);
+  transition-duration: var(--humagen-dur-fast);
+  transition-timing-function: var(--humagen-ease-out);
 }
-.warp-press:active:not(:disabled) {
+.humagen-press:active:not(:disabled) {
   transform: scale(0.98);
 }
 
-.warp-enter {
-  animation: warp-enter var(--warp-dur) var(--warp-ease-out) backwards;
+.humagen-enter {
+  animation: humagen-enter var(--humagen-dur) var(--humagen-ease-out) backwards;
 }
-@keyframes warp-enter {
+@keyframes humagen-enter {
   from {
     opacity: 0;
     transform: translateY(4px);
   }
 }
 
-.warp-fade {
-  animation: warp-fade var(--warp-dur) var(--warp-ease-out) backwards;
+.humagen-fade {
+  animation: humagen-fade var(--humagen-dur) var(--humagen-ease-out) backwards;
 }
-@keyframes warp-fade {
+@keyframes humagen-fade {
   from {
     opacity: 0;
   }
 }
-@keyframes warp-fade-out {
+@keyframes humagen-fade-out {
   to {
     opacity: 0;
   }
 }
 
-.warp-pop {
-  transform-origin: var(--warp-pop-origin, top left);
-  animation: warp-pop var(--warp-dur) var(--warp-ease-out) backwards;
+.humagen-pop {
+  transform-origin: var(--humagen-pop-origin, top left);
+  animation: humagen-pop var(--humagen-dur) var(--humagen-ease-out) backwards;
 }
-@keyframes warp-pop {
+@keyframes humagen-pop {
   from {
     opacity: 0;
     transform: scale(0.96);
   }
 }
-.warp-pop[data-leaving="true"] {
+.humagen-pop[data-leaving="true"] {
   pointer-events: none;
-  animation: warp-pop-out var(--warp-dur-fast) var(--warp-ease-in) both;
+  animation: humagen-pop-out var(--humagen-dur-fast) var(--humagen-ease-in) both;
 }
-@keyframes warp-pop-out {
+@keyframes humagen-pop-out {
   to {
     opacity: 0;
     transform: scale(0.98);
   }
 }
 
-.warp-drawer {
-  animation: warp-drawer var(--warp-dur-slow) var(--warp-ease-out) backwards;
+.humagen-drawer {
+  animation: humagen-drawer var(--humagen-dur-slow) var(--humagen-ease-out) backwards;
 }
-@keyframes warp-drawer {
+@keyframes humagen-drawer {
   from {
     opacity: 0;
     transform: translateX(24px);
   }
 }
-.warp-drawer[data-leaving="true"] {
+.humagen-drawer[data-leaving="true"] {
   pointer-events: none;
-  animation: warp-drawer-out var(--warp-dur) var(--warp-ease-in) both;
+  animation: humagen-drawer-out var(--humagen-dur) var(--humagen-ease-in) both;
 }
-@keyframes warp-drawer-out {
+@keyframes humagen-drawer-out {
   to {
     opacity: 0;
     transform: translateX(24px);
   }
 }
 
-.warp-note {
-  animation: warp-enter var(--warp-dur) var(--warp-ease-out) backwards;
+.humagen-note {
+  animation: humagen-enter var(--humagen-dur) var(--humagen-ease-out) backwards;
 }
-.warp-note[data-leaving="true"] {
-  animation: warp-fade-out var(--warp-dur-fast) var(--warp-ease-in) both;
+.humagen-note[data-leaving="true"] {
+  animation: humagen-fade-out var(--humagen-dur-fast) var(--humagen-ease-in) both;
 }
 
 /* With motion reduced, nothing travels. Things that arrive or leave only fade, briefly. */
 @media (prefers-reduced-motion: reduce) {
-  .warp-press:active:not(:disabled) {
+  .humagen-press:active:not(:disabled) {
     transform: none;
   }
-  .warp-enter,
-  .warp-pop,
-  .warp-drawer,
-  .warp-note {
-    animation: warp-fade var(--warp-dur-fast) linear backwards;
+  .humagen-enter,
+  .humagen-pop,
+  .humagen-drawer,
+  .humagen-note {
+    animation: humagen-fade var(--humagen-dur-fast) linear backwards;
   }
-  .warp-pop[data-leaving="true"],
-  .warp-drawer[data-leaving="true"],
-  .warp-note[data-leaving="true"] {
-    animation: warp-fade-out var(--warp-dur-fast) linear both;
+  .humagen-pop[data-leaving="true"],
+  .humagen-drawer[data-leaving="true"],
+  .humagen-note[data-leaving="true"] {
+    animation: humagen-fade-out var(--humagen-dur-fast) linear both;
   }
 }
 
@@ -409,50 +409,50 @@ button.warp-tick:focus-visible {
  * and what is projected, so going over is drawn past the limit mark rather
  * than clipped at it.
  */
-.warp-meter-track {
+.humagen-meter-track {
   position: relative;
-  height: var(--warp-meter-h, 6px);
+  height: var(--humagen-meter-h, 6px);
   border-radius: 2px;
-  background: var(--warp-ink-faint);
+  background: var(--humagen-ink-faint);
 }
-.warp-meter-fill,
-.warp-meter-projected {
+.humagen-meter-fill,
+.humagen-meter-projected {
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: 2px;
 }
-.warp-meter-fill {
+.humagen-meter-fill {
   background: var(--aui-fg);
 }
 /* What the period is heading for: hatched, so it is not read as money already spent. */
-.warp-meter-projected {
-  background: repeating-linear-gradient(135deg, var(--warp-ink) 0 2px, transparent 2px 5px);
+.humagen-meter-projected {
+  background: repeating-linear-gradient(135deg, var(--humagen-ink) 0 2px, transparent 2px 5px);
 }
-[data-usage="warning"] .warp-meter-fill {
+[data-usage="warning"] .humagen-meter-fill {
   background: var(--aui-warn);
 }
-[data-usage="over"] .warp-meter-fill {
+[data-usage="over"] .humagen-meter-fill {
   background: var(--aui-bad);
 }
 /* The warn threshold is a short notch. The limit is a full-height line that overhangs the track. */
-.warp-meter-warn,
-.warp-meter-limit {
+.humagen-meter-warn,
+.humagen-meter-limit {
   position: absolute;
   width: 0;
   border-left: 1px solid var(--aui-bg);
 }
-.warp-meter-warn {
+.humagen-meter-warn {
   inset: 0 auto 0 auto;
   border-left-style: dotted;
   border-left-color: var(--aui-muted);
 }
-.warp-meter-limit {
+.humagen-meter-limit {
   inset: -3px auto -3px auto;
   border-left: 2px solid var(--aui-fg);
 }
 
 /* A switch is a checkbox drawn as a track and a thumb. */
-.warp-switch {
+.humagen-switch {
   appearance: none;
   position: relative;
   width: 2rem;
@@ -463,7 +463,7 @@ button.warp-tick:focus-visible {
   cursor: pointer;
   transition: background 0.15s ease;
 }
-.warp-switch::after {
+.humagen-switch::after {
   content: "";
   position: absolute;
   top: 2px;
@@ -474,23 +474,23 @@ button.warp-tick:focus-visible {
   background: white;
   transition: transform 0.15s ease;
 }
-.warp-switch:checked {
+.humagen-switch:checked {
   background: var(--aui-accent);
 }
-.warp-switch:checked::after {
+.humagen-switch:checked::after {
   transform: translateX(0.875rem);
 }
-.warp-switch:focus-visible {
+.humagen-switch:focus-visible {
   outline: 2px solid var(--aui-accent);
   outline-offset: 2px;
 }
-.warp-switch:disabled {
+.humagen-switch:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 @media (prefers-reduced-motion: reduce) {
-  .warp-switch,
-  .warp-switch::after {
+  .humagen-switch,
+  .humagen-switch::after {
     transition: none;
   }
 }

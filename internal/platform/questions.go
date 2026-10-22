@@ -14,13 +14,13 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/authz"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/authz"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // People in the loop.

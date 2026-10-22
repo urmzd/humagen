@@ -18,12 +18,12 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/knowledge"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // shelf fills a workspace's knowledge: one source per name, each holding one

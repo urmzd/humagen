@@ -1,6 +1,6 @@
+import { ActionId, type TaskStatus, type UiAction } from "@humagen/core";
+import { Plan, Task } from "@humagen/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ActionId, type TaskStatus, type UiAction } from "@warp/core";
-import { Plan, Task } from "@warp/primitives";
 import { useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { type ActionArgs, Canvas } from "../../support";

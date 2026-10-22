@@ -1,4 +1,4 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 
 /**
  * The reply modal: what "Reply" opens on a mention or an expert's question
@@ -18,7 +18,7 @@ export const REPLY_MODAL = "aui.reply.modal";
  */
 export type ReplyTarget = { inbox: string; part: string } | { run: string; question: string };
 
-/** The modal's words. Defaults are `copy.replyModal` from @warp/components. */
+/** The modal's words. Defaults are `copy.replyModal` from @humagen/components. */
 export interface ReplyModalLabels {
   title: string;
   label: string;
@@ -28,7 +28,7 @@ export interface ReplyModalLabels {
   cancel: string;
 }
 
-/** Bounds: Slack's for the field and a view's metadata, and warp's for an id. */
+/** Bounds: Slack's for the field and a view's metadata, and humagen's for an id. */
 const MAX_REPLY = 3000;
 const MAX_ID = 200;
 

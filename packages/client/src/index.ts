@@ -1,9 +1,9 @@
 // Hand-written. The package's public surface: everything oag generated, and
-// the thin layer over it in warp.ts.
+// the thin layer over it in humagen.ts.
 export * from "./generated/index.js";
 export type { SSEEvent } from "./generated/sse.js";
 export {
-  Warp,
+  Humagen,
   createClient,
   decodeEvent,
   endsRun,
@@ -12,9 +12,9 @@ export {
   StreamEndedError,
   topicFor,
   type ApiFailure,
-  type WarpOptions,
+  type HumagenOptions,
   type DecodedRunEvent,
   type ResumeOptions,
   type StreamItem,
   type TokenSource,
-} from "./warp.js";
+} from "./humagen.js";

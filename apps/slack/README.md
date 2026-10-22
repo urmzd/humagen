@@ -1,21 +1,21 @@
 # Slack app
 
-A Socket Mode Slack app that answers through warp. It is a client of
-warp's HTTP API and holds no rendering of its own: a run's events go
-through [`@warp/adapter`](../../packages/adapter), the same adapter the
+A Socket Mode Slack app that answers through humagen. It is a client of
+humagen's HTTP API and holds no rendering of its own: a run's events go
+through [`@humagen/adapter`](../../packages/adapter), the same adapter the
 console uses, into one shared UI turn, and that turn is rendered by
-`@warp/render-slack`. A run reads the same in Slack and in the console.
+`@humagen/render-slack`. A run reads the same in Slack and in the console.
 
-It is the experience of warp's Slack sandbox (`apps/slack-sandbox` in
-warp), driven by real runs instead of fixtures. For how it relates to the Go
+It is the experience of humagen's Slack sandbox (`apps/slack-sandbox` in
+humagen), driven by real runs instead of fixtures. For how it relates to the Go
 webhook connector, see [Slack](../../docs/slack.md#two-ways-to-answer-in-slack).
 
 ## Run it
 
 You need a Slack app created from [`manifest.json`](manifest.json), which
 asks for what this app uses and nothing more (or from the sandbox manifest,
-`SLACK_SANDBOX_SKIP=workflowStep pnpm sandbox manifest` in warp, which lacks
-`mpim:history` and `users:read`), installed to one team, and a warp server.
+`SLACK_SANDBOX_SKIP=workflowStep pnpm sandbox manifest` in humagen, which lacks
+`mpim:history` and `users:read`), installed to one team, and a humagen server.
 
 ```sh
 cd apps/slack
@@ -41,7 +41,7 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 | `/agent canvas RUN_ID` | Publishes a finished answer from this channel as a Slack canvas, shared with the channel (or just you in a DM). |
 | Uploaded files and images | A mapped person's triggering message is reread through its client on the server and ingested as agent attachments, including file-only DMs. Unread files are explained to the agent. |
 | Stop button | Stops the run, confirms in the thread, sets the session to active. |
-| Home tab | For a person the client maps, the shared Home read as them: what needs them, what's new in their projects and their projects, with Ask a Question, Build an Agent and Search Context. Anyone else sees what is waiting on them in warp's inbox. |
+| Home tab | For a person the client maps, the shared Home read as them: what needs them, what's new in their projects and their projects, with Ask a Question, Build an Agent and Search Context. Anyone else sees what is waiting on them in humagen's inbox. |
 
 A turn streams with `chat.startStream`, `appendStream` and `stopStream`, and
 the session status follows it: processing while it works, active when it ends.
@@ -138,15 +138,15 @@ events.
    reach it, or `@auto`, which picks among the agents available where the
    message lands, when the app may reach any agent. The name is taken out of
    the message.
-2. The client's default agent, or `WARP_DEFAULT_AGENT`.
+2. The client's default agent, or `HUMAGEN_DEFAULT_AGENT`.
 3. When the app may reach any agent, nobody is named: the app sends no agent,
-   and the default the workspace's projects set answers. With none set, Warp
+   and the default the workspace's projects set answers. With none set, Humagen
    answers 409 and the app asks the person to tag an agent, naming one it may
    reach.
 
-Nothing is picked in the app. With `WARP_CLIENT` set, the client record's
+Nothing is picked in the app. With `HUMAGEN_CLIENT` set, the client record's
 default agent and `agents` list apply, read again every 30 seconds. A client
-that lists agents and names no default answers nothing: the default Warp would
+that lists agents and names no default answers nothing: the default Humagen would
 use is not known here, so it could be one the list leaves out. For the same
 reason such a client never sends `auto`, as a tag or as its default, since
 `@auto` picks among every agent available where the run lands.
@@ -157,11 +157,11 @@ The app authenticates as a machine. Least privilege:
 
 | Scope | For |
 |-------|-----|
-| `warp:runs:read` | Follow runs, read conversations and the inbox |
-| `warp:runs:write` | Start, continue, retry and stop runs |
-| `warp:agents:read` | Know which agents exist; see proposed memories |
-| `warp:clients:read` | Only with `WARP_CLIENT` |
-| `warp:projects:read` | Your projects on the Home tab of a person the client maps. Without it the Home leaves them out |
+| `humagen:runs:read` | Follow runs, read conversations and the inbox |
+| `humagen:runs:write` | Start, continue, retry and stop runs |
+| `humagen:agents:read` | Know which agents exist; see proposed memories |
+| `humagen:clients:read` | Only with `HUMAGEN_CLIENT` |
+| `humagen:projects:read` | Your projects on the Home tab of a person the client maps. Without it the Home leaves them out |
 
 Every button in Slack acts with the app's rights, so each extra scope lets the
 people in the loop do more: `agents:write` keeps or discards memories,
@@ -173,8 +173,8 @@ decided as Retry in the thread is (below), so the person a turn acted for may
 press it after a restart too, and once the turn is asked again the card is
 acknowledged. A reached limit is shown, not raised: raise it in the console.
 
-Retry and Resume ask a turn again (always the app's own, never warp's, so its
-answer shows in the thread) for whoever the turn acted for, as warp's record
+Retry and Resume ask a turn again (always the app's own, never humagen's, so its
+answer shows in the thread) for whoever the turn acted for, as humagen's record
 of the run says, and are checked against the client's agents again. A turn
 that acted for a person is theirs to ask again: asked by anyone else it would
 run their words with the presser's credentials, or a tool that acts as them
@@ -183,20 +183,20 @@ may ask it again, and it is asked as them (`act_as`); anyone else, an
 operator included, is told so and nothing starts. A turn that acted for nobody is asked again for nobody, by the person
 who asked or an operator, and after a restart by an operator only. A turn the
 app asked as itself is asked again the same way, through the app, even when
-the app's own credential is a person (an empty `WARP_TOKEN` against a dev
+the app's own credential is a person (an empty `HUMAGEN_TOKEN` against a dev
 sign-in server, where every run acts for `dev`): asked as it was asked, it
 acts for the same one. Each person's press is a run of its own, and pressing
 again joins it.
 
-A question a run waits on is shown in its thread with warp's card and
-buttons. A click is answered through warp as the Slack person, only when
-`WARP_CLIENT` names a client whose `slack.machine` is this app's
+A question a run waits on is shown in its thread with humagen's card and
+buttons. A click is answered through humagen as the Slack person, only when
+`HUMAGEN_CLIENT` names a client whose `slack.machine` is this app's
 credential and whose `slack.people` maps them; anyone else is told they cannot,
-and warp is not asked. The same mapping makes the runs a mapped person
+and humagen is not asked. The same mapping makes the runs a mapped person
 asks for theirs. A reply is typed in the console for now. See
 [clients](../../docs/clients.md#people-a-slack-app-answers-for).
 
-A refusal or error from warp is shown in warp's failure words; the
+A refusal or error from humagen is shown in humagen's failure words; the
 platform's own text goes to the log. A Slack write that fails mid-turn stops
 the streaming, and the whole turn is posted when it ends, with the session set
 off processing. A run that says nothing for 15 minutes (a long tool call, or a
@@ -204,7 +204,7 @@ run waiting on other work) is not failed: its stream is closed as it stands,
 the session stays processing, the thread is free for the next message, and the
 run's record is read less and less often (at most every 3 minutes) until it
 ends, when its answer is posted once in the thread. A message sent meanwhile
-follows it in the conversation, as warp orders any turn sent after one
+follows it in the conversation, as humagen orders any turn sent after one
 that is still running. The slow follow does not survive a restart; the stop
 button still finds the run.
 
@@ -213,11 +213,11 @@ button still finds the run.
 Nothing that matters is kept here. A Slack thread's conversation is the run
 started with the key `slack-<team>-<channel>-<thread ts>`, whose id the app
 computes the way the runtime does, from the workspace and the trigger id
-`api-<length of subject>-<subject>-<key>`, so it is asked of warp, not remembered. Going the
+`api-<length of subject>-<subject>-<key>`, so it is asked of humagen, not remembered. Going the
 other way, from a run to its thread, reads the `tag_id` of the conversation's
 first run. A message's run is keyed by its own timestamp, so a
-Slack redelivery joins the run it started, and the app asks warp before
-starting it. The stop button asks warp which runs in the thread are still
+Slack redelivery joins the run it started, and the app asks humagen before
+starting it. The stop button asks humagen which runs in the thread are still
 going.
 
 One thing is kept on disk: the Slack streams this process has open (channel,
@@ -233,7 +233,7 @@ Kept in memory, and lost on restart:
 
 - Who asked for each run. After a restart only operators can settle that run's
   inbox items or retry it for nobody, and the Home of someone the client does
-  not map shows them nothing until they ask again. Whom a run acted for is warp's record, so the person a turn
+  not map shows them nothing until they ask again. Whom a run acted for is humagen's record, so the person a turn
   acted for may still retry it, from the thread or its failure card, which
   their retry acknowledges.
 - Which inbox messages were posted to a thread. A change to one after a
@@ -252,6 +252,6 @@ answered, it is answered twice.
 |------|---------|
 | Format and lint | `pnpm exec biome check` |
 | Typecheck | `pnpm typecheck` |
-| Tests, with fakes for Slack and warp | `pnpm test` |
+| Tests, with fakes for Slack and humagen | `pnpm test` |
 | Every Block Kit payload the tests produce, through Slack's `blocks.validate` (network, no token) | `pnpm validate` |
-| Against a real warp server built from this checkout (needs Go, no model) | `pnpm test:server` |
+| Against a real humagen server built from this checkout (needs Go, no model) | `pnpm test:server` |

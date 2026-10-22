@@ -1,8 +1,8 @@
-{{- define "warp.name" -}}
+{{- define "humagen.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "warp.fullname" -}}
+{{- define "humagen.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
@@ -15,21 +15,21 @@
 {{- end -}}
 {{- end -}}
 
-{{- define "warp.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "warp.name" . }}
+{{- define "humagen.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "humagen.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
-{{- define "warp.labels" -}}
+{{- define "humagen.labels" -}}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
-{{ include "warp.selectorLabels" . }}
+{{ include "humagen.selectorLabels" . }}
 app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
-{{- define "warp.serviceAccountName" -}}
+{{- define "humagen.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
-{{- default (include "warp.fullname" .) .Values.serviceAccount.name -}}
+{{- default (include "humagen.fullname" .) .Values.serviceAccount.name -}}
 {{- else -}}
 {{- default "default" .Values.serviceAccount.name -}}
 {{- end -}}
@@ -40,7 +40,7 @@ The spec documents the pod reads: the System document, then one Platform
 document per workspace, separated by "---". Rendered from the values as
 written; the chart adds only api_version and kind.
 */}}
-{{- define "warp.spec" -}}
+{{- define "humagen.spec" -}}
 {{- $sys := .Values.system | default dict -}}
 {{- $spec := $sys.spec | default dict -}}
 {{- $auth := $spec.auth | default dict -}}
@@ -54,13 +54,13 @@ written; the chart adds only api_version and kind.
 {{- $_ := required "system.spec.auth.oidc.client_id is required" $oidc.client_id -}}
 {{- $_ := required "system.spec.auth.oidc.audience is required: the API audience access tokens are issued for" $oidc.audience -}}
 {{- end -}}
-api_version: warp/v1
+api_version: humagen/v1
 kind: System
 {{ omit $sys "api_version" "kind" | toYaml }}
 {{- range $i, $p := .Values.platforms }}
 {{- $_ := required (printf "platforms[%d].metadata.name is required: it is the workspace's tenant" $i) (($p.metadata | default dict).name) }}
 ---
-api_version: warp/v1
+api_version: humagen/v1
 kind: Platform
 {{ omit $p "api_version" "kind" | toYaml }}
 {{- end }}

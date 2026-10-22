@@ -40,7 +40,7 @@ import (
 	"github.com/urmzd/fiber/pkg/router"
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/fiber/pkg/signature"
-	"github.com/urmzd/warp/pkg/integrations/github"
+	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
 // githubIntegrationBus preserves the real bus and records the runtime's output.

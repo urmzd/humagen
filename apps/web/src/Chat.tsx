@@ -1,8 +1,8 @@
-import { answerOfAction, answers } from "@warp/adapter/question";
-import { defaultCopy } from "@warp/components";
-import { ActionId, type UiAction } from "@warp/core";
-import { WebSurface } from "@warp/render-web";
-import { AgentMessage, Thread, useQueue } from "@warp/web";
+import { answerOfAction, answers } from "@humagen/adapter/question";
+import { defaultCopy } from "@humagen/components";
+import { ActionId, type UiAction } from "@humagen/core";
+import { WebSurface } from "@humagen/render-web";
+import { AgentMessage, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import { actedFor, type Run } from "./adapter.ts";
@@ -46,13 +46,13 @@ function pathOf(turns: Run[], chosen: Record<string, string>): Run[] {
 
 /**
  * The person whose turn it was, to ask again: whom it acted for, as its
- * record says. A turn recorded before warp said whom a run acts for names no
+ * record says. A turn recorded before humagen said whom a run acts for names no
  * user, so one a person asked under their own name, from the console (an
  * `api-r-` id) or the API with their own key, is theirs, unless its words
  * were someone else's: an earlier turn's at the same point (siblings, oldest
  * first) asked by anyone else, which is what the console's Retry and
  * Regenerate asked then, under the presser's name. A machine asking for a
- * person (its own key) and a retry warp asked for nobody (`api-retry-`)
+ * person (its own key) and a retry humagen asked for nobody (`api-retry-`)
  * name whoever it was for, or pressed it, though the words may not have
  * been theirs, so those are nobody's.
  */
@@ -136,7 +136,7 @@ function TurnView({
   return (
     <article id={`turn-${run.id}`} className="flex flex-col gap-3" aria-label={`Turn answered by ${run.agent}`}>
       <div className="flex flex-col items-end gap-1">
-        <p className="warp-glass max-w-[80%] whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
+        <p className="humagen-glass max-w-[80%] whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
         <p className="flex flex-wrap items-center justify-end gap-x-2 text-aui-2xs text-aui-muted">
           <span className="inline-flex items-center gap-1">
             <AgentMark name={run.agent} size={14} />

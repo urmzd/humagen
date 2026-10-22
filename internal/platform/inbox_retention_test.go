@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/inbox"
 )
 
 // Each workspace's inbox keeps what was settled for as long as its Platform
@@ -26,7 +26,7 @@ func TestEachInboxKeepsWhatWasSettledForItsRetention(t *testing.T) {
 			}
 		}
 		p, stop := runningWith(t, cfg(first))
-		notes := platform.Announcement{Subject: "What's new in warp 0.16.0", Text: "Inbox retention."}
+		notes := platform.Announcement{Subject: "What's new in humagen 0.16.0", Text: "Inbox retention."}
 		release, ok, err := p.PostReleaseNotes(tenant, "0.16.0", notes)
 		if err != nil || !ok {
 			t.Fatalf("release notes = %v, %v", ok, err)

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // directory is a Resolver over fixed names.

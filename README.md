@@ -1,22 +1,22 @@
 <p align="center">
-  <h1 align="center">warp</h1>
+  <h1 align="center">humagen</h1>
   <p align="center">
     A shared workspace for humans and agents: create agents, hire them into projects, and coordinate governed work with shared knowledge.
     <br /><br />
     <a href="#installation">Install</a> &middot;
-    <a href="https://github.com/urmzd/warp/issues">Report Bug</a> &middot;
+    <a href="https://github.com/urmzd/humagen/issues">Report Bug</a> &middot;
     <a href="docs/architecture.md">Architecture</a> &middot;
     <a href="docs/deploy.md">Deploy</a>
   </p>
 </p>
 
 <p align="center">
-  <a href="https://github.com/urmzd/warp/actions/workflows/ci.yml"><img src="https://github.com/urmzd/warp/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/urmzd/warp" alt="License"></a>
+  <a href="https://github.com/urmzd/humagen/actions/workflows/ci.yml"><img src="https://github.com/urmzd/humagen/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/urmzd/humagen" alt="License"></a>
 </p>
 
 <p align="center">
-  <img src="showcase/agents.png" alt="Warp agent console with the two seeded offline example agents" width="80%">
+  <img src="showcase/agents.png" alt="Humagen agent console with the two seeded offline example agents" width="80%">
 </p>
 <p align="center"><em>Local development preview with seeded example data, captured with teasr. No model calls.</em></p>
 
@@ -31,7 +31,7 @@
 - Read a project's inbox and post announcements to its members, or let a scheduled agent post a recap of what changed.
 - Give each project members and owners, keep a project to its members alone, and let a project's owners set tighter limits below it.
 - Cowork from Slack and GitHub: bind a project's channel to a Slack channel, post a mapped person's Slack messages as their own, reply to an announcement in its Slack thread, and ask the app in a GitHub comment.
-- With `workspace.release_notes` on, see warp's release notes in the workspace's inbox after an upgrade.
+- With `workspace.release_notes` on, see humagen's release notes in the workspace's inbox after an upgrade.
 - Keep the inbox bounded: what was settled for everyone is dropped after the workspace's retention, 90 days by default.
 - Connect GitHub and Slack through signed webhook ingress and tenant-bound connector capabilities.
 - Give agents MCP tools that act as each person with that person's own credential, and never a shared one in its place.
@@ -52,8 +52,8 @@
 The platform, console, shared UI and Slack renderers live in this repository. The Go libraries are published separately.
 
 ```sh
-git clone https://github.com/urmzd/warp.git
-cd warp
+git clone https://github.com/urmzd/humagen.git
+cd humagen
 go mod download
 pnpm install
 ```
@@ -67,27 +67,27 @@ See the [integration trial guide](docs/integrations.md).
 One command, nothing to configure:
 
 ```sh
-pnpm --filter @warp/console build   # once, so the console is served too
-go run ./cmd/warp start
+pnpm --filter @humagen/console build   # once, so the console is served too
+go run ./cmd/humagen start
 ```
 
-`warp start` runs the whole platform in one process: development sign-in on
-loopback, in-memory stores (Postgres when `WARP_POSTGRES_URL` is set), files on
+`humagen start` runs the whole platform in one process: development sign-in on
+loopback, in-memory stores (Postgres when `HUMAGEN_POSTGRES_URL` is set), files on
 disk, seeded example agents on the offline provider, and the console at
 <http://127.0.0.1:8080>. On a terminal, the first
 start asks a few questions (its name, model providers, MCP tools, sign-in,
 Slack), each with a default Enter accepts, and writes the answers to
-`warp.yaml` in your config directory. You name where each key is kept
-(`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`); warp reads it when it
+`humagen.yaml` in your config directory. You name where each key is kept
+(`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`); humagen reads it when it
 is used and never stores it.
 
 Everything is configured in that one language: a `System` document for how and
-where warp runs (sign-in, stores, bus, files, limits) and a `Platform` document
+where humagen runs (sign-in, stores, bus, files, limits) and a `Platform` document
 per workspace (models, tools, agents, Slack, GitHub, workspace settings). See [the spec](docs/spec.md).
 The same file runs on your own infrastructure with no code: point `stores` at
 Postgres, `blobs` at S3 and `auth` at your identity provider, and use it with
 compose or the Helm chart ([deploy](docs/deploy.md)). Any flag still wins over
-the file (`warp start -addr 127.0.0.1:9090`).
+the file (`humagen start -addr 127.0.0.1:9090`).
 
 ### Develop the console
 
@@ -107,7 +107,7 @@ Open <http://127.0.0.1:5173> and select an example agent. The backend listens on
 
 To run it in containers, on Kubernetes with Helm, or with Flux, see [deploy](docs/deploy.md).
 
-Development auth grants admin access on loopback; `warp start` and `make dev` use it. `warp serve`, the server's command, signs in with OIDC unless told otherwise. For real sign-in, roles and machine tokens, follow [the security guide](docs/security.md). To use Anthropic, set `ANTHROPIC_API_KEY` before starting the server and configure an agent with provider `anthropic`.
+Development auth grants admin access on loopback; `humagen start` and `make dev` use it. `humagen serve`, the server's command, signs in with OIDC unless told otherwise. For real sign-in, roles and machine tokens, follow [the security guide](docs/security.md). To use Anthropic, set `ANTHROPIC_API_KEY` before starting the server and configure an agent with provider `anthropic`.
 
 ### Capture the console
 
@@ -184,28 +184,28 @@ generated from it. See [the API guide](docs/api.md).
 
 ## Product direction
 
-Warp is a shared place for people and agents to organize projects and tasks, maintain a living knowledge base, and improve how they work together. Agents can be created and hired into scoped project roles. Policies govern capabilities, access, budgets and approvals; connectors bring work in and send updates out. People participate through assignments, questions, approvals and notifications. Shared abilities and agent instructions improve through evaluated, reviewed changes.
+Humagen is a shared place for people and agents to organize projects and tasks, maintain a living knowledge base, and improve how they work together. Agents can be created and hired into scoped project roles. Policies govern capabilities, access, budgets and approvals; connectors bring work in and send updates out. People participate through assignments, questions, approvals and notifications. Shared abilities and agent instructions improve through evaluated, reviewed changes.
 
 This is the direction, not a claim that every workflow exists today. See the [roadmap](docs/roadmap.md) and [implementation status](docs/architecture.md#status).
 
 ## Architecture
 
-warp is the top of five layers (warp, fiber, saige, playscape, anchor), each
+humagen is the top of five layers (humagen, fiber, saige, playscape, anchor), each
 building on the one below. [The ecosystem](docs/ecosystem.md) says who owns
 what and the order the remaining duplication is being removed in.
 
 | Part | Responsibility |
 |------|----------------|
-| **Warp** | Shared workspace, project orchestration, API, console and presentation |
+| **Humagen** | Shared workspace, project orchestration, API, console and presentation |
 | [Saige](https://github.com/urmzd/saige) | Agent execution, tools, retrieval and evaluations |
 | [Fiber](https://github.com/urmzd/fiber) | Messaging, connectors and request routing |
 | [Playscape](https://github.com/urmzd/playscape) | Governed execution environments and workspace isolation |
 | [Anchor](https://github.com/urmzd/anchor) | Durable execution, replay and recovery |
 
-The `@warp/*` packages supply web and Slack presentation; `internal/presentation/github` renders GitHub Markdown. They live with the platform in this repository.
+The `@humagen/*` packages supply web and Slack presentation; `internal/presentation/github` renders GitHub Markdown. They live with the platform in this repository.
 
 
-An agent-to-agent call creates a run through `pkg/call`; its edge determines access, budget, depth and delegation mode. The platform owns identity, storage and orchestration; warp owns rendering. Read the [architecture and implementation status](docs/architecture.md) before relying on planned persistence or governance features.
+An agent-to-agent call creates a run through `pkg/call`; its edge determines access, budget, depth and delegation mode. The platform owns identity, storage and orchestration; humagen owns rendering. Read the [architecture and implementation status](docs/architecture.md) before relying on planned persistence or governance features.
 
 ## License
 

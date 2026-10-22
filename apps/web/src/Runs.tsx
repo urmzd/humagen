@@ -1,6 +1,6 @@
-import { emptyTurn, reduce, type Turn } from "@warp/core";
+import { emptyTurn, reduce, type Turn } from "@humagen/core";
 import { useEffect, useReducer } from "react";
-import { replay as fold } from "@warp/adapter";
+import { replay as fold } from "@humagen/adapter";
 import { adapter, type BusEvent, type Run, turnOf } from "./adapter.ts";
 import { api, subscribe } from "./api.ts";
 import { hueOf, isEnded } from "./ui.tsx";

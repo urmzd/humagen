@@ -1,4 +1,4 @@
-import type { Agent, ClientRecord } from "./warp.ts";
+import type { Agent, ClientRecord } from "./humagen.ts";
 
 /**
  * Who answers a message. In order:

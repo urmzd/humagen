@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/memory"
 )
 
 func viewActions(v map[string]any) []string {
@@ -27,7 +27,7 @@ func TestAProjectRoleOnlyNarrowsATenantPermission(t *testing.T) {
 	f := newFixture(t)
 	admin := f.machineAs(t, "svc-admin", "acme", everything...)
 	ana := f.machineAs(t, "ana", "acme", operator...)
-	readOnly := f.machineAs(t, "ana", "acme", "warp:projects:read")
+	readOnly := f.machineAs(t, "ana", "acme", "humagen:projects:read")
 	bo := f.machineAs(t, "bo", "acme", operator...)
 	want(t, f, admin, "POST", "/api/projects", `{"name":"Field","members":[{"who":"*","role":"viewer"},{"who":"ana","role":"owner"}]}`, http.StatusCreated)
 
@@ -222,7 +222,7 @@ func TestAnOwnerLimitsOnlyWhatIsBelowWhatTheyOwn(t *testing.T) {
 // of home needs ownership of the project it leaves and the one it comes to.
 func TestOwnersDecideAProjectsAgentsAndWhereAnAgentLives(t *testing.T) {
 	f := newFixture(t)
-	writes := append([]string{"warp:agents:write"}, operator...)
+	writes := append([]string{"humagen:agents:write"}, operator...)
 	admin := f.machineAs(t, "svc-admin", "acme", everything...)
 	ana := f.machineAs(t, "ana", "acme", writes...)
 	bo := f.machineAs(t, "bo", "acme", writes...)
@@ -336,8 +336,8 @@ func TestAViewerStartsNothingInAProject(t *testing.T) {
 	}
 	// A thread is work too: a person who views Field starts none there and
 	// posts in none.
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
-	opal := f.person(t, "acme", "00u-opal", "Opal", "warp-operators")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
+	opal := f.person(t, "acme", "00u-opal", "Opal", "humagen-operators")
 	room := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","visibility":"shared","text":"noted","post_only":true}`, http.StatusCreated)
 	roomID := room["thread"].(map[string]any)["id"].(string)
 	for _, tc := range []struct{ path, body string }{
@@ -383,7 +383,7 @@ func TestAViewerStartsNothingInAProject(t *testing.T) {
 func TestAViewerTriesNoProjectAgentInAnEval(t *testing.T) {
 	f := newFixture(t)
 	admin := f.machineAs(t, "svc-admin", "acme", everything...)
-	bo := f.machineAs(t, "bo", "acme", append(slices.Clone(operator), "warp:evals:read", "warp:evals:write")...)
+	bo := f.machineAs(t, "bo", "acme", append(slices.Clone(operator), "humagen:evals:read", "humagen:evals:write")...)
 	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	want(t, f, admin, "POST", "/api/projects", `{"name":"Field","members":[{"who":"*","role":"viewer"},{"who":"svc-admin","role":"owner"}]}`, http.StatusCreated)
 	want(t, f, admin, "PUT", "/api/agents/helper/home", `{"project":"Field"}`, http.StatusOK)
@@ -477,7 +477,7 @@ func TestNotesOnTheWorkspaceAndACompanyProjectNeedGovernToo(t *testing.T) {
 // around it, is no agent's and answers 404, and changes nothing.
 func TestAHomedAgentIsItsHomesUnderEverySpellingOfItsName(t *testing.T) {
 	f := newFixture(t)
-	writes := append([]string{"warp:agents:write"}, operator...)
+	writes := append([]string{"humagen:agents:write"}, operator...)
 	admin := f.machineAs(t, "svc-admin", "acme", everything...)
 	ana := f.machineAs(t, "ana", "acme", writes...)
 	bo := f.machineAs(t, "bo", "acme", writes...)
@@ -577,7 +577,7 @@ func TestANewAccountUnderAProjectEveryoneOwnsIsOpenedToViewers(t *testing.T) {
 	f := newFixture(t)
 	admin := f.machineAs(t, "svc-admin", "acme", everything...)
 	want(t, f, admin, "POST", "/api/projects", `{"name":"Platform","members":[{"who":"*","role":"owner"},{"who":"svc-admin","role":"owner"}]}`, http.StatusCreated)
-	opal := f.person(t, "acme", "00u-opal", "Opal", "warp-operators")
+	opal := f.person(t, "acme", "00u-opal", "Opal", "humagen-operators")
 	got := want(t, f, opal, "POST", "/api/projects", `{"name":"Initech","parent":"Platform","kind":"account","account":{"customer":"Initech"}}`, http.StatusCreated)
 	members := fmt.Sprint(got["members"])
 	if !strings.Contains(members, "role:viewer who:*") || !strings.Contains(members, "role:owner who:00u-opal") {

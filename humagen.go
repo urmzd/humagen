@@ -1,18 +1,18 @@
-// Package warp runs warp with extensions: the same command tree, server
-// and composition root as the warp binary, plus model providers, tool
+// Package humagen runs humagen with extensions: the same command tree, server
+// and composition root as the humagen binary, plus model providers, tool
 // sources, MCP tool providers, connectors and stores a downstream program
-// registers in Go. It is the public seam that makes a private build of warp
+// registers in Go. It is the public seam that makes a private build of humagen
 // an import and a few options instead of a fork.
 //
 //	func main() {
-//		os.Exit(warp.Main(warp.Version{Version: "v1"},
-//			warp.WithModelProvider("house", newHouseProvider),
-//			warp.WithBlobStore(myBucket),
+//		os.Exit(humagen.Main(humagen.Version{Version: "v1"},
+//			humagen.WithModelProvider("house", newHouseProvider),
+//			humagen.WithBlobStore(myBucket),
 //		))
 //	}
 //
 // The common cases need no Go at all: a spec file (docs/spec.md) declares
-// stores, models, MCP tools, agents and surfaces, and `warp setup` writes one.
+// stores, models, MCP tools, agents and surfaces, and `humagen setup` writes one.
 // Go adds what a file cannot: a kind the file then selects by name
 // (WithKind), or a provider, tool source or connector directly. Options and
 // the file combine; a model or tool provider declared by both is an error
@@ -21,7 +21,7 @@
 // It mirrors fiber's fiberapp option for option, and sits at the module root
 // because it is the public face of internal/app, which nothing under pkg/ may
 // import. It adds no behaviour of its own.
-package warp
+package humagen
 
 import (
 	"os"
@@ -34,14 +34,14 @@ import (
 	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
-	"github.com/urmzd/warp/internal/app"
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/blob"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/internal/app"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/blob"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
-// Version is the build metadata `warp version` reports.
+// Version is the build metadata `humagen version` reports.
 type Version struct {
 	Version string
 	Commit  string
@@ -51,7 +51,7 @@ type Version struct {
 // Option extends the composition root.
 type Option func(*app.Options)
 
-// Main runs the warp command tree with the options applied and returns the
+// Main runs the humagen command tree with the options applied and returns the
 // process exit code, for os.Exit. Arguments come from os.Args.
 func Main(v Version, opts ...Option) int {
 	o := app.Options{Version: app.Version(v), Changelog: changelog}
@@ -198,7 +198,7 @@ type Extension = app.Extension
 
 // WithKind registers a kind in a slot, so a spec file can select it by name:
 //
-//	warp.WithKind(warp.Blobs, "gcs", func(ctx context.Context, block json.RawMessage) (any, error) {
+//	humagen.WithKind(humagen.Blobs, "gcs", func(ctx context.Context, block json.RawMessage) (any, error) {
 //		var c struct{ Bucket string `json:"bucket"` }
 //		if err := strictDecode(block, &c); err != nil {
 //			return nil, err

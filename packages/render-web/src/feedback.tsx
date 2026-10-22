@@ -1,5 +1,5 @@
-import { ActionId, FEEDBACK_CLEAR } from "@warp/core";
-import type { FeedbackPromptLabels, PrimitiveProps } from "@warp/primitives";
+import { ActionId, FEEDBACK_CLEAR } from "@humagen/core";
+import type { FeedbackPromptLabels, PrimitiveProps } from "@humagen/primitives";
 import { createContext, useContext, useEffect, useId, useRef, useState } from "react";
 import { ActionContext, buttonClass } from "./buttons";
 import { ThumbsDownIcon, ThumbsUpIcon } from "./icons";

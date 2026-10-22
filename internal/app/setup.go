@@ -12,19 +12,24 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/urmzd/warp/pkg/credref"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
-// setupCmd is `warp setup`: the first-run questions on their own.
-func setupCmd(args []string, in io.Reader, out io.Writer) error {
+// setupCmd is `humagen setup`: the first-run questions on their own.
+func setupCmd(o Options, args []string, in io.Reader, out io.Writer) error {
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
-	path := fs.String("o", "", "the spec file to write. Empty means warp.yaml in WARP_HOME, else the user config directory")
+	path := fs.String("o", "", "the spec file to write. Empty means humagen.yaml in HUMAGEN_HOME, else the user config directory")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *path == "" {
-		*path = filepath.Join(configDir(os.Getenv), "warp.yaml")
+		p, err := specPath(o.notes)
+		if err != nil {
+			return err
+		}
+		*path = p
 	}
 	return runSetup(bufio.NewReader(in), out, *path)
 }
@@ -58,7 +63,7 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 	}
 	sys, plat := &cfg.System, &cfg.Platforms[0]
 	q := asker{r: r, out: out}
-	fmt.Fprintln(out, "Setting up warp. Press Enter to take the default in brackets. Nothing here asks for a key; you name where each one is kept.")
+	fmt.Fprintln(out, "Setting up humagen. Press Enter to take the default in brackets. Nothing here asks for a key; you name where each one is kept.")
 
 	sys.Metadata.DisplayName = q.text("What should people see it called?", sys.Metadata.DisplayName, nonEmpty)
 	kind := q.choose("Who may sign in? dev (this machine only, no sign-in), tailscale or oidc", sys.Spec.Auth.Kind, "dev", "tailscale", "oidc")
@@ -68,13 +73,13 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 	if kind == "oidc" {
 		b, _ := spec.Block[spec.OIDC](sys.Spec.Auth.Slot)
 		b.Issuer = q.text("Issuer URL", b.Issuer, nonEmpty)
-		b.ClientID = q.text("Client id", or(b.ClientID, "warp"), nonEmpty)
+		b.ClientID = q.text("Client id", or(b.ClientID, "humagen"), nonEmpty)
 		secret := ""
 		if b.ClientSecret.Set() {
 			secret = b.ClientSecret.Ref
 		}
-		b.ClientSecret = &spec.Ref{Ref: q.text("Where is the client secret?", or(secret, "env:WARP_OIDC_CLIENT_SECRET"), parseRef)}
-		b.Audience = q.text("Audience of the API's access tokens", or(b.Audience, "warp"), nonEmpty)
+		b.ClientSecret = &spec.Ref{Ref: q.text("Where is the client secret?", or(secret, "env:HUMAGEN_OIDC_CLIENT_SECRET"), parseRef)}
+		b.Audience = q.text("Audience of the API's access tokens", or(b.Audience, "humagen"), nonEmpty)
 		sys.Spec.Auth.Block = spec.MustJSON(b)
 	}
 
@@ -142,16 +147,16 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 			b.CredentialAs = q.text("Sent as which variable or header (blank for a bearer token)", def, nil)
 		}
 		plat.Spec.Tools = append(plat.Spec.Tools, spec.Tool{Slot: spec.Slot{Kind: "mcp", Block: spec.MustJSON(b)}, ToolShared: spec.ToolShared{Name: name}})
-		fmt.Fprintln(out, "  Its tools start pending. warp logs each one with its schema hash; add the ones you accept under accept.")
+		fmt.Fprintln(out, "  Its tools start pending. humagen logs each one with its schema hash; add the ones you accept under accept.")
 	}
 
 	sl := plat.Spec.Surfaces.Slack
 	switch {
 	case kind == "tailscale":
-		// The Slack app calls warp's API, and a process cannot sign in
+		// The Slack app calls humagen's API, and a process cannot sign in
 		// through Tailscale Serve.
 		if sl != nil && sl.Enabled {
-			fmt.Fprintln(out, "Slack is off: its app cannot sign in to warp through Tailscale Serve.")
+			fmt.Fprintln(out, "Slack is off: its app cannot sign in to humagen through Tailscale Serve.")
 			sl.Enabled = false
 		}
 	case q.yes("Answer in Slack too?", sl != nil && sl.Enabled):
@@ -159,24 +164,24 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 			sl = &spec.Slack{BotToken: &spec.Ref{Ref: "env:SLACK_BOT_TOKEN"}, AppToken: &spec.Ref{Ref: "env:SLACK_APP_TOKEN"}}
 		}
 		sl.Enabled = true
-		fmt.Fprintln(out, "  Create the app from `warp slack manifest`, install it, and make an app-level token with connections:write.")
+		fmt.Fprintln(out, "  Create the app from `humagen slack manifest`, install it, and make an app-level token with connections:write.")
 		sl.Team = q.text("Slack team id (T...)", sl.Team, nonEmpty)
 		sl.BotToken = &spec.Ref{Ref: q.text("Where is the bot token (xoxb-)?", sl.BotToken.Ref, parseRef)}
 		sl.AppToken = &spec.Ref{Ref: q.text("Where is the app token (xapp-)?", sl.AppToken.Ref, parseRef)}
-		if kind == "oidc" && !sl.WarpToken.Set() {
-			fmt.Fprintln(out, "  The app signs in to warp as a machine client of the identity provider, with client credentials.")
-			c := sl.WarpClient
+		if kind == "oidc" && !sl.HumagenToken.Set() {
+			fmt.Fprintln(out, "  The app signs in to humagen as a machine client of the identity provider, with client credentials.")
+			c := sl.HumagenClient
 			if c == nil {
 				c = &spec.ClientCredentials{}
 			}
 			c.TokenURL = q.text("Its token URL", c.TokenURL, httpURL)
-			c.ClientID = q.text("Its client id", or(c.ClientID, "warp-slack"), nonEmpty)
-			secret := "env:WARP_SLACK_CLIENT_SECRET"
+			c.ClientID = q.text("Its client id", or(c.ClientID, "humagen-slack"), nonEmpty)
+			secret := "env:HUMAGEN_SLACK_CLIENT_SECRET"
 			if c.ClientSecret.Set() {
 				secret = c.ClientSecret.Ref
 			}
 			c.ClientSecret = &spec.Ref{Ref: q.text("Where is its client secret?", secret, parseRef)}
-			sl.WarpClient = c
+			sl.HumagenClient = c
 		}
 		plat.Spec.Surfaces.Slack = sl
 	case sl != nil:
@@ -188,7 +193,13 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 	if err := cfg.Check(nil); err != nil {
 		return err
 	}
-	b, err := spec.Marshal(cfg)
+	// A spec under its old name is written as it was, so the release before
+	// the rename still reads it; start notes where the new place is.
+	write := spec.Marshal
+	if legacy.IsOldSpecFile(path) {
+		write = spec.MarshalOld
+	}
+	b, err := write(cfg)
 	if err != nil {
 		return err
 	}
@@ -202,7 +213,7 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Wrote %s. Edit it any time (docs/spec.md); `warp setup` asks again.\n", path)
+	fmt.Fprintf(out, "Wrote %s. Edit it any time (docs/spec.md); `humagen setup` asks again.\n", path)
 	return nil
 }
 

@@ -1474,7 +1474,7 @@ const projects: HomeProject[] = [
  */
 export const home: HomeModel = {
   person: { id: "U0ADA", name: "Ada Lovelace" },
-  assistant: { name: "Warp" },
+  assistant: { name: "Humagen" },
   intro: "I run this workspace's agents.",
   ask: { placeholder: "Why did last night's deploy fail?", attach: true },
   starts: [
@@ -1716,7 +1716,7 @@ export const homes: Record<
    */
   readFor: {
     person: { id: "U0ADA", name: "Ada Lovelace" },
-    assistant: { name: "Warp", handle: "warp" },
+    assistant: { name: "Humagen", handle: "humagen" },
     intro: "I hand your questions to this workspace's agents.",
     starts: [{ id: "talk" }, { id: "build" }, { id: "search", url: `${CONSOLE}/context` }],
     notifications: {

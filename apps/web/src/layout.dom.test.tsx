@@ -36,9 +36,9 @@ function patchRect(get: (el: HTMLElement) => { left: number; width: number } | u
   patched.push(() => (HTMLElement.prototype.getBoundingClientRect = real));
 }
 
-/** A phone: every warp-strip is 350px wide at x=20, and what is in it sits end to end, each item 80px wide. */
+/** A phone: every humagen-strip is 350px wide at x=20, and what is in it sits end to end, each item 80px wide. */
 function phoneStrips() {
-  const isStrip = (el: HTMLElement) => el.classList.contains("warp-strip");
+  const isStrip = (el: HTMLElement) => el.classList.contains("humagen-strip");
   patch(HTMLElement.prototype, "clientWidth", (el) => (isStrip(el) ? STRIP.width : el === document.documentElement ? SCREEN : undefined));
   patch(HTMLElement.prototype, "scrollWidth", (el) => (isStrip(el) ? el.children.length * ITEM : undefined));
   patchRect((el) => {
@@ -129,7 +129,7 @@ test("a segmented choice that does not fit scrolls inside its box, each choice o
   // A fieldset is as wide as its content unless it may shrink, which is what ran past the gutter.
   assert.match(box.className, /\bmin-w-0\b/);
   assert.match(box.className, /\bmax-w-full\b/);
-  const strip = box.querySelector<HTMLElement>(".warp-strip");
+  const strip = box.querySelector<HTMLElement>(".humagen-strip");
   assert.ok(strip);
   assert.equal(strip.scrollLeft, 6 * ITEM - STRIP.width, "the last choice is chosen, so the strip ends at it");
   for (const b of screen.getAllByRole("button")) assert.match(b.className, /\bwhitespace-nowrap\b/, `${b.textContent} stays on one line`);
@@ -173,10 +173,10 @@ test("a popover near the left edge of a phone moves inside the gutter", () => {
 });
 
 const options = ["lead", "helper"].map((value) => ({ value, label: value }));
-const menuPanel = () => screen.getByRole("listbox").closest<HTMLElement>(".warp-glass-pop");
+const menuPanel = () => screen.getByRole("listbox").closest<HTMLElement>(".humagen-glass-pop");
 
 test("a menu near the left edge of a phone moves inside the gutter too", () => {
-  const left = phonePanel(".warp-glass-pop");
+  const left = phonePanel(".humagen-glass-pop");
   render(<Menu label="Agent" value="lead" options={options} align="right" onChange={() => {}} />);
   fireEvent.click(screen.getByRole("button", { name: "Agent: lead" }));
   assert.equal(menuPanel()?.style.translate, `${GUTTER_PX - left}px 0`);
@@ -184,14 +184,14 @@ test("a menu near the left edge of a phone moves inside the gutter too", () => {
 
 test("a menu near the right edge of a phone moves left into the gutter", () => {
   // Hanging from the left of a control at 300px, it would end at 620.
-  phonePanel(".warp-glass-pop", { left: 300, width: 60 }, "left");
+  phonePanel(".humagen-glass-pop", { left: 300, width: 60 }, "left");
   render(<Menu label="Agent" value="lead" options={options} onChange={() => {}} />);
   fireEvent.click(screen.getByRole("button", { name: "Agent: lead" }));
   assert.equal(menuPanel()?.style.translate, `${SCREEN - GUTTER_PX - (300 + 320)}px 0`);
 });
 
 test("a menu with room stays where it hangs", () => {
-  phonePanel(".warp-glass-pop", { left: 40, width: 60 }, "left");
+  phonePanel(".humagen-glass-pop", { left: 40, width: 60 }, "left");
   render(<Menu label="Agent" value="lead" options={options} onChange={() => {}} />);
   fireEvent.click(screen.getByRole("button", { name: "Agent: lead" }));
   assert.equal(menuPanel()?.style.translate, "");

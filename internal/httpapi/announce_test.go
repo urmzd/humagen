@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/inbox"
 )
 
 // subjects lists the subjects of the messages in an inbox answer.
@@ -85,7 +85,7 @@ func TestAnnouncementsNeverGrowTheBadge(t *testing.T) {
 func TestHidingAnAnnouncementHidesOnlyTheReadersCopy(t *testing.T) {
 	f, ana, bo, cy := acmeNews(t)
 	m := want(t, f, ana, "POST", "/api/projects/Field/announcements", `{"subject":"Field offsite","text":"Lisbon, in May."}`, http.StatusCreated)
-	reader := f.machineAs(t, "dee", "acme", "warp:runs:read", "warp:projects:read")
+	reader := f.machineAs(t, "dee", "acme", "humagen:runs:read", "humagen:projects:read")
 	if out := want(t, f, reader, "POST", "/api/inbox/"+m["id"].(string)+"/dismiss", `{}`, http.StatusOK); out["state"] != string(inbox.Dismissed) {
 		t.Fatalf("hidden for its reader = %v", out)
 	}
@@ -229,14 +229,14 @@ func TestWithdrawingAnAnnouncementOneHidWithdrawsItForEveryone(t *testing.T) {
 }
 
 // A release's notes are an announcement in the workspace's own inbox, from
-// warp: everyone who reads the workspace is sent it, and finds it in What's
+// humagen: everyone who reads the workspace is sent it, and finds it in What's
 // new and in the workspace's inbox, each hides their own copy, an owner of
 // the workspace withdraws it for everyone, and it is posted once.
 func TestReleaseNotesReachEveryoneWhoReadsTheWorkspace(t *testing.T) {
 	f, ana, bo, cy := acmeNews(t)
-	notes := platform.Announcement{Subject: "What's new in warp 0.16.0", Text: "- projects: release notes in the inbox"}
+	notes := platform.Announcement{Subject: "What's new in humagen 0.16.0", Text: "- projects: release notes in the inbox"}
 	m, posted, err := f.p.PostReleaseNotes("acme", "0.16.0", notes)
-	if err != nil || !posted || m.Source.Project != "" || m.From != (inbox.From{Kind: "system", Name: "warp"}) || m.Key != "release:0.16.0" {
+	if err != nil || !posted || m.Source.Project != "" || m.From != (inbox.From{Kind: "system", Name: "humagen"}) || m.Key != "release:0.16.0" {
 		t.Fatalf("posted = %+v, %v, %v", m, posted, err)
 	}
 	for _, who := range []string{ana, bo, cy} {
@@ -248,13 +248,13 @@ func TestReleaseNotesReachEveryoneWhoReadsTheWorkspace(t *testing.T) {
 		}
 	}
 	out := want(t, f, bo, "GET", "/api/inbox/"+m.ID, "", http.StatusOK)["message"].(map[string]any)
-	if from := out["from"].(map[string]any); from["kind"] != "system" || from["name"] != "warp" || out["kind"] != "announcement" {
+	if from := out["from"].(map[string]any); from["kind"] != "system" || from["name"] != "humagen" || out["kind"] != "announcement" {
 		t.Fatalf("as read = %v", out)
 	}
 	if again, posted, err := f.p.PostReleaseNotes("acme", "0.16.0", notes); err != nil || posted || again.ID != m.ID {
 		t.Fatalf("posted again = %+v, %v, %v", again, posted, err)
 	}
-	other := f.machine(t, "globex", "warp:runs:read", "warp:projects:read")
+	other := f.machine(t, "globex", "humagen:runs:read", "humagen:projects:read")
 	if got := subjects(want(t, f, other, "GET", "/api/inbox?kind=announcement", "", http.StatusOK)); len(got) != 0 {
 		t.Fatalf("another workspace is sent %q", got)
 	}

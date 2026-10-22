@@ -8,10 +8,25 @@ import (
 	"unicode/utf8"
 
 	transport "github.com/urmzd/fiber/pkg/connectors/github"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // ReviewFormat identifies a structured final answer, distinct from ordinary text.
-const ReviewFormat = "warp.github.review.v1"
+const ReviewFormat = "humagen.github.review.v1"
+
+// IsReviewFormat reports whether format names a review: ReviewFormat, or the
+// id it had before the rename, which agents' instructions written then still
+// ask for.
+func IsReviewFormat(format string) bool {
+	return format == ReviewFormat || format == legacy.ReviewFormat
+}
+
+// NamesReviewFormat reports whether text mentions either id of the format,
+// as a review still streaming does.
+func NamesReviewFormat(text string) bool {
+	return strings.Contains(text, ReviewFormat) || strings.Contains(text, legacy.ReviewFormat)
+}
 
 // ReviewReport is the agent's evidence-backed final answer. Counts are derived
 // from findings, never supplied by the model. Evidence is cited, not verified
@@ -50,7 +65,7 @@ type ReviewLink struct {
 // format, an invalid severity, or a finding that lacks evidence, instead of
 // presenting it as a clean review.
 func FormatReview(report ReviewReport) (string, error) {
-	if report.Format != ReviewFormat || strings.TrimSpace(report.Summary) == "" {
+	if !IsReviewFormat(report.Format) || strings.TrimSpace(report.Summary) == "" {
 		return "", fmt.Errorf("github: review needs format %q and a summary", ReviewFormat)
 	}
 	counts := map[string]int{"error": 0, "warning": 0, "info": 0}
@@ -137,8 +152,8 @@ func RenderReview(v transport.View) string {
 	// report. Progress still comes from lifecycle and tool events.
 	text := strings.TrimSpace(v.Text)
 	var report ReviewReport
-	structured := json.Unmarshal([]byte(text), &report) == nil && report.Format == ReviewFormat
-	pending := strings.HasPrefix(text, "{") && strings.Contains(text, ReviewFormat)
+	structured := json.Unmarshal([]byte(text), &report) == nil && IsReviewFormat(report.Format)
+	pending := strings.HasPrefix(text, "{") && NamesReviewFormat(text)
 	if !structured && !pending && (!strings.HasPrefix(text, "{") || v.Terminal()) {
 		return clamp(transport.RenderDefault(v), MaxBodyChars)
 	}

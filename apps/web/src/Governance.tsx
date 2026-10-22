@@ -1,4 +1,4 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,

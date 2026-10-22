@@ -3,10 +3,10 @@ package app
 import (
 	"log/slog"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/internal/release"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/internal/release"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 // postReleaseNotes posts what the release this process runs brings, its

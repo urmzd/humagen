@@ -13,7 +13,7 @@ import {
   partTarget,
   sortMessages,
   timeToken,
-} from "@warp/core";
+} from "@humagen/core";
 import {
   Actions,
   Button,
@@ -27,7 +27,7 @@ import {
   Sources,
   Summary,
   Text,
-} from "@warp/primitives";
+} from "@humagen/primitives";
 import { Fragment } from "react";
 import {
   ApprovalCard,
@@ -391,7 +391,7 @@ const HOME_MESSAGES = 8;
 /**
  * The mailbox as one scroll: open messages in full, most urgent first, then a
  * record of what was resolved. Slack publishes it as the App Home tab; the web
- * uses the two-pane `Mailbox` from `@warp/web` instead.
+ * uses the two-pane `Mailbox` from `@humagen/web` instead.
  */
 export function MailboxView({
   messages,

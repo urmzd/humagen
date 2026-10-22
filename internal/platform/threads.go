@@ -15,12 +15,12 @@ import (
 
 	"github.com/urmzd/fiber/pkg/envelope"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/pick"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/pick"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // Shared threads (docs/projects.md, "Channels and threads"): the

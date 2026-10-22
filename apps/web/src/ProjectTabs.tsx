@@ -1,7 +1,7 @@
-import { ActionId, isAnnouncement, messageState, type UiAction } from "@warp/core";
-import { defaultCopy } from "@warp/components";
-import { BanIcon, buttonClass } from "@warp/render-web";
-import { type MailboxShow } from "@warp/web";
+import { ActionId, isAnnouncement, messageState, type UiAction } from "@humagen/core";
+import { defaultCopy } from "@humagen/components";
+import { BanIcon, buttonClass } from "@humagen/render-web";
+import { type MailboxShow } from "@humagen/web";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ApiError,

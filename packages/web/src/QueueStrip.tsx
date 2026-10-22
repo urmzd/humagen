@@ -1,5 +1,5 @@
-import type { QueuedMessage } from "@warp/core";
-import { GripIcon, PencilIcon, PlayIcon, XIcon, ZapIcon } from "@warp/render-web";
+import type { QueuedMessage } from "@humagen/core";
+import { GripIcon, PencilIcon, PlayIcon, XIcon, ZapIcon } from "@humagen/render-web";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import type { QueueControls } from "./useQueue";
 

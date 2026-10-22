@@ -13,8 +13,8 @@ import (
 
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // Schedule errors.

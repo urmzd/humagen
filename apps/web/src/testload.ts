@@ -1,7 +1,7 @@
 import { createServer } from "vite";
 
 /**
- * Loads test files through Vite, so they may use JSX and the linked warp
+ * Loads test files through Vite, so they may use JSX and the linked humagen
  * packages. The runner is plain node, which reads .ts but not JSX. Each
  * file's tests register with the node:test run of the file that called this.
  */

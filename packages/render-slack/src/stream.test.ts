@@ -1,5 +1,5 @@
-import { emptyTurn, reduce, type Turn } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
+import { emptyTurn, reduce, type Turn } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
 import { describe, expect, it } from "vitest";
 import { lifecycle, reactionChanges } from "./lifecycle";
 import {

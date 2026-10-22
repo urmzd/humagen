@@ -1,4 +1,3 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
   ActionId,
   emptyTurn,
@@ -6,10 +5,11 @@ import {
   type PromptConfig,
   type TurnEvent,
   type UiAction,
-} from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { WebSurface } from "@warp/render-web";
-import { AgentMessage, PromptInput, Thread, tokenize, UserMessage, useReplay } from "@warp/web";
+} from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { WebSurface } from "@humagen/render-web";
+import { AgentMessage, PromptInput, Thread, tokenize, UserMessage, useReplay } from "@humagen/web";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useMemo, useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 import { type ActionArgs, scriptFor, slack } from "../../support";

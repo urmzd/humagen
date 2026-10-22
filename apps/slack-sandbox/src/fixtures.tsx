@@ -13,21 +13,21 @@ import {
   SessionNotices,
   SystemAlertView,
   TurnView,
-} from "@warp/components";
-import type { Turn, TurnEvent } from "@warp/core";
-import { ActionId } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
+} from "@humagen/components";
+import type { Turn, TurnEvent } from "@humagen/core";
+import { ActionId } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
 import {
   amountModal,
   askForm,
   feedbackModal,
   type Placement,
   replyModal,
-} from "@warp/render-slack";
+} from "@humagen/render-slack";
 import type { ReactElement } from "react";
 
 /**
- * Every fixture in @warp/core/fixtures, as something postable. Names match
+ * Every fixture in @humagen/core/fixtures, as something postable. Names match
  * the fixture exports (and Storybook docs): `pnpm sandbox post waitingTurn`.
  */
 export interface Postable {

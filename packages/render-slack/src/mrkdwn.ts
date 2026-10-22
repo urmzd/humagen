@@ -3,7 +3,7 @@
  * mrkdwn. Long-form model output skips this and goes in a `markdown` block.
  */
 
-import { TIME_TOKEN } from "@warp/core";
+import { TIME_TOKEN } from "@humagen/core";
 
 /** Slack date token: shown in each reader's own timezone and format. */
 function slackDate(iso: string): string {

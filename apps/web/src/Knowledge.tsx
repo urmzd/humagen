@@ -134,7 +134,7 @@ export function Knowledge({
           {sources.map((s) => {
             const by = readers(s.name);
             return (
-              <li key={s.name} className="warp-enter">
+              <li key={s.name} className="humagen-enter">
                 <button
                   type="button"
                   onClick={() => setSelected(s.name)}
@@ -430,7 +430,7 @@ function SourceDetail({
                       Searchable
                       <input
                         type="checkbox"
-                        className="warp-switch"
+                        className="humagen-switch"
                         checked={!d.excluded}
                         onChange={(e) =>
                           api

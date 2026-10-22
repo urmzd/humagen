@@ -1,6 +1,6 @@
-# Warp product roadmap
+# Humagen product roadmap
 
-Warp is a shared workspace where humans and agents organize work, share knowledge and improve their capabilities under explicit policies.
+Humagen is a shared workspace where humans and agents organize work, share knowledge and improve their capabilities under explicit policies.
 
 This document states direction. The [architecture status](architecture.md#status) is the source of truth for implemented behavior.
 

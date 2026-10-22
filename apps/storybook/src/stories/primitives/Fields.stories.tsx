@@ -1,6 +1,6 @@
+import * as fx from "@humagen/core/fixtures";
+import { Fields, Table } from "@humagen/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import * as fx from "@warp/core/fixtures";
-import { Fields, Table } from "@warp/primitives";
 import { Canvas, slackPrimitive } from "../../support";
 
 const meta = {

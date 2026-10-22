@@ -33,7 +33,7 @@ export const PROJECT_TABS: ProjectTab[] = ["inbox", "overview", "context", "agen
 
 /**
  * What a project is for, as the Projects page narrows to it with `?kind=`:
- * one of warp's kinds, or one the workspace defines, which has the same
+ * one of humagen's kinds, or one the workspace defines, which has the same
  * shape. A value of any other shape falls back to every kind.
  */
 export type ProjectKindFilter = string;

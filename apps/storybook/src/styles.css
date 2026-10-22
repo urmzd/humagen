@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "@warp/render-web/theme.css";
+@import "@humagen/render-web/theme.css";
 
 @source "../../../packages/render-web/src";
 @source "../../../packages/web/src";

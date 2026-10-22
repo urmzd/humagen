@@ -10,11 +10,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/memory"
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // ErrProjectExists and ErrProjectNotFound are the project store's own, so a

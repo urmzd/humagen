@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/internal/platform"
-	slackflow "github.com/urmzd/warp/pkg/integrations/slack"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/internal/platform"
+	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 // A client's machine lists one of its people's projects as that person sees
@@ -56,7 +56,7 @@ grant runner to subject "dee"`)
 	people := `"people":{"U0ANA":"ana","U0BEN":"ben","U0DEE":"dee"}`
 	want(t, f, app, "POST", "/api/clients", strings.Replace(slackApp("app", "A01APP", "svc-acme"), `"machine":"svc-acme"`, `"machine":"svc-acme",`+people, 1), http.StatusCreated)
 	// A private thread of ana's in Field: hers to count, not ben's.
-	ana := f.person(t, "acme", "ana", "Ana", "warp-admins")
+	ana := f.person(t, "acme", "ana", "Ana", "humagen-admins")
 	started := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","visibility":"private","text":"@helper plan the renewal."}`, http.StatusCreated)
 	ended(t, f, ana, started["runs"].([]any)[0].(map[string]any)["id"].(string))
 

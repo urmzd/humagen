@@ -1,5 +1,5 @@
-import { defaultCopy } from "@warp/components";
-import { CheckIcon, ChevronDownIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, MessageIcon } from "@warp/render-web";
+import { defaultCopy } from "@humagen/components";
+import { CheckIcon, ChevronDownIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, MessageIcon } from "@humagen/render-web";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api, type ProjectKindSpec, type ProjectView } from "./api.ts";
 import { above, kindWord, matches, titleOf } from "./projects.ts";
@@ -130,7 +130,7 @@ export function ProjectPicker({ projects, kinds, value, canCreate = true, onChan
 }) {
   const chosen = value ? projects?.find((p) => p.name === value) : undefined;
   const label = value === null ? "Select project" : value === "" ? "Projectless" : chosen ? titleOf(chosen) : value;
-  return <div className="warp-project-picker min-w-0"><Popover label={value === null ? "Select project" : `Select project: ${label}`} up
+  return <div className="humagen-project-picker min-w-0"><Popover label={value === null ? "Select project" : `Select project: ${label}`} up
     className="inline-flex h-8 max-w-32 items-center gap-1 rounded-aui px-1.5 text-aui-sm text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent sm:max-w-40"
     button={<>{value === "" ? <MessageIcon size={16} /> : value ? <FolderOpenIcon size={16} /> : <FolderIcon size={16} />}<span className="truncate">{label}</span><ChevronDownIcon size={14} className="hidden shrink-0 sm:block" /></>}>
     {(close) => <ProjectChoices projects={projects} kinds={kinds} value={value} canCreate={canCreate} onChange={onChange} onCreated={onCreated} close={close} />}

@@ -11,9 +11,9 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
-	"github.com/urmzd/warp/pkg/memory"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/usage"
+	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/usage"
 )
 
 // Housekeeping the platform does around a conversation, by asking an agent.

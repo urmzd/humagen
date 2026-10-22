@@ -5,22 +5,22 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { follow } from "@warp/adapter";
-import { defaultCopy } from "@warp/components";
+import { follow } from "@humagen/adapter";
+import { defaultCopy } from "@humagen/components";
 import { App } from "./app.tsx";
 import { CHANNEL, FakeSlack, mention, settle, stopPressed, TEAM, USER } from "./harness.ts";
+import { type Humagen, httpHumagen, staticToken } from "./humagen.ts";
 import { runId, threadKey } from "./keys.ts";
-import { httpWarp, staticToken, type Warp } from "./warp.ts";
 
 /**
- * The stand-in client and the app against the real warp server, built
+ * The stand-in client and the app against the real humagen server, built
  * from this checkout and started with dev auth on loopback and its offline
  * example agents. No model is called: the server is started without any
  * provider key in its environment. Slack is the fake.
  *
  * Run with `pnpm test:server`. It needs Go.
  */
-const enabled = process.env.WARP_SERVER_TEST === "1";
+const enabled = process.env.HUMAGEN_SERVER_TEST === "1";
 const root = new URL("../../..", import.meta.url).pathname;
 let server: ChildProcess | undefined;
 let dir = "";
@@ -38,9 +38,9 @@ const freePort = () =>
 
 before(async () => {
   if (!enabled) return;
-  dir = mkdtempSync(join(tmpdir(), "warp-slack-"));
-  const bin = join(dir, "warp");
-  execFileSync("go", ["build", "-o", bin, "./cmd/warp"], { cwd: root, stdio: "inherit" });
+  dir = mkdtempSync(join(tmpdir(), "humagen-slack-"));
+  const bin = join(dir, "humagen");
+  execFileSync("go", ["build", "-o", bin, "./cmd/humagen"], { cwd: root, stdio: "inherit" });
   const port = await freePort();
   base = `http://127.0.0.1:${port}`;
   // Only what the server needs to start. No provider key is passed on.
@@ -76,7 +76,7 @@ before(async () => {
     if (up) return;
     await new Promise((r) => setTimeout(r, 100));
   }
-  throw new Error(`warp did not start: ${startup}`);
+  throw new Error(`humagen did not start: ${startup}`);
 });
 
 after(() => {
@@ -84,10 +84,10 @@ after(() => {
   if (dir) rmSync(dir, { recursive: true, force: true });
 });
 
-const client = (): Warp => httpWarp({ baseUrl: base, token: staticToken() });
+const client = (): Humagen => httpHumagen({ baseUrl: base, token: staticToken() });
 
 /** Every event of a run until it ends, folded into its turn. */
-async function finish(c: Warp, run: { id: string; agent: string }, patience = 10_000) {
+async function finish(c: Humagen, run: { id: string; agent: string }, patience = 10_000) {
   const stop = new AbortController();
   const timer = setTimeout(() => stop.abort(), patience);
   const f = follow(run);
@@ -201,7 +201,7 @@ test(
     assert.deepEqual(slack.statuses, ["processing", "active"]);
     assert.equal(slack.of("reactions.add").at(-1)?.name, "white_check_mark");
 
-    // A new process, the same Slack event: warp has it, so nothing starts.
+    // A new process, the same Slack event: humagen has it, so nothing starts.
     const fresh = new App(slack, c, {
       team: TEAM,
       botUser: "U00BOTBOT",

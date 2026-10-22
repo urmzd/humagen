@@ -3,7 +3,7 @@ package auth
 import (
 	"strings"
 
-	"github.com/urmzd/warp/pkg/authz"
+	"github.com/urmzd/humagen/pkg/authz"
 )
 
 // TailscalePrincipal maps a login authenticated by Tailscale Serve to a user.

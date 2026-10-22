@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/humagen/pkg/policy"
 )
 
 var t0 = time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)

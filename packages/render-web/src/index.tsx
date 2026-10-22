@@ -1,5 +1,5 @@
-import type { ActionHandler } from "@warp/core";
-import { RendererProvider } from "@warp/primitives";
+import type { ActionHandler } from "@humagen/core";
+import { RendererProvider } from "@humagen/primitives";
 import { type ReactNode, useState } from "react";
 import { ActionContext } from "./buttons";
 import { CitationContext, CitationRegistry } from "./citations";
@@ -41,7 +41,7 @@ export * from "./Tooltip";
 export { StatusIcon, statusLabel } from "./task";
 
 /**
- * Render warp components to the DOM. Clicks surface as the same
+ * Render humagen components to the DOM. Clicks surface as the same
  * `UiAction` a Slack interaction decodes to, so one handler serves both.
  *
  * Holds one form store, so a Button's `collects` reads the Checkboxes group

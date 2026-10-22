@@ -4,5 +4,5 @@ system:
     auth:
       oidc:
         issuer: https://idp.example.com
-        client_id: warp
-        audience: warp
+        client_id: humagen
+        audience: humagen

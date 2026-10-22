@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/authz"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/authz"
 )
 
 // accessDecision is why the caller may or may not do one thing. It is only

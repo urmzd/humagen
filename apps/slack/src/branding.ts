@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { type Copy, defaultCopy } from "@warp/components";
-import type { SuggestedPrompt } from "@warp/core";
+import { type Copy, defaultCopy } from "@humagen/components";
+import type { SuggestedPrompt } from "@humagen/core";
 import { words as defaultWords } from "./host.ts";
 
 /**

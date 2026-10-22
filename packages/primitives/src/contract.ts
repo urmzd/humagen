@@ -6,7 +6,7 @@ import type {
   Citation,
   TaskStatus,
   Tone,
-} from "@warp/core";
+} from "@humagen/core";
 import type { ComponentType, ReactNode } from "react";
 
 /**

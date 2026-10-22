@@ -9,13 +9,13 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/memory"
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // Route permission, then project role. Every project route checks one tenant

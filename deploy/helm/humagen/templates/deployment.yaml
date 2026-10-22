@@ -1,13 +1,13 @@
 {{- if ne (int .Values.replicaCount) 1 }}
-{{- fail "replicaCount must be 1: warp's stores are single-writer. See values.yaml." }}
+{{- fail "replicaCount must be 1: humagen's stores are single-writer. See values.yaml." }}
 {{- end }}
-{{- $fullname := include "warp.fullname" . -}}
+{{- $fullname := include "humagen.fullname" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $fullname }}
   labels:
-    {{- include "warp.labels" . | nindent 4 }}
+    {{- include "humagen.labels" . | nindent 4 }}
 spec:
   replicas: 1
   # Recreate, not RollingUpdate: the old pod must let go of the stores and the
@@ -16,7 +16,7 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      {{- include "warp.selectorLabels" . | nindent 6 }}
+      {{- include "humagen.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -25,7 +25,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "warp.selectorLabels" . | nindent 8 }}
+        {{- include "humagen.selectorLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -34,21 +34,21 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "warp.serviceAccountName" . }}
+      serviceAccountName: {{ include "humagen.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountToken }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       # Long enough for runs in flight to settle on SIGTERM.
       terminationGracePeriodSeconds: 30
       containers:
-        - name: warp
+        - name: humagen
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # The spec is the file; the chart forces only the listener and the
           # console's directory, which are the image's, as flags that win.
           args:
             - serve
-            - -f=/etc/warp/warp.yaml
+            - -f=/etc/warp/humagen.yaml
             - -addr=0.0.0.0:8080
             - -web=/usr/share/warp/web
             {{- if .Values.webhooks.enabled }}
@@ -119,7 +119,7 @@ spec:
           {{- end }}
         - name: tmp
           emptyDir: {}
-        # warp.yaml and the files beside it.
+        # humagen.yaml and the files beside it.
         - name: config
           configMap:
             name: {{ $fullname }}

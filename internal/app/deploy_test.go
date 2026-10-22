@@ -14,25 +14,25 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/credref"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 func TestDeployWritesAComposeProjectWithNoSecretsInIt(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "warp.yaml")
-	if err := os.WriteFile(path, []byte(`api_version: warp/v1
+	path := filepath.Join(dir, "humagen.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: humagen/v1
 kind: System
 metadata: {name: acme}
 spec:
   auth:
     kind: oidc
-    oidc: {issuer: "https://login.example.com", client_id: warp, audience: warp, client_secret: {ref: "env:OIDC_SECRET"}}
+    oidc: {issuer: "https://login.example.com", client_id: humagen, audience: humagen, client_secret: {ref: "env:OIDC_SECRET"}}
   deploy:
     kind: compose
-    compose: {image: "ghcr.io/urmzd/warp:dev", postgres: true, port: 9090}
+    compose: {image: "ghcr.io/urmzd/humagen:dev", postgres: true, port: 9090}
 ---
-api_version: warp/v1
+api_version: humagen/v1
 kind: Platform
 metadata: {name: default}
 spec:
@@ -45,12 +45,12 @@ spec:
 		t.Fatal(err)
 	}
 	project, _ := os.ReadFile(filepath.Join(out, "compose.yaml"))
-	for _, want := range []string{"ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}", "OIDC_SECRET: ${OIDC_SECRET:-}", "postgres:17-alpine", "9090:8080", "WARP_POSTGRES_URL"} {
+	for _, want := range []string{"ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}", "OIDC_SECRET: ${OIDC_SECRET:-}", "postgres:17-alpine", "9090:8080", "HUMAGEN_POSTGRES_URL"} {
 		if !strings.Contains(string(project), want) {
 			t.Errorf("compose.yaml lacks %q:\n%s", want, project)
 		}
 	}
-	written, err := spec.Load(filepath.Join(out, "warp.yaml"))
+	written, err := spec.Load(filepath.Join(out, "humagen.yaml"))
 	if err != nil {
 		t.Fatalf("the written spec does not load: %v", err)
 	}
@@ -67,7 +67,7 @@ spec:
 
 func TestCarryTurnsAKeychainReferenceIntoAnEnvOne(t *testing.T) {
 	cfg := spec.Config{Platforms: []spec.Platform{{Metadata: spec.Metadata{Name: "default"}, Spec: spec.PlatformSpec{
-		Surfaces: spec.Surfaces{Slack: &spec.Slack{Enabled: true, Team: "T1", BotToken: &spec.Ref{Ref: "keychain:warp/bot"}, AppToken: &spec.Ref{Ref: "env:SLACK_APP_TOKEN"}}},
+		Surfaces: spec.Surfaces{Slack: &spec.Slack{Enabled: true, Team: "T1", BotToken: &spec.Ref{Ref: "keychain:humagen/bot"}, AppToken: &spec.Ref{Ref: "env:SLACK_APP_TOKEN"}}},
 	}}}}
 	keys := credref.Resolver{Run: func(context.Context, string, ...string) ([]byte, error) { return []byte("xoxb-1"), nil }, GOOS: "linux"}
 	c, err := carry(context.Background(), cfg, keys)
@@ -75,7 +75,7 @@ func TestCarryTurnsAKeychainReferenceIntoAnEnvOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	sl := c.cfg.Platforms[0].Spec.Surfaces.Slack
-	if sl.BotToken.Ref != "env:WARP_REF_1" || c.values["WARP_REF_1"] != "xoxb-1" || sl.AppToken.Ref != "env:SLACK_APP_TOKEN" {
+	if sl.BotToken.Ref != "env:HUMAGEN_REF_1" || c.values["HUMAGEN_REF_1"] != "xoxb-1" || sl.AppToken.Ref != "env:SLACK_APP_TOKEN" {
 		t.Fatalf("carried = %+v %+v", sl, c.values)
 	}
 	b, _ := spec.Marshal(c.cfg)
@@ -86,8 +86,8 @@ func TestCarryTurnsAKeychainReferenceIntoAnEnvOne(t *testing.T) {
 
 func TestDeployingDevAuthKeepsItOnLoopback(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "warp.yaml")
-	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  deploy: {kind: compose, compose: {image: warp:dev}}\n"), 0o600); err != nil {
+	path := filepath.Join(dir, "humagen.yaml")
+	if err := os.WriteFile(path, []byte("api_version: humagen/v1\nkind: System\nspec:\n  deploy: {kind: compose, compose: {image: humagen:dev}}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "out")
@@ -102,20 +102,20 @@ func TestDeployingDevAuthKeepsItOnLoopback(t *testing.T) {
 
 func TestDeployWritesTheChartAndItsValues(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "warp.yaml")
-	if err := os.WriteFile(path, []byte(`api_version: warp/v1
+	path := filepath.Join(dir, "humagen.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: humagen/v1
 kind: System
 metadata: {name: acme}
 spec:
   auth:
     kind: oidc
-    oidc: {issuer: "https://login.example.com", client_id: warp, audience: warp, client_secret: {ref: "env:OIDC_SECRET"}}
-  stores: {kind: postgres, postgres: {url: {ref: "env:WARP_POSTGRES_URL"}}}
+    oidc: {issuer: "https://login.example.com", client_id: humagen, audience: humagen, client_secret: {ref: "env:OIDC_SECRET"}}
+  stores: {kind: postgres, postgres: {url: {ref: "env:HUMAGEN_POSTGRES_URL"}}}
   deploy:
     kind: kubernetes
-    kubernetes: {namespace: agents, host: warp.example.com, image: {repository: ghcr.io/acme/warp, tag: v1}}
+    kubernetes: {namespace: agents, host: humagen.example.com, image: {repository: ghcr.io/acme/humagen, tag: v1}}
 ---
-api_version: warp/v1
+api_version: humagen/v1
 kind: Platform
 metadata: {name: default, display_name: Acme}
 `), 0o600); err != nil {
@@ -126,7 +126,7 @@ metadata: {name: default, display_name: Acme}
 		t.Fatal(err)
 	}
 	values, _ := os.ReadFile(filepath.Join(out, "values.yaml"))
-	for _, want := range []string{"existingSecret: acme-env", "repository: ghcr.io/acme/warp", "host: warp.example.com", "display_name: Acme", "env:OIDC_SECRET"} {
+	for _, want := range []string{"existingSecret: acme-env", "repository: ghcr.io/acme/humagen", "host: humagen.example.com", "display_name: Acme", "env:OIDC_SECRET"} {
 		if !strings.Contains(string(values), want) {
 			t.Errorf("values lack %q:\n%s", want, values)
 		}
@@ -142,14 +142,14 @@ metadata: {name: default, display_name: Acme}
 	if err != nil {
 		t.Fatalf("helm template: %v\n%s", err, rendered)
 	}
-	if !strings.Contains(string(rendered), "kind: Platform") || !strings.Contains(string(rendered), "warp.example.com") {
+	if !strings.Contains(string(rendered), "kind: Platform") || !strings.Contains(string(rendered), "humagen.example.com") {
 		t.Errorf("render:\n%s", rendered)
 	}
 }
 
 func TestDeployRefusesLoopbackSignInForACluster(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "warp.yaml")
-	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  deploy: {kind: kubernetes}\n"), 0o600); err != nil {
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	if err := os.WriteFile(path, []byte("api_version: humagen/v1\nkind: System\nspec:\n  deploy: {kind: kubernetes}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	err := deployCmd(Options{}, []string{"-f", path, "-o", t.TempDir()}, strings.NewReader(""), io.Discard)
@@ -180,26 +180,26 @@ func (r *ran) run(cmd *exec.Cmd) error {
 }
 
 func TestDeployToKubernetesPutsNoSecretOnAnyCommandLine(t *testing.T) {
-	t.Setenv("WARP_POSTGRES_URL", "postgres://warp:pg-from-the-shell@db:5432/warp")
+	t.Setenv("HUMAGEN_POSTGRES_URL", "postgres://humagen:pg-from-the-shell@db:5432/humagen")
 	dir := t.TempDir()
-	path := filepath.Join(dir, "warp.yaml")
-	if err := os.WriteFile(path, []byte(`api_version: warp/v1
+	path := filepath.Join(dir, "humagen.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: humagen/v1
 kind: System
 metadata: {name: acme}
 spec:
   auth:
     kind: oidc
-    oidc: {issuer: "https://login.example.com", client_id: warp, audience: warp, client_secret: {ref: "keychain:warp/oidc"}}
-  stores: {kind: postgres, postgres: {url: {ref: "env:WARP_POSTGRES_URL"}}}
+    oidc: {issuer: "https://login.example.com", client_id: humagen, audience: humagen, client_secret: {ref: "keychain:humagen/oidc"}}
+  stores: {kind: postgres, postgres: {url: {ref: "env:HUMAGEN_POSTGRES_URL"}}}
   deploy:
     kind: kubernetes
     kubernetes: {namespace: agents, context: prod}
 ---
-api_version: warp/v1
+api_version: humagen/v1
 kind: Platform
 metadata: {name: default}
 spec:
-  models: [{name: anthropic, kind: anthropic, anthropic: {key: {ref: "keychain:warp/anthropic"}}}]
+  models: [{name: anthropic, kind: anthropic, anthropic: {key: {ref: "keychain:humagen/anthropic"}}}]
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -249,11 +249,11 @@ spec:
 			t.Fatalf("data.%s is not base64: %v", k, err)
 		}
 		switch {
-		case k == "WARP_POSTGRES_URL":
+		case k == "HUMAGEN_POSTGRES_URL":
 			if !strings.Contains(string(b), "pg-from-the-shell") {
 				t.Errorf("data.%s = %q, want the shell's value", k, b)
 			}
-		case strings.HasPrefix(k, "WARP_REF_"):
+		case strings.HasPrefix(k, "HUMAGEN_REF_"):
 			keychain = append(keychain, string(b))
 		default:
 			t.Errorf("data has %s, which the spec does not reference", k)
@@ -267,9 +267,9 @@ spec:
 
 func TestCarryNamesEachReferenceTheSameOnEveryDeploy(t *testing.T) {
 	cfg := spec.Config{Platforms: []spec.Platform{{Metadata: spec.Metadata{Name: "default"}, Spec: spec.PlatformSpec{
-		Surfaces: spec.Surfaces{Slack: &spec.Slack{Enabled: true, Team: "T1", BotToken: &spec.Ref{Ref: "keychain:warp/bot"}, AppToken: &spec.Ref{Ref: "keychain:warp/app"}}},
+		Surfaces: spec.Surfaces{Slack: &spec.Slack{Enabled: true, Team: "T1", BotToken: &spec.Ref{Ref: "keychain:humagen/bot"}, AppToken: &spec.Ref{Ref: "keychain:humagen/app"}}},
 	}}}}
-	cfg.System.Spec.Auth.Slot = spec.Slot{Kind: "oidc", Block: spec.MustJSON(map[string]any{"client_secret": map[string]any{"ref": "keychain:warp/oidc"}})}
+	cfg.System.Spec.Auth.Slot = spec.Slot{Kind: "oidc", Block: spec.MustJSON(map[string]any{"client_secret": map[string]any{"ref": "keychain:humagen/oidc"}})}
 	keys := credref.Resolver{GOOS: "linux", Run: func(_ context.Context, _ string, args ...string) ([]byte, error) {
 		return []byte(strings.Join(args, " ")), nil
 	}}
@@ -298,8 +298,8 @@ func TestDeployToComposeLeavesTheCheckedInComposeProjectAlone(t *testing.T) {
 	if err := os.WriteFile(checkedIn, []byte("# the checked-in project\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(root, "warp.yaml")
-	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\nspec:\n  deploy: {kind: compose, compose: {image: warp:dev}}\n"), 0o600); err != nil {
+	path := filepath.Join(root, "humagen.yaml")
+	if err := os.WriteFile(path, []byte("api_version: humagen/v1\nkind: System\nmetadata: {name: acme}\nspec:\n  deploy: {kind: compose, compose: {image: humagen:dev}}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var r ran
@@ -309,8 +309,8 @@ func TestDeployToComposeLeavesTheCheckedInComposeProjectAlone(t *testing.T) {
 	if b, _ := os.ReadFile(checkedIn); string(b) != "# the checked-in project\n" {
 		t.Errorf("deploy wrote over deploy/compose/compose.yaml:\n%s", b)
 	}
-	want := filepath.Join(root, ".warp", "compose")
-	for _, f := range []string{"compose.yaml", "warp.yaml"} {
+	want := filepath.Join(root, ".humagen", "compose")
+	for _, f := range []string{"compose.yaml", "humagen.yaml"} {
 		if _, err := os.Stat(filepath.Join(want, f)); err != nil {
 			t.Errorf("the project is not in %s: %v", want, err)
 		}
@@ -324,18 +324,18 @@ func TestDeployToComposeLeavesTheCheckedInComposeProjectAlone(t *testing.T) {
 // credentials under start.
 func peopleSpec(t *testing.T, kind, start string) string {
 	t.Helper()
-	block := "compose: {image: \"ghcr.io/urmzd/warp:dev\"}"
+	block := "compose: {image: \"ghcr.io/urmzd/humagen:dev\"}"
 	if kind == "kubernetes" {
 		block = "kubernetes: {namespace: agents}"
 	}
-	path := filepath.Join(t.TempDir(), "warp.yaml")
-	if err := os.WriteFile(path, []byte(`api_version: warp/v1
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: humagen/v1
 kind: System
 metadata: {name: acme}
 spec:
   auth:
     kind: oidc
-    oidc: {issuer: "https://login.example.com", client_id: warp, audience: warp, client_secret: {ref: "env:OIDC_SECRET"}}
+    oidc: {issuer: "https://login.example.com", client_id: humagen, audience: humagen, client_secret: {ref: "env:OIDC_SECRET"}}
   person_refs: {default: ["`+start+`"]}
   deploy:
     kind: `+kind+`
@@ -346,16 +346,16 @@ spec:
 	return path
 }
 
-// A person's reference is read where warp runs, when a run uses it, not
+// A person's reference is read where humagen runs, when a run uses it, not
 // when deploying, so a container cannot read one in this machine's keychain
-// or 1Password. warp deploy refuses such a start for a compose or kubernetes
+// or 1Password. humagen deploy refuses such a start for a compose or kubernetes
 // target, naming the entry and what to do instead, and writes nothing.
 func TestDeployRefusesPersonRefsTheTargetCannotRead(t *testing.T) {
 	for _, c := range []struct{ kind, start, names string }{
 		{"compose", "op://People/{subject}/", "1Password"},
-		{"compose", "keychain:warp-people-{subject}/", "keychain"},
+		{"compose", "keychain:humagen-people-{subject}/", "keychain"},
 		{"kubernetes", "op://People/{subject}/", "1Password"},
-		{"kubernetes", "keychain:warp-people-{subject}/", "keychain"},
+		{"kubernetes", "keychain:humagen-people-{subject}/", "keychain"},
 	} {
 		t.Run(c.kind+" "+c.start, func(t *testing.T) {
 			out := filepath.Join(t.TempDir(), "out")
@@ -364,7 +364,7 @@ func TestDeployRefusesPersonRefsTheTargetCannotRead(t *testing.T) {
 			if err == nil {
 				t.Fatal("deployed people's references the target cannot read")
 			}
-			for _, want := range []string{`person_refs.default[0] "` + c.start + `"`, c.names, "env:WARP_PERSON_{subject}_", "person_credentials.values: true", "deploy local"} {
+			for _, want := range []string{`person_refs.default[0] "` + c.start + `"`, c.names, "env:HUMAGEN_PERSON_{subject}_", "person_credentials.values: true", "deploy local"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("the refusal does not say %q: %v", want, err)
 				}
@@ -383,25 +383,25 @@ func TestDeployRefusesPersonRefsTheTargetCannotRead(t *testing.T) {
 }
 
 // The kubernetes block's values are merged over the spec's documents after
-// warp deploy has carried and checked them, so they may not set the chart's
+// humagen deploy has carried and checked them, so they may not set the chart's
 // system or platforms: a person's keychain start, or one of the spec's own
 // references, would otherwise reach the cluster unread and unchecked.
 func TestDeployRefusesValuesThatReplaceTheSpec(t *testing.T) {
 	for _, c := range []struct{ key, values string }{
-		{"system", `{system: {spec: {person_refs: {default: ["keychain:warp-people-{subject}/"]}}}}`},
-		{"system", `{system: {spec: {stores: {kind: postgres, postgres: {url: {ref: "op://Infra/warp/db"}}}}}}`},
+		{"system", `{system: {spec: {person_refs: {default: ["keychain:humagen-people-{subject}/"]}}}}`},
+		{"system", `{system: {spec: {stores: {kind: postgres, postgres: {url: {ref: "op://Infra/humagen/db"}}}}}}`},
 		{"platforms", `{platforms: [{spec: {models: [{kind: anthropic, anthropic: {api_key: {ref: "keychain:anthropic"}}}]}}]}`},
 	} {
 		t.Run(c.key, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "warp.yaml")
-			if err := os.WriteFile(path, []byte(`api_version: warp/v1
+			path := filepath.Join(t.TempDir(), "humagen.yaml")
+			if err := os.WriteFile(path, []byte(`api_version: humagen/v1
 kind: System
 metadata: {name: acme}
 spec:
   auth:
     kind: oidc
-    oidc: {issuer: "https://login.example.com", client_id: warp, audience: warp, client_secret: {ref: "env:OIDC_SECRET"}}
-  person_refs: {default: ["env:WARP_PERSON_{subject}_"]}
+    oidc: {issuer: "https://login.example.com", client_id: humagen, audience: humagen, client_secret: {ref: "env:OIDC_SECRET"}}
+  person_refs: {default: ["env:HUMAGEN_PERSON_{subject}_"]}
   deploy:
     kind: kubernetes
     kubernetes: {namespace: agents, values: `+c.values+`}
@@ -425,7 +425,7 @@ spec:
 }
 
 // An env: start names variables, one per person and tool, that nobody knows
-// when deploying, so warp deploy cannot pass them. It says so, in what it
+// when deploying, so humagen deploy cannot pass them. It says so, in what it
 // prints and in the file it writes, so whoever deploys sets them in the
 // target.
 func TestDeploySaysPeoplesVariablesAreTheTargetsToSet(t *testing.T) {
@@ -433,7 +433,7 @@ func TestDeploySaysPeoplesVariablesAreTheTargetsToSet(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			out := filepath.Join(t.TempDir(), "out")
 			var said strings.Builder
-			if err := deployCmd(Options{}, []string{"-f", peopleSpec(t, kind, "env:WARP_PERSON_{subject}_"), "-o", out}, strings.NewReader(""), &said); err != nil {
+			if err := deployCmd(Options{}, []string{"-f", peopleSpec(t, kind, "env:HUMAGEN_PERSON_{subject}_"), "-o", out}, strings.NewReader(""), &said); err != nil {
 				t.Fatal(err)
 			}
 			written, err := os.ReadFile(filepath.Join(out, file))
@@ -441,13 +441,13 @@ func TestDeploySaysPeoplesVariablesAreTheTargetsToSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			for where, text := range map[string]string{"what it printed": said.String(), file: string(written)} {
-				for _, want := range []string{"env:WARP_PERSON_{subject}_", "which warp deploy does not pass"} {
+				for _, want := range []string{"env:HUMAGEN_PERSON_{subject}_", "which humagen deploy does not pass"} {
 					if !strings.Contains(text, want) {
 						t.Errorf("%s does not say %q:\n%s", where, want, text)
 					}
 				}
 			}
-			if strings.Contains(string(written), "WARP_PERSON_") && !strings.Contains(string(written), "# people's own tool credentials") {
+			if strings.Contains(string(written), "HUMAGEN_PERSON_") && !strings.Contains(string(written), "# people's own tool credentials") {
 				t.Errorf("%s names people's variables outside its comment:\n%s", file, written)
 			}
 		})
@@ -462,7 +462,7 @@ func TestTheReferenceExampleDeploysItsPeoplesReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	blocks := regexp.MustCompile("(?s)```yaml\n(.*?)```").FindAllStringSubmatch(string(doc), -1)
-	path := filepath.Join(t.TempDir(), "warp.yaml")
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
 	for _, b := range blocks {
 		if strings.Contains(b[1], "kind: System") {
 			if err := os.WriteFile(path, []byte(b[1]), 0o600); err != nil {

@@ -9,8 +9,8 @@ import (
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
 	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/humagen/pkg/call"
 	saigetypes "github.com/urmzd/saige/agent/types"
-	"github.com/urmzd/warp/pkg/call"
 )
 
 // ToolCallAgent is available whenever the pinned agent has a spawn grant.

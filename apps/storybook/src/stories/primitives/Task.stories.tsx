@@ -1,7 +1,7 @@
+import type { TaskStatus } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { Plan, Task } from "@humagen/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { TaskStatus } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { Plan, Task } from "@warp/primitives";
 import { useEffect, useState } from "react";
 import { Canvas, slackPrimitive } from "../../support";
 

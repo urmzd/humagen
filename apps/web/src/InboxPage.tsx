@@ -1,6 +1,6 @@
-import { defaultCopy } from "@warp/components";
-import { ActionId, type InboxMessage, messageState, openParts, type UiAction } from "@warp/core";
-import { Mailbox, type MailboxShow } from "@warp/web";
+import { defaultCopy } from "@humagen/components";
+import { ActionId, type InboxMessage, messageState, openParts, type UiAction } from "@humagen/core";
+import { Mailbox, type MailboxShow } from "@humagen/web";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useHeld, useInbox } from "./inbox.ts";
 import { platformParts } from "./MailParts.tsx";
@@ -46,7 +46,7 @@ export function KindChips({ value, onChange }: { value: string; onChange: (kind:
   const options = [{ id: "", label: "Everything" }, ...kinds];
   const strip = useStrip<HTMLDivElement>(value);
   return (
-    <div ref={strip} role="group" aria-label="Kind" className="warp-strip aui-scroll -mx-1 flex min-w-0 gap-1.5 overflow-x-auto px-1 pb-1">
+    <div ref={strip} role="group" aria-label="Kind" className="humagen-strip aui-scroll -mx-1 flex min-w-0 gap-1.5 overflow-x-auto px-1 pb-1">
       {options.map((k) => (
         <button
           key={k.id || "all"}
@@ -66,7 +66,7 @@ export function KindChips({ value, onChange }: { value: string; onChange: (kind:
 const senderMark = (from: InboxMessage["from"]) => (from.kind === "agent" ? <AgentMark name={from.name} size={12} /> : null);
 
 /**
- * warp's mailbox with the platform's own pieces on it: the parts it draws
+ * humagen's mailbox with the platform's own pieces on it: the parts it draws
  * itself, the agent's edge on what an agent sent, and everything a message is
  * about as things to open.
  */
@@ -132,7 +132,7 @@ export function MailboxView({
           <Stroke agent={edge.agent} state={edge.state} testId="mail-frame" className="flex min-h-0 min-w-0 flex-1 flex-col pl-4">
             {children}
             {sources.length > 0 && (
-              <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-[var(--warp-rule)] border-t pt-3 pb-1">
+              <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 border-[var(--humagen-rule)] border-t pt-3 pb-1">
                 <span className="text-aui-2xs font-medium tracking-wider text-aui-muted uppercase">About</span>
                 <ul className="flex min-w-0 flex-wrap gap-1.5" aria-label="About">
                   {sources.map((s) => (
@@ -159,7 +159,7 @@ export function MailboxView({
 /**
  * The inbox. Alerts, failed runs, memory to review and limits that were
  * reached all arrive here as messages, and are resolved here where they can
- * be. The mailbox is warp's. This page loads it from the platform, keeps
+ * be. The mailbox is humagen's. This page loads it from the platform, keeps
  * it current, and sends each click back.
  */
 export function InboxPage({
@@ -250,7 +250,7 @@ export function InboxPage({
                   type="button"
                   onClick={inbox.more}
                   disabled={inbox.loading === "more"}
-                  className="inline-flex h-6 items-center rounded-full border border-[var(--warp-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
+                  className="inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
                 >
                   {inbox.loading === "more" ? "Loading" : inbox.moreFailed ? "Could not load. Try again" : "See more"}
                 </button>

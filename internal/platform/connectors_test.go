@@ -5,7 +5,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/runtime"
-	githubflow "github.com/urmzd/warp/pkg/integrations/github"
+	githubflow "github.com/urmzd/humagen/pkg/integrations/github"
 )
 
 func TestConnectorToolsBelongOnlyToTheirInstallationTenant(t *testing.T) {

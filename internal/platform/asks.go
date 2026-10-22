@@ -6,8 +6,8 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // A question a run in a thread waits on is read by everyone in the thread,

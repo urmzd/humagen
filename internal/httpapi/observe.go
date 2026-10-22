@@ -12,13 +12,13 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/alerts"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/evals"
-	"github.com/urmzd/warp/pkg/journal"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/journal"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // maxWindow bounds how far back analytics and the journal may be asked for.

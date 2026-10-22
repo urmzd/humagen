@@ -21,10 +21,10 @@ import type {
 /** A bearer token, or a function that returns the current one. */
 export type TokenSource = string | (() => string | Promise<string>);
 
-/** How to reach a warp server and who to be when asking. */
-export interface WarpOptions {
+/** How to reach a humagen server and who to be when asking. */
+export interface HumagenOptions {
   /**
-   * Where the server is, such as `https://warp.example.com`. Use `""` in
+   * Where the server is, such as `https://humagen.example.com`. Use `""` in
    * a browser page the server itself serves, so requests stay same-origin.
    */
   baseUrl: string;
@@ -211,17 +211,17 @@ export function endsRun(event: DecodedRunEvent): boolean {
 }
 
 /**
- * The warp API client: every generated operation, plus the event stream
+ * The humagen API client: every generated operation, plus the event stream
  * as typed items and downloads as real bytes.
  */
-export class Warp extends ApiClient {
+export class Humagen extends ApiClient {
   readonly #baseUrl: string;
   readonly #fetch: typeof globalThis.fetch;
   readonly #prepare: (req: { url: string; init: RequestInit }) => Promise<{ url: string; init: RequestInit }>;
   readonly #headers: Record<string, string>;
   readonly #timeout: number | undefined;
 
-  constructor(options: WarpOptions) {
+  constructor(options: HumagenOptions) {
     const fetchFn = options.fetch ?? globalThis.fetch.bind(globalThis);
     const prepare = async (req: { url: string; init: RequestInit }) => {
       const headers = new Headers(req.init.headers);
@@ -414,7 +414,7 @@ export class Warp extends ApiClient {
   }
 }
 
-/** Make a client. The same as `new Warp(options)`. */
-export function createClient(options: WarpOptions): Warp {
-  return new Warp(options);
+/** Make a client. The same as `new Humagen(options)`. */
+export function createClient(options: HumagenOptions): Humagen {
+  return new Humagen(options);
 }

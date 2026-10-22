@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // Caps is how many clients a workspace may have. Zero means none: a caller

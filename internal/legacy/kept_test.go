@@ -4,10 +4,10 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/call"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/call"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 // These names are stored in run records, schedules, the ledger and the

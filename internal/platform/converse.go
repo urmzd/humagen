@@ -14,10 +14,10 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/registry"
 
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // maxTranscript bounds how much of a conversation is replayed to the next

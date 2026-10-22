@@ -1,4 +1,4 @@
-import type { Turn, TurnStatus } from "@warp/core";
+import type { Turn, TurnStatus } from "@humagen/core";
 
 /**
  * Signals that live outside the message on Slack: a reaction on the user's

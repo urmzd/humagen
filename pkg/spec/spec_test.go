@@ -28,7 +28,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	for _, b := range blocks {
 		all = append(all, b[1])
 	}
-	path := filepath.Join(t.TempDir(), "warp.yaml")
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
 	writeFile(t, path, strings.Join(all, "---\n"))
 	cfg, err := Load(path)
 	if err != nil {
@@ -38,7 +38,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 		t.Fatalf("config = %+v", cfg)
 	}
 	oidc, err := Block[OIDC](cfg.System.Spec.Auth.Slot)
-	if err != nil || oidc.ClientSecret.Ref != "env:WARP_OIDC_CLIENT_SECRET" || cfg.System.Spec.Auth.Groups.Roles["admin"][0] != "platform-admins" {
+	if err != nil || oidc.ClientSecret.Ref != "env:HUMAGEN_OIDC_CLIENT_SECRET" || cfg.System.Spec.Auth.Groups.Roles["admin"][0] != "platform-admins" {
 		t.Fatalf("auth = %+v %+v %v", cfg.System.Spec.Auth, oidc, err)
 	}
 	if err := cfg.Check(Kinds{}); err != nil {
@@ -72,8 +72,8 @@ func TestNoFileIsAWorkingDefault(t *testing.T) {
 }
 
 func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
-	sys := "api_version: warp/v1\nkind: System\nspec:\n"
-	plat := "api_version: warp/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n"
+	sys := "api_version: humagen/v1\nkind: System\nspec:\n"
+	plat := "api_version: humagen/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n"
 	for name, tc := range map[string]struct{ body, want string }{
 		"a typo":                   {sys + "  stores: {kind: memory}\n  storse: {}\n", `unknown field "storse"`},
 		"a secret as a value":      {sys + "  stores: {kind: postgres, postgres: {url: postgres://u:p@h/db}}\n", "a secret is a reference"},
@@ -82,8 +82,8 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"a field in a block":       {sys + "  blobs: {kind: s3, s3: {bucket: b, bukket: c}}\n", `unknown field "bukket"`},
 		"no url":                   {sys + "  stores: {kind: postgres}\n", "url is required"},
 		"half the s3 keys":         {sys + "  blobs: {kind: s3, s3: {bucket: b, access_key: {ref: env:A}}}\n", "go together"},
-		"an old version":           {"api_version: warp/v0\nkind: System\n", "api_version"},
-		"an unknown document":      {"api_version: warp/v1\nkind: Cluster\n", "kind is System or Platform"},
+		"an old version":           {"api_version: humagen/v0\nkind: System\n", "api_version"},
+		"an unknown document":      {"api_version: humagen/v1\nkind: Cluster\n", "kind is System or Platform"},
 		"an unpinned tool":         {plat + "  tools: [{name: d, kind: mcp, mcp: {transport: http, endpoint: 'https://a', accept: [{name: s}]}}]\n", "schema_hash"},
 		"slack without tokens":     {plat + "  surfaces: {slack: {enabled: true, team: T1}}\n", "bot_token"},
 		"an unreachable tenant":    {plat[:len(plat)-len("metadata: {name: default}\nspec:\n")] + "metadata: {name: other}\n", "cannot be reached"},
@@ -102,7 +102,7 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"an inbox kept less than a week": {plat + "  workspace: {inbox_retention: 6d}\n", "workspace.inbox_retention: \"6d\" is less than the least retention, 7d"},
 		"an inbox kept for no time":      {plat + "  workspace: {inbox_retention: forever}\n", "workspace.inbox_retention: \"forever\" is whole days"},
 	} {
-		path := filepath.Join(t.TempDir(), "warp.yaml")
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
 		writeFile(t, path, tc.body)
 		_, err := Load(path)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -112,8 +112,8 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 }
 
 func TestAKindIsOneTheBinaryHas(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "warp.yaml")
-	writeFile(t, path, "api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n")
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	writeFile(t, path, "api_version: humagen/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n")
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load cannot know the binary's kinds, so it lets one through: %v", err)
@@ -130,34 +130,34 @@ func TestAKindIsOneTheBinaryHas(t *testing.T) {
 	}
 }
 
-func TestWhatWarpWritesItReads(t *testing.T) {
+func TestWhatHumagenWritesItReads(t *testing.T) {
 	cfg := Config{Platforms: []Platform{{Metadata: Metadata{Name: "default"}, Spec: PlatformSpec{
 		Workspace: Workspace{Agents: &Agents{Enable: []string{EveryAgent}, Default: "lead"}},
 		Agents:    []Agent{{Spec: &agentspec.AgentSpec{Name: "lead", Provider: "anthropic", Model: "m", SystemPrompt: "Lead."}}},
 		Models:    []Model{{Slot: Slot{Kind: "anthropic", Block: MustJSON(ModelBlock{Key: &Ref{Ref: "env:ANTHROPIC_API_KEY"}})}, ModelShared: ModelShared{Name: "anthropic"}}},
-		Surfaces:  Surfaces{Slack: &Slack{Enabled: true, Team: "T1", BotToken: &Ref{Ref: "env:B"}, AppToken: &Ref{Ref: "keychain:warp/slack"}}},
+		Surfaces:  Surfaces{Slack: &Slack{Enabled: true, Team: "T1", BotToken: &Ref{Ref: "env:B"}, AppToken: &Ref{Ref: "keychain:humagen/slack"}}},
 	}}}}
 	cfg.System.Defaults()
 	b, err := Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "warp.yaml")
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
 	writeFile(t, path, string(b))
 	got, err := Load(path)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, b)
 	}
-	if got.Platforms[0].Spec.Workspace.Agents.Default != "lead" || got.Platforms[0].Spec.Surfaces.Slack.AppToken.Ref != "keychain:warp/slack" || got.System.Spec.Auth.Kind != "dev" {
+	if got.Platforms[0].Spec.Workspace.Agents.Default != "lead" || got.Platforms[0].Spec.Surfaces.Slack.AppToken.Ref != "keychain:humagen/slack" || got.System.Spec.Auth.Kind != "dev" {
 		t.Fatalf("round trip lost something:\n%s", b)
 	}
-	if !strings.HasPrefix(string(b), "api_version: warp/v1\nkind: System\n") {
+	if !strings.HasPrefix(string(b), "api_version: humagen/v1\nkind: System\n") {
 		t.Errorf("not in declaration order:\n%s", b)
 	}
 }
 
 // A person-scoped tool is declared with each tool's whole form, and what
-// warp writes it reads back.
+// humagen writes it reads back.
 func TestAPersonScopedToolDeclaresItsWholeForm(t *testing.T) {
 	schema := json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}}}`)
 	full, err := toolprovider.NewTool("search", "Search issues", schema)
@@ -177,7 +177,7 @@ func TestAPersonScopedToolDeclaresItsWholeForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "warp.yaml")
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
 	writeFile(t, path, string(b))
 	got, err := Load(path)
 	if err != nil {

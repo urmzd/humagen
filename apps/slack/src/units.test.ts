@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { choose, mayRoute } from "./agents.ts";
 import { NEEDED, readConfig, USEFUL } from "./config.ts";
-import { eventKey, runId, sessionOf, tagId, threadKey } from "./keys.ts";
 import {
   type ClientRecord,
   clientCredentials,
   frames,
-  httpWarp,
+  type HumagenError,
+  httpHumagen,
   staticToken,
-  type WarpError,
-} from "./warp.ts";
+} from "./humagen.ts";
+import { eventKey, runId, sessionOf, tagId, threadKey } from "./keys.ts";
 
 const session = { team: "T01ABCDEF", channel: "C01ABCDEF", threadTs: "1700000000.000100" };
 
@@ -150,7 +150,7 @@ test("config: every missing name is reported at once, and no value is echoed", (
   assert.throws(
     () => readConfig({ SLACK_BOT_TOKEN: "not-a-real-token" }),
     (e: Error) =>
-      /SLACK_APP_TOKEN, SLACK_TEAM_ID, WARP_TENANT/.test(e.message) &&
+      /SLACK_APP_TOKEN, SLACK_TEAM_ID, HUMAGEN_TENANT/.test(e.message) &&
       !e.message.includes("not-a-real-token"),
   );
   const cfg = readConfig({
@@ -158,11 +158,11 @@ test("config: every missing name is reported at once, and no value is echoed", (
     SLACK_APP_TOKEN: "a",
     SLACK_TEAM_ID: "T01ABCDEF",
     SLACK_OPERATORS: "U01ABCDEF, U02ABCDEF",
-    WARP_TENANT: "acme",
-    WARP_PUBLIC_URL: "https://warp.example.com/",
+    HUMAGEN_TENANT: "acme",
+    HUMAGEN_PUBLIC_URL: "https://humagen.example.com/",
   });
-  assert.equal(cfg.warp.url, "http://127.0.0.1:8080");
-  assert.equal(cfg.warp.publicUrl, "https://warp.example.com");
+  assert.equal(cfg.humagen.url, "http://127.0.0.1:8080");
+  assert.equal(cfg.humagen.publicUrl, "https://humagen.example.com");
   assert.deepEqual(cfg.slack.operators, ["U01ABCDEF", "U02ABCDEF"]);
 });
 
@@ -206,13 +206,13 @@ const json = (body: unknown, status = 200) =>
 
 test("createRun sends only the body the route accepts, with the key as a header", async () => {
   const { fn, asked } = fakeFetch([json({ id: "api-svc-k1", agent: "lead" }, 202)]);
-  const c = httpWarp({
-    baseUrl: "http://warp.test/",
+  const c = httpHumagen({
+    baseUrl: "http://humagen.test/",
     token: staticToken("t0k"),
     fetch: fn,
   });
   await c.createRun({ agent: "lead", text: "hello", after: "api-svc-k0" }, "k1");
-  assert.equal(asked[0]?.url, "http://warp.test/api/runs");
+  assert.equal(asked[0]?.url, "http://humagen.test/api/runs");
   const headers = asked[0]?.init.headers as Record<string, string>;
   assert.equal(headers["Idempotency-Key"], "k1");
   assert.equal(headers.authorization, "Bearer t0k");
@@ -236,7 +236,7 @@ test("a person's projects are read for them through the client, every page", asy
     json({ projects: [project("Field")], next: "c1" }),
     json({ projects: [project("Launch")], next: null }),
   ]);
-  const c = httpWarp({ baseUrl: "http://warp.test", token: staticToken(), fetch: fn });
+  const c = httpHumagen({ baseUrl: "http://humagen.test", token: staticToken(), fetch: fn });
   const got = await c.projectsFor({ client: "app", user: "U0ANA" });
   assert.deepEqual(
     got.map((p) => p.name),
@@ -245,8 +245,8 @@ test("a person's projects are read for them through the client, every page", asy
   assert.deepEqual(
     asked.map((a) => a.url),
     [
-      "http://warp.test/api/projects?act_as_client=app&act_as_user=U0ANA&limit=200",
-      "http://warp.test/api/projects?act_as_client=app&act_as_user=U0ANA&limit=200&before=c1",
+      "http://humagen.test/api/projects?act_as_client=app&act_as_user=U0ANA&limit=200",
+      "http://humagen.test/api/projects?act_as_client=app&act_as_user=U0ANA&limit=200&before=c1",
     ],
   );
 });
@@ -267,17 +267,17 @@ test("a refusal carries the limit, a missing object is null, and an error keeps 
     json({ error: "not found" }, 404),
     json({ error: "you need runs:write" }, 403),
   ]);
-  const c = httpWarp({ baseUrl: "http://warp.test", token: staticToken(), fetch: fn });
+  const c = httpHumagen({ baseUrl: "http://humagen.test", token: staticToken(), fetch: fn });
   await assert.rejects(
     c.createRun({ agent: "", text: "x" }, "k"),
-    (e: WarpError) =>
+    (e: HumagenError) =>
       e.status === 429 && e.refusal?.limit === "runs" && e.refusal.policy?.version === 3,
   );
   assert.equal(await c.getRun("nope"), null);
   assert.equal(await c.getThread("nope"), null);
   await assert.rejects(
     c.stopRun("r1"),
-    (e: WarpError) => e.status === 403 && e.refusal === undefined,
+    (e: HumagenError) => e.status === 403 && e.refusal === undefined,
   );
 });
 
@@ -297,8 +297,8 @@ test("the event stream hands each event on once across a reconnect, and ends on 
     // The server replays what the bus holds on every open.
     sse(frame(1, "lifecycle.accepted"), frame(2, "lifecycle.completed")),
   ]);
-  const c = httpWarp({
-    baseUrl: "http://warp.test",
+  const c = httpHumagen({
+    baseUrl: "http://humagen.test",
     token: staticToken(),
     fetch: fn,
     reconnectMs: 0,
@@ -310,7 +310,7 @@ test("the event stream hands each event on once across a reconnect, and ends on 
     if (item.type === "event" && item.event.kind === "lifecycle.completed") stop.abort();
   }
   assert.deepEqual(got, ["lifecycle.accepted", "inbox:m1", "lifecycle.completed"]);
-  assert.equal(asked[0]?.url, "http://warp.test/api/events?topic=agent%3Alead%3Ar1");
+  assert.equal(asked[0]?.url, "http://humagen.test/api/events?topic=agent%3Alead%3Ar1");
 });
 
 test("the inbox stream says each time it opens, first and after every reconnect, before what it carries", async () => {
@@ -325,8 +325,8 @@ test("the inbox stream says each time it opens, first and after every reconnect,
     () => new Response("unavailable", { status: 503 }),
     sse(notice("m2")),
   ]);
-  const c = httpWarp({
-    baseUrl: "http://warp.test",
+  const c = httpHumagen({
+    baseUrl: "http://humagen.test",
     token: staticToken(),
     fetch: fn,
     reconnectMs: 0,
@@ -347,7 +347,7 @@ test("a project's announcements are read newest first from its inbox, withdrawn 
     json({ messages: [{ id: "m2", kind: "announcement" }], next: null }),
     json({ messages: [], next: null }),
   ]);
-  const c = httpWarp({ baseUrl: "http://warp.test", token: staticToken(), fetch: fn });
+  const c = httpHumagen({ baseUrl: "http://humagen.test", token: staticToken(), fetch: fn });
   assert.deepEqual(
     (await c.announcements("Field", 50)).map((m) => m.id),
     ["m2"],
@@ -355,18 +355,18 @@ test("a project's announcements are read newest first from its inbox, withdrawn 
   assert.deepEqual(await c.announcements("", 50), []);
   assert.equal(
     asked[0]?.url,
-    "http://warp.test/api/projects/Field/inbox?kind=announcement&state=all&limit=50",
+    "http://humagen.test/api/projects/Field/inbox?kind=announcement&state=all&limit=50",
   );
   assert.equal(
     asked[1]?.url,
-    "http://warp.test/api/projects/~/inbox?kind=announcement&state=all&limit=50",
+    "http://humagen.test/api/projects/~/inbox?kind=announcement&state=all&limit=50",
   );
 });
 
 test("an event stream the caller may not read is an error, not a retry loop", async () => {
   const { fn } = fakeFetch([json({ error: "you need runs:read" }, 403)]);
-  const c = httpWarp({
-    baseUrl: "http://warp.test",
+  const c = httpHumagen({
+    baseUrl: "http://humagen.test",
     token: staticToken(),
     fetch: fn,
     reconnectMs: 0,
@@ -391,7 +391,7 @@ test("a machine token is asked for once, kept, and asked for again when refused"
     tokenUrl: "https://idp.example.com/oauth2/token",
     clientId: "slack-app",
     clientSecret: "not-a-real-secret",
-    scopes: ["warp:runs:read", "warp:runs:write"],
+    scopes: ["humagen:runs:read", "humagen:runs:write"],
     fetch: issued.fn,
     now: () => clock,
   });
@@ -399,7 +399,7 @@ test("a machine token is asked for once, kept, and asked for again when refused"
     json({ error: "sign in to continue" }, 401),
     json({ principal: { subject: "slack-app", tenant: "acme", kind: "machine" }, permissions: [] }),
   ]);
-  const c = httpWarp({ baseUrl: "http://warp.test", token, fetch: api.fn });
+  const c = httpHumagen({ baseUrl: "http://humagen.test", token, fetch: api.fn });
   assert.equal((await c.getMe()).principal.subject, "slack-app");
   assert.equal(issued.asked.length, 2, "the refusal asks the provider again");
   assert.equal(
@@ -408,7 +408,7 @@ test("a machine token is asked for once, kept, and asked for again when refused"
   );
   const form = new URLSearchParams(String(issued.asked[0]?.init.body));
   assert.equal(form.get("grant_type"), "client_credentials");
-  assert.equal(form.get("scope"), "warp:runs:read warp:runs:write");
+  assert.equal(form.get("scope"), "humagen:runs:read humagen:runs:write");
   assert.ok(
     !String(issued.asked[0]?.init.body).includes("not-a-real-secret"),
     "the secret travels in the header only",
@@ -435,11 +435,13 @@ test("the README's least privilege and the app's own lists cover every route it 
     const x = /^ {6}x-permission: (\S+)$/.exec(line);
     if (x && path && method) need.set(`${method} ${path}`, x[1] ?? "");
   }
-  // The routes the app calls, as httpWarp's table says.
-  const routes = [...read("./warp.ts").matchAll(/`(GET|POST|PUT|PATCH|DELETE) (\/api\/[^\s`?]*)/g)];
+  // The routes the app calls, as httpHumagen's table says.
+  const routes = [
+    ...read("./humagen.ts").matchAll(/`(GET|POST|PUT|PATCH|DELETE) (\/api\/[^\s`?]*)/g),
+  ];
   assert.ok(routes.length > 10, "the table was read");
   const scopes = new Set(
-    [...read("../README.md").matchAll(/^\| `(warp:[a-z]+:[a-z]+)` \|/gm)].map((m) => m[1]),
+    [...read("../README.md").matchAll(/^\| `(humagen:[a-z]+:[a-z]+)` \|/gm)].map((m) => m[1]),
   );
   const shape = (route: string) => route.replace(/\{[^}]+\}/g, "{}");
   const byShape = new Map([...need].map(([route, permission]) => [shape(route), permission]));
@@ -447,15 +449,15 @@ test("the README's least privilege and the app's own lists cover every route it 
     const permission = byShape.get(shape(`${verb} ${route}`));
     assert.ok(permission, `${verb} ${route} is not in the spec`);
     if (permission === "authenticated") continue;
-    assert.ok(scopes.has(`warp:${permission}`), `${verb} ${route} needs warp:${permission}`);
+    assert.ok(scopes.has(`humagen:${permission}`), `${verb} ${route} needs humagen:${permission}`);
     // At startup the app warns about any permission it does not list as one it uses.
     assert.ok(USEFUL.includes(permission), `${verb} ${route} needs ${permission}, not in USEFUL`);
   }
   for (const scope of scopes) {
-    const permission = (scope ?? "").replace(/^warp:/, "");
+    const permission = (scope ?? "").replace(/^humagen:/, "");
     assert.ok(USEFUL.includes(permission), `the README asks for ${scope}, not in USEFUL`);
   }
   for (const permission of NEEDED) {
-    assert.ok(scopes.has(`warp:${permission}`), `${permission} is needed, not in the README`);
+    assert.ok(scopes.has(`humagen:${permission}`), `${permission} is needed, not in the README`);
   }
 });

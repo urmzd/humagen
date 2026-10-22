@@ -1,23 +1,23 @@
-# The warp spec
+# The humagen spec
 
-warp is configured in one language: versioned YAML documents (JSON works too)
+humagen is configured in one language: versioned YAML documents (JSON works too)
 of two kinds, each with one owner.
 
 | Kind | Says | Owned by | Takes effect |
 |------|------|----------|--------------|
-| `System` | how and where warp runs: listeners, sign-in, stores, bus, files, limits, extensions | whoever runs the process: a laptop, compose, Helm values | at start |
+| `System` | how and where humagen runs: listeners, sign-in, stores, bus, files, limits, extensions | whoever runs the process: a laptop, compose, Helm values | at start |
 | `Platform` | what one workspace offers: its models, tools, agents, Slack and GitHub, settings | that workspace's admins | at start, with the console building on it |
 
-Both can live in one `warp.yaml`, separated by `---`, or in separate files.
-Two commands use it. `warp start` runs the platform here; `warp deploy` runs it
+Both can live in one `humagen.yaml`, separated by `---`, or in separate files.
+Two commands use it. `humagen start` runs the platform here; `humagen deploy` runs it
 where the System document's `deploy` slot says (here, a Docker Compose project,
 or a Kubernetes cluster). Both read `-f PATH` (repeatable; a directory reads its
-`*.yaml`, `*.yml` and `*.json`). With no `-f` they read `warp.yaml` from
-`WARP_HOME`, else the user config directory, and `warp start` runs on defaults,
-with example agents, if there is none. `warp setup` writes one by asking a few
+`*.yaml`, `*.yml` and `*.json`). With no `-f` they read `humagen.yaml` from
+`HUMAGEN_HOME`, else the user config directory, and `humagen start` runs on defaults,
+with example agents, if there is none. `humagen setup` writes one by asking a few
 questions.
 
-`warp serve` is the command for a server: what the image, the chart and the
+`humagen serve` is the command for a server: what the image, the chart and the
 compose project run. It reads only the files `-f` names, seeds nothing, never
 asks, and signs in with `oidc` unless a flag or a System document says
 otherwise. A System document sets sign-in like any other field, so one that
@@ -33,25 +33,25 @@ Four rules hold for every field:
    `{ref: op://VAULT/ITEM/FIELD}`, read when it is used and never stored. A bare
    string where a secret belongs is refused.
 3. **Every replaceable part is a slot: `kind` plus a block named after it.**
-   `kind: postgres` reads `postgres: {...}`. A program built on the `warp` package
-   registers more kinds (`warp.WithKind`), and the file selects one by name
+   `kind: postgres` reads `postgres: {...}`. A program built on the `humagen` package
+   registers more kinds (`humagen.WithKind`), and the file selects one by name
    with no other change. An unknown kind is an error listing the kinds the
    binary has. A choice is a file or an interface, never a fork.
 4. **Unknown fields are errors**, with the document and path they are in.
 
-Flags still work and win over the file, so `warp start -addr 127.0.0.1:9090`
-needs no edit. `warp config check -f warp.yaml` validates without starting and
-lists every `env:` reference the shell it runs in has not set; `warp config
+Flags still work and win over the file, so `humagen start -addr 127.0.0.1:9090`
+needs no edit. `humagen config check -f humagen.yaml` validates without starting and
+lists every `env:` reference the shell it runs in has not set; `humagen config
 print` writes the result with every default filled in.
 
 ## System
 
 ```yaml
-api_version: warp/v1
+api_version: humagen/v1
 kind: System
 metadata:
-  name: warp                # the deployment's identifier
-  display_name: Warp        # what people see: console title, Slack app name
+  name: humagen                # the deployment's identifier
+  display_name: Humagen        # what people see: console title, Slack app name
 spec:
   server:
     addr: 127.0.0.1:8080
@@ -63,16 +63,16 @@ spec:
     kind: oidc
     oidc:
       issuer: https://login.example.com
-      client_id: warp
-      client_secret: {ref: env:WARP_OIDC_CLIENT_SECRET}
-      audience: warp
+      client_id: humagen
+      client_secret: {ref: env:HUMAGEN_OIDC_CLIENT_SECRET}
+      audience: humagen
     tenant: {fixed: default}                 # or {claim: org}
     groups: {claim: groups, roles: {admin: [platform-admins], operator: [staff]}}   # admin, manager, operator, viewer
     policy_file: ""                          # an authorization policy (docs/security.md)
 
   stores:                   # slot: memory | postgres. Every store family
     kind: postgres
-    postgres: {url: {ref: env:WARP_POSTGRES_URL}}
+    postgres: {url: {ref: env:HUMAGEN_POSTGRES_URL}}
 
   bus:                      # slot: memory | redis
     kind: memory
@@ -80,13 +80,13 @@ spec:
   blobs:                    # slot: disk | memory | s3
     kind: s3
     s3:
-      bucket: warp-files
+      bucket: humagen-files
       region: us-east-1
       endpoint: ""          # set for MinIO or R2
       prefix: ""
       path_style: false
-      access_key: {ref: env:WARP_S3_ACCESS_KEY_ID}       # both left out: the AWS chain
-      secret_key: {ref: env:WARP_S3_SECRET_ACCESS_KEY}
+      access_key: {ref: env:HUMAGEN_S3_ACCESS_KEY_ID}       # both left out: the AWS chain
+      secret_key: {ref: env:HUMAGEN_S3_SECRET_ACCESS_KEY}
 
   execution:
     workspace: ""           # agents' files. Empty is the user cache directory
@@ -96,22 +96,22 @@ spec:
     builtin: {provider: "", model: ""}       # the platform's own agents
 
   secret_env:               # variables a workspace's clients may reference, by tenant
-    default: [WARP_SLACK_TOKEN]
+    default: [HUMAGEN_SLACK_TOKEN]
 
   person_refs:              # where each workspace's people may keep their own tool credentials, by tenant
-    default: ["env:WARP_PERSON_{subject}_"]   # how their references may start, {subject} being the person's; none listed is none
-    # deploy local (this machine) may also list "op://People/{subject}/" and "keychain:warp-people-{subject}/"
+    default: ["env:HUMAGEN_PERSON_{subject}_"]   # how their references may start, {subject} being the person's; none listed is none
+    # deploy local (this machine) may also list "op://People/{subject}/" and "keychain:humagen-people-{subject}/"
 
   extensions: []            # process-wide parts a binary registered, each a slot
 
-  deploy:                   # slot: local | compose | kubernetes. Read by warp deploy
+  deploy:                   # slot: local | compose | kubernetes. Read by humagen deploy
     kind: compose
     compose:
-      image: ""             # empty builds one from `build`, a warp checkout
-      postgres: true        # run Postgres beside warp and point the stores at it
+      image: ""             # empty builds one from `build`, a humagen checkout
+      postgres: true        # run Postgres beside humagen and point the stores at it
       port: 8080
     # kind: kubernetes
-    # kubernetes: {context: prod, namespace: warp, host: warp.example.com, image: {repository: ghcr.io/urmzd/warp, tag: v0.10.0}}
+    # kubernetes: {context: prod, namespace: humagen, host: humagen.example.com, image: {repository: ghcr.io/urmzd/humagen, tag: v0.10.0}}
 ```
 
 ## Platform
@@ -119,7 +119,7 @@ spec:
 One document per workspace. `metadata.name` is its tenant.
 
 ```yaml
-api_version: warp/v1
+api_version: humagen/v1
 kind: Platform
 metadata:
   name: default
@@ -163,8 +163,8 @@ spec:
         experts: [{who: "okta|00u1ana", topics: [billing, renewals]}]
         agents: {allow: [globex-helper, lead], default: globex-helper}  # narrows: only these run here and below
         members: [{who: "okta|00u1ana", role: owner}]   # no "*": members only, read by its members alone
-    person_credentials: {values: false}   # true lets people store a tool credential's value with warp
-    release_notes: true     # each release's breaking changes and features, posted once in the workspace's inbox from warp
+    person_credentials: {values: false}   # true lets people store a tool credential's value with humagen
+    release_notes: true     # each release's breaking changes and features, posted once in the workspace's inbox from humagen
     inbox_retention: 180d   # how long the inbox keeps what was settled for everyone. Left out: 90d. At least 7d
 
   models:                   # each a slot: anthropic | openai | ollama
@@ -214,26 +214,26 @@ spec:
       spec: {name: globex-helper, provider: local, model: YOUR_LOCAL_MODEL, system_prompt: You know the Globex account.}
 
   surfaces:
-    slack:                  # warp runs the Slack app as its client, over Socket Mode
+    slack:                  # humagen runs the Slack app as its client, over Socket Mode
       enabled: true
       team: T0123456
       bot_token: {ref: env:SLACK_BOT_TOKEN}
       app_token: {ref: env:SLACK_APP_TOKEN}
       operators: [U0123456]
-      command: /agent       # `warp slack manifest -f warp.yaml` writes the app's manifest
-      warp_client:          # how the app signs in to warp's API. Dev sign-in needs none
+      command: /agent       # `humagen slack manifest -f humagen.yaml` writes the app's manifest
+      humagen_client:          # how the app signs in to humagen's API. Dev sign-in needs none
         token_url: https://login.example.com/oauth2/v1/token
-        client_id: warp-slack
-        client_secret: {ref: env:WARP_SLACK_CLIENT_SECRET}
-        scopes: [warp:agents:read, warp:runs:read, warp:runs:write, warp:billing:read, warp:projects:read]
+        client_id: humagen-slack
+        client_secret: {ref: env:HUMAGEN_SLACK_CLIENT_SECRET}
+        scopes: [humagen:agents:read, humagen:runs:read, humagen:runs:write, humagen:billing:read, humagen:projects:read]
         audience: ""        # set when the provider needs one named
-      # warp_token: {ref: env:WARP_SLACK_API_TOKEN}   # instead: a bearer token that does not expire
+      # humagen_token: {ref: env:HUMAGEN_SLACK_API_TOKEN}   # instead: a bearer token that does not expire
     github:
       enabled: false
       owners: [acme]
-      token: {ref: env:WARP_GITHUB_TOKEN}
-      webhook_secret: {ref: env:WARP_GITHUB_WEBHOOK_SECRET}
-      login: warp[bot]      # the app's own login; see github.md, "Who a comment asks"
+      token: {ref: env:HUMAGEN_GITHUB_TOKEN}
+      webhook_secret: {ref: env:HUMAGEN_GITHUB_WEBHOOK_SECRET}
+      login: humagen[bot]      # the app's own login; see github.md, "Who a comment asks"
 ```
 
 ### What the file owns
@@ -244,7 +244,7 @@ builds on:
 - **Agents** in the file are created, or revised to the file's spec. An
   unchanged spec makes no new revision. An edit made in the console to an agent
   the file declares lasts until the next start. `auto` and `sme` are tags, so
-  never an agent's name (`warp config check` refuses one written inline, the
+  never an agent's name (`humagen config check` refuses one written inline, the
   start one read from a file), and a new agent named like a handle a person
   in the workspace goes by fails the start with "a person goes by @dana", as
   the API answers 409.
@@ -299,21 +299,21 @@ builds on:
 `surfaces.slack` runs the Slack app (`apps/slack`) beside the server as a
 client of its API, restarting it when it exits. It needs Node.js on `PATH` and
 `apps/slack` with its dependencies installed (`pnpm install`), found under the
-working directory, beside the binary, or at `WARP_SLACK_APP_DIR`. The warp image
+working directory, beside the binary, or at `HUMAGEN_SLACK_APP_DIR`. The humagen image
 carries neither, so there the surface is logged as off and the server runs
 without it.
 
-The app is given its tokens, its workspace and warp's address, plus `PATH`,
+The app is given its tokens, its workspace and humagen's address, plus `PATH`,
 `HOME`, `TMPDIR`, `TZ`, `XDG_STATE_HOME`, the `NODE_OPTIONS`,
 `NODE_EXTRA_CA_CERTS`, `NODE_USE_ENV_PROXY` and proxy variables, and
 `SLACK_BRANDING` and `SLACK_SOCKET_*`, when they are set. Nothing else of
-warp's environment reaches it.
+humagen's environment reaches it.
 
-It calls warp's API with a credential for the server's sign-in. Under `dev` it
-needs none. Under `oidc` or `mock` it needs `warp_client`: a machine client of
+It calls humagen's API with a credential for the server's sign-in. Under `dev` it
+needs none. Under `oidc` or `mock` it needs `humagen_client`: a machine client of
 the identity provider, whose access tokens the app gets with client credentials
 and renews as they expire, with the scopes [the API](api.md#authenticating-a-machine)
-lists for a Slack surface. `warp_token` is a bearer token given as it is, for a
+lists for a Slack surface. `humagen_token` is a bearer token given as it is, for a
 token that does not expire; set one or the other. A process cannot sign in
 through Tailscale Serve, so `tailscale` sign-in refuses a Slack surface. A spec
 that needs a credential and has none is refused when it is checked, and so is a
@@ -347,7 +347,7 @@ is at least a member of it, and `projects:govern` owns it whatever they say.
 `workspace.project_kinds` are at most 16 kinds of the workspace's own, each
 `{name, title, like}`: a name of lower case letters, digits and dashes that is
 not a built-in kind, a title of at most 40 characters, and `like` either
-`team` or `account`. Behaviors stay warp's; names are the workspace's. A kind
+`team` or `account`. Behaviors stay humagen's; names are the workspace's. A kind
 a project still has cannot be removed: a start that would fails, naming the
 projects.
 
@@ -392,7 +392,7 @@ whose handle is `<name>`). Left out, a workspace has the built-in kinds only.
 Only the file declares them; the console completes each kind's items as a
 person types.
 
-`warp config check` refuses a mistake with its path, such as
+`humagen config check` refuses a mistake with its path, such as
 `workspace.projects[2].parent: "Feild" is not a project in this file`. A
 parent must be in the same file, because one made only in the console cannot
 be checked before start. A workspace has at most 500 projects, and the start
@@ -437,7 +437,7 @@ person with no credential of their own is never given a shared one. Its
 server is not reached at start, since there is no credential to reach it
 with, so each tool in `accept` carries its `description` and `input_schema`
 as the server offers them, and is accepted in that form when its
-`schema_hash` is the hash of that schema (`warp config check` prints the
+`schema_hash` is the hash of that schema (`humagen config check` prints the
 hash it computed when they differ). A stdio one needs `credential_as`.
 
 A run that acts for someone, of an agent granted a person-scoped tool, asks
@@ -463,7 +463,7 @@ it:
 | The run | Acts for |
 |---|---|
 | asked in the console, or through the API with a person's sign-in | that person |
-| asked by the Slack app built on the API for a Slack person its client maps (`act_as`) | the mapped person, never the app. A message the app posts for them into the warp thread their Slack thread is (with its `surface`) is theirs, and so is every run it starts |
+| asked by the Slack app built on the API for a Slack person its client maps (`act_as`) | the mapped person, never the app. A message the app posts for them into the humagen thread their Slack thread is (with its `surface`) is theirs, and so is every run it starts |
 | asked about with that app's message shortcut, on someone else's message | nobody: the app asks as itself, since those words are the whole request. Under a dev sign-in, where the app's own credential is the person `dev`, asking as itself acts for `dev`. In a channel bound to a project the app refuses it, since only a person's own words are posted there |
 | raised by a Slack client's own connector | the one person the team's Slack clients map that Slack user to; none, or two different people, is nobody. It is started only if that person may start it where it is filed: the policy grants their subject `runs:write` and they are a member of the project. In a channel bound to a project it is not started for nobody |
 | started by a message in a shared thread (a tagged agent, `@auto` or the thread's default) | the person who posted it, never another participant, though it is sent what the others said in the room ahead of the poster's words; its retry is the poster's alone, from their inbox |
@@ -485,17 +485,17 @@ A person connects a credential in one of two ways:
   under `op://People/{subject}/`, Ana (subject `ana`) may give
   `op://People/ana/issues` and nobody else may. `{subject}` comes once,
   after a place of the operator's own, and is followed by `/` (by `_` in an
-  `env:` start, `env:WARP_PERSON_{subject}_`, and in a `keychain:` start it
-  is in the service, `keychain:warp-people-{subject}/`). No two starts may
+  `env:` start, `env:HUMAGEN_PERSON_{subject}_`, and in a `keychain:` start it
+  is in the service, `keychain:humagen-people-{subject}/`). No two starts may
   share a place, within a workspace or across two, so give each workspace
   its own. A subject is written as it is, except in an `env:` start, which
-  writes it in capitals (`ana` gives `env:WARP_PERSON_ANA_ISSUES`). A
+  writes it in capitals (`ana` gives `env:HUMAGEN_PERSON_ANA_ISSUES`). A
   subject with a character a reference cannot hold there (an `env:` start
   takes lowercase letters and digits; the others take letters, digits, `.`,
   `_`, `@` and `-`) can give no reference under it, only a value. Keep
   each person's items under their exact subject, in a place that holds
   nothing else, and in a store that tells names apart by case. An `env:`
-  start names a `WARP_` variable, never a sign-in secret. A workspace with no
+  start names a `HUMAGEN_` variable, never a sign-in secret. A workspace with no
   entry may reference nothing.
 - **A value**, only when the Platform document sets
   `workspace.person_credentials.values: true`. The value is stored, in the
@@ -537,8 +537,8 @@ the project and the projects below it.
 ### Release notes
 
 `workspace.release_notes: true` (off by default) posts what the release of
-warp this process runs brings in the workspace's own inbox, as an
-announcement from warp: "What's new in warp 0.16.0", then the release's
+humagen this process runs brings in the workspace's own inbox, as an
+announcement from humagen: "What's new in humagen 0.16.0", then the release's
 breaking changes and its features, its Breaking and Features groups in the
 changelog the binary carries (`CHANGELOG.md`), and the link to the full
 changelog. The release tool files every breaking change under Breaking, a
@@ -554,22 +554,22 @@ With memory stores every start is a new inbox, so it is posted at each
 start. A release of fixes alone posts nothing, and so does a build that is
 not a release: `dev`, a local build or a pseudo-version. The release is the
 version a release build stamps (`-ldflags "-X main.version=v0.16.0"`, as the
-Dockerfile does), else the version Go records for warp's module
-(`go install github.com/urmzd/warp/cmd/warp@v0.16.0`, or a program that
-imports warp at that version). It counts against the workspace's 20
+Dockerfile does), else the version Go records for humagen's module
+(`go install github.com/urmzd/humagen/cmd/humagen@v0.16.0`, or a program that
+imports humagen at that version). It counts against the workspace's 20
 announcements a day; a start past them posts it at the next start. The
 Slack app connects after the start and catches up when it does, so it posts
 them in a channel bound to the workspace's general, once it was bound
 before that start, where a reply under
-them starts a thread seeded with them, from warp ([Slack](slack.md)).
+them starts a thread seeded with them, from humagen ([Slack](slack.md)).
 
 ### Inbox retention
 
 `workspace.inbox_retention` is how long the workspace's inbox keeps what was
 settled for everyone: a message resolved, dismissed or withdrawn. It is whole
 days, such as `90d`, or a duration, such as `2160h`; left out, it is 90
-days, and it is at least `7d` and at most 100 years (`warp config check`
-refuses less or more). At start and every hour after, warp drops each
+days, and it is at least `7d` and at most 100 years (`humagen config check`
+refuses less or more). At start and every hour after, humagen drops each
 message settled longer ago than that, with everything recorded about it:
 its outcomes, who read or hid it, and where a client posted it. What is open or snoozed is never dropped, nor a
 question a run still waits on, and an announcement stays while it is open
@@ -614,40 +614,40 @@ no longer shows it. The log lines each inbox decision writes
 
 ## Deploying it
 
-`warp deploy` takes the same documents anywhere, so nobody writes compose files
+`humagen deploy` takes the same documents anywhere, so nobody writes compose files
 or Helm values by hand:
 
-| `deploy.kind` | What `warp deploy` does |
+| `deploy.kind` | What `humagen deploy` does |
 |---------------|-------------------------|
-| `local` (the default) | `warp start` on this machine |
-| `compose` | writes a Docker Compose project (warp, and Postgres when asked) and brings it up. Sign-in that only answers on loopback runs on the host's network, so it stays on this machine |
-| `kubernetes` | installs the Helm chart warp carries, with the spec as its values, into the cluster the block names |
+| `local` (the default) | `humagen start` on this machine |
+| `compose` | writes a Docker Compose project (humagen, and Postgres when asked) and brings it up. Sign-in that only answers on loopback runs on the host's network, so it stays on this machine |
+| `kubernetes` | installs the Helm chart humagen carries, with the spec as its values, into the cluster the block names |
 
-`warp deploy -o DIR` writes the project or the chart and values and stops, for
+`humagen deploy -o DIR` writes the project or the chart and values and stops, for
 review or for GitOps (the Flux example in `deploy/flux` applies the same
 chart). A secret never lands in a written file: an `env:` reference is passed
 from the deploying shell's environment, and a `keychain:` or `op://` one is
 read on this machine and handed to the target as a variable the written spec
 references. The `kubernetes` block's `values` are merged over the chart
-values warp derives, but may not set `system` or `platforms`: those are the
-spec's documents, whose references `warp deploy` carries and checks, so set
+values humagen derives, but may not set `system` or `platforms`: those are the
+spec's documents, whose references `humagen deploy` carries and checks, so set
 them there.
 
 That is for the spec's own references. A person's reference
-([Tools that act as you](#tools-that-act-as-you)) is read where warp runs,
+([Tools that act as you](#tools-that-act-as-you)) is read where humagen runs,
 when a run uses it, so there is nothing to read or pass when deploying:
 
 - A `keychain:` or `op://` start in `person_refs` names this machine's
   keychain or the 1Password account it signed in to, which a container cannot
-  reach. `warp deploy` refuses one for `compose` and `kubernetes`, naming the
+  reach. `humagen deploy` refuses one for `compose` and `kubernetes`, naming the
   entry. For those targets list an `env:` start instead, let people store
-  their credential with warp (`workspace.person_credentials.values: true`), or
+  their credential with humagen (`workspace.person_credentials.values: true`), or
   deploy `local`.
 - An `env:` start names one variable per person and tool
-  (`env:WARP_PERSON_{subject}_` holds Ana's `WARP_PERSON_ANA_ISSUES`), which
-  nobody knows when deploying, so `warp deploy` does not pass them, and says
+  (`env:HUMAGEN_PERSON_{subject}_` holds Ana's `HUMAGEN_PERSON_ANA_ISSUES`), which
+  nobody knows when deploying, so `humagen deploy` does not pass them, and says
   so in what it prints and in the file it writes. Set each in the target:
-  for `compose` in the warp service's environment, for example in a
+  for `compose` in the humagen service's environment, for example in a
   `compose.override.yaml` beside the `compose.yaml` it writes, and for
   `kubernetes` in the pod's, for example as `extraEnv` in the block's
   `values`, from a Secret of your own.
@@ -662,7 +662,7 @@ when a run uses it, so there is nothing to read or pass when deploying:
 | `platform.models[]` | anthropic, openai, ollama | an `agentrt.ProviderFunc` |
 | `platform.tools[]` | mcp | a `runtime.Catalog` |
 
-`warp.WithKind(slot, name, factory)` registers one. The factory is given its
+`humagen.WithKind(slot, name, factory)` registers one. The factory is given its
 block as JSON and decodes it strictly itself, so its fields get the same
 unknown-field errors as the built-ins'. Sign-in and stores are built in only,
 for now.

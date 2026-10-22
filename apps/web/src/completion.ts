@@ -1,4 +1,4 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { coworking, type DirectoryPerson, type MentionItem, type MentionKind, type Revision, type Skill } from "./api.ts";
 import { availableOf } from "./availability.ts";

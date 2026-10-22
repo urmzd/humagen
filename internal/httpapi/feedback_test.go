@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/feedback"
-	"github.com/urmzd/warp/pkg/people"
+	"github.com/urmzd/humagen/pkg/feedback"
+	"github.com/urmzd/humagen/pkg/people"
 )
 
 func TestFeedbackReferencesItsContextAndScopesTheRun(t *testing.T) {
@@ -37,7 +37,7 @@ func TestFeedbackReferencesItsContextAndScopesTheRun(t *testing.T) {
 		t.Fatalf("collect: %d %v", res.StatusCode, out)
 	}
 	for _, method := range []string{"GET", "PUT"} {
-		if res, _ := f.do(t, nil, method, path, f.machine(t, "globex", "warp:runs:read"), `{"rating":"up"}`); res.StatusCode != http.StatusNotFound {
+		if res, _ := f.do(t, nil, method, path, f.machine(t, "globex", "humagen:runs:read"), `{"rating":"up"}`); res.StatusCode != http.StatusNotFound {
 			t.Fatalf("another tenant %s: %d", method, res.StatusCode)
 		}
 	}
@@ -50,19 +50,19 @@ func TestFeedbackReferencesItsContextAndScopesTheRun(t *testing.T) {
 
 func TestSlackConnectionControlsActOnlyForTheirMappedPerson(t *testing.T) {
 	f, _, _ := toolFixture(t)
-	app := f.machine(t, "acme", "warp:runs:read", "warp:runs:write")
+	app := f.machine(t, "acme", "humagen:runs:read", "humagen:runs:write")
 	path := "/api/me/credentials/issues?act_as_client=slack-app&act_as_user=U0ADA"
-	res, out := f.do(t, nil, "PUT", path, app, `{"ref":"env:WARP_PERSON_ANA_ISSUES"}`)
+	res, out := f.do(t, nil, "PUT", path, app, `{"ref":"env:HUMAGEN_PERSON_ANA_ISSUES"}`)
 	if res.StatusCode != http.StatusOK || out["connected"] != true {
 		t.Fatalf("connect as mapped person: %d %v", res.StatusCode, out)
 	}
-	if res, out := f.do(t, nil, "PUT", path, app, `{"ref":"env:WARP_PERSON_BEN_ISSUES"}`); res.StatusCode != http.StatusBadRequest {
+	if res, out := f.do(t, nil, "PUT", path, app, `{"ref":"env:HUMAGEN_PERSON_BEN_ISSUES"}`); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("accepted someone else's credential: %d %v", res.StatusCode, out)
 	}
 	if res, out := f.do(t, nil, "DELETE", path, app, ""); res.StatusCode != http.StatusNoContent {
 		t.Fatalf("disconnect: %d %v", res.StatusCode, out)
 	}
-	if res, _ := f.do(t, nil, "PUT", path, f.machineAs(t, "another-machine", "acme", "warp:runs:write"), `{"ref":"env:WARP_PERSON_ANA_ISSUES"}`); res.StatusCode == http.StatusOK {
+	if res, _ := f.do(t, nil, "PUT", path, f.machineAs(t, "another-machine", "acme", "humagen:runs:write"), `{"ref":"env:HUMAGEN_PERSON_ANA_ISSUES"}`); res.StatusCode == http.StatusOK {
 		t.Fatal("another machine changed a connection")
 	}
 }

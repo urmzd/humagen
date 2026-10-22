@@ -1,23 +1,23 @@
 {
-  "name": "@warp/slack",
+  "name": "@humagen/slack",
   "version": "0.20.0",
   "private": true,
   "type": "module",
-  "description": "Socket Mode Slack app: Warp runs rendered with shared components, streamed natively, with a stop button and an inbox.",
+  "description": "Socket Mode Slack app: Humagen runs rendered with shared components, streamed natively, with a stop button and an inbox.",
   "scripts": {
     "start": "tsx src/main.ts",
     "check": "biome check",
     "fmt": "biome check --write",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/*.test.ts src/*.test.tsx",
-    "test:server": "WARP_SERVER_TEST=1 node --import tsx --test src/warp.server.test.ts",
+    "test:server": "HUMAGEN_SERVER_TEST=1 node --import tsx --test src/humagen.server.test.ts",
     "validate": "SLACK_VALIDATE=1 node --import tsx --test src/app.test.tsx"
   },
   "dependencies": {
-    "@warp/adapter": "workspace:*",
-    "@warp/components": "workspace:*",
-    "@warp/core": "workspace:*",
-    "@warp/render-slack": "workspace:*",
+    "@humagen/adapter": "workspace:*",
+    "@humagen/components": "workspace:*",
+    "@humagen/core": "workspace:*",
+    "@humagen/render-slack": "workspace:*",
     "react": "^19.3.0",
     "tsx": "^4.23.15"
   },
@@ -26,7 +26,7 @@
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@warp/render-web": "workspace:*",
+    "@humagen/render-web": "workspace:*",
     "react-dom": "^19.3.0",
     "typescript": "^6.0.0"
   }

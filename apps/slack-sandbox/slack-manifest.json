@@ -4,9 +4,9 @@
     "minor_version": 1
   },
   "display_information": {
-    "name": "Warp",
+    "name": "Humagen",
     "description": "Your workspace's agents in Slack. Ask a question, build an agent, or review what one is waiting on.",
-    "long_description": "Warp brings your workspace's agents into Slack. Mention @Warp in a channel, or send it a direct message, and the agent that fits the question answers. Answers cite the documents they came from. Before an agent posts a message, changes something or remembers something, it asks a person first. The Home tab shows what needs you, which agent answers your direct messages, and your connections. Agents only act as you through accounts you connected yourself.",
+    "long_description": "Humagen brings your workspace's agents into Slack. Mention @Humagen in a channel, or send it a direct message, and the agent that fits the question answers. Answers cite the documents they came from. Before an agent posts a message, changes something or remembers something, it asks a person first. The Home tab shows what needs you, which agent answers your direct messages, and your connections. Agents only act as you through accounts you connected yourself.",
     "background_color": "#2b50c8"
   },
   "features": {
@@ -16,18 +16,18 @@
       "messages_tab_read_only_enabled": false
     },
     "bot_user": {
-      "display_name": "warp",
+      "display_name": "humagen",
       "always_online": true
     },
     "shortcuts": [
       {
-        "name": "Ask Warp",
+        "name": "Ask Humagen",
         "type": "global",
         "callback_id": "aui_ask",
         "description": "Ask from anywhere. The answer arrives in the app's messages."
       },
       {
-        "name": "Ask Warp about this",
+        "name": "Ask Humagen about this",
         "type": "message",
         "callback_id": "aui_ask_about",
         "description": "Answer in this message's thread, using the message as the question."
@@ -36,13 +36,13 @@
     "slash_commands": [
       {
         "command": "/agent",
-        "description": "Ask Warp in this channel",
+        "description": "Ask Humagen in this channel",
         "usage_hint": "[question] or help",
         "should_escape": false
       }
     ],
     "agent_view": {
-      "agent_description": "Your workspace's agents in Slack. Mention @Warp or message it, and the agent that fits answers, with the documents it used. Agents ask a person before they post, change or remember anything."
+      "agent_description": "Your workspace's agents in Slack. Mention @Humagen or message it, and the agent that fits answers, with the documents it used. Agents ask a person before they post, change or remember anything."
     }
   },
   "oauth_config": {

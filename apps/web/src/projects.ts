@@ -2,12 +2,12 @@
  * The project tree as the console lays it out. Pure: the pages draw what these
  * return, and the tests check the layout without a browser.
  */
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import type { Project, ProjectAccount, ProjectKind, ProjectKindSpec, ProjectStep, ProjectUpdate, ProjectView } from "./api.ts";
 
 const words = defaultCopy.projects;
 
-/** The kinds warp defines, in the order the Projects page groups them. */
+/** The kinds humagen defines, in the order the Projects page groups them. */
 export const KINDS: ProjectKind[] = ["company", "team", "account"];
 
 /** A built-in kind: what every kind behaves as. */
@@ -18,7 +18,7 @@ export const KIND_NAME = /^[a-z][a-z0-9-]{0,31}$/;
 
 /**
  * The built-in kind a kind behaves as, as the platform reads it: itself when
- * warp defines it, the workspace's `like` for one of its own, and team for a
+ * humagen defines it, the workspace's `like` for one of its own, and team for a
  * kind the console has not been told of.
  */
 export function likeOf(kind: ProjectKind, kinds: ProjectKindSpec[] = []): BuiltIn {
@@ -28,7 +28,7 @@ export function likeOf(kind: ProjectKind, kinds: ProjectKindSpec[] = []): BuiltI
 
 /**
  * Every kind a workspace has, in the order the Projects page groups them:
- * warp's, then the workspace's own by title, then any a project has that the
+ * humagen's, then the workspace's own by title, then any a project has that the
  * workspace no longer lists, by name.
  */
 export function kindsOf(kinds: ProjectKindSpec[] = [], projects: Pick<ProjectView, "kind">[] = []): ProjectKind[] {
@@ -157,7 +157,7 @@ export function fitsUnder(parent: Place, kind: ProjectKind, kinds: ProjectKindSp
   return true;
 }
 
-/** The kinds a person may make under `parent`, warp's then the workspace's own. Company-wide needs projects:govern. */
+/** The kinds a person may make under `parent`, humagen's then the workspace's own. Company-wide needs projects:govern. */
 export function kindsUnder(parent: Place, canGovern: boolean, kinds: ProjectKindSpec[] = []): ProjectKind[] {
   return kindsOf(kinds).filter((k) => fitsUnder(parent, k, kinds) && (k !== "company" || canGovern));
 }

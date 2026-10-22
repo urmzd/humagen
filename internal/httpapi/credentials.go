@@ -3,8 +3,8 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/credentials"
 )
 
 // A person's own credentials for the tools that act as them. Every route acts

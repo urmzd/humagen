@@ -1,5 +1,5 @@
 {
-  "name": "@warp/core",
+  "name": "@humagen/core",
   "version": "0.20.0",
   "private": true,
   "type": "module",

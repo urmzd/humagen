@@ -1,7 +1,7 @@
+import { ClarificationCard } from "@humagen/components";
+import { ActionId, type Clarification } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ClarificationCard } from "@warp/components";
-import { ActionId, type Clarification } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";
 

@@ -1,4 +1,4 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api, coworking, type ProjectKnowledge, type ProjectView, type Source } from "./api.ts";
 import { titleOf } from "./projects.ts";

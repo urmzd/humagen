@@ -45,7 +45,7 @@ let updatePriority = DefaultEventPriority;
 // The host config is typed loosely on purpose: @types/react-reconciler lags the
 // runtime, and this host only implements the mutation subset React calls.
 const hostConfig = {
-  rendererPackageName: "@warp/render-slack",
+  rendererPackageName: "@humagen/render-slack",
   rendererVersion: "0.0.0",
   supportsMutation: true,
   supportsPersistence: false,

@@ -11,7 +11,7 @@ import {
   type PlatformMessage,
   retryOf,
   toRequest,
-} from "@warp/adapter";
+} from "@humagen/adapter";
 import {
   AnnouncementPost,
   type Copy,
@@ -20,7 +20,7 @@ import {
   MailboxView,
   MessageView,
   TurnView,
-} from "@warp/components";
+} from "@humagen/components";
 import {
   ActionId,
   emptyQueue,
@@ -35,7 +35,7 @@ import {
   reduce,
   type Turn,
   type UiAction,
-} from "@warp/core";
+} from "@humagen/core";
 import {
   CONNECTIONS_MODAL,
   connectionsModal,
@@ -52,40 +52,40 @@ import {
   replyModal,
   type SerializeResult,
   suggestedPrompts,
-} from "@warp/render-slack";
+} from "@humagen/render-slack";
 import { BUILDER, choose, mayRoute, type Routing } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
 import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
 import { homeModel } from "./home.ts";
 import { askForm, buildForm, ENTRY, formKind, type words } from "./host.ts";
-import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
-import { Presenter } from "./present.tsx";
-import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
 import {
   type ActAs,
   type Agent,
   type Binding,
   type ClientRecord,
+  type Humagen,
+  HumagenError,
   type InboxNotice,
   type Receipt,
   type Run,
   type StreamItem,
   type SurfaceRef,
   type ThreadPosted,
-  type Warp,
-  WarpError,
   type WireMessage,
   type WireProject,
-} from "./warp.ts";
+} from "./humagen.ts";
+import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
+import { Presenter } from "./present.tsx";
+import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
 
 /**
- * The Slack app: Slack deliveries in, warp calls and Slack calls out.
+ * The Slack app: Slack deliveries in, humagen calls and Slack calls out.
  *
  * It holds no rendering of its own. A run's events go through
- * `@warp/adapter` into one shared UI turn, and that turn goes through
- * `@warp/render-slack`. It holds no record of its own either: which
+ * `@humagen/adapter` into one shared UI turn, and that turn goes through
+ * `@humagen/render-slack`. It holds no record of its own either: which
  * conversation a thread is, and whether a message was already answered, are
- * asked of warp. What it keeps in memory is listed in the README, with
+ * asked of humagen. What it keeps in memory is listed in the README, with
  * what a restart costs.
  */
 
@@ -94,9 +94,9 @@ export interface AppOptions {
   team: string;
   /** This app's own bot user, whose messages never start a run. */
   botUser: string;
-  /** Who warp says this app is. Run ids are made from it. */
+  /** Who humagen says this app is. Run ids are made from it. */
   subject: string;
-  /** The workspace warp says this app is in. Run ids are made from it too. */
+  /** The workspace humagen says this app is in. Run ids are made from it too. */
   tenant: string;
   operators?: string[];
   /** The client record this app is, when it is one. */
@@ -170,7 +170,7 @@ type Item =
 /** A run being followed right now. */
 interface Live {
   run?: Run;
-  /** Stop was pressed. The run is followed until warp says how it ended. */
+  /** Stop was pressed. The run is followed until humagen says how it ended. */
   stopped: boolean;
   wake(item: Item): void;
 }
@@ -227,11 +227,11 @@ class Recent<V> extends Map<string, V> {
 }
 
 /**
- * An inbox message as Slack can show it. warp's shared budget part offers
+ * An inbox message as Slack can show it. humagen's shared budget part offers
  * only fixed amounts to raise a limit to, and the platform names none, so on
  * Slack a reached limit is something to read: it is raised in the console.
  */
-// warp: MessagePartView's budget part needs a raise control that takes an amount (not only
+// humagen: MessagePartView's budget part needs a raise control that takes an amount (not only
 // fixed `raiseTo` buttons) and an Acknowledge button, and render-slack must drop an empty actions
 // block. Until then a limit is read-only here.
 /**
@@ -283,7 +283,7 @@ export function forSlack(message: PlatformMessage): PlatformMessage {
       p.type === "budget"
         ? { ...p, allowed: [] }
         : // Retry on a failure is the app's own here (again()), decided for whoever
-          // presses it, not by what warp offers the app's credential.
+          // presses it, not by what humagen offers the app's credential.
           p.type === "failure" && p.allowed?.length && !p.allowed.includes(ActionId.retry)
           ? { ...p, allowed: [...p.allowed, ActionId.retry] }
           : p,
@@ -292,13 +292,13 @@ export function forSlack(message: PlatformMessage): PlatformMessage {
 }
 
 /**
- * A refusal or an error from warp, as warp's failure copy. The
+ * A refusal or an error from humagen, as humagen's failure copy. The
  * platform's own words go to the log, never to Slack: they can name internals.
  */
 function publicFailure(e: unknown): Failure {
-  const status = e instanceof WarpError ? e.status : 0;
+  const status = e instanceof HumagenError ? e.status : 0;
   if (status === 429 || status === 402) {
-    const resets = e instanceof WarpError ? e.refusal?.resets_at : undefined;
+    const resets = e instanceof HumagenError ? e.refusal?.resets_at : undefined;
     const wait = resets ? Math.max(0, Math.round((Date.parse(resets) - Date.now()) / 1000)) : 0;
     return {
       kind: "rate_limited",
@@ -307,7 +307,7 @@ function publicFailure(e: unknown): Failure {
       ...(wait ? { retryAfterSeconds: wait } : {}),
     };
   }
-  // warp: failure copy has titles only (copy.failure[kind]); a body per kind, such as
+  // humagen: failure copy has titles only (copy.failure[kind]); a body per kind, such as
   // copy.failureBody[kind], would stop the title being repeated as the message here.
   if (status === 401 || status === 403) {
     return { kind: "forbidden", message: defaultCopy.failure.forbidden(), httpStatus: status };
@@ -315,8 +315,8 @@ function publicFailure(e: unknown): Failure {
   if (status === 0 || status >= 500) {
     return {
       kind: "unavailable",
-      service: "warp",
-      message: defaultCopy.failure.unavailable("warp"),
+      service: "humagen",
+      message: defaultCopy.failure.unavailable("humagen"),
       ...(status ? { httpStatus: status } : {}),
     };
   }
@@ -324,14 +324,14 @@ function publicFailure(e: unknown): Failure {
 }
 
 /** Nobody this app may reach can answer. */
-// warp: needs copy for this, such as copy.noAgent(how to name one).
+// humagen: needs copy for this, such as copy.noAgent(how to name one).
 const NO_AGENT: Failure = {
   kind: "forbidden",
   message: "No agent answers here yet. Name one this app may reach, as @name.",
 };
 
 /** A retry of a turn that acted for nobody, by someone who did not ask, and is not an operator. */
-// warp: needs copy for this, such as copy.notYoursRetry; copy.notYours speaks of approving.
+// humagen: needs copy for this, such as copy.notYoursRetry; copy.notYours speaks of approving.
 const RETRY_NOT_YOURS = "Only the person who asked can retry this.";
 
 /** Wait, or stop waiting when the signal aborts. */
@@ -352,7 +352,7 @@ const short = (s: string) => createHash("sha256").update(s).digest("hex").slice(
 /**
  * How far back a catch-up posts an announcement this app has no receipt for:
  * a restart, a deploy or a night without the app. An older one stays in
- * warp's inbox and the Home tab, as a post days late would read as news.
+ * humagen's inbox and the Home tab, as a post days late would read as news.
  */
 export const CATCH_UP_WINDOW_MS = 24 * 60 * 60_000;
 
@@ -445,13 +445,13 @@ export class App {
    */
   private readonly announcing = new Map<string, { again: Look | null; done: Promise<void> }>();
   /**
-   * Announcements this process posted whose receipt warp did not take, so
+   * Announcements this process posted whose receipt humagen did not take, so
    * the next look records it instead of posting again.
    */
   private readonly unrecorded = new Recent<{ channel: string; ts: string }>(2_000);
   /**
    * Announcements whose post could not be checked after its receipt was
-   * recorded, because warp was away: a change made then reads older than
+   * recorded, because humagen was away: a change made then reads older than
    * the receipt, so the next look edits the post whatever the receipt says.
    */
   private readonly unchecked = new Recent<true>(2_000);
@@ -489,7 +489,7 @@ export class App {
 
   constructor(
     private readonly slack: SlackApi,
-    private readonly warp: Warp,
+    private readonly humagen: Humagen,
     private readonly opts: AppOptions,
   ) {
     this.flushMs = opts.flushMs ?? 700;
@@ -555,7 +555,7 @@ export class App {
     const opened = () => {
       this.track(this.catchUpUntilDone(signal));
     };
-    for await (const notice of this.warp.notices({ signal, opened })) {
+    for await (const notice of this.humagen.notices({ signal, opened })) {
       await this.track(
         this.onNotice(notice).catch((e: Error) => this.log(`inbox notice failed: ${e.message}`)),
       );
@@ -606,10 +606,10 @@ export class App {
    * receipts (catchUpOn). The receipt is the record, so a notice that comes
    * meanwhile changes nothing it does. One catch-up runs at a time, and one
    * asked for meanwhile runs once it ends. It answers whether it finished:
-   * false when warp could not be read, or a post was not brought up to date
+   * false when humagen could not be read, or a post was not brought up to date
    * for a reason other than Slack refusing it, such as a post deleted there.
    * An app whose client does not name its credential as the client's
-   * machine catches up on nothing: warp shows it no receipts, so it would
+   * machine catches up on nothing: humagen shows it no receipts, so it would
    * post everything again.
    */
   async catchUp(): Promise<boolean> {
@@ -638,17 +638,18 @@ export class App {
         for (const b of generals) {
           let page: WireMessage[];
           try {
-            page = await this.warp.announcements(b.project, CATCH_UP_PAGE);
+            page = await this.humagen.announcements(b.project, CATCH_UP_PAGE);
           } catch (e) {
             this.log(`announcements of ${b.project || "~"} were not read: ${(e as Error).message}`);
             // A project the machine may not read, or a token without
-            // projects:read, answers the same next time: only warp being
+            // projects:read, answers the same next time: only humagen being
             // away is tried again.
-            if (!(e instanceof WarpError && (e.status === 403 || e.status === 404))) done = false;
+            if (!(e instanceof HumagenError && (e.status === 403 || e.status === 404)))
+              done = false;
             continue;
           }
           const due = catchUpOn(page, client, (this.opts.now ?? Date.now)(), b.bound_at);
-          // A post whose receipt warp did not take is looked at whatever became of it.
+          // A post whose receipt humagen did not take is looked at whatever became of it.
           for (const m of page)
             if ((this.unrecorded.has(m.id) || this.unchecked.has(m.id)) && !due.includes(m.id))
               due.push(m.id);
@@ -656,12 +657,12 @@ export class App {
             // One post Slack refuses to edit, such as one deleted there, holds up no other.
             await this.announce(id, "catch-up").catch((e: Error) => {
               this.log(`announcement ${id} was not brought up to date: ${e.message}`);
-              // Slack refusing an edit, or warp refusing this machine (403,
-              // 404), answers the same next time: only warp being away is
+              // Slack refusing an edit, or humagen refusing this machine (403,
+              // 404), answers the same next time: only humagen being away is
               // tried again.
               const lasting =
                 e instanceof SlackError ||
-                (e instanceof WarpError && (e.status === 403 || e.status === 404));
+                (e instanceof HumagenError && (e.status === 403 || e.status === 404));
               if (!lasting) done = false;
             });
           }
@@ -674,8 +675,8 @@ export class App {
   }
 
   /**
-   * Whether warp names this app's credential as its enabled client's
-   * machine. Only then does warp show it the client's receipts and take new
+   * Whether humagen names this app's credential as its enabled client's
+   * machine. Only then does humagen show it the client's receipts and take new
    * ones, so only then does it post announcements.
    */
   private async isMachine(): Promise<boolean> {
@@ -692,7 +693,7 @@ export class App {
 
   private async agents(): Promise<Agent[]> {
     if (this.agentList && Date.now() - this.agentList.at < 30_000) return this.agentList.agents;
-    const agents = (await this.warp.listAgents()).agents.map((r) => r.spec);
+    const agents = (await this.humagen.listAgents()).agents.map((r) => r.spec);
     this.agentList = { at: Date.now(), agents };
     return agents;
   }
@@ -711,7 +712,7 @@ export class App {
   private async routing(): Promise<Routing> {
     if (!this.opts.clientId) return { defaultAgent: this.opts.defaultAgent };
     if (!this.clientRecord || Date.now() - this.clientRecord.at >= 30_000) {
-      const found = await this.warp.getClient(this.opts.clientId);
+      const found = await this.humagen.getClient(this.opts.clientId);
       // A client that is gone, is for another surface, or does not name this team routes to nothing.
       const ours = found && found.surface === "slack" && found.identity?.team === this.opts.team;
       this.clientRecord = {
@@ -881,21 +882,21 @@ export class App {
 
   /**
    * Where a message sits in its conversation. The conversation's id follows
-   * from the thread, so warp is asked rather than a local record.
+   * from the thread, so humagen is asked rather than a local record.
    */
   private async place(job: Job): Promise<{ key: string; after?: string } | "duplicate"> {
     // A turn asked again continues where again() found it, after the turn,
-    // in its conversation: one this app started, or the warp thread a mapped
+    // in its conversation: one this app started, or the humagen thread a mapped
     // person's Slack thread is. Asked again before by the same person, it is
     // that run.
     if (job.again) {
-      const again = await this.warp
+      const again = await this.humagen
         .getRun(runId(this.opts.tenant, this.opts.subject, job.key))
         .catch(() => null);
       return again ? "duplicate" : { key: job.key, after: job.again.after };
     }
     const first = threadKey(job.session);
-    const turns = (await this.warp.getThread(runId(this.opts.tenant, this.opts.subject, first)))
+    const turns = (await this.humagen.getThread(runId(this.opts.tenant, this.opts.subject, first)))
       ?.turns;
     // The first run in a thread is keyed by the thread, which is what names the conversation.
     if (!turns || turns.length === 0) return { key: first };
@@ -921,7 +922,7 @@ export class App {
 
   /** A turn that ended before any run existed: nothing to retry, only something to read. */
   private async refuse(job: Job, presenter: Presenter, agent: string, failure: Failure) {
-    const turn = reduce(emptyTurn(job.key, { name: agent || "warp" }), {
+    const turn = reduce(emptyTurn(job.key, { name: agent || "humagen" }), {
       type: "turn.failed",
       failure: { ...failure, retryable: false },
     });
@@ -948,7 +949,7 @@ export class App {
     let routing: Routing | undefined;
     try {
       routing = await this.routing();
-      // A person the client maps posts as themselves into the warp thread this
+      // A person the client maps posts as themselves into the humagen thread this
       // Slack thread is: the platform reads the tags, files it from the binding,
       // and starts what it calls for. Anyone else asks through the app. A turn
       // asked again acts for whom again() decided, never for whoever else is
@@ -957,12 +958,12 @@ export class App {
       if (asking && !job.again) {
         if (live.stopped) {
           await presenter.finish(
-            reduce(emptyTurn(job.key, { name: "warp" }), { type: "turn.stopped" }),
+            reduce(emptyTurn(job.key, { name: "humagen" }), { type: "turn.stopped" }),
           );
           return "stopped" as const;
         }
         const posted = await this.cowork(job, asking);
-        // Warp already has this message: it was answered before a restart.
+        // Humagen already has this message: it was answered before a restart.
         if (posted.repeated) return "done" as const;
         const first = posted.runs[0];
         if (!first) return this.unanswered(job, presenter, posted, routing);
@@ -977,7 +978,7 @@ export class App {
         run = first;
         agent = run.agent;
       } else {
-        // A bound channel is a warp channel: its thread, its default, its
+        // A bound channel is a humagen channel: its thread, its default, its
         // allow list and its limits are the platform's, and only a person
         // the client maps posts there, in their own words. Anyone else is
         // told so, never answered around it, and so is someone asking about
@@ -990,9 +991,9 @@ export class App {
               : this.copy.threads.unmappedInBound,
           });
         if (job.files)
-          throw new WarpError(403, "Files need a connected workspace account and client.");
+          throw new HumagenError(403, "Files need a connected workspace account and client.");
         placed = await this.place(job);
-        // Warp already has a run for this Slack event: it was answered before a restart.
+        // Humagen already has a run for this Slack event: it was answered before a restart.
         if (placed === "duplicate") return "done" as const;
         if (!job.again) {
           const choice = choose(job.text, await this.agents(), routing);
@@ -1007,7 +1008,7 @@ export class App {
         // Stop was pressed before there was a run to stop: say so and settle the session.
         if (live.stopped) {
           await presenter.finish(
-            reduce(emptyTurn(job.key, { name: agent || "warp" }), { type: "turn.stopped" }),
+            reduce(emptyTurn(job.key, { name: agent || "humagen" }), { type: "turn.stopped" }),
           );
           return "stopped" as const;
         }
@@ -1015,7 +1016,7 @@ export class App {
         // the route takes none of them. See the README.
         // A person the client maps asks as themselves, so they do not approve
         // their own run's calls.
-        run = await this.warp.createRun(
+        run = await this.humagen.createRun(
           {
             agent,
             text,
@@ -1026,15 +1027,15 @@ export class App {
         );
       }
     } catch (e) {
-      this.log(`warp refused the turn: ${(e as Error).message}`);
+      this.log(`humagen refused the turn: ${(e as Error).message}`);
       // A reply under an announcement that was withdrawn starts nothing.
-      if (e instanceof WarpError && e.status === 410)
+      if (e instanceof HumagenError && e.status === 410)
         return this.refuse(job, presenter, "", {
           kind: "forbidden",
           message: this.copy.announcements.replyGone,
         });
       // No agent was named, and nothing answers here by default.
-      if (agent === "" && e instanceof WarpError && e.status === 409)
+      if (agent === "" && e instanceof HumagenError && e.status === 409)
         return this.refuse(job, presenter, "", await this.tagOne(routing));
       return this.refuse(job, presenter, agent, publicFailure(e));
     }
@@ -1042,7 +1043,7 @@ export class App {
     live.run = run;
     if (live.stopped) {
       // Stop was pressed while the run was being started, so it is told now.
-      const told = await this.warp.stopRun(run.id).catch(() => undefined);
+      const told = await this.humagen.stopRun(run.id).catch(() => undefined);
       items.push({ type: "stopped", run: told });
     }
     const owner = job.requester === undefined ? job.user : job.requester;
@@ -1065,7 +1066,7 @@ export class App {
     if (stalled) {
       this.track(this.later(run, following, presenter));
       // The thread is not held for it. A later message follows it in the conversation,
-      // as warp orders any turn sent after one that is still running.
+      // as humagen orders any turn sent after one that is still running.
       return "done" as const;
     }
     this.log(`run ${run.id} ended ${turn.status}`);
@@ -1085,12 +1086,12 @@ export class App {
   }
 
   /**
-   * Post a mapped person's message into the warp thread this Slack thread
+   * Post a mapped person's message into the humagen thread this Slack thread
    * is. In a channel thread, what people said there since the app was last
    * asked goes first, each as its person and posted only, so the room reads
    * as it did in Slack; someone the client does not map has no voice there.
    * Under an announcement this app posted, the thread is the
-   * announcement's: warp finds it by the post's receipt and starts it with
+   * announcement's: humagen finds it by the post's receipt and starts it with
    * the announcement, ahead of these messages.
    */
   private async cowork(job: Job, asking: ActAs): Promise<ThreadPosted> {
@@ -1108,7 +1109,7 @@ export class App {
         for (const m of said) {
           const as = m.user && m.ts ? await this.actAs(m.user) : null;
           if (!as || !m.ts || !(m.text ?? "").trim()) continue;
-          await this.warp.postThread({
+          await this.humagen.postThread({
             text: m.text ?? "",
             act_as: as,
             surface: this.surfaceOf(job, m.ts),
@@ -1119,7 +1120,7 @@ export class App {
         this.log(`thread history skipped: ${(e as Error).message}`);
       }
     }
-    return this.warp.postThread({
+    return this.humagen.postThread({
       text: job.text,
       act_as: asking,
       surface: this.surfaceOf(job, job.triggerTs),
@@ -1148,10 +1149,10 @@ export class App {
       posted.notified.length > 0
         ? this.copy.threads.notified(posted.notified)
         : this.copy.threads.postOnlyHint;
-    let turn = reduce(emptyTurn(job.key, { name: "warp" }), {
+    let turn = reduce(emptyTurn(job.key, { name: "humagen" }), {
       type: "turn.started",
       turnId: job.key,
-      agent: { name: "warp" },
+      agent: { name: "humagen" },
     });
     turn = reduce(turn, { type: "text.delta", text: said });
     await presenter.finish(reduce(turn, { type: "turn.completed" }));
@@ -1197,7 +1198,7 @@ export class App {
         // A stop was pressed: the run will end soon, so it is read often again.
         wait = nudged ? Math.min(this.pollMs, 500) : Math.min(wait * 2, this.slowPollMs);
         if (this.closing.signal.aborted) return;
-        const record = await this.warp.getRun(run.id).catch(() => null);
+        const record = await this.humagen.getRun(run.id).catch(() => null);
         if (!record || !terminal(record.status)) continue;
         if (!this.claim(run.id)) return;
         following.settle(record);
@@ -1249,13 +1250,13 @@ export class App {
   ): Promise<{ turn: Turn; stalled: boolean }> {
     (async () => {
       try {
-        for await (const item of this.warp.runEvents(run, { signal })) items.push(item);
+        for await (const item of this.humagen.runEvents(run, { signal })) items.push(item);
       } catch (e) {
         if (!signal.aborted) items.push({ type: "broken", error: e as Error });
       }
     })();
     const read = async () => {
-      const record = await this.warp.getRun(run.id).catch(() => null);
+      const record = await this.humagen.getRun(run.id).catch(() => null);
       if (record && !signal.aborted) items.push({ type: "record", run: record });
     };
     const poll = setInterval(read, this.pollMs);
@@ -1280,13 +1281,13 @@ export class App {
           return { turn: following.turn, stalled: false };
         }
         if (!item.run) {
-          // Warp did not take the stop: the turn stops here, and says it may still finish elsewhere.
+          // Humagen did not take the stop: the turn stops here, and says it may still finish elsewhere.
           if (!ended(following.turn)) {
             following.push({ type: "turn.stopped" }, { type: "stop.updated", stop: "failed" });
           }
           return { turn: following.turn, stalled: false };
         }
-        // Warp took it and the run is stopping. It is followed on until
+        // Humagen took it and the run is stopping. It is followed on until
         // lifecycle.stopped, or its record, says how it ended: stopped with
         // what it had said, or completed if it finished first.
         following.push({ type: "stop.updated", stop: "acknowledged" });
@@ -1343,7 +1344,7 @@ export class App {
   /**
    * The stop button, in the order Slack asks for: stop the work, confirm in
    * the thread, then move the session off processing. Slack changes nothing by
-   * itself. Which runs to stop is asked of warp as well as remembered, so
+   * itself. Which runs to stop is asked of humagen as well as remembered, so
    * the button works after a restart.
    */
   private async stop(session: Session): Promise<void> {
@@ -1355,13 +1356,13 @@ export class App {
     const ids = new Set<string>();
     if (following) ids.add(following.id);
     const conversation = runId(this.opts.tenant, this.opts.subject, threadKey(session));
-    const turns = (await this.warp.getThread(conversation).catch(() => null))?.turns;
+    const turns = (await this.humagen.getThread(conversation).catch(() => null))?.turns;
     for (const t of turns ?? []) if (!t.parent && !terminal(t.status)) ids.add(t.id);
 
     const stopped: Run[] = [];
     for (const id of ids) {
       try {
-        stopped.push(await this.warp.stopRun(id));
+        stopped.push(await this.humagen.stopRun(id));
       } catch (e) {
         this.log(`stop of ${id} failed: ${(e as Error).message}`);
       }
@@ -1433,7 +1434,7 @@ export class App {
     ) {
       await sleep(Math.min(wait, Math.max(deadline - Date.now(), 0)), this.closing.signal);
       wait = Math.min(wait * 2, 5_000);
-      record = await this.warp.getRun(run.id).catch(() => null);
+      record = await this.humagen.getRun(run.id).catch(() => null);
     }
     if (record && terminal(record.status)) {
       await this.postEnd(session, record);
@@ -1454,7 +1455,7 @@ export class App {
       await sleep(wait, this.closing.signal);
       wait = Math.min(wait * 2, this.slowPollMs);
       if (this.closing.signal.aborted) return;
-      const record = await this.warp.getRun(run.id).catch(() => null);
+      const record = await this.humagen.getRun(run.id).catch(() => null);
       if (!record || !terminal(record.status)) continue;
       await this.postEnd(session, record);
       if (!this.threads.get(sessionName(session))?.live) await this.settleSession(session);
@@ -1494,21 +1495,21 @@ export class App {
       return this.review(p, ui.payload.turnId);
     const as = await this.actAs(p.user.id);
     const readFor = (who: ActAs) =>
-      this.warp.inboxMessageFor(ui.payload.turnId, who).catch(() => null);
+      this.humagen.inboxMessageFor(ui.payload.turnId, who).catch(() => null);
     // A message the app sent the person as theirs is theirs to act on, even
     // where the app may read it too: it is read and done for them.
     const sent = sentToThem(p);
     let mine = as && sent ? await readFor(as) : null;
     if (mine && as) return this.onPersonal(p, ui, mine, as);
     // A click on an inbox message names the message. Anything else names a run.
-    const message = await this.warp.inbox.get(ui.payload.turnId).catch(() => null);
+    const message = await this.humagen.inbox.get(ui.payload.turnId).catch(() => null);
     if (message) return this.onMail(p, ui, message);
     // One addressed to the person who clicked is read for them, through the client.
     mine = as && !sent ? await readFor(as) : null;
     if (mine && as) return this.onPersonal(p, ui, mine, as);
     if (answers(ui)) return this.onAnswer(p, ui);
     if (ui.id === ActionId.retry || ui.id === ActionId.resume) {
-      const run = await this.warp.getRun(ui.payload.turnId);
+      const run = await this.humagen.getRun(ui.payload.turnId);
       const outcome = run ? await this.again(run, p.user.id, p.message?.ts) : "elsewhere";
       if (outcome !== "started") await this.refuseRetry(p, outcome);
     }
@@ -1528,7 +1529,7 @@ export class App {
 
   /**
    * Ask a turn again, in the thread it was asked in, for whoever the turn
-   * acted for, as Retry in warp's inbox does. Retry and Resume both come here.
+   * acted for, as Retry in humagen's inbox does. Retry and Resume both come here.
    *
    * A turn that acted for a person is theirs to ask again, so only a Slack
    * person this app's client maps to that same person may, and the new run is
@@ -1537,7 +1538,7 @@ export class App {
    * person's credentials on a choice the person never made. A turn that acted
    * for nobody is asked again for nobody, through the app, by the person who
    * asked for it or an operator, so nobody's credentials are put behind words
-   * that were not theirs. Warp's record says whom a turn acted for, so a
+   * that were not theirs. Humagen's record says whom a turn acted for, so a
    * restart, which forgets who asked, changes none of this, except that only
    * an operator may then ask again for nobody.
    *
@@ -1618,7 +1619,7 @@ export class App {
       .then(async () => {
         const as = await this.actAs(user);
         if (!as) throw new Error("Feedback needs a connected workspace account");
-        return this.warp.saveFeedback(run, {
+        return this.humagen.saveFeedback(run, {
           rating,
           ...(comment ? { comment } : {}),
           ...(reason ? { reason } : {}),
@@ -1654,7 +1655,7 @@ export class App {
   }
 
   /**
-   * Answer a question shown on a run, for the person who clicked. Warp
+   * Answer a question shown on a run, for the person who clicked. Humagen
    * decides whether they may: it is asked as them, through the client that
    * maps them, and a person it does not map is never asked for at all. The
    * card settles from the run's own events.
@@ -1662,7 +1663,7 @@ export class App {
   private async onAnswer(p: ActionPayload, ui: UiAction): Promise<void> {
     const answer = answerOfAction(ui);
     if (!answer) {
-      // warp: a modal that collects a reply to a question (as feedbackModal does for a
+      // humagen: a modal that collects a reply to a question (as feedbackModal does for a
       // rating), for Something Else and Reply. Until then a reply is typed in the console.
       if (ui.id === ActionId.clarifyOther) return this.whisper(p, this.words.replyInConsole);
       return;
@@ -1673,13 +1674,13 @@ export class App {
       return this.whisper(p, defaultCopy.noPermission);
     }
     try {
-      await this.warp.answerQuestion(answer, as);
+      await this.humagen.answerQuestion(answer, as);
       this.log(`question ${answer.question} on ${answer.run} answered for ${p.user.id}`);
     } catch (e) {
       this.log(
         `question ${answer.question} on ${answer.run} was not answered: ${(e as Error).message}`,
       );
-      const status = e instanceof WarpError ? e.status : 0;
+      const status = e instanceof HumagenError ? e.status : 0;
       return this.whisper(
         p,
         status === 403 ? defaultCopy.noPermission : defaultCopy.failure.internal(),
@@ -1691,7 +1692,7 @@ export class App {
 
   /**
    * Retry on an inbox failure. A retry is always this app's, so its answer
-   * shows in the run's thread and the client's agents are checked: warp is
+   * shows in the run's thread and the client's agents are checked: humagen is
    * never asked to retry on its own, and the message is only acknowledged.
    * Only a failed run can be asked again, and a Retry on anything else is
    * refused. The part to acknowledge, or null when nothing was asked.
@@ -1705,7 +1706,7 @@ export class App {
       await this.refuseRetry(p, "elsewhere");
       return null;
     }
-    const run = part.failure.reference ? await this.warp.getRun(part.failure.reference) : null;
+    const run = part.failure.reference ? await this.humagen.getRun(part.failure.reference) : null;
     const outcome = run ? await this.again(run, p.user.id, clickedTs) : "elsewhere";
     if (outcome !== "started") {
       await this.refuseRetry(p, outcome);
@@ -1723,7 +1724,7 @@ export class App {
   private async onMail(p: ActionPayload, ui: UiAction, message: PlatformMessage) {
     const part = message.parts.find((x) => partMatches(x, ui.payload.target));
     const question = part?.type === "approval" || part?.type === "choice" || part?.type === "reply";
-    // Who may answer a question is warp's to decide, for the person as it knows them.
+    // Who may answer a question is humagen's to decide, for the person as it knows them.
     const as = question ? await this.actAs(p.user.id) : null;
     if (question && !as) return this.whisper(p, defaultCopy.noPermission);
     // Who may ask a failed turn again is again()'s to decide, as in the thread.
@@ -1733,7 +1734,7 @@ export class App {
     if (part?.type === "reply" && ui.id === ActionId.reply && !ui.payload.text) {
       return this.askForReply(
         p,
-        await this.warp.getInboxMessage(message.id).catch(() => null),
+        await this.humagen.getInboxMessage(message.id).catch(() => null),
         part.id,
       );
     }
@@ -1749,11 +1750,11 @@ export class App {
     if (!request) return;
     let updated: PlatformMessage;
     try {
-      updated = await this.warp.inbox.send(message, request);
+      updated = await this.humagen.inbox.send(message, request);
     } catch (e) {
-      // The platform's words stay in the log. The person is told in warp's.
+      // The platform's words stay in the log. The person is told in humagen's.
       this.log(`inbox ${message.id} was not settled: ${(e as Error).message}`);
-      const status = e instanceof WarpError ? e.status : 0;
+      const status = e instanceof HumagenError ? e.status : 0;
       return this.whisper(
         p,
         status === 403 ? defaultCopy.noPermission : defaultCopy.failure.internal(),
@@ -1785,7 +1786,7 @@ export class App {
     }
     try {
       if ("inbox" in target) {
-        const updated = await this.warp.resolveFor(
+        const updated = await this.humagen.resolveFor(
           target.inbox,
           target.part,
           { action: "reply", text },
@@ -1799,7 +1800,7 @@ export class App {
             ...this.personalView(updated),
           });
       } else {
-        await this.warp.answerQuestion(
+        await this.humagen.answerQuestion(
           { run: target.run, question: target.question, body: { action: "reply", text } },
           as,
         );
@@ -1819,7 +1820,7 @@ export class App {
       const sent = await this.slack.call<{ ts: string }>("chat.postMessage", {
         channel: at.channel,
         thread_ts: at.threadTs,
-        // warp: needs a fallback-text helper for continued pages, as for turns.
+        // humagen: needs a fallback-text helper for continued pages, as for turns.
         text: (i === 0 ? view.text : `(${i + 1}/${view.pages.length}) ${view.text}`).slice(
           0,
           LIMITS.fallbackText,
@@ -1855,17 +1856,17 @@ export class App {
   /** The Slack thread a run's conversation lives in, read from its first run's trigger id. */
   private async sessionOfRun(run: Run): Promise<Session | null> {
     const first =
-      run.id === run.thread ? run : await this.warp.getRun(run.thread).catch(() => null);
+      run.id === run.thread ? run : await this.humagen.getRun(run.thread).catch(() => null);
     const asked = first?.tag_id ? sessionOf(this.opts.subject, first.tag_id) : null;
     if (asked) return asked;
-    // A Slack thread a mapped person posts in is a warp thread with its
+    // A Slack thread a mapped person posts in is a humagen thread with its
     // surface, and its runs answer their messages: the session is where it is.
-    const surface = await this.warp.threadSurface(run.thread).catch(() => null);
+    const surface = await this.humagen.threadSurface(run.thread).catch(() => null);
     if (!surface || !this.opts.clientId || surface.client !== this.opts.clientId) return null;
     return { team: this.opts.team, channel: surface.channel, threadTs: surface.ts };
   }
 
-  /** Whether a Slack channel is bound to a channel in warp, through this client. */
+  /** Whether a Slack channel is bound to a channel in humagen, through this client. */
   private async isBound(channel: string): Promise<boolean> {
     return (await this.bound()).some((b) => b.slack_channel === channel);
   }
@@ -1873,13 +1874,13 @@ export class App {
   /**
    * The Slack channels this client is bound to, read again every half minute.
    * A read that fails throws and is not kept, so nobody is answered around a
-   * channel's rules because warp could not say it has them: the turn is
+   * channel's rules because humagen could not say it has them: the turn is
    * refused, an announcement waits, and the next one reads again.
    */
   private async bound(): Promise<Binding[]> {
     if (!this.opts.clientId) return [];
     if (!this.bindings || Date.now() - this.bindings.at >= 30_000) {
-      const list = await this.warp.bindings(this.opts.clientId);
+      const list = await this.humagen.bindings(this.opts.clientId);
       this.bindings = { at: Date.now(), list };
     }
     return this.bindings.list;
@@ -1887,7 +1888,7 @@ export class App {
 
   /**
    * An announcement of a project whose general channel is bound here is
-   * posted there, top-level, once. Where it went is recorded in warp, so a
+   * posted there, top-level, once. Where it went is recorded in humagen, so a
    * restart, an edit or a withdrawal updates that post instead of posting
    * again. A draft never reaches a channel, and one withdrawn before it was
    * posted is not posted. A notice and a catch-up both come here, one look
@@ -1953,10 +1954,10 @@ export class App {
     // credential would post every announcement again.
     if (!(await this.isMachine())) return shown;
     // A message gone or hidden from this machine (403, 404) has nothing to
-    // post. Any other failure is warp being away: it is thrown, so the
+    // post. Any other failure is humagen being away: it is thrown, so the
     // catch-up is tried again instead of taking the announcement as done.
-    const raw = await this.warp.getInboxMessage(id).catch((e: unknown) => {
-      if (e instanceof WarpError && (e.status === 403 || e.status === 404)) return null;
+    const raw = await this.humagen.getInboxMessage(id).catch((e: unknown) => {
+      if (e instanceof HumagenError && (e.status === 403 || e.status === 404)) return null;
       throw e;
     });
     if (!raw || raw.kind !== "announcement" || isDraft(raw)) return shown;
@@ -1964,12 +1965,12 @@ export class App {
     const at = (await this.bound()).find((b) => b.project === project && b.channel === "general");
     if (!at) return shown;
     const receipt = raw.deliveries?.[client];
-    // A receipt warp took though its answer was lost needs no remembering.
+    // A receipt humagen took though its answer was lost needs no remembering.
     if (receipt) this.unrecorded.delete(id);
     const posted = this.unrecorded.get(id);
     if (!receipt && posted) {
-      // Posted by this process, and warp did not take the receipt then.
-      await this.warp.recordDelivery(id, client, posted);
+      // Posted by this process, and humagen did not take the receipt then.
+      await this.humagen.recordDelivery(id, client, posted);
       this.unrecorded.delete(id);
       await this.slack.call("chat.update", { ...posted, ...this.newsView(raw) });
       return this.keepUp(id, client, posted, raw.updated_at);
@@ -1980,7 +1981,7 @@ export class App {
       const where = { channel: receipt.channel, ts: receipt.ts };
       await this.slack.call("chat.update", { ...where, ...this.newsView(raw) });
       if (!changed) return raw.updated_at;
-      await this.warp.recordDelivery(id, client, where);
+      await this.humagen.recordDelivery(id, client, where);
       return this.keepUp(id, client, where, raw.updated_at);
     }
     // Only what a catch-up would post is posted: an old announcement a
@@ -1992,13 +1993,13 @@ export class App {
     });
     const where = { channel: sent.channel ?? at.slack_channel, ts: sent.ts };
     this.unrecorded.set(id, where);
-    await this.warp.recordDelivery(id, client, where);
+    await this.humagen.recordDelivery(id, client, where);
     this.unrecorded.delete(id);
     return this.keepUp(id, client, where, raw.updated_at);
   }
 
   /**
-   * After a receipt is recorded, read the announcement once more: warp
+   * After a receipt is recorded, read the announcement once more: humagen
    * dates a receipt when it takes it, so a change between the read the post
    * shows and the receipt would read as older than the receipt, and no
    * catch-up would see it. A change found is shown and recorded, at most
@@ -2011,10 +2012,10 @@ export class App {
     shown: string | undefined,
   ): Promise<string | undefined> {
     for (let i = 0; i < 3; i++) {
-      // A read warp could not answer leaves the post unchecked: it is thrown,
+      // A read humagen could not answer leaves the post unchecked: it is thrown,
       // so the catch-up is tried again, and that look edits the post.
-      const now = await this.warp.getInboxMessage(id).catch((e: unknown) => {
-        if (e instanceof WarpError && (e.status === 403 || e.status === 404)) return null;
+      const now = await this.humagen.getInboxMessage(id).catch((e: unknown) => {
+        if (e instanceof HumagenError && (e.status === 403 || e.status === 404)) return null;
         this.unchecked.set(id, true);
         throw e;
       });
@@ -2023,7 +2024,7 @@ export class App {
         return shown;
       }
       await this.slack.call("chat.update", { ...where, ...this.newsView(now) });
-      await this.warp.recordDelivery(id, client, where);
+      await this.humagen.recordDelivery(id, client, where);
       shown = now.updated_at;
     }
     return shown;
@@ -2043,7 +2044,7 @@ export class App {
 
   /**
    * A person's message as a direct message with the app: the message, and
-   * where it was said. Warp snoozes and dismisses only as the caller, so here
+   * where it was said. Humagen snoozes and dismisses only as the caller, so here
    * they would be the app's: they are not offered.
    */
   private personalView(raw: WireMessage) {
@@ -2073,7 +2074,7 @@ export class App {
   private async tell(notice: InboxNotice): Promise<void> {
     const as = notice.for;
     if (!as || as.client !== this.opts.clientId) return;
-    const raw = await this.warp.inboxMessageFor(notice.id, as).catch(() => null);
+    const raw = await this.humagen.inboxMessageFor(notice.id, as).catch(() => null);
     if (!raw) return;
     const view = this.personalView(raw);
     const key = toldKey(as, raw.id);
@@ -2084,7 +2085,7 @@ export class App {
     }
     if (raw.state !== "open") return;
     const thread = raw.source?.thread;
-    const surface = thread ? await this.warp.threadSurface(thread).catch(() => null) : null;
+    const surface = thread ? await this.humagen.threadSurface(thread).catch(() => null) : null;
     if (surface?.client === this.opts.clientId && (await this.isIn(surface, as.user))) return;
     const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
       channel: as.user,
@@ -2159,7 +2160,7 @@ export class App {
     if (request?.call !== "resolve") return;
     let updated: WireMessage;
     try {
-      updated = await this.warp.resolveFor(
+      updated = await this.humagen.resolveFor(
         message.id,
         request.partId,
         { action: request.action, ...request.values },
@@ -2167,7 +2168,7 @@ export class App {
       );
     } catch (e) {
       this.log(`inbox ${message.id} was not settled for ${as.user}: ${(e as Error).message}`);
-      const status = e instanceof WarpError ? e.status : 0;
+      const status = e instanceof HumagenError ? e.status : 0;
       return this.whisper(
         p,
         status === 403 ? defaultCopy.noPermission : defaultCopy.failure.internal(),
@@ -2187,7 +2188,7 @@ export class App {
   private async onNotice(notice: InboxNotice): Promise<void> {
     if (notice.for) return this.tell(notice);
     if (notice.kind === "announcement") return this.announce(notice.id);
-    const message = await this.warp.inbox.get(notice.id).catch(() => null);
+    const message = await this.humagen.inbox.get(notice.id).catch(() => null);
     if (!message) return;
     const posted = this.mail.get(message.id);
     if (posted) return this.showMail(message, posted);
@@ -2197,7 +2198,7 @@ export class App {
     if (message.kind === "failure" || message.parts.some((p) => p.type === "failure")) return;
     if (message.kind === "approval" || message.kind === "clarification") return;
     const about = message.about.find((s) => s.kind === "run");
-    const run = about ? await this.warp.getRun(about.id) : null;
+    const run = about ? await this.humagen.getRun(about.id) : null;
     const session = run ? await this.sessionOfRun(run) : null;
     if (!session || session.team !== this.opts.team) return;
     const ts = await this.postView(
@@ -2224,7 +2225,7 @@ export class App {
       await this.slack.call("views.publish", { user_id: user, view });
       return;
     }
-    const page = await this.warp.inbox.list({ limit: 30, state: "open" });
+    const page = await this.humagen.inbox.list({ limit: 30, state: "open" });
     const operator = (this.opts.operators ?? []).includes(user);
     const messages = operator
       ? page.messages
@@ -2243,17 +2244,17 @@ export class App {
     const [mine, news, projects, names, build] = await Promise.all([
       // What needs them, posted announcements left out before the page is
       // cut, so however much news is newer the rows agree with the total.
-      this.warp.inboxFor(mapped.as, { state: "open", needs: true, limit: 30 }),
+      this.humagen.inboxFor(mapped.as, { state: "open", needs: true, limit: 30 }),
       // Posted announcements only, so drafts never crowd them off the page.
-      this.warp.inboxFor(mapped.as, { state: "open", news: true, limit: 20 }),
-      this.warp.projectsFor(mapped.as).catch((e: Error): WireProject[] | null => {
+      this.humagen.inboxFor(mapped.as, { state: "open", news: true, limit: 20 }),
+      this.humagen.projectsFor(mapped.as).catch((e: Error): WireProject[] | null => {
         this.log(`Home shows no projects for ${user}: ${e.message}`);
         return null;
       }),
       this.names.of([user, this.opts.botUser]),
       this.builds().catch(() => false),
     ]);
-    const name = this.branding.name ?? "Warp";
+    const name = this.branding.name ?? "Humagen";
     return homeModel({
       person: { id: user, name: names.get(user) ?? mapped.person },
       assistant: { name, handle: names.get(this.opts.botUser) ?? name },
@@ -2306,7 +2307,7 @@ export class App {
    */
   private async review(p: ActionPayload, id: string): Promise<void> {
     const as = await this.actAs(p.user.id);
-    const raw = as ? await this.warp.inboxMessageFor(id, as).catch(() => null) : null;
+    const raw = as ? await this.humagen.inboxMessageFor(id, as).catch(() => null) : null;
     if (!as || !raw) return;
     const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
       channel: as.user,
@@ -2330,7 +2331,7 @@ export class App {
     try {
       root = await this.slack.call("chat.postMessage", {
         channel: where.channel,
-        // warp: needs a component for the asking message itself, such as RequestView({by, text}),
+        // humagen: needs a component for the asking message itself, such as RequestView({by, text}),
         // which the web shows as the user's bubble. Until then it is the person and their words.
         text: `<@${where.user}>: ${echoed(text)}`,
       });
@@ -2394,7 +2395,7 @@ export class App {
     if (text.startsWith("canvas ")) return this.publishCanvas(c, text.slice(7).trim());
     if (!text || text === "help") {
       // Who can be asked, in the platform's own words.
-      // warp: needs an AgentList component (name, description), as the console's agent menu shows.
+      // humagen: needs an AgentList component (name, description), as the console's agent menu shows.
       const routing = await this.routing();
       const lines = (await this.agents())
         .filter((a) => choose(`@${a.name}`, [a], routing).how === "named")
@@ -2427,7 +2428,7 @@ export class App {
       });
       return;
     }
-    const status = await this.warp.connections(as);
+    const status = await this.humagen.connections(as);
     await this.slack.call("views.update", {
       view_id: opened.view.id,
       view: connectionsModal(status.providers, c.channel_id),
@@ -2436,7 +2437,7 @@ export class App {
 
   private async publishCanvas(c: CommandPayload, id: string) {
     const as = await this.actAs(c.user_id);
-    const run = as ? await this.warp.getRunFor(id, as) : null;
+    const run = as ? await this.humagen.getRunFor(id, as) : null;
     const session = run && (await this.sessionOfRun(run));
     if (
       !run ||
@@ -2511,11 +2512,11 @@ export class App {
       if (!provider) return;
       let text = "Connection updated.";
       try {
-        if (operation === "disconnect") await this.warp.disconnect(provider, as);
+        if (operation === "disconnect") await this.humagen.disconnect(provider, as);
         else {
           const ref = values?.reference?.value?.value?.trim();
           if (!ref) throw new Error("A credential reference is required");
-          await this.warp.connect(provider, ref, as);
+          await this.humagen.connect(provider, ref, as);
         }
       } catch {
         text =

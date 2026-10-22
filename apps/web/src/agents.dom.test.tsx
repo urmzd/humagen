@@ -9,7 +9,7 @@ const writer: Revision = {
   rev: 2,
   spec: { name: "warp-writer", description: "Writes a document.", provider: "offline", model: "offline", system_prompt: "Write it.", access: { spawn: [] } },
   created_at: new Date().toISOString(),
-  created_by: "warp",
+  created_by: "humagen",
   hash: "h2",
 };
 const field: ProjectView = {

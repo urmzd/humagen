@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { defaultCopy } from "@warp/components";
-import type { Turn } from "@warp/core";
-import { WebSurface } from "@warp/render-web";
-import { AgentMessage } from "@warp/web";
+import { defaultCopy } from "@humagen/components";
+import type { Turn } from "@humagen/core";
+import { WebSurface } from "@humagen/render-web";
+import { AgentMessage } from "@humagen/web";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import type { Revision, ThreadPage, ThreadTurn } from "./api.ts";
@@ -508,12 +508,12 @@ test("a recap's announcement is the agent's, and a withdrawn one says only that"
   assert.ok(screen.getByRole("heading", { name: "what does it mean for renewals?" }), "a withdrawn subject is not the title");
 });
 
-test("release notes seed a thread from warp itself, with no person's or agent's mark", async () => {
-  seededRoom(seeded({ id: "m-10", kind: "system", by: "warp", subject: "What's new in warp 0.16.0", text: "- Slack catch-up", at }));
-  const notes = await screen.findByRole("article", { name: `${defaultCopy.template.announcement} from warp` });
+test("release notes seed a thread from humagen itself, with no person's or agent's mark", async () => {
+  seededRoom(seeded({ id: "m-10", kind: "system", by: "humagen", subject: "What's new in humagen 0.16.0", text: "- Slack catch-up", at }));
+  const notes = await screen.findByRole("article", { name: `${defaultCopy.template.announcement} from humagen` });
   assert.ok(notes.textContent?.includes("Slack catch-up"));
   assert.equal(notes.querySelector("[aria-hidden]")?.textContent, "", "no letter in a circle reads as a person called W");
-  assert.ok(screen.getByRole("heading", { name: "What's new in warp 0.16.0" }));
+  assert.ok(screen.getByRole("heading", { name: "What's new in humagen 0.16.0" }));
 });
 
 /** The room with ledger parked on a question for the billing experts, as the platform says it to `ask`. */

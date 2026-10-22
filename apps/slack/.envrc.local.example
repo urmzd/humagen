@@ -1,7 +1,7 @@
 # Copy to the repository root as .envrc.local (gitignored), fill it in, then run `direnv allow`.
 # Keep secrets in your secret store and reference them, for example with `op read`.
 
-# Slack: the app created from warp's sandbox manifest (apps/slack-sandbox)
+# Slack: the app created from humagen's sandbox manifest (apps/slack-sandbox)
 # Bot token from OAuth & Permissions after installing the app
 export SLACK_BOT_TOKEN=""
 # App-level token with connections:write, for Socket Mode
@@ -18,21 +18,21 @@ export SLACK_STREAM_JOURNAL=""
 export SLACK_SOCKET_IDLE_MS=""
 export SLACK_SOCKET_MAX_ATTEMPTS=""
 
-# Warp
-export WARP_URL="http://127.0.0.1:8080"
+# Humagen
+export HUMAGEN_URL="http://127.0.0.1:8080"
 # The workspace the credential below is for. Startup fails if they disagree.
-export WARP_TENANT=""
+export HUMAGEN_TENANT=""
 # Either a token as is (empty for a loopback server in dev auth) ...
-export WARP_TOKEN=""
+export HUMAGEN_TOKEN=""
 # ... or a client-credentials grant, which is refreshed as it expires
-export WARP_OIDC_TOKEN_URL=""
-export WARP_OIDC_CLIENT_ID=""
-export WARP_OIDC_CLIENT_SECRET=""
-export WARP_OIDC_SCOPES="warp:runs:read warp:runs:write warp:agents:read"
-export WARP_OIDC_AUDIENCE=""
+export HUMAGEN_OIDC_TOKEN_URL=""
+export HUMAGEN_OIDC_CLIENT_ID=""
+export HUMAGEN_OIDC_CLIENT_SECRET=""
+export HUMAGEN_OIDC_SCOPES="humagen:runs:read humagen:runs:write humagen:agents:read"
+export HUMAGEN_OIDC_AUDIENCE=""
 # Optional: the client record this app is, for its default agent and its allow-list
-export WARP_CLIENT=""
+export HUMAGEN_CLIENT=""
 # Optional: the agent that answers when a message names none and there is no client
-export WARP_DEFAULT_AGENT=""
+export HUMAGEN_DEFAULT_AGENT=""
 # Optional: where people reach the console, for links to published files
-export WARP_PUBLIC_URL=""
+export HUMAGEN_PUBLIC_URL=""

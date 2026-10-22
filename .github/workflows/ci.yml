@@ -69,8 +69,8 @@ jobs:
       - run: pnpm exec biome check
       - run: pnpm run typecheck
       - run: pnpm test
-      - run: pnpm --filter @warp/console build
-      - run: pnpm --filter @warp/storybook build
+      - run: pnpm --filter @humagen/console build
+      - run: pnpm --filter @humagen/storybook build
       - name: Slack app against a real server
         run: |
           set -o pipefail

@@ -6,8 +6,8 @@ import {
   formatUsd,
   type Pressure,
   type SessionState,
-} from "@warp/core";
-import { AlertTriangleIcon, ListChecksIcon, ShieldIcon, ZapIcon } from "@warp/render-web";
+} from "@humagen/core";
+import { AlertTriangleIcon, ListChecksIcon, ShieldIcon, ZapIcon } from "@humagen/render-web";
 import { type ReactNode, useEffect, useId, useState } from "react";
 import { AgentOrb, orbLabel, orbStateOf } from "./AgentOrb";
 

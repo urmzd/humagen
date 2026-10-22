@@ -1,5 +1,11 @@
-import { ActionId, type Citation, formatTokens, type Subagent, type TaskStatus } from "@warp/core";
-import type { PrimitiveProps } from "@warp/primitives";
+import {
+  ActionId,
+  type Citation,
+  formatTokens,
+  type Subagent,
+  type TaskStatus,
+} from "@humagen/core";
+import type { PrimitiveProps } from "@humagen/primitives";
 import {
   Children,
   type CSSProperties,

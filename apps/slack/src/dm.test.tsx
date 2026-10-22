@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import {
   click,
   DM,
@@ -16,8 +16,8 @@ import {
 
 /** An app that is the client "app", mapping USER to dana, with a console to link to. */
 function mapping(): World {
-  const w = world({ clientId: "app", publicUrl: "https://warp.test" });
-  w.warp.clients.set("app", {
+  const w = world({ clientId: "app", publicUrl: "https://humagen.test" });
+  w.humagen.clients.set("app", {
     id: "app",
     surface: "slack",
     enabled: true,
@@ -42,18 +42,18 @@ const blocksOf = (args: Record<string, unknown> | undefined) => (args?.blocks ??
 test("a mention of a person the client maps reaches their direct messages, with Reply and where it was said", async () => {
   const w = mapping();
   await watching(w, async () => {
-    w.warp.tellFor("dana", { client: "app", user: USER }, mentionMail());
+    w.humagen.tellFor("dana", { client: "app", user: USER }, mentionMail());
   });
   const dm = w.slack.of("chat.postMessage").at(-1);
   assert.equal(dm?.channel, USER, "posted to the person, which opens their direct messages");
   const text = JSON.stringify(dm?.blocks);
   assert.match(text, /can you confirm the renewal date/);
-  assert.match(text, /https:\/\/warp\.test\/tasks\/th-0123456789abcdef\|Open Thread/);
+  assert.match(text, /https:\/\/humagen\.test\/tasks\/th-0123456789abcdef\|Open Thread/);
   for (const label of [defaultCopy.snooze, defaultCopy.dismiss]) {
-    assert.ok(!text.includes(`"${label}"`), `no ${label}: warp does it only as the caller`);
+    assert.ok(!text.includes(`"${label}"`), `no ${label}: humagen does it only as the caller`);
   }
   assert.deepEqual(
-    w.warp.readFor,
+    w.humagen.readFor,
     [{ client: "app", user: USER }],
     "read for them, through the client",
   );
@@ -62,7 +62,7 @@ test("a mention of a person the client maps reaches their direct messages, with 
 test("Reply opens the reply modal, and sending it replies to the mention as the person, through their inbox", async () => {
   const w = mapping();
   await watching(w, async () => {
-    w.warp.tellFor("dana", { client: "app", user: USER }, mentionMail());
+    w.humagen.tellFor("dana", { client: "app", user: USER }, mentionMail());
   });
   const dm = w.slack.of("chat.postMessage").at(-1);
   await w.app.handle(
@@ -83,7 +83,7 @@ test("Reply opens the reply modal, and sending it replies to the mention as the 
   // A reply to a mention is a human response: sent through the inbox, so
   // the platform posts it in the thread and starts no run, whatever the
   // thread's default.
-  assert.deepEqual(w.warp.resolvedFor, [
+  assert.deepEqual(w.humagen.resolvedFor, [
     {
       id: "m-mention",
       part: "p1",
@@ -102,7 +102,7 @@ test("Reply opens the reply modal, and sending it replies to the mention as the 
 test("once the person has replied, the direct message is kept current", async () => {
   const w = mapping();
   await watching(w, async () => {
-    w.warp.tellFor("dana", { client: "app", user: USER }, mentionMail());
+    w.humagen.tellFor("dana", { client: "app", user: USER }, mentionMail());
     await settle();
     await w.app.idle();
     const open = mentionMail();
@@ -121,7 +121,7 @@ test("once the person has replied, the direct message is kept current", async ()
         },
       })),
     };
-    w.warp.tellFor("dana", { client: "app", user: USER }, settled);
+    w.humagen.tellFor("dana", { client: "app", user: USER }, settled);
   });
   assert.equal(w.slack.of("chat.postMessage").length, 1, "told once");
   const edit = w.slack.of("chat.update").at(-1);
@@ -133,9 +133,9 @@ test("once the person has replied, the direct message is kept current", async ()
   );
 });
 
-/** A warp thread the app filed from a Slack thread, which dana's Slack user wrote in when `posted`. */
+/** A humagen thread the app filed from a Slack thread, which dana's Slack user wrote in when `posted`. */
 async function slackThread(w: World, posted: boolean): Promise<string> {
-  const filed = await w.warp.postThread({
+  const filed = await w.humagen.postThread({
     text: "noted",
     act_as: { client: "app", user: USER },
     surface: { client: "app", channel: "C01ABCDEF", ts: "1700000000.000100" },
@@ -152,7 +152,7 @@ test("a mention raised in a Slack thread of this app's that the person is in is 
   const w = mapping();
   const thread = await slackThread(w, true);
   await watching(w, async () => {
-    w.warp.tellFor(
+    w.humagen.tellFor(
       "dana",
       { client: "app", user: USER },
       { ...mentionMail(), source: { thread, project: "Globex" } },
@@ -173,7 +173,7 @@ test("a mention natively in this app's Slack thread is not sent again either: Sl
     { ts: "1700000000.000100", user: "U0ANA", text: `<@UBOT> <@${USER}|dana> can you check?` },
   ]);
   await watching(w, async () => {
-    w.warp.tellFor(
+    w.humagen.tellFor(
       "dana",
       { client: "app", user: USER },
       { ...mentionMail(), source: { thread, project: "Globex" } },
@@ -187,7 +187,7 @@ test("a tag by handle in this app's Slack thread reaches someone not in it in th
   // "@dana" in Slack is plain text there: it pinged nobody.
   const thread = await slackThread(w, false);
   await watching(w, async () => {
-    w.warp.tellFor(
+    w.humagen.tellFor(
       "dana",
       { client: "app", user: USER },
       { ...mentionMail(), source: { thread, project: "Globex" } },
@@ -207,7 +207,7 @@ test("an expert asked by a run in this app's Slack thread is told in their direc
     source: { thread, project: "Globex", run: "r-1", agent: "lead" },
   };
   await watching(w, async () => {
-    w.warp.tellFor("dana", { client: "app", user: USER }, question);
+    w.humagen.tellFor("dana", { client: "app", user: USER }, question);
   });
   assert.equal(w.slack.of("chat.postMessage").filter((m) => m.channel === USER).length, 1);
 
@@ -215,7 +215,7 @@ test("an expert asked by a run in this app's Slack thread is told in their direc
   const other = await slackThread(unreadable, true);
   unreadable.slack.failing["conversations.replies"] = "missing_scope";
   await watching(unreadable, async () => {
-    unreadable.warp.tellFor(
+    unreadable.humagen.tellFor(
       "dana",
       { client: "app", user: USER },
       { ...mentionMail(), source: { thread: other, project: "Globex" } },
@@ -231,17 +231,17 @@ test("an expert asked by a run in this app's Slack thread is told in their direc
 test("a question to a role reaches each person the client maps who holds it, each kept current on their own", async () => {
   const w = mapping();
   const OTHER = "U02OTHER";
-  const app = w.warp.clients.get("app");
+  const app = w.humagen.clients.get("app");
   if (app?.slack) app.slack.people = { ...app.slack.people, [OTHER]: "vic" };
   const toRole = { ...mentionMail(), to: undefined, audience: ["role:security"] };
   await watching(w, async () => {
-    w.warp.tellFor("dana", { client: "app", user: USER }, toRole);
-    w.warp.tellFor("vic", { client: "app", user: OTHER }, toRole);
+    w.humagen.tellFor("dana", { client: "app", user: USER }, toRole);
+    w.humagen.tellFor("vic", { client: "app", user: OTHER }, toRole);
   });
   const sent = w.slack.of("chat.postMessage").map((m) => m.channel);
   assert.deepEqual(sent.sort(), [OTHER, USER].sort(), "one direct message each");
   await watching(w, async () => {
-    w.warp.tellFor("vic", { client: "app", user: OTHER }, { ...toRole, state: "resolved" });
+    w.humagen.tellFor("vic", { client: "app", user: OTHER }, { ...toRole, state: "resolved" });
   });
   assert.equal(w.slack.of("chat.postMessage").length, 2, "none sent again");
   assert.equal(w.slack.of("chat.update").length, 1, "only vic's is edited");

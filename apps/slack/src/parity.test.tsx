@@ -11,11 +11,11 @@ import {
   toRequest,
   updatesOf,
   type WireProject,
-} from "@warp/adapter";
-import { defaultCopy, Home, MessageView, TurnView } from "@warp/components";
-import { ActionId, type MessagePart, partResolution, type Turn } from "@warp/core";
-import { homeView, renderToSlack } from "@warp/render-slack";
-import { WebSurface } from "@warp/render-web";
+} from "@humagen/adapter";
+import { defaultCopy, Home, MessageView, TurnView } from "@humagen/components";
+import { ActionId, type MessagePart, partResolution, type Turn } from "@humagen/core";
+import { homeView, renderToSlack } from "@humagen/render-slack";
+import { WebSurface } from "@humagen/render-web";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { forSlack } from "./app.tsx";
@@ -35,7 +35,7 @@ import { homeModel } from "./home.ts";
 /**
  * One state, two renderers. A recorded run goes through the shared adapter
  * once. The console and the Slack app both render that one turn with the same
- * warp components, so what a person reads is the same in both places.
+ * humagen components, so what a person reads is the same in both places.
  */
 
 const RUN = "api-svc-slack-slack-T01ABCDEF-C01ABCDEF-1700000000-000100";
@@ -563,10 +563,10 @@ test("Home's What's new is made as the console makes it, and What's new and Your
       mine: false,
     },
   ];
-  const href = (path: string) => `https://warp.test${path}`;
+  const href = (path: string) => `https://humagen.test${path}`;
   const model = homeModel({
     person: { id: "U01ANA", name: "Ana" },
-    assistant: { name: "Warp" },
+    assistant: { name: "Humagen" },
     intro: "I hand your questions to this workspace's agents.",
     inbox: { messages: [], open: 0 },
     announcements,
@@ -594,7 +594,7 @@ test("Home's What's new is made as the console makes it, and What's new and Your
       kind: "team",
       active: 2,
       activeAt: "2026-10-09T00:30:00Z",
-      url: "https://warp.test/projects/Field",
+      url: "https://humagen.test/projects/Field",
     },
     {
       name: "Launch",
@@ -602,7 +602,7 @@ test("Home's What's new is made as the console makes it, and What's new and Your
       within: [],
       kind: "team",
       active: 0,
-      url: "https://warp.test/projects/Launch",
+      url: "https://humagen.test/projects/Launch",
     },
   ]);
 
@@ -634,7 +634,7 @@ test("Home's What's new is made as the console makes it, and What's new and Your
 });
 
 test("Home's Needs you holds the same rows and the same total on both, an agent's draft among them and no announcement", () => {
-  // A page of ana's open inbox, newest first, as warp sends it: an agent's
+  // A page of ana's open inbox, newest first, as humagen sends it: an agent's
   // draft waits on her as one of Field's owners, beside a posted announcement.
   const inbox = [
     draftMail(),
@@ -646,12 +646,12 @@ test("Home's Needs you holds the same rows and the same total on both, an agent'
     failureMail(RUN),
     memoryMail(RUN),
   ];
-  // warp counts what may need her across her whole inbox: more than the page
+  // humagen counts what may need her across her whole inbox: more than the page
   // holds, the draft among them, the announcement not.
   const open = 9;
   const model = homeModel({
     person: { id: "U01ANA", name: "Ana" },
-    assistant: { name: "Warp" },
+    assistant: { name: "Humagen" },
     intro: "I hand your questions to this workspace's agents.",
     inbox: { messages: inbox, open },
     // Her announcements, as an owner reads them: the draft has the same kind.
@@ -659,7 +659,7 @@ test("Home's Needs you holds the same rows and the same total on both, an agent'
     projects: [],
     workspace: "acme",
     build: false,
-    href: (path: string) => `https://warp.test${path}`,
+    href: (path: string) => `https://humagen.test${path}`,
   });
   // The console's Home says "Needs you" with this same number (inboxCounts.open).
   assert.equal(model.notifications.inbox?.total, open);

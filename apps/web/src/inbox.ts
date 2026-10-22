@@ -1,4 +1,4 @@
-import { messageState, resolveMessage, type UiAction } from "@warp/core";
+import { messageState, resolveMessage, type UiAction } from "@humagen/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type PlatformMessage, type Transport, toRequest, transport as platform } from "./mail.ts";
 import { within } from "./timeout.ts";

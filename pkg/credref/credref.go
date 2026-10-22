@@ -1,8 +1,8 @@
 // Package credref resolves credential references: names for where a key is
 // kept, never the key itself. A deployment writes "env:OPENAI_API_KEY",
-// "keychain:warp/openai" or "op://Private/OpenAI/credential" into its
+// "keychain:humagen/openai" or "op://Private/OpenAI/credential" into its
 // providers file, and the value is read when it is needed, on every call,
-// and never written anywhere by warp. Rotating a key is changing it where it
+// and never written anywhere by humagen. Rotating a key is changing it where it
 // lives; nothing here caches it.
 //
 // It is the one place a reference is parsed, so the providers file, the

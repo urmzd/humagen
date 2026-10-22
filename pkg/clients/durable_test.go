@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 func TestRestart(t *testing.T) {
@@ -61,12 +61,12 @@ func TestRestart(t *testing.T) {
 		}
 		// A client created after the restart goes after those before it.
 		later := githubOf("later", "acme")
-		later.GitHub = &GitHubOptions{Login: "warp[bot]"}
+		later.GitHub = &GitHubOptions{Login: "humagen[bot]"}
 		if _, err := again.Create("acme", later, caps, t0); err != nil {
 			t.Fatal(err)
 		}
 		third, _ := Open(st)
-		if l := third.List("acme"); len(l) != 3 || l[2].ID != "later" || l[2].GitHub == nil || l[2].GitHub.Login != "warp[bot]" {
+		if l := third.List("acme"); len(l) != 3 || l[2].ID != "later" || l[2].GitHub == nil || l[2].GitHub.Login != "humagen[bot]" {
 			t.Fatalf("order after a second restart = %+v", l)
 		}
 	})

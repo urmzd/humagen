@@ -1,6 +1,6 @@
 # Slack sandbox
 
-Test warp in the real Slack client, not a lookalike. The same fixtures that Storybook renders on the web get posted, streamed, and clicked in a sandbox workspace.
+Test humagen in the real Slack client, not a lookalike. The same fixtures that Storybook renders on the web get posted, streamed, and clicked in a sandbox workspace.
 
 ## Setup (once)
 
@@ -20,7 +20,7 @@ Test warp in the real Slack client, not a lookalike. The same fixtures that Stor
 
    It has no **Ask the agent** workflow step and is not org-ready. Run the command without the variable on a paid workspace to get the full manifest.
 
-2. Install the app to the sandbox workspace and invite it to the test channel (`/invite @warp`).
+2. Install the app to the sandbox workspace and invite it to the test channel (`/invite @humagen`).
 3. Create an app-level token with `connections:write` (Basic Information → App-Level Tokens). Socket Mode uses it, so no public URL is needed.
 4. Copy `.envrc.local.example` to the repo root as `.envrc.local`, fill it in, and run `direnv allow`.
 
@@ -55,13 +55,13 @@ Besides a DM or an @mention, a turn can start from:
 
 | Entry | How | Answer lands |
 |-------|-----|--------------|
-| Global shortcut | **Ask Warp** in the shortcuts menu | The app's messages with you |
-| Message shortcut | **Ask Warp about this** on any message | That message's thread |
+| Global shortcut | **Ask Humagen** in the shortcuts menu | The app's messages with you |
+| Message shortcut | **Ask Humagen about this** on any message | That message's thread |
 | Slash command | `/agent <question>` or `/agent help` | A new thread in the channel |
 | Workflow step | **Ask the agent** in Workflow Builder | A new thread in the chosen channel |
 
 The workflow step finishes when the turn does, so a turn that waits on an approval keeps the workflow waiting. Its outputs are `status` (`done`, `denied`, `stopped`) and `answer`. The shortcuts and the command need the `commands` scope, and the step needs an org-ready app on a paid workspace: regenerate the manifest without `SLACK_SANDBOX_SKIP` and reinstall.
 
-The test app is Warp's Slack app, so the manifest names it Warp (`@warp`). Opening its Messages tab sets the suggested prompts. Opening its Home tab publishes the `home` fixture (`Home` from `@warp/components`): a greeting, Ask a Question, Build an Agent and Search Knowledge, notifications (inbox items and open alerts, each with its console address written out), who answers your direct messages, connections, and a line about your access. Ask a Question opens the ask form; picking who answers republishes the tab; the other buttons open a modal that says what a host would do.
+The test app is Humagen's Slack app, so the manifest names it Humagen (`@humagen`). Opening its Messages tab sets the suggested prompts. Opening its Home tab publishes the `home` fixture (`Home` from `@humagen/components`): a greeting, Ask a Question, Build an Agent and Search Knowledge, notifications (inbox items and open alerts, each with its console address written out), who answers your direct messages, connections, and a line about your access. Ask a Question opens the ask form; picking who answers republishes the tab; the other buttons open a modal that says what a host would do.
 
-Fixture names match the exports in `@warp/core/fixtures` and the Storybook docs.
+Fixture names match the exports in `@humagen/core/fixtures` and the Storybook docs.

@@ -1,16 +1,16 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { AttachmentView } from "@warp/components";
-import type { Turn } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { renderToSlack } from "@warp/render-slack";
-import { streamTurn } from "@warp/slack-host";
+import { AttachmentView } from "@humagen/components";
+import type { Turn } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { renderToSlack } from "@humagen/render-slack";
+import { streamTurn } from "@humagen/slack-host";
 import { eventsFor, registry, views } from "./fixtures";
 import { buildManifest, CAPABILITIES, capabilitiesExcept, createAppUrl } from "./manifest";
 import { serve } from "./serve";
 import { readEnv, slackClient, uploadFile, validateBlocks } from "./slack";
 
-const USAGE = `warp Slack sandbox
+const USAGE = `humagen Slack sandbox
 
   pnpm sandbox manifest [out.json]   Generate the app manifest and a "create app" link
   pnpm sandbox list                  List postable fixtures
@@ -61,7 +61,7 @@ async function main() {
         for (const [i, blocks] of pages.entries()) {
           const view =
             p.placement === "modal"
-              ? { type: "modal", title: { type: "plain_text", text: "warp" }, blocks }
+              ? { type: "modal", title: { type: "plain_text", text: "humagen" }, blocks }
               : p.placement === "home"
                 ? { type: "home", blocks }
                 : undefined;
@@ -91,7 +91,7 @@ async function main() {
       if (wanted.length === 0) throw new Error(`No fixture "${arg}". Try: pnpm sandbox list`);
       const header = await slack.call<{ ts: string }>("chat.postMessage", {
         channel: env.channel,
-        text: `warp sandbox · ${wanted.length} fixture${wanted.length > 1 ? "s" : ""} · ${new Date().toISOString()}`,
+        text: `humagen sandbox · ${wanted.length} fixture${wanted.length > 1 ? "s" : ""} · ${new Date().toISOString()}`,
       });
       for (const p of wanted) {
         if (p.placement === "modal") {
@@ -115,7 +115,7 @@ async function main() {
               text: pages.length > 1 ? `(${i + 1}/${pages.length}) ${text}`.slice(0, 4000) : text,
               blocks: page,
               // Label each post so the thread reads as a catalog.
-              metadata: { event_type: "warp_fixture", event_payload: { name: p.name } },
+              metadata: { event_type: "humagen_fixture", event_payload: { name: p.name } },
             });
           }
         } catch (e) {
@@ -169,7 +169,7 @@ async function main() {
       ].join("\n");
       const root = await slack.call<{ ts: string }>("chat.postMessage", {
         channel: env.channel,
-        text: "warp sandbox · artifact upload",
+        text: "humagen sandbox · artifact upload",
       });
       const uploaded = await uploadFile(
         slack,

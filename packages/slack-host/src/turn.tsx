@@ -1,5 +1,5 @@
-import { type Copy, defaultCopy, type TurnCapabilities, TurnView } from "@warp/components";
-import { emptyTurn, reduce, type Turn, type TurnEvent, type TurnStatus } from "@warp/core";
+import { type Copy, defaultCopy, type TurnCapabilities, TurnView } from "@humagen/components";
+import { emptyTurn, reduce, type Turn, type TurnEvent, type TurnStatus } from "@humagen/core";
 import {
   type Block,
   emptyBudget,
@@ -14,7 +14,7 @@ import {
   streamStopTitle,
   streamTrailer,
   streamUpdate,
-} from "@warp/render-slack";
+} from "@humagen/render-slack";
 import { type SlackCaller, slackCode } from "./client";
 
 /**
@@ -22,7 +22,7 @@ import { type SlackCaller, slackCode } from "./client";
  * the message that asked, the session's status, `chat.startStream`, ordered
  * `chat.appendStream` calls, and `chat.stopStream` with the final blocks. A
  * turn that outgrows one message continues in the next, in the same thread.
- * Every block and chunk comes from `@warp/render-slack`.
+ * Every block and chunk comes from `@humagen/render-slack`.
  *
  * Where native streaming is refused, the turn is posted once and edited in
  * place, from the same components.

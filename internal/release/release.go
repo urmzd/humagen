@@ -1,5 +1,5 @@
-// Package release reads warp's changelog, the CHANGELOG.md the release tool
-// writes at each release, and which release of warp a binary runs. It is
+// Package release reads humagen's changelog, the CHANGELOG.md the release tool
+// writes at each release, and which release of humagen a binary runs. It is
 // what workspace.release_notes posts in a workspace's inbox.
 package release
 
@@ -11,8 +11,8 @@ import (
 	"unicode/utf8"
 )
 
-// Module is warp's module path.
-const Module = "github.com/urmzd/warp"
+// Module is humagen's module path.
+const Module = "github.com/urmzd/humagen"
 
 // Notes is what one release brings, as the changelog lists it. Each entry
 // is plain text: the scope, then the summary, without the commit link
@@ -117,7 +117,7 @@ func Find(changelog, version string) (Notes, bool) {
 func (n Notes) News() bool { return len(n.Breaking)+len(n.Features) > 0 }
 
 // Subject is the announcement's subject line.
-func (n Notes) Subject() string { return "What's new in warp " + n.Version }
+func (n Notes) Subject() string { return "What's new in humagen " + n.Version }
 
 // Text is the announcement's text: the breaking changes under "Breaking
 // changes:", then the features, under "Features:" when there are breaking
@@ -161,12 +161,12 @@ func (n Notes) Text(limit int) string {
 // lines is entries as a list, each on a line of its own.
 func lines(entries []string) string { return "- " + strings.Join(entries, "\n- ") }
 
-// Running is the release of warp this binary runs, as the changelog's
+// Running is the release of humagen this binary runs, as the changelog's
 // headings write it, or "" for a build that is not a release: "dev", a
 // local build or a pseudo-version. stamped is the version a release build
-// sets with -ldflags, which is warp's only in warp's own binary. A program
-// that imports warp has a version of its own, and there warp's is the one Go
-// recorded for warp's module.
+// sets with -ldflags, which is humagen's only in humagen's own binary. A program
+// that imports humagen has a version of its own, and there humagen's is the one Go
+// recorded for humagen's module.
 func Running(stamped string) string {
 	info, _ := debug.ReadBuildInfo()
 	return running(stamped, info)

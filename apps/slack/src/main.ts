@@ -1,32 +1,35 @@
 import { App } from "./app.tsx";
 import { NEEDED, readConfig, USEFUL } from "./config.ts";
+import { httpHumagen } from "./humagen.ts";
 import { fileJournal, journaled, recoverStreams } from "./journal.ts";
 import { slackClient, socketMode } from "./slack.ts";
-import { httpWarp } from "./warp.ts";
 
 const log = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
 
 async function main() {
   const config = readConfig();
-  const warp = httpWarp({ baseUrl: config.warp.url, token: config.warp.token });
+  for (const note of config.notes) log(`note: ${note}`);
+  const humagen = httpHumagen({ baseUrl: config.humagen.url, token: config.humagen.token });
 
   // The credential decides the workspace. The configured name only has to agree with it.
-  const { principal: me, permissions } = await warp.getMe();
-  if (me.tenant !== config.warp.tenant) {
+  const { principal: me, permissions } = await humagen.getMe();
+  if (me.tenant !== config.humagen.tenant) {
     throw new Error(
-      "The warp credential is for another workspace than WARP_TENANT. Refusing to start.",
+      "The humagen credential is for another workspace than HUMAGEN_TENANT. Refusing to start.",
     );
   }
-  const lacking = [...NEEDED, ...(config.warp.client ? ["clients:read"] : [])].filter(
+  const lacking = [...NEEDED, ...(config.humagen.client ? ["clients:read"] : [])].filter(
     (p) => !permissions.includes(p),
   );
   if (lacking.length > 0) {
-    throw new Error(`The warp credential lacks ${lacking.join(", ")}.`);
+    throw new Error(`The humagen credential lacks ${lacking.join(", ")}.`);
   }
   // More than the app can use is allowed, but every button in Slack acts with it.
   const extra = permissions.filter((p) => !USEFUL.includes(p));
   if (extra.length > 0) {
-    log(`warning: the warp credential also grants ${extra.join(", ")}, which this app never uses`);
+    log(
+      `warning: the humagen credential also grants ${extra.join(", ")}, which this app never uses`,
+    );
   }
 
   // The bot token decides the team in the same way.
@@ -44,15 +47,15 @@ async function main() {
   if (recovered > 0) log(`closed ${recovered} stream(s) the last run of the app left open`);
   const slack = journaled(bot, journal);
 
-  const app = new App(slack, warp, {
+  const app = new App(slack, humagen, {
     team: config.slack.team,
     botUser: who.user_id,
     subject: me.subject,
     tenant: me.tenant,
     operators: config.slack.operators,
-    clientId: config.warp.client,
-    defaultAgent: config.warp.defaultAgent,
-    publicUrl: config.warp.publicUrl,
+    clientId: config.humagen.client,
+    defaultAgent: config.humagen.defaultAgent,
+    publicUrl: config.humagen.publicUrl,
     branding: config.slack.branding,
     log,
   });
@@ -67,7 +70,7 @@ async function main() {
     Promise.race([app.idle(), patience]).finally(() => process.exit(0));
   });
 
-  // The inbox is followed beside the socket. If warp goes away it is followed
+  // The inbox is followed beside the socket. If humagen goes away it is followed
   // again, and each time the stream opens the app catches up on the
   // announcements of its bound channels, which the stream does not replay.
   (async () => {

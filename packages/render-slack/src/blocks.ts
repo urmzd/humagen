@@ -1,6 +1,6 @@
-import { defaultCopy } from "@warp/components";
-import { type Citation, encodeAction, formatBytes, type Tone } from "@warp/core";
-import type { PrimitiveName, PrimitiveProps, TaskProps } from "@warp/primitives";
+import { defaultCopy } from "@humagen/components";
+import { type Citation, encodeAction, formatBytes, type Tone } from "@humagen/core";
+import type { PrimitiveName, PrimitiveProps, TaskProps } from "@humagen/primitives";
 import { escapeSlackText, isMention, plainName, toMrkdwn, toPlain } from "./mrkdwn";
 import type { HostChild, HostNode } from "./reconciler";
 import { nextBreak } from "./split";
@@ -514,7 +514,7 @@ class Serializer {
 
   /**
    * Slack's `overflow` has one action_id for the whole menu, so each option's
-   * value carries its own warp action. Decode with `decodeSlackAction`.
+   * value carries its own humagen action. Decode with `decodeSlackAction`.
    */
   overflow({ items }: PrimitiveProps["Menu"], index: number): Block {
     if (items.length > 5)
