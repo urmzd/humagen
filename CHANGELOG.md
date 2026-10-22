@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.21.0 (2026-10-22)
+
+### Breaking
+
+- rename warp to Humagen, with old names still read (#53) ([54edc7b](https://github.com/urmzd/humagen/commit/54edc7bad20bacda5e9dd7e899b5f864e267e23c))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.20.2...v0.21.0)
+
+
 ## 0.20.2 (2026-10-22)
 
 ### Bug Fixes
