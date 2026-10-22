@@ -364,6 +364,27 @@ export function MessageView({
   );
 }
 
+/**
+ * An announcement as it is posted in a channel, one post that everyone there
+ * reads: what it says while it stands, and once it is withdrawn for everyone
+ * only that, so nothing withdrawn is left to read. The post is the channel's,
+ * not one reader's, so nothing on it sets it aside.
+ */
+export function AnnouncementPost({
+  message,
+  copy = defaultCopy,
+}: { message: InboxMessage } & WithCopy) {
+  if (messageState(message) !== "open" && !message.hidden) {
+    return (
+      <>
+        <Summary text={copy.announcements.seedWithdrawn} />
+        <Text text={copy.announcements.seedWithdrawn} />
+      </>
+    );
+  }
+  return <MessageView message={message} setAside={false} copy={copy} />;
+}
+
 /** How many open messages one Slack Home tab shows in full; the rest are counted. */
 const HOME_MESSAGES = 8;
 

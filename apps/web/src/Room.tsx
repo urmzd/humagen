@@ -286,14 +286,21 @@ function MessageView({ m, focused }: { m: ThreadMessage; focused: boolean }) {
 
 /**
  * The announcement a thread was started from, ahead of its first message:
- * from the person who posted it, or the agent a schedule ran, never from
- * whoever replied. A withdrawn one says only that.
+ * from the person who posted it, the agent a schedule ran, or warp itself
+ * for a release's notes, never from whoever replied. A withdrawn one says
+ * only that. Warp needs no mark, as in the inbox, so its column stays empty.
  */
 function AnnouncementView({ a }: { a: ThreadAnnouncement }) {
-  const who = a.kind === "agent" ? a.by : a.name || a.by;
+  const who = a.kind === "person" ? a.name || a.by : a.by;
   return (
     <article aria-label={`${defaultCopy.template.announcement} from ${who}`} className="flex gap-3">
-      {a.kind === "agent" ? <AgentMark name={a.by} size={28} /> : <PersonMark name={who} />}
+      {a.kind === "agent" ? (
+        <AgentMark name={a.by} size={28} />
+      ) : a.kind === "person" ? (
+        <PersonMark name={who} />
+      ) : (
+        <span aria-hidden className="w-7 shrink-0" />
+      )}
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-baseline gap-x-2 text-aui-xs text-aui-muted">
           <span className="font-medium text-aui-fg">{who}</span>

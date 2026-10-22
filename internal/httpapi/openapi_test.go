@@ -597,7 +597,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
-		"Channel": {typ: projects.Channel{}}, "ChannelView": {typ: channelView{}},
+		"Channel": {typ: projects.Channel{}}, "ClientBinding": {typ: projects.Binding{}}, "ChannelView": {typ: channelView{}},
 		"ChannelInput": {typ: platform.ChannelInput{}, written: true}, "ChannelUpdate": {typ: platform.ChannelUpdate{}, written: true},
 		"ProjectExpert": {typ: projects.Expert{}}, "ProjectExperts": {typ: platform.Experts{}}, "Project": {typ: projects.Project{}}, "ProjectView": {typ: projectView{}},
 		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectLimit": {typ: projectLimit{}},
@@ -1481,8 +1481,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", channel, "/api/projects/Field/channels/general", `{"version":0,"slack":{"client":"app","channel":"C01RENEW"}}`, http.StatusConflict)
 	c.call(acme, "PUT", channel, "/api/projects/Field/channels/general", `{"version":0,"slack":{"client":"ghost","channel":"C01GEN"}}`, http.StatusBadRequest)
 	bindings := c.call(acme, "GET", "/api/clients/{id}/bindings", "/api/clients/app/bindings", "", http.StatusOK)
-	if b := sliceOf(bindings.field("bindings")); len(b) != 1 || obj(b[0])["channel"] != "renewals" {
-		t.Errorf("the app's bindings are %s", bindings.raw)
+	if b := sliceOf(bindings.field("bindings")); len(b) != 1 || obj(b[0])["channel"] != "renewals" || obj(b[0])["bound_at"] == "" || obj(b[0])["bound_at"] == nil {
+		t.Errorf("the app's bindings are %s, each saying when it was bound", bindings.raw)
 	}
 	c.call(globex, "GET", "/api/clients/{id}/bindings", "/api/clients/app/bindings", "", http.StatusNotFound)
 	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Crowded"}`, http.StatusCreated)

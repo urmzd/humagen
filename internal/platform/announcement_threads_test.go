@@ -158,6 +158,60 @@ func TestARecapsThreadStartsWithTheAgentThatWroteIt(t *testing.T) {
 	}
 }
 
+// warp's own release notes are an announcement like any other in the
+// workspace's inbox: where the workspace's general channel is bound, a reply
+// under their post starts a thread seeded with them, from warp marked as
+// the system, never from whoever replied or from an agent, and once they
+// are withdrawn the thread says only that.
+func TestAReplyToReleaseNotesStartsAThreadSeededWithThem(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	seePeople(t, p, auth.Principal{Subject: "ada"})
+	if _, err := p.UpdateChannel(t.Context(), tenant, projects.Root, projects.General, govern, platform.ChannelUpdate{Slack: &projects.SlackBinding{Client: "app", Channel: newsChannel}}); err != nil {
+		t.Fatal(err)
+	}
+	notes, fresh, err := p.PostReleaseNotes(tenant, "0.16.0", platform.Announcement{Subject: "What's new in warp 0.16.0", Text: "- Projects\n- Slack catch-up"})
+	if err != nil || !fresh {
+		t.Fatalf("release notes = %+v, %v, %v", notes, fresh, err)
+	}
+	reads := machine
+	reads.Scopes = append(append([]auth.Permission{}, machine.Scopes...), auth.ProjectsRead)
+	if err := p.RecordDelivery(reads, notes.ID, "app", inbox.Delivery{Channel: newsChannel, TS: newsPost}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := p.StartThread(t.Context(), machine, fromSlack(newsChannel, newsPost, "1700000000.000200", "<@UAPP> @lead what does catch-up do?"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := got.Thread
+	if th.Project != projects.Root || th.Channel != projects.General || th.Announcement != notes.ID || len(got.Runs) != 1 {
+		t.Fatalf("the reply started %+v with %+v", th, got.Runs)
+	}
+	if text := got.Runs[0].Tag().Text; !strings.Contains(text, "\nwarp (system): (announcement: What's new in warp 0.16.0) - Projects - Slack catch-up\n") || strings.Contains(text, "warp (agent)") {
+		t.Fatalf("the run was sent:\n%s", text)
+	}
+	await(t, p, got.Runs[0].ID, runs.Completed)
+	_, turns, _, err := p.ThreadTurns(tenant, th.ID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, shown := p.ShowTurns(tenant, th, turns)
+	if len(shown) != 3 || shown[0].Kind != platform.TurnAnnouncement {
+		t.Fatalf("the thread's turns are %+v", shown)
+	}
+	if a := shown[0].Announcement; a.ID != notes.ID || a.Kind != threads.System || a.By != "warp" || a.Name != "" || a.Subject != "What's new in warp 0.16.0" || a.Withdrawn {
+		t.Fatalf("the first turn is %+v", a)
+	}
+
+	if _, _, err := p.Inbox.Withdraw(tenant, notes.ID, "ada", "Withdrawn by Ada", posted); err != nil {
+		t.Fatal(err)
+	}
+	_, turns, _, _ = p.ThreadTurns(tenant, th.ID, "", 0)
+	if a := turns[0].Announcement; a == nil || a.Kind != threads.System || !a.Withdrawn || a.Subject != "" || a.Text != "" {
+		t.Fatalf("withdrawn release notes read %+v", a)
+	}
+}
+
 // Where its Slack channel is still bound to its project, a reply under a
 // withdrawn announcement or a draft starts nothing: it is refused and no
 // thread is made. A thread started before the withdrawal goes on, and its

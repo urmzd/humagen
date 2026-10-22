@@ -107,7 +107,11 @@ names the scope it needs. A Slack surface needs at least
 `warp:agents:read`, `warp:runs:read`, `warp:runs:write` and
 `warp:billing:read`, plus the write scope for each inbox action it offers.
 The Slack app's Home lists a mapped person's projects, which takes
-`warp:projects:read` too.
+`warp:projects:read` too. An app run as a client (`WARP_CLIENT`) reads its
+client and its bindings, which takes `warp:clients:read`, and catches up on
+each bound project's announcements in the project's inbox, which takes
+`warp:projects:read`: without it, release notes, and announcements made
+while the app was away, never reach Slack.
 See [security](security.md) for setting up the identity provider.
 
 Under `make dev` the server runs with development auth: every request is the

@@ -71,6 +71,64 @@ func TestADeliveryIsReplayedAndNeverAnnounced(t *testing.T) {
 	})
 }
 
+// The same post recorded again after the message changed says the post now
+// shows it as it stands: the receipt's time moves on, once a change, and so
+// after a restart and a rebuild. Before any change, or with a time from
+// before the receipt, it changes nothing.
+func TestARereportedPostMovesItsReceiptOnOnlyAfterAChange(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := raise(s, "announce:Field:1", t0, Part{Type: PartText, State: PartInfo, Text: "We shipped."})
+		post := Delivery{Channel: "C0FIELD", TS: "1700000000.000100", At: t0.Add(time.Second)}
+		at := func(d time.Duration) Delivery { return Delivery{Channel: post.Channel, TS: post.TS, At: t0.Add(d)} }
+		deliver := func(d Delivery) {
+			t.Helper()
+			if err := s.Deliver(acme, m.ID, "slack-acme", d, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		deliver(post)
+		deliver(at(2 * time.Second))
+		if got, _ := s.Get(acme, m.ID, "ada"); got.Deliveries["slack-acme"] != post {
+			t.Fatalf("before any change the receipt is %+v", got.Deliveries["slack-acme"])
+		}
+		if _, _, err := s.Withdraw(acme, m.ID, "ada", "Withdrawn by Ada", t0.Add(3*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		deliver(at(time.Second / 2))
+		if got, _ := s.Get(acme, m.ID, "ada"); got.Deliveries["slack-acme"] != post {
+			t.Fatalf("a time from before the receipt moved it to %+v", got.Deliveries["slack-acme"])
+		}
+		shown := at(4 * time.Second)
+		deliver(shown)
+		deliver(at(5 * time.Second))
+		got, _ := s.Get(acme, m.ID, "ada")
+		if got.Deliveries["slack-acme"] != shown {
+			t.Fatalf("after the withdrawal the receipt is %+v, want %+v", got.Deliveries["slack-acme"], shown)
+		}
+		// Raised, delivered, withdrawn, delivered again: one record a change.
+		if n := len(s.History(acme, m.ID)); n != 4 {
+			t.Fatalf("history holds %d changes, want 4", n)
+		}
+		reopened, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, store := range map[string]*Store{"reopened": reopened, "rebuilt": Rebuild(s.Changes(acme))} {
+			if again, _ := store.Get(acme, m.ID, "ada"); again.Deliveries["slack-acme"] != shown {
+				t.Errorf("%s: the receipt is %+v", name, again.Deliveries["slack-acme"])
+			}
+			if found, ok := store.ByDelivery(acme, "slack-acme", post); !ok || found.ID != m.ID {
+				t.Errorf("%s: the post finds %q, %v", name, found.ID, ok)
+			}
+		}
+	})
+}
+
 func TestADeliveryNeedsAMessageTheClientMaySee(t *testing.T) {
 	s := NewStore()
 	m := raise(s, "a", t0)

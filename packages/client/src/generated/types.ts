@@ -507,17 +507,18 @@ export interface ThreadMessage {
 /** The announcement a thread was started from, as it stands when the
 thread is read: who posted it and what it says. It is the inbox's,
 never a message of the thread, so it is from whoever posted it, a
-person or the agent a schedule ran, and never from the person whose
-reply started the thread. A withdrawn one says nothing more.
+person, the agent a schedule ran, or warp itself for a release's
+notes, and never from the person whose reply started the thread. A
+withdrawn one says nothing more.
  */
 export interface ThreadAnnouncement {
   /** The announcement's inbox id. */
   id: string;
-  /** Who posted it. */
-  kind: "person" | "agent";
-  /** The person's handle, or the agent's name. */
+  /** Who posted it. `system` is warp itself, as for a release's notes. */
+  kind: "person" | "agent" | "system";
+  /** The person's handle, the agent's name, or `warp` for what warp posted itself. */
   by: string;
-  /** What the person is called. Absent for an agent. */
+  /** What the person is called. Absent for an agent and for warp itself (`system`). */
   name?: string;
   subject?: string;
   text?: string;
@@ -673,6 +674,12 @@ export interface Channel {
   /** Answers untagged messages here, an agent or `auto`. Absent inherits from the project. */
   default?: string;
   slack?: SlackBinding;
+  /** When `slack` was bound as it stands: set when a binding is made
+or moved, kept while it holds. Absent while unbound, and on a
+binding made before warp kept the time, which the client's
+bindings then read as bound at the channel's last change.
+ */
+  bound_at?: string;
   /** It and its threads stay, and it takes no new threads. */
   archived?: boolean;
   /** `file` when the platform file declares the channel. */
@@ -730,6 +737,14 @@ export interface ClientBinding {
   /** The project. Empty is the workspace itself. */
   project: string;
   channel: string;
+  /** When the Slack channel was bound to this channel. The client's
+app catches up on nothing announced before it: what was
+announced before the binding, or while the channel was unbound,
+never reached the Slack channel and is not news there now.
+Present for every binding; a binding made before warp kept the
+time reads as bound at its channel's last change.
+ */
+  bound_at?: string;
 }
 
 /** Where on a client's surface a message was posted: for Slack, the
@@ -1530,6 +1545,11 @@ export interface InboxDraftPart {
 export interface InboxDelivery {
   channel: string;
   ts: string;
+  /** When the client last said the post shows the message as it stands:
+when it was posted, or when it recorded the post again after
+bringing it up to date. A message whose `updated_at` is later has
+changed since.
+ */
   at: string;
 }
 

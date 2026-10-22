@@ -158,8 +158,8 @@ func (s *Server) getInbox(w http.ResponseWriter, r *http.Request, who auth.Princ
 		return
 	}
 	// Each reader is shown what changed the message for everyone and their
-	// own marks, never another reader's.
-	ok(w, http.StatusOK, map[string]any{"message": m, "history": s.P.Inbox.HistoryFor(who.Tenant, m.ID, who.Subject)})
+	// own marks, never another reader's, nor another client's receipts.
+	ok(w, http.StatusOK, map[string]any{"message": m, "history": s.P.InboxHistory(who, m.ID)})
 }
 
 func (s *Server) readInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {

@@ -1024,9 +1024,11 @@ const MaxHistory = 100
 // oldest first: at most MaxHistory changes, the newest kept. A reader's own
 // marks are theirs alone, so another reader's reads and unreads, and on a
 // broadcast another reader's hiding or snoozing of their own copy, are left
-// out; the record keeps them for replay. What changed the message for
-// everyone is shown to everyone.
-func (s *Store) HistoryFor(tenantName, id, subject string) []Change {
+// out; the record keeps them for replay. A client's receipt (Delivered) is
+// that client's own mark too: it is shown only where ownDelivery says the
+// reader may see the client's receipts, and nil shows none. What changed the
+// message for everyone is shown to everyone.
+func (s *Store) HistoryFor(tenantName, id, subject string, ownDelivery func(client string) bool) []Change {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := s.of(tenantName)
@@ -1034,6 +1036,9 @@ func (s *Store) HistoryFor(tenantName, id, subject string) []Change {
 	out := []Change{}
 	for _, c := range t.log {
 		if c.Message != id || (c.By != subject && ownMark(c.What, broadcast)) {
+			continue
+		}
+		if c.What == Delivered && (ownDelivery == nil || !ownDelivery(c.By)) {
 			continue
 		}
 		out = append(out, c)

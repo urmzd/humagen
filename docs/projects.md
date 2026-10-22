@@ -812,6 +812,12 @@ cursor. Inbox retention for closed broadcasts is a follow-up (see Risks).
   or a later process on the same database posts nothing. It is an
   announcement like any other in the root: everyone reads it, What's new
   shows it, and Hide for Me hides one reader's copy.
+- The Slack app connects after the start, and catches up on a bound
+  project's announcements when it does, so the notes reach a channel bound
+  to the workspace's general before that start. A reply under their post starts a thread
+  seeded with them, from warp (`ThreadAnnouncement.kind` `system`, `by`
+  `warp`), which the room shows without a person's or an agent's mark and
+  a run is sent as `warp (system)`.
 
 ## Permissions
 
@@ -1012,10 +1018,11 @@ naming no agent.
 | Route | Permission | Notes |
 |---|---|---|
 | `PUT /api/projects/{name}/channels/{channel}` | `projects:write` | gains `slack {client, channel}`; owner; the client must be a Slack client in the tenant; binding a Slack channel, or moving a binding, also takes `clients:write` (403), as every new thread there is filed in the project; keeping or removing one takes only the owner |
-| `GET /api/clients/{id}/bindings` | `clients:read` | `[{slack_channel, project, channel}]`, at most 200 |
+| `GET /api/clients/{id}/bindings` | `clients:read` | `[{slack_channel, project, channel, bound_at}]`, at most 200; `bound_at` is when the binding was made, and the Slack app catches up on nothing announced before it |
 | `PUT /api/clients/{id}` | `clients:write` | gains `home {project, channel}` |
 | `POST /api/threads`, `POST /api/threads/{id}/messages` | `runs:write` | gain `surface {client, channel, ts}`: find or create the thread by surface. The platform files it from the binding, never from a request field, and only for the client's `slack.machine` |
-| `PUT /api/inbox/{id}/deliveries/{client}` | `runs:write` | `{channel, ts}` → 204; only the client's machine |
+| `PUT /api/inbox/{id}/deliveries/{client}` | `runs:write` | `{channel, ts}` → 204; only the client's machine. The same post again after the message changed moves the receipt's `at` on, so it says the post shows it; otherwise it changes nothing |
+| `GET /api/projects/{name}/inbox` | `projects:read` | shows a client's machine its own client's receipts and nobody else any, as every inbox read does: the Slack app catches up from it |
 | `GET /api/inbox`, `GET /api/inbox/count` | `runs:read` | gain `act_as` for a client's machine, resolved through `Client.ActsFor` |
 
 ### Phase 9
@@ -1291,14 +1298,29 @@ what needs the reader from the platform's reads (`updatesOf`, `projectsOf`,
   the question's answer.
 - **Announcements.** The app's `watchInbox` sees an announcement of a project
   whose `general` channel is bound. It posts it top-level once and records
-  `PUT /api/inbox/{id}/deliveries/{client}`, so a restart, an edit or a
-  withdrawal updates that post instead of posting again. A reply in its
-  thread starts a shared thread seeded with the announcement. Slack delivers
-  a reply in a channel thread only when it mentions the app, so the reply
-  that mentions it posts, with the post's surface, into the thread the
-  platform finds by that post's receipt: in the bound channel, its turns
-  start with the announcement from whoever posted it (the scheduled agent
-  for a recap), then the reply as the person's own message, answered by the
+  `PUT /api/inbox/{id}/deliveries/{client}`, and the receipt is the record
+  of the post. The event stream does not replay, so each time it opens, at
+  the start and after every reconnect, the app catches up: it reads each
+  bound project's newest 50 announcements in the project's inbox, where its
+  machine is shown its own receipts, edits a post whose announcement
+  changed since its receipt (`updated_at` after its `at`), and posts, oldest
+  first, an open one with no receipt from the last 24 hours and announced
+  no earlier than the binding was made (`bound_at` on the binding), so
+  nothing from before the binding and nothing days late. A withdrawn post
+  says only that it was withdrawn, and the app records the same post again,
+  which moves the receipt's `at` on. So a restart, a reconnect, an edit or a
+  withdrawal updates that post instead of posting again, and a notice during
+  a catch-up posts nothing twice. A change to an announcement older than
+  the newest 50, made while the app was not listening, is not caught up on:
+  its post keeps what it said, withdrawn words included. The app does all
+  this only when its client names its credential as the machine, and a
+  catch-up that did not finish is tried again with backoff. A reply in its thread starts a shared thread seeded with the
+  announcement. Slack delivers a reply in a channel thread only when it
+  mentions the app, so the reply that mentions it posts, with the post's
+  surface, into the thread the platform finds by that post's receipt: in
+  the bound channel, its turns start with the announcement from whoever
+  posted it (the scheduled agent for a recap, warp itself for release
+  notes), then the reply as the person's own message, answered by the
   channel's chain. A later reply finds the same thread, and once the
   announcement is withdrawn the thread says only that. A reply under one
   withdrawn before anyone replied starts nothing, and drafts never reach a

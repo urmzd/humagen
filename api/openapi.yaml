@@ -1734,7 +1734,9 @@ paths:
                       changes, the newest kept. What changed it for everyone,
                       and the caller's own marks; another reader's reads, and
                       their hiding or snoozing of an announcement, are theirs
-                      alone and left out.
+                      alone and left out. A client's receipt (`delivered`,
+                      by the client's id) is shown only to that client's
+                      machine.
                     type: array
                     maxItems: 100
                     items: {$ref: "#/components/schemas/InboxChange"}
@@ -1926,8 +1928,11 @@ paths:
         withdrawal it updates that post instead of posting again. Only the
         credential the client names as `slack.machine` may record one: for
         anyone else, and for a message of a kind the caller may not read, the
-        answer is 404. Recording the same post again changes nothing. The
-        receipt shows in the message's `deliveries`, to that machine only.
+        answer is 404. Recording the same post again after the message
+        changed (its `updated_at` is after the receipt's `at`) says the post
+        now shows it as it stands, and moves the receipt's `at` on; otherwise
+        it changes nothing. The receipt shows in the message's `deliveries`,
+        to that machine only, wherever the message is read.
       x-permission: runs:write
       parameters:
         - {$ref: "#/components/parameters/MessageID"}
@@ -3533,8 +3538,10 @@ paths:
         who can see the project reads it, so an announcement here reaches
         every reader, member or not; a message addressed to someone in
         particular still reaches only them, and each kind still needs its
-        own permission. `next` is the cursor for the page after this one, or
-        null at the end.
+        own permission. A client's machine is shown its own client's
+        receipts (`deliveries`), and nobody else any, so a Slack app catches
+        up here on the announcements it may have missed. `next` is the cursor
+        for the page after this one, or null at the end.
       x-permission: projects:read
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -4994,8 +5001,9 @@ components:
         The announcement a thread was started from, as it stands when the
         thread is read: who posted it and what it says. It is the inbox's,
         never a message of the thread, so it is from whoever posted it, a
-        person or the agent a schedule ran, and never from the person whose
-        reply started the thread. A withdrawn one says nothing more.
+        person, the agent a schedule ran, or warp itself for a release's
+        notes, and never from the person whose reply started the thread. A
+        withdrawn one says nothing more.
       type: object
       required: [id, kind, by, at]
       properties:
@@ -5003,14 +5011,14 @@ components:
           description: The announcement's inbox id.
           type: string
         kind:
-          description: Who posted it.
+          description: Who posted it. `system` is warp itself, as for a release's notes.
           type: string
-          enum: [person, agent]
+          enum: [person, agent, system]
         by:
-          description: The person's handle, or the agent's name.
+          description: The person's handle, the agent's name, or `warp` for what warp posted itself.
           type: string
         name:
-          description: What the person is called. Absent for an agent.
+          description: What the person is called. Absent for an agent and for warp itself (`system`).
           type: string
         subject: {type: string, maxLength: 150}
         text: {type: string, maxLength: 4000}
@@ -5218,6 +5226,14 @@ components:
           description: Answers untagged messages here, an agent or `auto`. Absent inherits from the project.
           type: string
         slack: {$ref: "#/components/schemas/SlackBinding"}
+        bound_at:
+          description: |
+            When `slack` was bound as it stands: set when a binding is made
+            or moved, kept while it holds. Absent while unbound, and on a
+            binding made before warp kept the time, which the client's
+            bindings then read as bound at the channel's last change.
+          type: string
+          format: date-time
         archived:
           description: It and its threads stay, and it takes no new threads.
           type: boolean
@@ -5296,6 +5312,16 @@ components:
           description: The project. Empty is the workspace itself.
           type: string
         channel: {type: string}
+        bound_at:
+          description: |
+            When the Slack channel was bound to this channel. The client's
+            app catches up on nothing announced before it: what was
+            announced before the binding, or while the channel was unbound,
+            never reached the Slack channel and is not news there now.
+            Present for every binding; a binding made before warp kept the
+            time reads as bound at its channel's last change.
+          type: string
+          format: date-time
     SurfaceRef:
       description: |
         Where on a client's surface a message was posted: for Slack, the
@@ -6511,7 +6537,14 @@ components:
       properties:
         channel: {type: string}
         ts: {type: string}
-        at: {type: string, format: date-time}
+        at:
+          description: |
+            When the client last said the post shows the message as it stands:
+            when it was posted, or when it recorded the post again after
+            bringing it up to date. A message whose `updated_at` is later has
+            changed since.
+          type: string
+          format: date-time
     InboxDeliveryInput:
       description: Where a client posted a message.
       type: object

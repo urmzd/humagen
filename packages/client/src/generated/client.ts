@@ -1943,8 +1943,11 @@ such as an announcement, so that after a restart, an edit or a
 withdrawal it updates that post instead of posting again. Only the
 credential the client names as `slack.machine` may record one: for
 anyone else, and for a message of a kind the caller may not read, the
-answer is 404. Recording the same post again changes nothing. The
-receipt shows in the message's `deliveries`, to that machine only.
+answer is 404. Recording the same post again after the message
+changed (its `updated_at` is after the receipt's `at`) says the post
+now shows it as it stands, and moves the receipt's `at` on; otherwise
+it changes nothing. The receipt shows in the message's `deliveries`,
+to that machine only, wherever the message is read.
  */
   async recordInboxDelivery(id: string, client: string, body: InboxDeliveryInput, options?: RequestOptions): Promise<void> {
     let path = "/api/inbox/{id}/deliveries/{client}";
@@ -3325,8 +3328,10 @@ questions, results, files, proposed notes, mentions and announcements. Everyone
 who can see the project reads it, so an announcement here reaches
 every reader, member or not; a message addressed to someone in
 particular still reaches only them, and each kind still needs its
-own permission. `next` is the cursor for the page after this one, or
-null at the end.
+own permission. A client's machine is shown its own client's
+receipts (`deliveries`), and nobody else any, so a Slack app catches
+up here on the announcements it may have missed. `next` is the cursor
+for the page after this one, or null at the end.
  */
   async getProjectInbox(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<GetProjectInboxResponse> {
     let path = "/api/projects/{name}/inbox";

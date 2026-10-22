@@ -46,6 +46,10 @@ type Channel struct {
 	// Slack thread there is a shared thread here. One Slack channel is bound
 	// to at most one channel in the workspace.
 	Slack *SlackBinding `json:"slack,omitempty"`
+	// BoundAt is when Slack was last bound as it stands: set when a binding
+	// is made or moved, kept while it holds, and zero while unbound. A
+	// client's app posts nothing announced before it (Binding.BoundAt).
+	BoundAt time.Time `json:"bound_at,omitzero"`
 	// Archived keeps the channel and its threads, and takes no new ones.
 	Archived bool `json:"archived,omitempty"`
 	// Managed is ManagedFile when the platform file declares the channel.
@@ -72,6 +76,26 @@ type Binding struct {
 	SlackChannel string `json:"slack_channel"`
 	Project      string `json:"project"`
 	Channel      string `json:"channel"`
+	// BoundAt is when the Slack channel was bound to this channel. What was
+	// announced before then never reached it, and a catch-up does not post
+	// it now.
+	BoundAt time.Time `json:"bound_at,omitzero"`
+}
+
+// boundAt is when next's binding was made, as a write from cur at at
+// leaves it: kept while the binding holds, at when it is new or moved, and
+// zero when there is none. A binding written before the time was kept
+// reads as bound at its channel's last change, which is no earlier.
+func boundAt(cur, next Channel, at time.Time) time.Time {
+	switch {
+	case next.Slack == nil:
+		return time.Time{}
+	case cur.Slack == nil || !sameBinding(cur.Slack, next.Slack):
+		return at
+	case cur.BoundAt.IsZero():
+		return cur.UpdatedAt
+	}
+	return cur.BoundAt
 }
 
 // ChannelChange is a channel before and after a change.
@@ -176,7 +200,7 @@ func (s *Store) Bindings(tenantName, client string) []Binding {
 	}
 	for _, c := range t.channels {
 		if c.Slack != nil && c.Slack.Client == client {
-			out = append(out, Binding{SlackChannel: c.Slack.Channel, Project: c.Project, Channel: c.Name})
+			out = append(out, Binding{SlackChannel: c.Slack.Channel, Project: c.Project, Channel: c.Name, BoundAt: boundAt(c, c, c.UpdatedAt)})
 		}
 	}
 	slices.SortFunc(out, func(a, b Binding) int { return strings.Compare(a.SlackChannel, b.SlackChannel) })
@@ -359,6 +383,7 @@ func (s *Store) createChannel(tenantName string, c Channel, w Writer, at time.Ti
 	if err := tx.t.checkBinding(c); err != nil {
 		return Channel{}, err
 	}
+	c.BoundAt = boundAt(Channel{}, c, at)
 	c.Version, c.CreatedBy, c.CreatedAt, c.UpdatedBy, c.UpdatedAt = 1, w.By, at, w.By, at
 	tx.root(w.By, at)
 	tx.putChannel(c)
@@ -503,6 +528,7 @@ func (s *Store) replaceChannel(tx *write, cur, next Channel, by string, at time.
 	if err := tx.t.checkBinding(next); err != nil {
 		return Channel{}, err
 	}
+	next.BoundAt = boundAt(cur, next, at)
 	next.Version, next.UpdatedBy, next.UpdatedAt = cur.Version+1, by, at
 	if next.CreatedAt.IsZero() {
 		next.CreatedBy, next.CreatedAt = by, at
