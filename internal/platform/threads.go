@@ -554,7 +554,8 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	// The runs a message starts act for the person who posted it, and for
 	// nobody else in the thread: the tools that act as a person use the
 	// poster's own credentials (credentials.go), though each run is sent
-	// what others said in the room ahead of the poster's words.
+	// what others said in the room, fenced off ahead of the poster's words
+	// (threads.Ask).
 	actor := envelope.Actor{ID: m.By, Display: m.Name, User: m.By}
 	var answered []threads.Participant
 	start := func(agent string) (runs.Run, error) {
@@ -664,9 +665,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	cfg := p.Settings(tenant)
 	body := m.Text
 	if cfg.History == HistoryRecent {
-		if before := p.roomBefore(tenant, th, m); len(before) > 0 {
-			body = threads.Transcript(before, cfg.HistoryLimit) + "\n\n" + cmp.Or(m.Name, m.By) + ": " + m.Text
-		}
+		body = threads.Ask(p.roomBefore(tenant, th, m), cfg.HistoryLimit, p.shower(tenant), threads.Asker{Person: m.By, Name: m.Name}, m.Text)
 	}
 	return p.Invoke(ctx, envelope.Tag{
 		ID: tagID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,

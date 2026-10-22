@@ -130,11 +130,14 @@ not a tag.
 
 Every run a message starts acts for the person who posted it, never for
 another participant: a tool that acts as a person uses the poster's own
-credential. The run is sent the room up to the message, what others said
-there with who said it, ahead of the poster's words, as a mention in a Slack
-channel thread is, so another person's request in the thread is acted on
-with the poster's credential only when the poster's own words ask for it. A
-failed answer is retried only by the poster, from their inbox.
+credential. The run is sent the room up to the message, as a mention in a
+Slack channel thread is: one turn a line, its line breaks made spaces, after
+who took it, a person by name and handle, which no one else has, and an
+agent marked as one. The room is fenced off from the poster's words, which
+follow with who posted them, so nothing anyone else wrote reads as the
+poster's, and another person's request in the thread is acted on with the
+poster's credential only when the poster's own words ask for it. A failed
+answer is retried only by the poster, from their inbox.
 
 ### Experts
 
@@ -172,8 +175,8 @@ An agent's turn is given, in this order:
 | 2 | Project memory, the thread's project first, then its ancestors | `pkg/memory` owners `project:<name>`, and `project:` for the root | own notes as today (at most 15,000 characters); ancestors share 6,000, nearest first, with "(n more notes from Field not sent)" |
 | 3 | The agent's instructions | the pinned revision's `AgentSpec.SystemPrompt`, which fiber sends as the system message | fiber's |
 | 4 | The agent's memory | `pkg/memory` owner `<agent>` | as today |
-| 5 | The thread | the branch so far: human messages by name, agents' answers by agent name | the workspace history limit, as today |
-| 6 | The message | | 8,000 characters |
+| 5 | The thread | the branch so far, one turn a line: human messages, and follow-ups through the API, by the name and handle of who wrote or asked them, agents' answers by agent name, then a line that ends it and names who posted the message | the workspace history limit, as today |
+| 6 | The message | as posted | 8,000 characters |
 
 Which wins on conflict: the later instruction layer. The agent's
 instructions win over a project's, and a child project's over its
@@ -481,9 +484,12 @@ How it joins the run index:
 - A tagged agent's run has `Prev` = the message and `warp.message` meta = the
   message id. Runs that answer one message are shown together, not as
   branches. A branch is a message posted after an earlier turn, as today.
-- `Path` walks messages and runs; the transcript renders a message as
-  `Dana: text` and a run as `ignite: answer`. A run of a conversation from
-  before threads still renders as its text and its answer.
+- `Path` walks messages and runs; the transcript (`threads.Ask`) renders a
+  message as `Dana (@dana): text` and a run as `ignite (agent): answer`, each
+  on one line. A run that answers no message, a follow-up through the API or
+  a run of a conversation from before threads, renders as who asked it and
+  its text, then its answer. The words the run answers follow a closing line
+  that names who posted them.
 - A conversation with no record reads as shared, in `general` of its project,
   with the people its runs acted for, and its agents, as participants. A record is written the first time
   anything about it changes. Nothing is migrated in bulk.

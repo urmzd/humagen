@@ -12,7 +12,7 @@
 // The package also holds what the platform decides with, as pure functions:
 // the tag grammar (Parse), what a message starts (Decide), the defaults set
 // nearer a message than its project (Nearer) and the room's transcript
-// (Transcript).
+// (Ask).
 //
 // # Default deny
 //

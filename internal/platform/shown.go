@@ -62,6 +62,13 @@ func (s *shower) key(subject string) string {
 	return cmp.Or(who.Handle, who.ShownSubject())
 }
 
+// Person is who a subject is, for a transcript (threads.Names): their name
+// and their handle.
+func (s *shower) Person(subject string) (name, handle string) {
+	who := s.person(subject)
+	return who.Name, who.Handle
+}
+
 // name is what a person is called: their name, their handle, their subject
 // when it holds no address, or someone.
 func (s *shower) name(subject string) string {

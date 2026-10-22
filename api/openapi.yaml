@@ -727,9 +727,12 @@ paths:
 
         A follow-up is filed in its conversation's channel. When it follows
         a turn in a shared thread people have posted in, it is sent the room
-        up to that turn, people's messages by name and agents' answers by
-        theirs, and it is part of the room the agents answering the next
-        message are sent.
+        up to that turn, one turn a line after who took it: people's
+        messages and earlier follow-ups by the name and handle of who wrote
+        or asked them, or as acting for nobody, and agents' answers by
+        theirs. The room is fenced off from the follow-up's own words, which
+        follow with who asks them, and the follow-up is part of the room the
+        agents answering the next message are sent.
       x-permission: runs:write
       parameters:
         - name: Idempotency-Key

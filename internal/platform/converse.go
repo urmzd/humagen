@@ -267,8 +267,10 @@ type Turn struct {
 // is ErrNoDefault, and nothing starts. The agent that answers is sent the
 // branch so far, so a different agent picking up mid-conversation knows what
 // was said, and when the branch follows a message people posted, the room up
-// to it; ahead of it is what the conversation's project chain, its channel
-// and the agent itself bring (see contextIn).
+// to it, each turn with who asked or said it, fenced off from the words it
+// answers, which follow with who asks them (threads.Ask); ahead of it is
+// what the conversation's project chain, its channel and the agent itself
+// bring (see contextIn).
 func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Run, error) {
 	cfg := p.Settings(tenant)
 	meta := map[string]string{runs.MetaAsk: t.Text}
@@ -289,7 +291,7 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 			meta[runs.MetaChannel] = th.Channel
 		}
 		if cfg.History == HistoryRecent {
-			body = threads.Transcript(p.branchBefore(tenant, th, path), cfg.HistoryLimit) + "\n\nUser: " + t.Text
+			body = threads.Ask(p.branchBefore(tenant, th, path), cfg.HistoryLimit, p.shower(tenant), threads.AskerOf(t.Actor), t.Text)
 		}
 	} else if project := projects.NameOf(t.Project); project != "" {
 		if !p.HasProject(tenant, project) {
