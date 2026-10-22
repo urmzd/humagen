@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
@@ -119,19 +120,27 @@ func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
 		}
 		checked[key] = true
 		rev, err := p.Agents.Get(ctx, turn.Tenant, turn.Agent, turn.Rev)
-		if err != nil {
+		if err != nil || p.grantsPersonScoped(ctx, turn.Tenant, rev.Spec.Tools, turn.CreatedAt) {
 			return true
 		}
-		for _, grant := range rev.Spec.Tools {
-			// As fiber expands a grant: anything else is not a provider's.
-			parsed, ok, err := agentspec.ParseMCPGrant(grant)
-			if !ok || err != nil || !toolprovider.ValidName(parsed.Provider) {
-				continue
-			}
-			prov, err := p.ToolProviders.GetProvider(ctx, turn.Tenant, parsed.Provider)
-			if err != nil || prov.Scope() == toolprovider.ScopePerson || prov.UpdatedAt.After(turn.CreatedAt) {
-				return true
-			}
+	}
+	return false
+}
+
+// grantsPersonScoped reports whether tools grant a provider that takes each
+// person's own credential. A granted provider that cannot be found counts as
+// one, and so does one changed after since, when since is set, whose scope
+// then is not kept.
+func (p *Platform) grantsPersonScoped(ctx context.Context, tenant string, tools []string, since time.Time) bool {
+	for _, grant := range tools {
+		// As fiber expands a grant: anything else is not a provider's.
+		parsed, ok, err := agentspec.ParseMCPGrant(grant)
+		if !ok || err != nil || !toolprovider.ValidName(parsed.Provider) {
+			continue
+		}
+		prov, err := p.ToolProviders.GetProvider(ctx, tenant, parsed.Provider)
+		if err != nil || prov.Scope() == toolprovider.ScopePerson || (!since.IsZero() && prov.UpdatedAt.After(since)) {
+			return true
 		}
 	}
 	return false

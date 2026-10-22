@@ -67,6 +67,9 @@ type toolUser struct {
 	recall bool
 	// failing makes every call fail, so a run fails.
 	failing bool
+	// asks makes it ask a person first (ask_person): the question, then any
+	// options. What they answer is what it searches for.
+	asks []string
 }
 
 // found is what the issues search tells a recalling model.
@@ -85,9 +88,20 @@ func (m *toolUser) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 	}
 	m.sent = append(m.sent, fmt.Sprintf("%+v", req.Messages))
 	m.tools = append(m.tools, names)
-	recall := m.recall
+	recall, asks := m.recall, m.asks
 	m.mu.Unlock()
 	reply := agenttest.TextResponse("I have no issue tools.")
+	if len(asks) > 0 && slices.Contains(names, "ask_person") {
+		switch results := toolResults(req.Messages); {
+		case len(results) == 0:
+			reply = asking(asks[0], asks[1:]...)
+		case len(results) == 1 && slices.Contains(names, searchTool):
+			reply = agenttest.ToolCallResponse("call-search", searchTool, map[string]any{"q": results[0]})
+		default:
+			reply = agenttest.TextResponse("Done.")
+		}
+		return (&agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{reply}}).Stream(ctx, req)
+	}
 	switch {
 	case recall && strings.Contains(text, "should remember for later conversations"):
 		lines := strings.Split(strings.TrimSpace(text), "\n")
@@ -141,6 +155,36 @@ func hasToolResult(msgs []saigetypes.Message) bool {
 		}
 	}
 	return false
+}
+
+// toolResults is the text of each tool result in msgs, in order.
+func toolResults(msgs []saigetypes.Message) []string {
+	var out []string
+	for _, msg := range msgs {
+		var parts []any
+		switch m := msg.(type) {
+		case saigetypes.UserMessage:
+			for _, p := range m.Parts {
+				parts = append(parts, p)
+			}
+		case saigetypes.SystemMessage:
+			for _, p := range m.Parts {
+				parts = append(parts, p)
+			}
+		}
+		for _, p := range parts {
+			if r, ok := p.(saigetypes.ToolResultPart); ok {
+				out = append(out, fmt.Sprintf("%v", r.Parts))
+			}
+		}
+	}
+	return out
+}
+
+func (m *toolUser) ask(asks ...string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.asks = asks
 }
 
 func (m *toolUser) fail(failing bool) {
@@ -931,4 +975,88 @@ func TestARetryActsOnlyForThePersonTheTurnActedFor(t *testing.T) {
 		t.Fatalf("ben pressing twice = %s (%v), want his first %s", joined.ID, err, first.ID)
 	}
 	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"], benValue)
+}
+
+// A reply or a choice steers what a run does next. Where the run uses the
+// credential of the person it acts for, only that person answers what it
+// asks: ben's words, or ben's pick, never reach the provider with ana's
+// token, whether he answers on the run or from the inbox. A run that reaches
+// no one's own credential is anyone's to answer, as before.
+func TestOnlyThePersonARunActsForAnswersWhatItAsksWithTheirCredential(t *testing.T) {
+	w := newWorld(t, platform.Config{})
+	ctx := t.Context()
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	for _, spec := range []agentspec.AgentSpec{
+		{Name: "asker", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt, Tools: []string{"mcp:issues", "ask_person"}},
+		{Name: "chatty", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt, Tools: []string{"ask_person"}},
+	} {
+		if _, err := w.p.Agents.Create(ctx, tenant, spec, "test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	parked := func(t *testing.T, id, agent string) (runs.Run, inbox.Message) {
+		t.Helper()
+		r, err := w.p.Converse(ctx, tenant, platform.Turn{ID: id, Agent: agent, Text: "Look something up for me", Actor: platform.ActorOf(ana)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		run := await(t, w.p, r.ID, runs.Parked)
+		if run.Question == nil {
+			t.Fatalf("parked on nothing: %+v", run)
+		}
+		return run, questionFor(t, w.p, run.ID)
+	}
+	for _, c := range []struct {
+		name      string
+		asks      []string
+		ben, anas platform.QuestionAnswer
+	}{
+		{"reply", []string{"What should I search for?"},
+			platform.QuestionAnswer{Action: platform.ActReply, Text: "ben's words: payroll"},
+			platform.QuestionAnswer{Action: platform.ActReply, Text: "flaky tests"}},
+		{"choice", []string{"Which tracker?", "payroll", "billing"},
+			platform.QuestionAnswer{Action: platform.ActChoose, Choice: "payroll"},
+			platform.QuestionAnswer{Action: platform.ActChoose, Choice: "billing"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w.model.ask(c.asks...)
+			calls := len(w.server.Calls())
+			run, msg := parked(t, "api-asker-"+c.name, "asker")
+			if sees(w.p, ben, msg.ID) || !sees(w.p, ana, msg.ID) {
+				t.Errorf("the question is addressed to %v, want ana alone", msg.Audience)
+			}
+			if _, err := w.p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, c.ben); !errors.Is(err, platform.ErrForbidden) {
+				t.Fatalf("ben answered what ana's run asks = %v, want forbidden", err)
+			}
+			resolve := platform.Resolution{Action: c.ben.Action, Choice: c.ben.Choice, Text: c.ben.Text}
+			if _, err := w.p.InboxResolve(ctx, ben, msg.ID, msg.Parts[0].ID, resolve); err == nil {
+				t.Fatal("ben answered what ana's run asks from the inbox")
+			}
+			if got, _ := w.p.Runs.Get(tenant, run.ID); got.Status != runs.Parked {
+				t.Fatalf("a refused answer moved the run to %s", got.Status)
+			}
+			if got := w.server.Calls()[calls:]; len(got) != 0 {
+				t.Fatalf("ben's answer reached the server with %q", got)
+			}
+			if _, err := w.p.AnswerQuestion(ctx, ana, run.ID, run.Question.ID, c.anas); err != nil {
+				t.Fatalf("ana answering her own run: %v", err)
+			}
+			await(t, w.p, run.ID, runs.Completed)
+			if got := w.server.Calls()[calls:]; len(got) != 1 || got[0] != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] {
+				t.Fatalf("ana's answer reached the server with %q", got)
+			}
+
+			// Her run of an agent that reaches nobody's own credential is
+			// anyone's to answer.
+			run, msg = parked(t, "api-chatty-"+c.name, "chatty")
+			if !sees(w.p, ben, msg.ID) {
+				t.Errorf("a question no one's credential acts on is addressed to %v", msg.Audience)
+			}
+			if _, err := w.p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, c.ben); err != nil {
+				t.Fatalf("ben answering a run that uses nobody's own credential: %v", err)
+			}
+			await(t, w.p, run.ID, runs.Completed)
+		})
+	}
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
 }
