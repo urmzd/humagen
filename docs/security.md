@@ -211,8 +211,9 @@ no permission, grants nothing.
   and nothing writes an agent's turn but its run. A shared thread is read by
   everyone with `runs:read` who sees its project; a private one by its
   participants alone, and every read path answers 404 for it to anyone else.
-  A conversation the console starts is private until a participant shares
-  it, which only one who is a member of the project it goes to may do: from
+  A conversation the console starts is private until it is shared, which
+  takes whoever started it (or an owner of its project), never only someone
+  tagged into it, and a member of the project it goes to: from
   then on everyone who sees that project reads it, the messages written
   while it was private included. A share never makes a thread private again,
   and a conversation that has runs does not move to another project, so its

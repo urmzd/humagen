@@ -1372,11 +1372,12 @@ and a `$skill` with no agent tagged goes to `@auto`; tagging only
 people or experts notifies them; posted only, nothing answers. A
 message a person posts as themselves, as the console does, runs only
 the agents it tags: untagged, it starts nothing (rule `untagged`),
-whatever the thread's, channel's or project's default. Otherwise, a
-message a client posts, the default the thread inherits answers.
-`visibility` left out is `private` (with no `surface`): the
-conversation is its starter's alone until they share it
-(`shareThread`). Each run
+whatever the thread's, channel's or project's default. Otherwise,
+for a message a client posts, the default the thread inherits
+answers. `visibility` left out, by a person posting as themselves,
+is `private`: the conversation is its starter's alone until they
+share it (`shareThread`). A client posting with `act_as` and no
+`surface` names it (400). Each run
 it starts acts for the person the message is posted as, never for
 anyone else in the thread, so a tool that acts as a person uses that
 person's own credential; the run is sent the room up to the message,
@@ -1583,14 +1584,23 @@ whoever started the thread or an owner of its project (403).
   /** Makes the conversation shared in `channel` of `project`, read by
 everyone who can see that project, and adds the people `add` names,
 by handle, as participants (400 for a handle nobody goes by). `project`
-left out keeps the thread's own, `~` is the workspace, and `channel`
-left out is `general`. Only a participant shares, and only into a
-project they are a member of (403), whose channel is not archived
-(400). The thread moves to another project only while no run has
-been filed in it: a conversation that has runs stays in its project
-(409). A thread on a Slack or GitHub surface stays where it was
-started (400). Shared to private again is not offered. Answers the
-thread as `getThread` reads it.
+left out keeps the thread's own, `~` is the workspace; `channel` left
+out keeps the thread's own in its own project and is `general` in
+another. Only a participant shares (403). Making a private
+conversation shared, or moving one, also takes whoever started it,
+while a member of its project, or an owner of its project (403), so
+someone tagged into a private conversation does not publish it; it
+goes only into a project the caller is a member of (403; one they
+cannot see is 404), to a channel it has (404) that is not archived
+(400). On a
+thread shared already where it is, any participant who may post
+there adds people. The thread moves only while no run has been filed
+in it: a conversation that has runs stays in its project and its
+channel (409). A default it names that cannot answer where it moves
+is cleared. A thread on a Slack or GitHub surface stays where and as
+it was started (400). `version` is not taken: a change made to the
+thread while this one is decided is 409. Shared to private again is
+not offered. Answers the thread as `getThread` reads it.
  */
   async shareThread(id: string, body: ThreadShare, options?: RequestOptions): Promise<ThreadPage> {
     let path = "/api/threads/{id}/share";

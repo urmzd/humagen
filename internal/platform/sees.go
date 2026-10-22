@@ -224,15 +224,23 @@ func (s *Seer) RunID(id string) bool {
 
 // Message reports whether the reader sees what an inbox message is about: its
 // run's place when it names a run the index holds, else the project and
-// thread it names, and the agent it names. Who it is addressed to is the
-// inbox's to decide besides.
+// thread it names, and the agent it names. A thread is read where its record
+// files it now, so a mention raised in a conversation before it was shared
+// into another project is read where the conversation went. Who it is
+// addressed to is the inbox's to decide besides.
 func (s *Seer) Message(m inbox.Message) bool {
 	if m.Source.Run != "" {
 		if r, err := s.p.Runs.Get(s.who.Tenant, m.Source.Run); err == nil {
 			return s.Run(r)
 		}
 	}
-	return s.Place(placeOfSource(m.Source)) && (m.Source.Agent == "" || s.Agent(m.Source.Agent))
+	at := placeOfSource(m.Source)
+	if at.Thread != "" {
+		if th, err := s.p.Threads.Get(s.who.Tenant, at.Thread); err == nil {
+			at.Project = th.Project
+		}
+	}
+	return s.Place(at) && (m.Source.Agent == "" || s.Agent(m.Source.Agent))
 }
 
 // Scope reports whether the reader sees what a limit is set on: an agent's

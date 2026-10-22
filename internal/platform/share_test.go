@@ -3,10 +3,12 @@ package platform_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/threads"
@@ -144,4 +146,106 @@ func slicesHas(ps []threads.Participant, name string) bool {
 		}
 	}
 	return false
+}
+
+// Someone tagged into a private conversation takes part in it but does not
+// publish it: making it shared, or moving it, takes whoever started it (or an
+// owner of its project). Once it is shared where it is, any participant who
+// may post there adds people, and a share that names no channel keeps the
+// thread's own.
+func TestOnlyItsStarterPublishesAPrivateConversation(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator, bo)
+	seePeople(t, p, operator, bo, vic)
+	ctx := t.Context()
+	if _, err := p.CreateChannel(ctx, tenant, "Initech", ada, platform.ChannelInput{Name: "design"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Initech", Channel: "design", Text: "@bo a draft for you"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := got.Thread.ID
+	if th, _ := p.Threads.Get(tenant, id); !slicesHas(th.Participants, "bo") {
+		t.Fatalf("bo, tagged, takes no part: %+v", th.Participants)
+	}
+	if _, err := p.ShareThread(ctx, bo, id, platform.ThreadShare{}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a tagged participant published a private conversation: %v", err)
+	}
+	th, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{})
+	if err != nil || th.Visibility != threads.Shared || th.Channel != "design" {
+		t.Fatalf("shared with no channel named = %+v, %v", th, err)
+	}
+	added, err := p.ShareThread(ctx, bo, id, platform.ThreadShare{Add: []string{"vic"}})
+	if err != nil || added.Channel != "design" || !slicesHas(added.Participants, "vic") {
+		t.Fatalf("a participant adding someone = %+v, %v", added, err)
+	}
+	if _, err := p.ShareThread(ctx, bo, id, platform.ThreadShare{Channel: projects.General}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a participant who did not start it moved it: %v", err)
+	}
+	// Once a run is filed it stays in its channel too.
+	asked := post(t, p, operator, id, platform.MessageInput{Text: "@helper thoughts?"})
+	await(t, p, asked.Runs[0].ID, runs.Completed)
+	if _, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{Channel: projects.General}); !errors.Is(err, platform.ErrStaysInChannel) {
+		t.Fatalf("a conversation with runs changed channel: %v", err)
+	}
+}
+
+// A default that cannot answer where a conversation is shared to is cleared,
+// and the share says nothing of it.
+func TestSharingClearsADefaultThatCannotAnswerThere(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator)
+	workIn(t, p, "Field", operator)
+	got, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Initech", Default: "helper", Text: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
+	th, err := p.ShareThread(t.Context(), operator, got.Thread.ID, platform.ThreadShare{Project: "Field"})
+	if err != nil || th.Project != "Field" || th.Default != "" {
+		t.Fatalf("shared into a project helper cannot answer in = %+v, %v", th, err)
+	}
+}
+
+// A mention raised in a private conversation is read where the conversation
+// is now: after it is shared into another project, whoever reads the
+// conversation reads the mention's subject, and nobody else.
+func TestAMentionIsReadWhereItsConversationWent(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Globex", operator, bo)
+	// Vault is read by its members alone.
+	if _, err := p.CreateProject(t.Context(), tenant, ada, platform.ProjectInput{Name: "Vault"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Projects.Update(tenant, "Vault", 1, ada, time.Now(), func(pr *projects.Project) error {
+		pr.Members = []projects.Entry{{Who: "opal", Role: projects.Member}, {Who: "ada", Role: projects.Owner}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seePeople(t, p, operator, bo)
+	got, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Globex", Text: "@bo look at this"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := got.Thread.ID
+	if _, err := p.ShareThread(t.Context(), operator, id, platform.ThreadShare{Project: "Vault"}); err != nil {
+		t.Fatal(err)
+	}
+	m, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(id, "m-1", "bo"))
+	if !ok {
+		t.Fatal("bo was not sent a mention")
+	}
+	if p.SeesThread(viewer, id) {
+		t.Fatal("the test needs someone who reads Globex and not Vault")
+	}
+	for _, who := range []auth.Principal{viewer, bo, operator} {
+		if p.Seer(who).Message(m) != p.SeesThread(who, id) {
+			t.Errorf("%s reads the mention: %v, and the conversation: %v", who.Subject, p.Seer(who).Message(m), p.SeesThread(who, id))
+		}
+	}
 }
