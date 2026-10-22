@@ -37,8 +37,9 @@ type Agents struct {
 	// Enable is the platform agents available here and below. "*" alone is
 	// every platform agent. An entry naming an agent that lives in a project
 	// adds nothing: a project agent is available only in its home and below.
-	// A stored list is never nil, except on a record written before projects
-	// had agents, which adds nothing either.
+	// It is never nil, except on the root as it was written before projects
+	// had agents, which the upgrade rewrites at start: any other record from
+	// then is read with an empty list, which adds nothing either.
 	Enable []string `json:"enable"`
 	// Allow, when set, is the only agents that may run here and below. Every
 	// allow list on the chain applies, so a child can only narrow what its
@@ -64,6 +65,15 @@ func ValidAgent(name string) bool {
 func (a Agents) clone() Agents {
 	a.Enable = slices.Clone(a.Enable)
 	a.Allow = slices.Clone(a.Allow)
+	return a
+}
+
+// listed is a with an enable list that is never nil, as every record but
+// the upgrade's root is served.
+func (a Agents) listed() Agents {
+	if a.Enable == nil {
+		a.Enable = []string{}
+	}
 	return a
 }
 
