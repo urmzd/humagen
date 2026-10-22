@@ -2,11 +2,15 @@ import {
   ANY_AGENT,
   firstName,
   HOME_NOTIFICATIONS,
+  HOME_PROJECTS_MAX,
+  type HomeAccess,
   type HomeModel,
   type HomeNotification,
   homeAction,
   notificationsFromWaiting,
   orderNotifications,
+  orderProjects,
+  orderUpdates,
   PERSONAL_ACCOUNT,
   timeToken,
 } from "@warp/core";
@@ -39,14 +43,17 @@ const escapeLabel = (text: string) => text.replace(/[[\]\\]/g, (ch) => `\\${ch}`
 
 /**
  * Where a person lands: a greeting, ways to start, their notifications (inbox
- * items waiting on them and open alerts, each linking to its own page), who
- * answers their messages, what is connected, and what they may do.
+ * items waiting on them and open alerts, each linking to its own page), what's
+ * new in their projects, their projects, who answers their messages, what is
+ * connected, and what they may do. A section the host leaves out is not shown.
  *
  * One definition for both surfaces. The web gets the ask box and a grid of
- * starts; Slack, which has its own composer, gets three buttons, a select for
- * who answers direct messages, and access folded into one line with a link
- * to the console. Publish it on Slack with `renderToSlack(..., { placement: "home" })`
- * or `homeView` from `@warp/render-slack`.
+ * starts; Slack, which has its own composer, gets its start buttons, a select
+ * for who answers direct messages, and access folded into one line with a
+ * link to the console. An announcement or a project links its title on the
+ * web; on Slack an Open button beside it does. Publish it on Slack with
+ * `renderToSlack(..., { placement: "home" })` or `homeView` from
+ * `@warp/render-slack`.
  */
 export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Copy }) {
   const slack = useSurface().surface === "slack";
@@ -80,6 +87,21 @@ export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Cop
     : null;
   const selected = home.answeredBy?.selected ?? ANY_AGENT;
   const connections = home.connections.filter((x) => !(slack && x.id === "slack"));
+  const updates = home.updates ? orderUpdates(home.updates) : null;
+  const projects = home.projects ? orderProjects(home.projects) : null;
+  const shownProjects = projects?.slice(0, HOME_PROJECTS_MAX) ?? [];
+  const moreProjects = (projects?.length ?? 0) - shownProjects.length;
+  /** A title that opens where it lives: a link on the web. Slack shows an Open button instead. */
+  const titled = (text: string, url: string | undefined, bold: boolean) => {
+    const shown = bold ? `**${text}**` : text;
+    if (!url || slack) return shown;
+    const label = escapeLabel(text);
+    return `[${bold ? `**${label}**` : label}](<${url}>)`;
+  };
+  const open = (url: string | undefined, what: string) =>
+    url && slack ? (
+      <Button label={c.open} url={url} accessibilityLabel={`${c.open} ${what}`} />
+    ) : null;
 
   return (
     <>
@@ -125,7 +147,10 @@ export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Cop
               <Button
                 key={s.id}
                 label={c.starts[s.id]?.slack ?? s.id}
-                action={s.id === "talk" ? homeAction.ask() : homeAction.start(s.id)}
+                // A start the host gives an address for opens it; Slack opens only an absolute one.
+                {...(s.id !== "talk" && linkable(s.url)
+                  ? { url: s.url }
+                  : { action: s.id === "talk" ? homeAction.ask() : homeAction.start(s.id) })}
                 {...(s.id === "talk" ? { style: "primary" as const } : {})}
               />
             ))}
@@ -168,6 +193,67 @@ export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Cop
       })}
       {more.length > 0 && <Context items={more} />}
 
+      {updates && (
+        <>
+          <Divider />
+          <Header text={c.whatsNew} level={2} />
+          {updates.length === 0 && <Context items={[c.nothingNew]} />}
+          {updates.map((u) => {
+            const url = linkable(u.url);
+            return (
+              <Row
+                key={`update:${u.id}`}
+                text={titled(u.subject, url, u.unread)}
+                detail={[
+                  u.unread ? copy.mailbox.unread : null,
+                  copy.announcements.postedIn(u.projectTitle),
+                  u.at ? timeToken(u.at) : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              >
+                {open(url, u.subject)}
+              </Row>
+            );
+          })}
+        </>
+      )}
+
+      {projects && (
+        <>
+          <Divider />
+          <Header text={c.yourProjects} level={2} />
+          {projects.length === 0 && <Context items={[c.noProjects]} />}
+          {shownProjects.map((p) => {
+            const url = linkable(p.url);
+            return (
+              <Row
+                key={`project:${p.name}`}
+                text={titled(p.title, url, true)}
+                detail={[
+                  copy.projects.kind[p.kind] ?? p.kind,
+                  p.within.length > 0 ? copy.projects.within(p.within) : null,
+                  p.active > 0 ? copy.projects.count.running(p.active) : null,
+                  p.activeAt ? copy.projects.count.active(timeToken(p.activeAt)) : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              >
+                {open(url, p.title)}
+              </Row>
+            );
+          })}
+          {moreProjects > 0 && (
+            <Context
+              items={[
+                link(c.moreProjects(moreProjects), linkable(home.projectsUrl)) ??
+                  c.moreProjects(moreProjects),
+              ]}
+            />
+          )}
+        </>
+      )}
+
       {agents && (
         <Only surface="slack">
           <Divider />
@@ -181,10 +267,14 @@ export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Cop
         </Only>
       )}
 
-      <Divider />
-      <Header text={c.connections} level={2} />
-      {!slack && home.connectionsUrl && (
-        <Context items={[link(c.manageAll, home.connectionsUrl) as string]} />
+      {(connections.length > 0 || home.personal) && (
+        <>
+          <Divider />
+          <Header text={c.connections} level={2} />
+          {!slack && home.connectionsUrl && (
+            <Context items={[link(c.manageAll, home.connectionsUrl) as string]} />
+          )}
+        </>
       )}
       {connections.map((x) => (
         <Row
@@ -233,35 +323,30 @@ export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Cop
         </Row>
       )}
 
-      <Divider />
       <Only surface="slack">
-        <Context
-          items={[
-            [
-              c.signedInAs(home.person.name, home.access.role),
-              home.consoleUrl ? c.openConsole(home.consoleUrl) : null,
-            ]
-              .filter(Boolean)
-              .join(" "),
-          ]}
-        />
-      </Only>
-      <Only surface="web">
-        <Header text={c.access} level={2} />
-        <Text
-          text={
-            home.access.role
-              ? [
-                  c.signedIn(home.access.via, home.access.role, home.access.group),
-                  home.access.allows ? c.allows(home.access.allows) : null,
-                  home.access.denies ? c.denies(home.access.denies) : null,
+        {(home.access || home.consoleUrl) && (
+          <>
+            <Divider />
+            <Context
+              items={[
+                [
+                  home.access ? c.signedInAs(home.person.name, home.access.role) : null,
+                  home.consoleUrl ? c.openConsole(home.consoleUrl) : null,
                 ]
                   .filter(Boolean)
-                  .join(" ")
-              : c.noRole(home.access.via)
-          }
-        />
-        <AccessLinks home={home} copy={copy} />
+                  .join(" "),
+              ]}
+            />
+          </>
+        )}
+      </Only>
+      <Only surface="web">
+        {home.access && (
+          <>
+            <Divider />
+            <Access access={home.access} copy={copy} />
+          </>
+        )}
         {home.links.length > 0 && (
           <>
             <Divider />
@@ -273,11 +358,30 @@ export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Cop
   );
 }
 
-function AccessLinks({ home, copy }: { home: HomeModel; copy: Copy }) {
+/** What the person may do, and why: the web's access section. */
+function Access({ access, copy }: { access: HomeAccess; copy: Copy }) {
   const c = copy.home;
   const items = [
-    link(home.access.role ? c.why : c.whyNot, home.access.explainUrl),
-    link(c.policy, home.access.policyUrl),
+    link(access.role ? c.why : c.whyNot, access.explainUrl),
+    link(c.policy, access.policyUrl),
   ].filter((x): x is string => x !== null);
-  return items.length > 0 ? <Context items={items} /> : null;
+  return (
+    <>
+      <Header text={c.access} level={2} />
+      <Text
+        text={
+          access.role
+            ? [
+                c.signedIn(access.via, access.role, access.group),
+                access.allows ? c.allows(access.allows) : null,
+                access.denies ? c.denies(access.denies) : null,
+              ]
+                .filter(Boolean)
+                .join(" ")
+            : c.noRole(access.via)
+        }
+      />
+      {items.length > 0 && <Context items={items} />}
+    </>
+  );
 }

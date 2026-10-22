@@ -49,6 +49,9 @@ test("a mention of a person the client maps reaches their direct messages, with 
   const text = JSON.stringify(dm?.blocks);
   assert.match(text, /can you confirm the renewal date/);
   assert.match(text, /https:\/\/warp\.test\/tasks\/th-0123456789abcdef\|Open Thread/);
+  for (const label of [defaultCopy.snooze, defaultCopy.dismiss]) {
+    assert.ok(!text.includes(`"${label}"`), `no ${label}: warp does it only as the caller`);
+  }
   assert.deepEqual(
     w.warp.readFor,
     [{ client: "app", user: USER }],

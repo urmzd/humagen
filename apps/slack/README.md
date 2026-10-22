@@ -36,7 +36,7 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 | **Ask the agent** shortcut | The app's messages with you. |
 | **Ask agent about this** on a message | That message's thread. On your own message it asks as you; on anyone else's, or a bot's, it asks through the app, for nobody, so their words are never run as you. Under a dev sign-in, where the app's own credential is the person `dev`, asking through the app acts for `dev`. |
 | Stop button | Stops the run, confirms in the thread, sets the session to active. |
-| Home tab | What is waiting on you in warp's inbox. |
+| Home tab | For a person the client maps, the shared Home read as them: what needs them, what's new in their projects and their projects, with Ask a Question, Build an Agent and Search Context. Anyone else sees what is waiting on them in warp's inbox. |
 
 A turn streams with `chat.startStream`, `appendStream` and `stopStream`, and
 the session status follows it: processing while it works, active when it ends.
@@ -128,6 +128,7 @@ The app authenticates as a machine. Least privilege:
 | `warp:runs:write` | Start, continue, retry and stop runs |
 | `warp:agents:read` | Know which agents exist; see proposed memories |
 | `warp:clients:read` | Only with `WARP_CLIENT` |
+| `warp:projects:read` | Your projects on the Home tab of a person the client maps. Without it the Home leaves them out |
 
 Every button in Slack acts with the app's rights, so each extra scope lets the
 people in the loop do more: `agents:write` keeps or discards memories,
@@ -198,8 +199,8 @@ journal file serves one process.
 Kept in memory, and lost on restart:
 
 - Who asked for each run. After a restart only operators can settle that run's
-  inbox items or retry it for nobody, and Home shows a person nothing until
-  they ask again. Whom a run acted for is warp's record, so the person a turn
+  inbox items or retry it for nobody, and the Home of someone the client does
+  not map shows them nothing until they ask again. Whom a run acted for is warp's record, so the person a turn
   acted for may still retry it, from the thread or its failure card, which
   their retry acknowledges.
 - Which inbox messages were posted to a thread. A change to one after a

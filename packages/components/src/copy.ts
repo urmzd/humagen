@@ -557,7 +557,7 @@ export const defaultCopy = {
         description: "A nightly digest, a weekly review, a check every hour.",
       },
     } as Record<string, { label: string; description: string; slack?: string }>,
-    needsYou: "Notifications",
+    needsYou: "Needs you",
     nothingWaiting: "Nothing needs you right now, and no alerts are open.",
     /** The page's one-line point, after the greeting. */
     notificationCount: (n: number) =>
@@ -575,6 +575,11 @@ export const defaultCopy = {
     whatsNew: "What's new",
     nothingNew: "Nothing new from your projects.",
     moreUpdates: (n: number) => `${n} more under Updates`,
+    yourProjects: "Your projects",
+    noProjects: "You are not in any project yet.",
+    moreProjects: (n: number) => `${n} more in Projects`,
+    /** A row's way in on Slack, where the title is not a link. */
+    open: "Open",
     moreAlerts: (n: number) => `${n} more open alert${n === 1 ? "" : "s"}`,
     review: "Review",
     whoAnswers: "Who answers you",

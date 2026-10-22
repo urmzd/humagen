@@ -24,8 +24,13 @@ export const ENTRY = {
 export const words = {
   askTitle: "Ask the agent",
   askLabel: "What do you need?",
+  // The form Build an Agent opens on Home. A modal title holds 24 characters.
+  buildTitle: "Build an agent",
+  buildLabel: "What should the agent do?",
   send: "Send",
   cancel: "Cancel",
+  /** What the Home tab says the app does, before how to reach it. */
+  homeIntro: "I hand your questions to this workspace's agents.",
   notInChannel: "I'm not in this channel yet. Invite me with `/invite`, then try again.",
   // warp: needs a reply modal for questions; until then this says where to answer.
   replyInConsole: "Replies to this question are typed in the console for now.",
@@ -38,22 +43,45 @@ export const words = {
   historyClose: "End of thread messages. The message for you follows.",
 };
 
-/** The form the global shortcut opens. Its text comes back on submit. */
+/** What a form asks for: a question, or an agent to build. It comes back on submit. */
+export type FormKind = "ask" | "build";
+
+/** The form the global shortcut and Ask a Question open. Its text comes back on submit. */
 export function askForm(w: typeof words = words) {
+  return form("ask", w.askTitle, w.askLabel, w);
+}
+
+/** The form Build an Agent opens on Home: what the agent should do, for the builder. */
+export function buildForm(w: typeof words = words) {
+  return form("build", w.buildTitle, w.buildLabel, w);
+}
+
+function form(kind: FormKind, title: string, label: string, w: typeof words) {
   return {
     type: "modal",
     callback_id: ENTRY.form,
-    private_metadata: JSON.stringify({ kind: "ask" }),
-    title: { type: "plain_text", text: w.askTitle },
+    private_metadata: JSON.stringify({ kind }),
+    title: { type: "plain_text", text: title },
     submit: { type: "plain_text", text: w.send },
     close: { type: "plain_text", text: w.cancel },
     blocks: [
       {
         type: "input",
         block_id: "text",
-        label: { type: "plain_text", text: w.askLabel },
+        label: { type: "plain_text", text: label },
         element: { type: "plain_text_input", action_id: "value", multiline: true },
       },
     ],
   };
+}
+
+/** The kind of form a submission came from. Anything else is a question. */
+export function formKind(privateMetadata?: string): FormKind {
+  try {
+    return (JSON.parse(privateMetadata ?? "{}") as { kind?: string }).kind === "build"
+      ? "build"
+      : "ask";
+  } catch {
+    return "ask";
+  }
 }

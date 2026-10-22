@@ -1397,6 +1397,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=app", "", http.StatusBadRequest)
 	c.call(acme, "GET", "/api/inbox/{id}", inboxPath+"?act_as_client=app", "", http.StatusBadRequest)
 	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=support&act_as_user=U01ANA", "", http.StatusNotFound)
+	// And lists her projects the same way: acting_projects_test.go covers a
+	// person who may.
+	c.call(acme, "GET", "/api/projects", "/api/projects?act_as_client=app&act_as_user=U01ANA", "", http.StatusForbidden)
+	c.call(acme, "GET", "/api/projects", "/api/projects?act_as_user=U01ANA", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/projects", "/api/projects?act_as_client=support&act_as_user=U01ANA", "", http.StatusNotFound)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/support", `{"name":"Support","surface":"slack","identity":{"app_id":"A01CONTRACT","team":"T01ABCDEF"},"default_agent":"helper","agents":["*"],"slack":{"sessions":true},"enabled":false}`, http.StatusOK)
 
 	// Channels, experts and shared threads. A person posts; a credential

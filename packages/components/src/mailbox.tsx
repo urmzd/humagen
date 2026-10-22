@@ -327,10 +327,17 @@ export function messageByline(message: InboxMessage, copy: Copy = defaultCopy): 
 export function MessageView({
   message,
   viewer,
+  setAside = true,
   copy = defaultCopy,
-}: { message: InboxMessage; viewer?: string } & WithCopy) {
+}: {
+  message: InboxMessage;
+  viewer?: string;
+  /** Whether Snooze and Dismiss are offered. A host that cannot do them for the reader leaves them out. */
+  setAside?: boolean;
+} & WithCopy) {
   const open = messageState(message) === "open";
   const payload = { turnId: message.id, target: message.id };
+  const source = open ? message.source : undefined;
   return (
     <>
       <Summary text={message.subject} />
@@ -339,18 +346,18 @@ export function MessageView({
       {message.parts.map((part) => (
         <MessagePartView key={part.id} message={message} part={part} viewer={viewer} copy={copy} />
       ))}
-      {open && (
+      {open && (setAside || source?.url) && (
         <Actions blockId={`message:${message.id}`}>
-          {message.source?.url && (
-            <Button label={copy.openSource(message.source.label)} url={message.source.url} />
+          {source?.url && <Button label={copy.openSource(source.label)} url={source.url} />}
+          {setAside && (
+            <Menu
+              label={copy.moreOptions}
+              items={[
+                { label: copy.snooze, action: { id: ActionId.snooze, payload } },
+                { label: copy.dismiss, action: { id: ActionId.dismiss, payload } },
+              ]}
+            />
           )}
-          <Menu
-            label={copy.moreOptions}
-            items={[
-              { label: copy.snooze, action: { id: ActionId.snooze, payload } },
-              { label: copy.dismiss, action: { id: ActionId.dismiss, payload } },
-            ]}
-          />
         </Actions>
       )}
     </>

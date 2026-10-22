@@ -1,13 +1,8 @@
 import { App } from "./app.tsx";
-import { readConfig } from "./config.ts";
+import { NEEDED, readConfig, USEFUL } from "./config.ts";
 import { fileJournal, journaled, recoverStreams } from "./journal.ts";
 import { slackClient, socketMode } from "./slack.ts";
 import { httpWarp } from "./warp.ts";
-
-/** The permissions the app cannot work without. Others unlock more of the inbox, see the README. */
-const NEEDED = ["runs:read", "runs:write", "agents:read"];
-/** What some buttons can use when granted. Anything beyond is more than the app needs. */
-const USEFUL = [...NEEDED, "clients:read", "agents:write", "alerts:read", "alerts:write"];
 
 const log = (line: string) => console.log(`${new Date().toISOString()} ${line}`);
 

@@ -1163,9 +1163,11 @@ Copy goes in `packages/components/src/copy.ts`:
   Here", "Workspace Default";
 - sentence-case empty states ("Nothing has been announced here yet.").
 
-Shared pieces: `packages/core` gains `HomeModel.updates`, and
-`packages/adapter` maps `announcement`, `draft` and `mention` (`kinds`,
-`templateOf`), with parity tests in `apps/slack/src/parity.test.tsx`.
+Shared pieces: `packages/core` gains `HomeModel.updates` and
+`HomeModel.projects`, and `packages/adapter` maps `announcement`, `draft` and
+`mention` (`kinds`, `templateOf`) and makes What's new, Your projects and
+what needs the reader from the platform's reads (`updatesOf`, `projectsOf`,
+`notificationsOf`), with parity tests in `apps/slack/src/parity.test.tsx`.
 
 ### Slack (one app per client)
 
@@ -1208,9 +1210,18 @@ Shared pieces: `packages/core` gains `HomeModel.updates`, and
   thread starts a shared thread seeded with the announcement. Drafts never
   reach a channel.
 - **App Home.** The shared Home, through `homeView`, replaces the bare
-  MailboxView. It shows Needs you (at most 5), What's new (at most 5) and Your
-  projects (at most 8), read as the mapped person through `act_as`, within the
-  100-block budget.
+  MailboxView for a person the client maps. It shows Needs you (at most 5),
+  What's new (at most 5) and Your projects (at most 8, where something
+  happened most recently first, archived ones left out), read as the mapped
+  person through `act_as` (`GET /api/inbox` and `GET /api/projects` with
+  `act_as_client` and `act_as_user`), within the 100-block budget. Each opens
+  in the console when the app has its address. Without it, Review sends what
+  needs the person to their messages with the app, and What's new and Your
+  projects are shown to read. Ask a Question and Build an Agent open a form
+  whose words are posted as the person in their messages with the app, Build
+  an Agent tagging `@warp-builder` where the client reaches it; Search
+  Context opens the console. Someone the client maps to nobody keeps the
+  mailbox.
 - **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
   a tag; otherwise the client's default; otherwise nothing. Threads are filed
   in the client's home.

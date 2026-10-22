@@ -61,7 +61,7 @@ exports[`homeView > renders the alertsOnly Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Notifications",
+        "text": "Needs you",
         "type": "plain_text",
       },
       "type": "header",
@@ -90,6 +90,123 @@ Warning alert · <!date^1791890100^{date_short_pretty} at {time}|2026-10-13 11:1
     {
       "text": {
         "emoji": true,
+        "text": "What's new",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open The Field offsite moves to Lisbon, in May",
+        "action_id": "aui.link#0",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-offsite",
+      },
+      "text": {
+        "text": "*The Field offsite moves to Lisbon, in May*
+Unread · Posted in Field engineering · <!date^1791885600^{date_short_pretty} at {time}|2026-10-13 10:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Weekly recap: three renewals closed",
+        "action_id": "aui.link#1",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-recap",
+      },
+      "text": {
+        "text": "Weekly recap: three renewals closed
+Posted in Field engineering · <!date^1791794460^{date_short_pretty} at {time}|2026-10-12 08:41 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Your projects",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Field engineering",
+        "action_id": "aui.link#2",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field",
+      },
+      "text": {
+        "text": "*Field engineering*
+Team · 1 running · active <!date^1791899400^{date_short_pretty} at {time}|2026-10-13 13:50 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Globex",
+        "action_id": "aui.link#3",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Globex",
+      },
+      "text": {
+        "text": "*Globex*
+Account · in Field engineering · active <!date^1791709200^{date_short_pretty} at {time}|2026-10-11 09:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Launch",
+        "action_id": "aui.link#4",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Launch",
+      },
+      "text": {
+        "text": "*Launch*
+Team",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
         "text": "Who answers you",
         "type": "plain_text",
       },
@@ -97,7 +214,7 @@ Warning alert · <!date^1791890100^{date_short_pretty} at {time}|2026-10-13 11:1
     },
     {
       "accessory": {
-        "action_id": "aui.home.answered_by#0",
+        "action_id": "aui.home.answered_by#5",
         "initial_option": {
           "text": {
             "emoji": true,
@@ -175,7 +292,7 @@ Connected for this workspace.",
     {
       "accessory": {
         "accessibility_label": "Connect Jira",
-        "action_id": "aui.home.connect#1",
+        "action_id": "aui.home.connect#6",
         "text": {
           "emoji": true,
           "text": "Connect",
@@ -193,7 +310,7 @@ Not connected.",
     },
     {
       "accessory": {
-        "action_id": "aui.home.connect#2",
+        "action_id": "aui.home.connect#7",
         "text": {
           "emoji": true,
           "text": "Connect an Account",
@@ -287,7 +404,7 @@ exports[`homeView > renders the default Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Notifications",
+        "text": "Needs you",
         "type": "plain_text",
       },
       "type": "header",
@@ -334,6 +451,123 @@ Warning alert · <!date^1791890100^{date_short_pretty} at {time}|2026-10-13 11:1
     {
       "text": {
         "emoji": true,
+        "text": "What's new",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open The Field offsite moves to Lisbon, in May",
+        "action_id": "aui.link#0",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-offsite",
+      },
+      "text": {
+        "text": "*The Field offsite moves to Lisbon, in May*
+Unread · Posted in Field engineering · <!date^1791885600^{date_short_pretty} at {time}|2026-10-13 10:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Weekly recap: three renewals closed",
+        "action_id": "aui.link#1",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-recap",
+      },
+      "text": {
+        "text": "Weekly recap: three renewals closed
+Posted in Field engineering · <!date^1791794460^{date_short_pretty} at {time}|2026-10-12 08:41 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Your projects",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Field engineering",
+        "action_id": "aui.link#2",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field",
+      },
+      "text": {
+        "text": "*Field engineering*
+Team · 1 running · active <!date^1791899400^{date_short_pretty} at {time}|2026-10-13 13:50 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Globex",
+        "action_id": "aui.link#3",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Globex",
+      },
+      "text": {
+        "text": "*Globex*
+Account · in Field engineering · active <!date^1791709200^{date_short_pretty} at {time}|2026-10-11 09:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Launch",
+        "action_id": "aui.link#4",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Launch",
+      },
+      "text": {
+        "text": "*Launch*
+Team",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
         "text": "Who answers you",
         "type": "plain_text",
       },
@@ -341,7 +575,7 @@ Warning alert · <!date^1791890100^{date_short_pretty} at {time}|2026-10-13 11:1
     },
     {
       "accessory": {
-        "action_id": "aui.home.answered_by#0",
+        "action_id": "aui.home.answered_by#5",
         "initial_option": {
           "text": {
             "emoji": true,
@@ -419,7 +653,7 @@ Connected for this workspace.",
     {
       "accessory": {
         "accessibility_label": "Connect Jira",
-        "action_id": "aui.home.connect#1",
+        "action_id": "aui.home.connect#6",
         "text": {
           "emoji": true,
           "text": "Connect",
@@ -437,7 +671,7 @@ Not connected.",
     },
     {
       "accessory": {
-        "action_id": "aui.home.connect#2",
+        "action_id": "aui.home.connect#7",
         "text": {
           "emoji": true,
           "text": "Connect an Account",
@@ -531,7 +765,7 @@ exports[`homeView > renders the empty Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Notifications",
+        "text": "Needs you",
         "type": "plain_text",
       },
       "type": "header",
@@ -540,6 +774,46 @@ exports[`homeView > renders the empty Home tab 1`] = `
       "elements": [
         {
           "text": "Nothing needs you right now, and no alerts are open.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "What's new",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "elements": [
+        {
+          "text": "Nothing new from your projects.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Your projects",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "elements": [
+        {
+          "text": "You are not in any project yet.",
           "type": "mrkdwn",
         },
       ],
@@ -748,7 +1022,7 @@ exports[`homeView > renders the noConnect Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Notifications",
+        "text": "Needs you",
         "type": "plain_text",
       },
       "type": "header",
@@ -795,6 +1069,123 @@ Warning alert · <!date^1791890100^{date_short_pretty} at {time}|2026-10-13 11:1
     {
       "text": {
         "emoji": true,
+        "text": "What's new",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open The Field offsite moves to Lisbon, in May",
+        "action_id": "aui.link#0",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-offsite",
+      },
+      "text": {
+        "text": "*The Field offsite moves to Lisbon, in May*
+Unread · Posted in Field engineering · <!date^1791885600^{date_short_pretty} at {time}|2026-10-13 10:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Weekly recap: three renewals closed",
+        "action_id": "aui.link#1",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-recap",
+      },
+      "text": {
+        "text": "Weekly recap: three renewals closed
+Posted in Field engineering · <!date^1791794460^{date_short_pretty} at {time}|2026-10-12 08:41 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Your projects",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Field engineering",
+        "action_id": "aui.link#2",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field",
+      },
+      "text": {
+        "text": "*Field engineering*
+Team · 1 running · active <!date^1791899400^{date_short_pretty} at {time}|2026-10-13 13:50 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Globex",
+        "action_id": "aui.link#3",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Globex",
+      },
+      "text": {
+        "text": "*Globex*
+Account · in Field engineering · active <!date^1791709200^{date_short_pretty} at {time}|2026-10-11 09:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Launch",
+        "action_id": "aui.link#4",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Launch",
+      },
+      "text": {
+        "text": "*Launch*
+Team",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
         "text": "Who answers you",
         "type": "plain_text",
       },
@@ -802,7 +1193,7 @@ Warning alert · <!date^1791890100^{date_short_pretty} at {time}|2026-10-13 11:1
     },
     {
       "accessory": {
-        "action_id": "aui.home.answered_by#0",
+        "action_id": "aui.home.answered_by#5",
         "initial_option": {
           "text": {
             "emoji": true,
@@ -887,7 +1278,7 @@ Not connected. An admin can add it.",
     },
     {
       "accessory": {
-        "action_id": "aui.home.connect#1",
+        "action_id": "aui.home.connect#6",
         "text": {
           "emoji": true,
           "text": "Connect an Account",
@@ -971,7 +1362,7 @@ exports[`homeView > renders the noGrants Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Notifications",
+        "text": "Needs you",
         "type": "plain_text",
       },
       "type": "header",
@@ -984,6 +1375,123 @@ exports[`homeView > renders the noGrants Home tab 1`] = `
         },
       ],
       "type": "context",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "What's new",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open The Field offsite moves to Lisbon, in May",
+        "action_id": "aui.link#0",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-offsite",
+      },
+      "text": {
+        "text": "*The Field offsite moves to Lisbon, in May*
+Unread · Posted in Field engineering · <!date^1791885600^{date_short_pretty} at {time}|2026-10-13 10:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Weekly recap: three renewals closed",
+        "action_id": "aui.link#1",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-recap",
+      },
+      "text": {
+        "text": "Weekly recap: three renewals closed
+Posted in Field engineering · <!date^1791794460^{date_short_pretty} at {time}|2026-10-12 08:41 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Your projects",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Field engineering",
+        "action_id": "aui.link#2",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field",
+      },
+      "text": {
+        "text": "*Field engineering*
+Team · 1 running · active <!date^1791899400^{date_short_pretty} at {time}|2026-10-13 13:50 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Globex",
+        "action_id": "aui.link#3",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Globex",
+      },
+      "text": {
+        "text": "*Globex*
+Account · in Field engineering · active <!date^1791709200^{date_short_pretty} at {time}|2026-10-11 09:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Launch",
+        "action_id": "aui.link#4",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Launch",
+      },
+      "text": {
+        "text": "*Launch*
+Team",
+        "type": "mrkdwn",
+      },
+      "type": "section",
     },
     {
       "type": "divider",
@@ -1098,7 +1606,7 @@ exports[`homeView > renders the overflow Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Notifications",
+        "text": "Needs you",
         "type": "plain_text",
       },
       "type": "header",
@@ -1194,6 +1702,284 @@ Inbox · <!date^1791897000^{date_short_pretty} at {time}|2026-10-13 13:10 UTC>
     {
       "text": {
         "emoji": true,
+        "text": "What's new",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Field update 1",
+        "action_id": "aui.link#0",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-1",
+      },
+      "text": {
+        "text": "*Field update 1*
+Unread · Posted in Field engineering · <!date^1791892800^{date_short_pretty} at {time}|2026-10-13 12:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Field update 4",
+        "action_id": "aui.link#1",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-4",
+      },
+      "text": {
+        "text": "*Field update 4*
+Unread · Posted in Field engineering · <!date^1791882000^{date_short_pretty} at {time}|2026-10-13 09:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Field update 7",
+        "action_id": "aui.link#2",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-7",
+      },
+      "text": {
+        "text": "*Field update 7*
+Unread · Posted in Field engineering · <!date^1791871200^{date_short_pretty} at {time}|2026-10-13 06:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Field update 2",
+        "action_id": "aui.link#3",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-2",
+      },
+      "text": {
+        "text": "Field update 2
+Posted in Field engineering · <!date^1791889200^{date_short_pretty} at {time}|2026-10-13 11:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Field update 3",
+        "action_id": "aui.link#4",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-3",
+      },
+      "text": {
+        "text": "Field update 3
+Posted in Field engineering · <!date^1791885600^{date_short_pretty} at {time}|2026-10-13 10:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Your projects",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Account 1",
+        "action_id": "aui.link#5",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Account-1",
+      },
+      "text": {
+        "text": "*Account 1*
+Account · in Field engineering · 2 running · active <!date^1791892800^{date_short_pretty} at {time}|2026-10-13 12:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Account 2",
+        "action_id": "aui.link#6",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Account-2",
+      },
+      "text": {
+        "text": "*Account 2*
+Account · in Field engineering · active <!date^1791806400^{date_short_pretty} at {time}|2026-10-12 12:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Account 3",
+        "action_id": "aui.link#7",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Account-3",
+      },
+      "text": {
+        "text": "*Account 3*
+Account · in Field engineering · active <!date^1791720000^{date_short_pretty} at {time}|2026-10-11 12:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Account 4",
+        "action_id": "aui.link#8",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Account-4",
+      },
+      "text": {
+        "text": "*Account 4*
+Account · in Field engineering · active <!date^1791633600^{date_short_pretty} at {time}|2026-10-10 12:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Account 5",
+        "action_id": "aui.link#9",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Account-5",
+      },
+      "text": {
+        "text": "*Account 5*
+Account · in Field engineering · active <!date^1791547200^{date_short_pretty} at {time}|2026-10-09 12:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Account 6",
+        "action_id": "aui.link#10",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Account-6",
+      },
+      "text": {
+        "text": "*Account 6*
+Account · in Field engineering · active <!date^1791460800^{date_short_pretty} at {time}|2026-10-08 12:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Account 7",
+        "action_id": "aui.link#11",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Account-7",
+      },
+      "text": {
+        "text": "*Account 7*
+Account · in Field engineering · active <!date^1791374400^{date_short_pretty} at {time}|2026-10-07 12:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Account 8",
+        "action_id": "aui.link#12",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Account-8",
+      },
+      "text": {
+        "text": "*Account 8*
+Account · in Field engineering · active <!date^1791288000^{date_short_pretty} at {time}|2026-10-06 12:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "elements": [
+        {
+          "text": "<https://example.com/console/projects|4 more in Projects>",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
         "text": "Who answers you",
         "type": "plain_text",
       },
@@ -1201,7 +1987,7 @@ Inbox · <!date^1791897000^{date_short_pretty} at {time}|2026-10-13 13:10 UTC>
     },
     {
       "accessory": {
-        "action_id": "aui.home.answered_by#0",
+        "action_id": "aui.home.answered_by#13",
         "initial_option": {
           "text": {
             "emoji": true,
@@ -1279,7 +2065,7 @@ Connected for this workspace.",
     {
       "accessory": {
         "accessibility_label": "Connect Jira",
-        "action_id": "aui.home.connect#1",
+        "action_id": "aui.home.connect#14",
         "text": {
           "emoji": true,
           "text": "Connect",
@@ -1297,7 +2083,7 @@ Not connected.",
     },
     {
       "accessory": {
-        "action_id": "aui.home.connect#2",
+        "action_id": "aui.home.connect#15",
         "text": {
           "emoji": true,
           "text": "Connect an Account",
@@ -1320,6 +2106,224 @@ Agents act as you only where you have connected one.",
       "elements": [
         {
           "text": "Signed in as Ada Lovelace, operator. <https://example.com/console|Open the console> for runs, schedules and access.",
+          "type": "mrkdwn",
+        },
+      ],
+      "type": "context",
+    },
+  ],
+  "type": "home",
+}
+`;
+
+exports[`homeView > renders the readFor Home tab 1`] = `
+{
+  "blocks": [
+    {
+      "text": {
+        "emoji": true,
+        "text": "Hi Ada, I'm Warp.",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "I hand your questions to this workspace's agents. Mention *@warp* in a channel, send me a message, or start from here.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "block_id": "home:start",
+      "elements": [
+        {
+          "action_id": "aui.home.ask#0",
+          "style": "primary",
+          "text": {
+            "emoji": true,
+            "text": "Ask a Question",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"ask"}",
+        },
+        {
+          "action_id": "aui.home.start#1",
+          "text": {
+            "emoji": true,
+            "text": "Build an Agent",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "value": "{"turnId":"home","target":"build"}",
+        },
+        {
+          "action_id": "aui.link#0",
+          "text": {
+            "emoji": true,
+            "text": "Search Context",
+            "type": "plain_text",
+          },
+          "type": "button",
+          "url": "https://example.com/console/context",
+        },
+      ],
+      "type": "actions",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Needs you",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*docs-bot* wants to post a reply in #support.
+Inbox · <!date^1791900300^{date_short_pretty} at {time}|2026-10-13 14:05 UTC> · Waiting for your approval.
+<https://example.com/console/?view=inbox&message=msg-docs-reply|https://example.com/console/?view=inbox&amp;message=msg-docs-reply>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*author* drafted a change to the triage agent.
+Inbox · <!date^1791895200^{date_short_pretty} at {time}|2026-10-13 12:40 UTC> · Approve it to save the new revision.
+<https://example.com/console/?view=inbox&message=msg-triage-revision|https://example.com/console/?view=inbox&amp;message=msg-triage-revision>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "What's new",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open The Field offsite moves to Lisbon, in May",
+        "action_id": "aui.link#1",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-offsite",
+      },
+      "text": {
+        "text": "*The Field offsite moves to Lisbon, in May*
+Unread · Posted in Field engineering · <!date^1791885600^{date_short_pretty} at {time}|2026-10-13 10:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Weekly recap: three renewals closed",
+        "action_id": "aui.link#2",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field?message=m-recap",
+      },
+      "text": {
+        "text": "Weekly recap: three renewals closed
+Posted in Field engineering · <!date^1791794460^{date_short_pretty} at {time}|2026-10-12 08:41 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Your projects",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Field engineering",
+        "action_id": "aui.link#3",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Field",
+      },
+      "text": {
+        "text": "*Field engineering*
+Team · 1 running · active <!date^1791899400^{date_short_pretty} at {time}|2026-10-13 13:50 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Globex",
+        "action_id": "aui.link#4",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Globex",
+      },
+      "text": {
+        "text": "*Globex*
+Account · in Field engineering · active <!date^1791709200^{date_short_pretty} at {time}|2026-10-11 09:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "accessory": {
+        "accessibility_label": "Open Launch",
+        "action_id": "aui.link#5",
+        "text": {
+          "emoji": true,
+          "text": "Open",
+          "type": "plain_text",
+        },
+        "type": "button",
+        "url": "https://example.com/console/projects/Launch",
+      },
+      "text": {
+        "text": "*Launch*
+Team",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "elements": [
+        {
+          "text": "<https://example.com/console|Open the console> for runs, schedules and access.",
           "type": "mrkdwn",
         },
       ],
@@ -1391,7 +2395,7 @@ exports[`homeView > renders the unlinked Home tab 1`] = `
     {
       "text": {
         "emoji": true,
-        "text": "Notifications",
+        "text": "Needs you",
         "type": "plain_text",
       },
       "type": "header",
@@ -1446,6 +2450,68 @@ Inbox · <!date^1791895200^{date_short_pretty} at {time}|2026-10-13 12:40 UTC> �
       "text": {
         "text": "*slow-runs* fired: a run of triage took 94s.
 Warning alert · <!date^1791890100^{date_short_pretty} at {time}|2026-10-13 11:15 UTC> · The limit is 60s.",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "What's new",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*The Field offsite moves to Lisbon, in May*
+Unread · Posted in Field engineering · <!date^1791885600^{date_short_pretty} at {time}|2026-10-13 10:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "Weekly recap: three renewals closed
+Posted in Field engineering · <!date^1791794460^{date_short_pretty} at {time}|2026-10-12 08:41 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "type": "divider",
+    },
+    {
+      "text": {
+        "emoji": true,
+        "text": "Your projects",
+        "type": "plain_text",
+      },
+      "type": "header",
+    },
+    {
+      "text": {
+        "text": "*Field engineering*
+Team · 1 running · active <!date^1791899400^{date_short_pretty} at {time}|2026-10-13 13:50 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*Globex*
+Account · in Field engineering · active <!date^1791709200^{date_short_pretty} at {time}|2026-10-11 09:00 UTC>",
+        "type": "mrkdwn",
+      },
+      "type": "section",
+    },
+    {
+      "text": {
+        "text": "*Launch*
+Team",
         "type": "mrkdwn",
       },
       "type": "section",
