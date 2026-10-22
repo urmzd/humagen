@@ -306,6 +306,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   }, [evalRunning, loadSuites]);
 
   const openThread = (id: string) => go({ page: "task", id });
+  // Whether the Share dialog on screen was opened in this tab, so closing it can go back.
+  const sharedHere = useRef(false);
   // A built-in can be asked when the workspace has it and the reader may start runs.
   const canAsk = (name: string) => can("runs:write") && agents.some((a) => a.spec.name === name);
   // An alert's link names the alert. What fired is resolved in the inbox, so it opens the message the alert raised.
@@ -401,6 +403,18 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             startAsk={route.page === "new" ? route.ask : undefined}
             startChannel={route.page === "new" ? route.channel : undefined}
             focus={route.page === "task" ? route.message : undefined}
+            sharing={route.page === "task" && !!route.share}
+            onSharing={(open) => {
+              if (!thread) return;
+              // Closing a dialog opened here goes back, so Back does not open it again.
+              if (!open && sharedHere.current) {
+                sharedHere.current = false;
+                window.history.back();
+                return;
+              }
+              sharedHere.current = open;
+              go({ page: "task", id: thread, ...(open ? { share: true } : {}) }, { replace: !open });
+            }}
             root={root}
             workspaceName={workspaceName}
             onOpenChannel={(project, channel) => go({ page: "channel", project, channel })}

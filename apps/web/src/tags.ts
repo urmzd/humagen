@@ -1,27 +1,41 @@
 /**
- * The @ typeahead: what is being typed at the caret, what it could tag, and
- * the text once one is picked. The platform reads the tags (pkg/threads);
- * this only helps a person write them, so it follows the same rules: a tag
- * starts a word, and nothing inside code is a tag.
+ * Completion in the chat bar: what is being typed at the caret, what it could
+ * complete to, and the text once one is picked. `@` names people, agents,
+ * @auto and the kinds of `@kind:name` mention (`@sme:billing`); `$` names a
+ * skill. The platform reads them (pkg/threads); this only helps a person
+ * write them, so it follows the same rules: a tag starts a word, and nothing
+ * inside code is a tag.
  */
 
-/** A name a message can tag, as the typeahead offers it. */
+/** What starts a tag: `@` for people, agents and mention kinds, `$` for a skill. */
+export type Sigil = "@" | "$";
+
+/** A name a message can tag, as completion offers it. */
 export interface TagOption {
-  kind: "agent" | "auto" | "person" | "sme";
-  /** What is written after the @: an agent's name, auto, a person's handle, sme or sme:<topic>. */
+  /**
+   * agent and auto: who runs. person: someone to bring in. kind: a mention
+   * kind, written `@kind:` and completed further. item: one item of a
+   * mention kind, `@kind:name` (and `@sme`, every expert). skill: `$name`.
+   */
+  kind: "agent" | "auto" | "person" | "kind" | "item" | "skill";
+  /** What is written after the sigil: an agent's name, auto, a handle, `sme:`, `sme:billing`, a skill's name. */
   token: string;
   /** What the list shows. */
   label: string;
-  /** A second line: a person's name, what an agent is for. */
+  /** A second line: a person's name, what an agent or a skill is for. */
   hint?: string;
 }
 
+/** The sigil an option is written after. */
+export const sigilOf = (o: TagOption): Sigil => (o.kind === "skill" ? "$" : "@");
+
 /** The tag being typed at the caret. */
 export interface Typing {
-  /** Where its @ is. */
+  /** Where its sigil is. */
   start: number;
-  /** What follows the @, up to the caret. */
+  /** What follows the sigil, up to the caret. */
   query: string;
+  sigil: Sigil;
 }
 
 const TAG_CHAR = /[A-Za-z0-9._:-]/;
@@ -30,14 +44,15 @@ const TAG_CHAR = /[A-Za-z0-9._:-]/;
 export function tagAt(text: string, caret: number): Typing | null {
   let i = caret;
   while (i > 0 && TAG_CHAR.test(text[i - 1] ?? "")) i--;
-  if (i === 0 || text[i - 1] !== "@") return null;
+  const sigil = text[i - 1];
+  if (i === 0 || (sigil !== "@" && sigil !== "$")) return null;
   const start = i - 1;
   // A tag starts a word: an @ inside one, as in an email address, is not one.
   if (start > 0 && !/[\s(]/.test(text[start - 1] ?? "")) return null;
   // Inside inline code or a code block, nothing is a tag.
   const ticks = (text.slice(0, start).match(/`/g) ?? []).length;
   if (ticks % 2 === 1) return null;
-  return { start, query: text.slice(i, caret) };
+  return { start, query: text.slice(i, caret), sigil };
 }
 
 // A person is found by their name as well as their handle; an agent by its
@@ -51,18 +66,21 @@ const rank = (o: TagOption, q: string): number => {
   return -1;
 };
 
-/** Which share of the list an option takes: agents with @auto, people, or experts by topic. */
-const shareOf = (o: TagOption): string => (o.kind === "auto" ? "agent" : o.kind);
+/** Which share of the list an option takes: agents with @auto, people, mention kinds with their items, skills. */
+const shareOf = (o: TagOption): string => (o.kind === "auto" ? "agent" : o.kind === "item" ? "kind" : o.kind);
 
 /**
- * The options that match what is typed: closest first, then in the order
- * given, at most limit. When more match than that, agents, people and
- * expert topics take the places in turn, each its best first, so a kind
- * later in the order is never crowded out of the list by an earlier one.
+ * The options that match what is typed after its sigil: closest first, then
+ * in the order given, at most limit. When more match than that, each share
+ * (agents, people, mention kinds, skills) takes the places in turn, its best
+ * first, so a kind later in the order is never crowded out of the list by
+ * an earlier one. A mention kind already written out in full is not offered
+ * again: its items are.
  */
-export function matching(options: TagOption[], query: string, limit = 8): TagOption[] {
+export function matching(options: TagOption[], query: string, limit = 8, sigil: Sigil = "@"): TagOption[] {
   const q = query.toLowerCase();
   const ranked = options
+    .filter((o) => sigilOf(o) === sigil && !(o.kind === "kind" && o.token.toLowerCase() === q))
     .map((o, i) => ({ o, i, r: rank(o, q) }))
     .filter((x) => x.r >= 0)
     .sort((a, b) => a.r - b.r || a.i - b.i);
@@ -78,29 +96,62 @@ export function matching(options: TagOption[], query: string, limit = 8): TagOpt
   return ranked.filter((x) => taken.has(x)).map((x) => x.o);
 }
 
-/** The text with the tag being typed replaced by a picked one, and where the caret goes after it. */
+/**
+ * The text with the tag being typed replaced by a picked one, and where the
+ * caret goes after it. A mention kind is written `@kind:` with no space, so
+ * its items can be completed next; anything else ends with a space.
+ */
 export function insertTag(text: string, at: Typing, option: TagOption): { text: string; caret: number } {
   const end = at.start + 1 + at.query.length;
-  const tag = `@${option.token} `;
-  const rest = text.slice(end).replace(/^ /, "");
+  const open = option.kind === "kind";
+  const tag = `${sigilOf(option)}${option.token}${open ? "" : " "}`;
+  const rest = open ? text.slice(end) : text.slice(end).replace(/^ /, "");
   return { text: text.slice(0, at.start) + tag + rest, caret: at.start + tag.length };
 }
 
+/** A mention kind, as completion offers it. */
+export interface KindOption {
+  kind: string;
+  title?: string;
+}
+
 /**
- * What a thread offers to tag: @auto first, then the agents that can answer
- * there, then people, then experts by topic.
+ * What a message can tag: @auto first, then the agents that can answer
+ * there, then people, then each mention kind (`@sme:`) and the items of it
+ * read so far (topics are sme's), then skills for `$`. Experts on every
+ * topic, `@sme`, are offered when sme is a kind here.
  */
 export function tagOptions(
   agents: { name: string; description?: string }[],
   people: { handle: string; name?: string }[],
   topics: string[],
-  words: { auto: string; experts: (topic: string) => string },
+  words: { auto: string; experts: (topic: string) => string; kind?: (kind: string, title?: string) => string },
+  extra: { kinds?: KindOption[]; items?: { kind: string; name: string; description?: string }[]; skills?: { name: string; description?: string }[] } = {},
 ): TagOption[] {
+  // sme is a kind wherever there are topics, as it was before kinds were listed.
+  const kinds: KindOption[] = extra.kinds ?? (topics.length > 0 ? [{ kind: "sme" }] : []);
+  const hasSme = kinds.some((k) => k.kind === "sme");
+  const items = [
+    ...(hasSme ? topics.map((t) => ({ kind: "sme", name: t, description: words.experts(t) })) : []),
+    ...(extra.items ?? []).filter((i) => !(i.kind === "sme" && topics.includes(i.name))),
+  ];
   return [
     { kind: "auto" as const, token: "auto", label: "auto", hint: words.auto },
     ...agents.map((a) => ({ kind: "agent" as const, token: a.name, label: a.name, ...(a.description ? { hint: a.description } : {}) })),
     ...people.map((p) => ({ kind: "person" as const, token: p.handle, label: p.handle, ...(p.name ? { hint: p.name } : {}) })),
-    ...(topics.length > 0 ? [{ kind: "sme" as const, token: "sme", label: "sme", hint: words.experts("") }] : []),
-    ...topics.map((t) => ({ kind: "sme" as const, token: `sme:${t}`, label: `sme:${t}`, hint: words.experts(t) })),
+    ...(hasSme ? [{ kind: "item" as const, token: "sme", label: "sme", hint: words.experts("") }] : []),
+    ...kinds.map((k) => ({
+      kind: "kind" as const,
+      token: `${k.kind}:`,
+      label: `${k.kind}:`,
+      hint: words.kind ? words.kind(k.kind, k.title) : (k.title ?? k.kind),
+    })),
+    ...items.map((i) => ({
+      kind: "item" as const,
+      token: `${i.kind}:${i.name}`,
+      label: `${i.kind}:${i.name}`,
+      ...(i.description ? { hint: i.description } : {}),
+    })),
+    ...(extra.skills ?? []).map((s) => ({ kind: "skill" as const, token: s.name, label: s.name, ...(s.description ? { hint: s.description } : {}) })),
   ];
 }

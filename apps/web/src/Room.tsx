@@ -3,14 +3,13 @@ import { defaultCopy } from "@warp/components";
 import type { UiAction } from "@warp/core";
 import { WebSurface } from "@warp/render-web";
 import { AgentMessage, Thread as ThreadList, useQueue } from "@warp/web";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { actedFor, type Run } from "./adapter.ts";
 import {
   ApiError,
   api,
   type Channel,
   coworking,
-  type DirectoryPerson,
   type ProjectView,
   type Revision,
   type ThreadAnnouncement,
@@ -23,19 +22,19 @@ import {
   type ThreadTurn,
 } from "./api.ts";
 import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
-import { availableOf } from "./availability.ts";
+import { type Completion, useCompletion } from "./completion.ts";
 import { Composer } from "./Composer.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { useRunTurn } from "./Runs.tsx";
-import { type TagOption, tagOptions } from "./tags.ts";
+import { ShareDialog } from "./Share.tsx";
 import { mergeTurns } from "./turns.ts";
 import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
 
 /**
- * Channels and shared threads: where people and agents work together in a
- * project. A person's message is posted as them and starts no run of its
- * own; what it starts is the platform's to decide from its tags, and the
- * thread says so.
+ * Conversations, channels and shared threads: where people and agents work
+ * together in a project. A person's message is posted as them and starts no
+ * run of its own: an agent runs only when the message tags it (`@name`,
+ * `@auto`, or `$skill`, which @auto answers when no agent is tagged).
  */
 
 const words = defaultCopy.threads;
@@ -52,10 +51,6 @@ export function postsIn(projects: ProjectView[], name: string): boolean {
   const role = projects.find((p) => p.name === name)?.access?.role;
   return role === undefined || role === "member" || role === "owner";
 }
-
-/** A composer control that stays pressed: Post Only, Private. */
-const toggle =
-  "rounded-aui px-1.5 py-1 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-fg aria-pressed:underline";
 
 /** The title of a project, as a thread's meta line names it. */
 function projectTitle(projects: ProjectView[], name: string, workspace: string): string {
@@ -77,25 +72,21 @@ export function PersonMark({ name, size = 28 }: { name: string; size?: number })
   );
 }
 
-/** Who answers an untagged message here, in words, under the composer. */
-export function whoAnswers(a: ThreadAnswers | undefined): string {
-  if (!a || !a.agent) return words.nobody;
-  if (a.unavailable) return words.stale(a.agent, a.unavailable);
-  return words.answers(a.agent);
-}
-
 /** Who answers an untagged message in a channel, as its row in a list says it. */
 function answersShort(a: ThreadAnswers | undefined): string {
   if (!a || !a.agent) return defaultCopy.auto.nobody;
   return defaultCopy.auto.answers(a.agent);
 }
 
-/** What a posted message did, in one line: who it was sent to, and why a tag started nothing. */
+/**
+ * What a posted message did, in one line: who it was sent to, and why a tag
+ * started nothing. A message that tags nobody is just posted, so it says
+ * nothing: nobody was meant to answer it.
+ */
 export function postedLine(p: ThreadPosted): string {
   const parts: string[] = [];
   if (p.notified.length > 0) parts.push(words.notified(p.notified));
   for (const r of p.refused) parts.push(words.refused(r.kind === "sme" ? `@sme${r.name ? `:${r.name}` : ""}` : `@${r.name}`, r.refused ?? ""));
-  if (p.runs.length === 0 && p.reason && p.refused.length === 0 && p.notified.length === 0) parts.push(p.reason);
   return parts.join(" ");
 }
 
@@ -119,87 +110,28 @@ export function topicsOf(projects: ProjectView[], root: ProjectView | null, name
 }
 
 /**
- * What a message in a project can tag: @auto, the agents that can answer
- * there, people as their names are typed, and experts by topic. With `*`,
- * an agent that lives in a project is offered only where the platform lists
- * it, on its home's chain: `*` never reaches it. The person posting is
- * never offered: a tag of oneself tells nobody anything.
- */
-function useTags(
-  project: string,
-  agents: Revision[],
-  homes: Record<string, string>,
-  topics: string[],
-  me: string,
-): { label: string; options: TagOption[]; onQuery: (q: string) => void } {
-  const [names, setNames] = useState<{ all: boolean; names: string[] } | null>(null);
-  const [people, setPeople] = useState<DirectoryPerson[]>([]);
-  const timer = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    let live = true;
-    coworking
-      .available(project)
-      .then((a) => live && setNames(a.available))
-      .catch(() => live && setNames(null));
-    return () => {
-      live = false;
-    };
-  }, [project]);
-  const onQuery = useCallback((q: string) => {
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      // One more than the list shows, for the poster, who is left out.
-      coworking
-        .people(q, 9)
-        .then(setPeople)
-        .catch(() => setPeople([]));
-    }, 150);
-  }, []);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
-  const options = useMemo(() => {
-    const offered = new Set(
-      availableOf(
-        agents.map((a) => a.spec.name),
-        names ? { available: names } : null,
-        homes,
-      ),
-    );
-    const here = agents.filter((a) => offered.has(a.spec.name)).map((a) => ({ name: a.spec.name, description: a.spec.description }));
-    const others = people.filter((p) => p.subject !== me && p.handle !== me);
-    return tagOptions(here, others, topics, { auto: defaultCopy.auto.description, experts: words.experts });
-  }, [agents, homes, names, people, topics, me]);
-  return { label: words.typeahead, options, onQuery };
-}
-
-/**
- * The composer of a thread or a channel: the box, Post Only, and who answers.
- * A channel's also offers Private, which starts a thread only the people in
- * it read.
+ * The chat bar of a conversation or a channel: the box, with completion of
+ * `@` and `$`, and once a message is posted, what it did. Nothing under it
+ * says who answers: nobody does until a message tags an agent.
  */
 function RoomComposer({
   placeholder,
-  answers,
   tags,
   autoFocus,
-  canPrivate = false,
   onPost,
 }: {
   placeholder: string;
-  answers: ThreadAnswers | undefined;
-  tags: ReturnType<typeof useTags>;
+  tags: Completion;
   autoFocus?: boolean;
-  canPrivate?: boolean;
-  onPost: (text: string, postOnly: boolean, secret: boolean) => Promise<ThreadPosted>;
+  onPost: (text: string) => Promise<ThreadPosted>;
 }) {
-  const [postOnly, setPostOnly] = useState(false);
-  const [secret, setSecret] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [said, setSaid] = useState("");
   // People's messages never wait for an agent: each is posted as it is sent.
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
-      onPost(m.text, postOnly, secret)
+      onPost(m.text)
         .then((p) => {
           setSaid(postedLine(p));
           queue.turnEnded("done");
@@ -214,40 +146,7 @@ function RoomComposer({
   return (
     <div className="flex flex-col gap-2">
       <Problem message={problem} />
-      <Composer
-        placeholder={placeholder}
-        queue={queue}
-        autoFocus={autoFocus}
-        tags={tags}
-        trailing={
-          <span className="flex items-center gap-1">
-            {canPrivate && (
-              <button
-                type="button"
-                aria-pressed={secret}
-                title={words.privateHint}
-                onClick={() => setSecret(!secret)}
-                className={toggle}
-              >
-                {words.startPrivate}
-              </button>
-            )}
-            <button
-              type="button"
-              aria-pressed={postOnly}
-              title={words.postOnlyHint}
-              onClick={() => setPostOnly(!postOnly)}
-              className={toggle}
-            >
-              {words.postOnly}
-            </button>
-          </span>
-        }
-      />
-      <p className="px-3 text-aui-xs text-aui-muted" aria-live="polite">
-        {postOnly ? words.postOnlyHint : whoAnswers(answers)}
-      </p>
-      {secret && <p className="px-3 text-aui-xs text-aui-muted">{words.privateHint}</p>}
+      <Composer placeholder={placeholder} queue={queue} autoFocus={autoFocus} tags={tags} />
       {said && (
         <p role="status" className="px-3 text-aui-xs text-aui-muted">
           {said}
@@ -402,6 +301,8 @@ export function ThreadRoom({
   workspaceName,
   canRun,
   focus,
+  sharing = false,
+  onSharing,
   onOpenChannel,
   onChanged,
 }: {
@@ -420,6 +321,10 @@ export function ThreadRoom({
   canRun: boolean;
   /** A message to open at, as `?message=` names it. */
   focus?: string;
+  /** Whether the Share dialog is open, as `/tasks/{id}/share` says. */
+  sharing?: boolean;
+  /** Opens or closes the Share dialog, at its address. */
+  onSharing?: (open: boolean) => void;
   onOpenChannel: (project: string, channel: string) => void;
   onChanged: () => void;
 }) {
@@ -462,7 +367,16 @@ export function ThreadRoom({
   };
 
   const th = page.thread;
-  const tags = useTags(th.project, agents, homes, topicsOf(projects, root, th.project), me);
+  const tags = useCompletion(th.project, agents, homes, topicsOf(projects, root, th.project), me);
+  const posts = canRun && postsIn(projects, th.project);
+  // A private conversation is shared from its header, by someone who posts in it.
+  const shareable = posts && th.visibility === "private" && !th.surface && !!onSharing;
+  const hasRuns = turns.some((t) => t.run);
+  const shareButton = useRef<HTMLButtonElement>(null);
+  // The Share address of a conversation that can't be shared is the conversation's.
+  useEffect(() => {
+    if (sharing && !shareable) onSharing?.(false);
+  }, [sharing, shareable, onSharing]);
   const people = th.participants.filter((p) => p.kind === "person");
   const answering = th.participants.filter((p) => p.kind === "agent").map((p) => p.name);
   const title =
@@ -540,7 +454,40 @@ export function ThreadRoom({
             </span>
           ))}
         </p>
+        {shareable && (
+          <button
+            ref={shareButton}
+            type="button"
+            className={`${button} shrink-0`}
+            aria-haspopup="dialog"
+            aria-expanded={sharing}
+            onClick={() => onSharing?.(!sharing)}
+          >
+            {words.share}
+          </button>
+        )}
       </header>
+      {shareable && sharing && (
+        <div className="relative z-10 px-4 pb-2">
+          <ShareDialog
+            thread={th}
+            hasRuns={hasRuns}
+            projects={projects.filter((p) => postsIn(projects, p.name))}
+            workspaceName={workspaceName}
+            me={me}
+            onClose={() => {
+              onSharing?.(false);
+              shareButton.current?.focus();
+            }}
+            onShared={(p) => {
+              setPage(p);
+              setTurns((t) => mergeTurns(t, p.turns));
+              onSharing?.(false);
+              onChanged();
+            }}
+          />
+        </div>
+      )}
       <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
         <ThreadList className="mx-auto w-full max-w-4xl flex-1 px-4" busy={busy} label="Thread">
           {before && (
@@ -568,14 +515,17 @@ export function ThreadRoom({
       </WebSurface>
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
         <Problem message={problem} />
-        {canRun && !postsIn(projects, th.project) && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
-        {canRun && postsIn(projects, th.project) && (
+        {canRun && !posts && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
+        {posts && (
           <RoomComposer
-            placeholder={words.channel(th.channel)}
-            answers={page.answers}
+            placeholder={th.visibility === "private" ? words.message : words.channel(th.channel)}
             tags={tags}
-            onPost={(text, postOnly) =>
-              coworking.post(id, { text, post_only: postOnly }).then((p) => {
+            autoFocus={sharing ? false : undefined}
+            onPost={(text) =>
+              // It follows the newest message, so a run it starts reads the conversation so far.
+              coworking.post(id, { text }).then((p) => {
+                // What was posted shows at once: the message, and any run its tags started.
+                setTurns((t) => mergeTurns(t, [{ kind: "message", message: p.message }, ...p.runs.map((run) => ({ kind: "run" as const, run }))]));
                 onChanged();
                 return p;
               })
@@ -660,7 +610,7 @@ export function ChannelPage({
   // What is not there: the project, for the reader (a project they may not
   // see answers as one that does not exist), or the channel in it.
   const [missing, setMissing] = useState<"project" | "channel" | null>(null);
-  const tags = useTags(project, agents, homes, topicsOf(projects, root, project), me);
+  const tags = useCompletion(project, agents, homes, topicsOf(projects, root, project), me);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {
@@ -750,11 +700,10 @@ export function ChannelPage({
       {canRun && info && !info.archived && postsIn(projects, project) && (
         <RoomComposer
           placeholder={words.startThread}
-          answers={info?.answers}
           tags={tags}
-          canPrivate
-          onPost={(text, postOnly, secret) =>
-            coworking.start({ project, channel, text, post_only: postOnly, visibility: secret ? "private" : "shared" }).then((p) => {
+          onPost={(text) =>
+            // Started in a channel, a thread is shared there: the channel is where it was posted.
+            coworking.start({ project, channel, text, visibility: "shared" }).then((p) => {
               onOpenThread(p.thread.id);
               return p;
             })

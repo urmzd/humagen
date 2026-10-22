@@ -1152,6 +1152,29 @@ export interface DirectoryPerson {
   picture: string | null;
 }
 
+/** A skill a `$name` picks for the agent a message tags, or for @auto. */
+export interface Skill {
+  name: string;
+  description?: string;
+  argument_hint?: string;
+  /** Where it comes from: an agent, a project, or warp. */
+  from?: string;
+}
+
+/** A kind of `@kind:name` mention, such as sme (experts by topic) or skill. */
+export interface MentionKind {
+  kind: string;
+  title?: string;
+  /** What a mention of it reaches, in words. */
+  resolves?: string;
+}
+
+/** One item of a mention kind, as completion offers it. */
+export interface MentionItem {
+  name: string;
+  description?: string;
+}
+
 /** Which agents may answer in a project. */
 export interface ProjectAvailability {
   version: number;
@@ -1185,10 +1208,36 @@ export const coworking = {
   /** A thread and one page of its turns, the newest first; `before` reads the page above. */
   thread: (id: string, before?: string) =>
     call<ThreadPage>("GET", before ? `${threadPath(id)}?${new URLSearchParams({ before })}` : threadPath(id)),
-  /** Starts a thread: shared unless `visibility` says private, read then by the people in it alone. */
-  start: (t: { project: string; channel: string; text: string; title?: string; post_only?: boolean; visibility?: "shared" | "private" }) =>
-    call<ThreadPosted>("POST", "/api/threads", { visibility: "shared", ...t }),
-  post: (id: string, m: { text: string; after?: string; post_only?: boolean; answers?: { run: string; question: string } }) =>
+  /**
+   * Starts a thread: private unless `visibility` says shared, read then by
+   * the people in it alone until it is shared. A message starts a run only
+   * for the agents it tags.
+   */
+  start: (t: { project: string; channel: string; text: string; title?: string; visibility?: "shared" | "private" }) =>
+    call<ThreadPosted>("POST", "/api/threads", { visibility: "private", ...t }),
+  /**
+   * Shares a private thread in a project's channel (general unless named)
+   * and adds people by handle. The project may change only while the thread
+   * has no runs: the server answers 409 otherwise.
+   */
+  share: (id: string, s: { project?: string; channel?: string; add?: string[] }) => call<ThreadPage>("POST", `${threadPath(id)}/share`, s),
+  /** The skills a `$name` can pick in a project. */
+  skills: (project: string) =>
+    call<Skill[] | { skills: Skill[] }>("GET", `/api/skills?${new URLSearchParams({ project: project === "" ? "~" : project })}`).then((r) =>
+      Array.isArray(r) ? r : (r.skills ?? []),
+    ),
+  /** The kinds a `@kind:name` mention can take in a project, such as sme and skill. */
+  mentionKinds: (project: string) =>
+    call<MentionKind[] | { kinds: MentionKind[] }>("GET", `/api/mentions?${new URLSearchParams({ project: project === "" ? "~" : project })}`).then((r) =>
+      Array.isArray(r) ? r : (r.kinds ?? []),
+    ),
+  /** At most 20 items of one mention kind, whose names start with `q`. */
+  mentionItems: (project: string, kind: string, q: string) =>
+    call<MentionItem[] | { items: MentionItem[] }>(
+      "GET",
+      `/api/mentions?${new URLSearchParams({ project: project === "" ? "~" : project, kind, q })}`,
+    ).then((r) => (Array.isArray(r) ? r : (r.items ?? []))),
+  post: (id: string, m: { text: string; after?: string; answers?: { run: string; question: string } }) =>
     call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
   update: (id: string, t: { version: number; title: string; visibility: "shared" | "private"; default: string }) =>
     call<Thread>("PUT", threadPath(id), t),

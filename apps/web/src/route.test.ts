@@ -12,6 +12,7 @@ test("every route survives a round trip through its address", () => {
     { page: "new" },
     { page: "new", project: "launch" },
     { page: "task", id: "t-1" },
+    { page: "task", id: "t-1", share: true },
     { page: "projects" },
     { page: "projects", q: "globex" },
     { page: "projects", kind: "account" },
@@ -144,6 +145,14 @@ test("a task opens at one of its messages, and a new task starts in a channel", 
   assert.deepEqual(at("/tasks/th-0123456789abcdef?message="), { page: "task", id: "th-0123456789abcdef" });
   assert.equal(href({ page: "new", project: "Globex", channel: "renewals" }), "/?project=Globex&channel=renewals");
   assert.deepEqual(at("/?project=Globex&channel=renewals"), { page: "new", project: "Globex", channel: "renewals" });
+});
+
+test("a conversation's Share dialog has an address of its own, and closing it goes back to the conversation", () => {
+  assert.equal(href({ page: "task", id: "th-0123456789abcdef", share: true }), "/tasks/th-0123456789abcdef/share");
+  assert.deepEqual(at("/tasks/th-0123456789abcdef/share"), { page: "task", id: "th-0123456789abcdef", share: true });
+  assert.deepEqual(at(href({ page: "task", id: "a b", share: true })), { page: "task", id: "a b", share: true });
+  // Another word after the task is the task itself.
+  assert.deepEqual(at("/tasks/th-0123456789abcdef/other"), { page: "task", id: "th-0123456789abcdef" });
 });
 
 test("old ?view= links open the page they named", () => {

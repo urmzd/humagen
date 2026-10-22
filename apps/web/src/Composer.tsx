@@ -1,7 +1,7 @@
 import { ArrowUpIcon, FileIcon, XIcon } from "@warp/render-web";
 import { type QueueControls, QueueStrip } from "@warp/web";
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { insertTag, matching, type TagOption, type Typing, tagAt } from "./tags.ts";
+import { insertTag, matching, sigilOf, type TagOption, type Typing, tagAt } from "./tags.ts";
 import { AgentMark } from "./ui.tsx";
 
 const MAX_HEIGHT = 260;
@@ -113,13 +113,14 @@ export function Composer({
   onDraft?: (text: string) => void;
   /** Controls beside the plus, such as where the conversation is filed. */
   leading?: ReactNode;
-  /** Controls before the send or speak button, such as who answers. */
+  /** Controls before the send or speak button. */
   trailing?: ReactNode;
   /**
-   * The @ typeahead: what a message here can tag, and a call each time the
-   * name being typed changes, for options looked up as it is typed.
+   * Completion: what a message here can tag with `@` and `$`, and a call
+   * each time the tag being typed changes, for options looked up as it is
+   * typed.
    */
-  tags?: { label: string; options: TagOption[]; onQuery?: (query: string) => void };
+  tags?: { label: string; options: TagOption[]; onQuery?: (typing: Typing) => void };
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<Attached[]>([]);
@@ -132,24 +133,28 @@ export function Composer({
 
   const [typing, setTyping] = useState<Typing | null>(null);
   const [active, setActive] = useState(0);
-  const shown = tags && typing ? matching(tags.options, typing.query) : [];
+  const shown = tags && typing ? matching(tags.options, typing.query, 8, typing.sigil) : [];
+  // The highlighted option, kept inside the list as it shrinks under the caret.
+  const current = Math.max(0, Math.min(active, shown.length - 1));
 
   // What is being tagged at the caret, read after every change and every
   // move of the caret.
-  const follow = (text: string) => {
+  const follow = (text: string, caret?: number) => {
     if (!tags) return;
     const el = input.current;
-    const at = tagAt(text, el?.selectionStart ?? text.length);
+    const at = tagAt(text, caret ?? el?.selectionStart ?? text.length);
     setTyping(at);
     setActive(0);
-    if (at && at.query !== typing?.query) tags.onQuery?.(at.query);
+    if (at && (at.query !== typing?.query || at.sigil !== typing?.sigil)) tags.onQuery?.(at);
   };
 
   const pickTag = (option: TagOption) => {
     if (!typing) return;
     const next = insertTag(value, typing, option);
     change(next.text);
-    setTyping(null);
+    // A mention kind is completed further: `@sme:` opens its items.
+    if (option.kind === "kind") follow(next.text, next.caret);
+    else setTyping(null);
     requestAnimationFrame(() => {
       const el = input.current;
       el?.focus();
@@ -211,9 +216,10 @@ export function Composer({
         setActive((i) => (i + (e.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length);
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      // Enter with a modifier sends or adds a line, as it does with the list closed.
+      if ((e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) || e.key === "Tab") {
         e.preventDefault();
-        const option = shown[Math.min(active, shown.length - 1)];
+        const option = shown[current];
         if (option) pickTag(option);
         return;
       }
@@ -288,7 +294,7 @@ export function Composer({
               key={`${o.kind}:${o.token}`}
               id={`composer-tag-${i}`}
               role="option"
-              aria-selected={i === active}
+              aria-selected={i === current}
               onMouseDown={(e) => {
                 // Keep the text box's focus and caret while picking.
                 e.preventDefault();
@@ -300,10 +306,13 @@ export function Composer({
                 <AgentMark name={o.token} size={16} />
               ) : (
                 <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[0.6rem] font-medium">
-                  {o.kind === "sme" ? "?" : (o.hint ?? o.label).trim().charAt(0).toUpperCase()}
+                  {o.kind === "person" ? (o.hint ?? o.label).trim().charAt(0).toUpperCase() : o.kind === "skill" ? "$" : "@"}
                 </span>
               )}
-              <span className="font-medium">@{o.token}</span>
+              <span className="shrink-0 font-medium">
+                {sigilOf(o)}
+                {o.token}
+              </span>
               {o.hint && <span className="min-w-0 truncate text-aui-xs text-aui-muted">{o.hint}</span>}
             </li>
           ))}
@@ -354,7 +363,7 @@ export function Composer({
         aria-expanded={tags ? shown.length > 0 : undefined}
         aria-controls={tags && shown.length > 0 ? "composer-tags" : undefined}
         aria-autocomplete={tags ? "list" : undefined}
-        aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${active}` : undefined}
+        aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${current}` : undefined}
         className="max-h-[260px] min-h-14 w-full resize-none bg-transparent px-3 pt-2 text-aui-lg text-aui-fg outline-none placeholder:text-aui-muted"
       />
       {notice && (
