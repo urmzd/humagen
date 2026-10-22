@@ -886,11 +886,21 @@ which projects above it the run would count toward.
 The body takes no metadata: an unknown field answers 400.
 
 Nothing routes on its own. With `agent` left out, the default the
-conversation's place inherits answers: the project's, each
-ancestor's nearest first, then the workspace's. With none set it is
-409, "tag an agent". `auto` is `@auto`. An agent not available in the
+conversation's place inherits answers, the first set of: the
+thread's (`updateThread`), the acting client's when `act_as` names
+one, the channel's (a new conversation is in `general` of its
+project), then the project's, each ancestor's nearest first, and the
+workspace's. With none set it is 409, "tag an agent". `auto` is
+`@auto`, which for a person a client acts for picks only among the
+agents that client may route to. An agent not available in the
 conversation's project, or a default that has stopped being
 available there, is 403.
+
+A follow-up is filed in its conversation's channel. When it follows
+a turn in a shared thread people have posted in, it is sent the room
+up to that turn, people's messages by name and agents' answers by
+theirs, and it is part of the room the agents answering the next
+message are sent.
  */
   async createRun(body: CreateRunRequest, idempotencyKey?: string, options?: RequestOptions): Promise<Run> {
     const path = "/api/runs";

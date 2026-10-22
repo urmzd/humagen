@@ -296,7 +296,9 @@ export interface RunList {
 export interface CreateRunRequest {
   /** Who should answer: an agent, or `auto` for `@auto`, which picks
 among the agents available where the conversation is filed. Left
-out, the default the conversation's place inherits answers.
+out, the default the conversation's place inherits answers: the
+thread's, the acting client's, the channel's, then the project
+chain's and the workspace's.
  */
   agent?: string;
   /** The message. It must not be blank. */
