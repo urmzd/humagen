@@ -59,8 +59,10 @@ const (
 	MetaPicked  = "warp.picked"
 	MetaProject = "warp.project"
 	// MetaRouted is how a thread's selected agents started the run, when
-	// they did: "best_fit" or "all".
-	MetaRouted = "warp.routed"
+	// they did: "best_fit" or "all". It is private
+	// (envelope.PrivateMetaPrefix): the run's record says it, and fiber
+	// keeps it out of the prompt and the journal.
+	MetaRouted = envelope.PrivateMetaPrefix + "warp.routed"
 )
 
 // Keys the platform's API writes into a tag's Meta to place a run in a
@@ -125,8 +127,11 @@ func SourcesOf(meta map[string]string) []string {
 // accepted so every attempt of the run is told the same whatever the projects
 // declare later. Admission drops it from every tag but a root run started
 // through the platform's API (OriginAPI), which only the platform raises, so
-// no connector, schedule or caller can put instructions in a run.
-const MetaSkills = "warp.skills"
+// no connector, schedule or caller can put instructions in a run. It is
+// private (envelope.PrivateMetaPrefix), so fiber keeps it out of the prompt
+// and out of what it journals, a run stopped before its attempt starts
+// included.
+const MetaSkills = envelope.PrivateMetaPrefix + "warp.skills"
 
 // MetaClient is the key the platform's ingress writes into a tag's Meta to
 // say which external client raised it. Ingress overwrites whatever a
