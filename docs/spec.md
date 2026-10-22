@@ -99,7 +99,8 @@ spec:
     default: [WARP_SLACK_TOKEN]
 
   person_refs:              # where each workspace's people may keep their own tool credentials, by tenant
-    default: ["op://People/{subject}/", "keychain:warp-people-{subject}/"]   # how their references may start, {subject} being the person's; none listed is none
+    default: ["env:WARP_PERSON_{subject}_"]   # how their references may start, {subject} being the person's; none listed is none
+    # deploy local (this machine) may also list "op://People/{subject}/" and "keychain:warp-people-{subject}/"
 
   extensions: []            # process-wide parts a binary registered, each a slot
 
@@ -397,6 +398,25 @@ chart). A secret never lands in a written file: an `env:` reference is passed
 from the deploying shell's environment, and a `keychain:` or `op://` one is
 read on this machine and handed to the target as a variable the written spec
 references.
+
+That is for the spec's own references. A person's reference
+([Tools that act as you](#tools-that-act-as-you)) is read where warp runs,
+when a run uses it, so there is nothing to read or pass when deploying:
+
+- A `keychain:` or `op://` start in `person_refs` names this machine's
+  keychain or the 1Password account it signed in to, which a container cannot
+  reach. `warp deploy` refuses one for `compose` and `kubernetes`, naming the
+  entry. For those targets list an `env:` start instead, let people store
+  their credential with warp (`workspace.person_credentials.values: true`), or
+  deploy `local`.
+- An `env:` start names one variable per person and tool
+  (`env:WARP_PERSON_{subject}_` holds Ana's `WARP_PERSON_ANA_ISSUES`), which
+  nobody knows when deploying, so `warp deploy` does not pass them, and says
+  so in what it prints and in the file it writes. Set each in the target:
+  for `compose` in the warp service's environment, for example in a
+  `compose.override.yaml` beside the `compose.yaml` it writes, and for
+  `kubernetes` in the pod's, for example as `extraEnv` in the block's
+  `values`, from a Secret of your own.
 
 ## Extending it
 

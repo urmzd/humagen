@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -316,5 +317,127 @@ func TestDeployToComposeLeavesTheCheckedInComposeProjectAlone(t *testing.T) {
 	}
 	if len(r.args) != 1 || !slices.Contains(r.args[0], want) {
 		t.Errorf("ran %q, want docker compose on %s", r.args, want)
+	}
+}
+
+// peopleSpec is a System document for kind whose people keep their own tool
+// credentials under start.
+func peopleSpec(t *testing.T, kind, start string) string {
+	t.Helper()
+	block := "compose: {image: \"ghcr.io/urmzd/warp:dev\"}"
+	if kind == "kubernetes" {
+		block = "kubernetes: {namespace: agents}"
+	}
+	path := filepath.Join(t.TempDir(), "warp.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: warp/v1
+kind: System
+metadata: {name: acme}
+spec:
+  auth:
+    kind: oidc
+    oidc: {issuer: "https://login.example.com", client_id: warp, audience: warp, client_secret: {ref: "env:OIDC_SECRET"}}
+  person_refs: {default: ["`+start+`"]}
+  deploy:
+    kind: `+kind+`
+    `+block+`
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// A person's reference is read where warp runs, when a run uses it, not
+// when deploying, so a container cannot read one in this machine's keychain
+// or 1Password. warp deploy refuses such a start for a compose or kubernetes
+// target, naming the entry and what to do instead, and writes nothing.
+func TestDeployRefusesPersonRefsTheTargetCannotRead(t *testing.T) {
+	for _, c := range []struct{ kind, start, names string }{
+		{"compose", "op://People/{subject}/", "1Password"},
+		{"compose", "keychain:warp-people-{subject}/", "keychain"},
+		{"kubernetes", "op://People/{subject}/", "1Password"},
+		{"kubernetes", "keychain:warp-people-{subject}/", "keychain"},
+	} {
+		t.Run(c.kind+" "+c.start, func(t *testing.T) {
+			out := filepath.Join(t.TempDir(), "out")
+			r := &ran{}
+			err := deploy(Options{}, []string{"-f", peopleSpec(t, c.kind, c.start)}, strings.NewReader(""), io.Discard, credref.Default, r.run)
+			if err == nil {
+				t.Fatal("deployed people's references the target cannot read")
+			}
+			for _, want := range []string{`person_refs.default[0] "` + c.start + `"`, c.names, "env:WARP_PERSON_{subject}_", "person_credentials.values: true", "deploy local"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("the refusal does not say %q: %v", want, err)
+				}
+			}
+			if len(r.args) != 0 {
+				t.Fatalf("a refused deploy ran %q", r.args)
+			}
+			if err := deployCmd(Options{}, []string{"-f", peopleSpec(t, c.kind, c.start), "-o", out}, strings.NewReader(""), io.Discard); err == nil {
+				t.Fatal("wrote a deployment of people's references the target cannot read")
+			}
+			if _, err := os.Stat(out); !os.IsNotExist(err) {
+				t.Fatalf("a refused deploy wrote %s: %v", out, err)
+			}
+		})
+	}
+}
+
+// An env: start names variables, one per person and tool, that nobody knows
+// when deploying, so warp deploy cannot pass them. It says so, in what it
+// prints and in the file it writes, so whoever deploys sets them in the
+// target.
+func TestDeploySaysPeoplesVariablesAreTheTargetsToSet(t *testing.T) {
+	for kind, file := range map[string]string{"compose": "compose.yaml", "kubernetes": "values.yaml"} {
+		t.Run(kind, func(t *testing.T) {
+			out := filepath.Join(t.TempDir(), "out")
+			var said strings.Builder
+			if err := deployCmd(Options{}, []string{"-f", peopleSpec(t, kind, "env:WARP_PERSON_{subject}_"), "-o", out}, strings.NewReader(""), &said); err != nil {
+				t.Fatal(err)
+			}
+			written, err := os.ReadFile(filepath.Join(out, file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for where, text := range map[string]string{"what it printed": said.String(), file: string(written)} {
+				for _, want := range []string{"env:WARP_PERSON_{subject}_", "which warp deploy does not pass"} {
+					if !strings.Contains(text, want) {
+						t.Errorf("%s does not say %q:\n%s", where, want, text)
+					}
+				}
+			}
+			if strings.Contains(string(written), "WARP_PERSON_") && !strings.Contains(string(written), "# people's own tool credentials") {
+				t.Errorf("%s names people's variables outside its comment:\n%s", file, written)
+			}
+		})
+	}
+}
+
+// The reference's System example deploys where it says: its person_refs are
+// ones its deploy target can read.
+func TestTheReferenceExampleDeploysItsPeoplesReferences(t *testing.T) {
+	doc, err := os.ReadFile(filepath.Join("..", "..", "docs", "spec.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := regexp.MustCompile("(?s)```yaml\n(.*?)```").FindAllStringSubmatch(string(doc), -1)
+	path := filepath.Join(t.TempDir(), "warp.yaml")
+	for _, b := range blocks {
+		if strings.Contains(b[1], "kind: System") {
+			if err := os.WriteFile(path, []byte(b[1]), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+	}
+	cfg, err := spec.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kind := cfg.System.Spec.Deploy.Kind
+	if len(cfg.System.Spec.PersonRefs) == 0 || kind == "" || kind == "local" {
+		t.Fatalf("the example has person_refs %v and deploys to %q", cfg.System.Spec.PersonRefs, kind)
+	}
+	if _, err := remotePersonRefs(cfg, kind); err != nil {
+		t.Fatalf("the reference's example cannot be deployed as it says: %v", err)
 	}
 }
