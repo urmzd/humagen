@@ -74,6 +74,21 @@ func loadPolicy(fs *flag.FlagSet, g groupFlags, getenv func(string) string) (*au
 	return pol, set, nil
 }
 
+// seeGranted records whom the policy grants a role by subject in the
+// workspace -tenant names, so they are in its directory before they first
+// sign in. With tenants from a claim (-tenant-claim, as the caller set it)
+// it records nobody: the one policy is every tenant's and a grant names no
+// tenant, so a person enters a workspace's directory only through a
+// Principal of it, or a client of it mapping them.
+func seeGranted(p *platform.Platform, tenant, tenantClaim string, pol *auth.Policy, log *slog.Logger) {
+	if tenantClaim != "" {
+		return
+	}
+	if err := p.SeeGranted(tenant, granted(pol)); err != nil {
+		log.Warn("people the policy names could not all be recorded", "error", err)
+	}
+}
+
 // granted is the roles the policy grants to subjects by name, one entry per
 // subject.
 func granted(pol *auth.Policy) []platform.Grant {

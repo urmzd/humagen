@@ -211,6 +211,9 @@ type Platform struct {
 	clientsMu sync.Mutex
 	// admitting holds runs between admission and their record, by run id.
 	admitting sync.Map
+	// afterAccept, when set, runs between a run's acceptance and its record.
+	// Only tests set it, to stand for a loaded machine.
+	afterAccept func(envelope.Tag)
 	// halting holds runs being stopped at a limit, by run id, so a run is
 	// asked once however many of its calls cross it.
 	halting sync.Map
@@ -453,6 +456,9 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})
 		return runs.Run{}, err
 	}
+	if p.afterAccept != nil {
+		p.afterAccept(tag)
+	}
 	if err := p.Runs.Record(acc.RunID, tag, acc.Rev); err != nil {
 		return runs.Run{}, err
 	}
@@ -506,7 +512,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	p.calls.Lock()
 	defer p.calls.Unlock()
 
-	parent, err := p.Runs.Get(tenant, runID)
+	parent, err := p.callerOf(tenant, runID)
 	if err != nil {
 		return runs.Run{}, err
 	}
@@ -579,6 +585,19 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	}
 	p.Runs.Called(runID, req.Lease)
 	return child, nil
+}
+
+// callerOf is the record of a run making a call. A run starts before its
+// record is written (Invoke accepts it, then records it, holding the
+// admission lock throughout), so a call it makes at once can come before its
+// record: one still being admitted is waited for, rather than refused as a
+// run that does not exist.
+func (p *Platform) callerOf(tenant, runID string) (runs.Run, error) {
+	if _, admitting := p.admitting.Load(runID); admitting {
+		p.admission.Lock()
+		defer p.admission.Unlock()
+	}
+	return p.Runs.Get(tenant, runID)
 }
 
 // reserved reports whether an origin is one only the platform may use.

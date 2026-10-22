@@ -85,19 +85,16 @@ func onChain(tree *projects.Tree, project, name string) bool {
 
 // admitAgent is admission's availability check. A run filed in a project,
 // the root included, must use an agent available there. Housekeeping is
-// exempt, as it is from admission. An eval tries an agent where it lives, so
-// a project agent can be evaluated without being filed outside its home. A
-// scheduled run refused here keeps firing and is refused each time, and the
-// refusal is raised once, as an alert, until someone acknowledges it.
+// exempt, as it is from admission. An eval is filed where its agent lives
+// (evalCase), so it is checked as any run there is. A scheduled run refused
+// here keeps firing and is refused each time, and the refusal is raised
+// once, as an alert, until someone acknowledges it.
 func (p *Platform) admitAgent(tag envelope.Tag, project string) error {
 	if tag.Origin == runs.OriginSystem {
 		return nil
 	}
 	tree := p.Projects.Tree(tag.Tenant)
 	at := project
-	if home, ok := tree.Home(tag.Agent); ok && tag.Origin == OriginEval {
-		at = home
-	}
 	if tree.IsAvailable(at, tag.Agent) {
 		return nil
 	}
@@ -296,7 +293,9 @@ func (p *Platform) autoFor(ctx context.Context, c clients.Client, project, text 
 // whose settings named a baseline gets that agent as its default, which is
 // what the console sent when nobody chose one; one whose settings named none
 // gets auto, which keeps the picker for callers that name no agent. Then its
-// settings are written again without the baseline.
+// settings are written again without the baseline. A workspace whose settings
+// named none and that has no tree is given none: its root already reads as
+// every agent enabled and auto, so the upgrade changes nothing there.
 //
 // The root is written first. Stopping between the two writes is repaired at
 // the next start: the settings still name the baseline, the root already has
@@ -316,8 +315,9 @@ func (p *Platform) migrateBaseline() error {
 	for _, tenant := range tenants {
 		baseline, had := p.settings.baselines[tenant]
 		// The root is written even when the upgrade leaves it as it reads,
-		// so its history says the upgrade set the workspace default.
-		if had {
+		// so its history says the upgrade set the workspace default. An
+		// empty baseline was the picker, which auto still is.
+		if had && baseline != "" {
 			if err := p.Projects.EnsureRoot(tenant, migration, p.now()); err != nil {
 				return fmt.Errorf("platform: write the root of %q: %w", tenant, err)
 			}

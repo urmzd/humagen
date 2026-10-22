@@ -90,3 +90,10 @@ func (p *Platform) AutoFor(ctx context.Context, c clients.Client, text string) (
 	project, _ := p.filedFor(c.Tenant, c, "")
 	return p.autoFor(ctx, c, project, text)
 }
+
+// DelayRecord holds every run between being accepted and being recorded, as
+// a loaded machine can, so what a run does at once comes first. It is set
+// before any run starts.
+func (p *Platform) DelayRecord(d time.Duration) {
+	p.afterAccept = func(envelope.Tag) { time.Sleep(d) }
+}

@@ -45,6 +45,11 @@ const OriginSystem = "system"
 // the only origin whose conversation keys are believed.
 const OriginAPI = "api"
 
+// OriginEval marks a run raised by an eval, so it can be told apart from work
+// a person or a schedule asked for. Nothing outside the platform can raise
+// one.
+const OriginEval = "eval"
+
 // Keys the platform's API writes into a tag's Meta to place a run in a
 // conversation. A tag from any other origin carrying them is ignored.
 const (
@@ -100,11 +105,12 @@ func ClientOf(tag envelope.Tag) string {
 // ProjectOf returns the project a tag files its run under, or "". Only origins
 // whose project the server itself wrote are believed: the API, the cron trigger
 // (a schedule's project is set when the schedule is created), a person's
-// run-now, and Slack and GitHub, whose ingress writes it from the client's
-// binding over whatever a connector said.
+// run-now, an eval (filed where the agent it tries lives), and Slack and
+// GitHub, whose ingress writes it from the client's binding over whatever a
+// connector said.
 func ProjectOf(tag envelope.Tag) string {
 	switch tag.Origin {
-	case OriginAPI, "cron", OriginManual, OriginSlack, OriginGitHub:
+	case OriginAPI, "cron", OriginManual, OriginEval, OriginSlack, OriginGitHub:
 		return tag.Meta[MetaProject]
 	}
 	return ""

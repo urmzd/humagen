@@ -1,11 +1,15 @@
 package platform_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
@@ -16,8 +20,10 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/people"
 	"github.com/urmzd/warp/pkg/pick"
+	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state"
@@ -169,13 +175,78 @@ func TestAvailabilityInAProjectThatIsGoneIsNotFound(t *testing.T) {
 	}
 }
 
+// evalOf runs a suite of n cases against an agent and returns the cases'
+// results once it has finished.
+func evalOf(t *testing.T, p *platform.Platform, agent string, n int) []evals.Result {
+	t.Helper()
+	suite := evals.Suite{Name: "of-" + agent, Target: evals.Agent, Subject: agent}
+	for i := range n {
+		suite.Cases = append(suite.Cases, evals.Case{ID: fmt.Sprintf("c%d", i), Input: "hello", Checks: []evals.Check{{Kind: evals.Contains, Value: "offline"}}})
+	}
+	if err := p.Evals.Put(tenant, suite, false); err != nil {
+		t.Fatal(err)
+	}
+	run, err := p.StartEval(t.Context(), tenant, suite.Name, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		all, err := p.Evals.Runs(tenant, suite.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range all {
+			if r.ID == run.ID && r.Status != evals.Running {
+				return r.Results
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the eval of %s did not finish", agent)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// An eval tries an agent where it lives, as any run of it would be: a
+// project agent's cases are filed in its home, so the home's limits hold
+// them and the runs they call are checked there. A platform agent's are
+// filed at the workspace.
 func TestAnEvalTriesAnAgentWhereItLives(t *testing.T) {
 	p := start(t, call.Limits{})
 	globexHelper(t, p)
-	tg := tag("eval-1", "globex-helper")
-	tg.Origin = platform.OriginEval
-	if _, err := p.Invoke(t.Context(), tg); err != nil {
-		t.Fatalf("an eval of a project agent = %v", err)
+	for _, c := range []struct {
+		agent, project string
+		within         []string
+	}{{"globex-helper", "Globex", []string{"Field"}}, {"helper", "", nil}} {
+		results := evalOf(t, p, c.agent, 1)
+		if len(results) != 1 || results[0].RunID == "" {
+			t.Fatalf("the eval of %s = %+v", c.agent, results)
+		}
+		r, err := p.Runs.Get(tenant, results[0].RunID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Project != c.project || !slices.Equal(r.Within, c.within) {
+			t.Fatalf("an eval of %s was filed in %q within %v, want %q within %v", c.agent, r.Project, r.Within, c.project, c.within)
+		}
+	}
+}
+
+// An eval's cases count toward the limits of the project its agent lives in,
+// so evaluating a project agent never gets around them.
+func TestAnEvalIsHeldByTheLimitsWhereItsAgentLives(t *testing.T) {
+	p := start(t, call.Limits{})
+	globexHelper(t, p)
+	if _, err := p.Policies.Put(tenant, policy.Policy{Scope: policy.Scope{Kind: policy.Project, Name: "Globex"}, Period: policy.Day, MaxRuns: 1, Action: policy.Block}, "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	results := evalOf(t, p, "globex-helper", 2)
+	if len(results) != 2 || results[0].Error != "" || results[1].Error == "" {
+		t.Fatalf("two cases under Globex's limit of one run = %+v, want the second refused", results)
+	}
+	if _, err := p.Invoke(t.Context(), inProject("after", "globex-helper", "Globex")); err == nil {
+		t.Fatal("a run in Globex was let in after the eval used its one run")
 	}
 }
 
@@ -390,9 +461,14 @@ func TestTheBaselineBecomesTheWorkspaceDefault(t *testing.T) {
 			if _, held := storedSettings(t, st, tenantName)["baseline"]; held {
 				t.Fatalf("the settings of %s still name a baseline", tenantName)
 			}
-			if h, _ := p.Projects.History(tenantName, projects.Root, 0, 0); len(h) == 0 || h[0].By != "migration" {
-				t.Fatalf("the root of %s does not say the upgrade set it: %+v", tenantName, h)
-			}
+		}
+		if h, _ := p.Projects.History("named", projects.Root, 0, 0); len(h) == 0 || h[0].By != "migration" {
+			t.Fatalf("the root of named does not say the upgrade set it: %+v", h)
+		}
+		// An empty baseline was the picker, which auto still is: the
+		// workspace reads as it did, and is given no tree.
+		if p.Projects.Stored("unnamed") {
+			t.Fatal("settings that named no baseline, with no tree, were given one")
 		}
 		// A second start finds nothing to do.
 		if err := p.Close(); err != nil {
@@ -431,6 +507,88 @@ func TestTheBaselineMigrationIsRepairedAfterAStopBetweenItsWrites(t *testing.T) 
 			t.Fatal("the repair did not clear the baseline")
 		}
 	})
+}
+
+// passing lets the next n writes to one namespace through and fails the
+// rest, so a test can stop a start between two writes to the same store.
+type passing struct {
+	state.Store
+	mu        sync.Mutex
+	namespace string
+	left      int
+}
+
+func (f *passing) Write(ctx context.Context, namespace string, ops ...state.Op) error {
+	f.mu.Lock()
+	failing := f.namespace == namespace && f.left == 0
+	if f.namespace == namespace && f.left > 0 {
+		f.left--
+	}
+	f.mu.Unlock()
+	if failing {
+		return statetest.ErrInjected
+	}
+	return f.Store.Write(ctx, namespace, ops...)
+}
+
+func TestOneStartMovesTheProjectsAndTheBaselineWhereverItStops(t *testing.T) {
+	// Each stop leaves a record both migrations must finish from.
+	stops := map[string]func(st state.Store) state.Store{
+		// The import fails: nothing is written.
+		"before the import": func(st state.Store) state.Store { return &passing{Store: st, namespace: "projects"} },
+		// The import is written, and the settings without the projects are not.
+		"after the import": func(st state.Store) state.Store { return &passing{Store: st, namespace: "settings"} },
+		// The settings are written without the projects, still naming the
+		// baseline, and the root's default is not.
+		"after the projects leave the settings": func(st state.Store) state.Store {
+			return &passing{Store: st, namespace: "projects", left: 1}
+		},
+		// The root's default is written, and the settings without the
+		// baseline are not.
+		"after the default is set": func(st state.Store) state.Store {
+			return &passing{Store: st, namespace: "settings", left: 1}
+		},
+	}
+	for name, stop := range stops {
+		t.Run(name, func(t *testing.T) {
+			statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+				st := open(t)
+				raw, _ := json.Marshal(map[string]any{
+					"baseline": "lead", "history": "recent", "history_limit": 12000, "workspace_name": "Acme",
+					"projects": []map[string]string{{"name": "Launch"}, {"name": "Ops"}},
+				})
+				if err := st.Write(t.Context(), "settings", state.Put(tenant, "settings", raw)); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := newOn(t, stop(st)); !errors.Is(err, statetest.ErrInjected) {
+					t.Fatalf("a start that stopped %s = %v", name, err)
+				}
+				if b, held := storedSettings(t, st, tenant)["baseline"]; !held || b != "lead" {
+					t.Fatalf("stopped %s, the settings lost the baseline: %v", name, b)
+				}
+				p, err := newOn(t, st)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var got []string
+				for _, pr := range p.Projects.List(tenant) {
+					got = append(got, pr.Name)
+				}
+				if !slices.Equal(got, []string{"Launch", "Ops"}) {
+					t.Fatalf("after a stop %s the tree holds %q", name, got)
+				}
+				if d, _ := p.ProjectTree(tenant).DefaultOf(projects.Root); d != "lead" {
+					t.Fatalf("after a stop %s the default is %q", name, d)
+				}
+				held := storedSettings(t, st, tenant)
+				for _, key := range []string{"projects", "baseline"} {
+					if _, ok := held[key]; ok {
+						t.Fatalf("after a stop %s the settings still hold %s", name, key)
+					}
+				}
+			})
+		})
+	}
 }
 
 func TestARootWrittenBeforeProjectsHadAgentsEnablesEveryAgent(t *testing.T) {

@@ -16,6 +16,10 @@ const (
 	EveryAgent = "*"
 )
 
+// ReservedNames are the tags no agent can be named: the built-in router and
+// the tag for a project's experts. A test holds them to the directory's.
+var ReservedNames = []string{AutoAgent, "sme"}
+
 // maxAgentList bounds an enable and an allow list, as the project store
 // does.
 const maxAgentList = 64
