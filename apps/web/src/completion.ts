@@ -26,7 +26,15 @@ export interface Completion {
  * left out, so the rest still complete; topics stand in for sme's items
  * where mention kinds cannot be read.
  */
-export function useCompletion(project: string, agents: Revision[], homes: Record<string, string>, topics: string[], me: string): Completion {
+export function useCompletion(
+  project: string,
+  agents: Revision[],
+  homes: Record<string, string>,
+  topics: string[],
+  me: string,
+  /** How the platform names the reader, which a person's subject may not show. */
+  handle = "",
+): Completion {
   // undefined while it loads, null when it could not be read.
   const [names, setNames] = useState<{ all: boolean; names: string[] } | null | undefined>(undefined);
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
@@ -90,6 +98,7 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
               if (n !== asked.current) return;
               const mine = new Set(found.filter((p) => p.subject === me).map((p) => p.handle));
               mine.add(me);
+              if (handle) mine.add(handle);
               const kept = people ? got.filter((i) => !mine.has(i.name)) : got;
               setItems(kept.slice(0, 20).map((i) => ({ kind, name: i.name, ...(i.description ? { description: i.description } : {}) })));
             })
@@ -103,7 +112,7 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
           .catch(() => n === asked.current && setPeople([]));
       }, 150);
     },
-    [project, me],
+    [project, me, handle],
   );
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
@@ -119,7 +128,8 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
   }, [agents, homes, names]);
 
   const options = useMemo(() => {
-    const others = people.filter((p) => p.subject !== me && p.handle !== me);
+    // The directory leaves out a subject that holds an address, so the reader is known by their handle too.
+    const others = people.filter((p) => p.subject !== me && p.handle !== me && (!handle || p.handle !== handle));
     return tagOptions(
       here,
       others,
@@ -131,7 +141,7 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
         skills: skills.map((s) => ({ name: s.name, ...(s.description ? { description: s.description } : {}) })),
       },
     );
-  }, [here, people, topics, me, kinds, items, skills]);
+  }, [here, people, topics, me, handle, kinds, items, skills]);
 
   return { label: defaultCopy.threads.typeahead, options, onQuery, agents: names === undefined ? null : here };
 }

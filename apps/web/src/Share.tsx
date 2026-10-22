@@ -153,6 +153,7 @@ export function ShareDialog({
   projects,
   workspaceName,
   me,
+  handle,
   onShared,
   onClose,
 }: {
@@ -163,6 +164,8 @@ export function ShareDialog({
   projects: ProjectView[];
   workspaceName: string;
   me: string;
+  /** How the platform names the reader, whom the people to add leave out. */
+  handle?: string;
   onShared: (page: ThreadPage) => void;
   onClose: () => void;
 }) {
@@ -279,7 +282,7 @@ export function ShareDialog({
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-aui-xs font-medium text-aui-muted">{words.shareAdd}</span>
-          <PeopleToAdd value={people} leaveOut={[me, ...inThread]} onChange={setPeople} />
+          <PeopleToAdd value={people} leaveOut={[me, ...(handle ? [handle] : []), ...inThread]} onChange={setPeople} />
         </div>
         <Problem message={problem} />
         <div className="flex flex-wrap gap-2">

@@ -4674,6 +4674,13 @@ components:
         first_admin:
           description: The caller is an admin in a workspace nobody has set up yet.
           type: boolean
+        handle:
+          description: |
+            How the platform names the caller elsewhere, as a thread's
+            `created_by` and its participants name people: their handle, or
+            their subject when they have none and it holds no address. Empty
+            when neither.
+          type: string
 
     AgentSource:
       type: object
