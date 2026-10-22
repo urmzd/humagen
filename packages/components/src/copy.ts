@@ -1038,8 +1038,16 @@ export const defaultCopy = {
       handles.length === 0
         ? "Shared."
         : `Shared. ${handles.map((h) => `@${h}`).join(", ")} ${handles.length === 1 ? "was" : "were"} told in their inbox.`,
-    notAdded: (people: { handle: string; reason: string }[]) =>
-      `Not added: ${people.map((p) => `@${p.handle}, ${p.reason}`).join("; ")}.`,
+    /** People a share named but did not add, by why: they can't read the project, or for another reason. */
+    notAdded: (cannotRead: string[], other: string[]) =>
+      [
+        cannotRead.length > 0
+          ? `${cannotRead.map((h) => `@${h}`).join(", ")} can't see this project, so ${cannotRead.length === 1 ? "wasn't" : "weren't"} added.`
+          : "",
+        other.length > 0 ? `${other.map((h) => `@${h}`).join(", ")} couldn't be added.` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
     /** The people picked to add, as a list. */
     shareAdding: "Adding",
     shareRemove: (handle: string) => `Remove @${handle}`,
