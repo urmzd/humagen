@@ -46,30 +46,50 @@ const TEXT_ACTIONS: Partial<Record<string, string>> = {
   [ActionId.reply]: "Type your reply",
 };
 
-/** One-line free text that sends with the action; Enter sends, Escape backs out. */
+/** How tall the reply box grows before it scrolls: about five lines. */
+const MAX_REPLY_HEIGHT = 112;
+
+/**
+ * Free text that sends with the action; Enter sends, Shift+Enter starts a
+ * new line, Escape backs out. It grows with what is typed, up to a few
+ * lines, then scrolls. The words are the caller's (`value`), so they stay
+ * when the box closes: an answer the host could not record is still there
+ * to send again.
+ */
 function InlineText({
   placeholder,
   label,
+  value,
+  onChange,
   onSend,
   onCancel,
 }: {
   placeholder: string;
   label: string;
+  value: string;
+  onChange: (text: string) => void;
   onSend: (text: string) => void;
   onCancel: () => void;
 }) {
-  const [value, setValue] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => ref.current?.focus(), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure whenever the text changes
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_REPLY_HEIGHT)}px`;
+    el.style.overflowY = el.scrollHeight > MAX_REPLY_HEIGHT ? "auto" : "hidden";
+  }, [value]);
   return (
-    <span className="aui-pop-in flex basis-full items-center gap-1.5 rounded-aui border border-aui-border bg-aui-bg py-0.5 pr-0.5 pl-2 focus-within:border-aui-accent/60">
+    <span className="aui-pop-in flex basis-full items-end gap-1.5 rounded-aui border border-aui-border bg-aui-bg py-0.5 pr-0.5 pl-2 focus-within:border-aui-accent/60">
       <textarea
         ref={ref}
         rows={1}
         value={value}
         aria-label={label}
         placeholder={placeholder}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
@@ -80,7 +100,7 @@ function InlineText({
             onCancel();
           }
         }}
-        className="h-6 min-w-0 flex-1 resize-none bg-transparent py-0.5 text-aui-sm leading-5 outline-none placeholder:text-aui-muted"
+        className="min-h-6 min-w-0 flex-1 resize-none bg-transparent py-0.5 text-aui-sm leading-5 outline-none placeholder:text-aui-muted"
       />
       <button
         type="button"
@@ -107,6 +127,8 @@ export function Button({
   const askConfirm = useContext(ConfirmContext);
   const [inlineConfirm, setInlineConfirm] = useState(false);
   const [typing, setTyping] = useState(false);
+  // What was typed for an action that takes words, kept while the box is closed.
+  const [draft, setDraft] = useState("");
   const group = useGroup(collects);
   const dense = useContext(DenseContext);
   const cls = `${buttonClass(style ?? "default")} ${dense ? "h-6 px-2" : ""}`;
@@ -174,8 +196,13 @@ export function Button({
         <InlineText
           placeholder={prompt}
           label={prompt}
+          value={draft}
+          onChange={setDraft}
           onCancel={() => setTyping(false)}
           onSend={(text) => {
+            // The words stay with the button. An answer that is recorded
+            // settles the card, which takes the button away; one the host
+            // could not record is there to send again.
             setTyping(false);
             // `text` is the field; `option` stays for handlers written before it existed.
             fire({ option: text, text });
@@ -288,7 +315,7 @@ export function Actions({ children, blockId }: PrimitiveProps["Actions"]) {
       data-aui="actions"
       data-aui-block={kind}
       aria-label={kind ? `${kind[0]?.toUpperCase()}${kind.slice(1)} actions` : "Actions"}
-      className="m-0 flex min-w-0 flex-wrap items-center gap-1.5 border-0 p-0"
+      className="flex min-w-0 flex-wrap items-center gap-1.5"
     >
       {pending ? (
         <ConfirmPanel

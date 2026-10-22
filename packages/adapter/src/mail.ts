@@ -329,9 +329,14 @@ export function fromServer(raw: unknown): PlatformMessage {
   const from = obj(m.from);
   const source = obj(m.source);
   const at = str(m.updated_at) || str(m.at);
+  // A run and the thread it is in open the same conversation, so it is
+  // named once, by what the thread is called, and never by an id.
+  const conversation = str(source.thread_title) || sourceWord.thread;
+  const labelOf = (k: (typeof sourceKinds)[number]) =>
+    k === "run" || k === "thread" ? conversation : `${sourceWord[k]} ${str(source[k])}`;
   const sources: Source[] = sourceKinds
-    .filter((k) => str(source[k]))
-    .map((k) => ({ kind: k, id: str(source[k]), label: `${sourceWord[k]} ${str(source[k])}` }));
+    .filter((k) => str(source[k]) && !(k === "run" && str(source.thread)))
+    .map((k) => ({ kind: k, id: str(source[k]), label: labelOf(k) }));
   // A published file is something to open too, by the version the message is about.
   for (const p of list(m.parts)) {
     const a = obj(obj(p).artifact);
@@ -339,7 +344,8 @@ export function fromServer(raw: unknown): PlatformMessage {
       sources.unshift({ kind: "artifact", id: str(a.id), label: str(a.title) || "Artifact" });
     }
   }
-  const first = sources.find((s) => s.kind === "run" || s.kind === "rule" || s.kind === "project");
+  const run: Source | undefined = str(source.run) ? { kind: "run", id: str(source.run), label: conversation } : undefined;
+  const first = run ?? sources.find((s) => s.kind === "rule" || s.kind === "project");
   const state = str(m.state);
   return {
     id: str(m.id),

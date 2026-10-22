@@ -138,3 +138,30 @@ test("What's new holds the open announcements, unread first, at most five, each 
   });
   assert.equal(updates[0]?.projectTitle, "Globex Inc");
 });
+
+test("what a question is about names its conversation by what it is called, and never by an id", () => {
+  const question = {
+    id: "m-4",
+    kind: "clarification",
+    subject: "ledger asks the billing experts: INV-2041 bills the March maintenance twice…",
+    from: { kind: "agent", name: "ledger" },
+    at: "2026-10-22T10:26:00Z",
+    severity: "info",
+    state: "open",
+    source: { run: "r7141b73d4cd9f6d7fbee963ea0c1d2e3", thread: "th-083973d191362dea", agent: "ledger", project: "Globex", thread_title: "INV-2041 double charge" },
+    parts: [],
+  };
+  const m = fromServer(question);
+  assert.deepEqual(
+    m.about.map((s) => `${s.kind}:${s.label}`),
+    ["thread:INV-2041 double charge", "agent:Agent ledger", "project:Project Globex"],
+  );
+  assert.deepEqual(m.source, { kind: "run", id: "r7141b73d4cd9f6d7fbee963ea0c1d2e3", label: "INV-2041 double charge" });
+  // A conversation the reader is not told the name of is called one.
+  const unnamed = fromServer({ ...question, source: { ...question.source, thread_title: undefined } });
+  assert.deepEqual(
+    unnamed.about.map((s) => s.label),
+    ["Conversation", "Agent ledger", "Project Globex"],
+  );
+  for (const s of [...m.about, ...unnamed.about]) assert.ok(!/\b(r[0-9a-f]{8,}|th-[0-9a-f]+)\b/.test(s.label), s.label);
+});
