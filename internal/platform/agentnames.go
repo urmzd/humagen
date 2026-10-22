@@ -275,6 +275,7 @@ func (s *Seer) Change(c projects.Change) projects.Change {
 			shown := **pr
 			shown.Agents = s.ProjectAgents(shown.Agents)
 			shown.Knowledge = s.Sources(shown.Knowledge)
+			shown.Skills = projects.BriefSkills(shown.Skills)
 			*pr = &shown
 		}
 	}

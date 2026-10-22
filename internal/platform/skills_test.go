@@ -529,3 +529,37 @@ func TestARunStoppedBeforeItStartsJournalsNoPinnedKeys(t *testing.T) {
 		}
 	}
 }
+
+// A reply from the inbox that names a skill is a person's response and
+// starts no run, whether or not the conversation selected agents: the skill
+// does not start @auto in its place.
+func TestAReplyThatNamesASkillStartsNothing(t *testing.T) {
+	p, _ := skillsRoom(t)
+	seePeople(t, p, operator, admin)
+	for _, agents := range [][]string{nil, {"support"}} {
+		th := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Text: "@ada can you look?", Agents: agents})
+		m, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(th.Thread.ID, "m-1", "ada"))
+		if !ok {
+			t.Fatal("ada was not told")
+		}
+		if _, err := p.InboxResolve(t.Context(), admin, m.ID, "p1", platform.Resolution{Action: platform.ActReply, Text: "Use $review on it."}); err != nil {
+			t.Fatal(err)
+		}
+		reply, err := p.Threads.Message(tenant, th.Thread.ID, "m-2")
+		if err != nil || reply.Text != "Use $review on it." {
+			t.Fatalf("the reply is %+v, %v", reply, err)
+		}
+		for _, mn := range reply.Mentions {
+			if mn.Kind == threads.Agent {
+				t.Fatalf("with agents %v the reply tags %+v", agents, reply.Mentions)
+			}
+		}
+		if turns, err := p.Runs.Conversation(tenant, th.Thread.ID); err == nil {
+			for _, r := range turns {
+				if r.Message == "m-2" {
+					t.Fatalf("with agents %v the reply started %s's run", agents, r.Agent)
+				}
+			}
+		}
+	}
+}
