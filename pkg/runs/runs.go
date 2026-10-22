@@ -58,6 +58,9 @@ const (
 	MetaAsk     = "warp.ask"
 	MetaPicked  = "warp.picked"
 	MetaProject = "warp.project"
+	// MetaRouted is how a thread's selected agents started the run, when
+	// they did: "best_fit" or "all".
+	MetaRouted = "warp.routed"
 )
 
 // Keys the platform's API writes into a tag's Meta to place a run in a
@@ -248,6 +251,9 @@ type Run struct {
 	// Picked says why the agent was chosen, when the caller left it to the
 	// platform.
 	Picked string `json:"picked,omitempty"`
+	// Routed says the run was started by its thread's selected agents, and
+	// how: "best_fit" or "all". A run a tag or a default started has none.
+	Routed string `json:"routed,omitempty"`
 	// Project is the project the conversation is filed under, if any.
 	Project string `json:"project,omitempty"`
 	// Within is the project's ancestors, nearest first and the root left
@@ -423,7 +429,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	}
 	// A run is its own conversation unless the API placed it in one. A run
 	// called by an agent belongs to its root's conversation.
-	thread, prev, picked, text, project, client := runID, "", "", tag.Text, "", ClientOf(tag)
+	thread, prev, picked, routed, text, project, client := runID, "", "", "", tag.Text, "", ClientOf(tag)
 	channel, message := "", ""
 	// A schedule's project is written by the server when the schedule is
 	// created, so the cron trigger and a person's run-now are believed too.
@@ -432,7 +438,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 		if v := tag.Meta[MetaThread]; v != "" {
 			thread = v
 		}
-		prev, picked = tag.Meta[MetaPrev], tag.Meta[MetaPicked]
+		prev, picked, routed = tag.Meta[MetaPrev], tag.Meta[MetaPicked], tag.Meta[MetaRouted]
 		channel, message = tag.Meta[MetaChannel], tag.Meta[MetaMessage]
 	}
 	// Slack and GitHub ingress writes the channel from the client's binding.
@@ -450,7 +456,7 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 	}
 	r := &Run{
 		ID: runID, TagID: tag.ID, Tenant: tag.Tenant, Agent: tag.Agent, Rev: rev, Origin: tag.Origin,
-		Text: text, Input: input, Actor: tag.Actor, Thread: thread, Prev: prev, Picked: picked, Project: project, Within: slices.Clone(within), Client: client,
+		Text: text, Input: input, Actor: tag.Actor, Thread: thread, Prev: prev, Picked: picked, Routed: routed, Project: project, Within: slices.Clone(within), Client: client,
 		Channel: channel, Message: message,
 		Root: root, Parent: parent, Depth: edge.Depth, Mode: edge.Mode, Lifecycle: lifecycleOf(parent, edge.Mode),
 		Lease: edge.Lease, Schedule: schedule,

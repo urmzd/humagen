@@ -97,7 +97,54 @@ const (
 	MaxPage = 200
 	// DefaultPage is a page of threads when none is asked for.
 	DefaultPage = 50
+	// MaxRouted is how many agents a thread selects to answer its untagged
+	// messages.
+	MaxRouted = 5
 )
+
+// How a thread's selected agents answer an untagged message.
+const (
+	// ModeBestFit: the one of them that fits the message best, as @auto
+	// picks, among them alone.
+	ModeBestFit = "best_fit"
+	// ModeAll: each of them, side by side, at most MaxRuns.
+	ModeAll = "all"
+)
+
+// Routing is a thread's selected agents and how they answer, normalized:
+// each agent once, in the order given, and a mode only with two or more,
+// ModeBestFit when none is named. It refuses more than MaxRouted agents, a
+// mode that is neither, ModeAll over more than MaxRuns agents, and a name no
+// agent can have (ErrInvalid).
+func Routing(agents []string, mode string) ([]string, string, error) {
+	var out []string
+	for _, a := range agents {
+		if !slices.Contains(out, a) {
+			out = append(out, a)
+		}
+	}
+	switch {
+	case len(out) > MaxRouted:
+		return nil, "", fmt.Errorf("%w: a thread selects at most %d agents", ErrInvalid, MaxRouted)
+	case mode != "" && mode != ModeBestFit && mode != ModeAll:
+		return nil, "", fmt.Errorf("%w: a mode is best_fit or all", ErrInvalid)
+	}
+	for _, a := range out {
+		if a == AutoName || !projects.ValidDefault(a) {
+			return nil, "", fmt.Errorf("%w: no agent can be called %q", ErrInvalid, a)
+		}
+	}
+	if len(out) < 2 {
+		return out, "", nil
+	}
+	if mode == "" {
+		mode = ModeBestFit
+	}
+	if mode == ModeAll && len(out) > MaxRuns {
+		return nil, "", fmt.Errorf("%w: at most %d agents answer one message side by side; select fewer, or best_fit", ErrInvalid, MaxRuns)
+	}
+	return out, mode, nil
+}
 
 // Visibility says who reads a thread.
 type Visibility string
@@ -154,6 +201,12 @@ type Thread struct {
 	// Default answers an untagged message here: an agent, or "auto". ""
 	// inherits from the channel.
 	Default string `json:"default,omitempty"`
+	// Agents are the agents selected to answer the thread's untagged
+	// messages, at most MaxRouted, and Mode how: ModeBestFit, the one that
+	// fits each message best, or ModeAll, each of them side by side. A
+	// message's tags win over them. Mode is "" with fewer than two.
+	Agents []string `json:"agents,omitempty"`
+	Mode   string   `json:"mode,omitempty"`
 	// Surface is the one thread elsewhere this thread is, such as a Slack
 	// thread: a client, its channel there and the thread's own id. It is
 	// fixed when the thread is started, and one surface is one thread.
@@ -268,6 +321,7 @@ func (t Thread) clone() Thread {
 	ps := make([]Participant, len(t.Participants))
 	copy(ps, t.Participants)
 	t.Participants = ps
+	t.Agents = slices.Clone(t.Agents)
 	if t.Surface != nil {
 		sf := *t.Surface
 		t.Surface = &sf
@@ -311,6 +365,11 @@ func plain(s string) bool {
 	return utf8.ValidString(s) && !strings.ContainsFunc(s, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' && r != '\r' })
 }
 
+func validRouting(agents []string, mode string) bool {
+	got, m, err := Routing(agents, mode)
+	return err == nil && len(got) == len(agents) && m == mode
+}
+
 func validDefault(agent string) bool { return agent == "" || projects.ValidDefault(agent) }
 
 func (p Participant) validate() error {
@@ -343,6 +402,8 @@ func (t Thread) validate() error {
 		return fmt.Errorf("%w: a thread's title is one line of at most %d characters", ErrInvalid, MaxTitle)
 	case !validDefault(t.Default):
 		return fmt.Errorf("%w: a default is an agent's name or auto", ErrInvalid)
+	case !validRouting(t.Agents, t.Mode):
+		return fmt.Errorf("%w: a thread selects at most %d agents, best_fit or all", ErrInvalid, MaxRouted)
 	case len(t.Participants) > MaxHeld:
 		return fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
 	case t.CreatedBy != "" && strings.TrimSpace(t.CreatedBy) == "":

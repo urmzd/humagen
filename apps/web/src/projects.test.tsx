@@ -112,7 +112,7 @@ test("the projects page heads Company-wide with the workspace, links every row, 
   assert.match(out, />Acme</);
   assert.match(out, /href="\/projects\/Globex"/);
   assert.match(out, /Account · Globex Inc · in Field engineering/);
-  assert.match(out, /1 running · 4 tasks/);
+  assert.match(out, /1 running · 4 conversations/);
   assert.doesNotMatch(out, /New Project/);
   assert.match(page({ canCreate: true }), /New Project/);
   assert.match(page({ projects: [], root: null, canCreate: true }), /No projects yet. Make one/);
@@ -215,8 +215,8 @@ test("every kind of change in a project's history reads as words", () => {
     agents: true,
     home: true,
     experts: true,
-    knowledge: true,
     skills: true,
+    knowledge: true,
     channel: true,
   };
   for (const what of Object.keys(kinds)) assert.ok(copy.project.what[what], `no words for a ${what} change`);

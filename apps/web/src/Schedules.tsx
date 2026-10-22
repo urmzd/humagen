@@ -5,7 +5,7 @@ import { inWords, presets } from "./cron.ts";
 import { ApiError, api, type Revision, type Schedule, type ScheduleView } from "./api.ts";
 import { type ProjectRef, projectOptions, titleIn } from "./projects.ts";
 import { deliverFor, deliverOptions } from "./recap.ts";
-import { AgentMark, agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Section } from "./ui.tsx";
+import { AgentMark, agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Section, textLink } from "./ui.tsx";
 
 /** In UTC, because that is the zone the expression is written in. */
 function when(iso: string): string {
@@ -125,7 +125,7 @@ function ScheduleForm({
         <Label text="Agent" hint="Who gets the request.">
           <Menu label="Agent" value={agent} options={agentOptions(agents.map((a) => a.spec.name))} onChange={(next) => set({ agent: next })} />
         </Label>
-        <Label text="Project" hint="Where its tasks are filed. A project's shared memory is sent with each one.">
+        <Label text="Project" hint="Where its conversations are filed. A project's shared memory is sent with each one.">
           <Menu
             label="Project"
             value={draft.project ?? ""}
@@ -306,7 +306,7 @@ export function Schedules({
             <dd className="flex items-center gap-2 text-aui-fg">
               <AgentMark name={s.agent} size={14} />
               {onOpenAgent ? (
-                <button type="button" className="underline-offset-2 hover:underline" onClick={() => onOpenAgent(s.agent)}>
+                <button type="button" className={textLink} onClick={() => onOpenAgent(s.agent)}>
                   {s.agent}
                 </button>
               ) : (
@@ -338,7 +338,7 @@ export function Schedules({
         </Section>
         <Section
           title="Recent runs"
-          hint={s.recent.length > 0 ? `Last ${s.recent.length}: ${s.recent.length - failed} ok, ${failed} failed. Each opens the task it ran in.` : undefined}
+          hint={s.recent.length > 0 ? `Last ${s.recent.length}: ${s.recent.length - failed} ok, ${failed} failed. Each opens the conversation it ran in.` : undefined}
         >
           {s.recent.length === 0 ? (
             <p className="text-aui-sm text-aui-muted">Has not run yet.</p>
@@ -368,7 +368,7 @@ export function Schedules({
   return (
     <Page
       title="Schedules"
-      lede="A schedule sends an agent the same request on a timer. Each time it fires is a task you can open, filed in its project."
+      lede="A schedule sends an agent the same request on a timer. Each time it fires is a conversation you can open, filed in its project."
       actions={
         canWrite && agents.length > 0 && !adding ? (
           <button type="button" className={primary} onClick={() => setAdding(true)}>

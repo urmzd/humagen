@@ -1,13 +1,14 @@
 import { defaultCopy } from "@warp/components";
-import type { HomeUpdate } from "@warp/core";
+import { HOME_NEEDS, type HomeModel, type HomeNotification, type HomeUpdate, orderNotifications, orderUpdates } from "@warp/core";
 import type { ReactNode } from "react";
+import { ago, RowButton, Section, textAction } from "./ui.tsx";
 
 /** Before the first message, the prompt is the page. Chat owns its controls and submission. */
 export function HomePage({ greeting, canRun, hasAgents, below, children }: {
   greeting: string;
   canRun: boolean;
   hasAgents: boolean;
-  /** Quiet lines under the prompt: what needs the person, and what is new. */
+  /** Under the prompt: what needs the person, and what is new (HomeBoxes). */
   below?: ReactNode;
   children: ReactNode;
 }) {
@@ -24,52 +25,110 @@ export function HomePage({ greeting, canRun, hasAgents, below, children }: {
   );
 }
 
+/** Something Home reads from the server: not read yet, could not be read, or read. */
+export type Loaded<T> = { state: "loading" } | { state: "failed" } | { state: "ready"; value: T };
+
 /**
- * Two quiet lines from the shared Home model: how many things need the person,
- * and What's new, the announcements of their projects, unread first. Each
- * opens where it lives. The headline has the room: on a narrow screen where it
- * was posted goes on a line of its own under it, and beside it only where
- * there is space for both. Nothing here moves: it waits on the person.
+ * Under the chat bar, two boxes from the shared Home model: Needs you (the
+ * newest few things waiting on the person, from whom, with how many there are
+ * in all) and What's new (announcements in their projects, unread marked,
+ * where each was posted). Every row opens where it lives. A box with nothing
+ * in it says so; a person with nothing in either is told what Home is for, in
+ * one box. A box left out is one the person may not read. Nothing here moves:
+ * it waits on the person.
  */
-export function HomeLines({ needsYou, updates, onInbox, onUpdate }: {
-  needsYou: number;
-  updates: HomeUpdate[];
+export function HomeBoxes({ notifications, updates, canStart = true, onOpen, onInbox, onUpdate, onUpdates }: {
+  /** Whether the person can start a conversation above, which the welcome tells them to. */
+  canStart?: boolean;
+  notifications?: Loaded<HomeModel["notifications"]>;
+  updates?: Loaded<NonNullable<HomeModel["updates"]>>;
+  onOpen: (item: HomeNotification) => void;
   onInbox: () => void;
   onUpdate: (update: HomeUpdate) => void;
+  onUpdates: () => void;
 }) {
   const copy = defaultCopy;
-  if (needsYou === 0 && updates.length === 0) return null;
+  const c = copy.home;
+  if (!notifications && !updates) return null;
+  const items = notifications?.state === "ready" ? orderNotifications(notifications.value.items).slice(0, HOME_NEEDS) : [];
+  const total = notifications?.state === "ready" ? Math.max(notifications.value.inbox?.total ?? 0, notifications.value.items.length) : 0;
+  const news = updates?.state === "ready" ? orderUpdates(updates.value) : [];
+  const marked = news.some((u) => u.unread);
+  const ready = (l?: Loaded<unknown>) => l === undefined || l.state === "ready";
+  const column = "mx-auto w-full max-w-4xl px-4 pt-8";
+  if (ready(notifications) && ready(updates) && total === 0 && news.length === 0) {
+    return (
+      <div className={column}>
+        <Section box title={c.welcome.title}>
+          <p className="max-w-[62ch] text-aui-sm text-aui-muted">{canStart ? c.welcome.text : c.welcome.quiet}</p>
+        </Section>
+      </div>
+    );
+  }
+  const quiet = "px-2 text-aui-sm text-aui-muted";
+  const state = (l: Loaded<unknown>, failed: string, empty: string, shown: number) =>
+    l.state === "loading" ? (
+      <p role="status" className={quiet}>{c.loading}</p>
+    ) : l.state === "failed" ? (
+      <p className={quiet}>{failed}</p>
+    ) : shown === 0 ? (
+      <p className={quiet}>{empty}</p>
+    ) : null;
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-6 pt-8 text-aui-sm">
-      {needsYou > 0 && (
-        <button type="button" onClick={onInbox} className="self-start text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
-          {copy.mailbox.needsYou} · {needsYou}
-        </button>
+    <div className={`${column} grid items-start gap-4 md:grid-cols-2`}>
+      {notifications && (
+        <Section
+          box
+          title={c.needsYou}
+          count={total}
+          actions={<button type="button" onClick={onInbox} className={textAction}>{c.openInbox}</button>}
+        >
+          {state(notifications, c.needsFailed, c.nothingWaiting, items.length) ?? (
+            <ul className="-mx-2 flex flex-col">
+              {items.map((n) => (
+                <li key={`${n.kind}:${n.id}`}>
+                  <RowButton
+                    onClick={() => onOpen(n)}
+                    title={
+                      <>
+                        <span className="font-medium">{n.from}</span> {n.summary}
+                      </>
+                    }
+                    detail={[n.severity ? c.urgency[n.severity] : null, n.at ? ago(n.at) : null].filter(Boolean).join(" · ") || undefined}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
       )}
-      {updates.length > 0 && (
-        <section aria-label={copy.home.whatsNew} className="flex flex-col gap-1">
-          <h2 className="text-aui-xs font-medium text-aui-muted">{copy.home.whatsNew}</h2>
-          <ul className="flex flex-col">
-            {updates.map((u) => (
-              <li key={u.id}>
-                <button
-                  type="button"
-                  onClick={() => onUpdate(u)}
-                  className="flex w-full min-w-0 items-baseline gap-2 py-1 text-left hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-                >
-                  {/* The dot keeps its own column, so read and unread headlines line up. */}
-                  <span className="flex w-1.5 shrink-0 self-start pt-2">
-                    {u.unread && <span aria-label="Unread" className="size-1.5 rounded-full bg-aui-accent" />}
-                  </span>
-                  <span data-update-line className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:gap-2">
-                    <span className={`min-w-0 truncate sm:flex-1 ${u.unread ? "font-medium text-aui-fg" : "text-aui-fg"}`}>{u.subject}</span>
-                    <span className="min-w-0 truncate text-aui-xs text-aui-muted sm:max-w-[45%] sm:shrink-0">{copy.announcements.postedIn(u.projectTitle)}</span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {updates && (
+        <Section
+          box
+          title={c.whatsNew}
+          actions={<button type="button" onClick={onUpdates} className={textAction}>{c.seeAll}</button>}
+        >
+          {state(updates, c.newsFailed, c.nothingNew, news.length) ?? (
+            <ul className="-mx-2 flex flex-col">
+              {news.map((u) => (
+                <li key={u.id}>
+                  <RowButton
+                    onClick={() => onUpdate(u)}
+                    // The mark's column is kept only when some row is marked, so the rows line up either way.
+                    lead={marked ? u.unread ? <span aria-hidden className="size-1.5 rounded-full bg-aui-accent" /> : null : undefined}
+                    title={
+                      <>
+                        {u.unread && <span className="sr-only">{copy.mailbox.unread}: </span>}
+                        <span className={u.unread ? "font-medium" : undefined}>{u.subject}</span>
+                      </>
+                    }
+                    detail={[copy.announcements.postedIn(u.projectTitle), u.at ? ago(u.at) : null].filter(Boolean).join(" · ")}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
       )}
     </div>
   );

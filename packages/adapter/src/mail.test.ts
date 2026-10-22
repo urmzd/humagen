@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ActionId, messageAsks, messageTemplate, type UiAction } from "@warp/core";
-import { fromServer, kinds, MailError, notificationsOf, projectOf, projectTransport, shownAbout, toRequest, updatesOf } from "./mail.ts";
+import { fromServer, kinds, MailError, mailTransport, notificationsOf, projectOf, projectTransport, shownAbout, toRequest, updatesOf } from "./mail.ts";
 
 /** An announcement as the platform sends it: a broadcast in a project's inbox, only there to be read. */
 const announcement = {
@@ -38,7 +38,7 @@ test("a person's announcement shows what they are called, and keeps who they are
   assert.equal(agent.sender, "recap");
 });
 
-test("an announcement never asks anything of the reader, so it sits under Updates", () => {
+test("an announcement never asks anything of the reader, so it sits under What's new", () => {
   assert.equal(messageAsks(fromServer(announcement)), false);
 });
 
@@ -153,6 +153,19 @@ test("publishing and discarding a draft are the platform's publish and discard",
   assert.deepEqual((viewer.parts[0] as { allowed?: string[] }).allowed, []);
 });
 
+test("the person's inbox reads What's new with news=true and what needs them with needs=true, as Home does", async () => {
+  const calls: string[] = [];
+  const http = async <T>(_method: string, path: string): Promise<T> => {
+    calls.push(path);
+    return { messages: [], next: null, open: 3, unread: 1 } as T;
+  };
+  const via = mailTransport(http);
+  await via.list({ limit: 20, state: "open", news: true });
+  const needs = await via.list({ limit: 5, state: "open", needs: true });
+  assert.deepEqual(calls, ["/api/inbox?limit=20&state=open&news=true", "/api/inbox?limit=5&state=open&needs=true"]);
+  assert.equal(needs.open, 3);
+});
+
 test("a project's inbox lists through the project's own route, and answers through the inbox's", async () => {
   const calls: string[] = [];
   const http = async <T>(method: string, path: string): Promise<T> => {
@@ -218,6 +231,7 @@ test("what needs the reader on Home is every open message but posted announcemen
     id: "m-alert",
     kind: "alert",
     subject: "6 of 10 runs failed",
+    severity: "critical",
     from: { kind: "rule", name: "failure-rate" },
     parts: [{ id: "p1", type: "alert", state: "open", actions: ["acknowledge"], alert: { id: "a1", rule: "failure-rate", kind: "run_failed", severity: "warning", title: "6 of 10 runs failed" } }],
   };
@@ -227,7 +241,8 @@ test("what needs the reader on Home is every open message but posted announcemen
   const items = notificationsOf([mention, alert, settled, announcement, draft, decided].map(fromServer), (id) => `/inbox?message=${id}`);
   assert.deepEqual(items, [
     { kind: "inbox", id: "m-mention", from: "Ana", summary: "mentioned you in #renewals", at: announcement.at, url: "/inbox?message=m-mention" },
-    { kind: "inbox", id: "m-alert", from: "failure-rate", summary: "6 of 10 runs failed", at: announcement.at, url: "/inbox?message=m-alert" },
+    // Above normal, so it says so; a normal one carries no severity.
+    { kind: "inbox", id: "m-alert", from: "failure-rate", summary: "6 of 10 runs failed", at: announcement.at, severity: "critical", url: "/inbox?message=m-alert" },
     { kind: "inbox", id: "m-12", from: "warp-analyst", summary: "Field shipped two fixes", at: draft.at, url: "/inbox?message=m-12" },
   ]);
   // The same page makes What's new from what is left: the posted announcement, and never the draft.

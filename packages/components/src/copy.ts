@@ -146,6 +146,8 @@ export const defaultCopy = {
     `${used} of ${limit} used${period ? ` this ${period}` : ""}.${needs ? ` This run needs ${needs} more.` : ""}`,
   noPermission: "You can read this, but you don't have permission to resolve it.",
   mailbox: {
+    /** How many are open, beside the Inbox's title. */
+    openCount: (n: number) => `${n} open`,
     empty: "Nothing here",
     emptyHint: "Approvals, questions, alerts and new artifacts arrive here, and are resolved here.",
     emptyOpen: "You're all caught up",
@@ -154,7 +156,8 @@ export const defaultCopy = {
     pickHint: "Decisions come first, then updates.",
     back: "Back",
     needsYou: "Needs you",
-    updates: "Updates",
+    /** The inbox's announcements, by the name Home gives them. */
+    updates: "What's new",
     snooze: "Snooze",
     snoozeTitle: "Hide until tomorrow morning",
     about: "About",
@@ -205,7 +208,7 @@ export const defaultCopy = {
     mention: "Mention",
     announcement: "Announcement",
   },
-  /** Announcements: news posted in a project's inbox, read under Updates. */
+  /** Announcements: news posted in a project's inbox, read under What's new. */
   announcements: {
     post: "Post Announcement",
     withdraw: "Withdraw",
@@ -240,7 +243,7 @@ export const defaultCopy = {
     /** In Slack, to someone replying under an announcement that was withdrawn. */
     replyGone: "This announcement was withdrawn, so a reply to it starts nothing.",
   },
-  /** A task pinned to the top of the sidebar. Said beside its pin when the change could not be saved, or the preferences it is saved with could not be read. */
+  /** A conversation pinned to the top of the sidebar. Said beside its pin when the change could not be saved, or the preferences it is saved with could not be read. */
   pins: {
     pinFailed: "Could not pin. Try again.",
     unpinFailed: "Could not unpin. Try again.",
@@ -293,7 +296,7 @@ export const defaultCopy = {
             : "",
     allProjects: "All projects",
     newSubProject: "New Sub-project",
-    newTask: "New Task",
+    newTask: "New Conversation",
     deleteProject: "Delete Project",
     move: "Move",
     moveUnder: "Move under",
@@ -426,6 +429,64 @@ export const defaultCopy = {
     handle: (name: string) => `@${name}`,
   },
   /** @auto, the built-in router, and who answers a message that tags no agent. */
+  /** The chat bar's + menu and what it selects for a conversation. */
+  chat: {
+    /** The + button, which opens the menu. */
+    plus: "Add files, agents or a project",
+    /** The shortcut that opens it, said in its tooltip: Cmd+/ on a Mac, Ctrl+/ elsewhere. */
+    plusShortcut: (mac: boolean) => (mac ? "Cmd+/" : "Ctrl+/"),
+    /** The sidebar's filter of conversations, and how many filters are on. */
+    filter: (on: number) => (on > 0 ? `Filter conversations, ${on} on` : "Filter conversations"),
+    /** Why a shared conversation's project can't change from the + menu. */
+    projectShared: "A shared conversation stays in the project it was shared in.",
+    /** Why someone added to a conversation can't move it. */
+    projectStarter:
+      "Only the person who started this conversation, or an owner of its project, can move it.",
+    /** Why a Slack conversation's project can't change. */
+    projectFromSlack: "A conversation started in Slack stays in the project of its Slack channel.",
+    menu: "Add to this conversation",
+    attach: "Attach Files",
+    agents: "Agents",
+    findAgent: "Find an agent",
+    agentsLoading: "Loading agents…",
+    noAgents: "No agents can answer in this project.",
+    noAgentMatch: "No agent matches.",
+    project: "Project",
+    chooseProject: "Choose a project",
+    projectless: "Projectless",
+    channel: "Channel",
+    /** The chips row, as a list. */
+    selected: "Selected for this conversation",
+    removeAgent: (agent: string) => `Remove ${agent}`,
+    removeProject: (where: string) => `Remove ${where}`,
+    /** How an untagged message goes to two agents or more. */
+    routing: "How messages are routed",
+    bestFit: "Best Fit",
+    bestFitHint: "One of them answers each message: the one that fits it best.",
+    all: "All of Them",
+    allHint: "Each of them answers every message, side by side.",
+    allMax: (n: number) =>
+      `At most ${n} agents answer side by side. Select fewer to use All of Them.`,
+    /** Under the agents once as many are checked as a conversation takes. */
+    maxAgents: (n: number) => `A conversation can have at most ${n} agents.`,
+    /** Agents taken off the conversation because they can't answer in the project picked. */
+    notHere: (agents: string[]) =>
+      `${agents.join(", ")} can't answer in this project, so ${agents.length === 1 ? "it was" : "they were"} taken off. Pick another project, or another agent.`,
+    /** The chat bar's prompt with nothing selected, with one agent, and with several. */
+    placeholder: "Message, or @ an agent",
+    placeholderOne: (agent: string) => `Message ${agent}`,
+    placeholderBest: (_n: number) => "Message, and the agent that fits best answers",
+    placeholderAll: (n: number) =>
+      n === 2 ? "Message, and both agents answer" : `Message, and all ${n} agents answer`,
+    /** Under an answer that went to an agent because it was selected, not tagged. */
+    routedBest: (agent: string) => `Routed to ${agent}, the best fit`,
+    routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
+    routed: (agent: string) => `Routed to ${agent}`,
+    /** Home's suggestions, as a list. */
+    suggestions: "Suggestions",
+    /** The selection could not be saved on the conversation. */
+    saveFailed: "The conversation's agents could not be saved. Try again.",
+  },
   auto: {
     handle: "@auto",
     description: "Picks the agent that fits, from the agents available here.",
@@ -525,7 +586,7 @@ export const defaultCopy = {
   schedules: {
     deliver: "Answer",
     deliverHint: "Where each run's answer goes. A recap that finds nothing to say sends nothing.",
-    deliverNone: "Keep on the task",
+    deliverNone: "Keep in the conversation",
     /** A new schedule is the reader's own; an existing one goes to whoever created it. */
     deliverInbox: (mine: boolean) => (mine ? "Send to my inbox" : "Send to its creator's inbox"),
     deliverProject: "Post to the project",
@@ -621,9 +682,26 @@ export const defaultCopy = {
             : "Alert"
         : "Inbox",
     moreWaiting: (n: number) => `${n} more in the inbox`,
+    /** An inbox item above normal, said in words before when it came. A normal one says nothing. */
+    urgency: { critical: "Urgent", warning: "Warning" } as Partial<Record<string, string>>,
     whatsNew: "What's new",
     nothingNew: "Nothing new from your projects.",
-    moreUpdates: (n: number) => `${n} more under Updates`,
+    moreUpdates: (n: number) => `${n} more under What's new`,
+    /** The console's Needs you box: its way to the rest. */
+    openInbox: "Open Inbox",
+    /** What's new's way to every announcement in the inbox. */
+    seeAll: "See All",
+    /** A box on Home before what it lists has been read. */
+    loading: "Loading",
+    needsFailed: "What needs you could not be loaded. It is all in the inbox.",
+    newsFailed: "What's new could not be loaded. It is all in the inbox.",
+    /** Home for a person with nothing waiting and nothing new: what Home is for. */
+    welcome: {
+      title: "Welcome",
+      text: "Ask an agent above to start. When an agent needs you, or someone posts in one of your projects, it shows here.",
+      /** For a person who cannot start a conversation here. */
+      quiet: "When an agent needs you, or someone posts in one of your projects, it shows here.",
+    },
     yourProjects: "Your projects",
     noProjects: "You are not in any project yet.",
     moreProjects: (n: number) => `${n} more in Projects`,
@@ -684,9 +762,11 @@ export const defaultCopy = {
     /** Where a row sits when the row above it is not its parent: "in Field › Globex". */
     within: (path: string[]) => `in ${path.join(" › ")}`,
     empty: "No projects yet.",
-    emptyCreate: "No projects yet. Make one to keep related tasks together.",
+    emptyCreate: "No projects yet. Make one to keep related conversations together.",
     noMatch: "No project matches.",
     allProjects: "All projects",
+    /** Before the agent that answers a project's untagged messages, in its meta line: "Lead globex-helper". */
+    lead: "Lead",
     missing: (name: string) => `No project named ${name}`,
     missingHint: "It may have been deleted, or you may not be allowed to see it.",
     breadcrumb: "Where this project sits",
@@ -699,7 +779,7 @@ export const defaultCopy = {
     saveChanges: "Save Changes",
     saving: "Saving…",
     cancel: "Cancel",
-    newTask: "New Task",
+    newTask: "New Conversation",
     form: {
       heading: "New project",
       title: "Title",
@@ -721,7 +801,7 @@ export const defaultCopy = {
     count: {
       running: (n: number) => `${n} running`,
       review: (n: number) => `${n} to review`,
-      tasks: (n: number) => `${n} ${n === 1 ? "task" : "tasks"}`,
+      tasks: (n: number) => `${n} ${n === 1 ? "conversation" : "conversations"}`,
       below: (n: number) => `${n} ${n === 1 ? "sub-project" : "sub-projects"}`,
       active: (when: string) => `active ${when}`,
     },
@@ -767,11 +847,11 @@ export const defaultCopy = {
       noneLive: "No agent lives here.",
       failed: "The agents could not be saved.",
     },
-    tasks: "Tasks",
+    tasks: "Conversations",
     noTasks:
-      "Start a task here to keep its conversation, execution history and shared context in this project.",
+      "Start a conversation here to keep its execution history and shared context in this project.",
     includeBelow: "Include sub-projects",
-    includeBelowHint: "Also list the tasks filed in the projects below this one.",
+    includeBelowHint: "Also list the conversations filed in the projects below this one.",
     moreTasks: "See More",
     subProjects: "Sub-projects",
     noSubProjects: "Nothing sits below this project yet.",
@@ -832,10 +912,10 @@ export const defaultCopy = {
     missingChannel: "No such channel",
     missingChannelHint: (name: string) =>
       `This project has no channel named #${name}. Its Channels tab lists the ones it has.`,
-    /** A task the reader may not read reads as one that does not exist, as a project does. */
-    missingTask: "No such task",
-    /** A task that could not be read for a reason other than its not being there. */
-    readFailed: "This task could not be read. Reload to try again.",
+    /** A conversation the reader may not read reads as one that does not exist, as a project does. */
+    missingTask: "No such conversation",
+    /** A conversation that could not be read for a reason other than its not being there. */
+    readFailed: "This conversation could not be read. Reload to try again.",
     /** A channel bound to Slack, in its row: which app, and which Slack channel. */
     boundTo: (client: string, slackChannel: string) =>
       `In Slack through ${client}, channel ${slackChannel}`,
@@ -902,7 +982,29 @@ export const defaultCopy = {
       "This turn acted for nobody, so anyone who may start runs can retry it from the inbox.",
     answer: "Answer",
     answered: "Answered",
-    typeahead: "People and agents to tag",
+    typeahead: "People, agents and skills to tag",
+    /** A mention kind, as completion offers `@kind:`: its title, or what it is. */
+    mentionKind: (kind: string, title?: string) => title || `Mention by ${kind}`,
+    /** The chat bar's prompt in a conversation. Nothing runs until a message tags an agent. */
+    message: "Message. Tag an agent with @ to ask it",
+    /** The control at the top of a private conversation that shares it in a project's channel. */
+    share: "Share",
+    shareTitle: "Share this conversation",
+    shareLede:
+      "Everyone who can see the project reads it in the channel. The agents you tagged stay in it, and the people you add are told.",
+    shareProject: "Project",
+    /** Under the project, once an agent has run in the conversation. */
+    shareProjectFixed: "The project can't change once an agent has answered here.",
+    shareChannel: "Channel",
+    shareAdd: "People to add",
+    shareAddHint: "Type a name or a handle",
+    /** The people picked to add, as a list. */
+    shareAdding: "Adding",
+    shareRemove: (handle: string) => `Remove @${handle}`,
+    /** The server would not move it to another project: an agent has already run in it. */
+    shareConflict:
+      "An agent has already answered in this conversation, so it stays in its project. Share it there, in any of its channels.",
+    shareFailed: "The conversation could not be shared. Try again.",
     experts: (topic: string) => (topic ? `Experts on ${topic}` : "Every expert here"),
     olderTurns: "Show Earlier",
     failed: {

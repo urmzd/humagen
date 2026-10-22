@@ -82,9 +82,8 @@ var slackMention = regexp.MustCompile(`^<@([A-Z][A-Z0-9]{2,31})(?:\|[^<>]{0,100}
 // price ($5) or a variable ($PATH, $my_var) is not one. A tag that names
 // nobody is kept, refused, so the person who wrote it is told. Each tag is
 // kept once, in the order it first appears, and a message holds at most
-// MaxMentions, of which at most MaxSkills skills (ErrInvalid). A message that
-// names a skill and tags no agent keeps room for the @auto it starts
-// (WithSkillAgent). Parse is a pure function of the text and the lookups.
+// MaxMentions, of which at most MaxSkills skills (ErrInvalid). Parse is a
+// pure function of the text and the lookups.
 //
 // Each name is looked up once, however often it is written, and a message
 // naming more than MaxMentions is refused before the next one is looked up,
@@ -149,16 +148,10 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 			i++
 		}
 	}
-	skills, named, agent := 0, 0, false
+	skills := 0
 	for _, m := range out {
-		switch m.Kind {
-		case Skill:
+		if m.Kind == Skill {
 			skills++
-			if m.Refused == "" {
-				named++
-			}
-		case Agent:
-			agent = true
 		}
 	}
 	switch {
@@ -166,9 +159,6 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 		return nil, tooMany
 	case skills > MaxSkills:
 		return nil, fmt.Errorf("%w: a message names at most %d skills", ErrInvalid, MaxSkills)
-	case named > 0 && !agent && len(out) == MaxMentions:
-		// The @auto a skill starts is one more tag.
-		return nil, tooMany
 	}
 	if out == nil {
 		out = []Mention{}
@@ -180,8 +170,8 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 // starts: @auto, which picks the agent and is told to use the skill. It
 // returns the message's tags with @auto added after them when it does, and
 // the tags as they are otherwise. An agent tagged and refused still counts
-// as tagged, so no other agent answers in its place. Parse keeps room for
-// the tag it adds.
+// as tagged, so no other agent answers in its place. Check first that the
+// tag fits (RoomForSkillAgent).
 func WithSkillAgent(ms []Mention) []Mention {
 	skill := false
 	for _, m := range ms {
@@ -196,6 +186,15 @@ func WithSkillAgent(ms []Mention) []Mention {
 		return ms
 	}
 	return append(cloneMentions(ms), Mention{Kind: Agent, Name: AutoName})
+}
+
+// RoomForSkillAgent refuses a message whose tags leave no room for the @auto
+// WithSkillAgent would add: it already holds MaxMentions (ErrInvalid).
+func RoomForSkillAgent(ms []Mention) error {
+	if len(WithSkillAgent(ms)) > MaxMentions {
+		return fmt.Errorf("%w: a message tags at most %d people, agents and skills, and the @auto a skill starts is one more", ErrInvalid, MaxMentions)
+	}
+	return nil
 }
 
 // UnknownSkill is the error a message that names a skill nobody declared

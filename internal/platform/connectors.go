@@ -226,7 +226,7 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) (envelo
 		}
 	}
 	if tag.Agent == Auto {
-		choice, err := s.p.autoFor(ctx, c, project, tag.Text)
+		choice, err := s.p.autoFor(ctx, c, s.p.clientPlace(c, project, channel, tag.Meta["slack_channel"]), tag.Text)
 		if err != nil {
 			s.p.log.Warn("platform: @auto found no agent for a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "tag", tag.ID, "error", err)
 			return envelope.Tag{}, false
@@ -298,13 +298,20 @@ const untagged = topic.ControlName
 // thread there; elsewhere the client's default comes first (placeIn). "" is
 // no default anywhere.
 func (p *Platform) untaggedFor(c clients.Client, project, channel, slackChannel string) string {
+	return p.DefaultAt(c.Tenant, p.clientPlace(c, project, channel, slackChannel)).Agent
+}
+
+// clientPlace is where a client's in-process connector files a message, for
+// deciding who answers it: the project and channel, with the client's own
+// default nearer than the channel's outside a bound Slack channel.
+func (p *Platform) clientPlace(c clients.Client, project, channel, slackChannel string) Place {
 	clientDefault := c.DefaultAgent
 	if c.Surface == clients.Slack && slackChannel != "" {
 		if _, bound := p.Projects.BoundTo(c.Tenant, c.ID, slackChannel); bound {
 			clientDefault = ""
 		}
 	}
-	return p.DefaultAt(c.Tenant, p.placeIn(c.Tenant, threads.Thread{Project: project, Channel: channel}, clientDefault)).Agent
+	return p.placeIn(c.Tenant, threads.Thread{Project: project, Channel: channel}, clientDefault)
 }
 
 // filedFor is where a client's in-process connector files a run: the

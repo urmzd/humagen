@@ -78,6 +78,44 @@ jobs:
           grep -q '^ℹ pass 4$' server-test.log
           ! grep -q '# SKIP' server-test.log
 
+  screens:
+    name: Console screens
+    # On pull requests that change the console, the shared UI or this check.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Did the pull request change the console?
+        id: changed
+        run: |
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE '^(apps/web/|packages/|scripts/screens/|Makefile$|pnpm-lock\.yaml$|\.github/workflows/ci\.yml$)'; then
+            echo "ui=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.changed.outputs.ui == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.changed.outputs.ui == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - if: steps.changed.outputs.ui == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # The runner's own Chrome takes the screenshots: nothing is downloaded.
+      - name: Capture every screen and check its layout
+        if: steps.changed.outputs.ui == 'true'
+        run: make screens
+      - name: Upload the screenshots for review
+        if: always() && steps.changed.outputs.ui == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-screens
+          path: .screens/
+          if-no-files-found: ignore
+
   slack-blocks:
     name: Slack Block Kit (allowed to fail)
     runs-on: ubuntu-latest

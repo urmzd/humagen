@@ -3,6 +3,7 @@ package platform_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -367,5 +368,22 @@ func TestOnASurfaceASkillIsAnsweredByTheDefault(t *testing.T) {
 	}
 	if got := pinned(t, await(t, p, dm.Runs[0].ID, runs.Completed)); len(got) != 1 {
 		t.Fatalf("the default's run was pinned %v", got)
+	}
+}
+
+// A console message with ten tags, a skill among them and no agent, has no
+// room for the @auto the skill starts, and is refused before it is posted.
+func TestASkillsAutoMustFitTheMessagesTags(t *testing.T) {
+	p, _ := skillsRoom(t)
+	var nine []string
+	for i := range threads.MaxMentions - 1 {
+		nine = append(nine, fmt.Sprintf("@p%d", i))
+	}
+	if _, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Globex", Text: strings.Join(nine, " ") + " $review"}); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("ten tags, a skill and no agent = %v", err)
+	}
+	// Posted only, no @auto is added, so it fits.
+	if _, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Globex", Text: strings.Join(nine, " ") + " $review", PostOnly: true}); err != nil {
+		t.Fatalf("the same posted only = %v", err)
 	}
 }

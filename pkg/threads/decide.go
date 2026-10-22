@@ -2,6 +2,7 @@ package threads
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/urmzd/warp/pkg/projects"
 )
@@ -22,6 +23,9 @@ const (
 	RuleReply Rule = "reply"
 	// RulePostOnly: the person chose to post only.
 	RulePostOnly Rule = "post_only"
+	// RuleRouted: it tags no agent, and the thread's selected agents answer
+	// it: the one that fits best, or each of them.
+	RuleRouted Rule = "routed"
 	// RuleUntagged: it was posted in the console and tags no agent, so
 	// nothing runs. In the console an agent answers only when it is tagged.
 	RuleUntagged Rule = "untagged"
@@ -64,6 +68,10 @@ type Input struct {
 	Reply bool
 	// PostOnly is set when the person chose to post only.
 	PostOnly bool
+	// Routed are the thread's selected agents and Mode how they answer an
+	// untagged message (Thread.Agents, Thread.Mode).
+	Routed []string
+	Mode   string
 	// TagsOnly is set for a message a person posted in the console, as
 	// themselves and not through a client's surface: only the agents it
 	// tags answer it, and no default ever does.
@@ -83,6 +91,9 @@ type Decision struct {
 	// Agents answer, in order, at most MaxRuns. "auto" is @auto, which the
 	// platform resolves.
 	Agents []string `json:"agents"`
+	// Among is set when the thread's selected agents answer with ModeBestFit:
+	// Agents is then @auto, picking among these alone.
+	Among []string `json:"among,omitempty"`
 	// Default is set when the agent answering is the inherited default.
 	Default bool `json:"default,omitempty"`
 	// Reason says why no agent answers, when none does.
@@ -96,11 +107,16 @@ type Decision struct {
 //  1. a message that tags agents or @auto is answered by each tagged agent
 //     that can answer, at most MaxRuns, and by no default, even when none
 //     can;
-//  2. one that tags only people, experts or a role starts no run;
+//  2. one that tags only people, experts or a role starts no run, unless it
+//     names a skill in a thread with selected agents;
 //  3. so does one that answers a question or replies to a mention;
 //  4. and one posted only;
-//  5. and one posted in the console (TagsOnly), whatever the default;
-//  6. otherwise the inherited default answers. With none, or with one that
+//  5. one posted in the console (TagsOnly) in a thread with selected agents
+//     is answered by them: the one that fits it best (Among, through
+//     @auto), or each of them (ModeAll);
+//  6. one posted in the console (TagsOnly) starts no run, whatever the
+//     default;
+//  7. otherwise the inherited default answers. With none, or with one that
 //     has stopped being available, no agent answers, and the reason says so.
 //
 // A refused tag still counts as a tag of its kind, so a tag that names
@@ -110,7 +126,7 @@ type Decision struct {
 // pure function of its input.
 func Decide(in Input) Decision {
 	ms := cloneMentions(in.Mentions)
-	agents, tagged, people := []string{}, false, false
+	agents, tagged, people, skill := []string{}, false, false, false
 	for i, m := range ms {
 		switch m.Kind {
 		case Agent:
@@ -125,8 +141,13 @@ func Decide(in Input) Decision {
 			agents = append(agents, m.Name)
 		case Person, SME, Role:
 			people = true
+		case Skill:
+			skill = skill || m.Refused == ""
 		}
 	}
+	// A thread's selected agents answer only in the console: a client's
+	// surface keeps its defaults.
+	routed := in.TagsOnly && len(in.Routed) > 0
 	d := Decision{Agents: []string{}, Mentions: ms}
 	switch {
 	case tagged:
@@ -134,12 +155,16 @@ func Decide(in Input) Decision {
 		if len(agents) == 0 {
 			d.Reason = "No agent it tags can answer here."
 		}
-	case people:
+	case people && (!skill || !routed):
 		d.Rule, d.Reason = RulePeople, "It tags only people, so no agent answers."
 	case in.Reply:
 		d.Rule, d.Reason = RuleReply, "A reply to a person starts no run."
 	case in.PostOnly:
 		d.Rule, d.Reason = RulePostOnly, "Posted only, so no agent answers."
+	case routed && (len(in.Routed) == 1 || in.Mode == ModeAll):
+		d.Rule, d.Agents = RuleRouted, slices.Clone(in.Routed[:min(len(in.Routed), MaxRuns)])
+	case routed:
+		d.Rule, d.Agents, d.Among = RuleRouted, []string{AutoName}, slices.Clone(in.Routed)
 	case in.TagsOnly:
 		d.Rule, d.Reason = RuleUntagged, "Nothing runs until you tag an agent."
 	case in.Default.Agent == "":

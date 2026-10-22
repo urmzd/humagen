@@ -92,7 +92,7 @@ test("the sidebar hides pages from someone who may not read them", () => {
   for (const label of ["Projects", "Inbox", "Schedules", "Context", "Agents", "Artifacts"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
 });
 
-test("pinned tasks sit in their own section, ahead of the rest", () => {
+test("pinned conversations sit in their own section, ahead of the rest", () => {
   const none = sidebar();
   assert.doesNotMatch(none, /aria-label="Pinned"/);
   const out = sidebar({ pinned: ["t2", "gone"] });
@@ -100,7 +100,7 @@ test("pinned tasks sit in their own section, ahead of the rest", () => {
   assert.match(out, /aria-label="Unpin Fix the build"/);
   // An id that is not loaded is not drawn, and nothing is listed twice.
   assert.equal(out.match(/Fix the build</g)?.length, 1);
-  assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Tasks<"));
+  assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Conversations<"));
 });
 
 test("project selection: an empty workspace still offers projectless work and creation inside the composer", () => {
@@ -124,7 +124,7 @@ import { after, merge } from "./inbox.ts";
 import { edgeOf, KindChips, MailboxView } from "./InboxPage.tsx";
 import { fromServer, type PlatformMessage, reached, toRequest } from "./mail.ts";
 import { memoryTransport, sampleMail, wireMail } from "./mail.fixtures.ts";
-import { button, counted, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf } from "./ui.tsx";
+import { AGENT_HUES, button, counted, hueOf, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf } from "./ui.tsx";
 
 const M = 1_000_000;
 const html = (el: ReactElement) => renderToStaticMarkup(el);
@@ -583,9 +583,9 @@ test("MailboxView: hosts warp's mailbox with every message listed", () => {
   for (const m of sampleMail().filter((x) => messageState(x) === "open")) assert.ok(out.includes(m.subject), m.subject);
   assert.equal(out.match(/data-message="/g)?.length, 8, "one row per open message");
   // Decisions come first, then what is only there to be read.
-  assert.ok(out.indexOf(">Needs you<") < out.indexOf(">Updates<"));
-  assert.ok(out.indexOf('data-message="m-approval"') < out.indexOf(">Updates<"));
-  assert.ok(out.indexOf('data-message="m-artifact"') > out.indexOf(">Updates<"));
+  assert.ok(out.indexOf(">Needs you<") < out.indexOf(">What&#x27;s new<"));
+  assert.ok(out.indexOf('data-message="m-approval"') < out.indexOf(">What&#x27;s new<"));
+  assert.ok(out.indexOf('data-message="m-artifact"') > out.indexOf(">What&#x27;s new<"));
 });
 
 test("MailboxView: an agent's message is framed in that agent's stroke, a rule's is neutral", () => {
@@ -1394,3 +1394,17 @@ test("what floats above the page is opaque, so nothing under a menu shows throug
   assert.doesNotMatch(css, /--warp-glass-strong/, "the see-through surface is gone");
 });
 
+
+test("agents shown together are told apart by color: warp's own and the seeded agents each take a hue of their own", () => {
+  const builtin = ["warp-analyst", "warp-builder", "warp-writer"];
+  const seeded = ["helper", "lead", "intake", "triage"];
+  const hues = [...builtin, ...seeded].map(hueOf);
+  assert.equal(new Set(hues).size, hues.length, JSON.stringify(hues));
+  // Every hue is one of twelve, 30 degrees apart.
+  for (const h of hues) assert.equal(h % (360 / AGENT_HUES), 0, String(h));
+  // warp's own agents sit side by side as Home's suggestions, so they are far apart.
+  const apart = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+  for (const [i, a] of builtin.entries()) for (const b of builtin.slice(i + 1)) assert.ok(apart(hueOf(a), hueOf(b)) >= 90, `${a} and ${b}`);
+  // A name keeps its hue.
+  assert.equal(hueOf("helper"), hueOf("helper"));
+});

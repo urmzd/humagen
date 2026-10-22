@@ -187,8 +187,7 @@ func (p *Platform) auto(ctx context.Context, tenant string, tree *projects.Tree,
 
 // Nearer is a default set nearer a message than its project: a thread's, a
 // client's or a channel's, and where it is set ("thread", "client",
-// "channel"). Channels and threads, and a client's home, fill these in; until
-// they do, a message has none.
+// "channel").
 type Nearer struct {
 	Agent string `json:"agent"`
 	From  string `json:"from"`
@@ -292,11 +291,13 @@ func (p *Platform) resolveAgent(ctx context.Context, tenant string, at Place, as
 }
 
 // autoFor is @auto for a message a client raised: it picks among the agents
-// available where the client files its runs that the client may route to.
-// Until clients have a home, that is the root.
-func (p *Platform) autoFor(ctx context.Context, c clients.Client, project, text string) (pick.Choice, error) {
+// available where the client files its run (its bound channel, or its home)
+// that the client may route to. With none that fits it hands the message to
+// the nearest default that names an agent, as resolveAgent does: the
+// client's own, outside a bound channel, then the channel's, then the
+// project's chain.
+func (p *Platform) autoFor(ctx context.Context, c clients.Client, at Place, text string) (pick.Choice, error) {
 	tree := p.Projects.Tree(c.Tenant)
-	at := Place{Project: project}
 	fallback := namedDefault(tree, at)
 	if !c.Routes(fallback) {
 		fallback = ""
