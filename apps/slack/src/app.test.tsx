@@ -545,8 +545,7 @@ test("after a restart, who asked is not known, so only an operator may ask again
 // themselves; a turn that acted for nobody for nobody, whoever presses it.
 // Warp's record says whom a turn acted for, so a restart changes nothing.
 const OPERATOR = "U03ABCDEF";
-const NOT_THEIRS =
-  "This turn used the credentials of the person it acted for, so only they can retry it.";
+const NOT_THEIRS = defaultCopy.retryOnlyTheirs;
 
 /** A Retry or Resume pressed on a turn, as Slack sends it. */
 function pressed(id: "retry" | "resume", run: string, user: string) {
@@ -740,6 +739,43 @@ for (const where of ["home", "thread"] as const) {
     await w.app.idle();
   });
 }
+
+test("Retry on an inbox card of a person's failed turn is theirs, after a restart too, and settles the card", async () => {
+  const w = mapped({ operators: ["U03ABCDEF"] });
+  const { run } = await failedTurn(w);
+  assert.equal(w.warp.runs.get(run)?.actor?.user, "ana");
+  // As warp sends it to the app, whose own credential is not offered Retry on ana's turn.
+  const [part] = failureMail(run).parts as Record<string, unknown>[];
+  const mail = { ...failureMail(run), parts: [{ ...part, actions: ["acknowledge"] }] };
+  w.warp.mailbox.set("m-failure", mail);
+  const blocks = renderToSlack(<MessageView message={forSlack(fromServer(mail))} />).blocks;
+  assert.match(
+    textIn(blocks),
+    new RegExp(`"${defaultCopy.retry}"`),
+    "the app decides who may press it",
+  );
+  assert.doesNotMatch(textIn(blocks), new RegExp(defaultCopy.retryOnlyTheirs));
+
+  // After a restart nobody here knows ana asked, and she is no operator. Olu
+  // is told no; ana's press asks again as her and acknowledges the card.
+  const app = w.restart();
+  const card = (user: string) =>
+    click(blocks, defaultCopy.retry, { ts: "1800000005.000100", threadTs: TS, user });
+  await deliver(w, card(OTHER_USER), app);
+  await app.idle();
+  assert.equal(w.warp.started.length, 1);
+  assert.deepEqual(w.warp.resolved, []);
+  assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.retryOnlyTheirs);
+  await deliver(w, card(USER), app);
+  assert.equal(w.warp.started.length, 2);
+  assert.deepEqual(w.warp.started[1]?.act_as, { client: CLIENT, user: USER });
+  assert.deepEqual((w.warp.resolved as { body: unknown }[]).at(-1)?.body, {
+    action: "acknowledge",
+  });
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await app.idle();
+});
 
 test("a forged Retry on an inbox part that is not a failure is refused, and nothing is sent", async () => {
   const w = world({ operators: [USER] });

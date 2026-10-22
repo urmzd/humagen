@@ -126,15 +126,19 @@ people in the loop do more: `agents:write` keeps or discards memories,
 `alerts:read` and `alerts:write` show and acknowledge alerts. Only the person
 who asked for the run, or someone in `SLACK_OPERATORS`, may settle an inbox
 item. When who asked is not known (after a restart), only an operator may. A
-reached limit is shown, not raised: raise it in the console.
+failed run's card is the exception: its Retry is offered to everyone and is
+decided as Retry in the thread is (below), so the person a turn acted for may
+press it after a restart too, and once the turn is asked again the card is
+acknowledged. A reached limit is shown, not raised: raise it in the console.
 
 Retry and Resume ask a turn again (always the app's own, never warp's, so its
 answer shows in the thread) for whoever the turn acted for, as warp's record
 of the run says, and are checked against the client's agents again. A turn
-that acted for a person used that person's own tool credentials, so only a
-Slack person the client maps to them may ask it again, and it is asked as
-them (`act_as`); anyone else, an operator included, is told so and nothing
-starts. A turn that acted for nobody is asked again for nobody, by the person
+that acted for a person is theirs to ask again: asked by anyone else it would
+run their words with the presser's credentials, or a tool that acts as them
+on a choice they never made. So only a Slack person the client maps to them
+may ask it again, and it is asked as them (`act_as`); anyone else, an
+operator included, is told so and nothing starts. A turn that acted for nobody is asked again for nobody, by the person
 who asked or an operator, and after a restart by an operator only. A turn the
 app asked as itself is asked again the same way, through the app, even when
 the app's own credential is a person (an empty `WARP_TOKEN` against a dev
@@ -188,7 +192,8 @@ Kept in memory, and lost on restart:
 - Who asked for each run. After a restart only operators can settle that run's
   inbox items or retry it for nobody, and Home shows a person nothing until
   they ask again. Whom a run acted for is warp's record, so the person a turn
-  acted for may still retry it.
+  acted for may still retry it, from the thread or its failure card, which
+  their retry acknowledges.
 - Which inbox messages were posted to a thread. A change to one after a
   restart is not reflected in the thread.
 - The queue of messages waiting behind a turn.

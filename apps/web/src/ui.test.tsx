@@ -625,6 +625,24 @@ test("MailboxView: failures and memory to review are warp's own parts", () => {
   assert.match(memory, /Checkout pages go to the payments rota/);
 });
 
+test("MailboxView: a failure the reader is not offered Retry on draws no Retry, and does not say it can't be retried", () => {
+  // As warp sends ana's failed turn to ben: he may acknowledge it, but only ana may retry it.
+  const [raw] = wireMail().filter((m) => m.id === "m-failure");
+  assert.ok(raw);
+  const theirs = (p: unknown) => {
+    const part = p as Record<string, unknown>;
+    return part.type === "failure" ? { ...part, actions: ["acknowledge"] } : part;
+  };
+  const mail = fromServer({ ...raw, parts: (raw.parts as unknown[]).map(theirs) });
+  const drawn = mailbox(mail.id, [mail]);
+  assert.match(drawn, /already exists/);
+  assert.doesNotMatch(drawn, />Retry</);
+  assert.match(drawn, /Only the person this turn acted for can retry it\./);
+  assert.doesNotMatch(drawn, /can't be retried/);
+  // Offered it, the reader sees Retry as before.
+  assert.match(mailbox("m-failure"), />Retry</);
+});
+
 test("MailboxView: a resolved part shows its record and offers nothing", () => {
   const out = mailbox("m-done");
   assert.match(out, /Acknowledged by Ada/);

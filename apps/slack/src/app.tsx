@@ -228,7 +228,15 @@ export function echoed(text: string): string {
 export function forSlack(message: PlatformMessage): PlatformMessage {
   return {
     ...message,
-    parts: message.parts.map((p) => (p.type === "budget" ? { ...p, allowed: [] } : p)),
+    parts: message.parts.map((p) =>
+      p.type === "budget"
+        ? { ...p, allowed: [] }
+        : // Retry on a failure is the app's own here (again()), decided for whoever
+          // presses it, not by what warp offers the app's credential.
+          p.type === "failure" && p.allowed?.length && !p.allowed.includes(ActionId.retry)
+          ? { ...p, allowed: [...p.allowed, ActionId.retry] }
+          : p,
+    ),
   };
 }
 
@@ -274,11 +282,6 @@ const NO_AGENT: Failure = {
 /** A retry of a turn that acted for nobody, by someone who did not ask, and is not an operator. */
 // warp: needs copy for this, such as copy.notYoursRetry; copy.notYours speaks of approving.
 const RETRY_NOT_YOURS = "Only the person who asked can retry this.";
-
-/** A retry of a turn that acted for a person, by anyone this app's client does not map to them. */
-// warp: needs copy for this, such as copy.notTheirsRetry.
-const RETRY_NOT_THEIRS =
-  "This turn used the credentials of the person it acted for, so only they can retry it.";
 
 /** Wait, or stop waiting when the signal aborts. */
 const sleep = (ms: number, signal: AbortSignal) =>
@@ -1035,7 +1038,7 @@ export class App {
   private refuseRetry(p: ActionPayload, outcome: Exclude<Again, "started">) {
     const text =
       outcome === "not-theirs"
-        ? RETRY_NOT_THEIRS
+        ? defaultCopy.retryOnlyTheirs
         : outcome === "not-yours"
           ? RETRY_NOT_YOURS
           : defaultCopy.cantRetry;
