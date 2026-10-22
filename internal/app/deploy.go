@@ -34,6 +34,8 @@ import (
 // passed from this process's environment; a keychain: or op:// reference is
 // read here and handed to the target as an environment variable it then
 // references, because the target cannot reach this machine's keychain.
+// People's own references are not the spec's: the server reads them where it
+// runs (see remotePersonRefs), so a target is refused person_refs it cannot read.
 // Nor does one land on a command line: every user of this machine can read a
 // command's arguments (ps, /proc), so a secret reaches a tool on its standard
 // input or in its environment.
@@ -98,6 +100,54 @@ func deploy(o Options, args []string, in io.Reader, out io.Writer, keys credref.
 	default:
 		return fmt.Errorf("deploy: kind %q is not local, compose or kubernetes", d.Kind)
 	}
+}
+
+// remotePersonRefs checks where the System document lets people keep their
+// own tool credentials (person_refs) against a target that is not this
+// machine, and returns the env: starts, whose variables must be set there.
+//
+// A person's reference is not one of the spec's own. The server reads it,
+// with its own access, when a run uses it, so carry has nothing to read here
+// and nothing to pass. A keychain: or op:// start names this machine's
+// keychain or the 1Password account it signed in to, which a container
+// cannot reach, so it is refused, naming the entry and what to do instead.
+// An env: start names variables, one per person and tool, that nobody knows
+// when deploying, so they are not passed from this shell: whoever deploys is
+// told to set them in the target.
+func remotePersonRefs(cfg spec.Config, kind string) (env []string, err error) {
+	byTenant := cfg.System.Spec.PersonRefs
+	var refused []string
+	for _, tenant := range slices.Sorted(maps.Keys(byTenant)) {
+		for i, start := range byTenant[tenant] {
+			if strings.HasPrefix(start, "env:") {
+				env = append(env, start)
+				continue
+			}
+			where := "this machine's keychain"
+			if strings.HasPrefix(start, "op://") {
+				where = "the 1Password account this machine signed in to"
+			}
+			refused = append(refused, fmt.Sprintf("system person_refs.%s[%d] %q names %s", tenant, i, start, where))
+		}
+	}
+	if len(refused) > 0 {
+		return nil, fmt.Errorf("deploy: %s, which a %s target cannot reach: warp reads a person's reference where it runs, when a run uses it. "+
+			"For a %s target, list an env: start in person_refs instead (env:WARP_PERSON_{subject}_) and set those variables in the target, "+
+			"let people store their credential with warp (workspace.person_credentials.values: true), or deploy local",
+			strings.Join(refused, "; "), kind, kind)
+	}
+	return env, nil
+}
+
+// personEnvNote tells whoever deploys that the variables people's env:
+// references name are theirs to set in the target, where says how. Empty
+// when no start is an env: one.
+func personEnvNote(starts []string, where string) string {
+	if len(starts) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("people's own tool credentials are read from variables under %s, one per person and tool, which warp deploy does not pass. "+
+		"Set each %s", strings.Join(starts, ", "), where)
 }
 
 // carried is a spec ready to leave this machine: every reference an env:
@@ -224,6 +274,11 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 	if port == 0 {
 		port = 8080
 	}
+	people, err := remotePersonRefs(cfg, "compose")
+	if err != nil {
+		return err
+	}
+	note := personEnvNote(people, "in the warp service's environment yourself, for example in a compose.override.yaml beside compose.yaml, which warp deploy does not write")
 	// Postgres beside warp: the stores point at it, by a variable the
 	// project sets.
 	if b.Postgres {
@@ -305,7 +360,7 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	header := "# Written by `warp deploy` from the spec. Edit the spec and deploy again;\n# secrets are passed from the environment and are not in this file.\n"
+	header := "# Written by `warp deploy` from the spec. Edit the spec and deploy again;\n# secrets are passed from the environment and are not in this file.\n" + comment(note)
 	if err := os.WriteFile(filepath.Join(dir, "compose.yaml"), append([]byte(header), project...), 0o600); err != nil {
 		return err
 	}
@@ -317,6 +372,9 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 		if len(c.env) > 0 {
 			fmt.Fprintf(out, "it reads %s from the environment\n", strings.Join(c.env, ", "))
 		}
+		if note != "" {
+			fmt.Fprintln(out, note)
+		}
 		return nil
 	}
 	cmd := exec.CommandContext(ctx, "docker", "compose", "--project-directory", dir, "up", "-d", "--build")
@@ -326,7 +384,19 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 		return fmt.Errorf("deploy: docker compose: %w", err)
 	}
 	fmt.Fprintf(out, "warp: %s is up at http://127.0.0.1:%d\n", name, port)
+	if note != "" {
+		fmt.Fprintln(out, "warp: "+note)
+	}
 	return nil
+}
+
+// comment is text as YAML comment lines, ending in a newline. Empty stays
+// empty.
+func comment(text string) string {
+	if text == "" {
+		return ""
+	}
+	return "#\n# " + strings.ReplaceAll(text, ". ", ".\n# ") + "\n"
 }
 
 func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, outDir string, keys credref.Resolver, run func(*exec.Cmd) error, out io.Writer) error {
@@ -341,6 +411,14 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 	if ns == "" {
 		ns = "warp"
 	}
+	if err := ownValues(b); err != nil {
+		return err
+	}
+	people, err := remotePersonRefs(cfg, "kubernetes")
+	if err != nil {
+		return err
+	}
+	note := personEnvNote(people, "in the pod's environment yourself, for example as extraEnv in the kubernetes block's values, from a Secret of your own")
 	c, err := carry(ctx, cfg, keys)
 	if err != nil {
 		return err
@@ -365,7 +443,7 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 	if err != nil {
 		return err
 	}
-	header := "# Written by `warp deploy` from the spec. Secrets are in the Secret named\n# by existingSecret, created from the deploying shell; none are in here.\n"
+	header := "# Written by `warp deploy` from the spec. Secrets are in the Secret named\n# by existingSecret, created from the deploying shell; none are in here.\n" + comment(note)
 	if err := os.WriteFile(filepath.Join(dir, "values.yaml"), append([]byte(header), raw...), 0o600); err != nil {
 		return err
 	}
@@ -381,6 +459,9 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 			fmt.Fprintf(out, "create the Secret %s-env with %s, then:\n", release, strings.Join(c.env, ", "))
 		}
 		fmt.Fprintf(out, "  helm %s\n", strings.Join(helmArgs, " "))
+		if note != "" {
+			fmt.Fprintln(out, note)
+		}
 		return nil
 	}
 	if len(c.env) > 0 {
@@ -393,6 +474,24 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 	fmt.Fprintf(out, "warp: deploying %s to namespace %s with helm\n", release, ns)
 	if err := run(cmd); err != nil {
 		return fmt.Errorf("deploy: helm: %w", err)
+	}
+	if note != "" {
+		fmt.Fprintln(out, "warp: "+note)
+	}
+	return nil
+}
+
+// ownValues refuses a kubernetes block whose values set the chart's system
+// or platforms. Those are the spec's documents, written from what carry and
+// remotePersonRefs checked, and the block's values are merged over them
+// after, so a reference set there, a person's start or one of the spec's
+// own, would reach the target unread and unchecked.
+func ownValues(b spec.Kubernetes) error {
+	for _, k := range []string{"system", "platforms"} {
+		if _, ok := b.Values[k]; ok {
+			return fmt.Errorf("deploy: kubernetes values.%s: the chart's %s is written from the spec, whose references warp deploy carries and checks, "+
+				"and values are merged over it unchecked; set it in the spec's documents instead", k, k)
+		}
 	}
 	return nil
 }

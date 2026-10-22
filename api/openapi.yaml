@@ -42,6 +42,15 @@ tags:
     description: Browser sign-in and sign-out.
   - name: session
     description: Who the caller is.
+  - name: credentials
+    description: |
+      The caller's own credentials for the tools that act as them: MCP tool
+      providers whose credential scope is `person`. A run reaches such a
+      tool with the credential of the person it acts for, and with nothing
+      when they have none. A credential is a reference, of which only the
+      name is stored, or, where the workspace allows it, a value, which is
+      stored in the secrets store client secrets are kept in and never
+      answered back. Every route acts on the caller and takes no subject.
   - name: agents
     description: Agent definitions, their revisions and what they remember.
   - name: runs
@@ -195,6 +204,76 @@ paths:
               schema: {$ref: "#/components/schemas/AccessDecision"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
+  /api/me/credentials:
+    get:
+      operationId: listToolCredentials
+      tags: [credentials]
+      summary: The tools that act as the caller, and whether the caller has connected each
+      description: >-
+        Lists the workspace's person-scoped tool providers, at most 64, with
+        whether the caller has connected a credential for each and how it is
+        held. A value is never shown. A machine holds no credentials, so it
+        sees every provider unconnected.
+      x-permission: runs:read
+      responses:
+        "200":
+          description: The providers and what the workspace lets people give.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ToolCredentials"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/me/credentials/{provider}:
+    put:
+      operationId: putToolCredential
+      tags: [credentials]
+      summary: Connect the caller's own credential for a tool
+      description: >-
+        Sets the caller's credential for a person-scoped provider, in place
+        of the one they had. A reference must start with one of the starts
+        the operator listed for the workspace, and is not read here; any
+        reason it cannot be used is answered with one message. A value is
+        accepted only where the workspace keeps them (403 otherwise), and is
+        stored; a reference that replaces a value forgets it. A provider the
+        workspace reaches with its own credential is 400, and a machine is
+        403: each person connects their own.
+      x-permission: runs:write
+      parameters:
+        - $ref: "#/components/parameters/ProviderName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ToolCredentialInput"}
+      responses:
+        "200":
+          description: The provider, as the caller now stands with it. The value, if one was given, is not in it.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ToolCredential"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    delete:
+      operationId: deleteToolCredential
+      tags: [credentials]
+      summary: Remove the caller's own credential for a tool
+      description: Removes it, and the value if it was one. The caller's runs then get no tools from the provider.
+      x-permission: runs:write
+      parameters:
+        - $ref: "#/components/parameters/ProviderName"
+      responses:
+        "204": {description: Removed.}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
   /api/agents:
@@ -710,7 +789,13 @@ paths:
         `approvers` or `answerers` when it names them, else anyone in the
         workspace, and never the person whose request raised a call they are
         asked to approve, unless the spec sets `self_approval`. Anyone else is
-        403 and nothing changes. A surface that authenticated a person itself
+        403 and nothing changes. A call that acts as a person
+        (`question.tool.acts_for_person`) is approved with edited `arguments`
+        only by that person: anyone else's edit is 403, and they may approve
+        or deny it as asked. A choice or a reply in a run that uses the
+        credentials of the person it acts for (its revision is granted a
+        person-scoped tool provider) is answered only by that person: anyone
+        else is 403. A surface that authenticated a person itself
         answers for them with `act_as`: only the credential its client names,
         and only for a person its client maps.
 
@@ -1134,7 +1219,13 @@ paths:
       operationId: runSchedule
       tags: [schedules]
       summary: Fire a schedule once, now
-      description: The run is attributed to the caller, not to the clock, and works while the schedule is paused.
+      description: |
+        The run is attributed to the caller, not to the clock, and works while
+        the schedule is paused. It acts for the caller only when they wrote
+        what it runs: the schedule's last editor, or its creator while nobody
+        has edited it. Anyone else's press acts for nobody, as the schedule's
+        own clock does, since anyone with `schedules:write` may change its
+        words.
       x-permission: schedules:write
       parameters:
         - {$ref: "#/components/parameters/ScheduleName"}
@@ -1366,7 +1457,11 @@ paths:
         a surface authenticated. Resolving a part that is already resolved
         returns the first outcome. `retry` starts a new run, so it can be
         refused by a limit with 429 or 402, and with 409 when the turn's
-        project was deleted since.
+        project was deleted since. The run acts for whoever the failed turn
+        acted for: a turn that acted for a person is retried only by that
+        person, signed in as themselves, and anyone else is 403; a turn that
+        acted for nobody is retried for nobody. Each person's retry is a run
+        of its own, and pressing it again returns the same one.
       x-permission: runs:read
       parameters:
         - {$ref: "#/components/parameters/MessageID"}
@@ -2739,6 +2834,12 @@ components:
         (`-auth=dev`, loopback only) every request is the same admin and no
         credential is needed.
   parameters:
+    ProviderName:
+      name: provider
+      in: path
+      required: true
+      description: The tool provider's name, as an agent grants it in `mcp:<name>`.
+      schema: {type: string}
     AgentName:
       name: name
       in: path
@@ -3167,8 +3268,58 @@ components:
         display: {type: string}
         bot: {type: boolean}
         user:
-          description: The person's own account in the product that sent the request, next to the connector's id for them.
+          description: >-
+            The person the run acts for, by their subject in this workspace:
+            the person signed in, the person a surface asked for (`act_as`),
+            or the person a Slack client maps the Slack user to. Its tools
+            that act as a person use this person's own credentials. Absent
+            when the run acts for nobody.
           type: string
+    ToolCredentials:
+      description: The workspace's tools that act as the caller, how the caller stands with each, and what the workspace lets people give.
+      type: object
+      required: [providers, values, references]
+      properties:
+        providers:
+          type: array
+          maxItems: 64
+          items: {$ref: "#/components/schemas/ToolCredential"}
+        values:
+          description: Whether this workspace lets people store a credential's value with warp. Off, people give only a reference to where it is kept.
+          type: boolean
+        references:
+          description: How the references the caller may give start, their own under each start the operator listed, with the caller's subject in place of `{subject}`. A start the caller's subject cannot be written in is left out, and a machine gets none. Empty means no reference can be given.
+          type: array
+          items: {type: string}
+    ToolCredential:
+      description: A tool provider that is reached with each person's own credential, and whether the caller has connected one. A value is never shown.
+      type: object
+      required: [provider, transport, tools, connected]
+      properties:
+        provider: {type: string}
+        transport: {type: string, enum: [http, stdio]}
+        endpoint:
+          description: Where an http provider is reached, so a person sees where their credential is sent. A stdio provider runs on the server and has none.
+          type: string
+        tools:
+          description: How many tools the workspace accepted from the provider.
+          type: integer
+        connected: {type: boolean}
+        kind: {$ref: "#/components/schemas/CredentialKind"}
+        ref:
+          description: The reference, when the credential is one. It names where the secret is kept, never the secret.
+          type: string
+        updated_at: {type: string, format: date-time}
+    CredentialKind:
+      description: How a credential is held. A `reference` is a name, and only the name is stored; a `value` is the secret itself, stored in the secrets store client secrets are kept in.
+      type: string
+      enum: [reference, value]
+    ToolCredentialInput:
+      description: A reference (`env:NAME`, `keychain:SERVICE[/ACCOUNT]` or `op://VAULT/ITEM/FIELD`) or a value, exactly one. A value is stored and never answered back.
+      type: object
+      properties:
+        ref: {type: string, maxLength: 512}
+        value: {type: string, maxLength: 8192, writeOnly: true}
     RunStatus:
       description: Where a run stands. `completed`, `failed` and `stopped` are final.
       type: string
@@ -3977,6 +4128,9 @@ components:
         schema:
           description: The tool's parameter schema. Edited arguments must satisfy it.
           type: object
+        acts_for_person:
+          description: The call runs with the credential of the person the run acts for, a tool that acts as them. Anyone who may approve it may approve or deny it as asked, but only that person may approve it with edited `arguments`; anyone else's edit is 403, so a surface offers nobody else an edit.
+          type: boolean
     InboxQuestionPart:
       description: A question a run is parked on.
       type: object
@@ -5031,6 +5185,9 @@ components:
         schema:
           description: The tool's parameter schema.
           type: object
+        acts_for_person:
+          description: The call runs with the credential of the person the run acts for, a tool that acts as them. Anyone who may approve it may approve or deny it as asked, but only that person may approve it with edited `arguments`; anyone else's edit is 403.
+          type: boolean
     Question:
       description: |
         What a run is waiting on a person for: to approve a tool call, to

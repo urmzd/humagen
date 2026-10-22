@@ -63,6 +63,8 @@ interface WithCopy {
 export interface TurnCapabilities {
   /** Rating the answer (Helpful / Not helpful) and commenting on it. */
   feedback?: boolean;
+  /** Regenerate on an answered turn, where a surface offers it. */
+  regenerate?: boolean;
   /** Report Issue on an internal failure. */
   report?: boolean;
 }
@@ -120,7 +122,7 @@ export function ApprovalCard({
         <Actions blockId={`approval:${approval.id}:r${approval.revision ?? 0}`}>
           <Button label={copy.ask} action={{ id: ActionId.ask, payload }} />
         </Actions>
-        <Context items={[copy.notYours]} />
+        <Context items={[copy.notYours, ...(approval.actsForPerson ? [copy.actsForPerson] : [])]} />
       </>
     );
   }
@@ -128,6 +130,7 @@ export function ApprovalCard({
   if (decision.kind === "pending") {
     const meta = [
       approval.actingAs ? copy.actingAs(approval.actingAs) : null,
+      approval.actsForPerson ? copy.actsForPerson : null,
       approval.expiresAt ? copy.expires(timeToken(approval.expiresAt)) : null,
     ].filter((x): x is string => x !== null);
     return (
@@ -143,7 +146,7 @@ export function ApprovalCard({
             accessibilityLabel={`${approval.approveLabel ?? copy.approve}: ${approval.summary}`}
             confirm={approval.destructive ? copy.confirmDestructive : undefined}
           />
-          {approval.editable && (
+          {approval.editable && !approval.actsForPerson && (
             <Button label={copy.edit} action={{ id: ActionId.edit, payload }} />
           )}
           <Button label={copy.ask} action={{ id: ActionId.ask, payload }} />
@@ -209,6 +212,7 @@ export function ApprovalBatch({
   copy = defaultCopy,
 }: { turnId: string; approvals: ApprovalT[] } & WithCopy) {
   const name = `batch:${turnId}`;
+  const acting = approvals.filter((a) => a.actsForPerson).map((a) => a.summary);
   return (
     <>
       <Summary text={copy.approvalNeeded(copy.batchTitle(approvals.length))} />
@@ -251,6 +255,7 @@ export function ApprovalBatch({
           action={{ id: ActionId.deny, payload: { turnId, target: name } }}
         />
       </Actions>
+      {acting.length > 0 && <Context items={[copy.actsForPersonIn(acting)]} />}
     </>
   );
 }
@@ -406,9 +411,12 @@ export function FailureAlert({
               { label: copy.report, id: ActionId.report },
             ]
           : [{ label: copy.retry, id: ActionId.retry }];
+  // Someone else may retry it: the reader is told why they are not offered it.
+  const notOffered = isRetryable(failure) ? failure.retryNotOffered : undefined;
   const offered = actions.filter(
     (a) =>
-      (a.id !== ActionId.retry || isRetryable(failure)) && (a.id !== ActionId.report || report),
+      (a.id !== ActionId.retry || (isRetryable(failure) && !notOffered)) &&
+      (a.id !== ActionId.report || report),
   );
   return (
     <>
@@ -427,6 +435,7 @@ export function FailureAlert({
       {!isRetryable(failure) && failure.kind !== "auth_required" && (
         <Context items={[copy.cantRetry]} />
       )}
+      {notOffered && <Context items={[notOffered]} />}
       {failure.reference && <Context items={[copy.reference(failure.reference)]} />}
     </>
   );

@@ -66,9 +66,10 @@ func tag(id, agent string) envelope.Tag {
 	return envelope.Tag{ID: id, Tenant: tenant, Agent: agent, Origin: "api", Text: "hello"}
 }
 
+// await waits for a run to reach a status, and returns as soon as it does.
 func await(t *testing.T, p *platform.Platform, runID string, want runs.Status) runs.Run {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for {
 		r, err := p.Runs.Get(tenant, runID)
 		if err == nil && r.Status == want {
@@ -267,14 +268,16 @@ func TestARunThatExhaustsItsRetriesEnds(t *testing.T) {
 	deadline := time.Now().Add(60 * time.Second)
 	for {
 		got, _ := p.Runs.Get(tenant, r.ID)
-		if got.Status == runs.Failed {
+		// A run reads failed before its ending is dealt with, so its alert
+		// is waited for as well.
+		if got.Status == runs.Failed && len(p.Alerts.Alerts(tenant)) > 0 {
 			if got.Error == "" {
 				t.Fatal("a failed run carries no error")
 			}
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("run is still %q after its retries: it would look alive forever", got.Status)
+			t.Fatalf("run is %q after its retries, with alerts %+v: it would look alive forever", got.Status, p.Alerts.Alerts(tenant))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

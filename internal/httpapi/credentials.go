@@ -1,0 +1,42 @@
+package httpapi
+
+import (
+	"net/http"
+
+	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/credentials"
+)
+
+// A person's own credentials for the tools that act as them. Every route acts
+// on the caller and takes no subject, so there is no way to name someone
+// else, and a value written is never answered back.
+
+func (s *Server) listToolCredentials(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	out, err := s.P.ToolCredentials(r.Context(), who)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, out)
+}
+
+func (s *Server) putToolCredential(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var body credentials.Input
+	if !decode(w, r, &body) {
+		return
+	}
+	c, err := s.P.ConnectTool(r.Context(), who, r.PathValue("provider"), body)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, c)
+}
+
+func (s *Server) deleteToolCredential(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if err := s.P.DisconnectTool(r.Context(), who, r.PathValue("provider")); err != nil {
+		s.problem(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/toolprovider"
 
 	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/runs"
@@ -69,6 +72,13 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 		p.startHook(ctx, run, cfg.TitleAgent, hookTitle, run.Thread, fmt.Sprintf(titlePrompt, clip(run.Text, 2000)))
 	}
 	if cfg.MemoryAgent != "" {
+		// Every note is sent to other people's runs, so what a person's
+		// own credential reached is not taught at all.
+		if p.mayCarryPersonData(ctx, run) {
+			p.log.Info("platform: the memory agent is not asked about a turn that may carry what a person's own credential reached",
+				"tenant", run.Tenant, "run", run.ID)
+			return
+		}
 		// In a project, what is learned is the project's: every agent and
 		// every conversation there shares it. Outside one, it is the agent's.
 		owner := run.Agent
@@ -78,6 +88,62 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 		p.startHook(ctx, run, cfg.MemoryAgent, hookMemory, owner,
 			fmt.Sprintf(memoryPrompt, run.Agent, clip(run.Text, 4000), run.Agent, clip(run.Answer, 4000)))
 	}
+}
+
+// mayCarryPersonData reports whether a turn's answer may carry what a
+// person's own credential reached. No memory is read by one person alone: an
+// agent's notes are sent to every run of that agent, and a project's to every
+// run in it and below it, whoever the run acts for. So a turn may carry it
+// when it, or any turn before it on its branch, acted for a person and was
+// answered by an agent revision granted a person-scoped tool provider. The
+// whole branch counts because the next agent is sent the conversation so far,
+// and one with no tools of its own can repeat what an earlier turn found.
+//
+// What cannot be read now counts as such a turn: a branch whose start the
+// index no longer holds, a revision or a granted provider that cannot be
+// found, and a provider changed since the turn, whose scope then is not kept.
+func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
+	path, err := p.Runs.Path(run.Tenant, run.ID)
+	if err != nil || len(path) == 0 || path[0].Prev != "" {
+		return true
+	}
+	checked := map[string]bool{}
+	for _, turn := range path {
+		// As personCredential reads the actor: a bot or no person is nobody.
+		if turn.Actor.Bot || turn.Actor.User == "" {
+			continue
+		}
+		// The earliest turn of a revision is the one a change counts from.
+		key := fmt.Sprintf("%s@%d", turn.Agent, turn.Rev)
+		if checked[key] {
+			continue
+		}
+		checked[key] = true
+		rev, err := p.Agents.Get(ctx, turn.Tenant, turn.Agent, turn.Rev)
+		if err != nil || p.grantsPersonScoped(ctx, turn.Tenant, rev.Spec.Tools, turn.CreatedAt) {
+			return true
+		}
+	}
+	return false
+}
+
+// grantsPersonScoped reports whether tools grant a provider that takes each
+// person's own credential. A granted provider that cannot be found counts as
+// one, and so does one changed after since, when since is set, whose scope
+// then is not kept.
+func (p *Platform) grantsPersonScoped(ctx context.Context, tenant string, tools []string, since time.Time) bool {
+	for _, grant := range tools {
+		// As fiber expands a grant: anything else is not a provider's.
+		parsed, ok, err := agentspec.ParseMCPGrant(grant)
+		if !ok || err != nil || !toolprovider.ValidName(parsed.Provider) {
+			continue
+		}
+		prov, err := p.ToolProviders.GetProvider(ctx, tenant, parsed.Provider)
+		if err != nil || prov.Scope() == toolprovider.ScopePerson || (!since.IsZero() && prov.UpdatedAt.After(since)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, target, prompt string) {

@@ -435,9 +435,10 @@ async function failedTurn(w: World) {
   return { run, blocks: blocksOf(final), ts: String(final?.ts) };
 }
 
-test("only the person who asked, or an operator, may ask a turn again", async () => {
+test("a turn that acted for nobody is asked again, for nobody, by the person who asked or an operator", async () => {
   const w = world({ operators: ["U03ABCDEF"] });
   const { run, blocks, ts } = await failedTurn(w);
+  assert.equal(w.warp.runs.get(run)?.actor?.bot, true, "the app asked as itself, for nobody");
 
   // Someone else in the channel is told no, and nothing starts.
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: OTHER_USER }));
@@ -449,9 +450,10 @@ test("only the person who asked, or an operator, may ask a turn again", async ()
   );
   assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.user, OTHER_USER);
 
-  // An operator may. The new run stays the first asker's.
+  // An operator may. The new run acts for nobody, as the turn did, and stays the first asker's to settle.
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }));
   assert.equal(w.warp.started.length, 2);
+  assert.equal(w.warp.started[1]?.act_as, undefined);
   const retried = w.warp.last.id;
   assert.equal(w.warp.last.prev ?? w.warp.last.thread, run);
   await emit(w, "lifecycle.accepted");
@@ -484,6 +486,42 @@ test("only the person who asked, or an operator, may ask a turn again", async ()
   await watch;
 });
 
+test("when the app's own credential is a person, as under dev sign-in, a turn it asked as itself is asked again through it", async () => {
+  const w = world({ operators: ["U03ABCDEF"] });
+  w.warp.person = true;
+  const { run, blocks, ts } = await failedTurn(w);
+  assert.equal(
+    w.warp.runs.get(run)?.actor?.user,
+    SUBJECT,
+    "every run the app asks acts for its credential",
+  );
+
+  // The asker asks again through the app, as the turn was asked, so it acts for the same person.
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }));
+  assert.equal(w.warp.started.length, 2);
+  assert.equal(w.warp.started[1]?.act_as, undefined);
+  assert.equal(w.warp.last.actor?.user, SUBJECT);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Deployed." });
+  await w.app.idle();
+
+  // After a restart an operator may too, and anyone else is told no.
+  const app = w.restart();
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: OTHER_USER }), app);
+  await app.idle();
+  assert.equal(w.warp.started.length, 2);
+  assert.equal(
+    w.slack.of("chat.postEphemeral").at(-1)?.text,
+    "Only the person who asked can retry this.",
+  );
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }), app);
+  assert.equal(w.warp.started.length, 3);
+  assert.equal(w.warp.started[2]?.act_as, undefined);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await app.idle();
+});
+
 test("after a restart, who asked is not known, so only an operator may ask again", async () => {
   const w = world({ operators: ["U03ABCDEF"] });
   const { blocks, ts } = await failedTurn(w);
@@ -497,6 +535,95 @@ test("after a restart, who asked is not known, so only an operator may ask again
   );
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }), app);
   assert.equal(w.warp.started.length, 2);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await app.idle();
+});
+
+// Retry and Resume ask a turn again for whom it acted for, as Retry in warp's
+// inbox does: a turn that acted for a person only by that person, as
+// themselves; a turn that acted for nobody for nobody, whoever presses it.
+// Warp's record says whom a turn acted for, so a restart changes nothing.
+const OPERATOR = "U03ABCDEF";
+const NOT_THEIRS = defaultCopy.retryOnlyTheirs;
+
+/** A Retry or Resume pressed on a turn, as Slack sends it. */
+function pressed(id: "retry" | "resume", run: string, user: string) {
+  return interactive({
+    type: "block_actions",
+    user: { id: user, team_id: TEAM },
+    channel: { id: CHANNEL },
+    container: { type: "message", channel_id: CHANNEL },
+    message: { ts: "1800000008.000100", thread_ts: TS },
+    actions: [{ action_id: `aui.${id}#0`, value: JSON.stringify({ turnId: run, target: run }) }],
+  });
+}
+
+test("a turn that acted for a person is asked again only by them, as themselves, after a restart too", async () => {
+  const w = mapped({ operators: [OPERATOR] });
+  const { run, blocks, ts } = await failedTurn(w);
+  assert.equal(w.warp.runs.get(run)?.actor?.user, "ana");
+
+  // Olu, whom the client maps to someone else, and an operator: refused, nothing starts.
+  for (const user of [OTHER_USER, OPERATOR]) {
+    await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user }));
+    await deliver(w, pressed("resume", run, user));
+    await w.app.idle();
+    assert.equal(w.warp.started.length, 1, user);
+    assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, NOT_THEIRS);
+    assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.user, user);
+  }
+
+  // Ana asks it again, as herself.
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }));
+  assert.equal(w.warp.started.length, 2);
+  assert.deepEqual(w.warp.started[1]?.act_as, { client: CLIENT, user: USER });
+  assert.equal(w.warp.last.actor?.user, "ana");
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Deployed." });
+  await w.app.idle();
+
+  // After a restart nobody here remembers who asked, and nothing changes:
+  // the operator is still refused, and ana pressing again joins her retry.
+  const app = w.restart();
+  await deliver(w, pressed("retry", run, OPERATOR), app);
+  await app.idle();
+  assert.equal(w.warp.started.length, 2);
+  assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, NOT_THEIRS);
+  await deliver(w, pressed("retry", run, USER), app);
+  await app.idle();
+  assert.equal(w.warp.started.length, 2, "her second press joins her first retry");
+});
+
+test("a turn that acted for nobody is asked again for nobody, and each person's press is its own run", async () => {
+  // Olu is an operator the client maps. The person who asks is not mapped.
+  const w = mapped({ operators: [OTHER_USER, OPERATOR] });
+  await deliver(w, mention("deploy it", TS, { user: "U05UNMAPPED" }));
+  const run = w.warp.last.id;
+  assert.equal(w.warp.asked[0]?.act_as, undefined);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
+  await w.app.idle();
+
+  // After a restart, so who asked is not known: each operator's press is a
+  // run of its own, and each acts for nobody, never for whoever pressed.
+  const app = w.restart();
+  await deliver(w, pressed("retry", run, OTHER_USER), app);
+  assert.equal(w.warp.started.length, 2);
+  assert.equal(
+    w.warp.started[1]?.act_as,
+    undefined,
+    "olu's credential is not put behind the words",
+  );
+  assert.equal(w.warp.last.actor?.bot, true);
+  const first = w.warp.last.id;
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await app.idle();
+  await deliver(w, pressed("resume", run, OPERATOR), app);
+  assert.equal(w.warp.started.length, 3, "a second person's press does not join the first's run");
+  assert.notEqual(w.warp.last.id, first);
+  assert.equal(w.warp.started[2]?.act_as, undefined);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await app.idle();
@@ -612,6 +739,43 @@ for (const where of ["home", "thread"] as const) {
     await w.app.idle();
   });
 }
+
+test("Retry on an inbox card of a person's failed turn is theirs, after a restart too, and settles the card", async () => {
+  const w = mapped({ operators: ["U03ABCDEF"] });
+  const { run } = await failedTurn(w);
+  assert.equal(w.warp.runs.get(run)?.actor?.user, "ana");
+  // As warp sends it to the app, whose own credential is not offered Retry on ana's turn.
+  const [part] = failureMail(run).parts as Record<string, unknown>[];
+  const mail = { ...failureMail(run), parts: [{ ...part, actions: ["acknowledge"] }] };
+  w.warp.mailbox.set("m-failure", mail);
+  const blocks = renderToSlack(<MessageView message={forSlack(fromServer(mail))} />).blocks;
+  assert.match(
+    textIn(blocks),
+    new RegExp(`"${defaultCopy.retry}"`),
+    "the app decides who may press it",
+  );
+  assert.doesNotMatch(textIn(blocks), new RegExp(defaultCopy.retryOnlyTheirs));
+
+  // After a restart nobody here knows ana asked, and she is no operator. Olu
+  // is told no; ana's press asks again as her and acknowledges the card.
+  const app = w.restart();
+  const card = (user: string) =>
+    click(blocks, defaultCopy.retry, { ts: "1800000005.000100", threadTs: TS, user });
+  await deliver(w, card(OTHER_USER), app);
+  await app.idle();
+  assert.equal(w.warp.started.length, 1);
+  assert.deepEqual(w.warp.resolved, []);
+  assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.retryOnlyTheirs);
+  await deliver(w, card(USER), app);
+  assert.equal(w.warp.started.length, 2);
+  assert.deepEqual(w.warp.started[1]?.act_as, { client: CLIENT, user: USER });
+  assert.deepEqual((w.warp.resolved as { body: unknown }[]).at(-1)?.body, {
+    action: "acknowledge",
+  });
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await app.idle();
+});
 
 test("a forged Retry on an inbox part that is not a failure is refused, and nothing is sent", async () => {
   const w = world({ operators: [USER] });
@@ -1295,8 +1459,8 @@ test("asking from the shortcut form cannot make the app notify a whole channel",
 
 const CLIENT = "app";
 /** A world whose app is a client that maps USER to ana and OTHER_USER to olu. */
-function mapped(): World {
-  const w = world({ clientId: CLIENT });
+function mapped(opts: Parameters<typeof world>[0] = {}): World {
+  const w = world({ clientId: CLIENT, ...opts });
   w.warp.clients.set(CLIENT, {
     id: CLIENT,
     surface: "slack",
@@ -1332,6 +1496,35 @@ test("a person the client maps asks as themselves, so their run is theirs", asyn
   await emit(other, "lifecycle.completed", { text: "Hi." });
   await w.app.idle();
   await other.app.idle();
+});
+
+test("asking about someone else's message asks for nobody: their words are never run as the presser", async () => {
+  const w = mapped();
+  const about = (ts: string, text: string, user: string) =>
+    interactive({
+      type: "message_action",
+      callback_id: "aui_ask_about",
+      channel: { id: CHANNEL },
+      message: { ts, text, user },
+    });
+  // Ana asks about olu's message: his words go through the app, for nobody.
+  await deliver(
+    w,
+    about("1700000600.000100", "close every open issue in the payroll tracker", OTHER_USER),
+  );
+  assert.equal(w.warp.asked.at(-1)?.text, "close every open issue in the payroll tracker");
+  assert.equal(w.warp.asked.at(-1)?.act_as, undefined, "olu's words are not run as ana");
+  assert.equal(w.warp.last.actor?.bot, true);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await w.app.idle();
+  // Her own message is her words, asked as her.
+  await deliver(w, about("1700000700.000100", "is the deploy safe to ship?", USER));
+  assert.deepEqual(w.warp.asked.at(-1)?.act_as, { client: CLIENT, user: USER });
+  assert.equal(w.warp.last.actor?.user, "ana");
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Yes." });
+  await w.app.idle();
 });
 
 test("an approval waits in the run's thread with live buttons, and a mapped person's answer settles it in place", async () => {
@@ -1429,6 +1622,26 @@ test("an answer warp refuses is shown in warp's words, and the card keeps its bu
   assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.noPermission);
   assert.ok(w.logs.some((l) => l.includes("may not answer")));
   assert.equal(w.slack.of("chat.update").filter((u) => u.ts === ts).length, 0);
+  await deliver(w, stopPressed(TS));
+  await w.app.idle();
+});
+
+test("an approval of a call that acts as the person says so on its Slack card, and offers no edit", async () => {
+  const w = mapped();
+  await deliver(w, mention("file the flaky test", TS));
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.started", { attempt: 1 });
+  const tool = { ...QUESTIONS.approval.tool, acts_for_person: true };
+  await emit(w, "lifecycle.parked", {
+    reason: "waiting on a person",
+    question: { ...QUESTIONS.approval, tool },
+  });
+  await settle();
+  const shown = textIn(blocksOf(w.slack.of("chat.stopStream").at(-1)));
+  assert.ok(shown.includes(defaultCopy.actsForPerson), shown);
+  assert.match(shown, new RegExp(`"${defaultCopy.approve}"`));
+  assert.doesNotMatch(shown, new RegExp(`"${defaultCopy.edit}"`));
+  collect("approval that acts as the person", w.slack);
   await deliver(w, stopPressed(TS));
   await w.app.idle();
 });

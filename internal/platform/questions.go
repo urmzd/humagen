@@ -154,6 +154,10 @@ func (p *Platform) resolveRequester(tenant string, tag envelope.Tag, client stri
 	if tag.Origin != "" {
 		out = append(out, tag.Origin+":"+id)
 	}
+	// The person the run acts for asked for it, by whatever name.
+	if u := strings.TrimSpace(tag.Actor.User); u != "" && !slices.Contains(out, u) {
+		out = append(out, u)
+	}
 	if tag.Origin != string(clients.Slack) {
 		return out
 	}
@@ -209,6 +213,11 @@ func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Questi
 		return []string{nobody}, nil
 	}
 	if q.Kind != payload.QuestionApproval {
+		// A reply or a choice steers the run, so one that uses the
+		// credential of the person it acts for asks them alone (maySteer).
+		if person := p.ownCredentialOf(ctx, run); person != "" {
+			return []string{person}, nil
+		}
 		return audienceOf(rev.Spec.Answerers, q), nil
 	}
 	// A call held by the callee's policy names its own approvers, which
@@ -271,7 +280,10 @@ func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Qu
 		part.Agent = q.Agent
 	}
 	if q.Tool != nil {
-		part.Tool = &inbox.QuestionTool{Name: q.Tool.Name, CallID: q.Tool.CallID, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema}
+		part.Tool = &inbox.QuestionTool{
+			Name: q.Tool.Name, CallID: q.Tool.CallID, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema,
+			ActsForPerson: q.Tool.ActsForPerson,
+		}
 	}
 	switch {
 	case q.Kind == payload.QuestionApproval:
@@ -482,7 +494,7 @@ func (p *Platform) settleQuestionsOf(run runs.Run) {
 func questionOf(q inbox.QuestionPart) payload.Question {
 	out := payload.Question{ID: q.ID, Kind: q.Kind, Prompt: q.Prompt, Options: q.Options}
 	if q.Tool != nil {
-		out.Tool = &payload.QuestionTool{Name: q.Tool.Name, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema}
+		out.Tool = &payload.QuestionTool{Name: q.Tool.Name, Arguments: q.Tool.Arguments, Schema: q.Tool.Schema, ActsForPerson: q.Tool.ActsForPerson}
 	}
 	return out
 }
@@ -577,6 +589,26 @@ func (p *Platform) isSelfApproval(ctx context.Context, tenant string, q inbox.Qu
 	return slices.Contains(names, by) || slices.Contains(names, via), nil
 }
 
+// maySteer reports whether the person answering may answer a reply or a
+// choice a run asks, and if not, why. What they answer steers what the run
+// does next, so a run that uses the credential of the person it acts for
+// (ownCredentialOf) is answered by that person alone: anyone else's words,
+// or their pick of its options, would reach the person's tools with the
+// person's credential. A run that acts for nobody, or reaches only shared
+// credentials, is answered by whoever its rules allow. An approval is not
+// steered this way: approving a call as it was asked changes nothing the
+// person asked for, and fiber refuses anyone else's edit of it.
+func (p *Platform) maySteer(ctx context.Context, tenant string, q inbox.QuestionPart, by string) error {
+	run, err := p.Runs.Get(tenant, q.Run)
+	if err != nil {
+		return err
+	}
+	if person := p.ownCredentialOf(ctx, run); person != "" && by != person {
+		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may answer what it asks", ErrForbidden, person, person)
+	}
+	return nil
+}
+
 // ActsFor returns the principal a surface's credential asks for: the person
 // its client maps the surface's user to. Anyone it does not map is refused.
 func (p *Platform) ActsFor(who auth.Principal, as ActAs) (string, error) {
@@ -651,6 +683,14 @@ func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Messa
 			return inbox.Message{}, fmt.Errorf("%w: %s asked for this work, so someone else must approve its calls", ErrForbidden, reader.Subject)
 		}
 	}
+	if q.Kind != payload.QuestionApproval {
+		// Checked here, from the run as it stands, as well as by whom the
+		// message was addressed to when it was raised.
+		if err := p.maySteer(ctx, who.Tenant, q, reader.Subject); err != nil {
+			p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "not the person the run acts for")
+			return inbox.Message{}, err
+		}
+	}
 	if !m.For(reader) {
 		return inbox.Message{}, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)
 	}
@@ -678,18 +718,20 @@ func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Messa
 	// recorded.
 	approved := ans.Decision == payload.DecisionApprove && p.noteApprovedCall(who.Tenant, q, ans)
 	got, first, err := p.rt.Answer(actx, req)
-	if approved && (err != nil || got.Decision != payload.DecisionApprove) {
-		p.dropApprovedCall(who.Tenant, q)
-	}
 	// A question answered the moment it is announced may not be recorded yet.
-	// It is asked again for a short while, never past the request.
+	// It is asked again for a short while, never past the request. The note
+	// is kept while it is asked again, since a later attempt can still record
+	// the approval and wake the run.
 	for deadline := time.Now().Add(recordWait); errors.Is(err, runtime.ErrNoQuestion) && time.Now().Before(deadline); {
 		select {
 		case <-ctx.Done():
-			return inbox.Message{}, ctx.Err()
+			err = ctx.Err()
 		case <-time.After(20 * time.Millisecond):
+			got, first, err = p.rt.Answer(actx, req)
 		}
-		got, first, err = p.rt.Answer(actx, req)
+	}
+	if approved && (err != nil || got.Decision != payload.DecisionApprove) {
+		p.dropApprovedCall(who.Tenant, q)
 	}
 	switch {
 	case errors.Is(err, runtime.ErrNotAllowed):

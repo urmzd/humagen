@@ -113,6 +113,12 @@ export interface Approval {
   editable?: boolean;
   /** Whose identity the action uses: "you", "the app on behalf of Dana". */
   actingAs?: string;
+  /**
+   * The call runs with the credentials of the person the run acts for. Every
+   * surface says so, and only that person may change its arguments, so no
+   * card offers an edit of it: a card cannot tell who is reading it.
+   */
+  actsForPerson?: boolean;
   expiresAt?: string;
   /** Bump when the proposal changes, so clicks on an older copy can be rejected. */
   revision?: number;
@@ -221,6 +227,12 @@ export interface Failure {
   reference?: string;
   /** Whether re-running the turn can work. Retry is only offered when true. Default by kind. */
   retryable?: boolean;
+  /**
+   * Why this reader is not offered Retry on a turn that can be retried, by
+   * someone else. Said in place of Retry, and in place of saying the turn
+   * can't be retried.
+   */
+  retryNotOffered?: string;
   /** HTTP status from the failing call, when there was one. */
   httpStatus?: number;
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/fiber/pkg/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/runs"
 )
@@ -55,6 +56,13 @@ func (p *Platform) Redeliver(ctx context.Context, e envelope.Event) { p.observe(
 
 // Reconcile runs one pass of the ledger reconciler now.
 func (p *Platform) Reconcile(ctx context.Context) { p.reconcile(ctx) }
+
+// Retry asks a failed turn again, as pressing Retry on it in the inbox does,
+// without the inbox's check that the part is still open: as two presses
+// racing each other would.
+func (p *Platform) Retry(ctx context.Context, who auth.Principal, runID string) (runs.Run, error) {
+	return p.retry(ctx, who, runID)
+}
 
 // Ended acts on a run's ending again, as a second report of it would.
 func (p *Platform) Ended(ctx context.Context, run runs.Run) { p.ended(ctx, run) }

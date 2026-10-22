@@ -246,7 +246,15 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
         agent: str(q.agent),
         prompt: str(q.prompt),
         options: list(q.options).map(str),
-        ...(q.tool ? { tool: { name: str(obj(q.tool).name), arguments: obj(q.tool).arguments } } : {}),
+        ...(q.tool
+          ? {
+              tool: {
+                name: str(obj(q.tool).name),
+                arguments: obj(q.tool).arguments,
+                ...(obj(q.tool).acts_for_person === true ? { acts_for_person: true } : {}),
+              },
+            }
+          : {}),
         ...(str(q.expires_at) ? { expires_at: str(q.expires_at) } : {}),
       };
       const settled = settledFromOutcome(out);

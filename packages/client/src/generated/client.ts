@@ -79,6 +79,9 @@ import type {
   StorageUsage,
   StreamEventsStreamEvent,
   Summary,
+  ToolCredential,
+  ToolCredentialInput,
+  ToolCredentials,
   UpdatePreferencesBody,
 } from "./types.js";
 import { type SSEEvent, type SSEOptions, streamSse } from "./sse.js";
@@ -535,6 +538,59 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     });
   }
 
+  /** Lists the workspace's person-scoped tool providers, at most 64, with whether the caller has connected a credential for each and how it is held. A value is never shown. A machine holds no credentials, so it sees every provider unconnected. */
+  async listToolCredentials(options?: RequestOptions): Promise<ToolCredentials> {
+    const path = "/api/me/credentials";
+    return this.request<ToolCredentials>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listToolCredentialsRaw(options?: RequestOptions): Promise<ApiResponse<ToolCredentials>> {
+    const path = "/api/me/credentials";
+    return this.rawRequest<ToolCredentials>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Sets the caller's credential for a person-scoped provider, in place of the one they had. A reference must start with one of the starts the operator listed for the workspace, and is not read here; any reason it cannot be used is answered with one message. A value is accepted only where the workspace keeps them (403 otherwise), and is stored; a reference that replaces a value forgets it. A provider the workspace reaches with its own credential is 400, and a machine is 403: each person connects their own. */
+  async putToolCredential(provider: string, body: ToolCredentialInput, options?: RequestOptions): Promise<ToolCredential> {
+    let path = "/api/me/credentials/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.request<ToolCredential>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async putToolCredentialRaw(provider: string, body: ToolCredentialInput, options?: RequestOptions): Promise<ApiResponse<ToolCredential>> {
+    let path = "/api/me/credentials/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.rawRequest<ToolCredential>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Removes it, and the value if it was one. The caller's runs then get no tools from the provider. */
+  async deleteToolCredential(provider: string, options?: RequestOptions): Promise<void> {
+    let path = "/api/me/credentials/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    await this.request<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  async deleteToolCredentialRaw(provider: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+    let path = "/api/me/credentials/{provider}";
+    path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
   /** The latest revision of every agent in the workspace. Not paged. */
   async listAgents(options?: RequestOptions): Promise<ListAgentsResponse> {
     const path = "/api/agents";
@@ -960,7 +1016,13 @@ Who may answer is decided from the run's pinned revision: the spec's
 `approvers` or `answerers` when it names them, else anyone in the
 workspace, and never the person whose request raised a call they are
 asked to approve, unless the spec sets `self_approval`. Anyone else is
-403 and nothing changes. A surface that authenticated a person itself
+403 and nothing changes. A call that acts as a person
+(`question.tool.acts_for_person`) is approved with edited `arguments`
+only by that person: anyone else's edit is 403, and they may approve
+or deny it as asked. A choice or a reply in a run that uses the
+credentials of the person it acts for (its revision is granted a
+person-scoped tool provider) is answered only by that person: anyone
+else is 403. A surface that authenticated a person itself
 answers for them with `act_as`: only the credential its client names,
 and only for a person its client maps.
 
@@ -1290,7 +1352,13 @@ on occurrences of its new expression that fell before it.
     });
   }
 
-  /** The run is attributed to the caller, not to the clock, and works while the schedule is paused. */
+  /** The run is attributed to the caller, not to the clock, and works while
+the schedule is paused. It acts for the caller only when they wrote
+what it runs: the schedule's last editor, or its creator while nobody
+has edited it. Anyone else's press acts for nobody, as the schedule's
+own clock does, since anyone with `schedules:write` may change its
+words.
+ */
   async runSchedule(name: string, options?: RequestOptions): Promise<Run> {
     let path = "/api/schedules/{name}/run";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -1459,7 +1527,11 @@ it, and one the runtime refuses is 403. `act_as` answers for a person
 a surface authenticated. Resolving a part that is already resolved
 returns the first outcome. `retry` starts a new run, so it can be
 refused by a limit with 429 or 402, and with 409 when the turn's
-project was deleted since.
+project was deleted since. The run acts for whoever the failed turn
+acted for: a turn that acted for a person is retried only by that
+person, signed in as themselves, and anyone else is 403; a turn that
+acted for nobody is retried for nobody. Each person's retry is a run
+of its own, and pressing it again returns the same one.
  */
   async resolveInboxPart(id: string, part: string, body: Resolution, options?: RequestOptions): Promise<InboxMessage> {
     let path = "/api/inbox/{id}/parts/{part}/resolve";

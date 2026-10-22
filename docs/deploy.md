@@ -27,6 +27,13 @@ process with its stores beside it.
   document is a reference, `{ref: env:NAME}`, read at start. The variable comes
   from `.env` in compose and from the `existingSecret` Secret in Kubernetes. A
   reference to an unset variable stops warp at start.
+- **People's own tool credentials are read where warp runs.** A person's
+  reference, under a `person_refs` start ([the spec](spec.md#tools-that-act-as-you)),
+  is read by the server when a run uses it. A container has no keychain and
+  no 1Password session, so there a start is an `env:` one, and each person's
+  variable (`WARP_PERSON_ANA_ISSUES`) is set in its environment like any other
+  secret. `warp deploy` refuses the others for a container
+  ([Deploying it](spec.md#deploying-it)).
 - **One replica.** The stores are single-writer: the run index, the usage
   ledger, the admission lock and the schedules assume one process owns them
   (see [Limits at scale](architecture.md#limits-at-scale)). A second warp on

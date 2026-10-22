@@ -253,6 +253,13 @@ func loadFiles(ctx context.Context, o Options, paths []string, keys credref.Reso
 		}
 		set("secret-refs", strings.Join(parts, ";"))
 	}
+	if len(sp.PersonRefs) > 0 {
+		var parts []string
+		for _, t := range slices.Sorted(maps.Keys(sp.PersonRefs)) {
+			parts = append(parts, t+"="+strings.Join(sp.PersonRefs[t], ","))
+		}
+		set("person-refs", strings.Join(parts, ";"))
+	}
 	return l, nil
 }
 
@@ -336,7 +343,7 @@ func fileExtensions(ctx context.Context, o Options, cfg spec.Config, keys credre
 				}
 				seed := platform.ToolProviderSeed{Provider: toolprovider.Provider{
 					Tenant: tenant, Name: t.Name, Transport: toolprovider.Transport(b.Transport), Endpoint: b.Endpoint,
-					Args: b.Args, CredentialEnv: b.CredentialAs,
+					Args: b.Args, CredentialEnv: b.CredentialAs, CredentialScope: toolprovider.CredentialScope(b.CredentialScope),
 				}}
 				if b.Credential.Set() {
 					seed.Provider.CredentialRef = b.Credential.Ref
@@ -345,7 +352,10 @@ func fileExtensions(ctx context.Context, o Options, cfg spec.Config, keys credre
 					return ext, fmt.Errorf("platform %q: tools %q: %w", tenant, t.Name, err)
 				}
 				for _, a := range b.Accept {
-					seed.Accept = append(seed.Accept, toolprovider.Tool{Name: a.Name, SchemaHash: a.SchemaHash, Class: toolprovider.Class(a.Class)})
+					seed.Accept = append(seed.Accept, toolprovider.Tool{
+						Name: a.Name, SchemaHash: a.SchemaHash, Class: toolprovider.Class(a.Class),
+						Description: a.Description, InputSchema: a.InputSchema,
+					})
 				}
 				ext.ToolProviders = append(ext.ToolProviders, seed)
 				continue

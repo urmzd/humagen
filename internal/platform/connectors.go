@@ -206,6 +206,9 @@ func (s *surface) stamp(st *seat, tag envelope.Tag) (envelope.Tag, bool) {
 	}
 	meta[runs.MetaClient] = c.ID
 	tag.Tenant, tag.Origin, tag.Meta = c.Tenant, s.name, meta
+	// Who the run acts for is the person the client's team maps the
+	// surface's user to, whatever the connector said.
+	tag.Actor.User = s.p.surfacePerson(c, tag)
 	return tag, true
 }
 

@@ -34,7 +34,7 @@ Run `pnpm install` once from the repository root. The adapter and renderers are 
 | A mention in a channel | The mention's thread. |
 | `/agent <question>` | A new thread in the channel. `/agent help` lists who can be asked. |
 | **Ask the agent** shortcut | The app's messages with you. |
-| **Ask agent about this** on a message | That message's thread. |
+| **Ask agent about this** on a message | That message's thread. On your own message it asks as you; on anyone else's, or a bot's, it asks through the app, for nobody, so their words are never run as you. |
 | Stop button | Stops the run, confirms in the thread, sets the session to active. |
 | Home tab | What is waiting on you in warp's inbox. |
 
@@ -56,6 +56,14 @@ are left out. Each message goes ahead of the question with who wrote it, by
 display name when the app has `users:read`, else as a mention. At most the
 newest 30 messages and 6000 characters go with one turn. A direct message is
 always addressed to the app, so it reads no history.
+
+The history goes ahead of the asker's own words, and the run acts for the
+asker, as any mention does: they asked in that thread, and the agent reads
+what others said there, each with who said it, as it reads a tool's result.
+So a request someone else made in the thread is acted on with the asker's
+credentials only when the asker's own words ask for it, as "go ahead" does.
+Asking about someone else's message with the shortcut is different: their
+words are the whole request, so it acts for nobody (above).
 
 The run takes only text, so the history travels in the question and shows as
 part of it in the console. Reading a thread needs `channels:history`,
@@ -117,11 +125,26 @@ Every button in Slack acts with the app's rights, so each extra scope lets the
 people in the loop do more: `agents:write` keeps or discards memories,
 `alerts:read` and `alerts:write` show and acknowledge alerts. Only the person
 who asked for the run, or someone in `SLACK_OPERATORS`, may settle an inbox
-item or ask a turn again (a Retry is always the app's own, never warp's,
-so its answer shows in the thread); a retry stays the first asker's, and is checked
-against the client's agents again. When who asked is not known (after a
-restart), only an operator may. A reached limit is shown, not raised: raise it
-in the console.
+item. When who asked is not known (after a restart), only an operator may. A
+failed run's card is the exception: its Retry is offered to everyone and is
+decided as Retry in the thread is (below), so the person a turn acted for may
+press it after a restart too, and once the turn is asked again the card is
+acknowledged. A reached limit is shown, not raised: raise it in the console.
+
+Retry and Resume ask a turn again (always the app's own, never warp's, so its
+answer shows in the thread) for whoever the turn acted for, as warp's record
+of the run says, and are checked against the client's agents again. A turn
+that acted for a person is theirs to ask again: asked by anyone else it would
+run their words with the presser's credentials, or a tool that acts as them
+on a choice they never made. So only a Slack person the client maps to them
+may ask it again, and it is asked as them (`act_as`); anyone else, an
+operator included, is told so and nothing starts. A turn that acted for nobody is asked again for nobody, by the person
+who asked or an operator, and after a restart by an operator only. A turn the
+app asked as itself is asked again the same way, through the app, even when
+the app's own credential is a person (an empty `WARP_TOKEN` against a dev
+sign-in server, where every run acts for `dev`): asked as it was asked, it
+acts for the same one. Each person's press is a run of its own, and pressing
+again joins it.
 
 A question a run waits on is shown in its thread with warp's card and
 buttons. A click is answered through warp as the Slack person, only when
@@ -167,7 +190,10 @@ journal file serves one process.
 Kept in memory, and lost on restart:
 
 - Who asked for each run. After a restart only operators can settle that run's
-  inbox items or retry it, and Home shows a person nothing until they ask again.
+  inbox items or retry it for nobody, and Home shows a person nothing until
+  they ask again. Whom a run acted for is warp's record, so the person a turn
+  acted for may still retry it, from the thread or its failure card, which
+  their retry acknowledges.
 - Which inbox messages were posted to a thread. A change to one after a
   restart is not reflected in the thread.
 - The queue of messages waiting behind a turn.

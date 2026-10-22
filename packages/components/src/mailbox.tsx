@@ -3,6 +3,7 @@ import {
   canAct,
   formatAmount,
   type InboxMessage,
+  isRetryable,
   type MessagePart,
   messageState,
   messageTemplate,
@@ -231,7 +232,16 @@ export function MessagePartView({
       ) : part.allowed !== undefined && part.allowed.length === 0 ? (
         locked(part.failure.message)
       ) : (
-        <FailureAlert turnId={message.id} failure={part.failure} copy={copy} />
+        <FailureAlert
+          turnId={message.id}
+          failure={
+            // A turn someone else may retry: the reader is not offered Retry, and told why.
+            isRetryable(part.failure) && !may(ActionId.retry)
+              ? { ...part.failure, retryNotOffered: copy.retryOnlyTheirs }
+              : part.failure
+          }
+          copy={copy}
+        />
       );
     case "reference":
       return <Sources items={part.citations} />;

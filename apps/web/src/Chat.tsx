@@ -5,7 +5,7 @@ import { CheckIcon, ChevronDownIcon, WebSurface } from "@warp/render-web";
 import { AgentMessage, Thread, useQueue } from "@warp/web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
-import type { Run } from "./adapter.ts";
+import { actedFor, type Run } from "./adapter.ts";
 import { Composer } from "./Composer.tsx";
 import { ApiError, api, type Choice, type ProjectView, type Revision, type Settings, type ThreadSummary } from "./api.ts";
 import { HomePage } from "./HomePage.tsx";
@@ -39,13 +39,46 @@ function pathOf(turns: Run[], chosen: Record<string, string>): Run[] {
   }
 }
 
+/**
+ * The person whose turn it was, to ask again: whom it acted for, as its
+ * record says. A turn recorded before warp said whom a run acts for names no
+ * user, so one a person asked from the console or the API is theirs. A retry
+ * warp asked for nobody names no user either, and names whoever pressed it,
+ * but its words were not theirs, so it is nobody's.
+ */
+function ownerOf(run: Run): string {
+  const person = actedFor(run);
+  if (person || !run.actor || run.actor.bot || run.actor.user) return person;
+  const retry = run.tag_id === undefined || run.tag_id.startsWith("api-retry-");
+  return run.origin === "api" && !retry ? run.actor.id : "";
+}
+
+/**
+ * Why the reader may not ask a turn again in the conversation, with Retry or
+ * Regenerate, or "" when they may. A turn asked again here is asked as the
+ * reader, so it acts for them, and is offered only on a turn that acted for
+ * them. A turn that acted for someone else is theirs alone to retry, and one
+ * that acted for nobody is retried for nobody (from the inbox, or where it
+ * was asked), so nobody's words are run with the reader's credentials
+ * without their typing them.
+ */
+export function notAskable(run: Run, me: string): string {
+  const person = ownerOf(run);
+  if (me !== "" && person === me) return "";
+  if (person) return `This turn acted for ${run.actor?.display || person}, so only they can retry it.`;
+  return "This turn acted for nobody, so it is not retried here, where it would act for you.";
+}
+
 function TurnView({
   run,
+  me,
   siblings,
   live,
   onSwitch,
 }: {
   run: Run;
+  /** The reader's subject. */
+  me: string;
   siblings: Run[];
   /** Follow the run's events. Off for settled turns, whose record is enough. */
   live: boolean;
@@ -54,7 +87,8 @@ function TurnView({
   const turn = useRunTurn(live ? run : undefined);
   const index = siblings.findIndex((s) => s.id === run.id);
   const ended = run.status === "completed" || run.status === "failed";
-  const shown = useMemo(
+  const refused = notAskable(run, me);
+  const drawn = useMemo(
     () =>
       turn ?? {
         id: run.id,
@@ -72,6 +106,12 @@ function TurnView({
       },
     [turn, run],
   );
+  // Neither Retry nor Regenerate is offered on a turn the reader may not ask
+  // again (notAskable). A failure says why instead of offering Retry.
+  const shown = useMemo(
+    () => (refused && drawn.failure ? { ...drawn, failure: { ...drawn.failure, retryNotOffered: refused } } : drawn),
+    [drawn, refused],
+  );
 
   return (
     <article id={`turn-${run.id}`} className="flex flex-col gap-3" aria-label={`Turn answered by ${run.agent}`}>
@@ -87,7 +127,7 @@ function TurnView({
       </div>
 
       <AgentTint name={run.agent}>
-        <AgentMessage turn={shown} itemActions={itemActions(run)} />
+        <AgentMessage turn={shown} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} />
       </AgentTint>
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
@@ -136,6 +176,7 @@ export const STARTERS: { agent: string; label: string; text: string }[] = [
 
 export function Chat({
   threadId,
+  me,
   startIn,
   startAgent,
   startAsk,
@@ -152,6 +193,8 @@ export function Chat({
   onProjectCreated,
 }: {
   threadId: string | null;
+  /** The reader's subject: Retry asks a turn again as them, so only on a turn that acted for them. */
+  me: string;
   /** The project a new conversation starts in, when it was started from one. */
   startIn?: string;
   /** The agent a new conversation is for, and its first message, when a link or a starter picked them. */
@@ -275,8 +318,12 @@ export function Chat({
       return;
     }
     if (a.id !== ActionId.retry || !canRun) return;
-    const run = path.find((r) => r.id === a.payload.turnId || r.id === a.payload.target) ?? tail;
-    if (run) branch(run, run.agent);
+    const run = path.find((r) => r.id === a.payload.turnId);
+    if (!run) return;
+    // Asked again here, a turn acts for the reader, so only one that acted for them is.
+    const refused = notAskable(run, me);
+    if (refused) return setProblem(refused);
+    branch(run, run.agent);
   };
 
   // Show who Auto would send the next message to, before it is sent.
@@ -459,6 +506,7 @@ export function Chat({
             <TurnView
               key={run.id}
               run={run}
+              me={me}
               siblings={siblingsOf(turns, run)}
               live={i === path.length - 1 || (run.status !== "completed" && run.status !== "failed")}
               onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}

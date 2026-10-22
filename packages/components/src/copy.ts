@@ -25,6 +25,10 @@ export const defaultCopy = {
     deny: "Go Back",
   },
   actingAs: (who: string) => `Will run as ${who}`,
+  actsForPerson:
+    "Uses the credentials of the person this run acts for. Only they may change its arguments.",
+  actsForPersonIn: (calls: string[]) =>
+    `${calls.join("; ")}: ${calls.length === 1 ? "uses" : "use"} the credentials of the person this run acts for. Only they may change ${calls.length === 1 ? "its" : "their"} arguments.`,
   expires: (time: string) => `Expires ${time}`,
   approvedBy: (by: string, time: string) => `Approved by ${by} · ${time}`,
   rejected: "Rejected, I won't run it.",
@@ -98,6 +102,8 @@ export const defaultCopy = {
       .filter(Boolean)
       .join(" · "),
   cantRetry: "This turn can't be retried. Send a new message instead.",
+  /** A turn that acted for a person is theirs to retry, and the reader is not them. */
+  retryOnlyTheirs: "Only the person this turn acted for can retry it.",
   compacting: "Compacting the conversation to stay within context",
   compacted: (saved: string) => `Compacted the conversation, freed ${saved} tokens`,
   compactFailed: (reason: string) => `Couldn't compact: ${reason}`,

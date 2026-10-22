@@ -82,7 +82,12 @@ export interface Run {
   origin: string;
   text: string;
   input?: PreparedCallInput;
-  actor?: { id: string; display?: string; bot?: boolean };
+  /**
+   * Who raised the run. `user` is the person it acts for, by subject: the
+   * one whose own credentials its tools use. Absent, or on a bot, it acts for
+   * nobody.
+   */
+  actor?: { id: string; display?: string; bot?: boolean; user?: string };
   root: string;
   parent?: string;
   depth: number;
@@ -494,6 +499,15 @@ function title(name?: string): string {
   if (!name) return "Tool call";
   const words = name.replace(/[._-]+/g, " ").trim();
   return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * The person a run acted for, by subject, or "" for nobody: what decides
+ * whose credentials its tools used, as warp reads the run's actor. A bot acts
+ * for nobody, whatever it names.
+ */
+export function actedFor(run: Pick<Run, "actor">): string {
+  return run.actor && !run.actor.bot ? (run.actor.user ?? "") : "";
 }
 
 /**

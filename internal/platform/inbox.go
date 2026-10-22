@@ -6,10 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
-
-	"github.com/urmzd/fiber/pkg/envelope"
 
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/artifacts"
@@ -163,7 +162,7 @@ func (p *Platform) seenBy(m inbox.Message, who auth.Principal) inbox.Message {
 			continue
 		}
 		for _, a := range offered[part.Type] {
-			if a == ActRetry && (part.Failure == nil || !part.Failure.Retryable) {
+			if a == ActRetry && (part.Failure == nil || !part.Failure.Retryable || p.mayRetry(who, part.Failure.Run) != nil) {
 				continue
 			}
 			if p.allows(who, *part, a) == nil {
@@ -322,6 +321,11 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 	// do, so a caller without it learns nothing from trying.
 	if err := p.allows(who, part, r.Action); err != nil {
 		return inbox.Message{}, err
+	}
+	if part.Type == inbox.PartFailure && r.Action == ActRetry && part.Failure != nil {
+		if err := p.mayRetry(who, part.Failure.Run); err != nil {
+			return inbox.Message{}, err
+		}
 	}
 	if part.State != inbox.PartOpen || m.State == inbox.Resolved || m.State == inbox.Dismissed {
 		return m, nil
@@ -549,7 +553,34 @@ func (p *Platform) inboxArtifactGone(tenant string, a artifacts.Artifact) {
 	}
 }
 
-// retry asks a failed turn again, on the same branch it was first asked on.
+// A retry asks the same turn again for the same person.
+//
+// A failed turn that acted for a person reached their tools with their own
+// credential, and its retry does too, so it is theirs alone to press, signed
+// in as themselves. Anyone else pressing it would either run that person's
+// words with their own credential, or run them with that person's
+// credential on a choice the person never made, so they are refused, whatever
+// else they may do. A turn that acted for nobody is retried for nobody, by
+// anyone who may start runs: the words were nobody's, and no one's
+// credential is put behind them.
+//
+// The retry's id names whoever pressed it, so two people's presses never
+// join one run, and one person pressing twice joins their first.
+
+// mayRetry reports whether who may ask a failed turn again, and if not, why.
+func (p *Platform) mayRetry(who auth.Principal, runID string) error {
+	run, err := p.Runs.Get(who.Tenant, runID)
+	if err != nil {
+		return err
+	}
+	if person := personOf(run.Actor); person != "" && (who.Kind == auth.Machine || who.Subject != person) {
+		return fmt.Errorf("%w: this turn acted for %s, so only %s may ask it again", ErrForbidden, person, person)
+	}
+	return nil
+}
+
+// retry asks a failed turn again, on the same branch it was first asked on,
+// for whoever the turn acted for (see mayRetry).
 func (p *Platform) retry(ctx context.Context, who auth.Principal, runID string) (runs.Run, error) {
 	run, err := p.Runs.Get(who.Tenant, runID)
 	if err != nil {
@@ -558,10 +589,19 @@ func (p *Platform) retry(ctx context.Context, who auth.Principal, runID string) 
 	if !retryable(run) {
 		return runs.Run{}, fmt.Errorf("%w: only a turn a person asked can be started again", ErrAction)
 	}
+	if err := p.mayRetry(who, run.ID); err != nil {
+		return runs.Run{}, err
+	}
+	// Whoever pressed it asked for it, so they do not approve its calls.
+	// It acts for the person the turn acted for, who is them, or for
+	// nobody.
+	actor := ActorOf(who)
+	if personOf(run.Actor) == "" {
+		actor.User = ""
+	}
 	t := Turn{
-		// One retry per failed run: asking twice joins the first.
-		ID: "api-retry-" + run.ID, Agent: run.Agent, Text: run.Text, After: run.Prev,
-		Actor: envelope.Actor{ID: who.Subject, Display: who.Name, Bot: who.Kind == auth.Machine},
+		ID:    "api-retry-" + strconv.Itoa(len(who.Subject)) + "-" + who.Subject + "-" + run.ID,
+		Agent: run.Agent, Text: run.Text, After: run.Prev, Actor: actor,
 	}
 	if run.Prev == "" {
 		t.Project = run.Project

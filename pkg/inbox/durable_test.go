@@ -29,7 +29,9 @@ func TestRestart(t *testing.T) {
 		q, _ := two(s.Raise(acme, "q1", Message{
 			Kind: KindApproval, To: "", Audience: []string{"role:operator", "ada"}, Excluded: []string{"eve"},
 			From: From{Kind: "agent", Name: "lead"}, Severity: Warning, Source: Source{Run: "r1", Agent: "lead"},
-			Parts: []Part{{Type: PartText, State: PartInfo, Text: "Context."}, {Type: PartApproval}},
+			Parts: []Part{{Type: PartText, State: PartInfo, Text: "Context."}, {Type: PartApproval, Question: &QuestionPart{
+				Run: "r1", ID: "q1", Kind: "approval", Tool: &QuestionTool{Name: "issues__search", ActsForPerson: true},
+			}}},
 		}, t0))
 		a := raise(s, "alert:al-1", t0.Add(time.Second), Part{Type: PartAlert, Alert: &AlertPart{ID: "al-1"}})
 		if _, err := s.Read(acme, a.ID, "ada", true, t0.Add(2*time.Second)); err != nil {
@@ -58,6 +60,10 @@ func TestRestart(t *testing.T) {
 		}
 		if !reflect.DeepEqual(again.Changes(acme), s.Changes(acme)) {
 			t.Fatalf("record after restart = %+v, want %+v", again.Changes(acme), s.Changes(acme))
+		}
+		// That an approval's call acts as the person survives too.
+		if m, err := again.Get(acme, q.ID, "ada"); err != nil || !m.Parts[1].Question.Tool.ActsForPerson {
+			t.Fatalf("after restart the approval is %+v (%v)", m.Parts[1].Question, err)
 		}
 		// Who a message is for survives, though no wire form carries it.
 		if _, err := again.GetAs(acme, q.ID, Reader{Subject: "eve", Roles: []string{"operator"}}); !errors.Is(err, ErrNotFound) {
