@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
@@ -11,11 +12,12 @@ import (
 	"github.com/urmzd/warp/pkg/runs"
 )
 
-// Turn is one turn of a thread: a person's message, or an agent's run.
-// Exactly one is set.
+// Turn is one turn of a thread: a person's message, an agent's run, or the
+// announcement the thread was started from. Exactly one is set.
 type Turn struct {
-	Message *Message  `json:"message,omitempty"`
-	Run     *runs.Run `json:"run,omitempty"`
+	Message      *Message      `json:"message,omitempty"`
+	Run          *runs.Run     `json:"run,omitempty"`
+	Announcement *Announcement `json:"announcement,omitempty"`
 }
 
 // MessageTurn and RunTurn make a turn of each kind.
@@ -23,6 +25,33 @@ func MessageTurn(m Message) Turn { return Turn{Message: &m} }
 
 // RunTurn is a turn an agent took.
 func RunTurn(r runs.Run) Turn { return Turn{Run: &r} }
+
+// AnnouncementTurn is the announcement a thread was started from, ahead of
+// its first message.
+func AnnouncementTurn(a Announcement) Turn { return Turn{Announcement: &a} }
+
+// Announcement is the announcement a thread was started from, as the thread
+// reads it when it is read: who posted it, a person or the agent a schedule
+// ran, and what it says. It is the inbox's, never a message here, so its
+// author is whoever posted it and never the person whose reply started the
+// thread, and a withdrawn one says nothing.
+type Announcement struct {
+	// ID is the announcement's inbox id.
+	ID string `json:"id"`
+	// Kind is person or agent.
+	Kind string `json:"kind"`
+	// By is the person's subject, handed out as their handle, or the
+	// agent's name.
+	By string `json:"by"`
+	// Name is what the person is called. An agent has none.
+	Name string `json:"name,omitempty"`
+	// Subject and Text are what it says. A withdrawn one has neither.
+	Subject string `json:"subject,omitempty"`
+	Text    string `json:"text,omitempty"`
+	// Withdrawn is set once it was withdrawn for everyone.
+	Withdrawn bool      `json:"withdrawn,omitempty"`
+	At        time.Time `json:"at"`
+}
 
 // Names says who the people of a transcript are: what the person with a
 // subject is called, and their handle, which no one else in the workspace
@@ -127,24 +156,37 @@ type speakers struct {
 	numbers map[string]int
 }
 
-// askers is who asked a turn: a message's writer, or who asked a run that
-// answers no message.
+// askers is who asked a turn: a message's writer, who asked a run that
+// answers no message, or the person who posted an announcement.
 func askers(t Turn) []Asker {
 	switch {
 	case t.Message != nil:
 		return []Asker{{Person: t.Message.By, Name: t.Message.Name}}
 	case t.Run != nil && t.Run.Message == "":
 		return []Asker{askerOfRun(*t.Run)}
+	case t.Announcement != nil && t.Announcement.Kind == Person:
+		return []Asker{{Person: t.Announcement.By, Name: t.Announcement.Name}}
 	}
 	return nil
 }
 
 // lines renders one turn: a message as its writer's line, a run answering
-// one as its agent's, and a run that answers no message, a follow-up
-// through the API or a turn of a conversation from before threads, as who
-// asked it and then its agent's answer.
+// one as its agent's, a run that answers no message, a follow-up through
+// the API or a turn of a conversation from before threads, as who asked it
+// and then its agent's answer, and an announcement as the line of the
+// person or agent who posted it, marked as one.
 func (s *speakers) lines(t Turn) []string {
 	switch {
+	case t.Announcement != nil:
+		a := t.Announcement
+		by := agentLabel(a.By)
+		if a.Kind == Person {
+			by = s.asker(askers(t)[0])
+		}
+		if a.Withdrawn {
+			return []string{by + ": (announcement, since withdrawn)"}
+		}
+		return []string{by + ": (announcement: " + flat(a.Subject) + ") " + flat(a.Text)}
 	case t.Message != nil:
 		return []string{s.asker(askers(t)[0]) + ": " + flat(t.Message.Text)}
 	case t.Run != nil && t.Run.Message != "":
@@ -221,7 +263,7 @@ func reply(r runs.Run) string {
 func countTurns(turns []Turn) int {
 	n := 0
 	for _, t := range turns {
-		if t.Message != nil || t.Run != nil {
+		if t.Message != nil || t.Run != nil || t.Announcement != nil {
 			n++
 		}
 	}

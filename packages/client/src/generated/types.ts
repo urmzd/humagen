@@ -456,6 +456,8 @@ export interface Thread {
   /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. */
   default?: string;
   surface?: ThreadSurface;
+  /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
+  announcement?: string;
   /** Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written. */
   version: number;
   /** The handle of the person who started it, the first person to ask or post in it. */
@@ -502,11 +504,34 @@ export interface ThreadMessage {
   at: string;
 }
 
-/** One turn of a thread, a person's message or an agent's run. */
+/** The announcement a thread was started from, as it stands when the
+thread is read: who posted it and what it says. It is the inbox's,
+never a message of the thread, so it is from whoever posted it, a
+person or the agent a schedule ran, and never from the person whose
+reply started the thread. A withdrawn one says nothing more.
+ */
+export interface ThreadAnnouncement {
+  /** The announcement's inbox id. */
+  id: string;
+  /** Who posted it. */
+  kind: "person" | "agent";
+  /** The person's handle, or the agent's name. */
+  by: string;
+  /** What the person is called. Absent for an agent. */
+  name?: string;
+  subject?: string;
+  text?: string;
+  /** Withdrawn for everyone. Its subject and text are then absent. */
+  withdrawn?: boolean;
+  at: string;
+}
+
+/** One turn of a thread, a person's message, an agent's run, or the announcement the thread was started from, which comes first. */
 export interface ThreadTurn {
-  kind: "message" | "run";
+  kind: "message" | "run" | "announcement";
   message?: ThreadMessage;
   run?: Run;
+  announcement?: ThreadAnnouncement;
   ask?: ThreadAsk;
 }
 
@@ -715,7 +740,8 @@ where the platform says: the channel the Slack channel is bound to,
 shared, or else the client's home, private for a direct message or
 the assistant pane. The text is Slack's own: the app's mention is
 dropped, a mapped bot or person is their tag, and anyone else is
-plain and refused.
+plain and refused. A thread under an announcement the client posted
+is seeded with it (see `startThread`).
  */
 export interface SurfaceRef {
   client: string;
@@ -1002,7 +1028,7 @@ project names as experts, and `channel` to one of its channels,
 which `channel` holds before and after.
  */
   what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "channel";
-  /** The agent a `home` change is about. */
+  /** The agent a `home` change is about. Absent when it lives in a project the caller may not read. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
   note?: string;
@@ -1015,12 +1041,17 @@ which `channel` holds before and after.
 /** What a project turns on. An agent is available in a project when
 something on its chain offers it (an `enable` list, `*` for every
 platform agent, or the agent living there or above) and every `allow`
-list on the chain permits it. The zero value adds nothing.
+list on the chain permits it. The zero value adds nothing. Every
+agent that lives in a project the caller may not read is left out of
+each list and of `default`, as if it were not there.
  */
 export interface ProjectAgents {
   /** Platform agents available here and below. `*` alone is every platform agent. */
   enable: string[];
-  /** When set, the only agents that may run here and below. Absent narrows nothing. */
+  /** When set, the only agents that may run here and below. Absent
+narrows nothing. Empty only when every agent it names lives in a
+project the caller may not read.
+ */
   allow?: string[];
   /** Answers a message that tags no agent, here and below. An agent or `auto`. Absent inherits. */
   default?: string;
@@ -1056,7 +1087,9 @@ export interface DefaultResolved {
 export interface ProjectAgentsView {
   /** The project's version, which a change names. */
   version: number;
+  /** As in ProjectAgents, leaving out every agent that lives in a project the caller may not read. */
   enable: string[];
+  /** As in ProjectAgents. Empty only when every agent it names lives in a project the caller may not read. */
   allow?: string[];
   default?: string;
   available: AgentAvailability;
@@ -1073,6 +1106,9 @@ export interface ProjectAgentsInput {
   /** The version the caller read. */
   version: number;
   enable?: string[];
+  /** The names the caller is not shown are kept, so a caller shown an
+empty list sends one back. Otherwise it names at least one agent.
+ */
   allow?: string[];
   default?: string;
 }
@@ -1116,7 +1152,9 @@ export interface Settings {
   /** Whether an agent is sent the conversation so far. */
   history: "recent" | "none";
   history_limit: number;
+  /** Names conversations after their first turn. Empty when none is set, or when it lives in a project the caller may not read. */
   title_agent: string;
+  /** Writes notes after a turn. Empty as `title_agent` is. */
   memory_agent: string;
   memory_auto_approve: boolean;
   workspace_name: string;
@@ -2091,6 +2129,8 @@ export interface GitHubOptions {
   guides?: boolean;
   mutations?: boolean;
   read_repositories?: string[];
+  /** The app's own GitHub login, such as `warp[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/github.md). */
+  login?: string;
 }
 
 /** A client as a caller writes it. The tenant, who manages it and its version are the server's to say. */
@@ -2130,7 +2170,13 @@ export interface ClientView {
   surface: ClientSurface;
   identity: ClientIdentity;
   credentials: ClientViewCredentials;
+  /** Absent when the client has none, and when it lives in a project the caller may not read. */
   default_agent?: string;
+  /** The agents it may route to besides its default, leaving out every
+agent that lives in a project the caller may not read, as `bots`
+and `github.auto_labels` do. The machine that hosts the client's
+surface, its `slack.machine`, is shown every agent it names.
+ */
   agents?: string[];
   bots?: Record<string, string>;
   slack?: SlackOptions;

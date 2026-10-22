@@ -39,6 +39,20 @@ describe("empty containers", () => {
     expect(out.blocks).toEqual([expect.objectContaining({ type: "actions", block_id: "one" })]);
   });
 
+  it("offers Snooze and Dismiss only where the host can do them, and keeps the source", () => {
+    const fyi = mail("m-fyi");
+    const text = (setAside: boolean) =>
+      JSON.stringify(renderToSlack(<MessageView message={fyi} setAside={setAside} />).blocks);
+    expect(text(true)).toContain(defaultCopy.dismiss);
+    expect(text(false)).not.toContain(defaultCopy.dismiss);
+    expect(text(false)).not.toContain(defaultCopy.snooze);
+    expect(text(false)).toContain("https://example.com/runs/58");
+    // With no source to open either, nothing is left to press.
+    const bare = { ...fyi, source: { kind: "run" as const, label: "Refunds export" } };
+    const blocks = renderToSlack(<MessageView message={bare} setAside={false} />).blocks;
+    expect(types(blocks)).not.toContain("actions");
+  });
+
   it("leaves out checkboxes with nothing to tick", () => {
     const out = renderToSlack(
       <Checkboxes name="g" options={[{ id: "a", label: "A", disabled: true }]} selected={[]} />,

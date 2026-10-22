@@ -51,11 +51,21 @@ func (p *Platform) Channels(tenant, project string) ([]projects.Channel, error) 
 
 // CreateChannel adds a channel to a project.
 func (p *Platform) CreateChannel(ctx context.Context, tenant, project string, w projects.Writer, in ChannelInput) (projects.Channel, error) {
+	return p.createChannel(ctx, tenant, project, w, in, nil)
+}
+
+// CreateChannelAs is CreateChannel as who writes it: a default naming an agent
+// they may not read is refused as one that does not exist.
+func (p *Platform) CreateChannelAs(ctx context.Context, who auth.Principal, project string, w projects.Writer, in ChannelInput) (projects.Channel, error) {
+	return p.createChannel(ctx, who.Tenant, project, w, in, p.Seer(who).Agent)
+}
+
+func (p *Platform) createChannel(ctx context.Context, tenant, project string, w projects.Writer, in ChannelInput, sees func(string) bool) (projects.Channel, error) {
 	project = projects.NameOf(project)
 	if !p.HasProject(tenant, project) {
 		return projects.Channel{}, projects.ErrNotFound
 	}
-	if err := p.checkDefault(ctx, tenant, project, in.Default); err != nil {
+	if err := p.checkDefault(ctx, tenant, project, in.Default, sees); err != nil {
 		return projects.Channel{}, err
 	}
 	if err := p.checkBinding(tenant, in.Slack); err != nil {
@@ -68,11 +78,21 @@ func (p *Platform) CreateChannel(ctx context.Context, tenant, project string, w 
 
 // UpdateChannel changes a channel's title, purpose and default.
 func (p *Platform) UpdateChannel(ctx context.Context, tenant, project, name string, w projects.Writer, in ChannelUpdate) (projects.Channel, error) {
+	return p.updateChannel(ctx, tenant, project, name, w, in, nil)
+}
+
+// UpdateChannelAs is UpdateChannel as who writes it: a default naming an
+// agent they may not read is refused as one that does not exist.
+func (p *Platform) UpdateChannelAs(ctx context.Context, who auth.Principal, project, name string, w projects.Writer, in ChannelUpdate) (projects.Channel, error) {
+	return p.updateChannel(ctx, who.Tenant, project, name, w, in, p.Seer(who).Agent)
+}
+
+func (p *Platform) updateChannel(ctx context.Context, tenant, project, name string, w projects.Writer, in ChannelUpdate, sees func(string) bool) (projects.Channel, error) {
 	project = projects.NameOf(project)
 	if !p.HasProject(tenant, project) {
 		return projects.Channel{}, projects.ErrNotFound
 	}
-	if err := p.checkDefault(ctx, tenant, project, in.Default); err != nil {
+	if err := p.checkDefault(ctx, tenant, project, in.Default, sees); err != nil {
 		return projects.Channel{}, err
 	}
 	if err := p.checkBinding(tenant, in.Slack); err != nil {

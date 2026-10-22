@@ -1282,6 +1282,16 @@ one the platform files from the binding (see SurfaceRef). Posting
 the same message ts again changes nothing. To any other caller the
 client is not found (404); a client's home that is gone is 404 too.
 An agent the client may not route to is refused, never swapped.
+
+A Slack thread under an announcement the client posted, at the
+channel and ts its receipt records (`recordInboxDelivery`), is that
+announcement's: the new thread names it in `announcement` and its
+turns start with it, from whoever posted it, ahead of the reply,
+which is the person's own message. It is seeded only where the
+Slack channel's binding files it in the announcement's project, and
+there a reply to one that was withdrawn, or to a draft, starts
+nothing (410). Filed anywhere else, after the Slack channel was bound
+to another project or unbound, it starts as any other thread.
  */
   async startThread(body: ThreadInput, options?: RequestOptions): Promise<ThreadPosted> {
     const path = "/api/threads";
@@ -1304,9 +1314,10 @@ An agent the client may not route to is refused, never swapped.
   /** A thread's turns are its people's messages and its agents' runs, in
 the order they were made, oldest first. A run that answers a message
 names it in `message`; runs answering one message answer it side by
-side and are not branches. A conversation from before threads reads
-as shared, in `general` of its project, at version 0, and its id is
-the id of the run that started it.
+side and are not branches. A thread started from an announcement
+starts with it, as it stands when it is read. A conversation from
+before threads reads as shared, in `general` of its project, at
+version 0, and its id is the id of the run that started it.
 
 The first page is the newest 200 turns, or `limit`. `next` is the
 cursor for the turns before them, or null at the start: pass it back
@@ -1486,7 +1497,9 @@ each message's `data` field, which is how the oag generator reads
     }, options, this.requestInterceptor, this.fetchFn);
   }
 
-  /** Get workspace settings */
+  /** A title or memory agent that lives in a project the caller may not
+read is left out, as if none were set.
+ */
   async getSettings(options?: RequestOptions): Promise<Settings> {
     const path = "/api/settings";
     return this.request<Settings>("GET", path, {
@@ -1504,7 +1517,10 @@ each message's `data` field, which is how the oag generator reads
   /** The first save records the caller as the one who set the workspace
 up. `baseline` is gone: the workspace default is the root's
 `default` (`PUT /api/projects/~/agents`), and a body that names it
-is 400.
+is 400. A title or memory agent is an agent the caller may read: one
+that lives in a project they may not read is 400, in the words for
+one that does not exist. One they are not shown is kept when they
+name none in its place.
  */
   async updateSettings(body: Settings, options?: RequestOptions): Promise<Settings> {
     const path = "/api/settings";
@@ -2663,9 +2679,14 @@ projects. Each view says
 the caller's role (`access`) and what they may do (`actions`).
 `next` is the cursor for the page after this one, or null at the
 end; a cursor is where its last row sat in the tree, so a project
-deleted between pages neither breaks nor shifts the paging.
+deleted between pages neither breaks nor shifts the paging. A
+client's machine lists one of its people's projects with
+`act_as_client` and `act_as_user`, as the Slack app's Home does: the
+projects that person has a role in, each with their role, their
+actions and what they may read in it. The person must hold
+`projects:read` themselves.
  */
-  async listProjects(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, options?: RequestOptions): Promise<ListProjectsResponse> {
+  async listProjects(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListProjectsResponse> {
     let path = "/api/projects";
     const _q = new URLSearchParams();
     if (parent !== undefined && parent !== null) _q.set("parent", String(parent));
@@ -2674,6 +2695,8 @@ deleted between pages neither breaks nor shifts the paging.
     if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListProjectsResponse>("GET", path, {
@@ -2681,7 +2704,7 @@ deleted between pages neither breaks nor shifts the paging.
     });
   }
 
-  async listProjectsRaw(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<ListProjectsResponse>> {
+  async listProjectsRaw(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ListProjectsResponse>> {
     let path = "/api/projects";
     const _q = new URLSearchParams();
     if (parent !== undefined && parent !== null) _q.set("parent", String(parent));
@@ -2690,6 +2713,8 @@ deleted between pages neither breaks nor shifts the paging.
     if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListProjectsResponse>("GET", path, {
@@ -2802,7 +2827,9 @@ conversations or files, the delete is refused with 429.
     });
   }
 
-  /** Read which agents a project turns on, which are available there, and who answers untagged messages */
+  /** Every agent that lives in a project the caller may not read is left
+out of `enable`, `allow` and `default`, as if it were not there.
+ */
   async getProjectAgents(name: string, options?: RequestOptions): Promise<ProjectAgentsView> {
     let path = "/api/projects/{name}/agents";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2823,9 +2850,14 @@ conversations or files, the delete is refused with 429.
 here and below (`*` alone is every one); `allow`, when set, is the
 only agents that may run here and below, and a child can only narrow
 it; `default` answers a message that tags no agent, here and below,
-and is an agent or `auto`. Every name is an agent in the workspace, a
-named default is available where it is set, and an agent that lives
-in a project is not enabled (400). The workspace's own lists, which
+and is an agent or `auto`. Every name is an agent in the workspace
+that the caller may read, a named default is available where it is
+set, and an agent that lives in a project is not enabled (400). An
+agent that lives in a project the caller may not read is refused in
+the words for one that does not exist. The names in `allow` the
+caller is not shown are kept; an `enable` entry or a `default`
+naming one does nothing in a project they may read, and is not
+kept. The workspace's own lists, which
 hold the workspace default, and a company project's need
 `projects:govern`. `version` is the one the caller read (409 if it
 changed), and lists the platform file sets answer 409.
@@ -2852,7 +2884,8 @@ changed), and lists the platform file sets answer 409.
 
   /** `next` is the cursor for the page after this one, or null at the end.
 Pass it back as `before`. A cursor is opaque. The workspace keeps its
-last 1,000 changes across all its projects.
+last 1,000 changes across all its projects. A change names only the
+agents the caller may read, as the project's own lists do.
  */
   async listProjectHistory(name: string, limit?: number, before?: string, options?: RequestOptions): Promise<ListProjectHistoryResponse> {
     let path = "/api/projects/{name}/history";
@@ -3503,7 +3536,12 @@ read, or a limit on either, is left out.
     });
   }
 
-  /** A workspace at its cap of clients answers 429 with a plain error body. */
+  /** A workspace at its cap of clients answers 429 with a plain error
+body. Every agent the client names, as its default, in its list, for
+a bot or for an auto-label, is an agent that exists and that the
+caller may read; any other is 400, in the same words whether it does
+not exist or lives in a project the caller may not read.
+ */
   async createClient(body: ClientInput, options?: RequestOptions): Promise<ClientView> {
     const path = "/api/clients";
     return this.request<ClientView>("POST", path, {
@@ -3561,8 +3599,14 @@ is left out.
 
   /** A secret left out is kept, and so is a home in a project the caller
 may not read, which they are not shown: naming none keeps it, and
-naming one they may read replaces it. A client the server's
-configuration owns cannot be changed here and answers 409.
+naming one they may read replaces it. The agents it names that the
+caller is not shown are kept the same way: its default unless they
+name another, its list unless they write `*`, its bots and its
+auto-labels unless they map the same bot or label, and an agent it
+routed to stays one it routes to. Every other agent named is one that
+exists and that the caller may read, or one the record already holds
+(400 otherwise, as on create). A client the server's configuration
+owns cannot be changed here and answers 409.
  */
   async updateClient(id: string, body: ClientInput, options?: RequestOptions): Promise<ClientView> {
     let path = "/api/clients/{id}";

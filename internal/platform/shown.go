@@ -228,6 +228,11 @@ func (p *Platform) ShowTurns(tenant string, th threads.Thread, turns []ThreadTur
 			m := s.message(*t.Message)
 			t.Message = &m
 		}
+		if t.Announcement != nil && t.Announcement.Kind == threads.Person {
+			a := *t.Announcement
+			a.Name, a.By = s.name(a.By), s.key(a.By)
+			t.Announcement = &a
+		}
 		out[i] = t
 	}
 	return s.thread(th), out

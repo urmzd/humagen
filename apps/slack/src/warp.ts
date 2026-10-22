@@ -13,9 +13,10 @@ import {
   mailTransport,
   type Run,
   type Transport,
+  type WireProject,
 } from "@warp/adapter";
 
-export type { BusEvent, Run };
+export type { BusEvent, Run, WireProject };
 
 /** Who the platform says is calling, as `GET /api/me` answers. */
 export interface Me {
@@ -242,6 +243,11 @@ export interface Warp {
     updates?: number;
   }>;
   /**
+   * Every project a person has a role in, each as they see it, read for them
+   * through the client that maps them: at most the 500 a workspace holds.
+   */
+  projectsFor(actAs: ActAs, options?: CallOptions): Promise<WireProject[]>;
+  /**
    * The inbox, through the shared adapter's transport: `listInbox`,
    * `getInboxMessage` and `resolveInboxPart` (plus read, dismiss and snooze)
    * in the generated client.
@@ -368,6 +374,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | bindings | `GET /api/clients/{id}/bindings` |
  * | recordDelivery | `PUT /api/inbox/{id}/deliveries/{client}` |
  * | inboxFor | `GET /api/inbox` with `act_as_client` and `act_as_user` |
+ * | projectsFor | `GET /api/projects` with `act_as_client` and `act_as_user`, every page |
  * | inbox | `GET /api/inbox`, `GET /api/inbox/{id}`, `POST /api/inbox/{id}/read`, `/dismiss`, `/snooze`, `/parts/{part}/resolve` |
  */
 export function httpWarp(cfg: {
@@ -546,6 +553,27 @@ export function httpWarp(cfg: {
       if (query.kind) q.set("kind", query.kind);
       if (query.limit) q.set("limit", String(query.limit));
       return http("GET", `/api/inbox?${q}`);
+    },
+    projectsFor: async (actAs) => {
+      const all: WireProject[] = [];
+      let before: string | null = null;
+      // A page holds 200 and a workspace at most 500, so three pages are all of them.
+      for (let page = 0; page < 3; page++) {
+        const q = new URLSearchParams({
+          act_as_client: actAs.client,
+          act_as_user: actAs.user,
+          limit: "200",
+        });
+        if (before) q.set("before", before);
+        const r: { projects: WireProject[]; next: string | null } = await http(
+          "GET",
+          `/api/projects?${q}`,
+        );
+        all.push(...r.projects);
+        before = r.next;
+        if (!before) break;
+      }
+      return all;
     },
     inbox: mailTransport(http as Http),
   };

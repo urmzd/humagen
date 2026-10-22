@@ -499,6 +499,49 @@ func TestAReadersOwnMarksStayOutOfAnotherReadersHistory(t *testing.T) {
 	}
 }
 
+// What is posted once under a key is never posted again for as long as the
+// inbox is kept: not while it is open, not once it is withdrawn, not after
+// a restart, and not past the day's caps, which a repeat never meets.
+func TestPostOnceNeverPostsAKeyTwice(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		caps := PostCaps{PerProject: 1}
+		first, posted, err := s.PostOnce(acme, "release:0.15.0", announcement("", "What's new"), t0, caps)
+		if err != nil || !posted || first.Key != "release:0.15.0" || !first.Broadcast || !slices.Equal(first.Audience, []string{"project:"}) {
+			t.Fatalf("first = %+v, %v, %v", first, posted, err)
+		}
+		// The day's one post is used, so only a repeat gets an answer.
+		if again, posted, err := s.PostOnce(acme, "release:0.15.0", announcement("", "What's new"), t0, caps); err != nil || posted || again.ID != first.ID {
+			t.Fatalf("again = %+v, %v, %v", again, posted, err)
+		}
+		if _, _, err := s.PostOnce(acme, "release:0.16.0", announcement("", "What's new"), t0, caps); !errors.Is(err, ErrLimit) {
+			t.Fatalf("another key past the cap = %v", err)
+		}
+		if _, _, err := s.Withdraw(acme, first.ID, "dana", "", t0); err != nil {
+			t.Fatal(err)
+		}
+		restarted, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, store := range map[string]*Store{"withdrawn": s, "after a restart": restarted} {
+			if again, posted, err := store.PostOnce(acme, "release:0.15.0", announcement("", "What's new"), t0.Add(48*time.Hour), PostCaps{}); err != nil || posted || again.ID != first.ID {
+				t.Errorf("%s: %+v, %v, %v", name, again, posted, err)
+			}
+		}
+		if got := ids(t, restarted, Query{Reader: "ada", ReaderProjects: []string{""}, Kinds: []Kind{KindAnnouncement}, State: "all", Now: t0}); !slices.Equal(got, []string{first.ID}) {
+			t.Errorf("the inbox after a restart = %q", got)
+		}
+		if _, _, err := s.PostOnce(acme, "", announcement("", "What's new"), t0, PostCaps{}); !errors.Is(err, ErrInvalid) {
+			t.Errorf("no key = %v", err)
+		}
+	})
+}
+
 // Whoever posts an announcement has read it: a person who wrote it, or who
 // published an agent's draft. Everyone else still has it to read, and the
 // mark is written with the post, so a rebuilt inbox has it too.

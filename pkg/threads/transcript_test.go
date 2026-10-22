@@ -153,3 +153,31 @@ func TestTheTranscriptKeepsTheNewestTurnsThatFit(t *testing.T) {
 		t.Fatalf("a limit smaller than a turn = %q", got)
 	}
 }
+
+// The announcement a thread was started from is the first line, after who
+// posted it, a person by name and handle or an agent marked as one, and
+// never after the person whose reply started the thread. A withdrawn one
+// says nothing of what it said.
+func TestAnAnnouncementIsTheLineOfWhoeverPostedIt(t *testing.T) {
+	reply := threads.MessageTurn(threads.Message{By: "okta|ana", Name: "Ana", Text: "@ignite what does it mean for us?"})
+	byDana := threads.AnnouncementTurn(threads.Announcement{Kind: threads.Person, By: "okta|dana", Name: "Dana", Subject: "Field offsite", Text: "Lisbon,\nin May."})
+	byRecap := threads.AnnouncementTurn(threads.Announcement{Kind: threads.Agent, By: "recap", Subject: "Weekly recap", Text: "Two renewals closed."})
+	withdrawn := threads.AnnouncementTurn(threads.Announcement{Kind: threads.Person, By: "okta|dana", Name: "Dana", Withdrawn: true})
+	for name, c := range map[string]struct {
+		seed threads.Turn
+		line string
+	}{
+		"a person's":  {byDana, "Dana (@dana): (announcement: Field offsite) Lisbon, in May."},
+		"an agent's":  {byRecap, "recap (agent): (announcement: Weekly recap) Two renewals closed."},
+		"a withdrawn": {withdrawn, "Dana (@dana): (announcement, since withdrawn)"},
+	} {
+		got := threads.Ask([]threads.Turn{c.seed, reply}, 10_000, people, threads.Asker{Person: "okta|ana", Name: "Ana"}, "and the dates?")
+		lines := strings.Split(got, "\n")
+		if len(lines) < 4 || lines[1] != c.line || lines[2] != "Ana (@ana): @ignite what does it mean for us?" {
+			t.Errorf("%s announcement reads\n%s", name, got)
+		}
+	}
+	if got := threads.Ask([]threads.Turn{byRecap}, 10_000, people, threads.Asker{Person: "okta|ana", Name: "Ana"}, "what changed?"); !strings.Contains(got, "recap (agent): (announcement: Weekly recap)") || !strings.HasSuffix(got, "\n\nwhat changed?") {
+		t.Fatalf("a thread whose only turn is its announcement sends\n%s", got)
+	}
+}

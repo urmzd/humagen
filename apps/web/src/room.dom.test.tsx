@@ -445,6 +445,64 @@ test("turns read earlier stay when the newest page moves on", async () => {
   assert.equal(screen.queryByText(words.olderTurns), null);
 });
 
+/** A thread a Slack reply to an announcement started, with the announcement as it stands. */
+function seeded(announcement: NonNullable<ThreadTurn["announcement"]>): ThreadPage {
+  const reply: ThreadTurn = {
+    kind: "message",
+    message: { id: "m-1", thread: "th-0123456789abcdef", by: "ana", name: "Ana", text: "what does it mean for renewals?", mentions: [], via: "app", at },
+  };
+  return {
+    ...page,
+    thread: { ...page.thread, channel: "general", announcement: announcement.id },
+    turns: [{ kind: "announcement", announcement }, reply],
+  };
+}
+
+function seededRoom(p: ThreadPage) {
+  net = stubFetch({
+    "GET /api/threads/th-0123456789abcdef": () => p,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/people": () => ({ people: [], next: null }),
+  });
+  render(
+    <ThreadRoom
+      id="th-0123456789abcdef"
+      me="ana"
+      initial={p}
+      tick={0}
+      agents={[helper]}
+      projects={tree}
+      root={null}
+      workspaceName="Acme"
+      canRun
+      onOpenChannel={() => {}}
+      onChanged={() => {}}
+    />,
+  );
+}
+
+test("a thread a reply to an announcement started opens with the announcement, from whoever posted it", async () => {
+  seededRoom(seeded({ id: "m-7", kind: "person", by: "dana", name: "Dana Scully", subject: "Globex renews in May", text: "Three more years.", at }));
+  const first = await screen.findByRole("article", { name: `${defaultCopy.template.announcement} from Dana Scully` });
+  assert.ok(first.textContent?.includes("Three more years."));
+  // Untitled, the thread is called by what was announced, not by the reply.
+  assert.ok(screen.getByRole("heading", { name: "Globex renews in May" }));
+  const articles = screen.getAllByRole("article");
+  assert.equal(articles[0], first, "the announcement comes first");
+  assert.equal(articles[1]?.getAttribute("aria-label"), "Message from Ana");
+});
+
+test("a recap's announcement is the agent's, and a withdrawn one says only that", async () => {
+  seededRoom(seeded({ id: "m-8", kind: "agent", by: "helper", subject: "Weekly recap", text: "Two renewals closed.", at }));
+  assert.ok(await screen.findByRole("article", { name: `${defaultCopy.template.announcement} from helper` }));
+  cleanup();
+  net?.restore();
+  seededRoom(seeded({ id: "m-9", kind: "person", by: "dana", name: "Dana Scully", withdrawn: true, at }));
+  const gone = await screen.findByRole("article", { name: `${defaultCopy.template.announcement} from Dana Scully` });
+  assert.ok(gone.textContent?.includes(defaultCopy.announcements.seedWithdrawn));
+  assert.ok(screen.getByRole("heading", { name: "what does it mean for renewals?" }), "a withdrawn subject is not the title");
+});
+
 /** The room with ledger parked on a question for the billing experts, as the platform says it to `ask`. */
 function questionRoom(ask: ThreadTurn["ask"], me = "priya", routes: Record<string, (body: unknown) => unknown> = {}) {
   const parked = {

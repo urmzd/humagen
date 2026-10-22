@@ -390,7 +390,7 @@ type ProjectAgents struct {
 	Version int `json:"version"`
 	// Enable, Allow and Default are what the project sets (projects.Agents).
 	Enable  []string `json:"enable"`
-	Allow   []string `json:"allow,omitempty"`
+	Allow   []string `json:"allow,omitzero"`
 	Default string   `json:"default,omitempty"`
 	// Available is what may run here, with Offers saying where each comes
 	// from, in the order of Available's names.

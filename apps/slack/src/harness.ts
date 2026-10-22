@@ -25,6 +25,7 @@ import {
   type Warp,
   WarpError,
   type WireMessage,
+  type WireProject,
 } from "./warp.ts";
 
 /** A run asked for: the body and the key, as `createRun` takes them. */
@@ -56,6 +57,8 @@ export class FakeSlack implements SlackApi {
   failing: Record<string, string | ((args: Record<string, unknown>) => string | undefined)> = {};
   /** What `conversations.replies` reads of each thread, by `channel/ts`. */
   readonly replies = new Map<string, { ts: string; user?: string; text?: string }[]>();
+  /** Who `users.info` says each Slack person is, by display name. */
+  readonly users = new Map<string, string>();
   private clock = 1_800_000_000;
 
   async call<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -65,6 +68,10 @@ export class FakeSlack implements SlackApi {
     if (code) throw new SlackError(method, code);
     if (method === "conversations.replies") {
       return { ok: true, messages: this.replies.get(`${args.channel}/${args.ts}`) ?? [] } as T;
+    }
+    if (method === "users.info") {
+      const name = this.users.get(String(args.user));
+      return { ok: true, ...(name ? { user: { profile: { display_name: name } } } : {}) } as T;
     }
     if (method === "chat.startStream" || method === "chat.postMessage") {
       this.clock += 1;
@@ -159,12 +166,18 @@ export class FakeWarp implements Warp {
   noDefault = false;
   /** The Slack channels each client is bound to. */
   readonly bound = new Map<string, Binding[]>();
+  /** The announcement each warp thread was started from, by thread. */
+  readonly seeded = new Map<string, string>();
   /** Where the app recorded it posted each inbox message. */
   readonly deliveries: { message: string; client: string; channel: string; ts: string }[] = [];
   /** Each mapped person's own inbox, by subject, as act_as reads it. */
   readonly personal = new Map<string, Record<string, unknown>[]>();
   /** Every inbox read made for someone, and for whom. */
   readonly readFor: ActAs[] = [];
+  /** Each mapped person's projects, by subject, as act_as lists them. */
+  readonly projects = new Map<string, WireProject[]>();
+  /** Every projects read made for someone, and for whom. */
+  readonly projectsReadFor: ActAs[] = [];
   /** Set to refuse the next answer, as warp does someone who may not answer. */
   refuseAnswer: WarpError | null = null;
   /**
@@ -275,14 +288,27 @@ export class FakeWarp implements Warp {
     const before = this.postedOnce.get(once);
     if (before) return { ...before, repeated: true };
     const where = `${s.client}/${s.channel}/${s.ts}`;
+    const bound = (this.bound.get(s.client) ?? []).find((b) => b.slack_channel === s.channel);
     let thread = this.surfaces.get(where);
     if (!thread) {
+      // As the platform does: a Slack thread under a post this app recorded
+      // is that announcement's while the Slack channel is bound to its
+      // project, and there one withdrawn starts nothing.
+      const receipt = this.deliveries.find(
+        (d) => d.client === s.client && d.channel === s.channel && d.ts === s.ts,
+      );
+      const found = receipt && this.mailbox.get(receipt.message);
+      const source = found?.source as { project?: string } | undefined;
+      const seed = bound && source?.project === bound.project ? found : undefined;
+      if (seed && seed.state !== "open") {
+        throw new WarpError(410, "a reply to this announcement starts nothing: it was withdrawn");
+      }
       thread = `th-${String(this.surfaces.size + 1).padStart(16, "0")}`;
       this.surfaces.set(where, thread);
+      if (receipt && seed) this.seeded.set(thread, receipt.message);
     }
     const n = [...this.postedOnce.keys()].filter((k) => k.startsWith(`${where}/`)).length + 1;
     const message = { id: `m-${n}`, text: body.text.replaceAll(`<@${s.app_user}>`, "").trim() };
-    const bound = (this.bound.get(s.client) ?? []).find((b) => b.slack_channel === s.channel);
     const posted: ThreadPosted = {
       thread: {
         id: thread,
@@ -382,12 +408,30 @@ export class FakeWarp implements Warp {
     this.readFor.push(actAs);
     const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user];
     if (!subject) throw new WarpError(403, "that person is not mapped to anyone in this workspace");
-    const mine = (this.personal.get(subject) ?? []).filter(
+    const all = this.personal.get(subject) ?? [];
+    const mine = all.filter(
       (m) =>
         (!query.kind || m.kind === query.kind) &&
         (query.state === "all" || m.state === (query.state ?? "open")),
     );
-    return { messages: mine.slice(0, query.limit ?? 50), open: mine.length, unread: 0, updates: 0 };
+    // The counts are the whole inbox's, as warp's are: announcements count only as updates.
+    const open = all.filter((m) => m.state === "open");
+    const news = open.filter((m) => m.kind === "announcement");
+    return {
+      messages: mine.slice(0, query.limit ?? 50),
+      open: open.length - news.length,
+      unread: open.filter((m) => m.kind !== "announcement" && m.unread).length,
+      updates: news.filter((m) => m.unread).length,
+    };
+  }
+
+  async projectsFor(actAs: ActAs) {
+    this.projectsReadFor.push(actAs);
+    const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user];
+    if (!subject) throw new WarpError(403, "that person is not mapped to anyone in this workspace");
+    const mine = this.projects.get(subject);
+    if (!mine) throw new WarpError(403, "that person cannot read projects");
+    return mine;
   }
 
   async getThread(id: string) {
@@ -699,6 +743,33 @@ export function click(
     message: { ts: at.ts, thread_ts: at.threadTs },
     actions: [{ action_id: button.action_id, value: button.value }],
     ...(at.state ? { state: at.state } : {}),
+  });
+}
+
+/**
+ * A click on the Home tab, as Slack sends it: from a view, with no message
+ * and no channel. The button is found in an actions block or beside a row.
+ */
+export function homeClick(blocks: unknown[], label: string, user = USER): Envelope {
+  type Button = { type: string; text?: { text: string }; action_id?: string; value?: string };
+  const buttons = (blocks as { type: string; elements?: Button[]; accessory?: Button }[])
+    .flatMap((b) => (b.type === "actions" ? (b.elements ?? []) : b.accessory ? [b.accessory] : []))
+    .filter((e) => e.type === "button");
+  const button = buttons.find((b) => b.text?.text === label);
+  if (!button) {
+    throw new Error(
+      `no button "${label}" among: ${buttons.map((b) => b.text?.text).join(", ") || "none"}`,
+    );
+  }
+  envelopes += 1;
+  return envelope("interactive", {
+    type: "block_actions",
+    team: { id: TEAM },
+    user: { id: user, team_id: TEAM },
+    container: { type: "view", view_id: "V01HOME" },
+    view: { type: "home" },
+    trigger_id: `trigger-${envelopes}`,
+    actions: [{ action_id: button.action_id, ...(button.value ? { value: button.value } : {}) }],
   });
 }
 

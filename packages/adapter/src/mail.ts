@@ -12,6 +12,7 @@
 import {
   ActionId,
   type ArtifactKind,
+  type HomeNotification,
   type HomeUpdate,
   type InboxMessage,
   isAnnouncement,
@@ -574,7 +575,7 @@ export function projectTransport(http: Http, project: string, children = false):
 export function updatesOf(
   messages: PlatformMessage[],
   titles: (project: string) => string,
-  url?: (project: string, id: string) => string,
+  url?: (project: string, id: string) => string | undefined,
 ): HomeUpdate[] {
   return orderUpdates(
     messages
@@ -582,6 +583,7 @@ export function updatesOf(
       .map((m) => {
         const project = projectOf(m);
         const kind = m.from.kind === "person" || m.from.kind === "agent" ? m.from.kind : "system";
+        const at = url?.(project, m.id);
         return {
           id: m.id,
           project,
@@ -590,8 +592,35 @@ export function updatesOf(
           from: { kind, name: m.from.name },
           at: m.at,
           unread: Boolean(m.unread),
-          ...(url ? { url: url(project, m.id) } : {}),
+          ...(at ? { url: at } : {}),
         };
       }),
   );
+}
+
+/**
+ * What needs the reader on Home, from a page of their own inbox: every open
+ * message but announcements, which are What's new. Most subjects start with
+ * who raised them ("lead failed", "Ana mentioned you in #renewals"), so the
+ * summary is what follows that name, and the whole subject when it does not
+ * start with it. `url` is where one opens.
+ */
+export function notificationsOf(messages: PlatformMessage[], url?: (id: string) => string | undefined): HomeNotification[] {
+  return messages
+    // A published announcement is news, not something to do. A draft is
+    // kind announcement too, but waits on its owners, so it stays here.
+    .filter((m) => !isAnnouncement(m) && messageState(m) === "open")
+    .map((m) => {
+      const name = m.from.name;
+      const summary = name && m.subject.startsWith(`${name} `) ? m.subject.slice(name.length + 1) : m.subject;
+      const at = url?.(m.id);
+      return {
+        kind: "inbox" as const,
+        id: m.id,
+        from: name,
+        summary,
+        at: m.at,
+        ...(at ? { url: at } : {}),
+      };
+    });
 }

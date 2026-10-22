@@ -44,7 +44,7 @@ func (s *Server) seenThread(h handler) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 		id := r.PathValue("id")
 		th, err := s.P.ThreadRecord(who.Tenant, id)
-		if err == nil && !s.P.Seer(who).Place(platform.Place{Project: th.Project, Thread: id}) {
+		if err == nil && !s.P.Seer(who).Conversation(id, th.Project) {
 			notFound(w)
 			return
 		}

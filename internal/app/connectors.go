@@ -43,6 +43,12 @@ const (
 	EnvGitHubChecks           = "WARP_GITHUB_CHECKS"
 	EnvGitHubGuides           = "WARP_GITHUB_GUIDES"
 	EnvGitHubMutations        = "WARP_GITHUB_MUTATIONS"
+	// EnvGitHubLogin is the app's own login. Once warp is built with a fiber
+	// whose GitHub connector reads it, a comment that mentions it and names
+	// no agent is answered by EnvGitHubDefault, else the home's chain. Until
+	// then it is kept and changes nothing.
+	EnvGitHubLogin   = "WARP_GITHUB_LOGIN"
+	EnvGitHubDefault = "WARP_GITHUB_DEFAULT_AGENT"
 )
 
 // Ids of the clients the environment configures.
@@ -215,7 +221,7 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 	if len(list(env(EnvGitHubOwners))) == 0 {
 		return nil, fmt.Errorf("GitHub installation needs $%s", EnvGitHubOwners)
 	}
-	opts := &clients.GitHubOptions{ReadRepositories: list(env(EnvGitHubReadRepositories))}
+	opts := &clients.GitHubOptions{ReadRepositories: list(env(EnvGitHubReadRepositories)), Login: env(EnvGitHubLogin)}
 	var err error
 	if opts.Mutations, err = boolEnv(env, EnvGitHubMutations); err != nil {
 		return nil, err
@@ -237,7 +243,7 @@ func githubClient(env func(string) string) (*platform.ClientInput, error) {
 			Identity: clients.Identity{
 				Owners: list(env(EnvGitHubOwners)), AppID: env(EnvGitHubApp), Installation: env(EnvGitHubInstallation),
 			},
-			Bots: pairs(env(EnvGitHubBots)), GitHub: opts,
+			DefaultAgent: env(EnvGitHubDefault), Bots: pairs(env(EnvGitHubBots)), GitHub: opts,
 		},
 		Token:         clients.SecretInput{Ref: "env:" + EnvGitHubToken},
 		SigningSecret: clients.SecretInput{Ref: "env:" + EnvGitHubSecret},

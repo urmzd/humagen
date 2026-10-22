@@ -15,19 +15,23 @@ import (
 // available there and below, and nowhere else.
 
 // getProjectAgents reads what a project turns on, what is available there as
-// a result and where each comes from, and who answers untagged messages.
+// a result and where each comes from, and who answers untagged messages. Its
+// lists leave out every agent that lives in a project the caller may not
+// read (platform.Seer.AgentsView).
 func (s *Server) getProjectAgents(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	v, err := s.P.ProjectAgentsOf(who.Tenant, r.PathValue("name"))
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, v)
+	ok(w, http.StatusOK, s.P.Seer(who).AgentsView(v))
 }
 
 // putProjectAgents replaces what a project turns on, as a whole. It needs
 // ownership of the project; the workspace's own, which hold the workspace
-// default, need projects:govern as well.
+// default, need projects:govern as well. An agent the caller may not read is
+// refused as one that does not exist, and the ones in the allow list they are
+// not shown are kept (platform.ProjectAgentsWrittenBy).
 func (s *Server) putProjectAgents(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body platform.AgentsInput
 	if !decode(w, r, &body) {
@@ -36,12 +40,17 @@ func (s *Server) putProjectAgents(w http.ResponseWriter, r *http.Request, who au
 	if _, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner); !found {
 		return
 	}
+	body, err := s.P.ProjectAgentsWrittenBy(r.Context(), who, r.PathValue("name"), body)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	v, err := s.P.SetProjectAgents(r.Context(), who.Tenant, r.PathValue("name"), writer(who), body)
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, v)
+	ok(w, http.StatusOK, s.P.Seer(who).AgentsView(v))
 }
 
 // agentHome is where an agent lives, as the home route answers.

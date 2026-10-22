@@ -432,6 +432,8 @@ export interface Client {
     guides?: boolean;
     mutations?: boolean;
     read_repositories?: string[];
+    /** The app's own login. Once warp's GitHub connector reads it, a comment that mentions it and names no agent is answered by the default; until then it changes nothing. */
+    login?: string;
   };
   /** Where the client files threads it starts outside a bound channel. Absent, the workspace's general. */
   home?: { project: string; channel?: string };
@@ -1024,6 +1026,8 @@ export interface Thread {
   visibility: "shared" | "private";
   participants: ThreadParticipant[];
   default?: string;
+  /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
+  announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
   surface?: { client: string; channel: string; ts: string };
   version: number;
@@ -1056,6 +1060,22 @@ export interface ThreadMessage {
 }
 
 /**
+ * The announcement a thread was started from, as it stands now: who posted
+ * it, a person by handle or an agent by name, and what it says. A withdrawn
+ * one says nothing more.
+ */
+export interface ThreadAnnouncement {
+  id: string;
+  kind: "person" | "agent";
+  by: string;
+  name?: string;
+  subject?: string;
+  text?: string;
+  withdrawn?: boolean;
+  at: string;
+}
+
+/**
  * The question a parked run waits on, as the reader stands to it: whether
  * they may answer it, and whom it is for otherwise.
  */
@@ -1070,9 +1090,10 @@ export interface ThreadAsk {
 }
 
 export interface ThreadTurn {
-  kind: "message" | "run";
+  kind: "message" | "run" | "announcement";
   message?: ThreadMessage;
   run?: Run;
+  announcement?: ThreadAnnouncement;
   /** On a run parked on a question a person answers. */
   ask?: ThreadAsk;
 }

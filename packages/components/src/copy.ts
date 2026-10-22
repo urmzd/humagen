@@ -231,6 +231,10 @@ export const defaultCopy = {
     unmuteFailed: "Could not unmute. Try again.",
     rootNotMuted: "The workspace's announcements are for everyone, so they can't be muted.",
     tooMany: (n: number) => `At most ${n} announcements a day are posted here. Try again tomorrow.`,
+    /** The first turn of a thread a reply to an announcement started, once it was withdrawn. */
+    seedWithdrawn: "This announcement was withdrawn.",
+    /** In Slack, to someone replying under an announcement that was withdrawn. */
+    replyGone: "This announcement was withdrawn, so a reply to it starts nothing.",
   },
   /** A task pinned to the top of the sidebar. Said beside its pin when the change could not be saved, or the preferences it is saved with could not be read. */
   pins: {
@@ -596,7 +600,7 @@ export const defaultCopy = {
         description: "A nightly digest, a weekly review, a check every hour.",
       },
     } as Record<string, { label: string; description: string; slack?: string }>,
-    needsYou: "Notifications",
+    needsYou: "Needs you",
     nothingWaiting: "Nothing needs you right now, and no alerts are open.",
     /** The page's one-line point, after the greeting. */
     notificationCount: (n: number) =>
@@ -614,6 +618,11 @@ export const defaultCopy = {
     whatsNew: "What's new",
     nothingNew: "Nothing new from your projects.",
     moreUpdates: (n: number) => `${n} more under Updates`,
+    yourProjects: "Your projects",
+    noProjects: "You are not in any project yet.",
+    moreProjects: (n: number) => `${n} more in Projects`,
+    /** A row's way in on Slack, where the title is not a link. */
+    open: "Open",
     moreAlerts: (n: number) => `${n} more open alert${n === 1 ? "" : "s"}`,
     review: "Review",
     whoAnswers: "Who answers you",

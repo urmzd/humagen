@@ -438,7 +438,7 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 		if err := applyWorkspace(ctx, p, doc); err != nil {
 			return err
 		}
-		if g := doc.Spec.Surfaces.GitHub; g != nil && g.Enabled {
+		if g := doc.Spec.Surfaces.GitHub; g != nil {
 			if err := applyGitHub(ctx, p, tenant, *g, log); err != nil {
 				return err
 			}
@@ -649,9 +649,22 @@ func parentsFirst(ps []spec.Project) []int {
 }
 
 // applyGitHub seats the file's GitHub installation as a client the API cannot
-// change. Its secrets are env: references, which is all a client's secret
-// may be; the operator lists the variables in secret_env.
+// change, and makes the one an earlier start kept follow the file. Its secrets
+// are env: references, which is all a client's secret may be; the operator
+// lists the variables in secret_env. A section with enabled: false turns the
+// kept client off and reads nothing else.
 func applyGitHub(ctx context.Context, p *platform.Platform, tenant string, g spec.GitHub, log *slog.Logger) error {
+	if !g.Enabled {
+		err := p.TurnOffClient(ctx, tenant, "file-github", "file")
+		if errors.Is(err, clients.ErrExists) {
+			log.Warn("github client from the file not turned off: it is not the file's", "tenant", tenant, "error", err)
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("platform %q: surfaces.github: %w", tenant, err)
+		}
+		return nil
+	}
 	for name, r := range map[string]*spec.Ref{"token": g.Token, "webhook_secret": g.WebhookSecret} {
 		if !strings.HasPrefix(r.Ref, "env:") {
 			return fmt.Errorf("platform %q: surfaces.github.%s: a client's secret is an env: reference", tenant, name)
@@ -662,14 +675,14 @@ func applyGitHub(ctx context.Context, p *platform.Platform, tenant string, g spe
 			ID: "file-github", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Managed: clients.ManagedFile,
 			Agents:   []string{clients.AnyAgent},
 			Identity: clients.Identity{Owners: g.Owners, AppID: g.App, Installation: g.Installation},
-			GitHub:   &clients.GitHubOptions{ReadRepositories: g.ReadRepos, Checks: g.Checks, Guides: g.Guides, Mutations: g.Mutations},
+			GitHub:   &clients.GitHubOptions{ReadRepositories: g.ReadRepos, Checks: g.Checks, Guides: g.Guides, Mutations: g.Mutations, Login: g.Login},
 		},
 		Token:         clients.SecretInput{Ref: g.Token.Ref},
 		SigningSecret: clients.SecretInput{Ref: g.WebhookSecret.Ref},
 	}
-	_, err := p.CreateClient(ctx, tenant, "file", in)
+	_, err := p.ApplyClient(ctx, tenant, "file", in)
 	if errors.Is(err, clients.ErrExists) {
-		log.Info("github client from the file already exists; left as it is", "tenant", tenant)
+		log.Warn("github client from the file not applied: another client answers for it", "tenant", tenant, "error", err)
 		return nil
 	}
 	if err != nil {

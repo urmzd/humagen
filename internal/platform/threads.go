@@ -129,12 +129,14 @@ type Posted struct {
 	Repeated bool `json:"repeated,omitempty"`
 }
 
-// ThreadTurn is one turn of a thread: a person's message or an agent's run.
+// ThreadTurn is one turn of a thread: a person's message, an agent's run,
+// or the announcement the thread was started from, which is its first.
 type ThreadTurn struct {
-	// Kind is message or run.
-	Kind    string           `json:"kind"`
-	Message *threads.Message `json:"message,omitempty"`
-	Run     *runs.Run        `json:"run,omitempty"`
+	// Kind is message, run or announcement.
+	Kind         string                `json:"kind"`
+	Message      *threads.Message      `json:"message,omitempty"`
+	Run          *runs.Run             `json:"run,omitempty"`
+	Announcement *threads.Announcement `json:"announcement,omitempty"`
 	// Ask is the question a parked run waits on, as the reader stands to
 	// it (AsksIn).
 	Ask *Ask `json:"ask,omitempty"`
@@ -142,8 +144,9 @@ type ThreadTurn struct {
 
 // Turn kinds.
 const (
-	TurnMessage = "message"
-	TurnRun     = "run"
+	TurnMessage      = "message"
+	TurnRun          = "run"
+	TurnAnnouncement = "announcement"
 )
 
 // ThreadSummary is one conversation at a glance: what its runs say, with
@@ -322,17 +325,20 @@ func postNeed(in MessageInput) projects.Role {
 	return projects.Viewer
 }
 
-// tagLookup resolves the names a message tags, within one tenant.
+// tagLookup resolves the names a message tags, within one tenant, as its
+// poster reads them: an agent they may not read tags no agent, as one that
+// does not exist.
 type tagLookup struct {
 	ctx    context.Context
 	p      *Platform
 	tenant string
 	slack  map[string]string
+	sees   func(agent string) bool
 }
 
 func (l tagLookup) Agent(name string) bool {
 	_, err := l.p.Agents.Get(l.ctx, l.tenant, name, 0)
-	return err == nil
+	return err == nil && (l.sees == nil || l.sees(name))
 }
 
 func (l tagLookup) Person(handle string) (string, bool) {
@@ -563,15 +569,17 @@ func (p *Platform) placeFor(person auth.Principal, project, channel string) (str
 }
 
 // checkDefault refuses a default that cannot answer where it is written: one
-// that is neither auto nor an agent available in the project.
-func (p *Platform) checkDefault(ctx context.Context, tenant, project, agent string) error {
+// that is neither auto nor an agent available in the project. sees is the
+// agents its writer may read, nil for every agent: any other is refused as
+// one that does not exist.
+func (p *Platform) checkDefault(ctx context.Context, tenant, project, agent string, sees func(string) bool) error {
 	if agent == "" || agent == threads.AutoName {
 		return nil
 	}
 	if !projects.ValidDefault(agent) {
 		return fmt.Errorf("%w: a default is an agent's name or auto", projects.ErrInvalid)
 	}
-	if _, err := p.Agents.Get(ctx, tenant, agent, 0); err != nil {
+	if _, err := p.Agents.Get(ctx, tenant, agent, 0); err != nil || (sees != nil && !sees(agent)) {
 		return fmt.Errorf("%w: there is no agent called %s", projects.ErrInvalid, agent)
 	}
 	if reason := p.tagRefusal(tenant, project, agent); reason != "" {
@@ -616,7 +624,8 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
-	if err := p.checkDefault(ctx, who.Tenant, project, in.Default); err != nil {
+	seer := p.Seer(person)
+	if err := p.checkDefault(ctx, who.Tenant, project, in.Default, seer.Agent); err != nil {
 		return Posted{}, err
 	}
 	if err := p.posts.take(who.Tenant, by, project, p.now()); err != nil {
@@ -631,9 +640,9 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if on != nil {
 		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
 		sf := on.ref.surface(on.client.ID)
-		rec.Surface, first.SurfaceID, slack = &sf, on.ref.message(), nil
+		rec.Surface, rec.Announcement, first.SurfaceID, slack = &sf, on.announcement, on.ref.message(), nil
 	}
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent})
 	if err != nil {
 		return Posted{}, err
 	}
@@ -704,7 +713,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
 		surfaceID, slack = on.ref.message(), nil
 	}
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: p.Seer(person).Agent})
 	if err != nil {
 		return Posted{}, err
 	}
@@ -1041,14 +1050,14 @@ func (rm room) after(id string, before time.Time) []threads.Turn {
 // it and the follow-ups to those made before the message, and ahead of them
 // the turns that the first message follows.
 func (p *Platform) roomBefore(tenant string, th threads.Thread, m threads.Message) []threads.Turn {
-	return p.messagesBefore(tenant, th, p.roomOf(tenant, th.ID), m, maxRoomDepth)
+	return append(p.seedTurns(tenant, th), p.messagesBefore(tenant, th, p.roomOf(tenant, th.ID), m, maxRoomDepth)...)
 }
 
 // branchBefore is the conversation as a follow-up through the API finds it:
 // the runs of its branch and, when the first of them answers a message, the
 // room up to and with that message ahead of them.
 func (p *Platform) branchBefore(tenant string, th threads.Thread, path []runs.Run) []threads.Turn {
-	return p.runsBefore(tenant, th, p.roomOf(tenant, th.ID), path, maxRoomDepth)
+	return append(p.seedTurns(tenant, th), p.runsBefore(tenant, th, p.roomOf(tenant, th.ID), path, maxRoomDepth)...)
 }
 
 func (p *Platform) messagesBefore(tenant string, th threads.Thread, rm room, m threads.Message, depth int) []threads.Turn {
@@ -1196,7 +1205,7 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	if in.Version != th.Version {
 		return threads.Thread{}, fmt.Errorf("%w: %q is at version %d, not %d", threads.ErrVersion, id, th.Version, in.Version)
 	}
-	if err := p.checkDefault(ctx, who.Tenant, th.Project, in.Default); err != nil {
+	if err := p.checkDefault(ctx, who.Tenant, th.Project, in.Default, p.Seer(who).Agent); err != nil {
 		return threads.Thread{}, err
 	}
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
@@ -1238,7 +1247,8 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 	for i, a := range in.Add {
 		switch a.Kind {
 		case threads.Agent:
-			if _, err := p.Agents.Get(ctx, who.Tenant, a.Name, 0); err != nil {
+			// One the caller may not read is one that does not exist.
+			if _, err := p.Agents.Get(ctx, who.Tenant, a.Name, 0); err != nil || !p.Seer(who).Agent(a.Name) {
 				return threads.Thread{}, fmt.Errorf("%w: there is no agent called %s", threads.ErrInvalid, a.Name)
 			}
 			if reason := p.tagRefusal(who.Tenant, th.Project, a.Name); reason != "" {
@@ -1335,7 +1345,8 @@ func (p *Platform) ThreadTurns(tenant, id, before string, limit int) (threads.Th
 
 // turnsOf is every turn of a thread, in the order they were made: each
 // message by when it was posted, each run by when it was accepted, a
-// message ahead of the runs that answer it.
+// message ahead of the runs that answer it. A thread started from an
+// announcement starts with it, as it stands now.
 func (p *Platform) turnsOf(tenant string, th threads.Thread) []ThreadTurn {
 	var out []ThreadTurn
 	if turns, err := p.Runs.Conversation(tenant, th.ID); err == nil {
@@ -1367,6 +1378,9 @@ func (p *Platform) turnsOf(tenant string, th threads.Thread) []ThreadTurn {
 		// may answer it.
 		return cmp.Compare(rank(a), rank(b))
 	})
+	if a, ok := p.seedOf(tenant, th); ok {
+		out = append([]ThreadTurn{{Kind: TurnAnnouncement, Announcement: &a}}, out...)
+	}
 	if out == nil {
 		out = []ThreadTurn{}
 	}
@@ -1382,8 +1396,11 @@ func rank(t ThreadTurn) int {
 }
 
 func (t ThreadTurn) at() time.Time {
-	if t.Message != nil {
+	switch {
+	case t.Message != nil:
 		return t.Message.At
+	case t.Announcement != nil:
+		return t.Announcement.At
 	}
 	return t.Run.CreatedAt
 }
@@ -1402,7 +1419,7 @@ func (p *Platform) ThreadPage(tenant string, q runs.ThreadQuery) ([]ThreadSummar
 // full of those, so a hidden conversation never shortens one.
 func (p *Platform) ThreadPageAs(who auth.Principal, q runs.ThreadQuery) ([]ThreadSummary, string, error) {
 	seer := p.Seer(who)
-	return p.threadPage(who.Tenant, q, func(s ThreadSummary) bool { return seer.Place(Place{Project: s.Project, Thread: s.ID}) })
+	return p.threadPage(who.Tenant, q, func(s ThreadSummary) bool { return seer.Conversation(s.ID, s.Project) })
 }
 
 func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(ThreadSummary) bool) ([]ThreadSummary, string, error) {

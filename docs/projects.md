@@ -574,9 +574,17 @@ because every run passes through admission:
   and the root for a platform agent, so the home's limits count it and the
   runs it calls are checked there, as for any run of that agent.
 
-Housekeeping (`OriginSystem`) is exempt, as it is from admission. Earlier
-checks use the same function and give the same answer sooner: writing a
-schedule, a default or a tag, and `GET /api/pick`.
+Housekeeping (`OriginSystem`) is exempt, as it is from admission. It is read
+where the turn it serves is, so a title or memory agent that lives in a
+project is asked only about the turns there and below, whose readers all read
+it. The conversation of its own a housekeeping run makes is filed at the
+workspace, and is counted there only for a reader who may read the turn it
+serves. A reader's counts are decided as of one moment, so a conversation
+opened while they are read, a housekeeping run's or a private thread's, is
+counted from the next read. Earlier checks use the same function and give the same answer sooner:
+writing a schedule, a default or a tag, and `GET /api/pick`. An agent the
+writer may not read is not one they are told about: naming it answers as
+naming an agent that does not exist, at every one of them.
 
 ### Homes
 
@@ -717,6 +725,8 @@ the reader cannot see never reaches their stream.
 - `deliver: inbox` sends the answer to the schedule's creator (kind
   `result`), which closes the gap that a scheduled run's answer reaches nobody
   today.
+- **warp**: a release's notes in the root, `From{system, warp}` (see
+  Release notes).
 
 ### A recap is a scheduled agent
 
@@ -733,7 +743,8 @@ the chain, never housekeeping. Its grounding:
   - runs (a `Summarize` filtered by project);
   - threads started and finished;
   - artifacts, approved notes and announcements;
-  - schedule and project record changes.
+  - schedule and project record changes. A change of an agent's home names
+    the agent only when everyone the recap reaches may read it.
 
   It returns at most 50 rows a section and 32 KB in all. A run with no
   project gets an error;
@@ -754,6 +765,26 @@ cursor. Inbox retention for closed broadcasts is a follow-up (see Risks).
 `workspace.release_notes: true` (default false) posts the running version's
 `feat` entries from the embedded CHANGELOG.md into the root's inbox as
 `From{system, warp}`, keyed `release:<version>`, once.
+
+- The module root package embeds CHANGELOG.md, the one package that can
+  reach it, and `internal/release` reads it: a release is a `## 0.16.0
+  (date)` heading, and its `feat` entries are its `### Breaking` and
+  `### Features` groups, each entry without its markup and commit link. The
+  release tool files a breaking `feat` under Breaking alone and does not
+  write an entry's type, so a breaking change of another type is posted
+  too. Fixes and the rest are not posted.
+- The running version is what a release build stamps with `-ldflags`, which
+  counts only in warp's own binary, else the module version Go records for
+  warp, in its binary or in a program that imports it. `dev`, a local build
+  and a pseudo-version are not releases, and post nothing.
+- At each start, once the Platform documents are applied, each workspace
+  that sets it is posted the release, unless it has no breaking changes
+  and no features.
+  `inbox.Store.PostOnce` checks the key under the inbox lock: an
+  announcement ever raised under it, withdrawn or not, is kept, so a restart
+  or a later process on the same database posts nothing. It is an
+  announcement like any other in the root: everyone reads it, What's new
+  shows it, and Hide for Me hides one reader's copy.
 
 ## Permissions
 
@@ -941,9 +972,12 @@ One predicate, `p.Sees(who, place)`, filters every read of:
 - artifacts and their downloads;
 - schedules and the inbox;
 - memory and pending memory;
-- `/api/agents` (homed agents).
+- `/api/agents` (homed agents);
+- the agents a client, a project's lists and the workspace's settings name.
 
-A hidden object answers 404.
+A hidden object answers 404. A hidden agent a record names is left out of it,
+a change keeps it, and naming one, in any spelling of its name, answers as
+naming no agent.
 
 ### Phase 8
 
@@ -1171,9 +1205,11 @@ Copy goes in `packages/components/src/copy.ts`:
 - sentence-case empty states ("New announcements land here. What you hid is
   under Resolved.").
 
-Shared pieces: `packages/core` gains `HomeModel.updates`, and
-`packages/adapter` maps `announcement`, `draft` and `mention` (`kinds`,
-`templateOf`), with parity tests in `apps/slack/src/parity.test.tsx`.
+Shared pieces: `packages/core` gains `HomeModel.updates` and
+`HomeModel.projects`, and `packages/adapter` maps `announcement`, `draft` and
+`mention` (`kinds`, `templateOf`) and makes What's new, Your projects and
+what needs the reader from the platform's reads (`updatesOf`, `projectsOf`,
+`notificationsOf`), with parity tests in `apps/slack/src/parity.test.tsx`.
 
 ### Slack (one app per client)
 
@@ -1213,15 +1249,37 @@ Shared pieces: `packages/core` gains `HomeModel.updates`, and
   whose `general` channel is bound. It posts it top-level once and records
   `PUT /api/inbox/{id}/deliveries/{client}`, so a restart, an edit or a
   withdrawal updates that post instead of posting again. A reply in its
-  thread starts a shared thread seeded with the announcement. Drafts never
-  reach a channel.
+  thread starts a shared thread seeded with the announcement. Slack delivers
+  a reply in a channel thread only when it mentions the app, so the reply
+  that mentions it posts, with the post's surface, into the thread the
+  platform finds by that post's receipt: in the bound channel, its turns
+  start with the announcement from whoever posted it (the scheduled agent
+  for a recap), then the reply as the person's own message, answered by the
+  channel's chain. A later reply finds the same thread, and once the
+  announcement is withdrawn the thread says only that. A reply under one
+  withdrawn before anyone replied starts nothing, and drafts never reach a
+  channel. Only a thread the binding files in the announcement's project is
+  seeded: after the Slack channel is bound to another project, or unbound, a
+  reply under an old post starts a thread there as any other.
 - **App Home.** The shared Home, through `homeView`, replaces the bare
-  MailboxView. It shows Needs you (at most 5), What's new (at most 5) and Your
-  projects (at most 8), read as the mapped person through `act_as`, within the
-  100-block budget.
+  MailboxView for a person the client maps. It shows Needs you (at most 5),
+  What's new (at most 5) and Your projects (at most 8, where something
+  happened most recently first, archived ones left out), read as the mapped
+  person through `act_as` (`GET /api/inbox` and `GET /api/projects` with
+  `act_as_client` and `act_as_user`), within the 100-block budget. Each opens
+  in the console when the app has its address. Without it, Review sends what
+  needs the person to their messages with the app, and What's new and Your
+  projects are shown to read. Ask a Question and Build an Agent open a form
+  whose words are posted as the person in their messages with the app, Build
+  an Agent tagging `@warp-builder` where the client reaches it; Search
+  Context opens the console. Someone the client maps to nobody keeps the
+  mailbox.
 - **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
-  a tag; otherwise the client's default; otherwise nothing. Threads are filed
-  in the client's home.
+  a tag; otherwise the client's default; otherwise nothing. As Slack delivers
+  only what mentions the app, a comment that names no agent asks the client
+  only when it mentions the app's own login (`github.login`): `@warp what
+  changed?`. One that mentions neither starts nothing, so a busy repository
+  wakes no agent. Threads are filed in the client's home.
 
 Every Slack change passes `pnpm validate:slack`, and
 `TestTheSlackManifestIsWhatWarpGenerates` stays green with no new scope.

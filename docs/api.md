@@ -106,6 +106,8 @@ workspace comes from the token's tenant claim. Each operation's `x-permission`
 names the scope it needs. A Slack surface needs at least
 `warp:agents:read`, `warp:runs:read`, `warp:runs:write` and
 `warp:billing:read`, plus the write scope for each inbox action it offers.
+The Slack app's Home lists a mapped person's projects, which takes
+`warp:projects:read` too.
 See [security](security.md) for setting up the identity provider.
 
 Under `make dev` the server runs with development auth: every request is the

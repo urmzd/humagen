@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/urmzd/fiber/pkg/topic"
+
 	"github.com/urmzd/warp/pkg/integrations/github"
 )
 
@@ -111,5 +113,47 @@ func TestGuideDoesNotWriteAfterThePRHeadChanges(t *testing.T) {
 	err := api.UpdateGuide(context.Background(), github.Ref{Owner: "acme", Repo: "repo", Number: 42}, github.Guide{Agent: "reviewer", BotLogin: "reviewer", HeadSHA: commitSHA, Body: "guide"})
 	if err == nil || writes != 0 {
 		t.Fatalf("writes=%d error=%v", writes, err)
+	}
+}
+
+// A pull request comment whose agent the platform resolves once the tag
+// reaches it, such as one addressed to the app that names no agent, posts no
+// guide: the guide names the agent that answers, which is not known yet. It is
+// still raised. A bot login mapped to fiber's control name raises the tag the
+// connector raises for such a comment.
+func TestACommentWhoseAgentIsResolvedLaterPostsNoGuide(t *testing.T) {
+	fake := github.NewFake()
+	ref := github.Ref{Owner: "acme", Repo: "repo", Number: 42}
+	evidence := github.Context{Subject: github.ContextSubject{Number: 42, Title: "Add feature"}}
+	evidence.Subject.Head.SHA = commitSHA
+	if err := fake.SeedContext(ref, evidence); err != nil {
+		t.Fatal(err)
+	}
+	c, tags := start(t, github.Config{API: fake, Guides: true, Bots: map[string]string{"reviewer[bot]": "reviewer", "warp": topic.ControlName}})
+	comment := func(delivery, body string) {
+		t.Helper()
+		raw := fmt.Sprintf(`{"action":"created","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"octocat","type":"User"},"issue":{"number":42,"pull_request":{"url":"x"}},"comment":{"id":7,"body":%q}}`, body)
+		w := httptest.NewRecorder()
+		c.ServeHTTP(w, deliver(t, "issue_comment", delivery, raw))
+		if w.Code != http.StatusOK {
+			t.Fatalf("status %d: %s", w.Code, w.Body.String())
+		}
+	}
+	comment("to-the-app", "@warp what changed?")
+	select {
+	case tag := <-tags:
+		if tag.Agent != topic.ControlName {
+			t.Fatalf("the comment raised a tag for %q", tag.Agent)
+		}
+	default:
+		t.Fatal("the comment raised no tag")
+	}
+	if got := fake.Comments(); len(got) != 0 {
+		t.Fatalf("a guide was posted for an agent nobody has chosen: %+v", got)
+	}
+	comment("to-reviewer", "@reviewer what changed?")
+	<-tags
+	if got := fake.Comments(); len(got) != 1 || !strings.Contains(got[0].Body, "@reviewer") {
+		t.Fatalf("the guide for a named agent is %+v", got)
 	}
 }

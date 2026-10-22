@@ -44,7 +44,9 @@ type Agents struct {
 	// Allow, when set, is the only agents that may run here and below. Every
 	// allow list on the chain applies, so a child can only narrow what its
 	// parent allows. Nil narrows nothing; a set list names at least one agent.
-	Allow []string `json:"allow,omitempty"`
+	// A set list is written even when empty, as it reads to someone not
+	// shown the agents it names.
+	Allow []string `json:"allow,omitzero"`
 	// Default answers a message that tags no agent, here and below: an agent,
 	// or Auto. "" inherits the nearest ancestor's.
 	Default string `json:"default,omitempty"`
@@ -171,10 +173,11 @@ type Availability struct {
 	Names []string `json:"names"`
 }
 
-// Home returns the project an agent lives in. It reports false for a
-// platform agent.
+// Home returns the project an agent lives in, by any spelling of its name,
+// as the registry finds an agent by any. It reports false for a platform
+// agent.
 func (t *Tree) Home(agent string) (string, bool) {
-	p, ok := t.homes[agent]
+	p, ok := t.homes[agentspec.NormalizeName(agent)]
 	return p, ok
 }
 

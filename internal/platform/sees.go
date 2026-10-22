@@ -76,6 +76,17 @@ func placeOfRun(r runs.Run) Place {
 	return Place{Project: r.Project, Thread: r.Thread}
 }
 
+// placeOfConversation is where a conversation lives: its project, from its
+// record, in the conversation itself. A housekeeping run is a conversation of
+// its own, with no record, and it lives where its run does: with the turn it
+// serves, whose words it was sent.
+func (p *Platform) placeOfConversation(tenant, id, project string) Place {
+	if r, err := p.Runs.Get(tenant, id); err == nil && r.Origin == runs.OriginSystem && r.Thread == id {
+		return placeOfRun(r)
+	}
+	return Place{Project: project, Thread: id}
+}
+
 // privateThread reports a conversation only its participants read.
 func (p *Platform) privateThread(tenant, id string) bool {
 	th, err := p.Threads.Get(tenant, id)
@@ -195,6 +206,12 @@ func (s *Seer) hosting(client string) bool {
 	return v
 }
 
+// Conversation reports whether the reader sees a conversation, by its id and
+// the project its record files it in (ThreadRecord).
+func (s *Seer) Conversation(id, project string) bool {
+	return s.Place(s.p.placeOfConversation(s.who.Tenant, id, project))
+}
+
 // Run reports whether the reader sees a run: where its conversation lives.
 func (s *Seer) Run(r runs.Run) bool { return s.Place(placeOfRun(r)) }
 
@@ -266,8 +283,9 @@ func (s *Seer) Rule(r alerts.Rule) bool {
 // Artifact reports whether the reader sees a published file.
 func (s *Seer) Artifact(a artifacts.Artifact) bool { return s.Place(placeOfArtifact(a)) }
 
-// Agent reports whether the reader sees an agent: a platform agent always, an
-// agent that lives in a project only where they see the project.
+// Agent reports whether the reader sees an agent, by any spelling of its
+// name: a platform agent always, an agent that lives in a project only where
+// they see the project.
 func (s *Seer) Agent(name string) bool {
 	home, homed := s.tree.Home(name)
 	return !homed || s.Project(home)
@@ -284,21 +302,41 @@ func (s *Seer) MemoryOwner(owner string) bool {
 
 // ProjectCounts is what each of the reader's workspace's projects holds that
 // they may read, by name: the run index's counts, leaving out the private
-// threads they take no part in, so a count says nothing of a thread the
-// reader is not shown. A project the reader may not see is the caller's to
-// leave out.
+// threads they take no part in and the conversations of housekeeping runs
+// that serve a turn they may not read, so a count says nothing of a
+// conversation the reader is not shown. A project the reader may not see is
+// the caller's to leave out.
+//
+// What the reader may read is decided as of a mark taken first. Every
+// conversation opened by then is decided: a private thread's record is
+// written before its first run is recorded, and a housekeeping run's
+// conversation is among SystemThreads from when its run is recorded. One
+// opened after the mark is counted from a later read.
 func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCount {
 	seer := p.Seer(who)
+	if seer.govern {
+		return p.Runs.ProjectCounts(who.Tenant)
+	}
+	mark := p.Runs.Opened(who.Tenant)
 	hidden := map[string]bool{}
 	for _, th := range p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return th.Visibility == threads.Private }) {
 		if !seer.Place(Place{Project: th.Project, Thread: th.ID}) {
 			hidden[th.ID] = true
 		}
 	}
-	if len(hidden) == 0 {
-		return p.Runs.ProjectCounts(who.Tenant)
+	// A housekeeping run's conversation has no record and is counted at the
+	// workspace, where its run is filed. It is read, as it is listed, where
+	// the turn it serves is.
+	for _, id := range p.Runs.SystemThreads(who.Tenant) {
+		if !seer.Conversation(id, "") {
+			hidden[id] = true
+		}
 	}
-	return p.Runs.ProjectCountsWhere(who.Tenant, func(thread string) bool { return !hidden[thread] })
+	var keep func(string) bool
+	if len(hidden) > 0 {
+		keep = func(thread string) bool { return !hidden[thread] }
+	}
+	return p.Runs.ProjectCountsWhere(who.Tenant, mark, keep)
 }
 
 // SeesThread reports whether a reader may read a thread: its project, and in

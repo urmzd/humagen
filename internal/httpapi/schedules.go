@@ -176,10 +176,15 @@ func (s *Server) filedBy(w http.ResponseWriter, who auth.Principal, sc cron.Sche
 // every occurrence later, and so is one not available in the schedule's
 // project. "~" is the workspace, which files a schedule in no project.
 // Filing one in a project takes being a member of it, as starting a
-// conversation there does.
+// conversation there does. An agent the caller may not read is one that is
+// not there.
 func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.Principal, body schedule, meta map[string]string) (map[string]string, bool) {
 	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, body.Agent, 0); err != nil {
 		s.problem(w, err)
+		return nil, false
+	}
+	if !s.P.Seer(who).Agent(body.Agent) {
+		notFound(w)
 		return nil, false
 	}
 	if meta == nil {

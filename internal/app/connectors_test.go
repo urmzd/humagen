@@ -5,6 +5,8 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -19,6 +21,9 @@ import (
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/integrations/github"
 	"github.com/urmzd/warp/pkg/integrations/slack"
+	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/warp/pkg/state/statetest"
 )
 
 func envOf(vars map[string]string) func(string) string {
@@ -76,7 +81,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		EnvSlackCommands: `[{"name":"create-pr","description":"Open a pull request","argument_hint":"[title]"}]`,
 		EnvGitHubToken:   "ghs-legacy", EnvGitHubSecret: "legacy-github-secret-of-16-bytes", EnvGitHubOwners: "acme, acme-labs",
 		EnvGitHubBots: "helper[bot]=helper", EnvGitHubChecks: "false", EnvGitHubReadRepositories: "acme/handbook",
-		EnvGitHubAutoLabels: `{"acme/handbook":{"agent:auto":"helper"}}`,
+		EnvGitHubAutoLabels: `{"acme/handbook":{"agent:auto":"helper"}}`, EnvGitHubLogin: "warp[bot]", EnvGitHubDefault: "helper",
 	}
 	defaults, err := defaultClients(envOf(vars))
 	if err != nil {
@@ -139,7 +144,8 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		t.Fatalf("slack client = %+v", sl)
 	}
 	gh, _ := p.Clients.Get("trial", defaultGitHubClient)
-	if len(gh.Identity.Owners) != 2 || gh.GitHub.AutoLabels["acme/handbook"]["agent:auto"] != "helper" || gh.GitHub.ReadRepositories[0] != "acme/handbook" {
+	if len(gh.Identity.Owners) != 2 || gh.GitHub.AutoLabels["acme/handbook"]["agent:auto"] != "helper" || gh.GitHub.ReadRepositories[0] != "acme/handbook" ||
+		gh.GitHub.Login != "warp[bot]" || gh.DefaultAgent != "helper" {
 		t.Fatalf("github client = %+v", gh)
 	}
 
@@ -234,5 +240,220 @@ func TestSecretReferencesAreGivenToTenantsByTheOperator(t *testing.T) {
 		if _, err := secretRefs(raw, "trial", envOf(nil)); err == nil {
 			t.Errorf("-secret-refs %q was accepted", raw)
 		}
+	}
+}
+
+// The file's GitHub installation carries the app's own login, which tells a
+// comment addressed to the app apart from one addressed to nobody. A login
+// that is not one fails the start.
+func TestTheFilesGitHubClientCarriesTheAppsLogin(t *testing.T) {
+	vars := map[string]string{EnvGitHubToken: "ghs-file", EnvGitHubSecret: "file-github-secret-of-16-bytes"}
+	apply := func(login string) (*platform.Platform, error) {
+		p, err := platform.New(platform.Config{
+			Workspace:  t.TempDir(),
+			Env:        func(name string) (string, bool) { v, ok := vars[name]; return v, ok },
+			SecretRefs: map[string][]string{"acme": {EnvGitHubToken, EnvGitHubSecret}},
+			GitHubAPI:  func(string) github.API { return github.NewFake() },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = p.Close() })
+		g := spec.GitHub{
+			Enabled: true, Owners: []string{"acme"}, Login: login,
+			Token: &spec.Ref{Ref: "env:" + EnvGitHubToken}, WebhookSecret: &spec.Ref{Ref: "env:" + EnvGitHubSecret},
+		}
+		return p, applyGitHub(t.Context(), p, "acme", g, slog.Default())
+	}
+	p, err := apply("warp[bot]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := p.Clients.Get("acme", "file-github")
+	if err != nil || c.GitHub == nil || c.GitHub.Login != "warp[bot]" || c.Managed != clients.ManagedFile {
+		t.Fatalf("the file's client = %+v, %v", c, err)
+	}
+	if _, err := apply("@warp"); err == nil {
+		t.Fatal("a login that is no GitHub login was accepted")
+	}
+}
+
+// The file is applied at every start, its GitHub installation too: a client an
+// earlier start kept follows the file, so a login added later takes effect at
+// the next start. An unchanged file makes no new version, the API still
+// cannot change the client, and a client of that id the console made is left
+// as it is.
+func TestTheFilesGitHubClientFollowsTheFileAtEveryStart(t *testing.T) {
+	vars := map[string]string{EnvGitHubToken: "ghs-file", EnvGitHubSecret: "file-github-secret-of-16-bytes"}
+	start := func(st state.Store) *platform.Platform {
+		p, err := platform.New(platform.Config{
+			Workspace:  t.TempDir(),
+			Backends:   platform.Backends{State: st},
+			Env:        func(name string) (string, bool) { v, ok := vars[name]; return v, ok },
+			SecretRefs: map[string][]string{"acme": {EnvGitHubToken, EnvGitHubSecret}},
+			GitHubAPI:  func(string) github.API { return github.NewFake() },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = p.Close() })
+		return p
+	}
+	file := func(login string) spec.GitHub {
+		return spec.GitHub{
+			Enabled: true, Owners: []string{"acme"}, Login: login,
+			Token: &spec.Ref{Ref: "env:" + EnvGitHubToken}, WebhookSecret: &spec.Ref{Ref: "env:" + EnvGitHubSecret},
+		}
+	}
+	apply := func(p *platform.Platform, g spec.GitHub) clients.Client {
+		t.Helper()
+		if err := applyGitHub(t.Context(), p, "acme", g, slog.Default()); err != nil {
+			t.Fatal(err)
+		}
+		c, err := p.Clients.Get("acme", "file-github")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		if c := apply(start(st), file("")); c.Version != 1 || c.GitHub.Login != "" {
+			t.Fatalf("the first start kept %+v", c)
+		}
+		p := start(st)
+		c := apply(p, file("warp[bot]"))
+		if c.Version != 2 || c.GitHub == nil || c.GitHub.Login != "warp[bot]" || c.Managed != clients.ManagedFile || !c.Enabled {
+			t.Fatalf("after the login was added, the client is %+v", c)
+		}
+		if c.Credentials.Token.Ref != "env:"+EnvGitHubToken || c.Credentials.SigningSecret.Ref != "env:"+EnvGitHubSecret {
+			t.Fatalf("the client's secrets are %+v", c.Credentials)
+		}
+		if again := apply(start(st), file("warp[bot]")); again.Version != 2 || again.GitHub.Login != "warp[bot]" {
+			t.Fatalf("an unchanged file made %+v", again)
+		}
+		if _, err := p.UpdateClient(t.Context(), "acme", "file-github", "admin", platform.ClientInput{Client: c}); !errors.Is(err, clients.ErrManaged) {
+			t.Fatalf("the API changed the file's client: %v", err)
+		}
+	})
+
+	// A console client of that id is not the file's to change.
+	console := start(state.NewMemory())
+	made, err := console.CreateClient(t.Context(), "acme", "admin", platform.ClientInput{
+		Client: clients.Client{
+			ID: "file-github", Name: "GitHub", Surface: clients.GitHub, Enabled: true,
+			Identity: clients.Identity{Owners: []string{"acme"}}, DefaultAgent: "helper",
+		},
+		Token: clients.SecretInput{Value: "ghs-console"}, SigningSecret: clients.SecretInput{Value: "console-secret-of-16-bytes"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept := apply(console, file("warp[bot]")); kept.Managed != "" || kept.Version != made.Version || kept.GitHub != nil {
+		t.Fatalf("the file took over the console's client: %+v", kept)
+	}
+}
+
+// A section that turns GitHub off turns off the client an earlier start kept.
+// The record stays the file's and stops answering, so a signed hook is
+// answered 404 as for no client, and the next start keeps it off without a new
+// version. Turning it off needs none of the section's other fields. Turning
+// the section back on brings the client back. A console client of that id is
+// left as it is.
+func TestEnabledFalseTurnsTheFilesGitHubClientOff(t *testing.T) {
+	vars := map[string]string{EnvGitHubToken: "ghs-file", EnvGitHubSecret: "file-github-secret-of-16-bytes"}
+	start := func(st state.Store) *platform.Platform {
+		p, err := platform.New(platform.Config{
+			Workspace:  t.TempDir(),
+			Backends:   platform.Backends{State: st},
+			Env:        func(name string) (string, bool) { v, ok := vars[name]; return v, ok },
+			SecretRefs: map[string][]string{"acme": {EnvGitHubToken, EnvGitHubSecret}},
+			GitHubAPI:  func(string) github.API { return github.NewFake() },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = p.Close() })
+		return p
+	}
+	on := spec.GitHub{
+		Enabled: true, Owners: []string{"acme"},
+		Token: &spec.Ref{Ref: "env:" + EnvGitHubToken}, WebhookSecret: &spec.Ref{Ref: "env:" + EnvGitHubSecret},
+	}
+	off := on
+	off.Enabled = false
+	apply := func(p *platform.Platform, g spec.GitHub) clients.Client {
+		t.Helper()
+		doc := spec.Platform{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{Surfaces: spec.Surfaces{GitHub: &g}}}
+		if err := applyPlatforms(t.Context(), p, spec.Config{Platforms: []spec.Platform{doc}}, slog.Default()); err != nil {
+			t.Fatal(err)
+		}
+		c, err := p.Clients.Get("acme", "file-github")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	ping := func(p *platform.Platform) int {
+		t.Helper()
+		body := `{"zen":"Keep it logically awesome.","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"human","type":"User"}}`
+		mac := hmac.New(sha256.New, []byte(vars[EnvGitHubSecret]))
+		mac.Write([]byte(body))
+		r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(body))
+		r.Header.Set(signature.HeaderGitHubSignature, "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		r.Header.Set("X-GitHub-Event", "ping")
+		r.Header.Set("X-GitHub-Delivery", "ping-1")
+		w := httptest.NewRecorder()
+		p.IngressHandler().ServeHTTP(w, r)
+		return w.Code
+	}
+
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		if c, p := apply(start(st), on), start(st); !c.Enabled || ping(p) != http.StatusOK {
+			t.Fatalf("the first start kept %+v, which does not answer", c)
+		}
+		p := start(st)
+		c := apply(p, off)
+		if c.Enabled || c.Managed != clients.ManagedFile || c.Version != 2 {
+			t.Fatalf("after the file turned GitHub off, the client is %+v", c)
+		}
+		if code := ping(p); code != http.StatusNotFound {
+			t.Fatalf("a client the file turned off answered a signed hook with %d", code)
+		}
+		p = start(st)
+		if again := apply(p, spec.GitHub{Enabled: false}); again.Enabled || again.Version != 2 {
+			t.Fatalf("a second start with GitHub off made %+v", again)
+		}
+		if code := ping(p); code != http.StatusNotFound {
+			t.Fatalf("after a restart, the client the file turned off answered %d", code)
+		}
+		p = start(st)
+		if back := apply(p, on); !back.Enabled || back.Version != 3 || ping(p) != http.StatusOK {
+			t.Fatalf("turned back on, the client is %+v", back)
+		}
+	})
+
+	// With no client yet, turning it off makes none.
+	none := start(state.NewMemory())
+	doc := spec.Platform{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{Surfaces: spec.Surfaces{GitHub: &off}}}
+	if err := applyPlatforms(t.Context(), none, spec.Config{Platforms: []spec.Platform{doc}}, slog.Default()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := none.Clients.Get("acme", "file-github"); !errors.Is(err, clients.ErrNotFound) {
+		t.Fatalf("turning GitHub off made a client: %v", err)
+	}
+
+	// A console client of that id is not the file's to turn off.
+	console := start(state.NewMemory())
+	if _, err := console.CreateClient(t.Context(), "acme", "admin", platform.ClientInput{
+		Client: clients.Client{ID: "file-github", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Identity: clients.Identity{Owners: []string{"acme"}}},
+		Token:  clients.SecretInput{Value: "ghs-console"}, SigningSecret: clients.SecretInput{Value: "console-secret-of-16-bytes"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if kept := apply(console, off); !kept.Enabled || kept.Managed != "" || kept.Version != 1 {
+		t.Fatalf("the file turned off the console's client: %+v", kept)
 	}
 }

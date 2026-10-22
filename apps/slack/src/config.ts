@@ -2,6 +2,18 @@ import { type Branding, DEFAULT_BRANDING, readBranding } from "./branding.ts";
 import { defaultJournalPath } from "./journal.ts";
 import { clientCredentials, staticToken, type TokenSource } from "./warp.ts";
 
+/** The permissions the app cannot work without. Others unlock more of the inbox, see the README. */
+export const NEEDED = ["runs:read", "runs:write", "agents:read"];
+/** What the Home and some buttons can use when granted. Anything beyond is more than the app needs. */
+export const USEFUL = [
+  ...NEEDED,
+  "clients:read",
+  "projects:read",
+  "agents:write",
+  "alerts:read",
+  "alerts:write",
+];
+
 export interface Config {
   slack: {
     botToken: string;

@@ -14,7 +14,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Where a person lands: a greeting (the page's one title), ways to start, notifications, who answers them, connections and access. Notifications are inbox items waiting on the person and open alerts: critical alerts first, then the inbox, then other alerts, newest first within each, eight at most with the rest counted and linked. Each links to its own page: the web links the title, Slack writes the address out under the row, and only when the host gave an absolute one. One `Home` component: the web gets the ask box and a grid of starts; Slack publishes the same model as the App Home tab with `homeView`, with three buttons, a select for who answers direct messages, and access folded into one line.",
+          "Where a person lands: a greeting (the page's one title), ways to start, notifications, what's new, their projects, who answers them, connections and access. Notifications are inbox items waiting on the person and open alerts: critical alerts first, then the inbox, then other alerts, newest first within each, eight at most with the rest counted and linked. Each links to its own page: the web links the title, Slack writes the address out under the row, and only when the host gave an absolute one. What's new is up to five announcements from the person's projects, unread first, and Your projects up to eight of the projects they have a role in, where something happened most recently first, with the rest counted and linked: the web links each title, Slack gives each an Open button. A section the host leaves out is not shown. One `Home` component: the web gets the ask box and a grid of starts; Slack publishes the same model as the App Home tab with `homeView`, with its start buttons, a select for who answers direct messages, and access folded into one line.",
       },
     },
   },
@@ -56,6 +56,23 @@ export const Default: Story = {
       id: ActionId.homeAnsweredBy,
       payload: { turnId: HOME_ID, target: "answered_by", option: "triage" },
     });
+  },
+};
+
+/** The Slack app's Home for a person its client maps: read for them, with no access or connections it cannot know. */
+export const ReadForAPerson: Story = {
+  args: { home: fx.homes.readFor },
+  parameters: slack("homes.readFor@home", "Published to App Home"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(
+      canvas.getByRole("link", { name: "The Field offsite moves to Lisbon, in May" }),
+    ).toHaveAttribute("href", "https://example.com/console/projects/Field?message=m-offsite");
+    await expect(canvas.getByRole("link", { name: "Field engineering" })).toHaveAttribute(
+      "href",
+      "https://example.com/console/projects/Field",
+    );
+    await expect(canvas.queryByText("Your access")).toBeNull();
   },
 };
 

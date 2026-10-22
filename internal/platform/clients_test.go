@@ -628,10 +628,11 @@ func TestTwoGitHubClientsAreToldApartByTheAccountTheyServe(t *testing.T) {
 		t.Fatalf("labs delivery answered %d", code)
 	}
 	acme, labs := f.githubFor("token-acme-gh"), f.githubFor("token-labs-gh")
-	// A comment is posted as a working placeholder and edited into the
-	// answer, so wait for both to be final before reading them.
+	// A comment is posted as a placeholder, queued and then working, and
+	// edited into the answer, so wait for both to be final before reading
+	// them.
 	final := func(cs []github.FakeComment) bool {
-		return len(cs) == 1 && !strings.Contains(cs[0].Body, "_(working)_")
+		return len(cs) == 1 && !strings.Contains(cs[0].Body, "_(queued)_") && !strings.Contains(cs[0].Body, "_(working)_")
 	}
 	eventually(t, "each installation answered", func() bool { return final(acme.Comments()) && final(labs.Comments()) })
 	if !strings.Contains(acme.Comments()[0].Body, "Reviewed.") || !strings.Contains(labs.Comments()[0].Body, "Triaged.") {

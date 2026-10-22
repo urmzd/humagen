@@ -24,10 +24,47 @@ create the default client, `default-github`:
 | `WARP_GITHUB_AUTO_LABELS` | `github.auto_labels` |
 | `WARP_GITHUB_CHECKS`, `WARP_GITHUB_GUIDES`, `WARP_GITHUB_MUTATIONS` | `github.checks`, `github.guides`, `github.mutations` |
 | `WARP_GITHUB_READ_REPOSITORIES` | `github.read_repositories` |
+| `WARP_GITHUB_LOGIN` | `github.login` |
+| `WARP_GITHUB_DEFAULT_AGENT` | `default_agent` |
 
 The default client may route to any agent. One created through the API routes
 to its default agent and its `agents` list, and an auto-label or a bot that
 names any other agent is refused when the client is saved.
+
+## Who a comment asks
+
+The rule is Slack's: an `@agent` in a comment, or an `auto_labels` label, is a
+tag; otherwise the client's default; otherwise nothing. Slack delivers a
+message only when it mentions the app, so on GitHub a comment that names no
+agent is addressed to the client only when it mentions the app's own login.
+Set it as `github.login`: the login the app comments as, `warp[bot]`, which
+people mention as `@warp`. With it set, and the app's login not in `bots`:
+
+- `@docs-bot summarize this` tags docs-bot.
+- `@warp @docs-bot summarize this` tags docs-bot. The app's mention is taken
+  out of the text.
+- `@warp what changed?` names no agent, so it is answered as an untagged Slack
+  message outside a bound channel is: by the client's `default_agent`, then by
+  the default of the client's home channel and its chain. The client's
+  `agents` list holds: a default it may not route to is refused, never swapped
+  for one it may. With no default anywhere, nothing runs and nothing is posted.
+- A comment that names no agent and does not mention the app starts nothing,
+  so a busy repository wakes no agent on every comment. A bot's comment starts
+  nothing, whatever it mentions.
+
+A login in the client's `bots` names its agent, as a Slack bot user in `bots`
+does, today as well. So when `bots` maps the app's own login to an agent, as
+`WARP_GITHUB_BOTS='warp[bot]=ops'` does and the [PR guide's
+setup](#pr-guide-and-review-threads) does for its agent, `@warp` is a tag for
+that agent: `@warp what changed?` asks ops, and so does `@warp @docs-bot
+summarize this`, since the first agent a comment names answers it. The
+client's `default_agent` is not asked.
+
+A review, a review comment and a new issue or pull request are read the same
+way. Every run is filed in the client's [home](clients.md#the-record), and
+acts for nobody, as every GitHub run does: no client maps GitHub logins to
+people. A comment addressed to the app on a pull request posts no guide, since
+the guide names the agent that answers; the next one that names an agent does.
 
 ## Automatic labels
 

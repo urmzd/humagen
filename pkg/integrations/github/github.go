@@ -10,6 +10,7 @@ import (
 	transport "github.com/urmzd/fiber/pkg/connectors/github"
 	"github.com/urmzd/fiber/pkg/connectors/mention"
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/topic"
 	presentation "github.com/urmzd/warp/internal/presentation/github"
 	"sort"
 	"strings"
@@ -25,15 +26,19 @@ type Config struct {
 	ReadRepositories []string
 	Bots             map[string]string
 	Agents           mention.Set
-	Checks           bool
-	Deliver          []envelope.Route
-	Interval         time.Duration
-	Clock            func() time.Time
-	MaxBody          int64
-	AutoLabels       map[string]map[string]string
-	Guides           bool
-	Mutations        bool
-	MutationSecret   []byte
+	// Login is the app's own login, and DefaultAgent the agent a comment
+	// that mentions it and names no agent is raised for.
+	Login          string
+	DefaultAgent   string
+	Checks         bool
+	Deliver        []envelope.Route
+	Interval       time.Duration
+	Clock          func() time.Time
+	MaxBody        int64
+	AutoLabels     map[string]map[string]string
+	Guides         bool
+	Mutations      bool
+	MutationSecret []byte
 	// Tenant is the workspace whose runs this connector's tags become. A fix
 	// grant names the run it is good for, and the runtime derives a run's id
 	// from the tenant and the tag id together, so the grant cannot be signed
@@ -86,7 +91,7 @@ func New(cfg Config) (*Connector, error) {
 			return nil, fmt.Errorf("github: mutations need the tenant the connector's runs belong to")
 		}
 	}
-	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, Bots: cfg.Bots, Agents: cfg.Agents, Checks: cfg.Checks, Deliver: cfg.Deliver, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, Bots: cfg.Bots, Agents: cfg.Agents, Login: cfg.Login, DefaultAgent: cfg.DefaultAgent, Checks: cfg.Checks, Deliver: cfg.Deliver, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
 	base.Automation = c.automatic
 	base.Prepare = c.prepare
 	base.Render = presentation.RenderReview
@@ -117,9 +122,13 @@ func (c *Connector) Actions() []connector.Action {
 	return actions
 }
 
+// prepare applies warp's policy to a tag before it is handed over. A tag for
+// fiber's control name is one whose agent the host has yet to choose, such as
+// a comment addressed to the app that names no agent: no agent can take that
+// name, and the guide names the agent that answers, so such a tag posts none.
 func (c *Connector) prepare(ctx context.Context, tag *envelope.Tag) error {
 	if tag.Source.Path[1] == "pull" {
-		if c.cfg.Guides {
+		if c.cfg.Guides && tag.Agent != topic.ControlName {
 			if err := c.prepareGuide(ctx, tag); err != nil {
 				return err
 			}

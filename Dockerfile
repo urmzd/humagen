@@ -43,6 +43,8 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY pkg ./pkg
 COPY *.go ./
+# The changelog the root package embeds, for workspace.release_notes.
+COPY CHANGELOG.md ./
 COPY api ./api
 # The Helm chart `warp deploy` carries, embedded by deploy/chart.go.
 COPY deploy/chart.go ./deploy/

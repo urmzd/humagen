@@ -13,6 +13,7 @@ import {
   type DirectoryPerson,
   type ProjectView,
   type Revision,
+  type ThreadAnnouncement,
   type ThreadAnswers,
   type ThreadMessage,
   type ThreadPage,
@@ -284,6 +285,35 @@ function MessageView({ m, focused }: { m: ThreadMessage; focused: boolean }) {
 }
 
 /**
+ * The announcement a thread was started from, ahead of its first message:
+ * from the person who posted it, or the agent a schedule ran, never from
+ * whoever replied. A withdrawn one says only that.
+ */
+function AnnouncementView({ a }: { a: ThreadAnnouncement }) {
+  const who = a.kind === "agent" ? a.by : a.name || a.by;
+  return (
+    <article aria-label={`${defaultCopy.template.announcement} from ${who}`} className="flex gap-3">
+      {a.kind === "agent" ? <AgentMark name={a.by} size={28} /> : <PersonMark name={who} />}
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-baseline gap-x-2 text-aui-xs text-aui-muted">
+          <span className="font-medium text-aui-fg">{who}</span>
+          <span>{defaultCopy.template.announcement}</span>
+          <time dateTime={a.at}>{ago(a.at)}</time>
+        </p>
+        {a.withdrawn ? (
+          <p className="text-aui-sm text-aui-muted">{defaultCopy.announcements.seedWithdrawn}</p>
+        ) : (
+          <>
+            <p className="text-aui-sm font-medium text-aui-fg">{a.subject}</p>
+            <p className="whitespace-pre-wrap text-aui-sm text-aui-fg">{a.text}</p>
+          </>
+        )}
+      </div>
+    </article>
+  );
+}
+
+/**
  * Why the reader is not offered Retry on a failed answer in the room. A run
  * answering a message acts for the person who posted it, so only they ask it
  * again, from the failure in their inbox, where it answers the same message
@@ -428,7 +458,12 @@ export function ThreadRoom({
   const tags = useTags(th.project, agents, homes, topicsOf(projects, root, th.project), me);
   const people = th.participants.filter((p) => p.kind === "person");
   const answering = th.participants.filter((p) => p.kind === "agent").map((p) => p.name);
-  const title = th.title || turns.find((t) => t.message)?.message?.text || turns[0]?.run?.text || words.channel(th.channel);
+  const title =
+    th.title ||
+    turns.find((t) => t.announcement)?.announcement?.subject ||
+    turns.find((t) => t.message)?.message?.text ||
+    turns[0]?.run?.text ||
+    words.channel(th.channel);
   const last = turns[turns.length - 1];
   // A run a message in the room answers asked someone something: its steps
   // and its question are read from its journal, though turns came after it.
@@ -507,7 +542,9 @@ export function ThreadRoom({
             </button>
           )}
           {turns.map((t) =>
-            t.message ? (
+            t.announcement ? (
+              <AnnouncementView key={`a:${t.announcement.id}`} a={t.announcement} />
+            ) : t.message ? (
               <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} />
             ) : t.run ? (
               <AnswerView

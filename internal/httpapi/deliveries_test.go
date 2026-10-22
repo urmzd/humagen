@@ -2,8 +2,11 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/urmzd/warp/internal/platform"
 )
 
 // slackApp is a Slack client whose machine is the credential named.
@@ -129,4 +132,58 @@ func TestAnAnnouncementWhereTheAppOnlyViewsKeepsItsReceipt(t *testing.T) {
 	if d, _ := got["deliveries"].(map[string]any)["one"].(map[string]any); d["ts"] != "1700000000.000200" {
 		t.Fatalf("the receipt reads back as %v", got["deliveries"])
 	}
+}
+
+// A reply in the Slack thread of an announcement the app posted is a thread
+// whose turns start with the announcement, from the person who posted it,
+// read as the spec says and under the thread's one read rule: in a
+// members-only project someone who is not a member finds no thread. A
+// withdrawn announcement then says only that, and a reply under one that was
+// withdrawn before anyone replied starts nothing.
+func TestAnAnnouncementsSlackThreadIsReadAsTheSpecSays(t *testing.T) {
+	f := newFixtureGranting(t, platform.Config{}, `grant operator to subject "ana"`)
+	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
+	admin, app := f.machine(t, "acme", everything...), f.signedAs(t, "svc-one")
+	ana, bo := f.person(t, "acme", "ana", "Ana", "warp-operators"), f.person(t, "acme", "bo", "Bo", "warp-operators")
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	client := strings.Replace(slackApp("one", "A01ONE", "svc-one"), `"machine":"svc-one"`, `"machine":"svc-one","people":{"U01ANA":"ana"}`, 1)
+	want(t, f, admin, "POST", "/api/clients", client, http.StatusCreated)
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Vault","kind":"account","members":[{"who":"ana","role":"owner"},{"who":"svc-one","role":"viewer"}]}`, http.StatusCreated)
+	want(t, f, admin, "PUT", "/api/projects/Vault/channels/general", `{"version":0,"slack":{"client":"one","channel":"C01VAULT"}}`, http.StatusOK)
+
+	posted := func(subject, ts string) string {
+		t.Helper()
+		id := want(t, f, ana, "POST", "/api/projects/Vault/announcements", `{"subject":"`+subject+`","text":"Read it in the vault."}`, http.StatusCreated)["id"].(string)
+		want(t, f, app, "PUT", "/api/inbox/"+id+"/deliveries/one", `{"channel":"C01VAULT","ts":"`+ts+`"}`, http.StatusNoContent)
+		return id
+	}
+	reply := func(ts, message string) string {
+		return `{"text":"<@UAPP> what does it mean?","act_as":{"client":"one","user":"U01ANA"},"surface":{"client":"one","channel":"C01VAULT","ts":"` + ts + `","message":"` + message + `","app_user":"UAPP"}}`
+	}
+	news := posted("Vault audit", "1700000000.000100")
+	started := c.call(app, "POST", "/api/threads", "/api/threads", reply("1700000000.000100", "1700000000.000200"), http.StatusCreated)
+	th := obj(started.field("thread"))
+	if th["announcement"] != news || th["project"] != "Vault" || obj(started.field("message"))["by"] != "ana" {
+		t.Fatalf("the reply started %s", started.raw)
+	}
+	path := "/api/threads/" + th["id"].(string)
+	page := c.call(ana, "GET", "/api/threads/{id}", path, "", http.StatusOK)
+	turns := sliceOf(page.field("turns"))
+	if len(turns) < 2 || obj(turns[0])["kind"] != "announcement" || obj(turns[1])["kind"] != "message" {
+		t.Fatalf("the thread reads %s", page.raw)
+	}
+	if a := obj(obj(turns[0])["announcement"]); a["id"] != news || a["kind"] != "person" || a["by"] != "ana" || a["name"] != "Ana" || a["subject"] != "Vault audit" {
+		t.Fatalf("its first turn is %v", a)
+	}
+	c.call(app, "GET", "/api/threads/{id}", path, "", http.StatusOK)
+	c.call(bo, "GET", "/api/threads/{id}", path, "", http.StatusNotFound)
+
+	want(t, f, ana, "DELETE", "/api/projects/Vault/announcements/"+news, "", http.StatusNoContent)
+	page = c.call(ana, "GET", "/api/threads/{id}", path, "", http.StatusOK)
+	if a := obj(obj(sliceOf(page.field("turns"))[0])["announcement"]); a["withdrawn"] != true || a["subject"] != nil || a["text"] != nil {
+		t.Fatalf("a withdrawn announcement reads %v", a)
+	}
+	gone := posted("Vault closed", "1700000000.000500")
+	want(t, f, ana, "DELETE", "/api/projects/Vault/announcements/"+gone, "", http.StatusNoContent)
+	c.call(app, "POST", "/api/threads", "/api/threads", reply("1700000000.000500", "1700000000.000600"), http.StatusGone)
 }
