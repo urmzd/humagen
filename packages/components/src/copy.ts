@@ -763,6 +763,9 @@ export const defaultCopy = {
       purposeHint: "Sent to every agent answering here.",
     },
     noChannels: "Only general so far.",
+    /** A channel bound to Slack, in its row: which app, and which Slack channel. */
+    boundTo: (client: string, slackChannel: string) =>
+      `In Slack through ${client}, channel ${slackChannel}`,
     noThreads: "No threads here yet. Start one below.",
     moreThreads: "See More",
     /** Where a thread is, in its meta line: "Shared in Globex › #renewals". */

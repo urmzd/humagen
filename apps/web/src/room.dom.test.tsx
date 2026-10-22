@@ -212,7 +212,9 @@ test("a project's channels open their pages, and a new one is made with a name t
   const made: unknown[] = [];
   net = stubFetch({
     "GET /api/projects/Globex/channels": () => ({
-      channels: [{ project: "Globex", name: "general", version: 0, created_at: at, updated_at: at, answers: { agent: "auto", from: "project:~" } }],
+      channels: [
+        { project: "Globex", name: "general", version: 0, created_at: at, updated_at: at, answers: { agent: "auto", from: "project:~" }, slack: { client: "slack-acme", channel: "C0123GLOBEX" } },
+      ],
     }),
     "POST /api/projects/Globex/channels": (body) => {
       made.push(body);
@@ -223,6 +225,7 @@ test("a project's channels open their pages, and a new one is made with a name t
   render(<ChannelsTab project="Globex" canWrite onOpenChannel={(c) => opened.push(c)} />);
   fireEvent.click(await screen.findByText(words.channel("general")));
   assert.deepEqual(opened, ["general"]);
+  assert.ok(screen.getByText(words.boundTo("slack-acme", "C0123GLOBEX")), "a bound channel says where it is in Slack");
   assert.ok(!screen.queryByText(words.archiveChannel));
   fireEvent.click(screen.getByText(words.newChannel));
   assert.ok(screen.getByText(words.channelForm.nameHint));

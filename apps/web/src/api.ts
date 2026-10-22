@@ -1021,6 +1021,8 @@ export interface Channel {
   title?: string;
   purpose?: string;
   default?: string;
+  /** The Slack channel it is bound to: a Slack thread there is a shared thread here. */
+  slack?: { client: string; channel: string };
   archived?: boolean;
   managed?: string;
   version: number;

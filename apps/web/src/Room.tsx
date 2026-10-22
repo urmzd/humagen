@@ -663,6 +663,7 @@ export function ChannelsTab({
                 </span>
                 {c.purpose && <span className="truncate text-aui-xs text-aui-muted">{c.purpose}</span>}
                 <span className="text-aui-xs text-aui-muted">{answersShort(c.answers)}</span>
+                {c.slack && <span className="text-aui-xs text-aui-muted">{words.boundTo(c.slack.client, c.slack.channel)}</span>}
               </button>
               {canWrite && c.name !== "general" && !c.archived && !c.managed && (
                 <button
