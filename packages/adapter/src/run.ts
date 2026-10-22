@@ -96,6 +96,11 @@ export interface Run {
   /** Why the agent was chosen, when the platform picked it. */
   picked?: string;
   project?: string;
+  /**
+   * The project's ancestors, nearest first and the workspace left out, pinned
+   * when the run was admitted: what it counts toward besides its project.
+   */
+  within?: string[];
   lease: number;
   /** Micro-USD leased to calls that have not ended. */
   granted: number;

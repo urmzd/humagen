@@ -11,8 +11,8 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	for k, v := range map[string]string{"WARP_HOME": home, "XDG_CONFIG_HOME": home} {
-		if err := os.Setenv(k, v); err != nil {
+	for _, v := range []string{"WARP_HOME", "XDG_CONFIG_HOME"} {
+		if err := os.Setenv(v, home); err != nil {
 			panic(err)
 		}
 	}

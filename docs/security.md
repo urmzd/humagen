@@ -22,14 +22,33 @@ The built-in one declares these four, and the group flags grant them:
 
 | Role | Permissions |
 |------|-------------|
-| `viewer` | `agents:read`, `runs:read`, `schedules:read`, `alerts:read`, `knowledge:read`, `evals:read`, `billing:read`, `artifacts:read`, `clients:read` |
-| `operator` | viewer, plus `runs:write`, `schedules:write`, `alerts:write`, `evals:write`, `artifacts:write` |
+| `viewer` | `agents:read`, `runs:read`, `schedules:read`, `alerts:read`, `knowledge:read`, `evals:read`, `billing:read`, `artifacts:read`, `clients:read`, `projects:read` |
+| `operator` | viewer, plus `runs:write`, `schedules:write`, `alerts:write`, `evals:write`, `artifacts:write`, `projects:write` |
 | `manager` | operator, plus `agents:write`, `knowledge:write`. Writing agents covers their call policies, so a manager is the natural approver of calls between agents |
-| `admin` | manager, plus `billing:write`, `clients:write` |
+| `admin` | manager, plus `billing:write`, `clients:write`, `projects:govern` |
 
 Writing knowledge is an admin permission because a document an agent is grounded
 in changes what that agent says. Writing clients is one because a client hands
 the workspace's agents a credential to act with outside it.
+
+Governing projects is an admin permission because the workspace itself and its
+company projects carry instructions and notes sent to every agent answering
+under them, and because reusing the name of a deleted project adopts the
+conversations still filed under it. `projects:govern` grants nothing on its
+own: every project route checks `projects:read` or `projects:write` first, and
+govern is asked for on top, for the workspace, a company project, its notes, or
+a deleted name. A deleted name's tombstone is never forgotten while
+conversations or files are still filed under it, so later deletes cannot clear
+the way to adopting them. Its notes are asked the same through every route that changes
+them: the project's memory routes and the inbox. The agent memory routes reach
+an agent's own notes only, and answer 404 for a project's memory owner
+(`project:<name>`, and `project:` for the workspace). Projects have no roles yet, so anyone holding `projects:write`
+changes every other project, and every project is visible to everyone holding
+`projects:read`.
+
+A machine whose token names its scopes, such as the Slack app or CI, needs
+`warp:projects:read` to list projects and `warp:projects:write` to make them:
+`runs:*` no longer covers them.
 
 A webhook from Slack or GitHub is not a `Principal`. It is authorized by the
 signing secret of the [client](clients.md) it is for, and takes its tenant from
@@ -57,7 +76,14 @@ no permission, grants nothing.
   verified token claim. A body that carries a `tenant` field is rejected.
 - **Another tenant's objects do not exist.** Reads, deletes, calls and stops
   across tenants return 404, never 403, so a response cannot confirm that
-  something exists.
+  something exists. Each workspace has its own project tree and its own root,
+  `~`: a project name another workspace uses is not found, as a filter, a
+  parent or a limit's scope.
+- **Nothing is filed under a project being deleted.** A schedule, an alert
+  rule or a limit is written while its project is held, and a delete is
+  refused while any of them points at the project, so a delete never leaves
+  one naming a project that is gone. A delete never drops a limit: only
+  `billing:write` removes one.
 - **A run id carries its tenant.** The runtime derives it from the tenant and
   the tag id together, so a trigger's id, chosen outside, cannot name or join
   another tenant's run. A stop request is honoured only by a run of the tenant
@@ -126,6 +152,9 @@ no permission, grants nothing.
 - **A proposed memory is not a memory.** What the memory agent writes is held
   as pending and is not sent to any agent until a person approves it, unless
   the workspace turned approval off. This is saige's default for memory writes.
+  What it writes for the workspace or a company project waits for someone
+  holding `projects:govern` even then: the turn that taught it needed only
+  `runs:write`, and turning approval off needs only `agents:write`.
 - **Memory refuses personal data.** Every note, from a person or an agent,
   passes saige's memory policy, which rejects text its detector finds personal
   data in.
@@ -269,7 +298,7 @@ decided per message:
 |------|--------|-----------|
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
 | Failed run | `runs:read` | `runs:write` |
-| Proposed memory | `agents:read` | `agents:write` |
+| Proposed memory | `agents:read` | `agents:write` for an agent's; `projects:write` for a project's, and `projects:govern` as well for the workspace's and a company project's |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |
 
 A message a caller may not see answers 404, not 403, and is left out of their

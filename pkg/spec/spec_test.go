@@ -24,9 +24,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 		all = append(all, b[1])
 	}
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	if err := os.WriteFile(path, []byte(strings.Join(all, "---\n")), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeFile(t, path, strings.Join(all, "---\n"))
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -40,6 +38,13 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	}
 	if err := cfg.Check(Kinds{}); err != nil {
 		t.Fatalf("strict check: %v", err)
+	}
+	w := cfg.Platforms[0].Spec.Workspace
+	if w.Instructions == nil || len(w.Projects) != 3 {
+		t.Fatalf("workspace = %+v", w)
+	}
+	if g := w.Projects[2]; g.Parent != "Field" || g.Kind != ProjectAccount || g.Account == nil || g.Account.URL != "https://crm.example.com/globex" {
+		t.Fatalf("the example's account project = %+v", g)
 	}
 }
 
@@ -70,9 +75,7 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"two systems":              {sys + "---\n" + sys, "second System"},
 	} {
 		path := filepath.Join(t.TempDir(), "warp.yaml")
-		if err := os.WriteFile(path, []byte(tc.body), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		writeFile(t, path, tc.body)
 		_, err := Load(path)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want %q", name, err, tc.want)
@@ -82,9 +85,7 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 
 func TestAKindIsOneTheBinaryHas(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeFile(t, path, "api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n")
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load cannot know the binary's kinds, so it lets one through: %v", err)
@@ -114,9 +115,7 @@ func TestWhatWarpWritesItReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "warp.yaml")
-	if err := os.WriteFile(path, b, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeFile(t, path, string(b))
 	got, err := Load(path)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, b)
@@ -126,5 +125,12 @@ func TestWhatWarpWritesItReads(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(b), "api_version: warp/v1\nkind: System\n") {
 		t.Errorf("not in declaration order:\n%s", b)
+	}
+}
+
+func writeFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

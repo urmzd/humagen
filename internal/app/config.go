@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/credref"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/spec"
 )
 
@@ -369,12 +371,17 @@ func tenantOnly(tenant string, c runtime.Catalog) runtime.Catalog {
 	}
 }
 
-// applyPlatforms makes the platform what the Platform documents declare:
-// agents created or revised, declared settings applied, a GitHub client
-// managed by the file. Nothing the file does not mention is touched.
+// applyPlatforms makes the platform what the Platform documents declare: the
+// workspace's instructions and its projects merged into the tree, agents
+// created or revised, declared settings applied, a GitHub client managed by
+// the file. Nothing the file does not mention is touched. The tree comes
+// first, the root and then projects, so what follows can be filed in it.
 func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, log *slog.Logger) error {
 	for _, doc := range cfg.Platforms {
 		tenant := doc.Metadata.Name
+		if err := applyProjects(p, tenant, doc.Spec.Workspace); err != nil {
+			return err
+		}
 		for i, a := range doc.Spec.Agents {
 			s := a.Spec
 			if a.File != "" {
@@ -440,16 +447,104 @@ func applyWorkspace(ctx context.Context, p *platform.Platform, doc spec.Platform
 			s.HistoryLimit = h.Limit
 		}
 	}
-	if w.Projects != nil {
-		s.Projects = nil
-		for _, pr := range w.Projects {
-			s.Projects = append(s.Projects, platform.Project{Name: pr.Name, Description: pr.Description})
-		}
-	}
 	if err := p.SetSettings(ctx, tenant, s); err != nil {
 		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
 	}
 	return nil
+}
+
+// fileWriter is who the file's changes to projects are recorded as.
+const fileWriter = "file"
+
+// applyProjects merges the file's tree into the store, never replacing it.
+// workspace.instructions are the root's. Each project is upserted, parents
+// first, as managed by the file, and the fields the file sets are the file's:
+// the API answers 409 for them, and a field it leaves out stays the
+// console's. An unchanged entry makes no new version. A project made in the
+// console survives every start, one with a name the file declares is taken
+// over, and one that left the file stays, unmanaged. A kind or parent the
+// file names for a project that already has another fails the start: both
+// are fixed when a project is created.
+func applyProjects(p *platform.Platform, tenant string, w spec.Workspace) error {
+	now := time.Now()
+	root, err := p.Projects.Get(tenant, projects.Root)
+	if err != nil {
+		return fmt.Errorf("platform %q: workspace: %w", tenant, err)
+	}
+	switch {
+	case w.Instructions != nil:
+		_, err = p.Projects.Upsert(tenant, projects.Project{Name: projects.Root, Instructions: *w.Instructions}, []string{projects.FieldInstructions}, fileWriter, now)
+	case root.Managed == projects.ManagedFile:
+		_, err = p.Projects.Release(tenant, projects.Root, fileWriter, now)
+	}
+	if err != nil {
+		return fmt.Errorf("platform %q: workspace.instructions: %w", tenant, err)
+	}
+	in := map[string]bool{}
+	for _, i := range parentsFirst(w.Projects) {
+		pr, owns := fileProject(w.Projects[i])
+		if _, err := p.Projects.Upsert(tenant, pr, owns, fileWriter, now); err != nil {
+			return fmt.Errorf("platform %q: workspace.projects[%d]: %w", tenant, i, err)
+		}
+		in[pr.Name] = true
+	}
+	for _, pr := range p.Projects.List(tenant) {
+		if pr.Managed != projects.ManagedFile || in[pr.Name] {
+			continue
+		}
+		if _, err := p.Projects.Release(tenant, pr.Name, fileWriter, now); err != nil {
+			return fmt.Errorf("platform %q: workspace.projects: let go of %q: %w", tenant, pr.Name, err)
+		}
+	}
+	return nil
+}
+
+// fileProject is a project as the file declares it, and the fields the file
+// sets, which become the file's.
+func fileProject(d spec.Project) (projects.Project, []string) {
+	pr := projects.Project{
+		Name: d.Name, Title: d.Title, Description: d.Description, Kind: projects.Kind(d.Kind),
+		Parent: spec.ParentOf(d), Instructions: d.Instructions,
+	}
+	if a := d.Account; a != nil {
+		pr.Account = &projects.AccountInfo{Customer: a.Customer, ExternalID: a.ExternalID, URL: a.URL}
+	}
+	var owns []string
+	for field, set := range map[string]bool{
+		projects.FieldTitle:        d.Title != "",
+		projects.FieldDescription:  d.Description != "",
+		projects.FieldKind:         d.Kind != "",
+		projects.FieldParent:       d.Parent != "",
+		projects.FieldAccount:      d.Account != nil,
+		projects.FieldInstructions: d.Instructions != "",
+	} {
+		if set {
+			owns = append(owns, field)
+		}
+	}
+	return pr, owns
+}
+
+// parentsFirst is the order to apply the file's projects in: by how deep
+// each sits in the file's tree, then as written. The spec's check has
+// refused a cycle; a walk is bounded anyway, so it cannot loop.
+func parentsFirst(ps []spec.Project) []int {
+	at := make(map[string]int, len(ps))
+	for i, pr := range ps {
+		at[pr.Name] = i
+	}
+	depth := make([]int, len(ps))
+	for i := range ps {
+		for j, ok := i, true; ok && depth[i] <= len(ps); depth[i]++ {
+			j, ok = at[spec.ParentOf(ps[j])]
+		}
+	}
+	order := make([]int, len(ps))
+	for i := range order {
+		order[i] = i
+	}
+	slices.SortStableFunc(order, func(a, b int) int { return depth[a] - depth[b] })
+	return order
 }
 
 // applyGitHub seats the file's GitHub installation as a client the API cannot

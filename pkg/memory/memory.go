@@ -326,10 +326,13 @@ func (s *Store) Prompt(tenant, agent string) string {
 const projectPrefix = "project:"
 
 // ProjectOwner is the owner under which a project's shared notes are kept.
-// Every agent answering in that project is sent them.
+// Every agent answering in that project, or below it, is sent them. The
+// root's, the workspace's own, is "project:" with no name after it: it holds
+// the colon too, so no agent's name can be it.
 func ProjectOwner(project string) string { return projectPrefix + project }
 
-// OwnerProject reports the project an owner names, if it names one.
+// OwnerProject reports the project an owner names, if it names one: "project:"
+// names the root, "".
 func OwnerProject(owner string) (string, bool) { return strings.CutPrefix(owner, projectPrefix) }
 
 // PromptAs renders an owner's approved notes under a heading, or "" for none.

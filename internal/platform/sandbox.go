@@ -27,6 +27,7 @@ import (
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // Files an agent makes.
@@ -306,7 +307,14 @@ func (p *Platform) Publish(ctx context.Context, pub Publication) (artifacts.Arti
 	// under a limit only one of them fits under.
 	p.publishing.Lock()
 	defer p.publishing.Unlock()
-	if err := p.storageAllows(pub.Tenant, pub.Project, pub.Agent, int64(len(b))); err != nil {
+	// A project the tree no longer holds has no ancestors to read, and a
+	// file filed there would count toward none of their limits.
+	tree := p.Projects.Tree(pub.Tenant)
+	if !tree.Has(pub.Project) {
+		return artifacts.Artifact{}, projectDeleted(pub.Project)
+	}
+	within := tree.Ancestors(pub.Project)
+	if err := p.storageAllows(pub.Tenant, tree, pub.Project, within, pub.Agent, int64(len(b))); err != nil {
 		return artifacts.Artifact{}, err
 	}
 	id := p.Artifacts.NextID(pub.Tenant)
@@ -317,7 +325,7 @@ func (p *Platform) Publish(ctx context.Context, pub Publication) (artifacts.Arti
 	}
 	a := artifacts.Artifact{
 		ID: id, Key: key, Title: title, Kind: kind, Mime: mime, Size: info.Size, SHA256: info.SHA256,
-		Run: pub.Run, Thread: pub.Thread, Agent: pub.Agent, Project: pub.Project,
+		Run: pub.Run, Thread: pub.Thread, Agent: pub.Agent, Project: pub.Project, Within: within,
 		Description: clip(strings.TrimSpace(pub.Description), 300), CreatedBy: pub.By, CreatedAt: p.now(),
 	}
 	if isText(mime) {
@@ -335,9 +343,11 @@ func (p *Platform) Publish(ctx context.Context, pub Publication) (artifacts.Arti
 }
 
 // storageAllows checks a publish against every storage limit that applies, and
-// says so in the inbox when one refuses it.
-func (p *Platform) storageAllows(tenant, project, agent string, size int64) error {
-	for _, pol := range p.Policies.For(tenant, project, agent, "") {
+// says so in the inbox when one refuses it. A file filed in a project counts
+// toward the project's limit and every ancestor's (within, pinned with the
+// file), and a project's use is what its whole subtree holds.
+func (p *Platform) storageAllows(tenant string, tree *projects.Tree, project string, within []string, agent string, size int64) error {
+	for _, pol := range p.Policies.For(tenant, chainOf(project, within), agent, "") {
 		if pol.MaxStorage <= 0 {
 			continue
 		}
@@ -346,7 +356,7 @@ func (p *Platform) storageAllows(tenant, project, agent string, size int64) erro
 		case policy.Tenant:
 			used = p.Artifacts.Used(tenant, "")
 		case policy.Project:
-			used = p.Artifacts.Used(tenant, pol.Scope.Name)
+			used = p.storageUsed(tenant, tree, pol.Scope.Name)
 		case policy.Agent:
 			for _, s := range p.Artifacts.Usage(tenant).ByAgent {
 				if s.Name == pol.Scope.Name {
@@ -369,6 +379,18 @@ func (p *Platform) storageAllows(tenant, project, agent string, size int64) erro
 		}
 	}
 	return nil
+}
+
+// storageUsed is what a project and every project below it hold, in bytes:
+// what its subtree holds now, and what was published below it in a project
+// deleted since, which is kept and still counts. A project the tree no longer
+// holds counts what is still filed under its name.
+func (p *Platform) storageUsed(tenant string, tree *projects.Tree, project string) int64 {
+	names := tree.Subtree(project)
+	if names == nil {
+		names = []string{project}
+	}
+	return p.Artifacts.UsedUnder(tenant, project, names)
 }
 
 // OpenArtifact opens an artifact's bytes for a caller.

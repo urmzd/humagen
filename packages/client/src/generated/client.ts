@@ -41,6 +41,7 @@ import type {
   ListPendingMemoryResponse,
   ListPoliciesResponse,
   ListPolicyHistoryResponse,
+  ListProjectHistoryResponse,
   ListProjectsResponse,
   ListReachableAgentsResponse,
   ListRunEventsResponse,
@@ -57,7 +58,10 @@ import type {
   Policy,
   PolicyInput,
   Preferences,
-  Project,
+  ProjectDetail,
+  ProjectInput,
+  ProjectUpdate,
+  ProjectView,
   QueryJournalResponse,
   QuestionAnswer,
   Resolution,
@@ -672,7 +676,11 @@ At most 500 agents; `truncated` says there are more.
     });
   }
 
-  /** List what an agent remembers */
+  /** An agent's own notes. A project's are read and changed through its
+own routes (`listProjectMemory`), so a name that is no agent's, a
+project's memory owner such as `project:News` among them, is 404 here
+and on every agent memory route.
+ */
   async listAgentMemory(name: string, options?: RequestOptions): Promise<NoteList> {
     let path = "/api/agents/{name}/memory";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -731,7 +739,7 @@ At most 500 agents; `truncated` says there are more.
     });
   }
 
-  /** Remove a note */
+  /** An agent that does not exist, or a note that is not its own, is 404. */
   async removeAgentMemory(name: string, id: string, options?: RequestOptions): Promise<void> {
     let path = "/api/agents/{name}/memory/{id}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -813,6 +821,10 @@ derived from that and the workspace (`r` and 32 hex digits, as
 fiber's `runtime.RunID`), and a second request with the same key
 from the same caller joins the run the first one started instead of
 starting another. Without it the ids are random.
+
+A conversation filed in a project that was deleted since is read,
+not continued: its next turn answers 409, since nothing says any more
+which projects above it the run would count toward.
 
 The body takes no metadata: an unknown field answers 400.
  */
@@ -1036,7 +1048,7 @@ no longer holds the run's first event.
 Pass it back as `before`. A cursor is opaque and belongs to the server
 that issued it.
  */
-  async listThreads(limit?: number, before?: string, agent?: string, origin?: string, standing?: "running" | "failed", options?: RequestOptions): Promise<ListThreadsResponse> {
+  async listThreads(limit?: number, before?: string, agent?: string, origin?: string, standing?: "running" | "failed", project?: string, within?: string, options?: RequestOptions): Promise<ListThreadsResponse> {
     let path = "/api/threads";
     const _q = new URLSearchParams();
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
@@ -1044,6 +1056,8 @@ that issued it.
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (origin !== undefined && origin !== null) _q.set("origin", String(origin));
     if (standing !== undefined && standing !== null) _q.set("standing", String(standing));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (within !== undefined && within !== null) _q.set("within", String(within));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListThreadsResponse>("GET", path, {
@@ -1051,7 +1065,7 @@ that issued it.
     });
   }
 
-  async listThreadsRaw(limit?: number, before?: string, agent?: string, origin?: string, standing?: "running" | "failed", options?: RequestOptions): Promise<ApiResponse<ListThreadsResponse>> {
+  async listThreadsRaw(limit?: number, before?: string, agent?: string, origin?: string, standing?: "running" | "failed", project?: string, within?: string, options?: RequestOptions): Promise<ApiResponse<ListThreadsResponse>> {
     let path = "/api/threads";
     const _q = new URLSearchParams();
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
@@ -1059,6 +1073,8 @@ that issued it.
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (origin !== undefined && origin !== null) _q.set("origin", String(origin));
     if (standing !== undefined && standing !== null) _q.set("standing", String(standing));
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (within !== undefined && within !== null) _q.set("within", String(within));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListThreadsResponse>("GET", path, {
@@ -1430,7 +1446,7 @@ inbox, and an action the caller lacks the permission for answers 403:
 |------|--------|-------|
 | `alert` | `acknowledge` | `alerts:write` |
 | `failure` | `retry`, `acknowledge` | `runs:write` |
-| `memory` | `keep` (with `ids`), `discard` | `agents:write` |
+| `memory` | `keep` (with `ids`), `discard` | `agents:write` for an agent's notes; for a project's `projects:write`, and `projects:govern` as well for the workspace's and a company project's |
 | `budget` | `raise_limit` (with `limits`) | `billing:write` |
 | `budget` | `acknowledge` | `alerts:write` |
 | `approval` | `approve` (optionally with `arguments`), `deny` | `runs:write` |
@@ -1442,7 +1458,8 @@ same rules: a person the question is not addressed to does not see
 it, and one the runtime refuses is 403. `act_as` answers for a person
 a surface authenticated. Resolving a part that is already resolved
 returns the first outcome. `retry` starts a new run, so it can be
-refused by a limit with 429 or 402.
+refused by a limit with 429 or 402, and with 409 when the turn's
+project was deleted since.
  */
   async resolveInboxPart(id: string, part: string, body: Resolution, options?: RequestOptions): Promise<InboxMessage> {
     let path = "/api/inbox/{id}/parts/{part}/resolve";
@@ -2158,41 +2175,114 @@ already raised stay, and so does its cooldown.
     });
   }
 
-  /** List projects and what is in each */
-  async listProjects(options?: RequestOptions): Promise<ListProjectsResponse> {
-    const path = "/api/projects";
+  /** Each project comes before its sub-projects, and siblings are ordered by
+name ignoring case. The workspace itself is not in the list:
+`GET /api/projects/~` reads it. A workspace has at most 100 projects.
+ */
+  async listProjects(parent?: string, within?: string, options?: RequestOptions): Promise<ListProjectsResponse> {
+    let path = "/api/projects";
+    const _q = new URLSearchParams();
+    if (parent !== undefined && parent !== null) _q.set("parent", String(parent));
+    if (within !== undefined && within !== null) _q.set("within", String(within));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<ListProjectsResponse>("GET", path, {
       ...options,
     });
   }
 
-  async listProjectsRaw(options?: RequestOptions): Promise<ApiResponse<ListProjectsResponse>> {
-    const path = "/api/projects";
+  async listProjectsRaw(parent?: string, within?: string, options?: RequestOptions): Promise<ApiResponse<ListProjectsResponse>> {
+    let path = "/api/projects";
+    const _q = new URLSearchParams();
+    if (parent !== undefined && parent !== null) _q.set("parent", String(parent));
+    if (within !== undefined && within !== null) _q.set("within", String(within));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListProjectsResponse>("GET", path, {
       ...options,
     });
   }
 
-  /** Create a project */
-  async createProject(body: Project, options?: RequestOptions): Promise<Project> {
+  /** A project's name is its identity: it is unique in the workspace
+ignoring case, and never changes. Its parent is fixed too. A company
+project needs `projects:govern`, and so does reusing the name of a
+deleted project, which adopts its old conversations. 400 for a kind
+that cannot sit under its parent or a fifth level; 404 for a parent
+the workspace does not have; 409 for a name taken; 429 at the
+workspace's cap of 100 projects or 10 company projects.
+ */
+  async createProject(body: ProjectInput, options?: RequestOptions): Promise<ProjectView> {
     const path = "/api/projects";
-    return this.request<Project>("POST", path, {
+    return this.request<ProjectView>("POST", path, {
       body,
       contentType: "application/json",
       ...options,
     });
   }
 
-  async createProjectRaw(body: Project, options?: RequestOptions): Promise<ApiResponse<Project>> {
+  async createProjectRaw(body: ProjectInput, options?: RequestOptions): Promise<ApiResponse<ProjectView>> {
     const path = "/api/projects";
-    return this.rawRequest<Project>("POST", path, {
+    return this.rawRequest<ProjectView>("POST", path, {
       body,
       contentType: "application/json",
       ...options,
     });
   }
 
-  /** Delete a project */
+  /** Read a project, the projects above and below it, and the limits that hold it */
+  async getProject(name: string, options?: RequestOptions): Promise<ProjectDetail> {
+    let path = "/api/projects/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectDetail>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectDetail>> {
+    let path = "/api/projects/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectDetail>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** The body replaces those four as a whole: one left out is cleared.
+`version` is the one the caller read, so a change made since answers
+409 instead of being overwritten. A project's `name`, `kind` and
+`parent` are fixed when it is created, and naming any of them is 400.
+The workspace and company projects need `projects:govern`. A field
+the platform file sets answers 409.
+ */
+  async updateProject(name: string, body: ProjectUpdate, options?: RequestOptions): Promise<ProjectView> {
+    let path = "/api/projects/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async updateProjectRaw(name: string, body: ProjectUpdate, options?: RequestOptions): Promise<ApiResponse<ProjectView>> {
+    let path = "/api/projects/{name}";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectView>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Refused with 409, naming them, while sub-projects, schedules, alert
+rules or limits point at the project. A delete never drops a limit.
+Its conversations keep its name, and are adopted only if someone
+holding `projects:govern` creates it again. The workspace cannot be
+deleted (400), a company project needs `projects:govern`, and a
+project the platform file declares is removed there (409). A
+workspace remembers at most 1,000 deleted names, and forgets one only
+when nothing is filed under it: when every one it remembers still has
+conversations or files, the delete is refused with 429.
+ */
   async deleteProject(name: string, options?: RequestOptions): Promise<void> {
     let path = "/api/projects/{name}";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2209,7 +2299,40 @@ already raised stay, and so does its cooldown.
     });
   }
 
-  /** List the notes every agent in a project is sent */
+  /** `next` is the cursor for the page after this one, or null at the end.
+Pass it back as `before`. A cursor is opaque. The workspace keeps its
+last 1,000 changes across all its projects.
+ */
+  async listProjectHistory(name: string, limit?: number, before?: string, options?: RequestOptions): Promise<ListProjectHistoryResponse> {
+    let path = "/api/projects/{name}/history";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListProjectHistoryResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listProjectHistoryRaw(name: string, limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<ListProjectHistoryResponse>> {
+    let path = "/api/projects/{name}/history";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    if (before !== undefined && before !== null) _q.set("before", String(before));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListProjectHistoryResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Every agent answering in the project or below it is sent them. The
+workspace's own (`~`) are sent to every agent answering anywhere in
+it.
+ */
   async listProjectMemory(name: string, options?: RequestOptions): Promise<NoteList> {
     let path = "/api/projects/{name}/memory";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2226,7 +2349,9 @@ already raised stay, and so does its cooldown.
     });
   }
 
-  /** Write a note shared by every agent in a project */
+  /** A person writing a note is its approval. The notes of the workspace
+and of company projects are changed with `projects:govern` as well.
+ */
   async addProjectMemory(name: string, body: NoteInput, options?: RequestOptions): Promise<Note> {
     let path = "/api/projects/{name}/memory";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2247,7 +2372,7 @@ already raised stay, and so does its cooldown.
     });
   }
 
-  /** Approve notes proposed for a project */
+  /** The notes of the workspace and of company projects are changed with `projects:govern` as well. */
   async approveProjectMemory(name: string, body: NoteSelection, options?: RequestOptions): Promise<Approved> {
     let path = "/api/projects/{name}/memory/approve";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2268,7 +2393,7 @@ already raised stay, and so does its cooldown.
     });
   }
 
-  /** Remove a project note */
+  /** The notes of the workspace and of company projects are changed with `projects:govern` as well. */
   async removeProjectMemory(name: string, id: string, options?: RequestOptions): Promise<void> {
     let path = "/api/projects/{name}/memory/{id}";
     path = path.replace("{name}", encodeURIComponent(String(name)));

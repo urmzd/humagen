@@ -22,6 +22,7 @@ import (
 	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/prefs"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state"
 	"github.com/urmzd/warp/pkg/usage"
@@ -40,7 +41,7 @@ type Ledger interface {
 type Backends struct {
 	// State is where warp's own stores keep their records: clients and
 	// their secrets (unless Config sets its own), the inbox, preferences,
-	// memory, limits, call policies, alerts, evals, schedules, the journal,
+	// memory, projects, limits, call policies, alerts, evals, schedules, the journal,
 	// artifacts, the run index, the usage ledger, knowledge and workspace
 	// settings. Nil keeps them in memory.
 	State state.Store
@@ -119,6 +120,9 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("prefs", err)
 	p.Memory, err = memory.Open(st)
 	keep("memory", err)
+	// A deleted name is forgotten only once nothing is filed under it.
+	p.Projects, err = projects.Open(st, projects.WithFiled(p.filedUnder))
+	keep("projects", err)
 	p.Policies, err = policy.Open(st)
 	keep("policies", err)
 	p.CallPolicies, err = callpolicy.Open(st)
@@ -130,6 +134,11 @@ func (p *Platform) openStores(cfg Config) error {
 	p.Artifacts, err = artifacts.Open(st)
 	keep("artifacts", err)
 	keep("settings", p.settings.open(st))
+	if len(errs) == 0 {
+		// Projects once lived in settings; they move before anything reads
+		// either.
+		keep("projects", p.migrateProjects())
+	}
 
 	p.Clients, p.secrets = cfg.Clients, cfg.Secrets
 	if p.Clients == nil {

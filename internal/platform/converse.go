@@ -2,10 +2,9 @@ package platform
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -14,8 +13,8 @@ import (
 	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/pick"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state"
 )
@@ -52,14 +51,6 @@ const (
 	DefaultHistory = maxTranscript
 )
 
-// Project is a named place to file conversations.
-type Project struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-}
-
-var validProject = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,62}$`)
-
 // Settings is what a tenant has chosen for itself.
 type Settings struct {
 	// Baseline is the agent that answers when nobody picked one and no
@@ -67,9 +58,8 @@ type Settings struct {
 	Baseline string `json:"baseline"`
 	// History and HistoryLimit decide how much of a conversation is replayed
 	// to the agent answering the next turn.
-	History      History   `json:"history"`
-	HistoryLimit int       `json:"history_limit"`
-	Projects     []Project `json:"projects"`
+	History      History `json:"history"`
+	HistoryLimit int     `json:"history_limit"`
 	// TitleAgent names conversations after their first turn. Empty leaves a
 	// conversation shown by its first message.
 	TitleAgent string `json:"title_agent"`
@@ -99,9 +89,6 @@ func (s Settings) withDefaults() Settings {
 	if s.HistoryLimit == 0 {
 		s.HistoryLimit = DefaultHistory
 	}
-	if s.Projects == nil {
-		s.Projects = []Project{}
-	}
 	if s.ModelPolicies == nil {
 		s.ModelPolicies = []ModelPolicy{}
 	}
@@ -113,7 +100,28 @@ func (s Settings) withDefaults() Settings {
 type settings struct {
 	mu   sync.RWMutex
 	by   map[string]Settings
-	kept *state.Table[Settings]
+	kept *state.Table[storedSettings]
+	// legacy is the projects a tenant's settings still held when they were
+	// read, by tenant, until the migration moves them to the project store.
+	// A tenant whose record an earlier version wrote is here even when the
+	// array was null.
+	legacy map[string][]legacyProject
+}
+
+// storedSettings is a tenant's settings as they are written. Settings once
+// held the workspace's projects, because one struct was both the wire and the
+// record. LegacyProjects reads them back for the migration into the project
+// store, and is never written again. It is raw so a record an earlier version
+// wrote is told apart even when its array is null.
+type storedSettings struct {
+	Settings
+	LegacyProjects json.RawMessage `json:"projects,omitempty"`
+}
+
+// legacyProject is a project as settings kept it.
+type legacyProject struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
 }
 
 // settingsKey is the one key a tenant's settings are kept under.
@@ -122,9 +130,16 @@ const settingsKey = "settings"
 // open reads every tenant's settings from st and keeps them there from now
 // on. A nil st keeps them in memory.
 func (s *settings) open(st state.Store) error {
-	s.by, s.kept = map[string]Settings{}, state.NewTable[Settings](st, "settings")
-	err := s.kept.Load(func(tenant, _ string, v Settings) error {
-		s.by[tenant] = v
+	s.by, s.legacy, s.kept = map[string]Settings{}, map[string][]legacyProject{}, state.NewTable[storedSettings](st, "settings")
+	err := s.kept.Load(func(tenant, _ string, v storedSettings) error {
+		s.by[tenant] = v.Settings
+		if v.LegacyProjects != nil {
+			var held []legacyProject
+			if err := json.Unmarshal(v.LegacyProjects, &held); err != nil {
+				return fmt.Errorf("the projects of %q: %w", tenant, err)
+			}
+			s.legacy[tenant] = held
+		}
 		return nil
 	})
 	if err != nil {
@@ -135,7 +150,7 @@ func (s *settings) open(st state.Store) error {
 
 // put keeps a tenant's settings. The caller holds the lock.
 func (s *settings) put(tenant string, v Settings) error {
-	if err := s.kept.Put(tenant, settingsKey, v); err != nil {
+	if err := s.kept.Put(tenant, settingsKey, storedSettings{Settings: v}); err != nil {
 		return fmt.Errorf("platform: write settings: %w", err)
 	}
 	if s.by == nil {
@@ -177,8 +192,6 @@ func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings
 		return fmt.Errorf("%w: history is recent or none", ErrSettings)
 	case next.HistoryLimit < MinHistory || next.HistoryLimit > MaxHistory:
 		return fmt.Errorf("%w: the history limit is from %d to %d characters", ErrSettings, MinHistory, MaxHistory)
-	case len(next.Projects) > 100:
-		return fmt.Errorf("%w: at most 100 projects", ErrSettings)
 	}
 	if err := checkModelPolicies(next.ModelPolicies); err != nil {
 		return err
@@ -192,13 +205,6 @@ func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings
 		if users := p.policyUsers(ctx, tenant, old.Name); len(users) > 0 {
 			return fmt.Errorf("%w: %q is used by %s; move them to another policy first", ErrModelPolicyInUse, old.Name, strings.Join(users, ", "))
 		}
-	}
-	seen := map[string]bool{}
-	for _, pr := range next.Projects {
-		if !validProject.MatchString(pr.Name) || seen[strings.ToLower(pr.Name)] {
-			return fmt.Errorf("%w: a project needs a unique name of letters, digits, spaces and dashes", ErrSettings)
-		}
-		seen[strings.ToLower(pr.Name)] = true
 	}
 	p.settings.mu.Lock()
 	defer p.settings.mu.Unlock()
@@ -260,11 +266,13 @@ type Turn struct {
 // Converse sends a message into a conversation and starts the run that answers.
 //
 // Any agent can answer any turn. The agent that answers is sent the branch so
-// far, so a different agent picking up mid-conversation knows what was said.
+// far, so a different agent picking up mid-conversation knows what was said,
+// and ahead of it what the conversation's project chain and the agent itself
+// bring (see contextOf).
 func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Run, error) {
 	cfg := p.Settings(tenant)
 	meta := map[string]string{runs.MetaAsk: t.Text}
-	prompt := t.Text
+	body := t.Text
 	if t.After != "" {
 		path, err := p.Runs.Path(tenant, t.After)
 		if err != nil {
@@ -272,15 +280,17 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 		meta[runs.MetaThread] = path[0].Thread
 		meta[runs.MetaPrev] = t.After
+		// A project deleted since is refused at admission (see placeOf),
+		// after a retry of a turn already let in has joined it.
 		meta[runs.MetaProject] = path[0].Project
 		if cfg.History == HistoryRecent {
-			prompt = transcript(path, cfg.HistoryLimit) + "\n\nUser: " + t.Text
+			body = transcript(path, cfg.HistoryLimit) + "\n\nUser: " + t.Text
 		}
-	} else if t.Project != "" {
-		if !slices.ContainsFunc(cfg.Projects, func(pr Project) bool { return pr.Name == t.Project }) {
-			return runs.Run{}, fmt.Errorf("%w: no project called %q", ErrSettings, t.Project)
+	} else if project := projects.NameOf(t.Project); project != "" {
+		if !p.HasProject(tenant, project) {
+			return runs.Run{}, fmt.Errorf("%w: no project called %q", ErrSettings, project)
 		}
-		meta[runs.MetaProject] = t.Project
+		meta[runs.MetaProject] = project
 	}
 
 	agent := t.Agent
@@ -293,22 +303,9 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		meta[runs.MetaPicked] = choice.Reason
 	}
 
-	// What this agent remembers goes first, ahead of the conversation, and
-	// what the project knows goes ahead of that: it is shared by every agent
-	// and every conversation in the project.
-	if notes := p.Memory.Prompt(tenant, agent); notes != "" {
-		prompt = notes + "\n\n" + prompt
-	}
-	if project := meta[runs.MetaProject]; project != "" {
-		heading := fmt.Sprintf("What everyone working on the project %q knows:", project)
-		if notes := p.Memory.PromptAs(tenant, memory.ProjectOwner(project), heading); notes != "" {
-			prompt = notes + "\n\n" + prompt
-		}
-	}
-
 	return p.Invoke(ctx, envelope.Tag{
 		ID: t.ID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
-		Text: prompt, Actor: t.Actor, Meta: meta,
+		Text: p.contextOf(tenant, meta[runs.MetaProject], agent, body), Actor: t.Actor, Meta: meta,
 	})
 }
 
@@ -353,44 +350,4 @@ func transcript(path []runs.Run, limit int) string {
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
-}
-
-// ErrProject reports a project that cannot be created or found.
-var (
-	ErrProjectExists   = errors.New("platform: project already exists")
-	ErrProjectNotFound = errors.New("platform: project not found")
-)
-
-// HasProject reports whether a tenant has a project by this name.
-func (p *Platform) HasProject(tenant, name string) bool {
-	return slices.ContainsFunc(p.Settings(tenant).Projects, func(pr Project) bool { return pr.Name == name })
-}
-
-// CreateProject adds a project to a tenant.
-func (p *Platform) CreateProject(ctx context.Context, tenant string, pr Project) error {
-	cfg := p.Settings(tenant)
-	if slices.ContainsFunc(cfg.Projects, func(have Project) bool { return strings.EqualFold(have.Name, pr.Name) }) {
-		return fmt.Errorf("%w: %q", ErrProjectExists, pr.Name)
-	}
-	cfg.Projects = append(slices.Clone(cfg.Projects), pr)
-	return p.SetSettings(ctx, tenant, cfg)
-}
-
-// DeleteProject removes a project and what it alone holds: its shared memory.
-// Its conversations and schedules are kept. They simply stop being filed.
-func (p *Platform) DeleteProject(ctx context.Context, tenant, name string) error {
-	cfg := p.Settings(tenant)
-	i := slices.IndexFunc(cfg.Projects, func(pr Project) bool { return pr.Name == name })
-	if i < 0 {
-		return fmt.Errorf("%w: %q", ErrProjectNotFound, name)
-	}
-	cfg.Projects = slices.Delete(slices.Clone(cfg.Projects), i, i+1)
-	if err := p.SetSettings(ctx, tenant, cfg); err != nil {
-		return err
-	}
-	if err := p.Memory.Drop(tenant, memory.ProjectOwner(name)); err != nil {
-		return err
-	}
-	p.syncMemory(tenant, memory.ProjectOwner(name))
-	return nil
 }
