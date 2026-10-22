@@ -34,7 +34,7 @@ import {
 import { words } from "./host.ts";
 import { runId, tagId } from "./keys.ts";
 import { validateBlocks } from "./validate.ts";
-import { WarpError } from "./warp.ts";
+import { type ClientRecord, WarpError } from "./warp.ts";
 
 const TS = "1700000000.000100";
 const KEY = `slack-${TEAM}-${CHANNEL}-1700000000-000100`;
@@ -1417,14 +1417,17 @@ test("asking from the shortcut form cannot make the app notify a whole channel",
 // Questions a run waits on.
 
 const CLIENT = "app";
-/** A world whose app is a client that maps USER to ana and OTHER_USER to olu. */
-function mapped(opts: Parameters<typeof world>[0] = {}): World {
+/** A world whose app is a client that maps USER to ana and OTHER_USER to olu, with routing over it. */
+function mapped(
+  opts: Parameters<typeof world>[0] = {},
+  routing: Pick<ClientRecord, "default_agent" | "agents"> = { default_agent: "lead" },
+): World {
   const w = world({ clientId: CLIENT, ...opts });
   w.warp.clients.set(CLIENT, {
     id: CLIENT,
     surface: "slack",
     enabled: true,
-    default_agent: "lead",
+    ...routing,
     identity: { team: TEAM },
     slack: { machine: SUBJECT, people: { [USER]: "ana", [OTHER_USER]: "olu" } },
   });
@@ -1455,6 +1458,17 @@ test("a person the client maps asks as themselves, so their run is theirs", asyn
   await emit(other, "lifecycle.completed", { text: "Hi." });
   await w.app.idle();
   await other.app.idle();
+});
+
+test("a mapped person's message that names no agent, through a client that reaches every agent with no default, leaves the agent to the platform and asks as them", async () => {
+  const w = mapped({ defaultAgent: undefined }, { agents: ["*"] });
+  await deliver(w, mention("what changed?", TS));
+  assert.equal(w.warp.asked[0]?.agent, "", "the app picks nobody itself");
+  assert.deepEqual(w.warp.asked[0]?.act_as, { client: CLIENT, user: USER });
+  assert.equal(w.warp.last.actor?.user, "ana", "the run is the person's");
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Nothing changed." });
+  await w.app.idle();
 });
 
 test("an approval waits in the run's thread with live buttons, and a mapped person's answer settles it in place", async () => {
