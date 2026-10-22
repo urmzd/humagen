@@ -195,13 +195,17 @@ func (s *surface) pump(ctx context.Context, st *seat, out chan<- envelope.Tag) {
 // the payload said about tenant, origin or client is overwritten here, and a
 // tag for an agent the client may not route to goes no further.
 //
+// stamp also files the run: in the channel its Slack channel is bound to, or
+// in the client's home, written over whatever the connector said.
+//
 // A connector may ask for @auto (its client's default can be auto). stamp
-// resolves it before admission, among the agents available at the root that
-// the client may route to. With none that fits, the tag goes no further.
+// resolves it before admission, among the agents available where the run is
+// filed that the client may route to. With none that fits, the tag goes no further.
 func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) (envelope.Tag, bool) {
 	c := st.client
+	project, channel := s.p.filedFor(c.Tenant, c, tag.Meta["slack_channel"])
 	if tag.Agent == Auto {
-		choice, err := s.p.autoFor(ctx, c, tag.Text)
+		choice, err := s.p.autoFor(ctx, c, project, tag.Text)
 		if err != nil {
 			s.p.log.Warn("platform: @auto found no agent for a client's message", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "tag", tag.ID, "error", err)
 			return envelope.Tag{}, false
@@ -212,13 +216,29 @@ func (s *surface) stamp(ctx context.Context, st *seat, tag envelope.Tag) (envelo
 		s.p.log.Warn("platform: client may not route to that agent", "surface", s.name, "tenant", c.Tenant, "client", c.ID, "agent", tag.Agent, "tag", tag.ID)
 		return envelope.Tag{}, false
 	}
-	meta := make(map[string]string, len(tag.Meta)+1)
+	meta := make(map[string]string, len(tag.Meta)+3)
 	for k, v := range tag.Meta {
 		meta[k] = v
 	}
 	meta[runs.MetaClient] = c.ID
+	// Where the run is filed is the binding's: the channel a Slack channel
+	// is bound to, or else the client's home. What the connector said is
+	// overwritten, and runs.ProjectOf believes only this.
+	meta[runs.MetaProject], meta[runs.MetaChannel] = project, channel
 	tag.Tenant, tag.Origin, tag.Meta = c.Tenant, s.name, meta
 	return tag, true
+}
+
+// filedFor is where a client's in-process connector files a run: the
+// channel its Slack channel is bound to, or the client's home.
+func (p *Platform) filedFor(tenant string, c clients.Client, slackChannel string) (string, string) {
+	if c.Surface == clients.Slack && slackChannel != "" {
+		if ch, bound := p.Projects.BoundTo(tenant, c.ID, slackChannel); bound {
+			return ch.Project, ch.Name
+		}
+	}
+	h := c.HomeOf()
+	return h.Project, h.Channel
 }
 
 // seat returns a tenant's enabled client by id, or nil.

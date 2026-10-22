@@ -140,9 +140,10 @@ spec:
         account: {customer: Globex Inc, external_id: "sf:0015g00000ABC", url: "https://crm.example.com/globex"}
         channels:
           - {name: renewals, purpose: Renewal work, default: auto}   # auto: @auto answers untagged messages here
+          - {name: general, slack: {client: slack-acme, channel: C0123GLOBEX}}  # a Slack thread there is a shared thread here
         experts: [{who: "okta|00u1ana", topics: [billing, renewals]}]
         agents: {allow: [globex-helper, lead], default: globex-helper}  # narrows: only these run here and below
-        members: [{who: "*", role: viewer}, {who: "okta|00u1ana", role: owner}]   # "*" required until reads are confined
+        members: [{who: "okta|00u1ana", role: owner}]   # no "*": members only, read by its members alone
 
   models:                   # each a slot: anthropic | openai | ollama
     - name: anthropic       # what an agent names as its provider
@@ -293,6 +294,7 @@ or declares `general` to set its purpose:
 | `title` | the name | one line, at most 80 characters |
 | `purpose` | none | one line, at most 200 characters, sent to every agent answering in the channel |
 | `default` | the project's | the agent that answers a message that tags none, or `auto`. One that cannot answer in the project answers nothing, and the message says why |
+| `slack` | unbound | `{client, channel}`: a Slack client's id and a Slack channel's (`C...` or `G...`, never a direct message) whose threads are shared threads here. One Slack channel is bound once in the file. The client need not exist yet: until it does the binding binds nothing. The app's bot must already be in the channel |
 
 `experts` names who answers for some topics, here and below: at most 50, each
 `{who, topics}`, where `who` is a person's subject or `role:<name>` and

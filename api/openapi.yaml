@@ -983,6 +983,13 @@ paths:
         `private` thread is read by its participants alone, the person who
         starts it first; tagging a person in it invites them. A `default`
         must be able to answer in the project (400).
+
+        With `surface`, a client's machine posts a person's message from a
+        Slack thread: into the thread that surface already is, or into a new
+        one the platform files from the binding (see SurfaceRef). Posting
+        the same message ts again changes nothing. To any other caller the
+        client is not found (404); a client's home that is gone is 404 too.
+        An agent the client may not route to is refused, never swapped.
       x-permission: runs:write
       requestBody:
         required: true
@@ -1410,7 +1417,8 @@ paths:
         may do with each part, is decided per message: a memory proposal needs
         `agents:read`, a failure `runs:read`, an alert or a reached limit
         `alerts:read`. `next` is the cursor for the page after this one, or
-        null at the end.
+        null at the end. A client's machine reads one of its people's inbox
+        with `act_as_client` and `act_as_user`, as the Slack app's Home does.
       x-permission: runs:read
       parameters:
         - name: state
@@ -1451,6 +1459,8 @@ paths:
             (`source.project`), `~` for the workspace. A project the caller
             cannot see is 404.
           schema: {type: string, maxLength: 63}
+        - {$ref: "#/components/parameters/ActAsClient"}
+        - {$ref: "#/components/parameters/ActAsUser"}
       responses:
         "200":
           description: One page, with the caller's counts.
@@ -1481,16 +1491,22 @@ paths:
       summary: Count the caller's open and unread messages, and the announcements they have not read
       description: |
         Announcements count only in `updates`, so the badge, which counts
-        `open`, never grows from them.
+        `open`, never grows from them. A client's machine counts for one of
+        its people with `act_as_client` and `act_as_user`.
       x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/ActAsClient"}
+        - {$ref: "#/components/parameters/ActAsUser"}
       responses:
         "200":
           description: The counts.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/InboxCounts"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/inbox/{id}:
     get:
@@ -3137,8 +3153,9 @@ paths:
       description: |
         A channel's name is lower case letters, digits and dashes, never
         changes, and is unique in the project. A `default` must be able to
-        answer in the project (400). The workspace and company projects need
-        `projects:govern`. Past 20 channels, 429.
+        answer in the project (400). Only the project's owners add one, and
+        the workspace and company projects need `projects:govern`. Past 20
+        channels, 429.
       x-permission: projects:write
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -3165,12 +3182,15 @@ paths:
     put:
       operationId: updateChannel
       tags: [projects]
-      summary: Change a channel's title, purpose and default
+      summary: Change a channel's title, purpose, default and Slack binding
       description: |
-        The body replaces those three as a whole: one left out is cleared.
+        The body replaces those four as a whole: one left out is cleared.
         `version` is the one the caller read (`general` reads 0 until it is
         first written), so a change made since answers 409. A field the
-        platform file sets answers 409.
+        platform file sets answers 409. Only the project's owners change a
+        channel. `slack` binds it to a Slack channel of a Slack client in the
+        workspace (400 for anything else); a Slack channel bound elsewhere
+        answers 409.
       x-permission: projects:write
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -3523,6 +3543,35 @@ paths:
         "429": {$ref: "#/components/responses/TooMany"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/clients/{id}/bindings:
+    get:
+      operationId: listClientBindings
+      tags: [clients]
+      summary: List the Slack channels a client is bound to
+      description: |
+        Each Slack channel and the channel it is bound to here, by Slack
+        channel, at most 200. A binding in a project the caller may not read
+        is left out.
+      x-permission: clients:read
+      parameters:
+        - {$ref: "#/components/parameters/ClientID"}
+      responses:
+        "200":
+          description: The bindings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bindings]
+                properties:
+                  bindings:
+                    type: array
+                    maxItems: 200
+                    items: {$ref: "#/components/schemas/ClientBinding"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/clients/{id}:
     get:
       operationId: getClient
@@ -3610,6 +3659,20 @@ components:
         (`-auth=dev`, loopback only) every request is the same admin and no
         credential is needed.
   parameters:
+    ActAsClient:
+      name: act_as_client
+      in: query
+      description: |
+        With `act_as_user`, read for a person of this client: only the
+        credential the client names as its `slack.machine` may, and the
+        person, mapped through the client's people, must hold `runs:read`
+        themselves. Another caller is told the client is not found.
+      schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,39}$"}
+    ActAsUser:
+      name: act_as_user
+      in: query
+      description: The Slack user id of the person, with `act_as_client`.
+      schema: {type: string, maxLength: 32}
     AgentName:
       name: name
       in: path
@@ -4425,6 +4488,7 @@ components:
         default:
           description: Answers an untagged message here, an agent or `auto`. Absent inherits from the channel.
           type: string
+        surface: {$ref: "#/components/schemas/ThreadSurface"}
         version:
           description: Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written.
           type: integer
@@ -4519,10 +4583,13 @@ components:
           type: [string, "null"]
         answers: {$ref: "#/components/schemas/ThreadAnswers"}
     ThreadInput:
-      description: A new shared thread and its first message.
+      description: |
+        A new thread and its first message. `visibility` is required, except
+        with `surface`, where the platform files the thread and project,
+        channel, visibility and default are left out.
       type: object
       additionalProperties: false
-      required: [visibility, text]
+      required: [text]
       properties:
         project:
           description: Where it is filed. Empty or `~` is the workspace itself.
@@ -4542,6 +4609,7 @@ components:
           description: Post without any agent answering, unless the message tags one.
           type: boolean
         act_as: {$ref: "#/components/schemas/ActAs"}
+        surface: {$ref: "#/components/schemas/SurfaceRef"}
     ThreadMessageInput:
       description: A message posted in a thread.
       type: object
@@ -4555,6 +4623,7 @@ components:
         post_only: {type: boolean}
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         act_as: {$ref: "#/components/schemas/ActAs"}
+        surface: {$ref: "#/components/schemas/SurfaceRef"}
     ThreadUpdate:
       description: A thread's title, visibility and default, as a whole.
       type: object
@@ -4645,6 +4714,7 @@ components:
         default:
           description: Answers untagged messages here, an agent or `auto`. Absent inherits from the project.
           type: string
+        slack: {$ref: "#/components/schemas/SlackBinding"}
         archived:
           description: It and its threads stay, and it takes no new threads.
           type: boolean
@@ -4677,8 +4747,9 @@ components:
         title: {type: string, maxLength: 80}
         purpose: {type: string, maxLength: 200}
         default: {type: string}
+        slack: {$ref: "#/components/schemas/SlackBinding"}
     ChannelUpdate:
-      description: A channel's title, purpose and default, as a whole.
+      description: A channel's title, purpose, default and Slack binding, as a whole.
       type: object
       additionalProperties: false
       required: [version]
@@ -4687,6 +4758,73 @@ components:
         title: {type: string, maxLength: 80}
         purpose: {type: string, maxLength: 200}
         default: {type: string}
+        slack: {$ref: "#/components/schemas/SlackBinding"}
+    SlackBinding:
+      description: |
+        The Slack channel a channel is bound to: a Slack thread there is a
+        shared thread here. The client is a Slack client of the workspace,
+        whose bot must already be in the channel, so no scope widens. One
+        Slack channel is bound to at most one channel of the workspace, and
+        a direct message is never bound. Archiving a channel unbinds it.
+      type: object
+      additionalProperties: false
+      required: [client, channel]
+      properties:
+        client:
+          description: The Slack client's id.
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{0,39}$"
+        channel:
+          description: The Slack channel's id, public (C) or private (G).
+          type: string
+          pattern: "^[CG][A-Z0-9]{2,31}$"
+    ClientBinding:
+      description: One Slack channel a client is bound to, and the channel it is bound to here.
+      type: object
+      required: [slack_channel, project, channel]
+      properties:
+        slack_channel: {type: string}
+        project:
+          description: The project. Empty is the workspace itself.
+          type: string
+        channel: {type: string}
+    SurfaceRef:
+      description: |
+        Where on a client's surface a message was posted: for Slack, the
+        channel, the thread's ts and the message's own. Only the credential
+        the client names as its `slack.machine` sends one, with `act_as` of
+        that client. The thread is found by its surface, or started and filed
+        where the platform says: the channel the Slack channel is bound to,
+        shared, or else the client's home, private for a direct message or
+        the assistant pane. The text is Slack's own: the app's mention is
+        dropped, a mapped bot or person is their tag, and anyone else is
+        plain and refused.
+      type: object
+      additionalProperties: false
+      required: [client, channel, ts]
+      properties:
+        client: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,39}$"}
+        channel: {type: string, maxLength: 100}
+        ts:
+          description: The thread's, the ts of its first message.
+          type: string
+          maxLength: 100
+        message:
+          description: The message's own ts, which makes a second post of it change nothing. Absent is `ts`.
+          type: string
+          maxLength: 64
+        app_user:
+          description: The app's own bot user id, whose mention is not a tag.
+          type: string
+          maxLength: 32
+    ThreadSurface:
+      description: The thread on a client's surface this thread is. It never changes.
+      type: object
+      required: [client, channel, ts]
+      properties:
+        client: {type: string}
+        channel: {type: string}
+        ts: {type: string}
     ProjectExpert:
       description: Who answers for some topics in a project, a person by subject or `role:<name>`.
       type: object
@@ -6617,7 +6755,7 @@ components:
         Where a client files the threads it starts outside a channel bound to
         one: direct messages, the assistant pane, an unbound channel, a GitHub
         issue. Absent, they are filed in the workspace's `general` channel.
-        Until channels are built, the channel is `general`.
+        The channel must be one of the project's, not archived.
       type: object
       required: [project]
       properties:

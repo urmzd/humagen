@@ -49,13 +49,23 @@ type thread struct {
 }
 
 type tenant struct {
-	threads  map[string]*thread
+	threads map[string]*thread
+	// surfaces finds a thread by its surface, built from the records.
+	surfaces map[string]string
 	watchers map[int]chan Notice
 	nextW    int
 }
 
 func newTenant() *tenant {
-	return &tenant{threads: map[string]*thread{}, watchers: map[int]chan Notice{}}
+	return &tenant{threads: map[string]*thread{}, surfaces: map[string]string{}, watchers: map[int]chan Notice{}}
+}
+
+// keep holds a thread's record in memory, with its surface found.
+func (t *tenant) keep(th *thread) {
+	t.threads[th.rec.ID] = th
+	if th.rec.Surface != nil {
+		t.surfaces[th.rec.Surface.key()] = th.rec.ID
+	}
 }
 
 func (t *tenant) tell(n Notice) {
@@ -110,7 +120,11 @@ func Open(st state.Store) (*Store, error) {
 			if err := rec.validate(); err != nil {
 				return fmt.Errorf("thread %q: %w", key, err)
 			}
-			s.of(tenantName).threads[rec.ID] = &thread{rec: rec, surfaces: map[string]int{}}
+			tn := s.of(tenantName)
+			if rec.Surface != nil && tn.surfaces[rec.Surface.key()] != "" {
+				return fmt.Errorf("%w: %q and %q are one surface's thread", ErrInvalid, tn.surfaces[rec.Surface.key()], rec.ID)
+			}
+			tn.keep(&thread{rec: rec, surfaces: map[string]int{}})
 		case strings.HasPrefix(key, keyMessage):
 			var m Message
 			if err := json.Unmarshal(raw, &m); err != nil {
@@ -231,6 +245,9 @@ func newID() string {
 // caller holds the lock.
 func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, error) {
 	t = t.clone()
+	if t.Surface != nil && s.of(tenantName).surfaces[t.Surface.key()] != "" {
+		return Thread{}, fmt.Errorf("%w: that surface's thread is %q", ErrExists, s.of(tenantName).surfaces[t.Surface.key()])
+	}
 	have := s.of(tenantName).threads
 	if t.ID == "" {
 		for t.ID = newID(); have[t.ID] != nil; t.ID = newID() {
@@ -278,7 +295,7 @@ func (s *Store) Create(tenantName string, t Thread, at time.Time) (Thread, error
 		return Thread{}, err
 	}
 	tn := s.of(tenantName)
-	tn.threads[t.ID] = &thread{rec: t, surfaces: map[string]int{}}
+	tn.keep(&thread{rec: t, surfaces: map[string]int{}})
 	tn.tell(Notice{ID: t.ID, At: at})
 	return t.clone(), nil
 }
@@ -315,7 +332,7 @@ func (s *Store) Start(tenantName string, t Thread, m Message, at time.Time) (Thr
 	th := &thread{rec: t, surfaces: map[string]int{}}
 	th.add(m)
 	tn := s.of(tenantName)
-	tn.threads[t.ID] = th
+	tn.keep(th)
 	tn.tell(Notice{ID: t.ID, Message: m.ID, At: at})
 	return t.clone(), m.clone(), nil
 }
@@ -486,7 +503,7 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 		return Thread{}, err
 	}
 	switch {
-	case next.ID != cur.ID || next.Project != cur.Project || next.Channel != cur.Channel:
+	case next.ID != cur.ID || next.Project != cur.Project || next.Channel != cur.Channel || !sameSurface(next.Surface, cur.Surface):
 		return Thread{}, fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
 	case !slices.Equal(next.Participants, cur.Participants):
 		return Thread{}, fmt.Errorf("%w: participants are changed on their own", ErrInvalid)
@@ -549,6 +566,23 @@ func (s *Store) Participants(tenantName, id string, version int, add []Participa
 	}
 	next.Version, next.UpdatedAt = th.rec.Version+1, at
 	return s.rewrite(tenantName, th, next, at)
+}
+
+func sameSurface(a, b *Surface) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
+
+// BySurface returns the thread a surface's thread is, if one was started.
+func (s *Store) BySurface(tenantName string, sf Surface) (Thread, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	tn, ok := s.tenants[tenantName]
+	if !ok {
+		return Thread{}, false
+	}
+	th := tn.threads[tn.surfaces[sf.key()]]
+	if th == nil {
+		return Thread{}, false
+	}
+	return th.rec.clone(), true
 }
 
 // Get returns a thread's record.

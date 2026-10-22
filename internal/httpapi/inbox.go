@@ -58,7 +58,36 @@ func (s *Server) deliverInbox(w http.ResponseWriter, r *http.Request, who auth.P
 // approval queue. project keeps what is filed in one project, "~" for the
 // workspace, of what the caller's own inbox holds. The answer carries next,
 // the cursor for the page after this one, or null at the end.
+// actingFor is who an inbox read is for: the caller, or the person a
+// client's machine reads for (act_as_client and act_as_user), who must hold
+// runs:read themselves.
+func (s *Server) actingFor(w http.ResponseWriter, r *http.Request, who auth.Principal) (auth.Principal, bool) {
+	q := r.URL.Query()
+	client, user := q.Get("act_as_client"), q.Get("act_as_user")
+	if client == "" && user == "" {
+		return who, true
+	}
+	if client == "" || user == "" {
+		fail(w, http.StatusBadRequest, "act_as_client and act_as_user go together")
+		return auth.Principal{}, false
+	}
+	person, err := s.P.ActingFor(who, platform.ActAs{Client: client, User: user})
+	if err != nil {
+		s.problem(w, err)
+		return auth.Principal{}, false
+	}
+	if !person.Can(auth.RunsRead) {
+		fail(w, http.StatusForbidden, "that person cannot read an inbox")
+		return auth.Principal{}, false
+	}
+	return person, true
+}
+
 func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	who, acting := s.actingFor(w, r, who)
+	if !acting {
+		return
+	}
 	q := r.URL.Query()
 	query := inbox.Query{State: inbox.State(q.Get("state")), Kind: inbox.Kind(q.Get("kind")), Before: q.Get("before"), Unread: q.Get("unread") == "true", Alert: q.Get("alert"), Agent: q.Get("agent")}
 	// Asking after one alert means its message, wherever it stands.
@@ -103,7 +132,11 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Prin
 // countInbox counts the caller's inbox. open and unread are what may need
 // them; updates are the announcements they have not read, which never grow
 // the badge.
-func (s *Server) countInbox(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
+func (s *Server) countInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	who, acting := s.actingFor(w, r, who)
+	if !acting {
+		return
+	}
 	ok(w, http.StatusOK, s.P.InboxCount(who))
 }
 

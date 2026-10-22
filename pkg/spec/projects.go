@@ -48,6 +48,10 @@ var (
 	// defaultName is an agent's name, as a client's agent list holds it,
 	// or auto.
 	defaultName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+	// clientID is a client's id, and slackChannel a Slack channel's,
+	// public (C) or private (G): a direct message is never bound.
+	clientID     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+	slackChannel = regexp.MustCompile(`^[CG][A-Z0-9]{2,31}$`)
 	expertRole  = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
 	kindName    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 	roleName    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,63}$`)
@@ -80,6 +84,9 @@ func checkProjects(w Workspace) error {
 	}
 	if err := checkChannels(w.Channels); err != nil {
 		return fmt.Errorf("workspace.%w", err)
+	}
+	if err := checkBindings(w); err != nil {
+		return err
 	}
 	if err := checkExperts(w.Experts); err != nil {
 		return fmt.Errorf("workspace.%w", err)
@@ -381,12 +388,48 @@ func checkChannels(cs []Channel) error {
 		if c.Default != "" && !defaultName.MatchString(c.Default) {
 			return fmt.Errorf("%s.default: %q is not an agent's name or auto", at, c.Default)
 		}
+		if b := c.Slack; b != nil {
+			if !clientID.MatchString(b.Client) {
+				return fmt.Errorf("%s.slack.client: %q is not a client's id", at, b.Client)
+			}
+			if !slackChannel.MatchString(b.Channel) {
+				return fmt.Errorf("%s.slack.channel: %q is not a Slack channel's id, such as C0123ABCD; a direct message is never bound", at, b.Channel)
+			}
+		}
 	}
 	if _, declared := seen[generalChannel]; !declared {
 		total++
 	}
 	if total > maxChannels {
 		return fmt.Errorf("channels: a project has at most %d channels, general among them, not %d", maxChannels, total)
+	}
+	return nil
+}
+
+// checkBindings checks that the file binds each Slack channel of a client
+// to one channel.
+func checkBindings(w Workspace) error {
+	seen := map[ChannelSlack]string{}
+	check := func(at string, cs []Channel) error {
+		for i, c := range cs {
+			if c.Slack == nil {
+				continue
+			}
+			path := fmt.Sprintf("%s.channels[%d].slack.channel", at, i)
+			if first, dup := seen[*c.Slack]; dup {
+				return fmt.Errorf("%s: %s of %s is bound at %s already", path, c.Slack.Channel, c.Slack.Client, first)
+			}
+			seen[*c.Slack] = path
+		}
+		return nil
+	}
+	if err := check("workspace", w.Channels); err != nil {
+		return err
+	}
+	for i, p := range w.Projects {
+		if err := check(fmt.Sprintf("workspace.projects[%d]", i), p.Channels); err != nil {
+			return err
+		}
 	}
 	return nil
 }

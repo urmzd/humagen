@@ -175,6 +175,16 @@ type Channel struct {
 	// Default answers untagged messages in the channel: an agent, or auto.
 	// Left out, the project's default answers.
 	Default string `json:"default,omitempty"`
+	// Slack binds the channel to a Slack channel of a Slack client: a Slack
+	// thread there is a shared thread here. The client is named by its id
+	// and need not exist yet; until it does the binding binds nothing.
+	Slack *ChannelSlack `json:"slack,omitempty"`
+}
+
+// ChannelSlack is the Slack channel a channel is bound to.
+type ChannelSlack struct {
+	Client  string `json:"client"`
+	Channel string `json:"channel"`
 }
 
 // Expert is who answers for some topics: a person by subject, or

@@ -37,7 +37,8 @@ func fileRoot(w spec.Workspace) (projects.Project, []string) {
 
 // applyChannels merges the file's channels into each project's, as the tree
 // is merged: a channel the file declares is created or taken over, with the
-// title, purpose and default it sets, which the API then answers 409 for. A
+// title, purpose, default and Slack binding it sets, which the API then
+// answers 409 for. A
 // channel that left the file stays, unmanaged, as does every channel of a
 // project that left it. The file's projects are in the store by now.
 func applyChannels(p *platform.Platform, tenant string, w spec.Workspace) error {
@@ -46,8 +47,12 @@ func applyChannels(p *platform.Platform, tenant string, w spec.Workspace) error 
 	put := func(project, at string, cs []spec.Channel) error {
 		declared[project] = map[string]bool{}
 		for i, c := range cs {
+			var bound *projects.SlackBinding
+			if c.Slack != nil {
+				bound = &projects.SlackBinding{Client: c.Slack.Client, Channel: c.Slack.Channel}
+			}
 			if _, err := p.Projects.UpsertChannel(tenant, projects.Channel{
-				Project: project, Name: c.Name, Title: c.Title, Purpose: c.Purpose, Default: c.Default,
+				Project: project, Name: c.Name, Title: c.Title, Purpose: c.Purpose, Default: c.Default, Slack: bound,
 			}, fileWriter, now); err != nil {
 				return fmt.Errorf("platform %q: %s.channels[%d]: %w", tenant, at, i, err)
 			}

@@ -54,9 +54,10 @@ func (p *Platform) ownDeliveries(who auth.Principal, m inbox.Message) inbox.Mess
 	return m
 }
 
-// checkHome checks that a client's home is somewhere the workspace has. A
-// project that is gone later leaves the client's threads unfiled rather than
-// filed somewhere else: the home is never swapped for another place.
+// checkHome checks that a client's home is somewhere the workspace has: a
+// project, and a channel of it that is not archived. A project or channel
+// that is gone later leaves the client's threads unfiled rather than filed
+// somewhere else: the home is never swapped for another place.
 func (p *Platform) checkHome(tenant string, c clients.Client) error {
 	if c.Home == nil {
 		return nil
@@ -65,8 +66,33 @@ func (p *Platform) checkHome(tenant string, c clients.Client) error {
 	if h.Project != "" && !p.HasProject(tenant, h.Project) {
 		return fmt.Errorf("%w: the home %q is not a project in this workspace", clients.ErrInvalid, c.Home.Project)
 	}
-	if h.Channel != clients.HomeChannel {
-		return fmt.Errorf("%w: a client's home is the %s channel until channels are built", clients.ErrInvalid, clients.HomeChannel)
+	ch, err := p.Projects.Channel(tenant, h.Project, h.Channel)
+	if err != nil {
+		return fmt.Errorf("%w: the home channel #%s is not a channel of %s", clients.ErrInvalid, h.Channel, c.Home.Project)
+	}
+	if ch.Archived {
+		return fmt.Errorf("%w: the home channel #%s is archived", clients.ErrInvalid, h.Channel)
 	}
 	return nil
+}
+
+// ActingFor is the person a client's machine reads for: the Slack person
+// as, mapped through the client's people to their subject here, with the
+// roles the workspace's policy grants it. Only the client's machine reads
+// for its people; to anyone else the client is not found.
+func (p *Platform) ActingFor(who auth.Principal, as ActAs) (auth.Principal, error) {
+	c, err := p.Clients.Get(who.Tenant, as.Client)
+	if err != nil || !machineOf(c, who) {
+		return auth.Principal{}, fmt.Errorf("%w: %q", clients.ErrNotFound, as.Client)
+	}
+	subject, ok := c.ActsFor(who.Subject, as.User)
+	if !ok {
+		return auth.Principal{}, fmt.Errorf("%w: that person is not mapped to anyone in this workspace", ErrForbidden)
+	}
+	person := p.mapped(who, subject)
+	roles := make([]auth.Role, 0, len(person.Roles))
+	for _, r := range person.Roles {
+		roles = append(roles, auth.Role(r))
+	}
+	return auth.Principal{Subject: subject, Tenant: who.Tenant, Kind: auth.User, Roles: roles}.WithPolicy(who.Policy()), nil
 }

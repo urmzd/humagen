@@ -33,6 +33,9 @@ import (
 type threadAccess struct {
 	Private      bool
 	Participants []string
+	// Client is the client whose surface the thread is on, such as the Slack
+	// app's: its machine reads it, as the Slack thread is its own.
+	Client string
 }
 
 // seesPlace reports whether a reader sees what lives in a place. viewer is
@@ -99,13 +102,16 @@ type Seer struct {
 	// gone is the reader's role in each deleted project asked about, read
 	// from its tombstone once.
 	gone map[string]projects.Access
+	// hosts is, for each client asked about, whether the reader is the
+	// machine that hosts its surface.
+	hosts map[string]bool
 }
 
 // Seer is a reader's view of their workspace, as the tree stands now.
 func (p *Platform) Seer(who auth.Principal) *Seer {
 	tree := p.Projects.Tree(who.Tenant)
 	r := ReaderOf(who)
-	return &Seer{p: p, who: who, tree: tree, roles: tree.Roles(r), govern: r.Govern && r.Subject != "", threads: map[string]*threadAccess{}, gone: map[string]projects.Access{}}
+	return &Seer{p: p, who: who, tree: tree, roles: tree.Roles(r), govern: r.Govern && r.Subject != "", threads: map[string]*threadAccess{}, gone: map[string]projects.Access{}, hosts: map[string]bool{}}
 }
 
 // Sees reports whether a reader may read what lives in a place: a role of at
@@ -116,9 +122,14 @@ func (p *Platform) Seer(who auth.Principal) *Seer {
 // only with projects:govern (fail closed).
 func (p *Platform) Sees(who auth.Principal, at Place) bool { return p.Seer(who).Place(at) }
 
-// Place reports whether the reader sees what lives in a place.
+// Place reports whether the reader sees what lives in a place. Besides the
+// rule, the machine a client names to host its surface reads the threads on
+// that surface, wherever they are filed: the Slack thread is already its own.
 func (s *Seer) Place(at Place) bool {
 	if s.govern {
+		return true
+	}
+	if th := s.thread(at.Thread); th != nil && th.Client != "" && s.hosting(th.Client) {
 		return true
 	}
 	a, ok := s.roles[at.Project]
@@ -156,8 +167,11 @@ func (s *Seer) thread(id string) *threadAccess {
 		return th
 	}
 	var out *threadAccess
-	if th, err := s.p.Threads.Get(s.who.Tenant, id); err == nil && th.Visibility == threads.Private {
-		out = &threadAccess{Private: true}
+	if th, err := s.p.Threads.Get(s.who.Tenant, id); err == nil && (th.Visibility == threads.Private || th.Surface != nil) {
+		out = &threadAccess{Private: th.Visibility == threads.Private}
+		if th.Surface != nil {
+			out.Client = th.Surface.Client
+		}
 		for _, pt := range th.Participants {
 			if pt.Kind == threads.Person {
 				out.Participants = append(out.Participants, pt.Name)
@@ -166,6 +180,18 @@ func (s *Seer) thread(id string) *threadAccess {
 	}
 	s.threads[id] = out
 	return out
+}
+
+// hosting reports whether the reader is the machine a client names to host
+// its surface.
+func (s *Seer) hosting(client string) bool {
+	if v, known := s.hosts[client]; known {
+		return v
+	}
+	c, err := s.p.Clients.Get(s.who.Tenant, client)
+	v := err == nil && machineOf(c, s.who)
+	s.hosts[client] = v
+	return v
 }
 
 // Run reports whether the reader sees a run: where its conversation lives.

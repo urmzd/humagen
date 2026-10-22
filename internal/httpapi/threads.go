@@ -68,10 +68,11 @@ func (s *Server) createChannel(w http.ResponseWriter, r *http.Request, who auth.
 	if !decode(w, r, &in) {
 		return
 	}
-	name, found := s.named(w, s.P.ProjectTree(who.Tenant), r.PathValue("name"))
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
 	if !found {
 		return
 	}
+	name := pr.Name
 	c, err := s.P.CreateChannel(r.Context(), who.Tenant, name, writer(who), in)
 	if err != nil {
 		s.problem(w, err)
@@ -85,10 +86,11 @@ func (s *Server) updateChannel(w http.ResponseWriter, r *http.Request, who auth.
 	if !decode(w, r, &in) {
 		return
 	}
-	name, found := s.named(w, s.P.ProjectTree(who.Tenant), r.PathValue("name"))
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
 	if !found {
 		return
 	}
+	name := pr.Name
 	c, err := s.P.UpdateChannel(r.Context(), who.Tenant, name, r.PathValue("channel"), writer(who), in)
 	if err != nil {
 		s.problem(w, err)
@@ -100,10 +102,11 @@ func (s *Server) updateChannel(w http.ResponseWriter, r *http.Request, who auth.
 // archiveChannel archives a channel. It and its threads stay, and general
 // is never archived.
 func (s *Server) archiveChannel(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	name, found := s.named(w, s.P.ProjectTree(who.Tenant), r.PathValue("name"))
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
 	if !found {
 		return
 	}
+	name := pr.Name
 	if _, err := s.P.ArchiveChannel(who.Tenant, name, r.PathValue("channel"), writer(who)); err != nil {
 		s.problem(w, err)
 		return
@@ -129,10 +132,11 @@ func (s *Server) putExperts(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !decode(w, r, &in) {
 		return
 	}
-	name, found := s.named(w, s.P.ProjectTree(who.Tenant), r.PathValue("name"))
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
 	if !found {
 		return
 	}
+	name := pr.Name
 	if in.Experts == nil {
 		fail(w, http.StatusBadRequest, "experts is a list, [] for none")
 		return
@@ -153,8 +157,8 @@ func (s *Server) startThread(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if !decode(w, r, &in) {
 		return
 	}
-	if in.Visibility == "" {
-		fail(w, http.StatusBadRequest, "visibility is required: shared")
+	if in.Visibility == "" && in.Surface == nil {
+		fail(w, http.StatusBadRequest, "visibility is required: shared or private")
 		return
 	}
 	got, err := s.P.StartThread(r.Context(), who, in)

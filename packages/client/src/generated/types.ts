@@ -411,6 +411,7 @@ export interface Thread {
   participants: ThreadParticipant[];
   /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. */
   default?: string;
+  surface?: ThreadSurface;
   /** Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written. */
   version: number;
   created_by: string;
@@ -482,13 +483,16 @@ export interface ThreadPage {
   answers: ThreadAnswers;
 }
 
-/** A new shared thread and its first message. */
+/** A new thread and its first message. `visibility` is required, except
+with `surface`, where the platform files the thread and project,
+channel, visibility and default are left out.
+ */
 export interface ThreadInput {
   /** Where it is filed. Empty or `~` is the workspace itself. */
   project?: string;
   /** The project's channel. Empty is `general`. */
   channel?: string;
-  visibility: ThreadVisibility;
+  visibility?: ThreadVisibility;
   title?: string;
   /** Answers untagged messages in the thread, an agent available in the project or `auto`. */
   default?: string;
@@ -496,6 +500,7 @@ export interface ThreadInput {
   /** Post without any agent answering, unless the message tags one. */
   post_only?: boolean;
   act_as?: ActAs;
+  surface?: SurfaceRef;
 }
 
 /** A message posted in a thread. */
@@ -506,6 +511,7 @@ export interface ThreadMessageInput {
   post_only?: boolean;
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
+  surface?: SurfaceRef;
 }
 
 /** A thread's title, visibility and default, as a whole. */
@@ -569,6 +575,7 @@ export interface Channel {
   purpose?: string;
   /** Answers untagged messages here, an agent or `auto`. Absent inherits from the project. */
   default?: string;
+  slack?: SlackBinding;
   /** It and its threads stay, and it takes no new threads. */
   archived?: boolean;
   /** `file` when the platform file declares the channel. */
@@ -590,14 +597,65 @@ export interface ChannelInput {
   title?: string;
   purpose?: string;
   default?: string;
+  slack?: SlackBinding;
 }
 
-/** A channel's title, purpose and default, as a whole. */
+/** A channel's title, purpose, default and Slack binding, as a whole. */
 export interface ChannelUpdate {
   version: number;
   title?: string;
   purpose?: string;
   default?: string;
+  slack?: SlackBinding;
+}
+
+/** The Slack channel a channel is bound to: a Slack thread there is a
+shared thread here. The client is a Slack client of the workspace,
+whose bot must already be in the channel, so no scope widens. One
+Slack channel is bound to at most one channel of the workspace, and
+a direct message is never bound. Archiving a channel unbinds it.
+ */
+export interface SlackBinding {
+  /** The Slack client's id. */
+  client: string;
+  /** The Slack channel's id, public (C) or private (G). */
+  channel: string;
+}
+
+/** One Slack channel a client is bound to, and the channel it is bound to here. */
+export interface ClientBinding {
+  slack_channel: string;
+  /** The project. Empty is the workspace itself. */
+  project: string;
+  channel: string;
+}
+
+/** Where on a client's surface a message was posted: for Slack, the
+channel, the thread's ts and the message's own. Only the credential
+the client names as its `slack.machine` sends one, with `act_as` of
+that client. The thread is found by its surface, or started and filed
+where the platform says: the channel the Slack channel is bound to,
+shared, or else the client's home, private for a direct message or
+the assistant pane. The text is Slack's own: the app's mention is
+dropped, a mapped bot or person is their tag, and anyone else is
+plain and refused.
+ */
+export interface SurfaceRef {
+  client: string;
+  channel: string;
+  /** The thread's, the ts of its first message. */
+  ts: string;
+  /** The message's own ts, which makes a second post of it change nothing. Absent is `ts`. */
+  message?: string;
+  /** The app's own bot user id, whose mention is not a tag. */
+  app_user?: string;
+}
+
+/** The thread on a client's surface this thread is. It never changes. */
+export interface ThreadSurface {
+  client: string;
+  channel: string;
+  ts: string;
 }
 
 /** Who answers for some topics in a project, a person by subject or `role:<name>`. */
@@ -1919,7 +1977,7 @@ export interface ClientInput {
 /** Where a client files the threads it starts outside a channel bound to
 one: direct messages, the assistant pane, an unbound channel, a GitHub
 issue. Absent, they are filed in the workspace's `general` channel.
-Until channels are built, the channel is `general`.
+The channel must be one of the project's, not archived.
  */
 export interface ClientHome {
   /** A project's name, or `~` for the workspace. It must exist. */
@@ -2570,6 +2628,10 @@ export interface ListUsageNoticesResponse {
 export interface ListClientsResponse {
   clients: ClientView[];
   caps: ClientCaps;
+}
+
+export interface ListClientBindingsResponse {
+  bindings: ClientBinding[];
 }
 
 /** SSE event union type for streaming responses. */

@@ -56,6 +56,11 @@ type ThreadInput struct {
 	PostOnly bool   `json:"post_only,omitempty"`
 	// ActAs is the person a surface's credential posts for.
 	ActAs *ActAs `json:"act_as,omitempty"`
+	// Surface is where on a client's surface the message was posted, sent
+	// only by the client's machine. The thread is that surface's, found or
+	// started, and filed from the binding: Project, Channel, Visibility and
+	// Default are then left out.
+	Surface *SurfaceRef `json:"surface,omitempty"`
 }
 
 // MessageInput posts a message into a thread.
@@ -70,6 +75,10 @@ type MessageInput struct {
 	// run parked on it.
 	Answers *threads.AnswerRef `json:"answers,omitempty"`
 	ActAs   *ActAs             `json:"act_as,omitempty"`
+	// Surface is where on the thread's surface the message was posted, sent
+	// only by the client's machine. Its message ts makes a second post of it
+	// change nothing.
+	Surface *SurfaceRef `json:"surface,omitempty"`
 	// reply is a reply to a mention, from the inbox.
 	reply bool
 }
@@ -242,10 +251,28 @@ func (p *Platform) checkTags(tenant string, tree *projects.Tree, project string,
 func (p *Platform) placeOfThread(tenant string, th threads.Thread) Place {
 	ch, _ := p.Projects.Channel(tenant, th.Project, th.Channel)
 	at := Place{Project: th.Project}
-	for _, d := range threads.Nearer(th, "", ch) {
+	for _, d := range threads.Nearer(th, p.clientDefault(tenant, th), ch) {
 		at.Nearer = append(at.Nearer, Nearer{Agent: d.Agent, From: d.From})
 	}
 	return at
+}
+
+// clientDefault is the default of the client whose surface a thread is on,
+// for a thread it filed outside a bound channel: a direct message, the
+// assistant pane, an unbound channel. In a bound channel the channel's
+// chain decides.
+func (p *Platform) clientDefault(tenant string, th threads.Thread) string {
+	if th.Surface == nil {
+		return ""
+	}
+	if ch, bound := p.Projects.BoundTo(tenant, th.Surface.Client, th.Surface.Channel); bound && ch.Project == th.Project && ch.Name == th.Channel {
+		return ""
+	}
+	c, err := p.Clients.Get(tenant, th.Surface.Client)
+	if err != nil {
+		return ""
+	}
+	return c.DefaultAgent
 }
 
 // defaultOf is the default a message in a thread inherits, and why it
@@ -377,6 +404,14 @@ func (p *Platform) checkDefault(ctx context.Context, tenant, project, agent stri
 // StartThread starts a shared thread in a project's channel with its first
 // message, and starts what the message calls for.
 func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in ThreadInput) (Posted, error) {
+	if in.Surface != nil {
+		return p.startFromSurface(ctx, who, in)
+	}
+	return p.startThread(ctx, who, in, nil)
+}
+
+// startThread starts a thread, on a client's surface when on says which.
+func (p *Platform) startThread(ctx context.Context, who auth.Principal, in ThreadInput, on *surfaced) (Posted, error) {
 	by, name, via, slack, err := p.author(who, in.ActAs)
 	if err != nil {
 		return Posted{}, err
@@ -394,18 +429,28 @@ func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in Threa
 		return Posted{}, err
 	}
 	tree := p.Projects.Tree(who.Tenant)
-	mentions, err := threads.Parse(in.Text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack})
-	if err != nil {
-		return Posted{}, err
-	}
-	mentions = p.checkTags(who.Tenant, tree, project, mentions)
-	th, m, err := p.Threads.Start(who.Tenant, threads.Thread{
+	text, unmapped := in.Text, []threads.Mention(nil)
+	rec := threads.Thread{
 		Project: project, Channel: ch.Name, Title: strings.TrimSpace(in.Title), Visibility: in.Visibility, Default: in.Default, CreatedBy: by,
-	}, threads.Message{By: by, Name: name, Text: in.Text, Mentions: mentions, Via: via}, p.now())
+	}
+	first := threads.Message{By: by, Name: name, Via: via}
+	if on != nil {
+		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
+		sf := on.ref.surface(on.client.ID)
+		rec.Surface, first.SurfaceID, slack = &sf, on.ref.message(), nil
+	}
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack})
 	if err != nil {
 		return Posted{}, err
 	}
-	return p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, false)
+	first.Text, first.Mentions = text, p.checkTags(who.Tenant, tree, project, mentions)
+	th, m, err := p.Threads.Start(who.Tenant, rec, first, p.now())
+	if err != nil {
+		return Posted{}, err
+	}
+	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, false)
+	out.Refused = append(out.Refused, unmapped...)
+	return out, err
 }
 
 // PostMessage posts a person's message into a thread, and starts what it
@@ -423,17 +468,26 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
+	on, err := p.surfaceOfPost(who, th, in)
+	if err != nil {
+		return Posted{}, err
+	}
 	prev, err := p.prevOf(who.Tenant, th, in.After)
 	if err != nil {
 		return Posted{}, err
 	}
 	tree := p.Projects.Tree(who.Tenant)
-	mentions, err := threads.Parse(in.Text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack})
+	text, unmapped, surfaceID := in.Text, []threads.Mention(nil), ""
+	if on != nil {
+		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
+		surfaceID, slack = on.ref.message(), nil
+	}
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack})
 	if err != nil {
 		return Posted{}, err
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
-	msg := threads.Message{By: by, Name: name, Text: in.Text, Mentions: mentions, Via: via, Prev: prev}
+	msg := threads.Message{By: by, Name: name, Text: text, Mentions: mentions, Via: via, Prev: prev, SurfaceID: surfaceID}
 	if in.Answers != nil {
 		if err := p.answerFromThread(ctx, who, th, *in.Answers, in.Text); err != nil {
 			return Posted{}, err
@@ -454,7 +508,9 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if !fresh {
 		return p.posted(who.Tenant, th, m), nil
 	}
-	return p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, in.Answers != nil || in.reply)
+	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, in.Answers != nil || in.reply)
+	out.Refused = append(out.Refused, unmapped...)
+	return out, err
 }
 
 // prevOf is the turn a message follows, from what the poster named: a
@@ -617,6 +673,14 @@ func answerTagID(thread, message, agent string) string {
 // the agent first. The agent is sent its context and the room's transcript
 // up to the message, then the message.
 func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, agent string, actor envelope.Actor) (runs.Run, error) {
+	// A client's allow-list holds what is answered on its surface: an
+	// agent it may not route to is refused, never swapped, and a client
+	// that lists its agents treats @auto as a name outside the list.
+	if th.Surface != nil {
+		if c, err := p.Clients.Get(tenant, th.Surface.Client); err == nil && !c.Routes(agent) {
+			return runs.Run{}, fmt.Errorf("%w: %s may not route to @%s", ErrNotAvailable, c.ID, agent)
+		}
+	}
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
 		runs.MetaChannel: th.Channel, runs.MetaProject: th.Project,

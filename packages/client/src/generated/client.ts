@@ -39,6 +39,7 @@ import type {
   ListArtifactVersionsResponse,
   ListArtifactsResponse,
   ListChannelsResponse,
+  ListClientBindingsResponse,
   ListClientsResponse,
   ListEvalRunsResponse,
   ListEvalSuitesResponse,
@@ -1164,6 +1165,13 @@ answers; otherwise the default the thread inherits answers. A
 `private` thread is read by its participants alone, the person who
 starts it first; tagging a person in it invites them. A `default`
 must be able to answer in the project (400).
+
+With `surface`, a client's machine posts a person's message from a
+Slack thread: into the thread that surface already is, or into a new
+one the platform files from the binding (see SurfaceRef). Posting
+the same message ts again changes nothing. To any other caller the
+client is not found (404); a client's home that is gone is 404 too.
+An agent the client may not route to is refused, never swapped.
  */
   async startThread(body: ThreadInput, options?: RequestOptions): Promise<ThreadPosted> {
     const path = "/api/threads";
@@ -1522,9 +1530,10 @@ here it answers 409.
 may do with each part, is decided per message: a memory proposal needs
 `agents:read`, a failure `runs:read`, an alert or a reached limit
 `alerts:read`. `next` is the cursor for the page after this one, or
-null at the end.
+null at the end. A client's machine reads one of its people's inbox
+with `act_as_client` and `act_as_user`, as the Slack app's Home does.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1535,6 +1544,8 @@ null at the end.
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListInboxResponse>("GET", path, {
@@ -1542,7 +1553,7 @@ null at the end.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1553,6 +1564,8 @@ null at the end.
     if (before !== undefined && before !== null) _q.set("before", String(before));
     if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
     if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListInboxResponse>("GET", path, {
@@ -1561,17 +1574,28 @@ null at the end.
   }
 
   /** Announcements count only in `updates`, so the badge, which counts
-`open`, never grows from them.
+`open`, never grows from them. A client's machine counts for one of
+its people with `act_as_client` and `act_as_user`.
  */
-  async getInboxCount(options?: RequestOptions): Promise<InboxCounts> {
-    const path = "/api/inbox/count";
+  async getInboxCount(actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<InboxCounts> {
+    let path = "/api/inbox/count";
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<InboxCounts>("GET", path, {
       ...options,
     });
   }
 
-  async getInboxCountRaw(options?: RequestOptions): Promise<ApiResponse<InboxCounts>> {
-    const path = "/api/inbox/count";
+  async getInboxCountRaw(actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<InboxCounts>> {
+    let path = "/api/inbox/count";
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<InboxCounts>("GET", path, {
       ...options,
     });
@@ -2957,8 +2981,9 @@ message in it.
 
   /** A channel's name is lower case letters, digits and dashes, never
 changes, and is unique in the project. A `default` must be able to
-answer in the project (400). The workspace and company projects need
-`projects:govern`. Past 20 channels, 429.
+answer in the project (400). Only the project's owners add one, and
+the workspace and company projects need `projects:govern`. Past 20
+channels, 429.
  */
   async createChannel(name: string, body: ChannelInput, options?: RequestOptions): Promise<ChannelView> {
     let path = "/api/projects/{name}/channels";
@@ -2980,10 +3005,13 @@ answer in the project (400). The workspace and company projects need
     });
   }
 
-  /** The body replaces those three as a whole: one left out is cleared.
+  /** The body replaces those four as a whole: one left out is cleared.
 `version` is the one the caller read (`general` reads 0 until it is
 first written), so a change made since answers 409. A field the
-platform file sets answers 409.
+platform file sets answers 409. Only the project's owners change a
+channel. `slack` binds it to a Slack channel of a Slack client in the
+workspace (400 for anything else); a Slack channel bound elsewhere
+answers 409.
  */
   async updateChannel(name: string, channel: string, body: ChannelUpdate, options?: RequestOptions): Promise<ChannelView> {
     let path = "/api/projects/{name}/channels/{channel}";
@@ -3271,6 +3299,26 @@ read, or a limit on either, is left out.
     return this.rawRequest<ClientView>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Each Slack channel and the channel it is bound to here, by Slack
+channel, at most 200. A binding in a project the caller may not read
+is left out.
+ */
+  async listClientBindings(id: string, options?: RequestOptions): Promise<ListClientBindingsResponse> {
+    let path = "/api/clients/{id}/bindings";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ListClientBindingsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listClientBindingsRaw(id: string, options?: RequestOptions): Promise<ApiResponse<ListClientBindingsResponse>> {
+    let path = "/api/clients/{id}/bindings";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ListClientBindingsResponse>("GET", path, {
       ...options,
     });
   }

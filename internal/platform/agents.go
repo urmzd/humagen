@@ -280,9 +280,9 @@ func (p *Platform) resolveAgent(ctx context.Context, tenant string, at Place, as
 // autoFor is @auto for a message a client raised: it picks among the agents
 // available where the client files its runs that the client may route to.
 // Until clients have a home, that is the root.
-func (p *Platform) autoFor(ctx context.Context, c clients.Client, text string) (pick.Choice, error) {
+func (p *Platform) autoFor(ctx context.Context, c clients.Client, project, text string) (pick.Choice, error) {
 	tree := p.Projects.Tree(c.Tenant)
-	at := Place{Project: projects.Root}
+	at := Place{Project: project}
 	fallback := namedDefault(tree, at)
 	if !c.Routes(fallback) {
 		fallback = ""

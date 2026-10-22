@@ -1332,9 +1332,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Errorf("the machine does not see its own receipt: %s", got.raw)
 	}
 	// Where the app files the threads it starts outside a bound channel.
-	homed := strings.Replace(app, `"slack":`, `"home":{"project":"Launch"},"slack":`, 1)
+	homed := strings.Replace(strings.Replace(app, `"slack":`, `"home":{"project":"Launch"},"slack":`, 1), `"machine":"svc-acme"`, `"machine":"svc-acme","people":{"U01ANA":"00u-ana"}`, 1)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/app", homed, http.StatusOK)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/app", strings.Replace(homed, "Launch", "Ghost", 1), http.StatusBadRequest)
+	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/app", strings.Replace(homed, `"project":"Launch"`, `"project":"Launch","channel":"nowhere"`, 1), http.StatusBadRequest)
+	// The machine reads a mapped person's inbox for them, and nobody else's.
+	// Here the policy grants ana nothing by subject, so she reads nothing
+	// through Slack; platform tests cover a person who may.
+	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=app&act_as_user=U01ANA", "", http.StatusForbidden)
+	c.call(acme, "GET", "/api/inbox", "/api/inbox?act_as_client=app&act_as_user=U01NOBODY", "", http.StatusForbidden)
+	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=app", "", http.StatusBadRequest)
+	c.call(acme, "GET", "/api/inbox/count", "/api/inbox/count?act_as_client=support&act_as_user=U01ANA", "", http.StatusNotFound)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/support", `{"name":"Support","surface":"slack","identity":{"app_id":"A01CONTRACT","team":"T01ABCDEF"},"default_agent":"helper","agents":["*"],"slack":{"sessions":true},"enabled":false}`, http.StatusOK)
 
 	// Channels, experts and shared threads. A person posts; a credential
@@ -1354,6 +1362,15 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", channel, "/api/projects/Field/channels/renewals", `{"version":2,"default":"ghost"}`, http.StatusBadRequest)
 	c.call(acme, "PUT", channel, "/api/projects/Field/channels/nowhere", `{"version":1}`, http.StatusNotFound)
 	c.call(acme, "DELETE", channel, "/api/projects/Field/channels/general", "", http.StatusConflict)
+	// A channel bound to a Slack channel of the app: one Slack channel, one channel.
+	c.call(acme, "PUT", channel, "/api/projects/Field/channels/renewals", `{"version":2,"title":"Renewals","purpose":"Renewals and pricing","default":"helper","slack":{"client":"app","channel":"C01RENEW"}}`, http.StatusOK)
+	c.call(acme, "PUT", channel, "/api/projects/Field/channels/general", `{"version":0,"slack":{"client":"app","channel":"C01RENEW"}}`, http.StatusConflict)
+	c.call(acme, "PUT", channel, "/api/projects/Field/channels/general", `{"version":0,"slack":{"client":"ghost","channel":"C01GEN"}}`, http.StatusBadRequest)
+	bindings := c.call(acme, "GET", "/api/clients/{id}/bindings", "/api/clients/app/bindings", "", http.StatusOK)
+	if b := sliceOf(bindings.field("bindings")); len(b) != 1 || obj(b[0])["channel"] != "renewals" {
+		t.Errorf("the app's bindings are %s", bindings.raw)
+	}
+	c.call(globex, "GET", "/api/clients/{id}/bindings", "/api/clients/app/bindings", "", http.StatusNotFound)
 	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Crowded"}`, http.StatusCreated)
 	for i := range projects.MaxChannels - 1 {
 		c.call(acme, "POST", channels, "/api/projects/Crowded/channels", fmt.Sprintf(`{"name":"c%d"}`, i), http.StatusCreated)
@@ -1371,6 +1388,13 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"hi"}`, http.StatusBadRequest)
 	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"private","text":"hi"}`, http.StatusCreated)
 	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Ghost","visibility":"shared","text":"hi"}`, http.StatusNotFound)
+	// The app's machine posts a Slack person's message from a bound channel,
+	// as that person, who must hold runs:write themselves: here the policy
+	// grants ana nothing by subject (platform tests post as one who may).
+	surface := `{"text":"<@UAPP> who has the PO?","act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000200","app_user":"UAPP"}}`
+	c.call(acme, "POST", "/api/threads", "/api/threads", surface, http.StatusForbidden)
+	c.call(ana, "POST", "/api/threads", "/api/threads", surface, http.StatusNotFound)
+	c.call(acme, "POST", "/api/threads", "/api/threads", strings.Replace(surface, `"surface"`, `"project":"Field","surface"`, 1), http.StatusBadRequest)
 	started := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","channel":"renewals","visibility":"shared","title":"Globex renewal","text":"@helper when does Globex renew? @vic @sme:billing"}`, http.StatusCreated)
 	tid, _ := obj(started.field("thread"))["id"].(string)
 	if started.str("rule") != "tagged" || len(sliceOf(started.field("runs"))) != 1 || len(sliceOf(started.field("notified"))) != 1 {
@@ -1513,7 +1537,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	real := map[string]map[string]string{
 		"/api/agents/{name}/memory/{id}": {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
-		"/api/clients/{id}": {"id": "support"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
+		"/api/clients/{id}": {"id": "support"}, "/api/clients/{id}/bindings": {"id": "app"}, "/api/evals/{name}": {"name": "smoke"}, "/api/evals/{name}/runs": {"name": "smoke"},
 		"/api/evals/{name}/run": {"name": "smoke"}, "/api/knowledge/{name}": {"name": "handbook"},
 		"/api/knowledge/{name}/documents": {"name": "handbook"}, "/api/knowledge/{name}/documents/{id}": {"name": "handbook", "id": doc.str("id")},
 		"/api/knowledge/{name}/variants": {"name": "handbook"}, "/api/knowledge/{name}/variants/{variant}": {"name": "handbook"},

@@ -99,14 +99,22 @@ func ClientOf(tag envelope.Tag) string {
 
 // ProjectOf returns the project a tag files its run under, or "". Only origins
 // whose project the server itself wrote are believed: the API, the cron trigger
-// (a schedule's project is set when the schedule is created) and a person's
-// run-now.
+// (a schedule's project is set when the schedule is created), a person's
+// run-now, and Slack and GitHub, whose ingress writes it from the client's
+// binding over whatever a connector said.
 func ProjectOf(tag envelope.Tag) string {
-	if tag.Origin == OriginAPI || tag.Origin == "cron" || tag.Origin == OriginManual {
+	switch tag.Origin {
+	case OriginAPI, "cron", OriginManual, OriginSlack, OriginGitHub:
 		return tag.Meta[MetaProject]
 	}
 	return ""
 }
+
+// The origins of runs a client's in-process connector raised.
+const (
+	OriginSlack  = "slack"
+	OriginGitHub = "github"
+)
 
 // Status is where a run is in its life.
 type Status string
@@ -373,6 +381,10 @@ func (x *Index) Record(runID string, tag envelope.Tag, rev int) error {
 		}
 		prev, picked = tag.Meta[MetaPrev], tag.Meta[MetaPicked]
 		channel, message = tag.Meta[MetaChannel], tag.Meta[MetaMessage]
+	}
+	// Slack and GitHub ingress writes the channel from the client's binding.
+	if tag.Origin == OriginSlack || tag.Origin == OriginGitHub {
+		channel = tag.Meta[MetaChannel]
 	}
 	// The agent is sent the conversation so far, or a schedule's text with
 	// its project's context. What was actually asked is kept apart, and is
