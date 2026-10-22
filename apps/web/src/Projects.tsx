@@ -18,6 +18,7 @@ import {
 import { ScopeLimits } from "./Billing.tsx";
 import { inWords } from "./cron.ts";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
+import { ProjectKnowledgeSection } from "./ProjectKnowledge.tsx";
 import type { Source } from "./mail.ts";
 import { ProjectHistory, ProjectInbox, ProjectLimits, ProjectPeople } from "./ProjectTabs.tsx";
 import {
@@ -968,17 +969,21 @@ function EditProject({ project, onSaved, onCancel }: { project: ProjectView; onS
 /**
  * What a turn here is given from the project tree: this project's
  * instructions, which those who may change the project edit, and, read only,
- * what each project above it sends, the workspace first.
+ * what each project above it sends, the workspace first. Then, to a reader of
+ * knowledge, the sources the project names and what a run here is grounded in.
  */
 export function ContextTab({
   detail,
   workspaceName,
   canWrite,
+  canKnowledge = false,
   onSaved,
 }: {
   detail: ProjectDetail;
   workspaceName: string;
   canWrite: boolean;
+  /** Holds `knowledge:read`: without it, nothing about sources is shown. */
+  canKnowledge?: boolean;
   onSaved: () => void;
 }) {
   const p = detail.project;
@@ -1081,6 +1086,15 @@ export function ContextTab({
           })}
         </section>
       )}
+      <ProjectKnowledgeSection
+        project={p.name}
+        version={p.version}
+        ancestors={detail.ancestors}
+        workspaceName={workspaceName}
+        canRead={canKnowledge}
+        canWrite={canWrite}
+        onSaved={onSaved}
+      />
     </div>
   );
 }
@@ -1403,7 +1417,7 @@ export function ProjectPage({
           }}
         />
       ) : tab === "context" ? (
-        <ContextTab key={p.name} detail={detail} workspaceName={workspaceName} canWrite={canWrite} onSaved={changed} />
+        <ContextTab key={p.name} detail={detail} workspaceName={workspaceName} canWrite={canWrite} canKnowledge={can("knowledge:read")} onSaved={changed} />
       ) : tab === "schedules" ? (
         <Scheduled
           key={p.name}

@@ -666,12 +666,13 @@ ingress overwrites whatever a connector put there (phase 8).
   project's, then each ancestor's, nearest first, each once from the nearest
   project that names it, at most 16, besides its agent's own
   (`Tree.Knowledge`). A sibling's and a child's are never given.
-  - **Pinned at accept.** `pin` writes them into the tag as `warp.sources`,
-    over whatever a caller put there, so every attempt of the run, after a
-    restart too, is grounded in the same sources whatever the projects name
-    later. A called run is given its root's, as it counts toward its root's
-    ancestors. A housekeeping run, filed at the workspace whatever turn it
-    serves, is given none.
+  - **Pinned at accept.** `pin` writes them into the tag as `_warp.sources`,
+    over whatever a caller put there, under that key or the public
+    `warp.sources` runs were pinned with before, which is still read for
+    them. So every attempt of the run, after a restart too, is grounded in
+    the same sources whatever the projects name later. A called run is given
+    its root's, as it counts toward its root's ancestors. A housekeeping
+    run, filed at the workspace whatever turn it serves, is given none.
   - **Through the executor seam.** `callExecutor.resolve`, which already
     rewrites the revision for model policies, adds them to the request's copy
     of the revision's `Sources` (as `knowledge://<name>`) before fiber's
@@ -682,14 +683,19 @@ ingress overwrites whatever a connector put there (phase 8).
     below it. A source is the workspace's, read with `knowledge:read`
     wherever it is named, so naming one in a project takes an owner and
     `knowledge:read` (403), which reads it anyway, and a source the
-    workspace has (400). One a project names already may stay after it is
-    deleted, so an edit is not refused for it. A reader without
-    `knowledge:read` is shown no source's name: not in the knowledge route,
-    the project's record or its history. A turn is not sent their names with
-    its trigger context; a turn stopped before its attempt starts is still
-    journaled with them, as fiber writes the tag's meta there, which keeping
-    warp's own keys out of fiber's rendering would close. A source the
-    workspace no longer has grounds nothing, as one an agent names does.
+    workspace has (400). A reader without `knowledge:read` is shown no
+    source's name: not in the knowledge route, the project's record or its
+    history. The run's pin is a private key of its tag (`_warp.sources`),
+    which fiber keeps out of everything a model is sent, so the model is
+    grounded in the sources without being told their names. Deleting a
+    source a project names is refused (409), naming the projects the caller
+    can see, or saying only that a project names it to a caller without
+    `projects:read`; a source that does not exist is not found (404). A
+    project hidden from the caller does not hold the delete up and is not
+    named: it keeps the name, which grounds nothing until a source of that
+    name is made again, and an edit of its list is not refused for it. A
+    source the workspace no longer has grounds nothing, as one an agent
+    names does.
 - fiber's own thread journal (`pkg/thread`) is per agent by design ("not a
   transcript of the room"), so warp keeps its own room transcript.
 
@@ -1664,7 +1670,7 @@ phase 2 and experts to phase 3, because addressing and threads need them.
 | 6 | Scheduled agents in projects (recaps) | `deliver` (project or inbox), posting on `ended()`, `agent_posts` and the draft part. `project_changes`, `runs_summary(project)`, the `Summarize` project filter, file-managed schedules in the spec. Schedules tab and "Add Weekly Recap". Status row "Schedule delivery", and the new row "Scheduled agents in projects (recaps)" | M |
 | 7 | Read confinement: members-only projects and private threads | `p.Sees` with 404 on every read path (runs, threads, events, manifest, trace, journal, analytics, artifacts and downloads, schedules, inbox, memory, homed agents). Private threads; members-only projects and the account default; no memory proposals from private threads. A contract sweep reads every GET and the event stream as a non-member. Status row "Project membership and per-project access" built, and the new row "Read confinement" | L, two PRs |
 | 8 | Slack and GitHub coworking | Channel bindings, client home, surface-keyed threads, addressing, the room's messages, mention and expert DMs, the reply modal. Announcements posted top-level with delivery receipts; App Home on the shared Home through `act_as`; GitHub on the same rule; docs/slack.md. Status rows "Slack app (`apps/slack`)", "Questions in Slack" and "Schedule delivery", and the new row "Slack and GitHub coworking in projects" | L |
-| 9 | Release notes, knowledge sources inherited down the tree, inbox retention and per-reader counters | Built. Release notes: `workspace.release_notes` posts a release's breaking changes and features once, in the root's inbox from warp (`PostOnce`, keyed `release:<version>`); the Slack app's catch-up brings them to a Slack channel bound to the workspace's general, where a reply starts a thread seeded with them. Knowledge: a project, the workspace included, names at most 8 of the workspace's sources (`Project.Knowledge`, `GET` and `PUT /api/projects/{name}/knowledge`, and the file's `knowledge`), and a run is grounded in its chain's, nearest first, at most 16, pinned at accept as `warp.sources` and added through `callExecutor.resolve`, with no fiber change. The console neither shows nor edits them yet. Retention: `workspace.inbox_retention` (90 days by default) drops what was settled for everyone, with its records, at start and every hour, in steps under a cut that replay reads first; `Count` adds up counters kept per bucket of open messages. The inbox is still held whole in memory. Status rows "Release notes in the workspace's inbox", "Knowledge sources inherited down the project tree" and "Inbox retention and per-reader counts" | M |
+| 9 | Release notes, knowledge sources inherited down the tree, inbox retention and per-reader counters | Built. Release notes: `workspace.release_notes` posts a release's breaking changes and features once, in the root's inbox from warp (`PostOnce`, keyed `release:<version>`); the Slack app's catch-up brings them to a Slack channel bound to the workspace's general, where a reply starts a thread seeded with them. Knowledge: a project, the workspace included, names at most 8 of the workspace's sources (`Project.Knowledge`, `GET` and `PUT /api/projects/{name}/knowledge`, and the file's `knowledge`), and a run is grounded in its chain's, nearest first, at most 16, pinned at accept as `_warp.sources` and added through `callExecutor.resolve`. fiber gained one thing for it: a meta key starting with `_` is the host's and never reaches a model (fiber#43). The console shows and edits them in the Knowledge section of a project's Context tab. Retention: `workspace.inbox_retention` (90 days by default) drops what was settled for everyone, with its records, at start and every hour, in steps under a cut that replay reads first; `Count` adds up counters kept per bucket of open messages. The inbox is still held whole in memory. Status rows "Release notes in the workspace's inbox", "Knowledge sources inherited down the project tree" and "Inbox retention and per-reader counts" | M |
 
 ## Risks
 

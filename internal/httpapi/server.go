@@ -985,6 +985,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, platform.ErrModelPolicyInUse):
 		fail(w, http.StatusConflict, err.Error())
+	case errors.Is(err, platform.ErrSourceInUse):
+		fail(w, http.StatusConflict, detail(err, platform.ErrSourceInUse))
 	case errors.Is(err, platform.ErrNoBaseline):
 		fail(w, http.StatusBadRequest, "that setting names an agent that does not exist")
 	case errors.Is(err, evals.ErrBusy):

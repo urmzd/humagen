@@ -1769,6 +1769,13 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "DELETE", "/api/evals/{name}", "/api/evals/smoke", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/knowledge/{name}/variants/{variant}", "/api/knowledge/handbook/variants/lean", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/knowledge/{name}/documents/{id}", docPath, "", http.StatusNoContent)
+	// A source a project names is not deleted from under it: Field names
+	// handbook, so the delete is refused, naming Field, until Field drops it.
+	if inUse := c.call(acme, "DELETE", "/api/knowledge/{name}", "/api/knowledge/handbook", "", http.StatusConflict); !strings.Contains(inUse.str("error"), "Field") {
+		t.Errorf("the refusal does not name the project that names the source: %s", inUse.raw)
+	}
+	fieldKnows := c.call(acme, "GET", know, "/api/projects/Field/knowledge", "", http.StatusOK)
+	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":[]}`, version(fieldKnows)), http.StatusOK)
 	c.call(acme, "DELETE", "/api/knowledge/{name}", "/api/knowledge/handbook", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/alert-rules/{name}", "/api/alert-rules/any", "", http.StatusNoContent)
 	c.call(acme, "DELETE", "/api/schedules/{name}", "/api/schedules/nightly", "", http.StatusNoContent)
