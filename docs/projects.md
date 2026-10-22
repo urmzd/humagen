@@ -211,7 +211,11 @@ A project lists experts: a person (subject) or `role:<name>`, with up to 8
 topics. Experts are found along the chain: the nearest project that has an
 expert for the topic answers for it, then its ancestors, up to the root.
 
-- **A person tags experts** with `@sme:<topic>`: each is notified.
+- **A person tags experts** with `@sme:<topic>`: each is notified. In a
+  private thread, which only its participants read, only the experts taking
+  part are told: an expert named as a person is not invited, and a role is
+  told nothing. The tag then says plainly that the others were not told,
+  without naming them.
 - **An agent asks an expert** with `ask_person` and `asked_of: "sme:<topic>"`
   (or `"sme"`). The run parks on the question as today. `addressOf` resolves
   the hint to the experts of the run's project chain, intersected with the

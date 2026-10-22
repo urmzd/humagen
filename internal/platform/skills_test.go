@@ -21,6 +21,8 @@ import (
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/warp/pkg/state/statetest"
 	"github.com/urmzd/warp/pkg/threads"
 )
 
@@ -385,5 +387,83 @@ func TestASkillsAutoMustFitTheMessagesTags(t *testing.T) {
 	// Posted only, no @auto is added, so it fits.
 	if _, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Globex", Text: strings.Join(nine, " ") + " $review", PostOnly: true}); err != nil {
 		t.Fatalf("the same posted only = %v", err)
+	}
+}
+
+// In a private thread, which only its participants read, a tag of experts
+// tells only the experts taking part: an expert named as a person is not
+// invited, a role is not told, and the poster is told plainly that the
+// others were not, without naming them. On memory and Postgres.
+func TestExpertsAreToldOfAPrivateThreadOnlyWhenTheyTakePart(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		p, err := newOn(t, open(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		field(t, p)
+		seePeople(t, p, operator, admin, vic)
+		cur, err := p.ProjectExperts(tenant, "Field")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.SetProjectExperts(tenant, "Field", ada, platform.Experts{Version: cur.Version, Experts: []projects.Expert{
+			{Who: "ada", Topics: []string{"billing"}}, {Who: "vic", Topics: []string{"billing"}}, {Who: "role:oncall", Topics: []string{"billing"}},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+		// ada takes part, tagged by name; vic and the role do not.
+		with := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "@ada a question", PostOnly: true})
+		got := post(t, p, operator, with.Thread.ID, platform.MessageInput{Text: "@sme:billing who knows?", PostOnly: true})
+		if strings.Join(got.Notified, " ") != "ada" {
+			t.Fatalf("notified %v, want only the expert taking part", got.Notified)
+		}
+		if len(got.Refused) != 1 || got.Refused[0].Kind != threads.SME || !strings.Contains(got.Refused[0].Refused, "private") ||
+			strings.Contains(got.Refused[0].Refused, "vic") || strings.Contains(got.Refused[0].Refused, "oncall") {
+			t.Fatalf("refused %+v", got.Refused)
+		}
+		th, err := p.Threads.Get(tenant, with.Thread.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, pt := range th.Participants {
+			if pt.Name == "vic" {
+				t.Fatal("an expert who did not take part was invited into the private thread")
+			}
+		}
+		for _, to := range []string{"vic", "role:oncall"} {
+			if _, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(th.ID, got.Message.ID, to)); ok {
+				t.Fatalf("%s was told of a private thread they cannot read", to)
+			}
+		}
+		// With no expert taking part, nobody is told, and the tag says so.
+		alone := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "@sme:billing anyone?", PostOnly: true})
+		if len(alone.Notified) != 0 || len(alone.Refused) != 1 || !strings.Contains(alone.Refused[0].Refused, "private") {
+			t.Fatalf("an expert tag nobody takes part in = notified %v, refused %+v", alone.Notified, alone.Refused)
+		}
+		// In a shared thread every expert who can read it is told, as before.
+		shared := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Shared, Text: "@sme:billing anyone?", PostOnly: true})
+		if len(shared.Notified) < 2 || len(shared.Refused) != 0 {
+			t.Fatalf("a shared thread's experts = notified %v, refused %+v", shared.Notified, shared.Refused)
+		}
+	})
+}
+
+// A retry of a message a client posted with one of its commands, which
+// names no client, finds the command's skill through the client the
+// message records.
+func TestARetryKeepsACommandsSkill(t *testing.T) {
+	p, machine := slackRoom(t, func(in *platform.ClientInput) {
+		in.Slack.Commands = []clients.Command{{Name: "review", Description: "Review it."}}
+	})
+	declare(t, p, "Field", "review")
+	dm, err := p.StartThread(t.Context(), machine, fromSlack("D0ANA", "1700000000.000100", "", "/review the renewal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// As a thread with no surface, which a client's act_as post files.
+	th := dm.Thread
+	th.Surface = nil
+	if got := p.SkillNamesOf(tenant, th, dm.Message); len(got) != 1 || got[0] != "review" {
+		t.Fatalf("a retry finds %v", got)
 	}
 }

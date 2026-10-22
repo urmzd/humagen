@@ -16,6 +16,7 @@ import (
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/pick"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // UseTool calls one of a turn's file tools the way the agent loop would, and
@@ -134,3 +135,13 @@ func HousekeepingTag(tenant, id, agent string, turn Place) envelope.Tag {
 // RetainInbox runs one pass of inbox retention, as the platform's loop does
 // every hour.
 func (p *Platform) RetainInbox() { p.retainInbox(context.Background()) }
+
+// SkillNamesOf is the names of the skills the runs a message starts are told
+// to use, as a retry, which names no client, finds them.
+func (p *Platform) SkillNamesOf(tenant string, th threads.Thread, m threads.Message) []string {
+	var out []string
+	for _, s := range p.skillsOfMessage(tenant, th, m, "") {
+		out = append(out, s.Name)
+	}
+	return out
+}
