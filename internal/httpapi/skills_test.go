@@ -64,3 +64,30 @@ func TestAProjectsSkillsAreDeclaredByOwnersAndListedWhereTheyAreSeen(t *testing.
 		t.Fatalf("a skill named outside its project = %d %v", code, out)
 	}
 }
+
+// A project's view, its list and its history name its skills without their
+// instructions, so 32 skills of 8,000 characters each keep them small; only
+// the skills route reads the instructions.
+func TestAProjectsViewAndHistoryStaySmallWithLargeSkills(t *testing.T) {
+	f := newFixture(t)
+	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
+	var ss []string
+	for i := range 32 {
+		ss = append(ss, fmt.Sprintf(`{"name":"s%d","description":"Does %d.","argument_hint":"[x]","instructions":"%s"}`, i, i, strings.Repeat("i", 8000)))
+	}
+	cur := want(t, f, admin, "GET", "/api/projects/Field/skills", "", http.StatusOK)
+	got := want(t, f, admin, "PUT", "/api/projects/Field/skills", fmt.Sprintf(`{"version":%v,"skills":[%s]}`, cur["version"], strings.Join(ss, ",")), http.StatusOK)
+	if sk := sliceOf(got["skills"]); len(sk) != 32 || len(obj(sk[0])["instructions"].(string)) != 8000 {
+		t.Fatalf("the skills route lost the instructions")
+	}
+	for _, path := range []string{"/api/projects/Field", "/api/projects", "/api/projects/Field/history"} {
+		code, body := get(t, f, admin, path)
+		if code != http.StatusOK || !strings.Contains(body, `"s31"`) {
+			t.Fatalf("%s = %d, without the skills' names: %.300s", path, code, body)
+		}
+		if strings.Contains(body, strings.Repeat("i", 100)) || len(body) > 64<<10 {
+			t.Errorf("%s holds the skills' instructions: %d bytes", path, len(body))
+		}
+	}
+}

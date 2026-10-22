@@ -107,7 +107,11 @@ parent.
   only while no run has been filed in it ("a conversation that has runs stays
   in its project"), and a thread on a Slack or GitHub surface stays where and
   as its binding filed it. A mention raised in it is read where it is now.
-  Shared is not made private again.
+  A default or a selected agent that cannot answer where it goes is dropped
+  in the same write. A message posted just before a move starts nothing for
+  a poster who may not post where the conversation went, and says so. Only a
+  participant moves one, so a governor who reads it without taking part does
+  not. Shared is not made private again.
 - A thread may select agents to answer its untagged messages: `agents` (at
   most 5, each available in the thread's project) and `mode`, `best_fit` or
   `all`. The console shows them as chips beside the composer, apart from
@@ -248,7 +252,11 @@ a skill package, and the tests hold the two to saige's parser.
   (`workspace.skills`, `projects[].skills`, the file's when set, even as
   `[]`) or through `PUT /api/projects/{name}/skills` by an owner (the
   workspace and company projects need `projects:govern`). A change is
-  recorded as a `skills` change.
+  recorded as a `skills` change. Only the project's own record keeps the
+  instructions: a change's record, and a project as the API shows it, carry
+  each skill's name, description and hint, and the skills route reads the
+  instructions, so 32 skills of 8,000 characters never ride along in a list
+  of projects or in history.
 - **They are inherited down the tree**, as knowledge sources are: a message
   posted in a project can name the skills its project declares, then each
   ancestor's, nearest first, each name once from the nearest project that
@@ -1275,8 +1283,10 @@ kept with the run whatever the selection becomes, and absent otherwise.
 | `GET /api/mentions` | `projects:read` | `?project=` → `{kinds: [{kind, title, resolves}]}`, the built-in `sme` and `skill` first. With `&kind=K&q=prefix` → `{items: [{name, description?}]}` (<= 20) by name, the items whose name starts with `q`, ignoring case. A kind the workspace does not have, or a project the caller cannot see, is 404; `q` without `kind` is 400; people complete only with `people:read` |
 | `POST /api/threads`, `POST /api/threads/{id}/messages` | `runs:write` | a skill nobody on the chain declares is 400 "there is no skill called ..." before anything is posted, in the console; a console message that names a skill and tags no agent starts `@auto`; a client's message is answered by its default with the skill |
 
-`ThreadMention.kind` gains `skill` and `role`; `Project` gains `skills`;
-`ProjectChange.what` gains `skills`.
+`ThreadMention.kind` gains `skill` and `role`; `Project` gains `skills`,
+each without its instructions (`ProjectSkillBrief`), in a view and in a
+change; `ProjectChange.what` gains `skills`. An answer to a question or a
+reply from the inbox that names a skill starts no run for it.
 
 ### Contract upkeep, every phase
 

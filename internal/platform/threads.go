@@ -757,7 +757,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
-	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, false, keeps, seer.Agent)
+	out, err := p.carryOut(ctx, person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, false, keeps, seer.Agent)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
 }
@@ -824,7 +824,10 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
-	if mentions, err = skillTags(mentions, on != nil, on == nil && in.ActAs == nil && !in.PostOnly, slices.ContainsFunc(th.Agents, sees)); err != nil {
+	// An answer or a reply is the poster's response, which starts no run
+	// for a skill it names.
+	console := on == nil && in.ActAs == nil && !in.PostOnly && in.Answers == nil && !in.reply
+	if mentions, err = skillTags(mentions, on != nil, console, slices.ContainsFunc(th.Agents, sees)); err != nil {
 		return Posted{}, err
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
@@ -858,7 +861,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return again, nil
 	}
 	p.repliedTo(who.Tenant, th.ID, m)
-	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
+	out, err := p.carryOut(ctx, person, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
 }
@@ -956,7 +959,10 @@ func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, as 
 // (mayPost). sees is the agents the poster may read: a default naming one
 // they may not read is passed over for them, as if unset (placeSeen), so
 // what the message did never names it.
-func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, via string, postOnly, reply, keeps bool, sees func(string) bool) (Posted, error) {
+func (p *Platform) carryOut(ctx context.Context, poster auth.Principal, tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, via string, postOnly, reply, keeps bool, sees func(string) bool) (Posted, error) {
+	if p.beforeCarryOut != nil {
+		p.beforeCarryOut()
+	}
 	// No share moves the thread while its runs are being started, and they
 	// are filed where it is now.
 	mu := p.moves.of(tenant, th.ID)
@@ -964,8 +970,15 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	defer mu.RUnlock()
 	if cur, err := p.Threads.Get(tenant, th.ID); err == nil {
 		if cur.Project != th.Project {
-			// Shared into another project since it was posted: whether the
-			// poster may keep notes was asked of the project it left.
+			// Moved to another project since it was posted: what the poster
+			// may do was asked of the project it left. Nothing is started
+			// for someone who may not post where it is now, and notes they
+			// were let keep there are not kept here.
+			if _, err := p.mayPost(poster, Place{Project: cur.Project, Thread: cur.ID}, projects.Member); err != nil {
+				out := p.posted(tenant, cur, m)
+				out.Rule, out.Reason = threads.RuleTagged, "This conversation moved to another project before your message was carried out, so nothing was started."
+				return out, nil
+			}
 			keeps = false
 		}
 		th = cur
@@ -974,7 +987,7 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	// A person posting in the console, as themselves, runs only the agents
 	// they tag: no default answers them. A client's surface keeps its
 	// defaults, where mentioning the app is what asks.
-	tagsOnly := m.Via == threads.ViaConsole
+	tagsOnly := via == ""
 	// The thread's selected agents answer an untagged message, those the
 	// poster may read: one they may not is passed over for them.
 	routed, mode := slices.DeleteFunc(slices.Clone(th.Agents), func(a string) bool { return sees != nil && !sees(a) }), th.Mode
@@ -1141,6 +1154,9 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 		}
 		agent = who.Agent
 		meta[runs.MetaPicked] = who.Reason
+		if len(who.Matched) == 0 {
+			meta[runs.MetaPicked] = fmt.Sprintf("Picked from the selected agents: nothing matched, so @%s, the first that could answer, did.", who.Agent)
+		}
 	} else if agent == Auto {
 		who, err := p.resolveAgent(ctx, tenant, placeSeen(p.placeOfThread(tenant, th), sees), Auto, pickText(m.Text, skills), sees)
 		if err != nil {
@@ -1510,6 +1526,11 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 		if th.Visibility != threads.Private || cmp.Or(in.Visibility, th.Visibility) != threads.Private || th.Surface != nil {
 			return threads.Thread{}, fmt.Errorf("%w: only a private conversation moves here; Share moves one as it shares it", threads.ErrInvalid)
 		}
+		// As for a share, only a participant moves it: one who governs the
+		// workspace and reads it takes no part.
+		if !takesPart(th, who.Subject) {
+			return threads.Thread{}, fmt.Errorf("%w: only its participants move a conversation", projects.ErrForbidden)
+		}
 		got, ch, err := p.placeFor(who, project, channel)
 		if err != nil {
 			return threads.Thread{}, err
@@ -1732,6 +1753,14 @@ func (p *Platform) ShareThread(ctx context.Context, who auth.Principal, id strin
 		// the sharer may not read.
 		def = ""
 	}
+	// So do the selected agents that could not answer there.
+	agents, mode := th.Agents, th.Mode
+	if project != th.Project {
+		kept := slices.DeleteFunc(slices.Clone(th.Agents), func(a string) bool { return p.tagRefusal(who.Tenant, project, a) != "" })
+		if agents, mode, err = threads.Routing(kept, th.Mode); err != nil {
+			agents, mode = nil, ""
+		}
+	}
 	shown := p.Seer(who).participantShownNow(th)
 	counted := func(pt threads.Participant) bool { return pt.Kind != threads.Agent || shown(pt.Name) }
 	if moves {
@@ -1742,7 +1771,7 @@ func (p *Platform) ShareThread(ctx context.Context, who auth.Principal, id strin
 			return threads.Thread{}, ErrStaysInChannel
 		}
 	}
-	return p.Threads.Share(who.Tenant, id, th.Version, project, channel, def, add, counted, who.Subject, p.now())
+	return p.Threads.Share(who.Tenant, id, th.Version, project, channel, def, agents, mode, add, counted, who.Subject, p.now())
 }
 
 // byHandle is the subject of the person who goes by a handle.

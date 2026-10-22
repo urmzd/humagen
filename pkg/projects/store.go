@@ -457,12 +457,15 @@ func (w *write) commit() error {
 	return nil
 }
 
-// ptr is p as a change records it: without what the file owns, and with an
-// enable list even when the upgrade's root had none.
+// ptr is p as a change records it: without what the file owns, with an
+// enable list even when the upgrade's root had none, and with its skills'
+// names and descriptions but not their instructions, which only the
+// project's own record keeps.
 func ptr(p Project) *Project {
 	c := p.clone()
 	c.FileOwns = nil
 	c.Agents = c.Agents.listed()
+	c.Skills = BriefSkills(c.Skills)
 	return &c
 }
 

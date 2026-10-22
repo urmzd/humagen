@@ -494,9 +494,10 @@ export interface Thread {
   participants: ThreadParticipant[];
   /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set. */
   default?: string;
-  /** The agents selected to answer the thread's untagged messages, at
-most 5. A message that tags an agent is answered by the agents it
-tags instead. An agent the caller may not read is left out, as if
+  /** The agents selected to answer the untagged messages people post in
+the thread as themselves (the console), at most 5; a client's
+messages from Slack or GitHub keep the defaults. A message that
+tags an agent is answered by the agents it tags instead. An agent the caller may not read is left out, as if
 not selected. Absent when none is selected.
  */
   agents?: string[];
@@ -668,7 +669,7 @@ export interface ThreadInput {
   title?: string;
   /** Answers untagged messages in the thread, an agent available in the project or `auto`. */
   default?: string;
-  /** Agents selected to answer the thread's untagged messages, at most 5, each available in the project (400; one the caller may not read is as one that does not exist). `all` takes at most 3. */
+  /** Agents selected to answer the untagged messages people post in the thread as themselves (the console), at most 5, each available in the project (400; one the caller may not read is as one that does not exist). `all` takes at most 3. */
   agents?: string[];
   mode?: ThreadMode;
   text: string;
@@ -682,7 +683,7 @@ export interface ThreadInput {
 export interface ThreadShare {
   /** The project it is shared in. Empty keeps the thread's own; `~` is the workspace. */
   project?: string;
-  /** The project's channel. Empty is `general`. */
+  /** The project's channel. Empty keeps the thread's own in its own project, and is `general` in another. */
   channel?: string;
   /** People to add as participants, by handle. */
   add?: string[];
@@ -699,7 +700,8 @@ export interface ThreadMessageInput {
   surface?: SurfaceRef;
 }
 
-/** How a thread's selected agents answer an untagged message:
+/** How a thread's selected agents answer an untagged message a person
+posts as themselves (the console):
 `best_fit`, the one of them that fits it best, picked as `@auto`
 picks among them alone (the run's `picked` says why), or `all`, each
 of them side by side, at most 3. Absent with fewer than two agents
@@ -949,6 +951,13 @@ export interface ProjectSkill {
   instructions: string;
 }
 
+/** A skill a project declares, without its instructions, as a project and its history show it. */
+export interface ProjectSkillBrief {
+  name: string;
+  description: string;
+  argument_hint?: string;
+}
+
 /** A skill a message posted in a project can name, without its instructions, and the project that declares it. */
 export interface ProjectSkillRef {
   name: string;
@@ -1080,10 +1089,12 @@ for a caller without `knowledge:read`.
  */
   knowledge?: string[];
   /** Named instructions a message posted here and below can tell an
-agent to use, by writing `$<name>`. Set with `PUT
-/api/projects/{name}/skills`. Absent when it declares none.
+agent to use, by writing `$<name>`, without their instructions,
+which `GET /api/projects/{name}/skills` reads. Set with `PUT
+/api/projects/{name}/skills`. Absent when it declares none. A
+change in the project's history records them the same way.
  */
-  skills?: ProjectSkill[];
+  skills?: ProjectSkillBrief[];
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
   /** The lowest role that may post an announcement here. Absent reads as owner. */

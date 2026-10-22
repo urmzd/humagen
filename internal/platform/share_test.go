@@ -3,6 +3,7 @@ package platform_test
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -210,6 +211,75 @@ func TestSharingClearsADefaultThatCannotAnswerThere(t *testing.T) {
 	th, err := p.ShareThread(t.Context(), operator, got.Thread.ID, platform.ThreadShare{Project: "Field"})
 	if err != nil || th.Project != "Field" || th.Default != "" {
 		t.Fatalf("shared into a project helper cannot answer in = %+v, %v", th, err)
+	}
+}
+
+// A selected agent that cannot answer where a conversation is shared to is
+// dropped from the selection, in the same write; a move through an update
+// that names it is refused, as selecting it there would be.
+func TestSharingDropsSelectedAgentsThatCannotAnswerThere(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator)
+	workIn(t, p, "Field", operator)
+	ctx := t.Context()
+	start := func() threads.Thread {
+		got, err := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Initech", Agents: []string{"helper", "lead"}, Mode: threads.ModeAll, Text: "x", PostOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.Thread
+	}
+	shared, moved := start(), start()
+	setAgents(t, p, "Field", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
+	th, err := p.ShareThread(ctx, operator, shared.ID, platform.ThreadShare{Project: "Field"})
+	if err != nil || th.Project != "Field" || !slices.Equal(th.Agents, []string{"lead"}) || th.Mode != "" {
+		t.Fatalf("shared into a project helper cannot answer in = %+v, %v", th, err)
+	}
+	if _, err := p.UpdateThread(ctx, operator, moved.ID, platform.ThreadUpdate{Version: moved.Version, Project: "Field", Agents: moved.Agents, Mode: moved.Mode}); !errors.Is(err, projects.ErrInvalid) {
+		t.Fatalf("moving with helper selected into a project it cannot answer in = %v", err)
+	}
+}
+
+// A share that lands after a message is posted and before what it starts is
+// decided starts nothing for a poster who may not post where the
+// conversation went: no run acts for them in a project they cannot read.
+func TestAMessageStartsNothingWhereItsConversationMovedOutOfReach(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator, bo)
+	seePeople(t, p, operator, bo)
+	ctx := t.Context()
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Vault"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Projects.Update(tenant, "Vault", 1, ada, time.Now(), func(pr *projects.Project) error {
+		pr.Members = []projects.Entry{{Who: "opal", Role: projects.Member}, {Who: "ada", Role: projects.Owner}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Initech", Text: "@bo join me"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := got.Thread.ID
+	once := false
+	p.BeforeCarryOut(func() {
+		if once {
+			return
+		}
+		once = true
+		if _, err := p.ShareThread(ctx, operator, id, platform.ThreadShare{Project: "Vault"}); err != nil {
+			t.Error(err)
+		}
+	})
+	posted := post(t, p, bo, id, platform.MessageInput{Text: "@helper go"})
+	if len(posted.Runs) != 0 || posted.Reason == "" {
+		t.Fatalf("a message whose conversation moved out of its poster's reach started %+v (%s)", posted.Runs, posted.Reason)
+	}
+	if _, err := p.Runs.Conversation(tenant, id); err == nil {
+		t.Fatal("a run was filed for bo in Vault")
 	}
 }
 
