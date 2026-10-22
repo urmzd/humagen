@@ -27,10 +27,13 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/urmzd/fiber/pkg/attachment"
 
 	"github.com/urmzd/warp/pkg/projects"
 )
@@ -208,6 +211,7 @@ type Mention struct {
 
 // Message is a person's turn in a thread. It starts no run of its own.
 type Message struct {
+	Attachments []attachment.Attachment `json:"attachments,omitempty"`
 	// ID is "m-" and the message's place in the thread, from 1.
 	ID     string `json:"id"`
 	Thread string `json:"thread"`
@@ -231,6 +235,7 @@ type Message struct {
 }
 
 func (m Message) clone() Message {
+	m.Attachments = slices.Clone(m.Attachments)
 	m.Mentions = cloneMentions(m.Mentions)
 	if m.Answers != nil {
 		a := *m.Answers

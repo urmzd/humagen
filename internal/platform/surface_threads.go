@@ -32,6 +32,8 @@ import (
 
 // SurfaceRef is where a message was posted on a client's surface.
 type SurfaceRef struct {
+	// Files asks the platform to ingest files from this verified Slack message.
+	Files bool `json:"files,omitempty"`
 	// Client is the client whose surface it is.
 	Client string `json:"client"`
 	// Channel is the Slack channel, or for a direct message the conversation.

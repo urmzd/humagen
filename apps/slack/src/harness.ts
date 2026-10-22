@@ -69,6 +69,8 @@ export class FakeSlack implements SlackApi {
     if (method === "conversations.replies") {
       return { ok: true, messages: this.replies.get(`${args.channel}/${args.ts}`) ?? [] } as T;
     }
+    if (method === "views.open") return { ok: true, view: { id: "V01" } } as T;
+    if (method === "canvases.create") return { ok: true, canvas_id: "F01" } as T;
     if (method === "users.info") {
       const name = this.users.get(String(args.user));
       return { ok: true, ...(name ? { user: { profile: { display_name: name } } } : {}) } as T;
@@ -136,6 +138,23 @@ const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64");
 
 /** A warp that keeps runs, conversations and an inbox in memory, shaped like the real API. */
 export class FakeWarp implements Warp {
+  async getRunFor(id: string, _as: ActAs) {
+    return this.runs.get(id) ?? null;
+  }
+  connectionCalls: { provider: string; ref?: string; as: ActAs }[] = [];
+  async connections(_as: ActAs) {
+    return { providers: [{ provider: "github", connected: false }], references: [], values: false };
+  }
+  async connect(provider: string, ref: string, as: ActAs) {
+    this.connectionCalls.push({ provider, ref, as });
+  }
+  async disconnect(provider: string, as: ActAs) {
+    this.connectionCalls.push({ provider, as });
+  }
+  readonly feedback: { run: string; body: import("./warp.ts").FeedbackInput }[] = [];
+  async saveFeedback(run: string, body: import("./warp.ts").FeedbackInput) {
+    this.feedback.push({ run, body });
+  }
   readonly runs = new Map<string, Run>();
   /** Every turn asked for, including ones that joined an existing run. */
   readonly asked: Asked[] = [];

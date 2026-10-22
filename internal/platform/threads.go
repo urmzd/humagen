@@ -646,6 +646,12 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
+	if on != nil && on.ref.Files {
+		first.Attachments, err = p.surfaceFiles(ctx, who, on.ref, in.ActAs)
+		if err != nil {
+			return Posted{}, err
+		}
+	}
 	first.Text, first.Mentions = text, p.checkTags(who.Tenant, tree, project, mentions)
 	th, m, err := p.Threads.Start(who.Tenant, rec, first, p.now())
 	if err != nil {
@@ -719,6 +725,12 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
 	msg := threads.Message{By: by, Name: name, Text: text, Mentions: mentions, Via: via, Prev: prev, SurfaceID: surfaceID}
+	if on != nil && on.ref.Files {
+		msg.Attachments, err = p.surfaceFiles(ctx, who, on.ref, in.ActAs)
+		if err != nil {
+			return Posted{}, err
+		}
+	}
 	if in.Answers != nil {
 		if err := p.answerFromThread(ctx, who, in.ActAs, th, *in.Answers, in.Text); err != nil {
 			return Posted{}, err
@@ -970,7 +982,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	return p.Invoke(ctx, envelope.Tag{
 		ID: tagID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
-		Text: p.contextIn(tenant, th.Project, th.Channel, agent, body), Actor: actor, Meta: meta,
+		Text: p.contextIn(tenant, th.Project, th.Channel, agent, body), Attachments: m.Attachments, Actor: actor, Meta: meta,
 	})
 }
 

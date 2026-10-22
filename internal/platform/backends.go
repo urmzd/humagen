@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/evals"
+	"github.com/urmzd/warp/pkg/feedback"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/journal"
 	"github.com/urmzd/warp/pkg/knowledge"
@@ -121,6 +122,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("knowledge", err)
 	p.Evals, err = evals.Open(st)
 	keep("evals", err)
+	p.Feedback, err = feedback.Open(st)
+	keep("feedback", err)
 	p.Prefs, err = prefs.Open(st)
 	keep("prefs", err)
 	p.Memory, err = memory.Open(st)

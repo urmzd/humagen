@@ -39,7 +39,7 @@ The app works around each of these and says where in its README.
 | A picker that knows a client's allow-list | A client with a list and no default answers nothing, and `@auto`, or a default of `auto`, is not sent for a client with a list: the platform would pick past it | `GET /api/pick?client=` and the same rule in `POST /api/runs` |
 | The run a retry started, in the resolve response | Retry from Slack starts its own run and acknowledges the inbox part | Return `{message, run}` from `POST /api/inbox/{id}/parts/{part}/resolve` |
 | A stream of inbox notices alone | The app subscribes to a topic no agent can have | `GET /api/inbox/events` |
-| A route for feedback | A rating is written to the app's log | `POST /api/runs/{id}/feedback` |
+| Feedback with comments | Built: like and dislike open a comment modal and save the rating even when skipped | `PUT /api/runs/{id}/feedback` stores a run reference, rating, reason and comment; the run provides context; `GET` collects paginated records |
 | A modal to type a reply to a question | Built for a question in the inbox and a mention in a person's direct messages. Something Else on a run's own card still points to the console | Open the reply modal from the run's card too |
 
 ### Questions a run waits on

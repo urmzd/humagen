@@ -11,12 +11,17 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/address"
+	"github.com/urmzd/fiber/pkg/connectors"
 	"github.com/urmzd/fiber/pkg/connectors/mention"
 	transport "github.com/urmzd/fiber/pkg/connectors/slack"
 	"github.com/urmzd/fiber/pkg/envelope"
 )
 
 type Config struct {
+	Tenant       string
+	Files        connectors.Files
+	FileToken    string
+	AppID        string
 	API          transport.API
 	Verifier     transport.Verifier
 	Team         string
@@ -52,7 +57,7 @@ func New(cfg Config) (*Connector, error) {
 	cfg.Commands = append([]transport.Command(nil), cfg.Commands...)
 	c := &Connector{cfg: cfg, offered: offered{seen: map[string]bool{}}, statusSeq: map[string]uint64{}}
 	c.live.open, c.live.asked = map[string]session{}, map[string]bool{}
-	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Team: cfg.Team, Bots: cfg.Bots, Agents: cfg.Agents, DefaultAgent: cfg.DefaultAgent, Deliver: cfg.Deliver, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base := transport.Config{Tenant: cfg.Tenant, Files: cfg.Files, FileToken: cfg.FileToken, AppID: cfg.AppID, API: cfg.API, Verifier: cfg.Verifier, Team: cfg.Team, Bots: cfg.Bots, Agents: cfg.Agents, DefaultAgent: cfg.DefaultAgent, Deliver: cfg.Deliver, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
 	base.Prepare = func(_ context.Context, tag *envelope.Tag) error {
 		if tag.Meta["slack_event"] != "slash_command" {
 			return nil

@@ -12,6 +12,11 @@ import (
 // else, and a value written is never answered back.
 
 func (s *Server) listToolCredentials(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	person, allowed := s.actingFor(w, r, who, auth.RunsRead, "connections")
+	if !allowed {
+		return
+	}
+	who = person
 	out, err := s.P.ToolCredentials(r.Context(), who)
 	if err != nil {
 		s.problem(w, err)
@@ -21,6 +26,11 @@ func (s *Server) listToolCredentials(w http.ResponseWriter, r *http.Request, who
 }
 
 func (s *Server) putToolCredential(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	person, allowed := s.actingFor(w, r, who, auth.RunsWrite, "connections")
+	if !allowed {
+		return
+	}
+	who = person
 	var body credentials.Input
 	if !decode(w, r, &body) {
 		return
@@ -34,6 +44,11 @@ func (s *Server) putToolCredential(w http.ResponseWriter, r *http.Request, who a
 }
 
 func (s *Server) deleteToolCredential(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	person, allowed := s.actingFor(w, r, who, auth.RunsWrite, "connections")
+	if !allowed {
+		return
+	}
+	who = person
 	if err := s.P.DisconnectTool(r.Context(), who, r.PathValue("provider")); err != nil {
 		s.problem(w, err)
 		return
