@@ -100,6 +100,8 @@ export interface Run {
   prev?: string;
   /** Why the agent was chosen, when the platform picked it. */
   picked?: string;
+  /** How its thread's selected agents started it, when they did: the best fit of them, or each of them. Kept whatever the selection becomes. */
+  routed?: "best_fit" | "all";
   project?: string;
   /** The project's channel the conversation is in. Absent is `general`. */
   channel?: string;

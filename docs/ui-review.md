@@ -216,12 +216,13 @@ the patterns above, with the layout checks below.
 | Search fields, limit fields | The 20px input was the only target inside a 32px frame | The input fills its frame |
 | Switches | The label, which is the target, was 20px tall | 24px at least |
 | Project Overview | Counts written "Sub-projects (0)" and "Scheduled (0)" | `Count` beside the heading, hidden at zero |
+| Inbox | The same announcements were "What's new" on Home and "Updates" in the inbox | "What's new" in both; the address is unchanged |
+| Home, Slack Home | An urgent item looked like any other | An item above normal says so in words before when it came ("Urgent · just now"); a normal one says nothing more |
 
 Left as they are: the mailbox's group counts ("NEEDS YOU 3") and a project
-inbox's "3 open" use the shared web package's own styles, the inbox calls What's
-new's announcements "Updates", Home's Needs you does not say an alert's
-severity (the adapter's `notificationsOf` does not carry it), and the run history panel beside a conversation
-writes its counts as "Running (2)"; both sit next to the conversation work.
+inbox's "3 open" use the shared web package's own styles, and the run history
+panel beside a conversation writes its counts as "Running (2)"; both sit next
+to the conversation work.
 
 ## Checking a UI change
 
