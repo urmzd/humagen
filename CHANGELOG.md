@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.0 (2026-10-22)
+
+### Breaking
+
+- **projects**: the project tree, kinds, project policies and layered context (#37) ([2037501](https://github.com/urmzd/warp/commit/203750194cc832de005d9186e31a55dad1801c6b))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.10.0...v0.11.0)
+
+
 ## 0.10.0 (2026-10-21)
 
 ### Breaking
