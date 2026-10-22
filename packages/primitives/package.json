@@ -1,6 +1,6 @@
 {
   "name": "@warp/primitives",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "private": true,
   "type": "module",
   "description": "The primitive contract every warp renderer implements, plus surface context.",

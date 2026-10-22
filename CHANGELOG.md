@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.0 (2026-10-22)
+
+### Features
+
+- **projects**: project roles, project inboxes and announcements (#43) ([f00fb8a](https://github.com/urmzd/warp/commit/f00fb8a8c5a91b258bea30787a8a4eeb7691ef1a))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.13.1...v0.14.0)
+
+
 ## 0.13.1 (2026-10-22)
 
 ### Bug Fixes

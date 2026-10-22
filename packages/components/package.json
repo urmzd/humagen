@@ -1,6 +1,6 @@
 {
   "name": "@warp/components",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "private": true,
   "type": "module",
   "description": "Shared agent components (turn, approval, clarification, notice) built only from primitives.",
