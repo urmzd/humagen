@@ -425,6 +425,47 @@ export const defaultCopy = {
     handle: (name: string) => `@${name}`,
   },
   /** @auto, the built-in router, and who answers a message that tags no agent. */
+  /** The chat bar's + menu and what it selects for a conversation. */
+  chat: {
+    /** The + button, which opens the menu. */
+    plus: "Add files, agents or a project",
+    /** The shortcut that opens it, said in its tooltip. */
+    plusShortcut: "Ctrl+/",
+    menu: "Add to this conversation",
+    attach: "Attach Files",
+    agents: "Agents",
+    findAgent: "Find an agent",
+    agentsLoading: "Loading agents…",
+    noAgents: "No agents can answer in this project.",
+    noAgentMatch: "No agent matches.",
+    project: "Project",
+    chooseProject: "Choose a project",
+    projectless: "Projectless",
+    channel: "Channel",
+    /** The chips row, as a list. */
+    selected: "Selected for this conversation",
+    removeAgent: (agent: string) => `Remove ${agent}`,
+    removeProject: (where: string) => `Remove ${where}`,
+    /** How an untagged message goes to two agents or more. */
+    routing: "How messages are routed",
+    bestFit: "Best Fit",
+    bestFitHint: "One of them answers each message: the one that fits it best.",
+    all: "All of Them",
+    allHint: "Each of them answers every message, side by side.",
+    /** The chat bar's prompt with nothing selected, with one agent, and with several. */
+    placeholder: "Message, or @ an agent",
+    placeholderOne: (agent: string) => `Message ${agent}`,
+    placeholderBest: (n: number) => `Message, and the best fit of ${n} agents answers`,
+    placeholderAll: (n: number) => `Message, and all ${n} agents answer`,
+    /** Under an answer that went to an agent because it was selected, not tagged. */
+    routedBest: (agent: string) => `Routed to ${agent}, the best fit`,
+    routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
+    routed: (agent: string) => `Routed to ${agent}`,
+    /** Home's suggestions, as a list. */
+    suggestions: "Suggestions",
+    /** The selection could not be saved on the conversation. */
+    saveFailed: "The conversation's agents could not be saved. Try again.",
+  },
   auto: {
     handle: "@auto",
     description: "Picks the agent that fits, from the agents available here.",
@@ -901,8 +942,6 @@ export const defaultCopy = {
     mentionKind: (kind: string, title?: string) => title || `Mention by ${kind}`,
     /** The chat bar's prompt in a conversation. Nothing runs until a message tags an agent. */
     message: "Message. Tag an agent with @ to ask it",
-    /** Home's chat bar: it starts a private conversation. */
-    newMessage: "Start a private conversation. Tag an agent with @, a skill with $",
     /** The control at the top of a private conversation that shares it in a project's channel. */
     share: "Share",
     shareTitle: "Share this conversation",

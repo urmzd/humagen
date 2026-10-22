@@ -1026,6 +1026,9 @@ export interface Thread {
   visibility: "shared" | "private";
   participants: ThreadParticipant[];
   default?: string;
+  /** The agents an untagged message goes to, from the + menu, and how: the best fit of them, or every one. */
+  agents?: string[];
+  mode?: "best_fit" | "all";
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
   /** The Slack thread this thread is, when it was started from Slack. It never changes. */
@@ -1213,7 +1216,15 @@ export const coworking = {
    * the people in it alone until it is shared. A message starts a run only
    * for the agents it tags.
    */
-  start: (t: { project: string; channel: string; text: string; title?: string; visibility?: "shared" | "private" }) =>
+  start: (t: {
+    project: string;
+    channel: string;
+    text: string;
+    title?: string;
+    visibility?: "shared" | "private";
+    agents?: string[];
+    mode?: "best_fit" | "all";
+  }) =>
     call<ThreadPosted>("POST", "/api/threads", { visibility: "private", ...t }),
   /**
    * Shares a private thread in a project's channel (general unless named)
@@ -1239,7 +1250,20 @@ export const coworking = {
     ).then((r) => (Array.isArray(r) ? r : (r.items ?? []))),
   post: (id: string, m: { text: string; after?: string; answers?: { run: string; question: string } }) =>
     call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
-  update: (id: string, t: { version: number; title: string; visibility: "shared" | "private"; default: string }) =>
+  /** Changes a thread's record: its title, visibility, default, the agents it routes to and how, and while it has no runs, where it lives. */
+  update: (
+    id: string,
+    t: {
+      version: number;
+      title: string;
+      visibility: "shared" | "private";
+      default: string;
+      agents?: string[];
+      mode?: "best_fit" | "all";
+      project?: string;
+      channel?: string;
+    },
+  ) =>
     call<Thread>("PUT", threadPath(id), t),
   /** The workspace's people whose name or handle holds `q`, for the @ typeahead. */
   people: (q: string, limit = 8) =>

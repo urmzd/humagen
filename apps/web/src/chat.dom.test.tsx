@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@warp/components";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
 import type { ProjectAgentsView, Revision, ThreadPage } from "./api.ts";
 import { Chat } from "./Chat.tsx";
+import { globex } from "./projects.fixtures.ts";
 import { stubEventSource, stubFetch } from "./dom.ts";
 
 const at = "2026-10-01T09:00:00Z";
@@ -85,7 +86,7 @@ const box = () => screen.getByLabelText("Message", { selector: "textarea" }) as 
 
 test("Home's chat bar has no menu of who answers and no line saying who does", async () => {
   openChat(workspace("lead"));
-  assert.ok(await screen.findByPlaceholderText(defaultCopy.threads.newMessage));
+  assert.ok(await screen.findByPlaceholderText(defaultCopy.chat.placeholder));
   assert.equal(screen.queryByRole("button", { name: /Choose who answers/ }), null);
   assert.equal(screen.queryByText("@lead answers"), null);
   assert.equal(screen.queryByText(/answers untagged messages/), null);
@@ -126,14 +127,109 @@ test("Home's chat bar starts a private conversation in the picked project and op
   assert.ok(!net?.seen.some((s) => s.path.startsWith("/api/runs")), "no run is asked for");
 });
 
-test("a link that names an agent, or a starter, writes the agent's tag in the chat bar instead of picking from a menu", async () => {
+const chat = defaultCopy.chat;
+/** The names on the chips row, in order. */
+const chips = () =>
+  (screen.queryByRole("list", { name: chat.selected })?.querySelectorAll("li") ?? []).length === 0
+    ? []
+    : [...(screen.getByRole("list", { name: chat.selected }).querySelectorAll("li"))].map((li) => li.textContent ?? "");
+
+test("a link that names an agent, or a suggestion, adds the agent as a chip, not an @mention, and suggestions go once the person types", async () => {
   openChat(workspace("lead"), { startAgent: "helper", startAsk: "Help with the launch." });
-  await waitFor(() => assert.equal(box().value, "@helper Help with the launch."));
+  await waitFor(() => assert.equal(box().value, "Help with the launch."));
+  assert.deepEqual(chips(), ["helper"]);
+  assert.ok(screen.getByPlaceholderText(chat.placeholderOne("helper")));
   close();
   const writer = [...agents, agent("warp-writer", "Writes reports.")];
   openChat(workspace("lead"), { agents: writer });
-  fireEvent.click(await screen.findByRole("button", { name: /Write a report/ }));
-  await waitFor(() => assert.equal(box().value, "@warp-writer Write a one-page report on "));
+  const suggestions = await screen.findByRole("list", { name: chat.suggestions });
+  fireEvent.click(within(suggestions).getByRole("button", { name: /Write a report/ }));
+  await waitFor(() => assert.equal(box().value, "Write a one-page report on "));
+  assert.deepEqual(chips(), ["warp-writer"]);
+  // Typed in, the suggestions step aside.
+  assert.equal(screen.queryByRole("list", { name: chat.suggestions }), null);
+  fireEvent.change(box(), { target: { value: "" } });
+  assert.ok(screen.getByRole("list", { name: chat.suggestions }));
+});
+
+test("+ opens a menu where agents are checked with Space and the project with its channel is picked; the chips row routes Best Fit or All of Them", async () => {
+  openChat(workspace("lead"), {
+    projects: [{ ...globex, access: { role: "owner", from: "", via: "*" } }] as never,
+  });
+  net?.restore();
+  const opened: string[] = [];
+  net = stubFetch({
+    "GET /api/projects/~/agents": () => workspace("lead"),
+    "GET /api/projects/Globex/agents": () => ({ ...workspace(), available: { all: true, names: [] } }),
+    "GET /api/projects/Globex/channels": () => ({
+      channels: ["general", "deals"].map((name) => ({ project: "Globex", name, version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } })),
+    }),
+    "POST /api/threads": (body) => {
+      opened.push("started");
+      return { thread: { id: "th-00000000000000ac", project: "Globex", channel: "deals", visibility: "private", participants: [], version: 1, created_by: "ada", created_at: at, updated_at: at }, message: { id: "m-1", thread: "th-00000000000000ac", by: "ada", name: "Ada", text: (body as { text: string }).text, mentions: [], via: "console", at }, runs: [], notified: [], refused: [], rule: "default" };
+    },
+  });
+  // The shortcut opens it from the box.
+  fireEvent.keyDown(box(), { key: "/", ctrlKey: true });
+  let menu = await screen.findByRole("dialog", { name: chat.menu });
+  assert.ok(within(menu).getByRole("button", { name: chat.attach }));
+  const lead = await within(menu).findByRole("menuitemcheckbox", { name: /^lead/ });
+  // The arrows move between items; Space checks the one focused.
+  lead.focus();
+  fireEvent.keyDown(lead, { key: "ArrowDown" });
+  const helperRow = within(menu).getByRole("menuitemcheckbox", { name: /^helper/ });
+  assert.equal(document.activeElement, helperRow);
+  fireEvent.click(lead);
+  fireEvent.click(helperRow);
+  assert.equal(lead.getAttribute("aria-checked"), "true");
+  assert.ok(!within(menu).queryByRole("menuitemcheckbox", { name: /globex-helper/ }), "an agent homed elsewhere is not offered at the workspace");
+  // Search narrows the list.
+  fireEvent.change(within(menu).getByRole("searchbox", { name: chat.findAgent }), { target: { value: "zzz" } });
+  assert.ok(within(menu).getByText(chat.noAgentMatch));
+  fireEvent.change(within(menu).getByRole("searchbox", { name: chat.findAgent }), { target: { value: "" } });
+  // Enter closes it.
+  fireEvent.keyDown(within(menu).getByRole("menuitemcheckbox", { name: /^lead/ }), { key: "Enter" });
+  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
+  assert.deepEqual(chips().slice(0, 2), ["lead", "helper"]);
+
+  // Two agents: the routing is chosen with text on the chips row.
+  const all = screen.getByRole("button", { name: chat.all });
+  assert.equal(screen.getByRole("button", { name: chat.bestFit }).getAttribute("aria-pressed"), "true");
+  fireEvent.click(all);
+  assert.equal(all.getAttribute("aria-pressed"), "true");
+  assert.ok(screen.getByPlaceholderText(chat.placeholderAll(2)));
+
+  // The project, then one of its channels, general first.
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  menu = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(menu).getByRole("button", { name: new RegExp(chat.chooseProject) }));
+  fireEvent.click(await within(menu).findByRole("button", { name: /Globex/ }));
+  const channels = await within(menu).findByRole("radiogroup", { name: chat.channel });
+  await waitFor(() => assert.deepEqual(within(channels).getAllByRole("radio").map((r) => r.textContent), ["#general", "#deals"]));
+  fireEvent.click(within(channels).getByRole("radio", { name: "#deals" }));
+  fireEvent.keyDown(menu, { key: "Escape" });
+  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
+  assert.equal(document.activeElement, box(), "closing gives the box its focus back");
+  assert.ok(chips().includes("Globex / #deals"), JSON.stringify(chips()));
+
+  // A chip is removed with its x.
+  fireEvent.click(screen.getByRole("button", { name: chat.removeAgent("helper") }));
+  assert.equal(screen.queryByRole("button", { name: chat.all }), null, "one agent has nothing to route between");
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  fireEvent.click(within(await screen.findByRole("dialog", { name: chat.menu })).getByRole("menuitemcheckbox", { name: /^helper/ }));
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+
+  fireEvent.change(box(), { target: { value: "Plan the renewal" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["started"]));
+  assert.deepEqual(net?.seen.find((s) => s.method === "POST")?.body, {
+    visibility: "private",
+    project: "Globex",
+    channel: "deals",
+    text: "Plan the renewal",
+    agents: ["lead", "helper"],
+    mode: "all",
+  });
 });
 
 /** A turn in conversation t1 that failed, raised by actor, asked under tag. */

@@ -1,3 +1,4 @@
+import { defaultCopy } from "@warp/components";
 import { ArrowUpIcon, FileIcon, XIcon } from "@warp/render-web";
 import { type QueueControls, QueueStrip } from "@warp/web";
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -103,6 +104,7 @@ export function Composer({
   trailing,
   seed,
   tags,
+  plus,
 }: {
   /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
   seed?: { text: string };
@@ -121,6 +123,12 @@ export function Composer({
    * typed.
    */
   tags?: { label: string; options: TagOption[]; onQuery?: (typing: Typing) => void };
+  /**
+   * The + menu, in place of + attaching files at once: what it shows, given
+   * a way to close it and to attach files, and the chips of what it
+   * selected, shown in the bottom row. Ctrl+/ (Cmd+/) opens it.
+   */
+  plus?: { menu: (close: () => void, attach: () => void) => ReactNode; chips?: ReactNode };
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<Attached[]>([]);
@@ -129,6 +137,22 @@ export function Composer({
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const speech = useRef<Recognizer | null>(null);
+  const form = useRef<HTMLFormElement>(null);
+  const [menu, setMenu] = useState(false);
+  const closeMenu = () => {
+    setMenu(false);
+    input.current?.focus();
+  };
+  // A press outside the menu closes it, as Escape does.
+  useEffect(() => {
+    if (!menu) return;
+    const away = (e: MouseEvent) => {
+      const panel = form.current?.querySelector('[data-plus-panel]');
+      if (panel && !panel.contains(e.target as Node) && !(e.target as HTMLElement).closest?.("[data-plus-button]")) setMenu(false);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [menu]);
   const canDictate = recognizer() !== undefined;
 
   const [typing, setTyping] = useState<Typing | null>(null);
@@ -209,6 +233,12 @@ export function Composer({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (plus && e.key === "/" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      setTyping(null);
+      setMenu(true);
+      return;
+    }
     // While the typeahead is open, the keys move through it and pick from it.
     if (shown.length > 0 && !e.nativeEvent.isComposing) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -274,6 +304,7 @@ export function Composer({
 
   return (
     <form
+      ref={form}
       aria-label="Message"
       onSubmit={(e) => {
         e.preventDefault();
@@ -317,6 +348,14 @@ export function Composer({
             </li>
           ))}
         </ul>
+      )}
+      {plus && menu && (
+        <div data-plus-panel className="contents">
+          {plus.menu(closeMenu, () => {
+            setMenu(false);
+            picker.current?.click();
+          })}
+        </div>
       )}
       <QueueStrip queue={queue} />
       {files.length > 0 && (
@@ -384,11 +423,26 @@ export function Composer({
             e.target.value = "";
           }}
         />
-        <button type="button" className={tool} aria-label="Attach files" title="Attach text files" onClick={() => picker.current?.click()}>
-          <Glyph d={PLUS} />
-        </button>
+        {plus ? (
+          <button
+            type="button"
+            data-plus-button
+            className={`${tool} self-start`}
+            aria-label={defaultCopy.chat.plus}
+            aria-haspopup="dialog"
+            aria-expanded={menu}
+            title={`${defaultCopy.chat.plus} (${defaultCopy.chat.plusShortcut})`}
+            onClick={() => (menu ? closeMenu() : setMenu(true))}
+          >
+            <Glyph d={PLUS} />
+          </button>
+        ) : (
+          <button type="button" className={tool} aria-label="Attach files" title="Attach text files" onClick={() => picker.current?.click()}>
+            <Glyph d={PLUS} />
+          </button>
+        )}
         {leading}
-        <span className="min-w-2 flex-1" />
+        <div className="min-w-0 flex-1">{plus?.chips}</div>
         {trailing}
         {/*
           One button in one place. With nothing to send it listens, and once

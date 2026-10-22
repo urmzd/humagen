@@ -1057,3 +1057,45 @@ test("the project is fixed once an agent has run, and a project the server will 
   // Still private, and the dialog stays open to share it where it is.
   assert.ok(screen.getByText(words.private));
 });
+
+test("agents checked in a conversation's + menu are saved on the thread, and an answer they were routed to says so", async () => {
+  const restore = stubEventSource();
+  try {
+    const routedRun = { id: "r3", agent: "helper", status: "completed", answer: "Renewal is on track.", text: "how is it going?", message: "m-1", prev: "m-1", thread: "th-00000000000000aa", calls: 0, created_at: at, updated_at: at } as never;
+    const saved = { ...mine.thread, agents: ["helper", "lead"], mode: "all" as const, version: 2 };
+    const lead = { spec: { ...helper.spec, name: "lead", description: "Coordinates" }, rev: 1 } as unknown as Revision;
+    let current = mine;
+    net = stubFetch({
+      "GET /api/threads/th-00000000000000aa": () => current,
+      "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+      "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+      "PUT /api/threads/th-00000000000000aa": () => saved,
+      "GET /api/runs/r3/events": () => ({ events: [] }),
+    });
+    render(
+      <ThreadRoom id={mine.thread.id} me="ana" initial={mine} tick={0} agents={[helper, lead]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
+    const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
+    fireEvent.click(await within(menu).findByRole("menuitemcheckbox", { name: /^helper/ }));
+    await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "PUT")));
+    assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, { version: 1, title: "", visibility: "private", default: "", agents: ["helper"], mode: "best_fit" });
+    cleanup();
+
+    // Read back, the selection is the thread's, for everyone in it; a run its message did not tag was routed.
+    const routed: ThreadPage = { ...mine, thread: saved, turns: [...mine.turns, { kind: "run", run: routedRun }] };
+    current = routed;
+    render(
+      <ThreadRoom id={mine.thread.id} me="ana" initial={routed} tick={0} agents={[helper, lead]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+    );
+    const row = await screen.findByRole("list", { name: defaultCopy.chat.selected });
+    assert.ok(within(row).getByText("helper") && within(row).getByText("lead"));
+    assert.equal(within(row).getByRole("button", { name: defaultCopy.chat.all }).getAttribute("aria-pressed"), "true");
+    assert.ok(screen.getByText(defaultCopy.chat.routedAll("helper")));
+    // The project of a conversation is not removed from its chip.
+    assert.equal(within(row).queryByRole("button", { name: /^Remove Globex/ }), null);
+    cleanup();
+  } finally {
+    restore();
+  }
+});

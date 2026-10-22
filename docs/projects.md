@@ -1290,6 +1290,22 @@ An unknown tab falls back to the default through `pick`. Names never hold
     over the project's skills (`GET /api/skills`). Tab or Enter picks the
     highlighted item, the arrow keys move, Escape closes. Each kind keeps a
     place in the list's eight;
+  - the + button (or Ctrl+/) opens a menu: Attach Files; Agents, a
+    searchable list with AgentMark colors of the agents available in the
+    project, several of which can be checked (arrows move, Space checks,
+    Enter or Escape closes); and Project, where the conversation lives,
+    then one of its channels, general first, changeable only while no agent
+    has run in it. What is selected shows as chips in the bottom row: an
+    agent with its color and name, the project with its path (`Globex /
+    #deals` when the channel is not general), each removable with ×. With
+    two agents or more, text on that row chooses Best Fit (one of them, the
+    one that fits each message) or All of Them (each answers, side by
+    side). The selection is the conversation's: sent with `POST
+    /api/threads` as `agents` and `mode` (`best_fit` or `all`) and saved
+    with `PUT /api/threads/{id}`, so it shows for everyone in it after a
+    reload. An answer an agent gave because it was selected, not tagged,
+    says "Routed to helper, the best fit". With nothing selected the prompt
+    reads "Message, or @ an agent";
   - no Post Only, no Private and no line saying who answers: a message
     starts a run only for the agents it tags (`@agent`, `@auto`, or `$skill`,
     which goes to `@auto` when no agent is tagged), with the conversation so
@@ -1307,7 +1323,9 @@ An unknown tab falls back to the default through `pick`. Names never hold
 - **Home.** The prompt-first chat bar, which starts a private conversation
   (`POST /api/threads`, `visibility: private`, in the picked project's
   general) and opens it at `/tasks/{id}`; there is no menu of who answers.
-  A starter or a link with `?agent=` writes the agent's tag in the bar. Then
+  Suggestions sit under the bar as quiet text until the person types; a
+  pick writes its words and adds its agent as a chip, as a link with
+  `?agent=` does. Then
   two quiet lines from the shared
   `HomeModel`: "Needs you · 2" (the inbox's `open`, which counts an agent's
   draft waiting on its owners and never a posted announcement) and "What's

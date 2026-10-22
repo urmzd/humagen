@@ -9,6 +9,8 @@ export interface Completion {
   label: string;
   options: TagOption[];
   onQuery: (typing: Typing) => void;
+  /** The agents that may answer in the project, for the + menu; null while they load. */
+  agents: { name: string; description?: string }[] | null;
 }
 
 /**
@@ -25,7 +27,8 @@ export interface Completion {
  * where mention kinds cannot be read.
  */
 export function useCompletion(project: string, agents: Revision[], homes: Record<string, string>, topics: string[], me: string): Completion {
-  const [names, setNames] = useState<{ all: boolean; names: string[] } | null>(null);
+  // undefined while it loads, null when it could not be read.
+  const [names, setNames] = useState<{ all: boolean; names: string[] } | null | undefined>(undefined);
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [kinds, setKinds] = useState<MentionKind[] | null>(null);
@@ -39,7 +42,7 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
     // A lookup for the project before is not this one's.
     window.clearTimeout(timer.current);
     asked.current++;
-    setNames(null);
+    setNames(undefined);
     setPeople([]);
     coworking
       .available(project)
@@ -87,7 +90,7 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
   );
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  const options = useMemo(() => {
+  const here = useMemo(() => {
     const offered = new Set(
       availableOf(
         agents.map((a) => a.spec.name),
@@ -95,7 +98,10 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
         homes,
       ),
     );
-    const here = agents.filter((a) => offered.has(a.spec.name)).map((a) => ({ name: a.spec.name, description: a.spec.description }));
+    return agents.filter((a) => offered.has(a.spec.name)).map((a) => ({ name: a.spec.name, ...(a.spec.description ? { description: a.spec.description } : {}) }));
+  }, [agents, homes, names]);
+
+  const options = useMemo(() => {
     const others = people.filter((p) => p.subject !== me && p.handle !== me);
     return tagOptions(
       here,
@@ -108,7 +114,7 @@ export function useCompletion(project: string, agents: Revision[], homes: Record
         skills: skills.map((s) => ({ name: s.name, ...(s.description ? { description: s.description } : {}) })),
       },
     );
-  }, [agents, homes, names, people, topics, me, kinds, items, skills]);
+  }, [here, people, topics, me, kinds, items, skills]);
 
-  return { label: defaultCopy.threads.typeahead, options, onQuery };
+  return { label: defaultCopy.threads.typeahead, options, onQuery, agents: names === undefined ? null : here };
 }

@@ -11,7 +11,7 @@ import { ApiError, api, coworking, type ProjectView, type Revision, type ThreadA
 import { askedOf, copyFor } from "./asks.ts";
 import { useCompletion } from "./completion.ts";
 import { HomePage } from "./HomePage.tsx";
-import { ProjectPicker } from "./ProjectPicker.tsx";
+import { emptySelection, PlusMenu, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
 import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { itemActions } from "./itemActions.tsx";
@@ -193,10 +193,31 @@ export const STARTERS: { agent: string; label: string; text: string }[] = [
   { agent: "warp-writer", label: "Write a report", text: "Write a one-page report on " },
 ];
 
-/** The words a new conversation starts with, from a link or a starter: the agent's tag, then what to ask it. */
-export function seedOf(agent: string | undefined, ask: string | undefined): string {
-  const tag = agent ? `@${agent} ` : "";
-  return ask ? `${tag}${ask}` : tag;
+/**
+ * The chat bar with completion for a project: its lookups live here, so
+ * they are made only while the bar is on screen. `plus` builds the + menu
+ * from the agents that may answer in the project.
+ */
+function ChatBar({
+  project,
+  agents,
+  homes,
+  projects,
+  root,
+  me,
+  plus,
+  ...rest
+}: Omit<Parameters<typeof Composer>[0], "tags" | "plus"> & {
+  project: string;
+  agents: Revision[];
+  homes: Record<string, string>;
+  projects: ProjectView[] | null;
+  root: ProjectView | null;
+  me: string;
+  plus?: (available: { name: string; description?: string }[] | null) => NonNullable<Parameters<typeof Composer>[0]["plus"]>;
+}) {
+  const tags = useCompletion(project, agents, homes, topicsOf(projects ?? [], root, project), me);
+  return <Composer {...rest} tags={tags} plus={plus?.(tags.agents)} />;
 }
 
 /**
@@ -275,8 +296,16 @@ export function Chat({
   // The thread as the platform reads it: its record, and its people's messages besides its runs.
   const [room, setRoom] = useState<ThreadPage | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
-  const [seed, setSeed] = useState<{ text: string } | undefined>(() => (startAgent || startAsk ? { text: seedOf(startAgent, startAsk) } : undefined));
-  const [project, setProject] = useState<string | null>(startIn ?? null);
+  const [seed, setSeed] = useState<{ text: string } | undefined>(() => (startAsk ? { text: startAsk } : undefined));
+  // What the + menu selected for a new conversation: an agent a link named, and where it lives.
+  const [selection, setSelection] = useState<Selection>(() => ({
+    ...emptySelection,
+    agents: startAgent ? [startAgent] : [],
+    project: startIn ?? null,
+    channel: startChannel || "general",
+  }));
+  const project = selection.project;
+  const [draft, setDraft] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   // The drawer of every run in the conversation, open on one of them or on the list.
   const [activity, setActivity] = useState<{ focus: string | null } | null>(null);
@@ -336,7 +365,6 @@ export function Chat({
   const tailWorking = !!tail && isWorking(tail.status);
   // Where the next message goes, for completion: the conversation's project, or the one picked for a new one.
   const where = threadId ? (tail?.project ?? "") : (project ?? "");
-  const tags = useCompletion(where, agents, homes, topicsOf(projects ?? [], root ?? null, where), me);
 
   // Retry and Regenerate ask a turn again: one that follows another joins its
   // conversation, and the first is filed in `filed`, where the turn was.
@@ -369,7 +397,13 @@ export function Chat({
       // its address, where the next message goes.
       if (!threadId) {
         coworking
-          .start({ project: project ?? "", channel: startChannel || "general", text: m.text, visibility: startChannel ? "shared" : "private" })
+          .start({
+            project: project ?? "",
+            channel: selection.channel,
+            text: m.text,
+            visibility: startChannel ? "shared" : "private",
+            ...(selection.agents.length > 0 ? { agents: selection.agents, mode: selection.mode } : {}),
+          })
           .then((p) => {
             onThread(p.thread.id);
             done();
@@ -429,27 +463,44 @@ export function Chat({
   const composer = canRun && agents.length > 0 && (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
       <Problem message={problem} />
-      <Composer
-        placeholder={!threadId ? (startChannel ? words.startThread : words.newMessage) : words.message}
+      <ChatBar
+        project={where}
+        agents={agents}
+        homes={homes}
+        projects={projects}
+        root={root ?? null}
+        me={me}
+        placeholder={!threadId ? (startChannel ? words.startThread : placeholderFor(selection)) : words.message}
         queue={queue}
         autoFocus={!threadId}
         seed={seed}
-        tags={tags}
+        onDraft={setDraft}
         leading={
           threadId ? (
             <span className="max-w-40 truncate px-1.5 text-aui-sm text-aui-muted" title={tail?.project || "Projectless"}>
               {tail?.project || "Projectless"}
             </span>
-          ) : (
-            <ProjectPicker
-              value={project}
-              projects={projects}
-              kinds={root?.kinds}
-              canCreate={canCreateProject}
-              onChange={setProject}
-              onCreated={onProjectCreated}
-            />
-          )
+          ) : undefined
+        }
+        plus={
+          threadId
+            ? undefined
+            : (available) => ({
+                menu: (close, attach) => (
+                  <PlusMenu
+                    agents={available}
+                    selection={selection}
+                    onChange={setSelection}
+                    onAttach={attach}
+                    onClose={close}
+                    projects={projects}
+                    kinds={root?.kinds}
+                    canCreateProject={canCreateProject}
+                    onProjectCreated={onProjectCreated}
+                  />
+                ),
+                chips: <SelectionChips selection={selection} projects={projects} workspace={workspaceName} onChange={setSelection} />,
+              })
         }
       />
     </div>
@@ -498,17 +549,25 @@ export function Chat({
     return (
       <HomePage greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={home}>
         {composer}
-        {canRun && starters.length > 0 && (
-          <ul aria-label="Start with" className="mx-auto flex w-full max-w-4xl flex-wrap justify-center gap-2 px-4">
+        {/*
+          Suggestions sit with the chat bar, as quiet text under it, until
+          the person types. A pick writes its words and adds its agent to
+          the conversation, as a chip, not an @mention.
+        */}
+        {canRun && starters.length > 0 && draft.trim() === "" && (
+          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto -mt-1 flex w-full max-w-4xl flex-wrap gap-x-4 gap-y-1 px-7">
             {starters.map((st) => (
-              <li key={st.agent}>
+              <li key={st.agent} className="min-w-0">
                 <button
                   type="button"
-                  onClick={() => setSeed({ text: seedOf(st.agent, st.text) })}
-                  className="inline-flex h-9 items-center gap-2 rounded-full border border-aui-border px-3.5 text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
+                  onClick={() => {
+                    setSelection((sel) => (sel.agents.includes(st.agent) ? sel : { ...sel, agents: [...sel.agents, st.agent] }));
+                    setSeed({ text: st.text });
+                  }}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-aui py-1 text-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
-                  <AgentMark name={st.agent} size={14} />
-                  {st.label}
+                  <AgentMark name={st.agent} size={12} />
+                  <span className="truncate">{st.label}</span>
                 </button>
               </li>
             ))}
