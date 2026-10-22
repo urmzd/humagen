@@ -53,7 +53,7 @@ func newFixtureWith(t *testing.T, cfg platform.Config) *fixture {
 	iss := authtest.New(t)
 	v, err := auth.NewVerifier(ctx, auth.OIDCConfig{
 		Issuer: iss.URL, ClientID: clientID, Audience: audience, TenantClaim: "org",
-		GroupRoles: map[string]auth.Role{"warp-admins": auth.Admin, "warp-viewers": auth.Viewer},
+		GroupRoles: map[string]auth.Role{"warp-admins": auth.Admin, "warp-operators": auth.Operator, "warp-viewers": auth.Viewer},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -79,6 +79,13 @@ func newFixtureWith(t *testing.T, cfg platform.Config) *fixture {
 func (f *fixture) machine(t *testing.T, org string, scopes ...string) string {
 	t.Helper()
 	return f.iss.Sign(t, "svc-"+org, audience, map[string]any{"org": org, "scp": scopes})
+}
+
+// machineAs is a machine of its own subject, for a test that tells callers
+// in one workspace apart by who they are.
+func (f *fixture) machineAs(t *testing.T, subject, org string, scopes ...string) string {
+	t.Helper()
+	return f.iss.Sign(t, subject, audience, map[string]any{"org": org, "scp": scopes})
 }
 
 func (f *fixture) do(t *testing.T, c *http.Client, method, path, bearer, body string, hdr ...string) (*http.Response, map[string]any) {

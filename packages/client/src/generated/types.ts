@@ -659,9 +659,35 @@ export interface ProjectExperts {
 workspace or another company project, and is created and changed only
 with `projects:govern`; a workspace has at most 10. `team` is the
 default and sits anywhere. `account` is a customer account, never
-under another account. The workspace itself is `company`.
+under another account. The workspace itself is `company`. Any other
+value is one of the workspace's own kinds, which behaves as `team`
+or `account`.
  */
-export type ProjectKind = "company" | "team" | "account";
+export type ProjectKind = string;
+
+/** What a member may do in a project, each including the one before:
+`viewer` sees it, its inbox, its context and its people; `member`
+works in it, creates projects under it and proposes notes; `owner`
+changes it and everything below it. A role only narrows what a
+permission allows: an owner without `projects:write` still cannot
+write.
+ */
+export type ProjectRole = "viewer" | "member" | "owner";
+
+/** One member of a project and the role it grants. */
+export interface ProjectEntry {
+  /** `*`, `role:<name>`, or a subject. */
+  who: string;
+  role: ProjectRole;
+}
+
+/** A workspace's own kind, a label over a built-in behavior. */
+export interface ProjectKindSpec {
+  name: string;
+  title?: string;
+  /** The built-in kind it behaves as. */
+  like: "team" | "account";
+}
 
 /** What an account project records about its customer. */
 export interface ProjectAccount {
@@ -693,7 +719,20 @@ win over them.
   instructions?: string;
   /** Who answers for some topics here and below. Set with `PUT /api/projects/{name}/experts`. */
   experts: ProjectExpert[];
+  /** Who holds a role here. `*` is everyone who can see the parent (at
+the workspace, everyone holding `projects:read`), `role:<name>`
+the holders of a policy role, anything else a subject. An owner
+here owns everything below. Every project keeps a `*` entry of at
+least viewer, so every project stays visible.
+ */
+  members: ProjectEntry[];
+  /** The workspace's own kinds, each a label over `team` or `account`. Only the workspace carries them. */
+  kinds?: ProjectKindSpec[];
   agents: ProjectAgents;
+  /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
+  archived?: boolean;
+  /** The lowest role that may post an announcement here. Absent reads as owner. */
+  announce?: "viewer" | "member" | "owner";
   /** `file` when the platform file declares the project, and absent otherwise. The fields the file sets answer 409 here, and the project cannot be deleted here. */
   managed?: string;
   /** Counts writes, from 1. A change names the version it read. */
@@ -713,7 +752,7 @@ export interface ProjectStep {
 }
 
 /** A project, where it sits, and what is in it. */
-export type ProjectView = Project & { depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number };
+export type ProjectView = Project & { depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[] };
 
 /** A limit a run filed in the project falls under for being there, and
 the project it is set on. What the limit allows is read from
@@ -747,9 +786,17 @@ export interface ProjectInput {
   parent?: string;
   account?: ProjectAccount;
   instructions?: string;
+  /** Who holds a role in it. Left out, everyone (`*`) is a member, or
+a viewer of an account, and the creator its owner, no more open
+than the parent allows.
+ */
+  members?: ProjectEntry[];
 }
 
-/** What a person may change on a project, as a whole. A field left out is cleared. */
+/** What an owner may change on a project. Title, description, account
+and instructions are replaced as a whole: one left out is cleared.
+`kind`, `archived`, `announce` and `kinds` change only when given.
+ */
 export interface ProjectUpdate {
   /** The version the caller read. */
   version: number;
@@ -757,6 +804,69 @@ export interface ProjectUpdate {
   description?: string;
   account?: ProjectAccount;
   instructions?: string;
+  /** A built-in kind or one the workspace defines. To or from `company` needs `projects:govern`. */
+  kind?: string;
+  /** Archives the project, or brings it back. An archived project takes no new sub-projects. */
+  archived?: boolean;
+  /** The lowest role that may post an announcement. Empty reads as owner. */
+  announce?: "" | "viewer" | "member" | "owner";
+  /** The workspace's own kinds, on the workspace only. A kind a project still has cannot be removed (409). */
+  kinds?: ProjectKindSpec[];
+}
+
+/** A caller's role in a project, where it comes from, and the entry or rule that gave it. */
+export interface ProjectAccess {
+  /** Empty is no role. */
+  role: "" | "viewer" | "member" | "owner";
+  /** The project whose entry gave it, `""` for the workspace. */
+  from: string;
+  /** The entry's `who`, `owner above` for owning a project above, or `projects:govern`. */
+  via: string;
+}
+
+/** An owner entry of a project above, which owns this one too. */
+export interface ProjectInheritedOwner {
+  who: string;
+  /** The project above whose entry it is, `""` for the workspace. */
+  from: string;
+}
+
+/** Who holds a role in a project, and who owns it from above. */
+export interface ProjectMembers {
+  /** The project's version, to name when changing them. */
+  version: number;
+  members: ProjectEntry[];
+  /** The owner entries of the projects above, nearest first. */
+  inherited: ProjectInheritedOwner[];
+}
+
+/** A project's new members, as a whole. */
+export interface ProjectMembersInput {
+  /** The version the caller read. */
+  version: number;
+  members: ProjectEntry[];
+}
+
+/** Where a project goes. */
+export interface ProjectMove {
+  /** The version the caller read. */
+  version: number;
+  /** The new parent. Empty or `~` is the top level. */
+  parent: string;
+}
+
+/** A tighten-only limit an owner of a project above sets. A zero limit sets none. */
+export interface ProjectLimitInput {
+  period: "day" | "month";
+  max_runs?: number;
+  max_concurrent?: number;
+  /** Micro-USD a period. */
+  spend_limit?: number;
+  max_lease?: number;
+  max_storage?: number;
+  max_tokens?: number;
+  warn_at?: number;
+  action: "block";
 }
 
 /** One entry of the record of what changed on a project. */
@@ -767,13 +877,15 @@ export interface ProjectChange {
   by: string;
   project: string;
   /** `managed` is the platform file taking the project over or letting
-it go. `agents` is a change to what the project turns on. `home`
+it go, `moved` a new parent, `archived` archiving or bringing it
+back, and `members` a change to who holds a role and nothing
+else. `agents` is a change to what the project turns on. `home`
 is an agent coming to live in the project, or leaving it: `agent`
 names it and `note` says which. `experts` is a change to who the
 project names as experts, and `channel` to one of its channels,
 which `channel` holds before and after.
  */
-  what: "created" | "updated" | "deleted" | "managed" | "agents" | "home" | "experts" | "channel";
+  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "channel";
   /** The agent a home change is about. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
@@ -917,6 +1029,8 @@ export interface Preferences {
   onboarded_at?: string;
   /** Conversations kept at the top of the person's sidebar, most recently pinned first. */
   pinned: string[];
+  /** Projects whose announcements are left out of the person's own inbox. They stay in each project's inbox, and the workspace itself is never muted. */
+  muted: string[];
 }
 
 /** A cron schedule as a caller writes it. */
@@ -951,12 +1065,33 @@ export interface ScheduleView {
   recent: Run[];
 }
 
+/** An announcement to post. */
+export interface AnnouncementInput {
+  /** One line. */
+  subject: string;
+  text: string;
+  /** `info` when left out. */
+  severity?: "info" | "warning";
+}
+
+/** What a reader's inbox holds open. */
+export interface InboxCounts {
+  /** Open messages that may need the reader. */
+  open: number;
+  /** Of those, the ones the reader has not read. */
+  unread: number;
+  /** Announcements open for the reader that they have not read. */
+  updates: number;
+}
+
 /** What a message is about. `approval` and `clarification` are questions
 a run is waiting on. `result` is the answer of a run nobody was
 waiting on, and `artifact` a file that was published or revised.
-`mention` is a message in a shared thread that tags the reader.
+`mention` is a message in a shared thread that tags the reader, and
+`announcement` news posted in a project, which reaches the members
+of that project and of every project below it.
  */
-export type InboxKind = "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention";
+export type InboxKind = "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement";
 
 export type InboxState = "open" | "resolved" | "dismissed" | "snoozed";
 
@@ -1601,6 +1736,8 @@ export interface Policy {
   max_clients_per_surface?: number;
   warn_at?: number;
   action: PolicyAction;
+  /** Who set it. Absent is an admin, with `billing:write`. `owner` is a tighten-only limit a project's owner set on a project below one they own, never looser than the limits over it. */
+  authority?: "admin" | "owner";
   version: number;
   updated_by?: string;
   updated_at: string;
@@ -2279,11 +2416,7 @@ export interface ListInboxResponse {
   next: string | null;
   open: number;
   unread: number;
-}
-
-export interface GetInboxCountResponse {
-  open: number;
-  unread: number;
+  updates: number;
 }
 
 export interface GetInboxMessageResponse {
@@ -2365,10 +2498,12 @@ export interface UpdatePreferencesBody {
   accent?: string;
   onboarded?: boolean;
   pinned?: string[];
+  muted?: string[];
 }
 
 export interface ListProjectsResponse {
   projects: ProjectView[];
+  next: string | null;
 }
 
 export interface ListProjectHistoryResponse {
@@ -2378,6 +2513,11 @@ export interface ListProjectHistoryResponse {
 
 export interface ListChannelsResponse {
   channels: ChannelView[];
+}
+
+export interface GetProjectInboxResponse {
+  messages: InboxMessage[];
+  next: string | null;
 }
 
 export interface ListPeopleResponse {

@@ -32,6 +32,24 @@ func seePeople(t *testing.T, p *platform.Platform, who ...auth.Principal) {
 	}
 }
 
+// workIn makes people members of a project, so they may post there: an
+// account is everyone's to view only.
+func workIn(t *testing.T, p *platform.Platform, project string, who ...auth.Principal) {
+	t.Helper()
+	pr, err := p.Projects.Get(tenant, project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Projects.Update(tenant, project, pr.Version, ada, time.Now(), func(pr *projects.Project) error {
+		for _, w := range who {
+			pr.Members = append(pr.Members, projects.Entry{Who: w.Subject, Role: projects.Member})
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func startThread(t *testing.T, p *platform.Platform, who auth.Principal, in platform.ThreadInput) platform.Posted {
 	t.Helper()
 	if in.Visibility == "" {
@@ -110,6 +128,7 @@ func TestATaggedAgentAnswersSeeingTheRoomUpToTheMessage(t *testing.T) {
 func TestAnUntaggedAPITurnIsAnsweredByTheDefaultItsThreadInherits(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
+	workIn(t, p, "Globex", operator)
 	ctx := t.Context()
 	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "lead"})
 	if _, err := p.UpdateChannel(ctx, tenant, "Globex", projects.General, ada, platform.ChannelUpdate{Default: "helper"}); err != nil {
@@ -289,6 +308,7 @@ func TestTaggingOnlyPeopleNotifiesThemAndStartsNoRun(t *testing.T) {
 func TestTheInheritedDefaultAnswersAndFailsClosed(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
+	workIn(t, p, "Globex", operator)
 	if _, err := p.CreateChannel(t.Context(), tenant, "Globex", ada, platform.ChannelInput{Name: "renewals", Purpose: "Renewal work", Default: "helper"}); err != nil {
 		t.Fatal(err)
 	}
@@ -331,6 +351,7 @@ func TestTheInheritedDefaultAnswersAndFailsClosed(t *testing.T) {
 func TestAutoPicksAmongTheAgentsAvailableInTheProject(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
+	workIn(t, p, "Globex", operator)
 	for _, spec := range []agentspec.AgentSpec{
 		{Name: "invoices", Model: "offline", Provider: "offline", SystemPrompt: "Billing.", Description: "invoices and billing disputes"},
 		{Name: "contracts", Model: "offline", Provider: "offline", SystemPrompt: "Contracts.", Description: "invoices and contract terms"},
@@ -355,6 +376,7 @@ func TestAutoPicksAmongTheAgentsAvailableInTheProject(t *testing.T) {
 func TestExpertsAreFoundAlongTheChainAndNotifiedWhenTagged(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
+	workIn(t, p, "Globex", operator)
 	set := func(project string, es ...projects.Expert) {
 		t.Helper()
 		cur, err := p.ProjectExperts(tenant, project)
@@ -397,6 +419,7 @@ func TestExpertsAreFoundAlongTheChainAndNotifiedWhenTagged(t *testing.T) {
 func TestAMessageNotifiesAtMostMaxNotifiedPeople(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)
+	workIn(t, p, "Globex", operator)
 	var es []projects.Expert
 	for i := range platform.MaxNotified + 5 {
 		es = append(es, projects.Expert{Who: fmt.Sprintf("expert-%02d", i), Topics: []string{"billing"}})

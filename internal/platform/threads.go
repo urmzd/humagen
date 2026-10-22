@@ -169,6 +169,56 @@ func (p *Platform) nameOf(tenant, subject string) string {
 	return p.shower(tenant).name(subject)
 }
 
+// poster is the person a message is posted as, as a principal whose own
+// role on a project is the one that counts: the caller, or the person a
+// surface's credential acts for, with the roles the workspace's policy grants
+// them, never the credential's.
+func (p *Platform) poster(who auth.Principal, as *ActAs) (auth.Principal, error) {
+	if as == nil {
+		return who, nil
+	}
+	return p.Acting(who, *as)
+}
+
+// mayPost holds the person a message is posted as to their role in the
+// project it is posted in. Starting a thread, or posting a message that may
+// start a run, takes a member, as starting a conversation does (MayFileIn). A
+// message that only answers what its poster was asked, a question a run
+// there put to them or a message that tagged them, starts nothing, and takes
+// only seeing the project: an expert a project names need not be a member to
+// answer. It also says whether what the runs it starts teach the project may
+// be kept unasked: only when the poster could keep it themselves.
+func (p *Platform) mayPost(person auth.Principal, project string, need projects.Role) (keeps bool, err error) {
+	if need == projects.Member {
+		err = p.MayFileIn(person, project)
+	} else {
+		_, _, err = p.ProjectRole(person, project, need)
+	}
+	if err != nil {
+		return false, err
+	}
+	project = projects.NameOf(project)
+	return project != projects.Root && p.MayChangeNotes(person, project) == nil, nil
+}
+
+// mayChangeThread holds a change to a thread's record to its owner, the
+// person who started it, or an owner of its project. A conversation from
+// before threads that no person asked in has no owner yet: whoever changes it
+// first becomes one, and that takes a member of the project.
+func (p *Platform) mayChangeThread(who auth.Principal, th threads.Thread) error {
+	switch {
+	case th.CreatedBy == "":
+		return p.MayFileIn(who, th.Project)
+	case who.Kind != auth.Machine && who.Subject == th.CreatedBy:
+		return nil
+	}
+	_, _, err := p.ProjectRole(who, th.Project, projects.Owner)
+	if errors.Is(err, projects.ErrForbidden) {
+		return fmt.Errorf("%w: only whoever started this thread, or an owner of its project, changes it", projects.ErrForbidden)
+	}
+	return err
+}
+
 // tagLookup resolves the names a message tags, within one tenant.
 type tagLookup struct {
 	ctx    context.Context
@@ -406,6 +456,14 @@ func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
+	person, err := p.poster(who, in.ActAs)
+	if err != nil {
+		return Posted{}, err
+	}
+	keeps, err := p.mayPost(person, project, projects.Member)
+	if err != nil {
+		return Posted{}, err
+	}
 	if err := p.checkDefault(ctx, who.Tenant, project, in.Default); err != nil {
 		return Posted{}, err
 	}
@@ -424,7 +482,7 @@ func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
-	return p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, false)
+	return p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, false, keeps)
 }
 
 // PostMessage posts a person's message into a thread, and starts what it
@@ -443,6 +501,18 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return Posted{}, err
 	}
 	by, name, via, slack, err := p.author(who, in.ActAs)
+	if err != nil {
+		return Posted{}, err
+	}
+	person, err := p.poster(who, in.ActAs)
+	if err != nil {
+		return Posted{}, err
+	}
+	need := projects.Member
+	if in.Answers != nil || in.reply {
+		need = projects.Viewer
+	}
+	keeps, err := p.mayPost(person, th.Project, need)
 	if err != nil {
 		return Posted{}, err
 	}
@@ -480,7 +550,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if !fresh {
 		return p.posted(who.Tenant, th, m), nil
 	}
-	return p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, in.Answers != nil || in.reply)
+	return p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, in.Answers != nil || in.reply, keeps)
 }
 
 // prevOf is the turn a message follows, from what the poster named: a
@@ -545,8 +615,9 @@ func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, as 
 }
 
 // carryOut starts what a posted message calls for, records what each of
-// its tags came to, and notifies the people and experts it tags.
-func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, postOnly, reply bool) (Posted, error) {
+// its tags came to, and notifies the people and experts it tags. keeps says
+// the poster may change the project's notes (mayPost).
+func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, postOnly, reply, keeps bool) (Posted, error) {
 	def, unavailable := p.defaultOf(tenant, th)
 	d := threads.Decide(threads.Input{Mentions: m.Mentions, Reply: reply, PostOnly: postOnly, Default: def, Unavailable: unavailable})
 	out := Posted{Runs: []runs.Run{}, Notified: []string{}, Refused: []threads.Mention{}, Rule: d.Rule, Reason: d.Reason}
@@ -559,7 +630,7 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	actor := envelope.Actor{ID: m.By, Display: m.Name, User: m.By}
 	var answered []threads.Participant
 	start := func(agent string) (runs.Run, error) {
-		run, err := p.answerMessage(ctx, tenant, th, m, agent, actor, answerTagID(th.ID, m.ID, agent))
+		run, err := p.answerMessage(ctx, tenant, th, m, agent, actor, answerTagID(th.ID, m.ID, agent), keeps)
 		if err == nil {
 			out.Runs = append(out.Runs, run)
 			answered = append(answered, threads.Participant{Kind: threads.Agent, Name: run.Agent, AddedBy: m.By})
@@ -648,11 +719,16 @@ func answerTagID(thread, message, agent string) string {
 
 // answerMessage starts an agent answering a person's message, as the run
 // tagID names: @auto picks the agent first. The agent is sent its context and
-// the room's transcript up to the message, then the message.
-func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, agent string, actor envelope.Actor, tagID string) (runs.Run, error) {
+// the room's transcript up to the message, then the message. keeps pins that
+// the person it acts for may change the project's notes, as a turn does
+// (Turn.KeepsNotes).
+func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, agent string, actor envelope.Actor, tagID string, keeps bool) (runs.Run, error) {
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
 		runs.MetaChannel: th.Channel, runs.MetaProject: th.Project,
+	}
+	if keeps && th.Project != "" {
+		meta[metaKeepsNotes] = th.Project
 	}
 	if agent == Auto {
 		who, err := p.resolveAgent(ctx, tenant, p.placeOfThread(tenant, th), Auto, m.Text, nil)
@@ -851,12 +927,16 @@ func (p *Platform) replyToMention(ctx context.Context, who auth.Principal, part 
 	return posted.Message, err
 }
 
-// UpdateThread changes a thread's title, visibility or default. A private
-// thread is refused until reads are confined, and a default must be able to
-// answer in the thread's project.
+// UpdateThread changes a thread's title, visibility or default. Its owner or
+// an owner of its project changes it (mayChangeThread). A private thread is
+// refused until reads are confined, and a default must be able to answer in
+// the thread's project.
 func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id string, in ThreadUpdate) (threads.Thread, error) {
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
+		return threads.Thread{}, err
+	}
+	if err := p.mayChangeThread(who, th); err != nil {
 		return threads.Thread{}, err
 	}
 	if in.Version != th.Version {
@@ -877,13 +957,18 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	})
 }
 
-// SetParticipants adds and removes a thread's people and agents. An agent
-// added must be available in the thread's project, and a person must be in
-// the workspace's directory. People are named by handle, as a thread shows
-// them, and kept by subject.
+// SetParticipants adds and removes a thread's people and agents. It takes a
+// member of the thread's project, as posting there does, and removing anyone
+// but oneself takes the thread's owner or an owner of its project
+// (mayChangeThread). An agent added must be available in the thread's
+// project, and a person must be in the workspace's directory. People are
+// named by handle, as a thread shows them, and kept by subject.
 func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id string, in ParticipantsUpdate) (threads.Thread, error) {
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
+		return threads.Thread{}, err
+	}
+	if err := p.MayFileIn(who, th.Project); err != nil {
 		return threads.Thread{}, err
 	}
 	if in.Version != th.Version {
@@ -917,6 +1002,11 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 			name = subject
 		}
 		remove[i] = name
+	}
+	if slices.ContainsFunc(remove, func(name string) bool { return name != who.Subject }) {
+		if err := p.mayChangeThread(who, th); err != nil {
+			return threads.Thread{}, err
+		}
 	}
 	if th, err = p.recordOf(who.Tenant, id, who.Subject); err != nil {
 		return threads.Thread{}, err

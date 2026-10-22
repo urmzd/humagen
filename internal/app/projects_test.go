@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -198,29 +199,84 @@ func TestAConsoleProjectTheFileNamesIsTakenOver(t *testing.T) {
 	}
 }
 
-// Kind and parent are fixed when a project is made, so a file that names
-// another for an existing project fails the start, with the entry's path, and
+// The file's members and kinds are the file's: the workspace's and a
+// project's members, and the workspace's own kinds, apply at start, and the
+// console cannot change them. A kind a console project still has cannot leave
+// the file: the start fails, naming it.
+func TestTheFilesMembersAndKindsAreTheFiles(t *testing.T) {
+	p := newProjectsPlatform(t)
+	const tenant = "acme"
+	file := spec.Workspace{
+		Members:      []spec.Member{{Who: "*", Role: spec.RoleMember}, {Who: "role:comms", Role: spec.RoleOwner}},
+		ProjectKinds: []spec.ProjectKind{{Name: "partner", Title: "Partner", Like: spec.ProjectAccount}},
+		Projects: []spec.Project{
+			{Name: "Field", Members: []spec.Member{{Who: "*", Role: spec.RoleViewer}, {Who: "role:field-eng", Role: spec.RoleMember}}},
+			{Name: "Reseller", Parent: "Field", Kind: "partner"},
+		},
+	}
+	if err := applyProjects(p, tenant, file); err != nil {
+		t.Fatal(err)
+	}
+	root, field := mustGet(t, p, tenant, projects.Root), mustGet(t, p, tenant, "Field")
+	if len(root.Members) != 2 || root.Members[1].Who != "role:comms" || len(root.Kinds) != 1 || root.Kinds[0].Like != projects.Account {
+		t.Fatalf("the workspace = %+v", root)
+	}
+	if len(field.Members) != 2 || field.Members[1].Role != projects.Member {
+		t.Fatalf("Field = %+v", field)
+	}
+	// Reseller lists nobody in the file, so it is everyone's to view, as an
+	// account is, and no more open than Field.
+	if r := mustGet(t, p, tenant, "Reseller"); r.Kind != "partner" || len(r.Members) != 1 || r.Members[0] != (projects.Entry{Who: "*", Role: projects.Viewer}) {
+		t.Fatalf("Reseller = %+v", r)
+	}
+	_, err := p.Projects.Update(tenant, "Field", field.Version, projects.Writer{By: "ada"}, field.UpdatedAt, func(pr *projects.Project) error {
+		pr.Members = []projects.Entry{{Who: "*", Role: projects.Viewer}}
+		return nil
+	})
+	if !errors.Is(err, projects.ErrManaged) {
+		t.Fatalf("changing the file's members = %v", err)
+	}
+	file.ProjectKinds = []spec.ProjectKind{}
+	if err := applyProjects(p, tenant, file); !errors.Is(err, projects.ErrInUse) || !strings.Contains(err.Error(), "Reseller") {
+		t.Fatalf("removing a kind in use = %v", err)
+	}
+	// Left out of the file, the kinds stay, and are the console's.
+	file.ProjectKinds = nil
+	if err := applyProjects(p, tenant, file); err != nil {
+		t.Fatal(err)
+	}
+	if root := mustGet(t, p, tenant, projects.Root); len(root.Kinds) != 1 || slices.Contains(root.FileOwns, projects.FieldKinds) {
+		t.Fatalf("the workspace after its kinds left the file = %+v", root)
+	}
+}
+
+// A file that names another kind or parent for an existing project changes
+// it, as a move or a new kind through the console would, under the same
+// rules: one the tree refuses fails the start, with the entry's path, and
 // changes nothing.
-func TestAKindOrParentTheFileChangesFailsTheStart(t *testing.T) {
+func TestTheFileMovesAProjectUnderTheTreesRules(t *testing.T) {
 	p := newProjectsPlatform(t)
 	const tenant = "acme"
 	ada := projects.Writer{By: "ada"}
-	for _, in := range []platform.ProjectInput{{Name: "Field"}, {Name: "Ops"}} {
+	for _, in := range []platform.ProjectInput{{Name: "Field"}, {Name: "Ops"}, {Name: "Globex", Kind: projects.Account}} {
 		if _, err := p.CreateProject(t.Context(), tenant, ada, in); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for name, file := range map[string]spec.Workspace{
-		"kind":   projectsOf(spec.Project{Name: "Ops", Kind: spec.ProjectAccount}),
-		"parent": projectsOf(spec.Project{Name: "Field"}, spec.Project{Name: "Ops", Parent: "Field"}),
-	} {
-		err := applyProjects(p, tenant, file)
-		if !errors.Is(err, projects.ErrInvalid) || !strings.Contains(err.Error(), `platform "acme": workspace.projects[`) || !strings.Contains(err.Error(), "fixed when it is created") {
-			t.Errorf("a changed %s = %v", name, err)
-		}
-		if ops := mustGet(t, p, tenant, "Ops"); ops.Version != 1 || ops.Managed != "" || ops.Kind != projects.Team || ops.Parent != "" {
-			t.Errorf("a refused %s changed Ops: %+v", name, ops)
-		}
+	if err := applyProjects(p, tenant, projectsOf(spec.Project{Name: "Field"}, spec.Project{Name: "Ops", Kind: spec.ProjectAccount, Parent: "Field"})); err != nil {
+		t.Fatal(err)
+	}
+	ops := mustGet(t, p, tenant, "Ops")
+	if ops.Kind != projects.Account || ops.Parent != "Field" || ops.Managed != projects.ManagedFile {
+		t.Fatalf("moved = %+v", ops)
+	}
+	// An account never sits under an account.
+	err := applyProjects(p, tenant, projectsOf(spec.Project{Name: "Ops", Kind: spec.ProjectAccount, Parent: "Globex"}))
+	if !errors.Is(err, projects.ErrInvalid) || !strings.Contains(err.Error(), `platform "acme": workspace.projects[`) {
+		t.Errorf("an account under an account = %v", err)
+	}
+	if again := mustGet(t, p, tenant, "Ops"); again.Version != ops.Version || again.Parent != "Field" {
+		t.Errorf("a refused move changed Ops: %+v", again)
 	}
 }
 

@@ -68,12 +68,13 @@ func TestProjectRoutesCheckProjectsPermissionsNotRuns(t *testing.T) {
 	want(t, f, reader, "POST", "/api/projects", `{"name":"Mine"}`, http.StatusForbidden)
 }
 
-// Until projects have roles, the route's permission decides, except that the
-// workspace and company projects, their notes and a deleted name need
-// projects:govern as well.
+// The route's permission, then the caller's role in the project: an
+// operator is a member of the workspace and of what others made, and owns
+// what they made. The workspace and company projects, and a deleted name,
+// need projects:govern as well.
 func TestTheWorkspaceAndCompanyProjectsNeedGovern(t *testing.T) {
 	f := newFixture(t)
-	admin, op := f.machine(t, "acme", everything...), f.machine(t, "acme", operator...)
+	admin, op := f.machineAs(t, "svc-admin", "acme", everything...), f.machineAs(t, "svc-op", "acme", operator...)
 
 	if out := want(t, f, op, "POST", "/api/projects", `{"name":"News","kind":"company"}`, http.StatusForbidden); !strings.Contains(out["error"].(string), "projects:govern") {
 		t.Fatalf("the refusal does not say what is needed: %v", out)
@@ -86,28 +87,34 @@ func TestTheWorkspaceAndCompanyProjectsNeedGovern(t *testing.T) {
 	if root["name"] != "" || root["kind"] != "company" || root["version"].(float64) != 1 || root["children"].(float64) != 2 || root["depth"].(float64) != 0 {
 		t.Fatalf("the workspace reads %v", root)
 	}
-	for _, tc := range []struct{ method, path, body string }{
-		{"PUT", "/api/projects/~", `{"version":1,"instructions":"Answer plainly."}`},
-		{"PUT", "/api/projects/News", `{"version":1,"title":"Company news"}`},
-		{"DELETE", "/api/projects/News", ""},
-		{"POST", "/api/projects/~/memory", `{"text":"We sell robots."}`},
-		{"POST", "/api/projects/News/memory", `{"text":"Fridays are quiet."}`},
-		{"POST", "/api/projects/News/memory/approve", `{"ids":[]}`},
-		{"DELETE", "/api/projects/~/memory/m1", ""},
+	for _, tc := range []struct{ method, path, body, says string }{
+		{"PUT", "/api/projects/~", `{"version":1,"instructions":"Answer plainly."}`, "you need to own the workspace"},
+		{"PUT", "/api/projects/News", `{"version":1,"title":"Company news"}`, "you need to own News"},
+		{"DELETE", "/api/projects/News", "", "you need to own News"},
+		{"POST", "/api/projects/News/memory/approve", `{"ids":[]}`, "you need to own News"},
+		{"DELETE", "/api/projects/~/memory/m1", "", "you need to own the workspace"},
 	} {
-		if got, out := status(t, f, op, tc.method, tc.path, tc.body); got != http.StatusForbidden || !strings.Contains(out["error"].(string), "projects:govern") {
-			t.Errorf("an operator %s %s = %d %v, want 403 naming projects:govern", tc.method, tc.path, got, out)
+		if got, out := status(t, f, op, tc.method, tc.path, tc.body); got != http.StatusForbidden || out["error"] != tc.says {
+			t.Errorf("an operator %s %s = %d %v, want 403 %s", tc.method, tc.path, got, out, tc.says)
 		}
 	}
-	// A team project is the operator's to change, notes and all.
+	// A member's note is a proposal, kept or discarded by the owners.
+	for _, path := range []string{"/api/projects/~/memory", "/api/projects/News/memory"} {
+		if note := want(t, f, op, "POST", path, `{"text":"We sell robots."}`, http.StatusCreated); note["status"] != "pending" {
+			t.Errorf("a member's note on %s = %v, want a proposal", path, note)
+		}
+	}
+	// A team project is its owner's to change, notes and all.
 	want(t, f, op, "PUT", "/api/projects/Platform", `{"version":1,"instructions":"Ship small."}`, http.StatusOK)
-	want(t, f, op, "POST", "/api/projects/Platform/memory", `{"text":"Deploys go out on Tuesdays."}`, http.StatusCreated)
+	if note := want(t, f, op, "POST", "/api/projects/Platform/memory", `{"text":"Deploys go out on Tuesdays."}`, http.StatusCreated); note["status"] != "approved" {
+		t.Fatalf("an owner's note = %v", note)
+	}
 	// With govern, the workspace itself takes instructions and notes.
 	if out := want(t, f, admin, "PUT", "/api/projects/~", `{"version":1,"instructions":"Answer plainly."}`, http.StatusOK); out["version"].(float64) != 2 || out["instructions"] != "Answer plainly." {
 		t.Fatalf("the workspace after a change = %v", out)
 	}
-	want(t, f, admin, "POST", "/api/projects/~/memory", `{"text":"We sell robots."}`, http.StatusCreated)
-	if out := want(t, f, op, "GET", "/api/projects/~", "", http.StatusOK)["project"].(map[string]any); out["notes"].(float64) != 1 {
+	want(t, f, admin, "POST", "/api/projects/~/memory", `{"text":"Robots ship from Ohio."}`, http.StatusCreated)
+	if out := want(t, f, op, "GET", "/api/projects/~", "", http.StatusOK)["project"].(map[string]any); out["notes"].(float64) != 1 || out["proposed"].(float64) != 1 {
 		t.Fatalf("the workspace's notes are not counted: %v", out)
 	}
 
@@ -133,7 +140,14 @@ func TestAnAgentNamedWorkspaceNeverReachesTheWorkspacesNotes(t *testing.T) {
 	// A manager: agents:write and projects:write, not projects:govern.
 	manager := f.machine(t, "acme", append([]string{"warp:agents:write"}, operator...)...)
 	want(t, f, admin, "POST", "/api/projects", `{"name":"News","kind":"company"}`, http.StatusCreated)
-	want(t, f, manager, "POST", "/api/projects/~/memory", `{"text":"Smuggled."}`, http.StatusForbidden)
+	// The manager is a member of the workspace, so their note is only a
+	// proposal, which they may not keep.
+	proposal := want(t, f, manager, "POST", "/api/projects/~/memory", `{"text":"Smuggled."}`, http.StatusCreated)
+	if proposal["status"] != "pending" {
+		t.Fatalf("a manager's note on the workspace = %v, want a proposal", proposal)
+	}
+	want(t, f, manager, "POST", "/api/projects/~/memory/approve", `{"ids":["`+proposal["id"].(string)+`"]}`, http.StatusForbidden)
+	want(t, f, admin, "DELETE", "/api/projects/~/memory/"+proposal["id"].(string), "", http.StatusNoContent)
 
 	want(t, f, manager, "POST", "/api/agents", `{"name":"workspace","model":"offline","provider":"offline","system_prompt":"x"}`, http.StatusCreated)
 	own := want(t, f, manager, "POST", "/api/agents/workspace/memory", `{"text":"Smuggled."}`, http.StatusCreated)

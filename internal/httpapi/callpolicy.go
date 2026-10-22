@@ -36,6 +36,12 @@ func (s *Server) putCallPolicy(w http.ResponseWriter, r *http.Request, who auth.
 	if !decode(w, r, &body) {
 		return
 	}
+	// An agent that lives in a project is that project's to change, and
+	// what it may call is part of it.
+	if err := s.P.OwnsHome(who, r.PathValue("name")); err != nil {
+		s.problem(w, err)
+		return
+	}
 	pol, err := s.P.SetCallPolicy(r.Context(), who.Tenant, r.PathValue("name"), who.Subject, callpolicy.Policy{
 		Callers: body.Callers, Allow: body.Allow, Approval: body.Approval, Trusted: body.Trusted,
 		Approvers: body.Approvers, SelfApproval: body.SelfApproval, ExpiresSeconds: body.ExpiresSeconds,

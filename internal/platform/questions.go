@@ -667,13 +667,6 @@ func (p *Platform) maySteer(ctx context.Context, tenant string, q inbox.Question
 	}
 }
 
-// ActsFor returns the principal a surface's credential asks for: the person
-// its client maps the surface's user to. Anyone it does not map is refused.
-func (p *Platform) ActsFor(who auth.Principal, as ActAs) (string, error) {
-	reader, _, err := p.answerer(who, &as)
-	return reader.Subject, err
-}
-
 // AnswerQuestion answers a question a run is parked on, for a person. It is
 // the one path every surface answers through: the inbox, the run, and Slack.
 //

@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { Me, Preferences, Settings as Workspace } from "./api.ts";
 import { ProjectChoices, ProjectPicker, placeOf } from "./ProjectPicker.tsx";
 import { ProjectsPage } from "./Projects.tsx";
-import { east, field, globex, initech, news, renewals, retail, stores, tree, workspace } from "./projects.fixtures.ts";
+import { east, field, globex, initech, news, renewals, retail, stores, tree, view, workspace } from "./projects.fixtures.ts";
 import { kindsUnder, nameFrom, narrowAt, treeOf, updateOf, validName, WORKSPACE } from "./projects.ts";
 import { Settings } from "./Settings.tsx";
 
@@ -23,6 +23,28 @@ test("projects are grouped by kind, Company-wide, Teams, then Accounts, each in 
       ["Accounts", ["Globex", "Initech"]],
     ],
   );
+});
+
+test("a project of the workspace's own kind is listed after warp's kinds, in a group by its title", () => {
+  const partner = view("Reseller", { kind: "partner", parent: field });
+  const kinds = [{ name: "partner", title: "Partners", like: "account" as const }];
+  assert.deepEqual(
+    treeOf([...tree, partner], { narrow: false, kinds }).map((g) => [g.title, g.rows.map((r) => [r.project.name, r.path.join(" › ")])]),
+    [
+      ["Company-wide", [["Company news", ""]]],
+      ["Teams", [["Field", ""], ["East", ""], ["Retail", ""], ["Stores", ""], ["Globex renewals", "Field engineering › Globex"], ["Platform", ""]]],
+      ["Accounts", [["Globex", "Field engineering"], ["Initech", "Field engineering"]]],
+      ["Partners", [["Reseller", "Field engineering"]]],
+    ],
+  );
+  // Narrowed to it, only it; and a kind the console was not told of still shows, by its name.
+  assert.deepEqual(treeOf([...tree, partner], { narrow: false, kinds, kind: "partner" }).map((g) => g.title), ["Partners"]);
+  assert.deepEqual(treeOf([...tree, partner], { narrow: false }).at(-1)?.title, "partner");
+  // It behaves as an account: no account under it, and it never sits under one.
+  const reseller = { name: "Reseller", kind: "partner", depth: 2 };
+  assert.deepEqual(kindsUnder(reseller, true, kinds), ["team"]);
+  assert.deepEqual(kindsUnder(globex, true, kinds), ["team"]);
+  assert.deepEqual(kindsUnder(field, false, kinds), ["team", "account", "partner"]);
 });
 
 test("the tree at depth 4 indents one level at 390px, and deeper rows say where they sit", () => {
@@ -148,7 +170,7 @@ test("the picker shows each project's path and kind, and searches its customer",
 
 test("settings no longer edit projects: the workspace section links to Projects and to the workspace itself", () => {
   const me: Me = { principal: { subject: "ada", tenant: "acme", kind: "user", name: "Ada", roles: ["admin"] }, permissions: ["agents:write"] };
-  const prefs: Preferences = { display_name: "", theme: "system", accent: "purple", has_photo: false, photo_version: 0, pinned: [] };
+  const prefs: Preferences = { display_name: "", theme: "system", accent: "purple", has_photo: false, photo_version: 0, pinned: [], muted: [] };
   const settings: Workspace = { history: "recent", history_limit: 20000, title_agent: "", memory_agent: "", memory_auto_approve: false };
   const out = html(
     <Settings

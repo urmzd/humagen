@@ -131,12 +131,15 @@ spec:
     instructions: Acme sells warehouse robots. Answer plainly.   # the workspace's own, sent first
     channels: [{name: announcements, purpose: Company news}]      # the workspace's own; every project has general
     experts: [{who: "role:security", topics: [security]}]         # answer anywhere a nearer project names nobody
+    members: [{who: "*", role: member}, {who: "role:comms", role: owner}]   # the workspace's own
+    project_kinds: [{name: partner, title: Partner, like: account}]          # the workspace's own kinds
     projects:               # merged into the tree at every start, parents first
       - {name: Launch, description: Everything for the Q4 launch}
       - name: Field
         title: Field engineering
-        kind: team          # company | team | account. Left out: team
+        kind: team          # company | team | account | a project_kinds name. Left out: team
         instructions: Customer accounts. Never promise dates.
+        members: [{who: "*", role: viewer}, {who: "role:field-eng", role: member}, {who: "role:field-leads", role: owner}]
         agents: {default: lead}             # answers untagged messages here and below
       - name: Globex
         parent: Field       # a project in this file. Left out: the top level
@@ -145,6 +148,7 @@ spec:
         channels:
           - {name: renewals, purpose: Renewal work, default: auto}   # auto: @auto answers untagged messages here
         experts: [{who: "okta|00u1ana", topics: [billing, renewals]}]
+        members: [{who: "*", role: viewer}, {who: "okta|00u1ana", role: owner}]   # "*" required until reads are confined
         agents: {allow: [globex-helper, lead], default: globex-helper}  # narrows: only these run here and below
     person_credentials: {values: false}   # true lets people store a tool credential's value with warp
 
@@ -299,10 +303,20 @@ console's addresses. Each entry of `workspace.projects` is one project:
 | `name` | required | the identity, never changed: letters, digits, spaces, dashes and underscores, starting with a letter or digit, at most 63, unique ignoring case |
 | `title` | the name | what people see: one line, at most 80 characters |
 | `description` | none | at most 500 characters |
-| `kind` | `team` | `company`, `team` or `account`. A company project sits under the workspace or another company project, and there are at most 10. An account never sits under another account |
+| `kind` | `team` | `company`, `team`, `account` or a name in `workspace.project_kinds`, which behaves as the kind it is `like`. A company project sits under the workspace or another company project, and there are at most 10. An account never sits under another account |
 | `parent` | the workspace | another project in this file (`~` is the workspace), at most 4 levels below the workspace |
 | `account` | none | `{customer, external_id, url}`, on an account project only. `url` is https |
 | `instructions` | none | at most 4,000 characters, sent to every agent answering here and below |
+| `members` | the console's | at most 100 `{who, role}`: `who` is `*` (everyone who can see the parent), `role:<name>` (the holders of a policy role) or a subject; `role` is `viewer`, `member` or `owner`. An owner owns everything below. Until reads are confined to members, the list has an entry for `*` of at least `viewer`, a company project's of at least `member`, and a project is never more open than its parent. A new project the file leaves them out of has everyone as a member (a viewer of an account) and `projects:govern` as its owner |
+
+`workspace.members` are the workspace's own in the same way: everyone (`*`)
+is at least a member of it, and `projects:govern` owns it whatever they say.
+`workspace.project_kinds` are at most 16 kinds of the workspace's own, each
+`{name, title, like}`: a name of lower case letters, digits and dashes that is
+not a built-in kind, a title of at most 40 characters, and `like` either
+`team` or `account`. Behaviors stay warp's; names are the workspace's. A kind
+a project still has cannot be removed: a start that would fails, naming the
+projects.
 
 `workspace.instructions`, at most 4,000 characters, are sent first, then each
 project's down to the one a conversation is filed in. A later one wins, and a
@@ -312,10 +326,11 @@ first, and the turn says which.
 `warp config check` refuses a mistake with its path, such as
 `workspace.projects[2].parent: "Feild" is not a project in this file`. A
 parent must be in the same file, because one made only in the console cannot
-be checked before start. A workspace has at most 100 projects, and the start
-checks the file again against the projects the console made. A project's kind
-and parent are fixed when it is created, so a file that names another kind or
-parent for a project that already exists fails the start.
+be checked before start. A workspace has at most 500 projects, and the start
+checks the file again against the projects the console made. A file that
+names another kind or parent for a project that already exists changes it as
+the console's move would, under the same rules: a move into its own subtree,
+past four levels, or that breaks a kind or openness rule fails the start.
 
 ### Channels and experts
 

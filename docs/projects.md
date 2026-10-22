@@ -248,9 +248,10 @@ const (
 	Owner  Role = "owner"
 )
 
-// Member is one entry. Who is "*", "role:<name>", or a subject (a subject
-// that starts with "role:" is refused).
-type Member struct {
+// Entry is one member. Who is "*", "role:<name>", or a subject (a subject
+// that starts with "role:" is refused). It is not called Member, which is
+// the role.
+type Entry struct {
 	Who  string `json:"who"`
 	Role Role   `json:"role"`
 }
@@ -287,7 +288,7 @@ type Project struct {
 	Parent       string     `json:"parent,omitempty"`       // "" is the root
 	Account      *Account   `json:"account,omitempty"`      // account-like kinds only
 	Instructions string     `json:"instructions,omitempty"` // <= 4000 (phase 1)
-	Members      []Member   `json:"members"`                // <= 100, never nil when stored (phase 2)
+	Members      []Entry    `json:"members"`                // <= 100, never nil when stored (phase 2)
 	Experts      []Expert   `json:"experts"`                // <= 50 (phase 2)
 	Kinds        []KindSpec `json:"kinds,omitempty"`        // root only, <= 16 (phase 2)
 	Archived     bool       `json:"archived,omitempty"`     // phase 2
@@ -642,7 +643,11 @@ ingress overwrites whatever a connector put there (phase 8).
   answers may carry what that person's own credential reached. With
   `memory_auto_approve` on, what it writes for the workspace or a company
   project still waits for someone holding `projects:govern`, since the turn
-  that taught it needed only `runs:write`.
+  that taught it needed only `runs:write`. What it writes for any other
+  project is kept unasked only when the person the turn was for may change
+  the project's notes themselves (phase 4: an owner): a member's turn
+  teaches only proposals, which reach the project's owners, as a member's
+  own note does. Filing the turn decides it, and the turn carries it.
 - Knowledge sources inherited down the tree (phase 9) use warp's executor
   seam, `callExecutor.resolve`, which already rewrites the revision for model
   policies. The chain's sources are pinned at accept as `warp.sources` and
@@ -796,24 +801,25 @@ need `projects:govern`.
 | See a project, its inbox, channels, instructions, memory, experts | `projects:read` | viewer |
 | Create a project under P (top level: P is the root) | `projects:write` | member of P. Company kind: `projects:govern` |
 | Edit title, description, instructions, account | `projects:write` | owner |
-| Move | `projects:write` | owner, and member of the new parent. Leaving an ancestor that holds a policy also needs `billing:write`: a move never escapes a limit |
+| Move | `projects:write` | owner, and member of the new parent. Leaving an ancestor that holds a policy also needs `billing:write`, and so does moving a project that holds, or has below it, an owner's limit the caller could not change before (they do not own the parent it was set from): a move never escapes a limit. Leaving an ancestor whose allow list keeps agents out needs owning it, unless the new chain allows no more: a move never widens which agents may run |
 | Archive, delete | `projects:write` | owner |
 | Members, experts, channels, agents (`enable`, `allow`, `default`), `announce`, `agent_posts` | `projects:write` | owner |
 | Make an agent live here | `agents:write` | owner of the new and old home |
-| Edit a homed agent | `agents:write` | owner of its home |
+| Edit a homed agent: its spec, call policy and notes, in its routes and the inbox | `agents:write` | owner of its home |
 | Propose a project note (stored pending, owners approve in the inbox) | `projects:write` | member |
-| Add an approved note, approve, remove | `projects:write` | owner |
+| Add an approved note, approve, remove, in the memory routes and the inbox | `projects:write` | owner; the workspace and company projects: `projects:govern` too, and an owner without it proposes |
 | Set any project's limit | `billing:write` (unchanged) | none |
 | Set a tighten-only limit on a descendant (`Authority: owner`; never touches an admin policy) | `projects:write` | owner of a strict ancestor |
 | Post an announcement | `projects:write` | `announce` (default owner) |
 | Withdraw an announcement | `projects:write` | its author or an owner |
 | Publish or discard an agent's draft | `runs:read` (the inbox resolve route) | `needs(draft, publish)` is `projects:write`, then owner |
-| Schedule in P, run now | `schedules:write` | member; the agent available in P |
+| Schedule in P, change, pause, delete or run one filed there | `schedules:write` | member; the agent available in P |
 | Read a shared thread and its runs | `runs:read` | viewer |
 | Read a private thread and its runs (phase 7) | `runs:read` | participant, or `projects:govern` |
-| Start a thread, post a message | `runs:write` | member; in a private thread, participant |
+| Start a thread, post a message | `runs:write` | member; in a private thread, participant. A viewer posts only an answer to what they were asked (a question a run put to them, or a reply to a message that tagged them), which starts nothing |
 | Tag an agent or `@auto` | `runs:write` | member; the agent available in P |
 | Tag a person or `@sme` | `runs:write` | member; the person must be at least a viewer of P. In a private thread, tagging a person invites them |
+| Add to or remove from a shared thread | `runs:write` | member (removing anyone but oneself: the thread's owner or a project owner) |
 | Invite to or remove from a private thread | `runs:write` | participant (remove: the thread's owner or a project owner) |
 | Change a thread's visibility, title or default | `runs:write` | the thread's owner or a project owner |
 | Answer an expert's question | `runs:write` (existing answer routes) | fiber's `answerers` check, unchanged |
@@ -1280,9 +1286,11 @@ everyone. Make it members only?"). Nothing is closed automatically.
 
   Settings shows "Workspace Default: @auto, set by the upgrade". An admin can
   clear it.
-- Setting the workspace default moves from `agents:write` (managers) to the
-  root's owners (`projects:govern`, admins by default). To keep the old
-  split, an admin adds `role:manager` as a root owner. The CHANGELOG says so.
+- Setting the workspace default moves from `agents:write` (managers) to
+  `projects:govern` (admins by default), since it changes the workspace
+  itself. Owning the root is not enough: to keep the old split, an admin
+  grants managers `govern on projects`, or a role that holds it (`steward` in
+  docs/authorization.md).
 
 ### Phases 4 and 5: inbox
 
@@ -1435,8 +1443,8 @@ phase 2 and experts to phase 3, because addressing and threads need them.
 - **Breaking contract and rights.**
   - `Settings.projects` leaves the wire.
   - Project routes move to `projects:*`.
-  - The baseline goes, and managers lose the workspace default to root
-    owners.
+  - The baseline goes, and managers lose the workspace default to
+    `projects:govern`.
   - An untagged API run with no default is 409.
 
   All of it is flagged as breaking, with release notes and a `config check`

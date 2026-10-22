@@ -13,7 +13,9 @@ import (
 
 // threadRoutes are shared threads and the channels they live in. A thread's
 // routes take runs:*, as conversations do; a project's channels and experts
-// take projects:*, as the rest of the project does.
+// take projects:*, as the rest of the project does. Each then holds the
+// caller's role on the project: seeing it reads its channels and experts,
+// owning it changes them, and posting in a thread takes a member.
 func (s *Server) threadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{name}/channels", s.authed(auth.ProjectsRead, s.listChannels))
 	mux.HandleFunc("POST /api/projects/{name}/channels", s.authed(auth.ProjectsWrite, s.createChannel))
@@ -47,10 +49,11 @@ func (s *Server) channelView(tenant string, c projects.Channel) channelView {
 }
 
 func (s *Server) listChannels(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	name, found := s.named(w, s.P.ProjectTree(who.Tenant), r.PathValue("name"))
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Viewer)
 	if !found {
 		return
 	}
+	name := pr.Name
 	list, err := s.P.Channels(who.Tenant, name)
 	if err != nil {
 		s.problem(w, err)
@@ -68,10 +71,11 @@ func (s *Server) createChannel(w http.ResponseWriter, r *http.Request, who auth.
 	if !decode(w, r, &in) {
 		return
 	}
-	name, found := s.named(w, s.P.ProjectTree(who.Tenant), r.PathValue("name"))
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
 	if !found {
 		return
 	}
+	name := pr.Name
 	c, err := s.P.CreateChannel(r.Context(), who.Tenant, name, writer(who), in)
 	if err != nil {
 		s.problem(w, err)
@@ -85,10 +89,11 @@ func (s *Server) updateChannel(w http.ResponseWriter, r *http.Request, who auth.
 	if !decode(w, r, &in) {
 		return
 	}
-	name, found := s.named(w, s.P.ProjectTree(who.Tenant), r.PathValue("name"))
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
 	if !found {
 		return
 	}
+	name := pr.Name
 	c, err := s.P.UpdateChannel(r.Context(), who.Tenant, name, r.PathValue("channel"), writer(who), in)
 	if err != nil {
 		s.problem(w, err)
@@ -100,10 +105,11 @@ func (s *Server) updateChannel(w http.ResponseWriter, r *http.Request, who auth.
 // archiveChannel archives a channel. It and its threads stay, and general
 // is never archived.
 func (s *Server) archiveChannel(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	name, found := s.named(w, s.P.ProjectTree(who.Tenant), r.PathValue("name"))
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
 	if !found {
 		return
 	}
+	name := pr.Name
 	if _, err := s.P.ArchiveChannel(who.Tenant, name, r.PathValue("channel"), writer(who)); err != nil {
 		s.problem(w, err)
 		return
@@ -112,10 +118,11 @@ func (s *Server) archiveChannel(w http.ResponseWriter, r *http.Request, who auth
 }
 
 func (s *Server) getExperts(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	name, found := s.named(w, s.P.ProjectTree(who.Tenant), r.PathValue("name"))
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Viewer)
 	if !found {
 		return
 	}
+	name := pr.Name
 	got, err := s.P.ProjectExperts(who.Tenant, name)
 	if err != nil {
 		s.problem(w, err)
@@ -129,10 +136,11 @@ func (s *Server) putExperts(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !decode(w, r, &in) {
 		return
 	}
-	name, found := s.named(w, s.P.ProjectTree(who.Tenant), r.PathValue("name"))
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
 	if !found {
 		return
 	}
+	name := pr.Name
 	if in.Experts == nil {
 		fail(w, http.StatusBadRequest, "experts is a list, [] for none")
 		return

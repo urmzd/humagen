@@ -39,12 +39,20 @@ own: every project route checks `projects:read` or `projects:write` first, and
 govern is asked for on top, for the workspace, a company project, its notes, or
 a deleted name. A deleted name's tombstone is never forgotten while
 conversations or files are still filed under it, so later deletes cannot clear
-the way to adopting them. Its notes are asked the same through every route that changes
-them: the project's memory routes and the inbox. The agent memory routes reach
-an agent's own notes only, and answer 404 for a project's memory owner
-(`project:<name>`, and `project:` for the workspace). Projects have no roles yet, so anyone holding `projects:write`
-changes every other project, and every project is visible to everyone holding
-`projects:read`.
+the way to adopting them. Then the caller's role on the project decides, and
+only narrows: a viewer reads, a member creates projects under it and proposes
+notes, an owner changes it (see [Project roles](authorization.md#project-roles)).
+A project the caller has no role in answers 404. A project's notes are asked
+the same through every route that changes them: the project's memory routes,
+the inbox, and the memory agent, which keeps what it learns from a turn
+unasked only when the workspace chose that and the person the turn was for may
+change those notes themselves. The agent memory routes reach an agent's own
+notes only, and answer 404 for a project's memory owner (`project:<name>`, and
+`project:` for the workspace). Reads are not confined to members yet: every
+project keeps an entry for everyone of at least viewer, and a members-only
+project is refused (409), so a role never claims a privacy that is not
+enforced. A project's runs, threads and memory stay readable by everyone with
+the permission to read them.
 
 A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:
@@ -57,9 +65,10 @@ that lives in a project is not available in the workspace itself or in any
 project outside its home's subtree. A message that tags no agent goes to the
 default its place inherits, and with none nothing runs: nothing routes on its
 own. Setting the workspace default changes who answers everyone's untagged
-messages, so it needs `projects:govern`; to keep the old split where managers
-set it, add `role:manager` as an owner of the workspace once project roles
-exist, or grant them `govern on projects`.
+messages, so it needs `projects:govern`. Owning the workspace is not enough,
+since the workspace itself is changed only with govern: to keep the old split
+where managers set it, grant them `govern on projects`, or a role that holds it
+such as `steward` in [authorization](authorization.md#example).
 
 The directory (`people:read`, which every built-in role holds) shows each
 person's name, handle, roles and picture to everyone in the workspace. No
@@ -446,13 +455,19 @@ decided per message:
 | Kind | To see | To settle |
 |------|--------|-----------|
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
-| Failed run | `runs:read` | `runs:write`, and to retry a turn that acted for a person, being that person ([Tool credentials](#tool-credentials)) |
-| Proposed memory | `agents:read` | `agents:write` for an agent's; `projects:write` for a project's, and `projects:govern` as well for the workspace's and a company project's |
+| Failed run | `runs:read` | `runs:write`, and to retry a turn that acted for a person, being that person ([Tool credentials](#tool-credentials)); retrying a turn filed in a project needs a member of it as well |
+| Proposed memory | `agents:read` | `agents:write` for an agent's, and owning its home for one that lives in a project; `projects:write` and owning the project for a project's, and `projects:govern` as well for the workspace's and a company project's |
+| Announcement | `projects:read`, and a member of its project or one below it (anyone who reads the project's own inbox) | hiding or snoozing it is the reader's own (`projects:read`); withdrawing it is its author's or an owner's (`projects:write`) |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer; where the answer may reach the credentials of the person a run acts for, a choice or reply only by that person, and an approval with edited arguments or a note only by them |
-| A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to reply in the thread as themselves or set it aside |
+| A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to set it aside, and a member of the thread's project as well to reply in the thread as themselves |
 
 A message a caller may not see answers 404, not 403, and is left out of their
-count. A question is addressed to the people its run's pinned spec lets answer
+count, and a notice about it never reaches their event stream. An
+announcement's audience (`project:<name>`) and a proposed note's
+(`owners:<name>`) are decided from the project tree at each read, so a revoked
+membership hides past announcements at the next one. Announcements are plain
+text; surfaces escape Slack mention syntax before showing them, and at most 20
+a project and 200 a workspace are posted a day. A question is addressed to the people its run's pinned spec lets answer
 it (`approvers` or `answerers`, by subject or `role:<name>`), and never to the
 person who asked for an approval's run or its tree. A question asked of
 `sme:<topic>` goes to the experts its project's chain names for the topic,

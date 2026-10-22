@@ -29,6 +29,9 @@ import (
 const (
 	metaHook = "warp.hook"
 	metaFor  = "warp.for"
+	// metaKeepsNotes names the project whose notes the person a turn was
+	// for may change, on the turn and on the memory run after it.
+	metaKeepsNotes = "warp.keeps_notes"
 
 	hookTitle  = "title"
 	hookMemory = "memory"
@@ -83,11 +86,15 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 		// In a project, what is learned is the project's: every agent and
 		// every conversation there shares it. Outside one, it is the agent's.
 		owner := run.Agent
+		meta := map[string]string{}
 		if run.Project != "" && p.HasProject(run.Tenant, run.Project) {
 			owner = memory.ProjectOwner(run.Project)
+			if keeps := run.Tag().Meta[metaKeepsNotes]; keeps != "" {
+				meta[metaKeepsNotes] = keeps
+			}
 		}
 		p.startHook(ctx, run, cfg.MemoryAgent, hookMemory, owner,
-			fmt.Sprintf(memoryPrompt, run.Agent, clip(run.Text, 4000), run.Agent, clip(run.Answer, 4000)))
+			fmt.Sprintf(memoryPrompt, run.Agent, clip(run.Text, 4000), run.Agent, clip(run.Answer, 4000)), meta)
 	}
 }
 
@@ -170,7 +177,7 @@ func (p *Platform) grantsPersonScoped(ctx context.Context, tenant string, tools 
 	return false
 }
 
-func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, target, prompt string) {
+func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, target, prompt string, extra ...map[string]string) {
 	rev, err := p.Agents.Get(ctx, turn.Tenant, agent, 0)
 	if err != nil {
 		p.log.Warn("platform: housekeeping agent is missing", "hook", hook, "agent", agent)
@@ -186,11 +193,23 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 		Origin: runs.OriginSystem,
 		Text:   prompt,
 		Actor:  envelope.Actor{ID: "system:" + hook, Display: "platform " + hook, Bot: true},
-		Meta:   map[string]string{metaHook: hook, metaFor: target},
+		Meta:   hookMeta(hook, target, extra...),
 	})
 	if err != nil {
 		p.log.Warn("platform: housekeeping run could not start", "hook", hook, "error", err)
 	}
+}
+
+// hookMeta is what a housekeeping run carries: which hook it is, what it is
+// for, and whatever else the turn passes on.
+func hookMeta(hook, target string, extra ...map[string]string) map[string]string {
+	meta := map[string]string{metaHook: hook, metaFor: target}
+	for _, m := range extra {
+		for k, v := range m {
+			meta[k] = v
+		}
+	}
+	return meta
 }
 
 // fileHook puts a housekeeping run's answer where it belongs. The answer is a
@@ -211,7 +230,7 @@ func (p *Platform) fileHook(run runs.Run) {
 	case hookMemory:
 		kept := 0
 		var proposed []memory.Note
-		unasked := p.Settings(run.Tenant).MemoryAutoApprove && p.mayKeepUnasked(run.Tenant, target)
+		unasked := p.Settings(run.Tenant).MemoryAutoApprove && p.mayKeepUnasked(run.Tenant, target, meta[metaKeepsNotes])
 		for _, line := range strings.Split(run.Answer, "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.EqualFold(strings.Trim(line, ".-* "), "none") || kept == 3 {
@@ -221,9 +240,10 @@ func (p *Platform) fileHook(run runs.Run) {
 				continue
 			}
 			// A proposal waits for a person unless the workspace chose
-			// otherwise, and always for the workspace's and a company
-			// project's notes, which need projects:govern. Text that
-			// carries personal data is not kept at all.
+			// otherwise; for a project's notes, unless the turn was one
+			// of its owners' as well; and always for the workspace's
+			// and a company project's notes, which need projects:govern.
+			// Text that carries personal data is not kept at all.
 			status := memory.Pending
 			if unasked {
 				status = memory.Approved

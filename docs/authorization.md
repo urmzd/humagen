@@ -80,6 +80,52 @@ changes none. A policy file written before projects had their own permissions
 adds `projects` to the rule that lets operators write runs, as above, or only
 admins make projects.
 
+## Project roles
+
+A project role narrows what a permission allows; it never grants one. Every
+project route checks one tenant permission, then the caller's role on the
+project it names: the action is allowed when the caller holds the permission
+and their role is at least the one it needs. A project the caller has no role
+in answers 404, as a missing one does, and a visible one with too low a role
+answers 403, saying which role it needs ("you need to own Globex").
+
+Roles are `viewer < member < owner`, granted by a project's members: `*`
+(everyone who can see the parent; at the workspace, everyone holding
+`projects:read`), `role:<name>` (the holders of a policy role, so IdP groups
+reach a project through a `grant`), or a subject. `Resolve` reads a role
+along the chain, the workspace first: at each level the best entry that
+matches, an owner above owns every level below, and no role at one level
+means none below it. `projects:govern` is owner everywhere. A machine matches
+only `*` and its own subject, never a `role:` entry.
+
+```
+role field-eng {}
+grant operator, field-eng to group "field-engineering"
+```
+
+and then `{who: "role:field-eng", role: member}` on the project.
+
+| Action | Permission | Role |
+|---|---|---|
+| See a project, its inbox, history, members and notes | `projects:read` | viewer |
+| Create a project under it | `projects:write` | member (company kind: `projects:govern`) |
+| Propose a note, which its owners keep or discard | `projects:write` | member (an owner of the workspace or a company project without `projects:govern` proposes too) |
+| Start a conversation in it, add a turn to one there, retry a failed turn there from the inbox, or file, change, pause, run or delete a schedule there | `runs:write`, `schedules:write` | member (a surface's `act_as` is checked as the person it names; a retry is checked as whoever retries, not who first asked) |
+| Change it: title, description, instructions, account, kind, archiving, members, the agents it turns on, who may announce; add, keep or remove notes; delete it | `projects:write` | owner (the workspace and company projects: `projects:govern` too) |
+| Make an agent live in it, or move one out | `agents:write` | owner of the project it comes to and of the one it leaves |
+| Edit an agent that lives in it: its spec, call policy and notes, keeping or discarding its proposals in the inbox too | `agents:write` | owner (the agent's routes take its canonical name, in lower case, and answer 404 for another spelling) |
+| Move it | `projects:write` | owner, and member of the new parent; leaving a project that holds a limit needs `billing:write`, and so does moving one that holds, or has below it, an owner's limit set from a parent the caller does not own; leaving an ancestor whose allow list keeps agents out needs owning it, unless the new chain allows no more |
+| Set a tighten-only limit on it | `projects:write` | owner of a project above it |
+| Post an announcement | `projects:write` | the project's `announce` role, owner by default |
+| Withdraw an announcement | `projects:write` | its author, or owner |
+| Hide an announcement for oneself | `projects:read` | |
+
+Until reads are confined to members, every project keeps an entry for `*` of
+at least viewer, so a role decides what a person may change, not what they
+may read. A project record from before roles reads as everyone owning it,
+which is what any operator could do to it; the workspace reads as everyone a
+member, owned by `projects:govern`.
+
 The directory has one permission, `people:read`: seeing who is in the
 workspace, by name, handle, picture and roles. `allow read on *` holds it, so
 every built-in role does, and a policy file that lists reads by resource adds

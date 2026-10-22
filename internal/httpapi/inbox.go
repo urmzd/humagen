@@ -9,6 +9,7 @@ import (
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // The inbox routes ask only for runs:read, which every role has. What a caller
@@ -28,10 +29,12 @@ func (s *Server) inboxRoutes(mux *http.ServeMux) {
 // listInbox pages the caller's inbox, newest first.
 //
 // state is open (the default), resolved, dismissed, snoozed or all. kind,
-// unread, alert, agent, limit and before are optional. alert finds the message
-// about one alert, in any state. agent keeps the messages an agent raised or
-// whose call would reach it: with kind=approval, that agent's approval queue. The answer carries next, the cursor
-// for the page after this one, or null at the end.
+// unread, alert, agent, project, limit and before are optional. alert finds
+// the message about one alert, in any state. agent keeps the messages an agent
+// raised or whose call would reach it: with kind=approval, that agent's
+// approval queue. project keeps what is filed in one project, "~" for the
+// workspace, of what the caller's own inbox holds. The answer carries next,
+// the cursor for the page after this one, or null at the end.
 func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
 	query := inbox.Query{State: inbox.State(q.Get("state")), Kind: inbox.Kind(q.Get("kind")), Before: q.Get("before"), Unread: q.Get("unread") == "true", Alert: q.Get("alert"), Agent: q.Get("agent")}
@@ -53,6 +56,14 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Prin
 		}
 		query.Limit = n
 	}
+	if q.Has("project") {
+		pr, _, err := s.P.ProjectRole(who, q.Get("project"), projects.Viewer)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		query.Projects = []string{pr.Name}
+	}
 	page, next, err := s.P.InboxPage(who, query)
 	if err != nil {
 		fail(w, http.StatusBadRequest, "before is not a cursor this server issued")
@@ -62,13 +73,15 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Prin
 	if next != "" {
 		cursor = &next
 	}
-	open, unread := s.P.InboxCount(who)
-	ok(w, http.StatusOK, map[string]any{"messages": page, "next": cursor, "open": open, "unread": unread})
+	c := s.P.InboxCount(who)
+	ok(w, http.StatusOK, map[string]any{"messages": page, "next": cursor, "open": c.Open, "unread": c.Unread, "updates": c.Updates})
 }
 
+// countInbox counts the caller's inbox. open and unread are what may need
+// them; updates are the announcements they have not read, which never grow
+// the badge.
 func (s *Server) countInbox(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	open, unread := s.P.InboxCount(who)
-	ok(w, http.StatusOK, map[string]int{"open": open, "unread": unread})
+	ok(w, http.StatusOK, s.P.InboxCount(who))
 }
 
 func (s *Server) getInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -77,7 +90,9 @@ func (s *Server) getInbox(w http.ResponseWriter, r *http.Request, who auth.Princ
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"message": m, "history": orEmpty(s.P.Inbox.History(who.Tenant, m.ID))})
+	// Each reader is shown what changed the message for everyone and their
+	// own marks, never another reader's.
+	ok(w, http.StatusOK, map[string]any{"message": m, "history": s.P.Inbox.HistoryFor(who.Tenant, m.ID, who.Subject)})
 }
 
 func (s *Server) readInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
