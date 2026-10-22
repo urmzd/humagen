@@ -726,6 +726,9 @@ export const defaultCopy = {
     },
     noChannels: "Only general so far.",
     noThreads: "No threads here yet. Start one below.",
+    /** Under a room or a channel, for a viewer of its project. */
+    viewerOnly:
+      "You can view this project. Its members post here; you answer what you're asked from your inbox.",
     moreThreads: "See More",
     /** Where a thread is, in its meta line: "Shared in Globex › #renewals". */
     sharedIn: (project: string, channel: string) => `Shared in ${project} › #${channel}`,

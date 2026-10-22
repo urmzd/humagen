@@ -185,6 +185,46 @@ test("a channel lists its threads, and its composer starts a shared thread there
   assert.deepEqual(started?.body, { project: "Globex", channel: "renewals", text: "who knows the PO?", post_only: false, visibility: "shared" });
 });
 
+test("a viewer of a project reads its channel and its threads, and is offered no composer in either", async () => {
+  // Globex, as a viewer sees it: the server refuses their posts (403).
+  const viewing = tree.map((p) => (p.name === "Globex" ? { ...p, access: { role: "viewer" as const, from: "Globex", via: "*" }, actions: [] } : p));
+  net = stubFetch({
+    "GET /api/projects/Globex/channels": () => ({
+      channels: [{ project: "Globex", name: "renewals", purpose: "Renewal work", version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } }],
+    }),
+    "GET /api/threads": () => ({ threads: [], next: null }),
+    "GET /api/threads/th-0123456789abcdef": () => page,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/people": () => ({ people: [], next: null }),
+    "GET /api/runs/r1/events": () => ({ events: [] }),
+  });
+  render(
+    <ChannelPage
+      project="Globex"
+      channel="renewals"
+      tick={0}
+      agents={[helper]}
+      projects={viewing}
+      root={null}
+      workspaceName="Acme"
+      canRun
+      onOpenProject={() => {}}
+      onOpenThread={() => {}}
+    />,
+  );
+  assert.ok(await screen.findByText("Renewal work"));
+  assert.ok(screen.getByText(words.viewerOnly));
+  assert.equal(screen.queryByPlaceholderText(words.startThread), null);
+  cleanup();
+  render(
+    <ThreadRoom id="th-0123456789abcdef" me="cy" initial={page} tick={0} agents={[helper]} projects={viewing} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+  );
+  assert.ok(await screen.findByText("It renews on May 3."));
+  assert.ok(screen.getByText(words.viewerOnly));
+  assert.equal(screen.queryByPlaceholderText(words.channel("renewals")), null);
+  assert.ok(!net?.seen.some((s) => s.method === "POST"));
+});
+
 test("a project's channels open their pages, and a new one is made with a name that cannot change", async () => {
   const made: unknown[] = [];
   net = stubFetch({
