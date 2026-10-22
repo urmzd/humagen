@@ -339,17 +339,12 @@ Known limit: anchor's Postgres queue does not implement the delta log, so a
 Postgres-only deployment runs durably but cannot stream. Redis stays in the
 stack until that is closed.
 
-The run ledger and queue have connections of their own to the database,
-opened by `platform.OpenPostgres` from the caller's pool, with one difference:
-a statement already sent when its context is cancelled is read to its answer,
-for up to 5 seconds, instead of being given up on. anchor's Postgres queue
-claims on the worker's context, and the database can carry out a claim the
-worker has given up on as it stops, leasing a run (often the one the worker
-has just handed back) to nobody. The next process could not resume that run
-until the lease ran out, 30 seconds later, and the run was charged a failure.
-Read to its answer, the claim comes back to the worker, which hands the run
-back. Known limit: a process opens up to twice the pool's connections, and the
-fix belongs in anchor's queue, which should claim on a context of its own.
+A worker stopping mid-claim on Postgres no longer leases a run to nobody:
+since anchor v0.5.1 the queue waits out a claim it has already sent, for up
+to 5 seconds after the stop, and the worker hands back unexecuted a run a
+claim returns after it stopped. Before, the database could carry out a claim
+the worker had given up on, and the next process could not resume that run
+until its lease ran out, 30 seconds later.
 
 ## Limits at scale
 

@@ -5,8 +5,8 @@ go 1.26.10
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-jose/go-jose/v4 v4.1.5
-	github.com/urmzd/anchor v0.4.0
-	github.com/urmzd/fiber v0.22.0
+	github.com/urmzd/anchor v0.5.1
+	github.com/urmzd/fiber v0.22.1
 	github.com/urmzd/playscape v0.7.0
 	github.com/urmzd/saige v0.41.0
 	golang.org/x/oauth2 v0.37.0
@@ -49,7 +49,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
-	github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261021192137-078fd82554ea // indirect
+	github.com/urmzd/anchor/adapters/postgres v0.1.2-0.20261022071835-c4ab25200213 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.47.0 // indirect
