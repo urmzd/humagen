@@ -219,7 +219,9 @@ no permission, grants nothing.
   then on everyone who sees that project reads it, the messages written
   while it was private included. A share never makes a thread private again,
   and a conversation that has runs does not move to another project, so its
-  runs stay read where they were filed.
+  runs stay read where they were filed. A person a share names who cannot
+  read the project it goes to is not added, and the sharer is told only
+  that.
 - **The machine holds its people's votes.** Whoever holds the credential a
   Slack client names as `machine` can answer every question as any person the
   client maps, within what each may answer, and raise runs as them, which

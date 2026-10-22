@@ -1479,7 +1479,13 @@ paths:
         is cleared. A thread on a Slack or GitHub surface stays where and as
         it was started (400). `version` is not taken: a change made to the
         thread while this one is decided is 409. Shared to private again is
-        not offered. Answers the thread as `getThread` reads it.
+        not offered. Answers the thread as `getThread` reads it, with
+        `not_added`: the people `add` named who were not added, each with
+        why. A person who cannot read the project it is shared in is not
+        added ("they cannot read this project, so they were not added"), as
+        a tag does not reach them. Each person added is told in their inbox,
+        once: a mention of the conversation's latest message, "Ana added you
+        to Renewal plan in Globex #general", read where the conversation is.
       x-permission: runs:write
       parameters:
         - {$ref: "#/components/parameters/ThreadID"}
@@ -1493,7 +1499,7 @@ paths:
           description: The thread as it now stands, and the newest page of its turns.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/ThreadPage"}
+              schema: {$ref: "#/components/schemas/ThreadShared"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -4676,6 +4682,13 @@ components:
         first_admin:
           description: The caller is an admin in a workspace nobody has set up yet.
           type: boolean
+        handle:
+          description: |
+            How the platform names the caller elsewhere, as a thread's
+            `created_by` and its participants name people: their handle, or
+            their subject when they have none and it holds no address. Empty
+            when neither.
+          type: string
 
     AgentSource:
       type: object
@@ -5593,6 +5606,24 @@ components:
           type: array
           maxItems: 50
           items: {type: string, maxLength: 200}
+    ThreadShared:
+      description: A thread as `getThread` reads it, after a share, and the people the share named who were not added.
+      allOf:
+        - {$ref: "#/components/schemas/ThreadPage"}
+        - type: object
+          required: [not_added]
+          properties:
+            not_added:
+              type: array
+              maxItems: 50
+              items: {$ref: "#/components/schemas/ThreadNotAdded"}
+    ThreadNotAdded:
+      description: A person a share named who was not added, by handle, and why, in words that say nothing the sharer may not see.
+      type: object
+      required: [handle, reason]
+      properties:
+        handle: {type: string}
+        reason: {type: string}
     ThreadMessageInput:
       description: A message posted in a thread.
       type: object

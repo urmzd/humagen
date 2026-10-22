@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.20.1 (2026-10-22)
+
+### Bug Fixes
+
+- **console**: Share and Move for a conversation's starter, Share tells the people it adds, the + menu on a conversation of runs (#51) ([26c6416](https://github.com/urmzd/warp/commit/26c6416d5a9d209dc5fc6eb6641091fa10595890))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.20.0...v0.20.1)
+
+
 ## 0.20.0 (2026-10-22)
 
 ### Features

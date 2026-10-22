@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { conflictOf } from "./conflicts.ts";
-import { ApiError, type Channel, coworking, type DirectoryPerson, type ProjectView, type Thread, type ThreadPage } from "./api.ts";
+import { ApiError, type Channel, coworking, type DirectoryPerson, type ProjectView, type Thread, type ThreadShared } from "./api.ts";
 import { button, field, Label, Problem, primary } from "./ui.tsx";
 
 const words = defaultCopy.threads;
@@ -153,6 +153,7 @@ export function ShareDialog({
   projects,
   workspaceName,
   me,
+  handle,
   onShared,
   onClose,
 }: {
@@ -163,7 +164,10 @@ export function ShareDialog({
   projects: ProjectView[];
   workspaceName: string;
   me: string;
-  onShared: (page: ThreadPage) => void;
+  /** How the platform names the reader, whom the people to add leave out. */
+  handle?: string;
+  /** The thread as shared, and the people asked to be added, of whom the page's `not_added` were not. */
+  onShared: (page: ThreadShared, asked: string[]) => void;
   onClose: () => void;
 }) {
   const [project, setProject] = useState(thread.project);
@@ -207,7 +211,7 @@ export function ShareDialog({
       })
       .then((p) => {
         setBusy(false);
-        onShared(p);
+        onShared(p, people.map((x) => x.handle));
       })
       .catch((e) => {
         setBusy(false);
@@ -279,7 +283,7 @@ export function ShareDialog({
         </div>
         <div className="flex flex-col gap-1">
           <span className="text-aui-xs font-medium text-aui-muted">{words.shareAdd}</span>
-          <PeopleToAdd value={people} leaveOut={[me, ...inThread]} onChange={setPeople} />
+          <PeopleToAdd value={people} leaveOut={[me, ...(handle ? [handle] : []), ...inThread]} onChange={setPeople} />
         </div>
         <Problem message={problem} />
         <div className="flex flex-wrap gap-2">

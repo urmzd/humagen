@@ -664,3 +664,31 @@ test("Home's first message says what it did in the conversation it opens", async
   await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ad"]));
   assert.equal(saidFor("th-00000000000000ad"), "@nobody: no agent is called nobody");
 });
+
+test("a conversation of runs has the + menu: its agents are saved on its thread so a follow-up goes to them, and its project is fixed, saying why", async () => {
+  restoreEvents ??= stubEventSource();
+  const ana = { id: "ana", display: "Ana", user: "ana" };
+  const turn = { ...answered(ana), agent: "helper" };
+  const record = { id: "t1", project: "", channel: "general", visibility: "shared", participants: [], version: 0, created_by: "ana", created_at: at, updated_at: at };
+  net = stubFetch({
+    "GET /api/threads/t1": () => ({ thread: record, turns: [{ kind: "run", run: turn }], next: null, answers: { agent: "", from: "" } }),
+    "GET /api/projects/~/agents": () => workspace(),
+    "GET /api/projects/~/channels": () => ({ channels: [] }),
+    "PUT /api/threads/t1": (body) => ({ ...record, version: 1, agents: (body as { agents: string[] }).agents }),
+  });
+  render(
+    <Chat threadId="t1" me="ana" summary={undefined} tick={0} agents={agents} homes={homes} projects={[]} canRun canCreateProject={false} greeting="" onThread={() => {}} onChanged={() => {}} onProjectCreated={() => {}} />,
+  );
+  await screen.findByPlaceholderText(defaultCopy.threads.message);
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: chat.menu });
+  assert.ok(within(menu).getByText(defaultCopy.threads.shareProjectFixed));
+  fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "PUT")));
+  assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, { version: 0, title: "", visibility: "shared", default: "", agents: ["helper"], mode: "best_fit" });
+  fireEvent.keyDown(menu, { key: "Escape" });
+  await waitFor(() => assert.ok(chips().includes("helper"), JSON.stringify(chips())));
+  assert.ok(screen.getByPlaceholderText(chat.placeholderOne("helper")));
+  // Its project shows as a chip that can't be removed.
+  assert.equal(screen.queryByRole("button", { name: /^Remove (Acme|Workspace|Projectless)/ }), null);
+});

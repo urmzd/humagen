@@ -45,6 +45,12 @@ func TestAConversationIsPrivateUntilShared(t *testing.T) {
 	}
 
 	page := want(t, f, ana, "POST", "/api/threads/"+id+"/share", `{"add":["bo"]}`, http.StatusOK)
+	if notAdded, ok := page["not_added"].([]any); !ok || len(notAdded) != 0 {
+		t.Fatalf("a share that added everyone it named says not_added %v", page["not_added"])
+	}
+	if raw, _ := read(t, f, bo, "/api/inbox"); !strings.Contains(raw, "Ana added you to a conversation in Field #general") {
+		t.Errorf("bo was not told he was added: %s", raw)
+	}
 	shared := obj(page["thread"])
 	if shared["visibility"] != "shared" || shared["channel"] != "general" || len(sliceOf(page["turns"])) != 2 || page["answers"] == nil {
 		t.Fatalf("shared, the thread reads %s", mustJSON(t, page))

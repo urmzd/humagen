@@ -84,6 +84,45 @@ async function twoAgents(page: Page): Promise<void> {
 function chats(ids: Ids): Screen[] {
   return [
     {
+      name: "chat-kind-items",
+      path: "/",
+      act: async (page) => {
+        await bar(page).fill("@skill:");
+        await page.getByRole("listbox").getByText("@skill:launch-review").waitFor();
+      },
+    },
+    {
+      name: "chat-plus-project",
+      path: "/",
+      act: async (page) => {
+        await plus(page).click();
+        const menu = page.getByRole("dialog", { name: "Add to this conversation" });
+        await menu.getByRole("button", { name: /Choose a project/ }).click();
+        await menu.getByRole("button", { name: /^Launch/ }).click();
+        await menu.getByRole("radio", { name: "#deals" }).click();
+      },
+    },
+    {
+      name: "chat-conversation-plus",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        await plus(page).click();
+        await page
+          .getByText("The project can't change once an agent has answered here.")
+          .first()
+          .waitFor();
+      },
+    },
+    {
+      name: "channel-plus",
+      path: "/projects/Launch/channels/general",
+      act: async (page) => {
+        await twoAgents(page);
+        await page.keyboard.press("Escape");
+        await page.getByRole("button", { name: "All of Them" }).waitFor();
+      },
+    },
+    {
       name: "chat-at",
       path: "/",
       act: async (page) => {
@@ -368,6 +407,8 @@ async function seedChats(
       },
     ],
   });
+  // A second channel, so the + menu's channel row has a choice.
+  await call("POST", "/api/projects/Launch/channels", { name: "deals", purpose: "Partner deals" });
   const answered = async (p: Posted) => {
     for (const r of p.runs) await settled(call, r.id);
   };

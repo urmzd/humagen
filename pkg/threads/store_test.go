@@ -489,3 +489,15 @@ func TestABusyThreadsParticipantsStillChange(t *testing.T) {
 		t.Fatalf("adding a 61st = %v", err)
 	}
 }
+
+func TestLastIsAThreadsLatestMessage(t *testing.T) {
+	s := threads.NewStore()
+	th, _ := start(t, s, "acme", shared("Globex", "general"), msg("dana", "first"))
+	post(t, s, "acme", th.ID, msg("ana", "second"), t0.Add(time.Minute))
+	if m, err := s.Last("acme", th.ID); err != nil || m.Text != "second" || m.ID != "m-2" {
+		t.Fatalf("Last = %+v, %v", m, err)
+	}
+	if _, err := s.Last("acme", "th-0000000000000000"); !errors.Is(err, threads.ErrNotFound) {
+		t.Fatalf("Last of a thread that is not there = %v", err)
+	}
+}

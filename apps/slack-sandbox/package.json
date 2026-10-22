@@ -1,6 +1,6 @@
 {
   "name": "@humagen/slack-sandbox",
-  "version": "0.20.0",
+  "version": "0.20.1",
   "private": true,
   "type": "module",
   "description": "Real-Slack test bench: app manifest generator, fixture poster, live streaming, and an interactive Socket Mode handler.",

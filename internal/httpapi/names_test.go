@@ -319,3 +319,22 @@ func TestAMentionIsFromItsPosterAsTheThreadCallsThem(t *testing.T) {
 	}
 	noAddressIn(t, "a mention", sender["name"], sender["display"])
 }
+
+// The caller's own handle, in /api/me, is the key a thread names its
+// starter by, so a console can tell its reader started a conversation
+// though their subject holds an address.
+func TestMeNamesTheCallerAsAThreadNamesItsStarter(t *testing.T) {
+	f, ana, pat := namesFixture(t)
+	me := want(t, f, pat, "GET", "/api/me", "", http.StatusOK)
+	if me["handle"] != "pat" {
+		t.Fatalf("Pat's handle in /api/me = %v", me["handle"])
+	}
+	started := want(t, f, pat, "POST", "/api/threads", `{"project":"Field","text":"a private thought","visibility":"private"}`, http.StatusCreated)
+	th := started["thread"].(map[string]any)
+	if th["created_by"] != me["handle"] {
+		t.Errorf("the thread names its starter %v, and /api/me names Pat %v", th["created_by"], me["handle"])
+	}
+	if who := want(t, f, ana, "GET", "/api/me", "", http.StatusOK); who["handle"] == "" || who["handle"] == "pat" {
+		t.Errorf("Ana's handle in /api/me = %v", who["handle"])
+	}
+}

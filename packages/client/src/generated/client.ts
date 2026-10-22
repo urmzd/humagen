@@ -112,6 +112,7 @@ import type {
   ThreadParticipantsUpdate,
   ThreadPosted,
   ThreadShare,
+  ThreadShared,
   ThreadUpdate,
   ToolCredential,
   ToolCredentialInput,
@@ -1605,22 +1606,28 @@ channel (409). A default it names that cannot answer where it moves
 is cleared. A thread on a Slack or GitHub surface stays where and as
 it was started (400). `version` is not taken: a change made to the
 thread while this one is decided is 409. Shared to private again is
-not offered. Answers the thread as `getThread` reads it.
+not offered. Answers the thread as `getThread` reads it, with
+`not_added`: the people `add` named who were not added, each with
+why. A person who cannot read the project it is shared in is not
+added ("they cannot read this project, so they were not added"), as
+a tag does not reach them. Each person added is told in their inbox,
+once: a mention of the conversation's latest message, "Ana added you
+to Renewal plan in Globex #general", read where the conversation is.
  */
-  async shareThread(id: string, body: ThreadShare, options?: RequestOptions): Promise<ThreadPage> {
+  async shareThread(id: string, body: ThreadShare, options?: RequestOptions): Promise<ThreadShared> {
     let path = "/api/threads/{id}/share";
     path = path.replace("{id}", encodeURIComponent(String(id)));
-    return this.request<ThreadPage>("POST", path, {
+    return this.request<ThreadShared>("POST", path, {
       body,
       contentType: "application/json",
       ...options,
     });
   }
 
-  async shareThreadRaw(id: string, body: ThreadShare, options?: RequestOptions): Promise<ApiResponse<ThreadPage>> {
+  async shareThreadRaw(id: string, body: ThreadShare, options?: RequestOptions): Promise<ApiResponse<ThreadShared>> {
     let path = "/api/threads/{id}/share";
     path = path.replace("{id}", encodeURIComponent(String(id)));
-    return this.rawRequest<ThreadPage>("POST", path, {
+    return this.rawRequest<ThreadShared>("POST", path, {
       body,
       contentType: "application/json",
       ...options,
