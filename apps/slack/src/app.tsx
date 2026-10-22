@@ -29,6 +29,7 @@ import {
 import {
   decodeReplyModal,
   decodeSlackAction,
+  escapeMentions,
   LIMITS,
   type ReplyTarget,
   reactionChanges,
@@ -223,6 +224,23 @@ export function echoed(text: string): string {
     at = (m.index ?? 0) + m[0].length;
   }
   return out + encode(raw.slice(at));
+}
+
+/**
+ * An announcement's words, which an agent may have written, made unable to
+ * ping anyone: its subject and every part's text go through escapeMentions
+ * before rendering, so no `<@U…>`, `<!here>`, `<!channel>`, `<!everyone>` or
+ * `<!subteam^…>` reaches the channel, in the blocks or in the fallback text.
+ */
+export function untrustedAnnouncement(raw: WireMessage): WireMessage {
+  return {
+    ...raw,
+    subject: escapeMentions(raw.subject),
+    parts: raw.parts.map((p) => {
+      const part = p as { type: string; text?: unknown };
+      return typeof part.text === "string" ? { ...part, text: escapeMentions(part.text) } : p;
+    }),
+  };
 }
 
 export function forSlack(message: PlatformMessage): PlatformMessage {
@@ -1419,8 +1437,9 @@ export class App {
       const project = raw.source?.project ?? "";
       const at = (await this.bound()).find((b) => b.project === project && b.channel === "general");
       if (!at) return;
-      const view = renderToSlack(<MessageView message={forSlack(fromServer(raw))} />);
-      const text = (view.text || raw.subject).slice(0, LIMITS.fallbackText);
+      const safe = untrustedAnnouncement(raw);
+      const view = renderToSlack(<MessageView message={forSlack(fromServer(safe))} />);
+      const text = (view.text || safe.subject).slice(0, LIMITS.fallbackText);
       const receipt = raw.deliveries?.[client];
       if (receipt) {
         await this.slack.call("chat.update", {

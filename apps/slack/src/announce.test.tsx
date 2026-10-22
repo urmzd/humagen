@@ -124,3 +124,32 @@ test("the Home tab reads a mapped person's own inbox and what's new, through the
   assert.match(view, /Field offsite/);
   assert.ok(!view.includes('"type":"button"'), "nothing to press: decisions are made in warp");
 });
+
+test("an announcement an agent wrote pings nobody: every Slack mention in it is shown as words", async () => {
+  const w = bound();
+  await watching(w, async () => {
+    w.warp.raise(
+      announcementMail({
+        from: { kind: "agent", name: "recap" },
+        subject: "Recap <@U0DANA> <!channel> <!subteam^S1|@oncall>",
+        parts: [
+          {
+            id: "p1",
+            type: "text",
+            state: "info",
+            actions: [],
+            text: "Ping <@U0BOB> and <!here> and <!subteam^S2|@eng> <!everyone> <@W0EVE|eve>",
+          },
+        ],
+      }),
+    );
+  });
+  const posts = w.slack.of("chat.postMessage").filter((p) => p.channel === NEWS);
+  assert.equal(posts.length, 1, "posted once");
+  const sent = JSON.stringify({ text: posts[0]?.text, blocks: posts[0]?.blocks });
+  for (const token of ["<@U0DANA>", "<!channel>", "<!subteam^", "<@U0BOB>", "<!here>", "<!everyone>", "<@W0EVE"]) {
+    assert.ok(!sent.includes(token), `${token} reached the channel: ${sent}`);
+  }
+  assert.match(sent, /@U0BOB/);
+  assert.match(sent, /@oncall/);
+});
