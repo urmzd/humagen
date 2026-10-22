@@ -507,15 +507,16 @@ export interface ThreadMessage {
 /** The announcement a thread was started from, as it stands when the
 thread is read: who posted it and what it says. It is the inbox's,
 never a message of the thread, so it is from whoever posted it, a
-person or the agent a schedule ran, and never from the person whose
-reply started the thread. A withdrawn one says nothing more.
+person, the agent a schedule ran, or warp itself for a release's
+notes, and never from the person whose reply started the thread. A
+withdrawn one says nothing more.
  */
 export interface ThreadAnnouncement {
   /** The announcement's inbox id. */
   id: string;
-  /** Who posted it. */
-  kind: "person" | "agent";
-  /** The person's handle, or the agent's name. */
+  /** Who posted it. `system` is warp itself, as for a release's notes. */
+  kind: "person" | "agent" | "system";
+  /** The person's handle, the agent's name, or `warp` for what warp posted itself. */
   by: string;
   /** What the person is called. Absent for an agent. */
   name?: string;

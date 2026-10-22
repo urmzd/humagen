@@ -236,3 +236,36 @@ func TestAnAnnouncementsSlackThreadIsReadAsTheSpecSays(t *testing.T) {
 	want(t, f, ana, "DELETE", "/api/projects/Vault/announcements/"+gone, "", http.StatusNoContent)
 	c.call(app, "POST", "/api/threads", "/api/threads", reply("1700000000.000500", "1700000000.000600"), http.StatusGone)
 }
+
+// A reply under the post of warp's own release notes, in the workspace's
+// bound general channel, starts a thread whose first turn is from warp
+// itself, as the spec says: kind system, by warp.
+func TestReleaseNotesSeedAThreadAsTheSpecSays(t *testing.T) {
+	f := newFixtureGranting(t, platform.Config{}, `grant operator to subject "ana"`)
+	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
+	admin, app := f.machine(t, "acme", everything...), f.signedAs(t, "svc-one")
+	ana := f.person(t, "acme", "ana", "Ana", "warp-operators")
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	client := strings.Replace(slackApp("one", "A01ONE", "svc-one"), `"machine":"svc-one"`, `"machine":"svc-one","people":{"U01ANA":"ana"}`, 1)
+	want(t, f, admin, "POST", "/api/clients", client, http.StatusCreated)
+	want(t, f, admin, "PUT", "/api/projects/~/channels/general", `{"version":0,"slack":{"client":"one","channel":"C01ALL"}}`, http.StatusOK)
+	notes, _, err := f.p.PostReleaseNotes("acme", "0.16.0", platform.Announcement{Subject: "What's new in warp 0.16.0", Text: "- Slack catch-up"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want(t, f, app, "PUT", "/api/inbox/"+notes.ID+"/deliveries/one", `{"channel":"C01ALL","ts":"1700000000.000100"}`, http.StatusNoContent)
+	reply := `{"text":"<@UAPP> what is catch-up?","post_only":true,"act_as":{"client":"one","user":"U01ANA"},"surface":{"client":"one","channel":"C01ALL","ts":"1700000000.000100","message":"1700000000.000200","app_user":"UAPP"}}`
+	started := c.call(app, "POST", "/api/threads", "/api/threads", reply, http.StatusCreated)
+	th := obj(started.field("thread"))
+	if th["announcement"] != notes.ID || th["project"] != "" {
+		t.Fatalf("the reply started %s", started.raw)
+	}
+	page := c.call(ana, "GET", "/api/threads/{id}", "/api/threads/"+th["id"].(string), "", http.StatusOK)
+	turns := sliceOf(page.field("turns"))
+	if len(turns) < 2 || obj(turns[0])["kind"] != "announcement" {
+		t.Fatalf("the thread reads %s", page.raw)
+	}
+	if a := obj(obj(turns[0])["announcement"]); a["kind"] != "system" || a["by"] != "warp" || a["name"] != nil || a["subject"] != "What's new in warp 0.16.0" {
+		t.Fatalf("its first turn is %v", a)
+	}
+}

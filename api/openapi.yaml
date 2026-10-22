@@ -4938,8 +4938,9 @@ components:
         The announcement a thread was started from, as it stands when the
         thread is read: who posted it and what it says. It is the inbox's,
         never a message of the thread, so it is from whoever posted it, a
-        person or the agent a schedule ran, and never from the person whose
-        reply started the thread. A withdrawn one says nothing more.
+        person, the agent a schedule ran, or warp itself for a release's
+        notes, and never from the person whose reply started the thread. A
+        withdrawn one says nothing more.
       type: object
       required: [id, kind, by, at]
       properties:
@@ -4947,11 +4948,11 @@ components:
           description: The announcement's inbox id.
           type: string
         kind:
-          description: Who posted it.
+          description: Who posted it. `system` is warp itself, as for a release's notes.
           type: string
-          enum: [person, agent]
+          enum: [person, agent, system]
         by:
-          description: The person's handle, or the agent's name.
+          description: The person's handle, the agent's name, or `warp` for what warp posted itself.
           type: string
         name:
           description: What the person is called. Absent for an agent.
