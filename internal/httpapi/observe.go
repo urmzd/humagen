@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,23 +27,23 @@ const maxWindow = 30 * 24 * time.Hour
 func (s *Server) observeRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/analytics", s.authed(auth.RunsRead, s.analytics))
 	mux.HandleFunc("GET /api/journal", s.authed(auth.RunsRead, s.journal))
-	mux.HandleFunc("GET /api/runs/{id}/trace", s.authed(auth.RunsRead, s.trace))
-	mux.HandleFunc("GET /api/runs/{id}/events", s.authed(auth.RunsRead, s.runEvents))
-	mux.HandleFunc("GET /api/runs/{id}/manifest", s.authed(auth.RunsRead, s.manifest))
+	mux.HandleFunc("GET /api/runs/{id}/trace", s.authed(auth.RunsRead, s.seenRun(s.trace)))
+	mux.HandleFunc("GET /api/runs/{id}/events", s.authed(auth.RunsRead, s.seenRun(s.runEvents)))
+	mux.HandleFunc("GET /api/runs/{id}/manifest", s.authed(auth.RunsRead, s.seenRun(s.manifest)))
 
 	mux.HandleFunc("GET /api/alerts", s.authed(auth.AlertsRead, s.listAlerts))
-	mux.HandleFunc("POST /api/alerts/{id}/ack", s.authed(auth.AlertsWrite, s.ackAlert))
+	mux.HandleFunc("POST /api/alerts/{id}/ack", s.authed(auth.AlertsWrite, s.seenAlert(s.ackAlert)))
 	mux.HandleFunc("GET /api/alert-rules", s.authed(auth.AlertsRead, s.listRules))
 	mux.HandleFunc("POST /api/alert-rules", s.authed(auth.AlertsWrite, s.createRule))
-	mux.HandleFunc("PUT /api/alert-rules/{name}", s.authed(auth.AlertsWrite, s.updateRule))
-	mux.HandleFunc("DELETE /api/alert-rules/{name}", s.authed(auth.AlertsWrite, s.deleteRule))
+	mux.HandleFunc("PUT /api/alert-rules/{name}", s.authed(auth.AlertsWrite, s.seenRule(s.updateRule)))
+	mux.HandleFunc("DELETE /api/alert-rules/{name}", s.authed(auth.AlertsWrite, s.seenRule(s.deleteRule)))
 
 	mux.HandleFunc("GET /api/evals", s.authed(auth.EvalsRead, s.listSuites))
 	mux.HandleFunc("POST /api/evals", s.authed(auth.EvalsWrite, s.putSuite(false)))
-	mux.HandleFunc("PUT /api/evals/{name}", s.authed(auth.EvalsWrite, s.putSuite(true)))
-	mux.HandleFunc("DELETE /api/evals/{name}", s.authed(auth.EvalsWrite, s.deleteSuite))
-	mux.HandleFunc("POST /api/evals/{name}/run", s.authed(auth.EvalsWrite, s.runSuite))
-	mux.HandleFunc("GET /api/evals/{name}/runs", s.authed(auth.EvalsRead, s.suiteRuns))
+	mux.HandleFunc("PUT /api/evals/{name}", s.authed(auth.EvalsWrite, s.seenSuite(s.putSuite(true))))
+	mux.HandleFunc("DELETE /api/evals/{name}", s.authed(auth.EvalsWrite, s.seenSuite(s.deleteSuite)))
+	mux.HandleFunc("POST /api/evals/{name}/run", s.authed(auth.EvalsWrite, s.seenSuite(s.runSuite)))
+	mux.HandleFunc("GET /api/evals/{name}/runs", s.authed(auth.EvalsRead, s.seenSuite(s.suiteRuns)))
 
 	mux.HandleFunc("GET /api/knowledge", s.authed(auth.KnowledgeRead, s.listSources))
 	mux.HandleFunc("POST /api/knowledge", s.authed(auth.KnowledgeWrite, s.createSource))
@@ -85,7 +86,15 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request, who auth.Prin
 		}
 		bucket = parsed
 	}
-	ok(w, http.StatusOK, s.P.Runs.Summarize(who.Tenant, since, until.Add(time.Nanosecond), bucket))
+	// Only what the caller may read is counted.
+	summary, err := s.P.Runs.SummarizeWhere(who.Tenant, runs.SummaryQuery{
+		Since: since, Until: until.Add(time.Nanosecond), Bucket: bucket, AllProjects: true, Keep: s.P.Seer(who).Run,
+	})
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, summary)
 }
 
 // journal answers "what happened": events in the caller's tenant, narrowed by
@@ -101,6 +110,20 @@ func (s *Server) journal(w http.ResponseWriter, r *http.Request, who auth.Princi
 	entries := s.P.Journal.Query(journal.Query{
 		Tenant: who.Tenant, Agent: q.Get("agent"), RunID: q.Get("run"), Kind: q.Get("kind"),
 		Origin: q.Get("origin"), Contains: q.Get("q"), Since: since, Until: until, Limit: limit,
+	})
+	// An event of a run the caller may not read is left out, as is one of
+	// an agent that lives in a project they cannot see.
+	seer, verdict := s.P.Seer(who), map[string]bool{}
+	entries = slices.DeleteFunc(entries, func(e journal.Entry) bool {
+		if e.RunID == "" {
+			return !seer.Agent(e.Agent)
+		}
+		seen, known := verdict[e.RunID]
+		if !known {
+			seen = seer.RunID(e.RunID)
+			verdict[e.RunID] = seen
+		}
+		return !seen
 	})
 	ok(w, http.StatusOK, map[string]any{"entries": orEmpty(entries)})
 }
@@ -224,7 +247,10 @@ func treeUsage(tree []runs.Run) payload.Usage {
 }
 
 func (s *Server) listAlerts(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"alerts": orEmpty(s.P.Alerts.Alerts(who.Tenant))})
+	seer := s.P.Seer(who)
+	ok(w, http.StatusOK, map[string]any{"alerts": orEmpty(slices.DeleteFunc(s.P.Alerts.Alerts(who.Tenant), func(a alerts.Alert) bool {
+		return !seer.Alert(a)
+	}))})
 }
 
 func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -237,7 +263,10 @@ func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Princ
 }
 
 func (s *Server) listRules(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"rules": orEmpty(s.P.Alerts.Rules(who.Tenant))})
+	seer := s.P.Seer(who)
+	ok(w, http.StatusOK, map[string]any{"rules": orEmpty(slices.DeleteFunc(s.P.Alerts.Rules(who.Tenant), func(r alerts.Rule) bool {
+		return !seer.Rule(r)
+	}))})
 }
 
 func (s *Server) createRule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -301,19 +330,26 @@ func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 // ruleScopeExists checks that the agent and the project a rule is scoped to
-// exist in the caller's tenant now, and answers 404 when one does not. A rule
-// on "~", the workspace, watches no one project, as one with no project does,
-// so it is stored with none.
+// exist in the caller's tenant now, and that the caller may read them, and
+// answers 404 when one does not, or is hidden from them, alike. A rule filed
+// in a project takes a member of it, as other work filed there does
+// (MayFileIn). A rule on "~", the workspace, watches no one project, as one
+// with no project does, so it is stored with none.
 func (s *Server) ruleScopeExists(w http.ResponseWriter, r *http.Request, who auth.Principal, rule *alerts.Rule) bool {
 	rule.Project = projects.NameOf(rule.Project)
+	seer := s.P.Seer(who)
 	if rule.Agent != "" {
-		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, rule.Agent, 0); err != nil {
-			s.problem(w, err)
+		if _, err := s.P.Agents.Get(r.Context(), who.Tenant, rule.Agent, 0); err != nil || !seer.Agent(rule.Agent) {
+			notFound(w)
 			return false
 		}
 	}
-	if rule.Project != "" && !s.P.HasProject(who.Tenant, rule.Project) {
+	if rule.Project != "" && (!s.P.HasProject(who.Tenant, rule.Project) || !seer.Project(rule.Project)) {
 		s.problem(w, platform.ErrProjectNotFound)
+		return false
+	}
+	if err := s.P.MayFileIn(who, rule.Project); err != nil {
+		s.problem(w, err)
 		return false
 	}
 	return true
@@ -450,7 +486,11 @@ type suiteView struct {
 
 func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	out := []suiteView{}
+	seer := s.P.Seer(who)
 	for _, suite := range s.P.Evals.List(who.Tenant) {
+		if !seer.Suite(suite) {
+			continue
+		}
 		runs, _ := s.P.Evals.Runs(who.Tenant, suite.Name)
 		if len(runs) > 20 {
 			runs = runs[:20]
@@ -467,6 +507,14 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 
 func (s *Server) putSuite(replace bool) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		// A suite that is not there is said so before the body is read, as
+		// one the caller may not see is.
+		if replace {
+			if _, err := s.P.Evals.Get(who.Tenant, r.PathValue("name")); err != nil {
+				s.problem(w, err)
+				return
+			}
+		}
 		var suite evals.Suite
 		if !decode(w, r, &suite) {
 			return
@@ -479,7 +527,13 @@ func (s *Server) putSuite(replace bool) handler {
 		var err error
 		switch suite.Target {
 		case evals.Agent:
-			_, err = s.P.Agents.Get(r.Context(), who.Tenant, suite.Subject, 0)
+			if !s.P.Seer(who).Agent(suite.Subject) {
+				notFound(w)
+				return
+			}
+			if err = s.P.MayTry(who, suite.Subject); err == nil {
+				_, err = s.P.Agents.Get(r.Context(), who.Tenant, suite.Subject, 0)
+			}
 		case evals.Knowledge:
 			_, err = s.P.Knowledge.Documents(who.Tenant, suite.Subject)
 		}
@@ -508,7 +562,15 @@ func (s *Server) deleteSuite(w http.ResponseWriter, r *http.Request, who auth.Pr
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// runSuite starts a suite's cases. An agent's are filed where it lives, so a
+// project agent's take a member of its home (Platform.MayTry).
 func (s *Server) runSuite(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if suite, err := s.P.Evals.Get(who.Tenant, r.PathValue("name")); err == nil && suite.Target == evals.Agent {
+		if err := s.P.MayTry(who, suite.Subject); err != nil {
+			s.problem(w, err)
+			return
+		}
+	}
 	run, err := s.P.StartEval(r.Context(), who.Tenant, r.PathValue("name"), who.Subject)
 	if err != nil {
 		s.problem(w, err)

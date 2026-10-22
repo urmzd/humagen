@@ -10,16 +10,23 @@ import (
 	"github.com/urmzd/warp/pkg/call"
 )
 
-func TestAChannelAndAMessageAreBelievedOnlyFromTheAPI(t *testing.T) {
+// A run's channel is believed where the server wrote it: the API, and Slack
+// and GitHub ingress, which writes it from the client's binding. Its message
+// and thread only from the API, and nothing from any other origin.
+func TestAChannelAndAMessageAreBelievedOnlyWhereTheServerWroteThem(t *testing.T) {
 	x := NewIndex()
 	placed := map[string]string{MetaThread: "th-1", MetaChannel: "renewals", MetaMessage: "m-3"}
 	record(t, x, "acme", "api", "lead", OriginAPI, 0, placed)
-	record(t, x, "acme", "slack", "lead", "slack", 0, placed)
+	record(t, x, "acme", "slack", "lead", OriginSlack, 0, placed)
+	record(t, x, "acme", "jira", "lead", "jira", 0, placed)
 	if r, _ := x.Get("acme", "api"); r.Channel != "renewals" || r.Message != "m-3" {
 		t.Fatalf("an API run = %+v", r)
 	}
-	if r, _ := x.Get("acme", "slack"); r.Channel != "" || r.Message != "" {
-		t.Fatalf("a Slack tag placed its own run: %+v", r)
+	if r, _ := x.Get("acme", "slack"); r.Channel != "renewals" || r.Message != "" || r.Thread == "th-1" {
+		t.Fatalf("a Slack run = %+v", r)
+	}
+	if r, _ := x.Get("acme", "jira"); r.Channel != "" || r.Message != "" {
+		t.Fatalf("a Jira tag placed its own run: %+v", r)
 	}
 }
 

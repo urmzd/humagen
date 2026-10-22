@@ -127,22 +127,29 @@ func TestFortyRacersPostingToOneThreadKeepOneLineAndTheCap(t *testing.T) {
 	}
 }
 
-func TestPrivateThreadsAreRefusedUntilReadsAreConfined(t *testing.T) {
+// A private thread is kept as one, with the person who started it taking
+// part as its owner; a shared thread can be made private, and a thread with
+// no visibility is refused.
+func TestAPrivateThreadIsKeptWithItsOwnerTakingPart(t *testing.T) {
 	s := threads.NewStore()
 	private := threads.Thread{Project: "Globex", Channel: "general", Visibility: threads.Private}
-	if _, _, err := s.Start("acme", private, msg("dana", "x"), t0); !errors.Is(err, threads.ErrPrivate) {
-		t.Fatalf("starting a private thread = %v", err)
+	th, _, err := s.Start("acme", private, msg("dana", "x"), t0)
+	if err != nil || th.Visibility != threads.Private {
+		t.Fatalf("starting a private thread = %+v, %v", th, err)
 	}
-	private.CreatedBy = "dana"
-	if _, err := s.Create("acme", private, t0); !errors.Is(err, threads.ErrPrivate) {
-		t.Fatalf("creating a private thread = %v", err)
+	if len(th.Participants) != 1 || th.Participants[0].Name != "dana" || !th.Participants[0].Owner {
+		t.Fatalf("its participants = %+v", th.Participants)
 	}
 	if _, _, err := s.Start("acme", threads.Thread{Project: "Globex", Channel: "general"}, msg("dana", "x"), t0); !errors.Is(err, threads.ErrInvalid) {
 		t.Fatalf("a thread with no visibility = %v", err)
 	}
-	th, _ := start(t, s, "acme", shared("Globex", "general"), msg("dana", "x"))
-	if _, err := s.Update("acme", th.ID, 1, t0, func(t *threads.Thread) error { t.Visibility = threads.Private; return nil }); !errors.Is(err, threads.ErrPrivate) {
-		t.Fatalf("making a thread private = %v", err)
+	shared, _ := start(t, s, "acme", shared("Globex", "general"), msg("dana", "x"))
+	got, err := s.Update("acme", shared.ID, 1, t0, func(t *threads.Thread) error { t.Visibility = threads.Private; return nil })
+	if err != nil || got.Visibility != threads.Private {
+		t.Fatalf("making a thread private = %+v, %v", got, err)
+	}
+	if _, _, err := s.Post("acme", th.ID, msg("dana", "still mine"), t0); err != nil {
+		t.Fatalf("posting in a private thread: %v", err)
 	}
 }
 

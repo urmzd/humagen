@@ -50,6 +50,10 @@ export function postsIn(projects: ProjectView[], name: string): boolean {
   return role === undefined || role === "member" || role === "owner";
 }
 
+/** A composer control that stays pressed: Post Only, Private. */
+const toggle =
+  "rounded-aui px-1.5 py-1 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-fg aria-pressed:underline";
+
 /** The title of a project, as a thread's meta line names it. */
 function projectTitle(projects: ProjectView[], name: string, workspace: string): string {
   if (name === "") return workspace || defaultCopy.projects.workspace;
@@ -160,28 +164,35 @@ function useTags(
   return { label: words.typeahead, options, onQuery };
 }
 
-/** The composer of a thread or a channel: the box, Post Only, and who answers. */
+/**
+ * The composer of a thread or a channel: the box, Post Only, and who answers.
+ * A channel's also offers Private, which starts a thread only the people in
+ * it read.
+ */
 function RoomComposer({
   placeholder,
   answers,
   tags,
   autoFocus,
+  canPrivate = false,
   onPost,
 }: {
   placeholder: string;
   answers: ThreadAnswers | undefined;
   tags: ReturnType<typeof useTags>;
   autoFocus?: boolean;
-  onPost: (text: string, postOnly: boolean) => Promise<ThreadPosted>;
+  canPrivate?: boolean;
+  onPost: (text: string, postOnly: boolean, secret: boolean) => Promise<ThreadPosted>;
 }) {
   const [postOnly, setPostOnly] = useState(false);
+  const [secret, setSecret] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [said, setSaid] = useState("");
   // People's messages never wait for an agent: each is posted as it is sent.
   const queue = useQueue({
     onStart: (m) => {
       setProblem(null);
-      onPost(m.text, postOnly)
+      onPost(m.text, postOnly, secret)
         .then((p) => {
           setSaid(postedLine(p));
           queue.turnEnded("done");
@@ -202,20 +213,34 @@ function RoomComposer({
         autoFocus={autoFocus}
         tags={tags}
         trailing={
-          <button
-            type="button"
-            aria-pressed={postOnly}
-            title={words.postOnlyHint}
-            onClick={() => setPostOnly(!postOnly)}
-            className="rounded-aui px-1.5 py-1 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-fg aria-pressed:underline"
-          >
-            {words.postOnly}
-          </button>
+          <span className="flex items-center gap-1">
+            {canPrivate && (
+              <button
+                type="button"
+                aria-pressed={secret}
+                title={words.privateHint}
+                onClick={() => setSecret(!secret)}
+                className={toggle}
+              >
+                {words.startPrivate}
+              </button>
+            )}
+            <button
+              type="button"
+              aria-pressed={postOnly}
+              title={words.postOnlyHint}
+              onClick={() => setPostOnly(!postOnly)}
+              className={toggle}
+            >
+              {words.postOnly}
+            </button>
+          </span>
         }
       />
       <p className="px-3 text-aui-xs text-aui-muted" aria-live="polite">
         {postOnly ? words.postOnlyHint : whoAnswers(answers)}
       </p>
+      {secret && <p className="px-3 text-aui-xs text-aui-muted">{words.privateHint}</p>}
       {said && (
         <p role="status" className="px-3 text-aui-xs text-aui-muted">
           {said}
@@ -411,13 +436,17 @@ export function ThreadRoom({
       <header className="relative z-10 mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-4 pb-2">
         <h1 className="min-w-0 flex-1 truncate text-aui-lg font-semibold text-aui-fg">{title}</h1>
         <p className="flex shrink-0 flex-wrap items-center gap-x-3 text-aui-xs text-aui-muted">
-          <button
-            type="button"
-            onClick={() => onOpenChannel(th.project, th.channel)}
-            className="rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-          >
-            {words.sharedIn(projectTitle(projects, th.project, workspaceName), th.channel)}
-          </button>
+          {th.visibility === "private" ? (
+            <span>{words.private}</span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onOpenChannel(th.project, th.channel)}
+              className="rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+            >
+              {words.sharedIn(projectTitle(projects, th.project, workspaceName), th.channel)}
+            </button>
+          )}
           <span
             title={people
               .filter((p) => p.name)
@@ -482,7 +511,9 @@ function ThreadRow({ t, onOpen }: { t: ThreadSummary; onOpen: () => void }) {
       >
         <span className="min-w-0 flex-1">
           <span className="block truncate text-aui-sm text-aui-fg">{t.title}</span>
-          <span className="block text-aui-xs text-aui-muted">{ago(t.updated_at)}</span>
+          <span className="block text-aui-xs text-aui-muted">
+            {t.visibility === "private" ? `${words.private} · ${ago(t.updated_at)}` : ago(t.updated_at)}
+          </span>
         </span>
         <span className="flex shrink-0 items-center gap-1" aria-label="Agents">
           {t.agents.slice(0, 4).map((a) => (
@@ -500,7 +531,7 @@ function ThreadRow({ t, onOpen }: { t: ThreadSummary; onOpen: () => void }) {
 }
 
 /**
- * A channel: its shared threads, newest first, and a composer that starts
+ * A channel: its threads the reader may read, newest first, and a composer that starts
  * a new one.
  */
 export function ChannelPage({
@@ -595,8 +626,9 @@ export function ChannelPage({
           placeholder={words.startThread}
           answers={info?.answers}
           tags={tags}
-          onPost={(text, postOnly) =>
-            coworking.start({ project, channel, text, post_only: postOnly }).then((p) => {
+          canPrivate
+          onPost={(text, postOnly, secret) =>
+            coworking.start({ project, channel, text, post_only: postOnly, visibility: secret ? "private" : "shared" }).then((p) => {
               onOpenThread(p.thread.id);
               return p;
             })
@@ -702,6 +734,7 @@ export function ChannelsTab({
                 </span>
                 {c.purpose && <span className="truncate text-aui-xs text-aui-muted">{c.purpose}</span>}
                 <span className="text-aui-xs text-aui-muted">{answersShort(c.answers)}</span>
+                {c.slack && <span className="text-aui-xs text-aui-muted">{words.boundTo(c.slack.client, c.slack.channel)}</span>}
               </button>
               {canWrite && c.name !== "general" && !c.archived && !c.managed && (
                 <button

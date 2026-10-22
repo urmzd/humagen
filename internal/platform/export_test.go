@@ -92,9 +92,11 @@ func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (a
 	return t.(agentrt.Approving).Approval(saigetypes.ToolCallPart{Name: ToolCallAgent, Arguments: args})
 }
 
-// AutoFor is @auto for a message a client raised, as stamp resolves it.
+// AutoFor is @auto for a message a client raised, as stamp resolves it, in
+// the client's home.
 func (p *Platform) AutoFor(ctx context.Context, c clients.Client, text string) (pick.Choice, error) {
-	return p.autoFor(ctx, c, text)
+	project, _ := p.filedFor(c.Tenant, c, "")
+	return p.autoFor(ctx, c, project, text)
 }
 
 // DelayRecord holds every run between being accepted and being recorded, as

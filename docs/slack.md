@@ -12,8 +12,10 @@
 | Code channel slash commands | Yes | No |
 | `/agent`, shortcuts, Home tab | No | Yes, from warp's sandbox manifest |
 | Inbox items about a run | No | In the run's thread, and on Home |
-| Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list. Its runs are not yet recorded as the client's, see below |
-| Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them, when the app's client maps them (`act_as`); else as the app, acting for nobody. Tools that act as a person use the person's own credential |
+| Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list. A mapped person's messages are the client's (threads with a surface, below); anyone else's runs are not yet recorded as the client's |
+| Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a warp thread filed by the binding, someone the client maps to nobody is refused in a bound channel, and announcements reach a bound general channel |
+| Mentions of a person | No | In their direct messages with the app, with Open Thread and Reply, unless they are in the Slack thread already (they wrote there or were mentioned there with `<@U…>`). Experts named by a role are each told |
+| Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them, when the app's client maps them (`act_as`): their message is theirs in the warp thread, and so are the runs it starts. Else as the app, acting for nobody. Tools that act as a person use the person's own credential |
 | Questions a run waits on | No | In the run's thread, answered for the person the client maps. See below |
 | Tokens and cost | No | No. See [usage on a turn](clients.md#usage-on-a-turn) |
 
@@ -38,7 +40,7 @@ The app works around each of these and says where in its README.
 | The run a retry started, in the resolve response | Retry from Slack starts its own run and acknowledges the inbox part | Return `{message, run}` from `POST /api/inbox/{id}/parts/{part}/resolve` |
 | A stream of inbox notices alone | The app subscribes to a topic no agent can have | `GET /api/inbox/events` |
 | A route for feedback | A rating is written to the app's log | `POST /api/runs/{id}/feedback` |
-| A modal to type a reply to a question | A reply is answered in the console | warp: a reply modal in `@warp/render-slack`, as for feedback |
+| A modal to type a reply to a question | Built for a question in the inbox and a mention in a person's direct messages. Something Else on a run's own card still points to the console | Open the reply modal from the run's card too |
 
 ### Questions a run waits on
 
@@ -59,6 +61,69 @@ credential and the people it answers for:
 
 The webhook connector shows a parked run as a suspended session and does not
 take answers.
+
+### Coworking: channels, threads and mentions
+
+A project's owners bind a warp channel to a Slack channel the app's bot is
+already in (`PUT /api/projects/{name}/channels/{channel}` with
+`slack: {client, channel}`, or `slack:` on the channel in the Platform
+document). Binding one, or moving a binding, also takes `clients:write`: a
+binding files every new thread in that Slack channel in the project, so which
+channels a project answers in is the client's admins' to decide. An owner
+keeps or removes a binding an admin made. One Slack channel is bound to one channel, a direct message never,
+and archiving a channel unbinds it. `GET /api/clients/{id}/bindings` lists a
+client's. A client's `home` (a project and one of its channels) is where
+everything else is filed.
+
+For a person the client maps, the Slack app posts each message into the warp
+thread its Slack thread is, as that person (`POST /api/threads` with
+`surface {client, channel, ts, message, app_user}` and `act_as`). Only the
+client's `slack.machine` may, and the platform decides where the thread goes:
+
+| Slack | Warp |
+|-------|------|
+| A thread in a bound channel | A shared thread in the bound channel |
+| A thread in an unbound channel | A shared thread in the client's home |
+| A direct message, or the assistant pane | A private thread in the client's home |
+
+The platform reads Slack's text in the one tag grammar: the app's own mention
+is not a tag, a bot in `client.bots` is its agent, a person in `slack.people`
+is their handle, and anyone else stays plain and is refused. When the app is
+mentioned in a thread, the people's messages since it was last asked there are
+posted first, each as its person and posted only, so the room in warp reads as
+it did in Slack. Each message is posted once by its ts: a redelivered event
+answers `repeated` and starts nothing again. Outside a bound channel the
+client's default answers an untagged message; the client's allow-list holds
+everywhere, and a client that lists its agents treats `@auto` as a name
+outside the list. The machine reads every thread on its own surface, wherever
+it is filed. A bound channel is a project's channel, so only people the client
+maps post there: anyone else who mentions the app in one is told to ask an
+admin to connect their Slack account, and warp is not asked. Elsewhere they
+ask through the app as before.
+
+An announcement of a project whose general channel is bound is posted there,
+top-level, once; the app records where (`PUT /api/inbox/{id}/deliveries/{client}`),
+so an edit, a withdrawal or a restart updates that post. A draft never reaches
+a channel. The app's machine is told of a bound project's announcements
+wherever it may see the project, though it is only a viewer there. A
+members-only project's reach Slack only where its owners name the machine
+among its members: binding its general channel alone sends nothing.
+
+A mention of a mapped person, or a question addressed to them, reaches the
+app's event stream with `for {client, user}`. The app reads it for them
+(`act_as_client` and `act_as_user` on `GET /api/inbox/{id}`) and posts it to
+their direct messages with Open Thread and Reply, unless it was raised in a
+Slack thread of the app's own, where Slack told them already. Reply opens a
+modal; sending it posts in the thread as the person (`act_as` on
+`POST /api/threads/{id}/messages`), which settles their mention, or answers
+the question. The Home tab reads the person's own inbox the same way.
+
+The webhook connector files its runs by the same binding: a run in a bound
+Slack channel is in the channel it is bound to, anything else in the client's
+home, whatever the payload said. A mention that names no agent is answered as
+it would be in a thread there: in a bound channel by the bound channel's
+default and then its project's, never the client's; in the home by the
+client's default first.
 
 The Slack connector accepts signed mentions, direct messages and code channel
 slash commands. Responses use one message per run, edited as events arrive.

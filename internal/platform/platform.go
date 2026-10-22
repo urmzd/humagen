@@ -487,7 +487,7 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	}
 	// Accepting publishes the run's first event before the run is recorded,
 	// and delivering that event needs to know which client raised it.
-	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client})
+	p.admitting.Store(runID, admitted{tenant: tag.Tenant, client: client, place: p.placeAdmitted(tag, edge, runID, project)})
 	defer p.admitting.Delete(runID)
 	if err := p.deliver.Register(runID, tag.Routes()); err != nil {
 		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: tag.Tenant, RunID: runID, At: p.now()})

@@ -357,7 +357,7 @@ one `state.Write` (all or none within a namespace):
 | `p:<name>` (`p:` is the root) | the project, with the fields the file owns |
 | `c:<project>/<channel>` | a channel (names cannot hold `/`) |
 | `h:<seq>` | a `Change`, a ring of 1,000 per tenant pruned in the same write |
-| `x:<lower(name)>` | a tombstone `{name, by, at}`, at most 1,000; one is forgotten to make room only when no conversation or file is filed under its name, and a delete that would need to forget one that has something is refused (429) |
+| `x:<lower(name)>` | a tombstone `{name, by, at, parent, members}`, at most 1,000; one is forgotten to make room only when no conversation or file is filed under its name, and a delete that would need to forget one that has something is refused (429) |
 
 `Open(st)` loads everything once and trusts its memory (one writer). A write
 that fails changes nothing. Open refuses a cycle or an orphan (fail closed).
@@ -392,8 +392,10 @@ separate locks: check and insert become one critical section.
    name that no longer exists. From phase 2, archiving is the alternative.
    Delete drops the project's memory and leaves a tombstone. Its
    conversations keep the name, and are adopted only if a `projects:govern`
-   holder recreates the project. Until then they are read, not continued:
-   a run filed in a name the tree does not hold is refused at admission
+   holder recreates the project. Until then they are read, not continued,
+   by whom they were read by when it was deleted: the tombstone keeps its
+   parent and members, read under the parent as it stands now (phase 7).
+   A run filed in a name the tree does not hold is refused at admission
    (409), since nothing says which ancestors it would count toward, and a
    file is published only in a project the tree holds. Files keep the
    ancestors they were published under, so a parent's storage still counts
@@ -945,7 +947,7 @@ A hidden object answers 404.
 
 | Route | Permission | Notes |
 |---|---|---|
-| `PUT /api/projects/{name}/channels/{channel}` | `projects:write` | gains `slack {client, channel}`; owner; the client must be a Slack client in the tenant |
+| `PUT /api/projects/{name}/channels/{channel}` | `projects:write` | gains `slack {client, channel}`; owner; the client must be a Slack client in the tenant; binding a Slack channel, or moving a binding, also takes `clients:write` (403), as every new thread there is filed in the project; keeping or removing one takes only the owner |
 | `GET /api/clients/{id}/bindings` | `clients:read` | `[{slack_channel, project, channel}]`, at most 200 |
 | `PUT /api/clients/{id}` | `clients:write` | gains `home {project, channel}` |
 | `POST /api/threads`, `POST /api/threads/{id}/messages` | `runs:write` | gain `surface {client, channel, ts}`: find or create the thread by surface. The platform files it from the binding, never from a request field, and only for the client's `slack.machine` |
@@ -1165,8 +1167,11 @@ Shared pieces: `packages/core` gains `HomeModel.updates`, and
 
 ### Slack (one app per client)
 
-- **Channels.** A project owner binds an existing Slack channel to a warp
-  channel. The bot must already be in it, so no scope widens. A Slack thread
+- **Channels.** A project owner who also administers the client
+  (`clients:write`) binds an existing Slack channel to a warp channel. The
+  bot must already be in it, so no scope widens. Which of a client's Slack
+  channels a project answers in is the client's admins' to decide: a
+  binding files every new thread there in the project. A Slack thread
   in a bound channel is a shared warp thread in that channel. A DM or the
   assistant pane is a thread in the client's home channel, private from
   phase 7.

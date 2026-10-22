@@ -38,7 +38,7 @@ const (
 )
 
 // AnalystTools are the read-only tools about how the workspace is doing.
-func AnalystTools() []string { return []string{ToolRunsSummary, ToolListAlerts} }
+func AnalystTools() []string { return []string{ToolRunsSummary, ToolListAlerts, ToolProjectChanges} }
 
 // BuilderTools are the tools for reading and changing agents.
 func BuilderTools() []string { return []string{ToolListAgents, ToolReadAgent, ToolSaveAgent} }
@@ -64,8 +64,9 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 		ToolRunsSummary: tool(ToolRunsSummary,
 			"Summarize the workspace's runs over the last hours: how many ran, completed, failed and were stopped, durations (p50 and p95), tokens and spend, by agent and by origin, and the slowest runs. Use it before answering any question about how agents are doing.",
 			schema(nil, map[string]string{
-				"hours": fmt.Sprintf("How many hours back to look, 1 to %d. Defaults to 24", MaxSummaryHours),
-				"agent": "Only this agent's runs. Leave out for every agent",
+				"hours":   fmt.Sprintf("How many hours back to look, 1 to %d. Defaults to 24", MaxSummaryHours),
+				"agent":   "Only this agent's runs. Leave out for every agent",
+				"project": "Only the runs filed in this project and the projects below it. Leave out for the whole workspace. Members-only projects other than this conversation's, and private threads, are never read",
 			}),
 			func(_ context.Context, args map[string]any) (string, error) {
 				hours := 24
@@ -76,21 +77,34 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 					}
 					hours = n
 				}
-				return p.runsSummary(req.Tenant, time.Duration(hours)*time.Hour, strings.TrimSpace(arg(args, "agent")))
+				scope, err := p.summaryScope(req.Tenant, p.ownProject(req.Tenant, req.RunID), strings.TrimSpace(arg(args, "project")))
+				if err != nil {
+					return "", err
+				}
+				return p.runsSummary(req.Tenant, time.Duration(hours)*time.Hour, strings.TrimSpace(arg(args, "agent")), scope)
 			}),
+		ToolProjectChanges: p.projectChangesTool(req),
 		ToolListAlerts: tool(ToolListAlerts,
 			"List the alert rules the workspace has, what each watches for, and the alerts that are still open.",
 			schema(nil, nil),
-			func(context.Context, map[string]any) (string, error) { return p.alertsReport(req.Tenant) }),
+			func(context.Context, map[string]any) (string, error) {
+				return p.alertsReport(req.Tenant, p.ownProject(req.Tenant, req.RunID))
+			}),
 		ToolListAgents: tool(ToolListAgents,
 			"List the workspace's agents: name, description, model, tools and revision.",
 			schema(nil, nil),
-			func(ctx context.Context, _ map[string]any) (string, error) { return p.agentsReport(ctx, req.Tenant) }),
+			func(ctx context.Context, _ map[string]any) (string, error) {
+				return p.agentsReport(ctx, req.Tenant, p.ownProject(req.Tenant, req.RunID))
+			}),
 		ToolReadAgent: tool(ToolReadAgent,
 			"Read one agent's latest revision in full, system prompt included.",
 			schema([]string{"name"}, map[string]string{"name": "The agent's name"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
-				rev, err := p.Agents.Get(ctx, req.Tenant, strings.TrimSpace(arg(args, "name")), 0)
+				name := strings.TrimSpace(arg(args, "name"))
+				if !p.agentOpenFor(req.Tenant, p.ownProject(req.Tenant, req.RunID))(name) {
+					return "", fmt.Errorf("%w: %q", registry.ErrNotFound, name)
+				}
+				rev, err := p.Agents.Get(ctx, req.Tenant, name, 0)
 				if err != nil {
 					return "", err
 				}
@@ -123,13 +137,17 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 }
 
 // runsSummary is runs_summary's answer: compact JSON a model can read and quote.
-func (p *Platform) runsSummary(tenant string, window time.Duration, agent string) (string, error) {
+func (p *Platform) runsSummary(tenant string, window time.Duration, agent string, scope runs.SummaryQuery) (string, error) {
 	until := p.now()
 	bucket := time.Hour
 	if window > 7*24*time.Hour {
 		bucket = 24 * time.Hour
 	}
-	s := p.Runs.Summarize(tenant, until.Add(-window), until, bucket)
+	scope.Since, scope.Until, scope.Bucket = until.Add(-window), until, bucket
+	s, err := p.Runs.SummarizeWhere(tenant, scope)
+	if err != nil {
+		return "", err
+	}
 	type group struct {
 		Name        string  `json:"name"`
 		Runs        int     `json:"runs"`
@@ -203,8 +221,12 @@ func (p *Platform) runsSummary(tenant string, window time.Duration, agent string
 	return string(b), err
 }
 
-// alertsReport is list_alerts' answer: the rules, then the open alerts, newest first.
-func (p *Platform) alertsReport(tenant string) (string, error) {
+// alertsReport is list_alerts' answer for a run filed in own: the rules, then
+// the open alerts, newest first. What is read is what the answer may be read
+// for by everyone it reaches (openFor): a rule or an alert of a members-only
+// project other than own, of an agent that lives in one, or of a run in a
+// private thread, is left out.
+func (p *Platform) alertsReport(tenant, own string) (string, error) {
 	type rule struct {
 		Name, Kind, Severity, Description, Agent, Project string
 		Paused                                            bool `json:",omitempty"`
@@ -217,21 +239,46 @@ func (p *Platform) alertsReport(tenant string) (string, error) {
 		Rules []rule  `json:"rules"`
 		Open  []alert `json:"open_alerts"`
 	}{Rules: []rule{}, Open: []alert{}}
+	open, tree := p.openFor(tenant, own), p.ProjectTree(tenant)
+	agentOpen := func(name string) bool {
+		home, homed := tree.Home(name)
+		return name == "" || !homed || open(home)
+	}
 	for _, r := range p.Alerts.Rules(tenant) {
-		out.Rules = append(out.Rules, rule{r.Name, string(r.Kind), string(r.Severity), r.Description, r.Agent, r.Project, r.Paused})
+		if open(r.Project) && agentOpen(r.Agent) {
+			out.Rules = append(out.Rules, rule{r.Name, string(r.Kind), string(r.Severity), r.Description, r.Agent, r.Project, r.Paused})
+		}
 	}
 	all := p.Alerts.Alerts(tenant)
 	for i := len(all) - 1; i >= 0 && len(out.Open) < 50; i-- {
-		if a := all[i]; a.Open() {
-			out.Open = append(out.Open, alert{a.ID, a.Rule, string(a.Severity), a.Title, a.Agent, a.At})
+		a := all[i]
+		if !a.Open() || !open(a.Project) || !agentOpen(a.Agent) {
+			continue
 		}
+		if at, ok := p.placeOfRunID(tenant, a.RunID); a.RunID != "" && ok && (!open(at.Project) || p.privateThread(tenant, at.Thread)) {
+			continue
+		}
+		out.Open = append(out.Open, alert{a.ID, a.Rule, string(a.Severity), a.Title, a.Agent, a.At})
 	}
 	b, err := json.Marshal(out)
 	return string(b), err
 }
 
-// agentsReport is list_agents' answer, bounded to the first 200 agents.
-func (p *Platform) agentsReport(ctx context.Context, tenant string) (string, error) {
+// agentOpenFor reports, for a tool of a run filed in own, whether an agent
+// may be read for everyone its answer reaches: a platform agent, or one that
+// lives in a project openFor allows. One living in a members-only project
+// other than own reads as one that is not there.
+func (p *Platform) agentOpenFor(tenant, own string) func(name string) bool {
+	open, tree := p.openFor(tenant, own), p.ProjectTree(tenant)
+	return func(name string) bool {
+		home, homed := tree.Home(agentspec.NormalizeName(name))
+		return !homed || open(home)
+	}
+}
+
+// agentsReport is list_agents' answer for a run filed in own, bounded to the
+// first 200 agents it may read (agentOpenFor).
+func (p *Platform) agentsReport(ctx context.Context, tenant, own string) (string, error) {
 	type agent struct {
 		Name        string   `json:"name"`
 		Description string   `json:"description,omitempty"`
@@ -241,6 +288,7 @@ func (p *Platform) agentsReport(ctx context.Context, tenant string) (string, err
 		Builtin     bool     `json:"builtin,omitempty"`
 	}
 	out := []agent{}
+	open := p.agentOpenFor(tenant, own)
 	page := registry.Page{Size: 100}
 	for len(out) < 200 {
 		revs, next, err := p.Agents.List(ctx, tenant, page)
@@ -248,6 +296,9 @@ func (p *Platform) agentsReport(ctx context.Context, tenant string) (string, err
 			return "", err
 		}
 		for _, r := range revs {
+			if !open(r.Spec.Name) || len(out) >= 200 {
+				continue
+			}
 			out = append(out, agent{r.Spec.Name, r.Spec.Description, r.Spec.Provider + "/" + r.Spec.Model, r.Spec.Tools, r.Rev, IsBuiltin(r.Spec.Name)})
 		}
 		if next == "" {
@@ -262,11 +313,17 @@ func (p *Platform) agentsReport(ctx context.Context, tenant string) (string, err
 // saveAgent creates or revises an agent from save_agent's arguments. A
 // revision changes only the description, the prompt and the grantable
 // tools: what a person set elsewhere (model, calls, approvals of other
-// tools, sources) stays as it was.
+// tools, sources) stays as it was. An agent that lives in a project is its
+// home's owners' to change, in its own routes, so the builder, whose save a
+// manager approves without owning anything, never revises one; and a new
+// agent's name is held to what the agents route holds it to.
 func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string]any) (agentspec.Revision, bool, error) {
 	name := strings.TrimSpace(arg(args, "name"))
 	if IsBuiltin(name) {
 		return agentspec.Revision{}, false, fmt.Errorf("%w: %s belongs to the platform", ErrBuilder, name)
+	}
+	if _, homed := p.ProjectTree(tenant).Home(agentspec.NormalizeName(name)); homed {
+		return agentspec.Revision{}, false, fmt.Errorf("%w: %s lives in a project, so only that project's owners change it", ErrBuilder, name)
 	}
 	var tools []string
 	for t := range strings.SplitSeq(arg(args, "tools"), ",") {
@@ -288,6 +345,9 @@ func (p *Platform) saveAgent(ctx context.Context, tenant string, args map[string
 	have, err := p.Agents.Get(ctx, tenant, name, 0)
 	switch {
 	case errors.Is(err, registry.ErrNotFound):
+		if err := p.CheckAgentName(tenant, name); err != nil {
+			return agentspec.Revision{}, false, fmt.Errorf("%w: %w", ErrBuilder, err)
+		}
 		spec := agentspec.AgentSpec{
 			Name: name, Description: description, SystemPrompt: prompt, Tools: tools,
 			Provider: p.cfg.BuiltinProvider, Model: p.cfg.BuiltinModel,

@@ -222,6 +222,26 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
         ...resolution,
       };
     }
+    case "draft": {
+      const d = obj(p.draft);
+      // "discard" names the memory part's action too; on a draft it drops the draft.
+      const draftActions: Record<string, ActionId> = { publish: ActionId.publishDraft, discard: ActionId.discardDraft };
+      const drafts = list(p.actions)
+        .map((a) => draftActions[str(a)])
+        .filter((a): a is ActionId => a !== undefined);
+      return {
+        id,
+        type: "draft",
+        draft: {
+          subject: str(d.subject),
+          ...(str(d.text) ? { text: str(d.text) } : {}),
+          agent: str(d.agent),
+          project: str(d.project) || "the workspace",
+        },
+        allowed: drafts,
+        ...resolution,
+      };
+    }
     case "artifact": {
       const a = obj(p.artifact);
       const kind = str(a.kind) as ArtifactKind;
@@ -385,6 +405,10 @@ export function toRequest(message: PlatformMessage, action: UiAction): Request |
       return resolve("keep", { ids: payload.selection ?? [] });
     case ActionId.discardMemories:
       return resolve("discard");
+    case ActionId.publishDraft:
+      return part.type === "draft" ? resolve("publish") : null;
+    case ActionId.discardDraft:
+      return part.type === "draft" ? resolve("discard") : null;
     case ActionId.reply:
       return payload.text?.trim() ? resolve("reply", { text: payload.text.trim() }) : null;
     case ActionId.approve:

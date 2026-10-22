@@ -61,6 +61,7 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 	p.settleQuestionsOf(run)
 	p.forgetApprovedCalls(run.Tenant, run.ID)
 	p.cascade(ctx, run)
+	p.deliverAnswer(ctx, run)
 	switch {
 	case run.Origin == runs.OriginSystem:
 		p.fileHook(run)
@@ -75,7 +76,9 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 	if cfg.TitleAgent != "" && run.Prev == "" {
 		p.startHook(ctx, run, cfg.TitleAgent, hookTitle, run.Thread, fmt.Sprintf(titlePrompt, clip(run.Text, 2000)))
 	}
-	if cfg.MemoryAgent != "" {
+	// What is said in a private thread is its participants' alone: nothing
+	// in it becomes a note anyone else would be sent.
+	if cfg.MemoryAgent != "" && !p.privateThread(run.Tenant, run.Thread) {
 		// Every note is sent to other people's runs, so what a person's
 		// own credential reached is not taught at all.
 		if p.mayCarryPersonData(ctx, run) {
@@ -193,7 +196,9 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 		Origin: runs.OriginSystem,
 		Text:   prompt,
 		Actor:  envelope.Actor{ID: "system:" + hook, Display: "platform " + hook, Bot: true},
-		Meta:   hookMeta(hook, target, extra...),
+		// The housekeeping run is sent the turn's words, so it is read
+		// where the turn is: in its project and its conversation.
+		Meta: hookMeta(hook, target, append([]map[string]string{{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread}}, extra...)...),
 	})
 	if err != nil {
 		p.log.Warn("platform: housekeeping run could not start", "hook", hook, "error", err)

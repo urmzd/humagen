@@ -18,6 +18,7 @@ one per agent are all the same record with different values.
 | `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. |
 | `slack` | `sessions`, `commands`, and `machine` and `people` (see [People a Slack app answers for](#people-a-slack-app-answers-for)). |
 | `github` | `auto_labels`, `checks`, `guides`, `mutations`, `read_repositories`. |
+| `home` | `{project, channel}`: where the client files the threads it starts outside a channel bound to one, such as direct messages and GitHub issues. `project` is a project's name, or `~` for the workspace, and must exist. `channel` is one of its channels, not archived; left out, `general`. Left out entirely, the workspace's `general`. A Slack thread outside a bound channel is filed here, private for a direct message (see [Slack coworking](slack.md#coworking-channels-threads-and-mentions)). |
 | `enabled` | A disabled client answers nothing and carries nothing. |
 
 The options under `slack` and `github` are the ones [Slack](slack.md) and
@@ -71,6 +72,12 @@ reaches its service with that person's own credential, and the app's own runs,
 asked as itself, act for nobody and get no such tools. A Slack connector's run
 acts for the one person the team's enabled Slack clients map its Slack user
 to; a user two clients map to different people acts for nobody.
+
+The same credential, and no other, records where the app posted an inbox
+message: `PUT /api/inbox/{id}/deliveries/{client}` with `{channel, ts}`. The
+receipt shows in that message's `deliveries`, to that machine only, so after a
+restart, an edit or a withdrawal the app updates its post instead of posting
+again. For anyone else the answer is 404.
 
 The trust model: the credential named as `machine` holds the vote of every
 person mapped here and can raise runs as them, and so use the tools that act as

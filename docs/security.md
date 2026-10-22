@@ -39,20 +39,19 @@ own: every project route checks `projects:read` or `projects:write` first, and
 govern is asked for on top, for the workspace, a company project, its notes, or
 a deleted name. A deleted name's tombstone is never forgotten while
 conversations or files are still filed under it, so later deletes cannot clear
-the way to adopting them. Then the caller's role on the project decides, and
-only narrows: a viewer reads, a member creates projects under it and proposes
-notes, an owner changes it (see [Project roles](authorization.md#project-roles)).
-A project the caller has no role in answers 404. A project's notes are asked
-the same through every route that changes them: the project's memory routes,
-the inbox, and the memory agent, which keeps what it learns from a turn
-unasked only when the workspace chose that and the person the turn was for may
-change those notes themselves. The agent memory routes reach an agent's own
-notes only, and answer 404 for a project's memory owner (`project:<name>`, and
-`project:` for the workspace). Reads are not confined to members yet: every
-project keeps an entry for everyone of at least viewer, and a members-only
-project is refused (409), so a role never claims a privacy that is not
-enforced. A project's runs, threads and memory stay readable by everyone with
-the permission to read them.
+the way to adopting them. Its notes are asked the same through every route that changes
+them: the project's memory routes, the inbox, and the memory agent, which
+keeps what it learns from a turn unasked only when the workspace chose that
+and the person the turn was for may change those notes themselves. The agent memory routes reach
+an agent's own notes only, and answer 404 for a project's memory owner
+(`project:<name>`, and `project:` for the workspace). Then the caller's role on
+the project decides, and only narrows: a viewer reads, a member creates
+projects under it and proposes notes, an owner changes it (see
+[Project roles](authorization.md#project-roles)). A project the caller has no
+role in answers 404, and so does everything that lives in it: its runs,
+threads, events, files, notes, schedules, inbox messages, limits and eval
+suites, and the agents that live there, each answering exactly as an object
+that does not exist. A private thread is read by its participants alone.
 
 A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:
@@ -155,8 +154,8 @@ no permission, grants nothing.
   `act_as`, who must hold `runs:write` themselves; a credential acting for
   nobody is refused (403). No route takes an author or an agent to speak as,
   and nothing writes an agent's turn but its run. A shared thread is read by
-  everyone with `runs:read`: private threads are refused (409) until every
-  read path is confined.
+  everyone with `runs:read` who sees its project; a private one by its
+  participants alone, and every read path answers 404 for it to anyone else.
 - **The machine holds its people's votes.** Whoever holds the credential a
   Slack client names as `machine` can answer every question as any person the
   client maps, within what each may answer, and raise runs as them, which

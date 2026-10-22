@@ -41,6 +41,9 @@ export const ActionId = {
   discardMemories: "aui.memory.discard",
   allowOnce: "aui.budget.once",
   raiseBudget: "aui.budget.raise",
+  /** Post an agent's draft as the announcement it wrote. Only the project's owners may. */
+  publishDraft: "aui.draft.publish",
+  discardDraft: "aui.draft.discard",
   // Home (see home.ts). `turnId` is HOME_ID; Review reuses `open` with the item's ids.
   /** Ask the assistant from Home. `text` is the question; Slack sends none, so collect it in a form. */
   homeAsk: "aui.home.ask",

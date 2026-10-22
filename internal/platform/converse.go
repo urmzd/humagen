@@ -263,6 +263,12 @@ type Turn struct {
 	KeepsNotes bool
 }
 
+// NoProjectCalled is what a turn filed in a project that is not there is
+// refused with, and so is one filed in a project its asker may not see.
+func NoProjectCalled(name string) error {
+	return fmt.Errorf("%w: no project called %q", ErrSettings, projects.NameOf(name))
+}
+
 // Converse sends a message into a conversation and starts the run that answers.
 //
 // Any agent available where the conversation is filed can answer any turn.
@@ -301,7 +307,7 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 	} else if project := projects.NameOf(t.Project); project != "" {
 		if !p.HasProject(tenant, project) {
-			return runs.Run{}, fmt.Errorf("%w: no project called %q", ErrSettings, project)
+			return runs.Run{}, NoProjectCalled(project)
 		}
 		meta[runs.MetaProject] = project
 	}

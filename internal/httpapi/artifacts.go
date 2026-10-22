@@ -13,10 +13,10 @@ import (
 
 func (s *Server) artifactRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/artifacts", s.authed(auth.ArtifactsRead, s.listArtifacts))
-	mux.HandleFunc("GET /api/artifacts/{id}", s.authed(auth.ArtifactsRead, s.getArtifact))
-	mux.HandleFunc("GET /api/artifacts/{id}/versions", s.authed(auth.ArtifactsRead, s.artifactVersions))
-	mux.HandleFunc("GET /api/artifacts/{id}/content", s.authed(auth.ArtifactsRead, s.artifactContent))
-	mux.HandleFunc("DELETE /api/artifacts/{id}", s.authed(auth.ArtifactsWrite, s.deleteArtifact))
+	mux.HandleFunc("GET /api/artifacts/{id}", s.authed(auth.ArtifactsRead, s.seenArtifact(s.getArtifact)))
+	mux.HandleFunc("GET /api/artifacts/{id}/versions", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactVersions)))
+	mux.HandleFunc("GET /api/artifacts/{id}/content", s.authed(auth.ArtifactsRead, s.seenArtifact(s.artifactContent)))
+	mux.HandleFunc("DELETE /api/artifacts/{id}", s.authed(auth.ArtifactsWrite, s.seenArtifact(s.deleteArtifact)))
 	mux.HandleFunc("GET /api/storage", s.authed(auth.ArtifactsRead, s.storage))
 }
 
@@ -25,9 +25,10 @@ func (s *Server) artifactRoutes(mux *http.ServeMux) {
 // optional. q matches part of a title.
 func (s *Server) listArtifacts(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
+	seer := s.P.Seer(who)
 	query := artifacts.Query{
 		Project: q.Get("project"), Agent: q.Get("agent"), Run: q.Get("run"), Thread: q.Get("thread"),
-		Kind: artifacts.Kind(q.Get("kind")), Before: q.Get("before"), Title: q.Get("q"),
+		Kind: artifacts.Kind(q.Get("kind")), Before: q.Get("before"), Title: q.Get("q"), Keep: seer.Artifact,
 	}
 	if query.Kind != "" && !slices.Contains(artifacts.Kinds(), query.Kind) {
 		fail(w, http.StatusBadRequest, "kind is not one this server knows")
@@ -125,8 +126,12 @@ func (s *Server) storage(w http.ResponseWriter, _ *http.Request, who auth.Princi
 			limit = &pol.MaxStorage
 		}
 	}
+	// What a project the caller cannot see holds is counted in the total,
+	// and not named.
+	seer := s.P.Seer(who)
 	ok(w, http.StatusOK, map[string]any{
 		"used_bytes": u.Bytes, "count": u.Count, "limit_bytes": limit,
-		"by_project": orEmpty(u.ByProject), "by_agent": orEmpty(u.ByAgent),
+		"by_project": orEmpty(slices.DeleteFunc(u.ByProject, func(sh artifacts.Share) bool { return !seer.Project(sh.Name) })),
+		"by_agent":   orEmpty(slices.DeleteFunc(u.ByAgent, func(sh artifacts.Share) bool { return !seer.Agent(sh.Name) })),
 	})
 }

@@ -54,7 +54,7 @@ func TestRestartKeepsRolesKindsAndMoves(t *testing.T) {
 		if tree.Like("partner") != projects.Account || !slices.Equal(tree.Kinds(), []projects.KindSpec{partner}) {
 			t.Fatalf("the workspace's kinds after restart = %+v", tree.Kinds())
 		}
-		if g, _ := tree.Get("Globex"); g.Parent != "Field" || g.Announce != projects.Member || !slices.Equal(g.Members, members("*=viewer", "ada=owner")) {
+		if g, _ := tree.Get("Globex"); g.Parent != "Field" || g.Announce != projects.Member || !slices.Equal(g.Members, members("ada=owner")) {
 			t.Fatalf("Globex after restart = %+v", g)
 		}
 		if a := tree.Resolve("Globex", projects.Reader{Subject: "dee", Roles: []string{"comms"}}); a.Role != projects.Owner || a.From != "" {
@@ -164,6 +164,11 @@ func TestOlderRecordsReadAsEveryoneOwns(t *testing.T) {
 	mustCreate(t, s, "acme", team("Renewals", "Launch"), ada)
 	if a := s.Tree("acme").Resolve("Renewals", projects.Reader{Subject: "anyone"}); a.Role != projects.Owner {
 		t.Fatalf("anyone in a new child = %+v", a)
+	}
+	// So is an account, which cannot be members only there: it is made, and
+	// opened to everyone as a viewer.
+	if acct := mustCreate(t, s, "acme", projects.Project{Name: "Initech", Parent: "Launch", Kind: projects.Account}, ada); !slices.Equal(acct.Members, members("*=viewer", "ada=owner")) {
+		t.Fatalf("an account under an older project = %+v", acct.Members)
 	}
 	// The migration writes the same entries, for a name it keeps too.
 	m := projects.NewStore()

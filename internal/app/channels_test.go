@@ -23,7 +23,7 @@ func TestTheFilesChannelsAndExpertsMergeIntoTheTree(t *testing.T) {
 		Experts:  []spec.Expert{{Who: "role:security", Topics: []string{"security"}}},
 		Projects: []spec.Project{
 			{Name: "Globex", Kind: spec.ProjectAccount,
-				Channels: []spec.Channel{{Name: "general", Purpose: "The account"}, {Name: "renewals", Title: "Renewals", Purpose: "Renewal work", Default: "auto"}},
+				Channels: []spec.Channel{{Name: "general", Purpose: "The account"}, {Name: "renewals", Title: "Renewals", Purpose: "Renewal work", Default: "auto", Slack: &spec.ChannelSlack{Client: "slack-acme", Channel: "C0123GLOBEX"}}},
 				Experts:  []spec.Expert{{Who: "okta|00u1ana", Topics: []string{"billing", "renewals"}}}},
 			{Name: "Field"},
 		},
@@ -36,6 +36,9 @@ func TestTheFilesChannelsAndExpertsMergeIntoTheTree(t *testing.T) {
 	renewals, err := p.Projects.Channel(tenant, "Globex", "renewals")
 	if err != nil || renewals.Managed != projects.ManagedFile || renewals.Version != 1 || renewals.Default != "auto" || renewals.Purpose != "Renewal work" {
 		t.Fatalf("the file's channel = %+v, %v", renewals, err)
+	}
+	if bound, ok := p.Projects.BoundTo(tenant, "slack-acme", "C0123GLOBEX"); !ok || bound.Name != "renewals" {
+		t.Fatalf("the file's binding = %+v, %v", bound, ok)
 	}
 	if general, _ := p.Projects.Channel(tenant, "Globex", projects.General); general.Purpose != "The account" || general.Managed != projects.ManagedFile {
 		t.Fatalf("general as the file declares it = %+v", general)

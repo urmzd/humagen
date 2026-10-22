@@ -139,6 +139,12 @@ export interface Schedule {
   project?: string;
   /** What the schedule is for, at most 500 characters. The agent is not shown it. */
   description?: string;
+  /**
+   * Where the answer of each run goes: the creator's inbox, or posted in the
+   * project (held for its owners where agent posts are reviewed). Absent, it
+   * stays on the run.
+   */
+  deliver?: "inbox" | "project";
 }
 
 /**
@@ -150,6 +156,8 @@ export type ScheduleEdit = Omit<Schedule, "name">;
 /** A schedule plus what makes it trustworthy: state, next fires, recent runs. */
 export interface ScheduleView extends Schedule {
   paused: boolean;
+  /** "file" while the platform file declares it: run and pause it here, change it in the file. */
+  managed?: "file";
   created_by?: string;
   /** Who last edited the schedule, and when. Absent until it is edited. */
   updated_by?: string;
@@ -414,6 +422,8 @@ export interface Client {
     mutations?: boolean;
     read_repositories?: string[];
   };
+  /** Where the client files threads it starts outside a bound channel. Absent, the workspace's general. */
+  home?: { project: string; channel?: string };
   enabled: boolean;
   /** Set on a client the server's configuration owns and the API cannot change. */
   managed?: string;
@@ -693,6 +703,7 @@ export const api = {
       bots: c.bots ?? {},
       slack: c.slack ?? null,
       github: c.github ?? null,
+      home: c.home ?? null,
       enabled,
     }),
   deleteClient: (id: string) => call<void>("DELETE", `/api/clients/${encodeURIComponent(id)}`),
@@ -1055,6 +1066,8 @@ export interface Channel {
   title?: string;
   purpose?: string;
   default?: string;
+  /** The Slack channel it is bound to: a Slack thread there is a shared thread here. */
+  slack?: { client: string; channel: string };
   archived?: boolean;
   managed?: string;
   version: number;
@@ -1112,11 +1125,12 @@ export const coworking = {
   /** A thread and one page of its turns, the newest first; `before` reads the page above. */
   thread: (id: string, before?: string) =>
     call<ThreadPage>("GET", before ? `${threadPath(id)}?${new URLSearchParams({ before })}` : threadPath(id)),
-  start: (t: { project: string; channel: string; text: string; title?: string; post_only?: boolean }) =>
-    call<ThreadPosted>("POST", "/api/threads", { ...t, visibility: "shared" }),
+  /** Starts a thread: shared unless `visibility` says private, read then by the people in it alone. */
+  start: (t: { project: string; channel: string; text: string; title?: string; post_only?: boolean; visibility?: "shared" | "private" }) =>
+    call<ThreadPosted>("POST", "/api/threads", { visibility: "shared", ...t }),
   post: (id: string, m: { text: string; after?: string; post_only?: boolean; answers?: { run: string; question: string } }) =>
     call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
-  update: (id: string, t: { version: number; title: string; visibility: "shared"; default: string }) =>
+  update: (id: string, t: { version: number; title: string; visibility: "shared" | "private"; default: string }) =>
     call<Thread>("PUT", threadPath(id), t),
   /** The workspace's people whose name or handle holds `q`, for the @ typeahead. */
   people: (q: string) =>

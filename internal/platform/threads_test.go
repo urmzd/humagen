@@ -36,14 +36,26 @@ func seePeople(t *testing.T, p *platform.Platform, who ...auth.Principal) {
 // account is everyone's to view only.
 func workIn(t *testing.T, p *platform.Platform, project string, who ...auth.Principal) {
 	t.Helper()
-	pr, err := p.Projects.Get(tenant, project)
-	if err != nil {
-		t.Fatal(err)
+	subjects := make([]string, 0, len(who))
+	for _, w := range who {
+		subjects = append(subjects, w.Subject)
+	}
+	joinAs(t, p, project, projects.Member, subjects...)
+}
+
+// joinAs gives people a role in a project, as its owner would.
+func joinAs(t *testing.T, p *platform.Platform, project string, role projects.Role, subjects ...string) {
+	t.Helper()
+	pr, ok := p.Projects.Tree(tenant).Get(project)
+	if !ok {
+		t.Fatalf("no project %s", project)
+	}
+	members := slices.Clone(pr.Members)
+	for _, s := range subjects {
+		members = append(members, projects.Entry{Who: s, Role: role})
 	}
 	if _, err := p.Projects.Update(tenant, project, pr.Version, ada, time.Now(), func(pr *projects.Project) error {
-		for _, w := range who {
-			pr.Members = append(pr.Members, projects.Entry{Who: w.Subject, Role: projects.Member})
-		}
+		pr.Members = members
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -789,11 +801,23 @@ func TestAThreadNoAgentAnsweredIsListedInItsChannel(t *testing.T) {
 	if got := in("Globex", ""); len(got) != 0 {
 		t.Fatalf("Globex lists %v", got)
 	}
-	if _, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "secret"}); !errors.Is(err, threads.ErrPrivate) {
+	// A private thread is listed only for those who take part in it.
+	secret, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "secret"})
+	if err != nil {
 		t.Fatalf("a private thread = %v", err)
 	}
-	if _, err := p.UpdateThread(t.Context(), operator, quiet.Thread.ID, platform.ThreadUpdate{Version: quiet.Thread.Version, Visibility: threads.Private}); !errors.Is(err, threads.ErrPrivate) {
-		t.Fatalf("a thread made private = %v", err)
+	listed := func(who auth.Principal) bool {
+		page, _, err := p.ThreadPageAs(who, runs.ThreadQuery{Projects: []string{"Field"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return slices.ContainsFunc(page, func(s platform.ThreadSummary) bool { return s.ID == secret.Thread.ID })
+	}
+	if !listed(operator) || listed(viewer) {
+		t.Fatalf("a private thread is listed for its owner %v and for another %v", listed(operator), listed(viewer))
+	}
+	if made, err := p.UpdateThread(t.Context(), operator, quiet.Thread.ID, platform.ThreadUpdate{Version: quiet.Thread.Version, Title: quiet.Thread.Title, Visibility: threads.Private}); err != nil || made.Visibility != threads.Private {
+		t.Fatalf("a thread made private = %+v, %v", made, err)
 	}
 	if _, err := p.ArchiveChannel(tenant, "Field", "releases", ada); err != nil {
 		t.Fatal(err)

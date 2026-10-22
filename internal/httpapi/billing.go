@@ -10,6 +10,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/warp/pkg/usage"
 )
 
 // Billing policies are a workspace's limits. Anyone in the workspace can read
@@ -24,12 +25,23 @@ func (s *Server) billingRoutes(mux *http.ServeMux) {
 }
 
 func (s *Server) listPolicies(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"policies": s.P.Policies.List(who.Tenant)})
+	seer := s.P.Seer(who)
+	out := []policy.Policy{}
+	for _, pol := range s.P.Policies.List(who.Tenant) {
+		if seer.Scope(pol.Scope) {
+			out = append(out, pol)
+		}
+	}
+	ok(w, http.StatusOK, map[string]any{"policies": out})
 }
 
 // exists checks that a scope names something in the caller's tenant. The
-// workspace's own limits are the tenant scope, never a project scope.
+// workspace's own limits are the tenant scope, never a project scope. A scope
+// the caller may not read does not exist for them.
 func (s *Server) exists(r *http.Request, who auth.Principal, scope policy.Scope) error {
+	if !s.P.Seer(who).Scope(scope) {
+		return errNotSeen
+	}
 	switch scope.Kind {
 	case policy.Project:
 		if projects.NameOf(scope.Name) == projects.Root {
@@ -100,6 +112,10 @@ func (s *Server) putPolicy(w http.ResponseWriter, r *http.Request, who auth.Prin
 func (s *Server) deletePolicy(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
 	scope := policy.Scope{Kind: policy.Kind(q.Get("kind")), Name: q.Get("name")}
+	if !s.P.Seer(who).Scope(scope) {
+		notFound(w)
+		return
+	}
 	if err := s.P.Policies.Delete(who.Tenant, scope, who.Subject, time.Now()); err != nil {
 		s.problem(w, err)
 		return
@@ -108,7 +124,14 @@ func (s *Server) deletePolicy(w http.ResponseWriter, r *http.Request, who auth.P
 }
 
 func (s *Server) policyHistory(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"changes": s.P.Policies.History(who.Tenant)})
+	seer := s.P.Seer(who)
+	out := []policy.Change{}
+	for _, c := range s.P.Policies.History(who.Tenant) {
+		if seer.Scope(c.Scope) {
+			out = append(out, c)
+		}
+	}
+	ok(w, http.StatusOK, map[string]any{"changes": out})
 }
 
 // measure is one limit and what has been used against it. A limit of zero
@@ -170,7 +193,11 @@ func project(used int64, start, end, now time.Time) *int64 {
 func (s *Server) usage(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	now := time.Now()
 	out := []scopeUsage{}
+	seer := s.P.Seer(who)
 	for _, pol := range s.P.Policies.List(who.Tenant) {
+		if !seer.Scope(pol.Scope) {
+			continue
+		}
 		start, end := policy.PeriodStart(pol.Period, now), policy.PeriodEnd(pol.Period, now)
 		u := s.P.Usage.Usage(who.Tenant, pol.Scope, start)
 		warn := pol.WarnAt
@@ -203,7 +230,14 @@ func (s *Server) usage(w http.ResponseWriter, _ *http.Request, who auth.Principa
 }
 
 func (s *Server) usageNotices(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, map[string]any{"notices": orEmpty(s.P.Usage.Notices(who.Tenant, 200))})
+	seer := s.P.Seer(who)
+	out := []usage.Entry{}
+	for _, e := range s.P.Usage.Notices(who.Tenant, 200) {
+		if seer.Notice(e) {
+			out = append(out, e)
+		}
+	}
+	ok(w, http.StatusOK, map[string]any{"notices": out})
 }
 
 // denied answers a run a policy refused. A count limit is "too many, try

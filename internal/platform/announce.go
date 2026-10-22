@@ -2,6 +2,8 @@ package platform
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/urmzd/warp/pkg/auth"
@@ -134,14 +136,112 @@ func (p *Platform) ProjectInbox(who auth.Principal, project string, children boo
 	return msgs, next, err
 }
 
+// SurfaceNoticesFor reports, for a client's machine, a notice of a message
+// addressed to people its clients map, and who each of them is there: a
+// mention of them, or a question they may answer, named by subject or sent
+// to a role they hold, as experts named by a role are. The machine reads it
+// for each of them (act_as) and tells them in a direct message. Nothing
+// reaches the machine about anyone it does not map, and one notice names at
+// most MaxNotified people, as one message notifies at most that many.
+func (p *Platform) SurfaceNoticesFor(who auth.Principal, n inbox.Notice) []ActAs {
+	switch n.Kind {
+	case inbox.KindMention, inbox.KindClarification, inbox.KindApproval:
+	default:
+		return nil
+	}
+	if who.Kind != auth.Machine {
+		return nil
+	}
+	var tree *projects.Tree
+	var out []ActAs
+	for _, c := range p.Clients.List(who.Tenant) {
+		if !machineOf(c, who) || c.Slack == nil {
+			continue
+		}
+		for _, user := range slices.Sorted(maps.Keys(c.Slack.People)) {
+			// Who the message names is read first, by subject and roles,
+			// so nobody else's projects are walked.
+			named := p.mapped(who, c.Slack.People[user])
+			m, err := p.Inbox.GetAs(who.Tenant, n.ID, named)
+			if err != nil || !addressedTo(m, named) {
+				continue
+			}
+			person := principalOf(who, named)
+			if !InboxSees(person, n.Kind) {
+				continue
+			}
+			if tree == nil {
+				tree = p.Projects.Tree(who.Tenant)
+			}
+			if m, err = p.Inbox.GetAs(who.Tenant, n.ID, p.inboxReader(tree, person)); err != nil || !p.Seer(person).Message(m) {
+				continue
+			}
+			out = append(out, ActAs{Client: c.ID, User: user})
+			if len(out) == MaxNotified {
+				return out
+			}
+		}
+	}
+	return out
+}
+
+// addressedTo reports whether a message names a reader in particular: by
+// subject, or by a role they hold. A message to a project's members or its
+// owners does not; it is read in their inbox, not sent to them.
+func addressedTo(m inbox.Message, r inbox.Reader) bool {
+	if m.To != "" {
+		return m.To == r.Subject
+	}
+	if r.Subject != "" && slices.Contains(m.Audience, r.Subject) {
+		return true
+	}
+	for _, role := range r.Roles {
+		if role != "" && slices.Contains(m.Audience, projects.RolePrefix+role) {
+			return true
+		}
+	}
+	return false
+}
+
 // InboxNoticeFor reports whether a notice about an inbox message may reach a
 // caller's event stream: they may see its kind, and it is addressed to them
-// as their own inbox reads it, so an id from a project they cannot see, or an
-// announcement not for them, never reaches it.
+// as their own inbox reads it (noticeReader), so an id from a project they
+// cannot see, or an announcement not for them, never reaches it.
 func (p *Platform) InboxNoticeFor(who auth.Principal, n inbox.Notice) bool {
 	if !InboxSees(who, n.Kind) {
 		return false
 	}
-	_, err := p.Inbox.GetAs(who.Tenant, n.ID, p.inboxReader(p.Projects.Tree(who.Tenant), who))
-	return err == nil
+	m, err := p.Inbox.GetAs(who.Tenant, n.ID, p.noticeReader(p.Projects.Tree(who.Tenant), who))
+	return err == nil && p.Seer(who).Message(m)
+}
+
+// noticeReader is who a caller is to the notices on their stream: their own
+// inbox's reader, and for a client's machine every project whose general
+// channel one of its clients is bound to and which it may see, a viewer's
+// included, as the app posts that project's announcements there whatever
+// its role. A members-only project, which a machine has no role in, is
+// never among them.
+func (p *Platform) noticeReader(tree *projects.Tree, who auth.Principal) inbox.Reader {
+	r := p.inboxReader(tree, who)
+	if who.Kind != auth.Machine {
+		return r
+	}
+	var seer *Seer
+	for _, c := range p.Clients.List(who.Tenant) {
+		if !machineOf(c, who) {
+			continue
+		}
+		for _, b := range p.Projects.Bindings(who.Tenant, c.ID) {
+			if b.Channel != projects.General || slices.Contains(r.Projects, b.Project) {
+				continue
+			}
+			if seer == nil {
+				seer = p.Seer(who)
+			}
+			if seer.Project(b.Project) {
+				r.Projects = append(r.Projects, b.Project)
+			}
+		}
+	}
+	return r
 }

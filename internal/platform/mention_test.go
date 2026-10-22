@@ -9,6 +9,7 @@ import (
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // A mention is for the person tagged alone. Reading it takes runs:read, and
@@ -20,6 +21,10 @@ func TestAMentionIsForThePersonTaggedAndDoneTakesRunsWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	reader := auth.Principal{Subject: "vic", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Viewer}}
+	// A mention is read where its thread lives: Globex, which everyone sees.
+	if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Globex"}); err != nil {
+		t.Fatal(err)
+	}
 	part := inbox.MentionPart{Thread: "th-0123456789abcdef", Message: "m-2", Project: "Globex", Channel: "renewals", By: "ada", Excerpt: inbox.Excerpt("@opal can you check the renewal?")}
 	raise := func(to string) inbox.Message {
 		t.Helper()

@@ -415,8 +415,7 @@ export interface ThreadSummary {
 }
 
 /** Who reads a thread. `shared` is everyone who can see its project.
-`private`, its participants only, is refused until every read path
-is confined.
+`private` is its participants only, and `projects:govern`.
  */
 export type ThreadVisibility = "shared" | "private";
 
@@ -452,6 +451,7 @@ export interface Thread {
   participants: ThreadParticipant[];
   /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. */
   default?: string;
+  surface?: ThreadSurface;
   /** Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written. */
   version: number;
   /** The handle of the person who started it, the first person to ask or post in it. */
@@ -525,13 +525,16 @@ export interface ThreadPage {
   answers: ThreadAnswers;
 }
 
-/** A new shared thread and its first message. */
+/** A new thread and its first message. `visibility` is required, except
+with `surface`, where the platform files the thread and project,
+channel, visibility and default are left out.
+ */
 export interface ThreadInput {
   /** Where it is filed. Empty or `~` is the workspace itself. */
   project?: string;
   /** The project's channel. Empty is `general`. */
   channel?: string;
-  visibility: ThreadVisibility;
+  visibility?: ThreadVisibility;
   title?: string;
   /** Answers untagged messages in the thread, an agent available in the project or `auto`. */
   default?: string;
@@ -539,6 +542,7 @@ export interface ThreadInput {
   /** Post without any agent answering, unless the message tags one. */
   post_only?: boolean;
   act_as?: ActAs;
+  surface?: SurfaceRef;
 }
 
 /** A message posted in a thread. */
@@ -549,6 +553,7 @@ export interface ThreadMessageInput {
   post_only?: boolean;
   answers?: ThreadAnswerRef;
   act_as?: ActAs;
+  surface?: SurfaceRef;
 }
 
 /** A thread's title, visibility and default, as a whole. */
@@ -588,6 +593,8 @@ export interface ThreadPosted {
   rule: ThreadRule;
   /** Why no agent answers, when none does. */
   reason?: string;
+  /** The message was posted before, by its surface's id. This is what it did then; nothing was started again. */
+  repeated?: boolean;
 }
 
 /** Says that something happened in a thread, and nothing about what. Fetch the thread to see it. */
@@ -612,6 +619,7 @@ export interface Channel {
   purpose?: string;
   /** Answers untagged messages here, an agent or `auto`. Absent inherits from the project. */
   default?: string;
+  slack?: SlackBinding;
   /** It and its threads stay, and it takes no new threads. */
   archived?: boolean;
   /** `file` when the platform file declares the channel. */
@@ -633,14 +641,70 @@ export interface ChannelInput {
   title?: string;
   purpose?: string;
   default?: string;
+  slack?: SlackBinding;
 }
 
-/** A channel's title, purpose and default, as a whole. */
+/** A channel's title, purpose, default and Slack binding, as a whole. */
 export interface ChannelUpdate {
   version: number;
   title?: string;
   purpose?: string;
   default?: string;
+  slack?: SlackBinding;
+}
+
+/** The Slack channel a channel is bound to: a Slack thread there is a
+shared thread here. The client is a Slack client of the workspace,
+whose bot must already be in the channel, so no scope widens. One
+Slack channel is bound to at most one channel of the workspace, and
+a direct message is never bound. Archiving a channel unbinds it.
+Binding one, or binding a channel elsewhere, takes `clients:write`
+besides owning the project (403 without): which of a client's Slack
+channels a project answers in is the client's admins' to decide, as
+every new thread there is filed in the project. Keeping a binding
+as it is, or removing it, takes only the owner.
+ */
+export interface SlackBinding {
+  /** The Slack client's id. */
+  client: string;
+  /** The Slack channel's id, public (C) or private (G). */
+  channel: string;
+}
+
+/** One Slack channel a client is bound to, and the channel it is bound to here. */
+export interface ClientBinding {
+  slack_channel: string;
+  /** The project. Empty is the workspace itself. */
+  project: string;
+  channel: string;
+}
+
+/** Where on a client's surface a message was posted: for Slack, the
+channel, the thread's ts and the message's own. Only the credential
+the client names as its `slack.machine` sends one, with `act_as` of
+that client. The thread is found by its surface, or started and filed
+where the platform says: the channel the Slack channel is bound to,
+shared, or else the client's home, private for a direct message or
+the assistant pane. The text is Slack's own: the app's mention is
+dropped, a mapped bot or person is their tag, and anyone else is
+plain and refused.
+ */
+export interface SurfaceRef {
+  client: string;
+  channel: string;
+  /** The thread's, the ts of its first message. */
+  ts: string;
+  /** The message's own ts, which makes a second post of it change nothing. Absent is `ts`. */
+  message?: string;
+  /** The app's own bot user id, whose mention is not a tag. */
+  app_user?: string;
+}
+
+/** The thread on a client's surface this thread is. It never changes. */
+export interface ThreadSurface {
+  client: string;
+  channel: string;
+  ts: string;
 }
 
 /** Who answers for some topics in a project, a person by subject or `role:<name>`. */
@@ -717,17 +781,25 @@ instructions of the projects above. The agent's own instructions
 win over them.
  */
   instructions?: string;
-  /** Who answers for some topics here and below. Set with `PUT /api/projects/{name}/experts`. */
-  experts: ProjectExpert[];
+  /** What a scheduled agent's announcement here does: `publish` posts it,
+`review` holds it as a draft for the project's owners. Absent
+inherits the default: review at the workspace and in company
+projects, which everyone reads, and publish in team and account
+projects.
+ */
+  agent_posts?: "publish" | "review";
   /** Who holds a role here. `*` is everyone who can see the parent (at
 the workspace, everyone holding `projects:read`), `role:<name>`
 the holders of a policy role, anything else a subject. An owner
-here owns everything below. Every project keeps a `*` entry of at
-least viewer, so every project stays visible.
+here owns everything below. A project with no `*` entry is
+members only: read by its members alone. A new account project
+is members only unless everyone owns a project above it.
  */
   members: ProjectEntry[];
   /** The workspace's own kinds, each a label over `team` or `account`. Only the workspace carries them. */
   kinds?: ProjectKindSpec[];
+  /** Who answers for some topics here and below. Set with `PUT /api/projects/{name}/experts`. */
+  experts: ProjectExpert[];
   agents: ProjectAgents;
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
@@ -795,7 +867,8 @@ than the parent allows.
 
 /** What an owner may change on a project. Title, description, account
 and instructions are replaced as a whole: one left out is cleared.
-`kind`, `archived`, `announce` and `kinds` change only when given.
+`kind`, `archived`, `announce`, `kinds` and `agent_posts` change only
+when given.
  */
 export interface ProjectUpdate {
   /** The version the caller read. */
@@ -812,6 +885,8 @@ export interface ProjectUpdate {
   announce?: "" | "viewer" | "member" | "owner";
   /** The workspace's own kinds, on the workspace only. A kind a project still has cannot be removed (409). */
   kinds?: ProjectKindSpec[];
+  /** What a scheduled agent's announcement here does, `publish` or `review`. Empty takes the kind's default. */
+  agent_posts?: "" | "publish" | "review";
 }
 
 /** A caller's role in a project, where it comes from, and the entry or rule that gave it. */
@@ -886,7 +961,7 @@ project names as experts, and `channel` to one of its channels,
 which `channel` holds before and after.
  */
   what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "channel";
-  /** The agent a home change is about. */
+  /** The agent a `home` change is about. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
   note?: string;
@@ -1044,6 +1119,15 @@ export interface Schedule {
   project?: string;
   /** What the schedule is for, at most 500 characters. The agent is not shown it. */
   description?: string;
+  /** Where the answer of each run goes. Left out, it stays on the run.
+`inbox` sends it to the schedule's creator as a result. `project`
+posts it in the schedule's project as an announcement from the
+agent, its first line the subject: it needs a project (`~` for
+the workspace) where the agent is available (400 without one). A
+project whose `agent_posts` is `review` holds it as a draft for
+its owners instead. An answer of NONE goes nowhere.
+ */
+  deliver?: "inbox" | "project";
 }
 
 /** A schedule with whether it is running, when it fires next, and how its recent occurrences went. */
@@ -1054,7 +1138,11 @@ export interface ScheduleView {
   text: string;
   project?: string;
   description?: string;
+  /** Where the answer of each run goes. Absent when it stays on the run. */
+  deliver?: "inbox" | "project";
   paused: boolean;
+  /** `file` while the platform file declares the schedule: it can be paused, resumed and run here, and changing or deleting it answers 409. */
+  managed: "file";
   created_by?: string;
   /** Who last changed the schedule. Absent until it is changed. */
   updated_by?: string;
@@ -1089,7 +1177,8 @@ a run is waiting on. `result` is the answer of a run nobody was
 waiting on, and `artifact` a file that was published or revised.
 `mention` is a message in a shared thread that tags the reader, and
 `announcement` news posted in a project, which reaches the members
-of that project and of every project below it.
+of that project and of every project below it, or an agent's post
+held as a draft for the project's owners.
  */
 export type InboxKind = "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement";
 
@@ -1103,12 +1192,21 @@ export interface InboxNotice {
   kind: InboxKind;
   state: InboxState;
   updated_at: string;
+  /** To a client's machine only: the person it maps whom a mention or a
+question is addressed to, by subject or by a role they hold, so it
+reads the message for them (`act_as_client`, `act_as_user`) and
+tells them in Slack. A message to several people it maps, such as
+experts named by a role, is one notice for each, at most 20.
+ */
+  for?: ActAs;
 }
 
 export interface InboxFrom {
   /** What sent the message, such as `agent`, `rule` or `system`. */
   kind: string;
   name: string;
+  /** The person who published an agent's draft, by subject. Absent on what an agent posted itself. */
+  approved_by?: string;
 }
 
 /** Which agents may call an agent, and which of those calls a person approves. */
@@ -1291,19 +1389,44 @@ answering checks again.
   steered_for?: string;
 }
 
+/** A post an agent wrote for a project, waiting for one of its owners. */
+export interface InboxDraftPart {
+  /** Where it would be posted. Empty is the root. */
+  project: string;
+  agent: string;
+  run: string;
+  subject: string;
+  text?: string;
+}
+
+/** Where one client posted a message. */
+export interface InboxDelivery {
+  channel: string;
+  ts: string;
+  at: string;
+}
+
+/** Where a client posted a message. */
+export interface InboxDeliveryInput {
+  /** Where it was posted, such as a Slack channel id. 1 to 64 characters, no spaces. */
+  channel: string;
+  /** The post there, such as a Slack message ts. 1 to 64 characters, no spaces. */
+  ts: string;
+}
+
 /** One typed part of a message. `type` says which of `text`, `alert`,
-`failure`, `memory`, `budget`, `artifact`, `mention` or `question`
-carries the body: `approval`, `choice` and `reply` parts carry
-`question`. A settled question's `outcome` is `approve`, `deny`,
-`choose` (the option in `note`), `reply` (the words in `note`),
-`expired`, `stopped` or `closed`.
+`failure`, `memory`, `budget`, `artifact`, `draft`, `mention` or
+`question` carries the body: `approval`, `choice` and `reply` parts
+carry `question`. A settled question's `outcome` is `approve`,
+`deny`, `choose` (the option in `note`), `reply` (the words in
+`note`), `expired`, `stopped` or `closed`.
  */
 export interface InboxPart {
   id: string;
-  type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply" | "mention";
+  type: "text" | "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "choice" | "reply" | "draft" | "mention";
   state: "open" | "resolved" | "info";
   /** What this caller may do with the part now. Empty once it is resolved, or when the caller has no permission for any action. */
-  actions: ("acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done")[];
+  actions: ("acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done" | "publish")[];
   outcome?: InboxOutcome;
   text?: string;
   alert?: InboxAlertPart;
@@ -1312,6 +1435,7 @@ export interface InboxPart {
   budget?: InboxBudgetPart;
   artifact?: InboxArtifactPart;
   question?: InboxQuestionPart;
+  draft?: InboxDraftPart;
   mention?: InboxMentionPart;
 }
 
@@ -1345,6 +1469,8 @@ export interface InboxMessage {
   unread: boolean;
   source: InboxSource;
   parts: InboxPart[];
+  /** Where the reading client posted the message, by client id. Shown only to that client's machine. */
+  deliveries?: Record<string, InboxDelivery>;
 }
 
 /** One thing that happened to a message. */
@@ -1352,7 +1478,7 @@ export interface InboxChange {
   message: string;
   at: string;
   by?: string;
-  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn";
+  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered";
   part?: string;
   action?: string;
   note?: string;
@@ -1361,7 +1487,11 @@ export interface InboxChange {
 
 /** What a person decided about a part. */
 export interface Resolution {
-  action: "acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done";
+  /** `publish` posts an agent's draft as the announcement it wrote, and
+`discard` drops it; only an owner of the draft's project decides
+one (403 for anyone else who can see it).
+ */
+  action: "acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply" | "done" | "publish";
   /** The proposed notes to keep, with `keep`. */
   ids?: string[];
   /** At most 500 characters. On a denial the model is shown it, so where the answer may reach the credentials of the person the run acts for, only that person may add one. */
@@ -1905,9 +2035,22 @@ export interface ClientInput {
   bots?: Record<string, string> | null;
   slack?: SlackOptions | null;
   github?: GitHubOptions | null;
+  home?: ClientHome | null;
   /** Defaults to true. */
   enabled?: boolean | null;
   credentials?: ClientInputCredentials;
+}
+
+/** Where a client files the threads it starts outside a channel bound to
+one: direct messages, the assistant pane, an unbound channel, a GitHub
+issue. Absent, they are filed in the workspace's `general` channel.
+The channel must be one of the project's, not archived.
+ */
+export interface ClientHome {
+  /** A project's name, or `~` for the workspace. It must exist. */
+  project: string;
+  /** A channel of that project. Absent is `general`. */
+  channel?: string;
 }
 
 /** A Slack app or GitHub installation the workspace answers through, and the limits on the runs it raises. */
@@ -1922,6 +2065,7 @@ export interface ClientView {
   bots?: Record<string, string>;
   slack?: SlackOptions;
   github?: GitHubOptions;
+  home?: ClientHome;
   enabled: boolean;
   /** Set on a client the server's configuration owns, which the API cannot change. */
   managed?: string;
@@ -2553,6 +2697,10 @@ export interface ListUsageNoticesResponse {
 export interface ListClientsResponse {
   clients: ClientView[];
   caps: ClientCaps;
+}
+
+export interface ListClientBindingsResponse {
+  bindings: ClientBinding[];
 }
 
 /** SSE event union type for streaming responses. */

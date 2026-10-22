@@ -7,6 +7,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // A client is one Slack app or GitHub installation the workspace answers
@@ -17,6 +18,7 @@ func (s *Server) clientRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/clients", s.authed(auth.ClientsRead, s.listClients))
 	mux.HandleFunc("POST /api/clients", s.authed(auth.ClientsWrite, s.createClient))
 	mux.HandleFunc("GET /api/clients/{id}", s.authed(auth.ClientsRead, s.getClient))
+	mux.HandleFunc("GET /api/clients/{id}/bindings", s.authed(auth.ClientsRead, s.clientBindings))
 	mux.HandleFunc("PUT /api/clients/{id}", s.authed(auth.ClientsWrite, s.updateClient))
 	mux.HandleFunc("DELETE /api/clients/{id}", s.authed(auth.ClientsWrite, s.deleteClient))
 }
@@ -34,6 +36,7 @@ type clientBody struct {
 	Bots         map[string]string      `json:"bots"`
 	Slack        *clients.SlackOptions  `json:"slack"`
 	GitHub       *clients.GitHubOptions `json:"github"`
+	Home         *clients.Home          `json:"home"`
 	// Enabled defaults to true on create.
 	Enabled     *bool `json:"enabled"`
 	Credentials struct {
@@ -46,7 +49,7 @@ func (b clientBody) input() platform.ClientInput {
 	return platform.ClientInput{
 		Client: clients.Client{
 			ID: b.ID, Name: b.Name, Surface: b.Surface, Identity: b.Identity,
-			DefaultAgent: b.DefaultAgent, Agents: b.Agents, Bots: b.Bots, Slack: b.Slack, GitHub: b.GitHub,
+			DefaultAgent: b.DefaultAgent, Agents: b.Agents, Bots: b.Bots, Slack: b.Slack, GitHub: b.GitHub, Home: b.Home,
 			Enabled: b.Enabled == nil || *b.Enabled,
 		},
 		Token: b.Credentials.Token, SigningSecret: b.Credentials.SigningSecret,
@@ -90,9 +93,32 @@ func (s *Server) getClient(w http.ResponseWriter, r *http.Request, who auth.Prin
 	ok(w, http.StatusOK, s.view(who.Tenant, c))
 }
 
+// clientBindings lists the Slack channels a client is bound to, and the
+// channel each is bound to here, leaving out those in projects the caller may
+// not read.
+func (s *Server) clientBindings(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	list, err := s.P.Bindings(who.Tenant, r.PathValue("id"))
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	seer := s.P.Seer(who)
+	out := []projects.Binding{}
+	for _, b := range list {
+		if seer.Project(b.Project) {
+			out = append(out, b)
+		}
+	}
+	ok(w, http.StatusOK, map[string]any{"bindings": out})
+}
+
 func (s *Server) createClient(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body clientBody
 	if !decode(w, r, &body) {
+		return
+	}
+	if err := s.P.SeesHome(who, body.input().Client); err != nil {
+		s.problem(w, err)
 		return
 	}
 	c, err := s.P.CreateClient(r.Context(), who.Tenant, who.Subject, body.input())
@@ -106,6 +132,10 @@ func (s *Server) createClient(w http.ResponseWriter, r *http.Request, who auth.P
 func (s *Server) updateClient(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body clientBody
 	if !decode(w, r, &body) {
+		return
+	}
+	if err := s.P.SeesHome(who, body.input().Client); err != nil {
+		s.problem(w, err)
 		return
 	}
 	c, err := s.P.UpdateClient(r.Context(), who.Tenant, r.PathValue("id"), who.Subject, body.input())

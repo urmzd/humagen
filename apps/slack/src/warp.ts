@@ -70,6 +70,60 @@ export interface RunRequest {
   act_as?: ActAs;
 }
 
+/**
+ * Where on Slack a message was posted: the thread's ts, the message's own,
+ * and this app's bot user, whose mention is not a tag. Only the client's
+ * machine sends one, and the platform files the thread from the binding.
+ */
+export interface SurfaceRef {
+  client: string;
+  channel: string;
+  ts: string;
+  message?: string;
+  app_user?: string;
+}
+
+/** The body of `POST /api/threads` with a surface: a Slack person's message. */
+export interface ThreadPostRequest {
+  text: string;
+  act_as: ActAs;
+  surface: SurfaceRef;
+  post_only?: boolean;
+}
+
+/** What posting a message did, as `POST /api/threads` answers. Only the fields this app reads. */
+export interface ThreadPosted {
+  thread: { id: string; project: string; channel: string; visibility: string };
+  message: { id: string; text: string };
+  runs: Run[];
+  notified: string[];
+  refused: { kind: string; name: string; refused?: string }[];
+  rule: string;
+  reason?: string;
+  /** Posted before, by its ts: nothing was started again. */
+  repeated?: boolean;
+}
+
+/** An inbox message as the platform sends it: only the fields this app reads on its own. */
+export interface WireMessage {
+  id: string;
+  kind: string;
+  state: string;
+  subject: string;
+  source?: { project?: string; thread?: string };
+  parts: { type: string }[];
+  /** Where this app recorded posting it, by client. Only the client's own machine is shown its own. */
+  deliveries?: Record<string, { channel: string; ts: string }>;
+  [field: string]: unknown;
+}
+
+/** A Slack channel the client is bound to, and the channel it is bound to in warp. */
+export interface Binding {
+  slack_channel: string;
+  project: string;
+  channel: string;
+}
+
 /** Every call takes an optional signal, as the generated client's methods do. */
 export interface CallOptions {
   signal?: AbortSignal;
@@ -81,6 +135,8 @@ export interface InboxNotice {
   kind: string;
   state: string;
   updated_at: string;
+  /** To this app's machine only: the person it maps a mention or a question is addressed to. */
+  for?: ActAs;
 }
 
 export type StreamItem =
@@ -143,6 +199,48 @@ export interface Warp {
   ): AsyncIterable<StreamItem>;
   /** Inbox notices alone, for as long as the signal allows. */
   notices(options: CallOptions): AsyncIterable<InboxNotice>;
+  /**
+   * Post a Slack person's message into the warp thread its Slack thread is,
+   * found by its surface or started where the platform files it.
+   */
+  postThread(body: ThreadPostRequest, options?: CallOptions): Promise<ThreadPosted>;
+  /** One inbox message as the platform sends it, or null when it does not exist for this caller. */
+  getInboxMessage(id: string, options?: CallOptions): Promise<WireMessage | null>;
+  /** Where a warp thread is on a client's surface, or null when it is on none or does not exist here. */
+  threadSurface(
+    id: string,
+    options?: CallOptions,
+  ): Promise<{ client: string; channel: string; ts: string } | null>;
+  /** One inbox message read for a person the client maps, or null when it is not theirs to read. */
+  inboxMessageFor(id: string, actAs: ActAs, options?: CallOptions): Promise<WireMessage | null>;
+  /** Act on a part of a person's message, for them: a mention's reply or done, a question's answer. */
+  resolveFor(
+    id: string,
+    part: string,
+    body: Record<string, unknown>,
+    actAs: ActAs,
+    options?: CallOptions,
+  ): Promise<WireMessage>;
+  /** The Slack channels a client is bound to. */
+  bindings(client: string, options?: CallOptions): Promise<Binding[]>;
+  /** Record where the app posted an inbox message, so it edits that post later. */
+  recordDelivery(
+    message: string,
+    client: string,
+    at: { channel: string; ts: string },
+    options?: CallOptions,
+  ): Promise<void>;
+  /** One page of a person's inbox, read for them through the client that maps them. */
+  inboxFor(
+    actAs: ActAs,
+    query: { state?: string; kind?: string; limit?: number },
+    options?: CallOptions,
+  ): Promise<{
+    messages: Record<string, unknown>[];
+    open: number;
+    unread: number;
+    updates?: number;
+  }>;
   /**
    * The inbox, through the shared adapter's transport: `listInbox`,
    * `getInboxMessage` and `resolveInboxPart` (plus read, dismiss and snooze)
@@ -264,6 +362,12 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * | runEvents, notices | `GET /api/events?topic=` as server-sent events, resumed with `from` |
  * | stopRun | `POST /api/runs/{id}/stop` |
  * | answerQuestion | `POST /api/runs/{id}/questions/{question}/answer` |
+ * | postThread | `POST /api/threads` with a surface |
+ * | getInboxMessage, inboxMessageFor | `GET /api/inbox/{id}`, for a person with `act_as_client` and `act_as_user` |
+ * | resolveFor | `POST /api/inbox/{id}/parts/{part}/resolve` with `act_as` |
+ * | bindings | `GET /api/clients/{id}/bindings` |
+ * | recordDelivery | `PUT /api/inbox/{id}/deliveries/{client}` |
+ * | inboxFor | `GET /api/inbox` with `act_as_client` and `act_as_user` |
  * | inbox | `GET /api/inbox`, `GET /api/inbox/{id}`, `POST /api/inbox/{id}/read`, `/dismiss`, `/snooze`, `/parts/{part}/resolve` |
  */
 export function httpWarp(cfg: {
@@ -405,6 +509,43 @@ export function httpWarp(cfg: {
       for await (const item of stream("agent:_inbox", options.signal ?? never)) {
         if (item.type === "inbox") yield item.notice;
       }
+    },
+    postThread: (body) => http<ThreadPosted>("POST", "/api/threads", body),
+    threadSurface: (id) =>
+      orNull(
+        http<{ thread: { surface?: { client: string; channel: string; ts: string } } }>(
+          "GET",
+          `/api/threads/${enc(id)}?limit=1`,
+        ),
+      ).then((page) => page?.thread.surface ?? null),
+    inboxMessageFor: (id, actAs) =>
+      orNull(
+        http<{ message: WireMessage }>(
+          "GET",
+          `/api/inbox/${enc(id)}?${new URLSearchParams({ act_as_client: actAs.client, act_as_user: actAs.user })}`,
+        ),
+      ).then((r) => r?.message ?? null),
+    resolveFor: (id, part, body, actAs) =>
+      http<WireMessage>("POST", `/api/inbox/${enc(id)}/parts/${enc(part)}/resolve`, {
+        ...body,
+        act_as: actAs,
+      }),
+    getInboxMessage: (id) =>
+      orNull(http<{ message: WireMessage }>("GET", `/api/inbox/${enc(id)}`)).then(
+        (r) => r?.message ?? null,
+      ),
+    bindings: (client) =>
+      http<{ bindings: Binding[] }>("GET", `/api/clients/${enc(client)}/bindings`).then(
+        (r) => r.bindings,
+      ),
+    recordDelivery: (message, client, at) =>
+      http<void>("PUT", `/api/inbox/${enc(message)}/deliveries/${enc(client)}`, at),
+    inboxFor: (actAs, query) => {
+      const q = new URLSearchParams({ act_as_client: actAs.client, act_as_user: actAs.user });
+      if (query.state) q.set("state", query.state);
+      if (query.kind) q.set("kind", query.kind);
+      if (query.limit) q.set("limit", String(query.limit));
+      return http("GET", `/api/inbox?${q}`);
     },
     inbox: mailTransport(http as Http),
   };

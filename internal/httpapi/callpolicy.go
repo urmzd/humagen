@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"net/http"
+	"slices"
 
+	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/callpolicy"
 )
@@ -54,12 +56,15 @@ func (s *Server) putCallPolicy(w http.ResponseWriter, r *http.Request, who auth.
 }
 
 // reachable answers, for the agent in the path as a caller, every other agent
-// and whether it may call it.
+// the caller may read and whether it may call it. An agent that lives in a
+// project the caller cannot see is left out, as from the agents list.
 func (s *Server) reachable(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	agents, truncated, err := s.P.Reachable(r.Context(), who.Tenant, r.PathValue("name"))
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
+	seer := s.P.Seer(who)
+	agents = slices.DeleteFunc(agents, func(a platform.Reach) bool { return !seer.Agent(a.Agent) })
 	ok(w, http.StatusOK, map[string]any{"agents": agents, "truncated": truncated})
 }

@@ -29,7 +29,6 @@ import (
 	"github.com/urmzd/warp/pkg/credref"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
-	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state/statetest"
 )
@@ -1041,12 +1040,7 @@ func TestARetryIsRefusedWhereTheConversationIsFiledOnceItsAgentIsNotAvailableThe
 	field(t, w.p)
 	// Retrying a turn filed in Globex takes a member of it, and an account
 	// is everyone's to view only, so ana is made one.
-	if _, err := w.p.Projects.Update(tenant, "Globex", 1, ada, time.Now(), func(pr *projects.Project) error {
-		pr.Members = append(pr.Members, projects.Entry{Who: "ana", Role: projects.Member})
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+	workIn(t, w.p, "Globex", ana)
 	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
 
 	failed, msg := w.failing(t, platform.Turn{ID: "api-ana-globex", Agent: "worker", Text: "Any open bugs?", Project: "Globex", Actor: platform.ActorOf(ana)})

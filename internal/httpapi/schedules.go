@@ -25,13 +25,19 @@ type schedule struct {
 	Project string `json:"project,omitempty"`
 	// Description says what the schedule is for. The agent is not shown it.
 	Description string `json:"description,omitempty"`
+	// Deliver is where the answer of each run goes: nowhere (""), the
+	// creator's inbox, or the project's.
+	Deliver string `json:"deliver,omitempty"`
 }
 
 // scheduleView is a schedule with what a person needs to trust it: whether it
 // is running, when it fires next, and how its recent occurrences went.
 type scheduleView struct {
 	schedule
-	Paused    bool        `json:"paused"`
+	Paused bool `json:"paused"`
+	// Managed is "file" while the platform file declares the schedule: it
+	// can be paused, resumed and run, not changed or deleted.
+	Managed   string      `json:"managed,omitempty"`
 	CreatedBy string      `json:"created_by,omitempty"`
 	UpdatedBy string      `json:"updated_by,omitempty"`
 	UpdatedAt time.Time   `json:"updated_at,omitzero"`
@@ -44,9 +50,10 @@ func (s *Server) viewOf(sc cron.Schedule, now time.Time) scheduleView {
 	v := scheduleView{
 		schedule: schedule{
 			Name: sc.Name, Expression: sc.Expression, Agent: sc.Agent, Text: sc.Text,
-			Project: sc.Meta[runs.MetaProject], Description: about.Description,
+			Project: sc.Meta[runs.MetaProject], Description: about.Description, Deliver: sc.Meta[platform.MetaDeliver],
 		},
 		Paused:    s.P.Schedules.Paused(sc.Name),
+		Managed:   about.Managed,
 		CreatedBy: sc.Meta["created_by"],
 		UpdatedBy: about.UpdatedBy,
 		UpdatedAt: about.UpdatedAt,
@@ -62,7 +69,13 @@ func (s *Server) viewOf(sc cron.Schedule, now time.Time) scheduleView {
 func (s *Server) listSchedules(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	now := time.Now()
 	out := []scheduleView{}
+	seer := s.P.Seer(who)
 	for _, sc := range s.P.Schedules.List(who.Tenant) {
+		// A schedule filed in a project the caller cannot see is not theirs
+		// to read.
+		if !seer.Project(sc.Meta[runs.MetaProject]) {
+			continue
+		}
 		out = append(out, s.viewOf(sc, now))
 	}
 	ok(w, http.StatusOK, map[string]any{"schedules": out})
@@ -83,7 +96,7 @@ func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request, who auth
 		Meta:   meta,
 	}
 	if err := s.filed(who.Tenant, meta[runs.MetaProject], func() error {
-		return s.P.Schedules.Add(sc, platform.About{Description: strings.TrimSpace(body.Description)})
+		return s.P.Schedules.Add(sc, platform.About{Description: strings.TrimSpace(body.Description), CreatedAt: time.Now().UTC()})
 	}); err != nil {
 		s.problem(w, err)
 		return
@@ -102,9 +115,8 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 	}
 	// Another workspace's schedule, or one that does not exist, is not
 	// found before what the body names is looked up.
-	old, _, err := s.P.Schedules.Get(who.Tenant, name)
-	if err != nil {
-		s.problem(w, err)
+	old, found := s.scheduleIn(w, who, name)
+	if !found {
 		return
 	}
 	if body.Name == "" {
@@ -126,7 +138,10 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 		Tenant: who.Tenant, Routes: old.Routes,
 		Meta: meta,
 	}
-	about := platform.About{Description: strings.TrimSpace(body.Description), UpdatedBy: who.Subject, UpdatedAt: time.Now().UTC()}
+	about := platform.About{
+		Description: strings.TrimSpace(body.Description), UpdatedBy: who.Subject, UpdatedAt: time.Now().UTC(),
+		CreatedAt: s.P.Schedules.About(name).CreatedAt,
+	}
 	if err := s.filed(who.Tenant, meta[runs.MetaProject], func() error { return s.P.Schedules.Replace(sc, about) }); err != nil {
 		s.problem(w, err)
 		return
@@ -162,6 +177,17 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 		meta = map[string]string{}
 	}
 	delete(meta, runs.MetaProject)
+	delete(meta, platform.MetaDeliver)
+	switch {
+	case !platform.ValidDeliver(body.Deliver):
+		fail(w, http.StatusBadRequest, "deliver is inbox, project, or left out to keep the answer on the run")
+		return nil, false
+	case body.Deliver == platform.DeliverProject && body.Project == "":
+		fail(w, http.StatusBadRequest, "deliver: project posts to the schedule's project, so name one, or ~ for the workspace")
+		return nil, false
+	case body.Deliver != platform.DeliverNone:
+		meta[platform.MetaDeliver] = body.Deliver
+	}
 	if project := projects.NameOf(body.Project); project != projects.Root {
 		if !s.P.HasProject(who.Tenant, project) {
 			s.problem(w, platform.ErrProjectNotFound)
@@ -177,6 +203,11 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 	// every occurrence would be refused. It is the answer admission would
 	// give, given now.
 	if err := s.P.Available(who.Tenant, meta[runs.MetaProject], body.Agent); err != nil {
+		// A project deleted since it was looked up is not found, as it
+		// would have been a moment earlier.
+		if !s.P.HasProject(who.Tenant, meta[runs.MetaProject]) {
+			err = platform.ErrProjectNotFound
+		}
 		s.problem(w, err)
 		return nil, false
 	}
@@ -254,9 +285,12 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 		Origin: runs.OriginManual,
 		Text:   sc.Text,
 		Actor:  actor,
+		// The run carries what its schedule says now, as a run the clock
+		// raises does: its project, where its answer goes, and its creator.
 		Meta: map[string]string{
 			"cron_schedule": sc.Name, "cron_expression": sc.Expression,
-			runs.MetaProject: sc.Meta[runs.MetaProject],
+			runs.MetaProject: sc.Meta[runs.MetaProject], platform.MetaDeliver: sc.Meta[platform.MetaDeliver],
+			"created_by": sc.Meta["created_by"],
 		},
 		At: now,
 	})
@@ -265,4 +299,14 @@ func (s *Server) runSchedule(w http.ResponseWriter, r *http.Request, who auth.Pr
 		return
 	}
 	ok(w, http.StatusAccepted, run)
+}
+
+// scheduleIn is one of the caller's schedules, held to its project.
+func (s *Server) scheduleIn(w http.ResponseWriter, who auth.Principal, name string) (cron.Schedule, bool) {
+	sc, _, err := s.P.Schedules.Get(who.Tenant, name)
+	if err != nil {
+		s.problem(w, err)
+		return cron.Schedule{}, false
+	}
+	return sc, s.filedBy(w, who, sc)
 }

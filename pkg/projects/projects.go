@@ -112,6 +112,7 @@ const (
 	FieldParent       = "parent"
 	FieldAccount      = "account"
 	FieldInstructions = "instructions"
+	FieldAgentPosts   = "agent_posts"
 	FieldMembers      = "members"
 	// FieldKinds is the root's own kinds.
 	FieldKinds = "kinds"
@@ -185,6 +186,10 @@ type Project struct {
 	Account *AccountInfo `json:"account,omitempty"`
 	// Instructions are sent to every agent answering here and below.
 	Instructions string `json:"instructions,omitempty"`
+	// AgentPosts says what becomes of a post an agent scheduled here
+	// writes: AgentPostsPublish or AgentPostsReview. Empty takes the
+	// default for the project's kind; see EffectiveAgentPosts.
+	AgentPosts string `json:"agent_posts,omitempty"`
 	// Experts are who answers for some topics here and below. Never nil.
 	Experts []Expert `json:"experts"`
 	// Members are who holds a role here. A stored project always lists
@@ -284,6 +289,14 @@ type Tombstone struct {
 	Name string    `json:"name"`
 	By   string    `json:"by,omitempty"`
 	At   time.Time `json:"at"`
+	// Parent and Members are where the project stood and who held a role in
+	// it when it was deleted, so what it held is read by whom it was read
+	// by then, under its parent as the parent stands now (DeletedRole). A
+	// tombstone written before they were kept has neither, and what it held
+	// is read only with projects:govern.
+	Parent  string  `json:"parent,omitempty"`
+	Members []Entry `json:"members,omitempty"`
+	Kept    bool    `json:"kept,omitempty"`
 }
 
 var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,62}$`)
@@ -297,7 +310,7 @@ func builtIn(k Kind) bool { return k == Company || k == Team || k == Account }
 
 var validField = map[string]bool{
 	FieldTitle: true, FieldDescription: true, FieldKind: true, FieldParent: true, FieldAccount: true, FieldInstructions: true,
-	FieldExperts: true, FieldMembers: true, FieldKinds: true, FieldAgents: true,
+	FieldAgentPosts: true, FieldExperts: true, FieldMembers: true, FieldKinds: true, FieldAgents: true,
 }
 
 // validate checks a project on its own: its fields and bounds, not its place.
@@ -326,6 +339,8 @@ func (p Project) validate() error {
 		return fmt.Errorf("%w: instructions are at most %d characters", ErrInvalid, MaxInstructions)
 	case p.Managed != "" && p.Managed != ManagedFile:
 		return fmt.Errorf("%w: a project is managed by the file or not at all", ErrInvalid)
+	case !validAgentPosts(p.AgentPosts):
+		return fmt.Errorf("%w: agent posts are published or reviewed", ErrInvalid)
 	case p.IsRoot() && p.Archived:
 		return fmt.Errorf("%w: the workspace cannot be archived", ErrInvalid)
 	case !p.IsRoot() && len(p.Kinds) > 0:

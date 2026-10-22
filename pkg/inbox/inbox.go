@@ -135,6 +135,8 @@ type From struct {
 	// Kind is "rule", "agent", "system" or "person".
 	Kind string `json:"kind"`
 	Name string `json:"name"`
+	// ApprovedBy is the person who published an agent's draft, by subject.
+	ApprovedBy string `json:"approved_by,omitempty"`
 }
 
 // Source links a message to what it is about.
@@ -339,6 +341,8 @@ type Part struct {
 	Artifact *ArtifactPart `json:"artifact,omitempty"`
 	// Question is set on approval, choice and reply parts.
 	Question *QuestionPart `json:"question,omitempty"`
+	// Draft is set on a draft part.
+	Draft *DraftPart `json:"draft,omitempty"`
 	// Mention is set on a mention part.
 	Mention *MentionPart `json:"mention,omitempty"`
 }
@@ -375,6 +379,8 @@ type Message struct {
 	Unread bool   `json:"unread"`
 	Source Source `json:"source"`
 	Parts  []Part `json:"parts"`
+	// Deliveries are where clients posted the message, by client id.
+	Deliveries map[string]Delivery `json:"deliveries,omitempty"`
 }
 
 func (m Message) clone() Message {
@@ -404,9 +410,11 @@ func (m Message) clone() Message {
 			p.Mention = &mention
 		}
 		p.Actions = slices.Clone(p.Actions)
+		p.Draft = p.Draft.clone()
 	}
 	m.Audience = slices.Clone(m.Audience)
 	m.Excluded = slices.Clone(m.Excluded)
+	m.Deliveries = cloneDeliveries(m.Deliveries)
 	return m
 }
 
@@ -501,6 +509,9 @@ type Change struct {
 	Until   time.Time `json:"until,omitzero"`
 	// Raised is the message as it was raised, on a Raised change.
 	Raised *Message `json:"-"`
+	// Delivery is where the client in By posted the message, on a
+	// Delivered change.
+	Delivery *Delivery `json:"-"`
 }
 
 // Notice says a message changed. It carries no content: a reader fetches the
@@ -579,7 +590,8 @@ type Store struct {
 // change and a message leave out.
 type storedChange struct {
 	Change
-	Raised *storedMessage `json:"raised,omitempty"`
+	Raised   *storedMessage `json:"raised,omitempty"`
+	Delivery *Delivery      `json:"delivery,omitempty"`
 }
 
 type storedMessage struct {
@@ -591,7 +603,7 @@ type storedMessage struct {
 }
 
 func storedOf(c Change) storedChange {
-	out := storedChange{Change: c}
+	out := storedChange{Change: c, Delivery: c.Delivery}
 	if c.Raised != nil {
 		out.Raised = &storedMessage{Message: *c.Raised, Key: c.Raised.Key, Audience: c.Raised.Audience, Excluded: c.Raised.Excluded, Broadcast: c.Raised.Broadcast}
 	}
@@ -600,7 +612,7 @@ func storedOf(c Change) storedChange {
 
 func (sc storedChange) change(tenant string) Change {
 	c := sc.Change
-	c.Tenant = tenant
+	c.Tenant, c.Delivery = tenant, sc.Delivery
 	if sc.Raised != nil {
 		m := sc.Raised.Message
 		m.Key, m.Audience, m.Excluded, m.Broadcast = sc.Raised.Key, sc.Raised.Audience, sc.Raised.Excluded, sc.Raised.Broadcast
@@ -663,7 +675,7 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		m := c.Raised.clone()
 		t.next++
 		m.ID = "m-" + strconv.Itoa(t.next)
-		m.Tenant, m.At, m.UpdatedAt, m.State, m.Unread = c.Tenant, c.At, c.At, Open, false
+		m.Tenant, m.At, m.UpdatedAt, m.State, m.Unread, m.Deliveries = c.Tenant, c.At, c.At, Open, false, nil
 		for i := range m.Parts {
 			m.Parts[i].ID = "p" + strconv.Itoa(i+1)
 			m.Parts[i].Actions, m.Parts[i].Outcome = nil, nil
@@ -700,6 +712,12 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		t.read[m.ID][c.By] = c.What == MarkRead
 		t.log = append(t.log, c)
 		// Reading changes nothing anyone else sees.
+		return m, false
+	case Delivered:
+		if !m.delivered(c) {
+			return m, false
+		}
+		t.log = append(t.log, c)
 		return m, false
 	case DidResolve:
 		i := slices.IndexFunc(m.Parts, func(p Part) bool { return p.ID == c.Part })
@@ -1033,9 +1051,12 @@ type Query struct {
 	Unread bool
 	// Visible reports whether the reader may see a kind. Nil means all.
 	Visible func(Kind) bool
-	Now     time.Time
-	Limit   int
-	Before  string
+	// Sees reports whether the reader may read what a message is about:
+	// the project and thread it lives in. Nil means all.
+	Sees   func(Message) bool
+	Now    time.Time
+	Limit  int
+	Before string
 }
 
 // All is the State that matches every message.
@@ -1070,6 +1091,9 @@ func (t *tenant) match(m *Message, q filter) bool {
 		return false
 	}
 	if q.Visible != nil && !q.Visible(m.Kind) {
+		return false
+	}
+	if q.Sees != nil && !q.Sees(*m) {
 		return false
 	}
 	if q.Kind != "" && m.Kind != q.Kind {

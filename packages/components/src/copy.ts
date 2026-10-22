@@ -131,6 +131,11 @@ export const defaultCopy = {
   send: "Send",
   keepSelected: "Keep Selected",
   discardAll: "Discard All",
+  publish: "Publish",
+  discardDraft: "Discard Draft",
+  /** Above an agent's draft: who wrote it and where publishing posts it. */
+  draftTitle: (agent: string, project: string) =>
+    `${agent} wrote this for ${project}. Publishing posts it there, from ${agent}.`,
   memoryTitle: (n: number) => `${n} thing${n === 1 ? "" : "s"} to remember`,
   allowOnce: "Allow This Run",
   raiseTo: (amount: string) => `Raise to ${amount}`,
@@ -181,6 +186,7 @@ export const defaultCopy = {
     failure: "Failed run",
     reference: "Reference",
     artifact: "Artifact",
+    draft: "Draft",
     custom: "Message",
   },
   /** What each message template is called, in the list and above its parts. */
@@ -281,7 +287,17 @@ export const defaultCopy = {
     whoHint: "A person's subject, or role:<name> for everyone who holds a role.",
     role: "Role",
     saveMembers: "Save Members",
-    everyoneNeeded: "Everyone keeps at least viewer here, since every project stays visible.",
+    everyoneNeeded: "Everyone is at least a member of a company-wide project.",
+    /** A project with no entry for everyone. */
+    membersOnly:
+      "Members only. Only the people listed and the owners above see it and what it holds.",
+    /** The nudge on an account everyone can see. */
+    visibleToEveryone: (project: string) =>
+      `${project} is visible to everyone. Make it members only?`,
+    makeMembersOnly: "Make Members Only",
+    /** A project under one everyone owns, which therefore cannot be members only. */
+    everyoneOwnsAbove: (project: string) =>
+      `Everyone owns ${project}, so everyone sees this project too. To make it members only, name owners for ${project} first.`,
     limitFrom: (project: string) => `${project}'s limit also applies here.`,
     workspaceLimit: "The workspace's own limit applies here too.",
     ownerLimit: "A tighter limit, as an owner above",
@@ -470,6 +486,34 @@ export const defaultCopy = {
     `${name} is still working on this. The answer will appear here when it's ready.`,
   /** What Slack says under the rating buttons, which can't show which one was pressed. */
   rated: { up: "Rated helpful", down: "Rated not helpful" },
+  /** Where a schedule's answers go, and the weekly recap a project can add. */
+  schedules: {
+    deliver: "Answer",
+    deliverHint: "Where each run's answer goes. A recap that finds nothing to say sends nothing.",
+    deliverNone: "Keep on the task",
+    /** A new schedule is the reader's own; an existing one goes to whoever created it. */
+    deliverInbox: (mine: boolean) => (mine ? "Send to my inbox" : "Send to its creator's inbox"),
+    deliverProject: "Post to the project",
+    addWeeklyRecap: "Add Weekly Recap",
+    recapText: (title: string) => `What changed in ${title} since the last recap?`,
+    recapDescription: "A weekly recap of this project, posted to its inbox",
+    recapHint: (agent: string) =>
+      `Each Monday morning ${agent} looks at what changed here and posts it to the project.`,
+    hasRecap: "This project has a weekly recap.",
+    /** A schedule the platform file declares: run and pause it here, change it in the file. */
+    managed: "From the platform file. Change it there.",
+    tab: "Schedules",
+    none: "Nothing runs on a timer here.",
+  },
+  /** The one-field form a Slack mention or an expert's question opens to reply. */
+  replyModal: {
+    title: "Reply",
+    label: "Your reply",
+    answerLabel: "Your answer",
+    placeholder: "Write a reply",
+    send: "Send",
+    cancel: "Cancel",
+  },
   home: {
     greeting: (first: string, assistant: string) => `Hi ${first}, I'm ${assistant}.`,
     /** Follows the host's intro: how to reach the assistant from here. */
@@ -616,6 +660,9 @@ export const defaultCopy = {
       externalId: "Customer id elsewhere (optional)",
       url: "Link to the customer's record (optional)",
       governed: "Only those who govern projects make company-wide ones.",
+      /** Under the kind, for an account: who sees it. */
+      accountMembersOnly:
+        "Accounts are members only: you, the people you add and the owners above see it. Under a project everyone owns, everyone sees it.",
     },
     count: {
       running: (n: number) => `${n} running`,
@@ -628,6 +675,7 @@ export const defaultCopy = {
       overview: "Overview",
       context: "Context",
       agents: "Agents",
+      schedules: "Schedules",
       channels: "Channels",
     } as Record<string, string>,
     /** A project's Agents tab: what it turns on, and who answers untagged messages. */
@@ -710,7 +758,8 @@ export const defaultCopy = {
     /** A channel's title on its page: "#renewals". */
     channel: (name: string) => `#${name}`,
     channels: "Channels",
-    channelsLede: "Each holds shared threads. Everyone who can see the project reads them.",
+    channelsLede:
+      "Each holds threads. Everyone who can see the project reads a shared one, and only the people in it a private one.",
     newChannel: "New Channel",
     createChannel: "Create Channel",
     archiveChannel: "Archive Channel",
@@ -725,6 +774,9 @@ export const defaultCopy = {
       purposeHint: "Sent to every agent answering here.",
     },
     noChannels: "Only general so far.",
+    /** A channel bound to Slack, in its row: which app, and which Slack channel. */
+    boundTo: (client: string, slackChannel: string) =>
+      `In Slack through ${client}, channel ${slackChannel}`,
     noThreads: "No threads here yet. Start one below.",
     /** Under a room or a channel, for a viewer of its project. */
     viewerOnly:
@@ -732,6 +784,11 @@ export const defaultCopy = {
     moreThreads: "See More",
     /** Where a thread is, in its meta line: "Shared in Globex › #renewals". */
     sharedIn: (project: string, channel: string) => `Shared in ${project} › #${channel}`,
+    /** A thread only the people in it read, in its meta line and its row. */
+    private: "Private",
+    /** The control that starts a private thread instead of a shared one. */
+    startPrivate: "Private",
+    privateHint: "Only the people in it read a private thread. Tagging a person invites them.",
     /** Who takes part, in the meta line. */
     participants: (n: number) => `${n} ${n === 1 ? "person" : "people"}`,
     startThread: "Start a thread",
@@ -765,6 +822,12 @@ export const defaultCopy = {
       post: "The message could not be posted. Try again.",
       channel: "The channel could not be created.",
     },
+    /** In a Slack channel bound to a project, to someone the app maps to nobody in warp. */
+    unmappedInBound:
+      "This channel is a project's channel in warp, and only people warp knows post in it. Ask an admin to connect your Slack account.",
+    /** In a Slack channel bound to a project, to someone asking about another person's message. */
+    notTheirsInBound:
+      "This channel is a project's channel in warp, where a message is asked only as its writer's own. Ask in the thread in your own words.",
   },
 };
 

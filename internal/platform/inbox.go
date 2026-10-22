@@ -44,6 +44,8 @@ const (
 	ActRaiseLimit  = "raise_limit"
 	// ActDone sets a mention aside: the person has seen to it.
 	ActDone = "done"
+	// ActPublish posts an agent's draft as the announcement it wrote.
+	ActPublish = "publish"
 )
 
 // Resolution is what a person decided about a part.
@@ -122,6 +124,10 @@ func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 		return auth.BillingWrite, true
 	case t == inbox.PartBudget && action == ActAcknowledge:
 		return auth.AlertsWrite, true
+	case t == inbox.PartDraft && (action == ActPublish || action == ActDiscard):
+		// Deciding an agent's post is the project's owners' to do: the
+		// role is checked when the action is taken.
+		return auth.ProjectsWrite, true
 	case t == inbox.PartMention && (action == ActReply || action == ActDone):
 		// Replying posts a message in the thread as the reader.
 		return auth.RunsWrite, true
@@ -144,6 +150,7 @@ var offered = map[inbox.PartType][]string{
 	inbox.PartChoice:   {ActChoose},
 	inbox.PartReply:    {ActReply},
 	inbox.PartMention:  {ActReply, ActDone},
+	inbox.PartDraft:    {ActPublish, ActDiscard},
 }
 
 // allows reports whether who may take an action on a part, and if not, why.
@@ -154,6 +161,7 @@ var offered = map[inbox.PartType][]string{
 // project by ownership of its home as well. A retry starts a turn, so it
 // takes what starting one there takes: being a member of the project the
 // failed turn is filed in. So the inbox is no way around any of them.
+// An agent's draft is its project's owners' to decide.
 func (p *Platform) allows(tree *projects.Tree, who auth.Principal, part inbox.Part, action string) error {
 	perm, known := needs(part.Type, action)
 	if !known {
@@ -161,6 +169,13 @@ func (p *Platform) allows(tree *projects.Tree, who auth.Principal, part inbox.Pa
 	}
 	if project, ok := memoryProject(part); ok {
 		return p.mayChangeNotes(tree, who, project)
+	}
+	if part.Type == inbox.PartDraft && part.Draft != nil {
+		if !decidesDrafts(tree, who, part.Draft.Project) {
+			pr, _ := tree.Get(part.Draft.Project)
+			return fmt.Errorf("%w: %s needs projects:write, and %s", ErrForbidden, action, roleNeeded(projects.Owner, titleOf(pr, p.Settings(who.Tenant).WorkspaceName)))
+		}
+		return nil
 	}
 	if !who.Can(perm) {
 		return fmt.Errorf("%w: %s needs %s", ErrForbidden, action, perm)
@@ -244,6 +259,7 @@ func (p *Platform) inboxQuery(tree *projects.Tree, who auth.Principal, q inbox.Q
 	r := p.inboxReader(tree, who)
 	q.Reader, q.Roles, q.ReaderProjects, q.ReaderOwns, q.Now = r.Subject, r.Roles, r.Projects, r.Owns, p.now()
 	q.Visible = func(k inbox.Kind) bool { return who.Can(reads(k)) }
+	q.Sees = p.Seer(who).Message
 	return q
 }
 
@@ -258,7 +274,7 @@ func (p *Platform) InboxPage(who auth.Principal, q inbox.Query) ([]inbox.Message
 	q.Shared = false
 	msgs, next, err := p.Inbox.Page(who.Tenant, p.inboxQuery(tree, who, q))
 	for i := range msgs {
-		msgs[i] = p.seenBy(tree, msgs[i], who)
+		msgs[i] = p.ownDeliveries(who, p.seenBy(tree, msgs[i], who))
 	}
 	return msgs, next, err
 }
@@ -302,14 +318,20 @@ func (p *Platform) inboxGetAs(who auth.Principal, reader inbox.Reader, id string
 	if err != nil {
 		return inbox.Message{}, err
 	}
-	// What a caller may not see does not exist for them.
-	if !who.Can(reads(m.Kind)) {
+	// What a caller may not see does not exist for them: a kind they may
+	// not read, or what lives where they may not read. A surface reading for
+	// a person it maps reads where that person may.
+	seer := p.Seer(who)
+	if reader.Subject != "" && reader.Subject != who.Subject {
+		seer = p.Seer(principalOf(who, reader))
+	}
+	if !who.Can(reads(m.Kind)) || !seer.Message(m) {
 		return inbox.Message{}, fmt.Errorf("%w: message %q", inbox.ErrNotFound, id)
 	}
 	if m.State == inbox.Snoozed && !p.now().Before(m.SnoozedUntil) {
 		m.State = inbox.Open
 	}
-	return p.seenBy(p.Projects.Tree(who.Tenant), m, who), nil
+	return p.ownDeliveries(who, p.seenBy(p.Projects.Tree(who.Tenant), m, who)), nil
 }
 
 // InboxRead marks a message read or unread for the caller alone.
@@ -397,8 +419,17 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			Action: r.Action, Arguments: r.Arguments, Choice: r.Choice, Text: r.Text, Note: r.Note, ActAs: r.ActAs,
 		})
 	}
+	// A surface answers a question for the person it maps, and settles a
+	// mention of them: reply posts in the thread as them, through the client.
+	if r.ActAs != nil && part.Type != inbox.PartMention {
+		return inbox.Message{}, fmt.Errorf("%w: only a question or a mention is answered for someone else", ErrAction)
+	}
+	by := who.Subject
 	if r.ActAs != nil {
-		return inbox.Message{}, fmt.Errorf("%w: only a question is answered for someone else", ErrAction)
+		if !mayResume(who, reader) {
+			return inbox.Message{}, fmt.Errorf("%w: that person cannot settle it", ErrForbidden)
+		}
+		by = reader.Subject
 	}
 	// The right is checked before saying whether there is anything left to
 	// do, so a caller without it learns nothing from trying.
@@ -407,6 +438,11 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 	}
 	if part.Type == inbox.PartFailure && r.Action == ActRetry && part.Failure != nil {
 		if err := p.mayRetry(who, part.Failure.Run); err != nil {
+			return inbox.Message{}, err
+		}
+	}
+	if part.Type == inbox.PartDraft {
+		if err := p.ownsDraft(who, *part.Draft); err != nil {
 			return inbox.Message{}, err
 		}
 	}
@@ -430,8 +466,16 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			return inbox.Message{}, err
 		}
 		note = fmt.Sprintf("Kept %d of %d", kept, len(part.Memory.Notes))
+	case part.Type == inbox.PartDraft && r.Action == ActPublish:
+		posted, err := p.postFromAgent(who.Tenant, *part.Draft, who.Subject)
+		if err != nil {
+			return inbox.Message{}, err
+		}
+		note = "Published as " + posted.ID
+	case part.Type == inbox.PartDraft:
+		note = "Discarded"
 	case part.Type == inbox.PartMention && r.Action == ActReply:
-		m, err := p.replyToMention(ctx, who, *part.Mention, r.Text)
+		m, err := p.replyToMention(ctx, who, *part.Mention, r.Text, r.ActAs)
 		if err != nil {
 			return inbox.Message{}, err
 		}
@@ -444,7 +488,7 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 		note = fmt.Sprintf("Now version %d", saved.Version)
 	}
 
-	if _, _, err := p.Inbox.Resolve(who.Tenant, id, partID, inbox.Outcome{Action: r.Action, By: who.Subject, At: p.now(), Note: note}); err != nil {
+	if _, _, err := p.Inbox.Resolve(who.Tenant, id, partID, inbox.Outcome{Action: r.Action, By: by, At: p.now(), Note: note}); err != nil {
 		return inbox.Message{}, err
 	}
 	p.audit(who, m, partID, r.Action, note)
@@ -454,9 +498,9 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			return inbox.Message{}, err
 		}
 	} else {
-		p.settle(who.Tenant, id, reader, who.Subject)
+		p.settle(who.Tenant, id, reader, by)
 	}
-	return p.InboxGet(who, id)
+	return p.inboxGetAs(who, reader, id)
 }
 
 // audit writes one line for every decision made in the inbox. The inbox's own

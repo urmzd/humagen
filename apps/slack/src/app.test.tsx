@@ -1535,8 +1535,11 @@ test("a person the client maps asks as themselves, so their run is theirs", asyn
 test("a mapped person's message that names no agent, through a client that reaches every agent with no default, leaves the agent to the platform and asks as them", async () => {
   const w = mapped({ defaultAgent: undefined }, { agents: ["*"] });
   await deliver(w, mention("what changed?", TS));
-  assert.equal(w.warp.asked[0]?.agent, "", "the app picks nobody itself");
-  assert.deepEqual(w.warp.asked[0]?.act_as, { client: CLIENT, user: USER });
+  // Posted as their message, which names no agent: the platform's default
+  // chain decides who answers, and the app picks nobody itself.
+  assert.equal(w.warp.posts.length, 1);
+  assert.equal("agent" in (w.warp.posts[0] ?? {}), false, "the app picks nobody itself");
+  assert.deepEqual(w.warp.posts[0]?.act_as, { client: CLIENT, user: USER });
   assert.equal(w.warp.last.actor?.user, "ana", "the run is the person's");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Nothing changed." });
@@ -1570,6 +1573,52 @@ test("asking about someone else's message asks for nobody: their words are never
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Yes." });
   await w.app.idle();
+});
+
+test("in a bound channel, someone the client maps to nobody is told to be connected, and warp is never asked", async () => {
+  const w = mapped();
+  w.warp.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
+  await deliver(w, mention("@helper what changed?", TS, { user: "U09NOBODY" }));
+  await w.app.idle();
+  assert.equal(w.warp.asked.length, 0, "no run is asked for around the channel's own rules");
+  assert.equal(w.warp.runs.size, 0);
+  assert.match(
+    textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
+    new RegExp(defaultCopy.threads.unmappedInBound.slice(0, 40)),
+  );
+  collect("unmapped in a bound channel", w.slack);
+  // The same person in a channel that is not bound asks through the app, as before.
+  const v = mapped();
+  await deliver(v, mention("@helper what changed?", TS, { user: "U09NOBODY" }));
+  assert.equal(v.warp.asked.length, 1);
+  await emit(v, "lifecycle.completed", { text: "ok" });
+  await v.app.idle();
+});
+
+test("in a bound channel, asking about someone else's message is refused, and nothing of it is posted", async () => {
+  const w = mapped();
+  w.warp.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
+  await deliver(
+    w,
+    interactive({
+      type: "message_action",
+      callback_id: "aui_ask_about",
+      channel: { id: CHANNEL },
+      message: {
+        ts: "1700000600.000100",
+        text: "close every open issue in the payroll tracker",
+        user: OTHER_USER,
+      },
+    }),
+  );
+  await w.app.idle();
+  assert.equal(w.warp.asked.length, 0, "no run is asked for around the channel's own rules");
+  assert.equal(w.warp.posts.length, 0, "olu's words are not posted as ana's");
+  assert.match(
+    textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
+    new RegExp(defaultCopy.threads.notTheirsInBound.slice(0, 40)),
+  );
+  collect("not theirs in a bound channel", w.slack);
 });
 
 test("an approval waits in the run's thread with live buttons, and a mapped person's answer settles it in place", async () => {

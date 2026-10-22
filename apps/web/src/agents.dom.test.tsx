@@ -15,9 +15,9 @@ const writer: Revision = {
 const field: ProjectView = {
   name: "Field",
   kind: "team",
+  members: [{ who: "*", role: "member" }],
   experts: [],
   agents: { enable: [] },
-  members: [{ who: "*", role: "member" }],
   access: { role: "owner", from: "", via: "projects:govern" },
   actions: [],
   version: 1,

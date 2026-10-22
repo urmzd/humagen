@@ -32,24 +32,24 @@ import (
 func (s *Server) projectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects", s.authed(auth.ProjectsRead, s.listProjects))
 	mux.HandleFunc("POST /api/projects", s.authed(auth.ProjectsWrite, s.createProject))
-	mux.HandleFunc("GET /api/projects/{name}", s.authed(auth.ProjectsRead, s.getProject))
-	mux.HandleFunc("PUT /api/projects/{name}", s.authed(auth.ProjectsWrite, s.updateProject))
-	mux.HandleFunc("DELETE /api/projects/{name}", s.authed(auth.ProjectsWrite, s.deleteProject))
-	mux.HandleFunc("GET /api/projects/{name}/history", s.authed(auth.ProjectsRead, s.projectHistory))
-	mux.HandleFunc("GET /api/projects/{name}/memory", s.authed(auth.ProjectsRead, s.projectMemory))
-	mux.HandleFunc("POST /api/projects/{name}/memory", s.authed(auth.ProjectsWrite, s.addProjectMemory))
-	mux.HandleFunc("POST /api/projects/{name}/memory/approve", s.authed(auth.ProjectsWrite, s.approveProjectMemory))
-	mux.HandleFunc("DELETE /api/projects/{name}/memory/{id}", s.authed(auth.ProjectsWrite, s.removeProjectMemory))
-	mux.HandleFunc("GET /api/projects/{name}/members", s.authed(auth.ProjectsRead, s.projectMembers))
-	mux.HandleFunc("PUT /api/projects/{name}/members", s.authed(auth.ProjectsWrite, s.putProjectMembers))
-	mux.HandleFunc("POST /api/projects/{name}/move", s.authed(auth.ProjectsWrite, s.moveProject))
-	mux.HandleFunc("PUT /api/projects/{name}/limits", s.authed(auth.ProjectsWrite, s.putProjectLimit))
-	mux.HandleFunc("DELETE /api/projects/{name}/limits", s.authed(auth.ProjectsWrite, s.deleteProjectLimit))
-	mux.HandleFunc("GET /api/projects/{name}/inbox", s.authed(auth.ProjectsRead, s.projectInbox))
-	mux.HandleFunc("POST /api/projects/{name}/announcements", s.authed(auth.ProjectsWrite, s.postAnnouncement))
-	mux.HandleFunc("DELETE /api/projects/{name}/announcements/{id}", s.authed(auth.ProjectsWrite, s.withdrawAnnouncement))
-	mux.HandleFunc("GET /api/projects/{name}/agents", s.authed(auth.ProjectsRead, s.getProjectAgents))
-	mux.HandleFunc("PUT /api/projects/{name}/agents", s.authed(auth.ProjectsWrite, s.putProjectAgents))
+	mux.HandleFunc("GET /api/projects/{name}", s.authed(auth.ProjectsRead, s.seenProject(s.getProject)))
+	mux.HandleFunc("PUT /api/projects/{name}", s.authed(auth.ProjectsWrite, s.seenProject(s.updateProject)))
+	mux.HandleFunc("DELETE /api/projects/{name}", s.authed(auth.ProjectsWrite, s.seenProject(s.deleteProject)))
+	mux.HandleFunc("GET /api/projects/{name}/history", s.authed(auth.ProjectsRead, s.seenProject(s.projectHistory)))
+	mux.HandleFunc("GET /api/projects/{name}/memory", s.authed(auth.ProjectsRead, s.seenProject(s.projectMemory)))
+	mux.HandleFunc("POST /api/projects/{name}/memory", s.authed(auth.ProjectsWrite, s.seenProject(s.addProjectMemory)))
+	mux.HandleFunc("POST /api/projects/{name}/memory/approve", s.authed(auth.ProjectsWrite, s.seenProject(s.approveProjectMemory)))
+	mux.HandleFunc("DELETE /api/projects/{name}/memory/{id}", s.authed(auth.ProjectsWrite, s.seenProject(s.removeProjectMemory)))
+	mux.HandleFunc("GET /api/projects/{name}/members", s.authed(auth.ProjectsRead, s.seenProject(s.projectMembers)))
+	mux.HandleFunc("PUT /api/projects/{name}/members", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectMembers)))
+	mux.HandleFunc("POST /api/projects/{name}/move", s.authed(auth.ProjectsWrite, s.seenProject(s.moveProject)))
+	mux.HandleFunc("PUT /api/projects/{name}/limits", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectLimit)))
+	mux.HandleFunc("DELETE /api/projects/{name}/limits", s.authed(auth.ProjectsWrite, s.seenProject(s.deleteProjectLimit)))
+	mux.HandleFunc("GET /api/projects/{name}/inbox", s.authed(auth.ProjectsRead, s.seenProject(s.projectInbox)))
+	mux.HandleFunc("POST /api/projects/{name}/announcements", s.authed(auth.ProjectsWrite, s.seenProject(s.postAnnouncement)))
+	mux.HandleFunc("DELETE /api/projects/{name}/announcements/{id}", s.authed(auth.ProjectsWrite, s.seenProject(s.withdrawAnnouncement)))
+	mux.HandleFunc("GET /api/projects/{name}/agents", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectAgents)))
+	mux.HandleFunc("PUT /api/projects/{name}/agents", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectAgents)))
 }
 
 // writer is who a change to the tree is made by, and whether they may change
@@ -247,11 +247,19 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request, who auth.P
 		if parent, found = s.named(w, f.tree, q.Get("parent")); !found {
 			return
 		}
+		if !f.sees(parent) {
+			notFound(w)
+			return
+		}
 	}
 	var within map[string]bool
 	if q.Get("within") != "" {
 		name, found := s.named(w, f.tree, q.Get("within"))
 		if !found {
+			return
+		}
+		if !f.sees(name) {
+			notFound(w)
 			return
 		}
 		within = map[string]bool{}
@@ -554,15 +562,20 @@ func (s *Server) filed(tenant, project string, fn func() error) error {
 // one project, within= a project and everything below it, and both keep what
 // both allow. Nil keeps every conversation, which is what within=~ is. A name
 // the tenant does not have answers 404.
-func (s *Server) projectsWithin(w http.ResponseWriter, tenant, project, within string) ([]string, bool) {
+func (s *Server) projectsWithin(w http.ResponseWriter, who auth.Principal, project, within string) ([]string, bool) {
 	if project == "" && within == "" {
 		return nil, true
 	}
-	tree := s.P.ProjectTree(tenant)
+	tree := s.P.ProjectTree(who.Tenant)
+	seer := s.P.Seer(who)
 	var keep []string
 	if project != "" {
 		name, found := s.named(w, tree, project)
 		if !found {
+			return nil, false
+		}
+		if !seer.Project(name) {
+			notFound(w)
 			return nil, false
 		}
 		keep = []string{name}
@@ -570,6 +583,10 @@ func (s *Server) projectsWithin(w http.ResponseWriter, tenant, project, within s
 	if within != "" {
 		name, found := s.named(w, tree, within)
 		if !found {
+			return nil, false
+		}
+		if !seer.Project(name) {
+			notFound(w)
 			return nil, false
 		}
 		if name == projects.Root {
