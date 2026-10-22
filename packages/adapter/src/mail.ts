@@ -153,7 +153,8 @@ export const unitOf = (which: LimitKind) =>
 const inUnit = (which: LimitKind, value: number) => (which === "spend" ? value / 1_000_000 : value);
 const fromUnit = (which: LimitKind, value: number) => (which === "spend" ? Math.round(value * 1_000_000) : Math.floor(value));
 
-function partFrom(raw: unknown, at: string): MessagePart | null {
+/** A part of a message raised at `at` and last changed at `updated`. */
+function partFrom(raw: unknown, at: string, updated: string): MessagePart | null {
   const p = obj(raw);
   const id = str(p.id);
   const out = obj(p.outcome);
@@ -179,7 +180,7 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
           title: str(a.title),
           ...(str(a.body) ? { body: str(a.body) } : {}),
           startedAt: at,
-          updatedAt: str(out.at) || at,
+          updatedAt: str(out.at) || updated,
         },
         allowed,
         ...resolution,
@@ -328,7 +329,10 @@ export function fromServer(raw: unknown): PlatformMessage {
   const m = obj(raw);
   const from = obj(m.from);
   const source = obj(m.source);
-  const at = str(m.updated_at) || str(m.at);
+  // A message keeps the time it was raised. Resolving or setting it aside
+  // later says when on its own record, never in place of this.
+  const at = str(m.at) || str(m.updated_at);
+  const updated = str(m.updated_at) || at;
   const sources: Source[] = sourceKinds
     .filter((k) => str(source[k]))
     .map((k) => ({ kind: k, id: str(source[k]), label: `${sourceWord[k]} ${str(source[k])}` }));
@@ -350,10 +354,10 @@ export function fromServer(raw: unknown): PlatformMessage {
     severity: tone[str(m.severity)] ?? "neutral",
     ...(first ? { source: { kind: first.kind as "run" | "rule" | "project", id: first.id, label: first.label } } : {}),
     parts: list(m.parts)
-      .map((p) => partFrom(p, at))
+      .map((p) => partFrom(p, at, updated))
       .filter((p): p is MessagePart => p !== null),
-    ...(state === "dismissed" ? { dismissedAt: at } : {}),
-    ...(state === "snoozed" ? { snoozedUntil: str(m.snoozed_until) || at } : {}),
+    ...(state === "dismissed" ? { dismissedAt: updated } : {}),
+    ...(state === "snoozed" ? { snoozedUntil: str(m.snoozed_until) || updated } : {}),
     // A message about a limit leads with an alert part, so it is laid out by what it is about.
     ...(templateOf[str(m.kind)] ? { template: templateOf[str(m.kind)] } : {}),
     kind: str(m.kind),

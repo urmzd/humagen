@@ -43,6 +43,25 @@ test("an announcement reads as hidden for the reader who hid it", () => {
   assert.equal(later.snoozedUntil, "2026-10-22T09:00:00Z");
 });
 
+test("a message keeps the time it was raised after it is resolved or set aside", () => {
+  const answered = fromServer({ ...announcement, updated_at: "2026-10-21T09:05:00Z" });
+  assert.equal(answered.at, "2026-10-21T09:00:00Z");
+  const hidden = fromServer({ ...announcement, state: "dismissed", updated_at: "2026-10-21T09:05:00Z" });
+  assert.equal(hidden.at, "2026-10-21T09:00:00Z");
+  assert.equal(hidden.dismissedAt, "2026-10-21T09:05:00Z");
+  const alert = fromServer({
+    ...announcement,
+    kind: "alert",
+    updated_at: "2026-10-21T09:05:00Z",
+    parts: [{ id: "p1", type: "alert", state: "open", actions: ["acknowledge"], alert: { id: "a1", rule: "api", severity: "warning", title: "Slow" } }],
+  });
+  assert.equal(alert.at, "2026-10-21T09:00:00Z");
+  const part = alert.parts[0];
+  assert.ok(part?.type === "alert");
+  assert.equal(part.alert.startedAt, "2026-10-21T09:00:00Z");
+  assert.equal(part.alert.updatedAt, "2026-10-21T09:05:00Z");
+});
+
 /** An agent's post held for a project's owners, as the platform sends it to one. */
 const draft = {
   id: "m-12",
