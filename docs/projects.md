@@ -683,11 +683,13 @@ ingress overwrites whatever a connector put there (phase 8).
     wherever it is named, so naming one in a project takes an owner and
     `knowledge:read` (403), which reads it anyway, and a source the
     workspace has (400). One a project names already may stay after it is
-    deleted, so an edit is not refused for it. A reader without `knowledge:read` is shown no
-    source's name: not in the knowledge route, the project's record or its
-    history, and the model is grounded in the sources without being told
-    their names. A source the workspace no longer has grounds nothing, as
-    one an agent names does.
+    deleted, so an edit is not refused for it. A reader without
+    `knowledge:read` is shown no source's name: not in the knowledge route,
+    the project's record or its history. A turn is not sent their names with
+    its trigger context; a turn stopped before its attempt starts is still
+    journaled with them, as fiber writes the tag's meta there, which keeping
+    warp's own keys out of fiber's rendering would close. A source the
+    workspace no longer has grounds nothing, as one an agent names does.
 - fiber's own thread journal (`pkg/thread`) is per agent by design ("not a
   transcript of the room"), so warp keeps its own room transcript.
 
