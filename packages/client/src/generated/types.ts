@@ -65,6 +65,12 @@ export interface Me {
   permissions: Permission[] | null;
   /** The caller is an admin in a workspace nobody has set up yet. */
   first_admin: boolean;
+  /** How the platform names the caller elsewhere, as a thread's
+`created_by` and its participants name people: their handle, or
+their subject when they have none and it holds no address. Empty
+when neither.
+ */
+  handle?: string;
 }
 
 export interface AgentSource {
@@ -687,6 +693,15 @@ export interface ThreadShare {
   channel?: string;
   /** People to add as participants, by handle. */
   add?: string[];
+}
+
+/** A thread as `getThread` reads it, after a share, and the people the share named who were not added. */
+export type ThreadShared = ThreadPage & { not_added: ThreadNotAdded[] };
+
+/** A person a share named who was not added, by handle, and why, in words that say nothing the sharer may not see. */
+export interface ThreadNotAdded {
+  handle: string;
+  reason: string;
 }
 
 /** A message posted in a thread. */

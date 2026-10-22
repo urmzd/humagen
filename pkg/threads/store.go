@@ -781,6 +781,20 @@ func (s *Store) Message(tenantName, id, mid string) (Message, error) {
 	return th.msgs[i].clone(), nil
 }
 
+// Last returns a thread's latest message, ErrNotFound when it has none.
+func (s *Store) Last(tenantName, id string) (Message, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	th, err := s.find(tenantName, id)
+	if err != nil {
+		return Message{}, err
+	}
+	if len(th.msgs) == 0 {
+		return Message{}, fmt.Errorf("%w: %q has no messages", ErrNotFound, id)
+	}
+	return th.msgs[len(th.msgs)-1].clone(), nil
+}
+
 // Messages returns a thread's messages in order, after the message after (""
 // from the first): at most limit, MaxPage when zero or more. next is what to
 // pass as after for the page that follows, or "" when there is none.

@@ -1024,13 +1024,20 @@ export const defaultCopy = {
     share: "Share",
     shareTitle: "Share this conversation",
     shareLede:
-      "Everyone who can see the project reads it in the channel. The agents you tagged stay in it, and the people you add are told.",
+      "Everyone who can see the project reads it in the channel. Each person you add is told in their inbox; someone who can't see the project isn't added. Selected agents that can't answer there are taken off.",
     shareProject: "Project",
     /** Under the project, once an agent has run in the conversation. */
     shareProjectFixed: "The project can't change once an agent has answered here.",
     shareChannel: "Channel",
     shareAdd: "People to add",
     shareAddHint: "Type a name or a handle",
+    /** Once shared: who was told, and who the share named but did not add, each with the platform's reason. */
+    sharedTold: (handles: string[]) =>
+      handles.length === 0
+        ? "Shared."
+        : `Shared. ${handles.map((h) => `@${h}`).join(", ")} ${handles.length === 1 ? "was" : "were"} told in their inbox.`,
+    notAdded: (people: { handle: string; reason: string }[]) =>
+      `Not added: ${people.map((p) => `@${p.handle}, ${p.reason}`).join("; ")}.`,
     /** The people picked to add, as a list. */
     shareAdding: "Adding",
     shareRemove: (handle: string) => `Remove @${handle}`,

@@ -208,7 +208,10 @@ func (s *Server) me(w http.ResponseWriter, _ *http.Request, who auth.Principal) 
 	// first_admin says the caller is the one who should set the workspace
 	// up: an admin, in a workspace nobody has set up yet.
 	first := who.Can(auth.AgentsWrite) && s.P.Settings(who.Tenant).SetupAt.IsZero()
-	ok(w, http.StatusOK, map[string]any{"principal": who, "permissions": who.Granted(), "first_admin": first})
+	// handle is how the platform names the caller elsewhere, as a thread's
+	// created_by and participants name people: their handle, or their
+	// subject when they have none and it holds no address.
+	ok(w, http.StatusOK, map[string]any{"principal": who, "permissions": who.Granted(), "first_admin": first, "handle": s.P.Names(who.Tenant).Key(who.Subject)})
 }
 
 func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Principal) {
