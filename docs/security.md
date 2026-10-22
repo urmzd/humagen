@@ -57,7 +57,7 @@ An agent that lives there is named to a reader who may not read it in one
 way only: as the agent that ran a run they may read. A run names the agent
 that ran it, which was available where it ran, even one moved since. So does
 what is built only from such runs: a conversation's agents, the agents that
-joined a thread by answering there, analytics and the analyst's summaries by
+joined a thread by answering there, a tag in a thread that started a run, analytics and the analyst's summaries by
 agent and their slowest runs, a recap's rows of what was done, and a filter
 of runs by agent. That is history the reader may already read, so one page
 never hides a name another shows.
@@ -69,7 +69,8 @@ the approvals of those calls, and who may approve when every approval is
 left out, with the hash of what is shown), an agent's call policy (the
 callers it admits and trusts), the definition in a run's manifest, a
 channel's default and its history, a thread's default, the agents added to it
-by name who never answered there, and the tags in its turns, the lists of
+by name who never answered there, and the tags in its turns that started
+nothing, the lists of
 agents available, and a project's history. A default left out is passed over
 for the reader, as if it were not set: who answers there, for them, is the
 next default along, as it would be were it not set, so neither what they read
@@ -78,10 +79,14 @@ is not available somewhere says where it lives only when everyone in the
 workspace reads that project, since it reaches whoever reads where it was
 made.
 
-A change to any of them keeps what the caller was not shown, in place, and
-the keeping is done under the store's lock or against the version read, so an
-entry another writer adds meanwhile is kept too. What the caller was not
-shown counts toward no limit they are told of. A request that names such an
+A change to any of them keeps what the caller was not shown, in place. A
+spec's is kept against the revision the write expects, a call policy's under
+its store's lock, and a channel's and a thread's default under theirs, so an
+entry another writer adds meanwhile is kept too; a client's and the
+settings' are kept against what was read when the write began. What the
+caller was not shown counts toward no limit they are told of: a call
+policy's lists hold more than 100 callers only with ones already stored, and
+a thread holds at most 100 participants in all. A request that names such an
 agent, there or as the agent a run, a call, a schedule or a thread asks,
 answers as one naming an agent that does not exist. Moving an agent into a
 project is refused while a project's, a channel's or a client's default

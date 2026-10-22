@@ -77,8 +77,7 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 					}
 					hours = n
 				}
-				own := p.ownProject(req.Tenant, req.RunID)
-				scope, err := p.summaryScope(req.Tenant, own, strings.TrimSpace(arg(args, "project")))
+				scope, err := p.summaryScope(req.Tenant, p.ownProject(req.Tenant, req.RunID), strings.TrimSpace(arg(args, "project")))
 				if err != nil {
 					return "", err
 				}
@@ -273,15 +272,12 @@ func (p *Platform) alertsReport(tenant, own string) (string, error) {
 }
 
 // agentOpenFor reports, for a tool of a run filed in own, whether an agent
-// may be read for everyone its answer reaches: a platform agent, or one that
-// lives in a project openFor allows. One living in a members-only project
-// other than own reads as one that is not there.
+// may be read for everyone its answer reaches: the one rule a recap names
+// agents by (agentsEveryoneReads), a platform agent or one that lives in a
+// project everyone who reads own reads, own's chain included. Any other
+// reads as one that is not there.
 func (p *Platform) agentOpenFor(tenant, own string) func(name string) bool {
-	open, tree := p.openFor(tenant, own), p.ProjectTree(tenant)
-	return func(name string) bool {
-		home, homed := tree.Home(agentspec.NormalizeName(name))
-		return !homed || open(home)
-	}
+	return p.agentsEveryoneReads(tenant, own)
 }
 
 // agentsReport is list_agents' answer for a run filed in own, bounded to the

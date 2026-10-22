@@ -1441,7 +1441,8 @@ here too (429).
 
   /** At most 50 added and removed together, and a thread has at most 50
 participants, counting the ones the caller is shown: an agent they
-were not shown is kept, and counts toward neither. An agent added must be available in the thread's
+were not shown is kept, and counts toward neither. A thread holds at
+most 100 in all. An agent added must be available in the thread's
 project, and a person, named by handle, must be in the workspace's
 directory (400). The person who started the thread stays in it.
 Adding takes posting there: a member of the thread's project, and in

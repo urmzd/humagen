@@ -466,16 +466,22 @@ func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *a
 		return spec, nil
 	}
 	shownNone := len(old.Spec.Approvals) > 0 && len(revisionShown(*old, seer.Agent).Spec.Approvals) == 0
+	writtenNone := len(spec.Approvals) == 0
 	spec = spec.Clone()
 	spec.Access.Spawn = append(spec.Access.Spawn, hidden...)
+	kept := false
 	for _, t := range old.Spec.Approvals {
 		if a, isCall := strings.CutPrefix(t, tagTool); isCall && slices.Contains(hidden, a) && !slices.Contains(spec.Approvals, t) {
 			spec.Approvals = append(spec.Approvals, t)
+			kept = true
 		}
 	}
-	// Who may approve was left out with the approvals when who was shown
-	// none of them (Seer.Revision), so a spec written with none keeps it.
-	if shownNone && len(spec.Approvals) == len(old.Spec.Approvals) && len(spec.Approvers) == 0 && !spec.SelfApproval {
+	// Who may approve guards the approvals kept too. When who was shown
+	// none of it (every approval was left out, Seer.Revision), or wrote no
+	// approvals, which leaves them none to name it with, a spec written with
+	// no approvers and no self_approval keeps the old ones, so a kept
+	// approval is never opened to anyone by a write that could not see it.
+	if kept && (shownNone || writtenNone) && len(spec.Approvers) == 0 && !spec.SelfApproval {
 		spec.Approvers, spec.SelfApproval = slices.Clone(old.Spec.Approvers), old.Spec.SelfApproval
 	}
 	// The spec as written held on its own; the spec as kept must too.
@@ -514,7 +520,7 @@ func (p *Platform) SetCallPolicyBy(ctx context.Context, who auth.Principal, agen
 	seer := p.Seer(who)
 	pol.Agent = agent
 	written := pol.Normalize()
-	if err := written.Validate(func(name string) bool {
+	if err := written.ValidateShape(func(name string) bool {
 		_, err := p.Agents.Get(ctx, who.Tenant, name, 0)
 		return err == nil && seer.Agent(name)
 	}); err != nil {
@@ -524,10 +530,26 @@ func (p *Platform) SetCallPolicyBy(ctx context.Context, who auth.Principal, agen
 	// counts toward no limit they are told of (callpolicy.PutKeeping).
 	// A kept caller that no longer exists is not kept, as it would not be
 	// shown to anyone.
+	// Which stored names are hidden is read before the lock, so the
+	// registry is not read under it but for a name stored since.
+	hiddenName := map[string]bool{}
+	isHidden := func(a string) bool {
+		h, known := hiddenName[a]
+		if !known {
+			_, err := p.Agents.Get(ctx, who.Tenant, a, 0)
+			h = err == nil && !seer.Agent(a)
+			hiddenName[a] = h
+		}
+		return h
+	}
+	before, _ := p.CallPolicies.Get(who.Tenant, agent)
+	for _, a := range slices.Concat(before.Allow, before.Trusted) {
+		isHidden(a)
+	}
 	hiddenOf := func(names []string) []string {
 		var out []string
 		for _, a := range names {
-			if _, err := p.Agents.Get(ctx, who.Tenant, a, 0); err == nil && !seer.Agent(a) {
+			if isHidden(a) {
 				out = append(out, a)
 			}
 		}
@@ -603,15 +625,16 @@ func (s *Seer) answeredIn(th threads.Thread) map[string]bool {
 }
 
 // mentions are a message's tags as the reader is shown them: a tag of an
-// agent they may not read reads as one that names no one, as tagging an
-// agent that does not exist does (threads.NoOne).
+// agent they may not read that started nothing reads as one that names no
+// one, as tagging an agent that does not exist does (threads.NoOne). A tag
+// that started a run is kept: the run, in the same thread, names its agent.
 func mentions(ms []threads.Mention, shown func(string) bool) []threads.Mention {
 	if ms == nil {
 		return nil
 	}
 	out := slices.Clone(ms)
 	for i, m := range out {
-		if m.Kind == threads.Agent && !shown(m.Name) {
+		if m.Kind == threads.Agent && m.Run == "" && !shown(m.Name) {
 			out[i] = threads.NoOne(m.Name)
 		}
 	}

@@ -690,8 +690,23 @@ func TestAThreadShowsOnlyTheAgentsItsReaderMayRead(t *testing.T) {
 	// still name it, and so do the participants and the conversation's
 	// agents built from them.
 	want(t, f, owner, "PUT", "/api/agents/helper/home", `{"project":"Secret"}`, http.StatusOK)
-	if raw, page := read(t, f, ana, "/api/threads/"+id); !strings.Contains(mustJSON(t, page["thread"]), `"name":"helper"`) {
+	raw, page = read(t, f, ana, "/api/threads/"+id)
+	if !strings.Contains(mustJSON(t, page["thread"]), `"name":"helper"`) {
 		t.Errorf("once helper lives in Secret, Ana reads the thread as %s", raw)
+	}
+	// Her tag of helper started a run, so it still reads as the tag of
+	// helper that started it.
+	tagged := 0
+	for _, turn := range sliceOf(page["turns"]) {
+		if m := obj(obj(turn)["message"]); m != nil && m["text"] == "@helper what's new?" {
+			tagged++
+			if got := mustJSON(t, m["mentions"]); !strings.Contains(got, `"kind":"agent","name":"helper"`) || !strings.Contains(got, `"run":`) || strings.Contains(got, "refused") {
+				t.Errorf("once helper lives in Secret, Ana's tag of it reads %s", got)
+			}
+		}
+	}
+	if tagged != 1 {
+		t.Errorf("Ana's thread holds %d tags of helper, want 1", tagged)
 	}
 	if _, list := read(t, f, ana, "/api/threads"); !strings.Contains(mustJSON(t, list), `"agents":["helper"]`) {
 		t.Errorf("once helper lives in Secret, Ana's threads are %s", mustJSON(t, list))
@@ -824,6 +839,24 @@ func TestASpecWhoseEveryApprovalIsHiddenNamesNoApprovers(t *testing.T) {
 	if raw, _ := read(t, f, owner, "/api/agents/lead/history"); strings.Contains(raw, `"rev":2`) || !strings.Contains(raw, `"approvers":["role:admin"]`) || !strings.Contains(raw, `"self_approval":true`) || !strings.Contains(raw, `"tag_spy"`) {
 		t.Errorf("after the writer's save lead is %s", raw)
 	}
+
+	// Who may approve guards the hidden approval whatever the writer adds
+	// beside it, having been shown none of it.
+	latest := func() string {
+		t.Helper()
+		_, history := read(t, f, owner, "/api/agents/lead/history")
+		return mustJSON(t, obj(sliceOf(history["revisions"])[0])["spec"])
+	}
+	want(t, f, writer, "PUT", "/api/agents/lead", `{"spec":`+spec("lead", `["helper"]`, `["tag_helper"]`, `[]`, false)+`,"expected_rev":0}`, http.StatusOK)
+	if got := latest(); !strings.Contains(got, `"approvers":["role:admin"]`) || !strings.Contains(got, `"tag_spy"`) || !strings.Contains(got, `"tag_helper"`) {
+		t.Errorf("after the writer adds an approval lead is %s", got)
+	}
+	// And once the writer removes every approval they were shown, and so
+	// must clear who may approve, the hidden one keeps it.
+	want(t, f, writer, "PUT", "/api/agents/lead", `{"spec":`+spec("lead", `["helper"]`, `[]`, `[]`, false)+`,"expected_rev":0}`, http.StatusOK)
+	if got := latest(); !strings.Contains(got, `"approvers":["role:admin"]`) || !strings.Contains(got, `"approvals":["tag_spy"]`) {
+		t.Errorf("after the writer removes the approvals they read lead is %s", got)
+	}
 }
 
 // What a writer was not shown counts toward no limit they are told of: a
@@ -856,6 +889,10 @@ func TestWhatAWriterIsNotShownCountsTowardNoLimit(t *testing.T) {
 	if _, pol := read(t, f, owner, "/api/agents/helper/call-policy"); len(listed(pol["allow"])) != 101 || !slices.Contains(listed(pol["allow"]), "spy") {
 		t.Errorf("after the writer's save helper's call policy allows %v", pol["allow"])
 	}
+	// The owner, shown all 101, saves the policy as they read it.
+	_, pol := read(t, f, owner, "/api/agents/helper/call-policy")
+	asRead, _ := json.Marshal(map[string]any{"callers": "listed", "allow": pol["allow"], "approval": "never"})
+	want(t, f, owner, "PUT", "/api/agents/helper/call-policy", string(asRead), http.StatusOK)
 	more, _ := json.Marshal(append(names, "helper"))
 	if code, out := send(t, f, writer, "PUT", "/api/agents/helper/call-policy", `{"callers":"listed","allow":`+string(more)+`,"approval":"never"}`); code != http.StatusBadRequest || strings.Contains(out, "spy") {
 		t.Errorf("101 callers the writer reads = %d %s", code, out)

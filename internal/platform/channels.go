@@ -90,6 +90,9 @@ func (p *Platform) UpdateChannelAs(ctx context.Context, who auth.Principal, proj
 	if cur, err := p.Projects.Channel(who.Tenant, projects.NameOf(project), name); err == nil {
 		seer.Channel(cur)
 	}
+	if in.Slack != nil {
+		seer.hosting(in.Slack.Client)
+	}
 	return p.updateChannel(ctx, who.Tenant, project, name, w, in, seer.Agent, func(c projects.Channel) bool {
 		return seer.Channel(c).Default != c.Default
 	})

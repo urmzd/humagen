@@ -464,7 +464,7 @@ export interface Thread {
   channel: string;
   title?: string;
   visibility: ThreadVisibility;
-  /** Who takes part. An agent that lives in a project the caller may not read is left out unless it answered in the thread, as its runs there name it. The caller adds at most 50 they are shown; the record holds at most 100 in all. */
+  /** Who takes part. An agent that lives in a project the caller may not read is left out unless it answered in the thread, as its runs there name it. The caller adds people and agents up to 50 they are shown; with the ones they are not shown, and the people who post and the agents who answer, who join on their own, the record holds at most 100. */
   participants: ThreadParticipant[];
   /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set. */
   default?: string;
@@ -483,7 +483,7 @@ export interface Thread {
 /** One tag in a message, and what it came to. */
 export interface ThreadMention {
   kind: "agent" | "person" | "sme";
-  /** The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). A tag of an agent that lives in a project the reader may not read reads as one of a person nobody goes by, as a tag of an agent that does not exist does. */
+  /** The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent. */
   name: string;
   /** The run an agent's tag started. */
   run?: string;

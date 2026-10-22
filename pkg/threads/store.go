@@ -337,8 +337,8 @@ func (s *Store) Claim(tenantName, id, by string, at time.Time) (Thread, error) {
 	} else {
 		next.Participants = append([]Participant{{Kind: Person, Name: by, Owner: true, At: at}}, next.Participants...)
 	}
-	if len(next.Participants) > MaxParticipants {
-		return Thread{}, fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
+	if len(next.Participants) > MaxHeld {
+		return Thread{}, fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
 	}
 	next.Version, next.UpdatedAt = th.rec.Version+1, at
 	if err := next.validate(); err != nil {
@@ -431,7 +431,7 @@ func (s *Store) Post(tenantName, id string, m Message, at time.Time) (Message, b
 	m.ID, m.Thread = MessageID(n), id
 	rec := th.rec.clone()
 	rec.UpdatedAt = at
-	if !rec.has(Person, m.By) && len(rec.Participants) < MaxParticipants {
+	if !rec.has(Person, m.By) && len(rec.Participants) < MaxHeld {
 		rec.Participants = append(rec.Participants, Participant{Kind: Person, Name: m.By, At: at})
 	}
 	b := s.batch()
@@ -507,7 +507,7 @@ func (s *Store) Join(tenantName, id string, ps []Participant, at time.Time) (Thr
 		if err := p.validate(); err != nil {
 			return Thread{}, err
 		}
-		if !rec.has(p.Kind, p.Name) && len(rec.Participants) < MaxParticipants {
+		if !rec.has(p.Kind, p.Name) && len(rec.Participants) < MaxHeld {
 			rec.Participants = append(rec.Participants, p)
 		}
 	}
@@ -617,8 +617,11 @@ func (s *Store) Participants(tenantName, id string, version int, add []Participa
 			}
 		}
 	}
-	if shown > MaxParticipants || len(next.Participants) > MaxHeld {
+	switch {
+	case shown > MaxParticipants:
 		return Thread{}, fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
+	case len(next.Participants) > MaxHeld:
+		return Thread{}, fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
 	}
 	if slices.Equal(next.Participants, th.rec.Participants) {
 		return next, nil

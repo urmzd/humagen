@@ -1307,7 +1307,8 @@ paths:
       description: |
         At most 50 added and removed together, and a thread has at most 50
         participants, counting the ones the caller is shown: an agent they
-        were not shown is kept, and counts toward neither. An agent added must be available in the thread's
+        were not shown is kept, and counts toward neither. A thread holds at
+        most 100 in all. An agent added must be available in the thread's
         project, and a person, named by handle, must be in the workspace's
         directory (400). The person who started the thread stays in it.
         Adding takes posting there: a member of the thread's project, and in
@@ -4887,7 +4888,7 @@ components:
         title: {type: string, maxLength: 200}
         visibility: {$ref: "#/components/schemas/ThreadVisibility"}
         participants:
-          description: Who takes part. An agent that lives in a project the caller may not read is left out unless it answered in the thread, as its runs there name it. The caller adds at most 50 they are shown; the record holds at most 100 in all.
+          description: Who takes part. An agent that lives in a project the caller may not read is left out unless it answered in the thread, as its runs there name it. The caller adds people and agents up to 50 they are shown; with the ones they are not shown, and the people who post and the agents who answer, who join on their own, the record holds at most 100.
           type: array
           maxItems: 100
           items: {$ref: "#/components/schemas/ThreadParticipant"}
@@ -4916,7 +4917,7 @@ components:
       properties:
         kind: {type: string, enum: [agent, person, sme]}
         name:
-          description: The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). A tag of an agent that lives in a project the reader may not read reads as one of a person nobody goes by, as a tag of an agent that does not exist does.
+          description: The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent.
           type: string
         run:
           description: The run an agent's tag started.

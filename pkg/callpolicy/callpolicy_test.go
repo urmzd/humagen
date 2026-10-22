@@ -159,6 +159,16 @@ func TestPutKeepingKeepsWhatIsStoredWhenItWrites(t *testing.T) {
 	if _, err := s.PutKeeping("acme", callpolicy.Policy{Agent: "helper", Callers: callpolicy.Listed, Allow: append(slices.Clone(most), "lead"), Approval: callpolicy.Never}, known(all...), hidden, "ana", at); !errors.Is(err, callpolicy.ErrInvalid) {
 		t.Fatalf("a write of one name too many = %v", err)
 	}
+	// A writer shown every name saves them as read: past MaxNames, a list
+	// may hold only names already stored.
+	stored, _ := s.Get("acme", "helper")
+	keepNone := func(callpolicy.Policy) ([]string, []string) { return nil, nil }
+	if _, err := s.PutKeeping("acme", callpolicy.Policy{Agent: "helper", Callers: callpolicy.Listed, Allow: stored.Allow, Approval: callpolicy.Never}, known(all...), keepNone, "olu", at); err != nil {
+		t.Fatalf("saving the stored list as read = %v", err)
+	}
+	if _, err := s.PutKeeping("acme", callpolicy.Policy{Agent: "helper", Callers: callpolicy.Listed, Allow: append(slices.Clone(stored.Allow), "lead"), Approval: callpolicy.Never}, known(all...), keepNone, "olu", at); !errors.Is(err, callpolicy.ErrInvalid) {
+		t.Fatalf("adding a name to a list past the most = %v", err)
+	}
 	// A mode without the list keeps nothing in it.
 	if got, err := s.PutKeeping("acme", callpolicy.Policy{Agent: "helper", Callers: callpolicy.Anyone, Approval: callpolicy.Never}, known(all...), hidden, "ana", at); err != nil || len(got.Allow) != 0 {
 		t.Fatalf("a write admitting anyone = %v, %v", got.Allow, err)

@@ -70,11 +70,12 @@ const (
 	MaxProjectThreads = 2_000
 	// MaxMessages is how many messages one thread holds.
 	MaxMessages = 5000
-	// MaxParticipants is how many people and agents take part in one
-	// thread, as whoever adds one counts them: the ones they are shown.
+	// MaxParticipants is how many people and agents one writer adds a
+	// thread up to, counting the ones they are shown.
 	MaxParticipants = 50
-	// MaxHeld is the most participants a thread's record holds, counting
-	// the ones a writer was not shown and so did not count (Participants).
+	// MaxHeld is the most participants a thread's record holds: with the
+	// ones a writer was not shown and so did not count (Participants), and
+	// the people who post and the agents who answer, who join up to it.
 	MaxHeld = 2 * MaxParticipants
 	// MaxText bounds a message, in characters.
 	MaxText = 8000
@@ -329,7 +330,7 @@ func (t Thread) validate() error {
 	case !validDefault(t.Default):
 		return fmt.Errorf("%w: a default is an agent's name or auto", ErrInvalid)
 	case len(t.Participants) > MaxHeld:
-		return fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
+		return fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
 	case t.CreatedBy != "" && strings.TrimSpace(t.CreatedBy) == "":
 		return fmt.Errorf("%w: a thread is started by someone", ErrInvalid)
 	}
