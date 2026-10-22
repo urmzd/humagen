@@ -168,7 +168,12 @@ export function orderUpdates(items: HomeUpdate[]): HomeUpdate[] {
     .slice(0, HOME_UPDATES_MAX);
 }
 
-/** A project the person has a role in, for Your projects. */
+/**
+ * A project that names the person, for Your projects: they are a member or an
+ * owner there through an entry for them or a role they hold, on it or as an
+ * owner above it. One they see only as one of everyone, or only through
+ * projects:govern, is not theirs.
+ */
 export interface HomeProject {
   /** Its name: the address it opens at. */
   name: string;
@@ -281,7 +286,7 @@ export interface HomeModel {
   notifications: HomeNotifications;
   /** What's new: announcements from the person's projects. Leave out to hide it. */
   updates?: HomeUpdate[];
-  /** Your projects: every project the person has a role in, in any order. Leave out to hide it. */
+  /** Your projects: every project that names the person (`HomeProject`), in any order. Leave out to hide it. */
   projects?: HomeProject[];
   /** Where all of the person's projects are listed, for "N more". */
   projectsUrl?: string;

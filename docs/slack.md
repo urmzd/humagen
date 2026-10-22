@@ -159,10 +159,18 @@ The Home tab of a mapped person is the shared Home, everything on it read for
 them the same way: their open inbox and announcements (`GET /api/inbox`) and
 their projects (`GET /api/projects`, both with `act_as_client` and
 `act_as_user`), so it holds only what that person may read. It shows at most
-five messages that need them, with the rest counted; What's new, five
-announcements of their projects, unread first; and Your projects, eight of
-the projects they have a role in, where something happened most recently
-first, archived ones left out and the rest counted. Each opens its page in the
+five messages that need them, newest first, with the rest counted as warp
+counts what may need them (`open`): an agent's draft waiting on them as an
+owner is one of them, and a posted announcement is not. What's new holds
+five announcements of their projects, unread first, posted ones only. Your
+projects holds the projects that name them, which warp marks `mine`: they
+are a member or an owner there through an entry for their subject or a
+`role:<name>` they hold, on the project itself or as an owner of a project
+above it. A project they see only through `*`, or only through
+`projects:govern`, is not theirs. At most eight, where something happened
+most recently first and then in the tree's order, archived ones left out,
+and the rest counted in "N more in Projects", which links the console's
+Projects. Each opens its page in the
 console when the app has the console's address (`WARP_PUBLIC_URL`). Without
 one, what needs them has Review, which sends the message to their direct
 messages with the app, where it can be answered, and What's new and Your

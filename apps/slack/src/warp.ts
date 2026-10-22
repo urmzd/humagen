@@ -243,8 +243,9 @@ export interface Warp {
     updates?: number;
   }>;
   /**
-   * Every project a person has a role in, each as they see it, read for them
-   * through the client that maps them: at most the 500 a workspace holds.
+   * Every project a person may see, each as they see it and `mine` on the
+   * ones that name them, read for them through the client that maps them: at
+   * most the 500 a workspace holds.
    */
   projectsFor(actAs: ActAs, options?: CallOptions): Promise<WireProject[]>;
   /**

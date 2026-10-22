@@ -23,6 +23,7 @@ import {
   alertMail,
   announcementMail,
   budgetMail,
+  draftMail,
   failureMail,
   memoryMail,
   mentionMail,
@@ -542,7 +543,7 @@ test("Home's What's new is made as the console makes it, and What's new and Your
     }),
   ];
   const projects: WireProject[] = [
-    { name: "Launch", kind: "team", path: [{ name: "Launch" }], active: 0 },
+    { name: "Launch", kind: "team", path: [{ name: "Launch" }], active: 0, mine: true },
     {
       name: "Field",
       title: "Field engineering",
@@ -550,6 +551,16 @@ test("Home's What's new is made as the console makes it, and What's new and Your
       path: [{ name: "Field", title: "Field engineering" }],
       active: 2,
       active_at: "2026-10-09T00:30:00Z",
+      mine: true,
+    },
+    // Everyone's: she reads it, and it does not name her.
+    {
+      name: "News",
+      kind: "company",
+      path: [{ name: "News" }],
+      active: 5,
+      active_at: "2026-10-09T00:50:00Z",
+      mine: false,
     },
   ];
   const href = (path: string) => `https://warp.test${path}`;
@@ -574,7 +585,7 @@ test("Home's What's new is made as the console makes it, and What's new and Your
       (name, id) => href(`/projects/${name || "~"}?message=${id}`),
     ),
   );
-  // The console's Home has no Your projects: the busiest first, each opening its page.
+  // The console's Home has no Your projects: the ones that name her, the busiest first, each opening its page.
   assert.deepEqual(model.projects, [
     {
       name: "Field",
@@ -620,4 +631,77 @@ test("Home's What's new is made as the console makes it, and What's new and Your
   ];
   inOrder(onSlack, phrases);
   inOrder(onWeb, phrases);
+});
+
+test("Home's Needs you holds the same rows and the same total on both, an agent's draft among them and no announcement", () => {
+  // A page of ana's open inbox, newest first, as warp sends it: an agent's
+  // draft waits on her as one of Field's owners, beside a posted announcement.
+  const inbox = [
+    draftMail(),
+    mentionMail(),
+    announcementMail(),
+    budgetMail(),
+    alertMail(),
+    questionMail(RUN, "approval"),
+    failureMail(RUN),
+    memoryMail(RUN),
+  ];
+  // warp counts what may need her across her whole inbox: more than the page
+  // holds, the draft among them, the announcement not.
+  const open = 9;
+  const model = homeModel({
+    person: { id: "U01ANA", name: "Ana" },
+    assistant: { name: "Warp" },
+    intro: "I hand your questions to this workspace's agents.",
+    inbox: { messages: inbox, open },
+    // Her announcements, as an owner reads them: the draft has the same kind.
+    announcements: [announcementMail(), draftMail()],
+    projects: [],
+    workspace: "acme",
+    build: false,
+    href: (path: string) => `https://warp.test${path}`,
+  });
+  // The console's Home says "Needs you" with this same number (inboxCounts.open).
+  assert.equal(model.notifications.inbox?.total, open);
+  assert.deepEqual(
+    model.notifications.items.map((n) => n.id),
+    ["m-draft", "m-mention", "m-budget", "m-alert", "m-approval"],
+  );
+  assert.deepEqual(
+    model.updates?.map((u) => u.id),
+    ["m-news"],
+  );
+
+  const el = <Home home={model} />;
+  const onSlack = plain(JSON.stringify(homeView(el).view.blocks).replace(/\\n/g, " "));
+  const onWeb = plain(web(el));
+  const rows = [
+    defaultCopy.home.needsYou,
+    "warp-analyst Field shipped two fixes",
+    "Ana mentioned you in #renewals",
+    "Limits Project Launch reached its daily run limit",
+    "oncall-failure-rate oncall is failing more than half its runs",
+    "lead wants to run deploy",
+    defaultCopy.home.moreWaiting(open - 5),
+    defaultCopy.home.whatsNew,
+    "Field offsite",
+  ];
+  for (const [surface, text] of [
+    ["Slack", onSlack],
+    ["the console", onWeb],
+  ] as const) {
+    let at = 0;
+    for (const p of rows) {
+      const found = text.indexOf(p, at);
+      assert.ok(found >= 0, `${surface}: "${p}" missing, or out of order, in ${text}`);
+      at = found + p.length;
+    }
+    // Five rows and the rest counted, the same on both: nothing else is a row.
+    assert.ok(!text.includes("lead failed"), `${surface} shows a sixth row`);
+    assert.equal(
+      text.split("Field shipped two fixes").length - 1,
+      1,
+      `${surface} shows the draft once`,
+    );
+  }
 });

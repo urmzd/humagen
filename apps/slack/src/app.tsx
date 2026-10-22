@@ -1804,8 +1804,9 @@ export class App {
   /**
    * The Home tab. A person the client maps sees the shared Home, read as
    * them through the client (act_as): at most five that need them, what's
-   * new in their projects and their projects, each opening in the console,
-   * and ways to start. Their projects are left out when they cannot be read.
+   * new in their projects and the projects that name them, each opening in
+   * the console, and ways to start. Their projects are left out when they
+   * cannot be read.
    * Without a mapping the tab is the mailbox, as it always was: an operator
    * sees the whole inbox the app may read, and anyone else what they may
    * settle.
@@ -1848,8 +1849,12 @@ export class App {
       person: { id: user, name: names.get(user) ?? mapped.person },
       assistant: { name, handle: names.get(this.opts.botUser) ?? name },
       intro: this.words.homeIntro,
-      inbox: mine,
-      // An agent may have written an announcement: its words ping nobody here either.
+      // An agent may have written what either list holds, a draft, a
+      // question or an announcement: its words ping nobody here either.
+      inbox: {
+        ...mine,
+        messages: mine.messages.map((m) => untrustedAnnouncement(m as WireMessage)),
+      },
       announcements: news.messages.map((m) => untrustedAnnouncement(m as WireMessage)),
       projects,
       workspace: this.opts.tenant,

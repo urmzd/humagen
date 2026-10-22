@@ -567,10 +567,19 @@ export function projectTransport(http: Http, project: string, children = false):
 }
 
 /**
+ * An announcement as posted: news for What's new, which the server counts only
+ * in `updates`. An agent's draft, which an owner reads under the same kind, was
+ * never posted: it waits on its owners, so it needs them, and counts in `open`.
+ */
+function isNews(m: PlatformMessage): boolean {
+  return m.kind === "announcement" && isAnnouncement(m);
+}
+
+/**
  * What's new on Home, from a page of the reader's own announcements: the open
- * ones, unread first and then newest, at most five. An agent's draft, which an
- * owner reads under the same kind, was never posted, so it is not news. `titles` names a project
- * as people see it ("" is the workspace), and `url` is where one opens.
+ * ones, unread first and then newest, at most five. An agent's draft is not
+ * news (isNews). `titles` names a project as people see it ("" is the
+ * workspace), and `url` is where one opens.
  */
 export function updatesOf(
   messages: PlatformMessage[],
@@ -579,7 +588,7 @@ export function updatesOf(
 ): HomeUpdate[] {
   return orderUpdates(
     messages
-      .filter((m) => m.kind === "announcement" && isAnnouncement(m) && messageState(m) === "open")
+      .filter((m) => isNews(m) && messageState(m) === "open")
       .map((m) => {
         const project = projectOf(m);
         const kind = m.from.kind === "person" || m.from.kind === "agent" ? m.from.kind : "system";
@@ -600,14 +609,15 @@ export function updatesOf(
 
 /**
  * What needs the reader on Home, from a page of their own inbox: every open
- * message but announcements, which are What's new. Most subjects start with
- * who raised them ("lead failed", "Ana mentioned you in #renewals"), so the
- * summary is what follows that name, and the whole subject when it does not
- * start with it. `url` is where one opens.
+ * message but posted announcements, which are What's new, so an agent's draft
+ * waiting on its owners is here. These are what the server's `open` counts.
+ * Most subjects start with who raised them ("lead failed", "Ana mentioned you
+ * in #renewals"), so the summary is what follows that name, and the whole
+ * subject when it does not start with it. `url` is where one opens.
  */
 export function notificationsOf(messages: PlatformMessage[], url?: (id: string) => string | undefined): HomeNotification[] {
   return messages
-    .filter((m) => m.kind !== "announcement" && messageState(m) === "open")
+    .filter((m) => !isNews(m) && messageState(m) === "open")
     .map((m) => {
       const name = m.from.name;
       const summary = name && m.subject.startsWith(`${name} `) ? m.subject.slice(name.length + 1) : m.subject;

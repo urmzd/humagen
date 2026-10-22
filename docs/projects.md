@@ -989,6 +989,7 @@ naming no agent.
 | `POST /api/threads`, `POST /api/threads/{id}/messages` | `runs:write` | gain `surface {client, channel, ts}`: find or create the thread by surface. The platform files it from the binding, never from a request field, and only for the client's `slack.machine` |
 | `PUT /api/inbox/{id}/deliveries/{client}` | `runs:write` | `{channel, ts}` → 204; only the client's machine |
 | `GET /api/inbox`, `GET /api/inbox/count` | `runs:read` | gain `act_as` for a client's machine, resolved through `Client.ActsFor` |
+| `GET /api/projects`, `GET /api/projects/{name}` | `projects:read` | each `ProjectView` gains `mine`: whether the project names the caller, which is what Your projects lists (see App Home under Slack) |
 
 ### Contract upkeep, every phase
 
@@ -1170,10 +1171,12 @@ An unknown tab falls back to the default through `pick`. Names never hold
   Nothing waiting on a person animates; a mark shows thinking only while its
   run is live.
 - **Home.** The prompt-first composer, then two quiet lines from the shared
-  `HomeModel`: "Needs you · 2" and "What's new" (up to 5 announcements from
-  your projects, unread first, never an unpublished draft), each linking to
-  `/projects/{name}/inbox?message=` in the project it was filed in. A
-  project's inbox opens by id only a message filed in that project.
+  `HomeModel`: "Needs you · 2" (the inbox's `open`, which counts an agent's
+  draft waiting on its owners and never a posted announcement) and "What's
+  new" (up to 5 announcements from your projects, unread first, never an
+  unpublished draft), each linking to `/projects/{name}/inbox?message=` in
+  the project it was filed in. A project's inbox opens by id only a message
+  filed in that project.
 - **Inbox.** Announcements sit under Updates with a megaphone template;
   drafts and mentions sit in Needs you. On a broadcast the header reads "Hide
   for Me", with "Hidden for you. Others still see it." and "Show for Me",
@@ -1209,7 +1212,10 @@ Shared pieces: `packages/core` gains `HomeModel.updates` and
 `HomeModel.projects`, and `packages/adapter` maps `announcement`, `draft` and
 `mention` (`kinds`, `templateOf`) and makes What's new, Your projects and
 what needs the reader from the platform's reads (`updatesOf`, `projectsOf`,
-`notificationsOf`), with parity tests in `apps/slack/src/parity.test.tsx`.
+`notificationsOf`): a posted announcement is What's new and an agent's draft
+is what needs its owners, and Your projects keeps the views marked `mine`.
+Parity tests in `apps/slack/src/parity.test.tsx` hold Needs you, its rows
+and its total, What's new and Your projects to the same on both renderers.
 
 ### Slack (one app per client)
 
@@ -1262,11 +1268,20 @@ what needs the reader from the platform's reads (`updatesOf`, `projectsOf`,
   seeded: after the Slack channel is bound to another project, or unbound, a
   reply under an old post starts a thread there as any other.
 - **App Home.** The shared Home, through `homeView`, replaces the bare
-  MailboxView for a person the client maps. It shows Needs you (at most 5),
-  What's new (at most 5) and Your projects (at most 8, where something
-  happened most recently first, archived ones left out), read as the mapped
+  MailboxView for a person the client maps. It shows Needs you (at most 5,
+  the rest counted as the inbox's `open` counts them: an agent's draft
+  waiting on its owners is one, a posted announcement is not), What's new
+  (at most 5 posted announcements) and Your projects, read as the mapped
   person through `act_as` (`GET /api/inbox` and `GET /api/projects` with
-  `act_as_client` and `act_as_user`), within the 100-block budget. Each opens
+  `act_as_client` and `act_as_user`), within the 100-block budget. Your
+  projects are the projects that name the person (`mine` on each view):
+  they are a member or an owner through an entry for their subject or a
+  `role:<name>` they hold, on the project or as an owner of a project above
+  it. Access only through `*`, or only through `projects:govern`, does not
+  count, and neither does an entry in a project they could not see without
+  `projects:govern`. At most 8, where something happened most recently
+  first and then in tree order, archived ones left out, the rest counted in
+  "N more in Projects", which links the console's Projects. Each opens
   in the console when the app has its address. Without it, Review sends what
   needs the person to their messages with the app, and What's new and Your
   projects are shown to read. Ask a Question and Build an Agent open a form
