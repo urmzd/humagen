@@ -111,6 +111,7 @@ import type {
   ThreadPage,
   ThreadParticipantsUpdate,
   ThreadPosted,
+  ThreadShare,
   ThreadUpdate,
   ToolCredential,
   ToolCredentialInput,
@@ -1366,9 +1367,16 @@ that issued it.
   /** The message is posted as the caller, or as the person `act_as` names
 through a client that maps them; no field names an author, and a
 credential acting for nobody is refused (403). What the message
-starts follows the tag rules: the agents it tags answer, at most 3;
-tagging only people or experts notifies them; posted only, nothing
-answers; otherwise the default the thread inherits answers. Each run
+starts follows the tag rules: the agents it tags answer, at most 3,
+and a `$skill` with no agent tagged goes to `@auto`; tagging only
+people or experts notifies them; posted only, nothing answers. A
+message a person posts as themselves, as the console does, runs only
+the agents it tags: untagged, it starts nothing (rule `untagged`),
+whatever the thread's, channel's or project's default. Otherwise, a
+message a client posts, the default the thread inherits answers.
+`visibility` left out is `private` (with no `surface`): the
+conversation is its starter's alone until they share it
+(`shareThread`). Each run
 it starts acts for the person the message is posted as, never for
 anyone else in the thread, so a tool that acts as a person uses that
 person's own credential; the run is sent the room up to the message,
@@ -1431,7 +1439,9 @@ version 0, and its id is the id of the run that started it.
 
 The first page is the newest 200 turns, or `limit`. `next` is the
 cursor for the turns before them, or null at the start: pass it back
-as `before`. `answers` is who answers an untagged message here. A run
+as `before`. `answers` is who answers an untagged message a client
+posts here, from Slack or GitHub; a message a person posts as
+themselves, as the console does, runs only the agents it tags. A run
 turn whose run is parked on a question a person answers carries
 `ask`: whether the reader may answer it, and whom it is for, so a
 surface offers the answer only to the people it is for.
@@ -1496,7 +1506,11 @@ then owns it.
 
   /** Posted as the caller, or as the person `act_as` names through a
 client that maps them, as for `startThread`, and each run it starts
-acts for that person. `after` is the turn it follows: a message of
+acts for that person. What it starts follows the tag rules of
+`startThread`: posted as the caller themselves, as the console
+does, it runs only the agents it tags, and untagged it starts
+nothing; each run is sent the conversation up to it. `after` is the
+turn it follows: a message of
 the thread, a run answering one, or in a conversation from before
 threads one of its runs; left out, it follows the latest. `answers`
 records the message as a question's answer, which resumes the run
@@ -1566,6 +1580,38 @@ whoever started the thread or an owner of its project (403).
     });
   }
 
+  /** Makes the conversation shared in `channel` of `project`, read by
+everyone who can see that project, and adds the people `add` names,
+by handle, as participants (400 for a handle nobody goes by). `project`
+left out keeps the thread's own, `~` is the workspace, and `channel`
+left out is `general`. Only a participant shares, and only into a
+project they are a member of (403), whose channel is not archived
+(400). The thread moves to another project only while no run has
+been filed in it: a conversation that has runs stays in its project
+(409). A thread on a Slack or GitHub surface stays where it was
+started (400). Shared to private again is not offered. Answers the
+thread as `getThread` reads it.
+ */
+  async shareThread(id: string, body: ThreadShare, options?: RequestOptions): Promise<ThreadPage> {
+    let path = "/api/threads/{id}/share";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ThreadPage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async shareThreadRaw(id: string, body: ThreadShare, options?: RequestOptions): Promise<ApiResponse<ThreadPage>> {
+    let path = "/api/threads/{id}/share";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ThreadPage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** A long-lived `text/event-stream`. Two kinds of message arrive on it:
 
 - A message with no `event:` field carries one `RunEvent` as JSON.
@@ -1574,8 +1620,8 @@ whoever started the thread or an owner of its project (403).
   caller is only sent notices for kinds of message they may read.
 - A message with `event: thread` carries one `ThreadNotice` as JSON:
   a message was posted or settled in a thread, or its record changed.
-  Fetch the thread to see it. Every thread is shared, so a caller who
-  may read conversations is sent each.
+  Fetch the thread to see it. A caller is sent the notices of the
+  threads they may read.
 
 A comment line (`: keep-alive`) is sent every 15 seconds. Messages
 carry no `id:` field, so `Last-Event-ID` is not used: to resume, pass

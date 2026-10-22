@@ -107,7 +107,9 @@ Which agents may run where is a policy the platform enforces, never an
 instruction in a prompt. A run is refused at admission when its agent is not
 available in the project it is filed in, whatever started it, and an agent
 that lives in a project is not available in the workspace itself or in any
-project outside its home's subtree. A message that tags no agent goes to the
+project outside its home's subtree. A message posted in the console runs
+only the agents it tags: untagged, it starts nothing, whatever default is set.
+A message a client posts from Slack or GitHub that tags no agent goes to the
 default its place inherits, and with none nothing runs: nothing routes on its
 own. Setting the workspace default changes who answers everyone's untagged
 messages, so it needs `projects:govern`. Owning the workspace is not enough,
@@ -209,6 +211,12 @@ no permission, grants nothing.
   and nothing writes an agent's turn but its run. A shared thread is read by
   everyone with `runs:read` who sees its project; a private one by its
   participants alone, and every read path answers 404 for it to anyone else.
+  A conversation the console starts is private until a participant shares
+  it, which only one who is a member of the project it goes to may do: from
+  then on everyone who sees that project reads it, the messages written
+  while it was private included. A share never makes a thread private again,
+  and a conversation that has runs does not move to another project, so its
+  runs stay read where they were filed.
 - **The machine holds its people's votes.** Whoever holds the credential a
   Slack client names as `machine` can answer every question as any person the
   client maps, within what each may answer, and raise runs as them, which

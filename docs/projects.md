@@ -32,9 +32,11 @@ Decisions:
 3. **Policies walk the chain.** A run counts toward its project, every ancestor
    and the tenant, and is refused by the strictest. This lands in phase 1, with
    the first child project.
-4. **No implicit routing.** An agent answers when it is tagged (`@ignite`). An
-   untagged message goes to the default the thread inherits, if one is set,
-   else it is a human message and starts no run. `@auto` is a built-in agent:
+4. **No implicit routing.** An agent answers when it is tagged (`@ignite`). In
+   the console that is the only way: an untagged message is a human message
+   and starts no run, whatever default is set. On Slack and GitHub, where
+   mentioning the app is what asks, an untagged message goes to the default
+   the thread inherits, if one is set, else it starts no run. `@auto` is a built-in agent:
    today's `pkg/pick` and baseline behind an explicit name. The workspace
    baseline setting is replaced by the root's default.
 5. **Context is layered and explicit**: the project chain's instructions and
@@ -92,6 +94,17 @@ parent.
   - **shared**: everyone who can see the project reads it, like a thread in a
     Slack channel;
   - **private**: its participants only (phase 7).
+
+  A conversation the console starts is private: its starter's alone, the
+  first participant, until they share it. **Share** moves it into a channel
+  of a project (`general` by default, the project the person picked, else the
+  workspace) and makes it shared there, so everyone who can see that project
+  reads it and can join it; people named in the same step become
+  participants. Only a participant who is a member of the target project
+  shares. It moves to another project only while no run has been filed in it
+  ("a conversation that has runs stays in its project"), and a thread on a
+  Slack or GitHub surface stays where its binding filed it. Shared is not
+  made private again.
 - A turn is either a **human message** (a person posted; no run) or an
   **agent's run** answering a message. A person posts only as themselves; no
   route lets anyone post as an agent, and agent turns exist only as runs.
@@ -108,15 +121,25 @@ One grammar, parsed by the platform for every surface (`pkg/threads`):
 | `@sme` or `@sme:<topic>` | the project's experts (for that topic) are notified |
 | `<@U…>` (Slack only) | the Slack person, mapped to a subject through the client's `slack.people` |
 
+A `$<skill>` (the skills change adds it to the grammar) tells the agents the
+message tags to use that skill; with no agent tagged it goes to `@auto`.
+
 What a message starts, first rule that applies:
 
 1. It tags agents or `@auto`: each tagged agent answers, side by side, each
-   seeing the thread up to this message. At most 3 runs per message.
+   seeing the thread up to this message. At most 3 runs per message. A
+   message that names a skill and tags no agent is answered by `@auto`.
 2. It tags only people or experts: no run. It is a message to people.
 3. It answers a question or replies to a mention: no run. It is a human
    response.
 4. The poster chose **Post Only**: no run.
-5. Otherwise the inherited default answers. With none, no run.
+5. It was posted in the console, by a person as themselves: no run (rule
+   `untagged`). Console messages run only when they tag an agent, so a
+   person can write several messages and nothing runs until they name one;
+   the agent they name is then sent the conversation so far. `post_only` is
+   still accepted there and means the same.
+6. Otherwise, for a message a client posts from Slack or GitHub, the
+   inherited default answers. With none, no run.
 
 The default is the first set of: the thread's, the client's (for a thread a
 Slack or GitHub client files outside a bound channel), the channel's, the
@@ -1105,6 +1128,17 @@ no route and change no shape: they are `workspace.release_notes` and
 `GET /api/inbox/count` answers the same `{open, unread, updates}`, added up
 from counters.
 
+### Conversations in the console
+
+| Route | Permission | Notes |
+|---|---|---|
+| `POST /api/threads` | `runs:write` | `visibility` left out (with no `surface`) is `private`: the starter is the first participant. A message a person posts as themselves runs only the agents it tags; untagged it starts nothing, `rule: untagged` |
+| `POST /api/threads/{id}/messages` | `runs:write` | the same rule: posted as the caller themselves, only tags start runs, and a tagged agent is sent the conversation so far. A client posting with `act_as` keeps the defaults |
+| `POST /api/threads/{id}/share` | `runs:write` | `ThreadShare{project?, channel?, add?: [handle] (<= 50)}` → 200 `ThreadPage`, the thread as `getThread` reads it. Only a participant who is a member of the target project shares (403); `project` left out keeps the thread's own, `channel` left out is `general`; an archived channel or a handle nobody goes by is 400; a project the caller cannot see is 404; moving a thread that has runs to another project is 409 "a conversation that has runs stays in its project"; a surface's thread does not move (400) |
+| `GET /api/threads/{id}` | `runs:read` | `answers` stays on the wire: who answers an untagged message a client posts. The console no longer shows it |
+
+`ThreadRule` gains `untagged`.
+
 ### Contract upkeep, every phase
 
 - New schemas go in the `shapes` map of
@@ -1705,11 +1739,12 @@ phase 2 and experts to phase 3, because addressing and threads need them.
   - posts are plain text with Slack mentions escaped;
   - wide audiences default to review;
   - `project_changes` reads only the run's subtree.
-- **Defaults in busy threads.** A shared thread with a default answers every
-  untagged message, which can be noisy. Messages that tag people, and replies to
-  mentions and answers that tag no agent, start no run, and Post Only is
-  always there. In Slack,
-  only messages that mention the app reach warp.
+- **Defaults in busy threads.** A default no longer answers a message posted
+  in the console: there an agent runs only when it is tagged. On a surface a
+  shared thread with a default answers every untagged message, which can be
+  noisy. Messages that tag people, and replies to mentions and answers that
+  tag no agent, start no run, and Post Only is always there. In Slack, only
+  messages that mention the app reach warp.
 - **Homing narrows widely.** Giving an agent a home removes it from `*`
   everywhere else. The route answers 409 while anything outside the new
   subtree uses the agent, and the console counts the projects that lose it.

@@ -22,6 +22,9 @@ const (
 	RuleReply Rule = "reply"
 	// RulePostOnly: the person chose to post only.
 	RulePostOnly Rule = "post_only"
+	// RuleUntagged: it was posted in the console and tags no agent, so
+	// nothing runs. In the console an agent answers only when it is tagged.
+	RuleUntagged Rule = "untagged"
 	// RuleDefault: the default the thread inherits answers, if there is one.
 	RuleDefault Rule = "default"
 )
@@ -61,6 +64,10 @@ type Input struct {
 	Reply bool
 	// PostOnly is set when the person chose to post only.
 	PostOnly bool
+	// TagsOnly is set for a message a person posted in the console, as
+	// themselves and not through a client's surface: only the agents it
+	// tags answer it, and no default ever does.
+	TagsOnly bool
 	// Default is what the thread inherits: the first set of Nearer, then
 	// the project's chain.
 	Default Default
@@ -92,7 +99,8 @@ type Decision struct {
 //  2. one that tags only people, experts or a role starts no run;
 //  3. so does one that answers a question or replies to a mention;
 //  4. and one posted only;
-//  5. otherwise the inherited default answers. With none, or with one that
+//  5. and one posted in the console (TagsOnly), whatever the default;
+//  6. otherwise the inherited default answers. With none, or with one that
 //     has stopped being available, no agent answers, and the reason says so.
 //
 // A refused tag still counts as a tag of its kind, so a tag that names
@@ -132,6 +140,8 @@ func Decide(in Input) Decision {
 		d.Rule, d.Reason = RuleReply, "A reply to a person starts no run."
 	case in.PostOnly:
 		d.Rule, d.Reason = RulePostOnly, "Posted only, so no agent answers."
+	case in.TagsOnly:
+		d.Rule, d.Reason = RuleUntagged, "Nothing runs until you tag an agent."
 	case in.Default.Agent == "":
 		d.Rule, d.Reason = RuleDefault, "Nobody answers untagged messages here; tag an agent."
 	case in.Unavailable != "":
