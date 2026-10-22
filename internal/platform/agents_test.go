@@ -381,6 +381,28 @@ func TestAClientThatRoutesToAnAgentKeepsItFromLeavingTheRoot(t *testing.T) {
 	}
 }
 
+// An agent is one agent under every spelling of its name, as the registry
+// resolves it: owning its home is asked under each, a platform agent is the
+// platform's under each, and none is available under any but its own.
+func TestAnAgentIsTheSameAgentUnderEverySpellingOfItsName(t *testing.T) {
+	p := start(t, call.Limits{})
+	globexHelper(t, p)
+	bo := auth.Principal{Subject: "bo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	for _, name := range []string{"globex-helper", "Globex-Helper", "GLOBEX-HELPER", " globex-helper", "globex-helper\t"} {
+		if err := p.OwnsHome(bo, name); !errors.Is(err, projects.ErrForbidden) {
+			t.Errorf("OwnsHome(bo, %q) = %v, want forbidden", name, err)
+		}
+	}
+	for _, name := range []string{platform.BuiltinWriter, "Warp-Writer", " WARP-WRITER "} {
+		if !platform.IsBuiltin(name) {
+			t.Errorf("%q is not the platform's", name)
+		}
+	}
+	if _, err := p.Invoke(t.Context(), inProject("spelled", "Globex-Helper", "Globex")); !errors.Is(err, platform.ErrNotAvailable) {
+		t.Fatalf("a run of Globex-Helper in Globex = %v, want ErrNotAvailable", err)
+	}
+}
+
 func TestThePlatformsOwnAgentsLiveNowhere(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)

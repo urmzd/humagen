@@ -82,16 +82,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/access/explain", s.authed("", s.explainAccess))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
-	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, s.reviseAgent))
-	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, s.putAgentHome))
-	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, s.agentHistory))
-	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, s.getCallPolicy))
-	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, s.putCallPolicy))
-	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, s.reachable))
-	mux.HandleFunc("GET /api/agents/{name}/memory", s.authed(auth.AgentsRead, s.listMemory))
-	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, s.addMemory))
-	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, s.removeMemory))
-	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, s.approveMemory))
+	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.reviseAgent)))
+	mux.HandleFunc("PUT /api/agents/{name}/home", s.authed(auth.AgentsWrite, agentNamed(s.putAgentHome)))
+	mux.HandleFunc("GET /api/agents/{name}/history", s.authed(auth.AgentsRead, agentNamed(s.agentHistory)))
+	mux.HandleFunc("GET /api/agents/{name}/call-policy", s.authed(auth.AgentsRead, agentNamed(s.getCallPolicy)))
+	mux.HandleFunc("PUT /api/agents/{name}/call-policy", s.authed(auth.AgentsWrite, agentNamed(s.putCallPolicy)))
+	mux.HandleFunc("GET /api/agents/{name}/reachable", s.authed(auth.AgentsRead, agentNamed(s.reachable)))
+	mux.HandleFunc("GET /api/agents/{name}/memory", s.authed(auth.AgentsRead, agentNamed(s.listMemory)))
+	mux.HandleFunc("POST /api/agents/{name}/memory", s.authed(auth.AgentsWrite, agentNamed(s.addMemory)))
+	mux.HandleFunc("DELETE /api/agents/{name}/memory/{id}", s.authed(auth.AgentsWrite, agentNamed(s.removeMemory)))
+	mux.HandleFunc("POST /api/agents/{name}/memory/approve", s.authed(auth.AgentsWrite, agentNamed(s.approveMemory)))
 	mux.HandleFunc("GET /api/memory/pending", s.authed(auth.AgentsRead, s.pendingMemory))
 	mux.HandleFunc("GET /api/runs", s.authed(auth.RunsRead, s.listRuns))
 	mux.HandleFunc("POST /api/runs", s.authed(auth.RunsWrite, s.createRun))
@@ -150,6 +150,20 @@ func headers(next http.Handler) http.Handler {
 
 type handler func(w http.ResponseWriter, r *http.Request, who auth.Principal)
 
+// agentNamed answers 404 for a path that names an agent other than by its
+// canonical name, in lower case with no spaces around it, as the registry and
+// every store keep it. Every check on the agent, its home's owners and
+// whether the platform provides it among them, then reads the name the
+// change is made under, so another spelling of it is no way around one.
+func agentNamed(h handler) handler {
+	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		if name := r.PathValue("name"); name != agentspec.NormalizeName(name) {
+			fail(w, http.StatusNotFound, fmt.Sprintf("no agent called %q: agents are named in lower case", name))
+			return
+		}
+		h(w, r, who)
+	}
+}
 
 // authed authenticates, authorizes, bounds the body, and records every change.
 // An empty permission means any signed-in caller.

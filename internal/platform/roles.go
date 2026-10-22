@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/urmzd/fiber/pkg/agentspec"
+
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
@@ -280,7 +282,10 @@ func (p *Platform) OwnsHome(who auth.Principal, agent string) error {
 }
 
 func (p *Platform) ownsHome(tree *projects.Tree, who auth.Principal, agent string) error {
-	home, homed := tree.Home(agent)
+	// Homes are kept by the agent's canonical name, which is what the
+	// registry and every store resolve a name to, so a name in another
+	// case or with spaces around it is the same agent here too.
+	home, homed := tree.Home(agentspec.NormalizeName(agent))
 	if !homed {
 		return nil
 	}

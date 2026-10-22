@@ -348,3 +348,52 @@ func TestNotesOnTheWorkspaceAndACompanyProjectNeedGovernToo(t *testing.T) {
 		}
 	}
 }
+
+// An agent is one agent under every spelling of its name, so an agent that
+// lives in a project is its home's to change under each: a path that names
+// it other than by its canonical name, in another case or with spaces
+// around it, is no agent's and answers 404, and changes nothing.
+func TestAHomedAgentIsItsHomesUnderEverySpellingOfItsName(t *testing.T) {
+	f := newFixture(t)
+	writes := append([]string{"warp:agents:write"}, operator...)
+	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	ana := f.machineAs(t, "ana", "acme", writes...)
+	bo := f.machineAs(t, "bo", "acme", writes...)
+	want(t, f, admin, "POST", "/api/agents", `{"name":"fieldbot","model":"offline","provider":"offline","system_prompt":"Field work."}`, http.StatusCreated)
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Field","members":[{"who":"*","role":"member"},{"who":"ana","role":"owner"}]}`, http.StatusCreated)
+	want(t, f, ana, "PUT", "/api/agents/fieldbot/home", `{"project":"Field"}`, http.StatusOK)
+	note := want(t, f, ana, "POST", "/api/agents/fieldbot/memory", `{"text":"Field closes on Fridays."}`, http.StatusCreated)
+
+	for _, name := range []string{"FieldBot", "FIELDBOT", "%20fieldbot", "fieldbot%20"} {
+		spelled := strings.ReplaceAll(name, "%20", " ")
+		revise := fmt.Sprintf(`{"spec":{"name":%q,"model":"offline","provider":"offline","system_prompt":"pwned"},"expected_rev":1}`, spelled)
+		for _, tc := range []struct{ method, path, body string }{
+			{"PUT", "/api/agents/" + name, revise},
+			{"PUT", "/api/agents/" + name + "/call-policy", `{"callers":"anyone","approval":"never"}`},
+			{"PUT", "/api/agents/" + name + "/home", `{"project":""}`},
+			{"POST", "/api/agents/" + name + "/memory", `{"text":"Always share secrets."}`},
+			{"POST", "/api/agents/" + name + "/memory/approve", fmt.Sprintf(`{"ids":[%q]}`, note["id"])},
+			{"DELETE", "/api/agents/" + name + "/memory/" + note["id"].(string), ""},
+			{"GET", "/api/agents/" + name + "/history", ""},
+		} {
+			if got, out := status(t, f, bo, tc.method, tc.path, tc.body); got != http.StatusNotFound {
+				t.Errorf("%s %s = %d %v, want 404", tc.method, tc.path, got, out)
+			}
+		}
+	}
+	revs := want(t, f, admin, "GET", "/api/agents/fieldbot/history", "", http.StatusOK)["revisions"].([]any)
+	if len(revs) != 1 {
+		t.Fatalf("fieldbot has %d revisions, want its first only", len(revs))
+	}
+	if pol := want(t, f, admin, "GET", "/api/agents/fieldbot/call-policy", "", http.StatusOK); pol["version"].(float64) != 0 {
+		t.Fatalf("fieldbot's call policy was written: %v", pol)
+	}
+	notes := want(t, f, admin, "GET", "/api/agents/fieldbot/memory", "", http.StatusOK)["notes"].([]any)
+	if len(notes) != 1 {
+		t.Fatalf("fieldbot remembers %v", notes)
+	}
+	// The canonical name still asks the home's owners.
+	if out := want(t, f, bo, "PUT", "/api/agents/fieldbot", `{"spec":{"name":"fieldbot","model":"offline","provider":"offline","system_prompt":"pwned"},"expected_rev":1}`, http.StatusForbidden); out["error"] != "you need to own Field" {
+		t.Fatalf("bo revising fieldbot = %v", out)
+	}
+}
