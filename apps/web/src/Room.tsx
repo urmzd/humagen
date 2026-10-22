@@ -11,6 +11,7 @@ import {
   type Channel,
   coworking,
   type ProjectView,
+  type Thread,
   type Revision,
   type ThreadAnnouncement,
   type ThreadAnswers,
@@ -396,30 +397,43 @@ export function ThreadRoom({
   const saved: Selection = { agents: th.agents ?? [], mode: th.mode ?? "best_fit", project: th.project, channel: th.channel };
   const [shown, setShown] = useState<Selection | null>(null);
   const selection = shown ?? saved;
-  const fixedWhy = hasRuns ? defaultCopy.threads.shareProjectFixed : th.surface ? words.inSlack : undefined;
-  const select = (next: Selection) => {
-    setShown(next);
-    setProblem(null);
-    const moved = next.project !== th.project || next.channel !== th.channel;
+  const fixedWhy = hasRuns ? defaultCopy.threads.shareProjectFixed : th.surface ? defaultCopy.chat.projectFromSlack : undefined;
+  // One save at a time: a change made while one is in flight waits for it,
+  // then is saved from the version it answered, so quick changes never
+  // send a version already gone.
+  const saving = useRef<{ busy: boolean; next: Selection | null }>({ busy: false, next: null });
+  const save = (from: Thread, next: Selection) => {
+    saving.current = { busy: true, next: null };
+    const moved = next.project !== from.project || next.channel !== from.channel;
     coworking
       .update(id, {
-        version: th.version,
-        title: th.title ?? "",
-        visibility: th.visibility,
-        default: th.default ?? "",
+        version: from.version,
+        title: from.title ?? "",
+        visibility: from.visibility,
+        default: from.default ?? "",
         agents: next.agents,
         mode: next.mode,
         ...(moved && next.project !== null ? { project: next.project === "" ? "~" : next.project, channel: next.channel } : {}),
       })
       .then((t) => {
         setPage((p) => ({ ...p, thread: t }));
-        setShown(null);
         onChanged();
+        const later = saving.current.next;
+        if (later) return save(t, later);
+        saving.current = { busy: false, next: null };
+        setShown(null);
       })
       .catch((e) => {
+        saving.current = { busy: false, next: null };
         setShown(null);
         setProblem(e instanceof ApiError && e.status === 409 && moved ? words.shareConflict : e instanceof ApiError ? e.message : defaultCopy.chat.saveFailed);
       });
+  };
+  const select = (next: Selection) => {
+    setShown(next);
+    setProblem(null);
+    if (saving.current.busy) saving.current.next = next;
+    else save(th, next);
   };
   // A run answers because the conversation routes to its agent when its message did not tag it.
   const messages = new Map(turns.flatMap((t) => (t.message ? [[t.message.id, t.message] as const] : [])));
@@ -581,8 +595,9 @@ export function ThreadRoom({
             placeholder={selection.agents.length > 0 ? placeholderFor(selection) : th.visibility === "private" ? words.message : words.channel(th.channel)}
             tags={tags}
             plus={{
-              menu: (close, attach) => (
+              menu: (close, attach, leave) => (
                 <PlusMenu
+                  onLeave={leave}
                   agents={tags.agents}
                   selection={selection}
                   onChange={select}
@@ -779,7 +794,9 @@ export function ChannelPage({
           placeholder={picked.agents.length > 0 ? placeholderFor(picked) : words.startThread}
           tags={tags}
           plus={{
-            menu: (close, attach) => <PlusMenu agents={tags.agents} selection={picked} onChange={setPicked} onAttach={attach} onClose={close} />,
+            menu: (close, attach, leave) => (
+              <PlusMenu agents={tags.agents} selection={picked} onChange={setPicked} onAttach={attach} onClose={close} onLeave={leave} />
+            ),
             chips: <SelectionChips selection={picked} onChange={setPicked} />,
           }}
           onPost={(text) =>

@@ -430,8 +430,12 @@ export const defaultCopy = {
   chat: {
     /** The + button, which opens the menu. */
     plus: "Add files, agents or a project",
-    /** The shortcut that opens it, said in its tooltip. */
-    plusShortcut: "Ctrl+/",
+    /** The shortcut that opens it, said in its tooltip: Cmd+/ on a Mac, Ctrl+/ elsewhere. */
+    plusShortcut: (mac: boolean) => (mac ? "Cmd+/" : "Ctrl+/"),
+    /** The sidebar's filter of conversations, and how many filters are on. */
+    filter: (on: number) => (on > 0 ? `Filter conversations, ${on} on` : "Filter conversations"),
+    /** Why a Slack conversation's project can't change. */
+    projectFromSlack: "A conversation started in Slack stays in the project of its Slack channel.",
     menu: "Add to this conversation",
     attach: "Attach Files",
     agents: "Agents",

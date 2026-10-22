@@ -206,8 +206,11 @@ function ChatBar({
   root,
   me,
   plus,
+  onAvailable,
   ...rest
 }: Omit<Parameters<typeof Composer>[0], "tags" | "plus"> & {
+  /** Called with the agents that may answer in the project, once they are read. */
+  onAvailable?: (available: { name: string }[]) => void;
   project: string;
   agents: Revision[];
   homes: Record<string, string>;
@@ -217,6 +220,10 @@ function ChatBar({
   plus?: (available: { name: string; description?: string }[] | null) => NonNullable<Parameters<typeof Composer>[0]["plus"]>;
 }) {
   const tags = useCompletion(project, agents, homes, topicsOf(projects ?? [], root, project), me);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per list read
+  useEffect(() => {
+    if (tags.agents) onAvailable?.(tags.agents);
+  }, [tags.agents]);
   return <Composer {...rest} tags={tags} plus={plus?.(tags.agents)} />;
 }
 
@@ -475,6 +482,17 @@ export function Chat({
         autoFocus={!threadId}
         seed={seed}
         onDraft={setDraft}
+        // An agent the project picked does not offer is not kept for it.
+        onAvailable={
+          threadId
+            ? undefined
+            : (available) =>
+                setSelection((sel) => {
+                  const names = new Set(available.map((a) => a.name));
+                  const kept = sel.agents.filter((a) => names.has(a));
+                  return kept.length === sel.agents.length ? sel : { ...sel, agents: kept };
+                })
+        }
         leading={
           threadId ? (
             <span className="max-w-40 truncate px-1.5 text-aui-sm text-aui-muted" title={tail?.project || "Projectless"}>
@@ -486,8 +504,9 @@ export function Chat({
           threadId
             ? undefined
             : (available) => ({
-                menu: (close, attach) => (
+                menu: (close, attach, leave) => (
                   <PlusMenu
+                    onLeave={leave}
                     agents={available}
                     selection={selection}
                     onChange={setSelection}

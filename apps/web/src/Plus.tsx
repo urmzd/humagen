@@ -33,7 +33,7 @@ export function placeholderFor(s: Pick<Selection, "agents" | "mode">): string {
 }
 
 /** Every item of the menu that the arrow keys move between, in order. */
-const ITEM = "[data-plus-item]";
+const ITEM = "[data-plus-item]:not(:disabled)";
 
 const row =
   "flex min-h-10 w-full items-center gap-2.5 rounded-aui px-2.5 py-1.5 text-left text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-checked:bg-aui-hover";
@@ -50,6 +50,7 @@ export function PlusMenu({
   onChange,
   onAttach,
   onClose,
+  onLeave,
   projects,
   kinds,
   canCreateProject = false,
@@ -62,6 +63,8 @@ export function PlusMenu({
   onChange: (next: Selection) => void;
   onAttach: () => void;
   onClose: () => void;
+  /** Closes it as focus moves elsewhere, leaving focus where it went. */
+  onLeave?: () => void;
   /** The project tree, or null while it loads. Left out, the menu offers no project. */
   projects?: ProjectView[] | null;
   kinds?: ProjectKindSpec[];
@@ -135,8 +138,10 @@ export function PlusMenu({
       items[next]?.focus();
       return;
     }
-    // Enter closes the menu, from an agent's row as from the search; Space checks.
-    if (e.key === "Enter" && (e.target as HTMLElement).dataset.plusItem !== "action") {
+    // Enter closes the menu, from an agent's row as from the search; Space
+    // checks. Any other button, such as the search's Clear, does its own job.
+    const target = e.target as HTMLElement;
+    if (e.key === "Enter" && target.dataset.plusItem !== "action" && (target.tagName !== "BUTTON" || target.dataset.plusItem === "agent")) {
       e.preventDefault();
       onClose();
     }
@@ -151,6 +156,10 @@ export function PlusMenu({
       role="dialog"
       aria-label={words.menu}
       onKeyDown={onKeyDown}
+      // Focus leaving the menu, by Tab or otherwise, closes it.
+      onBlur={(e) => {
+        if (!choosing && e.relatedTarget && !panel.current?.contains(e.relatedTarget as Node)) (onLeave ?? onClose)();
+      }}
       style={{ maxHeight: place.max }}
       className={`absolute left-0 z-30 flex w-full max-w-sm flex-col overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1.5 shadow-lg ${place.up ? "bottom-full mb-1" : "top-full mt-1"}`}
     >
@@ -191,7 +200,7 @@ export function PlusMenu({
                   <button
                     key={a.name}
                     type="button"
-                    role="menuitemcheckbox"
+                    role="checkbox"
                     aria-checked={on}
                     data-plus-item="agent"
                     className={row}

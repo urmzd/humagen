@@ -401,7 +401,7 @@ export function Sidebar({
               <Popover
                 narrow
                 align="right"
-                label={filters > 0 ? `Filter tasks, ${filters} on` : "Filter tasks"}
+                label={defaultCopy.chat.filter(filters)}
                 className="relative inline-flex size-6 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:bg-aui-hover aria-expanded:text-aui-fg"
                 button={
                   <>

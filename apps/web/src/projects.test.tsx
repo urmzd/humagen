@@ -215,7 +215,6 @@ test("every kind of change in a project's history reads as words", () => {
     agents: true,
     home: true,
     experts: true,
-    skills: true,
     knowledge: true,
     channel: true,
   };
