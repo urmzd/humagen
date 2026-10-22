@@ -156,6 +156,20 @@ func (s *Schedules) Get(tenant, name string) (cron.Schedule, bool, error) {
 	return cron.Schedule{}, false, fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
 }
 
+// Authored returns one of a tenant's schedules and who wrote what it runs:
+// its last editor, or its creator (meta created_by) while nobody has edited
+// it. Both are read under one lock, so the author is the text's.
+func (s *Schedules) Authored(tenant, name string) (cron.Schedule, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, sc := range s.all {
+		if sc.Name == name && sc.Tenant == tenant {
+			return sc, cmp.Or(s.about[name].UpdatedBy, sc.Meta["created_by"]), nil
+		}
+	}
+	return cron.Schedule{}, "", fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
+}
+
 // Paused reports whether a schedule is paused.
 func (s *Schedules) Paused(name string) bool {
 	s.mu.Lock()

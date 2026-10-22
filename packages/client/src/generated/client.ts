@@ -1352,7 +1352,13 @@ on occurrences of its new expression that fell before it.
     });
   }
 
-  /** The run is attributed to the caller, not to the clock, and works while the schedule is paused. */
+  /** The run is attributed to the caller, not to the clock, and works while
+the schedule is paused. It acts for the caller only when they wrote
+what it runs: the schedule's last editor, or its creator while nobody
+has edited it. Anyone else's press acts for nobody, as the schedule's
+own clock does, since anyone with `schedules:write` may change its
+words.
+ */
   async runSchedule(name: string, options?: RequestOptions): Promise<Run> {
     let path = "/api/schedules/{name}/run";
     path = path.replace("{name}", encodeURIComponent(String(name)));
