@@ -1,6 +1,7 @@
 package platform_test
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"slices"
@@ -8,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/fiber/pkg/agentrt/payload"
 	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/bus"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/runtime"
@@ -335,6 +338,54 @@ func TestACallTheCalleeHoldsWaitsForItsApprovers(t *testing.T) {
 				t.Fatalf("the caller was not told the call was refused: %s", sent)
 			}
 		})
+	}
+}
+
+// slowToRecord is a bus that holds the runtime for a while each time it
+// announces a question. The runtime records a question only after announcing
+// it, so while it is held the question is in the inbox and not yet recorded.
+type slowToRecord struct {
+	bus.Bus
+	hold time.Duration
+}
+
+func (s slowToRecord) Publish(ctx context.Context, e envelope.Event) error {
+	err := s.Bus.Publish(ctx, e)
+	if e.Kind == envelope.KindParked {
+		if body, derr := payload.Decode[payload.Lifecycle](e); derr == nil && body.Question != nil {
+			time.Sleep(s.hold)
+		}
+	}
+	return err
+}
+
+// A call approved after its question is announced and before it is recorded
+// goes through. The answer is retried until the question is recorded, and
+// the approval is kept for the call while it is retried.
+func TestACallApprovedBeforeItsQuestionIsRecordedGoesThrough(t *testing.T) {
+	c := &cast{continues: true,
+		says: map[string][][]saigetypes.Delta{
+			"lead":   {tagging("helper", "Check the build."), say("Done.")},
+			"helper": {say("Checked.")},
+		},
+		spawn: map[string][]string{"lead": {"helper"}},
+	}
+	p := stage(t, c, platform.Config{
+		Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4},
+		Bus:    slowToRecord{Bus: bus.NewMemory(), hold: 200 * time.Millisecond},
+	})
+	setPolicy(t, p, "helper", callpolicy.Policy{Callers: callpolicy.Anyone, Approval: callpolicy.Always, Approvers: []string{"role:manager"}})
+	first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-early", Agent: "lead", Text: "Go", Actor: envelope.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := questionFor(t, p, first.ID)
+	if _, err := p.AnswerQuestion(t.Context(), mo, first.ID, m.Parts[0].Question.ID, platform.QuestionAnswer{Action: platform.ActApprove}); err != nil {
+		t.Fatal(err)
+	}
+	done := await(t, p, first.ID, runs.Completed)
+	if child := called(t, p, done.ID, "helper", runs.Completed); child.Answer != "Checked." {
+		t.Fatalf("helper answered %q", child.Answer)
 	}
 }
 
