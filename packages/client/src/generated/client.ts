@@ -1483,7 +1483,9 @@ each message's `data` field, which is how the oag generator reads
     }, options, this.requestInterceptor, this.fetchFn);
   }
 
-  /** Get workspace settings */
+  /** A title or memory agent that lives in a project the caller may not
+read is left out, as if none were set.
+ */
   async getSettings(options?: RequestOptions): Promise<Settings> {
     const path = "/api/settings";
     return this.request<Settings>("GET", path, {
@@ -1501,7 +1503,10 @@ each message's `data` field, which is how the oag generator reads
   /** The first save records the caller as the one who set the workspace
 up. `baseline` is gone: the workspace default is the root's
 `default` (`PUT /api/projects/~/agents`), and a body that names it
-is 400.
+is 400. A title or memory agent is an agent the caller may read: one
+that lives in a project they may not read is 400, in the words for
+one that does not exist. One they are not shown is kept when they
+name none in its place.
  */
   async updateSettings(body: Settings, options?: RequestOptions): Promise<Settings> {
     const path = "/api/settings";
@@ -2777,7 +2782,9 @@ conversations or files, the delete is refused with 429.
     });
   }
 
-  /** Read which agents a project turns on, which are available there, and who answers untagged messages */
+  /** Every agent that lives in a project the caller may not read is left
+out of `enable`, `allow` and `default`, as if it were not there.
+ */
   async getProjectAgents(name: string, options?: RequestOptions): Promise<ProjectAgentsView> {
     let path = "/api/projects/{name}/agents";
     path = path.replace("{name}", encodeURIComponent(String(name)));
@@ -2798,9 +2805,14 @@ conversations or files, the delete is refused with 429.
 here and below (`*` alone is every one); `allow`, when set, is the
 only agents that may run here and below, and a child can only narrow
 it; `default` answers a message that tags no agent, here and below,
-and is an agent or `auto`. Every name is an agent in the workspace, a
-named default is available where it is set, and an agent that lives
-in a project is not enabled (400). The workspace's own lists, which
+and is an agent or `auto`. Every name is an agent in the workspace
+that the caller may read, a named default is available where it is
+set, and an agent that lives in a project is not enabled (400). An
+agent that lives in a project the caller may not read is refused in
+the words for one that does not exist. The names in `allow` the
+caller is not shown are kept; an `enable` entry or a `default`
+naming one does nothing in a project they may read, and is not
+kept. The workspace's own lists, which
 hold the workspace default, and a company project's need
 `projects:govern`. `version` is the one the caller read (409 if it
 changed), and lists the platform file sets answer 409.
@@ -2827,7 +2839,8 @@ changed), and lists the platform file sets answer 409.
 
   /** `next` is the cursor for the page after this one, or null at the end.
 Pass it back as `before`. A cursor is opaque. The workspace keeps its
-last 1,000 changes across all its projects.
+last 1,000 changes across all its projects. A change names only the
+agents the caller may read, as the project's own lists do.
  */
   async listProjectHistory(name: string, limit?: number, before?: string, options?: RequestOptions): Promise<ListProjectHistoryResponse> {
     let path = "/api/projects/{name}/history";
@@ -3478,7 +3491,12 @@ read, or a limit on either, is left out.
     });
   }
 
-  /** A workspace at its cap of clients answers 429 with a plain error body. */
+  /** A workspace at its cap of clients answers 429 with a plain error
+body. Every agent the client names, as its default, in its list, for
+a bot or for an auto-label, is an agent that exists and that the
+caller may read; any other is 400, in the same words whether it does
+not exist or lives in a project the caller may not read.
+ */
   async createClient(body: ClientInput, options?: RequestOptions): Promise<ClientView> {
     const path = "/api/clients";
     return this.request<ClientView>("POST", path, {
@@ -3536,8 +3554,14 @@ is left out.
 
   /** A secret left out is kept, and so is a home in a project the caller
 may not read, which they are not shown: naming none keeps it, and
-naming one they may read replaces it. A client the server's
-configuration owns cannot be changed here and answers 409.
+naming one they may read replaces it. The agents it names that the
+caller is not shown are kept the same way: its default unless they
+name another, its list unless they write `*`, its bots and its
+auto-labels unless they map the same bot or label, and an agent it
+routed to stays one it routes to. Every other agent named is one that
+exists and that the caller may read, or one the record already holds
+(400 otherwise, as on create). A client the server's configuration
+owns cannot be changed here and answers 409.
  */
   async updateClient(id: string, body: ClientInput, options?: RequestOptions): Promise<ClientView> {
     let path = "/api/clients/{id}";

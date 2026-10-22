@@ -51,7 +51,11 @@ projects under it and proposes notes, an owner changes it (see
 role in answers 404, and so does everything that lives in it: its runs,
 threads, events, files, notes, schedules, inbox messages, limits and eval
 suites, and the agents that live there, each answering exactly as an object
-that does not exist. A private thread is read by its participants alone.
+that does not exist. A client, a project's lists of agents and the
+workspace's settings leave out an agent that lives there, and a change to
+them that names one answers as one naming an agent that does not exist,
+while keeping what the caller was not shown. A private thread is read by its
+participants alone.
 
 A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:

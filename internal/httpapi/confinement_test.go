@@ -52,8 +52,11 @@ type hidden struct {
 	handle, alert, channel, announcement, provider                string
 	// open is, in a sweep inside the workspace, a Slack client the outsider
 	// may read, with the hidden channel bound to it: its bindings must not
-	// show that binding.
+	// show that binding. It names the hidden agent too.
 	open string
+	// openProject is, in a sweep inside the workspace, a project the
+	// outsider may read whose allow list names the hidden agent.
+	openProject string
 	// inside is true when the outsider is in the same workspace: what
 	// lives outside the project is theirs to see, and is not hidden.
 	inside bool
@@ -166,17 +169,30 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	if inside {
 		h.open = "slack-open"
 		bound = h.open
-		must("POST", "/api/clients", slackApp(h.open, "A01OPEN", "svc-acme"), http.StatusCreated)
+		must("POST", "/api/clients", h.naming(slackApp(h.open, "A01OPEN", "svc-acme")), http.StatusCreated)
 	} else {
-		must("POST", "/api/clients", slackApp(h.client, "A01ZQX", "svc-acme"), http.StatusCreated)
+		must("POST", "/api/clients", h.naming(slackApp(h.client, "A01ZQX", "svc-acme")), http.StatusCreated)
 	}
 	must("POST", "/api/projects/"+h.project+"/channels", `{"name":"`+h.channel+`","purpose":"Channel `+marker+`.","slack":{"client":"`+bound+`","channel":"C01CANARY"}}`, http.StatusCreated)
 	if inside {
 		// The open client's home is in the hidden project: the client is
 		// the outsider's to read, its home is not.
-		homed := strings.Replace(slackApp(h.open, "A01OPEN", "svc-acme"), `"slack":`, `"home":{"project":"`+h.project+`"},"slack":`, 1)
-		if out := must("PUT", "/api/clients/"+h.open, homed, http.StatusOK); !strings.Contains(fmt.Sprint(out["home"]), h.project) {
-			t.Fatalf("the owner does not see the open client's home: %v", out)
+		homed := strings.Replace(h.naming(slackApp(h.open, "A01OPEN", "svc-acme")), `"slack":`, `"home":{"project":"`+h.project+`"},"slack":`, 1)
+		if out := must("PUT", "/api/clients/"+h.open, homed, http.StatusOK); !strings.Contains(fmt.Sprint(out["home"]), h.project) || out["default_agent"] != h.agent {
+			t.Fatalf("the owner does not see the open client's home and agent: %v", out)
+		}
+		// A project everyone in acme reads, whose allow list names the
+		// hidden agent beside one they see.
+		h.openProject = "Open"
+		must("POST", "/api/projects", `{"name":"`+h.openProject+`"}`, http.StatusCreated)
+		must("PUT", "/api/projects/"+h.openProject+"/agents", `{"version":1,"enable":["mover"],"allow":["mover","`+h.agent+`"]}`, http.StatusOK)
+		// And the workspace's title agent is the hidden agent. It is never
+		// asked, as it runs on the offline provider.
+		settings := must("GET", "/api/settings", "", http.StatusOK)
+		settings["title_agent"] = h.agent
+		raw, _ := json.Marshal(settings)
+		if out := must("PUT", "/api/settings", string(raw), http.StatusOK); out["title_agent"] != h.agent {
+			t.Fatalf("the owner does not see the title agent: %v", out)
 		}
 	}
 	if out := must("GET", "/api/clients/"+bound+"/bindings", "", http.StatusOK); !strings.Contains(fmt.Sprint(out), h.channel) {
@@ -216,6 +232,17 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		t.Fatalf("the hidden agent raised no inbox message: %v", page)
 	}
 	return h
+}
+
+// naming is a Slack client's body naming the hidden agent: as its default,
+// in its list, beside an agent the outsider sees when they are in the
+// workspace, and as the agent a bot stands for.
+func (h hidden) naming(body string) string {
+	list := `[]`
+	if h.inside {
+		list = `["mover"]`
+	}
+	return strings.Replace(body, `"default_agent":"helper"`, `"default_agent":"`+h.agent+`","agents":`+list+`,"bots":{"U0CANARY":"`+h.agent+`"}`, 1)
 }
 
 // hidePrivate fills acme with a private thread in Field, a project everyone
@@ -298,6 +325,17 @@ func (h hidden) visiblePath(path string) (string, bool) {
 		out = strings.ReplaceAll(out, "{"+param+"}", url.PathEscape(v))
 	}
 	return out, true
+}
+
+// openPath is an operation's path naming the project the outsider may read
+// whose allow list names the hidden agent, for one that names nothing else.
+// What it reads must hold nothing hidden.
+func (h hidden) openPath(path string) (string, bool) {
+	params := pathParams(path)
+	if h.openProject == "" || !strings.HasPrefix(path, "/api/projects/{name}") || len(params) != 1 {
+		return "", false
+	}
+	return strings.ReplaceAll(path, "{name}", url.PathEscape(h.openProject)), true
 }
 
 // holds reports whether a body shows anything hidden.
@@ -549,6 +587,18 @@ func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 			return path + "?" + q.Encode()
 		}
 
+		// A project the outsider reads names nothing hidden, though its
+		// allow list holds the hidden agent.
+		if open, ok := h.openPath(op.path); ok {
+			code, body := get(t, f, outsider, withQuery(open, query))
+			if code >= 500 {
+				t.Errorf("%s = %d %s", key, code, body)
+			}
+			if h.holds(body) {
+				t.Errorf("%s shows an outsider what is hidden: %s", key, body)
+			}
+		}
+
 		// In a private sweep, what names Field or what lives openly in it
 		// is the outsider's to read, and holds nothing of the thread.
 		if visible, ok := h.visiblePath(op.path); ok && len(params) > 0 {
@@ -741,6 +791,76 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 		code, out := send(t, f, outsider, tc.method, tc.path, fmt.Sprintf(tc.body, h.project))
 		ghostCode, ghostOut := send(t, f, outsider, tc.method, tc.path, fmt.Sprintf(tc.body, ghost(h.project)))
 		same(tc.method+" "+tc.path+" naming the hidden project", code, out, ghostCode, ghostOut, map[string]string{h.project: ghost(h.project)})
+	}
+
+	// In the workspace, a body that names the hidden agent answers as one
+	// naming an agent that is not there: a client's default, list or bot,
+	// a project's lists and the workspace's title agent. And saving the
+	// open client and the settings as the outsider reads them keeps it.
+	if h.inside {
+		want(t, f, outsider, "POST", "/api/projects", `{"name":"Mine"}`, http.StatusCreated)
+		settings := func(agent string) string {
+			_, raw := get(t, f, outsider, "/api/settings")
+			var st map[string]any
+			if err := json.Unmarshal([]byte(raw), &st); err != nil {
+				t.Fatal(err)
+			}
+			st["title_agent"] = agent
+			out, _ := json.Marshal(st)
+			return string(out)
+		}
+		open := func(field string) string {
+			return strings.Replace(slackApp(h.open, "A01OPEN", "svc-acme"), `"default_agent":"helper"`, field, 1)
+		}
+		for _, tc := range []struct {
+			method, path string
+			body         func(agent string) string
+		}{
+			{"POST", "/api/clients", func(a string) string {
+				return strings.Replace(slackApp("probe", "A01PROBE", "svc-probe"), `"default_agent":"helper"`, `"default_agent":"`+a+`"`, 1)
+			}},
+			{"PUT", "/api/clients/" + h.open, func(a string) string { return open(`"default_agent":"` + a + `"`) }},
+			{"PUT", "/api/clients/" + h.open, func(a string) string { return open(`"agents":["mover","` + a + `"]`) }},
+			{"PUT", "/api/clients/" + h.open, func(a string) string { return open(`"default_agent":"mover","bots":{"U0PROBE":"` + a + `"}`) }},
+			{"PUT", "/api/projects/Mine/agents", func(a string) string { return `{"version":1,"enable":[],"allow":["` + a + `"]}` }},
+			{"PUT", "/api/projects/Mine/agents", func(a string) string { return `{"version":1,"enable":["` + a + `"]}` }},
+			{"PUT", "/api/projects/Mine/agents", func(a string) string { return `{"version":1,"enable":[],"default":"` + a + `"}` }},
+			{"PUT", "/api/settings", settings},
+		} {
+			code, out := send(t, f, outsider, tc.method, tc.path, tc.body(h.agent))
+			ghostCode, ghostOut := send(t, f, outsider, tc.method, tc.path, tc.body(ghost(h.agent)))
+			same(tc.method+" "+tc.path+" naming the hidden agent", code, out, ghostCode, ghostOut, map[string]string{h.agent: ghost(h.agent)})
+			if code >= 200 && code < 300 {
+				t.Errorf("%s %s naming the hidden agent = %d %s", tc.method, tc.path, code, out)
+			}
+		}
+		_, read := get(t, f, outsider, "/api/clients/"+h.open)
+		var c map[string]any
+		if err := json.Unmarshal([]byte(read), &c); err != nil {
+			t.Fatal(err)
+		}
+		saved, _ := json.Marshal(map[string]any{
+			"name": c["name"], "surface": c["surface"], "identity": c["identity"], "default_agent": c["default_agent"],
+			"agents": c["agents"], "bots": c["bots"], "slack": c["slack"], "github": c["github"], "home": c["home"], "enabled": c["enabled"],
+		})
+		if code, out := send(t, f, outsider, "PUT", "/api/clients/"+h.open, string(saved)); code != http.StatusOK || h.holds(out) {
+			t.Errorf("the outsider's save of the open client as they read it = %d %s", code, out)
+		}
+		if code, out := send(t, f, outsider, "PUT", "/api/settings", settings("")); code != http.StatusOK || h.holds(out) {
+			t.Errorf("the outsider's save of the settings as they read them = %d %s", code, out)
+		}
+		for path, want := range map[string][]string{
+			"/api/clients/" + h.open:                     {`"default_agent":"` + h.agent + `"`, `"U0CANARY":"` + h.agent + `"`, `"project":"` + h.project + `"`},
+			"/api/projects/" + h.openProject + "/agents": {`"allow":["` + h.agent + `","mover"]`},
+			"/api/settings":                              {`"title_agent":"` + h.agent + `"`},
+		} {
+			_, body := get(t, f, owner, path)
+			for _, w := range want {
+				if !strings.Contains(body, w) {
+					t.Errorf("after the sweep %s lacks %s: %s", path, w, body)
+				}
+			}
+		}
 	}
 
 	// Every hidden object is as it was.

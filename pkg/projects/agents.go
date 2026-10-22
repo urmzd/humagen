@@ -44,7 +44,9 @@ type Agents struct {
 	// Allow, when set, is the only agents that may run here and below. Every
 	// allow list on the chain applies, so a child can only narrow what its
 	// parent allows. Nil narrows nothing; a set list names at least one agent.
-	Allow []string `json:"allow,omitempty"`
+	// A set list is written even when empty, as it reads to someone not
+	// shown the agents it names.
+	Allow []string `json:"allow,omitzero"`
 	// Default answers a message that tags no agent, here and below: an agent,
 	// or Auto. "" inherits the nearest ancestor's.
 	Default string `json:"default,omitempty"`

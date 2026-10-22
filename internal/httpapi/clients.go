@@ -64,14 +64,12 @@ type clientView struct {
 	Limits *policy.Policy `json:"limits,omitempty"`
 }
 
-// view is a client as seer's reader reads it. A home in a project they may
-// not read is left out, as everything in that project is: the client reads
-// as one with no home of its own.
+// view is a client as seer's reader reads it (platform.Seer.Client): a home
+// in a project they may not read is left out, as everything in that project
+// is, and so is every agent it names that lives in one. The client reads as
+// one with no home of its own and without those agents.
 func (s *Server) view(seer *platform.Seer, tenant string, c clients.Client) clientView {
-	if c.Home != nil && !seer.Project(c.HomeOf().Project) {
-		c.Home = nil
-	}
-	v := clientView{Client: c}
+	v := clientView{Client: seer.Client(c)}
 	for _, pol := range s.P.Policies.For(tenant, nil, "", c.ID) {
 		if pol.Scope.Kind == policy.Client {
 			v.Limits = &pol
@@ -124,11 +122,18 @@ func (s *Server) createClient(w http.ResponseWriter, r *http.Request, who auth.P
 	if !decode(w, r, &body) {
 		return
 	}
-	if err := s.P.SeesHome(who, body.input().Client); err != nil {
+	in := body.input()
+	if err := s.P.SeesHome(who, in.Client); err != nil {
 		s.problem(w, err)
 		return
 	}
-	c, err := s.P.CreateClient(r.Context(), who.Tenant, who.Subject, body.input())
+	named, err := s.P.ClientWrittenBy(r.Context(), who, nil, in.Client)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	in.Client = named
+	c, err := s.P.CreateClient(r.Context(), who.Tenant, who.Subject, in)
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -139,7 +144,8 @@ func (s *Server) createClient(w http.ResponseWriter, r *http.Request, who auth.P
 // updateClient replaces a client's record. A caller is not shown a home in
 // a project they may not read, so a record they send back without one keeps
 // it, as one sent without secrets keeps those; naming another home they may
-// read replaces it.
+// read replaces it. The agents it names that they are not shown are kept the
+// same way (platform.ClientWrittenBy).
 func (s *Server) updateClient(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body clientBody
 	if !decode(w, r, &body) {
@@ -151,8 +157,16 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request, who auth.P
 		return
 	}
 	seer := s.P.Seer(who)
-	if old, err := s.P.Clients.Get(who.Tenant, r.PathValue("id")); err == nil && in.Home == nil && old.Home != nil && !seer.Project(old.HomeOf().Project) {
-		in.Home = old.Home
+	if old, err := s.P.Clients.Get(who.Tenant, r.PathValue("id")); err == nil && old.Managed == "" {
+		if in.Home == nil && old.Home != nil && !seer.Project(old.HomeOf().Project) {
+			in.Home = old.Home
+		}
+		named, err := s.P.ClientWrittenBy(r.Context(), who, &old, in.Client)
+		if err != nil {
+			s.problem(w, err)
+			return
+		}
+		in.Client = named
 	}
 	c, err := s.P.UpdateClient(r.Context(), who.Tenant, r.PathValue("id"), who.Subject, in)
 	if err != nil {

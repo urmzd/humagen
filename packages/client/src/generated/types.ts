@@ -961,7 +961,7 @@ project names as experts, and `channel` to one of its channels,
 which `channel` holds before and after.
  */
   what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "channel";
-  /** The agent a `home` change is about. */
+  /** The agent a `home` change is about. Absent when it lives in a project the caller may not read. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
   note?: string;
@@ -974,12 +974,17 @@ which `channel` holds before and after.
 /** What a project turns on. An agent is available in a project when
 something on its chain offers it (an `enable` list, `*` for every
 platform agent, or the agent living there or above) and every `allow`
-list on the chain permits it. The zero value adds nothing.
+list on the chain permits it. The zero value adds nothing. Every
+agent that lives in a project the caller may not read is left out of
+each list and of `default`, as if it were not there.
  */
 export interface ProjectAgents {
   /** Platform agents available here and below. `*` alone is every platform agent. */
   enable: string[];
-  /** When set, the only agents that may run here and below. Absent narrows nothing. */
+  /** When set, the only agents that may run here and below. Absent
+narrows nothing. Empty only when every agent it names lives in a
+project the caller may not read.
+ */
   allow?: string[];
   /** Answers a message that tags no agent, here and below. An agent or `auto`. Absent inherits. */
   default?: string;
@@ -1015,7 +1020,9 @@ export interface DefaultResolved {
 export interface ProjectAgentsView {
   /** The project's version, which a change names. */
   version: number;
+  /** As in ProjectAgents, leaving out every agent that lives in a project the caller may not read. */
   enable: string[];
+  /** As in ProjectAgents. Empty only when every agent it names lives in a project the caller may not read. */
   allow?: string[];
   default?: string;
   available: AgentAvailability;
@@ -1032,6 +1039,9 @@ export interface ProjectAgentsInput {
   /** The version the caller read. */
   version: number;
   enable?: string[];
+  /** The names the caller is not shown are kept, so a caller shown an
+empty list sends one back. Otherwise it names at least one agent.
+ */
   allow?: string[];
   default?: string;
 }
@@ -1075,7 +1085,9 @@ export interface Settings {
   /** Whether an agent is sent the conversation so far. */
   history: "recent" | "none";
   history_limit: number;
+  /** Names conversations after their first turn. Empty when none is set, or when it lives in a project the caller may not read. */
   title_agent: string;
+  /** Writes notes after a turn. Empty as `title_agent` is. */
   memory_agent: string;
   memory_auto_approve: boolean;
   workspace_name: string;
@@ -2060,7 +2072,13 @@ export interface ClientView {
   surface: ClientSurface;
   identity: ClientIdentity;
   credentials: ClientViewCredentials;
+  /** Absent when the client has none, and when it lives in a project the caller may not read. */
   default_agent?: string;
+  /** The agents it may route to besides its default, leaving out every
+agent that lives in a project the caller may not read, as `bots`
+and `github.auto_labels` do. The machine that hosts the client's
+surface, its `slack.machine`, is shown every agent it names.
+ */
   agents?: string[];
   bots?: Record<string, string>;
   slack?: SlackOptions;

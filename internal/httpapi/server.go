@@ -610,8 +610,10 @@ func (s *Server) pickAgent(w http.ResponseWriter, r *http.Request, who auth.Prin
 	ok(w, http.StatusOK, choice)
 }
 
+// getSettings reads the workspace's settings. A title or memory agent that
+// lives in a project the caller may not read is left out.
 func (s *Server) getSettings(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
-	ok(w, http.StatusOK, s.P.Settings(who.Tenant))
+	ok(w, http.StatusOK, s.P.Seer(who).Settings(s.P.Settings(who.Tenant)))
 }
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -630,7 +632,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	next := body.Settings
 	before := s.P.Settings(who.Tenant)
-	if err := s.P.SetSettings(r.Context(), who.Tenant, next); err != nil {
+	if err := s.P.SetSettingsBy(r.Context(), who, next); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -643,7 +645,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	s.Log.Info("httpapi: settings changed", "subject", who.Subject, "tenant", who.Tenant,
 		"workspace_before", before.WorkspaceName, "workspace_after", saved.WorkspaceName, "first_setup", before.SetupAt.IsZero())
-	ok(w, http.StatusOK, saved)
+	ok(w, http.StatusOK, s.P.Seer(who).Settings(saved))
 }
 
 func (s *Server) getRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {

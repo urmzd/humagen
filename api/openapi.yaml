@@ -1369,6 +1369,9 @@ paths:
       operationId: getSettings
       tags: [settings]
       summary: Get workspace settings
+      description: |
+        A title or memory agent that lives in a project the caller may not
+        read is left out, as if none were set.
       x-permission: agents:read
       responses:
         "200":
@@ -1387,7 +1390,10 @@ paths:
         The first save records the caller as the one who set the workspace
         up. `baseline` is gone: the workspace default is the root's
         `default` (`PUT /api/projects/~/agents`), and a body that names it
-        is 400.
+        is 400. A title or memory agent is an agent the caller may read: one
+        that lives in a project they may not read is 400, in the words for
+        one that does not exist. One they are not shown is kept when they
+        name none in its place.
       x-permission: agents:write
       requestBody:
         required: true
@@ -2903,6 +2909,9 @@ paths:
       operationId: getProjectAgents
       tags: [projects]
       summary: Read which agents a project turns on, which are available there, and who answers untagged messages
+      description: |
+        Every agent that lives in a project the caller may not read is left
+        out of `enable`, `allow` and `default`, as if it were not there.
       x-permission: projects:read
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -2925,9 +2934,14 @@ paths:
         here and below (`*` alone is every one); `allow`, when set, is the
         only agents that may run here and below, and a child can only narrow
         it; `default` answers a message that tags no agent, here and below,
-        and is an agent or `auto`. Every name is an agent in the workspace, a
-        named default is available where it is set, and an agent that lives
-        in a project is not enabled (400). The workspace's own lists, which
+        and is an agent or `auto`. Every name is an agent in the workspace
+        that the caller may read, a named default is available where it is
+        set, and an agent that lives in a project is not enabled (400). An
+        agent that lives in a project the caller may not read is refused in
+        the words for one that does not exist. The names in `allow` the
+        caller is not shown are kept; an `enable` entry or a `default`
+        naming one does nothing in a project they may read, and is not
+        kept. The workspace's own lists, which
         hold the workspace default, and a company project's need
         `projects:govern`. `version` is the one the caller read (409 if it
         changed), and lists the platform file sets answer 409.
@@ -2960,7 +2974,8 @@ paths:
       description: |
         `next` is the cursor for the page after this one, or null at the end.
         Pass it back as `before`. A cursor is opaque. The workspace keeps its
-        last 1,000 changes across all its projects.
+        last 1,000 changes across all its projects. A change names only the
+        agents the caller may read, as the project's own lists do.
       x-permission: projects:read
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -3746,7 +3761,12 @@ paths:
       operationId: createClient
       tags: [clients]
       summary: Create a client
-      description: A workspace at its cap of clients answers 429 with a plain error body.
+      description: |
+        A workspace at its cap of clients answers 429 with a plain error
+        body. Every agent the client names, as its default, in its list, for
+        a bot or for an auto-label, is an agent that exists and that the
+        caller may read; any other is 400, in the same words whether it does
+        not exist or lives in a project the caller may not read.
       x-permission: clients:write
       requestBody:
         required: true
@@ -3820,8 +3840,14 @@ paths:
       description: |
         A secret left out is kept, and so is a home in a project the caller
         may not read, which they are not shown: naming none keeps it, and
-        naming one they may read replaces it. A client the server's
-        configuration owns cannot be changed here and answers 409.
+        naming one they may read replaces it. The agents it names that the
+        caller is not shown are kept the same way: its default unless they
+        name another, its list unless they write `*`, its bots and its
+        auto-labels unless they map the same bot or label, and an agent it
+        routed to stays one it routes to. Every other agent named is one that
+        exists and that the caller may read, or one the record already holds
+        (400 otherwise, as on create). A client the server's configuration
+        owns cannot be changed here and answers 409.
       x-permission: clients:write
       parameters:
         - {$ref: "#/components/parameters/ClientID"}
@@ -5561,7 +5587,7 @@ components:
           type: string
           enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, channel]
         agent:
-          description: The agent a `home` change is about.
+          description: The agent a `home` change is about. Absent when it lives in a project the caller may not read.
           type: string
         note:
           description: Says more, such as that a project created under a deleted name adopts its old conversations.
@@ -5579,7 +5605,9 @@ components:
         What a project turns on. An agent is available in a project when
         something on its chain offers it (an `enable` list, `*` for every
         platform agent, or the agent living there or above) and every `allow`
-        list on the chain permits it. The zero value adds nothing.
+        list on the chain permits it. The zero value adds nothing. Every
+        agent that lives in a project the caller may not read is left out of
+        each list and of `default`, as if it were not there.
       type: object
       required: [enable]
       properties:
@@ -5589,9 +5617,11 @@ components:
           maxItems: 64
           items: {type: string}
         allow:
-          description: When set, the only agents that may run here and below. Absent narrows nothing.
+          description: |
+            When set, the only agents that may run here and below. Absent
+            narrows nothing. Empty only when every agent it names lives in a
+            project the caller may not read.
           type: array
-          minItems: 1
           maxItems: 64
           items: {type: string}
         default:
@@ -5643,10 +5673,12 @@ components:
           description: The project's version, which a change names.
           type: integer
         enable:
+          description: As in ProjectAgents, leaving out every agent that lives in a project the caller may not read.
           type: array
           maxItems: 64
           items: {type: string}
         allow:
+          description: As in ProjectAgents. Empty only when every agent it names lives in a project the caller may not read.
           type: array
           maxItems: 64
           items: {type: string}
@@ -5678,8 +5710,10 @@ components:
           maxItems: 64
           items: {type: string}
         allow:
+          description: |
+            The names the caller is not shown are kept, so a caller shown an
+            empty list sends one back. Otherwise it names at least one agent.
           type: array
-          minItems: 1
           maxItems: 64
           items: {type: string}
         default: {type: string}
@@ -5746,8 +5780,12 @@ components:
           type: string
           enum: [recent, none]
         history_limit: {type: integer}
-        title_agent: {type: string}
-        memory_agent: {type: string}
+        title_agent:
+          description: Names conversations after their first turn. Empty when none is set, or when it lives in a project the caller may not read.
+          type: string
+        memory_agent:
+          description: Writes notes after a turn. Empty as `title_agent` is.
+          type: string
         memory_auto_approve: {type: boolean}
         workspace_name: {type: string}
         model_policies:
@@ -7104,8 +7142,15 @@ components:
           properties:
             token: {$ref: "#/components/schemas/SecretRef"}
             signing_secret: {$ref: "#/components/schemas/SecretRef"}
-        default_agent: {type: string}
+        default_agent:
+          description: Absent when the client has none, and when it lives in a project the caller may not read.
+          type: string
         agents:
+          description: |
+            The agents it may route to besides its default, leaving out every
+            agent that lives in a project the caller may not read, as `bots`
+            and `github.auto_labels` do. The machine that hosts the client's
+            surface, its `slack.machine`, is shown every agent it names.
           type: array
           items: {type: string}
         bots:

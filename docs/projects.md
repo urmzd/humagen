@@ -941,9 +941,11 @@ One predicate, `p.Sees(who, place)`, filters every read of:
 - artifacts and their downloads;
 - schedules and the inbox;
 - memory and pending memory;
-- `/api/agents` (homed agents).
+- `/api/agents` (homed agents);
+- the agents a client, a project's lists and the workspace's settings name.
 
-A hidden object answers 404.
+A hidden object answers 404. A hidden agent a record names is left out of it,
+a change keeps it, and naming one answers as naming no agent.
 
 ### Phase 8
 
