@@ -224,6 +224,27 @@ test("createRun sends only the body the route accepts, with the key as a header"
   });
 });
 
+test("a person's projects are read for them through the client, every page", async () => {
+  const project = (name: string) => ({ name, kind: "team", path: [{ name }], active: 0 });
+  const { fn, asked } = fakeFetch([
+    json({ projects: [project("Field")], next: "c1" }),
+    json({ projects: [project("Launch")], next: null }),
+  ]);
+  const c = httpWarp({ baseUrl: "http://warp.test", token: staticToken(), fetch: fn });
+  const got = await c.projectsFor({ client: "app", user: "U0ANA" });
+  assert.deepEqual(
+    got.map((p) => p.name),
+    ["Field", "Launch"],
+  );
+  assert.deepEqual(
+    asked.map((a) => a.url),
+    [
+      "http://warp.test/api/projects?act_as_client=app&act_as_user=U0ANA&limit=200",
+      "http://warp.test/api/projects?act_as_client=app&act_as_user=U0ANA&limit=200&before=c1",
+    ],
+  );
+});
+
 test("a refusal carries the limit, a missing object is null, and an error keeps its status", async () => {
   const { fn } = fakeFetch([
     json(

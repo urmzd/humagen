@@ -1,16 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  announcementMail,
-  homeOpened,
-  mentionMail,
-  SUBJECT,
-  settle,
-  TEAM,
-  USER,
-  type World,
-  world,
-} from "./harness.ts";
+import { announcementMail, SUBJECT, settle, TEAM, type World, world } from "./harness.ts";
 
 const NEWS = "C01NEWS";
 
@@ -101,28 +91,6 @@ test("a draft, a project that is not bound, and an app that is no client post no
   });
   assert.equal(w.slack.of("chat.postMessage").length, 0);
   assert.equal(plain.slack.of("chat.postMessage").length, 0);
-});
-
-test("the Home tab reads a mapped person's own inbox and what's new, through the client", async () => {
-  const w = bound();
-  w.warp.clients.set("app", {
-    id: "app",
-    surface: "slack",
-    enabled: true,
-    identity: { team: TEAM },
-    slack: { machine: SUBJECT, people: { [USER]: "ana" } },
-  });
-  w.warp.personal.set("ana", [mentionMail(), announcementMail()]);
-  await w.app.handle(homeOpened(USER));
-  await settle();
-  assert.deepEqual(w.warp.readFor, [
-    { client: "app", user: USER },
-    { client: "app", user: USER },
-  ]);
-  const view = JSON.stringify(w.slack.of("views.publish").at(-1)?.view);
-  assert.match(view, /Ana mentioned you in #renewals/);
-  assert.match(view, /Field offsite/);
-  assert.ok(!view.includes('"type":"button"'), "nothing to press: decisions are made in warp");
 });
 
 test("an announcement an agent wrote pings nobody: every Slack mention in it is shown as words", async () => {

@@ -6,19 +6,23 @@ import {
   follow,
   fromServer,
   type PlatformMessage,
+  projectsOf,
   type Run,
   replay,
   toRequest,
+  updatesOf,
+  type WireProject,
 } from "@warp/adapter";
-import { defaultCopy, MessageView, TurnView } from "@warp/components";
+import { defaultCopy, Home, MessageView, TurnView } from "@warp/components";
 import { ActionId, type MessagePart, partResolution, type Turn } from "@warp/core";
-import { renderToSlack } from "@warp/render-slack";
+import { homeView, renderToSlack } from "@warp/render-slack";
 import { WebSurface } from "@warp/render-web";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { forSlack } from "./app.tsx";
 import {
   alertMail,
+  announcementMail,
   budgetMail,
   failureMail,
   memoryMail,
@@ -26,6 +30,7 @@ import {
   QUESTIONS,
   questionMail,
 } from "./harness.ts";
+import { homeModel } from "./home.ts";
 
 /**
  * One state, two renderers. A recorded run goes through the shared adapter
@@ -515,4 +520,89 @@ test("an agent's draft reads the same on both, with Publish and Discard for its 
   const s = slack(<MessageView message={message} />);
   assert.ok(!s.includes("<https://evil.example|this>") && !s.includes("<!here>"), s);
   assert.ok(!web(<MessageView message={message} />).includes('href="https://evil.example"'));
+});
+
+test("Home's What's new and Your projects are one model, made as the console makes it, and read the same on both", () => {
+  const announcements = [
+    announcementMail({
+      id: "m-old",
+      subject: "Kickoff notes",
+      unread: false,
+      at: "2026-10-08T00:00:00Z",
+      updated_at: "2026-10-08T00:00:00Z",
+    }),
+    announcementMail(),
+    // Posted in the workspace itself, and newer than the unread one.
+    announcementMail({
+      id: "m-ws",
+      subject: "Holiday hours",
+      unread: false,
+      source: {},
+      at: "2026-10-09T00:55:00Z",
+      updated_at: "2026-10-09T00:55:00Z",
+    }),
+  ];
+  const projects: WireProject[] = [
+    { name: "Launch", kind: "team", path: [{ name: "Launch" }], active: 0 },
+    {
+      name: "Field",
+      title: "Field engineering",
+      kind: "team",
+      path: [{ name: "Field", title: "Field engineering" }],
+      active: 2,
+      active_at: "2026-10-09T00:30:00Z",
+    },
+  ];
+  const href = (path: string) => `https://warp.test${path}`;
+  const model = homeModel({
+    person: { id: "U01ANA", name: "Ana" },
+    assistant: { name: "Warp" },
+    intro: "I hand your questions to this workspace's agents.",
+    inbox: { messages: [], open: 0 },
+    announcements,
+    projects,
+    workspace: "acme",
+    build: false,
+    href,
+  });
+  // The console makes What's new and Your projects with the same calls, from the same reads.
+  const titles = new Map(projects.map((p) => [p.name, p.title || p.name]));
+  assert.deepEqual(
+    model.updates,
+    updatesOf(
+      announcements.map(fromServer),
+      (name) => (name === "" ? "acme" : (titles.get(name) ?? name)),
+      (name, id) => href(`/projects/${name || "~"}?message=${id}`),
+    ),
+  );
+  assert.deepEqual(
+    model.projects,
+    projectsOf(projects, (name) => href(`/projects/${name}`)),
+  );
+
+  const el = <Home home={model} />;
+  const onSlack = plain(JSON.stringify(homeView(el).view.blocks).replace(/\\n/g, " "));
+  const onWeb = plain(web(el));
+  const inOrder = (text: string, phrases: string[]) => {
+    let at = 0;
+    for (const p of phrases) {
+      const found = text.indexOf(p, at);
+      assert.ok(found >= 0, `"${p}" missing, or out of order, in ${text}`);
+      at = found + p.length;
+    }
+  };
+  // Unread first, then the newest; the busiest project first.
+  const phrases = [
+    defaultCopy.home.whatsNew,
+    "Field offsite",
+    "Holiday hours",
+    "Posted in acme",
+    "Kickoff notes",
+    defaultCopy.home.yourProjects,
+    "Field engineering",
+    "2 running",
+    "Launch",
+  ];
+  inOrder(onSlack, phrases);
+  inOrder(onWeb, phrases);
 });

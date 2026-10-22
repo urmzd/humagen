@@ -12,13 +12,14 @@ import {
   retryOf,
   toRequest,
 } from "@warp/adapter";
-import { type Copy, defaultCopy, MailboxView, MessageView, TurnView } from "@warp/components";
+import { type Copy, defaultCopy, Home, MailboxView, MessageView, TurnView } from "@warp/components";
 import {
   ActionId,
   emptyQueue,
   emptyTurn,
   type Failure,
   feedbackEvent,
+  HOME_ID,
   messageState,
   partMatches,
   type QueueState,
@@ -31,6 +32,7 @@ import {
   decodeReplyModal,
   decodeSlackAction,
   escapeMentions,
+  homeView,
   LIMITS,
   type ReplyTarget,
   reactionChanges,
@@ -39,10 +41,11 @@ import {
   type SerializeResult,
   suggestedPrompts,
 } from "@warp/render-slack";
-import { choose, mayRoute, type Routing } from "./agents.ts";
+import { BUILDER, choose, mayRoute, type Routing } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
 import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
-import { askForm, ENTRY, type words } from "./host.ts";
+import { homeModel } from "./home.ts";
+import { askForm, buildForm, ENTRY, formKind, type words } from "./host.ts";
 import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
 import { Presenter } from "./present.tsx";
 import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
@@ -59,6 +62,7 @@ import {
   type Warp,
   WarpError,
   type WireMessage,
+  type WireProject,
 } from "./warp.ts";
 
 /**
@@ -155,9 +159,6 @@ interface Thread {
   jobs: Map<string, Job>;
   live?: Live;
 }
-
-/** How many of each list the Home tab shows a mapped person: what needs them, and what's new. */
-const HOME_SHOWN = 5;
 
 const terminal = (s: Run["status"]) => s === "completed" || s === "failed" || s === "stopped";
 
@@ -1208,6 +1209,10 @@ export class App {
     this.seen.set(dedupe, true);
 
     if (ui.id === ActionId.feedback) return this.onFeedback(ui, p.user.id);
+    // The Home tab's own controls, and Review on an item it shows.
+    if (ui.payload.turnId === HOME_ID) return this.onHome(p, ui);
+    if (ui.id === ActionId.open && (p.view?.type === "home" || p.container?.type === "view"))
+      return this.review(p, ui.payload.turnId);
     // A click on an inbox message names the message. Anything else names a run.
     const message = await this.warp.inbox.get(ui.payload.turnId).catch(() => null);
     if (message) return this.onMail(p, ui, message);
@@ -1739,36 +1744,26 @@ export class App {
   }
 
   /**
-   * The Home tab: what is waiting on this person, and what's new in their
-   * projects. A person the client maps reads their own inbox, through the
-   * client (act_as): at most five that need them and five announcements,
-   * shown to read, since a decision there is theirs to make in warp. Without
-   * a mapping, an operator sees the whole inbox the app may read, and anyone
-   * else what they may settle.
+   * The Home tab. A person the client maps sees the shared Home, read as
+   * them through the client (act_as): at most five that need them, what's
+   * new in their projects and their projects, each opening in the console,
+   * and ways to start. Their projects are left out when they cannot be read.
+   * Without a mapping the tab is the mailbox, as it always was: an operator
+   * sees the whole inbox the app may read, and anyone else what they may
+   * settle.
    */
   private async publishHome(user: string): Promise<void> {
-    const asking = await this.actAs(user);
-    let messages: PlatformMessage[];
-    if (asking) {
-      const [mine, news] = await Promise.all([
-        this.warp.inboxFor(asking, { state: "open", limit: 30 }),
-        this.warp.inboxFor(asking, { kind: "announcement", limit: HOME_SHOWN }),
-      ]);
-      const needs = mine.messages.filter((m) => m.kind !== "announcement").slice(0, HOME_SHOWN);
-      messages = [...needs, ...news.messages.slice(0, HOME_SHOWN)].map((m) =>
-        fromServer({
-          ...m,
-          parts: ((m.parts as Record<string, unknown>[] | undefined) ?? []).map((p) => ({
-            ...p,
-            actions: [],
-          })),
-        }),
-      );
-    } else {
-      const page = await this.warp.inbox.list({ limit: 30, state: "open" });
-      const operator = (this.opts.operators ?? []).includes(user);
-      messages = operator ? page.messages : page.messages.filter((m) => this.maySettle(user, m));
+    const mapped = await this.mapped(user);
+    if (mapped) {
+      const view = homeView(<Home home={await this.homeFor(user, mapped)} copy={this.copy} />).view;
+      await this.slack.call("views.publish", { user_id: user, view });
+      return;
     }
+    const page = await this.warp.inbox.list({ limit: 30, state: "open" });
+    const operator = (this.opts.operators ?? []).includes(user);
+    const messages = operator
+      ? page.messages
+      : page.messages.filter((m) => this.maySettle(user, m));
     const view = renderToSlack(<MailboxView messages={messages.map(forSlack)} />, {
       placement: "home",
     });
@@ -1776,6 +1771,76 @@ export class App {
       user_id: user,
       view: { type: "home", blocks: view.blocks },
     });
+  }
+
+  /** The shared Home's model for a person the client maps, everything in it read as them. */
+  private async homeFor(user: string, mapped: { as: ActAs; person: string }) {
+    const [mine, news, projects, names, build] = await Promise.all([
+      this.warp.inboxFor(mapped.as, { state: "open", limit: 30 }),
+      this.warp.inboxFor(mapped.as, { state: "open", kind: "announcement", limit: 20 }),
+      this.warp.projectsFor(mapped.as).catch((e: Error): WireProject[] | null => {
+        this.log(`Home shows no projects for ${user}: ${e.message}`);
+        return null;
+      }),
+      this.names.of([user, this.opts.botUser]),
+      this.builds().catch(() => false),
+    ]);
+    const name = this.branding.name ?? "Warp";
+    return homeModel({
+      person: { id: user, name: names.get(user) ?? mapped.person },
+      assistant: { name, handle: names.get(this.opts.botUser) ?? name },
+      intro: this.words.homeIntro,
+      inbox: mine,
+      // An agent may have written an announcement: its words ping nobody here either.
+      announcements: news.messages.map((m) => untrustedAnnouncement(m as WireMessage)),
+      projects,
+      workspace: this.opts.tenant,
+      build,
+      href: this.href,
+    });
+  }
+
+  /** Whether Build an Agent is offered: the builder is there, and this app may reach it. */
+  private async builds(): Promise<boolean> {
+    const known = (await this.agents()).some((a) => a.name === BUILDER);
+    return known && mayRoute(await this.routing(), BUILDER);
+  }
+
+  /**
+   * A control on the Home tab. Ask a Question and Build an Agent open a form,
+   * whose words are asked in the app's messages with the person, as the
+   * shortcut's are; Build an Agent asks the builder. Search Context is a
+   * link Slack opens itself, so its click asks nothing here.
+   */
+  private async onHome(p: ActionPayload, ui: UiAction): Promise<void> {
+    if (!p.trigger_id) return;
+    if (ui.id === ActionId.homeAsk) {
+      await this.slack.call("views.open", { trigger_id: p.trigger_id, view: askForm(this.words) });
+      return;
+    }
+    if (ui.id === ActionId.homeStart && ui.payload.target === "build" && (await this.builds())) {
+      await this.slack.call("views.open", {
+        trigger_id: p.trigger_id,
+        view: buildForm(this.words),
+      });
+    }
+  }
+
+  /**
+   * Review on an item the Home tab shows without a console address: it is
+   * sent to the person's messages with the app, read for them through the
+   * client, where they can answer it, as a mention or a question addressed
+   * to them is. Someone the client maps to nobody sees no such item.
+   */
+  private async review(p: ActionPayload, id: string): Promise<void> {
+    const as = await this.actAs(p.user.id);
+    const raw = as ? await this.warp.inboxMessageFor(id, as).catch(() => null) : null;
+    if (!as || !raw) return;
+    const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
+      channel: as.user,
+      ...this.personalView(raw),
+    });
+    this.told.set(toldKey(as, raw.id), { channel: sent.channel ?? as.user, ts: sent.ts });
   }
 
   // Shortcuts and the command
@@ -1870,9 +1935,11 @@ export class App {
     const reply = p.type === "view_submission" && p.view ? decodeReplyModal(p.view) : null;
     if (reply) return this.onReply(p.user.id, reply.text, reply.target);
     if (p.type !== "view_submission" || p.view?.callback_id !== ENTRY.form) return;
-    const text = p.view.state?.values?.text?.value?.value?.trim() ?? "";
-    if (!text) return;
-    // A global shortcut has no channel: answer in the app's own messages with this person.
+    const said = p.view.state?.values?.text?.value?.value?.trim() ?? "";
+    if (!said) return;
+    // Build an Agent's words go to the builder, tagged as anyone would tag it.
+    const text = formKind(p.view.private_metadata) === "build" ? `@${BUILDER} ${said}` : said;
+    // A global shortcut or the Home tab has no channel: answer in the app's own messages with this person.
     await this.start({ channel: p.user.id, user: p.user.id }, text);
   }
 }
