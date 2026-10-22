@@ -124,3 +124,53 @@ func TestAFailedDeliveryIsNotKept(t *testing.T) {
 		t.Fatalf("a delivery that was not written = %+v", got.Deliveries)
 	}
 }
+
+// A client's receipt finds the message it posted there, after a restart and a
+// rebuild too, and only while the receipt says so: a post the receipt moved
+// from finds nothing, and another client's post is its own.
+func TestAReceiptFindsTheMessagePostedThere(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := raise(s, "announce:Field:1", t0, Part{Type: PartText, State: PartInfo, Text: "We shipped."})
+		first := Delivery{Channel: "C0FIELD", TS: "1700000000.000100", At: t0}
+		moved := Delivery{Channel: "C0FIELD", TS: "1700000099.000100", At: t0.Add(time.Second)}
+		for _, d := range []Delivery{first, moved} {
+			if err := s.Deliver(acme, m.ID, "slack-acme", d, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := s.Deliver(acme, m.ID, "slack-other", first, nil); err != nil {
+			t.Fatal(err)
+		}
+		reopened, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, store := range map[string]*Store{"the store": s, "reopened": reopened, "rebuilt": Rebuild(s.Changes(acme))} {
+			if got, ok := store.ByDelivery(acme, "slack-acme", moved); !ok || got.ID != m.ID {
+				t.Errorf("%s: the receipt finds %+v, %v", name, got.ID, ok)
+			}
+			if _, ok := store.ByDelivery(acme, "slack-acme", first); ok {
+				t.Errorf("%s: the post the receipt moved from still finds the message", name)
+			}
+			if got, ok := store.ByDelivery(acme, "slack-other", first); !ok || got.ID != m.ID {
+				t.Errorf("%s: another client's receipt finds %+v, %v", name, got.ID, ok)
+			}
+			if _, ok := store.ByDelivery("globex", "slack-acme", moved); ok {
+				t.Errorf("%s: another tenant finds the message", name)
+			}
+		}
+		got, _ := s.ByDelivery(acme, "slack-acme", Delivery{Channel: moved.Channel, TS: moved.TS})
+		got.Parts[0].Text = "changed"
+		if again, _ := s.ByID(acme, m.ID); again.Parts[0].Text != "We shipped." {
+			t.Fatal("a copy of the message changed the store")
+		}
+		if _, ok := s.ByID(acme, "m-99"); ok {
+			t.Fatal("ByID found a message that is not there")
+		}
+	})
+}

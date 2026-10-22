@@ -550,7 +550,7 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 		return Thread{}, err
 	}
 	switch {
-	case next.ID != cur.ID || next.Project != cur.Project || next.Channel != cur.Channel || !sameSurface(next.Surface, cur.Surface):
+	case next.ID != cur.ID || next.Project != cur.Project || next.Channel != cur.Channel || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement:
 		return Thread{}, fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
 	case !slices.Equal(next.Participants, cur.Participants):
 		return Thread{}, fmt.Errorf("%w: participants are changed on their own", ErrInvalid)

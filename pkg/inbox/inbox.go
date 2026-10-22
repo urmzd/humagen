@@ -527,7 +527,10 @@ type tenant struct {
 	messages []*Message // oldest first
 	byKey    map[string]*Message
 	byID     map[string]*Message
-	read     map[string]map[string]bool // message id -> subject
+	// byPost finds a message by a client's receipt (postKey), as the
+	// Delivered changes recorded it.
+	byPost map[string]*Message
+	read   map[string]map[string]bool // message id -> subject
 	// hidden is how each reader set a broadcast aside for themselves:
 	// message id -> subject -> how.
 	hidden   map[string]map[string]hide
@@ -657,7 +660,7 @@ func (s *Store) of(name string) *tenant {
 	t, ok := s.tenants[name]
 	if !ok {
 		t = &tenant{
-			byKey: map[string]*Message{}, byID: map[string]*Message{}, read: map[string]map[string]bool{},
+			byKey: map[string]*Message{}, byID: map[string]*Message{}, byPost: map[string]*Message{}, read: map[string]map[string]bool{},
 			hidden: map[string]map[string]hide{}, watchers: map[int]chan Notice{},
 		}
 		s.tenants[name] = t
@@ -714,9 +717,14 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		// Reading changes nothing anyone else sees.
 		return m, false
 	case Delivered:
+		was, had := m.Deliveries[c.By]
 		if !m.delivered(c) {
 			return m, false
 		}
+		if had && t.byPost[postKey(c.By, was)] == m {
+			delete(t.byPost, postKey(c.By, was))
+		}
+		t.byPost[postKey(c.By, *c.Delivery)] = m
 		t.log = append(t.log, c)
 		return m, false
 	case DidResolve:
@@ -851,6 +859,18 @@ func (s *Store) Raise(tenantName, key string, m Message, at time.Time) (Message,
 	}
 	m.Key = key
 	return s.do(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
+}
+
+// ByID returns one message as it is, for the platform's own use: who may
+// read it is the caller's to decide.
+func (s *Store) ByID(tenantName, id string) (Message, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.of(tenantName).byID[id]
+	if m == nil {
+		return Message{}, false
+	}
+	return m.clone(), true
 }
 
 // ByKey returns the latest message raised under a key.

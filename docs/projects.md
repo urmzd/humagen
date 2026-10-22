@@ -1207,8 +1207,18 @@ what needs the reader from the platform's reads (`updatesOf`, `projectsOf`,
   whose `general` channel is bound. It posts it top-level once and records
   `PUT /api/inbox/{id}/deliveries/{client}`, so a restart, an edit or a
   withdrawal updates that post instead of posting again. A reply in its
-  thread starts a shared thread seeded with the announcement. Drafts never
-  reach a channel.
+  thread starts a shared thread seeded with the announcement. Slack delivers
+  a reply in a channel thread only when it mentions the app, so the reply
+  that mentions it posts, with the post's surface, into the thread the
+  platform finds by that post's receipt: in the bound channel, its turns
+  start with the announcement from whoever posted it (the scheduled agent
+  for a recap), then the reply as the person's own message, answered by the
+  channel's chain. A later reply finds the same thread, and once the
+  announcement is withdrawn the thread says only that. A reply under one
+  withdrawn before anyone replied starts nothing, and drafts never reach a
+  channel. Only a thread the binding files in the announcement's project is
+  seeded: after the Slack channel is bound to another project, or unbound, a
+  reply under an old post starts a thread there as any other.
 - **App Home.** The shared Home, through `homeView`, replaces the bare
   MailboxView for a person the client maps. It shows Needs you (at most 5),
   What's new (at most 5) and Your projects (at most 8, where something

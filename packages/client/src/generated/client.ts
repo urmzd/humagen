@@ -1282,6 +1282,16 @@ one the platform files from the binding (see SurfaceRef). Posting
 the same message ts again changes nothing. To any other caller the
 client is not found (404); a client's home that is gone is 404 too.
 An agent the client may not route to is refused, never swapped.
+
+A Slack thread under an announcement the client posted, at the
+channel and ts its receipt records (`recordInboxDelivery`), is that
+announcement's: the new thread names it in `announcement` and its
+turns start with it, from whoever posted it, ahead of the reply,
+which is the person's own message. It is seeded only where the
+Slack channel's binding files it in the announcement's project, and
+there a reply to one that was withdrawn, or to a draft, starts
+nothing (410). Filed anywhere else, after the Slack channel was bound
+to another project or unbound, it starts as any other thread.
  */
   async startThread(body: ThreadInput, options?: RequestOptions): Promise<ThreadPosted> {
     const path = "/api/threads";
@@ -1304,9 +1314,10 @@ An agent the client may not route to is refused, never swapped.
   /** A thread's turns are its people's messages and its agents' runs, in
 the order they were made, oldest first. A run that answers a message
 names it in `message`; runs answering one message answer it side by
-side and are not branches. A conversation from before threads reads
-as shared, in `general` of its project, at version 0, and its id is
-the id of the run that started it.
+side and are not branches. A thread started from an announcement
+starts with it, as it stands when it is read. A conversation from
+before threads reads as shared, in `general` of its project, at
+version 0, and its id is the id of the run that started it.
 
 The first page is the newest 200 turns, or `limit`. `next` is the
 cursor for the turns before them, or null at the start: pass it back

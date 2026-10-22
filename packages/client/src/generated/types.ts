@@ -452,6 +452,8 @@ export interface Thread {
   /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. */
   default?: string;
   surface?: ThreadSurface;
+  /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
+  announcement?: string;
   /** Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written. */
   version: number;
   /** The handle of the person who started it, the first person to ask or post in it. */
@@ -498,11 +500,34 @@ export interface ThreadMessage {
   at: string;
 }
 
-/** One turn of a thread, a person's message or an agent's run. */
+/** The announcement a thread was started from, as it stands when the
+thread is read: who posted it and what it says. It is the inbox's,
+never a message of the thread, so it is from whoever posted it, a
+person or the agent a schedule ran, and never from the person whose
+reply started the thread. A withdrawn one says nothing more.
+ */
+export interface ThreadAnnouncement {
+  /** The announcement's inbox id. */
+  id: string;
+  /** Who posted it. */
+  kind: "person" | "agent";
+  /** The person's handle, or the agent's name. */
+  by: string;
+  /** What the person is called. Absent for an agent. */
+  name?: string;
+  subject?: string;
+  text?: string;
+  /** Withdrawn for everyone. Its subject and text are then absent. */
+  withdrawn?: boolean;
+  at: string;
+}
+
+/** One turn of a thread, a person's message, an agent's run, or the announcement the thread was started from, which comes first. */
 export interface ThreadTurn {
-  kind: "message" | "run";
+  kind: "message" | "run" | "announcement";
   message?: ThreadMessage;
   run?: Run;
+  announcement?: ThreadAnnouncement;
 }
 
 /** Who answers an untagged message in a place, and where that is set:
@@ -687,7 +712,8 @@ where the platform says: the channel the Slack channel is bound to,
 shared, or else the client's home, private for a direct message or
 the assistant pane. The text is Slack's own: the app's mention is
 dropped, a mapped bot or person is their tag, and anyone else is
-plain and refused.
+plain and refused. A thread under an announcement the client posted
+is seeded with it (see `startThread`).
  */
 export interface SurfaceRef {
   client: string;

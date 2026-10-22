@@ -1004,6 +1004,8 @@ export interface Thread {
   visibility: "shared" | "private";
   participants: ThreadParticipant[];
   default?: string;
+  /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
+  announcement?: string;
   version: number;
   created_by: string;
   created_at: string;
@@ -1033,10 +1035,27 @@ export interface ThreadMessage {
   at: string;
 }
 
+/**
+ * The announcement a thread was started from, as it stands now: who posted
+ * it, a person by handle or an agent by name, and what it says. A withdrawn
+ * one says nothing more.
+ */
+export interface ThreadAnnouncement {
+  id: string;
+  kind: "person" | "agent";
+  by: string;
+  name?: string;
+  subject?: string;
+  text?: string;
+  withdrawn?: boolean;
+  at: string;
+}
+
 export interface ThreadTurn {
-  kind: "message" | "run";
+  kind: "message" | "run" | "announcement";
   message?: ThreadMessage;
   run?: Run;
+  announcement?: ThreadAnnouncement;
 }
 
 export interface ThreadPage {

@@ -218,6 +218,10 @@ export const defaultCopy = {
     muted: "Muted. Its announcements stay out of your inbox and stay in the project's.",
     rootNotMuted: "The workspace's announcements are for everyone, so they can't be muted.",
     tooMany: (n: number) => `At most ${n} announcements a day are posted here. Try again tomorrow.`,
+    /** The first turn of a thread a reply to an announcement started, once it was withdrawn. */
+    withdrawn: "This announcement was withdrawn.",
+    /** In Slack, to someone replying under an announcement that was withdrawn. */
+    replyGone: "This announcement was withdrawn, so a reply to it starts nothing.",
   },
   /** Who holds a role in a project, and what it lets them do. */
   roles: {

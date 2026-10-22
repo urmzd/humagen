@@ -29,3 +29,12 @@ test("a conversation is read from its start, and reading stops after MAX_PAGES",
   assert.equal(long.turns.length, MAX_PAGES);
   assert.equal(long.next, "4", "where reading stopped");
 });
+
+test("a thread's announcement is one turn whichever read it came in, and is never taken for a run", () => {
+  const seed: ThreadTurn = { kind: "announcement", announcement: { id: "m-7", kind: "person", by: "dana", subject: "News", at: "2026-10-01T09:00:00Z" } };
+  const withdrawn: ThreadTurn = { kind: "announcement", announcement: { id: "m-7", kind: "person", by: "dana", withdrawn: true, at: "2026-10-01T09:00:00Z" } };
+  const runless: ThreadTurn = { kind: "run", run: { id: "" } as never };
+  const merged = mergeTurns([seed, turn(1)], [withdrawn, turn(1), runless]);
+  assert.equal(merged.length, 3);
+  assert.equal(merged[0]?.announcement?.withdrawn, true, "the later read wins");
+});

@@ -13,7 +13,7 @@
 | `/agent`, shortcuts, Home tab | No | Yes, from warp's sandbox manifest |
 | Inbox items about a run | No | In the run's thread, and on Home |
 | Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list. A mapped person's messages are the client's (threads with a surface, below); anyone else's runs are not yet recorded as the client's |
-| Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a warp thread filed by the binding, someone the client maps to nobody is refused in a bound channel, and announcements reach a bound general channel |
+| Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a warp thread filed by the binding, someone the client maps to nobody is refused in a bound channel, and announcements reach a bound general channel, where a reply that mentions the app starts a thread seeded with the announcement |
 | Mentions of a person | No | In their direct messages with the app, with Open Thread and Reply, unless they are in the Slack thread already (they wrote there or were mentioned there with `<@U…>`). Experts named by a role are each told |
 | Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them, when the app's client maps them (`act_as`): their message is theirs in the warp thread, and so are the runs it starts. Else as the app, acting for nobody. Tools that act as a person use the person's own credential |
 | Questions a run waits on | No | In the run's thread, answered for the person the client maps. See below |
@@ -113,6 +113,35 @@ a channel. The app's machine is told of a bound project's announcements
 wherever it may see the project, though it is only a viewer there. A
 members-only project's reach Slack only where its owners name the machine
 among its members: binding its general channel alone sends nothing.
+
+A reply in an announcement's Slack thread starts a shared thread seeded with
+the announcement. Slack delivers a message in a channel thread to the app
+only when it mentions the app: the manifest subscribes to `app_mention`, and
+to `message.im` for direct messages alone, and adding `message.channels`
+would widen what the app reads. So the reply that mentions the app is the
+one that reaches warp, and the replies before it that did not are posted
+ahead of it as the room, each as its person and posted only. The app posts
+them as for any Slack thread, with the post's surface: the platform finds
+the announcement by the receipt the app recorded at that channel and ts, and
+starts the thread in the bound channel with it. Its turns start with the
+announcement, from the person who posted it or, for a recap, the agent the
+schedule ran, never from whoever replied; then comes the reply, the person's
+own message, read in the one grammar and answered by the channel's chain as
+any message there. What the announcement says tags nobody. A later reply
+finds the same thread by its surface. The thread reads the announcement as
+it stands, so once it is withdrawn the thread says only that. Someone the
+client maps to nobody is told to connect their Slack account, as anywhere in
+a bound channel. A thread is seeded only where the Slack channel's binding
+files it in the announcement's own project, so only those who see that
+project read it. There a reply under an announcement that was withdrawn
+before anyone replied starts nothing, and the app says so (warp answers
+410); a draft never reaches a channel. After the Slack channel is bound to
+another project, or unbound, a reply under an old post starts a thread where
+it is now filed, as any other, open or withdrawn: nothing of the
+announcement comes with it, and nobody there is told what became of it.
+Once a thread is seeded, the announcement is part of it and of what its runs
+are sent, so it is read as they are, with `runs:read`, and not as the inbox
+reads it, with `projects:read`.
 
 A mention of a mapped person, or a question addressed to them, reaches the
 app's event stream with `for {client, user}`. The app reads it for them
