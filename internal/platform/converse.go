@@ -198,13 +198,17 @@ func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings
 	if len(next.WorkspaceName) > 80 || strings.ContainsAny(next.WorkspaceName, "\r\n\t<>") {
 		return fmt.Errorf("%w: a workspace name is plain text on one line, at most 80 characters", ErrSettings)
 	}
-	for _, name := range []string{next.TitleAgent, next.MemoryAgent} {
-		if name == "" {
+	// Each agent is kept by its own name, whatever spelling named it, as a
+	// home and a list are.
+	for _, name := range []*string{&next.TitleAgent, &next.MemoryAgent} {
+		if *name == "" {
 			continue
 		}
-		if _, err := p.Agents.Get(ctx, tenant, name, 0); err != nil {
-			return fmt.Errorf("%w: %q", ErrNoBaseline, name)
+		rev, err := p.Agents.Get(ctx, tenant, *name, 0)
+		if err != nil {
+			return fmt.Errorf("%w: %q", ErrNoBaseline, *name)
 		}
+		*name = rev.Spec.Name
 	}
 	switch {
 	case next.History != HistoryRecent && next.History != HistoryNone:

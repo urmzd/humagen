@@ -319,15 +319,25 @@ func mustJSON(t *testing.T, v any) string {
 // A title or memory agent that lives in a project is asked only about the
 // turns there and below, whose readers all read it. A turn anywhere else
 // gets no housekeeping run, so nobody who reads that turn is shown a run of
-// an agent they may not read.
+// an agent they may not read. Settings that name the agent in another
+// spelling keep its own name, and serve the same.
 func TestAHousekeepingAgentThatLivesInAProjectServesOnlyItsTurns(t *testing.T) {
+	for _, spelled := range []string{"spy", "Spy"} {
+		t.Run(spelled, func(t *testing.T) { housekeepingServesOnlyItsTurns(t, spelled) })
+	}
+}
+
+func housekeepingServesOnlyItsTurns(t *testing.T, spelled string) {
 	f := newFixtureWith(t, platform.Config{OfflineHooks: true})
 	owner := f.machine(t, "acme", everything...)
 	reader := f.machineAs(t, "svc-ops", "acme", "warp:runs:read", "warp:runs:write", "warp:agents:read")
 	secretAgent(t, f, owner)
 	_, st := read(t, f, owner, "/api/settings")
-	st["title_agent"], st["memory_agent"] = "spy", "spy"
-	want(t, f, owner, "PUT", "/api/settings", mustJSON(t, st), http.StatusOK)
+	st["title_agent"], st["memory_agent"] = spelled, spelled
+	saved := want(t, f, owner, "PUT", "/api/settings", mustJSON(t, st), http.StatusOK)
+	if saved["title_agent"] != "spy" || saved["memory_agent"] != "spy" {
+		t.Errorf("the settings naming %s kept %v and %v", spelled, saved["title_agent"], saved["memory_agent"])
+	}
 
 	outside := want(t, f, reader, "POST", "/api/runs", `{"agent":"helper","text":"hello there"}`, http.StatusAccepted)["id"].(string)
 	ended(t, f, reader, outside)
@@ -349,18 +359,24 @@ func TestAHousekeepingAgentThatLivesInAProjectServesOnlyItsTurns(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+	_, all := read(t, f, owner, "/api/runs?limit=200")
+	for _, r := range sliceOf(all["runs"]) {
+		if run := obj(r); run["origin"] == "system" {
+			ended(t, f, owner, run["id"].(string))
+		}
+	}
 	// The turn outside it is not.
 	if _, raw := get(t, f, owner, "/api/runs?limit=200"); strings.Contains(raw, "sys-title-"+outside) || strings.Contains(raw, "sys-memory-"+outside) {
 		t.Errorf("spy was asked about a turn outside Secret: %s", raw)
 	}
 	for _, path := range []string{"/api/runs?limit=200", "/api/runs/" + outside, "/api/threads", "/api/analytics"} {
-		if code, raw := get(t, f, reader, path); code != http.StatusOK || strings.Contains(raw, "spy") {
+		if code, raw := get(t, f, reader, path); code != http.StatusOK || strings.Contains(strings.ToLower(raw), "spy") {
 			t.Errorf("%s shows the reader spy: %d %s", path, code, raw)
 		}
 	}
 	// The conversation of its own a housekeeping run makes is read where
 	// the turn it serves is.
-	_, all := read(t, f, owner, "/api/runs?limit=200")
+	_, all = read(t, f, owner, "/api/runs?limit=200")
 	for _, r := range sliceOf(all["runs"]) {
 		if run := obj(r); run["origin"] == "system" {
 			path := "/api/threads/" + run["thread"].(string)

@@ -210,7 +210,9 @@ func (p *Platform) startHook(ctx context.Context, turn runs.Run, agent, hook, ta
 	// The run is read where the turn is, so an agent that lives in a project
 	// is asked only about the turns there and below. Everyone who reads such
 	// a turn reads the project the agent lives in, so its run is never shown
-	// to someone who may not read the agent.
+	// to someone who may not read the agent. It runs as the agent's own name,
+	// whatever spelling the settings hold.
+	agent = rev.Spec.Name
 	tree := p.Projects.Tree(turn.Tenant)
 	if home, homed := tree.Home(agent); homed && !onChain(tree, turn.Project, home) {
 		return

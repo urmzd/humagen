@@ -315,6 +315,13 @@ func TestHousekeepingTitlesAndRemembers(t *testing.T) {
 	if err := p.SetSettings(ctx, tenant, platform.Settings{TitleAgent: "ghost"}); err == nil {
 		t.Fatal("a title agent that does not exist was accepted")
 	}
+	// Another spelling names the same agent, which is kept by its own name.
+	if err := p.SetSettings(ctx, tenant, platform.Settings{TitleAgent: "Scribe", MemoryAgent: " SCRIBE"}); err != nil {
+		t.Fatal(err)
+	}
+	if st := p.Settings(tenant); st.TitleAgent != "scribe" || st.MemoryAgent != "scribe" {
+		t.Fatalf("the settings naming Scribe keep %q and %q", st.TitleAgent, st.MemoryAgent)
+	}
 
 	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-1", Agent: "lead", Text: "Plan the launch"})
 	if err != nil {
@@ -350,6 +357,9 @@ func TestHousekeepingTitlesAndRemembers(t *testing.T) {
 	for _, r := range p.Runs.List(tenant, 0) {
 		if r.Origin == runs.OriginSystem {
 			system++
+			if r.Agent != "scribe" {
+				t.Errorf("a housekeeping run ran as %q", r.Agent)
+			}
 		}
 	}
 	if system != 2 {
