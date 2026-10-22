@@ -481,7 +481,8 @@ decided per message:
 A message a caller may not see answers 404, not 403, and is left out of their
 count, and a notice about it never reaches their event stream. Where a
 client's app posted a message (`deliveries`) is shown only to that client's
-machine, wherever the message is read, a project's inbox included. An
+machine, wherever the message is read, a project's inbox included, and so is
+each receipt (`delivered`) in the message's history. An
 announcement's audience (`project:<name>`) and a proposed note's
 (`owners:<name>`) are decided from the project tree at each read, so a revoked
 membership hides past announcements at the next one. Announcements are plain

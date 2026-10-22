@@ -468,17 +468,17 @@ func TestAReadersOwnMarksStayOutOfAnotherReadersHistory(t *testing.T) {
 		}
 		return out
 	}
-	if got := whats(s.HistoryFor(acme, m.ID, "bo")); !slices.Equal(got, []string{"raised dana"}) {
+	if got := whats(s.HistoryFor(acme, m.ID, "bo", nil)); !slices.Equal(got, []string{"raised dana"}) {
 		t.Fatalf("another reader is shown %q", got)
 	}
-	if got := whats(s.HistoryFor(acme, m.ID, "dee")); !slices.Equal(got, []string{"raised dana", "snoozed dee", "read dee", "dismissed dee"}) {
+	if got := whats(s.HistoryFor(acme, m.ID, "dee", nil)); !slices.Equal(got, []string{"raised dana", "snoozed dee", "read dee", "dismissed dee"}) {
 		t.Fatalf("dee is shown %q", got)
 	}
 	// dana's own read of what she posted is a mark like any other.
 	if n := len(s.History(acme, m.ID)); n != 6 {
 		t.Fatalf("the record holds %d changes, want every mark once", n)
 	}
-	if got := whats(s.HistoryFor(acme, m.ID, "dana")); !slices.Equal(got, []string{"raised dana", "read dana"}) {
+	if got := whats(s.HistoryFor(acme, m.ID, "dana", nil)); !slices.Equal(got, []string{"raised dana", "read dana"}) {
 		t.Fatalf("dana is shown %q", got)
 	}
 
@@ -490,11 +490,11 @@ func TestAReadersOwnMarksStayOutOfAnotherReadersHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got := s.HistoryFor(acme, other.ID, "dee")
+	got := s.HistoryFor(acme, other.ID, "dee", nil)
 	if len(got) != MaxHistory || !got[len(got)-1].Until.Equal(t0.Add(time.Duration(MaxHistory+20)*time.Minute)) {
 		t.Fatalf("dee is shown %d changes, the last %+v", len(got), got[len(got)-1])
 	}
-	if got := s.HistoryFor(acme, other.ID, "bo"); len(got) != 1 {
+	if got := s.HistoryFor(acme, other.ID, "bo", nil); len(got) != 1 {
 		t.Fatalf("another reader is shown %d changes", len(got))
 	}
 }
@@ -650,10 +650,10 @@ func TestAReaderBringsBackWhatTheyHid(t *testing.T) {
 		}
 		return out
 	}
-	if got := whats(s.HistoryFor(acme, m.ID, "cy")); !slices.Equal(got, []string{"raised dana"}) {
+	if got := whats(s.HistoryFor(acme, m.ID, "cy", nil)); !slices.Equal(got, []string{"raised dana"}) {
 		t.Fatalf("cy is shown %q", got)
 	}
-	if got := whats(s.HistoryFor(acme, m.ID, "ada")); !slices.Equal(got, []string{"raised dana", "dismissed ada", "unhidden ada", "dismissed ada"}) {
+	if got := whats(s.HistoryFor(acme, m.ID, "ada", nil)); !slices.Equal(got, []string{"raised dana", "dismissed ada", "unhidden ada", "dismissed ada"}) {
 		t.Fatalf("ada is shown %q", got)
 	}
 	rebuilt := Rebuild(s.Changes(acme))

@@ -111,8 +111,8 @@ to; a user two clients map to different people acts for nobody.
 
 The same credential, and no other, records where the app posted an inbox
 message: `PUT /api/inbox/{id}/deliveries/{client}` with `{channel, ts}`. The
-receipt shows in that message's `deliveries`, to that machine only, wherever
-the message is read, a project's inbox included, so after a restart, an edit
+receipt shows in that message's `deliveries` and its history, to that machine
+only, wherever the message is read, a project's inbox included, so after a restart, an edit
 or a withdrawal the app updates its post instead of posting again. Recording
 the same post again after the message changed moves the receipt's `at` on,
 so it says the post shows the message as it stands, and the app catches up

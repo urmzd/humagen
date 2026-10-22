@@ -91,6 +91,28 @@ func TestOnlyAClientsMachineRecordsAndSeesItsDeliveries(t *testing.T) {
 	if d, _ := page["messages"].([]any)[0].(map[string]any)["deliveries"].(map[string]any); len(d) != 1 || d["one"] == nil {
 		t.Errorf("the first machine's page shows %v", d)
 	}
+	// A receipt is the client's own mark in the message's history too: which
+	// client posted it, where and when is shown to that client's machine alone.
+	delivered := func(tok string) []string {
+		t.Helper()
+		_, out := f.do(t, nil, "GET", "/api/inbox/"+id, tok, "")
+		by := []string{}
+		for _, c := range out["history"].([]any) {
+			if c := c.(map[string]any); c["what"] == "delivered" {
+				by = append(by, c["by"].(string))
+			}
+		}
+		return by
+	}
+	if got := delivered(one); len(got) != 1 || got[0] != "one" {
+		t.Errorf("the first machine's history shows receipts by %v", got)
+	}
+	if got := delivered(two); len(got) != 1 || got[0] != "two" {
+		t.Errorf("the second machine's history shows receipts by %v", got)
+	}
+	if got := delivered(ada); len(got) != 0 {
+		t.Errorf("a person's history shows receipts by %v", got)
+	}
 }
 
 // An announcement a Slack app posts to the channel its project is bound to
