@@ -332,7 +332,7 @@ export function Settings({
                     </Label>
                     <Switch
                       label="Keep what the memory agent writes without asking"
-                      hint="Off, every note it writes waits for a person to approve it. Notes that carry personal data are refused either way."
+                      hint="Off, every note it writes waits for a person to approve it. On, notes for the workspace and company projects still wait for someone who can govern projects. Notes that carry personal data are refused either way."
                       checked={workspace.memory_auto_approve}
                       disabled={!canAdmin || !workspace.memory_agent}
                       onChange={(on) => saveWorkspace({ memory_auto_approve: on })}

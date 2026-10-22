@@ -195,10 +195,29 @@ func (p *Platform) MayChangeNotes(who auth.Principal, name string) error {
 	if !who.Can(auth.ProjectsWrite) {
 		return fmt.Errorf("%w: changing a project's notes needs %s", ErrForbidden, auth.ProjectsWrite)
 	}
-	if (pr.IsRoot() || pr.Kind == projects.Company) && !who.Can(auth.ProjectsGovern) {
+	if governedNotes(pr) && !who.Can(auth.ProjectsGovern) {
 		return fmt.Errorf("%w: the notes of the workspace and of company projects are changed with %s", projects.ErrForbidden, auth.ProjectsGovern)
 	}
 	return nil
+}
+
+// governedNotes reports whether a project's notes are changed only with
+// projects:govern: the workspace's and a company project's, which every agent
+// in a wide part of the tree is sent.
+func governedNotes(pr projects.Project) bool { return pr.IsRoot() || pr.Kind == projects.Company }
+
+// mayKeepUnasked reports whether what the memory agent writes for an owner may
+// be kept without a person approving it, when the workspace chose that. A
+// project whose notes need projects:govern waits for someone holding it
+// whatever the workspace chose, since the turn that taught it needed only
+// runs:write. So does a project the tree no longer holds.
+func (p *Platform) mayKeepUnasked(tenant, owner string) bool {
+	name, isProject := memory.OwnerProject(owner)
+	if !isProject {
+		return true
+	}
+	pr, ok := p.Projects.Tree(tenant).Get(name)
+	return ok && !governedNotes(pr)
 }
 
 // migration is who the projects moved out of settings were created by.

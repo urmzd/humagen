@@ -595,7 +595,10 @@ ingress overwrites whatever a connector put there (phase 8).
   project's owner: a project's notes are changed only through its own
   routes and the inbox, each asking what the project asks. The memory agent
   writes as today: to the run's own project, or to the agent for a run at
-  the root. It never writes from a private thread (phase 7).
+  the root. It never writes from a private thread (phase 7). With
+  `memory_auto_approve` on, what it writes for the workspace or a company
+  project still waits for someone holding `projects:govern`, since the turn
+  that taught it needed only `runs:write`.
 - Knowledge sources inherited down the tree (phase 9) use warp's executor
   seam, `callExecutor.resolve`, which already rewrites the revision for model
   policies. The chain's sources are pinned at accept as `warp.sources` and

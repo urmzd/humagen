@@ -150,6 +150,9 @@ no permission, grants nothing.
 - **A proposed memory is not a memory.** What the memory agent writes is held
   as pending and is not sent to any agent until a person approves it, unless
   the workspace turned approval off. This is saige's default for memory writes.
+  What it writes for the workspace or a company project waits for someone
+  holding `projects:govern` even then: the turn that taught it needed only
+  `runs:write`, and turning approval off needs only `agents:write`.
 - **Memory refuses personal data.** Every note, from a person or an agent,
   passes saige's memory policy, which rejects text its detector finds personal
   data in.
