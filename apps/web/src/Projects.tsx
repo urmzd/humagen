@@ -1359,7 +1359,14 @@ export function ProjectPage({
       ) : tab === "people" ? (
         <ProjectPeople key={`${p.name}:${p.version}`} project={p} onChanged={changed} />
       ) : tab === "limits" ? (
-        <ProjectLimits project={p} scope={ownScope} chain={chain} canBilling={can("billing:write")} tick={tick} />
+        <ProjectLimits
+          project={p}
+          scope={ownScope}
+          chain={chain}
+          canBilling={can("billing:write")}
+          above={parent ? titleOf(parent, workspaceName) : undefined}
+          tick={tick}
+        />
       ) : tab === "history" ? (
         <ProjectHistory project={p} tick={tick} />
       ) : tab === "agents" ? (

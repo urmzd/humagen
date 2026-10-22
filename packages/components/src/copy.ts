@@ -306,6 +306,11 @@ export const defaultCopy = {
       `Everyone owns ${project}, so everyone sees this project too. To make it members only, name owners for ${project} first.`,
     limitFrom: (project: string) => `${project}'s limit also applies here.`,
     workspaceLimit: "The workspace's own limit applies here too.",
+    /** A Limits tab the reader can only read: who may change it. */
+    limitsReadOnly: (above?: string) =>
+      above
+        ? `Only an admin can change these. An owner of ${above} can set a tighter one.`
+        : "Only an admin can change these.",
     ownerLimit: "A tighter limit, as an owner above",
     ownerLimitHint:
       "It can only be tighter than every limit over this project. An admin's limit is changed under Settings.",

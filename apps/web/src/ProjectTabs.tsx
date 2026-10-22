@@ -426,13 +426,15 @@ export function ProjectHistory({ project, tick }: { project: ProjectView; tick?:
 /**
  * The limits that hold a project: its own, which an admin changes, the chain
  * above it ("Field's limit also applies here"), and, for an owner of a
- * project above, a tighter limit of their own.
+ * project above, a tighter limit of their own. A reader who may do neither
+ * is told who may.
  */
 export function ProjectLimits({
   project,
   scope,
   chain,
   canBilling,
+  above,
   tick,
 }: {
   project: ProjectView;
@@ -441,6 +443,8 @@ export function ProjectLimits({
   /** The limits above it, in words. */
   chain: { scope: PolicyScope; words: string }[];
   canBilling: boolean;
+  /** The project just above, by title, whose owners may set a tighter limit. None for the workspace. */
+  above?: string;
   tick?: number;
 }) {
   const [runs, setRuns] = useState("");
@@ -452,6 +456,9 @@ export function ProjectLimits({
     <div className="flex flex-col gap-6">
       <section className={section} aria-label={copy.project.tabs.limits}>
         <ScopeLimits key={`${project.name}:${reads}`} scope={scope} canWrite={canBilling} tick={tick} chain={chain} />
+        {!canBilling && !project.actions.includes("limits") && (
+          <p className="max-w-xl text-aui-xs text-aui-muted">{copy.project.limitsReadOnly(above)}</p>
+        )}
       </section>
       {project.actions.includes("limits") && !canBilling && (
         <section className={section}>
