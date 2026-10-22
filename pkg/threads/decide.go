@@ -151,7 +151,7 @@ func Decide(in Input) Decision {
 		if len(agents) == 0 {
 			d.Reason = "No agent it tags can answer here."
 		}
-	case people && !(skill && len(in.Routed) > 0):
+	case people && (!skill || len(in.Routed) == 0):
 		d.Rule, d.Reason = RulePeople, "It tags only people, so no agent answers."
 	case in.Reply:
 		d.Rule, d.Reason = RuleReply, "A reply to a person starts no run."
