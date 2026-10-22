@@ -214,17 +214,46 @@ type ProjectSkills struct {
 	Version int `json:"version"`
 	// Skills is the skills the project declares itself, in its order, with
 	// their instructions.
-	Skills []projects.Skill `json:"skills"`
+	Skills []SkillDetail `json:"skills"`
 	// Offered is what a message posted here can name: the project's skills,
 	// then each ancestor's, nearest first, each name once and from the
 	// nearest project that declares it, at most projects.MaxChainSkills.
 	Offered []projects.SkillRef `json:"offered"`
 }
 
+// SkillDetail is a skill with its instructions, as the skills route reads
+// and writes it. Everywhere else a project shows its skills without them
+// (projects.BriefSkills).
+type SkillDetail struct {
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	ArgumentHint string `json:"argument_hint,omitempty"`
+	Instructions string `json:"instructions"`
+}
+
 // SkillsInput replaces the skills a project declares, from the version read.
 type SkillsInput struct {
-	Version int              `json:"version"`
-	Skills  []projects.Skill `json:"skills"`
+	Version int           `json:"version"`
+	Skills  []SkillDetail `json:"skills"`
+}
+
+func skillDetails(ss []projects.Skill) []SkillDetail {
+	out := make([]SkillDetail, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, SkillDetail(s))
+	}
+	return out
+}
+
+func skillsFrom(ss []SkillDetail) []projects.Skill {
+	if ss == nil {
+		return nil
+	}
+	out := make([]projects.Skill, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, projects.Skill(s))
+	}
+	return out
 }
 
 // ProjectSkillsOf is a project's skills, "~" for the workspace. The caller
@@ -244,7 +273,7 @@ func (p *Platform) ProjectSkillsOf(tenant, project string) (ProjectSkills, error
 // and projects:govern for the workspace and company projects. The caller
 // holds ownership of the project.
 func (p *Platform) SetProjectSkills(who auth.Principal, project string, w projects.Writer, in SkillsInput) (ProjectSkills, error) {
-	pr, err := p.Projects.SetSkills(who.Tenant, projects.NameOf(project), in.Version, in.Skills, w, p.now())
+	pr, err := p.Projects.SetSkills(who.Tenant, projects.NameOf(project), in.Version, skillsFrom(in.Skills), w, p.now())
 	if err != nil {
 		return ProjectSkills{}, err
 	}
@@ -255,10 +284,7 @@ func (p *Platform) SetProjectSkills(who auth.Principal, project string, w projec
 // version given, not read back, so a write that follows does not change
 // what an earlier one answers.
 func skillsOf(pr projects.Project, tree *projects.Tree) ProjectSkills {
-	out := ProjectSkills{Version: pr.Version, Skills: slices.Clone(pr.Skills), Offered: []projects.SkillRef{}}
-	if out.Skills == nil {
-		out.Skills = []projects.Skill{}
-	}
+	out := ProjectSkills{Version: pr.Version, Skills: skillDetails(pr.Skills), Offered: []projects.SkillRef{}}
 	chain := []projects.Project{pr}
 	if !pr.IsRoot() {
 		chain = append(chain, tree.Chain(pr.Parent)...)
