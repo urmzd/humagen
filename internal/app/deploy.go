@@ -411,6 +411,9 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 	if ns == "" {
 		ns = "warp"
 	}
+	if err := ownValues(b); err != nil {
+		return err
+	}
 	people, err := remotePersonRefs(cfg, "kubernetes")
 	if err != nil {
 		return err
@@ -474,6 +477,21 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 	}
 	if note != "" {
 		fmt.Fprintln(out, "warp: "+note)
+	}
+	return nil
+}
+
+// ownValues refuses a kubernetes block whose values set the chart's system
+// or platforms. Those are the spec's documents, written from what carry and
+// remotePersonRefs checked, and the block's values are merged over them
+// after, so a reference set there, a person's start or one of the spec's
+// own, would reach the target unread and unchecked.
+func ownValues(b spec.Kubernetes) error {
+	for _, k := range []string{"system", "platforms"} {
+		if _, ok := b.Values[k]; ok {
+			return fmt.Errorf("deploy: kubernetes values.%s: the chart's %s is written from the spec, whose references warp deploy carries and checks, "+
+				"and values are merged over it unchecked; set it in the spec's documents instead", k, k)
+		}
 	}
 	return nil
 }

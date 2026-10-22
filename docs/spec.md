@@ -398,7 +398,10 @@ review or for GitOps (the Flux example in `deploy/flux` applies the same
 chart). A secret never lands in a written file: an `env:` reference is passed
 from the deploying shell's environment, and a `keychain:` or `op://` one is
 read on this machine and handed to the target as a variable the written spec
-references.
+references. The `kubernetes` block's `values` are merged over the chart
+values warp derives, but may not set `system` or `platforms`: those are the
+spec's documents, whose references `warp deploy` carries and checks, so set
+them there.
 
 That is for the spec's own references. A person's reference
 ([Tools that act as you](#tools-that-act-as-you)) is read where warp runs,

@@ -382,6 +382,48 @@ func TestDeployRefusesPersonRefsTheTargetCannotRead(t *testing.T) {
 	}
 }
 
+// The kubernetes block's values are merged over the spec's documents after
+// warp deploy has carried and checked them, so they may not set the chart's
+// system or platforms: a person's keychain start, or one of the spec's own
+// references, would otherwise reach the cluster unread and unchecked.
+func TestDeployRefusesValuesThatReplaceTheSpec(t *testing.T) {
+	for _, c := range []struct{ key, values string }{
+		{"system", `{system: {spec: {person_refs: {default: ["keychain:warp-people-{subject}/"]}}}}`},
+		{"system", `{system: {spec: {stores: {kind: postgres, postgres: {url: {ref: "op://Infra/warp/db"}}}}}}`},
+		{"platforms", `{platforms: [{spec: {models: [{kind: anthropic, anthropic: {api_key: {ref: "keychain:anthropic"}}}]}}]}`},
+	} {
+		t.Run(c.key, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "warp.yaml")
+			if err := os.WriteFile(path, []byte(`api_version: warp/v1
+kind: System
+metadata: {name: acme}
+spec:
+  auth:
+    kind: oidc
+    oidc: {issuer: "https://login.example.com", client_id: warp, audience: warp, client_secret: {ref: "env:OIDC_SECRET"}}
+  person_refs: {default: ["env:WARP_PERSON_{subject}_"]}
+  deploy:
+    kind: kubernetes
+    kubernetes: {namespace: agents, values: `+c.values+`}
+`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			out := filepath.Join(t.TempDir(), "out")
+			r := &ran{}
+			err := deploy(Options{}, []string{"-f", path, "-o", out}, strings.NewReader(""), io.Discard, credref.Default, r.run)
+			if err == nil || !strings.Contains(err.Error(), "kubernetes values."+c.key) || !strings.Contains(err.Error(), "set it in the spec's documents instead") {
+				t.Fatalf("deploy = %v, want values.%s refused", err, c.key)
+			}
+			if len(r.args) != 0 {
+				t.Fatalf("a refused deploy ran %q", r.args)
+			}
+			if _, err := os.Stat(out); !os.IsNotExist(err) {
+				t.Fatalf("a refused deploy wrote %s: %v", out, err)
+			}
+		})
+	}
+}
+
 // An env: start names variables, one per person and tool, that nobody knows
 // when deploying, so warp deploy cannot pass them. It says so, in what it
 // prints and in the file it writes, so whoever deploys sets them in the
