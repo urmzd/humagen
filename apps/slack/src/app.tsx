@@ -6,6 +6,7 @@ import {
   ended,
   type Follower,
   follow,
+  fromServer,
   type PlatformMessage,
   retryOf,
   toRequest,
@@ -43,10 +44,13 @@ import { type Envelope, type SlackApi, SlackError } from "./slack.ts";
 import {
   type ActAs,
   type Agent,
+  type Binding,
   type ClientRecord,
   type InboxNotice,
   type Run,
   type StreamItem,
+  type SurfaceRef,
+  type ThreadPosted,
   type Warp,
   WarpError,
 } from "./warp.ts";
@@ -135,6 +139,9 @@ interface Thread {
   jobs: Map<string, Job>;
   live?: Live;
 }
+
+/** How many of each list the Home tab shows a mapped person: what needs them, and what's new. */
+const HOME_SHOWN = 5;
 
 const terminal = (s: Run["status"]) => s === "completed" || s === "failed" || s === "stopped";
 
@@ -291,6 +298,9 @@ export class App {
   private native = true;
   private agentList: { at: number; agents: Agent[] } | null = null;
   private clientRecord: { at: number; client: ClientRecord | null } | null = null;
+  private bindings: { at: number; list: Binding[] } | null = null;
+  /** Announcements being posted right now, so two notices post one. */
+  private readonly announcing = new Set<string>();
   private readonly flushMs: number;
   private readonly pollMs: number;
   private readonly stallMs: number;
@@ -607,41 +617,66 @@ export class App {
     let run: Run;
     let routing: Routing | undefined;
     try {
-      placed = await this.place(job);
-      // Warp already has a run for this Slack event: it was answered before a restart.
-      if (placed === "duplicate") return "done" as const;
       routing = await this.routing();
-      if (!job.again) {
-        const choice = choose(job.text, await this.agents(), routing);
-        if (choice.agent === null) return this.refuse(job, presenter, "", NO_AGENT);
-        agent = choice.agent;
-        text = choice.text;
-      } else if (!mayRoute(routing, agent)) {
-        // Asked again after the client was disabled or the agent left its list.
-        return this.refuse(job, presenter, agent, NO_AGENT);
-      }
-      if (job.history) text = await this.withThread(job, text);
-      // Stop was pressed before there was a run to stop: say so and settle the session.
-      if (live.stopped) {
-        await presenter.finish(
-          reduce(emptyTurn(job.key, { name: agent || "warp" }), { type: "turn.stopped" }),
-        );
-        return "stopped" as const;
-      }
-      // Who asked, the client and the thread are known here and have nowhere to go:
-      // the route takes none of them. See the README.
-      // A person the client maps asks as themselves, so they do not approve
-      // their own run's calls. Anyone else asks through the app.
+      // A person the client maps posts as themselves into the warp thread this
+      // Slack thread is: the platform reads the tags, files it from the binding,
+      // and starts what it calls for. Anyone else asks through the app.
       const asking = await this.actAs(job.requester ?? job.user);
-      run = await this.warp.createRun(
-        {
-          agent,
-          text,
-          ...(placed.after ? { after: placed.after } : {}),
-          ...(asking ? { act_as: asking } : {}),
-        },
-        placed.key,
-      );
+      if (asking && !job.again) {
+        if (live.stopped) {
+          await presenter.finish(
+            reduce(emptyTurn(job.key, { name: "warp" }), { type: "turn.stopped" }),
+          );
+          return "stopped" as const;
+        }
+        const posted = await this.cowork(job, asking);
+        // Warp already has this message: it was answered before a restart.
+        if (posted.repeated) return "done" as const;
+        const first = posted.runs[0];
+        if (!first) return this.unanswered(job, presenter, posted, routing);
+        if (posted.runs.length > 1) {
+          this.log(
+            `message ${posted.message.id} also started ${posted.runs
+              .slice(1)
+              .map((r) => r.id)
+              .join(", ")}`,
+          );
+        }
+        run = first;
+        agent = run.agent;
+      } else {
+        placed = await this.place(job);
+        // Warp already has a run for this Slack event: it was answered before a restart.
+        if (placed === "duplicate") return "done" as const;
+        if (!job.again) {
+          const choice = choose(job.text, await this.agents(), routing);
+          if (choice.agent === null) return this.refuse(job, presenter, "", NO_AGENT);
+          agent = choice.agent;
+          text = choice.text;
+        } else if (!mayRoute(routing, agent)) {
+          // Asked again after the client was disabled or the agent left its list.
+          return this.refuse(job, presenter, agent, NO_AGENT);
+        }
+        if (job.history) text = await this.withThread(job, text);
+        // Stop was pressed before there was a run to stop: say so and settle the session.
+        if (live.stopped) {
+          await presenter.finish(
+            reduce(emptyTurn(job.key, { name: agent || "warp" }), { type: "turn.stopped" }),
+          );
+          return "stopped" as const;
+        }
+        // Who asked, the client and the thread are known here and have nowhere to go:
+        // the route takes none of them. See the README.
+        run = await this.warp.createRun(
+          {
+            agent,
+            text,
+            ...(placed.after ? { after: placed.after } : {}),
+            ...(asking ? { act_as: asking } : {}),
+          },
+          placed.key,
+        );
+      }
     } catch (e) {
       this.log(`warp refused the turn: ${(e as Error).message}`);
       // No agent was named, and nothing answers here by default.
@@ -681,6 +716,89 @@ export class App {
     }
     this.log(`run ${run.id} ended ${turn.status}`);
     return turn.status === "done" ? "done" : turn.status === "stopped" ? "stopped" : "failed";
+  }
+
+  /** Where on Slack a message of this job's thread was posted. */
+  private surfaceOf(job: Job, messageTs: string): SurfaceRef {
+    return {
+      client: this.opts.clientId ?? "",
+      channel: job.session.channel,
+      ts: job.session.threadTs,
+      message: messageTs,
+      app_user: this.opts.botUser,
+    };
+  }
+
+  /**
+   * Post a mapped person's message into the warp thread this Slack thread
+   * is. In a channel thread, what people said there since the app was last
+   * asked goes first, each as its person and posted only, so the room reads
+   * as it did in Slack; someone the client does not map has no voice there.
+   */
+  private async cowork(job: Job, asking: ActAs): Promise<ThreadPosted> {
+    if (job.history) {
+      const at = {
+        channel: job.session.channel,
+        threadTs: job.session.threadTs,
+        triggerTs: job.triggerTs,
+      };
+      try {
+        const said = sinceLastTurn(await readThread(this.slack, at), {
+          botUser: this.opts.botUser,
+          ...at,
+        });
+        for (const m of said) {
+          const as = m.user && m.ts ? await this.actAs(m.user) : null;
+          if (!as || !m.ts || !(m.text ?? "").trim()) continue;
+          await this.warp.postThread({
+            text: m.text ?? "",
+            act_as: as,
+            surface: this.surfaceOf(job, m.ts),
+            post_only: true,
+          });
+        }
+      } catch (e) {
+        this.log(`thread history skipped: ${(e as Error).message}`);
+      }
+    }
+    return this.warp.postThread({
+      text: job.text,
+      act_as: asking,
+      surface: this.surfaceOf(job, job.triggerTs),
+    });
+  }
+
+  /**
+   * A message that started nothing: it told people, was posted only, or
+   * nobody answers here. Only the last is a failure.
+   */
+  private async unanswered(
+    job: Job,
+    presenter: Presenter,
+    posted: ThreadPosted,
+    routing: Routing | undefined,
+  ) {
+    if (posted.rule === "none" || posted.reason) {
+      return this.refuse(
+        job,
+        presenter,
+        "",
+        posted.reason ? { kind: "forbidden", message: posted.reason } : await this.tagOne(routing),
+      );
+    }
+    const said =
+      posted.notified.length > 0
+        ? this.copy.threads.notified(posted.notified)
+        : this.copy.threads.postOnlyHint;
+    let turn = reduce(emptyTurn(job.key, { name: "warp" }), {
+      type: "turn.started",
+      turnId: job.key,
+      agent: { name: "warp" },
+    });
+    turn = reduce(turn, { type: "text.delta", text: said });
+    await presenter.finish(reduce(turn, { type: "turn.completed" }));
+    this.native = this.native && presenter.streaming;
+    return "done" as const;
   }
 
   /**
@@ -1232,8 +1350,63 @@ export class App {
     return first?.tag_id ? sessionOf(this.opts.subject, first.tag_id) : null;
   }
 
+  /** The Slack channels this client is bound to, read again every half minute. */
+  private async bound(): Promise<Binding[]> {
+    if (!this.opts.clientId) return [];
+    if (!this.bindings || Date.now() - this.bindings.at >= 30_000) {
+      const list = await this.warp.bindings(this.opts.clientId).catch(() => [] as Binding[]);
+      this.bindings = { at: Date.now(), list };
+    }
+    return this.bindings.list;
+  }
+
+  /**
+   * An announcement of a project whose general channel is bound here is
+   * posted there, top-level, once. Where it went is recorded in warp, so a
+   * restart, an edit or a withdrawal updates that post instead of posting
+   * again. A draft never reaches a channel, and one withdrawn before it was
+   * posted is not posted.
+   */
+  private async announce(id: string): Promise<void> {
+    const client = this.opts.clientId;
+    if (!client || this.announcing.has(id)) return;
+    this.announcing.add(id);
+    try {
+      const raw = await this.warp.getInboxMessage(id).catch(() => null);
+      if (!raw || raw.kind !== "announcement" || raw.parts.some((p) => p.type === "draft")) return;
+      const project = raw.source?.project ?? "";
+      const at = (await this.bound()).find((b) => b.project === project && b.channel === "general");
+      if (!at) return;
+      const view = renderToSlack(<MessageView message={forSlack(fromServer(raw))} />);
+      const text = (view.text || raw.subject).slice(0, LIMITS.fallbackText);
+      const receipt = raw.deliveries?.[client];
+      if (receipt) {
+        await this.slack.call("chat.update", {
+          channel: receipt.channel,
+          ts: receipt.ts,
+          text,
+          blocks: view.blocks,
+        });
+        return;
+      }
+      if (raw.state !== "open") return;
+      const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
+        channel: at.slack_channel,
+        text,
+        blocks: view.blocks,
+      });
+      await this.warp.recordDelivery(id, client, {
+        channel: sent.channel ?? at.slack_channel,
+        ts: sent.ts,
+      });
+    } finally {
+      this.announcing.delete(id);
+    }
+  }
+
   /** An inbox message changed. One about a run in this app's thread is shown there, once, and kept current. */
   private async onNotice(notice: InboxNotice): Promise<void> {
+    if (notice.kind === "announcement") return this.announce(notice.id);
     const message = await this.warp.inbox.get(notice.id).catch(() => null);
     if (!message) return;
     const posted = this.mail.get(message.id);
@@ -1254,13 +1427,37 @@ export class App {
     this.mail.set(message.id, { channel: session.channel, ts, threadTs: session.threadTs });
   }
 
-  /** The Home tab: what is waiting on this person. An operator sees the whole inbox the app may read. */
+  /**
+   * The Home tab: what is waiting on this person, and what's new in their
+   * projects. A person the client maps reads their own inbox, through the
+   * client (act_as): at most five that need them and five announcements,
+   * shown to read, since a decision there is theirs to make in warp. Without
+   * a mapping, an operator sees the whole inbox the app may read, and anyone
+   * else what they may settle.
+   */
   private async publishHome(user: string): Promise<void> {
-    const page = await this.warp.inbox.list({ limit: 30, state: "open" });
-    const operator = (this.opts.operators ?? []).includes(user);
-    const messages = operator
-      ? page.messages
-      : page.messages.filter((m) => this.maySettle(user, m));
+    const asking = await this.actAs(user);
+    let messages: PlatformMessage[];
+    if (asking) {
+      const [mine, news] = await Promise.all([
+        this.warp.inboxFor(asking, { state: "open", limit: 30 }),
+        this.warp.inboxFor(asking, { kind: "announcement", limit: HOME_SHOWN }),
+      ]);
+      const needs = mine.messages.filter((m) => m.kind !== "announcement").slice(0, HOME_SHOWN);
+      messages = [...needs, ...news.messages.slice(0, HOME_SHOWN)].map((m) =>
+        fromServer({
+          ...m,
+          parts: ((m.parts as Record<string, unknown>[] | undefined) ?? []).map((p) => ({
+            ...p,
+            actions: [],
+          })),
+        }),
+      );
+    } else {
+      const page = await this.warp.inbox.list({ limit: 30, state: "open" });
+      const operator = (this.opts.operators ?? []).includes(user);
+      messages = operator ? page.messages : page.messages.filter((m) => this.maySettle(user, m));
+    }
     const view = renderToSlack(<MailboxView messages={messages.map(forSlack)} />, {
       placement: "home",
     });

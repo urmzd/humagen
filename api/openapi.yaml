@@ -4683,6 +4683,9 @@ components:
         reason:
           description: Why no agent answers, when none does.
           type: string
+        repeated:
+          description: The message was posted before, by its surface's id. This is what it did then; nothing was started again.
+          type: boolean
     ThreadNotice:
       description: Says that something happened in a thread, and nothing about what. Fetch the thread to see it.
       type: object

@@ -15,12 +15,16 @@ import { runId, tagId } from "./keys.ts";
 import {
   type ActAs,
   type Agent,
+  type Binding,
   type ClientRecord,
   type InboxNotice,
   type RunRequest,
   type StreamItem,
+  type ThreadPosted,
+  type ThreadPostRequest,
   type Warp,
   WarpError,
+  type WireMessage,
 } from "./warp.ts";
 
 /** A run asked for: the body and the key, as `createRun` takes them. */
@@ -140,6 +144,22 @@ export class FakeWarp implements Warp {
   stopFails = false;
   /** Every answer asked for, and for whom. */
   readonly answered: { answer: AnswerRequest; as: ActAs }[] = [];
+  /** Every message posted from a Slack thread, in order. */
+  readonly posts: ThreadPostRequest[] = [];
+  /** The warp thread each Slack thread is, by client, channel and ts. */
+  private readonly surfaces = new Map<string, string>();
+  /** Each message posted, by its ts: what it did. */
+  private readonly postedOnce = new Map<string, ThreadPosted>();
+  /** Set to make an untagged message start nothing, as a project with no default does. */
+  noDefault = false;
+  /** The Slack channels each client is bound to. */
+  readonly bound = new Map<string, Binding[]>();
+  /** Where the app recorded it posted each inbox message. */
+  readonly deliveries: { message: string; client: string; channel: string; ts: string }[] = [];
+  /** Each mapped person's own inbox, by subject, as act_as reads it. */
+  readonly personal = new Map<string, Record<string, unknown>[]>();
+  /** Every inbox read made for someone, and for whom. */
+  readonly readFor: ActAs[] = [];
   /** Set to refuse the next answer, as warp does someone who may not answer. */
   refuseAnswer: WarpError | null = null;
   private readonly feeds = new Map<string, Feed<StreamItem>>();
@@ -216,6 +236,98 @@ export class FakeWarp implements Warp {
 
   async getRun(id: string) {
     return this.runs.get(id) ?? null;
+  }
+
+  /**
+   * As the platform does for the client's machine: the Slack thread is one
+   * warp thread, each message is posted once by its ts, and a message tags
+   * an agent by its name, a person by @handle, or else the default answers.
+   */
+  async postThread(body: ThreadPostRequest): Promise<ThreadPosted> {
+    const client = this.clients.get(body.surface.client);
+    if (!client || client.slack?.machine !== SUBJECT) throw new WarpError(404, "not found");
+    if (!client.slack?.people?.[body.act_as.user]) {
+      throw new WarpError(403, "that person is not mapped to anyone in this workspace");
+    }
+    this.posts.push(body);
+    const s = body.surface;
+    const once = `${s.client}/${s.channel}/${s.ts}/${s.message ?? s.ts}`;
+    const before = this.postedOnce.get(once);
+    if (before) return { ...before, repeated: true };
+    const where = `${s.client}/${s.channel}/${s.ts}`;
+    let thread = this.surfaces.get(where);
+    if (!thread) {
+      thread = `th-${String(this.surfaces.size + 1).padStart(16, "0")}`;
+      this.surfaces.set(where, thread);
+    }
+    const n = [...this.postedOnce.keys()].filter((k) => k.startsWith(`${where}/`)).length + 1;
+    const message = { id: `m-${n}`, text: body.text.replaceAll(`<@${s.app_user}>`, "").trim() };
+    const bound = (this.bound.get(s.client) ?? []).find((b) => b.slack_channel === s.channel);
+    const posted: ThreadPosted = {
+      thread: {
+        id: thread,
+        project: bound?.project ?? "",
+        channel: bound?.channel ?? "general",
+        visibility: s.channel.startsWith("D") ? "private" : "shared",
+      },
+      message,
+      runs: [],
+      notified: [],
+      refused: [],
+      rule: "default",
+    };
+    const tagged = this.agentList.find((a) =>
+      new RegExp(`(^|\\s)@${a.name}\\b`).test(message.text),
+    );
+    const person = /(^|\s)@([a-z][a-z0-9-]*)/.exec(message.text)?.[2];
+    if (body.post_only) posted.rule = "post_only";
+    else if (tagged) posted.rule = "tagged";
+    else if (person) {
+      posted.rule = "people";
+      posted.notified = [person];
+    } else if (this.noDefault) {
+      posted.rule = "none";
+      posted.reason = "Nobody answers untagged messages here. Tag an agent with @.";
+    }
+    if (posted.rule === "tagged" || posted.rule === "default") {
+      const agent = tagged?.name ?? client.default_agent ?? "lead";
+      const run = await this.createRun(
+        { agent, text: message.text, act_as: body.act_as },
+        `thread-${thread}-${message.id}-${agent}`,
+      );
+      this.set(run.id, { thread });
+      posted.runs = [this.runs.get(run.id) as Run];
+    }
+    this.postedOnce.set(once, posted);
+    return posted;
+  }
+
+  async getInboxMessage(id: string) {
+    return (this.mailbox.get(id) as WireMessage | undefined) ?? null;
+  }
+
+  async bindings(client: string) {
+    if (!this.clients.has(client)) throw new WarpError(404, "not found");
+    return this.bound.get(client) ?? [];
+  }
+
+  async recordDelivery(message: string, client: string, at: { channel: string; ts: string }) {
+    this.deliveries.push({ message, client, ...at });
+    const m = this.mailbox.get(message);
+    if (m)
+      m.deliveries = { ...((m.deliveries as object) ?? {}), [client]: { ...at, at: this.at() } };
+  }
+
+  async inboxFor(actAs: ActAs, query: { state?: string; kind?: string; limit?: number }) {
+    this.readFor.push(actAs);
+    const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user];
+    if (!subject) throw new WarpError(403, "that person is not mapped to anyone in this workspace");
+    const mine = (this.personal.get(subject) ?? []).filter(
+      (m) =>
+        (!query.kind || m.kind === query.kind) &&
+        (query.state === "all" || m.state === (query.state ?? "open")),
+    );
+    return { messages: mine.slice(0, query.limit ?? 50), open: mine.length, unread: 0, updates: 0 };
   }
 
   async getThread(id: string) {
@@ -751,5 +863,23 @@ export function questionMail(
         ...(outcome ? { outcome } : {}),
       },
     ],
+  };
+}
+
+/** An announcement posted in Field, as the platform's inbox sends it. */
+export function announcementMail(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "m-news",
+    kind: "announcement",
+    subject: "Field offsite",
+    from: { kind: "person", name: "ana" },
+    at: "2026-10-09T00:50:00Z",
+    updated_at: "2026-10-09T00:50:00Z",
+    severity: "info",
+    state: "open",
+    unread: true,
+    source: { project: "Field" },
+    parts: [{ id: "p1", type: "text", state: "info", actions: [], text: "Lisbon, in May." }],
+    ...over,
   };
 }

@@ -551,6 +551,8 @@ export interface ThreadPosted {
   rule: ThreadRule;
   /** Why no agent answers, when none does. */
   reason?: string;
+  /** The message was posted before, by its surface's id. This is what it did then; nothing was started again. */
+  repeated?: boolean;
 }
 
 /** Says that something happened in a thread, and nothing about what. Fetch the thread to see it. */

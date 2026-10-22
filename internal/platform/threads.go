@@ -117,6 +117,9 @@ type Posted struct {
 	// answers when none does.
 	Rule   threads.Rule `json:"rule"`
 	Reason string       `json:"reason,omitempty"`
+	// Repeated is set when the message was posted before, by its surface's
+	// id: this is what it did then, and nothing was started again.
+	Repeated bool `json:"repeated,omitempty"`
 }
 
 // ThreadTurn is one turn of a thread: a person's message or an agent's run.
@@ -506,7 +509,9 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return Posted{}, err
 	}
 	if !fresh {
-		return p.posted(who.Tenant, th, m), nil
+		again := p.posted(who.Tenant, th, m)
+		again.Repeated = true
+		return again, nil
 	}
 	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, in.Answers != nil || in.reply)
 	out.Refused = append(out.Refused, unmapped...)
