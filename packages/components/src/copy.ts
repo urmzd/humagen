@@ -209,6 +209,8 @@ export const defaultCopy = {
     withdraw: "Withdraw",
     hideForMe: "Hide for Me",
     showForMe: "Show for Me",
+    /** A row the reader hid for themselves, where others' rows say Dismissed. */
+    hidden: "Hidden",
     hiddenForYou: "Hidden for you. Others still see it.",
     snoozedForYou: "Snoozed for you. Others still see it.",
     withdrawn: "Withdrawn for everyone.",

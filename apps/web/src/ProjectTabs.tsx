@@ -14,7 +14,7 @@ import {
   type ProjectView,
 } from "./api.ts";
 import { ScopeLimits } from "./Billing.tsx";
-import { useInbox } from "./inbox.ts";
+import { useHeld, useInbox } from "./inbox.ts";
 import { KindChips, MailboxView } from "./InboxPage.tsx";
 import { type PlatformMessage, projectInbox, type Source } from "./mail.ts";
 import { ago, button, Empty, field, Label, Menu, Problem, primary, SkeletonRows, Switch } from "./ui.tsx";
@@ -64,6 +64,8 @@ export function ProjectInbox({
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new object is the signal
   const changed = useMemo(() => ({}), [signal, posted]);
   const inbox = useInbox(kind, show, changed, via, me);
+  // A linked message is read even when Open does not list it, as one the reader hid.
+  const { messages, keep } = useHeld(inbox.messages, message, inbox.loading === "first", via);
   const [draft, setDraft] = useState({ subject: "", text: "", warning: false });
   const [writing, setWriting] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -106,9 +108,9 @@ export function ProjectInbox({
   };
 
   const onAction = (action: UiAction) => {
-    const m = inbox.messages.find((x) => x.id === action.payload.turnId);
+    const m = messages.find((x) => x.id === action.payload.turnId);
     if (!m) return;
-    inbox.act(m, action);
+    inbox.act(m, action).then(keep);
     if (action.id === ActionId.dismiss && message === m.id) onMessage(null);
   };
 
@@ -156,11 +158,11 @@ export function ProjectInbox({
       )}
       {inbox.failed ? (
         <Empty title="The project's inbox could not be loaded">It will be tried again when something changes.</Empty>
-      ) : inbox.loading === "first" && inbox.messages.length === 0 ? (
+      ) : inbox.loading === "first" && messages.length === 0 ? (
         <SkeletonRows count={4} height="3rem" className="max-w-md" />
       ) : (
         <MailboxView
-          messages={inbox.messages}
+          messages={messages}
           selectedId={message ?? null}
           onSelect={onMessage}
           onAction={onAction}

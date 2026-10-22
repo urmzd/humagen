@@ -413,7 +413,10 @@ export function Mailbox({
                   : messagePreview(m)}
               </span>
               {!open && (
-                <span className="shrink-0 text-aui-2xs text-aui-muted capitalize">{state}</span>
+                <span className="shrink-0 text-aui-2xs text-aui-muted capitalize">
+                  {/* Put away by this reader alone: hidden, as Hide for Me says. */}
+                  {m.hidden && state === "dismissed" ? copy.announcements.hidden : state}
+                </span>
               )}
             </span>
           </span>

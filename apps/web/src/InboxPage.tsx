@@ -1,7 +1,7 @@
 import { ActionId, type InboxMessage, messageState, openParts, type UiAction } from "@warp/core";
 import { Mailbox, type MailboxShow } from "@warp/web";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { useInbox } from "./inbox.ts";
+import { useHeld, useInbox } from "./inbox.ts";
 import { platformParts } from "./MailParts.tsx";
 import { kinds, type PlatformMessage, type Source, type Transport, transport as platform } from "./mail.ts";
 import { AgentMark, Empty, Problem, SkeletonRows, Stroke, type StrokeState } from "./ui.tsx";
@@ -185,38 +185,12 @@ export function InboxPage({
   const setKind = (next: string) => (onKind ? onKind(next) : setOwnKind(next));
   const [show, setShow] = useState<MailboxShow>("open");
   const [selected, setSelected] = useState<string | null>(() => openId ?? linked());
-  // The message being read, held apart from the list. A linked message may not be on a
-  // loaded page, and one just resolved leaves the open list while its record is still
-  // being read. Either way it stays on screen until another is chosen.
-  const [held, setHeld] = useState<PlatformMessage | null>(null);
-  const [missing, setMissing] = useState(false);
   const inbox = useInbox(kind, show, signal, via, viewer);
-
-  const found = inbox.messages.find((m) => m.id === selected);
-  const listed = found !== undefined;
-  const messages = held && held.id === selected && !listed ? [held, ...inbox.messages] : inbox.messages;
-
-  useEffect(() => {
-    if (found) setHeld(found);
-  }, [found]);
+  const { messages, missing, keep } = useHeld(inbox.messages, selected, inbox.loading === "first", via);
 
   useEffect(() => {
     if (openId) setSelected(openId);
   }, [openId]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: fetch once per selection that the list does not hold
-  useEffect(() => {
-    setMissing(false);
-    if (!selected || inbox.loading === "first" || listed || held?.id === selected) return;
-    let live = true;
-    via
-      .get(selected)
-      .then((m) => live && setHeld(m))
-      .catch(() => live && setMissing(true));
-    return () => {
-      live = false;
-    };
-  }, [selected, inbox.loading]);
 
   useEffect(() => link(selected), [selected]);
 
@@ -232,9 +206,7 @@ export function InboxPage({
     const message = messages.find((m) => m.id === action.payload.turnId);
     if (!message) return;
     // The message being read is kept in step even when the list no longer holds it.
-    inbox.act(message, action).then((server) => {
-      if (server) setHeld((was) => (was?.id === server.id ? server : was));
-    });
+    inbox.act(message, action).then(keep);
     if (action.id === ActionId.dismiss && selected === message.id) setSelected(null);
   }
 
