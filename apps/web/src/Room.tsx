@@ -562,7 +562,10 @@ export function ThreadRoom({
               // Say who was told, and who was not added and why, as the platform decided.
               const missed = new Set((p.not_added ?? []).map((n) => n.handle));
               const told = asked.filter((h) => !missed.has(h));
-              const lines = [words.sharedTold(told), ...((p.not_added ?? []).length > 0 ? [words.notAdded(p.not_added)] : [])];
+              // Why someone was not added, in the console's own words, never the server's.
+              const cannot = (p.not_added ?? []).filter((n) => /cannot read this project/.test(n.reason)).map((n) => n.handle);
+              const other = (p.not_added ?? []).filter((n) => !cannot.includes(n.handle)).map((n) => n.handle);
+              const lines = [words.sharedTold(told), words.notAdded(cannot, other)].filter(Boolean);
               setShareNote(lines.join(" "));
               setPage(p);
               setTurns((t) => mergeTurns(t, p.turns));

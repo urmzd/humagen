@@ -1469,5 +1469,7 @@ test("Share says who the platform did not add, and why, beside who was told", as
     await within(dialog).findByRole("button", { name: words.shareRemove(h) });
   }
   fireEvent.click(within(dialog).getByRole("button", { name: words.share }));
-  assert.ok(await screen.findByText(`${words.sharedTold(["dana"])} ${words.notAdded([{ handle: "eve", reason: "they cannot read this project, so they were not added" }])}`));
+  const note = await screen.findByText(`${words.sharedTold(["dana"])} ${words.notAdded(["eve"], [])}`);
+  assert.equal(note.textContent, "Shared. @dana was told in their inbox. @eve can't see this project, so wasn't added.");
+  assert.ok(!screen.queryByText(/they were not added/), "the server's words are not shown");
 });
