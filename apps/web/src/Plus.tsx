@@ -23,6 +23,10 @@ export interface Selection {
   channel: string;
 }
 
+/** The most agents a conversation selects, and the most that answer one message side by side (pkg/threads). */
+export const MAX_SELECTED = 5;
+export const MAX_ALL = 3;
+
 export const emptySelection: Selection = { agents: [], mode: "best_fit", project: null, channel: "general" };
 
 /** The chat bar's prompt for a selection: how to bring an agent in, or who answers. */
@@ -115,8 +119,14 @@ export function PlusMenu({
     };
   }, [offersProject, project]);
 
-  const toggle = (name: string) =>
-    onChange({ ...selection, agents: selection.agents.includes(name) ? selection.agents.filter((a) => a !== name) : [...selection.agents, name] });
+  const full = selection.agents.length >= MAX_SELECTED;
+  const toggle = (name: string) => {
+    const on = selection.agents.includes(name);
+    if (!on && full) return;
+    const agents = on ? selection.agents.filter((a) => a !== name) : [...selection.agents, name];
+    // All of Them answers at most three side by side: past that, the best fit does.
+    onChange({ ...selection, agents, mode: selection.mode === "all" && agents.length > MAX_ALL ? "best_fit" : selection.mode });
+  };
 
   const q = query.trim().toLowerCase();
   const shown = (agents ?? []).filter((a) => !q || a.name.toLowerCase().includes(q) || (a.description ?? "").toLowerCase().includes(q));
@@ -158,7 +168,9 @@ export function PlusMenu({
       onKeyDown={onKeyDown}
       // Focus leaving the menu, by Tab or otherwise, closes it.
       onBlur={(e) => {
-        if (!choosing && e.relatedTarget && !panel.current?.contains(e.relatedTarget as Node)) (onLeave ?? onClose)();
+        const to = e.relatedTarget as HTMLElement | null;
+        // The + button closes the menu itself, on its click.
+        if (to && !panel.current?.contains(to) && !to.closest("[data-plus-button]")) (onLeave ?? onClose)();
       }}
       style={{ maxHeight: place.max }}
       className={`absolute left-0 z-30 flex w-full max-w-sm flex-col overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1.5 shadow-lg ${place.up ? "bottom-full mb-1" : "top-full mt-1"}`}
@@ -202,6 +214,7 @@ export function PlusMenu({
                     type="button"
                     role="checkbox"
                     aria-checked={on}
+                    aria-disabled={!on && full ? true : undefined}
                     data-plus-item="agent"
                     className={row}
                     onClick={() => toggle(a.name)}
@@ -217,6 +230,7 @@ export function PlusMenu({
                   </button>
                 );
               })}
+              {full && <p className="px-2.5 py-1 text-aui-xs text-aui-muted">{words.maxAgents(MAX_SELECTED)}</p>}
             </div>
           )}
           {offersProject && (
@@ -323,9 +337,10 @@ export function SelectionChips({
               key={m}
               type="button"
               aria-pressed={mode === m}
-              title={m === "best_fit" ? words.bestFitHint : words.allHint}
+              disabled={m === "all" && agents.length > MAX_ALL}
+              title={m === "best_fit" ? words.bestFitHint : agents.length > MAX_ALL ? words.allMax(MAX_ALL) : words.allHint}
               onClick={() => onChange({ ...selection, mode: m })}
-              className="rounded-aui px-1.5 py-1 text-aui-xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-fg aria-pressed:underline"
+              className="rounded-aui px-1.5 py-1 text-aui-xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-fg aria-pressed:underline disabled:opacity-50"
             >
               {m === "best_fit" ? words.bestFit : words.all}
             </button>
