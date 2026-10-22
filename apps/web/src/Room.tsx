@@ -242,12 +242,16 @@ function MessageView({ m, focused }: { m: ThreadMessage; focused: boolean }) {
  * Why the reader is not offered Retry on a failed answer in the room. A run
  * answering a message acts for the person who posted it, so only they ask it
  * again, from the failure in their inbox, where it answers the same message
- * for them. Nobody asks it again here, and nobody regenerates an answer: a
- * message posted in the room is how anyone else asks.
+ * for them. A turn that acted for nobody, such as a machine's from before
+ * threads, is retried for nobody, from the inbox by anyone who may start
+ * runs, as the inbox decides (mayRetry). Nobody asks it again here, and
+ * nobody regenerates an answer: a message posted in the room is how anyone
+ * else asks.
  */
 function retryInRoom(run: Run, me: string): string {
   const person = actedFor(run);
-  return person && person === me ? words.retryFromInbox : defaultCopy.retryOnlyTheirs;
+  if (!person) return words.retryNobodyFromInbox;
+  return person === me ? words.retryFromInbox : defaultCopy.retryOnlyTheirs;
 }
 
 /** An agent's turn: what it answered, as the conversation view shows it. */

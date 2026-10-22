@@ -632,6 +632,9 @@ export const defaultCopy = {
     asks: (agent: string) => `${agent} asks`,
     /** A failed answer to the reader's own message: it is asked again for them from their inbox. */
     retryFromInbox: "Retry it from your inbox, where it answers your message again.",
+    /** A failed turn that acted for nobody, such as a machine's from before threads: it is retried for nobody, by anyone who may start runs. */
+    retryNobodyFromInbox:
+      "This turn acted for nobody, so anyone who may start runs can retry it from the inbox.",
     answer: "Answer",
     answered: "Answered",
     typeahead: "People and agents to tag",

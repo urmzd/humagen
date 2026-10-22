@@ -276,6 +276,35 @@ test("a room offers no Retry or Regenerate: a failed answer is retried from the 
   }
 });
 
+test("a failed turn that acted for nobody says anyone who may start runs retries it from the inbox, not only its person", async () => {
+  const restore = stubEventSource();
+  try {
+    // A turn from before threads, which a room still shows: a machine's, and the Slack app's own.
+    const before = { ...page.turns[1]?.run, message: undefined, prev: undefined, status: "failed", answer: "", error: "provider: 529 overloaded" };
+    for (const actor of [{ id: "svc-ci", bot: true }, { id: "svc-slack", display: "Slack app", bot: true, user: "ana" }, { id: "U0STRANGER", display: "Stranger" }]) {
+      for (const me of ["ana", "ben"]) {
+        const shown: ThreadPage = { ...page, turns: [{ kind: "run", run: { ...before, actor } as never }] };
+        net = stubFetch({
+          "GET /api/threads/th-0123456789abcdef": () => shown,
+          "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+          "GET /api/runs/r1/events": () => ({ events: [] }),
+        });
+        render(
+          <ThreadRoom id="th-0123456789abcdef" me={me} initial={shown} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+        );
+        await screen.findByText(words.retryNobodyFromInbox);
+        assert.ok(!screen.queryByText(defaultCopy.retryOnlyTheirs), `${me} is told only its person retries a turn of ${actor.id}`);
+        assert.ok(!screen.queryByRole("button", { name: "Retry" }), `Retry for ${me}`);
+        cleanup();
+        net.restore();
+        net = undefined;
+      }
+    }
+  } finally {
+    restore();
+  }
+});
+
 test("turns read earlier stay when the newest page moves on", async () => {
   const message = (n: number): ThreadTurn => ({
     kind: "message",
