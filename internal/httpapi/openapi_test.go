@@ -1451,9 +1451,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/threads", "/api/threads", surface, http.StatusForbidden)
 	c.call(ana, "POST", "/api/threads", "/api/threads", surface, http.StatusNotFound)
 	c.call(acme, "POST", "/api/threads", "/api/threads", strings.Replace(surface, `"surface"`, `"project":"Field","surface"`, 1), http.StatusBadRequest)
-	// A reply under the post of an announcement since withdrawn starts nothing.
-	c.call(acme, "PUT", deliveries, "/api/inbox/"+news.str("id")+"/deliveries/app", `{"channel":"C01GEN","ts":"1700000000.000300"}`, http.StatusNoContent)
-	c.call(acme, "POST", "/api/threads", "/api/threads", `{"text":"<@UAPP> still on?","act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01GEN","ts":"1700000000.000300","message":"1700000000.000400","app_user":"UAPP"}}`, http.StatusGone)
+	// A reply under the post of an announcement since withdrawn starts
+	// nothing, in a Slack channel bound to the announcement's project.
+	c.call(acme, "PUT", deliveries, "/api/inbox/"+news.str("id")+"/deliveries/app", `{"channel":"C01RENEW","ts":"1700000000.000300"}`, http.StatusNoContent)
+	c.call(acme, "POST", "/api/threads", "/api/threads", `{"text":"<@UAPP> still on?","act_as":{"client":"app","user":"U01ANA"},"surface":{"client":"app","channel":"C01RENEW","ts":"1700000000.000300","message":"1700000000.000400","app_user":"UAPP"}}`, http.StatusGone)
 	started := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","channel":"renewals","visibility":"shared","title":"Globex renewal","text":"@helper when does Globex renew? @vic @sme:billing"}`, http.StatusCreated)
 	tid, _ := obj(started.field("thread"))["id"].(string)
 	if started.str("rule") != "tagged" || len(sliceOf(started.field("runs"))) != 1 || len(sliceOf(started.field("notified"))) != 1 {

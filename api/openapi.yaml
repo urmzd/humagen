@@ -1128,9 +1128,11 @@ paths:
         channel and ts its receipt records (`recordInboxDelivery`), is that
         announcement's: the new thread names it in `announcement` and its
         turns start with it, from whoever posted it, ahead of the reply,
-        which is the person's own message. It is seeded only where it is
-        filed in the announcement's project. A reply to one that was
-        withdrawn, or to a draft, starts nothing (410).
+        which is the person's own message. It is seeded only where the
+        Slack channel's binding files it in the announcement's project, and
+        there a reply to one that was withdrawn, or to a draft, starts
+        nothing (410). Filed anywhere else, after the Slack channel was bound
+        to another project or unbound, it starts as any other thread.
       x-permission: runs:write
       requestBody:
         required: true
@@ -1148,7 +1150,7 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "410":
-          description: The surface's thread is under an announcement that was withdrawn, or under a draft, so a reply there starts nothing.
+          description: The surface's thread is under an announcement that was withdrawn, or under a draft, in the project its Slack channel is bound to, so a reply there starts nothing.
           content:
             application/json:
               schema: {$ref: "#/components/schemas/ErrorBody"}

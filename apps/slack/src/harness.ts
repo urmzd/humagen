@@ -277,14 +277,18 @@ export class FakeWarp implements Warp {
     const before = this.postedOnce.get(once);
     if (before) return { ...before, repeated: true };
     const where = `${s.client}/${s.channel}/${s.ts}`;
+    const bound = (this.bound.get(s.client) ?? []).find((b) => b.slack_channel === s.channel);
     let thread = this.surfaces.get(where);
     if (!thread) {
       // As the platform does: a Slack thread under a post this app recorded
-      // is that announcement's, and one withdrawn starts nothing.
+      // is that announcement's while the Slack channel is bound to its
+      // project, and there one withdrawn starts nothing.
       const receipt = this.deliveries.find(
         (d) => d.client === s.client && d.channel === s.channel && d.ts === s.ts,
       );
-      const seed = receipt && this.mailbox.get(receipt.message);
+      const found = receipt && this.mailbox.get(receipt.message);
+      const source = found?.source as { project?: string } | undefined;
+      const seed = bound && source?.project === bound.project ? found : undefined;
       if (seed && seed.state !== "open") {
         throw new WarpError(410, "a reply to this announcement starts nothing: it was withdrawn");
       }
@@ -294,7 +298,6 @@ export class FakeWarp implements Warp {
     }
     const n = [...this.postedOnce.keys()].filter((k) => k.startsWith(`${where}/`)).length + 1;
     const message = { id: `m-${n}`, text: body.text.replaceAll(`<@${s.app_user}>`, "").trim() };
-    const bound = (this.bound.get(s.client) ?? []).find((b) => b.slack_channel === s.channel);
     const posted: ThreadPosted = {
       thread: {
         id: thread,

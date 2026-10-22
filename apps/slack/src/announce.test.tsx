@@ -286,3 +286,28 @@ test("a reply under an announcement that was withdrawn starts nothing, and says 
   assert.equal(told?.thread_ts, post);
   assert.match(blocksText(told), new RegExp(defaultCopy.announcements.replyGone.slice(0, 40)));
 });
+
+test("once its channel is bound to another project, a reply under an old post of a withdrawn announcement starts a thread there as any other", async () => {
+  const w = mappedNews();
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+    await settle();
+    await w.app.idle();
+    w.warp.raise({ ...(w.warp.mailbox.get("m-news") ?? {}), state: "dismissed" });
+  });
+  const post = w.warp.deliveries[0]?.ts ?? "";
+  w.warp.bound.set("app", [{ slack_channel: NEWS, project: "Initech", channel: "general" }]);
+  await w.app.handle(replyTo(post, "@lead what is this?", "1800000200.000100"));
+  await settle();
+  assert.equal(w.warp.started.length, 1, "the reply starts a run in Initech");
+  w.warp.emit(w.warp.last.id, "lifecycle.completed", { text: "A thread in Initech." });
+  await settle();
+  await w.app.idle();
+  assert.equal(w.warp.posts.length, 1, "the reply is posted as any other");
+  assert.equal(w.warp.seeded.size, 0, "nothing of Field's announcement comes with it");
+  const told = w.slack.of("chat.postMessage").map((m) => blocksText(m));
+  assert.ok(
+    !told.some((b) => b.includes(defaultCopy.announcements.replyGone.slice(0, 40))),
+    "nobody in Initech's channel is told about Field's announcement",
+  );
+});

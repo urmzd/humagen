@@ -25,9 +25,10 @@ import (
 // reads in the one grammar (slackText).
 //
 // A Slack thread under an announcement the client posted is that
-// announcement's: the thread it starts is seeded with it (announcementAt),
-// so its turns start with the announcement, from whoever posted it, and then
-// the reply, as its poster's own message.
+// announcement's while the Slack channel stays bound to the announcement's
+// project: the thread it starts is seeded with it (announcementAt), so its
+// turns start with the announcement, from whoever posted it, and then the
+// reply, as its poster's own message.
 
 // SurfaceRef is where a message was posted on a client's surface.
 type SurfaceRef struct {
@@ -76,10 +77,18 @@ func (p *Platform) surfaceHost(who auth.Principal, ref SurfaceRef, as *ActAs) (c
 	return c, nil
 }
 
+// filing is where a thread a client starts on its surface is filed, and
+// whether the Slack channel's binding filed it there.
+type filing struct {
+	project, channel string
+	vis              threads.Visibility
+	bound            bool
+}
+
 // filedAt is where a thread a client starts on its surface is filed.
-func (p *Platform) filedAt(tenant string, c clients.Client, channel string) (string, string, threads.Visibility, error) {
+func (p *Platform) filedAt(tenant string, c clients.Client, channel string) (filing, error) {
 	if ch, bound := p.Projects.BoundTo(tenant, c.ID, channel); bound {
-		return ch.Project, ch.Name, threads.Shared, nil
+		return filing{project: ch.Project, channel: ch.Name, vis: threads.Shared, bound: true}, nil
 	}
 	h := c.HomeOf()
 	vis := threads.Shared
@@ -91,9 +100,9 @@ func (p *Platform) filedAt(tenant string, c clients.Client, channel string) (str
 		if where == projects.Root {
 			where = "the workspace"
 		}
-		return "", "", "", fmt.Errorf("%w: %s's home, #%s in %s, is gone; give it another", projects.ErrNotFound, c.ID, h.Channel, where)
+		return filing{}, fmt.Errorf("%w: %s's home, #%s in %s, is gone; give it another", projects.ErrNotFound, c.ID, h.Channel, where)
 	}
-	return h.Project, h.Channel, vis, nil
+	return filing{project: h.Project, channel: h.Channel, vis: vis}, nil
 }
 
 // surfaceText reads a Slack message in the one grammar, and says which of
@@ -140,15 +149,15 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	if th, ok := p.Threads.BySurface(who.Tenant, sf); ok {
 		return p.PostMessage(ctx, who, th.ID, post)
 	}
-	project, channel, vis, err := p.filedAt(who.Tenant, c, ref.Channel)
+	at, err := p.filedAt(who.Tenant, c, ref.Channel)
 	if err != nil {
 		return Posted{}, err
 	}
-	seed, err := p.announcementAt(who.Tenant, c, ref, project)
+	seed, err := p.announcementAt(who.Tenant, c, ref, at)
 	if err != nil {
 		return Posted{}, err
 	}
-	in.Project, in.Channel, in.Visibility = project, channel, vis
+	in.Project, in.Channel, in.Visibility = at.project, at.channel, at.vis
 	got, err := p.startThread(ctx, who, in, &surfaced{client: c, ref: ref, announcement: seed})
 	if errors.Is(err, threads.ErrExists) {
 		// Another post started it first: this one joins it.
@@ -170,14 +179,15 @@ type surfaced struct {
 // announcementAt is the announcement a new thread on a client's surface is
 // seeded with: the one whose post there the client's machine recorded
 // (RecordDelivery) as the Slack thread's own first message, since a reply to
-// it is what starts the thread. One that was withdrawn, or a draft, starts
-// nothing (ErrAnnouncementGone). It seeds only a thread filed in its own
-// project, whose readers are the announcement's: a thread filed anywhere
-// else, after the Slack channel was bound to another project or unbound,
-// starts as any other there.
-func (p *Platform) announcementAt(tenant string, c clients.Client, ref SurfaceRef, project string) (string, error) {
+// it is what starts the thread. It seeds only a thread the Slack channel's
+// binding files in the announcement's own project, whose readers see that
+// project. A thread filed anywhere else, after the Slack channel was bound
+// to another project or unbound, starts as any other there, whatever became
+// of the announcement. Where it would seed, one that was withdrawn, or a
+// draft, starts nothing (ErrAnnouncementGone).
+func (p *Platform) announcementAt(tenant string, c clients.Client, ref SurfaceRef, at filing) (string, error) {
 	m, ok := p.Inbox.ByDelivery(tenant, c.ID, inbox.Delivery{Channel: ref.Channel, TS: ref.TS})
-	if !ok || m.Kind != inbox.KindAnnouncement {
+	if !ok || m.Kind != inbox.KindAnnouncement || !at.bound || m.Source.Project != at.project {
 		return "", nil
 	}
 	if slices.ContainsFunc(m.Parts, func(pt inbox.Part) bool { return pt.Type == inbox.PartDraft }) {
@@ -185,9 +195,6 @@ func (p *Platform) announcementAt(tenant string, c clients.Client, ref SurfaceRe
 	}
 	if closedForAll(m) {
 		return "", fmt.Errorf("%w: it was withdrawn", ErrAnnouncementGone)
-	}
-	if m.Source.Project != project {
-		return "", nil
 	}
 	return m.ID, nil
 }

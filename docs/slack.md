@@ -129,15 +129,16 @@ schedule ran, never from whoever replied; then comes the reply, the person's
 own message, read in the one grammar and answered by the channel's chain as
 any message there. What the announcement says tags nobody. A later reply
 finds the same thread by its surface. The thread reads the announcement as
-it stands, so once it is withdrawn the thread says only that. A reply under
-an announcement that was withdrawn before anyone replied starts nothing, and
-the app says so (warp answers 410); a draft never reaches a channel.
-Someone the client maps to nobody is told to connect their Slack account, as
-anywhere in a bound channel. A thread is seeded only where it is filed in the
-announcement's own project, whose readers are the announcement's: after the
-Slack channel is bound to another project, or unbound, a reply under an old
-post starts a thread there as any other, and nothing of the announcement
-comes with it.
+it stands, so once it is withdrawn the thread says only that. Someone the
+client maps to nobody is told to connect their Slack account, as anywhere in
+a bound channel. A thread is seeded only where the Slack channel's binding
+files it in the announcement's own project, whose readers are the
+announcement's. There a reply under an announcement that was withdrawn
+before anyone replied starts nothing, and the app says so (warp answers
+410); a draft never reaches a channel. After the Slack channel is bound to
+another project, or unbound, a reply under an old post starts a thread where
+it is now filed, as any other, open or withdrawn: nothing of the
+announcement comes with it, and nobody there is told what became of it.
 
 A mention of a mapped person, or a question addressed to them, reaches the
 app's event stream with `for {client, user}`. The app reads it for them

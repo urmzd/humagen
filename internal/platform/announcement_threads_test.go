@@ -25,7 +25,13 @@ const (
 // in the directory, so the room can name who posted.
 func newsRoom(t *testing.T) (*platform.Platform, auth.Principal) {
 	t.Helper()
-	p, machine := slackRoom(t, nil)
+	return newsRoomHomed(t, "Initech")
+}
+
+// newsRoomHomed is newsRoom with the client's home in general of project.
+func newsRoomHomed(t *testing.T, project string) (*platform.Platform, auth.Principal) {
+	t.Helper()
+	p, machine := slackRoom(t, func(in *platform.ClientInput) { in.Home = &clients.Home{Project: project} })
 	seePeople(t, p, auth.Principal{Subject: "ada"})
 	if _, err := p.UpdateChannel(t.Context(), tenant, "Field", projects.General, ada, platform.ChannelUpdate{Slack: &projects.SlackBinding{Client: "app", Channel: newsChannel}}); err != nil {
 		t.Fatal(err)
@@ -152,10 +158,11 @@ func TestARecapsThreadStartsWithTheAgentThatWroteIt(t *testing.T) {
 	}
 }
 
-// A withdrawn announcement and a draft start nothing: a reply to one is
-// refused and no thread is made. A thread started before the withdrawal goes
-// on, and its first turn then says only that it was withdrawn, to the room
-// and to the run alike.
+// Where its Slack channel is still bound to its project, a reply under a
+// withdrawn announcement or a draft starts nothing: it is refused and no
+// thread is made. A thread started before the withdrawal goes on, and its
+// first turn then says only that it was withdrawn, to the room and to the
+// run alike.
 func TestAReplyToAWithdrawnAnnouncementOrADraftStartsNothing(t *testing.T) {
 	p, machine := newsRoom(t)
 	early := postedToSlack(t, p, machine, inbox.From{Kind: "person", Name: "ada"}, platform.Announcement{Subject: "Offsite moved", Text: "To June."}, newsPost)
@@ -208,36 +215,63 @@ func TestAReplyToAWithdrawnAnnouncementOrADraftStartsNothing(t *testing.T) {
 	}
 }
 
-// An announcement seeds only a thread filed in its own project, whose
-// readers are its readers: once its Slack channel is bound to another
-// project, a reply in its Slack thread starts a thread there as any other,
-// and nothing of the announcement comes with it.
+// An announcement seeds only a thread its Slack channel's binding files in
+// the announcement's own project, whose readers see that project. Once the
+// Slack channel is bound to another project, or unbound, a reply under one
+// of its old posts starts a thread where it is now filed, as any other, and
+// nothing of the announcement comes with it, open or withdrawn: what became
+// of another project's announcement refuses nobody there.
 func TestAnAnnouncementSeedsOnlyAThreadInItsOwnProject(t *testing.T) {
-	p, machine := newsRoom(t)
-	postedToSlack(t, p, machine, inbox.From{Kind: "person", Name: "ada"}, platform.Announcement{Subject: "Field only", Text: "For Field."}, newsPost)
-	gen, err := p.Projects.Channel(tenant, "Field", projects.General)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := p.UpdateChannel(t.Context(), tenant, "Field", projects.General, ada, platform.ChannelUpdate{Version: gen.Version}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := p.UpdateChannel(t.Context(), tenant, "Initech", projects.General, ada, platform.ChannelUpdate{Slack: &projects.SlackBinding{Client: "app", Channel: newsChannel}}); err != nil {
-		t.Fatal(err)
-	}
-	got, err := p.StartThread(t.Context(), machine, fromSlack(newsChannel, newsPost, "1700000000.000200", "<@UAPP> @lead what is this?"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Thread.Project != "Initech" || got.Thread.Announcement != "" {
-		t.Fatalf("the reply started %+v", got.Thread)
-	}
-	if text := got.Runs[0].Tag().Text; strings.Contains(text, "Field only") || strings.Contains(text, "announcement") {
-		t.Fatalf("the run in Initech was sent Field's announcement:\n%s", text)
-	}
-	await(t, p, got.Runs[0].ID, runs.Completed)
-	if _, turns, _, _ := p.ThreadTurns(tenant, got.Thread.ID, "", 0); turns[0].Kind != platform.TurnMessage {
-		t.Fatalf("the thread starts with %+v", turns[0])
+	for _, tc := range []struct {
+		name string
+		// home is the project the client's home is in.
+		home string
+		// rebind is the project whose general the Slack channel is bound to
+		// once Field's is unbound, or "" to leave it unbound.
+		rebind string
+		// filed is the project a reply is then filed in.
+		filed string
+	}{
+		{name: "bound to another project", home: "Initech", rebind: "Initech", filed: "Initech"},
+		{name: "unbound, with the client's home in its own project", home: "Field", filed: "Field"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, machine := newsRoomHomed(t, tc.home)
+			postedToSlack(t, p, machine, inbox.From{Kind: "person", Name: "ada"}, platform.Announcement{Subject: "Field only", Text: "For Field."}, newsPost)
+			gone := postedToSlack(t, p, machine, inbox.From{Kind: "person", Name: "ada"}, platform.Announcement{Subject: "Field closed", Text: "Not for anyone now."}, "1700000000.000900")
+			if err := p.WithdrawAnnouncement(auth.Principal{Subject: "ada", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}, "Field", gone.ID); err != nil {
+				t.Fatal(err)
+			}
+			gen, err := p.Projects.Channel(tenant, "Field", projects.General)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := p.UpdateChannel(t.Context(), tenant, "Field", projects.General, ada, platform.ChannelUpdate{Version: gen.Version}); err != nil {
+				t.Fatal(err)
+			}
+			if tc.rebind != "" {
+				if _, err := p.UpdateChannel(t.Context(), tenant, tc.rebind, projects.General, ada, platform.ChannelUpdate{Slack: &projects.SlackBinding{Client: "app", Channel: newsChannel}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, at := range [][2]string{{newsPost, "1700000000.000200"}, {"1700000000.000900", "1700000000.000901"}} {
+				post, reply := at[0], at[1]
+				got, err := p.StartThread(t.Context(), machine, fromSlack(newsChannel, post, reply, "<@UAPP> @lead what is this?"))
+				if err != nil {
+					t.Fatalf("a reply under %s = %v", post, err)
+				}
+				if got.Thread.Project != tc.filed || got.Thread.Announcement != "" {
+					t.Fatalf("a reply under %s started %+v", post, got.Thread)
+				}
+				if text := got.Runs[0].Tag().Text; strings.Contains(text, "Field only") || strings.Contains(text, "Field closed") || strings.Contains(text, "announcement") {
+					t.Fatalf("the run in %s was sent Field's announcement:\n%s", tc.filed, text)
+				}
+				await(t, p, got.Runs[0].ID, runs.Completed)
+				if _, turns, _, _ := p.ThreadTurns(tenant, got.Thread.ID, "", 0); turns[0].Kind != platform.TurnMessage {
+					t.Fatalf("the thread starts with %+v", turns[0])
+				}
+			}
+		})
 	}
 }
 
