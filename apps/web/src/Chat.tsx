@@ -47,15 +47,24 @@ function pathOf(turns: Run[], chosen: Record<string, string>): Run[] {
 /**
  * The person whose turn it was, to ask again: whom it acted for, as its
  * record says. A turn recorded before warp said whom a run acts for names no
- * user, so one a person asked from the console or the API is theirs. A retry
- * warp asked for nobody names no user either, and names whoever pressed it,
- * but its words were not theirs, so it is nobody's.
+ * user, so one a person asked under their own name, from the console (an
+ * `api-r-` id) or the API with their own key, is theirs, unless its words
+ * were someone else's: an earlier turn's at the same point (siblings, oldest
+ * first) asked by anyone else, which is what the console's Retry and
+ * Regenerate asked then, under the presser's name. A machine asking for a
+ * person (its own key) and a retry warp asked for nobody (`api-retry-`)
+ * name whoever it was for, or pressed it, though the words may not have
+ * been theirs, so those are nobody's.
  */
-function ownerOf(run: Run): string {
+function ownerOf(run: Run, siblings: Run[]): string {
   const person = actedFor(run);
-  if (person || !run.actor || run.actor.bot || run.actor.user) return person;
-  const retry = run.tag_id === undefined || run.tag_id.startsWith("api-retry-");
-  return run.origin === "api" && !retry ? run.actor.id : "";
+  if (person || !run.actor || run.actor.bot || run.actor.user || run.origin !== "api") return person;
+  const id = run.actor.id;
+  const tag = run.tag_id ?? "";
+  if (!tag.startsWith("api-r-") && !tag.startsWith(`api-${new TextEncoder().encode(id).length}-${id}-`)) return "";
+  const at = siblings.findIndex((s) => s.id === run.id);
+  const earlier = at < 0 ? siblings : siblings.slice(0, at);
+  return earlier.some((s) => s.text === run.text && s.actor?.id !== id) ? "" : id;
 }
 
 /**
@@ -65,10 +74,11 @@ function ownerOf(run: Run): string {
  * them. A turn that acted for someone else is theirs alone to retry, and one
  * that acted for nobody is retried for nobody (from the inbox, or where it
  * was asked), so nobody's words are run with the reader's credentials
- * without their typing them.
+ * without their typing them. siblings are the turns at its point in the
+ * conversation, oldest first.
  */
-export function notAskable(run: Run, me: string): string {
-  const person = ownerOf(run);
+export function notAskable(run: Run, me: string, siblings: Run[]): string {
+  const person = ownerOf(run, siblings);
   if (me !== "" && person === me) return "";
   if (person) return `This turn acted for ${run.actor?.display || person}, so only they can retry it.`;
   return "This turn acted for nobody, so it is not retried here, where it would act for you.";
@@ -92,7 +102,7 @@ function TurnView({
   const turn = useRunTurn(live ? run : undefined);
   const index = siblings.findIndex((s) => s.id === run.id);
   const ended = run.status === "completed" || run.status === "failed";
-  const refused = notAskable(run, me);
+  const refused = notAskable(run, me, siblings);
   const drawn = useMemo(
     () =>
       turn ?? {
@@ -402,7 +412,7 @@ export function Chat({
     const run = path.find((r) => r.id === a.payload.turnId);
     if (!run) return;
     // Asked again here, a turn acts for the reader, so only one that acted for them is.
-    const refused = notAskable(run, me);
+    const refused = notAskable(run, me, siblingsOf(turns, run));
     if (refused) return setProblem(refused);
     branch(run, run.agent);
   };

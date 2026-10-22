@@ -365,3 +365,34 @@ test("a conversation longer than one page is read from its start, and the next m
   // Untagged, it names no agent, so the default the conversation inherits answers.
   assert.deepEqual(sent?.body, { text: "and then?", after: "r200" });
 });
+
+test("a turn from before warp said whom a run acts for is not the reader's when its words were someone else's", async () => {
+  // Before actor.user, the console's Retry and Regenerate asked an earlier
+  // turn's words again at the same point, as an ordinary turn of whoever
+  // pressed, and the Slack app asked for a person it maps under its own
+  // key, whatever message the words came from.
+  const anas: Run = { ...answered({ id: "ana", display: "Ana" }, "api-r-aaaaaaaaaaaaaaaaaaaaaa"), id: "t0", root: "t0" };
+  const bens = { id: "ben", display: "Ben" };
+  for (const turn of [
+    answered(bens, "api-r-bbbbbbbbbbbbbbbbbbbbbb"),
+    failed(bens, "api-r-bbbbbbbbbbbbbbbbbbbbbb"),
+  ]) {
+    open(turn, "ben", [anas, turn]);
+    await screen.findByText(turn.status === "failed" ? "This turn acted for nobody, so it is not retried here, where it would act for you." : "Filed.");
+    assert.ok(!screen.queryByRole("button", { name: "Regenerate" }), "ben's Regenerate of ana's words is not his");
+    assert.ok(!screen.queryByRole("button", { name: "Retry" }), "ben's Retry of ana's words is not his");
+    close();
+  }
+  for (const turn of [answered(bens, "api-9-svc-slack-slack-T1-C1-1700000000-000100"), failed(bens, "api-9-svc-slack-slack-T1-C1-1700000000-000100")]) {
+    open(turn, "ben");
+    await screen.findByText(turn.status === "failed" ? "This turn acted for nobody, so it is not retried here, where it would act for you." : "Filed.");
+    assert.ok(!screen.queryByRole("button", { name: "Regenerate" }), "a turn the Slack app asked for ben is not his here");
+    assert.ok(!screen.queryByRole("button", { name: "Retry" }));
+    close();
+  }
+  // His own words asked again by him are still his.
+  const again = failed(bens, "api-r-bbbbbbbbbbbbbbbbbbbbbb");
+  open(again, "ben", [{ ...anas, actor: bens, tag_id: "api-r-cccccccccccccccccccccc" }, again]);
+  fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+});

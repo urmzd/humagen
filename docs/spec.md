@@ -355,6 +355,14 @@ as the server offers them, and is accepted in that form when its
 `schema_hash` is the hash of that schema (`warp config check` prints the
 hash it computed when they differ). A stdio one needs `credential_as`.
 
+A run that acts for someone, of an agent granted a person-scoped tool, asks
+that person alone what it, or a run it calls, asks with `ask_person`, even
+of the project's experts (`asked_of: sme:<topic>`), and takes an edit or a note on an approval only from them, so nobody else's
+words reach their tools. An agent's `answerers` still apply: when they leave
+that person out, nobody may answer, and the run waits until the question
+expires or is stopped. Leave `answerers` unset on an agent granted such a
+tool, or name everyone who uses it.
+
 Who a run acts for is decided when it is accepted, never by anything said in
 it:
 
@@ -362,11 +370,11 @@ it:
 |---|---|
 | asked in the console, or through the API with a person's sign-in | that person |
 | asked by the Slack app built on the API for a Slack person its client maps (`act_as`) | the mapped person, never the app |
-| asked about with that app's message shortcut, on someone else's message | nobody: the app asks as itself, since those words are the whole request |
+| asked about with that app's message shortcut, on someone else's message | nobody: the app asks as itself, since those words are the whole request. Under a dev sign-in, where the app's own credential is the person `dev`, asking as itself acts for `dev` |
 | raised by a Slack client's own connector | the one person the team's Slack clients map that Slack user to; none, or two different people, is nobody |
 | started by a message in a shared thread (a tagged agent, `@auto` or the thread's default) | the person who posted it, never another participant, though it is sent what the others said in the room ahead of the poster's words; its retry is the poster's alone, from their inbox |
-| Run Now on a schedule | whoever pressed it, when they wrote what it runs (its last editor, or its creator while nobody has edited it); anyone else's press acts for nobody |
-| Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person, as themselves, and anyone else, an operator included, is refused. A turn that acted for nobody is retried for nobody: in the inbox by anyone who may start runs, in the Slack app by the person who asked or an operator |
+| Run Now on a schedule | whoever pressed it, when they wrote what it runs (whoever last changed its text, or its creator while nobody has, unless someone else has since chosen its agent); anyone else's press acts for nobody |
+| Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person, as themselves, and anyone else, an operator included, is refused, except a turn the Slack app asked as itself, which it asks again the same way, by the person who asked or an operator: under a dev sign-in, one that acted for `dev`. A turn that acted for nobody is retried for nobody: in the inbox by anyone who may start runs, in the Slack app by the person who asked or an operator |
 | Retry or Regenerate in a console conversation | the person pressing it, as anything they send there, so each is offered only on a turn that acted for them |
 | asked by a machine as itself, a schedule on its own clock, an eval, housekeeping, or another agent's call | nobody |
 | raised by GitHub | nobody: no client maps GitHub logins to people yet |

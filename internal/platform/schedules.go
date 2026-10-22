@@ -34,6 +34,20 @@ type About struct {
 	Description string
 	UpdatedBy   string
 	UpdatedAt   time.Time
+	// WrittenBy is who wrote what an edited schedule runs, its text and the
+	// agent it asks, or "" for nobody: an edit that changes neither keeps
+	// it, and one that changes only the agent keeps it only when made by
+	// that person. Set by Replace. A schedule nobody has edited is its
+	// creator's, and one edited before this was kept is nobody's.
+	WrittenBy string
+}
+
+// authorOf is who wrote what a schedule runs (About.WrittenBy).
+func authorOf(sc cron.Schedule, about About) string {
+	if about.UpdatedBy == "" {
+		return sc.Meta["created_by"]
+	}
+	return about.WrittenBy
 }
 
 func (a About) validate() error {
@@ -157,14 +171,16 @@ func (s *Schedules) Get(tenant, name string) (cron.Schedule, bool, error) {
 }
 
 // Authored returns one of a tenant's schedules and who wrote what it runs:
-// its last editor, or its creator (meta created_by) while nobody has edited
-// it. Both are read under one lock, so the author is the text's.
+// whoever last changed its text, or its creator (meta created_by) while
+// nobody has, and nobody ("") once someone else chose its agent (see
+// About.WrittenBy). Both are read under one lock, so the author is the
+// text's.
 func (s *Schedules) Authored(tenant, name string) (cron.Schedule, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, sc := range s.all {
 		if sc.Name == name && sc.Tenant == tenant {
-			return sc, cmp.Or(s.about[name].UpdatedBy, sc.Meta["created_by"]), nil
+			return sc, authorOf(sc, s.about[name]), nil
 		}
 	}
 	return cron.Schedule{}, "", fmt.Errorf("%w: %q", ErrScheduleNotFound, name)
@@ -265,8 +281,14 @@ func (s *Schedules) Add(sc cron.Schedule, about About) error {
 }
 
 // Replace changes a tenant's schedule in place: its expression, agent, text
-// and meta. Whether it is paused is kept. The new schedule is checked in full
-// before the old one is touched, so an edit that is refused changes nothing.
+// and meta, by about.UpdatedBy. Whether it is paused is kept. The new
+// schedule is checked in full before the old one is touched, so an edit that
+// is refused changes nothing. Who wrote what it runs (About.WrittenBy) is
+// decided here, from the schedule as it was, under the lock: the editor
+// when they change its text, and when they change only its agent, they if
+// they wrote its text and else nobody, since anyone else's choice of agent
+// for those words is no one's whole say-so. Saving it as it was writes
+// nothing.
 func (s *Schedules) Replace(sc cron.Schedule, about About) error {
 	if err := sc.Validate(); err != nil {
 		return err
@@ -280,6 +302,14 @@ func (s *Schedules) Replace(sc cron.Schedule, about About) error {
 	if i < 0 {
 		return fmt.Errorf("%w: %q", ErrScheduleNotFound, sc.Name)
 	}
+	old, author := s.all[i], authorOf(s.all[i], s.about[sc.Name])
+	switch {
+	case sc.Text != old.Text:
+		author = about.UpdatedBy
+	case sc.Agent != old.Agent && author != about.UpdatedBy:
+		author = ""
+	}
+	about.WrittenBy = author
 	if err := s.write(sc, s.paused[sc.Name], about); err != nil {
 		return err
 	}

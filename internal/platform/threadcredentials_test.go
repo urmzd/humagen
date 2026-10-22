@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 
 	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
@@ -166,6 +168,62 @@ func TestAnExpertDoesNotAnswerWhatARunAsksWithAnotherPersonsCredential(t *testin
 	}
 	await(t, w.p, run.ID, runs.Completed)
 	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"], benValue)
+}
+
+// A run that another calls acts for nobody, and inherits its caller's thread
+// and project, but what it is answered is its caller's tool result. So when
+// ana's run in a thread calls one that asks the billing experts, the
+// question goes to ana alone, and the expert's answer is refused on the run,
+// from the inbox and in the thread, where nothing is posted: it would be
+// searched with ana's token. Her own answer in the thread is.
+func TestAnExpertDoesNotAnswerARunCalledByOneWithAnotherPersonsCredential(t *testing.T) {
+	p, server, model := steeredWorld(t, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
+	ctx := t.Context()
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Launch"}); err != nil {
+		t.Fatal(err)
+	}
+	cur, err := p.ProjectExperts(tenant, "Launch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SetProjectExperts(tenant, "Launch", ada, platform.Experts{Version: cur.Version, Experts: []projects.Expert{{Who: "ben", Topics: []string{"billing"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	posted := startThread(t, p, ana, platform.ThreadInput{Project: "Launch", Text: "@envoy file the PO"})
+	if len(posted.Runs) != 1 || posted.Runs[0].Actor.User != "ana" {
+		t.Fatalf("ana's message started %+v", posted.Runs)
+	}
+	scout := called(t, p, posted.Runs[0].ID, "scout", runs.Parked)
+	if scout.Thread != posted.Thread.ID || scout.Project != "Launch" || scout.Question == nil {
+		t.Fatalf("the called run is %+v", scout)
+	}
+	msg := questionFor(t, p, scout.ID)
+	if sees(p, ben, msg.ID) || !sees(p, ana, msg.ID) {
+		t.Errorf("a question for the experts, from a run ana's run called, is addressed to %v, want ana alone", msg.Audience)
+	}
+	ref := &threads.AnswerRef{Run: scout.ID, Question: scout.Question.ID}
+	words := "BEN SAYS: payroll salaries"
+	if _, err := p.PostMessage(ctx, ben, posted.Thread.ID, platform.MessageInput{Text: words, Answers: ref}); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("the expert answering in the thread = %v, want forbidden", err)
+	}
+	if _, err := p.AnswerQuestion(ctx, ben, scout.ID, scout.Question.ID, platform.QuestionAnswer{Action: platform.ActReply, Text: words}); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("the expert answering on the run = %v, want forbidden", err)
+	}
+	if _, err := p.InboxResolve(ctx, ben, msg.ID, msg.Parts[0].ID, platform.Resolution{Action: platform.ActReply, Text: words}); err == nil {
+		t.Fatal("the expert answered from the inbox")
+	}
+	if now, err := p.Threads.Get(tenant, posted.Thread.ID); err != nil || now.Version != posted.Thread.Version {
+		t.Fatalf("a refused answer posted in the thread: %+v, %v", now, err)
+	}
+	if got := server.Calls(); len(got) != 0 {
+		t.Fatalf("the server was reached with %q", got)
+	}
+	post(t, p, ana, posted.Thread.ID, platform.MessageInput{Text: "PO-12", Answers: ref})
+	await(t, p, posted.Runs[0].ID, runs.Completed)
+	if q, got := model.searched(), server.Calls(); len(q) != 1 || strings.Contains(q[0], "BEN") || !strings.Contains(q[0], "PO-12") ||
+		!slices.Equal(got, []string{"Bearer " + environment["WARP_PERSON_ANA_ISSUES"]}) {
+		t.Fatalf("searched %q and reached the server with %q, want her words alone with her token", q, got)
+	}
 }
 
 // A failed run that answered a message in a shared thread is asked again
