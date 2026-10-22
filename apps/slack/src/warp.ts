@@ -121,7 +121,11 @@ export interface Warp {
   createRun(body: RunRequest, idempotencyKey?: string, options?: CallOptions): Promise<Run>;
   /** A run's record, or null when it does not exist for this caller. */
   getRun(id: string, options?: CallOptions): Promise<Run | null>;
-  /** Every turn of a conversation, or null when there is no such conversation. */
+  /**
+   * The agents' turns of a conversation, its newest 200, or null when there
+   * is no such conversation. People's messages in a shared thread are left
+   * out: this app reads a conversation to place and stop runs.
+   */
   getThread(id: string, options?: CallOptions): Promise<{ turns: Run[] } | null>;
   stopRun(id: string, options?: CallOptions): Promise<Run>;
   /**
@@ -387,7 +391,10 @@ export function httpWarp(cfg: {
     createRun: (body, key) =>
       http<Run>("POST", "/api/runs", body, key ? { "Idempotency-Key": key } : undefined),
     getRun: (id) => orNull(http<Run>("GET", `/api/runs/${enc(id)}`)),
-    getThread: (id) => orNull(http<{ turns: Run[] }>("GET", `/api/threads/${enc(id)}`)),
+    getThread: (id) =>
+      orNull(http<{ turns: { kind: string; run?: Run }[] }>("GET", `/api/threads/${enc(id)}`)).then(
+        (page) => page && { turns: page.turns.flatMap((t) => (t.run ? [t.run] : [])) },
+      ),
     stopRun: (id) => http<Run>("POST", `/api/runs/${enc(id)}/stop`),
     answerQuestion: (answer, actAs) =>
       http<unknown>("POST", answerPath(answer), { ...answer.body, act_as: actAs }),

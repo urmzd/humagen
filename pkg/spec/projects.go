@@ -23,9 +23,27 @@ const (
 	maxAccountCustomer     = 120
 	maxAccountExternalID   = 120
 	maxAccountURL          = 500
+
+	maxChannels      = 20
+	maxChannelTitle  = 80
+	maxPurpose       = 200
+	maxExperts       = 50
+	maxExpertTopics  = 8
+	maxExpertWho     = 200
+	generalChannel   = "general"
+	autoDefault      = "auto"
+	expertRolePrefix = "role:"
 )
 
-var projectName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,62}$`)
+var (
+	projectName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,62}$`)
+	channelName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+	topicName   = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+	// defaultName is an agent's name, as a client's agent list holds it,
+	// or auto.
+	defaultName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+	roleName    = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+)
 
 // checkProjects holds the workspace's instructions and project tree to what
 // the project store accepts, each mistake with its path:
@@ -44,6 +62,12 @@ func checkProjects(w Workspace) error {
 		if err := checkText(*w.Instructions, maxProjectInstructions, true); err != nil {
 			return fmt.Errorf("workspace.instructions: %w", err)
 		}
+	}
+	if err := checkChannels(w.Channels); err != nil {
+		return fmt.Errorf("workspace.%w", err)
+	}
+	if err := checkExperts(w.Experts); err != nil {
+		return fmt.Errorf("workspace.%w", err)
 	}
 	ps := w.Projects
 	if len(ps) > maxProjects {
@@ -147,6 +171,12 @@ func checkProjectFields(p Project) error {
 	if err := checkText(p.Instructions, maxProjectInstructions, true); err != nil {
 		return fmt.Errorf("instructions: %w", err)
 	}
+	if err := checkChannels(p.Channels); err != nil {
+		return err
+	}
+	if err := checkExperts(p.Experts); err != nil {
+		return err
+	}
 	a := p.Account
 	if a == nil {
 		return nil
@@ -182,6 +212,69 @@ func checkText(s string, limit int, lines bool) error {
 			return fmt.Errorf("plain text, with no control characters but line breaks and tabs")
 		}
 		return fmt.Errorf("one line of plain text")
+	}
+	return nil
+}
+
+// checkChannels checks a project's channels: names that are slugs, each
+// once, at most 20 with general, and each field's bounds. A default names
+// an agent or auto; whether it can answer where it is set is decided when
+// a message is posted, and one that cannot answers nothing. Its error
+// starts with "channels", for the caller to put after the project's path.
+func checkChannels(cs []Channel) error {
+	seen := map[string]int{}
+	total := len(cs)
+	for i, c := range cs {
+		at := fmt.Sprintf("channels[%d]", i)
+		if !channelName.MatchString(c.Name) {
+			return fmt.Errorf("%s.name: %q is not a channel name: lower case letters, digits and dashes, starting with a letter or digit, at most 40", at, c.Name)
+		}
+		if j, dup := seen[c.Name]; dup {
+			return fmt.Errorf("%s.name: %q is channels[%d]'s name again", at, c.Name, j)
+		}
+		seen[c.Name] = i
+		if err := checkText(c.Title, maxChannelTitle, false); err != nil {
+			return fmt.Errorf("%s.title: %w", at, err)
+		}
+		if err := checkText(c.Purpose, maxPurpose, false); err != nil {
+			return fmt.Errorf("%s.purpose: %w", at, err)
+		}
+		if c.Default != "" && !defaultName.MatchString(c.Default) {
+			return fmt.Errorf("%s.default: %q is not an agent's name or auto", at, c.Default)
+		}
+	}
+	if _, declared := seen[generalChannel]; !declared {
+		total++
+	}
+	if total > maxChannels {
+		return fmt.Errorf("channels: a project has at most %d channels, general among them, not %d", maxChannels, total)
+	}
+	return nil
+}
+
+// checkExperts checks a project's experts: a subject or role:<name>, each
+// with 1 to 8 topics of lower case letters, digits and dashes, at most 50.
+// Its error starts with "experts".
+func checkExperts(es []Expert) error {
+	if len(es) > maxExperts {
+		return fmt.Errorf("experts: a project names at most %d experts, not %d", maxExperts, len(es))
+	}
+	for i, e := range es {
+		at := fmt.Sprintf("experts[%d]", i)
+		who := strings.TrimSpace(e.Who)
+		switch {
+		case who == "" || who == "*" || who != e.Who || utf8.RuneCountInString(who) > maxExpertWho || checkText(who, maxExpertWho, false) != nil:
+			return fmt.Errorf("%s.who: a person's subject or role:<name>, on one line of at most %d characters", at, maxExpertWho)
+		case strings.HasPrefix(who, expertRolePrefix) && !roleName.MatchString(strings.TrimPrefix(who, expertRolePrefix)):
+			return fmt.Errorf("%s.who: %q is not a role: role:<name>, lower case letters, digits, dashes and underscores", at, who)
+		case len(e.Topics) == 0 || len(e.Topics) > maxExpertTopics:
+			return fmt.Errorf("%s.topics: from 1 to %d topics, not %d", at, maxExpertTopics, len(e.Topics))
+		}
+		for j, topic := range e.Topics {
+			if !topicName.MatchString(topic) {
+				return fmt.Errorf("%s.topics[%d]: %q is not a topic: lower case letters, digits and dashes, starting with a letter, at most 32", at, j, topic)
+			}
+		}
 	}
 	return nil
 }

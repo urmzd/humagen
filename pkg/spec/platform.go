@@ -48,6 +48,13 @@ type Workspace struct {
 	Agents *Agents `json:"agents,omitempty"`
 	// Projects are merged into the tree at every start, parents first.
 	Projects []Project `json:"projects,omitempty"`
+	// Channels are the workspace's own, the root project's, besides
+	// general, which every project has.
+	Channels []Channel `json:"channels,omitempty"`
+	// Experts are who answers for some topics anywhere in the workspace,
+	// unless a project nearer names someone for the topic. Set here, even
+	// as [], the console cannot change them.
+	Experts []Expert `json:"experts,omitempty"`
 	// PersonCredentials is what people may give for the tools that take
 	// their own credential.
 	PersonCredentials *PersonCredentials `json:"person_credentials,omitempty"`
@@ -106,6 +113,32 @@ type Project struct {
 	// Agents is what the project turns on. Set here, the console cannot
 	// change them.
 	Agents *Agents `json:"agents,omitempty"`
+	// Channels are the project's, besides general.
+	Channels []Channel `json:"channels,omitempty"`
+	// Experts are who answers for some topics here and below. Set here,
+	// even as [], the console cannot change them.
+	Experts []Expert `json:"experts,omitempty"`
+}
+
+// Channel is one place in a project where threads live. Its title, purpose
+// and default are the file's; general may be declared to set them.
+type Channel struct {
+	// Name is lower case letters, digits and dashes, at most 40, and never
+	// changes.
+	Name  string `json:"name"`
+	Title string `json:"title,omitempty"`
+	// Purpose is sent to every agent answering in the channel.
+	Purpose string `json:"purpose,omitempty"`
+	// Default answers untagged messages in the channel: an agent, or auto.
+	// Left out, the project's default answers.
+	Default string `json:"default,omitempty"`
+}
+
+// Expert is who answers for some topics: a person by subject, or
+// role:<name>.
+type Expert struct {
+	Who    string   `json:"who"`
+	Topics []string `json:"topics"`
 }
 
 // Account is an account project's customer.

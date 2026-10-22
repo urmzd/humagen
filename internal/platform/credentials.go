@@ -32,22 +32,28 @@ import (
 //
 //   - a run from the console or the API acts for the person signed in
 //     (ActorOf), and so does Run Now on a schedule when they wrote what it
-//     runs, its last editor or its creator, and otherwise it acts for nobody
-//     (Schedules.Authored);
+//     runs, and otherwise it acts for nobody (Schedules.Authored);
 //   - a run a surface asks for a person its client maps (act_as) acts for
 //     that person (PersonActor);
 //   - a run a Slack connector raised acts for the one person the team's
 //     Slack clients map its Slack user to (surface.stamp);
+//   - a run a message in a shared thread starts acts for the person who
+//     posted it, or for whom a surface's credential posted it, and never
+//     for another participant, though it is sent the room (carryOut);
 //   - a retry of a failed turn acts for whoever the turn acted for, and only
-//     that person may ask for one (mayRetry);
+//     that person may ask for one (mayRetry); a turn that answered a message
+//     in a shared thread answers that message again (retryAnswer);
 //   - everything else acts for nobody: a machine asking as itself, a
 //     schedule firing on its own clock, the platform's own housekeeping, an
 //     eval, a run another agent called, and every GitHub actor, since no
 //     client maps GitHub logins.
 //
-// What a person answers a run steers what its tools are asked next, so a run
-// that uses the credential of the person it acts for asks that person alone
-// its replies and choices (maySteer).
+// What a person answers a run steers what its tools are asked next, and a
+// called run's answer is its caller's. So a run that uses the credential of
+// the person it acts for, or one it called, asks that person alone its
+// replies and choices, also when it asks the experts, and anyone else
+// answers its approvals as asked, with no edit and no note the model would
+// be shown (maySteer, steeredFor).
 //
 // A person gives their credential through ConnectTool, as a reference or, where
 // the workspace allows it, a value (pkg/credentials). A reference is only
@@ -98,6 +104,28 @@ func (p *Platform) ownCredentialOf(ctx context.Context, run runs.Run) string {
 		return person
 	}
 	return ""
+}
+
+// steeredFor is the person whose own credentials an answer to what a run
+// asks may reach: ownCredentialOf the run, or of a run that called it, up to
+// its root, since a called run's answer is its caller's tool result. "" when
+// none uses a person's own credentials. A caller that cannot be read makes
+// it nobody, an audience no reader is in, so nobody's answer is taken.
+func (p *Platform) steeredFor(ctx context.Context, run runs.Run) string {
+	for range run.Depth + 1 {
+		if person := p.ownCredentialOf(ctx, run); person != "" {
+			return person
+		}
+		if run.Parent == "" {
+			return ""
+		}
+		parent, err := p.Runs.Get(run.Tenant, run.Parent)
+		if err != nil {
+			return nobody
+		}
+		run = parent
+	}
+	return nobody
 }
 
 // PersonActor is the actor of a run a surface asks for a person its client

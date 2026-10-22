@@ -62,6 +62,7 @@ import (
 	"github.com/urmzd/warp/pkg/prefs"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 	"github.com/urmzd/warp/pkg/usage"
 )
 
@@ -176,7 +177,10 @@ type Platform struct {
 	// Projects is each tenant's tree of projects.
 	Projects *projects.Store
 	// People is each tenant's directory of people.
-	People   *people.Store
+	People *people.Store
+	// Threads is each tenant's shared threads: their records and the
+	// messages people post in them.
+	Threads  *threads.Store
 	Policies *policy.Store
 	// CallPolicies is what each agent says about being called.
 	CallPolicies *callpolicy.Store
@@ -254,6 +258,10 @@ type Platform struct {
 	// answers keeps a recorded decision and its surface provenance together
 	// before resumed or terminal events can settle the inbox question.
 	answers sync.Mutex
+
+	// posts is how fast people post in threads, which starts no run for
+	// admission to count.
+	posts postRate
 }
 
 // New assembles a platform. Nothing runs until Run is called.
@@ -692,7 +700,7 @@ func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
 			// A stopped run succeeds in the ledger: it ended and did not
 			// fail. Its output says it was stopped, and what it had said.
 			if out.Stopped != nil {
-				if run, ended := p.Runs.Stop(id, out.Text, out.Stopped.Reason, at); ended {
+				if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.Stop(id, out.Text, out.Stopped.Reason, at) }); ended {
 					p.log.Info("platform: run ended stopped in the ledger before its final event was seen", "run", id)
 					p.ended(ctx, run)
 				}
@@ -700,7 +708,7 @@ func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
 			}
 		}
 	}
-	if run, ended := p.Runs.End(id, status, answer, rec.Error, at); ended {
+	if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.End(id, status, answer, rec.Error, at) }); ended {
 		p.log.Info("platform: run ended in the ledger before its final event was seen", "run", id, "status", status)
 		p.ended(ctx, run)
 	}
@@ -724,6 +732,9 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 	}
 	p.admission.Lock()
 	run, ended := p.Runs.Observe(e)
+	if ended {
+		p.free(run)
+	}
 	p.admission.Unlock()
 	p.observeQuestion(ctx, e)
 	if ended {

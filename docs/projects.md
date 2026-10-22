@@ -128,6 +128,17 @@ closed).
 At most 10 mentions per message. A token inside inline code or a code block is
 not a tag.
 
+Every run a message starts acts for the person who posted it, never for
+another participant: a tool that acts as a person uses the poster's own
+credential. The run is sent the room up to the message, as a mention in a
+Slack channel thread is: one turn a line, its line breaks made spaces, after
+who took it, a person by name and handle, which no one else has, and an
+agent marked as one. The room is fenced off from the poster's words, which
+follow with who posted them, so nothing anyone else wrote reads as the
+poster's, and another person's request in the thread is acted on with the
+poster's credential only when the poster's own words ask for it. A failed
+answer is retried only by the poster, from their inbox.
+
 ### Experts
 
 A project lists experts: a person (subject) or `role:<name>`, with up to 8
@@ -144,6 +155,12 @@ expert for the topic answers for it, then its ancestors, up to the root.
   the run, the thread or Slack, is `runtime.Answer` and resumes the run.
 - Addressing routes; it does not admit. Who may answer stays fiber's check
   against `answerers` (`mayAnswer`), unchanged.
+- **Except in a run that uses a person's own credential.** A run that acts
+  for a person and is granted a tool that takes each person's own
+  credential asks that person alone its replies and choices (`maySteer`), so
+  a question it asks of the experts goes to that person, and an expert's
+  answer is refused: it would reach that person's tools with their
+  credential.
 - The project layer of every turn lists the topics with experts ("Experts
   here: billing, security. Ask one with ask_person, asked_of sme:<topic>"), at
   most 16 topics.
@@ -158,8 +175,8 @@ An agent's turn is given, in this order:
 | 2 | Project memory, the thread's project first, then its ancestors | `pkg/memory` owners `project:<name>`, and `project:` for the root | own notes as today (at most 15,000 characters); ancestors share 6,000, nearest first, with "(n more notes from Field not sent)" |
 | 3 | The agent's instructions | the pinned revision's `AgentSpec.SystemPrompt`, which fiber sends as the system message | fiber's |
 | 4 | The agent's memory | `pkg/memory` owner `<agent>` | as today |
-| 5 | The thread | the branch so far: human messages by name, agents' answers by agent name | the workspace history limit, as today |
-| 6 | The message | | 8,000 characters |
+| 5 | The thread | the branch so far, one turn a line: human messages, and follow-ups through the API, by the name and handle of who wrote or asked them, agents' answers by agent name, then a line that ends it and names who posted the message | the workspace history limit, as today |
+| 6 | The message | as posted | 8,000 characters |
 
 Which wins on conflict: the later instruction layer. The agent's
 instructions win over a project's, and a child project's over its
@@ -448,18 +465,33 @@ type Mention struct {
 
 Namespace `threads`: `t:<id>` a thread, `m:<thread>:<seq>` a message,
 `s:<client>:<channel>:<ts>` the surface index. At most 5,000 messages per
-thread (then 409 "start a new thread") and 50 participants.
+thread (then 409 "start a new thread") and 50 participants. A workspace holds
+at most 10,000 threads and a project 2,000 (429), a conversation from before
+threads counting once its record is written. A person's message starts no
+run, so no limit on runs holds it: a person posts at most 30 messages a
+minute and a project takes at most 120 (429), counted in at most 10,000
+windows. One message notifies at most 20 people and roles.
+
+The record keeps a person by subject, the key they sign in with. What a
+thread hands out names them by handle instead (a participant, an author, a
+tag, who was notified, the people in a thread's summary, a mention's `by`),
+and calls them by their name in the directory, or their handle without one,
+so a subject that holds an address is never shown. People are added to and
+removed from a thread by handle.
 
 How it joins the run index:
 
 - A tagged agent's run has `Prev` = the message and `warp.message` meta = the
   message id. Runs that answer one message are shown together, not as
   branches. A branch is a message posted after an earlier turn, as today.
-- `Path` walks messages and runs; the transcript renders a message as
-  `Dana: text` and a run as `ignite: answer`. A run of a conversation from
-  before threads still renders as its text and its answer.
+- `Path` walks messages and runs; the transcript (`threads.Ask`) renders a
+  message as `Dana (@dana): text` and a run as `ignite (agent): answer`, each
+  on one line. A run that answers no message, a follow-up through the API or
+  a run of a conversation from before threads, renders as who asked it and
+  its text, then its answer. The words the run answers follow a closing line
+  that names who posted them.
 - A conversation with no record reads as shared, in `general` of its project,
-  with its runs' actors as participants. A record is written the first time
+  with the people its runs acted for, and its agents, as participants. A record is written the first time
   anything about it changes. Nothing is migrated in bulk.
 
 ### `pkg/people` (new, phase 2)
@@ -886,7 +918,7 @@ Tools: `project_changes`, `runs_summary(project)`.
 
 The inbox gains kind `mention`: To is the tagged person and the key is
 `mention:<message>:<subject>`. Its `mention` part is `{thread, message,
-project, channel, by, excerpt (<= 300)}`, with actions `reply` (posts a human
+project, channel, by (the poster's handle), excerpt (<= 300)}`, with actions `reply` (posts a human
 message as the reader; `runs:write`) and `done`.
 
 ### Phase 7
@@ -1440,7 +1472,8 @@ phase 2 and experts to phase 3, because addressing and threads need them.
 - **Addressing is not confidentiality.** Expert questions are routed to
   experts, but anyone fiber's `answerers` check admits may still answer
   through the run, as today. A project that needs a closed set of answerers
-  names them in the agent's spec.
+  names them in the agent's spec. A run that uses the credential of the
+  person it acts for is answered by that person alone, experts included.
 - **Membership by IdP group** relies on a policy file with empty roles and
   `grant ... to group`. The default policy has only four roles, and a group
   change applies at the next sign-in. Subjects can be listed directly.

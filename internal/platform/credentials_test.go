@@ -70,6 +70,8 @@ type toolUser struct {
 	// asks makes it ask a person first (ask_person): the question, then any
 	// options. What they answer is what it searches for.
 	asks []string
+	// askOf is whom it asks them of (asked_of), such as sme:billing.
+	askOf string
 }
 
 // found is what the issues search tells a recalling model.
@@ -88,11 +90,13 @@ func (m *toolUser) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 	}
 	m.sent = append(m.sent, fmt.Sprintf("%+v", req.Messages))
 	m.tools = append(m.tools, names)
-	recall, asks := m.recall, m.asks
+	recall, asks, askOf := m.recall, m.asks, m.askOf
 	m.mu.Unlock()
 	reply := agenttest.TextResponse("I have no issue tools.")
 	if len(asks) > 0 && slices.Contains(names, "ask_person") {
 		switch results := toolResults(req.Messages); {
+		case len(results) == 0 && askOf != "":
+			reply = asked(map[string]any{"question": asks[0], "asked_of": askOf})
 		case len(results) == 0:
 			reply = asking(asks[0], asks[1:]...)
 		case len(results) == 1 && slices.Contains(names, searchTool):
@@ -184,7 +188,15 @@ func toolResults(msgs []saigetypes.Message) []string {
 func (m *toolUser) ask(asks ...string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.asks = asks
+	m.asks, m.askOf = asks, ""
+}
+
+// askOfWhom makes it ask a question of someone (asked_of), such as the
+// experts on a topic.
+func (m *toolUser) askOfWhom(who, question string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.asks, m.askOf = []string{question}, who
 }
 
 func (m *toolUser) fail(failing bool) {
@@ -984,6 +996,84 @@ func TestARetryActsOnlyForThePersonTheTurnActedFor(t *testing.T) {
 	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"], benValue)
 }
 
+// A message that tagged no agent was answered by the default where it was
+// posted, and acted for the person who sent it. Its retry asks the agent that
+// answered it again, for the same person, whatever the default is now: once
+// the workspace has no default, an untagged message starts nothing, and the
+// retry still runs, as Ana, with her own credential.
+func TestARetryOfAnUntaggedTurnAsksTheAgentThatAnsweredForTheSamePerson(t *testing.T) {
+	w := newWorld(t, platform.Config{Backoff: func(int) time.Duration { return time.Millisecond }})
+	ctx := t.Context()
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	setAgents(t, w.p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "worker"})
+
+	failed, msg := w.failing(t, platform.Turn{ID: "api-ana-untagged", Text: "Any open bugs?", Actor: platform.ActorOf(ana)})
+	if failed.Agent != "worker" || failed.Actor.User != "ana" {
+		t.Fatalf("the untagged turn was answered by %q for %+v", failed.Agent, failed.Actor)
+	}
+	setAgents(t, w.p, "~", platform.AgentsInput{Enable: []string{"*"}})
+	if _, err := w.p.Converse(ctx, tenant, platform.Turn{ID: "api-ana-untagged-now", Text: "Any open bugs?", Actor: platform.ActorOf(ana)}); !errors.Is(err, platform.ErrNoDefault) {
+		t.Fatalf("an untagged turn with no default = %v", err)
+	}
+	done, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, platform.Resolution{Action: platform.ActRetry})
+	if err != nil {
+		t.Fatalf("ana retrying her untagged turn: %v", err)
+	}
+	again := retried(t, w, done)
+	if again.Agent != "worker" || again.Actor.User != "ana" || again.Answer != "Done." {
+		t.Fatalf("ana's retry = agent %q, actor %+v, answer %q", again.Agent, again.Actor, again.Answer)
+	}
+	if calls := w.server.Calls(); len(calls) != 1 || calls[0] != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] {
+		t.Fatalf("ana's retry reached the server with %q", calls)
+	}
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
+}
+
+// A retry of the turn that started a conversation is filed where the
+// conversation is, and is refused there once its agent is no longer
+// available: the part stays open and nothing reaches the provider. Once the
+// agent is available there again, the retry runs in the same project, for
+// the same person.
+func TestARetryIsRefusedWhereTheConversationIsFiledOnceItsAgentIsNotAvailableThere(t *testing.T) {
+	w := newWorld(t, platform.Config{Backoff: func(int) time.Duration { return time.Millisecond }})
+	ctx := t.Context()
+	field(t, w.p)
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+
+	failed, msg := w.failing(t, platform.Turn{ID: "api-ana-globex", Agent: "worker", Text: "Any open bugs?", Project: "Globex", Actor: platform.ActorOf(ana)})
+	if failed.Project != "Globex" || failed.Prev != "" {
+		t.Fatalf("the first turn was filed in %q after %q", failed.Project, failed.Prev)
+	}
+	reached := len(w.server.Requests())
+	if err := w.p.SetAgentHome(ctx, tenant, "worker", "Initech", ada); err != nil {
+		t.Fatal(err)
+	}
+	retry := platform.Resolution{Action: platform.ActRetry}
+	_, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, retry)
+	if !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "worker is not available in Globex") {
+		t.Fatalf("a retry in Globex of an agent that lives in Initech = %v, want ErrNotAvailable", err)
+	}
+	if got, _ := w.p.InboxGet(ana, msg.ID); got.Parts[0].State != inbox.PartOpen {
+		t.Fatalf("a refused retry settled the part: %+v", got.Parts[0])
+	}
+	if got := w.server.Requests()[reached:]; len(got) != 0 {
+		t.Fatalf("a refused retry reached the server with %q", got)
+	}
+
+	if err := w.p.SetAgentHome(ctx, tenant, "worker", "", ada); err != nil {
+		t.Fatal(err)
+	}
+	done, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, retry)
+	if err != nil {
+		t.Fatalf("ana retrying once worker is available again: %v", err)
+	}
+	again := retried(t, w, done)
+	if again.Project != "Globex" || again.Prev != "" || again.Agent != "worker" || again.Actor.User != "ana" || again.Answer != "Done." {
+		t.Fatalf("ana's retry = project %q after %q, agent %q, actor %+v, answer %q", again.Project, again.Prev, again.Agent, again.Actor, again.Answer)
+	}
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
+}
+
 // A reply or a choice steers what a run does next. Where the run uses the
 // credential of the person it acts for, only that person answers what it
 // asks: ben's words, or ben's pick, never reach the provider with ana's
@@ -1064,84 +1154,6 @@ func TestOnlyThePersonARunActsForAnswersWhatItAsksWithTheirCredential(t *testing
 			}
 			await(t, w.p, run.ID, runs.Completed)
 		})
-	}
-	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
-}
-
-// A message that tagged no agent was answered by the default where it was
-// posted, and acted for the person who sent it. Its retry asks the agent that
-// answered it again, for the same person, whatever the default is now: once
-// the workspace has no default, an untagged message starts nothing, and the
-// retry still runs, as Ana, with her own credential.
-func TestARetryOfAnUntaggedTurnAsksTheAgentThatAnsweredForTheSamePerson(t *testing.T) {
-	w := newWorld(t, platform.Config{Backoff: func(int) time.Duration { return time.Millisecond }})
-	ctx := t.Context()
-	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
-	setAgents(t, w.p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "worker"})
-
-	failed, msg := w.failing(t, platform.Turn{ID: "api-ana-untagged", Text: "Any open bugs?", Actor: platform.ActorOf(ana)})
-	if failed.Agent != "worker" || failed.Actor.User != "ana" {
-		t.Fatalf("the untagged turn was answered by %q for %+v", failed.Agent, failed.Actor)
-	}
-	setAgents(t, w.p, "~", platform.AgentsInput{Enable: []string{"*"}})
-	if _, err := w.p.Converse(ctx, tenant, platform.Turn{ID: "api-ana-untagged-now", Text: "Any open bugs?", Actor: platform.ActorOf(ana)}); !errors.Is(err, platform.ErrNoDefault) {
-		t.Fatalf("an untagged turn with no default = %v", err)
-	}
-	done, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, platform.Resolution{Action: platform.ActRetry})
-	if err != nil {
-		t.Fatalf("ana retrying her untagged turn: %v", err)
-	}
-	again := retried(t, w, done)
-	if again.Agent != "worker" || again.Actor.User != "ana" || again.Answer != "Done." {
-		t.Fatalf("ana's retry = agent %q, actor %+v, answer %q", again.Agent, again.Actor, again.Answer)
-	}
-	if calls := w.server.Calls(); len(calls) != 1 || calls[0] != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] {
-		t.Fatalf("ana's retry reached the server with %q", calls)
-	}
-	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
-}
-
-// A retry of the turn that started a conversation is filed where the
-// conversation is, and is refused there once its agent is no longer
-// available: the part stays open and nothing reaches the provider. Once the
-// agent is available there again, the retry runs in the same project, for
-// the same person.
-func TestARetryIsRefusedWhereTheConversationIsFiledOnceItsAgentIsNotAvailableThere(t *testing.T) {
-	w := newWorld(t, platform.Config{Backoff: func(int) time.Duration { return time.Millisecond }})
-	ctx := t.Context()
-	field(t, w.p)
-	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
-
-	failed, msg := w.failing(t, platform.Turn{ID: "api-ana-globex", Agent: "worker", Text: "Any open bugs?", Project: "Globex", Actor: platform.ActorOf(ana)})
-	if failed.Project != "Globex" || failed.Prev != "" {
-		t.Fatalf("the first turn was filed in %q after %q", failed.Project, failed.Prev)
-	}
-	reached := len(w.server.Requests())
-	if err := w.p.SetAgentHome(ctx, tenant, "worker", "Initech", ada); err != nil {
-		t.Fatal(err)
-	}
-	retry := platform.Resolution{Action: platform.ActRetry}
-	_, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, retry)
-	if !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "worker is not available in Globex") {
-		t.Fatalf("a retry in Globex of an agent that lives in Initech = %v, want ErrNotAvailable", err)
-	}
-	if got, _ := w.p.InboxGet(ana, msg.ID); got.Parts[0].State != inbox.PartOpen {
-		t.Fatalf("a refused retry settled the part: %+v", got.Parts[0])
-	}
-	if got := w.server.Requests()[reached:]; len(got) != 0 {
-		t.Fatalf("a refused retry reached the server with %q", got)
-	}
-
-	if err := w.p.SetAgentHome(ctx, tenant, "worker", "", ada); err != nil {
-		t.Fatal(err)
-	}
-	done, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, retry)
-	if err != nil {
-		t.Fatalf("ana retrying once worker is available again: %v", err)
-	}
-	again := retried(t, w, done)
-	if again.Project != "Globex" || again.Prev != "" || again.Agent != "worker" || again.Actor.User != "ana" || again.Answer != "Done." {
-		t.Fatalf("ana's retry = project %q after %q, agent %q, actor %+v, answer %q", again.Project, again.Prev, again.Agent, again.Actor, again.Answer)
 	}
 	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
 }

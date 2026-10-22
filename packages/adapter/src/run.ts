@@ -101,6 +101,10 @@ export interface Run {
   /** Why the agent was chosen, when the platform picked it. */
   picked?: string;
   project?: string;
+  /** The project's channel the conversation is in. Absent is `general`. */
+  channel?: string;
+  /** The person's message in a shared thread the run answers. Runs answering one message are side by side, not branches. */
+  message?: string;
   /**
    * The project's ancestors, nearest first and the workspace left out, pinned
    * when the run was admitted: what it counts toward besides its project.

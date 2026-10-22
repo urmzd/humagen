@@ -159,6 +159,8 @@ type Project struct {
 	Account *AccountInfo `json:"account,omitempty"`
 	// Instructions are sent to every agent answering here and below.
 	Instructions string `json:"instructions,omitempty"`
+	// Experts are who answers for some topics here and below. Never nil.
+	Experts []Expert `json:"experts"`
 	// Agents is what the project turns on: which agents are available here
 	// and below, and which answers a message that tags none.
 	Agents Agents `json:"agents"`
@@ -185,6 +187,7 @@ func (p Project) clone() Project {
 		p.Account = &a
 	}
 	p.FileOwns = slices.Clone(p.FileOwns)
+	p.Experts = cloneExperts(p.Experts)
 	p.Agents = p.Agents.clone()
 	return p
 }
@@ -226,6 +229,8 @@ type Change struct {
 	Note   string   `json:"note,omitempty"`
 	Before *Project `json:"before,omitempty"`
 	After  *Project `json:"after,omitempty"`
+	// Channel is set on a change to one of the project's channels.
+	Channel *ChannelChange `json:"channel,omitempty"`
 }
 
 // Tombstone is a deleted name. It is reused only with projects:govern.
@@ -248,7 +253,7 @@ func accountLike(k Kind) bool { return k == Account }
 
 var validField = map[string]bool{
 	FieldTitle: true, FieldDescription: true, FieldKind: true, FieldParent: true, FieldAccount: true, FieldInstructions: true,
-	FieldAgents: true,
+	FieldExperts: true, FieldAgents: true,
 }
 
 // validate checks a project on its own: its fields and bounds, not its place.
@@ -292,6 +297,9 @@ func (p Project) validate() error {
 		if !validField[f] {
 			return fmt.Errorf("%w: the file cannot own %q", ErrInvalid, f)
 		}
+	}
+	if err := validExperts(p.Experts); err != nil {
+		return err
 	}
 	return p.Agents.validate()
 }

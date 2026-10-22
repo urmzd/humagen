@@ -262,7 +262,7 @@ func (p *Platform) cascade(ctx context.Context, run runs.Run) {
 	}
 	// A caller that had answered and was waiting on this run may be done now.
 	if run.Parent != "" && run.Lifecycle == runs.Attached {
-		if parent, done := p.Runs.Settle(run.Parent, p.now()); done {
+		if parent, done := p.over(func() (runs.Run, bool) { return p.Runs.Settle(run.Parent, p.now()) }); done {
 			p.ended(ctx, parent)
 		}
 	}

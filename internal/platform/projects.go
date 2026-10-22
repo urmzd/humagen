@@ -374,6 +374,13 @@ const precedence = "Instructions for working here follow: the workspace's first,
 // A project the tree no longer holds is sent what is still kept under its
 // name, and the root's.
 func (p *Platform) contextOf(tenant, project, agent, body string) string {
+	return p.contextIn(tenant, project, "", agent, body)
+}
+
+// contextIn is contextOf for a turn in one of the project's channels. The
+// project layer ends with the channel's purpose, then the line saying which
+// topics have experts on the chain, which every turn in a project is sent.
+func (p *Platform) contextIn(tenant, project, channel, agent, body string) string {
 	tree := p.Projects.Tree(tenant)
 	chain := tree.Chain(project)
 	if chain == nil {
@@ -384,6 +391,9 @@ func (p *Platform) contextOf(tenant, project, agent, body string) string {
 	if s := instructionsOf(chain, workspace); s != "" {
 		parts = append(parts, s)
 	}
+	if s := p.roomLayer(tenant, tree, project, channel); s != "" {
+		parts = append(parts, s)
+	}
 	parts = append(parts, p.notesOf(tenant, chain, workspace)...)
 	if s := p.Memory.Prompt(tenant, agent); s != "" {
 		parts = append(parts, s)
@@ -392,6 +402,21 @@ func (p *Platform) contextOf(tenant, project, agent, body string) string {
 		return body
 	}
 	return strings.Join(append(parts, body), "\n\n")
+}
+
+// roomLayer is what the project layer says last: the channel's purpose, and
+// which topics someone on the chain answers for.
+func (p *Platform) roomLayer(tenant string, tree *projects.Tree, project, channel string) string {
+	var lines []string
+	if channel != "" {
+		if c, err := p.Projects.Channel(tenant, project, channel); err == nil && strings.TrimSpace(c.Purpose) != "" {
+			lines = append(lines, fmt.Sprintf("This conversation is in #%s. Its purpose: %s", c.Name, strings.TrimSpace(c.Purpose)))
+		}
+	}
+	if s := projects.ExpertsLine(tree.ExpertTopics(project)); s != "" {
+		lines = append(lines, s)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // titleOf is how a project is named to an agent.

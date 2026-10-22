@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -48,10 +49,6 @@ const memoryPrompt = "Below is one exchange between a person and the agent %q. "
 // ended is called exactly once for every run that ends.
 func (p *Platform) ended(ctx context.Context, run runs.Run) {
 	p.settleUsage(ctx, run)
-	// Its place under any concurrency limit is free again.
-	if run.Origin != runs.OriginSystem {
-		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: run.Tenant, RunID: run.ID, At: p.now()})
-	}
 	p.raise(run)
 	// A question nobody answered is not waiting any more.
 	p.settleQuestionsOf(run)
@@ -62,6 +59,26 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 		p.fileHook(run)
 	case run.Origin == runs.OriginAPI && run.Parent == "" && run.Status == runs.Completed:
 		p.afterTurn(ctx, run)
+	}
+}
+
+// over marks a run ended with change and frees its place under any
+// concurrency limit in the one critical section admission takes. A new run
+// is then never refused for a place a run that has already ended still held.
+func (p *Platform) over(change func() (runs.Run, bool)) (runs.Run, bool) {
+	p.admission.Lock()
+	defer p.admission.Unlock()
+	run, ended := change()
+	if ended {
+		p.free(run)
+	}
+	return run, ended
+}
+
+// free gives an ended run's place back. The caller holds p.admission.
+func (p *Platform) free(run runs.Run) {
+	if run.Origin != runs.OriginSystem {
+		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: run.Tenant, RunID: run.ID, At: p.now()})
 	}
 }
 
@@ -99,13 +116,36 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 // whole branch counts because the next agent is sent the conversation so far,
 // and one with no tools of its own can repeat what an earlier turn found.
 //
+// A turn that answers a person's message in a shared thread, or follows one
+// that did, is sent the room up to that message, and the room holds what
+// every earlier message's agents answered, whoever those runs acted for. So
+// there every turn of the conversation made before it counts as one before
+// it, not only its branch.
+//
 // What cannot be read now counts as such a turn: a branch whose start the
 // index no longer holds, a revision or a granted provider that cannot be
 // found, and a provider changed since the turn, whose scope then is not kept.
 func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
 	path, err := p.Runs.Path(run.Tenant, run.ID)
-	if err != nil || len(path) == 0 || path[0].Prev != "" {
+	if err != nil || len(path) == 0 {
 		return true
+	}
+	if head := path[0]; head.Prev != "" {
+		if !strings.HasPrefix(head.Prev, "m-") {
+			return true
+		}
+		room, err := p.Runs.Conversation(run.Tenant, head.Thread)
+		if err != nil {
+			return true
+		}
+		for _, r := range room {
+			if r.CreatedAt.Before(run.CreatedAt) {
+				path = append(path, r)
+			}
+		}
+		// Oldest first, as a branch is, so each revision counts from its
+		// earliest turn.
+		slices.SortStableFunc(path, func(a, b runs.Run) int { return a.CreatedAt.Compare(b.CreatedAt) })
 	}
 	checked := map[string]bool{}
 	for _, turn := range path {
