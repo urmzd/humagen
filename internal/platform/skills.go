@@ -61,12 +61,18 @@ func pickText(text string, skills []pinnedSkill) string {
 	return text
 }
 
-// startsForSkills is what a message's tags start, with skills counted: a
-// message that names a skill and tags no agent starts @auto, which is added
-// to its tags (threads.WithSkillAgent). Every path that decides what a
-// message starts calls it before threads.Decide.
-func startsForSkills(ms []threads.Mention) []threads.Mention {
-	return threads.WithSkillAgent(ms)
+// startsForSkills is what a console message's tags start, with skills
+// counted: one that names a skill and tags no agent starts @auto, which is
+// added to its tags (threads.WithSkillAgent), and one with no room for it is
+// refused. skillTags calls it for a message a person posts in the console as
+// themselves, before threads.Decide. A path that sends a message elsewhere,
+// such as to the agents a conversation selected, skips it: the runs a message
+// starts are told its skills whichever agents they are (answerMessage).
+func startsForSkills(ms []threads.Mention) ([]threads.Mention, error) {
+	if err := threads.RoomForSkillAgent(ms); err != nil {
+		return nil, err
+	}
+	return threads.WithSkillAgent(ms), nil
 }
 
 // skillTags settles a message's skills before it is posted: a skill nobody
@@ -88,7 +94,7 @@ func skillTags(ms []threads.Mention, surfaced, console bool) ([]threads.Mention,
 	if !console {
 		return ms, nil
 	}
-	return startsForSkills(ms), nil
+	return startsForSkills(ms)
 }
 
 // skillsOfMessage is the skills the runs a message starts are told to use:

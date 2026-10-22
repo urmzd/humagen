@@ -137,12 +137,15 @@ What a message starts, first rule that applies:
 
 1. It tags agents or `@auto`: each tagged agent answers, side by side, each
    seeing the thread up to this message. At most 3 runs per message. A
-   message a person posts in the console that names a skill and tags no
-   agent is answered by `@auto`, which is added to its tags
-   (`startsForSkills` in `internal/platform`), unless it was posted only. A
-   message a client posts from Slack or GitHub keeps the client's defaults:
-   the default answers it with the skill, as the client's commands are
-   answered, so a client that lists its agents is never sent to `@auto`. An agent tagged and refused still counts as tagged.
+   message a person posts in the console, as themselves, that names a skill
+   and tags no agent is answered by `@auto`, which is added to its tags
+   (`startsForSkills` in `internal/platform`), unless it was posted only;
+   with no room left in its 10 tags it is refused. A message a client posts,
+   from Slack or GitHub or through the API for a person (`act_as`), keeps the
+   client's defaults: the default answers it with the skill, as the client's
+   commands are answered, so a client that lists its agents is never sent to
+   `@auto`. An agent tagged and refused still counts as tagged. Whichever
+   agents a message starts are told its skills.
 2. It tags only people, experts or a role: no run. It is a message to
    people.
 3. It answers a question or replies to a mention: no run. It is a human
@@ -258,7 +261,7 @@ alone), each resolving to one of:
 |---|---|---|
 | `experts` | `@sme:<name>`: the experts of that topic are notified | the topics the chain has experts for |
 | `skills` | `$<name>` | the skills the chain offers |
-| `role` | everyone holding the policy role `<name>` is notified, in one shared mention, as experts named by a role are. In a private thread, which its holders cannot read, the tag is refused, saying so | the roles the chain names in its members and experts |
+| `role` | everyone holding the policy role `<name>` is notified, in one shared mention. In a private thread, which its holders cannot read, the tag is refused, saying so | the roles the chain names in its members and experts |
 | `people` | `@<name>`: that person, by handle | the directory, with `people:read` |
 
 A kind declared under an agent's or a person's name takes an item: `@ignite`
