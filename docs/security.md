@@ -512,11 +512,12 @@ found), that person alone says anything to it: its reply and choice
 questions are addressed to them, anyone else's answer is refused (403), and
 anyone else may approve or deny its calls only as asked, with no edit and no
 note (403 with either). Each is checked on the run, in the inbox and through
-a surface's `act_as`, before the runtime is asked. So one person's words, or
-their pick of the options, never reach another person's tools with that
-person's credential. Any other run, one that acts for nobody, or reaches
-only shared credentials, and was called by none that reaches a person's, is
-answered by whoever `answerers` and `approvers` allow.
+a surface's `act_as`, before the runtime is asked. So nothing anyone else
+says in answer to such a run, or to a run it called, nor their pick of the
+options, reaches the person's tools with their credential. Any other run,
+one that acts for nobody, or reaches only shared credentials, and was called
+by none that reaches a person's, is answered by whoever `answerers` and
+`approvers` allow.
 
 `answerers` still decides who may answer at all: the asking run's own, so
 a called agent's for what a called run asks. When it leaves out the person
@@ -528,6 +529,20 @@ fail-closed outcome as `approvers` naming only the person who asked, without
 `self_approval`. On an agent granted a person-scoped tool provider, and on
 every agent it may call, directly or through another, leave `answerers`
 unset, or name everyone who uses the agent.
+
+That covers what a run is answered, not what a later turn reads. Each turn
+of a conversation in the console or the API is sent the conversation so
+far: every earlier turn's words, whoever asked them, and its answer. Anyone
+with `runs:write` may add a turn to any conversation in the workspace, and
+an earlier turn whose run reached no person's own credential was answered by
+whoever its `answerers` and `approvers` allowed, so its answer can carry
+someone else's words. When a person continues the conversation with an
+agent granted a person-scoped tool, that turn reads all of it with their
+credential. They see those turns and answers before they continue, as in a
+Slack thread, but unlike there the transcript the agent is sent does not
+say who wrote each turn, and an answer drawn from someone else's reply reads
+as the agent's own. Read a conversation before continuing it with such an
+agent, or start a new one.
 
 The right is checked before saying whether a part is still open. A
 change is pushed to the browser as an id only, and only to callers who may see
@@ -567,6 +582,11 @@ that kind.
 - A run another agent called acts for nobody, so it gets no tools that act as
   a person, even when the person who started the tree has connected them. A
   GitHub run acts for nobody too, since no client maps GitHub logins.
+- A conversation's transcript does not say who wrote what. A turn is sent
+  every earlier turn as the user's, whoever asked it, and an answer drawn
+  from someone's reply as the agent's own, so a person who continues a
+  conversation others added to, or answered, has their person-scoped tools
+  read those words with their credential ([The inbox](#the-inbox)).
 - No token revocation check beyond expiry, and no refresh. A session lasts 8
   hours.
 - No rate limiting.

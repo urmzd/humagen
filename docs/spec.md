@@ -373,12 +373,19 @@ hash it computed when they differ). A stdio one needs `credential_as`.
 A run that acts for someone, of an agent granted a person-scoped tool, asks
 that person alone what it, or a run it calls, asks with `ask_person`, even
 of the project's experts (`asked_of: sme:<topic>`), and takes an edit or a
-note on an approval only from them, so nobody else's words reach their
+note on an approval only from them, so nobody else's answer reaches their
 tools. An agent's `answerers` still apply, and a called agent's own decide
 who answers what it asks: when they leave that person out, nobody may
 answer, and the run waits until the question expires or is stopped. Leave
 `answerers` unset on an agent granted such a tool and on every agent it may
 call, directly or through another, or name everyone who uses it.
+
+That covers what a run is answered. A later turn is sent the conversation
+so far, whoever asked or answered its earlier turns, and the transcript
+does not say who: an earlier turn's answer drawn from someone else's reply
+reads as the agent's own. Read a conversation before continuing it with an
+agent granted such a tool, or start a new one
+([security](security.md#the-inbox)).
 
 Who a run acts for is decided when it is accepted, never by anything said in
 it:
