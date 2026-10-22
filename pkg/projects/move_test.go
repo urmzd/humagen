@@ -406,3 +406,36 @@ func TestPagesKeepTreeOrderAcrossDeletes(t *testing.T) {
 		t.Fatalf("an empty workspace = %#v", got)
 	}
 }
+
+// Ownership flows down, so a move never puts a members-only project, however
+// deep below what moves, under a project everyone owns: that would open it to
+// the whole workspace as owners.
+func TestAMoveNeverPutsAMembersOnlyProjectUnderOneEveryoneOwns(t *testing.T) {
+	s := projects.NewStore()
+	mustCreate(t, s, "acme", with(team("Open", ""), members("*=owner")), ada)
+	field := mustCreate(t, s, "acme", with(team("Field", ""), members("*=viewer", "ada=owner")), ada)
+	mustCreate(t, s, "acme", with(team("Mid", "Field"), members("*=viewer", "ada=owner")), ada)
+	mustCreate(t, s, "acme", with(team("Secret", "Mid"), members("ada=owner", "bo=member")), ada)
+	stranger := projects.Reader{Subject: "stranger"}
+	// Secret is two levels below Field and one below Mid.
+	for _, name := range []string{"Field", "Mid"} {
+		p, _ := s.Get("acme", name)
+		_, err := s.Move("acme", name, p.Version, "Open", ada, t0, nil)
+		if !errors.Is(err, projects.ErrInvalid) || !strings.Contains(err.Error(), "Secret") {
+			t.Fatalf("moving %s, with Secret below it, under Open = %v", name, err)
+		}
+	}
+	if a := s.Tree("acme").Resolve("Secret", stranger); a.Role != projects.None {
+		t.Fatalf("after the refused moves a stranger in Secret = %+v", a)
+	}
+	// Once Secret names everyone, Field may go.
+	if _, err := s.Update("acme", "Secret", 1, ada, t0, func(p *projects.Project) error {
+		p.Members = members("*=viewer", "ada=owner")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Move("acme", "Field", field.Version, "Open", ada, t0, nil); err != nil {
+		t.Fatalf("moving Field with nothing members only below it = %v", err)
+	}
+}

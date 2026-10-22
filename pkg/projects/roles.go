@@ -169,21 +169,18 @@ func openness(r Role) int { return min(r.rank(), Member.rank()) }
 // the root among them, is open to everyone as a member; no project is more
 // open than its parent, or less open than a child; and ownership flows down,
 // so a project everyone owns has no members-only project anywhere below it,
-// and a members-only project has no project everyone owns above it.
+// and a members-only project has no project everyone owns above it. The
+// projects below p go with it, so a move under a project everyone owns is
+// held to every members-only project it carries, however deep.
 func checkOpen(tree *Tree, p Project, parent *Project, children []Project) error {
 	star := everyoneOf(p.Members)
-	if star == None && parent != nil {
-		above := append([]string{parent.Name}, tree.Ancestors(parent.Name)...)
-		if !parent.IsRoot() {
-			above = append(above, Root)
+	if owned, ok := ownedAbove(tree, parent); ok {
+		if star == None {
+			return fmt.Errorf("%w: everyone owns %s, and owners above own everything below, so %s cannot be members only; name its owners first", ErrInvalid, display(owned), display(p.Name))
 		}
-		for _, name := range above {
-			q, ok := tree.Get(name)
-			if name == parent.Name {
-				q, ok = *parent, true
-			}
-			if ok && everyoneOf(q.Members) == Owner {
-				return fmt.Errorf("%w: everyone owns %s, and owners above own everything below, so %s cannot be members only; name its owners first", ErrInvalid, display(q.Name), display(p.Name))
+		for _, below := range tree.Subtree(p.Name) {
+			if q, ok := tree.Get(below); ok && below != p.Name && everyoneOf(q.Members) == None {
+				return fmt.Errorf("%w: everyone owns %s, and owners above own everything below, so %s cannot go under it while %s is members only; name its owners first", ErrInvalid, display(owned), display(p.Name), display(q.Name))
 			}
 		}
 	}
@@ -206,6 +203,27 @@ func checkOpen(tree *Tree, p Project, parent *Project, children []Project) error
 		}
 	}
 	return nil
+}
+
+// ownedAbove is the nearest project everyone owns on the chain from parent
+// up to the root, parent included. A nil parent (the root) has none above.
+func ownedAbove(tree *Tree, parent *Project) (string, bool) {
+	if parent == nil {
+		return "", false
+	}
+	if everyoneOf(parent.Members) == Owner {
+		return parent.Name, true
+	}
+	above := tree.Ancestors(parent.Name)
+	if !parent.IsRoot() {
+		above = append(above, Root)
+	}
+	for _, name := range above {
+		if q, ok := tree.Get(name); ok && everyoneOf(q.Members) == Owner {
+			return q.Name, true
+		}
+	}
+	return "", false
 }
 
 // limitOpenness lowers an Everyone entry to what a parent allows, so a
