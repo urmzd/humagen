@@ -501,4 +501,14 @@ func TestConfigCheckWarnsOfAMachineThatReadsRunsButNotProjects(t *testing.T) {
 			t.Fatalf("scopes %s: check said:\n%s", scopes, got)
 		}
 	}
+	// Scopes under the old prefix still count, and are noted, without
+	// telling the operator to rename them before the identity provider does.
+	got := check("warp:runs:read, warp:projects:read")
+	if !strings.Contains(got, "asks for scopes under warp:, the old prefix, which still works; change them to humagen: once your identity provider defines those") ||
+		strings.Contains(got, "lists no projects") {
+		t.Fatalf("check said:\n%s", got)
+	}
+	if got := check("warp:runs:read"); !strings.Contains(got, "lists no projects") {
+		t.Fatalf("check said:\n%s", got)
+	}
 }

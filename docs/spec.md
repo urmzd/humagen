@@ -1,11 +1,11 @@
-# The humagen spec
+# The Humagen spec
 
-humagen is configured in one language: versioned YAML documents (JSON works too)
+Humagen is configured in one language: versioned YAML documents (JSON works too)
 of two kinds, each with one owner.
 
 | Kind | Says | Owned by | Takes effect |
 |------|------|----------|--------------|
-| `System` | how and where humagen runs: listeners, sign-in, stores, bus, files, limits, extensions | whoever runs the process: a laptop, compose, Helm values | at start |
+| `System` | how and where Humagen runs: listeners, sign-in, stores, bus, files, limits, extensions | whoever runs the process: a laptop, compose, Helm values | at start |
 | `Platform` | what one workspace offers: its models, tools, agents, Slack and GitHub, settings | that workspace's admins | at start, with the console building on it |
 
 Both can live in one `humagen.yaml`, separated by `---`, or in separate files.
@@ -299,17 +299,17 @@ builds on:
 `surfaces.slack` runs the Slack app (`apps/slack`) beside the server as a
 client of its API, restarting it when it exits. It needs Node.js on `PATH` and
 `apps/slack` with its dependencies installed (`pnpm install`), found under the
-working directory, beside the binary, or at `HUMAGEN_SLACK_APP_DIR`. The humagen image
+working directory, beside the binary, or at `HUMAGEN_SLACK_APP_DIR`. The Humagen image
 carries neither, so there the surface is logged as off and the server runs
 without it.
 
-The app is given its tokens, its workspace and humagen's address, plus `PATH`,
+The app is given its tokens, its workspace and Humagen's address, plus `PATH`,
 `HOME`, `TMPDIR`, `TZ`, `XDG_STATE_HOME`, the `NODE_OPTIONS`,
 `NODE_EXTRA_CA_CERTS`, `NODE_USE_ENV_PROXY` and proxy variables, and
 `SLACK_BRANDING` and `SLACK_SOCKET_*`, when they are set. Nothing else of
-humagen's environment reaches it.
+Humagen's environment reaches it.
 
-It calls humagen's API with a credential for the server's sign-in. Under `dev` it
+It calls Humagen's API with a credential for the server's sign-in. Under `dev` it
 needs none. Under `oidc` or `mock` it needs `humagen_client`: a machine client of
 the identity provider, whose access tokens the app gets with client credentials
 and renews as they expire, with the scopes [the API](api.md#authenticating-a-machine)
@@ -347,7 +347,7 @@ is at least a member of it, and `projects:govern` owns it whatever they say.
 `workspace.project_kinds` are at most 16 kinds of the workspace's own, each
 `{name, title, like}`: a name of lower case letters, digits and dashes that is
 not a built-in kind, a title of at most 40 characters, and `like` either
-`team` or `account`. Behaviors stay humagen's; names are the workspace's. A kind
+`team` or `account`. Behaviors stay Humagen's; names are the workspace's. A kind
 a project still has cannot be removed: a start that would fails, naming the
 projects.
 
@@ -463,7 +463,7 @@ it:
 | The run | Acts for |
 |---|---|
 | asked in the console, or through the API with a person's sign-in | that person |
-| asked by the Slack app built on the API for a Slack person its client maps (`act_as`) | the mapped person, never the app. A message the app posts for them into the humagen thread their Slack thread is (with its `surface`) is theirs, and so is every run it starts |
+| asked by the Slack app built on the API for a Slack person its client maps (`act_as`) | the mapped person, never the app. A message the app posts for them into the Humagen thread their Slack thread is (with its `surface`) is theirs, and so is every run it starts |
 | asked about with that app's message shortcut, on someone else's message | nobody: the app asks as itself, since those words are the whole request. Under a dev sign-in, where the app's own credential is the person `dev`, asking as itself acts for `dev`. In a channel bound to a project the app refuses it, since only a person's own words are posted there |
 | raised by a Slack client's own connector | the one person the team's Slack clients map that Slack user to; none, or two different people, is nobody. It is started only if that person may start it where it is filed: the policy grants their subject `runs:write` and they are a member of the project. In a channel bound to a project it is not started for nobody |
 | started by a message in a shared thread (a tagged agent, `@auto` or the thread's default) | the person who posted it, never another participant, though it is sent what the others said in the room ahead of the poster's words; its retry is the poster's alone, from their inbox |
@@ -537,7 +537,7 @@ the project and the projects below it.
 ### Release notes
 
 `workspace.release_notes: true` (off by default) posts what the release of
-humagen this process runs brings in the workspace's own inbox, as an
+Humagen this process runs brings in the workspace's own inbox, as an
 announcement from humagen: "What's new in Humagen 0.16.0", then the release's
 breaking changes and its features, its Breaking and Features groups in the
 changelog the binary carries (`CHANGELOG.md`), and the link to the full
@@ -554,14 +554,14 @@ With memory stores every start is a new inbox, so it is posted at each
 start. A release of fixes alone posts nothing, and so does a build that is
 not a release: `dev`, a local build or a pseudo-version. The release is the
 version a release build stamps (`-ldflags "-X main.version=v0.16.0"`, as the
-Dockerfile does), else the version Go records for humagen's module
-(`go install github.com/urmzd/humagen/cmd/humagen@v0.16.0`, or a program that
-imports humagen at that version). It counts against the workspace's 20
+Dockerfile does), else the version Go records for Humagen's module
+(`go install github.com/urmzd/humagen/cmd/humagen@latest`, or a program that
+imports Humagen at that version). It counts against the workspace's 20
 announcements a day; a start past them posts it at the next start. The
 Slack app connects after the start and catches up when it does, so it posts
 them in a channel bound to the workspace's general, once it was bound
 before that start, where a reply under
-them starts a thread seeded with them, from humagen ([Slack](slack.md)).
+them starts a thread seeded with them, from Humagen ([Slack](slack.md)).
 
 ### Inbox retention
 
@@ -569,7 +569,7 @@ them starts a thread seeded with them, from humagen ([Slack](slack.md)).
 settled for everyone: a message resolved, dismissed or withdrawn. It is whole
 days, such as `90d`, or a duration, such as `2160h`; left out, it is 90
 days, and it is at least `7d` and at most 100 years (`humagen config check`
-refuses less or more). At start and every hour after, humagen drops each
+refuses less or more). At start and every hour after, Humagen drops each
 message settled longer ago than that, with everything recorded about it:
 its outcomes, who read or hid it, and where a client posted it. What is open or snoozed is never dropped, nor a
 question a run still waits on, and an announcement stays while it is open
@@ -620,8 +620,8 @@ or Helm values by hand:
 | `deploy.kind` | What `humagen deploy` does |
 |---------------|-------------------------|
 | `local` (the default) | `humagen start` on this machine |
-| `compose` | writes a Docker Compose project (humagen, and Postgres when asked) and brings it up. Sign-in that only answers on loopback runs on the host's network, so it stays on this machine |
-| `kubernetes` | installs the Helm chart humagen carries, with the spec as its values, into the cluster the block names |
+| `compose` | writes a Docker Compose project (Humagen, and Postgres when asked) and brings it up. Sign-in that only answers on loopback runs on the host's network, so it stays on this machine |
+| `kubernetes` | installs the Helm chart Humagen carries, with the spec as its values, into the cluster the block names |
 
 `humagen deploy -o DIR` writes the project or the chart and values and stops, for
 review or for GitOps (the Flux example in `deploy/flux` applies the same
@@ -629,25 +629,25 @@ chart). A secret never lands in a written file: an `env:` reference is passed
 from the deploying shell's environment, and a `keychain:` or `op://` one is
 read on this machine and handed to the target as a variable the written spec
 references. The `kubernetes` block's `values` are merged over the chart
-values humagen derives, but may not set `system` or `platforms`: those are the
+values Humagen derives, but may not set `system` or `platforms`: those are the
 spec's documents, whose references `humagen deploy` carries and checks, so set
 them there.
 
 That is for the spec's own references. A person's reference
-([Tools that act as you](#tools-that-act-as-you)) is read where humagen runs,
+([Tools that act as you](#tools-that-act-as-you)) is read where Humagen runs,
 when a run uses it, so there is nothing to read or pass when deploying:
 
 - A `keychain:` or `op://` start in `person_refs` names this machine's
   keychain or the 1Password account it signed in to, which a container cannot
   reach. `humagen deploy` refuses one for `compose` and `kubernetes`, naming the
   entry. For those targets list an `env:` start instead, let people store
-  their credential with humagen (`workspace.person_credentials.values: true`), or
+  their credential with Humagen (`workspace.person_credentials.values: true`), or
   deploy `local`.
 - An `env:` start names one variable per person and tool
   (`env:HUMAGEN_PERSON_{subject}_` holds Ana's `HUMAGEN_PERSON_ANA_ISSUES`), which
   nobody knows when deploying, so `humagen deploy` does not pass them, and says
   so in what it prints and in the file it writes. Set each in the target:
-  for `compose` in the humagen service's environment, for example in a
+  for `compose` in the Humagen service's environment, for example in a
   `compose.override.yaml` beside the `compose.yaml` it writes, and for
   `kubernetes` in the pod's, for example as `extraEnv` in the block's
   `values`, from a Secret of your own.

@@ -6,16 +6,16 @@
 |---|---|---|
 | Where | Go, in `humagen serve` (`pkg/integrations/slack`) | TypeScript, `apps/slack`, a separate process |
 | How Slack reaches it | Signed webhooks to a public URL | Socket Mode, no public URL |
-| How it reaches humagen | In process | The HTTP API, as a machine |
-| A run looks like | One plain message per run, edited with `chat.update` | humagen components: native streaming, plans, tool steps, failures with Retry, files |
+| How it reaches Humagen | In process | The HTTP API, as a machine |
+| A run looks like | One plain message per run, edited with `chat.update` | Humagen components: native streaming, plans, tool steps, failures with Retry, files |
 | Agent session status and the stop button | Yes | Yes |
 | Code channel slash commands | Yes | No |
-| `/agent`, shortcuts, Home tab | No | Yes, from humagen's sandbox manifest |
+| `/agent`, shortcuts, Home tab | No | Yes, from Humagen's sandbox manifest |
 | Inbox items about a run | No | In the run's thread, and on Home |
 | Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list, in full as the client's `slack.machine`, though they name an agent that lives in a project the machine may not read. A mapped person's messages are the client's (threads with a surface, below); anyone else's runs are not yet recorded as the client's |
-| Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a humagen thread filed by the binding, someone the client maps to nobody is refused in a bound channel, and announcements reach a bound general channel, caught up on after a restart or a reconnect, where a reply that mentions the app starts a thread seeded with the announcement |
+| Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a Humagen thread filed by the binding, someone the client maps to nobody is refused in a bound channel, and announcements reach a bound general channel, caught up on after a restart or a reconnect, where a reply that mentions the app starts a thread seeded with the announcement |
 | Mentions of a person | No | In their direct messages with the app, with Open Thread and Reply, unless they are in the Slack thread already (they wrote there or were mentioned there with `<@U…>`). Experts named by a role are each told |
-| Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them, when the app's client maps them (`act_as`): their message is theirs in the humagen thread, and so are the runs it starts. Else as the app, acting for nobody. Tools that act as a person use the person's own credential |
+| Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them, when the app's client maps them (`act_as`): their message is theirs in the Humagen thread, and so are the runs it starts. Else as the app, acting for nobody. Tools that act as a person use the person's own credential |
 | Questions a run waits on | No | In the run's thread, answered for the person the client maps. See below |
 | Tokens and cost | No | No. See [usage on a turn](clients.md#usage-on-a-turn) |
 
@@ -45,11 +45,11 @@ The app works around each of these and says where in its README.
 ### Questions a run waits on
 
 The Slack app shows a run's question in the run's thread: the streamed message
-is closed with humagen's approval or choice card, so its buttons can be pressed.
-A click answers through humagen (`answerQuestion`) as the person the app's
-client maps the Slack user to; a Slack user it does not map is told in humagen's
-words that they cannot, and humagen is not asked. Humagen decides the rest:
-who may answer is the run's spec's to say, and a refusal is shown with humagen's
+is closed with Humagen's approval or choice card, so its buttons can be pressed.
+A click answers through Humagen (`answerQuestion`) as the person the app's
+client maps the Slack user to; a Slack user it does not map is told in Humagen's
+words that they cannot, and Humagen is not asked. Humagen decides the rest:
+who may answer is the run's spec's to say, and a refusal is shown with Humagen's
 `noPermission` copy. The card settles in place from the run's own events,
 whoever answered, and the answer continues in a new message. A question's inbox
 message is not posted in the thread again. Configure the client with the app's
@@ -64,7 +64,7 @@ take answers.
 
 ### Coworking: channels, threads and mentions
 
-A project's owners bind a humagen channel to a Slack channel the app's bot is
+A project's owners bind a Humagen channel to a Slack channel the app's bot is
 already in (`PUT /api/projects/{name}/channels/{channel}` with
 `slack: {client, channel}`, or `slack:` on the channel in the Platform
 document). Binding one, or moving a binding, also takes `clients:write`: a
@@ -75,7 +75,7 @@ and archiving a channel unbinds it. `GET /api/clients/{id}/bindings` lists a
 client's. A client's `home` (a project and one of its channels) is where
 everything else is filed.
 
-For a person the client maps, the Slack app posts each message into the humagen
+For a person the client maps, the Slack app posts each message into the Humagen
 thread its Slack thread is, as that person (`POST /api/threads` with
 `surface {client, channel, ts, message, app_user}` and `act_as`). Only the
 client's `slack.machine` may, and the platform decides where the thread goes:
@@ -90,7 +90,7 @@ The platform reads Slack's text in the one tag grammar: the app's own mention
 is not a tag, a bot in `client.bots` is its agent, a person in `slack.people`
 is their handle, and anyone else stays plain and is refused. When the app is
 mentioned in a thread, the people's messages since it was last asked there are
-posted first, each as its person and posted only, so the room in humagen reads as
+posted first, each as its person and posted only, so the room in Humagen reads as
 it did in Slack. Each message is posted once by its ts: a redelivered event
 answers `repeated` and starts nothing again. Outside a bound channel the
 client's default answers an untagged message; the client's allow-list holds
@@ -101,9 +101,9 @@ read: someone who may not read a project's runs answers no question there,
 even on a card in a channel bound to it. A bound channel is a project's
 channel, so only people the client maps post there: anyone else who mentions
 the app in one is told to ask an admin to connect their Slack account, and
-humagen is not asked. Elsewhere they ask through the app as before. When humagen
+Humagen is not asked. Elsewhere they ask through the app as before. When Humagen
 cannot say which channels are bound, the app answers nobody it would ask as
-itself: the turn is refused as humagen being unavailable, and the next one reads
+itself: the turn is refused as Humagen being unavailable, and the next one reads
 the bindings again.
 
 An announcement of a project whose general channel is bound is posted there,
@@ -135,13 +135,13 @@ and compares them with its receipts:
   was bound there (`bound_at` on `GET /api/clients/{id}/bindings`, kept while
   the binding holds and moved when it is made again or moved).
 
-So the release notes humagen posts at start (`workspace.release_notes`), before
+So the release notes Humagen posts at start (`workspace.release_notes`), before
 the app connects, reach a channel bound to the workspace's general, once it
 was bound before that start. The bounds keep a reconnect to one read a
 bound project, and keep from the channel what is no longer news: a post a
 day late reads as new, and what was announced before the channel was bound,
 or while it was unbound, is not posted at all. What falls outside them
-stays in humagen's inbox and on the Home tab. A change is caught up on only in
+stays in Humagen's inbox and on the Home tab. A change is caught up on only in
 the newest 50: an older announcement edited or withdrawn while the app was
 not listening keeps its post as it was, withdrawn words included, until a
 later notice about it. Only bound projects are caught up on: once a Slack
@@ -149,23 +149,23 @@ channel is unbound, or bound to another project, its old posts are left as
 they are.
 
 The app catches up, and posts announcements at all, only when its client
-names the app's own credential as its machine (`slack.machine`): humagen shows
+names the app's own credential as its machine (`slack.machine`): Humagen shows
 the client's receipts to that credential alone, so any other would post
 everything again. It logs that it skipped the catch-up and why. A catch-up
-that could not read humagen, or could not bring a post up to date because humagen
+that could not read Humagen, or could not bring a post up to date because Humagen
 was away, is tried again after 5 seconds, then twice as long each time up to
 5 minutes, until one finishes. What would answer the same next time is
 logged and skipped, not tried again until the next catch-up: a bound project
 the machine may not read (403 or 404), such as a members-only one that does
-not name it, a receipt humagen refuses the machine the same way, and a post
+not name it, a receipt Humagen refuses the machine the same way, and a post
 Slack refuses to edit, such as one deleted there. None holds up another. A
 notice that comes during a catch-up never posts twice: the app looks at each
 announcement one look at a time, reads it afresh each time, receipt and
 all, and posts only what has none. A notice posts an announcement with no
 receipt only as a catch-up would: open, from the last day, and announced
-after the binding. humagen dates a receipt when it takes it, so after each
+after the binding. Humagen dates a receipt when it takes it, so after each
 receipt the app reads the announcement once more and shows a change made
-meanwhile, which no catch-up would see. A post whose receipt humagen did not
+meanwhile, which no catch-up would see. A post whose receipt Humagen did not
 take, as when it went away just then, is recorded at the next look rather
 than posted again, while the app keeps running.
 
@@ -174,13 +174,13 @@ the announcement. Slack delivers a message in a channel thread to the app
 only when it mentions the app: the manifest subscribes to `app_mention`, and
 to `message.im` for direct messages alone, and adding `message.channels`
 would widen what the app reads. So the reply that mentions the app is the
-one that reaches humagen, and the replies before it that did not are posted
+one that reaches Humagen, and the replies before it that did not are posted
 ahead of it as the room, each as its person and posted only. The app posts
 them as for any Slack thread, with the post's surface: the platform finds
 the announcement by the receipt the app recorded at that channel and ts, and
 starts the thread in the bound channel with it. Its turns start with the
 announcement, from the person who posted it, for a recap the agent the
-schedule ran, or for release notes humagen itself, never from whoever replied;
+schedule ran, or for release notes Humagen itself, never from whoever replied;
 then comes the reply, the person's
 own message, read in the one grammar and answered by the channel's chain as
 any message there. What the announcement says tags nobody. A later reply
@@ -190,14 +190,14 @@ client maps to nobody is told to connect their Slack account, as anywhere in
 a bound channel. A thread is seeded only where the Slack channel's binding
 files it in the announcement's own project, so only those who see that
 project read it. There a reply under an announcement that was withdrawn
-before anyone replied starts nothing, and the app says so (humagen answers
+before anyone replied starts nothing, and the app says so (Humagen answers
 410); a draft never reaches a channel. After the Slack channel is bound to
 another project, or unbound, a reply under an old post starts a thread where
 it is now filed, as any other, open or withdrawn: nothing of the
 announcement comes with it, and nobody there is told what became of it. So
 does a reply under an announcement withdrawn longer ago than the
 workspace's inbox retention (`workspace.inbox_retention`, 90 days by
-default), which humagen has dropped, receipt and all.
+default), which Humagen has dropped, receipt and all.
 Once a thread is seeded, the announcement is part of it and of what its runs
 are sent, so it is read as they are, with `runs:read`, and not as the inbox
 reads it, with `projects:read`.
@@ -215,14 +215,14 @@ The Home tab of a mapped person is the shared Home, everything on it read for
 them the same way: their open inbox and announcements (`GET /api/inbox`) and
 their projects (`GET /api/projects`, both with `act_as_client` and
 `act_as_user`), so it holds only what that person may read. It shows at most
-five messages that need them, newest first, with the rest counted as humagen
+five messages that need them, newest first, with the rest counted as Humagen
 counts what may need them (`open`): an agent's draft waiting on them as an
 owner is one of them, and a posted announcement is not. They are read with
 `needs=true`, which leaves posted announcements out before the page is cut, so
 however much news is newer the rows and their count agree. What's new holds
 five announcements of their projects, read with `news=true` so an agent's
 draft never crowds them off the page, unread first, posted ones only. Your
-projects holds the projects that name them, which humagen marks `mine`: they are
+projects holds the projects that name them, which Humagen marks `mine`: they are
 a member or an owner there through an entry for their subject or a
 `role:<name>` they hold, on the project itself or as an owner of a project
 above it. A project they see only through `*`, or only through
@@ -235,7 +235,7 @@ message to their direct messages with the app, where it can be answered, and
 What's new and Your projects are shown to read. A press on what Review sent is
 the person's own, done for them through the client even where the app may read
 the message too, and Retry asks the run again in its own thread. Neither it
-nor a mention's message offers Snooze or Dismiss: humagen does those only as the
+nor a mention's message offers Snooze or Dismiss: Humagen does those only as the
 caller, so in Slack they would be the app's. Ask a Question and Build an Agent
 open a form, and the words are posted as the person in their direct messages
 with the app, as the shortcut's are; Build an Agent tags `@warp-builder`, and
@@ -361,7 +361,7 @@ console role, is the authority. If the runtime cannot carry the request, the
 press is answered with an error so Slack redelivers it, and nothing is posted.
 
 A follow-up mention in the thread is answered by a new run. Slack mentions do
-not carry the thread's history in humagen today, so that run is not sent the
+not carry the thread's history in Humagen today, so that run is not sent the
 stopped turn. A conversation in the console is: see
 [Stopping a run](architecture.md#stopping-a-run). Carrying a Slack thread's
 history needs fiber's thread journal (`runtime.WithThreads`), which records a
@@ -397,7 +397,7 @@ message saying so.
 ## Errors
 
 Slack reports failures as `ok: false` with a code. For status and command
-calls humagen logs permanent refusal codes as warnings and still treats the event as
+calls Humagen logs permanent refusal codes as warnings and still treats the event as
 delivered: the answer is already on the surface, and retrying a refusal would
 never succeed. Transport failures and transient Slack server/rate-limit errors
 are returned, so the router retries them with its bounded backoff.

@@ -164,8 +164,8 @@ func EnvRef(ref string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("%w: a secret reference is written env:NAME", ErrInvalid)
 	}
-	// The old prefix is accepted for good: client records stored before the
-	// rename name WARP_ variables.
+	// The old WARP_ prefix is accepted for good: client records stored
+	// before the rename name variables under it.
 	if !envName.MatchString(name) || legacy.OldName(name) == "" {
 		return "", fmt.Errorf("%w: a secret reference names a variable starting with %s", ErrInvalid, EnvPrefix)
 	}

@@ -166,6 +166,30 @@ test("config: every missing name is reported at once, and no value is echoed", (
   assert.deepEqual(cfg.slack.operators, ["U01ABCDEF", "U02ABCDEF"]);
 });
 
+// A deployment configured before the rename sets WARP_ names: each still
+// works, with a note naming it; the new name wins; a missing setting is named
+// by its new name.
+test("config: a setting under its old WARP_ name is read, noted and loses to the new one", () => {
+  const slack = { SLACK_BOT_TOKEN: "b", SLACK_APP_TOKEN: "a", SLACK_TEAM_ID: "T01ABCDEF" };
+  const old = readConfig({ ...slack, WARP_TENANT: "acme", WARP_URL: "http://warp:8080", WARP_CLIENT: "slack-acme" });
+  assert.equal(old.humagen.tenant, "acme");
+  assert.equal(old.humagen.url, "http://warp:8080");
+  assert.equal(old.humagen.client, "slack-acme");
+  assert.deepEqual(old.notes, [
+    "WARP_CLIENT is the old name of HUMAGEN_CLIENT; it still works, rename it",
+    "WARP_TENANT is the old name of HUMAGEN_TENANT; it still works, rename it",
+    "WARP_URL is the old name of HUMAGEN_URL; it still works, rename it",
+  ]);
+  const both = readConfig({ ...slack, WARP_TENANT: "old", HUMAGEN_TENANT: "acme", WARP_IS_LOCAL_SHELL_SESSION: "1" });
+  assert.equal(both.humagen.tenant, "acme");
+  assert.deepEqual(both.notes, ["HUMAGEN_TENANT and WARP_TENANT differ; using HUMAGEN_TENANT"]);
+  assert.deepEqual(readConfig({ ...slack, HUMAGEN_TENANT: "acme" }).notes, []);
+  assert.throws(
+    () => readConfig({ ...slack, WARP_TENANT: " " }),
+    (e: Error) => /Missing HUMAGEN_TENANT\./.test(e.message),
+  );
+});
+
 const stream = (...chunks: string[]) =>
   new ReadableStream<Uint8Array>({
     start(c) {

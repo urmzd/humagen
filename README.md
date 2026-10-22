@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">humagen</h1>
+  <h1 align="center">Humagen</h1>
   <p align="center">
     A shared workspace for humans and agents: create agents, hire them into projects, and coordinate governed work with shared knowledge.
     <br /><br />
@@ -20,6 +20,8 @@
 </p>
 <p align="center"><em>Local development preview with seeded example data, captured with teasr. No model calls.</em></p>
 
+Formerly warp. Old settings, config files and specs still work, with a note at start; see [docs/upgrading-from-warp.md](docs/upgrading-from-warp.md).
+
 ## Features
 
 - Branch conversations across agents, with a shared call primitive for subagents, handoffs and delegations.
@@ -31,7 +33,7 @@
 - Read a project's inbox and post announcements to its members, or let a scheduled agent post a recap of what changed.
 - Give each project members and owners, keep a project to its members alone, and let a project's owners set tighter limits below it.
 - Cowork from Slack and GitHub: bind a project's channel to a Slack channel, post a mapped person's Slack messages as their own, reply to an announcement in its Slack thread, and ask the app in a GitHub comment.
-- With `workspace.release_notes` on, see humagen's release notes in the workspace's inbox after an upgrade.
+- With `workspace.release_notes` on, see Humagen's release notes in the workspace's inbox after an upgrade.
 - Keep the inbox bounded: what was settled for everyone is dropped after the workspace's retention, 90 days by default.
 - Connect GitHub and Slack through signed webhook ingress and tenant-bound connector capabilities.
 - Give agents MCP tools that act as each person with that person's own credential, and never a shared one in its place.
@@ -78,11 +80,11 @@ disk, seeded example agents on the offline provider, and the console at
 start asks a few questions (its name, model providers, MCP tools, sign-in,
 Slack), each with a default Enter accepts, and writes the answers to
 `humagen.yaml` in your config directory. You name where each key is kept
-(`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`); humagen reads it when it
+(`env:NAME`, `keychain:SERVICE`, `op://VAULT/ITEM/FIELD`); Humagen reads it when it
 is used and never stores it.
 
 Everything is configured in that one language: a `System` document for how and
-where humagen runs (sign-in, stores, bus, files, limits) and a `Platform` document
+where Humagen runs (sign-in, stores, bus, files, limits) and a `Platform` document
 per workspace (models, tools, agents, Slack, GitHub, workspace settings). See [the spec](docs/spec.md).
 The same file runs on your own infrastructure with no code: point `stores` at
 Postgres, `blobs` at S3 and `auth` at your identity provider, and use it with
@@ -190,7 +192,7 @@ This is the direction, not a claim that every workflow exists today. See the [ro
 
 ## Architecture
 
-humagen is the top of five layers (humagen, fiber, saige, playscape, anchor), each
+Humagen is the top of five layers (Humagen, fiber, saige, playscape, anchor), each
 building on the one below. [The ecosystem](docs/ecosystem.md) says who owns
 what and the order the remaining duplication is being removed in.
 
@@ -205,7 +207,7 @@ what and the order the remaining duplication is being removed in.
 The `@humagen/*` packages supply web and Slack presentation; `internal/presentation/github` renders GitHub Markdown. They live with the platform in this repository.
 
 
-An agent-to-agent call creates a run through `pkg/call`; its edge determines access, budget, depth and delegation mode. The platform owns identity, storage and orchestration; humagen owns rendering. Read the [architecture and implementation status](docs/architecture.md) before relying on planned persistence or governance features.
+An agent-to-agent call creates a run through `pkg/call`; its edge determines access, budget, depth and delegation mode. The platform owns identity, storage and orchestration; Humagen owns rendering. Read the [architecture and implementation status](docs/architecture.md) before relying on planned persistence or governance features.
 
 ## License
 

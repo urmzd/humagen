@@ -329,7 +329,7 @@ no permission, grants nothing.
   detail. The identity provider's error text is never echoed.
 - **Secrets come from the environment or a reference**, never from flags.
   A spec names where a credential is kept (`env:`, `keychain:`, `op://`);
-  humagen reads it when it is used and does not write it down.
+  Humagen reads it when it is used and does not write it down.
 - **Every change is logged** with subject, kind, tenant, method and path.
   Denials are logged with the permission that was missing.
 
@@ -339,10 +339,10 @@ An MCP tool provider is reached with one of two credentials, as its
 `credential_scope` says ([spec](spec.md#tools-that-act-as-you)): its own
 shared `credential`, the same for every run, or the credential of the person
 the run acts for. fiber reaches a person-scoped provider only with the
-credential humagen answers for the actor on the run's record, on a session of
+credential Humagen answers for the actor on the run's record, on a session of
 that person's own, and never with the shared one: such a provider has none.
 fiber redacts every resolved credential, shared or a person's, from tool
-results, errors and logs; humagen's tests check each person's token is absent
+results, errors and logs; Humagen's tests check each person's token is absent
 from answers, run events, what the model was sent and the server log.
 
 | The run | Acts for |
@@ -352,9 +352,9 @@ from answers, run events, what the model was sent and the server log.
 | asked about with the Slack app's message shortcut | the person who pressed it, when the message is theirs. On anyone else's message, or a bot's, nobody: the app asks as itself, since the message's words are the whole request and were not the presser's. Asking as itself acts for whoever the app's own credential is, so where that is a person, as under a dev sign-in (an empty `HUMAGEN_TOKEN` against `-auth=dev`, where every request is `dev`'s), it acts for that person. A mention in a channel thread differs: the thread's messages go ahead of the asker's own words, each with who wrote it, and the run acts for the asker, who asked there |
 | raised by a Slack client's connector | the one person the team's enabled Slack clients map the Slack user to; none, or two different people, is nobody |
 | started by a message in a shared thread: an agent it tags, `@auto`, or the default it inherits | the person who posted the message, or the person a client's credential posted it for (`act_as`), and never another participant. Like a mention in a Slack channel thread, the run is sent the room up to the message, what others said there each with who said it, ahead of the poster's own words, as it reads a tool's result: a request someone else made in the thread is acted on with the poster's credentials only when the poster's own words ask for it, as "go ahead" does. Each earlier turn is one line, its line breaks made spaces, after who took it: a person by name and by handle, which no one else has, an agent marked as one. The room is fenced off from the poster's words, which follow with who posted them, so no one can write a line that reads as the poster's, nor pass for them by display name, which anyone may share and which may be an agent's (`TestNoOneInTheRoomPutsWordsInThePostersMouth`). What the run finds is posted in the thread, which everyone who reads the project reads. A failed answer is retried only by the poster, from their inbox, as an answer to the same message; a room offers no Retry or Regenerate of its own. A follow-up asked through the API after a turn in such a thread acts for whoever asks it, and is sent the room the same way: each earlier follow-up with who asked it, or as acting for nobody, and its own words with who asks them (`TestAFollowUpInARoomNamesWhoAskedEachTurn`) |
-| Run Now on a schedule | whoever pressed it, when they wrote what it runs: whoever last changed its text, or its creator while nobody has, and nobody else has since chosen its agent or its project, whose instructions and notes go ahead of its text. Saving a schedule without changing its text writes none of it, so moving someone else's to another time does not make it yours. Anyone with `schedules:write` may change a schedule's words, so anyone else's press acts for nobody, as the schedule's own clock does: one person's words never run with another's credential, nor on an agent or in a project someone else chose for them. What a project itself says, its instructions and notes, is still written by whoever may change that project, as for every turn filed in it. A schedule edited before humagen kept who wrote it acts for nobody until its text is written again |
+| Run Now on a schedule | whoever pressed it, when they wrote what it runs: whoever last changed its text, or its creator while nobody has, and nobody else has since chosen its agent or its project, whose instructions and notes go ahead of its text. Saving a schedule without changing its text writes none of it, so moving someone else's to another time does not make it yours. Anyone with `schedules:write` may change a schedule's words, so anyone else's press acts for nobody, as the schedule's own clock does: one person's words never run with another's credential, nor on an agent or in a project someone else chose for them. What a project itself says, its instructions and notes, is still written by whoever may change that project, as for every turn filed in it. A schedule edited before Humagen kept who wrote it acts for nobody until its text is written again |
 | Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person: in the inbox signed in as themselves, where anyone else is not offered Retry (the card says only that person can retry it) and is refused (403), and in the Slack app by a Slack person its client maps to them, asked for with `act_as`, where anyone else, an operator included, is refused. So one person's words never run with another's credential, nor a person's credential on someone else's choice. The exception is a turn the Slack app asked as itself, which it asks again the same way, through the app, by the person who asked or an operator: where the app's own credential is a person, as under a dev sign-in, such a turn acted for that person, and its retry acts for them again. A turn that acted for nobody is retried for nobody: in the inbox by anyone with `runs:write`, in the Slack app by the person who asked or an operator, and only an operator once a restart has made the app forget who asked. Each person's retry is a run of its own, and pressing again joins it |
-| Retry or Regenerate in a console conversation | the person pressing it, as anything they send there, so each is offered only on a turn that acted for them: on anyone else's, or one that acted for nobody, neither is offered, and a failed turn says why instead. A turn recorded before humagen said whom a run acts for counts as the person's who asked it under their own name from the console or the API, unless its words were someone else's: an earlier turn's at the same point, asked by anyone else, which is what the console's Retry and Regenerate asked then. One a machine asked for a person (the Slack app's `act_as`, its message shortcut included) and a retry humagen asked for nobody count as nobody's |
+| Retry or Regenerate in a console conversation | the person pressing it, as anything they send there, so each is offered only on a turn that acted for them: on anyone else's, or one that acted for nobody, neither is offered, and a failed turn says why instead. A turn recorded before Humagen said whom a run acts for counts as the person's who asked it under their own name from the console or the API, unless its words were someone else's: an earlier turn's at the same point, asked by anyone else, which is what the console's Retry and Regenerate asked then. One a machine asked for a person (the Slack app's `act_as`, its message shortcut included) and a retry Humagen asked for nobody count as nobody's |
 | asked by a machine as itself, a schedule on its own clock, an eval, housekeeping, a call from another agent, GitHub | nobody |
 
 A person connects their own credential at `PUT /api/me/credentials/{tool}`
@@ -392,7 +392,7 @@ kinds, and they are kept differently:
   `workspace.person_credentials.values: true`, which is off by default. It is
   kept with the same protections a client's secret has: in the same secrets
   store, apart from the record, never returned by any route, never written to
-  a log, and forgotten when it is removed or replaced by a reference. humagen
+  a log, and forgotten when it is removed or replaced by a reference. Humagen
   does not encrypt it: with `-state=postgres` it is in the database as
   written, so guard the database as you would the credentials.
 
@@ -633,7 +633,7 @@ by none that reaches a person's, is answered by whoever `answerers` and
 a called agent's for what a called run asks. When it leaves out the person
 whose credentials the answer may reach, nobody may answer its reply or
 choice: the question is addressed to that person, the runtime refuses them,
-and humagen refuses everyone else. The run waits until the question expires (a
+and Humagen refuses everyone else. The run waits until the question expires (a
 day by default) and takes its default, or someone stops it, the same
 fail-closed outcome as `approvers` naming only the person who asked, without
 `self_approval`. On an agent granted a person-scoped tool provider, and on
@@ -679,15 +679,15 @@ that kind.
   person-scoped tool.
 - Dictation uses the browser's speech recognition. In Chrome that sends audio
   to the browser vendor's service, not to this server.
-- No OAuth to third parties: nobody signs in to a third party through humagen.
+- No OAuth to third parties: nobody signs in to a third party through Humagen.
   A shared MCP server's credential is a reference the spec names, read when a
   session opens. A person connects a tool with a reference or a token they
-  got elsewhere, and humagen keeps no refresh token. A person's value is kept in
+  got elsewhere, and Humagen keeps no refresh token. A person's value is kept in
   the clear in the store client secrets use: there is no encrypted store yet.
 - Only MCP tools act as a person. The Slack and GitHub surfaces' own actions
   and deliveries still use their client's token, whoever the run acts for.
 - A rotated secret behind an unchanged reference is not noticed by an open
-  session until the reference, the secret humagen answers or the provider's
+  session until the reference, the secret Humagen answers or the provider's
   record changes, as fiber documents.
 - A run another agent called acts for nobody, so it gets no tools that act as
   a person, even when the person who started the tree has connected them. A

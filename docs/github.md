@@ -75,7 +75,7 @@ secret:
 export HUMAGEN_GITHUB_AUTO_LABELS='{"acme/handbook":{"agent:auto":"docs-bot"}}'
 ```
 
-Register `docs-bot` with humagen and subscribe the GitHub webhook to `issues`
+Register `docs-bot` with Humagen and subscribe the GitHub webhook to `issues`
 and `pull_request` events. Applying `agent:auto` starts a run using the subject's
 title and body. The run answers on that subject unless delivery routes override
 it. Repository matching is case-insensitive; label names match exactly.

@@ -1,6 +1,6 @@
 # Deploy
 
-humagen is one process. `humagen serve` holds the API, sign-in, the event stream,
+Humagen is one process. `humagen serve` holds the API, sign-in, the event stream,
 schedules and agent execution, and serves the built console with `-web`. The
 console and the Slack app are clients of it. Everything here runs that one
 process with its stores beside it.
@@ -8,14 +8,14 @@ process with its stores beside it.
 | Where | What | Files |
 |-------|------|-------|
 | Your machine, no containers | `humagen start`, or `make dev` and `make web` | [README](../README.md#quick-start) |
-| Your machine or one host | Docker Compose: humagen, Postgres, optional MinIO and Redis | [`deploy/compose`](../deploy/compose) |
+| Your machine or one host | Docker Compose: Humagen, Postgres, optional MinIO and Redis | [`deploy/compose`](../deploy/compose) |
 | Kubernetes | A Helm chart | [`deploy/helm/humagen`](../deploy/helm/humagen) |
 | Kubernetes, from Git | Flux deploying that chart | [`deploy/flux`](../deploy/flux) |
 | Wherever the spec says | `humagen deploy`: the spec's `deploy` slot picks `local`, `compose` or `kubernetes`, and `-o DIR` writes what it would apply and stops | [the spec](spec.md#deploying-it) |
 
 ## What to know first
 
-- **One spec everywhere.** humagen is configured by the YAML documents in
+- **One spec everywhere.** Humagen is configured by the YAML documents in
   [the spec](spec.md). A `System` document says how and where it runs:
   listeners, sign-in, stores, bus, files, limits. It belongs to whoever runs
   the process, so here it is the compose file's `config/warp.yaml` or the
@@ -26,8 +26,8 @@ process with its stores beside it.
 - **Secrets go in the environment, never in the spec.** A credential in a
   document is a reference, `{ref: env:NAME}`, read at start. The variable comes
   from `.env` in compose and from the `existingSecret` Secret in Kubernetes. A
-  reference to an unset variable stops humagen at start.
-- **People's own tool credentials are read where humagen runs.** A person's
+  reference to an unset variable stops Humagen at start.
+- **People's own tool credentials are read where Humagen runs.** A person's
   reference, under a `person_refs` start ([the spec](spec.md#tools-that-act-as-you)),
   is read by the server when a run uses it. A container has no keychain and
   no 1Password session, so there a start is an `env:` one, and each person's
@@ -36,7 +36,7 @@ process with its stores beside it.
   ([Deploying it](spec.md#deploying-it)).
 - **One replica.** The stores are single-writer: the run index, the usage
   ledger, the admission lock and the schedules assume one process owns them
-  (see [Limits at scale](architecture.md#limits-at-scale)). A second humagen on
+  (see [Limits at scale](architecture.md#limits-at-scale)). A second Humagen on
   the same database races the first. The chart refuses `replicaCount` other
   than 1 and upgrades with `Recreate`.
 - **Sign-in in a container is OIDC.** `auth.kind` `dev`, `mock` and
@@ -66,7 +66,7 @@ install`, then `turbo run build --filter=@humagen/console`) and a static `humage
 - The default command is `serve -f /etc/warp -addr 0.0.0.0:8080 -web
   /usr/share/warp/web`: mount a spec at `/etc/warp`. With none, `serve` keeps
   its own defaults: OIDC from the `HUMAGEN_OIDC_*` variables, nothing seeded. When
-  they are unset humagen stops rather than serve without sign-in. A System
+  they are unset Humagen stops rather than serve without sign-in. A System
   document that names no `auth.kind` means `dev`, which refuses the
   container's address, so the spec names `oidc`.
 - A healthcheck calls `/healthz`.
@@ -83,9 +83,9 @@ the server over HTTP.
 
 ## Docker Compose
 
-[`deploy/compose/compose.yaml`](../deploy/compose/compose.yaml) runs humagen and
+[`deploy/compose/compose.yaml`](../deploy/compose/compose.yaml) runs Humagen and
 Postgres 17, with two optional profiles: `s3` (MinIO, and a one-shot job that
-creates the bucket) and `redis`. Each service has a healthcheck, and humagen waits
+creates the bucket) and `redis`. Each service has a healthcheck, and Humagen waits
 for what it depends on.
 
 ```sh
@@ -105,7 +105,7 @@ be in `.env`. [`.env.example`](../deploy/compose/.env.example) lists them,
 commented. `COMPOSE_PROFILES=s3,redis` turns on the profiles; uncomment the
 matching `blobs` or `bus` block in `humagen.yaml` as well.
 
-humagen is published on `127.0.0.1:8080` by default. To reach it from other
+Humagen is published on `127.0.0.1:8080` by default. To reach it from other
 machines, set `HUMAGEN_BIND=0.0.0.0` behind TLS, and `public_url` to the address
 browsers use.
 
@@ -113,7 +113,7 @@ browsers use.
 
 [`compose.dev.yaml`](../deploy/compose/compose.dev.yaml) mounts
 [`dev/warp.yaml`](../deploy/compose/dev/warp.yaml) instead: `auth.kind: dev`,
-seeded agents on the offline provider, the same Platform document. humagen runs
+seeded agents on the offline provider, the same Platform document. Humagen runs
 on the host's network, listening on `127.0.0.1:8080`, with Postgres (and MinIO,
 Redis) published on the host's loopback for it. It needs host networking: Linux, or Docker Desktop 4.34+ with
 it turned on.
@@ -170,7 +170,7 @@ replaces lists, so a `platforms` override replaces the default list.
 `make chart-check` (`deploy/helm/check.sh`) lints the chart, renders it with
 each file in `ci/` and the Flux values, runs `kubeconform` on the manifests
 when it is installed, and runs `humagen config check` on the `humagen.yaml` each
-render produces, so the chart cannot render a spec humagen refuses. It also checks
+render produces, so the chart cannot render a spec Humagen refuses. It also checks
 the compose stack's two specs.
 
 The chart does not run Postgres, Redis or a bucket: use what your cluster
@@ -179,16 +179,28 @@ raise the read timeout so the event stream is not cut; `values.yaml` shows the
 ingress-nginx annotations. `webhooks.enabled` adds the separate listener for
 signed Slack and GitHub webhooks, on its own Service port.
 
+The chart was called `warp` before the product was renamed. A release it
+installed keeps its Deployment, Service and volume only with
+`nameOverride: warp`, and the chart refuses to upgrade one without it;
+`humagen deploy` sets it for such a release on every deploy. See
+[upgrading-from-warp.md](upgrading-from-warp.md#kubernetes).
+
 ## Flux
 
-[`deploy/flux`](../deploy/flux) deploys the chart straight from this repository:
+[`deploy/flux`](../deploy/flux) deploys the chart straight from this repository.
+Its objects (the namespace, the `GitRepository`, the `Kustomization`, the
+`HelmRelease` and the Secret it reads) keep the name `warp` they had before
+the product was renamed, because the example `Kustomization` prunes what it no
+longer applies:
 
 - [`clusters/example/humagen.yaml`](../deploy/flux/clusters/example/humagen.yaml): a
   `GitRepository` for this repository (narrowed to `deploy/`) and a Flux
   `Kustomization` that applies `deploy/flux/app`. Commit it where your cluster's
   Flux already reconciles.
-- [`app/`](../deploy/flux/app): the `humagen` namespace and a `HelmRelease` whose
-  chart is `./deploy/helm/humagen` from that source, rebuilt on every revision. Its
+- [`app/`](../deploy/flux/app): the `warp` namespace and a `HelmRelease` named
+  `warp` whose chart is `./deploy/helm/humagen` from that source, rebuilt on
+  every revision, and upgraded in place when the chart's name changes
+  (`chartNameChangeStrategy: InPlaceUpdate`). Its
   values come from [`app/values.yaml`](../deploy/flux/app/values.yaml), an
   override example in the spec's shape (`system`, `platforms`), through a generated ConfigMap whose name changes with its
   content, so an edit upgrades the release.
@@ -196,7 +208,7 @@ signed Slack and GitHub webhooks, on its own Service port.
 To use your own values, copy `app/` into your fleet repository, edit
 `values.yaml` and point the `Kustomization`'s `path` at the copy (with a
 `sourceRef` to your fleet repository). Pin `ref` to a release tag rather than
-`main`. The `humagen-env` Secret is yours to create; with SOPS, commit it encrypted
+`main`. The `warp-env` Secret is yours to create; with SOPS, commit it encrypted
 beside `values.yaml` and turn on the `decryption` block shown in the file. Once
 an image and chart are published to a registry, an `OCIRepository` can replace
 the `GitRepository`; nothing is published yet.

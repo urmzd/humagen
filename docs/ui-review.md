@@ -67,7 +67,7 @@ ChatGPT's live page presented a browser check. The comparison therefore uses
 official documentation and the published ChatGPT screenshot, without claiming
 to have inspected either signed-in interface.
 
-Humagen now uses shared humagen folder, open-folder and folder-plus icons in
+Humagen now uses shared Humagen folder, open-folder and folder-plus icons in
 project navigation and the composer. Projectless work uses a conversation icon.
 A folder remains in the collapsed rail and opens a named project list, including
 creation when permitted. Opening a project closes the flyout and highlights its
@@ -231,7 +231,7 @@ to the conversation work.
 
 ## Checking a UI change
 
-`make screens` builds humagen and the console, starts humagen on a free loopback port
+`make screens` builds Humagen and the console, starts Humagen on a free loopback port
 with the development sign-in, the seeded agents and state in memory, adds
 announcements, failed runs and a schedule through the API, and captures every
 page and tab at 390x844 and 1280x800. It uses an installed Chromium or Chrome

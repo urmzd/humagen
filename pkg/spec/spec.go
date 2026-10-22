@@ -377,9 +377,9 @@ func decodeSpec(raw json.RawMessage, v any) error {
 // fields are declared, so a file humagen writes reads like one a person wrote.
 func Marshal(cfg Config) ([]byte, error) { return marshal(cfg, APIVersion) }
 
-// MarshalOld is Marshal in the language as it was before the rename
-// (api_version warp/v1, surfaces.slack.warp_client and warp_token), which
-// this package still reads. setup writes a spec it found under its old name
+// MarshalOld is Marshal in the language as it was before the rename, with
+// the old api_version and the old surfaces.slack field names, which this
+// package still reads. setup writes a spec it found under its old name
 // this way, so the release before the rename can still read it.
 func MarshalOld(cfg Config) ([]byte, error) {
 	out := cfg

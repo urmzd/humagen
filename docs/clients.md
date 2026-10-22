@@ -70,7 +70,7 @@ in the workspace, and has to be written.
 The list is applied three times: a bot or an auto-label that names an agent
 outside it is refused when the client is saved, a name in a message that is
 outside it is not read as an agent, and a tag for an agent outside it is
-dropped before it reaches the platform. In humagen's threads it holds for every
+dropped before it reaches the platform. In Humagen's threads it holds for every
 message the client's machine posts for a person, on the client's own surface
 or in any other thread, such as one started in the console: an agent outside
 it, a default outside it, and `@auto` for a client that lists its agents are
@@ -274,12 +274,12 @@ per client. Published files are not counted by client.
 The console shows what a run used on its Activity page, the context gauge and
 Analytics, and not on the turn in the conversation. The Slack app shows none.
 The rule is that a surface shows usage on a turn only if every surface the
-shared adapter feeds can, and humagen has no usage summary for Slack:
+shared adapter feeds can, and Humagen has no usage summary for Slack:
 `@humagen/web` renders `Turn.usage` as a chip, `@humagen/components` renders
 nothing. So the adapter leaves `Turn.usage` unset and the two agree. The run's
 `usage` is on the API for any client that wants it.
 
-What humagen should have for this:
+What Humagen should have for this:
 
 - A `RunUsage` summary in `@humagen/components` (Slack context line and web)
   taking integer micros, a currency and an unpriced count, so neither surface

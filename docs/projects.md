@@ -9,16 +9,16 @@ is planned and in which phase.
 
 A workspace becomes a coworking space: a tree of projects, each with channels,
 each channel with threads where people and agents work side by side. Nothing
-here is a second system. Each piece is built on what humagen or fiber already has:
+here is a second system. Each piece is built on what Humagen or fiber already has:
 
 | Need | Built on |
 |---|---|
 | Nested projects | a new `pkg/projects` store on `pkg/state`. A project's name stays its identity, so nothing filed under a name moves |
 | Project level policies | `pkg/policy` project scopes, applied along the project's chain of ancestors. A narrower scope only tightens |
-| Platform and project agents | humagen's project record. fiber's `AgentSpec` is unchanged. Checked once, at admission |
-| Scheduled agents (recaps) | fiber's cron trigger through humagen's schedules, filed in the project |
+| Platform and project agents | Humagen's project record. fiber's `AgentSpec` is unchanged. Checked once, at admission |
+| Scheduled agents (recaps) | fiber's cron trigger through Humagen's schedules, filed in the project |
 | Project inbox and announcements | `pkg/inbox`, read by `Source.Project`. An announcement is a message kind, not a store |
-| Shared threads | humagen's conversations (threads, branches, any agent on any turn), plus human messages that start no run |
+| Shared threads | Humagen's conversations (threads, branches, any agent on any turn), plus human messages that start no run |
 | Experts (SMEs) | `ask_person`, inbox questions and their addressing |
 | Context | fiber's pinned system prompt (the agent's instructions), `pkg/memory` (agent and project notes), instructions on the project record, and the knowledge sources the project chain names, through fiber's knowledge hook |
 
@@ -90,7 +90,7 @@ parent.
   `general` always exists and cannot be removed. A channel has an immutable
   slug, a title, a purpose and an optional default agent. A channel has the
   project's visibility; per-channel membership is a follow-up.
-- Every thread is in exactly one channel of one project. A thread is a humagen
+- Every thread is in exactly one channel of one project. A thread is a Humagen
   conversation: turns, branches, any agent on any turn. It gains participants
   (people and agents), an optional default agent and a visibility:
   - **shared**: everyone who can see the project reads it, like a thread in a
@@ -692,7 +692,7 @@ key it is, left out of the directory, and subjects are never searched.
   and in every descendant, and nowhere else. `*` never reaches it, and it is
   not available at the root, so a projectless conversation cannot reach it.
 
-Both relations are kept on humagen's records (the project's `Agents`, and an
+Both relations are kept on Humagen's records (the project's `Agents`, and an
 agent-to-home index in `pkg/projects`). fiber's `AgentSpec` is unchanged.
 
 ```
@@ -744,7 +744,7 @@ naming an agent that does not exist, at every one of them.
 the new home and of the old one. It answers 409, listing them, when a
 schedule, alert rule, default or call-policy list outside the new home's
 subtree still names the agent. Editing a homed agent also needs ownership of
-its home. The spec says the same on humagen's wrapper:
+its home. The spec says the same on Humagen's wrapper:
 `agents: [{project: Globex, spec: {...}}]`.
 
 ### `@auto`, the built-in router
@@ -769,7 +769,7 @@ A client's `DefaultAgent` follows the same rule, as one more layer. It is the
 default for the threads the client files outside a bound channel: DMs, the
 assistant pane, an unbound channel, a GitHub issue. The order there is the
 thread, then the client, then the client's home channel and its chain. In a
-bound Slack channel the bound humagen channel's chain decides. The client's
+bound Slack channel the bound Humagen channel's chain decides. The client's
 allow-list (`client.Routes`) still filters the result: a default the client
 may not route to is refused, never swapped. A GitHub label in `auto_labels`
 names an agent, so it is a tag. fiber's in-process connectors may set an
@@ -785,10 +785,10 @@ list.
 `runs.ProjectOf` believes them for `slack` and `github` origins, because
 ingress overwrites whatever a connector put there (phase 8).
 
-### How context maps onto fiber and humagen
+### How context maps onto fiber and Humagen
 
 - The agent's instructions are its pinned `AgentSpec.SystemPrompt`. fiber
-  sends them as the system message for that revision. humagen never rewrites
+  sends them as the system message for that revision. Humagen never rewrites
   them per run. `runtime.Request.Instructions` stays only the host's return
   contract (fiber: "callers must not supply arbitrary system text"), so
   project instructions are not put there.
@@ -851,7 +851,7 @@ ingress overwrites whatever a connector put there (phase 8).
     source the workspace no longer has grounds nothing, as one an agent
     names does.
 - fiber's own thread journal (`pkg/thread`) is per agent by design ("not a
-  transcript of the room"), so humagen keeps its own room transcript.
+  transcript of the room"), so Humagen keeps its own room transcript.
 
 ## Announcements and recaps
 
@@ -913,7 +913,7 @@ the reader cannot see never reaches their stream.
 - `deliver: inbox` sends the answer to the schedule's creator (kind
   `result`), which closes the gap that a scheduled run's answer reaches nobody
   today.
-- **humagen**: a release's notes in the root, `From{system, humagen}` (see
+- **Humagen**: a release's notes in the root, `From{system, humagen}` (see
   Release notes).
 
 ### A recap is a scheduled agent
@@ -963,8 +963,8 @@ days by default (see Retention and counts).
   write an entry's type, so a breaking change of another type is posted
   too. Fixes and the rest are not posted.
 - The running version is what a release build stamps with `-ldflags`, which
-  counts only in humagen's own binary, else the module version Go records for
-  humagen, in its binary or in a program that imports it. `dev`, a local build
+  counts only in Humagen's own binary, else the module version Go records for
+  Humagen, in its binary or in a program that imports it. `dev`, a local build
   and a pseudo-version are not releases, and post nothing.
 - At each start, once the Platform documents are applied, each workspace
   that sets it is posted the release, unless it has no breaking changes
@@ -979,7 +979,7 @@ days by default (see Retention and counts).
 - The Slack app connects after the start, and catches up on a bound
   project's announcements when it does, so the notes reach a channel bound
   to the workspace's general before that start. A reply under their post starts a thread
-  seeded with them, from humagen (`ThreadAnnouncement.kind` `system`, `by`
+  seeded with them, from Humagen (`ThreadAnnouncement.kind` `system`, `by`
   `humagen`), which the room shows without a person's or an agent's mark and
   a run is sent as `humagen (system)`.
 
@@ -1235,7 +1235,7 @@ lives only when everyone reads that project.
 | Route | Permission | Notes |
 |---|---|---|
 | `PUT /api/projects/{name}/channels/{channel}` | `projects:write` | gains `slack {client, channel}`; owner; the client must be a Slack client in the tenant; binding a Slack channel, or moving a binding, also takes `clients:write` (403), as every new thread there is filed in the project; keeping or removing one takes only the owner. The channel gains `bound_at`: set when a binding is made or moved, kept while it holds, absent while unbound |
-| `GET /api/clients/{id}/bindings` | `clients:read` | `[{slack_channel, project, channel, bound_at}]`, at most 200; `bound_at` is when the binding was made, and the Slack app catches up on nothing announced before it. A binding made before humagen kept the time reads as bound at its channel's last change |
+| `GET /api/clients/{id}/bindings` | `clients:read` | `[{slack_channel, project, channel, bound_at}]`, at most 200; `bound_at` is when the binding was made, and the Slack app catches up on nothing announced before it. A binding made before Humagen kept the time reads as bound at its channel's last change |
 | `PUT /api/clients/{id}` | `clients:write` | gains `home {project, channel}` |
 | `POST /api/clients`, `PUT /api/clients/{id}` | `clients:write` | `github` gains `login`, the app's own GitHub login (`humagen[bot]`); one that is not a GitHub login is 400. A comment that mentions it and names no agent asks the client's default, then its home channel's chain (docs/github.md) |
 | `POST /api/threads`, `POST /api/threads/{id}/messages` | `runs:write` | gain `surface {client, channel, ts}`: find or create the thread by surface. The platform files it from the binding, never from a request field, and only for the client's `slack.machine` |
@@ -1579,11 +1579,11 @@ and its total, What's new and Your projects to the same on both renderers.
 ### Slack (one app per client)
 
 - **Channels.** A project owner who also administers the client
-  (`clients:write`) binds an existing Slack channel to a humagen channel. The
+  (`clients:write`) binds an existing Slack channel to a Humagen channel. The
   bot must already be in it, so no scope widens. Which of a client's Slack
   channels a project answers in is the client's admins' to decide: a
   binding files every new thread there in the project. A Slack thread
-  in a bound channel is a shared humagen thread in that channel. A DM or the
+  in a bound channel is a shared Humagen thread in that channel. A DM or the
   assistant pane is a thread in the client's home channel, private from
   phase 7.
 - **Addressing.** In a channel, Slack delivers a message to the app only when
@@ -1633,7 +1633,7 @@ and its total, What's new and Your projects to the same on both renderers.
   mentions the app, so the reply that mentions it posts, with the post's
   surface, into the thread the platform finds by that post's receipt: in
   the bound channel, its turns start with the announcement from whoever
-  posted it (the scheduled agent for a recap, humagen itself for release
+  posted it (the scheduled agent for a recap, Humagen itself for release
   notes), then the reply as the person's own message, answered by the
   channel's chain. A later reply finds the same thread, and once the
   announcement is withdrawn the thread says only that. A reply under one
@@ -1911,7 +1911,7 @@ phase 2 and experts to phase 3, because addressing and threads need them.
 | 6 | Scheduled agents in projects (recaps) | `deliver` (project or inbox), posting on `ended()`, `agent_posts` and the draft part. `project_changes`, `runs_summary(project)`, the `Summarize` project filter, file-managed schedules in the spec. Schedules tab and "Add Weekly Recap". Status row "Schedule delivery", and the new row "Scheduled agents in projects (recaps)" | M |
 | 7 | Read confinement: members-only projects and private threads | `p.Sees` with 404 on every read path (runs, threads, events, manifest, trace, journal, analytics, artifacts and downloads, schedules, inbox, memory, homed agents). Private threads; members-only projects and the account default; no memory proposals from private threads. A contract sweep reads every GET and the event stream as a non-member. Status row "Project membership and per-project access" built, and the new row "Read confinement" | L, two PRs |
 | 8 | Slack and GitHub coworking | Channel bindings, client home, surface-keyed threads, addressing, the room's messages, mention and expert DMs, the reply modal. Announcements posted top-level with delivery receipts; App Home on the shared Home through `act_as`; GitHub on the same rule; docs/slack.md. Status rows "Slack app (`apps/slack`)", "Questions in Slack" and "Schedule delivery", and the new row "Slack and GitHub coworking in projects" | L |
-| 9 | Release notes, knowledge sources inherited down the tree, inbox retention and per-reader counters | Built. Release notes: `workspace.release_notes` posts a release's breaking changes and features once, in the root's inbox from humagen (`PostOnce`, keyed `release:<version>`); the Slack app's catch-up brings them to a Slack channel bound to the workspace's general, where a reply starts a thread seeded with them. Knowledge: a project, the workspace included, names at most 8 of the workspace's sources (`Project.Knowledge`, `GET` and `PUT /api/projects/{name}/knowledge`, and the file's `knowledge`), and a run is grounded in its chain's, nearest first, at most 16, pinned at accept as `_warp.sources` and added through `callExecutor.resolve`. fiber gained one thing for it: a meta key starting with `_` is the host's and never reaches a model (fiber#43). The console shows and edits them in the Knowledge section of a project's Context tab. Retention: `workspace.inbox_retention` (90 days by default) drops what was settled for everyone, with its records, at start and every hour, in steps under a cut that replay reads first; `Count` adds up counters kept per bucket of open messages. The inbox is still held whole in memory. Status rows "Release notes in the workspace's inbox", "Knowledge sources inherited down the project tree" and "Inbox retention and per-reader counts" | M |
+| 9 | Release notes, knowledge sources inherited down the tree, inbox retention and per-reader counters | Built. Release notes: `workspace.release_notes` posts a release's breaking changes and features once, in the root's inbox from Humagen (`PostOnce`, keyed `release:<version>`); the Slack app's catch-up brings them to a Slack channel bound to the workspace's general, where a reply starts a thread seeded with them. Knowledge: a project, the workspace included, names at most 8 of the workspace's sources (`Project.Knowledge`, `GET` and `PUT /api/projects/{name}/knowledge`, and the file's `knowledge`), and a run is grounded in its chain's, nearest first, at most 16, pinned at accept as `_warp.sources` and added through `callExecutor.resolve`. fiber gained one thing for it: a meta key starting with `_` is the host's and never reaches a model (fiber#43). The console shows and edits them in the Knowledge section of a project's Context tab. Retention: `workspace.inbox_retention` (90 days by default) drops what was settled for everyone, with its records, at start and every hour, in steps under a cut that replay reads first; `Count` adds up counters kept per bucket of open messages. The inbox is still held whole in memory. Status rows "Release notes in the workspace's inbox", "Knowledge sources inherited down the project tree" and "Inbox retention and per-reader counts" | M |
 
 ## Risks
 
@@ -1958,7 +1958,7 @@ phase 2 and experts to phase 3, because addressing and threads need them.
   shared thread with a default answers every untagged message, which can be
   noisy. Messages that tag people, and replies to mentions and answers that
   tag no agent, start no run, and Post Only is always there. In Slack, only
-  messages that mention the app reach humagen.
+  messages that mention the app reach Humagen.
 - **Homing narrows widely.** Giving an agent a home removes it from `*`
   everywhere else. The route answers 409 while anything outside the new
   subtree uses the agent, and the console counts the projects that lose it.

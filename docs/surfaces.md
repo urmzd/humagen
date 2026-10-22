@@ -1,6 +1,6 @@
 # One model, two surfaces
 
-humagen defines each agent concept once, in `@humagen/core`, and draws it on the web and in Slack. This page maps every concept to both surfaces and lists the gaps that are still open.
+Humagen defines each agent concept once, in `@humagen/core`, and draws it on the web and in Slack. This page maps every concept to both surfaces and lists the gaps that are still open.
 
 - **Web**: `@humagen/render-web` (primitives), `@humagen/web` (web-only: composer, orb, status line, rail, preview)
 - **Slack**: `@humagen/render-slack` (Block Kit, streaming, lifecycle), tested in a real workspace with `apps/slack-sandbox`

@@ -1,6 +1,6 @@
 # Slack sandbox
 
-Test humagen in the real Slack client, not a lookalike. The same fixtures that Storybook renders on the web get posted, streamed, and clicked in a sandbox workspace.
+Test Humagen in the real Slack client, not a lookalike. The same fixtures that Storybook renders on the web get posted, streamed, and clicked in a sandbox workspace.
 
 ## Setup (once)
 

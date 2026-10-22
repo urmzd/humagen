@@ -442,7 +442,7 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 	// volume only under the old name. Asked on every deploy, since after the
 	// first upgrade the release's chart is this one.
 	if _, set := values["nameOverride"]; !set && outDir == "" {
-		old, err := installedAsWarp(ctx, release, helmScope, run)
+		old, err := installedByOldChart(ctx, release, helmScope, run)
 		if err != nil {
 			return err
 		}
@@ -667,11 +667,11 @@ type helmRelease struct {
 	Chart string `json:"chart"`
 }
 
-// installedAsWarp reports whether release was installed by the chart before
+// installedByOldChart reports whether release was installed by the chart before
 // the rename and so keeps its names: its chart is the warp chart, or, once
 // upgraded to this one, it was given nameOverride: warp. scope is helm's
 // namespace and context flags. No release is not an error.
-func installedAsWarp(ctx context.Context, release string, scope []string, run func(*exec.Cmd) error) (bool, error) {
+func installedByOldChart(ctx context.Context, release string, scope []string, run func(*exec.Cmd) error) (bool, error) {
 	var listed bytes.Buffer
 	list := exec.CommandContext(ctx, "helm", append([]string{"list", "--filter", "^" + regexp.QuoteMeta(release) + "$", "-o", "json"}, scope...)...)
 	list.Stdout, list.Stderr = &listed, os.Stderr

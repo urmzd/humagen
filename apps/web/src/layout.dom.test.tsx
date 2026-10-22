@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { KindChips } from "./InboxPage.tsx";
 import { FADE_PX, GUTTER_PX } from "./layout.ts";
 import { kinds as mailKinds } from "./mail.ts";
+import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { Menu, Popover, Segmented, Tabs } from "./ui.tsx";
 
 // happy-dom lays nothing out: every box is 0 wide. These tests give the boxes
@@ -195,4 +196,16 @@ test("a menu with room stays where it hangs", () => {
   render(<Menu label="Agent" value="lead" options={options} onChange={() => {}} />);
   fireEvent.click(screen.getByRole("button", { name: "Agent: lead" }));
   assert.equal(menuPanel()?.style.translate, "");
+});
+
+test("a browser that closed the sidebar before the rename starts with it closed", () => {
+  window.localStorage.clear();
+  window.localStorage.setItem("warp.sidebar", "0");
+  assert.equal(sidebarStartsOpen(1440), false);
+  assert.equal(window.localStorage.getItem(SIDEBAR_KEY), "0");
+  assert.equal(window.localStorage.getItem("warp.sidebar"), null);
+  // Nothing kept: open on a wide window, closed on a phone.
+  window.localStorage.clear();
+  assert.equal(sidebarStartsOpen(1440), true);
+  assert.equal(sidebarStartsOpen(390), false);
 });

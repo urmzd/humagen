@@ -808,7 +808,7 @@ func loadSpec(o Options, paths ...string) (spec.Config, error) {
 
 // specPath is the spec start and setup read and write when no file is named:
 // humagen.yaml in HUMAGEN_HOME, else in the user config directory, or the old
-// warp.yaml where an earlier release kept it (legacy.SpecFile).
+// old file where a release before the rename kept it (legacy.SpecFile).
 func specPath(n *legacy.Notes) (string, error) {
 	return legacy.SpecFile(os.Getenv, os.UserConfigDir, n)
 }
