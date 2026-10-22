@@ -227,7 +227,8 @@ func (s *Server) pauseSchedule(paused bool) handler {
 //
 // It acts for them only when they wrote what it runs (Schedules.Authored):
 // whoever last changed its text, or its creator while nobody has, unless
-// someone else has since chosen its agent. Anyone with schedules:write may
+// someone else has since chosen its agent or its project, whose instructions
+// and notes go ahead of its text. Anyone with schedules:write may
 // change a schedule's words, so anyone else's press acts for nobody, as the
 // schedule's own clock does: their credentials are never put behind words
 // they did not write, nor are those words run with the credentials of

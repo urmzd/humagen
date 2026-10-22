@@ -12,6 +12,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 
+	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state"
 )
 
@@ -34,11 +35,13 @@ type About struct {
 	Description string
 	UpdatedBy   string
 	UpdatedAt   time.Time
-	// WrittenBy is who wrote what an edited schedule runs, its text and the
-	// agent it asks, or "" for nobody: an edit that changes neither keeps
-	// it, and one that changes only the agent keeps it only when made by
-	// that person. Set by Replace. A schedule nobody has edited is its
-	// creator's, and one edited before this was kept is nobody's.
+	// WrittenBy is who wrote what an edited schedule runs, its text, the
+	// agent it asks and the project it is filed in, whose instructions and
+	// notes go ahead of the text, or "" for nobody: an edit that changes
+	// none of them keeps it, and one that changes the agent or the project
+	// but not the text keeps it only when made by that person. Set by
+	// Replace. A schedule nobody has edited is its creator's, and one edited
+	// before this was kept is nobody's.
 	WrittenBy string
 }
 
@@ -172,8 +175,8 @@ func (s *Schedules) Get(tenant, name string) (cron.Schedule, bool, error) {
 
 // Authored returns one of a tenant's schedules and who wrote what it runs:
 // whoever last changed its text, or its creator (meta created_by) while
-// nobody has, and nobody ("") once someone else chose its agent (see
-// About.WrittenBy). Both are read under one lock, so the author is the
+// nobody has, and nobody ("") once someone else chose its agent or its
+// project (see About.WrittenBy). Both are read under one lock, so the author is the
 // text's.
 func (s *Schedules) Authored(tenant, name string) (cron.Schedule, string, error) {
 	s.mu.Lock()
@@ -285,10 +288,11 @@ func (s *Schedules) Add(sc cron.Schedule, about About) error {
 // schedule is checked in full before the old one is touched, so an edit that
 // is refused changes nothing. Who wrote what it runs (About.WrittenBy) is
 // decided here, from the schedule as it was, under the lock: the editor
-// when they change its text, and when they change only its agent, they if
-// they wrote its text and else nobody, since anyone else's choice of agent
-// for those words is no one's whole say-so. Saving it as it was writes
-// nothing.
+// when they change its text, and when they change only its agent or its
+// project, whose instructions and notes go ahead of the text, they if they
+// wrote its text and else nobody, since anyone else's choice of agent or
+// project for those words is no one's whole say-so. Saving it as it was
+// writes nothing.
 func (s *Schedules) Replace(sc cron.Schedule, about About) error {
 	if err := sc.Validate(); err != nil {
 		return err
@@ -306,7 +310,7 @@ func (s *Schedules) Replace(sc cron.Schedule, about About) error {
 	switch {
 	case sc.Text != old.Text:
 		author = about.UpdatedBy
-	case sc.Agent != old.Agent && author != about.UpdatedBy:
+	case (sc.Agent != old.Agent || sc.Meta[runs.MetaProject] != old.Meta[runs.MetaProject]) && author != about.UpdatedBy:
 		author = ""
 	}
 	about.WrittenBy = author

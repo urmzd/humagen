@@ -1615,7 +1615,8 @@ on occurrences of its new expression that fell before it.
 the schedule is paused. A schedule filed in a project is run by a
 member of it. It acts for the caller only when they wrote what it
 runs: whoever last changed its text, or its creator while nobody has,
-unless someone else has since chosen its agent. Saving a schedule
+unless someone else has since chosen its agent or its project, whose
+instructions and notes go ahead of its text. Saving a schedule
 without changing its text writes none of it. Anyone else's press acts
 for nobody, as the schedule's own clock does, since anyone with
 `schedules:write` may change its words.
