@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.0 (2026-10-22)
+
+### Breaking
+
+- **projects**: recaps, read confinement, Slack and GitHub coworking (#44) ([b102fe3](https://github.com/urmzd/warp/commit/b102fe3dc37130127615860c14ca311758879be7))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.14.0...v0.15.0)
+
+
 ## 0.14.0 (2026-10-22)
 
 ### Features
