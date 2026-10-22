@@ -43,8 +43,10 @@ const (
 	EnvGitHubChecks           = "WARP_GITHUB_CHECKS"
 	EnvGitHubGuides           = "WARP_GITHUB_GUIDES"
 	EnvGitHubMutations        = "WARP_GITHUB_MUTATIONS"
-	// EnvGitHubLogin is the app's own login. A comment that mentions it and
-	// names no agent is answered by EnvGitHubDefault, else the home's chain.
+	// EnvGitHubLogin is the app's own login. Once warp is built with a fiber
+	// whose GitHub connector reads it, a comment that mentions it and names
+	// no agent is answered by EnvGitHubDefault, else the home's chain. Until
+	// then it is kept and changes nothing.
 	EnvGitHubLogin   = "WARP_GITHUB_LOGIN"
 	EnvGitHubDefault = "WARP_GITHUB_DEFAULT_AGENT"
 )

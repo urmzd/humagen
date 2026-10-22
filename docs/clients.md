@@ -17,7 +17,7 @@ one per agent are all the same record with different values.
 | `agents` | The agents the client may route to, besides its default. |
 | `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. |
 | `slack` | `sessions`, `commands`, and `machine` and `people` (see [People a Slack app answers for](#people-a-slack-app-answers-for)). |
-| `github` | `auto_labels`, `checks`, `guides`, `mutations`, `read_repositories`, and `login`, the app's own login, which a comment mentions to ask the client's default (see [Who a comment asks](github.md#who-a-comment-asks)). |
+| `github` | `auto_labels`, `checks`, `guides`, `mutations`, `read_repositories`, and `login`, the app's own login, which a comment mentions to ask the client's default once warp is built with a fiber whose GitHub connector reads it; until then it is kept and changes nothing (see [Who a comment asks](github.md#who-a-comment-asks)). |
 | `home` | `{project, channel}`: where the client files the threads it starts outside a channel bound to one, such as direct messages and GitHub issues. `project` is a project's name, or `~` for the workspace, and must exist. `channel` is one of its channels, not archived; left out, `general`. Left out entirely, the workspace's `general`. A Slack thread outside a bound channel is filed here, private for a direct message (see [Slack coworking](slack.md#coworking-channels-threads-and-mentions)). A home in a project the reader may not read is not shown to them, and their change that names no home keeps it. |
 | `enabled` | A disabled client answers nothing and carries nothing. |
 

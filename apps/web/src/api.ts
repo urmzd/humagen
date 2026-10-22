@@ -421,7 +421,7 @@ export interface Client {
     guides?: boolean;
     mutations?: boolean;
     read_repositories?: string[];
-    /** The app's own login. A comment that mentions it and names no agent is answered by the default. */
+    /** The app's own login. Once warp's GitHub connector reads it, a comment that mentions it and names no agent is answered by the default; until then it changes nothing. */
     login?: string;
   };
   /** Where the client files threads it starts outside a bound channel. Absent, the workspace's general. */

@@ -33,12 +33,19 @@ names any other agent is refused when the client is saved.
 
 ## Who a comment asks
 
+`github.login` is not live yet. It is kept, and it is read once warp is built
+with a fiber whose GitHub connector takes the app's login (`github.Config` with
+`Login` and `DefaultAgent`). Until then the client's GitHub connector is not
+given it, so a comment that names no agent starts nothing, and a comment that
+names an agent keeps the app's mention in the text the agent reads. The rest
+of this section is what warp does once it is built with that fiber.
+
 The rule is Slack's: an `@agent` in a comment, or an `auto_labels` label, is a
 tag; otherwise the client's default; otherwise nothing. Slack delivers a
 message only when it mentions the app, so on GitHub a comment that names no
 agent is addressed to the client only when it mentions the app's own login.
 Set it as `github.login`: the login the app comments as, `warp[bot]`, which
-people mention as `@warp`.
+people mention as `@warp`. With it set, and the app's login not in `bots`:
 
 - `@docs-bot summarize this` tags docs-bot.
 - `@warp @docs-bot summarize this` tags docs-bot. The app's mention is taken
@@ -52,15 +59,19 @@ people mention as `@warp`.
   so a busy repository wakes no agent on every comment. A bot's comment starts
   nothing, whatever it mentions.
 
+A login in the client's `bots` names its agent, as a Slack bot user in `bots`
+does, today as well. So when `bots` maps the app's own login to an agent, as
+`WARP_GITHUB_BOTS='warp[bot]=ops'` does and the [PR guide's
+setup](#pr-guide-and-review-threads) does for its agent, `@warp` is a tag for
+that agent: `@warp what changed?` asks ops, and so does `@warp @docs-bot
+summarize this`, since the first agent a comment names answers it. The
+client's `default_agent` is not asked.
+
 A review, a review comment and a new issue or pull request are read the same
 way. Every run is filed in the client's [home](clients.md#the-record), and
 acts for nobody, as every GitHub run does: no client maps GitHub logins to
 people. A comment addressed to the app on a pull request posts no guide, since
 the guide names the agent that answers; the next one that names an agent does.
-
-fiber's GitHub connector raises such a comment only in a release whose
-`github.Config` has `Login` and `DefaultAgent`. Until warp is built with one,
-a comment that names no agent starts nothing, whatever `github.login` says.
 
 ## Automatic labels
 
