@@ -159,6 +159,8 @@ export class FakeWarp implements Warp {
   noDefault = false;
   /** The Slack channels each client is bound to. */
   readonly bound = new Map<string, Binding[]>();
+  /** The announcement each warp thread was started from, by thread. */
+  readonly seeded = new Map<string, string>();
   /** Where the app recorded it posted each inbox message. */
   readonly deliveries: { message: string; client: string; channel: string; ts: string }[] = [];
   /** Each mapped person's own inbox, by subject, as act_as reads it. */
@@ -277,8 +279,18 @@ export class FakeWarp implements Warp {
     const where = `${s.client}/${s.channel}/${s.ts}`;
     let thread = this.surfaces.get(where);
     if (!thread) {
+      // As the platform does: a Slack thread under a post this app recorded
+      // is that announcement's, and one withdrawn starts nothing.
+      const receipt = this.deliveries.find(
+        (d) => d.client === s.client && d.channel === s.channel && d.ts === s.ts,
+      );
+      const seed = receipt && this.mailbox.get(receipt.message);
+      if (seed && seed.state !== "open") {
+        throw new WarpError(410, "a reply to this announcement starts nothing: it was withdrawn");
+      }
       thread = `th-${String(this.surfaces.size + 1).padStart(16, "0")}`;
       this.surfaces.set(where, thread);
+      if (receipt && seed) this.seeded.set(thread, receipt.message);
     }
     const n = [...this.postedOnce.keys()].filter((k) => k.startsWith(`${where}/`)).length + 1;
     const message = { id: `m-${n}`, text: body.text.replaceAll(`<@${s.app_user}>`, "").trim() };

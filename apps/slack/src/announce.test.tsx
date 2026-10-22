@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { defaultCopy } from "@warp/components";
 import {
   announcementMail,
+  BOT,
   homeOpened,
+  mention,
   mentionMail,
+  OTHER_USER,
   SUBJECT,
   settle,
   TEAM,
@@ -160,4 +164,125 @@ test("an announcement an agent wrote pings nobody: every Slack mention in it is 
   }
   assert.match(sent, /@U0BOB/);
   assert.match(sent, /@oncall/);
+});
+
+// Replies in an announcement's Slack thread. Slack delivers a message in a
+// channel thread to the app only when it mentions the app (the manifest
+// subscribes to app_mention, and to message.im for direct messages alone),
+// so the reply that mentions the app is what reaches warp.
+
+/** bound() whose client maps USER to ana and OTHER_USER to olu. */
+function mappedNews(): World {
+  const w = bound();
+  w.warp.clients.set("app", {
+    id: "app",
+    surface: "slack",
+    enabled: true,
+    identity: { team: TEAM },
+    slack: { machine: SUBJECT, people: { [USER]: "ana", [OTHER_USER]: "olu" } },
+  });
+  return w;
+}
+
+/** A mention in the Slack thread of the post at ts in NEWS. */
+const replyTo = (post: string, text: string, ts: string, user = USER) =>
+  mention(text, ts, { channel: NEWS, thread_ts: post, user });
+
+const blocksText = (args: Record<string, unknown> | undefined) =>
+  JSON.stringify(args?.blocks ?? []);
+
+test("a mapped person's reply that mentions the app under an announcement is theirs, in the thread the announcement starts", async () => {
+  const w = mappedNews();
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+  });
+  const post = w.warp.deliveries[0]?.ts ?? "";
+  assert.ok(post, "the announcement was posted with its receipt");
+  // Under the post, olu said something without mentioning the app, then ana asks.
+  w.slack.replies.set(`${NEWS}/${post}`, [
+    { ts: post, user: BOT, text: "Field offsite" },
+    { ts: "1800000100.000100", user: OTHER_USER, text: "Lisbon again?" },
+  ]);
+  await w.app.handle(replyTo(post, "@lead what does it mean for us?", "1800000200.000100"));
+  await settle();
+  // olu's words go first, as his own and posted only, then ana's: both in
+  // the thread of the announcement's post, which warp starts with it.
+  assert.deepEqual(
+    w.warp.posts.map((p) => ({ as: p.act_as.user, surface: p.surface, post_only: p.post_only })),
+    [
+      {
+        as: OTHER_USER,
+        surface: {
+          client: "app",
+          channel: NEWS,
+          ts: post,
+          message: "1800000100.000100",
+          app_user: BOT,
+        },
+        post_only: true,
+      },
+      {
+        as: USER,
+        surface: {
+          client: "app",
+          channel: NEWS,
+          ts: post,
+          message: "1800000200.000100",
+          app_user: BOT,
+        },
+        post_only: undefined,
+      },
+    ],
+  );
+  assert.deepEqual([...w.warp.seeded.values()], ["m-news"]);
+  // The answer streams under the announcement's post.
+  assert.equal(w.slack.of("chat.startStream").at(-1)?.thread_ts, post);
+  w.warp.emit(w.warp.last.id, "lifecycle.completed", { text: "A trip in May." });
+  await settle();
+  await w.app.idle();
+
+  // A later reply finds the same thread.
+  await w.app.handle(replyTo(post, "@lead and the dates?", "1800000300.000100"));
+  await settle();
+  w.warp.emit(w.warp.last.id, "lifecycle.completed", { text: "The second week." });
+  await settle();
+  await w.app.idle();
+  const threads = new Set(w.warp.posts.map((p) => `${p.surface.channel}/${p.surface.ts}`));
+  assert.deepEqual([...threads], [`${NEWS}/${post}`]);
+  assert.equal(w.warp.seeded.size, 1, "one announcement, one thread");
+});
+
+test("someone the client maps to nobody who replies under an announcement is told to connect their account", async () => {
+  const w = bound();
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+  });
+  const post = w.warp.deliveries[0]?.ts ?? "";
+  await w.app.handle(replyTo(post, "@lead what does it mean?", "1800000200.000100", "U09NOBODY"));
+  await settle();
+  await w.app.idle();
+  assert.equal(w.warp.posts.length, 0, "nothing is posted for them");
+  assert.equal(w.warp.asked.length, 0, "warp is never asked");
+  const told = w.slack.of("chat.postMessage").at(-1);
+  assert.equal(told?.thread_ts, post);
+  assert.match(blocksText(told), new RegExp(defaultCopy.threads.unmappedInBound.slice(0, 40)));
+});
+
+test("a reply under an announcement that was withdrawn starts nothing, and says so", async () => {
+  const w = mappedNews();
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+    await settle();
+    await w.app.idle();
+    w.warp.raise({ ...(w.warp.mailbox.get("m-news") ?? {}), state: "dismissed" });
+  });
+  const post = w.warp.deliveries[0]?.ts ?? "";
+  await w.app.handle(replyTo(post, "@lead is it still on?", "1800000200.000100"));
+  await settle();
+  await w.app.idle();
+  assert.equal(w.warp.started.length, 0, "no run is started");
+  assert.equal(w.warp.seeded.size, 0, "no thread is started");
+  const told = w.slack.of("chat.postMessage").at(-1);
+  assert.equal(told?.thread_ts, post);
+  assert.match(blocksText(told), new RegExp(defaultCopy.announcements.replyGone.slice(0, 40)));
 });

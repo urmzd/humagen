@@ -757,6 +757,12 @@ export class App {
       }
     } catch (e) {
       this.log(`warp refused the turn: ${(e as Error).message}`);
+      // A reply under an announcement that was withdrawn starts nothing.
+      if (e instanceof WarpError && e.status === 410)
+        return this.refuse(job, presenter, "", {
+          kind: "forbidden",
+          message: this.copy.announcements.replyGone,
+        });
       // No agent was named, and nothing answers here by default.
       if (agent === "" && e instanceof WarpError && e.status === 409)
         return this.refuse(job, presenter, "", await this.tagOne(routing));
@@ -812,6 +818,9 @@ export class App {
    * is. In a channel thread, what people said there since the app was last
    * asked goes first, each as its person and posted only, so the room reads
    * as it did in Slack; someone the client does not map has no voice there.
+   * Under an announcement this app posted, the thread is the
+   * announcement's: warp finds it by the post's receipt and starts it with
+   * the announcement, ahead of these messages.
    */
   private async cowork(job: Job, asking: ActAs): Promise<ThreadPosted> {
     if (job.history) {
