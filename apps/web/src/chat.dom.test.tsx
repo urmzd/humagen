@@ -271,6 +271,13 @@ test("Retry is not offered on another person's turn, nor on one that acted for n
   }
 });
 
+// Ends one stub mid-test so the next open() starts its own, without leaving
+// it for afterEach (a function call, so type narrowing does not stick).
+function resetNet() {
+  net?.restore();
+  net = undefined;
+}
+
 test("Regenerate is offered only on an answered turn that acted for the reader", async () => {
   for (const [actor, tag] of [
     [{ id: "ana", display: "Ana", user: "ana" }, "api-t1"],
@@ -281,11 +288,11 @@ test("Regenerate is offered only on an answered turn that acted for the reader",
     await screen.findByText("Filed.");
     assert.ok(!screen.queryByRole("button", { name: "Regenerate" }), JSON.stringify(actor));
     cleanup();
-    net.restore();
+    resetNet();
   }
   open(answered({ id: "ben", display: "Ben", user: "ben" }), "ben");
   fireEvent.click(await screen.findByRole("button", { name: "Regenerate" }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
 });
 
 test("a reader's own turn from before warp said whom a run acts for may be asked again", async () => {
@@ -293,14 +300,14 @@ test("a reader's own turn from before warp said whom a run acts for may be asked
   const before = { id: "ben", display: "Ben" };
   open(failed(before, "api-r-0123456789abcdefghijkl"), "ben");
   fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
   cleanup();
-  net.restore();
+  resetNet();
   open(answered(before, "api-3-ben-k1"), "ben");
   fireEvent.click(await screen.findByRole("button", { name: "Regenerate" }));
-  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
   cleanup();
-  net.restore();
+  resetNet();
   // Someone else's is still not the reader's.
   open(failed(before, "api-r-0123456789abcdefghijkl"), "ana");
   await screen.findByText("This turn acted for Ben, so only they can retry it.");
