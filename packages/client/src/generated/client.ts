@@ -1696,7 +1696,7 @@ may do with each part, is decided per message: a memory proposal needs
 null at the end. A client's machine reads one of its people's inbox
 with `act_as_client` and `act_as_user`, as the Slack app's Home does.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1709,6 +1709,8 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     if (project !== undefined && project !== null) _q.set("project", String(project));
     if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
     if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    if (needs !== undefined && needs !== null) _q.set("needs", String(needs));
+    if (news !== undefined && news !== null) _q.set("news", String(news));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListInboxResponse>("GET", path, {
@@ -1716,7 +1718,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1729,6 +1731,8 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     if (project !== undefined && project !== null) _q.set("project", String(project));
     if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
     if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    if (needs !== undefined && needs !== null) _q.set("needs", String(needs));
+    if (news !== undefined && news !== null) _q.set("news", String(news));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListInboxResponse>("GET", path, {
@@ -2687,9 +2691,10 @@ end; a cursor is where its last row sat in the tree, so a project
 deleted between pages neither breaks nor shifts the paging. A
 client's machine lists one of its people's projects with
 `act_as_client` and `act_as_user`, as the Slack app's Home does: the
-projects that person has a role in, each with their role, their
-actions and what they may read in it. The person must hold
-`projects:read` themselves.
+projects that person may see, each with their role, their actions
+and what they may read in it. The person must hold
+`projects:read` themselves. `mine` marks the projects that name the
+caller, which Home lists as theirs.
  */
   async listProjects(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListProjectsResponse> {
     let path = "/api/projects";

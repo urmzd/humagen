@@ -248,6 +248,54 @@ func TestBroadcastsCountOnlyInUpdates(t *testing.T) {
 	}
 }
 
+// Needs pages what may need a reader, what Open counts: posted announcements
+// are left out before the page is cut, however many are newer, and an
+// agent's draft for the project's owners stays. News pages the posts alone.
+func TestNeedsLeavesOutBroadcastsBeforeThePageIsCut(t *testing.T) {
+	s := NewStore()
+	alert := raise(s, "alert:1", t0, Part{Type: PartAlert})
+	draft, _ := two(s.Raise(acme, "draft:r1", Message{
+		Kind: KindAnnouncement, Subject: "This week", From: From{Kind: "agent", Name: "recap"},
+		Audience: []string{OwnersAudience("Field")}, Source: Source{Project: "Field"},
+		Parts: []Part{{Type: PartDraft, Draft: &DraftPart{Project: "Field", Agent: "recap", Subject: "This week", Text: "Two fixes."}}},
+	}, t0.Add(time.Second)))
+	var news Message
+	for i := range 3 {
+		news = post(t, s, "Field", fmt.Sprint("News ", i), t0.Add(time.Duration(2+i)*time.Second))
+	}
+	q := readerIn("ada", "Field")
+	q.ReaderOwns, q.Limit = []string{"Field"}, 2
+	if got := ids(t, s, q); len(got) != 2 || slices.Contains(got, draft.ID) || slices.Contains(got, alert.ID) {
+		t.Fatalf("the newest two = %q, want two announcements", got)
+	}
+	q.Needs = true
+	if got := ids(t, s, q); !slices.Equal(got, []string{draft.ID, alert.ID}) {
+		t.Fatalf("what needs ada = %q, want the draft and the alert", got)
+	}
+	if c := s.Count(acme, q); c != (Counts{Open: 2, Unread: 2, Updates: 3}) {
+		t.Fatalf("counts = %+v", c)
+	}
+	// News is the other side: the posted announcements alone, the draft left
+	// out however new it is.
+	q.Needs, q.News, q.Limit = false, true, 0
+	if got := ids(t, s, q); len(got) != 3 || slices.Contains(got, draft.ID) || slices.Contains(got, alert.ID) {
+		t.Fatalf("ada's news = %q, want the three posts", got)
+	}
+	q.News, q.Needs, q.Limit = false, true, 2
+	// An announcement she hid is still news, not something that needs her.
+	if _, _, err := s.Dismiss(acme, news.ID, "ada", t0); err != nil {
+		t.Fatal(err)
+	}
+	q.State = Dismissed
+	if got := ids(t, s, q); len(got) != 0 {
+		t.Fatalf("what needs ada, hidden = %q", got)
+	}
+	q.Needs = false
+	if got := ids(t, s, q); !slices.Equal(got, []string{news.ID}) {
+		t.Fatalf("what ada hid = %q", got)
+	}
+}
+
 func TestRacingPostsStopAtTheDailyCaps(t *testing.T) {
 	s := NewStore()
 	var wg sync.WaitGroup

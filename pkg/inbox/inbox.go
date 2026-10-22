@@ -1135,6 +1135,13 @@ type Query struct {
 	Agent string
 	// Unread keeps only what the reader has not read.
 	Unread bool
+	// Needs keeps only what may need the reader, what Counts.Open counts:
+	// a broadcast, which counts only in Updates, is left out, and an
+	// agent's draft, which waits on its owners, stays.
+	Needs bool
+	// News keeps only posted announcements, what Counts.Updates counts: an
+	// agent's draft, which shares their kind, is left out.
+	News bool
 	// Visible reports whether the reader may see a kind. Nil means all.
 	Visible func(Kind) bool
 	// Sees reports whether the reader may read what a message is about:
@@ -1183,6 +1190,12 @@ func (t *tenant) match(m *Message, q filter) bool {
 		return false
 	}
 	if q.Kind != "" && m.Kind != q.Kind {
+		return false
+	}
+	if q.Needs && m.Broadcast {
+		return false
+	}
+	if q.News && !m.Broadcast {
 		return false
 	}
 	if len(q.Kinds) > 0 && !slices.Contains(q.Kinds, m.Kind) {
@@ -1290,7 +1303,7 @@ type Counts struct {
 // Count returns what is open for a reader across their whole inbox: the
 // narrowing fields of q are ignored, and who is reading is kept.
 func (s *Store) Count(tenantName string, q Query) Counts {
-	q.State, q.Kind, q.Kinds, q.Projects, q.Shared, q.Alert, q.Agent, q.Unread = Open, "", nil, nil, false, "", "", false
+	q.State, q.Kind, q.Kinds, q.Projects, q.Shared, q.Alert, q.Agent, q.Unread, q.Needs, q.News = Open, "", nil, nil, false, "", "", false, false, false
 	f := q.filter()
 	s.mu.Lock()
 	defer s.mu.Unlock()

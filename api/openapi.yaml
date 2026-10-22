@@ -1655,6 +1655,22 @@ paths:
           schema: {type: string, maxLength: 63}
         - {$ref: "#/components/parameters/ActAsClient"}
         - {$ref: "#/components/parameters/ActAsUser"}
+        - name: needs
+          in: query
+          description: |
+            Only `true` narrows to what may need the caller, which `open`
+            counts: a posted announcement, which counts only in `updates`, is
+            left out before the page is cut, and an agent's draft waiting on
+            its owners is kept. The Slack app's Home reads what needs a person
+            this way.
+          schema: {type: string, enum: ["true"]}
+        - name: news
+          in: query
+          description: |
+            Only `true` narrows to posted announcements, which `updates`
+            counts: an agent's draft, which shares their kind, is left out
+            before the page is cut. Home reads What's new this way.
+          schema: {type: string, enum: ["true"]}
       responses:
         "200":
           description: One page, with the caller's counts.
@@ -2792,9 +2808,10 @@ paths:
         deleted between pages neither breaks nor shifts the paging. A
         client's machine lists one of its people's projects with
         `act_as_client` and `act_as_user`, as the Slack app's Home does: the
-        projects that person has a role in, each with their role, their
-        actions and what they may read in it. The person must hold
-        `projects:read` themselves.
+        projects that person may see, each with their role, their actions
+        and what they may read in it. The person must hold
+        `projects:read` themselves. `mine` marks the projects that name the
+        caller, which Home lists as theirs.
       x-permission: projects:read
       parameters:
         - name: parent
@@ -5589,7 +5606,7 @@ components:
       allOf:
         - {$ref: "#/components/schemas/Project"}
         - type: object
-          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions]
+          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine]
           properties:
             depth:
               description: How many levels below the workspace it sits, 1 to 4. The workspace itself is 0.
@@ -5636,6 +5653,15 @@ components:
               items:
                 type: string
                 enum: [create, propose, notes, edit, move, archive, delete, limits, announce]
+            mine:
+              description: |
+                Whether the project names the caller: they are a member or an
+                owner through an entry for their subject or a `role:` they
+                hold, on this project or as an owner of a project above it.
+                A role reached only through `*`, or only through
+                `projects:govern`, does not name them. Home lists these as
+                the caller's own projects.
+              type: boolean
     ProjectLimit:
       description: |
         A limit a run filed in the project falls under for being there, and

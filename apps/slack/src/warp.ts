@@ -261,10 +261,15 @@ export interface Warp {
    * receipt when it has one.
    */
   announcements(project: string, limit: number, options?: CallOptions): Promise<WireMessage[]>;
-  /** One page of a person's inbox, read for them through the client that maps them. */
+  /**
+   * One page of a person's inbox, read for them through the client that maps
+   * them. `needs` leaves out posted announcements before the page is cut, so
+   * the page holds what `open` counts; `news` keeps only posted
+   * announcements, what `updates` counts.
+   */
   inboxFor(
     actAs: ActAs,
-    query: { state?: string; kind?: string; limit?: number },
+    query: { state?: string; kind?: string; needs?: boolean; news?: boolean; limit?: number },
     options?: CallOptions,
   ): Promise<{
     messages: Record<string, unknown>[];
@@ -273,8 +278,9 @@ export interface Warp {
     updates?: number;
   }>;
   /**
-   * Every project a person has a role in, each as they see it, read for them
-   * through the client that maps them: at most the 500 a workspace holds.
+   * Every project a person may see, each as they see it and `mine` on the
+   * ones that name them, read for them through the client that maps them: at
+   * most the 500 a workspace holds.
    */
   projectsFor(actAs: ActAs, options?: CallOptions): Promise<WireProject[]>;
   /**
@@ -597,6 +603,8 @@ export function httpWarp(cfg: {
       const q = new URLSearchParams({ act_as_client: actAs.client, act_as_user: actAs.user });
       if (query.state) q.set("state", query.state);
       if (query.kind) q.set("kind", query.kind);
+      if (query.needs) q.set("needs", "true");
+      if (query.news) q.set("news", "true");
       if (query.limit) q.set("limit", String(query.limit));
       return http("GET", `/api/inbox?${q}`);
     },

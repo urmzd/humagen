@@ -225,7 +225,13 @@ test("createRun sends only the body the route accepts, with the key as a header"
 });
 
 test("a person's projects are read for them through the client, every page", async () => {
-  const project = (name: string) => ({ name, kind: "team", path: [{ name }], active: 0 });
+  const project = (name: string) => ({
+    name,
+    kind: "team",
+    path: [{ name }],
+    active: 0,
+    mine: true,
+  });
   const { fn, asked } = fakeFetch([
     json({ projects: [project("Field")], next: "c1" }),
     json({ projects: [project("Launch")], next: null }),

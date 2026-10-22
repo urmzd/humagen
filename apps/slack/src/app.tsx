@@ -2120,8 +2120,9 @@ export class App {
   /**
    * The Home tab. A person the client maps sees the shared Home, read as
    * them through the client (act_as): at most five that need them, what's
-   * new in their projects and their projects, each opening in the console,
-   * and ways to start. Their projects are left out when they cannot be read.
+   * new in their projects and the projects that name them, each opening in
+   * the console, and ways to start. Their projects are left out when they
+   * cannot be read.
    * Without a mapping the tab is the mailbox, as it always was: an operator
    * sees the whole inbox the app may read, and anyone else what they may
    * settle.
@@ -2150,8 +2151,11 @@ export class App {
   /** The shared Home's model for a person the client maps, everything in it read as them. */
   private async homeFor(user: string, mapped: { as: ActAs; person: string }) {
     const [mine, news, projects, names, build] = await Promise.all([
-      this.warp.inboxFor(mapped.as, { state: "open", limit: 30 }),
-      this.warp.inboxFor(mapped.as, { state: "open", kind: "announcement", limit: 20 }),
+      // What needs them, posted announcements left out before the page is
+      // cut, so however much news is newer the rows agree with the total.
+      this.warp.inboxFor(mapped.as, { state: "open", needs: true, limit: 30 }),
+      // Posted announcements only, so drafts never crowd them off the page.
+      this.warp.inboxFor(mapped.as, { state: "open", news: true, limit: 20 }),
       this.warp.projectsFor(mapped.as).catch((e: Error): WireProject[] | null => {
         this.log(`Home shows no projects for ${user}: ${e.message}`);
         return null;
@@ -2164,8 +2168,12 @@ export class App {
       person: { id: user, name: names.get(user) ?? mapped.person },
       assistant: { name, handle: names.get(this.opts.botUser) ?? name },
       intro: this.words.homeIntro,
-      inbox: mine,
-      // An agent may have written an announcement: its words ping nobody here either.
+      // An agent may have written what either list holds, a draft, a
+      // question or an announcement: its words ping nobody here either.
+      inbox: {
+        ...mine,
+        messages: mine.messages.map((m) => untrustedAnnouncement(m as WireMessage)),
+      },
       announcements: news.messages.map((m) => untrustedAnnouncement(m as WireMessage)),
       projects,
       workspace: this.opts.tenant,

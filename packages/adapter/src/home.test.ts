@@ -5,7 +5,7 @@ import { projectsOf, type WireProject } from "./home.ts";
 
 /** Projects as `GET /api/projects` lists them, in the tree's order. */
 const views: WireProject[] = [
-  { name: "Field", title: "Field engineering", kind: "team", path: [{ name: "Field", title: "Field engineering" }], active: 1, active_at: "2026-10-20T09:00:00Z" },
+  { name: "Field", title: "Field engineering", kind: "team", path: [{ name: "Field", title: "Field engineering" }], active: 1, active_at: "2026-10-20T09:00:00Z", mine: true },
   {
     name: "Globex",
     kind: "account",
@@ -15,12 +15,15 @@ const views: WireProject[] = [
     ],
     active: 0,
     active_at: "2026-10-21T09:00:00Z",
+    mine: true,
   },
-  { name: "Launch", kind: "team", path: [{ name: "Launch" }], active: 0 },
-  { name: "Old", kind: "team", archived: true, path: [{ name: "Old" }], active: 0, active_at: "2026-10-22T09:00:00Z" },
+  // Everyone's, and the newest: the reader sees it, and it is not theirs.
+  { name: "News", kind: "company", path: [{ name: "News" }], active: 3, active_at: "2026-10-22T10:00:00Z", mine: false },
+  { name: "Launch", kind: "team", path: [{ name: "Launch" }], active: 0, mine: true },
+  { name: "Old", kind: "team", archived: true, path: [{ name: "Old" }], active: 0, active_at: "2026-10-22T09:00:00Z", mine: true },
 ];
 
-test("Your projects is every project the reader has a role in but archived ones, busiest first", () => {
+test("Your projects are the projects that name the reader but archived ones, busiest first", () => {
   const projects = projectsOf(views, (name) => `/projects/${name}`);
   assert.deepEqual(
     projects.map((p) => p.name),
@@ -39,7 +42,7 @@ test("Your projects is every project the reader has a role in but archived ones,
 });
 
 test("Your projects keeps them all, for Home to show the first eight and count the rest", () => {
-  const many = Array.from({ length: 12 }, (_, i): WireProject => ({ name: `P${i}`, kind: "team", path: [{ name: `P${i}` }] }));
+  const many = Array.from({ length: 12 }, (_, i): WireProject => ({ name: `P${i}`, kind: "team", path: [{ name: `P${i}` }], mine: true }));
   const projects = projectsOf(many);
   assert.equal(projects.length, 12);
   assert.ok(projects.length > HOME_PROJECTS_MAX);

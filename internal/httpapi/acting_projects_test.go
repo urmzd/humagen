@@ -151,3 +151,98 @@ func stringsOf(v any) []string {
 	}
 	return out
 }
+
+// Home lists a person's own projects: the ones that name them, through an
+// entry for their subject or a role they hold, there or as an owner above,
+// which the list marks mine. Everyone's entry names nobody, nor does
+// projects:govern, and a project hidden from the person is never listed,
+// whatever entry in it names them.
+func TestAPersonsOwnProjectsAreTheOnesThatNameThem(t *testing.T) {
+	t.Run("memory", func(t *testing.T) { listsTheProjectsThatNameAPerson(t, platform.Backends{}) })
+	t.Run("postgres", func(t *testing.T) {
+		pool := statetest.Pool(t)
+		b, release, err := platform.OpenPostgres(t.Context(), pool)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = release() })
+		listsTheProjectsThatNameAPerson(t, b)
+	})
+}
+
+func listsTheProjectsThatNameAPerson(t *testing.T, b platform.Backends) {
+	f := newFixtureGranting(t, platform.Config{
+		Backends:       b,
+		SlackAPI:       func(string) slackflow.API { return slackflow.NewFake() },
+		ClientInterval: -1,
+	}, `grant operator to subject "ana"
+grant viewer to subject "ben"
+grant admin to subject "gil"`)
+	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
+	app := f.machine(t, "acme", everything...)
+
+	want(t, f, app, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	// Field is everyone's. Ana owns Launch by name, and so Docs below it;
+	// ben is a member of Guild by the role he holds, though everyone owns
+	// it, and of Secret by name, and a viewer of Inner. Gil is named in
+	// Inner, under Secret, which only projects:govern lets him see.
+	for _, body := range []string{
+		`{"name":"Field"}`,
+		`{"name":"Launch","members":[{"who":"*","role":"member"},{"who":"ana","role":"owner"}]}`,
+		`{"name":"Docs","parent":"Launch"}`,
+		`{"name":"Guild","members":[{"who":"*","role":"owner"},{"who":"role:viewer","role":"member"}]}`,
+		`{"name":"Secret","members":[{"who":"ben","role":"member"},{"who":"svc-acme","role":"owner"}]}`,
+		`{"name":"Inner","parent":"Secret","members":[{"who":"gil","role":"member"},{"who":"ben","role":"viewer"}]}`,
+	} {
+		want(t, f, app, "POST", "/api/projects", body, http.StatusCreated)
+	}
+	people := `"people":{"U0ANA":"ana","U0BEN":"ben","U0GIL":"gil"}`
+	want(t, f, app, "POST", "/api/clients", strings.Replace(slackApp("app", "A01APP", "svc-acme"), `"machine":"svc-acme"`, `"machine":"svc-acme",`+people, 1), http.StatusCreated)
+
+	// The projects a page lists in tree order, each with a * when it is
+	// the reader's own.
+	const list = "/api/projects"
+	listed := func(path string) []string {
+		var out []string
+		for _, v := range sliceOf(c.call(app, "GET", list, path, "", http.StatusOK).field("projects")) {
+			p := obj(v)
+			name := p["name"].(string)
+			if p["mine"] == true {
+				name += "*"
+			}
+			out = append(out, name)
+		}
+		return out
+	}
+	as := func(user string) string { return list + "?act_as_client=app&act_as_user=" + user }
+	for _, tc := range []struct {
+		path string
+		want []string
+	}{
+		{as("U0ANA"), []string{"Field", "Guild", "Launch*", "Docs*"}},
+		{as("U0BEN"), []string{"Field", "Guild*", "Launch", "Docs", "Secret*", "Inner"}},
+		{as("U0BEN") + "&within=Secret", []string{"Secret*", "Inner"}},
+		// Gil sees everything, and none of it is his.
+		{as("U0GIL"), []string{"Field", "Guild", "Launch", "Docs", "Secret", "Inner"}},
+	} {
+		if got := listed(tc.path); !slices.Equal(got, tc.want) {
+			t.Errorf("%s lists %v, want %v", tc.path, got, tc.want)
+		}
+	}
+	// The machine is named only where it is the owner it was made.
+	if got := listed(list); !slices.Contains(got, "Secret*") || !slices.Contains(got, "Inner*") || !slices.Contains(got, "Launch") {
+		t.Errorf("the machine's own list = %v", got)
+	}
+
+	// Read by ana herself, one project says the same, and so do the
+	// projects above and below it.
+	ana := f.person(t, "acme", "ana", "Ana")
+	mine := func(v any) any { return obj(v)["mine"] }
+	launch := c.call(ana, "GET", "/api/projects/{name}", "/api/projects/Launch", "", http.StatusOK)
+	if mine(launch.field("project")) != true || mine(sliceOf(launch.field("ancestors"))[0]) != false || mine(sliceOf(launch.field("children"))[0]) != true {
+		t.Errorf("ana's Launch = %s", launch.raw)
+	}
+	if field := c.call(ana, "GET", "/api/projects/{name}", "/api/projects/Field", "", http.StatusOK); mine(field.field("project")) != false {
+		t.Errorf("ana's Field = %s", field.raw)
+	}
+}

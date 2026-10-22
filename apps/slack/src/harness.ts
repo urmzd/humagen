@@ -175,7 +175,15 @@ export class FakeWarp implements Warp {
   readonly personal = new Map<string, Record<string, unknown>[]>();
   /** Every inbox read made for someone, and for whom. */
   readonly readFor: ActAs[] = [];
-  /** Each mapped person's projects, by subject, as act_as lists them. */
+  /** Each inbox page asked for, in order. */
+  readonly inboxQueries: {
+    state?: string;
+    kind?: string;
+    needs?: boolean;
+    news?: boolean;
+    limit?: number;
+  }[] = [];
+  /** Each mapped person's projects, by subject: every one they see, `mine` on those that name them. */
   readonly projects = new Map<string, WireProject[]>();
   /** Every projects read made for someone, and for whom. */
   readonly projectsReadFor: ActAs[] = [];
@@ -474,23 +482,35 @@ export class FakeWarp implements Warp {
     if (m) Object.assign(m, change, { updated_at: this.at() });
   }
 
-  async inboxFor(actAs: ActAs, query: { state?: string; kind?: string; limit?: number }) {
+  async inboxFor(
+    actAs: ActAs,
+    query: { state?: string; kind?: string; needs?: boolean; news?: boolean; limit?: number },
+  ) {
     this.readFor.push(actAs);
+    this.inboxQueries.push(query);
     const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user];
     if (!subject) throw new WarpError(403, "that person is not mapped to anyone in this workspace");
     const all = this.personal.get(subject) ?? [];
+    // A posted announcement is news; an agent's draft, which waits on its
+    // owners, is not, though it shares the kind.
+    const drafted = (m: Record<string, unknown>) =>
+      Array.isArray(m.parts) && m.parts.some((p) => (p as { type?: unknown }).type === "draft");
+    const posted = (m: Record<string, unknown>) => m.kind === "announcement" && !drafted(m);
     const mine = all.filter(
       (m) =>
         (!query.kind || m.kind === query.kind) &&
+        (!query.needs || !posted(m)) &&
+        (!query.news || posted(m)) &&
         (query.state === "all" || m.state === (query.state ?? "open")),
     );
-    // The counts are the whole inbox's, as warp's are: announcements count only as updates.
+    // The counts are the whole inbox's, as warp's are: posted announcements
+    // count only as updates, and an agent's draft counts as open.
     const open = all.filter((m) => m.state === "open");
-    const news = open.filter((m) => m.kind === "announcement");
+    const news = open.filter(posted);
     return {
       messages: mine.slice(0, query.limit ?? 50),
       open: open.length - news.length,
-      unread: open.filter((m) => m.kind !== "announcement" && m.unread).length,
+      unread: open.filter((m) => !news.includes(m) && m.unread).length,
       updates: news.filter((m) => m.unread).length,
     };
   }
@@ -499,9 +519,9 @@ export class FakeWarp implements Warp {
     this.projectsReadFor.push(actAs);
     const subject = this.clients.get(actAs.client)?.slack?.people?.[actAs.user];
     if (!subject) throw new WarpError(403, "that person is not mapped to anyone in this workspace");
-    const mine = this.projects.get(subject);
-    if (!mine) throw new WarpError(403, "that person cannot read projects");
-    return mine;
+    const seen = this.projects.get(subject);
+    if (!seen) throw new WarpError(403, "that person cannot read projects");
+    return seen;
   }
 
   async getThread(id: string) {
@@ -1134,6 +1154,38 @@ export function announcementMail(over: Record<string, unknown> = {}): Record<str
     unread: true,
     source: { project: "Field" },
     parts: [{ id: "p1", type: "text", state: "info", actions: [], text: "Lisbon, in May." }],
+    ...over,
+  };
+}
+
+/** An agent's post held for Field's owners, as the platform's inbox sends it to one. */
+export function draftMail(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "m-draft",
+    kind: "announcement",
+    subject: "Field shipped two fixes",
+    from: { kind: "agent", name: "warp-analyst" },
+    at: "2026-10-09T00:45:00Z",
+    updated_at: "2026-10-09T00:45:00Z",
+    severity: "info",
+    state: "open",
+    unread: true,
+    source: { project: "Field", run: "r-recap", agent: "warp-analyst" },
+    parts: [
+      {
+        id: "p1",
+        type: "draft",
+        state: "open",
+        actions: ["publish", "discard"],
+        draft: {
+          project: "Field",
+          agent: "warp-analyst",
+          run: "r-recap",
+          subject: "Field shipped two fixes",
+          text: "The export is faster.",
+        },
+      },
+    ],
     ...over,
   };
 }

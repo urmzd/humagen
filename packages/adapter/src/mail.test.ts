@@ -204,6 +204,39 @@ test("What's new holds the open announcements, unread first, at most five, each 
   assert.equal(updates[0]?.projectTitle, "Globex Inc");
 });
 
+test("what needs the reader on Home is every open message but posted announcements, an agent's draft among them, said from its sender", () => {
+  const mention = {
+    ...announcement,
+    id: "m-mention",
+    kind: "mention",
+    subject: "Ana mentioned you in #renewals",
+    from: { kind: "person", name: "Ana" },
+    parts: [{ id: "p1", type: "mention", state: "open", actions: ["reply", "done"], mention: { thread: "t1", message: "x", excerpt: "can you check?" } }],
+  };
+  const alert = {
+    ...announcement,
+    id: "m-alert",
+    kind: "alert",
+    subject: "6 of 10 runs failed",
+    from: { kind: "rule", name: "failure-rate" },
+    parts: [{ id: "p1", type: "alert", state: "open", actions: ["acknowledge"], alert: { id: "a1", rule: "failure-rate", kind: "run_failed", severity: "warning", title: "6 of 10 runs failed" } }],
+  };
+  const settled = { ...mention, id: "m-done", parts: [{ ...mention.parts[0], state: "resolved", actions: [], outcome: { action: "done", by: "ana", at: announcement.at } }] };
+  // An owner's draft is an announcement only once it is published: until then it waits on them.
+  const decided = { ...draft, id: "m-decided", parts: [{ ...draft.parts[0], state: "resolved", actions: [], outcome: { action: "publish", by: "ana", at: draft.at } }] };
+  const items = notificationsOf([mention, alert, settled, announcement, draft, decided].map(fromServer), (id) => `/inbox?message=${id}`);
+  assert.deepEqual(items, [
+    { kind: "inbox", id: "m-mention", from: "Ana", summary: "mentioned you in #renewals", at: announcement.at, url: "/inbox?message=m-mention" },
+    { kind: "inbox", id: "m-alert", from: "failure-rate", summary: "6 of 10 runs failed", at: announcement.at, url: "/inbox?message=m-alert" },
+    { kind: "inbox", id: "m-12", from: "warp-analyst", summary: "Field shipped two fixes", at: draft.at, url: "/inbox?message=m-12" },
+  ]);
+  // The same page makes What's new from what is left: the posted announcement, and never the draft.
+  assert.deepEqual(
+    updatesOf([mention, alert, settled, announcement, draft, decided].map(fromServer), (p) => p).map((u) => u.id),
+    [announcement.id],
+  );
+});
+
 test("what needs the reader on Home is every open message but published announcements, said from its sender", () => {
   const mention = {
     ...announcement,
