@@ -95,7 +95,7 @@ func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (a
 // AutoFor is @auto for a message a client raised, as stamp resolves it, in
 // the client's home.
 func (p *Platform) AutoFor(ctx context.Context, c clients.Client, text string) (pick.Choice, error) {
-	project, _ := p.filedFor(c.Tenant, c, "")
+	project, _, _ := p.filedFor(c.Tenant, c, "")
 	return p.autoFor(ctx, c, project, text)
 }
 

@@ -1,9 +1,12 @@
 package platform_test
 
 import (
+	"cmp"
 	"errors"
+	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -235,7 +238,15 @@ func TestAMachineReadsAMappedPersonsInbox(t *testing.T) {
 func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 	f := &fakes{}
 	c := &cast{says: map[string][][]saigetypes.Delta{"docs": {say("Docs here."), say("Again.")}, "ops": {say("Ops here.")}}}
-	p := stage(t, c, f.config())
+	cfg := f.config()
+	cfg.Policy = operators(t, "ada")
+	p := stage(t, c, cfg)
+	// mentionOf's Slack user is ada, mapped by the Slack app built on the
+	// API in the same team: only people the client maps ask in a bound
+	// channel.
+	mapper := slackClient("api-app", "A0API", team, "docs")
+	mapper.Slack.Machine, mapper.Slack.People = "svc-slack", map[string]string{"U0HUMAN1": "ada"}
+	create(t, p, tenant, mapper)
 	if _, err := p.CreateProject(t.Context(), tenant, ada, platform.ProjectInput{Name: "Field"}); err != nil {
 		t.Fatal(err)
 	}
@@ -272,6 +283,62 @@ func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 	}
 	if homed.Project != "Launch" || homed.Channel != projects.General || homed.Agent != "docs" {
 		t.Fatalf("a run in an unbound channel is %s's, filed at %q #%s", homed.Agent, homed.Project, homed.Channel)
+	}
+}
+
+// A run a client's own connector raises acts for the person its team maps
+// the Slack user to, so it is held to what that person may do where the
+// binding files it, as the API holds a surface asking for a person: their
+// own runs:write, and being a member of the project. A bound channel is the
+// project's, so someone the team maps to nobody is not answered there; in
+// an unbound channel they are, for nobody, as before.
+func TestAConnectorsRunIsHeldToThePersonItActsFor(t *testing.T) {
+	f := &fakes{}
+	c := &cast{says: map[string][][]saigetypes.Delta{"docs": {say("Docs here."), say("Again.")}}}
+	cfg := f.config()
+	cfg.Policy = operators(t, "ada", "olu")
+	said := &logs{}
+	cfg.Log = slog.New(slog.NewTextHandler(said, nil))
+	p := stage(t, c, cfg)
+	if _, err := p.CreateProject(t.Context(), tenant, ada, platform.ProjectInput{Name: "Vault", Kind: projects.Account}); err != nil {
+		t.Fatal(err)
+	}
+	create(t, p, tenant, slackClient("docs-app", "A0DOCS", team, "docs"))
+	mapper := slackClient("api-app", "A0API", team, "docs")
+	mapper.Slack.Machine, mapper.Slack.People = "svc-slack", map[string]string{"U0ADA": "ada", "U0OLU": "olu", "U0VIC": "vic"}
+	create(t, p, tenant, mapper)
+	if _, err := p.CreateChannel(t.Context(), tenant, "Vault", ada, platform.ChannelInput{Name: "deals", Default: "docs", Slack: &projects.SlackBinding{Client: "docs-app", Channel: "C0VAULT"}}); err != nil {
+		t.Fatal(err)
+	}
+	ingress := p.IngressHandler()
+	mention := func(event, user, channel, ts string) {
+		t.Helper()
+		body := strings.ReplaceAll(mentionOf("A0DOCS", team, event, channel, ts), "U0HUMAN1", user)
+		if code := signedSlack(ingress, "secret-docs-app", body); code != http.StatusOK {
+			t.Fatalf("the mention answered %d", code)
+		}
+	}
+	// olu may start runs but is not a member of Vault; vic may start none;
+	// U0NOBODY is mapped to nobody, in a channel bound to Vault.
+	mention("Ev1", "U0OLU", "C0VAULT", "1700000000.000100")
+	mention("Ev2", "U0VIC", "C09", "1700000000.000200")
+	mention("Ev3", "U0NOBODY", "C0VAULT", "1700000000.000300")
+	// Ada is Vault's owner; U0NOBODY in a channel that is not bound is
+	// answered for nobody, in the client's home.
+	mention("Ev4", "U0ADA", "C0VAULT", "1700000000.000400")
+	mention("Ev5", "U0NOBODY", "C09", "1700000000.000500")
+	var got []runs.Run
+	eventually(t, "three mentions were refused and two answered", func() bool {
+		got = p.Runs.List(tenant, 20)
+		return strings.Count(said.String(), "a client's message was refused") == 3 && len(got) >= 2
+	})
+	who := map[string]string{}
+	for _, r := range got {
+		who[r.Tag().Meta["slack_channel"]+" "+r.Actor.ID] = r.Project + " for " + cmp.Or(r.Actor.User, "nobody")
+	}
+	want := map[string]string{"C0VAULT U0ADA": "Vault for ada", "C09 U0NOBODY": " for nobody"}
+	if len(got) != 2 || who["C0VAULT U0ADA"] != want["C0VAULT U0ADA"] || who["C09 U0NOBODY"] != want["C09 U0NOBODY"] {
+		t.Fatalf("the connector's runs are %v, want %v", who, want)
 	}
 }
 

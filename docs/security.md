@@ -149,7 +149,13 @@ no permission, grants nothing.
   must include `runs:write`, as well as the credential's: a workspace viewer
   starts nothing because a machine relays their words. The answer is recorded as the mapped principal, with the
   credential as `Via`: a credential never approves a call in a run it raised
-  as itself, whoever it names. Mapping a person is `clients:write`.
+  as itself, whoever it names. They answer only what they may read, and
+  start or post only where they are a member, wherever the machine may read.
+  A run a Slack client's own connector raises is held to the same: it acts
+  for the person the team maps the Slack user to only if the policy grants
+  their subject `runs:write` and they are a member where it is filed, else
+  it is not started, and in a Slack channel bound to a project someone the
+  team maps to nobody is not answered. Mapping a person is `clients:write`.
 - **A person posts only as themselves.** A message in a shared thread is
   the caller's, or, for a credential, the person its client maps through
   `act_as`, who must hold `runs:write` themselves; a credential acting for

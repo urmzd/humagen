@@ -462,6 +462,7 @@ func TestAMachinesOwnRunActsForNobody(t *testing.T) {
 func TestASlackConnectorsRunActsForTheMappedPerson(t *testing.T) {
 	f := &fakes{}
 	cfg := f.config()
+	cfg.Policy = operators(t, "ana")
 	w := newWorld(t, cfg)
 	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
 	in := slackClient("help-app", "A0HELP", team, "worker")

@@ -761,11 +761,13 @@ grant operator to subject "olu"
 // cannot approve it, in the console or through the Slack app.
 func TestAConnectorRunsRequesterIsKnownByTheirMappedName(t *testing.T) {
 	f := &fakes{}
+	cfg := f.config()
+	cfg.Policy = operators(t, "ada")
 	p := stage(t, &cast{continues: true,
 		says:  map[string][][]saigetypes.Delta{"deployer": {writing("plan.md", "ship"), say("Written.")}},
 		tools: map[string][]string{"deployer": {platform.ToolFileWrite}},
 		shape: map[string]func(*agentspec.AgentSpec){"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
-	}, f.config())
+	}, cfg)
 	in := slackClient("app", "A0APP", team, "deployer")
 	// mentionOf's Slack user is U0HUMAN1: ada, in this workspace.
 	in.Slack.Machine, in.Slack.People = "svc-slack", map[string]string{"U0HUMAN1": "ada", "U0OLU": "olu"}
@@ -854,7 +856,9 @@ func TestAConnectorRunsRequesterIsKnownThroughAnyClientOfTheTeam(t *testing.T) {
 		shape: map[string]func(*agentspec.AgentSpec){"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} }},
 		gates: map[string]chan struct{}{"deployer": make(chan struct{})},
 	}
-	p := stage(t, c, f.config())
+	cfg := f.config()
+	cfg.Policy = operators(t, "ada")
+	p := stage(t, c, cfg)
 	create(t, p, tenant, slackClient("conn", "A0CONN", team, "deployer"))
 	app := slackClient("app", "A0APP", team, "deployer")
 	app.Slack.Machine, app.Slack.People = "svc-slack", map[string]string{"U0HUMAN1": "ada", "U0OLU": "olu"}

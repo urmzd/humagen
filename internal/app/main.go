@@ -278,6 +278,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Workspace:        *workspaceDir,
 		Concurrency:      *concurrency,
 		Ext:              ext,
+		// What a person a client's own connector maps holds: the roles
+		// the policy grants their subject, as for every other caller.
+		Policy: pol,
 	}
 	if len(o.Connections) > 0 {
 		conns := o.Connections

@@ -45,6 +45,7 @@ import (
 
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/artifacts"
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/blob"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/callpolicy"
@@ -157,6 +158,13 @@ type Config struct {
 	// Ext is what a program built on warp adds: model providers, tool
 	// sources and MCP tool providers. The zero value adds nothing.
 	Ext Extensions
+	// Policy is the workspace's policy, which says what a person holds by
+	// their subject alone. It decides what the person a client's own
+	// connector maps a Slack user to may do, as a principal's policy does
+	// for a caller of the API: nobody signed in, so the roles it grants
+	// their subject are all that is known of them. Nil is the built-in
+	// policy, which grants nobody anything by subject.
+	Policy *auth.Policy
 }
 
 // Platform is the assembled system.
