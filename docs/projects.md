@@ -1252,7 +1252,9 @@ from counters.
 | `GET /api/threads/{id}` | `runs:read` | `answers` stays on the wire: who answers an untagged message a client posts. The console no longer shows it. `thread.agents` and `thread.mode` are the selection, without agents the caller may not read |
 | `POST /api/threads`, `PUT /api/threads/{id}` | `runs:write` | gain `agents: [name] (<= 5)` and `mode: best_fit \| all` (`best_fit` when two or more are named and no mode; none with fewer than two). Each agent must be available in the project (400, one the caller may not read as one that does not exist); `all` over more than 3 is 400. The PUT also takes `project` and `channel`, which move a private conversation while no run has been filed in it (409 after; 400 for a shared or surface thread). A PUT that changes only `agents`, `mode`, `project` and `channel` takes anyone who may post in the thread |
 
-`ThreadRule` gains `untagged` and `routed`. `ThreadMode` is new.
+`ThreadRule` gains `untagged` and `routed`. `ThreadMode` is new. `Run` gains
+`routed` (`best_fit` or `all`): set on a run the thread's selection started,
+kept with the run whatever the selection becomes, and absent otherwise.
 
 ### Skills and mention kinds
 

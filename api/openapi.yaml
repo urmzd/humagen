@@ -5000,6 +5000,15 @@ components:
         picked:
           description: Why the agent was chosen, when the caller left it to the platform.
           type: string
+        routed:
+          description: |
+            Set when the run was started by its thread's selected agents, and
+            how: `best_fit`, the one that fit best (`picked` says why), or
+            `all`, one of each selected agent. Absent for a run a tag, a
+            default or anything else started, and kept whatever the
+            selection becomes later.
+          type: string
+          enum: [best_fit, all]
         project: {type: string}
         within:
           description: |

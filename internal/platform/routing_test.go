@@ -46,11 +46,16 @@ func TestSelectedAgentsAnswerAConversationsUntaggedMessages(t *testing.T) {
 		t.Fatalf("an untagged message with all selected started %+v (%s)", agentsOf(got.Runs), got.Rule)
 	}
 	for _, r := range got.Runs {
+		if r.Routed != threads.ModeAll {
+			t.Fatalf("a run all selected agents started says it was routed %q", r.Routed)
+		}
+	}
+	for _, r := range got.Runs {
 		await(t, p, r.ID, runs.Completed)
 	}
 	tagged := post(t, p, operator, th.ID, platform.MessageInput{Text: "@lead only you"})
-	if tagged.Rule != threads.RuleTagged || !slices.Equal(agentsOf(tagged.Runs), []string{"lead"}) {
-		t.Fatalf("a tag with agents selected started %+v (%s)", agentsOf(tagged.Runs), tagged.Rule)
+	if tagged.Rule != threads.RuleTagged || !slices.Equal(agentsOf(tagged.Runs), []string{"lead"}) || tagged.Runs[0].Routed != "" {
+		t.Fatalf("a tag with agents selected started %+v (%s)", tagged.Runs, tagged.Rule)
 	}
 	await(t, p, tagged.Runs[0].ID, runs.Completed)
 
@@ -64,7 +69,7 @@ func TestSelectedAgentsAnswerAConversationsUntaggedMessages(t *testing.T) {
 		t.Fatalf("a member who did not start it renamed it: %v", err)
 	}
 	best := post(t, p, bo, th.ID, platform.MessageInput{Text: "who should take this?"})
-	if best.Rule != threads.RuleRouted || len(best.Runs) != 1 || !slices.Contains([]string{"helper", "lead"}, best.Runs[0].Agent) || best.Runs[0].Picked == "" {
+	if best.Rule != threads.RuleRouted || len(best.Runs) != 1 || !slices.Contains([]string{"helper", "lead"}, best.Runs[0].Agent) || best.Runs[0].Picked == "" || best.Runs[0].Routed != threads.ModeBestFit {
 		t.Fatalf("an untagged message with best_fit started %+v (%s)", best.Runs, best.Rule)
 	}
 	await(t, p, best.Runs[0].ID, runs.Completed)
