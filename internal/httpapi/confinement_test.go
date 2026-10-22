@@ -815,8 +815,9 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 
 	// In the workspace, a body that names the hidden agent answers as one
 	// naming an agent that is not there: a client's default, list or bot,
-	// a project's lists and the workspace's title agent. And saving the
-	// open client and the settings as the outsider reads them keeps it.
+	// a project's lists, the workspace's title agent, the agent a run or a
+	// schedule asks and a channel's default. And saving the open client and the settings as the
+	// outsider reads them keeps it.
 	if h.inside {
 		want(t, f, outsider, "POST", "/api/projects", `{"name":"Mine"}`, http.StatusCreated)
 		settings := func(agent string) string {
@@ -846,6 +847,13 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 			{"PUT", "/api/projects/Mine/agents", func(a string) string { return `{"version":1,"enable":["` + a + `"]}` }},
 			{"PUT", "/api/projects/Mine/agents", func(a string) string { return `{"version":1,"enable":[],"default":"` + a + `"}` }},
 			{"PUT", "/api/settings", settings},
+			{"POST", "/api/runs", func(a string) string { return `{"agent":"` + a + `","text":"probe"}` }},
+			{"POST", "/api/runs", func(a string) string { return `{"agent":"` + a + `","text":"probe","project":"Mine"}` }},
+			{"POST", "/api/schedules", func(a string) string {
+				return `{"name":"probe","expression":"0 3 * * *","agent":"` + a + `","text":"probe"}`
+			}},
+			{"POST", "/api/projects/Mine/channels", func(a string) string { return `{"name":"probe","default":"` + a + `"}` }},
+			{"PUT", "/api/projects/Mine/channels/general", func(a string) string { return `{"version":1,"default":"` + a + `"}` }},
 		} {
 			code, out := send(t, f, outsider, tc.method, tc.path, tc.body(h.agent))
 			ghostCode, ghostOut := send(t, f, outsider, tc.method, tc.path, tc.body(ghost(h.agent)))

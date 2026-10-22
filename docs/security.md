@@ -53,8 +53,9 @@ threads, events, files, notes, schedules, inbox messages, limits and eval
 suites, and the agents that live there, each answering exactly as an object
 that does not exist. A client, a project's lists of agents and the
 workspace's settings leave out an agent that lives there, and a change to
-them that names one answers as one naming an agent that does not exist,
-while keeping what the caller was not shown. A model policy such an agent
+them keeps what the caller was not shown. A request that names such an agent,
+there or as the agent a run, a schedule or a thread asks, answers as one
+naming an agent that does not exist. A model policy such an agent
 runs on is not removed, and the refusal does not name the agent. A private
 thread is read by its participants alone.
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/registry"
 
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
@@ -285,6 +286,10 @@ type Turn struct {
 	// that. Anyone else's turn teaches the project only proposals for its
 	// owners. Only a caller that asked MayChangeNotes for that person sets it.
 	KeepsNotes bool
+	// Sees, when set, is the agents the person the turn is for may read. An
+	// agent the turn names that they may not read is refused as one that
+	// does not exist, before anything is asked of it.
+	Sees func(agent string) bool
 }
 
 // NoProjectCalled is what a turn filed in a project that is not there is
@@ -349,6 +354,14 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 			return runs.Run{}, fmt.Errorf("%w: this credential does not answer for people of that client", ErrForbidden)
 		}
 		routes, clientDefault = c.Routes, c.DefaultAgent
+	}
+	if asked := strings.TrimSpace(t.Agent); t.Sees != nil && asked != "" && asked != Auto {
+		if _, err := p.Agents.Get(ctx, tenant, asked, 0); err != nil {
+			return runs.Run{}, err
+		}
+		if !t.Sees(asked) {
+			return runs.Run{}, fmt.Errorf("%w: %q", registry.ErrNotFound, asked)
+		}
 	}
 	who, err := p.resolveAgent(ctx, tenant, p.placeIn(tenant, th, clientDefault), strings.TrimSpace(t.Agent), t.Text, routes)
 	if err != nil {

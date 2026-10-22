@@ -578,7 +578,9 @@ Housekeeping (`OriginSystem`) is exempt, as it is from admission. It is read
 where the turn it serves is, so a title or memory agent that lives in a
 project is asked only about the turns there and below, whose readers all read
 it. Earlier checks use the same function and give the same answer sooner:
-writing a schedule, a default or a tag, and `GET /api/pick`.
+writing a schedule, a default or a tag, and `GET /api/pick`. An agent the
+writer may not read is not one they are told about: naming it answers as
+naming an agent that does not exist, at every one of them.
 
 ### Homes
 

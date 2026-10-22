@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -409,5 +410,43 @@ func TestAModelPolicyInUseNamesOnlyTheAgentsTheCallerMayRead(t *testing.T) {
 	}
 	if raw, _ := read(t, f, owner, "/api/settings"); !strings.Contains(raw, `"steady"`) {
 		t.Errorf("a refused removal lost the policy: %s", raw)
+	}
+}
+
+// A thread names an agent only as its poster may read it. Tagging an agent
+// they may not read tags no agent, as tagging one that does not exist, and
+// naming it as a thread's default or a participant answers the same.
+func TestAThreadNamesOnlyTheAgentsItsPosterMayRead(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	secretAgent(t, f, owner)
+	want(t, f, owner, "POST", "/api/projects", `{"name":"Open"}`, http.StatusCreated)
+	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
+	if code, _ := get(t, f, ana, "/api/projects/Secret"); code != http.StatusNotFound {
+		t.Fatalf("Ana reads Secret: %d", code)
+	}
+
+	// What a tag came to, in the thread it starts and in the answer.
+	tagged := func(name string) string {
+		t.Helper()
+		out := want(t, f, ana, "POST", "/api/threads", `{"project":"Open","visibility":"shared","text":"@`+name+` hello"}`, http.StatusCreated)
+		return mustJSON(t, map[string]any{"mentions": out["message"].(map[string]any)["mentions"], "refused": out["refused"], "runs": out["runs"]})
+	}
+	if spy, spz := tagged("spy"), tagged("spz"); strings.ReplaceAll(spy, "spy", "spz") != spz {
+		t.Errorf("tagging spy came to %s, and tagging an agent that does not exist %s", spy, spz)
+	}
+
+	if code := asGhost(t, f, ana, "POST", "/api/threads", `{"project":"Open","visibility":"shared","text":"hello","default":"spy"}`); code != http.StatusBadRequest {
+		t.Errorf("a thread whose default is spy = %d, want 400", code)
+	}
+	th := want(t, f, ana, "POST", "/api/threads", `{"project":"Open","visibility":"shared","text":"hello"}`, http.StatusCreated)["thread"].(map[string]any)
+	id, version := th["id"].(string), int(th["version"].(float64))
+	for _, tc := range []struct{ path, body string }{
+		{"/api/threads/" + id, fmt.Sprintf(`{"version":%d,"title":"t","visibility":"shared","default":"spy"}`, version)},
+		{"/api/threads/" + id + "/participants", fmt.Sprintf(`{"version":%d,"add":[{"kind":"agent","name":"spy"}]}`, version)},
+	} {
+		if code := asGhost(t, f, ana, "PUT", tc.path, tc.body); code != http.StatusBadRequest {
+			t.Errorf("PUT %s naming spy = %d, want 400", tc.path, code)
+		}
 	}
 }
