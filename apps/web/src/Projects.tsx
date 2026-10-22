@@ -380,6 +380,7 @@ export function NewProject({
         </div>
       </div>
       {governedHere && <p className="text-aui-2xs text-aui-muted">{words.form.governed}</p>}
+      {kind === "account" && <p className="text-aui-2xs text-aui-muted">{words.form.accountMembersOnly}</p>}
       <Label text={words.form.description}>
         <input className={field} value={description} maxLength={500} disabled={saving} onChange={(e) => setDescription(e.target.value)} />
       </Label>

@@ -1078,11 +1078,12 @@ export const coworking = {
   /** A thread and one page of its turns, the newest first; `before` reads the page above. */
   thread: (id: string, before?: string) =>
     call<ThreadPage>("GET", before ? `${threadPath(id)}?${new URLSearchParams({ before })}` : threadPath(id)),
-  start: (t: { project: string; channel: string; text: string; title?: string; post_only?: boolean }) =>
-    call<ThreadPosted>("POST", "/api/threads", { ...t, visibility: "shared" }),
+  /** Starts a thread: shared unless `visibility` says private, read then by the people in it alone. */
+  start: (t: { project: string; channel: string; text: string; title?: string; post_only?: boolean; visibility?: "shared" | "private" }) =>
+    call<ThreadPosted>("POST", "/api/threads", { visibility: "shared", ...t }),
   post: (id: string, m: { text: string; after?: string; post_only?: boolean; answers?: { run: string; question: string } }) =>
     call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
-  update: (id: string, t: { version: number; title: string; visibility: "shared"; default: string }) =>
+  update: (id: string, t: { version: number; title: string; visibility: "shared" | "private"; default: string }) =>
     call<Thread>("PUT", threadPath(id), t),
   /** The workspace's people whose name or handle holds `q`, for the @ typeahead. */
   people: (q: string) =>

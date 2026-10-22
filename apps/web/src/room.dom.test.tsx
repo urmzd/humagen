@@ -144,6 +144,70 @@ test("a channel lists its threads, and its composer starts a shared thread there
   assert.deepEqual(started?.body, { project: "Globex", channel: "renewals", text: "who knows the PO?", post_only: false, visibility: "shared" });
 });
 
+test("a private thread says so where a shared one says where it is shared", async () => {
+  net = stubFetch({
+    "GET /api/threads/th-0123456789abcdef": () => ({ ...page, thread: { ...page.thread, visibility: "private" } }),
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/people": () => ({ people: [], next: null }),
+    "GET /api/runs/r1/events": () => ({ events: [] }),
+  });
+  render(
+    <ThreadRoom
+      id="th-0123456789abcdef"
+      initial={{ ...page, thread: { ...page.thread, visibility: "private" } }}
+      tick={0}
+      agents={[helper]}
+      projects={tree}
+      root={null}
+      workspaceName="Acme"
+      canRun
+      onOpenChannel={() => {}}
+      onChanged={() => {}}
+    />,
+  );
+  assert.ok(await screen.findByText(words.private));
+  assert.ok(!screen.queryByText(words.sharedIn(globex.title ?? "Globex", "renewals")));
+  // A thread's own composer starts nothing, so it offers no Private.
+  assert.ok(!screen.queryByText(words.startPrivate, { selector: "button" }));
+});
+
+test("Private in a channel starts a thread only the people in it read, and its row says so", async () => {
+  net = stubFetch({
+    "GET /api/projects/Globex/channels": () => ({
+      channels: [{ project: "Globex", name: "renewals", version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } }],
+    }),
+    "GET /api/threads": () => ({
+      threads: [{ id: "th-0123456789abcdef", title: "Pricing", named: true, origin: "api", project: "Globex", channel: "renewals", agents: [], people: ["00u-ana"], visibility: "private", messages: 1, turns: 0, branches: 0, active: 0, failed: 0, created_at: at, updated_at: at }],
+      next: null,
+    }),
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "POST /api/threads": () => ({ thread: { ...page.thread, id: "th-00000000000000ff", visibility: "private" }, message: page.turns[0]?.message, runs: [], notified: [], refused: [], rule: "people" }),
+  });
+  render(
+    <ChannelPage
+      project="Globex"
+      channel="renewals"
+      tick={0}
+      agents={[helper]}
+      projects={tree}
+      root={null}
+      workspaceName="Acme"
+      canRun
+      onOpenProject={() => {}}
+      onOpenThread={() => {}}
+    />,
+  );
+  assert.ok(await screen.findByText(new RegExp(`^${words.private} · `)));
+  fireEvent.click(screen.getByText(words.startPrivate, { selector: "button" }));
+  assert.ok(screen.getByText(words.privateHint, { selector: "p" }));
+  const box = screen.getByPlaceholderText(words.startThread);
+  fireEvent.change(box, { target: { value: "the discount we can offer" } });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "POST" && s.path === "/api/threads")));
+  const started = net?.seen.find((s) => s.method === "POST" && s.path === "/api/threads");
+  assert.deepEqual(started?.body, { project: "Globex", channel: "renewals", text: "the discount we can offer", post_only: false, visibility: "private" });
+});
+
 test("a project's channels open their pages, and a new one is made with a name that cannot change", async () => {
   const made: unknown[] = [];
   net = stubFetch({

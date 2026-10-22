@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/threads"
@@ -90,5 +93,26 @@ func TestAPrivateThreadsHousekeepingStaysInIt(t *testing.T) {
 				t.Fatalf("a private thread proposed a note for %s: %+v", owner, n)
 			}
 		}
+	}
+}
+
+// Tagging a person in a private thread invites them: they read it from then
+// on, and someone nobody tagged still reads nothing of it.
+func TestTaggingAPersonInAPrivateThreadInvitesThem(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	seePeople(t, p, operator, admin, vic)
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "@vic can you check the price?"})
+	if !slices.Equal(got.Notified, []string{"vic"}) {
+		t.Fatalf("notified %v", got.Notified)
+	}
+	if !p.SeesThread(vic, got.Thread.ID) {
+		t.Fatal("a person tagged in a private thread cannot read it")
+	}
+	if p.SeesThread(viewer, got.Thread.ID) {
+		t.Fatal("someone nobody tagged reads a private thread")
+	}
+	if _, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "vic")); !ok {
+		t.Fatal("the tagged person was not told")
 	}
 }

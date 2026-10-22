@@ -281,7 +281,14 @@ export const defaultCopy = {
     whoHint: "A person's subject, or role:<name> for everyone who holds a role.",
     role: "Role",
     saveMembers: "Save Members",
-    everyoneNeeded: "Everyone keeps at least viewer here, since every project stays visible.",
+    everyoneNeeded: "Everyone is at least a member of a company-wide project.",
+    /** A project with no entry for everyone. */
+    membersOnly:
+      "Members only. Only the people listed and the owners above see it and what it holds.",
+    /** The nudge on an account everyone can see. */
+    visibleToEveryone: (project: string) =>
+      `${project} is visible to everyone. Make it members only?`,
+    makeMembersOnly: "Make Members Only",
     limitFrom: (project: string) => `${project}'s limit also applies here.`,
     workspaceLimit: "The workspace's own limit applies here too.",
     ownerLimit: "A tighter limit, as an owner above",
@@ -642,6 +649,9 @@ export const defaultCopy = {
       externalId: "Customer id elsewhere (optional)",
       url: "Link to the customer's record (optional)",
       governed: "Only those who govern projects make company-wide ones.",
+      /** Under the kind, for an account: who sees it. */
+      accountMembersOnly:
+        "Accounts are members only: you, the people you add and the owners above see it.",
     },
     count: {
       running: (n: number) => `${n} running`,
@@ -737,7 +747,8 @@ export const defaultCopy = {
     /** A channel's title on its page: "#renewals". */
     channel: (name: string) => `#${name}`,
     channels: "Channels",
-    channelsLede: "Each holds shared threads. Everyone who can see the project reads them.",
+    channelsLede:
+      "Each holds threads. Everyone who can see the project reads a shared one, and only the people in it a private one.",
     newChannel: "New Channel",
     createChannel: "Create Channel",
     archiveChannel: "Archive Channel",
@@ -756,6 +767,11 @@ export const defaultCopy = {
     moreThreads: "See More",
     /** Where a thread is, in its meta line: "Shared in Globex › #renewals". */
     sharedIn: (project: string, channel: string) => `Shared in ${project} › #${channel}`,
+    /** A thread only the people in it read, in its meta line and its row. */
+    private: "Private",
+    /** The control that starts a private thread instead of a shared one. */
+    startPrivate: "Private",
+    privateHint: "Only the people in it read a private thread. Tagging a person invites them.",
     /** Who takes part, in the meta line. */
     participants: (n: number) => `${n} ${n === 1 ? "person" : "people"}`,
     startThread: "Start a thread",
