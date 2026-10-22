@@ -1524,11 +1524,16 @@ export class App {
     return (await this.bound()).some((b) => b.slack_channel === channel);
   }
 
-  /** The Slack channels this client is bound to, read again every half minute. */
+  /**
+   * The Slack channels this client is bound to, read again every half minute.
+   * A read that fails throws and is not kept, so nobody is answered around a
+   * channel's rules because warp could not say it has them: the turn is
+   * refused, an announcement waits, and the next one reads again.
+   */
   private async bound(): Promise<Binding[]> {
     if (!this.opts.clientId) return [];
     if (!this.bindings || Date.now() - this.bindings.at >= 30_000) {
-      const list = await this.warp.bindings(this.opts.clientId).catch(() => [] as Binding[]);
+      const list = await this.warp.bindings(this.opts.clientId);
       this.bindings = { at: Date.now(), list };
     }
     return this.bindings.list;

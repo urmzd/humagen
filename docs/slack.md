@@ -101,7 +101,10 @@ read: someone who may not read a project's runs answers no question there,
 even on a card in a channel bound to it. A bound channel is a project's
 channel, so only people the client maps post there: anyone else who mentions
 the app in one is told to ask an admin to connect their Slack account, and
-warp is not asked. Elsewhere they ask through the app as before.
+warp is not asked. Elsewhere they ask through the app as before. When warp
+cannot say which channels are bound, the app answers nobody it would ask as
+itself: the turn is refused as warp being unavailable, and the next one reads
+the bindings again.
 
 An announcement of a project whose general channel is bound is posted there,
 top-level, once; the app records where (`PUT /api/inbox/{id}/deliveries/{client}`),

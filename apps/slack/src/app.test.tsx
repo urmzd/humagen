@@ -1595,6 +1595,37 @@ test("in a bound channel, someone the client maps to nobody is told to be connec
   await v.app.idle();
 });
 
+test("when warp cannot say whether a channel is bound, nobody is answered around it, and the next mention asks again", async () => {
+  const w = mapped();
+  w.warp.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
+  const bindings = w.warp.bindings.bind(w.warp);
+  let down = true;
+  w.warp.bindings = async (client: string) => {
+    if (down) throw new WarpError(503, "warp is restarting");
+    return bindings(client);
+  };
+  await deliver(w, mention("@helper what changed?", TS, { user: "U09NOBODY" }));
+  const asked = w.warp.asked.length;
+  // A run asked for in error is ended, so the test fails rather than waits.
+  if (asked) await emit(w, "lifecycle.completed", { text: "answered around the channel" });
+  await w.app.idle();
+  assert.equal(asked, 0, "a channel that may be bound is not answered as the app");
+  assert.equal(w.warp.runs.size, 0);
+  assert.match(
+    textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
+    new RegExp(defaultCopy.failure.unavailable("warp").slice(0, 20)),
+  );
+  // The failure is not remembered: once warp answers, the channel reads as bound.
+  down = false;
+  await deliver(w, mention("@helper and now?", "1700000300.000100", { user: "U09NOBODY" }));
+  await w.app.idle();
+  assert.equal(w.warp.asked.length, 0);
+  assert.match(
+    textIn(blocksOf(w.slack.of("chat.postMessage").at(-1))),
+    new RegExp(defaultCopy.threads.unmappedInBound.slice(0, 40)),
+  );
+});
+
 test("in a bound channel, asking about someone else's message is refused, and nothing of it is posted", async () => {
   const w = mapped();
   w.warp.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
