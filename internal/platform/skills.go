@@ -84,14 +84,16 @@ func startsForSkills(ms []threads.Mention) ([]threads.Mention, error) {
 // only is not one: the @auto a skill starts is not written, so a person who
 // chose to post only is taken at their word. A message a client posts keeps
 // the client's defaults, as its commands do: the default answers with the
-// skill, and a client that lists its agents is never sent to @auto.
-func skillTags(ms []threads.Mention, surfaced, console bool) ([]threads.Mention, error) {
+// skill, and a client that lists its agents is never sent to @auto. In a
+// thread with selected agents (routed) the skill goes to them instead
+// (threads.Decide), so no @auto is added.
+func skillTags(ms []threads.Mention, surfaced, console, routed bool) ([]threads.Mention, error) {
 	if !surfaced {
 		if err := threads.UnknownSkill(ms); err != nil {
 			return nil, err
 		}
 	}
-	if !console {
+	if !console || routed {
 		return ms, nil
 	}
 	return startsForSkills(ms)

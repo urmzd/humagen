@@ -95,8 +95,8 @@ func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (a
 // AutoFor is @auto for a message a client raised, as stamp resolves it, in
 // the client's home.
 func (p *Platform) AutoFor(ctx context.Context, c clients.Client, text string) (pick.Choice, error) {
-	project, _, _ := p.filedFor(c.Tenant, c, "")
-	return p.autoFor(ctx, c, project, text)
+	project, channel, _ := p.filedFor(c.Tenant, c, "")
+	return p.autoFor(ctx, c, p.clientPlace(c, project, channel, ""), text)
 }
 
 // DelayRecord holds every run between being accepted and being recorded, as

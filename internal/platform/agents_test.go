@@ -830,3 +830,15 @@ func TestAMoveNeverLeavesWhatItsProjectsRunWithoutTheirAgent(t *testing.T) {
 		t.Fatalf("lead in X after the move = %v", err)
 	}
 }
+
+// @auto for a client's message that nothing fits hands it to the nearest
+// default that names an agent, the client's own before the project's chain,
+// as @auto in a thread does.
+func TestAClientsAutoFallsBackToTheNearestNamedDefault(t *testing.T) {
+	p := start(t, call.Limits{})
+	c := clients.Client{Tenant: tenant, ID: "docs", Surface: clients.Slack, Enabled: true, DefaultAgent: "lead", Agents: []string{clients.AnyAgent}}
+	got, err := p.AutoFor(t.Context(), c, "qqqq zzzz")
+	if err != nil || got.Agent != "lead" {
+		t.Fatalf("@auto with nothing fitting = %+v, %v; want the client's default", got, err)
+	}
+}
