@@ -706,23 +706,32 @@ func (p *Platform) AnswerQuestion(ctx context.Context, who auth.Principal, runID
 
 // answer is AnswerQuestion once the message is known.
 func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Message, a QuestionAnswer) (inbox.Message, error) {
+	got, _, err := p.answerFirst(ctx, who, m, a)
+	return got, err
+}
+
+// answerFirst is answer, and also reports whether this answer is the one
+// the run was given: not when the question no longer waited, because it was
+// answered or its run stopped or ended, nor when someone answered it first.
+// A message posted as an answer is posted only then (answerFromThread).
+func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.Message, a QuestionAnswer) (inbox.Message, bool, error) {
 	i := slices.IndexFunc(m.Parts, func(x inbox.Part) bool { return x.Question != nil })
 	if i < 0 {
-		return inbox.Message{}, fmt.Errorf("%w: message %q asks no question", ErrAction, m.ID)
+		return inbox.Message{}, false, fmt.Errorf("%w: message %q asks no question", ErrAction, m.ID)
 	}
 	part := m.Parts[i]
 	q := *part.Question
 	if !who.Can(auth.RunsWrite) {
-		return inbox.Message{}, fmt.Errorf("%w: answering needs %s", ErrForbidden, auth.RunsWrite)
+		return inbox.Message{}, false, fmt.Errorf("%w: answering needs %s", ErrForbidden, auth.RunsWrite)
 	}
 	reader, via, err := p.answerer(who, a.ActAs)
 	if err != nil {
 		p.log.Warn("platform: an answer for someone a surface could not name was refused", "tenant", who.Tenant, "by", who.Subject, "run", q.Run, "question", q.ID)
-		return inbox.Message{}, err
+		return inbox.Message{}, false, err
 	}
 	if a.ActAs != nil && !mayResume(who, reader) {
 		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "no runs:write")
-		return inbox.Message{}, fmt.Errorf("%w: %s may not resume runs (answering needs %s)", ErrForbidden, reader.Subject, auth.RunsWrite)
+		return inbox.Message{}, false, fmt.Errorf("%w: %s may not resume runs (answering needs %s)", ErrForbidden, reader.Subject, auth.RunsWrite)
 	}
 	if q.Kind == payload.QuestionApproval {
 		// Checked here, from the run as it stands, not only from whom the
@@ -730,30 +739,31 @@ func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Messa
 		// know a requester by the names a client maps them to, nor who
 		// started the tree.
 		if self, err := p.isSelfApproval(ctx, who.Tenant, q, reader.Subject, who.Subject); err != nil {
-			return inbox.Message{}, err
+			return inbox.Message{}, false, err
 		} else if self {
 			p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "self-approval")
-			return inbox.Message{}, fmt.Errorf("%w: %s asked for this work, so someone else must approve its calls", ErrForbidden, reader.Subject)
+			return inbox.Message{}, false, fmt.Errorf("%w: %s asked for this work, so someone else must approve its calls", ErrForbidden, reader.Subject)
 		}
 	}
 	// Checked here, from the run and its callers as they stand, as well as
 	// by whom the message was addressed to when it was raised.
 	if err := p.maySteer(ctx, who.Tenant, q, a, reader.Subject); err != nil {
 		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "not the person the run acts for")
-		return inbox.Message{}, err
+		return inbox.Message{}, false, err
 	}
 	if !m.For(reader) {
-		return inbox.Message{}, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)
+		return inbox.Message{}, false, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)
 	}
-	viewAs := func() (inbox.Message, error) {
-		return p.inboxGetAs(who, reader, m.ID)
+	viewAs := func(recorded bool) (inbox.Message, bool, error) {
+		got, err := p.inboxGetAs(who, reader, m.ID)
+		return got, recorded && err == nil, err
 	}
 	if part.State != inbox.PartOpen {
-		return viewAs()
+		return viewAs(false)
 	}
 	ans, err := answerOf(q, a)
 	if err != nil {
-		return inbox.Message{}, err
+		return inbox.Message{}, false, err
 	}
 	actx := context.WithValue(ctx, answeringKey{}, answering{subject: reader.Subject, roles: reader.Roles})
 	req := runtime.AnswerRequest{
@@ -787,11 +797,11 @@ func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Messa
 	switch {
 	case errors.Is(err, runtime.ErrNotAllowed):
 		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID)
-		return inbox.Message{}, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)
+		return inbox.Message{}, false, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)
 	case errors.Is(err, runtime.ErrInvalid):
-		return inbox.Message{}, fmt.Errorf("%w: %s", ErrAction, strings.TrimPrefix(err.Error(), "runtime: invalid: "))
+		return inbox.Message{}, false, fmt.Errorf("%w: %s", ErrAction, strings.TrimPrefix(err.Error(), "runtime: invalid: "))
 	case errors.Is(err, runtime.ErrNoQuestion):
-		return inbox.Message{}, fmt.Errorf("%w: run %q has no question %q", inbox.ErrNotFound, q.Run, q.ID)
+		return inbox.Message{}, false, fmt.Errorf("%w: run %q has no question %q", inbox.ErrNotFound, q.Run, q.ID)
 	case errors.Is(err, runtime.ErrQuestionClosed):
 		// The run stopped or ended while it waited. Say so where it was asked.
 		o := inbox.Outcome{Action: OutcomeClosed, By: "system", At: p.now(), Note: "The run ended without an answer"}
@@ -799,9 +809,9 @@ func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Messa
 			o.Action, o.Note = OutcomeStopped, run.Cause
 		}
 		p.settleQuestion(who.Tenant, q.Run, q.ID, o, "")
-		return viewAs()
+		return viewAs(false)
 	case err != nil:
-		return inbox.Message{}, err
+		return inbox.Message{}, false, err
 	}
 	o := outcomeOf(got, p.now())
 	if first {
@@ -811,5 +821,5 @@ func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Messa
 		p.settleQuestion(who.Tenant, q.Run, q.ID, o, "")
 	}
 	p.audit(who, m, part.ID, a.Action, fmt.Sprintf("by=%s via=%s first=%t recorded=%s", reader.Subject, via, first, o.Action))
-	return viewAs()
+	return viewAs(first)
 }

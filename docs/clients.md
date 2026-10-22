@@ -53,10 +53,10 @@ when the client:
 | `slack.people` | Slack user ids in the client's team, each mapped to the principal it is in this workspace, by subject. At most 500. |
 
 Anyone the map does not name is refused with 403, and the app does not ask on
-their behalf. To answer, the person's own grant must include `runs:write`. A Slack click
+their behalf. To ask for a run or to answer, the person's own grant must include `runs:write`. A Slack click
 carries no groups, so someone who holds a role only through a group (`grant
-operator to group "..."`) holds nothing here and cannot answer from Slack:
-grant them by `subject` too, or they answer in the console. A disabled client maps nobody. The mapped principal's roles, for
+operator to group "..."`) holds nothing here and cannot ask or answer from Slack:
+grant them by `subject` too, or they use the console. A disabled client maps nobody. The mapped principal's roles, for
 `role:<name>` approvers, are what the workspace's authorization policy grants
 their subject (`grant ... to subject "..."` or `anyone`), since a Slack click
 carries no sign-in. Who may answer is then the run's spec's to say, as for

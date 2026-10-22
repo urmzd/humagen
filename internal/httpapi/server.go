@@ -481,7 +481,8 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	}
 	// The run acts for the caller, or for the person a surface asks for:
 	// their credentials are the ones its person-scoped tools use, and their
-	// role on the project is the one that counts, never the credential's.
+	// own permission and role on the project are the ones that count, never
+	// the credential's, as for posting and answering for them.
 	actor := platform.ActorOf(who)
 	client := ""
 	asks := who
@@ -489,6 +490,10 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		person, err := s.P.Acting(who, *body.ActAs)
 		if err != nil {
 			s.problem(w, err)
+			return
+		}
+		if !person.Can(auth.RunsWrite) {
+			s.problem(w, fmt.Errorf("%w: %s may not start runs (asking needs %s)", platform.ErrForbidden, person.Subject, auth.RunsWrite))
 			return
 		}
 		asks, actor, client = person, platform.PersonActor(person.Subject), body.ActAs.Client

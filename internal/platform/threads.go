@@ -26,8 +26,9 @@ import (
 // A person posts a message; it starts no run of its own. What it starts is
 // decided by the one grammar (threads.Parse) and the one rule order
 // (threads.Decide): the agents it tags answer, side by side; a message that
-// tags only people notifies them; an answer, a reply or a message posted
-// only starts nothing; otherwise the default the thread inherits answers.
+// tags only people notifies them; an untagged answer, reply or message
+// posted only starts nothing; otherwise the default the thread inherits
+// answers.
 // Every run passes through Invoke, so admission, limits and availability
 // decide as they do for every other run.
 //
@@ -39,6 +40,11 @@ import (
 // ErrThreadAuthor reports a post with no person to post it: a credential
 // that is not acting for one.
 var ErrThreadAuthor = errors.New("platform: a message is posted by a person")
+
+// ErrAnswered reports a message posted as the answer to a question that no
+// longer waits for one: it was answered, or its run stopped or ended. Nothing
+// is posted, since the message would answer nothing.
+var ErrAnswered = errors.New("platform: no longer waiting for an answer")
 
 // ThreadInput starts a thread with its first message.
 type ThreadInput struct {
@@ -196,11 +202,12 @@ func (p *Platform) MayPost(person auth.Principal, at Place) error {
 // mayPost is MayPost with the role the project takes. Starting a thread, or
 // posting a message that may start a run, takes a member, as starting a
 // conversation does. A message that only answers what its poster was asked, a
-// question a run there put to them or a message that tagged them, starts
-// nothing, and takes only seeing the project: an expert a project names need
-// not be a member to answer, and the answer's own check holds it to whom it
-// was asked of. It also says whether what the runs it starts teach the
-// project may be kept unasked: only when the poster could keep it themselves.
+// question a run there put to them or a message that tagged them, and tags
+// no one, starts nothing and notifies no one, and takes only seeing the
+// project (postNeed): an expert a project names need not be a member to
+// answer, and the answer's own check holds it to whom it was asked of. It
+// also says whether what the runs it starts teach the project may be kept
+// unasked: only when the poster could keep it themselves.
 func (p *Platform) mayPost(person auth.Principal, at Place, need projects.Role) (keeps bool, err error) {
 	project := projects.NameOf(at.Project)
 	switch {
@@ -252,9 +259,12 @@ func (p *Platform) MayFollow(person auth.Principal, prev runs.Run) error {
 // mayChangeThread holds a caller to what changing a thread's visibility,
 // title or default, or removing someone else from it, takes: the thread's
 // owner, the person who started it, or an owner of its project
-// (projects:govern owns every project). A conversation from before threads
-// that no person asked in has no owner yet: whoever changes it first becomes
-// one, and that takes a member of the project.
+// (projects:govern owns every project). Its owner changes it only while they
+// are a member of the project, as they were to start it: its default answers
+// everyone's untagged messages there, and a viewer starts nothing. A
+// conversation from before threads that no person asked in has no owner yet:
+// whoever changes it first becomes one, and that takes a member of the
+// project.
 func (p *Platform) mayChangeThread(who auth.Principal, th threads.Thread) error {
 	if err := p.changesThread(who, th); err != nil {
 		return err
@@ -265,7 +275,7 @@ func (p *Platform) mayChangeThread(who auth.Principal, th threads.Thread) error 
 	case who.Subject != "" && (who.Subject == th.CreatedBy || slices.ContainsFunc(th.Participants, func(pt threads.Participant) bool {
 		return pt.Owner && pt.Kind == threads.Person && pt.Name == who.Subject
 	})):
-		return nil
+		return p.MayFileIn(who, th.Project)
 	}
 	_, _, err := p.ProjectRole(who, th.Project, projects.Owner)
 	if errors.Is(err, projects.ErrForbidden) {
@@ -290,6 +300,23 @@ func (p *Platform) poster(who auth.Principal, as *ActAs) (auth.Principal, error)
 		return who, nil
 	}
 	return p.Acting(who, *as)
+}
+
+// postNeed is the role a message in a thread needs of its poster. An answer
+// or a reply is the poster's response to what they were asked, which the
+// default does not answer, so a viewer may post one. But the agents it tags
+// still answer it and the people and experts it tags are still told, as for
+// any message (threads.Decide), so one that tags anyone takes a member, as
+// tagging does. Whether it tags is read from the text alone, before any
+// name is looked up: a tag that names nobody counts too.
+func postNeed(in MessageInput) projects.Role {
+	if in.Answers == nil && !in.reply {
+		return projects.Member
+	}
+	if tags, err := threads.Parse(in.Text, nil); err != nil || len(tags) > 0 {
+		return projects.Member
+	}
+	return projects.Viewer
 }
 
 // tagLookup resolves the names a message tags, within one tenant.
@@ -620,14 +647,11 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
-	// Answering what was asked of the person, a question or a mention, takes
-	// seeing the project, as being asked does; the answer's own check holds
-	// it to whom it was asked of.
-	need := projects.Member
-	if in.Answers != nil || in.reply {
-		need = projects.Viewer
-	}
+	need := postNeed(in)
 	keeps, err := p.mayPost(person, Place{Project: th.Project, Thread: th.ID}, need)
+	if errors.Is(err, projects.ErrForbidden) && need == projects.Member && (in.Answers != nil || in.reply) {
+		return Posted{}, fmt.Errorf("%w to tag anyone, even in an answer or a reply", err)
+	}
 	if err != nil {
 		return Posted{}, err
 	}
@@ -738,7 +762,11 @@ func (p *Platform) prevOf(tenant string, th threads.Thread, after string) (strin
 // thread is parked on, and who may answer it is checked as on every other
 // path. as is the person a surface's credential posts for, so the answer is
 // checked against and recorded as the person the message is posted as, with
-// the credential as the way it came.
+// the credential as the way it came. The message is the answer only if it is
+// the one the run was given: a question already answered, or whose run
+// stopped or ended, or that someone else answered first, is ErrAnswered, and
+// nothing is posted. So a viewer, who posts only answers, posts one for each
+// question put to them.
 func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, as *ActAs, th threads.Thread, ref threads.AnswerRef, text string) error {
 	run, err := p.Runs.Get(who.Tenant, ref.Run)
 	if err != nil || run.Thread != th.ID {
@@ -757,7 +785,10 @@ func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, as 
 	default:
 		return fmt.Errorf("%w: an approval is decided with Approve or Deny, not a message", threads.ErrInvalid)
 	}
-	_, err = p.AnswerQuestion(ctx, who, ref.Run, ref.Question, a)
+	_, recorded, err := p.answerFirst(ctx, who, m, a)
+	if err == nil && !recorded {
+		err = fmt.Errorf("%w: that question was answered, or its run stopped", ErrAnswered)
+	}
 	return err
 }
 
@@ -1079,7 +1110,8 @@ func (p *Platform) raiseMention(tenant string, th threads.Thread, m threads.Mess
 }
 
 // replyToMention posts the reader's reply to a message that mentioned them,
-// as a human message that starts no run.
+// as a human message the default does not answer. Only the agents it tags
+// answer it, and tagging takes a member (postNeed).
 func (p *Platform) replyToMention(ctx context.Context, who auth.Principal, part inbox.MentionPart, text string, as *ActAs) (threads.Message, error) {
 	if strings.TrimSpace(text) == "" {
 		return threads.Message{}, fmt.Errorf("%w: a reply says something", threads.ErrInvalid)

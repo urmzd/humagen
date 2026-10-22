@@ -180,7 +180,8 @@ func TestPrincipalIsDecidedByItsVerifiersPolicy(t *testing.T) {
 }
 
 // "anyone" is a grant for people. A machine is not given roles, so a policy
-// that grants everyone admin still leaves a machine with only its scopes.
+// that grants everyone admin still leaves a machine with only its scopes. It
+// carries the policy, which decides what the people it acts for hold.
 func TestPolicyDoesNotWidenAMachine(t *testing.T) {
 	iss := authtest.New(t)
 	pol, err := auth.ParsePolicy("open.authz", "role admin { allow * on * }\ngrant admin to anyone")
@@ -194,6 +195,9 @@ func TestPolicyDoesNotWidenAMachine(t *testing.T) {
 	}
 	if len(p.Roles) != 0 || !slices.Equal(p.Granted(), []auth.Permission{auth.RunsRead}) {
 		t.Fatalf("machine roles %v, granted %v", p.Roles, p.Granted())
+	}
+	if p.Policy() != v.Policy() {
+		t.Fatal("the machine is decided by another policy than the verifier's, so the people it acts for hold nothing it grants")
 	}
 	d := pol.Explain(p, auth.RunsRead)
 	if !d.Allowed || !d.Scope {

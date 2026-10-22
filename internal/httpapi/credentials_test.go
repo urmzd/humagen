@@ -53,7 +53,9 @@ func toolFixture(t *testing.T) (*fixture, *mcpfake.Server, *searcher) {
 	t.Helper()
 	server, model := mcpfake.New(t), &searcher{}
 	tokens := map[string]string{"WARP_PERSON_ANA_ISSUES": "tok-ana-httpapi", "WARP_PERSON_BEN_ISSUES": "tok-ben-httpapi"}
-	f := newFixtureWith(t, platform.Config{
+	// The Slack app asks for people by their subject alone, so the policy
+	// grants each subject what they may do: ana runs agents, ben reads.
+	f := newFixtureGranting(t, platform.Config{
 		AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOllama, func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil })},
 		Ext: platform.Extensions{
 			ToolProviders: []platform.ToolProviderSeed{{Provider: toolprovider.Provider{
@@ -64,13 +66,14 @@ func toolFixture(t *testing.T) (*fixture, *mcpfake.Server, *searcher) {
 		CredentialRefs: map[string][]string{"acme": {"env:WARP_PERSON_{subject}_"}},
 		SlackAPI:       func(string) slackflow.API { return slackflow.NewFake() },
 		ClientInterval: -1,
-	})
+	}, `grant operator to subject "ana"
+grant viewer to subject "ben"`)
 	t.Cleanup(func() { _ = f.p.Close() })
 	if _, err := f.p.CreateClient(t.Context(), "acme", "test", platform.ClientInput{
 		Client: clients.Client{
 			ID: "slack-app", Name: "Slack app", Surface: clients.Slack, Enabled: true, Agents: []string{clients.AnyAgent},
 			Identity: clients.Identity{Team: "T01ABCDEF"},
-			Slack:    &clients.SlackOptions{Machine: "svc-acme", People: map[string]string{"U0ADA": "ana"}},
+			Slack:    &clients.SlackOptions{Machine: "svc-acme", People: map[string]string{"U0ADA": "ana", "U0BEN": "ben"}},
 		},
 		Token: clients.SecretInput{Value: "xoxb-test"}, SigningSecret: clients.SecretInput{Value: "signing"},
 	}); err != nil {
@@ -188,6 +191,25 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 	}
 	if c := first(his); c["connected"] != false || c["ref"] != nil {
 		t.Fatalf("ben's issues = %v", c)
+	}
+}
+
+// A person the Slack app asks for a run for holds runs:write themselves, as
+// for posting and answering for them: the app's own is not enough. So a
+// mapped person the policy lets only read asks for nothing through it, and
+// nothing reaches a tool with their credential.
+func TestTheSlackAppAsksOnlyForPeopleWhoMayStartRuns(t *testing.T) {
+	f, server, _ := toolFixture(t)
+	app := f.machine(t, "acme", "warp:runs:read", "warp:runs:write")
+	res, out := f.do(t, nil, "POST", "/api/runs", app, `{"agent":"worker","text":"Open bugs?","act_as":{"client":"slack-app","user":"U0BEN"}}`)
+	if res.StatusCode != http.StatusForbidden || out["error"] != "platform: forbidden: ben may not start runs (asking needs runs:write)" {
+		t.Fatalf("a run for a mapped viewer = %d %v", res.StatusCode, out)
+	}
+	if runs := f.p.Runs.List("acme", 10); len(runs) != 0 {
+		t.Fatalf("a refused ask started %d runs", len(runs))
+	}
+	if calls := server.Calls(); len(calls) != 0 {
+		t.Fatalf("a refused ask reached the server: %q", calls)
 	}
 }
 

@@ -128,12 +128,15 @@ func (t *Tree) leftBehind(name, parent string) []string {
 // answers ErrManaged; the new parent must be there and not archived, and not
 // the project or below it; the depth, the parent's children, the kind rules
 // and openness must still hold. leaving, when it is not nil, is called under
-// the lock with the tree as it is before the move and the ancestors the
-// project leaves, nearest first (none when it goes deeper under the chain it
-// has), so the caller can refuse a move that escapes a limit, or that would
-// hand them a limit they could not change before; it must not write to this
-// store. Moving to the parent it has changes nothing.
-func (s *Store) Move(tenantName, name string, version int, parent string, w Writer, at time.Time, leaving func(before *Tree, left []string) error) (Project, error) {
+// the lock with the tree as it is before the move and as it would be after,
+// and the ancestors the project leaves, nearest first (none when it goes
+// deeper under the chain it has), so the caller can refuse a move that
+// escapes a limit, that would hand them a limit they could not change
+// before, or that would leave what it keeps outside this store with an agent
+// that is no longer available; it must not write to this store. A move that
+// would leave an agent unavailable where this store names it is refused here
+// (lostByMove). Moving to the parent it has changes nothing.
+func (s *Store) Move(tenantName, name string, version int, parent string, w Writer, at time.Time, leaving func(before, after *Tree, left []string) error) (Project, error) {
 	if name == Root {
 		return Project{}, fmt.Errorf("%w: the workspace cannot move", ErrInvalid)
 	}
@@ -162,29 +165,56 @@ func (s *Store) Move(tenantName, name string, version int, parent string, w Writ
 		return Project{}, err
 	}
 	before := tx.t.tree()
-	after := tx.t.copy()
-	after.projects[name] = next
-	if lost := defaultsLost(before, after.tree(), before.Subtree(name)); len(lost) > 0 {
+	then := tx.t.copy()
+	then.projects[name] = next
+	after := then.tree()
+	if lost := lostByMove(tx.t, before, after, before.Subtree(name)); len(lost) > 0 {
 		return Project{}, fmt.Errorf("%w: under %s, %s", ErrInUse, display(parent), strings.Join(lost, ", "))
 	}
 	if leaving != nil {
-		if err := leaving(before, before.leftBehind(name, parent)); err != nil {
+		if err := leaving(before, after, before.leftBehind(name, parent)); err != nil {
 			return Project{}, err
 		}
 	}
 	return s.replace(tx, cur, next, w.By, at, Moved)
 }
 
-// defaultsLost names the defaults in names that are available before a move
-// and not after it, since a default that stopped being available is refused
-// rather than passed over.
-func defaultsLost(before, after *Tree, names []string) []string {
+// lostByMove names what in the projects moved, names, would lose an agent
+// that is available there before the move and not after it: a project's
+// default, a channel's default, and an agent that lives in one of them,
+// which would be available nowhere. A default that stopped being available
+// is refused rather than passed over, so every untagged message there would
+// be answered by no one, and an agent unavailable in its own home answers
+// nothing at all. An archived channel takes no new threads and its default
+// cannot change, so it holds no move back.
+func lostByMove(t *tenant, before, after *Tree, names []string) []string {
+	lost := func(project, agent string) bool {
+		return agent != "" && agent != Auto && before.IsAvailable(project, agent) && !after.IsAvailable(project, agent)
+	}
 	var out []string
+	moved := make(map[string]bool, len(names))
 	for _, n := range names {
-		d := before.nodes[n].p.Agents.Default
-		if d != "" && d != Auto && before.IsAvailable(n, d) && !after.IsAvailable(n, d) {
+		moved[n] = true
+		if d := before.nodes[n].p.Agents.Default; lost(n, d) {
 			out = append(out, fmt.Sprintf("the default of %s, %s, would not be available", display(n), d))
 		}
+		for _, a := range before.Homes(n) {
+			if lost(n, a) {
+				out = append(out, fmt.Sprintf("%s, which lives in %s, would not be available there", a, display(n)))
+			}
+		}
+	}
+	var channels []Channel
+	for _, c := range t.channels {
+		if moved[c.Project] && !c.Archived && lost(c.Project, c.Default) {
+			channels = append(channels, c)
+		}
+	}
+	slices.SortFunc(channels, func(a, b Channel) int {
+		return strings.Compare(channelKey(a.Project, a.Name), channelKey(b.Project, b.Name))
+	})
+	for _, c := range channels {
+		out = append(out, fmt.Sprintf("the default of #%s in %s, %s, would not be available", c.Name, display(c.Project), c.Default))
 	}
 	return out
 }

@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/connectors/cron"
 
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/inbox"
@@ -13,6 +15,7 @@ import (
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // Route permission, then project role. Every project route checks one tenant
@@ -108,29 +111,77 @@ func (p *Platform) MoveProject(_ context.Context, who auth.Principal, name strin
 		return projects.Project{}, err
 	}
 	reader := ReaderOf(who)
-	leaving := func(before *projects.Tree, left []string) error {
+	leaving := func(before, after *projects.Tree, left []string) error {
 		if err := p.keepsAllowLists(before, reader, name, parent, left); err != nil {
 			return err
 		}
-		if who.Can(auth.BillingWrite) {
-			return nil
-		}
-		for _, a := range left {
-			if p.hasProjectLimit(who.Tenant, a) {
-				return fmt.Errorf("%w: %s has a limit, and leaving it needs billing:write, so a move never escapes a limit", projects.ErrForbidden, a)
+		if !who.Can(auth.BillingWrite) {
+			for _, a := range left {
+				if p.hasProjectLimit(who.Tenant, a) {
+					return fmt.Errorf("%w: %s has a limit, and leaving it needs billing:write, so a move never escapes a limit", projects.ErrForbidden, a)
+				}
+			}
+			for _, limited := range p.ownerLimited(who.Tenant, before.Subtree(name)) {
+				lp, _ := before.Get(limited)
+				if before.Resolve(lp.Parent, reader).Role != projects.Owner {
+					above, _ := before.Get(lp.Parent)
+					return fmt.Errorf("%w: %s has a limit only an owner of %s changes, and moving it needs billing:write, so a move never escapes a limit",
+						projects.ErrForbidden, limited, display(above))
+				}
 			}
 		}
-		for _, limited := range p.ownerLimited(who.Tenant, before.Subtree(name)) {
-			lp, _ := before.Get(limited)
-			if before.Resolve(lp.Parent, reader).Role != projects.Owner {
-				above, _ := before.Get(lp.Parent)
-				return fmt.Errorf("%w: %s has a limit only an owner of %s changes, and moving it needs billing:write, so a move never escapes a limit",
-					projects.ErrForbidden, limited, display(above))
+		if lost := p.lostByMove(who.Tenant, before, after, before.Subtree(name)); len(lost) > 0 {
+			under := parent
+			if under == projects.Root {
+				under = "the workspace"
 			}
+			return fmt.Errorf("%w: under %s, %s", projects.ErrInUse, under, strings.Join(lost, ", "))
 		}
 		return nil
 	}
 	return p.Projects.Move(who.Tenant, name, version, parent, WriterOf(who), p.now(), leaving)
+}
+
+// maxLostThreads is how many threads a refused move names, of those whose
+// default it would leave unavailable.
+const maxLostThreads = 5
+
+// lostByMove names what outside the project tree would lose an agent if the
+// projects moved, names, went from before to after: a schedule filed in one
+// of them, whose every occurrence admission would refuse, and a thread there
+// whose own default would answer nothing, as a default that stopped being
+// available is refused rather than passed over. The tree's own defaults and
+// homes are the projects store's to check (projects.Store.Move).
+func (p *Platform) lostByMove(tenant string, before, after *projects.Tree, names []string) []string {
+	moved := make(map[string]bool, len(names))
+	for _, n := range names {
+		moved[n] = true
+	}
+	lost := func(project, agent string) bool {
+		return agent != "" && agent != Auto && before.IsAvailable(project, agent) && !after.IsAvailable(project, agent)
+	}
+	var out []string
+	scheds := p.Schedules.List(tenant)
+	slices.SortFunc(scheds, func(a, b cron.Schedule) int { return strings.Compare(a.Name, b.Name) })
+	for _, sc := range scheds {
+		if at := sc.Meta[runs.MetaProject]; moved[at] && lost(at, sc.Agent) {
+			out = append(out, fmt.Sprintf("the schedule %s, which runs %s in %s, would be refused every time", sc.Name, sc.Agent, at))
+		}
+	}
+	ths := p.Threads.Records(tenant, func(th threads.Thread) bool { return moved[th.Project] && lost(th.Project, th.Default) })
+	slices.SortFunc(ths, func(a, b threads.Thread) int { return strings.Compare(a.ID, b.ID) })
+	for i, th := range ths {
+		if i == maxLostThreads {
+			out = append(out, fmt.Sprintf("and the defaults of %d more threads", len(ths)-i))
+			break
+		}
+		name := th.ID
+		if th.Title != "" {
+			name = fmt.Sprintf("%q (%s)", th.Title, th.ID)
+		}
+		out = append(out, fmt.Sprintf("the default of the thread %s in %s, %s, would not be available", name, th.Project, th.Default))
+	}
+	return out
 }
 
 // keepsAllowLists refuses a move that would let an agent run in the moved

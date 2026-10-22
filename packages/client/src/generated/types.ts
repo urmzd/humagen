@@ -1439,7 +1439,7 @@ export interface InboxPart {
   mention?: InboxMentionPart;
 }
 
-/** A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which starts no run; `done` sets it aside. The console and the Slack app offer Reply, and set a mention aside by dismissing its message; `done` is the API's. */
+/** A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which the thread's default does not answer (one that tags anyone takes a member of the thread's project); `done` sets it aside. The console and the Slack app offer Reply, and set a mention aside by dismissing its message; `done` is the API's. */
 export interface InboxMentionPart {
   thread: string;
   /** The message's id within the thread, such as `m-3`. */

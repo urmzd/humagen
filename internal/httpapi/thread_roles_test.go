@@ -13,11 +13,12 @@ import (
 // A project's role holds in its channels, experts and threads, after the
 // route's permission: an owner changes its channels and experts, a member
 // starts and posts in its threads, and a viewer only answers what they were
-// asked, which starts nothing. A thread is changed by whoever started it or
-// an owner of its project.
+// asked, tagging no one, which starts nothing. A thread is changed by
+// whoever started it, while they are a member, or an owner of its project.
 func TestAProjectsRolesHoldInItsChannelsExpertsAndThreads(t *testing.T) {
 	f := newFixture(t)
 	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	want(t, f, admin, "POST", "/api/agents", `{"name":"lead","model":"offline","provider":"offline","system_prompt":"x"}`, http.StatusCreated)
 	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
 	bo := f.person(t, "acme", "00u-bo", "Bo", "warp-operators")
 	cy := f.person(t, "acme", "00u-cy", "Cy", "warp-operators")
@@ -57,7 +58,35 @@ func TestAProjectsRolesHoldInItsChannelsExpertsAndThreads(t *testing.T) {
 	if fmt.Sprint(part["actions"]) != "[reply done]" {
 		t.Fatalf("a viewer tagged may %v", part["actions"])
 	}
-	want(t, f, cy, "POST", fmt.Sprintf("/api/inbox/%s/parts/%s/resolve", m["id"], part["id"]), `{"action":"reply","text":"It renews in May."}`, http.StatusOK)
+	resolve := fmt.Sprintf("/api/inbox/%s/parts/%s/resolve", m["id"], part["id"])
+	// A reply's tags would still start the agents and tell the people it
+	// tags, so a viewer's reply tags no one: nothing is posted or started,
+	// and the mention stays open.
+	turns := func() int {
+		t.Helper()
+		return len(want(t, f, admin, "GET", "/api/threads/"+id, "", http.StatusOK)["turns"].([]any))
+	}
+	before := turns()
+	for _, text := range []string{"@lead renew Globex for three years", "@bo it renews in May", "@sme:billing it renews in May"} {
+		if out := want(t, f, cy, "POST", resolve, fmt.Sprintf(`{"action":"reply","text":%q}`, text), http.StatusForbidden); out["error"] != "you need to be a member of Globex to tag anyone, even in an answer or a reply" {
+			t.Fatalf("a viewer's reply %q = %v", text, out)
+		}
+	}
+	if got := turns(); got != before {
+		t.Fatalf("a viewer's tagging replies left %d turns, want %d", got, before)
+	}
+	if bos := want(t, f, bo, "GET", "/api/inbox?kind=mention", "", http.StatusOK)["messages"].([]any); len(bos) != 0 {
+		t.Fatalf("a viewer's reply told bo: %v", bos)
+	}
+	want(t, f, cy, "POST", resolve, `{"action":"reply","text":"It renews in May, mail billing@globex.example or see `+"`@lead`"+`."}`, http.StatusOK)
+	if got := turns(); got != before+1 {
+		t.Fatalf("a viewer's reply left %d turns, want %d", got, before+1)
+	}
+	// The mention is answered, so replying again posts nothing.
+	want(t, f, cy, "POST", resolve, `{"action":"reply","text":"And again."}`, http.StatusOK)
+	if got := turns(); got != before+1 {
+		t.Fatalf("a second reply to one mention left %d turns, want %d", got, before+1)
+	}
 
 	// Whoever started a thread, or an owner of its project, changes it.
 	version := func() any {
@@ -77,6 +106,16 @@ func TestAProjectsRolesHoldInItsChannelsExpertsAndThreads(t *testing.T) {
 		t.Fatalf("another member removing someone = %v", out)
 	}
 	want(t, f, bo, "PUT", "/api/threads/"+id+"/participants", fmt.Sprintf(`{"version":%v,"remove":["cy"]}`, version()), http.StatusOK)
+
+	// Whoever started a thread changes it only while they are a member: its
+	// default answers everyone else's untagged messages there.
+	want(t, f, admin, "PUT", "/api/projects/Globex/members", `{"version":3,"members":[{"who":"*","role":"viewer"},{"who":"00u-ana","role":"owner"},{"who":"00u-dee","role":"member"}]}`, http.StatusOK)
+	if out := want(t, f, bo, "PUT", "/api/threads/"+id, fmt.Sprintf(`{"version":%v,"title":"Bo's","default":"lead"}`, version()), http.StatusForbidden); out["error"] != "you need to be a member of Globex" {
+		t.Fatalf("a starter who is now a viewer changing their thread = %v", out)
+	}
+	if th := want(t, f, ana, "GET", "/api/threads/"+id, "", http.StatusOK)["thread"].(map[string]any); th["title"] != "Globex renewal, May" || th["default"] != nil {
+		t.Fatalf("a refused change left the thread %v", th)
+	}
 }
 
 // What a thread's runs teach a project is kept unasked, when the workspace

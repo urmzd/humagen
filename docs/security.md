@@ -144,9 +144,10 @@ no permission, grants nothing.
   API answers a question, or asks for a run, for a Slack person (`act_as`) only
   through a Slack client that names the app's own credential as its `machine`
   and maps that person in `people`. Anyone unmapped is refused (403) and the
-  app does not ask. To answer, the mapped person's own grant (what the policy
-  grants their subject) must include `runs:write`, as well as the
-  credential's. The answer is recorded as the mapped principal, with the
+  app does not ask. To answer, to ask for a run or to post in a thread for
+  them, the mapped person's own grant (what the policy grants their subject)
+  must include `runs:write`, as well as the credential's: a workspace viewer
+  starts nothing because a machine relays their words. The answer is recorded as the mapped principal, with the
   credential as `Via`: a credential never approves a call in a run it raised
   as itself, whoever it names. Mapping a person is `clients:write`.
 - **A person posts only as themselves.** A message in a shared thread is
@@ -163,7 +164,7 @@ no permission, grants nothing.
   app is trusted to say truthfully which Slack user clicked; the platform
   cannot check it. A mapped person's roles are what the policy grants their
   subject: a click carries no groups, so a role held only through a group
-  does not count, and such a person cannot answer from Slack. Keep that credential as you would those people's sign-ins,
+  does not count, and such a person cannot answer, ask or post from Slack. Keep that credential as you would those people's sign-ins,
   map only people who use that Slack workspace, and remove a mapping when
   someone leaves.
 - **A tool that acts as a person uses that person's credential and no
@@ -463,7 +464,7 @@ decided per message:
 | Proposed memory | `agents:read` | `agents:write` for an agent's, and owning its home for one that lives in a project; `projects:write` and owning the project for a project's, and `projects:govern` as well for the workspace's and a company project's |
 | Announcement | `projects:read`, and a member of its project or one below it (anyone who reads the project's own inbox) | hiding or snoozing it is the reader's own (`projects:read`); withdrawing it is its author's or an owner's (`projects:write`) |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer; where the answer may reach the credentials of the person a run acts for, a choice or reply only by that person, and an approval with edited arguments or a note only by them (the question names them as `steered_for`) |
-| A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to set it aside, and a member of the thread's project as well to reply in the thread as themselves |
+| A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to set it aside or to reply in the thread as themselves, which takes seeing the thread's project; a reply that tags anyone takes a member of it, since its tags start the agents and tell the people they name as any message's do |
 
 A message a caller may not see answers 404, not 403, and is left out of their
 count, and a notice about it never reaches their event stream. An

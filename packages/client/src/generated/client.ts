@@ -967,6 +967,9 @@ conversation's project, or a default that has stopped being
 available there, is 403. So is a conversation in a project where the
 caller, or the person `act_as` names, is only a viewer: starting work
 in a project, or adding a turn to work filed there, needs a member.
+The person `act_as` names must hold `runs:write` themselves, as for
+posting and answering for them, or it is 403: the credential's own is
+not enough.
 
 A follow-up is filed in its conversation's channel. When it follows
 a turn in a shared thread people have posted in, it is sent the room
@@ -1340,10 +1343,12 @@ as `before`. `answers` is who answers an untagged message here.
 before threads, whose record this writes), so a change made since
 answers 409. Made `private`, the thread is read by its participants
 alone. A `default` must be able to answer in the thread's project
-(400). Whoever started the thread, or an owner of its project,
-changes it (403 for anyone else); a conversation from before threads
-that no person asked in is changed first by a member, who then owns
-it.
+(400). Whoever started the thread, while a member of its project, or
+an owner of its project, changes it (403 for anyone else, and for a
+starter who is now only a viewer, since its default answers
+everyone's untagged messages there); a conversation from before
+threads that no person asked in is changed first by a member, who
+then owns it.
  */
   async updateThread(id: string, body: ThreadUpdate, options?: RequestOptions): Promise<Thread> {
     let path = "/api/threads/{id}";
@@ -1372,13 +1377,18 @@ the thread, a run answering one, or in a conversation from before
 threads one of its runs; left out, it follows the latest. `answers`
 records the message as a question's answer, which resumes the run
 parked on it; who may answer is checked as on every other path, and
-a refused answer posts nothing. An answer, like a reply, starts no
-run. Posting takes a member of the thread's project, and in a
-private thread a participant, as starting a thread does, except an
-answer: a viewer may answer what a run asked them, or reply to a
-message that tagged them (403 for anything else). A thread holds at
-most 5,000 messages: past that, 409 "start a new thread". The rates
-and caps of `startThread` hold here too (429).
+a refused answer posts nothing. An answer, like a reply, is not
+answered by the thread's default; the agents it tags answer it, as
+for any message. An answer is posted only when it is the one the run
+was given: a question already answered, or whose run stopped, is 409
+and posts nothing. Posting takes a member of the thread's project,
+and in a private thread a participant, as starting a thread does,
+except an answer or a reply that tags no one: a viewer may answer
+what a run asked them, or reply to a message that tagged them, but
+tagging an agent, a person or `@sme` takes a member (403 for
+anything else). A thread holds at most 5,000 messages: past that,
+409 "start a new thread". The rates and caps of `startThread` hold
+here too (429).
  */
   async postThreadMessage(id: string, body: ThreadMessageInput, options?: RequestOptions): Promise<ThreadPosted> {
     let path = "/api/threads/{id}/messages";
@@ -1841,7 +1851,10 @@ inbox, and an action the caller lacks the permission for answers 403:
 | `mention` | `reply` (with `text`), `done` | `runs:write` |
 
 A mention's `reply` posts the words in its thread as the reader,
-which starts no run, and `done` sets it aside.
+which the thread's default does not answer, and `done` sets it
+aside. A reply that tags anyone takes a member of the thread's
+project (403), since its tags still start the agents and tell the
+people they name; a viewer replies without tagging.
 
 Answering a question is `answerQuestion` by another route, with the
 same rules: a person the question is not addressed to does not see
@@ -3124,7 +3137,9 @@ one that breaks a kind or openness rule; 403 without `billing:write`
 for leaving a project that holds a limit, or for moving one that
 holds (or has below it) a limit an owner set that the caller could
 not change before, since a move never escapes a limit; 409 for a stale version, a parent the platform file
-sets, or a default below it that would stop being available. The
+sets, or anything below it that would lose an agent it is available
+to now: a project's, a channel's or a thread's default, an agent that
+lives there, or a schedule filed there. The error names each. The
 workspace cannot move.
  */
   async moveProject(name: string, body: ProjectMove, options?: RequestOptions): Promise<ProjectView> {
