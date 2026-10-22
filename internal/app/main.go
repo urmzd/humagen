@@ -140,7 +140,8 @@ type serveDefaults struct {
 	files []string
 	// prepare, when set, runs once the command line is known to parse and
 	// before any file is read: start's first-run questions. Help, or a flag
-	// serve does not know, never reaches it.
+	// serve does not know, never reaches it. It runs before serve handles
+	// Ctrl-C, so Ctrl-C at a question ends the process.
 	prepare func() error
 	// notes, when set, is where serve tells the person at a terminal what
 	// it chose for them: that it found no console to serve.
@@ -184,8 +185,6 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if parent == nil {
 		parent = context.Background()
 	}
-	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	// The command line is checked before anything is asked, read or
 	// written, so -h, or a flag misspelled, does only what parsing does.
@@ -197,12 +196,16 @@ func serve(o Options, args []string, d serveDefaults) error {
 	paths := scanFiles(args)
 	if len(paths) == 0 {
 		paths = d.files
+		// Asked before serve takes Ctrl-C for itself: a person who presses
+		// it at a question has stopped warp, and nothing is written.
 		if d.prepare != nil {
 			if err := d.prepare(); err != nil {
 				return err
 			}
 		}
 	}
+	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	keys := credref.Default
 	file, err := loadFiles(ctx, o, paths, keys)
 	if err != nil {

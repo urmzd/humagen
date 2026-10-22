@@ -8,9 +8,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -109,6 +111,89 @@ func TestStartHelpAsksNothingAndWritesNothing(t *testing.T) {
 	if code := Execute(Options{}, []string{"start", "-h"}); code != 0 {
 		t.Errorf("warp start -h exited %d", code)
 	}
+}
+
+// Ctrl-C at a first-run question stops warp start there and then, as it
+// would anywhere else, and writes nothing: the person asked to stop, not to
+// take the defaults.
+func TestStartCtrlCAtAQuestionStopsAndWritesNothing(t *testing.T) {
+	home := t.TempDir()
+	// -setup asks whatever stdin is, so a pipe stands in for the terminal.
+	cmd := exec.Command(os.Args[0])
+	cmd.Env = append(os.Environ(),
+		testCommand+"=start -setup -addr 127.0.0.1:0",
+		"WARP_HOME="+home, envWebDir+"=", "XDG_CACHE_HOME="+t.TempDir())
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stdin.Close() }()
+	const question = "What should people see it called?"
+	out := &watched{want: question, seen: make(chan struct{})}
+	cmd.Stdout, cmd.Stderr = out, out
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	// waited is the process's end, read once exited is closed.
+	var waited error
+	exited := make(chan struct{})
+	go func() {
+		waited = cmd.Wait()
+		close(exited)
+	}()
+	defer func() {
+		_ = cmd.Process.Kill()
+		<-exited
+	}()
+	select {
+	case <-out.seen:
+	case <-exited:
+		t.Fatalf("warp start ended before asking: %v\n%s", waited, out)
+	case <-time.After(30 * time.Second):
+		t.Fatalf("warp start did not ask %q:\n%s", question, out)
+	}
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-exited:
+		if waited == nil {
+			t.Errorf("warp start exited 0 after Ctrl-C:\n%s", out)
+		}
+	case <-time.After(10 * time.Second):
+		t.Errorf("warp start was still asking 10s after Ctrl-C:\n%s", out)
+		// Enter through the rest, as the person might, to see what it does.
+		_, _ = io.WriteString(stdin, strings.Repeat("\n", 40))
+		time.Sleep(time.Second)
+	}
+	if _, err := os.Stat(filepath.Join(home, "warp.yaml")); !os.IsNotExist(err) {
+		t.Errorf("warp start wrote warp.yaml after Ctrl-C: %v", err)
+	}
+}
+
+// watched keeps what a process writes and says when want first appears.
+type watched struct {
+	mu   sync.Mutex
+	buf  bytes.Buffer
+	want string
+	seen chan struct{}
+	once sync.Once
+}
+
+func (w *watched) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.buf.Write(p)
+	if strings.Contains(w.buf.String(), w.want) {
+		w.once.Do(func() { close(w.seen) })
+	}
+	return len(p), nil
+}
+
+func (w *watched) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.String()
 }
 
 // start says it found no console only when it serves none: a console -web
