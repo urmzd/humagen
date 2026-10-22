@@ -45,8 +45,9 @@ func TestARefusalNamesWhereAnAgentLivesOnlyWhereEveryoneReadsIt(t *testing.T) {
 }
 
 // A turn asked through a client whose default lives in a project its person
-// may not read is told nobody answers there, as is so, and is never told
-// the agent's name; nor does @auto fall back to it.
+// may not read is answered as through a client with no default: the default
+// is passed over for them, so they are never told the agent's name; nor does
+// @auto fall back to it.
 func TestATurnNamesNoDefaultItsPersonMayNotRead(t *testing.T) {
 	f := &fakes{}
 	p := startWith(t, f.config())
@@ -58,13 +59,14 @@ func TestATurnNamesNoDefaultItsPersonMayNotRead(t *testing.T) {
 	if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-olu", Text: "Hello", Client: "app", Sees: p.Seer(olu).Agent}); !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "helper") {
 		t.Fatalf("a turn through app for olu, who reads Vault = %v", err)
 	}
+	plain := slackClient("plain", "A0PLN", "T0PLN", "")
+	plain.Client.Agents = []string{"helper"}
+	create(t, p, tenant, plain)
 	for _, asked := range []string{"", "auto"} {
 		_, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-ana-" + asked, Agent: asked, Text: "Hello", Client: "app", Sees: p.Seer(ana).Agent})
-		if err == nil || strings.Contains(err.Error(), "helper") {
-			t.Errorf("a turn asking %q through app for ana = %v", asked, err)
-		}
-		if asked == "" && !errors.Is(err, platform.ErrNoDefault) {
-			t.Errorf("an untagged turn through app for ana = %v, want nobody answers", err)
+		_, without := p.Converse(ctx, tenant, platform.Turn{ID: "t-plain-" + asked, Agent: asked, Text: "Hello", Client: "plain", Sees: p.Seer(ana).Agent})
+		if err == nil || strings.Contains(err.Error(), "helper") || without == nil || err.Error() != without.Error() {
+			t.Errorf("a turn asking %q through app for ana = %v, and through a client with no default %v", asked, err, without)
 		}
 	}
 }
@@ -84,12 +86,11 @@ func TestTheCallToolOffersOnlyAgentsAvailableWhereTheRunIs(t *testing.T) {
 	}
 }
 
-// What the analyst and the builder say of agents names only the ones
-// everyone their answer reaches may read: an agent that came to live in a
-// members-only project is not listed among a summary's agents, has no runs
-// when asked about, though its runs here are counted, and is not among the
-// agents another's spec may call.
-func TestTheAnalystAndTheBuilderNameOnlyAgentsEveryoneTheyReachMayRead(t *testing.T) {
+// The analyst's summaries name the agent that ran each run they count, as
+// the runs do, even one that came to live in a members-only project since;
+// the builder names, of the agents another's spec may call, only the ones
+// everyone its answer reaches may read, as a spec is configuration.
+func TestTheAnalystNamesWhoRanAndTheBuilderOnlyAgentsEveryoneTheyReachMayRead(t *testing.T) {
 	p := start(t, call.Limits{})
 	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-h1", Agent: "helper", Text: "Help with the plan"})
 	if err != nil {
@@ -117,10 +118,10 @@ func TestTheAnalystAndTheBuilderNameOnlyAgentsEveryoneTheyReachMayRead(t *testin
 		}
 		return got
 	}
-	if got := ask(map[string]any{}); got.Total.Runs != 2 || len(got.ByAgent) != 1 || got.ByAgent[0].Name != "lead" {
+	if got := ask(map[string]any{}); got.Total.Runs != 2 || len(got.ByAgent) != 2 || len(got.Slowest) != 2 {
 		t.Errorf("the workspace's runs = %+v", got)
 	}
-	if got := ask(map[string]any{"agent": "helper"}); got.Note != "No runs of helper in this window." || len(got.Slowest) != 0 {
+	if got := ask(map[string]any{"agent": "helper"}); got.Total.Runs != 1 || len(got.ByAgent) != 1 || got.ByAgent[0].Name != "helper" || len(got.Slowest) != 1 {
 		t.Errorf("helper's runs = %+v", got)
 	}
 	out, err := use(t, p, as(asking, platform.BuiltinBuilder), platform.ToolReadAgent, map[string]any{"name": "lead"})

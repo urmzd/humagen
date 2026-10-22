@@ -19,6 +19,7 @@ import (
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/people"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // The confinement sweep reads every GET in the contract, and the event
@@ -196,6 +197,16 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		h.openProject = "Open"
 		must("POST", "/api/projects", `{"name":"`+h.openProject+`"}`, http.StatusCreated)
 		must("PUT", "/api/projects/"+h.openProject+"/agents", `{"version":1,"enable":["mover"],"allow":["mover","`+h.agent+`"]}`, http.StatusOK)
+		// A channel of it whose default is the hidden agent, as the
+		// platform file may set one: the file's channels are not checked
+		// against where an agent lives.
+		must("POST", "/api/projects/"+h.openProject+"/channels", `{"name":"lookout"}`, http.StatusCreated)
+		if _, err := f.p.Projects.UpdateChannel("acme", h.openProject, "lookout", 1, projects.Writer{By: "file", Govern: true}, time.Now(), func(c *projects.Channel) error {
+			c.Default = h.agent
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
 		// mover, which everyone in acme reads, may call the hidden agent,
 		// and admits and trusts its calls.
 		h.openAgent = "mover"
@@ -975,11 +986,12 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 			t.Errorf("the outsider's save of the open agent's call policy as they read it = %d %s", code, out)
 		}
 		for path, want := range map[string][]string{
-			"/api/clients/" + h.open:                      {`"default_agent":"` + h.agent + `"`, `"U0CANARY":"` + h.agent + `"`, `"project":"` + h.project + `"`},
-			"/api/projects/" + h.openProject + "/agents":  {`"allow":["` + h.agent + `","mover"]`},
-			"/api/settings":                               {`"title_agent":"` + h.agent + `"`},
-			"/api/agents/" + h.openAgent + "/history":     {`"spawn":["` + h.agent + `"]`},
-			"/api/agents/" + h.openAgent + "/call-policy": {`"allow":["` + h.agent + `"]`, `"trusted":["` + h.agent + `"]`},
+			"/api/clients/" + h.open:                       {`"default_agent":"` + h.agent + `"`, `"U0CANARY":"` + h.agent + `"`, `"project":"` + h.project + `"`},
+			"/api/projects/" + h.openProject + "/agents":   {`"allow":["` + h.agent + `","mover"]`},
+			"/api/projects/" + h.openProject + "/channels": {`"default":"` + h.agent + `","version":2`},
+			"/api/settings":                                {`"title_agent":"` + h.agent + `"`},
+			"/api/agents/" + h.openAgent + "/history":      {`"spawn":["` + h.agent + `"]`},
+			"/api/agents/" + h.openAgent + "/call-policy":  {`"allow":["` + h.agent + `"]`, `"trusted":["` + h.agent + `"]`},
 		} {
 			_, body := get(t, f, owner, path)
 			for _, w := range want {

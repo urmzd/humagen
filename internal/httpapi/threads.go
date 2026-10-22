@@ -44,11 +44,12 @@ type channelView struct {
 	Answers answers `json:"answers"`
 }
 
-// channelView is a channel as the caller is shown it: who answers there
-// names no agent they may not read (platform.Seer.Answers).
+// channelView is a channel as the caller is shown it: its default and who
+// answers there name no agent they may not read (platform.Seer.Channel,
+// platform.DefaultForAs).
 func (s *Server) channelView(who auth.Principal, c projects.Channel) channelView {
 	d, why, _ := s.P.DefaultForAs(who, "", c.Project, c.Name)
-	return channelView{Channel: c, Answers: answers{Agent: d.Agent, From: d.From, Unavailable: why}}
+	return channelView{Channel: s.P.Seer(who).Channel(c), Answers: answers{Agent: d.Agent, From: d.From, Unavailable: why}}
 }
 
 func (s *Server) listChannels(w http.ResponseWriter, r *http.Request, who auth.Principal) {

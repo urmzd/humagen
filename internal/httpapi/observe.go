@@ -86,17 +86,16 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request, who auth.Prin
 		}
 		bucket = parsed
 	}
-	// Only what the caller may read is counted, and an agent they may not
-	// read, one moved since into a project they may not read, is not listed.
-	seer := s.P.Seer(who)
+	// Only what the caller may read is counted. A run names the agent that
+	// ran it, so by_agent and slowest name it, even one moved since into a
+	// project the caller may not read.
 	summary, err := s.P.Runs.SummarizeWhere(who.Tenant, runs.SummaryQuery{
-		Since: since, Until: until.Add(time.Nanosecond), Bucket: bucket, AllProjects: true, Keep: seer.Run,
+		Since: since, Until: until.Add(time.Nanosecond), Bucket: bucket, AllProjects: true, Keep: s.P.Seer(who).Run,
 	})
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	summary.ByAgent = slices.DeleteFunc(summary.ByAgent, func(g runs.Group) bool { return !seer.Agent(g.Name) })
 	ok(w, http.StatusOK, summary)
 }
 

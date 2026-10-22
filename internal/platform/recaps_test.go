@@ -350,9 +350,9 @@ func TestAHousekeepingRunIsCountedWithTheTurnItServes(t *testing.T) {
 
 // A recap names an agent only when everyone it reaches may read it. An agent
 // that moved from Field to a members-only project below it is left out of
-// Field's row for the move, as Field's history leaves it out for them, and
-// of the rows of what it did in Field before: its runs, its conversation and
-// its file are counted, and it is not named.
+// Field's row for the move, as Field's history leaves it out for them. The
+// rows of what it did in Field before name it, as its runs do: its runs, its
+// conversation and its file.
 func TestARecapNamesOnlyTheAgentsEveryoneItReachesMayRead(t *testing.T) {
 	p := start(t, call.Limits{})
 	project(t, p, "Field")
@@ -388,8 +388,8 @@ func TestARecapNamesOnlyTheAgentsEveryoneItReachesMayRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Field: home by root\n") || !strings.Contains(out, "Field: home by root (lead)") || strings.Contains(out, "helper") ||
-		!strings.Contains(out, "In all, 1 run") || !strings.Contains(out, "Plan, version 1, by an agent") {
+	if !strings.Contains(out, "Field: home by root\n") || !strings.Contains(out, "Field: home by root (lead)") || strings.Contains(out, "(helper)") ||
+		!strings.Contains(out, "- helper: 1 run") || !strings.Contains(out, "1 turn, agent helper") || !strings.Contains(out, "Plan, version 1, by helper") {
 		t.Fatalf("Field's recap of helper's move to Vault:\n%s", out)
 	}
 }

@@ -689,8 +689,9 @@ makes it a platform agent again, available wherever it is enabled.
 
 Refused with 409, naming them, while something outside the new home
 would lose the agent: a project's default, enable or allow list, a
-schedule filed elsewhere, an alert rule watching it elsewhere, or a
-client that routes to it. Homing an agent into or out of a company
+channel's default (an archived channel's aside), a schedule filed
+elsewhere, an alert rule watching it elsewhere, or a client that
+routes to it. Homing an agent into or out of a company
 project needs `projects:govern`. The platform's own agents live
 nowhere (400).
  */
@@ -1439,7 +1440,8 @@ here too (429).
   }
 
   /** At most 50 added and removed together, and a thread has at most 50
-participants. An agent added must be available in the thread's
+participants, counting the ones the caller is shown: an agent they
+were not shown is kept, and counts toward neither. An agent added must be available in the thread's
 project, and a person, named by handle, must be in the workspace's
 directory (400). The person who started the thread stays in it.
 Adding takes posting there: a member of the thread's project, and in
@@ -3061,7 +3063,10 @@ Past 20 channels, 429.
     });
   }
 
-  /** The body replaces those four as a whole: one left out is cleared.
+  /** The body replaces those four as a whole: one left out is cleared,
+except a default the caller was not shown, one naming an agent that
+lives in a project they may not read, which is kept. Naming such an
+agent is 400, in the words for one that does not exist.
 `version` is the one the caller read (`general` reads 0 until it is
 first written), so a change made since answers 409. A field the
 platform file sets answers 409. It needs ownership of the project.

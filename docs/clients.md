@@ -56,10 +56,10 @@ An agent the client routed to stays one it routes to, so a bot or an
 auto-label kept for it still stands.
 
 A default a person may not read is never available where they read, so it
-answers nothing for them. A thread on the client's surface says to them that
-nobody answers untagged messages there, and what their message, or their
-turn through the client, did says the same, never naming it; `@auto` never
-falls back to it for them.
+answers nothing for them, and it is passed over for them, as if it were not
+set: who answers them on the client's surface is the next default along, a
+channel's or a project's, and what their message, or their turn through the
+client, did never names it; `@auto` never falls back to it for them.
 
 ### Which agents a client reaches
 

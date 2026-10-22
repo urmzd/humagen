@@ -280,6 +280,60 @@ func (s *Store) Put(tenant string, p Policy, known func(string) bool, by string,
 	return clone(p), nil
 }
 
+// PutKeeping is Put for a writer who is not shown every agent the stored
+// policy names. p is normalized and validated on its own, so its lists are
+// held to MaxNames as the writer wrote them. Then, under the store's lock,
+// keep is given the stored policy (the default when there is none) and
+// returns the names to keep in allow and in trusted, which are added after
+// p's own when p's mode still has that list and p does not name them
+// already. A kept name counts toward no limit, since its writer was not
+// shown it; a list names each agent once, so it never holds more than the
+// workspace's agents. Doing this under the lock means a name another writer
+// keeps between the read and the write is never lost.
+func (s *Store) PutKeeping(tenant string, p Policy, known func(string) bool, keep func(stored Policy) (allow, trusted []string), by string, at time.Time) (Policy, error) {
+	p = p.Normalize()
+	if err := p.Validate(known); err != nil {
+		return Policy{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.tenants[tenant]
+	if t == nil {
+		t = map[string]Policy{}
+		s.tenants[tenant] = t
+	}
+	prev, exists := t[p.Agent]
+	if !exists && len(t) >= MaxPolicies {
+		return Policy{}, fmt.Errorf("%w: a workspace holds at most %d call policies", ErrLimit, MaxPolicies)
+	}
+	stored := Default(p.Agent)
+	if exists {
+		stored = clone(prev)
+	}
+	allow, trusted := keep(stored)
+	add := func(into, from []string) []string {
+		for _, n := range from {
+			if !slices.Contains(into, n) {
+				into = append(into, n)
+			}
+		}
+		return into
+	}
+	if p.Callers == Listed {
+		p.Allow = add(p.Allow, allow)
+	}
+	if p.Approval == Unlisted {
+		p.Trusted = add(p.Trusted, trusted)
+	}
+	p.Version = prev.Version + 1
+	p.UpdatedBy, p.UpdatedAt = by, at.UTC()
+	if err := s.kept.Put(tenant, p.Agent, p); err != nil {
+		return Policy{}, fmt.Errorf("callpolicy: write: %w", err)
+	}
+	t[p.Agent] = clone(p)
+	return clone(p), nil
+}
+
 // Delete drops an agent's policy, so it reads as the default again.
 func (s *Store) Delete(tenant, agent string) error {
 	s.mu.Lock()

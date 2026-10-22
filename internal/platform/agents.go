@@ -526,9 +526,9 @@ func (p *Platform) AgentPlaces(tenant string, agents []string) map[string]AgentP
 // and nowhere else. "" or "~" makes it a platform agent again, available
 // wherever it is enabled. It is refused (projects.ErrInUse, naming them)
 // while something outside the new home's subtree would lose the agent: a
-// default, an enable or allow list, a schedule filed elsewhere, an alert rule
-// watching it elsewhere, or a client that routes to it, since a client files
-// its runs at the root. The platform's own agents live nowhere.
+// project's or a channel's default, an enable or allow list, a schedule filed
+// elsewhere, an alert rule watching it elsewhere, or a client that routes to
+// it, since a client files its runs at the root. The platform's own agents live nowhere.
 func (p *Platform) SetAgentHome(ctx context.Context, tenant, agent, project string, w projects.Writer) error {
 	if IsBuiltin(agent) {
 		return fmt.Errorf("%w: %s is one of the platform's own agents, which live nowhere and are available wherever they are enabled", projects.ErrInvalid, agent)

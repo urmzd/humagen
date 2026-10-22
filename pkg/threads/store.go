@@ -568,10 +568,13 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 
 // Participants adds and removes people and agents. add and remove hold at
 // most MaxParticipants between them, and the thread at most MaxParticipants
-// after; version must be the current one (ErrVersion). The person who
-// started the thread stays in it. Adding someone already there, or removing
-// someone who is not, changes nothing.
-func (s *Store) Participants(tenantName, id string, version int, add []Participant, remove []string, by string, at time.Time) (Thread, error) {
+// after, of the ones counted reports true for (every one, when it is nil),
+// and at most MaxHeld in all; version must be the current one (ErrVersion).
+// counted is who the writer is shown, so one they were not shown counts
+// toward no limit they are told of. The person who started the thread stays
+// in it. Adding someone already there, or removing someone who is not,
+// changes nothing.
+func (s *Store) Participants(tenantName, id string, version int, add []Participant, remove []string, counted func(Participant) bool, by string, at time.Time) (Thread, error) {
 	if len(add)+len(remove) > MaxParticipants {
 		return Thread{}, fmt.Errorf("%w: at most %d people and agents are added or removed at once", ErrInvalid, MaxParticipants)
 	}
@@ -605,7 +608,16 @@ func (s *Store) Participants(tenantName, id string, version int, add []Participa
 			next.Participants = append(next.Participants, p)
 		}
 	}
-	if len(next.Participants) > MaxParticipants {
+	shown := len(next.Participants)
+	if counted != nil {
+		shown = 0
+		for _, p := range next.Participants {
+			if counted(p) {
+				shown++
+			}
+		}
+	}
+	if shown > MaxParticipants || len(next.Participants) > MaxHeld {
 		return Thread{}, fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
 	}
 	if slices.Equal(next.Participants, th.rec.Participants) {

@@ -108,7 +108,9 @@ most 4, none repeating the primary or each other.
 tool the agent is granted. `ask_person` in `tools` lets the agent
 ask a person to choose or reply. The approval of a call to an agent
 left out of `access.spawn` (`tag_<agent>`) is left out too, and
-kept.
+kept. When every approval is left out, so are `approvers` and
+`self_approval`, which apply only to approvals, and a spec written
+with no approvals or approvers of its own keeps them.
  */
   approvals?: string[];
   /** When set, the only people who may answer an approval: principals by
@@ -412,7 +414,7 @@ export interface ThreadSummary {
   project?: string;
   /** The project's channel it is in, `general` when its runs name none. */
   channel: string;
-  /** The agents whose runs answered in it, leaving out one that lives in a project the caller may not read. */
+  /** The agents whose runs answered in it. A run names the agent that ran it, even one that lives since in a project the caller may not read. */
   agents: string[];
   /** The people who asked or posted in it, by handle. A run counts as asked by the person it acted for, so a connector's run names the person its user is mapped to, never that user, and a run that acted for nobody names nobody. Someone the directory cannot name, and whose subject holds an address, is left out. */
   people: string[];
@@ -462,9 +464,9 @@ export interface Thread {
   channel: string;
   title?: string;
   visibility: ThreadVisibility;
-  /** Who takes part, leaving out an agent that lives in a project the caller may not read. */
+  /** Who takes part. An agent that lives in a project the caller may not read is left out unless it answered in the thread, as its runs there name it. The caller adds at most 50 they are shown; the record holds at most 100 in all. */
   participants: ThreadParticipant[];
-  /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel, and so reads one naming an agent that lives in a project the caller may not read. */
+  /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set. */
   default?: string;
   surface?: ThreadSurface;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
@@ -572,9 +574,11 @@ export interface ThreadAsk {
 /** Who answers an untagged message in a place, and where that is set:
 `thread`, `client`, `channel`, or `project:<name>` (`project:~` for
 the workspace). An empty agent is nobody. `unavailable` says why the
-default cannot answer, when it has stopped being available. A default
-naming an agent that lives in a project the reader may not read is
-never available where they read, and reads as nobody.
+default cannot answer, when it has stopped being available. A
+thread's, a client's or a channel's default naming an agent that
+lives in a project the reader may not read is passed over for them,
+as if it were not set, so this is the next default along: such an
+agent is never available where they read.
  */
 export interface ThreadAnswers {
   agent: string;
@@ -684,7 +688,7 @@ export interface Channel {
   title?: string;
   /** Sent to every agent answering in the channel. */
   purpose?: string;
-  /** Answers untagged messages here, an agent or `auto`. Absent inherits from the project. */
+  /** Answers untagged messages here, an agent or `auto`. Absent inherits from the project. One naming an agent that lives in a project the reader may not read reads as absent, here and in the project's history. */
   default?: string;
   slack?: SlackBinding;
   /** It and its threads stay, and it takes no new threads. */
@@ -1716,7 +1720,7 @@ export interface Summary {
   bucket_ns: number;
   total: AnalyticsGroup;
   buckets: AnalyticsBucket[];
-  /** Each agent's runs, leaving out an agent that lives in a project the caller may not read; its runs the caller may read still count in `total`. */
+  /** Each agent's runs the caller may read. A run names the agent that ran it, so this and `slowest` name it even when it lives since in a project the caller may not read. */
   by_agent: AnalyticsGroup[];
   by_origin: AnalyticsGroup[];
   slowest: Run[] | null;

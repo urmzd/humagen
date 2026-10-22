@@ -78,16 +78,27 @@ func (p *Platform) createChannel(ctx context.Context, tenant, project string, w 
 
 // UpdateChannel changes a channel's title, purpose and default.
 func (p *Platform) UpdateChannel(ctx context.Context, tenant, project, name string, w projects.Writer, in ChannelUpdate) (projects.Channel, error) {
-	return p.updateChannel(ctx, tenant, project, name, w, in, nil)
+	return p.updateChannel(ctx, tenant, project, name, w, in, nil, nil)
 }
 
 // UpdateChannelAs is UpdateChannel as who writes it: a default naming an
-// agent they may not read is refused as one that does not exist.
+// agent they may not read is refused as one that does not exist, and one
+// they were not shown (Seer.Channel) is kept when they name none.
 func (p *Platform) UpdateChannelAs(ctx context.Context, who auth.Principal, project, name string, w projects.Writer, in ChannelUpdate) (projects.Channel, error) {
-	return p.updateChannel(ctx, who.Tenant, project, name, w, in, p.Seer(who).Agent)
+	seer := p.Seer(who)
+	// Whether who hosts its client is read now, not under the store's lock.
+	if cur, err := p.Projects.Channel(who.Tenant, projects.NameOf(project), name); err == nil {
+		seer.Channel(cur)
+	}
+	return p.updateChannel(ctx, who.Tenant, project, name, w, in, seer.Agent, func(c projects.Channel) bool {
+		return seer.Channel(c).Default != c.Default
+	})
 }
 
-func (p *Platform) updateChannel(ctx context.Context, tenant, project, name string, w projects.Writer, in ChannelUpdate, sees func(string) bool) (projects.Channel, error) {
+// hidden, when set, reports whether a channel's default was not shown to its
+// writer: an update that names none keeps it. It is asked of the channel as
+// it is under the store's lock.
+func (p *Platform) updateChannel(ctx context.Context, tenant, project, name string, w projects.Writer, in ChannelUpdate, sees func(string) bool, hidden func(projects.Channel) bool) (projects.Channel, error) {
 	project = projects.NameOf(project)
 	if !p.HasProject(tenant, project) {
 		return projects.Channel{}, projects.ErrNotFound
@@ -99,7 +110,11 @@ func (p *Platform) updateChannel(ctx context.Context, tenant, project, name stri
 		return projects.Channel{}, err
 	}
 	return p.Projects.UpdateChannel(tenant, project, name, in.Version, w, p.now(), func(c *projects.Channel) error {
-		c.Title, c.Purpose, c.Default, c.Slack = strings.TrimSpace(in.Title), strings.TrimSpace(in.Purpose), in.Default, in.Slack
+		keep := in.Default == "" && hidden != nil && hidden(*c)
+		c.Title, c.Purpose, c.Slack = strings.TrimSpace(in.Title), strings.TrimSpace(in.Purpose), in.Slack
+		if !keep {
+			c.Default = in.Default
+		}
 		return nil
 	})
 }

@@ -429,8 +429,12 @@ func (p *Platform) clientDefault(tenant string, th threads.Thread) string {
 
 // defaultOf is the default a message in a thread inherits, and why it
 // cannot answer when it has stopped being available there.
-func (p *Platform) defaultOf(tenant string, th threads.Thread) (threads.Default, string) {
-	n := p.DefaultAt(tenant, p.placeOfThread(tenant, th))
+//
+// sees, when set, is the agents the person it is for may read: a default
+// nearer than the project naming one they may not read is passed over for
+// them, as if unset (placeSeen).
+func (p *Platform) defaultOf(tenant string, th threads.Thread, sees func(string) bool) (threads.Default, string) {
+	n := p.DefaultAt(tenant, placeSeen(p.placeOfThread(tenant, th), sees))
 	d := threads.Default{Agent: n.Agent, From: n.From}
 	if d.Agent == "" || d.Agent == Auto {
 		return d, ""
@@ -452,8 +456,31 @@ func (p *Platform) DefaultFor(tenant, id, project, channel string) (d threads.De
 			return threads.Default{}, "", err
 		}
 	}
-	d, unavailable = p.defaultOf(tenant, th)
+	d, unavailable = p.defaultOf(tenant, th, nil)
 	return d, unavailable, nil
+}
+
+// placeSeen is a place as a person who may read only the agents sees reads
+// it: each default nearer than the project (the thread's, the client's, the
+// channel's) that names an agent they may not read is passed over, as if
+// unset, so who answers them is the next default along. Such an agent is
+// never available where they read, so it could not answer them; and a
+// default they are shown in its place reads exactly as it would were the
+// hidden one not set. A project's default is never passed over: it is
+// available where it is set, so it lives on that project's chain, which
+// whoever reads the place reads. A nil sees passes over nothing.
+func placeSeen(at Place, sees func(string) bool) Place {
+	if sees == nil {
+		return at
+	}
+	out := at
+	out.Nearer = slices.Clone(at.Nearer)
+	for i, n := range out.Nearer {
+		if n.Agent != "" && n.Agent != Auto && !sees(n.Agent) {
+			out.Nearer[i].Agent = ""
+		}
+	}
+	return out
 }
 
 // ThreadRecord returns a thread's record. A conversation from before
@@ -839,13 +866,10 @@ func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, as 
 // client whose credential posted it for its poster, "" for a person who
 // posted as themselves. keeps says the poster may change the project's notes
 // (mayPost). sees is the agents the poster may read: a default naming one
-// they may not read is never available where they post, and reads as none
-// set, so what the message did never names it.
+// they may not read is passed over for them, as if unset (placeSeen), so
+// what the message did never names it.
 func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, via string, postOnly, reply, keeps bool, sees func(string) bool) (Posted, error) {
-	def, unavailable := p.defaultOf(tenant, th)
-	if def.Agent != "" && !sees(def.Agent) {
-		def, unavailable = threads.Default{}, ""
-	}
+	def, unavailable := p.defaultOf(tenant, th, sees)
 	d := threads.Decide(threads.Input{Mentions: m.Mentions, Reply: reply, PostOnly: postOnly, Default: def, Unavailable: unavailable})
 	out := Posted{Runs: []runs.Run{}, Notified: []string{}, Refused: []threads.Mention{}, Rule: d.Rule, Reason: d.Reason}
 	mentions := d.Mentions
@@ -1289,9 +1313,10 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 			return threads.Thread{}, err
 		}
 	}
-	// An agent the caller may not read is not among the participants they
-	// are shown, so removing it is removing one that is not there.
-	shown := p.Seer(who).threadAgents(th)
+	// An agent the caller may not read that never answered here is not
+	// among the participants they are shown, so removing it is removing one
+	// that is not there, and it counts toward no limit they are told of.
+	shown := p.Seer(who).participantShownNow(th)
 	remove = slices.DeleteFunc(remove, func(name string) bool {
 		return !shown(name) && slices.ContainsFunc(th.Participants, func(pt threads.Participant) bool {
 			return pt.Kind == threads.Agent && pt.Name == name
@@ -1300,7 +1325,8 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return threads.Thread{}, err
 	}
-	return p.Threads.Participants(who.Tenant, id, th.Version, add, remove, who.Subject, p.now())
+	counted := func(pt threads.Participant) bool { return pt.Kind != threads.Agent || shown(pt.Name) }
+	return p.Threads.Participants(who.Tenant, id, th.Version, add, remove, counted, who.Subject, p.now())
 }
 
 // byHandle is the subject of the person who goes by a handle.

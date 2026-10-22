@@ -304,8 +304,7 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	// One that is not there is said so before the body is read, as one the
 	// caller may not see is, so neither tells them apart.
-	old, err := s.P.Agents.Get(r.Context(), who.Tenant, r.PathValue("name"), 0)
-	if err != nil {
+	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, r.PathValue("name"), 0); err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -335,12 +334,7 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	// Every agent it may call is one the caller may read, and the ones it
 	// may call that they were not shown stay.
-	spec, err := s.P.SpecWrittenBy(r.Context(), who, &old, body.Spec)
-	if err != nil {
-		s.problem(w, err)
-		return
-	}
-	rev, err := s.P.Agents.Revise(r.Context(), who.Tenant, spec, body.ExpectedRev, who.Subject)
+	rev, err := s.P.ReviseBy(r.Context(), who, body.Spec, body.ExpectedRev)
 	if err != nil {
 		s.problem(w, err)
 		return
@@ -643,7 +637,7 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if next != "" {
 		cursor = &next
 	}
-	ok(w, http.StatusOK, map[string]any{"threads": s.P.Seer(who).Summaries(s.P.ShowSummaries(who.Tenant, page)), "next": cursor})
+	ok(w, http.StatusOK, map[string]any{"threads": s.P.ShowSummaries(who.Tenant, page), "next": cursor})
 }
 
 // pickAgent previews which agent @auto would pick for a message in a project,

@@ -236,33 +236,33 @@ func TestSettleRecordsWhatTagsCameToAndNothingElse(t *testing.T) {
 func TestParticipantsChangeByVersionAndTheOwnerStays(t *testing.T) {
 	s := threads.NewStore()
 	th, _ := start(t, s, "acme", shared("Globex", "renewals"), msg("dana", "x"))
-	got, err := s.Participants("acme", th.ID, 1, []threads.Participant{{Kind: threads.Agent, Name: "ignite"}, {Kind: threads.Person, Name: "okta|ana"}}, nil, "dana", t0)
+	got, err := s.Participants("acme", th.ID, 1, []threads.Participant{{Kind: threads.Agent, Name: "ignite"}, {Kind: threads.Person, Name: "okta|ana"}}, nil, nil, "dana", t0)
 	if err != nil || got.Version != 2 || len(got.Participants) != 3 || got.Participants[1].AddedBy != "dana" {
 		t.Fatalf("adding = %+v, %v", got, err)
 	}
-	if _, err := s.Participants("acme", th.ID, 1, nil, []string{"ignite"}, "dana", t0); !errors.Is(err, threads.ErrVersion) {
+	if _, err := s.Participants("acme", th.ID, 1, nil, []string{"ignite"}, nil, "dana", t0); !errors.Is(err, threads.ErrVersion) {
 		t.Fatalf("a stale version = %v", err)
 	}
-	if _, err := s.Participants("acme", th.ID, 2, nil, []string{"dana"}, "ana", t0); !errors.Is(err, threads.ErrInvalid) {
+	if _, err := s.Participants("acme", th.ID, 2, nil, []string{"dana"}, nil, "ana", t0); !errors.Is(err, threads.ErrInvalid) {
 		t.Fatalf("removing the owner = %v", err)
 	}
-	if same, err := s.Participants("acme", th.ID, 2, []threads.Participant{{Kind: threads.Agent, Name: "ignite"}}, []string{"nobody"}, "dana", t0); err != nil || same.Version != 2 {
+	if same, err := s.Participants("acme", th.ID, 2, []threads.Participant{{Kind: threads.Agent, Name: "ignite"}}, []string{"nobody"}, nil, "dana", t0); err != nil || same.Version != 2 {
 		t.Fatalf("a change that changes nothing = %+v, %v", same, err)
 	}
-	if got, err := s.Participants("acme", th.ID, 2, nil, []string{"ignite"}, "dana", t0); err != nil || got.Version != 3 || len(got.Participants) != 2 {
+	if got, err := s.Participants("acme", th.ID, 2, nil, []string{"ignite"}, nil, "dana", t0); err != nil || got.Version != 3 || len(got.Participants) != 2 {
 		t.Fatalf("removing = %+v, %v", got, err)
 	}
 	var crowd []threads.Participant
 	for i := range threads.MaxParticipants - 1 {
 		crowd = append(crowd, threads.Participant{Kind: threads.Person, Name: fmt.Sprintf("p%02d", i)})
 	}
-	if _, err := s.Participants("acme", th.ID, 3, crowd, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
+	if _, err := s.Participants("acme", th.ID, 3, crowd, nil, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
 		t.Fatalf("the 51st participant = %v", err)
 	}
-	if _, err := s.Participants("acme", th.ID, 3, append(crowd, crowd[:2]...), nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
+	if _, err := s.Participants("acme", th.ID, 3, append(crowd, crowd[:2]...), nil, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
 		t.Fatalf("more than 50 changes at once = %v", err)
 	}
-	if _, err := s.Participants("acme", th.ID, 3, []threads.Participant{{Kind: "bot", Name: "x"}}, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
+	if _, err := s.Participants("acme", th.ID, 3, []threads.Participant{{Kind: "bot", Name: "x"}}, nil, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
 		t.Fatalf("a participant that is neither = %v", err)
 	}
 	// Joining by acting changes no version, and stops at the cap.
@@ -387,7 +387,7 @@ func TestThreadsAreTheirTenants(t *testing.T) {
 	if _, _, err := s.Post("globex", th.ID, msg("eve", "x"), t0); !errors.Is(err, threads.ErrNotFound) {
 		t.Fatalf("posting to another tenant's thread = %v", err)
 	}
-	if _, err := s.Participants("globex", th.ID, 1, nil, []string{"dana"}, "eve", t0); !errors.Is(err, threads.ErrNotFound) {
+	if _, err := s.Participants("globex", th.ID, 1, nil, []string{"dana"}, nil, "eve", t0); !errors.Is(err, threads.ErrNotFound) {
 		t.Fatalf("changing another tenant's thread = %v", err)
 	}
 	if page, _, _ := s.List("globex", threads.Query{Project: "Globex"}); len(page) != 0 {

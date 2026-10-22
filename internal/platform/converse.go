@@ -370,14 +370,10 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 	}
 	place := p.placeIn(tenant, th, clientDefault)
 	if t.Sees != nil {
-		// A default naming an agent the person may not read is never
-		// available where they ask, and reads to them as none set; and
-		// @auto falls back to no agent they may not read.
-		if asked == "" {
-			if d := p.DefaultAt(tenant, place); d.Agent != "" && !t.Sees(d.Agent) {
-				return runs.Run{}, fmt.Errorf("%w: nobody answers untagged messages in %s; tag an agent", ErrNoDefault, p.whereOf(tenant, p.Projects.Tree(tenant), place.Project))
-			}
-		}
+		// A default naming an agent the person may not read is passed over
+		// for them, as if unset (placeSeen), and @auto falls back to no
+		// agent they may not read.
+		place = placeSeen(place, t.Sees)
 		client := routes
 		routes = func(a string) bool { return (client == nil || client(a)) && t.Sees(a) }
 	}
