@@ -86,8 +86,11 @@ test("a project page shows where it sits, what sits below it, and every limit ab
   assert.ok(within(below).getByText("Globex renewals"));
   assert.equal(within(below).getByRole("link").getAttribute("href"), "/projects/Globex%20renewals");
 
-  // Its tasks are read from the server, filed in this project only.
-  assert.ok(net.seen.some((r) => r.method === "GET" && r.path === "/api/threads?limit=20&project=Globex"));
+  // Its tasks are read from the server, filed in this project only. The read
+  // starts in an effect, so it may not have been sent when the page first shows.
+  await waitFor(() =>
+    assert.ok(net.seen.some((r) => r.method === "GET" && r.path === "/api/threads?limit=20&project=Globex")),
+  );
 });
 
 test("Mute Project says so beside it when the mute could not be saved", async () => {
