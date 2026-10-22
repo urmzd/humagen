@@ -877,3 +877,41 @@ func TestWhatAWriterIsNotShownCountsTowardNoLimit(t *testing.T) {
 		t.Errorf("the owner reads the thread as %s", raw)
 	}
 }
+
+// @auto, when nothing fits, falls back to the next named default the poster
+// may read, past a nearer one they may not, as it would were that one not
+// set.
+func TestAutoFallsBackPastADefaultItsPosterMayNotRead(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, owner, "POST", "/api/agents", spySpec, http.StatusCreated)
+	want(t, f, owner, "POST", "/api/projects", `{"name":"Secret"}`, http.StatusCreated)
+	want(t, f, owner, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
+	want(t, f, owner, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
+	want(t, f, owner, "PUT", "/api/projects/Field/members", `{"version":1,"members":[{"who":"*","role":"owner"}]}`, http.StatusOK)
+	want(t, f, owner, "PUT", "/api/projects/Field/agents", `{"version":2,"default":"helper"}`, http.StatusOK)
+	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
+	want(t, f, ana, "POST", "/api/projects/Field/channels", `{"name":"room","default":"auto"}`, http.StatusCreated)
+
+	start := func(body string) string {
+		t.Helper()
+		started := want(t, f, ana, "POST", "/api/threads", body, http.StatusCreated)
+		return started["thread"].(map[string]any)["id"].(string)
+	}
+	hidden := start(`{"project":"Field","channel":"room","visibility":"shared","text":"Plans.","post_only":true,"default":"spy"}`)
+	plain := start(`{"project":"Field","channel":"room","visibility":"shared","text":"Plans.","post_only":true,"default":"auto"}`)
+	want(t, f, owner, "PUT", "/api/agents/spy/home", `{"project":"Secret"}`, http.StatusOK)
+
+	answeredBy := func(id string) string {
+		t.Helper()
+		posted := want(t, f, ana, "POST", "/api/threads/"+id+"/messages", `{"text":"Anything?"}`, http.StatusCreated)
+		if rs := sliceOf(posted["runs"]); len(rs) == 1 {
+			return fmt.Sprint(obj(rs[0])["agent"])
+		}
+		return mustJSON(t, posted)
+	}
+	if got, without := answeredBy(hidden), answeredBy(plain); got != "helper" || without != "helper" {
+		t.Errorf("Ana's untagged message is answered by %s, and in a thread with auto as its default by %s", got, without)
+	}
+}

@@ -987,7 +987,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 		meta[metaKeepsNotes] = th.Project
 	}
 	if agent == Auto {
-		who, err := p.resolveAgent(ctx, tenant, p.placeOfThread(tenant, th), Auto, m.Text, sees)
+		who, err := p.resolveAgent(ctx, tenant, placeSeen(p.placeOfThread(tenant, th), sees), Auto, m.Text, sees)
 		if err != nil {
 			return runs.Run{}, err
 		}

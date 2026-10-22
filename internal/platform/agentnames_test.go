@@ -60,7 +60,7 @@ func TestATurnNamesNoDefaultItsPersonMayNotRead(t *testing.T) {
 		t.Fatalf("a turn through app for olu, who reads Vault = %v", err)
 	}
 	plain := slackClient("plain", "A0PLN", "T0PLN", "")
-	plain.Client.Agents = []string{"helper"}
+	plain.Agents = []string{"helper"}
 	create(t, p, tenant, plain)
 	for _, asked := range []string{"", "auto"} {
 		_, err := p.Converse(ctx, tenant, platform.Turn{ID: "t-ana-" + asked, Agent: asked, Text: "Hello", Client: "app", Sees: p.Seer(ana).Agent})
