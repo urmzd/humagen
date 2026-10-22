@@ -416,3 +416,24 @@ func TestACalledAgentsAnswerersThatLeaveOutThePersonLeaveNobodyToAnswer(t *testi
 	}
 	await(t, p, first.ID, runs.Stopped)
 }
+
+// A question names the person whose own credentials an answer may reach as
+// the directory calls them, beside their subject, so a surface that says
+// only they may add a note says it by name.
+func TestAQuestionNamesWhoseCredentialsItReachesByName(t *testing.T) {
+	p, _, _ := steeredWorld(t, platform.Config{})
+	ctx := t.Context()
+	p.SeePerson(ana)
+	r, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-split-named", Agent: "split", Text: "Any open bugs?", Actor: platform.ActorOf(ana)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	seen, err := p.InboxGet(ben, questionFor(t, p, run.ID).ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q := seen.Parts[0].Question; q.SteeredFor != "ana" || q.SteeredForName != "Ana" {
+		t.Errorf("the question takes words only from %q, called %q", q.SteeredFor, q.SteeredForName)
+	}
+}

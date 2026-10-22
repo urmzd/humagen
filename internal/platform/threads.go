@@ -1136,7 +1136,9 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 }
 
 // raiseMention puts a mention in the inbox of the person or experts tagged.
-// It names the poster as the thread shows them, never by subject.
+// It names the poster as the thread shows them, never by subject: what it
+// keeps is the name they go by now, and a read names them as their message
+// is called then (Names.mention).
 func (p *Platform) raiseMention(tenant string, th threads.Thread, m threads.Message, to string, mn threads.Mention) {
 	s := p.shower(tenant)
 	shown := s.message(m)

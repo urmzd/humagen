@@ -135,11 +135,14 @@ type From struct {
 	// Kind is "rule", "agent", "system" or "person".
 	Kind string `json:"kind"`
 	// Name is the rule, the agent or the part of the system, and a person's
-	// subject.
+	// subject. A mention keeps no subject: the store keeps the name its
+	// poster went by when they posted, and it is handed out naming them as
+	// threads do, by handle.
 	Name string `json:"name"`
 	// Display is what a person who sent it is called: their name, else their
-	// handle, never a subject that holds an address. The store leaves it
-	// empty: it is filled in when the message is read.
+	// handle, never a subject that holds an address; for a mention, what its
+	// message is called now. The store leaves it empty: it is filled in when
+	// the message is read.
 	Display string `json:"display,omitempty"`
 	// ApprovedBy is the person who published an agent's draft, by subject.
 	ApprovedBy string `json:"approved_by,omitempty"`
@@ -318,6 +321,9 @@ type QuestionPart struct {
 	// arguments or a note; anyone else approves or denies as asked. It is a
 	// hint for surfaces: answering checks again.
 	SteeredFor string `json:"steered_for,omitempty"`
+	// SteeredForName is what that person is called (see From.Display). The
+	// store leaves it empty: it is filled in when the message is read.
+	SteeredForName string `json:"steered_for_name,omitempty"`
 }
 
 // Outcome is what was decided about a part, and by whom.

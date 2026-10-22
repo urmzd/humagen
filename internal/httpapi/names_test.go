@@ -278,3 +278,44 @@ func TestAPersonIsCalledTheNameTheyChose(t *testing.T) {
 		t.Errorf("Pat's message is called %v", m["name"])
 	}
 }
+
+// A mention is from its poster as the thread calls them now. What it keeps
+// of them is a name, which is no subject: read as one, it could name someone
+// else. A poster who gives a name later reads by it, in the mention's
+// subject too.
+func TestAMentionIsFromItsPosterAsTheThreadCallsThem(t *testing.T) {
+	f := newFixture(t)
+	// Lee Wong signs in as "lee" and goes by lee-wong; the second person's
+	// subject makes the handle lee, which is Lee Wong's subject.
+	f.person(t, "acme", "lee", "Lee Wong", "warp-admins")
+	other := f.person(t, "acme", "okta|lee", "", "warp-admins")
+	zed := f.person(t, "acme", "okta|zed", "Zed Park", "warp-admins")
+	want(t, f, other, "POST", "/api/threads", `{"visibility":"shared","text":"@zed-park look","post_only":true}`, http.StatusCreated)
+	from := func() (map[string]any, map[string]any) {
+		t.Helper()
+		got := want(t, f, zed, "GET", "/api/inbox?kind=mention", "", http.StatusOK)["messages"].([]any)
+		if len(got) != 1 {
+			t.Fatalf("Zed's mentions are %v", got)
+		}
+		m := got[0].(map[string]any)
+		return m, m["from"].(map[string]any)
+	}
+	m, sender := from()
+	if sender["kind"] != "person" || sender["display"] != "lee" || m["subject"] != "lee mentioned you in #general" {
+		t.Errorf("the mention is %q, from %v", m["subject"], sender)
+	}
+	if by := m["parts"].([]any)[0].(map[string]any)["mention"].(map[string]any)["by"]; by != "lee" {
+		t.Errorf("the mention's poster goes by %v", by)
+	}
+
+	// The poster gives a name, and their handle is made again from it.
+	f.person(t, "acme", "okta|lee", "Lee Ross", "warp-admins")
+	m, sender = from()
+	if sender["display"] != "Lee Ross" || m["subject"] != "Lee Ross mentioned you in #general" {
+		t.Errorf("the mention is %q, from %v", m["subject"], sender)
+	}
+	if by := m["parts"].([]any)[0].(map[string]any)["mention"].(map[string]any)["by"]; by != "lee-ross" {
+		t.Errorf("the mention's poster goes by %v", by)
+	}
+	noAddressIn(t, "a mention", sender["name"], sender["display"])
+}

@@ -1223,9 +1223,9 @@ experts named by a role, is one notice for each, at most 20.
 export interface InboxFrom {
   /** What sent the message, such as `agent`, `rule`, `system` or `person`. */
   kind: string;
-  /** The agent, the rule or the part of the system, and a person's subject. */
+  /** The agent, the rule or the part of the system, and a person's subject. A mention, a thread's artefact, names its poster as threads do, by handle, and never by subject. */
   name: string;
-  /** What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's. */
+  /** What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's. A mention's poster is called what their message is called now. */
   display?: string;
   /** The person who published an agent's draft, by subject. Absent on what an agent posted itself. */
   approved_by?: string;
@@ -1414,6 +1414,8 @@ note or edit. Said as it stood when the question was raised;
 answering checks again.
  */
   steered_for?: string;
+  /** What the person in `steered_for` is called, their name, else their handle, never a subject that holds an address. Set with `steered_for`. */
+  steered_for_name?: string;
 }
 
 /** A post an agent wrote for a project, waiting for one of its owners. */

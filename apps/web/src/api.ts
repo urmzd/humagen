@@ -969,8 +969,10 @@ export interface QueuedApproval {
       approvers?: string[];
       expires_at?: string;
       tool?: { name: string; acts_for_person?: boolean };
-      /** The person whose own credentials an answer may reach: only they add a note. */
+      /** The person whose own credentials an answer may reach, by subject: only they add a note. */
       steered_for?: string;
+      /** What that person is called. Shown in place of `steered_for`, the subject. */
+      steered_for_name?: string;
     };
   }[];
 }

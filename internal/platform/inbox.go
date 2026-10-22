@@ -230,15 +230,23 @@ func (p *Platform) seenBy(tree *projects.Tree, names Names, m inbox.Message, who
 }
 
 // named fills in what the people a message names by subject are called: a
-// person who sent it, and whoever decided each part. The subjects stay, as
-// the keys they are.
+// person who sent it, whoever decided each part, and the person whose own
+// credentials a question's answer may reach. The subjects stay, as the keys
+// they are. A mention keeps no subject: it is from its poster as
+// the thread calls them now (Names.mention).
 func named(names Names, m inbox.Message) inbox.Message {
-	if m.From.Kind == "person" {
+	switch {
+	case m.Kind == inbox.KindMention:
+		m = names.mention(m)
+	case m.From.Kind == "person":
 		m.From.Display = names.Of(m.From.Name)
 	}
 	for i := range m.Parts {
 		if o := m.Parts[i].Outcome; o != nil {
 			o.ByName = names.Of(o.By)
+		}
+		if q := m.Parts[i].Question; q != nil {
+			q.SteeredForName = names.Of(q.SteeredFor)
 		}
 	}
 	return m

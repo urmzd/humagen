@@ -106,6 +106,37 @@ func (n Names) Of(subject string) string {
 // NameOf is what a person is called, for one name (see Names).
 func (p *Platform) NameOf(tenant, subject string) string { return p.Names(tenant).Of(subject) }
 
+// mention is a mention as it is handed out: from its poster as their message
+// is shown now (message), by handle and by name, its part naming them by the
+// same handle, and its subject by the same name. What a mention keeps of its
+// poster is the name they went by when they posted, which is no subject, so
+// it is never looked up as one: it is what a mention whose message cannot be
+// read is shown from, as it was kept.
+func (n Names) mention(m inbox.Message) inbox.Message {
+	kept := m.From.Name
+	m.From.Display = kept
+	for i := range m.Parts {
+		part := m.Parts[i].Mention
+		if part == nil || n.s.p.Threads == nil {
+			continue
+		}
+		posted, err := n.s.p.Threads.Message(n.s.tenant, part.Thread, part.Message)
+		if err != nil {
+			continue
+		}
+		shown := n.s.message(posted)
+		if shown.By != "" {
+			m.From.Name, part.By = shown.By, shown.By
+		}
+		m.From.Display = shown.Name
+		if rest, ok := strings.CutPrefix(m.Subject, kept+" "); ok && kept != "" {
+			m.Subject = shown.Name + " " + rest
+		}
+		break
+	}
+	return m
+}
+
 // who names whoever a message was sent to: a person or an expert by key,
 // and the experts a role names as the role.
 func (s *shower) who(to string) string {

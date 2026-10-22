@@ -5958,10 +5958,10 @@ components:
           description: What sent the message, such as `agent`, `rule`, `system` or `person`.
           type: string
         name:
-          description: The agent, the rule or the part of the system, and a person's subject.
+          description: The agent, the rule or the part of the system, and a person's subject. A mention, a thread's artefact, names its poster as threads do, by handle, and never by subject.
           type: string
         display:
-          description: What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's.
+          description: What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's. A mention's poster is called what their message is called now.
           type: string
         approved_by:
           description: The person who published an agent's draft, by subject. Absent on what an agent posted itself.
@@ -6216,6 +6216,9 @@ components:
             else approves or denies as asked, and a surface offers them no
             note or edit. Said as it stood when the question was raised;
             answering checks again.
+          type: string
+        steered_for_name:
+          description: What the person in `steered_for` is called, their name, else their handle, never a subject that holds an address. Set with `steered_for`.
           type: string
     InboxDraftPart:
       description: A post an agent wrote for a project, waiting for one of its owners.

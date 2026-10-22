@@ -38,7 +38,8 @@ export type PlatformMessage = InboxMessage & {
   /** For each part that is a limit that was reached: which limit, on what, by part id. */
   budgets: Record<string, BudgetData>;
   /**
-   * Who sent it as the platform keeps them: a person's subject, or the
+   * Who sent it as the platform keeps them: a person's subject, a mention's
+   * poster by handle (a thread's artefact names nobody by subject), or the
    * agent's, rule's or system part's name. `from.name` is what they are
    * called, which is what is shown; this tells the reader's own apart.
    */
