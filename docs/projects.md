@@ -100,11 +100,14 @@ parent.
   of a project (`general` by default, the project the person picked, else the
   workspace) and makes it shared there, so everyone who can see that project
   reads it and can join it; people named in the same step become
-  participants. Only a participant who is a member of the target project
-  shares. It moves to another project only while no run has been filed in it
-  ("a conversation that has runs stays in its project"), and a thread on a
-  Slack or GitHub surface stays where its binding filed it. Shared is not
-  made private again.
+  participants. Only a participant shares, into a project they are a member
+  of; making a private conversation shared, or moving one, also takes whoever
+  started it or an owner of its project, so someone tagged into a private
+  conversation does not publish it. It moves to another project or channel
+  only while no run has been filed in it ("a conversation that has runs stays
+  in its project"), and a thread on a Slack or GitHub surface stays where and
+  as its binding filed it. A mention raised in it is read where it is now.
+  Shared is not made private again.
 - A turn is either a **human message** (a person posted; no run) or an
   **agent's run** answering a message. A person posts only as themselves; no
   route lets anyone post as an agent, and agent turns exist only as runs.
@@ -1134,7 +1137,7 @@ from counters.
 |---|---|---|
 | `POST /api/threads` | `runs:write` | `visibility` left out (with no `surface`) is `private`: the starter is the first participant. A message a person posts as themselves runs only the agents it tags; untagged it starts nothing, `rule: untagged` |
 | `POST /api/threads/{id}/messages` | `runs:write` | the same rule: posted as the caller themselves, only tags start runs, and a tagged agent is sent the conversation so far. A client posting with `act_as` keeps the defaults |
-| `POST /api/threads/{id}/share` | `runs:write` | `ThreadShare{project?, channel?, add?: [handle] (<= 50)}` → 200 `ThreadPage`, the thread as `getThread` reads it. Only a participant who is a member of the target project shares (403); `project` left out keeps the thread's own, `channel` left out is `general`; an archived channel or a handle nobody goes by is 400; a project the caller cannot see is 404; moving a thread that has runs to another project is 409 "a conversation that has runs stays in its project"; a surface's thread does not move (400) |
+| `POST /api/threads/{id}/share` | `runs:write` | `ThreadShare{project?, channel?, add?: [handle] (<= 50)}` → 200 `ThreadPage`, the thread as `getThread` reads it. Only a participant shares (403); making a private thread shared or moving one also takes its starter, while a member, or an owner of its project (403), and a member of the target project (403, 404 for one the caller cannot see); `project` left out keeps the thread's own, `channel` left out keeps the thread's own in its own project and is `general` in another; an archived channel or a handle nobody goes by is 400; moving a thread that has runs is 409 "a conversation that has runs stays in its project" (or "in its channel"); a default that cannot answer where it moves is cleared; a surface's thread does not move or change visibility (400); a change made meanwhile is 409 |
 | `GET /api/threads/{id}` | `runs:read` | `answers` stays on the wire: who answers an untagged message a client posts. The console no longer shows it |
 
 `ThreadRule` gains `untagged`.

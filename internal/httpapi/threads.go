@@ -299,7 +299,7 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 		fail(w, http.StatusForbidden, detail(err, platform.ErrThreadAuthor))
 	case errors.Is(err, platform.ErrAnswered):
 		fail(w, http.StatusConflict, detail(err, platform.ErrAnswered))
-	case errors.Is(err, platform.ErrStaysInProject):
+	case errors.Is(err, platform.ErrStaysInProject), errors.Is(err, platform.ErrStaysInChannel):
 		fail(w, http.StatusConflict, strings.TrimPrefix(err.Error(), "platform: "))
 	case errors.Is(err, platform.ErrAnnouncementGone):
 		fail(w, http.StatusGone, strings.TrimPrefix(err.Error(), "platform: "))
