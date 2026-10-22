@@ -86,7 +86,12 @@ entry another writer adds meanwhile is kept too; a client's and the
 settings' are kept against what was read when the write began. What the
 caller was not shown counts toward no limit they are told of: a call
 policy's lists hold more than 100 callers only with ones already stored, and
-a thread holds at most 100 participants in all. A request that names such an
+a change that adds to a thread leaves at most 50 participants they are
+shown, of at most 100 in all. Who may approve a spec's kept approvals is
+kept with them when the writer was shown none of its approvals or wrote
+none, so it guards them still; a writer shown no approvals who adds one
+then reads back the approvers kept, which tells them a hidden approval
+exists, never whose. A request that names such an
 agent, there or as the agent a run, a call, a schedule or a thread asks,
 answers as one naming an agent that does not exist. Moving an agent into a
 project is refused while a project's, a channel's or a client's default

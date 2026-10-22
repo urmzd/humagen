@@ -467,3 +467,25 @@ func TestSummariesCopyOnlyWhatTheyKeep(t *testing.T) {
 		t.Fatalf("elsewhere = %v", elsewhere)
 	}
 }
+
+// People who post join a thread past the 50 a writer adds up to, and the
+// thread's participants still change: a change that does not grow them is
+// taken, and one that grows them past 50 is refused.
+func TestABusyThreadsParticipantsStillChange(t *testing.T) {
+	s := threads.NewStore()
+	th, _ := start(t, s, "acme", shared("Globex", "renewals"), msg("dana", "x"))
+	for i := range 60 {
+		post(t, s, "acme", th.ID, msg(fmt.Sprintf("user%02d", i), "me too"), t0)
+	}
+	got, err := s.Get("acme", th.ID)
+	if err != nil || len(got.Participants) != 61 {
+		t.Fatalf("after 60 posters the thread has %d participants, %v", len(got.Participants), err)
+	}
+	got, err = s.Participants("acme", th.ID, got.Version, nil, []string{"user00"}, nil, "dana", t0)
+	if err != nil || len(got.Participants) != 60 {
+		t.Fatalf("removing one of 61 = %d participants, %v", len(got.Participants), err)
+	}
+	if _, err := s.Participants("acme", th.ID, got.Version, []threads.Participant{{Kind: threads.Agent, Name: "ignite"}}, nil, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("adding a 61st = %v", err)
+	}
+}

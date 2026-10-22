@@ -567,8 +567,9 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 }
 
 // Participants adds and removes people and agents. add and remove hold at
-// most MaxParticipants between them, and the thread at most MaxParticipants
-// after, of the ones counted reports true for (every one, when it is nil),
+// most MaxParticipants between them, and a change that grows the ones
+// counted reports true for (every one, when it is nil) leaves at most
+// MaxParticipants of them,
 // and at most MaxHeld in all; version must be the current one (ErrVersion).
 // counted is who the writer is shown, so one they were not shown counts
 // toward no limit they are told of. The person who started the thread stays
@@ -608,17 +609,23 @@ func (s *Store) Participants(tenantName, id string, version int, add []Participa
 			next.Participants = append(next.Participants, p)
 		}
 	}
-	shown := len(next.Participants)
-	if counted != nil {
-		shown = 0
-		for _, p := range next.Participants {
+	shownOf := func(ps []Participant) int {
+		if counted == nil {
+			return len(ps)
+		}
+		n := 0
+		for _, p := range ps {
 			if counted(p) {
-				shown++
+				n++
 			}
 		}
+		return n
 	}
+	// People who post and agents who answer join past MaxParticipants, so a
+	// change is refused only when it grows what the writer counts past it.
+	shown := shownOf(next.Participants)
 	switch {
-	case shown > MaxParticipants:
+	case shown > MaxParticipants && shown > shownOf(th.rec.Participants):
 		return Thread{}, fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
 	case len(next.Participants) > MaxHeld:
 		return Thread{}, fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)

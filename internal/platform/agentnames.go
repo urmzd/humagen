@@ -429,10 +429,10 @@ func (s *Seer) Revisions(revs []agentspec.Revision) []agentspec.Revision {
 // own, so an approval of a call to an agent who may not read is refused as
 // one of a call the spec does not grant, as it is for an agent that does
 // not exist. What old names that who is not shown is kept: those agents in
-// its spawn list, and the approvals of calls to them, and when who was shown
-// none of its approvals, who may approve them (approvers and self_approval)
-// unless the spec written names approvals or approvers of its own. The spec
-// as kept is validated again.
+// its spawn list, and the approvals of calls to them, and who may approve
+// (approvers and self_approval) when who was shown none of the approvals or
+// wrote none, unless the spec written names approvers or self_approval of
+// its own. The spec as kept is validated again.
 func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *agentspec.Revision, spec agentspec.AgentSpec) (agentspec.AgentSpec, error) {
 	seer := p.Seer(who)
 	shown := map[string]bool{}
