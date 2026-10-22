@@ -698,7 +698,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
-	if mentions, err = skillTags(mentions, on != nil, in.PostOnly); err != nil {
+	if mentions, err = skillTags(mentions, on != nil, on == nil && in.ActAs == nil && !in.PostOnly); err != nil {
 		return Posted{}, err
 	}
 	if on != nil && on.ref.Files {
@@ -779,7 +779,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
-	if mentions, err = skillTags(mentions, on != nil, in.PostOnly); err != nil {
+	if mentions, err = skillTags(mentions, on != nil, on == nil && in.ActAs == nil && !in.PostOnly); err != nil {
 		return Posted{}, err
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
@@ -1205,6 +1205,12 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 		case threads.SME:
 			to, _ = tree.ExpertsFor(th.Project, mn.Name)
 		case threads.Role:
+			// Its holders are not invited, so in a private thread they
+			// could not read what they were told of.
+			if th.Visibility == threads.Private {
+				mn.Refused = "a role is not told in a private thread; tag its people, or share the thread"
+				continue
+			}
 			to = []string{projects.RolePrefix + mn.Name}
 		}
 		reached, cut := false, false

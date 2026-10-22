@@ -372,8 +372,9 @@ given the skill's instructions ahead of the turn, below the project's and the
 agent's own. A message posted in a project can name its project's skills,
 then each project's above it, `workspace.skills` last, nearest first, each
 name once; never a sibling's or a sub-project's. A skill nobody on the way
-declares refuses the message. A message that names a skill and tags no agent
-starts `@auto`. The skills are fixed when a run is accepted, so a change made
+declares refuses the message. A message posted in the console that names a
+skill and tags no agent starts `@auto`; one a client posts is answered by the
+client's default with the skill. The skills are fixed when a run is accepted, so a change made
 while it works, or a restart, does not change what it was told. A skill's
 name and description are ones a SKILL.md takes. A Slack client's command
 whose name is a skill's uses that skill. Through the API, declaring one takes
@@ -386,8 +387,9 @@ most 32, that is not `sme`, `skill` or `auto`, once; a title of at most 40
 characters, as the console shows it; and `resolves`, what its items are:
 `experts` (`@<kind>:<topic>` is `@sme:<topic>`), `skills` (`@<kind>:<name>`
 is `$<name>`), `role` (everyone holding the policy role `<name>` is
-notified) or `people` (the person whose handle is `<name>`). Only the file
-declares them; the console completes each kind's items as a person types.
+notified, except in a private thread, where the tag is refused) or `people`
+(the person whose handle is `<name>`). Left out, a workspace has the built-in
+kinds only. Only the file declares them; the console completes each kind's items as a person types.
 
 `warp config check` refuses a mistake with its path, such as
 `workspace.projects[2].parent: "Feild" is not a project in this file`. A
