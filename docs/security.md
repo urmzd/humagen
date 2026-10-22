@@ -212,6 +212,11 @@ no permission, grants nothing.
 - **Memory is never drawn from a person's own credential.** The memory agent
   is not asked about a turn whose conversation acted for a person with a
   person-scoped tool ([Tool credentials](#tool-credentials)).
+- **A scheduled answer drawn from a person's own credential stays theirs.**
+  A Run Now that acted for the person who pressed it, with a person-scoped
+  tool, is never posted in its project, held for its owners as a draft, or
+  sent to someone else who created the schedule: its answer goes to that
+  person's inbox alone, saying where it would have gone.
 - **Project memory reaches only that project.** A turn is sent a project's
   shared notes only when its conversation is filed in that project.
 - **Knowledge stays in its tenant.** A turn is grounded only in the sources

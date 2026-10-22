@@ -70,13 +70,45 @@ func scheduledAnswer(run runs.Run) string {
 
 // deliverAnswer sends a scheduled run's answer where its schedule said. It is
 // called once, when the run ends.
-func (p *Platform) deliverAnswer(_ context.Context, run runs.Run) {
-	switch scheduledAnswer(run) {
+//
+// A run now acts for the person who pressed it when they wrote what it runs
+// (Schedules.Authored), so its tools that act as a person reach their own
+// credentials. What those reached is theirs alone, as it is kept from memory
+// (mayCarryPersonData): such an answer is never posted to a project or held
+// for its owners, nor sent to a creator who is someone else. It goes to the
+// person the run acted for instead, saying why.
+func (p *Platform) deliverAnswer(ctx context.Context, run runs.Run) {
+	where := scheduledAnswer(run)
+	if where == DeliverNone {
+		return
+	}
+	if person := personOf(run.Actor); person != "" && (where == DeliverProject || run.Tag().Meta[metaCreatedBy] != person) && p.mayCarryPersonData(ctx, run) {
+		p.keptFor(run, person, where)
+		return
+	}
+	switch where {
 	case DeliverInbox:
 		p.deliverToInbox(run)
 	case DeliverProject:
 		p.deliverToProject(run)
 	}
+}
+
+// keptFor sends a scheduled answer that may carry what a person's own
+// credential reached to that person alone, saying where it would have gone.
+func (p *Platform) keptFor(run runs.Run, person, where string) {
+	subject, text, post := announcementOf(run.Answer)
+	if !post {
+		return
+	}
+	if text == "" {
+		text = subject
+	}
+	why := "Not sent to whoever created the schedule"
+	if where == DeliverProject {
+		why = "Not posted in " + p.whereOf(run.Tenant, p.Projects.Tree(run.Tenant), run.Project)
+	}
+	p.sendTo(run, person, subject, why+": it may hold what your own credentials reached, so it is yours alone.\n\n"+text)
 }
 
 // MaxOpenDrafts is how many of its agents' drafts a project holds for its
@@ -188,6 +220,12 @@ func (p *Platform) sendToCreator(run runs.Run, subject, text string) {
 		p.log.Warn("platform: a scheduled answer has nobody to go to", "tenant", run.Tenant, "run", run.ID, "schedule", run.Schedule)
 		return
 	}
+	p.sendTo(run, to, subject, text)
+}
+
+// sendTo sends a result about a scheduled run to one person, the only one
+// shown it.
+func (p *Platform) sendTo(run runs.Run, to, subject, text string) {
 	p.raiseInbox(run.Tenant, "result:"+run.ID, inbox.Message{
 		Kind: inbox.KindResult, To: to, Subject: subject,
 		From: inbox.From{Kind: "agent", Name: run.Agent}, Severity: inbox.Info,

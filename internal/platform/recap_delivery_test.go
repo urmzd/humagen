@@ -15,6 +15,7 @@ import (
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
@@ -213,4 +214,61 @@ func TestARecapPastTheDailyLimitReachesItsCreator(t *testing.T) {
 func snapshot(p *platform.Platform) []inbox.Message {
 	msgs, _ := p.Inbox.Snapshot(tenant)
 	return msgs
+}
+
+// A run now acts for the person who pressed it when they wrote what it runs,
+// so its tools that act as a person reach their own credentials. What those
+// reached is theirs alone: the answer is neither posted in the project nor
+// held for its owners, nor sent to a creator who is someone else, but sent to
+// that person, saying why. The same schedule run for nobody posts as before.
+func TestAScheduledAnswerThatMayHoldAPersonsCredentialIsTheirsAlone(t *testing.T) {
+	w := newWorld(t, platform.Config{})
+	w.model.mu.Lock()
+	w.model.recall = true
+	w.model.mu.Unlock()
+	ctx := t.Context()
+	if _, err := w.p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Launch"}); err != nil {
+		t.Fatal(err)
+	}
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	scheduled := func(id, deliver string, actor envelope.Actor) runs.Run {
+		t.Helper()
+		run, err := w.p.Invoke(ctx, envelope.Tag{
+			ID: id, Tenant: tenant, Agent: "worker", Origin: runs.OriginManual, Text: "Any open bugs?", Actor: actor,
+			Meta: map[string]string{
+				"cron_schedule": "launch-recap", "cron_expression": "41 8 * * 1", "created_by": "ada",
+				runs.MetaProject: "Launch", platform.MetaDeliver: deliver,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return await(t, w.p, run.ID, runs.Completed)
+	}
+	results := func(run string) []inbox.Message {
+		var out []inbox.Message
+		for _, m := range snapshot(w.p) {
+			if m.Source.Run == run && (m.Kind == inbox.KindResult || m.Kind == inbox.KindAnnouncement) {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+	for _, deliver := range []string{platform.DeliverProject, platform.DeliverInbox} {
+		run := scheduled("manual-ana-"+deliver, deliver, platform.ActorOf(ana))
+		if run.Answer != found {
+			t.Fatalf("ana's run now answered %q", run.Answer)
+		}
+		var got []inbox.Message
+		eventually(t, "ana was sent her answer", func() bool { got = results(run.ID); return len(got) > 0 })
+		if len(got) != 1 || got[0].Kind != inbox.KindResult || got[0].To != "ana" || !strings.Contains(got[0].Parts[0].Text, "PRIV-7") {
+			t.Fatalf("deliver %s: %+v", deliver, got)
+		}
+	}
+	// Run for nobody, the schedule posts in the project as it says.
+	run := scheduled("manual-nobody", platform.DeliverProject, envelope.Actor{ID: "cron", Bot: true})
+	eventually(t, "the answer was posted", func() bool {
+		got := results(run.ID)
+		return len(got) == 1 && got[0].Kind == inbox.KindAnnouncement && got[0].Source.Project == "Launch"
+	})
 }
