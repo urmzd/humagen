@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -182,6 +183,12 @@ func (p *Platform) Settings(tenant string) Settings { return p.settings.get(tena
 
 // SetSettings replaces a tenant's settings.
 func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings) error {
+	return p.setSettings(ctx, tenant, next, nil)
+}
+
+// setSettings is SetSettings for a writer shown only the agents shown
+// reports, nil for every agent: a refusal names no other.
+func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings, shown func(string) bool) error {
 	next = next.withDefaults()
 	// Who set the workspace up, and when, is the server's to say.
 	stored := p.Settings(tenant)
@@ -214,12 +221,29 @@ func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings
 			continue
 		}
 		if users := p.policyUsers(ctx, tenant, old.Name); len(users) > 0 {
-			return fmt.Errorf("%w: %q is used by %s; move them to another policy first", ErrModelPolicyInUse, old.Name, strings.Join(users, ", "))
+			return policyInUse(old.Name, users, shown)
 		}
 	}
 	p.settings.mu.Lock()
 	defer p.settings.mu.Unlock()
 	return p.settings.put(tenant, next)
+}
+
+// policyInUse refuses removing a policy that users still run on, naming the
+// ones shown reports (every one when it is nil). The others are said to live
+// where the writer may not read, by no name and no count.
+func policyInUse(policy string, users []string, shown func(string) bool) error {
+	named := users
+	if shown != nil {
+		named = slices.DeleteFunc(slices.Clone(users), func(a string) bool { return !shown(a) })
+	}
+	switch {
+	case len(named) == len(users):
+		return fmt.Errorf("%w: %q is used by %s; move them to another policy first", ErrModelPolicyInUse, policy, strings.Join(users, ", "))
+	case len(named) > 0:
+		return fmt.Errorf("%w: %q is used by %s, and by agents in projects you may not read; move them to another policy first", ErrModelPolicyInUse, policy, strings.Join(named, ", "))
+	}
+	return fmt.Errorf("%w: %q is used by agents in projects you may not read; their owners can move them to another policy", ErrModelPolicyInUse, policy)
 }
 
 // MarkSetup records who first set the workspace up. It does nothing once that

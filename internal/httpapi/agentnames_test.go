@@ -372,3 +372,42 @@ func TestAHousekeepingAgentThatLivesInAProjectServesOnlyItsTurns(t *testing.T) {
 		}
 	}
 }
+
+// A model policy an agent still runs on is not removed, and the refusal names
+// only the agents its writer may read.
+func TestAModelPolicyInUseNamesOnlyTheAgentsTheCallerMayRead(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	writer := f.machineAs(t, "svc-ops", "acme", "warp:agents:read", "warp:agents:write")
+	secretAgent(t, f, owner)
+	_, st := read(t, f, owner, "/api/settings")
+	st["model_policies"] = []any{map[string]any{"name": "steady", "models": []any{map[string]any{"provider": "offline", "model": "offline"}}}}
+	want(t, f, owner, "PUT", "/api/settings", mustJSON(t, st), http.StatusOK)
+	for _, spec := range []string{
+		`{"name":"mole","provider":"policy","model":"steady","system_prompt":"Digs."}`,
+		`{"name":"plain","provider":"policy","model":"steady","system_prompt":"Plain."}`,
+	} {
+		want(t, f, owner, "POST", "/api/agents", spec, http.StatusCreated)
+	}
+	want(t, f, owner, "PUT", "/api/agents/mole/home", `{"project":"Secret"}`, http.StatusOK)
+
+	clear := func(tok string) (int, string) {
+		t.Helper()
+		_, st := read(t, f, tok, "/api/settings")
+		st["model_policies"] = []any{}
+		return send(t, f, tok, "PUT", "/api/settings", mustJSON(t, st))
+	}
+	if code, out := clear(owner); code != http.StatusConflict || !strings.Contains(out, "mole") || !strings.Contains(out, "plain") {
+		t.Errorf("the owner's removal of a policy in use = %d %s", code, out)
+	}
+	if code, out := clear(writer); code != http.StatusConflict || strings.Contains(out, "mole") || !strings.Contains(out, "plain") {
+		t.Errorf("the writer's removal of a policy in use = %d %s", code, out)
+	}
+	want(t, f, owner, "PUT", "/api/agents/plain", `{"spec":{"name":"plain","provider":"offline","model":"offline","system_prompt":"Plain."},"expected_rev":1}`, http.StatusOK)
+	if code, out := clear(writer); code != http.StatusConflict || strings.Contains(out, "mole") {
+		t.Errorf("the writer's removal of a policy only mole runs on = %d %s", code, out)
+	}
+	if raw, _ := read(t, f, owner, "/api/settings"); !strings.Contains(raw, `"steady"`) {
+		t.Errorf("a refused removal lost the policy: %s", raw)
+	}
+}

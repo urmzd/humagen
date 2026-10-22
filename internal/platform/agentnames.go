@@ -314,7 +314,9 @@ func (s *Seer) Settings(st Settings) Settings {
 
 // SetSettingsBy replaces a workspace's settings as who writes them. A title
 // or memory agent who may not read is refused as one that does not exist,
-// and one they are not shown is kept when they name none in its place.
+// and one they are not shown is kept when they name none in its place. A
+// model policy an agent they may not read runs on is not removed, and the
+// refusal does not name it.
 func (p *Platform) SetSettingsBy(ctx context.Context, who auth.Principal, next Settings) error {
 	seer := p.Seer(who)
 	for _, name := range []string{next.TitleAgent, next.MemoryAgent} {
@@ -332,5 +334,5 @@ func (p *Platform) SetSettingsBy(ctx context.Context, who auth.Principal, next S
 	if next.MemoryAgent == "" && !seer.AgentNamed(stored.MemoryAgent) {
 		next.MemoryAgent = stored.MemoryAgent
 	}
-	return p.SetSettings(ctx, who.Tenant, next)
+	return p.setSettings(ctx, who.Tenant, next, seer.AgentNamed)
 }

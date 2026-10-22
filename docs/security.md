@@ -54,8 +54,9 @@ suites, and the agents that live there, each answering exactly as an object
 that does not exist. A client, a project's lists of agents and the
 workspace's settings leave out an agent that lives there, and a change to
 them that names one answers as one naming an agent that does not exist,
-while keeping what the caller was not shown. A private thread is read by its
-participants alone.
+while keeping what the caller was not shown. A model policy such an agent
+runs on is not removed, and the refusal does not name the agent. A private
+thread is read by its participants alone.
 
 A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:
