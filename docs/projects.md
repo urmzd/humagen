@@ -805,7 +805,8 @@ before then.
   copy.
 - **The record.** Each change is kept under its own key, as before, and a
   retention step deletes the dropped messages' keys and writes the tenant's
-  cut (key `cut`) in one write, all or none, at most 5,000 records a step.
+  cut (key `cut`) in one write, all or none, at most 5,000 records a step,
+  or one message's records when that message alone has more.
   The cut holds the number of the last id issued and the keys of
   announcements posted once. Replay applies what is kept, each raise under
   the id its record names, then the cut, so it rebuilds exactly what the

@@ -62,7 +62,8 @@ func settledBefore(m *Message, before time.Time) bool {
 // again, and the key of an announcement posted once (PostOnce) is never
 // posted again. The receipts and keys of what is kept still find it.
 //
-// It works in steps of at most maxCut records. Each step deletes its records
+// It works in steps of at most maxCut records, or one message's records
+// when that message alone has more. Each step deletes its records
 // and writes the cut in one write, all or none, and changes the inbox only
 // once that is written, so a replay of what is kept rebuilds what the
 // inbox holds. A step that cannot be written leaves the inbox as that step
