@@ -8,8 +8,9 @@ import (
 )
 
 // A person's own credentials for the tools that act as them. Every route acts
-// on the caller and takes no subject, so there is no way to name someone
-// else, and a value written is never answered back.
+// on the caller, or on the person a client's machine acts for through its
+// people map (act_as_client and act_as_user), and takes no subject, so there
+// is no way to name anyone else, and a value written is never answered back.
 
 func (s *Server) listToolCredentials(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	person, allowed := s.actingFor(w, r, who, auth.RunsRead, "connections")

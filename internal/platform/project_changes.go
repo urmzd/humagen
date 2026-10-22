@@ -172,6 +172,16 @@ type changesScope struct {
 	// may read (agentsEveryoneReads). A row about what runs did names the
 	// agent that ran, as the runs themselves do.
 	shown func(agent string) bool
+	// names calls people as the rest of the platform does: a recap reaches
+	// every member, so a person is named by their name or handle, and a
+	// subject that holds an address is never written (Names).
+	names Names
+}
+
+// person is what a recap calls whoever did something: their name, never an
+// address (Names.Of), or someone when nobody is recorded.
+func (s changesScope) person(subject string) string {
+	return cmp.Or(s.names.Of(subject), someone)
 }
 
 // changeRow is one row of a section, ordered newest first by at.
@@ -242,7 +252,7 @@ func (p *Platform) projectChanges(tenant, runID string, days int) (string, error
 	scope := changesScope{
 		tenant: tenant, project: run.Project, projects: names,
 		since: until.Add(-time.Duration(days) * 24 * time.Hour), until: until, asking: run.Root, thread: run.Thread,
-		shown: p.agentsEveryoneReads(tenant, run.Project),
+		shown: p.agentsEveryoneReads(tenant, run.Project), names: p.Names(tenant),
 	}
 	sections := p.changeSections()
 	rows := make([][]changeRow, len(sections))
@@ -397,7 +407,7 @@ func (p *Platform) artifactChanges(scope changesScope) []changeRow {
 			}
 			by := a.Agent
 			if by == "" {
-				by = a.CreatedBy
+				by = scope.person(a.CreatedBy)
 			}
 			text := row("%s %s: %s, version %d, by %s", day(a.CreatedAt), a.Project, a.Title, a.Version, by)
 			if a.Description != "" {
@@ -449,9 +459,9 @@ func (p *Platform) scheduleChanges(scope changesScope) []changeRow {
 		}
 		switch {
 		case inWindow(about.UpdatedAt):
-			out = append(out, changeRow{about.UpdatedAt, row("%s %s: %s changed by %s, runs %s at %q", day(about.UpdatedAt), project, sc.Name, about.UpdatedBy, agent, sc.Expression)})
+			out = append(out, changeRow{about.UpdatedAt, row("%s %s: %s changed by %s, runs %s at %q", day(about.UpdatedAt), project, sc.Name, scope.person(about.UpdatedBy), agent, sc.Expression)})
 		case inWindow(about.CreatedAt):
-			out = append(out, changeRow{about.CreatedAt, row("%s %s: %s created by %s, runs %s at %q", day(about.CreatedAt), project, sc.Name, sc.Meta[metaCreatedBy], agent, sc.Expression)})
+			out = append(out, changeRow{about.CreatedAt, row("%s %s: %s created by %s, runs %s at %q", day(about.CreatedAt), project, sc.Name, scope.person(sc.Meta[metaCreatedBy]), agent, sc.Expression)})
 		}
 	}
 	return out
@@ -530,7 +540,11 @@ func (p *Platform) announcementChanges(scope changesScope) []changeRow {
 		if where == "" {
 			where = "the workspace"
 		}
-		out = append(out, changeRow{m.At, row("%s %s: %q, from %s %s", day(m.At), where, m.Subject, m.From.Kind, m.From.Name)})
+		from := m.From.Name
+		if m.From.Kind == "person" {
+			from = scope.person(from)
+		}
+		out = append(out, changeRow{m.At, row("%s %s: %q, from %s %s", day(m.At), where, m.Subject, m.From.Kind, from)})
 	}
 	return out
 }
@@ -551,7 +565,7 @@ func (p *Platform) recordChanges(scope changesScope) []changeRow {
 			if where == "" {
 				where = "the workspace"
 			}
-			text := row("%s %s: %s by %s", day(c.At), where, c.What, c.By)
+			text := row("%s %s: %s by %s", day(c.At), where, c.What, scope.person(c.By))
 			switch {
 			case c.Agent != "" && scope.shown(c.Agent):
 				text = row("%s (%s)", text, c.Agent)
