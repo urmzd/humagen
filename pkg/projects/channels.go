@@ -137,7 +137,9 @@ func sameChannel(a, b Channel) bool {
 		sameBinding(a.Slack, b.Slack)
 }
 
-func sameBinding(a, b *SlackBinding) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
+func sameBinding(a, b *SlackBinding) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
+}
 
 // checkBinding holds a channel's Slack binding to the rest of the tenant:
 // one Slack channel is bound to one channel, and one client to at most

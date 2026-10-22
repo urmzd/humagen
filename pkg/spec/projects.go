@@ -52,9 +52,9 @@ var (
 	// public (C) or private (G): a direct message is never bound.
 	clientID     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 	slackChannel = regexp.MustCompile(`^[CG][A-Z0-9]{2,31}$`)
-	expertRole  = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
-	kindName    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
-	roleName    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,63}$`)
+	expertRole   = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+	kindName     = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+	roleName     = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,63}$`)
 )
 
 // checkProjects holds the workspace's instructions and project tree to what
