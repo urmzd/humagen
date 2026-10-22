@@ -205,7 +205,7 @@ func TestAnInboxRetentionIsDaysOrADuration(t *testing.T) {
 			t.Errorf("%q = %v, %v, want %v", in, got, err, want)
 		}
 	}
-	for _, in := range []string{"6d", "167h", "0d", "-30d", "1.5d", "d", "90", "90days", "36501d", "forever"} {
+	for _, in := range []string{"6d", "167h", "0d", "-30d", "1.5d", "d", "90", "90days", "36501d", "forever", "+30d", " 30d"} {
 		if got, err := ParseRetention(in); err == nil {
 			t.Errorf("%q = %v, want it refused", in, got)
 		}

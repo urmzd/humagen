@@ -196,8 +196,12 @@ func (w *world) reader() Query {
 		_, _ = fmt.Fprint(h, salt, "|", m.Source.Project, "|", m.Source.Thread, "|", m.Source.Run, "|", m.Source.Agent)
 		return h.Sum64()%4 != 0
 	}
+	// The platform's mute: a member's projects, less those they muted (the
+	// root is never muted), are the projects whose news reaches them.
+	member, muted := some(r, worldProjects), some(r, worldProjects)
+	reaches := slices.DeleteFunc(slices.Clone(member), func(p string) bool { return p != "" && slices.Contains(muted, p) })
 	q := Query{
-		Reader: who, Roles: some(r, worldRoles), ReaderProjects: some(r, worldProjects), ReaderOwns: some(r, worldProjects),
+		Reader: who, Roles: some(r, worldRoles), ReaderProjects: reaches, ReaderOwns: some(r, worldProjects),
 		Visible: func(k Kind) bool { return slices.Contains(visible, k) },
 		Now:     pick(r, []time.Time{w.now, w.now.Add(time.Hour), w.now.Add(4 * time.Hour), {}}),
 	}
@@ -285,6 +289,11 @@ func TestCountsAgreeWithAScan(t *testing.T) {
 				for range 20 {
 					w.raise()
 					w.post()
+				}
+				// The counters go on agreeing with a scan after a restart.
+				for step := range 40 {
+					w.step()
+					w.check(w.s, step)
 				}
 			})
 		}

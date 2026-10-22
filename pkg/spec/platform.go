@@ -107,7 +107,7 @@ func ParseRetention(s string) (time.Duration, error) {
 	var d time.Duration
 	if days, ok := strings.CutSuffix(s, "d"); ok {
 		n, err := strconv.Atoi(days)
-		if err != nil || n < 1 || n > maxRetentionDays {
+		if err != nil || n < 1 || n > maxRetentionDays || days[0] < '0' || days[0] > '9' {
 			return 0, bad
 		}
 		d = time.Duration(n) * 24 * time.Hour

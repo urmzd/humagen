@@ -812,8 +812,8 @@ before then.
   a step can delete, the cut also names it while later steps delete the rest.
   Replay reads the cut first and skips those records, so an interrupted
   cleanup never brings a message back. It applies each kept raise under
-  the id its record names, with `-state=postgres` as in memory. The inbox changes only
-  once its step is written; a step that cannot be written changes nothing
+  the id its record names, with `-state=postgres` as in memory. The inbox
+  changes only once its step is written; a step that cannot be written changes nothing
   and is tried again at the next pass.
 - **What never repeats.** No message id is issued again, and a key posted
   once (`release:<version>`) is never posted again (`PostOnce`, which reads
