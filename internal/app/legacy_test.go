@@ -81,7 +81,9 @@ func TestStartReadsTheOldSpecFileAndAsksNothing(t *testing.T) {
 		t.Fatal("start did not listen")
 	}
 	cancel()
-	<-done
+	if err := <-done; err != nil {
+		t.Errorf("start: %v", err)
+	}
 	if !strings.Contains(out.String(), "humagen: reading "+old) {
 		t.Errorf("start did not read %s:\n%s", old, out.String())
 	}
