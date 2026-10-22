@@ -826,7 +826,9 @@ need `projects:govern`.
 
 Machines hold exactly their scopes and match only `*` and their own subject. A
 surface acting for a person (`act_as`) is checked against that person's own
-roles on the project, as answering questions is today. Agents are never
+roles on the project, as answering questions is today, and against their own
+tenant permission: starting a run for them, posting for them and answering
+for them each need their `runs:write`, which the policy grants their subject. Agents are never
 members: their relation to a project is availability.
 
 ### Default deny

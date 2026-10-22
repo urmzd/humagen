@@ -145,9 +145,10 @@ no permission, grants nothing.
   API answers a question, or asks for a run, for a Slack person (`act_as`) only
   through a Slack client that names the app's own credential as its `machine`
   and maps that person in `people`. Anyone unmapped is refused (403) and the
-  app does not ask. To answer, the mapped person's own grant (what the policy
-  grants their subject) must include `runs:write`, as well as the
-  credential's. The answer is recorded as the mapped principal, with the
+  app does not ask. To answer, to ask for a run or to post in a thread for
+  them, the mapped person's own grant (what the policy grants their subject)
+  must include `runs:write`, as well as the credential's: a workspace viewer
+  starts nothing because a machine relays their words. The answer is recorded as the mapped principal, with the
   credential as `Via`: a credential never approves a call in a run it raised
   as itself, whoever it names. Mapping a person is `clients:write`.
 - **A person posts only as themselves.** A message in a shared thread is
@@ -164,7 +165,7 @@ no permission, grants nothing.
   app is trusted to say truthfully which Slack user clicked; the platform
   cannot check it. A mapped person's roles are what the policy grants their
   subject: a click carries no groups, so a role held only through a group
-  does not count, and such a person cannot answer from Slack. Keep that credential as you would those people's sign-ins,
+  does not count, and such a person cannot answer, ask or post from Slack. Keep that credential as you would those people's sign-ins,
   map only people who use that Slack workspace, and remove a mapping when
   someone leaves.
 - **A tool that acts as a person uses that person's credential and no

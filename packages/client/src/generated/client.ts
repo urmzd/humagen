@@ -965,6 +965,9 @@ conversation's project, or a default that has stopped being
 available there, is 403. So is a conversation in a project where the
 caller, or the person `act_as` names, is only a viewer: starting work
 in a project, or adding a turn to work filed there, needs a member.
+The person `act_as` names must hold `runs:write` themselves, as for
+posting and answering for them, or it is 403: the credential's own is
+not enough.
 
 A follow-up is filed in its conversation's channel. When it follows
 a turn in a shared thread people have posted in, it is sent the room

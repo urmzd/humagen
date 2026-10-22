@@ -179,8 +179,10 @@ func (v *Verifier) Bearer(ctx context.Context, raw string) (Principal, error) {
 		return Principal{}, err
 	}
 	// A machine is never given roles, so the policy cannot widen it. It
-	// gets exactly the scopes on its token.
-	p := Principal{Subject: tok.Subject, Tenant: tenant, Kind: Machine, Name: str(claims["cid"])}
+	// gets exactly the scopes on its token. It carries the policy all the
+	// same: the people a surface's credential acts for (act_as) hold what
+	// this policy grants their subjects, and the built-in one grants nothing.
+	p := Principal{Subject: tok.Subject, Tenant: tenant, Kind: Machine, Name: str(claims["cid"]), policy: v.policy}
 	for _, s := range scopes(claims) {
 		name, ok := strings.CutPrefix(s, ScopePrefix)
 		if !ok {
