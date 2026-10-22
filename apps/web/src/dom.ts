@@ -55,3 +55,51 @@ export function stubEventSource(): () => void {
     g.EventSource = real;
   };
 }
+
+/**
+ * Installs an EventSource a test delivers to: send(event) hands a run's
+ * event to every source open on that run's topic, as the platform's stream
+ * would. Returns send and a way to put back whatever was there.
+ */
+export function liveEventSource(): { send: (event: { run_id: string; agent: string; kind: string; body?: unknown; at?: string }) => void; restore: () => void } {
+  const g = globalThis as { EventSource?: unknown };
+  const real = g.EventSource;
+  const open = new Set<{ topic: string; onmessage: ((m: { data: string }) => void) | null }>();
+  g.EventSource = class {
+    onopen: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    onmessage: ((m: { data: string }) => void) | null = null;
+    topic: string;
+    constructor(url: string) {
+      this.topic = new URL(url, "http://localhost/").searchParams.get("topic") ?? "";
+      open.add(this);
+    }
+    addEventListener() {}
+    close() {
+      open.delete(this);
+    }
+  };
+  let seq = 0;
+  const send = (e: { run_id: string; agent: string; kind: string; body?: unknown; at?: string }) => {
+    const topic = `agent:${e.agent}:${e.run_id}`;
+    const data = JSON.stringify({
+      seq: ++seq,
+      topic,
+      run_id: e.run_id,
+      tenant: "t",
+      agent: e.agent,
+      rev: 1,
+      origin: "test",
+      kind: e.kind,
+      at: e.at ?? "2026-10-01T09:00:00Z",
+      ...(e.body === undefined ? {} : { payload: btoa(JSON.stringify(e.body)) }),
+    });
+    for (const s of open) if (s.topic === topic) s.onmessage?.({ data });
+  };
+  return {
+    send,
+    restore: () => {
+      g.EventSource = real;
+    },
+  };
+}

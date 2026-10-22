@@ -4,9 +4,9 @@ import { defaultCopy } from "@warp/components";
 import type { Turn } from "@warp/core";
 import { WebSurface } from "@warp/render-web";
 import { AgentMessage } from "@warp/web";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Revision, ThreadPage, ThreadTurn } from "./api.ts";
-import { stubEventSource, stubFetch } from "./dom.ts";
+import { liveEventSource, stubEventSource, stubFetch } from "./dom.ts";
 import { ChannelPage, ChannelsTab, postedLine, ThreadRoom } from "./Room.tsx";
 import { globex, tree } from "./projects.fixtures.ts";
 
@@ -520,6 +520,66 @@ test("an answer the platform refuses says why under the question, and keeps the 
     assert.equal((screen.getByRole("textbox", { name: "Tell me what you need" }) as HTMLTextAreaElement).value, "Waive it in full.");
   } finally {
     restore();
+  }
+});
+
+const q1 = { id: "q1", kind: "reply", prompt: "Should the credit note cover only the duplicated line?", asked_of: "sme:billing" };
+const q2 = { id: "q2", kind: "reply", prompt: "Which date should the credit note carry?", asked_of: "sme:billing" };
+
+/** Type words into the open question's box and send them. */
+function typeAnswer(words: string) {
+  fireEvent.click(screen.getByRole("button", { name: defaultCopy.somethingElse }));
+  const box = screen.getByRole("textbox", { name: "Tell me what you need" }) as HTMLTextAreaElement;
+  fireEvent.change(box, { target: { value: words } });
+  fireEvent.keyDown(box, { key: "Enter" });
+}
+
+test("a typed answer answers the question on the card it was typed in, though the room's record of the run still holds the one before", async () => {
+  const live = liveEventSource();
+  try {
+    const posted = { ...page, message: { id: "m-3", thread: "th-0123456789abcdef", by: "priya", name: "Priya", text: "The first of April.", mentions: [], via: "console", at }, runs: [], notified: [], refused: [], rule: "reply" };
+    questionRoom(forBilling, "priya", { "POST /api/threads/th-0123456789abcdef/messages": () => posted });
+    await screen.findByRole("button", { name: defaultCopy.somethingElse });
+    // q1 is answered and the run parks on q2, on its stream, before the
+    // room reads the run again.
+    act(() => {
+      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.accepted" });
+      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.parked", body: { question: q1 } });
+      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.resumed", body: { answer: { question_id: "q1", text: "Only the duplicated line.", by: "priya", at } } });
+      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.parked", body: { question: q2 } });
+    });
+    await screen.findByText(q2.prompt);
+    typeAnswer("The first of April.");
+    await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST")));
+    const sent = net?.seen.filter((r) => r.method === "POST") ?? [];
+    assert.deepEqual(sent.map((r) => r.path), ["/api/threads/th-0123456789abcdef/messages"], "it is said in the room");
+    assert.deepEqual(sent[0]?.body, { text: "The first of April.", answers: { run: "r1", question: "q2" } });
+  } finally {
+    live.restore();
+  }
+});
+
+test("a refusal said under a question goes once someone else settles it", async () => {
+  const live = liveEventSource();
+  try {
+    questionRoom(forBilling, "priya", {
+      "POST /api/threads/th-0123456789abcdef/messages": () => new Response(JSON.stringify({ error: "forbidden" }), { status: 403 }),
+    });
+    await screen.findByRole("button", { name: defaultCopy.somethingElse });
+    typeAnswer("Waive it in full.");
+    const turn = document.getElementById("turn-r1") as HTMLElement;
+    assert.ok(await within(turn).findByText(defaultCopy.noPermission));
+    // Another billing expert answers, and ledger finishes.
+    act(() => {
+      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.accepted" });
+      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.parked", body: { question: q1 } });
+      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.resumed", body: { answer: { question_id: "q1", text: "Only the duplicated line.", by: "olu", at } } });
+      live.send({ run_id: "r1", agent: "ledger", kind: "lifecycle.completed", body: { text: "I drafted credit note CN-0187." } });
+    });
+    await within(turn).findByText("I drafted credit note CN-0187.");
+    assert.ok(!within(turn).queryByText(defaultCopy.noPermission), "the refusal is not left under the settled question");
+  } finally {
+    live.restore();
   }
 });
 

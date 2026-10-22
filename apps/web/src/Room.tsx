@@ -21,7 +21,7 @@ import {
   type ThreadAsk,
   type ThreadTurn,
 } from "./api.ts";
-import { askedOf, copyFor } from "./asks.ts";
+import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { availableOf } from "./availability.ts";
 import { Composer } from "./Composer.tsx";
 import { itemActions } from "./itemActions.tsx";
@@ -305,7 +305,7 @@ function retryInRoom(run: Run, me: string): string {
  * (ask), and an answer the platform refused says why under it, where it was
  * given.
  */
-function AnswerView({ run, me, live, ask, refused }: { run: Run; me: string; live: boolean; ask?: ThreadAsk; refused?: string | null }) {
+function AnswerView({ run, me, live, ask, refused }: { run: Run; me: string; live: boolean; ask?: ThreadAsk; refused?: Refusal }) {
   const turn = useRunTurn(live ? run : undefined);
   const drawn = useMemo(
     () =>
@@ -337,9 +337,9 @@ function AnswerView({ run, me, live, ask, refused }: { run: Run; me: string; liv
       <AgentTint name={run.agent}>
         <AgentMessage turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} />
       </AgentTint>
-      {refused && (
+      {refused && stillAsks(shown, refused.question) && (
         <div className="pl-11">
-          <Problem message={refused} />
+          <Problem message={refused.why} />
         </div>
       )}
     </article>
@@ -393,8 +393,9 @@ export function ThreadRoom({
   // The cursor for the turns before the oldest one read.
   const [before, setBefore] = useState<string | null>(initial.next);
   const [problem, setProblem] = useState<string | null>(null);
-  // Why an answer to a run's question was not taken, by run, said under it.
-  const [refusals, setRefusals] = useState<Record<string, string>>({});
+  // Why an answer to a run's question was not taken, by run: said under it
+  // while that question still waits, and gone once anyone settles it.
+  const [refusals, setRefusals] = useState<Record<string, Refusal>>({});
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {
@@ -443,12 +444,12 @@ export function ThreadRoom({
     setRefusals(({ [answer.run]: _, ...rest }) => rest);
     // A reply in words is said in the room, as the person's message, and
     // recorded as the question's answer. A choice or an approval is a click.
+    // It answers the question on the card it was given in: the run's
+    // stream draws that card, and moves on before the room's record of the
+    // run does.
     const text = answer.body.action === "reply" ? answer.body.text : undefined;
     const run = turns.find((t) => t.run && t.run.id === answer.run)?.run;
-    const done =
-      text && run?.question
-        ? coworking.post(id, { text, answers: { run: run.id, question: run.question.id } })
-        : api.answer(answer);
+    const done = text && run ? coworking.post(id, { text, answers: { run: run.id, question: answer.question } }) : api.answer(answer);
     // A refusal is said under the question, where the words typed for it
     // are still in its box.
     done
@@ -456,7 +457,10 @@ export function ThreadRoom({
       .catch((e) =>
         setRefusals((r) => ({
           ...r,
-          [answer.run]: e instanceof ApiError && e.status === 403 ? defaultCopy.noPermission : e instanceof ApiError ? e.message : defaultCopy.failure.internal(),
+          [answer.run]: {
+            question: answer.question,
+            why: e instanceof ApiError && e.status === 403 ? defaultCopy.noPermission : e instanceof ApiError ? e.message : defaultCopy.failure.internal(),
+          },
         })),
       );
   };

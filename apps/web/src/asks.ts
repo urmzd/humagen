@@ -1,5 +1,5 @@
 import { type Copy, defaultCopy } from "@warp/components";
-import type { Turn } from "@warp/core";
+import type { Interrupt, Turn } from "@warp/core";
 import type { ThreadAsk } from "./api.ts";
 
 /**
@@ -49,4 +49,23 @@ const othersCopy: Copy = { ...defaultCopy, status: { ...defaultCopy.status, wait
 
 export function copyFor(ask: ThreadAsk | undefined): Copy {
   return ask && !ask.yours ? othersCopy : defaultCopy;
+}
+
+/** Why the platform did not take a reader's answer to one question of a run. */
+export interface Refusal {
+  question: string;
+  why: string;
+}
+
+/**
+ * Whether a turn still waits on the question with this id: shown, and not
+ * yet answered or decided by anyone. A refusal of an answer to it is said
+ * only while it does.
+ */
+export function stillAsks(turn: Turn, question: string): boolean {
+  return turn.interrupts.some((i) => i.id === question && pending(i));
+}
+
+function pending(i: Interrupt): boolean {
+  return i.type === "approval" ? i.decision.kind === "pending" || i.decision.kind === "asked" : i.answer.kind === "pending";
 }
