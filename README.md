@@ -26,6 +26,7 @@
 - Edit agents and revisions, run deterministic evals, schedule work and inspect run traces.
 - Apply tenant permissions, depth and fan-out limits, run admission policies and usage accounting.
 - Search knowledge, manage project memory and inspect alerts and analytics in the web console.
+- Tag who answers (`@agent` or `@auto`) or let the default a project inherits answer, enable platform agents per project or give an agent a home in one, and browse the workspace's people, agents and projects in the Directory.
 - Connect GitHub and Slack through signed webhook ingress and tenant-bound connector capabilities.
 - Answer in Slack with the console's own components through a Socket Mode app that streams natively.
 
@@ -120,8 +121,14 @@ teasr run
 
 `POST /api/runs` takes `agent`, `text`, and optionally `after` and `project`.
 
-- Leave `agent` empty or `auto` and the platform picks: the agent whose name,
-  description or prompt best matches the message, or the workspace's baseline.
+- `agent` names who answers: an agent available where the conversation is
+  filed, or `auto` for `@auto`, which picks among those agents by name,
+  description and prompt and hands a message nothing matches to the nearest
+  default that names an agent.
+- Leave `agent` out and the default the conversation's place inherits answers:
+  its project's, then each ancestor's, then the workspace's. A new workspace's
+  default is `@auto`. With none set, nothing runs: the answer is 409, asking
+  to tag an agent.
 - `after` names the turn the message follows. Naming a turn that already has a
   reply starts a branch. Any agent can answer any turn, and is sent the branch
   so far.
@@ -139,7 +146,9 @@ generated from it. See [the API guide](docs/api.md).
 | `GET`, `POST /api/agents`, `PUT /api/agents/{name}`, `GET /api/agents/{name}/history` | `agents:read`, `agents:write` |
 | `GET`, `POST /api/runs`, `GET /api/runs/{id}`, `/tree`, `/trace` | `runs:read`, `runs:write` |
 | `GET /api/threads`, `GET /api/threads/{id}` | `runs:read` |
-| `GET /api/pick?q=`, `GET`, `PUT /api/settings` | `agents:read`, `agents:write` |
+| `GET /api/pick?q=&project=`, `GET`, `PUT /api/settings`, `PUT /api/agents/{name}/home` | `agents:read`, `agents:write` |
+| `GET`, `PUT /api/projects/{name}/agents` | `projects:read`, `projects:write` |
+| `GET /api/people`, `GET /api/people/{handle}/photo` | `people:read` |
 | `GET`, `POST /api/evals`, `PUT`, `DELETE /api/evals/{name}`, `POST .../run`, `GET .../runs` | `evals:read`, `evals:write` |
 | `GET`, `PUT /api/preferences`, `GET`, `PUT`, `DELETE /api/preferences/photo` | Signed in, the caller's own |
 | `POST /api/runs/{id}/calls` | `runs:write` |
