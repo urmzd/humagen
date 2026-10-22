@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/toolprovider"
@@ -44,7 +45,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 		t.Fatalf("strict check: %v", err)
 	}
 	w := cfg.Platforms[0].Spec.Workspace
-	if w.Instructions == nil || len(w.Projects) != 3 || !w.ReleaseNotes {
+	if w.Instructions == nil || len(w.Projects) != 3 || !w.ReleaseNotes || w.Retention() != 180*24*time.Hour {
 		t.Fatalf("workspace = %+v", w)
 	}
 	if g := w.Projects[2]; g.Parent != "Field" || g.Kind != ProjectAccount || g.Account == nil || g.Account.URL != "https://crm.example.com/globex" {
@@ -91,6 +92,8 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"a person reference that is nobody's own":      {sys + "  person_refs: {default: ['op://People/']}\n", "person_refs.default"},
 		"two workspaces' people in one place": {sys + "  person_refs: {default: ['op://People/{subject}/'], globex: ['op://People/{subject}/']}\n",
 			"could name one reference for two people"},
+		"an inbox kept less than a week": {plat + "  workspace: {inbox_retention: 6d}\n", "workspace.inbox_retention: \"6d\" is less than the least retention, 7d"},
+		"an inbox kept for no time":      {plat + "  workspace: {inbox_retention: forever}\n", "workspace.inbox_retention: \"forever\" is whole days"},
 	} {
 		path := filepath.Join(t.TempDir(), "warp.yaml")
 		writeFile(t, path, tc.body)
@@ -190,5 +193,24 @@ func writeFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// An inbox's retention is whole days or a duration, 90 days when left out,
+// and never less than a week.
+func TestAnInboxRetentionIsDaysOrADuration(t *testing.T) {
+	day := 24 * time.Hour
+	for in, want := range map[string]time.Duration{"": 90 * day, "90d": 90 * day, "2160h": 90 * day, "7d": 7 * day, "168h": 7 * day, "365d": 365 * day} {
+		if got, err := ParseRetention(in); err != nil || got != want {
+			t.Errorf("%q = %v, %v, want %v", in, got, err, want)
+		}
+	}
+	for _, in := range []string{"6d", "167h", "0d", "-30d", "1.5d", "d", "90", "90days", "36501d", "forever"} {
+		if got, err := ParseRetention(in); err == nil {
+			t.Errorf("%q = %v, want it refused", in, got)
+		}
+	}
+	if got := (Workspace{InboxRetention: "30d"}).Retention(); got != 30*day {
+		t.Errorf("a workspace's retention = %v", got)
 	}
 }

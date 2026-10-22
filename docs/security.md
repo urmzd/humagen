@@ -479,7 +479,14 @@ decided per message:
 | A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to set it aside or to reply in the thread as themselves, which takes seeing the thread's project; a reply that tags anyone takes a member of it, since its tags start the agents and tell the people they name as any message's do |
 
 A message a caller may not see answers 404, not 403, and is left out of their
-count, and a notice about it never reaches their event stream. An
+count, and a notice about it never reaches their event stream. A count is
+added up from counters, one for each bucket of open messages alike in kind,
+addressing and what they are about, and each bucket is asked of the same
+rule a message is, so it counts only what the caller may see. What was
+settled for everyone is dropped with its record after the workspace's
+`inbox_retention` (90 days by default, at least 7); the log line each
+decision in the inbox writes (`platform: inbox`) is the operator's, and
+stays. An
 announcement's audience (`project:<name>`) and a proposed note's
 (`owners:<name>`) are decided from the project tree at each read, so a revoked
 membership hides past announcements at the next one. Announcements are plain

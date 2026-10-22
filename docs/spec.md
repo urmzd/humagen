@@ -157,6 +157,7 @@ spec:
         members: [{who: "okta|00u1ana", role: owner}]   # no "*": members only, read by its members alone
     person_credentials: {values: false}   # true lets people store a tool credential's value with warp
     release_notes: true     # each release's breaking changes and features, posted once in the workspace's inbox from warp
+    inbox_retention: 180d   # how long the inbox keeps what was settled for everyone. Left out: 90d. At least 7d
 
   models:                   # each a slot: anthropic | openai | ollama
     - name: anthropic       # what an agent names as its provider
@@ -499,7 +500,8 @@ What's new and in the workspace's inbox like any announcement there, and
 each reader hides it for themselves.
 
 Each release is posted once, at the start that first runs it: a restart, a
-later process on the same database, or a withdrawal never posts it again.
+later process on the same database, a withdrawal, or retention dropping it
+never posts it again.
 With memory stores every start is a new inbox, so it is posted at each
 start. A release of fixes alone posts nothing, and so does a build that is
 not a release: `dev`, a local build or a pseudo-version. The release is the
@@ -510,6 +512,24 @@ imports warp at that version). It counts against the workspace's 20
 announcements a day; a start past them posts it at the next start. The
 Slack app, which connects after the start, does not post it in a channel
 bound to the workspace's general.
+
+### Inbox retention
+
+`workspace.inbox_retention` is how long the workspace's inbox keeps what was
+settled for everyone: a message resolved, dismissed or withdrawn. It is whole
+days, such as `90d`, or a duration, such as `2160h`; left out, it is 90
+days, and it is at least `7d` (`warp config check` refuses less). At start
+and every hour after, warp drops each message settled longer ago than that,
+with everything recorded about it: its outcomes, who read or hid it, and
+where a client posted it. What is open or snoozed is never dropped, nor a
+question a run still waits on, and an announcement stays while it is open
+for anyone, however many readers hid their own copy. Message ids are never
+issued again, and release notes dropped this way are not posted again.
+
+Once a withdrawn announcement is dropped, a reply under its Slack post
+starts a thread as any other in the channel, and a thread started from it
+no longer shows it. The log lines each inbox decision writes
+(`platform: inbox`) are the operator's, and retention does not touch them.
 
 ## Which level a knob lives at
 
@@ -523,6 +543,7 @@ bound to the workspace's general.
 | Where people may keep their own tool credentials (`person_refs`) | System | a reference is read with the process's own access |
 | Whether people may store a tool credential's value (`workspace.person_credentials`) | Platform | it is the workspace's people's data |
 | Release notes in the workspace's inbox (`workspace.release_notes`) | Platform | it is the workspace's people's news |
+| How long the inbox keeps what was settled (`workspace.inbox_retention`) | Platform | it is the workspace's people's record |
 | Names people see | both | the deployment's, then each workspace's |
 | Models and model policies | Platform | what the workspace's agents run on |
 | MCP tools and pinned schemas | Platform | what its agents may touch |

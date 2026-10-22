@@ -680,7 +680,8 @@ ingress overwrites whatever a connector put there (phase 8).
   shared and records who withdrew.
 - `Count` returns `{open, unread, updates}`. Broadcasts count only in
   `updates`; every existing kind counts exactly as today, so the badge and the
-  phone's dot never grow from announcements.
+  phone's dot never grow from announcements. From phase 9 it adds up
+  counters instead of reading every message (see Retention and counts).
 
 ### Fan-out, decided when read
 
@@ -758,7 +759,8 @@ rendering, and the run that wrote the text is one click away.
 
 20 announcements per project per day and 200 per tenant per day (429). 20 open
 drafts per project. A project inbox page is at most 200 (default 30) with a
-cursor. Inbox retention for closed broadcasts is a follow-up (see Risks).
+cursor. What was settled for everyone is kept for the inbox's retention, 90
+days by default (see Retention and counts).
 
 ### Release notes (phase 9)
 
@@ -781,10 +783,50 @@ cursor. Inbox retention for closed broadcasts is a follow-up (see Risks).
   that sets it is posted the release, unless it has no breaking changes
   and no features.
   `inbox.Store.PostOnce` checks the key under the inbox lock: an
-  announcement ever raised under it, withdrawn or not, is kept, so a restart
-  or a later process on the same database posts nothing. It is an
+  announcement ever raised under it, withdrawn or not, is kept, and its key
+  outlives it once retention drops it, so a restart or a later process on
+  the same database posts nothing. It is an
   announcement like any other in the root: everyone reads it, What's new
   shows it, and Hide for Me hides one reader's copy.
+
+### Retention and counts (phase 9)
+
+`workspace.inbox_retention` (default `90d`, at least `7d`; whole days or a Go
+duration such as `2160h`) is how long a workspace's inbox keeps what was
+settled for everyone. The platform passes it in `Config.InboxRetention`, and
+at start and every hour after `inbox.Store.Retain` drops what was settled
+before then.
+
+- **What goes.** A message resolved, dismissed or withdrawn for everyone
+  before the cut, with no question in it that a run still waits on, and
+  every change recorded about it: its raise, its outcomes, each reader's
+  reads and hides, and each client's receipts. Nothing open or snoozed goes.
+  An announcement stays while it is open for anyone, whoever hid their own
+  copy.
+- **The record.** Each change is kept under its own key, as before, and a
+  retention step deletes the dropped messages' keys and writes the tenant's
+  cut (key `cut`) in one write, all or none, at most 5,000 records a step.
+  The cut holds the number of the last id issued and the keys of
+  announcements posted once. Replay applies what is kept, each raise under
+  the id its record names, then the cut, so it rebuilds exactly what the
+  inbox held, with `-state=postgres` as in memory. The inbox changes only
+  once its step is written; a step that cannot be written changes nothing
+  and is tried again at the next pass.
+- **What never repeats.** No message id is issued again, and a key posted
+  once (`release:<version>`) is never posted again (`PostOnce`, which reads
+  the cut's keys). Receipts and keys of what is kept still find it; those
+  of what was dropped find nothing, so a reply under the Slack post of an
+  announcement withdrawn and dropped starts a thread as any other there,
+  and a thread seeded with one no longer shows it.
+- **Counts.** `Count` is answered from counters kept as changes apply and
+  rebuilt on replay. The open messages are kept in buckets alike in kind,
+  addressing and what they are about (`Source`'s run, project, thread and
+  agent), each with how many it holds and, for each reader, how many of
+  them they read or, for a broadcast, hid. A count asks who may see each
+  bucket once, as the read rule asks of a message (`Query.Sees`,
+  `Visible`, `For`), and adds up what is left. What reopens by itself with
+  time is read one by one: messages snoozed for everyone, and the reader's
+  own snoozes of broadcasts. A settled message is never read.
 
 ## Permissions
 
@@ -1019,6 +1061,7 @@ spec:
     project_kinds: [{name: partner, title: Partner, like: account}]      # phase 2
     agent_posts: review                     # phase 5
     release_notes: false                    # phase 9
+    inbox_retention: 90d                    # phase 9
     channels: [{name: announcements, purpose: Company news}]             # phase 6
     projects:
       - name: Field
@@ -1392,6 +1435,13 @@ Existing Slack conversations keep their run-derived mapping. A thread gains a
 surface record the first time the app is mentioned in it after the upgrade.
 Channels are bound only by a project owner.
 
+### Phase 9: retention
+
+No migration. Retention's first pass runs at the first start after the
+upgrade and drops what was settled more than 90 days before, or the
+workspace's `inbox_retention`. Records written before phase 9 replay as they
+did: their raises already name their ids.
+
 ### Docs in the same PRs
 
 - docs/architecture.md#status, existing rows:
@@ -1547,10 +1597,14 @@ phase 2 and experts to phase 3, because addressing and threads need them.
   everywhere else. The route answers 409 while anything outside the new
   subtree uses the agent, and the console counts the projects that lose it.
   Schedules that lose their agent fail visibly.
-- **Inbox growth.** The inbox has no retention and `Count` scans every
-  message. Broadcasts add one message per post, not one per person, and
-  per-reader state adds one change for each person who hides one. Rate limits
-  bound posts; retention and per-reader counters are phase 9.
+- **Inbox growth.** Broadcasts add one message per post, not one per
+  person, and per-reader state adds one change for each person who hides
+  one. Rate limits bound posts. What was settled for everyone is dropped
+  after the workspace's retention (90 days by default) with its record,
+  and `Count` adds up counters kept per bucket of open messages, never
+  reading a settled one (phase 9). What stays is what is open: an
+  announcement nobody withdraws stays, with every reader's marks on it, and
+  the inbox is still held whole in memory.
 - **Addressing is not confidentiality.** Expert questions are routed to
   experts, but anyone fiber's `answerers` check admits may still answer
   through the run, as today. A project that needs a closed set of answerers

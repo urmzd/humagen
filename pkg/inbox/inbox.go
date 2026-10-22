@@ -17,6 +17,14 @@
 // Built with Open, the store writes each change through a state.Store before
 // it takes effect, and replays them when it is built again.
 //
+// # Retention and counts
+//
+// What was settled for everyone longer ago than a retention period is
+// dropped (Retain): the message, every change about it, and its records in
+// the state.Store, so the record and a replay hold only what is kept. A
+// count (Count) is added up from counters kept as changes apply, so it never
+// reads what is settled.
+//
 // # Broadcasts
 //
 // An announcement is one message many people read as their own: a
@@ -386,7 +394,11 @@ type Message struct {
 	Excluded []string `json:"-"`
 	// Broadcast is a message each reader keeps as their own: dismissing or
 	// snoozing it hides it for that reader alone. Announcements are.
-	Broadcast    bool      `json:"-"`
+	Broadcast bool `json:"-"`
+	// Once is an announcement posted under a key its poster named
+	// (PostOnce), which is never posted again, even once retention has
+	// dropped it.
+	Once         bool      `json:"-"`
 	Kind         Kind      `json:"kind"`
 	Subject      string    `json:"subject"`
 	From         From      `json:"from"`
@@ -560,10 +572,18 @@ type tenant struct {
 	read   map[string]map[string]bool // message id -> subject
 	// hidden is how each reader set a broadcast aside for themselves:
 	// message id -> subject -> how.
-	hidden   map[string]map[string]hide
-	posted   posted
-	log      []Change
-	next     int
+	hidden map[string]map[string]hide
+	posted posted
+	log    []Change
+	// seqs are the keys log's changes are kept under, one each, in order,
+	// and seq the key the next change is kept under. Retention leaves gaps.
+	seqs []int64
+	seq  int64
+	// next is the number of the last message id issued.
+	next int
+	// cut is what retention keeps of what it dropped.
+	cut      cut
+	tally    tally
 	watchers map[int]chan Notice
 	nextW    int
 }
@@ -622,6 +642,9 @@ type storedChange struct {
 	Change
 	Raised   *storedMessage `json:"raised,omitempty"`
 	Delivery *Delivery      `json:"delivery,omitempty"`
+	// Cut is set on the one record kept under cutKey, which is no change:
+	// what retention keeps of what it dropped.
+	Cut *cut `json:"cut,omitempty"`
 }
 
 type storedMessage struct {
@@ -630,12 +653,13 @@ type storedMessage struct {
 	Audience  []string `json:"audience,omitempty"`
 	Excluded  []string `json:"excluded,omitempty"`
 	Broadcast bool     `json:"broadcast,omitempty"`
+	Once      bool     `json:"once,omitempty"`
 }
 
 func storedOf(c Change) storedChange {
 	out := storedChange{Change: c, Delivery: c.Delivery}
 	if c.Raised != nil {
-		out.Raised = &storedMessage{Message: *c.Raised, Key: c.Raised.Key, Audience: c.Raised.Audience, Excluded: c.Raised.Excluded, Broadcast: c.Raised.Broadcast}
+		out.Raised = &storedMessage{Message: *c.Raised, Key: c.Raised.Key, Audience: c.Raised.Audience, Excluded: c.Raised.Excluded, Broadcast: c.Raised.Broadcast, Once: c.Raised.Once}
 	}
 	return out
 }
@@ -645,7 +669,7 @@ func (sc storedChange) change(tenant string) Change {
 	c.Tenant, c.Delivery = tenant, sc.Delivery
 	if sc.Raised != nil {
 		m := sc.Raised.Message
-		m.Key, m.Audience, m.Excluded, m.Broadcast = sc.Raised.Key, sc.Raised.Audience, sc.Raised.Excluded, sc.Raised.Broadcast
+		m.Key, m.Audience, m.Excluded, m.Broadcast, m.Once = sc.Raised.Key, sc.Raised.Audience, sc.Raised.Excluded, sc.Raised.Broadcast, sc.Raised.Once
 		c.Raised = &m
 	}
 	return c
@@ -659,8 +683,19 @@ func NewStore() *Store { return &Store{tenants: map[string]*tenant{}} }
 func OpenStore(st state.Store) (*Store, error) {
 	s := NewStore()
 	s.kept = state.NewTable[storedChange](st, "inbox")
-	err := s.kept.Load(func(name, _ string, sc storedChange) error {
-		s.of(name).apply(sc.change(name))
+	err := s.kept.Load(func(name, key string, sc storedChange) error {
+		t := s.of(name)
+		if key == cutKey {
+			if sc.Cut != nil {
+				t.restore(*sc.Cut)
+			}
+			return nil
+		}
+		seq, err := strconv.ParseInt(key, 10, 64)
+		if err != nil {
+			return fmt.Errorf("inbox: %s: a change kept under %q", name, key)
+		}
+		t.applyAt(sc.change(name), seq)
 		return nil
 	})
 	if err != nil {
@@ -669,17 +704,24 @@ func OpenStore(st state.Store) (*Store, error) {
 	return s, nil
 }
 
+// applyAt applies a change kept under a key, as a replay does.
+func (t *tenant) applyAt(c Change, seq int64) {
+	t.seq = seq
+	t.apply(c)
+	t.seq = max(t.seq, seq+1)
+}
+
 // replay puts a tenant back to what the first n changes of its record say,
 // keeping who is watching it. It is how a change that could not be written is
 // undone.
 func (s *Store) replay(name string, n int) {
 	old := s.tenants[name]
-	log := old.log[:n]
 	delete(s.tenants, name)
 	t := s.of(name)
-	for _, c := range log {
-		t.apply(c)
+	for i, c := range old.log[:n] {
+		t.applyAt(c, old.seqs[i])
 	}
+	t.restore(old.cut)
 	t.watchers, t.nextW = old.watchers, old.nextW
 }
 
@@ -688,11 +730,31 @@ func (s *Store) of(name string) *tenant {
 	if !ok {
 		t = &tenant{
 			byKey: map[string]*Message{}, byID: map[string]*Message{}, byPost: map[string]*Message{}, read: map[string]map[string]bool{},
-			hidden: map[string]map[string]hide{}, watchers: map[int]chan Notice{},
+			hidden: map[string]map[string]hide{}, tally: newTally(), watchers: map[int]chan Notice{},
 		}
 		s.tenants[name] = t
 	}
 	return t
+}
+
+// record adds a change that took effect to the tenant's record.
+func (t *tenant) record(c Change) {
+	t.log = append(t.log, c)
+	t.seqs = append(t.seqs, t.seq)
+	t.seq++
+}
+
+// issue is the id a raised message is given: the one its record names,
+// when it is replayed, else the next.
+func (t *tenant) issue(c Change) string {
+	if n, ok := strings.CutPrefix(c.Message, "m-"); ok {
+		if i, err := strconv.Atoi(n); err == nil && i > 0 {
+			t.next = max(t.next, i)
+			return c.Message
+		}
+	}
+	t.next++
+	return "m-" + strconv.Itoa(t.next)
 }
 
 // apply is the only thing that alters state. It must depend on nothing but
@@ -703,8 +765,7 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 			return nil, false
 		}
 		m := c.Raised.clone()
-		t.next++
-		m.ID = "m-" + strconv.Itoa(t.next)
+		m.ID = t.issue(c)
 		m.Tenant, m.At, m.UpdatedAt, m.State, m.Unread, m.Deliveries = c.Tenant, c.At, c.At, Open, false, nil
 		for i := range m.Parts {
 			m.Parts[i].ID = "p" + strconv.Itoa(i+1)
@@ -718,8 +779,9 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		if m.Kind == KindAnnouncement && m.Broadcast {
 			t.posted.add(m.Source.Project, c.At)
 		}
+		t.join(&m)
 		c.Message = m.ID
-		t.log = append(t.log, c)
+		t.record(c)
 		return &m, true
 	}
 
@@ -736,11 +798,13 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		if was == (c.What == MarkRead) {
 			return m, false
 		}
+		wasOut := t.isOut(m, c.By)
 		if t.read[m.ID] == nil {
 			t.read[m.ID] = map[string]bool{}
 		}
 		t.read[m.ID][c.By] = c.What == MarkRead
-		t.log = append(t.log, c)
+		t.remark(m, c.By, wasOut)
+		t.record(c)
 		// Reading changes nothing anyone else sees.
 		return m, false
 	case Delivered:
@@ -752,7 +816,7 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 			delete(t.byPost, postKey(c.By, was))
 		}
 		t.byPost[postKey(c.By, *c.Delivery)] = m
-		t.log = append(t.log, c)
+		t.record(c)
 		return m, false
 	case DidResolve:
 		i := slices.IndexFunc(m.Parts, func(p Part) bool { return p.ID == c.Part })
@@ -762,7 +826,7 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		m.Parts[i].State = PartResolved
 		m.Parts[i].Outcome = &Outcome{Action: c.Action, By: c.By, At: c.At, Note: c.Note}
 		if !slices.ContainsFunc(m.Parts, func(p Part) bool { return p.State == PartOpen }) {
-			m.State, m.SnoozedUntil = Resolved, time.Time{}
+			t.restate(m, Resolved, time.Time{})
 		}
 	case DidDismiss, DidWithdraw:
 		if m.State == Resolved || m.State == Dismissed {
@@ -772,18 +836,25 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		if c.What == DidWithdraw && c.By == "" {
 			c.By = "system"
 		}
-		m.State, m.SnoozedUntil = Dismissed, time.Time{}
+		t.restate(m, Dismissed, time.Time{})
 	case DidSnooze:
 		if m.State == Resolved || m.State == Dismissed {
 			return m, false
 		}
-		m.State, m.SnoozedUntil = Snoozed, c.Until
+		t.restate(m, Snoozed, c.Until)
 	default:
 		return m, false
 	}
 	m.UpdatedAt = c.At
-	t.log = append(t.log, c)
+	t.record(c)
 	return m, true
+}
+
+// restate moves a message to a state everyone sees, and its count with it.
+func (t *tenant) restate(m *Message, st State, until time.Time) {
+	t.leave(m)
+	m.State, m.SnoozedUntil = st, until
+	t.join(m)
 }
 
 // hideFor records one reader dismissing, snoozing or unhiding a broadcast
@@ -796,12 +867,14 @@ func (t *tenant) hideFor(m *Message, c Change) bool {
 	if c.By == "" || m.State == Resolved || m.State == Dismissed {
 		return false
 	}
+	wasOut := t.isOut(m, c.By)
 	if c.What == DidUnhide {
 		if _, ok := t.hidden[m.ID][c.By]; !ok {
 			return false
 		}
 		delete(t.hidden[m.ID], c.By)
-		t.log = append(t.log, c)
+		t.remark(m, c.By, wasOut)
+		t.record(c)
 		return false
 	}
 	if t.hidden[m.ID][c.By].state == Dismissed {
@@ -818,7 +891,8 @@ func (t *tenant) hideFor(m *Message, c Change) bool {
 		t.hidden[m.ID] = map[string]hide{}
 	}
 	t.hidden[m.ID][c.By] = h
-	t.log = append(t.log, c)
+	t.remark(m, c.By, wasOut)
+	t.record(c)
 	return false
 }
 
@@ -893,7 +967,7 @@ func (s *Store) commitLocked(name string, n int) error {
 	}
 	b := s.kept.Batch()
 	for i := n; i < len(t.log); i++ {
-		b.Put(name, state.Seq(int64(i)), storedOf(t.log[i]))
+		b.Put(name, state.Seq(t.seqs[i]), storedOf(t.log[i]))
 	}
 	if err := b.Commit(); err != nil {
 		s.replay(name, n)
@@ -1064,7 +1138,8 @@ func (s *Store) Changes(tenantName string) []Change {
 	return slices.Clone(s.of(tenantName).log)
 }
 
-// Rebuild returns the inbox a record describes.
+// Rebuild returns the inbox a record describes. A record retention has cut
+// rebuilds what it kept; the ids and keys its cut keeps are OpenStore's.
 func Rebuild(changes []Change) *Store {
 	s := NewStore()
 	for _, c := range changes {
@@ -1133,7 +1208,9 @@ type Query struct {
 	// Visible reports whether the reader may see a kind. Nil means all.
 	Visible func(Kind) bool
 	// Sees reports whether the reader may read what a message is about:
-	// the project and thread it lives in. Nil means all.
+	// the project and thread it lives in. Nil means all. It reads only the
+	// message's kind, addressing and Source's run, project, thread and
+	// agent: Count asks it once for all the open messages alike in those.
 	Sees   func(Message) bool
 	Now    time.Time
 	Limit  int
@@ -1164,17 +1241,24 @@ func (q Query) filter() filter {
 	return f
 }
 
-func (t *tenant) match(m *Message, q filter) bool {
-	if q.projects != nil && !q.projects[m.Source.Project] {
-		return false
-	}
+// admits reports whether a message is the reader's to see at all: addressed
+// to them, of a kind they may see, about what they may read. It reads only
+// what a count's buckets share.
+func (q filter) admits(m *Message) bool {
 	if !m.For(q.reader) {
 		return false
 	}
 	if q.Visible != nil && !q.Visible(m.Kind) {
 		return false
 	}
-	if q.Sees != nil && !q.Sees(*m) {
+	return q.Sees == nil || q.Sees(*m)
+}
+
+func (t *tenant) match(m *Message, q filter) bool {
+	if q.projects != nil && !q.projects[m.Source.Project] {
+		return false
+	}
+	if !q.admits(m) {
 		return false
 	}
 	if q.Kind != "" && m.Kind != q.Kind {
@@ -1283,32 +1367,16 @@ type Counts struct {
 }
 
 // Count returns what is open for a reader across their whole inbox: the
-// narrowing fields of q are ignored, and who is reading is kept.
+// narrowing fields of q are ignored, and who is reading is kept. It is added
+// up from counters kept as changes apply (tally), so it reads no message that
+// is settled, and asks q.Sees once for each set of open messages alike in
+// kind, addressing and what they are about.
 func (s *Store) Count(tenantName string, q Query) Counts {
 	q.State, q.Kind, q.Kinds, q.Projects, q.Shared, q.Alert, q.Agent, q.Unread = Open, "", nil, nil, false, "", "", false
 	f := q.filter()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	t := s.of(tenantName)
-	var c Counts
-	for _, m := range t.messages {
-		if !t.match(m, f) {
-			continue
-		}
-		unread := !t.read[m.ID][q.Reader]
-		switch {
-		case m.Broadcast:
-			if unread {
-				c.Updates++
-			}
-		default:
-			c.Open++
-			if unread {
-				c.Unread++
-			}
-		}
-	}
-	return c
+	return s.of(tenantName).count(f)
 }
 
 // Bounds of an announcement.
@@ -1345,7 +1413,9 @@ func (s *Store) Post(tenantName string, m Message, at time.Time, caps PostCaps) 
 // PostOnce is Post under a key the caller names, such as "release:0.15.0",
 // for news posted once for as long as the inbox is kept. When an
 // announcement was ever raised under the key, open or withdrawn since, it is
-// returned with false and nothing is posted, whatever the day's caps.
+// returned with false and nothing is posted, whatever the day's caps. One
+// that retention has dropped since is not returned, and is not posted again
+// either.
 func (s *Store) PostOnce(tenantName, key string, m Message, at time.Time, caps PostCaps) (Message, bool, error) {
 	if key == "" {
 		return Message{}, false, fmt.Errorf("%w: what is posted once is named by a key", ErrInvalid)
@@ -1386,6 +1456,10 @@ func (s *Store) post(tenantName, key string, m Message, at time.Time, caps PostC
 	if prior := t.byKey[key]; key != "" && prior != nil {
 		return prior.clone(), false, nil
 	}
+	if key != "" && slices.Contains(t.cut.Gone, key) {
+		return Message{}, false, nil
+	}
+	m.Once = key != ""
 	inProject, inTenant := t.posted.on(project, at)
 	switch {
 	case inProject >= caps.PerProject:
@@ -1421,6 +1495,20 @@ func (f From) poster() string {
 		return f.Name
 	}
 	return ""
+}
+
+// Tenants returns every tenant the inbox holds anything for.
+func (s *Store) Tenants() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.tenants))
+	for name, t := range s.tenants {
+		if len(t.messages) > 0 {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // OpenOf returns the open and snoozed messages of a kind, for keeping the

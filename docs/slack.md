@@ -141,7 +141,10 @@ before anyone replied starts nothing, and the app says so (warp answers
 410); a draft never reaches a channel. After the Slack channel is bound to
 another project, or unbound, a reply under an old post starts a thread where
 it is now filed, as any other, open or withdrawn: nothing of the
-announcement comes with it, and nobody there is told what became of it.
+announcement comes with it, and nobody there is told what became of it. So
+does a reply under an announcement withdrawn longer ago than the
+workspace's inbox retention (`workspace.inbox_retention`, 90 days by
+default), which warp has dropped, receipt and all.
 Once a thread is seeded, the announcement is part of it and of what its runs
 are sent, so it is read as they are, with `runs:read`, and not as the inbox
 reads it, with `projects:read`.
