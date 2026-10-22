@@ -254,6 +254,8 @@ type Platform struct {
 	clientsMu sync.Mutex
 	// admitting holds runs between admission and their record, by run id.
 	admitting sync.Map
+	// moves serialize starting a thread's runs with moving the thread.
+	moves threadLocks
 	// afterAccept, when set, runs between a run's acceptance and its record.
 	// Only tests set it, to stand for a loaded machine.
 	afterAccept func(envelope.Tag)

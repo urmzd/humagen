@@ -235,14 +235,17 @@ func TestShareIsKept(t *testing.T) {
 		private := shared("Globex", "general")
 		private.Visibility = threads.Private
 		th, _ := start(t, s, "acme", private, msg("dana", "a draft"))
-		got, err := s.Share("acme", th.ID, "Field", "renewals", []threads.Participant{{Kind: threads.Person, Name: "ana"}}, nil, "dana", t0.Add(time.Minute))
+		if _, err := s.Share("acme", th.ID, th.Version+1, "Field", "renewals", "", nil, nil, "dana", t0); !errors.Is(err, threads.ErrVersion) {
+			t.Fatalf("a share at a stale version = %v", err)
+		}
+		got, err := s.Share("acme", th.ID, th.Version, "Field", "renewals", "", []threads.Participant{{Kind: threads.Person, Name: "ana"}}, nil, "dana", t0.Add(time.Minute))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got.Project != "Field" || got.Channel != "renewals" || got.Visibility != threads.Shared || got.Version != th.Version+1 || len(got.Participants) != 2 || got.Participants[1].AddedBy != "dana" {
 			t.Fatalf("shared, the thread is %+v", got)
 		}
-		same, err := s.Share("acme", th.ID, "Field", "renewals", nil, nil, "dana", t0.Add(2*time.Minute))
+		same, err := s.Share("acme", th.ID, got.Version, "Field", "renewals", "", nil, nil, "dana", t0.Add(2*time.Minute))
 		if err != nil || same.Version != got.Version {
 			t.Fatalf("sharing it again where it is = %+v, %v", same, err)
 		}
@@ -264,8 +267,14 @@ func TestShareIsKept(t *testing.T) {
 		onSlack := shared("Globex", "general")
 		onSlack.Surface = &threads.Surface{Client: "app", Channel: "C01", TS: "1700.1"}
 		sl, _ := start(t, again, "acme", onSlack, msg("dana", "from slack"))
-		if _, err := again.Share("acme", sl.ID, "Field", "general", nil, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
+		if _, err := again.Share("acme", sl.ID, sl.Version, "Field", "general", "", nil, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
 			t.Fatalf("a surface's thread moved: %v", err)
+		}
+		dm := shared("Globex", "general")
+		dm.Visibility, dm.Surface = threads.Private, &threads.Surface{Client: "app", Channel: "D01", TS: "1700.2"}
+		d, _ := start(t, again, "acme", dm, msg("dana", "a direct message"))
+		if _, err := again.Share("acme", d.ID, d.Version, "Globex", "general", "", nil, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("a surface's private thread was made shared: %v", err)
 		}
 	})
 }

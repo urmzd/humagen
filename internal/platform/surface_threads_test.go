@@ -499,3 +499,31 @@ grant viewer, security to subject "olu"
 		t.Fatalf("the machine hears of the experts' question for %+v, want %+v", heard, want)
 	}
 }
+
+// On a client's surface an untagged message is answered by the default the
+// thread inherits, here the client's, outside a bound channel, acting for
+// the person it maps. A default that has stopped being available is not
+// passed over: nothing answers, and the answer says why. A message a person
+// posts in the console in the same thread starts nothing.
+func TestOnASurfaceTheDefaultAnswersAndFailsClosed(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	open, err := p.StartThread(t.Context(), machine, fromSlack("C09OPEN", "1700000000.000200", "", "anyone?"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if open.Rule != threads.RuleDefault || len(open.Runs) != 1 || open.Runs[0].Agent != "helper" || open.Runs[0].Actor.User != "ana" {
+		t.Fatalf("an untagged message from Slack started %+v (%s)", open.Runs, open.Rule)
+	}
+	console := post(t, p, auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}, open.Thread.ID, platform.MessageInput{Text: "and here?"})
+	if console.Rule != threads.RuleUntagged || len(console.Runs) != 0 {
+		t.Fatalf("an untagged message from the console started %+v (%s)", console.Runs, console.Rule)
+	}
+	setAgents(t, p, "Initech", platform.AgentsInput{Enable: []string{}, Allow: []string{"lead"}})
+	stale, err := p.StartThread(t.Context(), machine, fromSlack("C09OPEN", "1700000000.000200", "1700000000.000300", "and now?"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stale.Rule != threads.RuleDefault || len(stale.Runs) != 0 || !strings.Contains(stale.Reason, "@helper answers untagged messages here, but it is not available here") {
+		t.Fatalf("a stale default started %+v", stale)
+	}
+}
