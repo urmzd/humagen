@@ -75,32 +75,52 @@ func (p *Platform) subtreeOf(tenant, name string) ([]string, bool) {
 	}), true
 }
 
-// openWork keeps what a summary may read for everyone it reaches: not a
-// private thread, which only its participants read, and not a members-only
-// project, unless it is the one named.
-func (p *Platform) openWork(tenant, named string) func(runs.Run) bool {
+// openFor reports, for a tool of a run filed in own, whether a project's work
+// may be read for everyone the tool's answer reaches: a project that is not
+// members only, which everyone in the workspace reads, or own and the
+// projects below it as open as it is (subtreeOf). A members-only project
+// other than own, which only its members read, is never.
+func (p *Platform) openFor(tenant, own string) func(project string) bool {
 	tree := p.ProjectTree(tenant)
-	return func(r runs.Run) bool {
-		if pr, ok := tree.Get(r.Project); !ok || (r.Project != named && projects.MembersOnly(pr)) {
-			return false
-		}
-		return !p.privateThread(tenant, r.Thread)
+	mine, _ := p.subtreeOf(tenant, own)
+	return func(project string) bool {
+		pr, ok := tree.Get(project)
+		return ok && (!projects.MembersOnly(pr) || slices.Contains(mine, project))
 	}
 }
 
-// summaryScope is which runs runs_summary counts: the whole workspace when no
-// project is named, or "~", the root, is; otherwise the project's subtree.
-// Either way private threads and members-only projects other than the one
-// named are left out.
-func (p *Platform) summaryScope(tenant, project string) (runs.SummaryQuery, error) {
+// openWork keeps what a summary of a run filed in own may read for everyone
+// it reaches: not a private thread, which only its participants read, and
+// only a project openFor allows.
+func (p *Platform) openWork(tenant, own string) func(runs.Run) bool {
+	open := p.openFor(tenant, own)
+	return func(r runs.Run) bool {
+		return open(r.Project) && !p.privateThread(tenant, r.Thread)
+	}
+}
+
+// ownProject is the project the run a tool serves is filed in: where its
+// conversation lives, the root for a run the index does not hold.
+func (p *Platform) ownProject(tenant, runID string) string {
+	at, _ := p.placeOfRunID(tenant, runID)
+	return at.Project
+}
+
+// summaryScope is which runs runs_summary, asked by a run filed in own,
+// counts: the whole workspace when no project is named, or "~", the root, is;
+// otherwise the named project's subtree. A named project its answer could
+// not be read for everyone it reaches (openFor) is as one the workspace does
+// not have, and either way private threads and members-only projects other
+// than own are left out.
+func (p *Platform) summaryScope(tenant, own, project string) (runs.SummaryQuery, error) {
 	if project == "" || project == "~" {
-		return runs.SummaryQuery{AllProjects: true, Keep: p.openWork(tenant, projects.Root)}, nil
+		return runs.SummaryQuery{AllProjects: true, Keep: p.openWork(tenant, own)}, nil
 	}
 	names, ok := p.subtreeOf(tenant, project)
-	if !ok {
+	if !ok || !p.openFor(tenant, own)(project) {
 		return runs.SummaryQuery{}, fmt.Errorf("%w: %q", ErrProjectNotFound, project)
 	}
-	return runs.SummaryQuery{Projects: names, Keep: p.openWork(tenant, project)}, nil
+	return runs.SummaryQuery{Projects: names, Keep: p.openWork(tenant, own)}, nil
 }
 
 // changesScope is what one project_changes call reads.

@@ -9,10 +9,13 @@ import (
 	"testing"
 
 	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/runtime"
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -145,5 +148,49 @@ func TestSaveAgentTool(t *testing.T) {
 	}
 	if out, err := use(t, p, req, platform.ToolReadAgent, map[string]any{"name": "notes"}); err != nil || !strings.Contains(out, "Write shorter notes.") {
 		t.Fatalf("read_agent = %s, %v", out, err)
+	}
+}
+
+// An agent that lives in a project is its home's: the builder reads one in a
+// members-only project only from inside it, and revises no agent that lives
+// anywhere, as its save is approved by a manager who need not own the home.
+// A new agent's name is held to what the agents route holds it to.
+func TestTheBuilderNeverReadsOrRevisesAnAgentOutsideItsReach(t *testing.T) {
+	p := startWith(t, platform.Config{BuiltinProvider: "offline", BuiltinModel: "offline"})
+	ctx := t.Context()
+	if err := p.EnsureBuiltins(ctx, tenant); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "olu"}, platform.ProjectInput{Name: "Vault", Kind: projects.Account}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "spy", Model: "offline", Provider: "offline", SystemPrompt: "SECRET-PROMPT"}, "olu"); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.SetAgentHome(ctx, tenant, "spy", "Vault", projects.Writer{By: "olu"}); err != nil {
+		t.Fatal(err)
+	}
+	outside, _ := turn(t, p, "api-root", "")
+	inside, _ := turn(t, p, "api-vault", "Vault")
+	req := as(outside, platform.BuiltinBuilder)
+	if out, err := use(t, p, req, platform.ToolListAgents, nil); err != nil || strings.Contains(out, "spy") || !strings.Contains(out, "lead") {
+		t.Fatalf("list_agents from outside = %s, %v", out, err)
+	}
+	if out, err := use(t, p, req, platform.ToolReadAgent, map[string]any{"name": "spy"}); !errors.Is(err, registry.ErrNotFound) || strings.Contains(out, "SECRET") {
+		t.Fatalf("read_agent from outside = %q, %v", out, err)
+	}
+	if out, err := use(t, p, as(inside, platform.BuiltinBuilder), platform.ToolReadAgent, map[string]any{"name": "spy"}); err != nil || !strings.Contains(out, "SECRET-PROMPT") {
+		t.Fatalf("read_agent from inside Vault = %q, %v", out, err)
+	}
+	for _, r := range []runtime.Request{req, as(inside, platform.BuiltinBuilder)} {
+		if _, _, err := p.UseTool(ctx, r, platform.ToolSaveAgent, map[string]any{"name": "spy", "description": "x", "system_prompt": "HIJACKED"}); !errors.Is(err, platform.ErrBuilder) {
+			t.Fatalf("revising an agent that lives in a project = %v", err)
+		}
+	}
+	if rev, _ := p.Agents.Get(ctx, tenant, "spy", 0); rev.Spec.SystemPrompt != "SECRET-PROMPT" {
+		t.Fatalf("the builder revised it: %+v", rev.Spec)
+	}
+	if _, _, err := p.UseTool(ctx, req, platform.ToolSaveAgent, map[string]any{"name": "sme", "description": "x", "system_prompt": "x"}); !errors.Is(err, platform.ErrNameTaken) {
+		t.Fatalf("creating an agent with a reserved name = %v", err)
 	}
 }

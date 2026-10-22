@@ -9,8 +9,10 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/connectors/cron"
+	"github.com/urmzd/fiber/pkg/runtime"
 
 	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/inbox"
@@ -228,5 +230,75 @@ func TestAnAnswerBecomesAnAnnouncement(t *testing.T) {
 	_, text, _ := platform.AnnouncementOf("s\n" + strings.Repeat("é", platform.MaxAnnouncementText+10))
 	if n := len([]rune(text)); n != platform.MaxAnnouncementText {
 		t.Fatalf("the text kept %d characters", n)
+	}
+}
+
+// A tool's answer reaches everyone who reads where it is posted, so the
+// analyst reads a members-only project only for a run filed in it:
+// runs_summary answers one named from outside as a project the workspace
+// does not have, and leaves it out of the whole workspace, and list_alerts
+// leaves out its rules and alerts.
+func TestTheAnalystReadsAMembersOnlyProjectOnlyFromInsideIt(t *testing.T) {
+	p := start(t, call.Limits{})
+	project(t, p, "Field")
+	if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "olu"}, platform.ProjectInput{Name: "Vault", Kind: projects.Account}); err != nil {
+		t.Fatal(err)
+	}
+	field, _ := turn(t, p, "api-f1", "Field")
+	vault, _ := turn(t, p, "api-v1", "Vault")
+	fromField, fromVault := as(field, platform.BuiltinAnalyst), as(vault, platform.BuiltinAnalyst)
+	summary := func(req runtime.Request, args map[string]any) (int, string) {
+		t.Helper()
+		out, err := use(t, p, req, platform.ToolRunsSummary, args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got struct {
+			Total struct {
+				Runs int `json:"runs"`
+			} `json:"total"`
+		}
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+		return got.Total.Runs, out
+	}
+	if _, err := use(t, p, fromField, platform.ToolRunsSummary, map[string]any{"project": "Vault"}); !errors.Is(err, platform.ErrProjectNotFound) {
+		t.Fatalf("Vault named from Field: err = %v", err)
+	}
+	if n, out := summary(fromField, map[string]any{}); n != 1 || strings.Contains(out, vault.ID) {
+		t.Fatalf("the workspace from Field counted %d runs: %s", n, out)
+	}
+	if n, _ := summary(fromVault, map[string]any{"project": "Vault"}); n != 1 {
+		t.Fatalf("Vault from inside counted %d runs, want its 1", n)
+	}
+	if n, _ := summary(fromVault, map[string]any{}); n != 2 {
+		t.Fatalf("the workspace from Vault counted %d runs, want 2", n)
+	}
+
+	for _, r := range []alerts.Rule{
+		{Name: "vault-rule", Kind: alerts.RunFailed, Severity: alerts.Warning, Project: "Vault", CreatedBy: "olu"},
+		{Name: "open-rule", Kind: alerts.RunFailed, Severity: alerts.Warning, CreatedBy: "ada"},
+	} {
+		if err := p.Alerts.AddRule(tenant, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := p.Alerts.Raise(tenant, "vault-alert", alerts.Alert{Kind: alerts.RunFailed, Severity: alerts.Warning, Project: "Vault", RunID: vault.ID, Title: "the vault plan failed", At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	list := func(req runtime.Request) string {
+		t.Helper()
+		out, err := use(t, p, req, platform.ToolListAlerts, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	if out := list(fromField); !strings.Contains(out, "open-rule") || strings.Contains(out, "vault") {
+		t.Fatalf("list_alerts from Field = %s", out)
+	}
+	if out := list(fromVault); !strings.Contains(out, "vault-rule") || !strings.Contains(out, "the vault plan failed") {
+		t.Fatalf("list_alerts from Vault = %s", out)
 	}
 }
