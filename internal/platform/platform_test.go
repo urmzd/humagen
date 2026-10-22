@@ -268,14 +268,16 @@ func TestARunThatExhaustsItsRetriesEnds(t *testing.T) {
 	deadline := time.Now().Add(60 * time.Second)
 	for {
 		got, _ := p.Runs.Get(tenant, r.ID)
-		if got.Status == runs.Failed {
+		// A run reads failed before its ending is dealt with, so its alert
+		// is waited for as well.
+		if got.Status == runs.Failed && len(p.Alerts.Alerts(tenant)) > 0 {
 			if got.Error == "" {
 				t.Fatal("a failed run carries no error")
 			}
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("run is still %q after its retries: it would look alive forever", got.Status)
+			t.Fatalf("run is %q after its retries, with alerts %+v: it would look alive forever", got.Status, p.Alerts.Alerts(tenant))
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
