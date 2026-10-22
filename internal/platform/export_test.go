@@ -133,4 +133,4 @@ func HousekeepingTag(tenant, id, agent string, turn Place) envelope.Tag {
 
 // RetainInbox runs one pass of inbox retention, as the platform's loop does
 // every hour.
-func (p *Platform) RetainInbox() { p.retainInbox() }
+func (p *Platform) RetainInbox() { p.retainInbox(context.Background()) }

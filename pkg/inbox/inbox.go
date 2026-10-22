@@ -670,6 +670,12 @@ func (sc storedChange) change(tenant string) Change {
 	if sc.Raised != nil {
 		m := sc.Raised.Message
 		m.Key, m.Audience, m.Excluded, m.Broadcast, m.Once = sc.Raised.Key, sc.Raised.Audience, sc.Raised.Excluded, sc.Raised.Broadcast, sc.Raised.Once
+		// Records kept before Once was recorded name it by their key: Post
+		// keys every announcement "announce:...", and any other key on a
+		// broadcast announcement is one its poster named (PostOnce).
+		if m.Broadcast && m.Kind == KindAnnouncement && m.Key != "" && !strings.HasPrefix(m.Key, "announce:") {
+			m.Once = true
+		}
 		c.Raised = &m
 	}
 	return c
@@ -1419,6 +1425,9 @@ func (s *Store) Post(tenantName string, m Message, at time.Time, caps PostCaps) 
 func (s *Store) PostOnce(tenantName, key string, m Message, at time.Time, caps PostCaps) (Message, bool, error) {
 	if key == "" {
 		return Message{}, false, fmt.Errorf("%w: what is posted once is named by a key", ErrInvalid)
+	}
+	if strings.HasPrefix(key, "announce:") {
+		return Message{}, false, fmt.Errorf("%w: the keys of what is posted once do not start with announce:, which Post keys its own", ErrInvalid)
 	}
 	return s.post(tenantName, key, m, at, caps)
 }

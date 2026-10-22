@@ -1,6 +1,7 @@
 package inbox
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strconv"
@@ -238,6 +239,65 @@ func TestRetentionWritesInStepsAndAFailedStepChangesNothing(t *testing.T) {
 			if _, ok := reopened.ByID(acme, m.ID); ok {
 				t.Fatalf("%s survived", m.ID)
 			}
+		}
+	})
+}
+
+// A release posted before announcements recorded that they were posted once
+// is still never posted again once retention drops it: a broadcast
+// announcement raised under a key its poster named is one posted once.
+func TestARecordedReleaseIsPostedOnceAfterRetention(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		ctx := context.Background()
+		st := open(t)
+		s, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		release, _, err := s.PostOnce(acme, "release:0.14.0", announcement("", "What's new"), t0, PostCaps{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := s.Withdraw(acme, release.ID, "dana", "", t0.Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		// Rewrite the records as an older build kept them, with no mark.
+		recs, err := st.Load(ctx, "inbox")
+		if err != nil {
+			t.Fatal(err)
+		}
+		marked := false
+		for _, r := range recs {
+			old := bytes.Replace(r.Value, []byte(`,"once":true`), nil, 1)
+			if !bytes.Equal(old, r.Value) {
+				marked = true
+				if err := st.Write(ctx, "inbox", state.Put(r.Tenant, r.Key, old)); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if !marked {
+			t.Fatal("no record marks the release as posted once")
+		}
+		older, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n, err := older.Retain(acme, t0.Add(2*time.Hour)); n != 1 || err != nil {
+			t.Fatalf("Retain = %d, %v", n, err)
+		}
+		restarted, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, store := range map[string]*Store{"live": older, "after a restart": restarted} {
+			if m, posted, err := store.PostOnce(acme, "release:0.14.0", announcement("", "What's new"), t0.Add(48*time.Hour), PostCaps{}); err != nil || posted {
+				t.Errorf("%s: an older release was posted again: %+v, %v", name, m, err)
+			}
+		}
+		// Post's own keys are never one posted once.
+		if _, _, err := restarted.PostOnce(acme, "announce::9", announcement("", "News"), t0.Add(48*time.Hour), PostCaps{}); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("posting once under an announce: key = %v", err)
 		}
 	})
 }
