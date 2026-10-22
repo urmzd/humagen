@@ -231,7 +231,7 @@ func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 		t.Fatalf("%d of Launch's proposals outlived the discard", n)
 	}
 
-// The workspace's own: govern again.
+	// The workspace's own: govern again.
 	note, err := p.Memory.Add(tenant, memory.ProjectOwner(""), "Everyone ships on Tuesdays.", memory.Consolidated, memory.Pending, "run-x", time.Now())
 	if err != nil {
 		t.Fatal(err)
