@@ -1,5 +1,6 @@
-import { ActionId, messageState, type UiAction } from "@warp/core";
+import { ActionId, isAnnouncement, messageState, type UiAction } from "@warp/core";
 import { defaultCopy } from "@warp/components";
+import { BanIcon, buttonClass } from "@warp/render-web";
 import { type MailboxShow } from "@warp/web";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
@@ -14,9 +15,9 @@ import {
   type ProjectView,
 } from "./api.ts";
 import { ScopeLimits } from "./Billing.tsx";
-import { useInbox } from "./inbox.ts";
+import { useHeld, useInbox } from "./inbox.ts";
 import { KindChips, MailboxView } from "./InboxPage.tsx";
-import { type PlatformMessage, projectInbox, type Source } from "./mail.ts";
+import { type PlatformMessage, projectInbox, projectOf, type Source } from "./mail.ts";
 import { ago, button, Empty, field, Label, Menu, Problem, primary, SkeletonRows, Switch } from "./ui.tsx";
 import { titleOf, updateOf } from "./projects.ts";
 
@@ -27,10 +28,15 @@ const sorry = (fallback: string) => (e: unknown) => (e instanceof ApiError ? e.m
 
 const roleOptions = (["viewer", "member", "owner"] as const).map((r) => ({ value: r, label: copy.roles[r] }));
 
+/** A control in the reading pane's header, beside Snooze and Hide for Me. */
+const paneButton = `${buttonClass("ghost")} h-7 px-2`;
+
 /**
  * A project's inbox: what is filed in it, and its announcements, which reach
  * the members of the project and of every project below it. Those allowed post
- * here, and the author or an owner withdraws what was posted.
+ * here, and the author or an owner withdraws what was posted, from the
+ * announcement itself. The inbox and its Open, Resolved and All switch stay
+ * whatever is open, so what the reader hid is always found under Resolved.
  */
 export function ProjectInbox({
   project,
@@ -59,17 +65,32 @@ export function ProjectInbox({
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new object is the signal
   const changed = useMemo(() => ({}), [signal, posted]);
   const inbox = useInbox(kind, show, changed, via, me);
+  // A linked message is read even when Open does not list it, as one the reader hid.
+  const { messages, keep } = useHeld(inbox.messages, message, inbox.loading === "first", via);
   const [draft, setDraft] = useState({ subject: "", text: "", warning: false });
   const [writing, setWriting] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const may = project.actions.includes("announce");
   const owner = project.access.role === "owner";
-  const selected: PlatformMessage | undefined = inbox.messages.find((m) => m.id === message);
-  const withdrawable =
-    selected?.kind === "announcement" &&
-    messageState(selected) !== "resolved" &&
+  // Its author or an owner withdraws an announcement still standing for
+  // everyone: one this reader only hid for themselves still is. An agent's
+  // draft was never announced; its owners publish or discard it. An owner
+  // here owns every project below, so one filed below is theirs to withdraw
+  // too, in the project it was filed in.
+  const withdrawable = (m: PlatformMessage) =>
+    m.kind === "announcement" &&
+    isAnnouncement(m) &&
     project.actions.length > 0 &&
-    (owner || (selected.from.kind === "person" && selected.sender === me));
+    (messageState(m) === "open" || Boolean(m.hidden)) &&
+    (owner || (m.from.kind === "person" && m.sender === me));
+  const withdraw = (m: PlatformMessage) =>
+    api
+      .withdrawAnnouncement(projectOf(m), m.id)
+      .then(() => {
+        onMessage(null);
+        setPosted((n) => n + 1);
+      })
+      .catch((err) => setProblem(sorry("It could not be withdrawn.")(err)));
 
   const post = (e: FormEvent) => {
     e.preventDefault();
@@ -91,41 +112,29 @@ export function ProjectInbox({
       );
   };
 
+  // Leaving out the projects below closes a message filed in one of them.
+  const showChildren = (next: boolean) => {
+    setChildren(next);
+    const reading = messages.find((m) => m.id === message);
+    if (!next && reading && projectOf(reading) !== project.name) onMessage(null);
+  };
+
   const onAction = (action: UiAction) => {
-    const m = inbox.messages.find((x) => x.id === action.payload.turnId);
+    const m = messages.find((x) => x.id === action.payload.turnId);
     if (!m) return;
-    inbox.act(m, action);
+    inbox.act(m, action).then(keep);
     if (action.id === ActionId.dismiss && message === m.id) onMessage(null);
   };
 
   return (
     <div className="flex min-h-[28rem] flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Switch label={copy.announcements.includeSubProjects} checked={children} onChange={setChildren} />
-        <div className="flex flex-wrap gap-2">
-          {withdrawable && (
-            <button
-              type="button"
-              className={button}
-              onClick={() =>
-                api
-                  .withdrawAnnouncement(project.name, selected.id)
-                  .then(() => {
-                    onMessage(null);
-                    setPosted((n) => n + 1);
-                  })
-                  .catch((err) => setProblem(sorry("It could not be withdrawn.")(err)))
-              }
-            >
-              {copy.announcements.withdraw}
-            </button>
-          )}
-          {may && !writing && (
-            <button type="button" className={primary} onClick={() => setWriting(true)}>
-              {copy.announcements.post}
-            </button>
-          )}
-        </div>
+        <Switch label={copy.announcements.includeSubProjects} checked={children} onChange={showChildren} />
+        {may && !writing && (
+          <button type="button" className={primary} onClick={() => setWriting(true)}>
+            {copy.announcements.post}
+          </button>
+        )}
       </div>
       <Problem message={problem ?? inbox.problem} />
       {writing && (
@@ -161,13 +170,11 @@ export function ProjectInbox({
       )}
       {inbox.failed ? (
         <Empty title="The project's inbox could not be loaded">It will be tried again when something changes.</Empty>
-      ) : inbox.loading === "first" && inbox.messages.length === 0 ? (
+      ) : inbox.loading === "first" && messages.length === 0 ? (
         <SkeletonRows count={4} height="3rem" className="max-w-md" />
-      ) : inbox.messages.length === 0 && show === "open" && !kind ? (
-        <p className="text-aui-sm text-aui-muted">{copy.announcements.empty}</p>
       ) : (
         <MailboxView
-          messages={inbox.messages}
+          messages={messages}
           selectedId={message ?? null}
           onSelect={onMessage}
           onAction={onAction}
@@ -175,6 +182,19 @@ export function ProjectInbox({
           viewer={me}
           show={show}
           onShow={setShow}
+          // Announcements land here, and what the reader hid of them is under Resolved.
+          // A chosen kind of anything else keeps the mailbox's own words.
+          emptyOpen={
+            kind === "" || kind === "announcement" ? { title: copy.mailbox.emptyOpen, hint: copy.announcements.emptyOpenHint } : undefined
+          }
+          messageActions={(m) =>
+            withdrawable(m) && (
+              <button type="button" className={paneButton} onClick={() => withdraw(m)}>
+                <BanIcon size={14} />
+                {copy.announcements.withdraw}
+              </button>
+            )
+          }
           toolbar={<KindChips value={kind} onChange={setKind} />}
           listEnd={
             inbox.hasMore && (
@@ -442,13 +462,15 @@ export function ProjectHistory({ project, tick }: { project: ProjectView; tick?:
 /**
  * The limits that hold a project: its own, which an admin changes, the chain
  * above it ("Field's limit also applies here"), and, for an owner of a
- * project above, a tighter limit of their own.
+ * project above, a tighter limit of their own. A reader who may do neither
+ * is told who may.
  */
 export function ProjectLimits({
   project,
   scope,
   chain,
   canBilling,
+  above,
   tick,
 }: {
   project: ProjectView;
@@ -457,6 +479,8 @@ export function ProjectLimits({
   /** The limits above it, in words. */
   chain: { scope: PolicyScope; words: string }[];
   canBilling: boolean;
+  /** The project just above, by title, whose owners may set a tighter limit. None for the workspace. */
+  above?: string;
   tick?: number;
 }) {
   const [runs, setRuns] = useState("");
@@ -468,6 +492,9 @@ export function ProjectLimits({
     <div className="flex flex-col gap-6">
       <section className={section} aria-label={copy.project.tabs.limits}>
         <ScopeLimits key={`${project.name}:${reads}`} scope={scope} canWrite={canBilling} tick={tick} chain={chain} />
+        {!canBilling && !project.actions.includes("limits") && (
+          <p className="max-w-xl text-aui-xs text-aui-muted">{copy.project.limitsReadOnly(above)}</p>
+        )}
       </section>
       {project.actions.includes("limits") && !canBilling && (
         <section className={section}>

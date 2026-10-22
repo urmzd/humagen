@@ -27,7 +27,9 @@ export function HomePage({ greeting, canRun, hasAgents, below, children }: {
 /**
  * Two quiet lines from the shared Home model: how many things need the person,
  * and What's new, the announcements of their projects, unread first. Each
- * opens where it lives. Nothing here moves: it waits on the person.
+ * opens where it lives. The headline has the room: on a narrow screen where it
+ * was posted goes on a line of its own under it, and beside it only where
+ * there is space for both. Nothing here moves: it waits on the person.
  */
 export function HomeLines({ needsYou, updates, onInbox, onUpdate }: {
   needsYou: number;
@@ -55,9 +57,14 @@ export function HomeLines({ needsYou, updates, onInbox, onUpdate }: {
                   onClick={() => onUpdate(u)}
                   className="flex w-full min-w-0 items-baseline gap-2 py-1 text-left hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
-                  {u.unread && <span aria-label="Unread" className="size-1.5 shrink-0 self-center rounded-full bg-aui-accent" />}
-                  <span className={`min-w-0 flex-1 truncate ${u.unread ? "font-medium text-aui-fg" : "text-aui-fg"}`}>{u.subject}</span>
-                  <span className="shrink-0 text-aui-xs text-aui-muted">{copy.announcements.postedIn(u.projectTitle)}</span>
+                  {/* The dot keeps its own column, so read and unread headlines line up. */}
+                  <span className="flex w-1.5 shrink-0 self-start pt-2">
+                    {u.unread && <span aria-label="Unread" className="size-1.5 rounded-full bg-aui-accent" />}
+                  </span>
+                  <span data-update-line className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:gap-2">
+                    <span className={`min-w-0 truncate sm:flex-1 ${u.unread ? "font-medium text-aui-fg" : "text-aui-fg"}`}>{u.subject}</span>
+                    <span className="min-w-0 truncate text-aui-xs text-aui-muted sm:max-w-[45%] sm:shrink-0">{copy.announcements.postedIn(u.projectTitle)}</span>
+                  </span>
                 </button>
               </li>
             ))}

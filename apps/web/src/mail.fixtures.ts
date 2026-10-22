@@ -271,7 +271,9 @@ export function memoryTransport(seed: PlatformMessage[] = sampleMail(), size = 3
             ? { ...was, unread: false, dismissedAt: now }
             : r.call === "snooze"
               ? { ...was, unread: false, snoozedUntil: r.until }
-              : {
+              : r.call === "unhide"
+                ? { ...was, dismissedAt: undefined, snoozedUntil: undefined, hidden: undefined }
+                : {
                   ...was,
                   unread: false,
                   parts: was.parts.map((p) => (p.id === r.partId ? { ...p, resolution: { outcome: r.action, by: "You", at: now } } : p)),

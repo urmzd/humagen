@@ -29,6 +29,8 @@ export const ActionId = {
   approveAll: "aui.approve.all",
   dismiss: "aui.inbox.dismiss",
   snooze: "aui.inbox.snooze",
+  /** Bring back a message the reader hid or snoozed for themselves alone (`hidden`). */
+  unhide: "aui.inbox.unhide",
   open: "aui.inbox.open",
   report: "aui.report",
   /** Open a delegated run. `turnId` is the turn it was called from; `target` the child run id. */

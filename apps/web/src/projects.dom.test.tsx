@@ -100,6 +100,20 @@ test("the Limits tab says, in words, every limit above a project", async () => {
   assert.ok(within(limits).getByText("The workspace's limit also applies here."));
 });
 
+test("a Limits tab the reader cannot change says who can", async () => {
+  // A member of Globex, who neither sets billing nor owns a project above it.
+  const member = { ...globex, access: { role: "member" as const, from: "Globex", via: "*" }, actions: ["propose" as const] };
+  open({ ...globexDetail, project: member }, { tab: "limits" });
+  const limits = await screen.findByRole("region", { name: "Limits" });
+  assert.ok(await within(limits).findByText("Only an admin can change these. An owner of Field engineering can set a tighter one."));
+  cleanup();
+  net.restore();
+  // An owner above sets a tighter one there, so is not told only others can.
+  open(globexDetail, { tab: "limits" });
+  await screen.findByText("A tighter limit, as an owner above");
+  assert.ok(!screen.queryByText(/Only an admin can change these/));
+});
+
 test("including sub-projects reads the tasks of everything below", async () => {
   open(globexDetail);
   fireEvent.click(await screen.findByRole("checkbox", { name: "Include sub-projects" }));

@@ -384,7 +384,7 @@ func (p *Platform) inboxGetAs(who auth.Principal, reader inbox.Reader, id string
 		return inbox.Message{}, fmt.Errorf("%w: message %q", inbox.ErrNotFound, id)
 	}
 	if m.State == inbox.Snoozed && !p.now().Before(m.SnoozedUntil) {
-		m.State = inbox.Open
+		m.State, m.Hidden = inbox.Open, false
 	}
 	return p.ownDeliveries(who, p.seenBy(p.Projects.Tree(who.Tenant), p.Names(who.Tenant), m, who)), nil
 }
@@ -452,6 +452,32 @@ func (p *Platform) InboxDismiss(who auth.Principal, id string) (inbox.Message, e
 		return inbox.Message{}, err
 	}
 	p.audit(who, m, "", "dismiss", "")
+	return p.InboxGet(who, id)
+}
+
+// InboxUnhide brings back an announcement the caller hid or snoozed for
+// themselves, as everyone else has it. Only their own copy changes, so it
+// takes what hiding it took. One they never set aside, or one withdrawn for
+// everyone, is answered as it is. Any other message is everyone's to set
+// aside, and is not brought back this way.
+func (p *Platform) InboxUnhide(who auth.Principal, id string) (inbox.Message, error) {
+	m, err := p.InboxGet(who, id)
+	if err != nil {
+		return inbox.Message{}, err
+	}
+	if !m.Broadcast {
+		return inbox.Message{}, fmt.Errorf("%w: only an announcement you hid for yourself is brought back", ErrAction)
+	}
+	if !who.Can(writes(m.Kind)) {
+		return inbox.Message{}, fmt.Errorf("%w: bringing this back needs %s", ErrForbidden, writes(m.Kind))
+	}
+	if !m.Hidden {
+		return m, nil
+	}
+	if _, _, err := p.Inbox.Unhide(who.Tenant, id, who.Subject, p.now()); err != nil {
+		return inbox.Message{}, err
+	}
+	p.audit(who, m, "", "unhide", "")
 	return p.InboxGet(who, id)
 }
 

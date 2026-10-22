@@ -1837,6 +1837,28 @@ it maps with `act_as_client` and `act_as_user`.
     });
   }
 
+  /** An announcement the caller hid or snoozed (`hidden`) is open for them
+again, as everyone else has it. Only their own copy changes, so it
+needs what hiding it needs. One they never set aside, or one withdrawn
+for everyone, is answered as it is. Any other message is set aside for
+everyone, and is not brought back this way (400).
+ */
+  async unhideInboxMessage(id: string, options?: RequestOptions): Promise<InboxMessage> {
+    let path = "/api/inbox/{id}/unhide";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InboxMessage>("POST", path, {
+      ...options,
+    });
+  }
+
+  async unhideInboxMessageRaw(id: string, options?: RequestOptions): Promise<ApiResponse<InboxMessage>> {
+    let path = "/api/inbox/{id}/unhide";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InboxMessage>("POST", path, {
+      ...options,
+    });
+  }
+
   /** A part lists the actions the caller may take in `actions`. Each needs
 the permission for the thing it does, not the permission to open an
 inbox, and an action the caller lacks the permission for answers 403:

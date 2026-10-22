@@ -1295,8 +1295,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// A project's inbox and its announcements.
 	news := c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Field/announcements",
 		`{"subject":"Field offsite","text":"We meet in Lisbon in May.","severity":"info"}`, http.StatusCreated)
-	if news.str("kind") != "announcement" {
-		t.Errorf("an announcement = %s", news.raw)
+	if news.str("kind") != "announcement" || news.field("unread") != false {
+		t.Errorf("an announcement, as its author has it = %s", news.raw)
 	}
 	c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Field/announcements", `{"subject":"","text":"Nothing to say."}`, http.StatusBadRequest)
 	c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Ghost/announcements", `{"subject":"Hi","text":"Hi."}`, http.StatusNotFound)
@@ -1314,6 +1314,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/projects/{name}/inbox", "/api/projects/Ghost/inbox", "", http.StatusNotFound)
 	c.call(acme, "GET", "/api/inbox", "/api/inbox?project=Field&kind=announcement", "", http.StatusOK)
 	c.call(acme, "GET", "/api/inbox", "/api/inbox?project=Ghost", "", http.StatusNotFound)
+	// Hidden for the caller alone, and brought back. A message that is not
+	// an announcement is set aside for everyone, so it is not.
+	newsPath := "/api/inbox/" + news.str("id")
+	if hid := c.call(acme, "POST", "/api/inbox/{id}/dismiss", newsPath+"/dismiss", "", http.StatusOK); hid.str("state") != "dismissed" || hid.field("hidden") != true {
+		t.Errorf("an announcement hidden for the caller = %s", hid.raw)
+	}
+	if back := c.call(acme, "POST", "/api/inbox/{id}/unhide", newsPath+"/unhide", "", http.StatusOK); back.str("state") != "open" || back.field("hidden") != nil {
+		t.Errorf("an announcement brought back = %s", back.raw)
+	}
+	c.call(acme, "POST", "/api/inbox/{id}/unhide", newsPath+"/unhide", "", http.StatusOK)
+	c.call(acme, "POST", "/api/inbox/{id}/unhide", inboxPath+"/unhide", "", http.StatusBadRequest)
 	c.call(acme, "DELETE", "/api/projects/{name}/announcements/{id}", "/api/projects/Ops/announcements/"+news.str("id"), "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/projects/{name}/announcements/{id}", "/api/projects/Field/announcements/"+news.str("id"), "", http.StatusNoContent)
 
@@ -1665,7 +1676,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/schedules/{name}":                   {"name": "nightly"}, "/api/schedules/{name}/pause": {"name": "nightly"},
 		"/api/schedules/{name}/resume": {"name": "nightly"}, "/api/schedules/{name}/run": {"name": "nightly"},
 		"/api/inbox/{id}": {"id": mid}, "/api/inbox/{id}/read": {"id": mid}, "/api/inbox/{id}/dismiss": {"id": mid},
-		"/api/inbox/{id}/snooze": {"id": mid}, "/api/inbox/{id}/parts/{part}/resolve": {"id": mid},
+		"/api/inbox/{id}/snooze": {"id": mid}, "/api/inbox/{id}/parts/{part}/resolve": {"id": mid}, "/api/inbox/{id}/unhide": {"id": mid},
 		"/api/artifacts/{id}": {"id": published.ID}, "/api/artifacts/{id}/versions": {"id": published.ID},
 		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
@@ -1681,7 +1692,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
 		"/api/projects/{name}": `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
-		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``,
+		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``, "/api/inbox/{id}/unhide": ``,
 		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`,
 		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,
