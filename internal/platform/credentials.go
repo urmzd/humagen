@@ -32,8 +32,7 @@ import (
 //
 //   - a run from the console or the API acts for the person signed in
 //     (ActorOf), and so does Run Now on a schedule when they wrote what it
-//     runs, its last editor or its creator, and otherwise it acts for nobody
-//     (Schedules.Authored);
+//     runs, and otherwise it acts for nobody (Schedules.Authored);
 //   - a run a surface asks for a person its client maps (act_as) acts for
 //     that person (PersonActor);
 //   - a run a Slack connector raised acts for the one person the team's

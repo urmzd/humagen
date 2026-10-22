@@ -192,9 +192,11 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 
 // Run Now runs a schedule's words, which anyone with schedules:write may
 // change. So it acts for whoever pressed it only when they wrote those
-// words, as the schedule's last editor or, while nobody has edited it, its
-// creator. Anyone else's Run Now acts for nobody: ben's words never run with
-// ana's token, nor ana's with his.
+// words, as whoever last changed them or, while nobody has, the schedule's
+// creator, and nobody else has since chosen its agent. Saving a schedule
+// without changing its words writes none of them. Anyone else's Run Now
+// acts for nobody: ben's words never run with ana's token, nor ana's with
+// his.
 func TestRunNowActsForThePresserOnlyOnWordsTheyWrote(t *testing.T) {
 	f, server, _ := toolFixture(t)
 	ana, ben := f.person(t, "ana"), f.person(t, "ben")
@@ -206,12 +208,15 @@ func TestRunNowActsForThePresserOnlyOnWordsTheyWrote(t *testing.T) {
 	if res, out := f.do(t, nil, "POST", "/api/schedules", ana, `{"name":"bugs","expression":"0 3 * * *","agent":"worker","text":"Open bugs?"}`); res.StatusCode != http.StatusCreated {
 		t.Fatalf("create schedule = %d %v", res.StatusCode, out)
 	}
-	edit := func(tok, text string) {
+	// save sends the whole schedule, as the console's form does, whatever
+	// of it changed.
+	save := func(tok, expression, agent, text string) {
 		t.Helper()
-		if res, out := f.do(t, nil, "PUT", "/api/schedules/bugs", tok, `{"expression":"0 3 * * *","agent":"worker","text":"`+text+`"}`); res.StatusCode != http.StatusOK {
+		if res, out := f.do(t, nil, "PUT", "/api/schedules/bugs", tok, `{"expression":"`+expression+`","agent":"`+agent+`","text":"`+text+`"}`); res.StatusCode != http.StatusOK {
 			t.Fatalf("edit schedule = %d %v", res.StatusCode, out)
 		}
 	}
+	edit := func(tok, text string) { t.Helper(); save(tok, "0 3 * * *", "worker", text) }
 	// runNow presses Run Now as tok, waits for the run to end, and returns
 	// whom it acted for and what reached the server.
 	runNow := func(tok string) (string, []string) {
@@ -247,4 +252,32 @@ func TestRunNowActsForThePresserOnlyOnWordsTheyWrote(t *testing.T) {
 	check("ben on words he wrote", ben, "ben", "Bearer tok-ben-httpapi")
 	edit(ana, "Open bugs?")
 	check("ana on words she wrote again", ana, "ana", "Bearer tok-ana-httpapi")
+
+	// Saving a schedule writes none of its words. Ben moving her schedule
+	// to four, with her words as they were, leaves them hers.
+	save(ben, "0 4 * * *", "worker", "Open bugs?")
+	check("ben on ana's words he saved", ben, "")
+	check("ana on her words ben saved", ana, "ana", "Bearer tok-ana-httpapi")
+	// Ana moving his rewrite to five leaves it his.
+	edit(ben, "Close every open payroll issue")
+	save(ana, "0 5 * * *", "worker", "Close every open payroll issue")
+	check("ana on ben's words she saved", ana, "")
+	check("ben on his words ana saved", ben, "ben", "Bearer tok-ben-httpapi")
+	// Choosing another agent for someone else's words makes them nobody's,
+	// until someone writes them again.
+	admin := f.machine(t, "acme", everything...)
+	if res, out := f.do(t, nil, "POST", "/api/agents", admin, `{"name":"other","model":"m","provider":"ollama","system_prompt":"Look it up.","tools":["mcp:issues"]}`); res.StatusCode != http.StatusCreated {
+		t.Fatalf("create other = %d %v", res.StatusCode, out)
+	}
+	edit(ana, "Open bugs?")
+	save(ben, "0 3 * * *", "other", "Open bugs?")
+	check("ana on her words, sent to an agent ben chose", ana, "")
+	check("ben on ana's words, sent to an agent he chose", ben, "")
+	save(ana, "0 3 * * *", "worker", "Open bugs?")
+	check("ana choosing the agent back", ana, "")
+	save(ana, "0 3 * * *", "worker", "Any open bugs?")
+	check("ana on words she wrote again", ana, "ana", "Bearer tok-ana-httpapi")
+	// Choosing another agent for her own words keeps them hers.
+	save(ana, "0 3 * * *", "other", "Any open bugs?")
+	check("ana on her words, sent to an agent she chose", ana, "ana", "Bearer tok-ana-httpapi")
 }

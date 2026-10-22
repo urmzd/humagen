@@ -151,6 +151,13 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		if err := p.Schedules.SetPaused(tenant, "nightly", true); err != nil {
 			t.Fatal(err)
 		}
+		// Who wrote what it runs is kept: ben rewrote it, and ada saving it
+		// again wrote nothing.
+		for _, by := range []string{"ben", "ada"} {
+			if err := p.Schedules.Replace(cron.Schedule{Name: "nightly", Expression: "0 3 * * *", Agent: "lead", Text: "summarize the night", Tenant: tenant}, platform.About{Description: "Every night", UpdatedBy: by}); err != nil {
+				t.Fatal(err)
+			}
+		}
 		r, err := p.Invoke(ctx, tag("run-1", "lead"))
 		if err != nil {
 			t.Fatal(err)
@@ -188,6 +195,9 @@ func TestThePlatformSurvivesARestart(t *testing.T) {
 		}
 		if sc, paused, err := q.Schedules.Get(tenant, "nightly"); err != nil || !paused || sc.Expression != "0 3 * * *" || q.Schedules.About("nightly").Description != "Every night" {
 			t.Fatalf("the schedule after restart = %+v, %v, %v", sc, paused, err)
+		}
+		if _, author, err := q.Schedules.Authored(tenant, "nightly"); err != nil || author != "ben" {
+			t.Fatalf("the schedule's author after restart = %q, %v, want ben", author, err)
 		}
 		got, err := q.Runs.Get(tenant, r.ID)
 		if err != nil || got.Status != runs.Completed || got.Answer != done.Answer {
