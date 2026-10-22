@@ -28,7 +28,7 @@ import { Monitor } from "./Monitor.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
 import { ChannelPage } from "./Room.tsx";
 import { Schedules } from "./Schedules.tsx";
-import { Settings } from "./Settings.tsx";
+import { type PrefsRead, Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import { updatesOf } from "@warp/adapter";
@@ -164,6 +164,10 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     pinned: [],
     muted: [],
   });
+  // Whether the saved preferences were read. Until they are, the defaults
+  // above only draw the page: a save sends every field, so nothing is saved
+  // over values not read yet.
+  const [prefsRead, setPrefsRead] = useState<PrefsRead>("reading");
   // The reader's own open announcements, for What's new on Home.
   const [announced, setAnnounced] = useState<PlatformMessage[]>([]);
   const [day, setDay] = useState<Summary | null>(null);
@@ -264,7 +268,13 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     loadAgents();
     loadSources();
     // Preferences are optional: render immediately with defaults while they load.
-    api.preferences().then(setPrefs).catch(() => {});
+    api
+      .preferences()
+      .then((p) => {
+        setPrefs(p);
+        setPrefsRead("read");
+      })
+      .catch(() => setPrefsRead("failed"));
   }, [loadRuns, loadAgents, loadSources]);
 
   // One stream for the whole tenant keeps every list current. Lifecycle and
@@ -335,6 +345,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // Pinning shows at once and is saved with the person's preferences. If the
   // save fails, the sidebar goes back to what the server has.
   const pin = (id: string, on: boolean) => {
+    if (prefsRead !== "read") return;
     const next = on ? [id, ...prefs.pinned.filter((p) => p !== id)] : prefs.pinned.filter((p) => p !== id);
     const before = prefs;
     setPrefs({ ...prefs, pinned: next });
@@ -358,6 +369,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               : go({ page: "monitor", tab: "rules" });
   // Muting shows at once and is saved with the person's preferences.
   const mute = (project: string, on: boolean) => {
+    if (prefsRead !== "read") return;
     const next = on ? [...prefs.muted.filter((p) => p !== project), project] : prefs.muted.filter((p) => p !== project);
     const before = prefs;
     setPrefs({ ...prefs, muted: next });
@@ -659,6 +671,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
           <Settings
             me={me}
             prefs={prefs}
+            prefsRead={prefsRead}
             workspace={workspace}
             agents={agents}
             canAdmin={can("agents:write")}
