@@ -637,12 +637,15 @@ export function notificationsOf(messages: PlatformMessage[], url?: (id: string) 
       const name = m.from.name;
       const summary = name && m.subject.startsWith(`${name} `) ? m.subject.slice(name.length + 1) : m.subject;
       const at = url?.(m.id);
+      // Only what is above normal is said: it changes what a person does first.
+      const severity = m.severity === "bad" ? ("critical" as const) : m.severity === "warn" ? ("warning" as const) : undefined;
       return {
         kind: "inbox" as const,
         id: m.id,
         from: name,
         summary,
         at: m.at,
+        ...(severity ? { severity } : {}),
         ...(at ? { url: at } : {}),
       };
     });

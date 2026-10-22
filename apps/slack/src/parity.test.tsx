@@ -681,6 +681,8 @@ test("Home's Needs you holds the same rows and the same total on both, an agent'
     "Ana mentioned you in #renewals",
     "Limits Project Launch reached its daily run limit",
     "oncall-failure-rate oncall is failing more than half its runs",
+    // Above normal, so said in words on both; a normal row says nothing more.
+    defaultCopy.home.urgency.critical as string,
     "lead wants to run deploy",
     defaultCopy.home.moreWaiting(open - 5),
     defaultCopy.home.whatsNew,

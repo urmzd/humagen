@@ -38,7 +38,7 @@ test("a person's announcement shows what they are called, and keeps who they are
   assert.equal(agent.sender, "recap");
 });
 
-test("an announcement never asks anything of the reader, so it sits under Updates", () => {
+test("an announcement never asks anything of the reader, so it sits under What's new", () => {
   assert.equal(messageAsks(fromServer(announcement)), false);
 });
 
@@ -231,6 +231,7 @@ test("what needs the reader on Home is every open message but posted announcemen
     id: "m-alert",
     kind: "alert",
     subject: "6 of 10 runs failed",
+    severity: "critical",
     from: { kind: "rule", name: "failure-rate" },
     parts: [{ id: "p1", type: "alert", state: "open", actions: ["acknowledge"], alert: { id: "a1", rule: "failure-rate", kind: "run_failed", severity: "warning", title: "6 of 10 runs failed" } }],
   };
@@ -240,7 +241,8 @@ test("what needs the reader on Home is every open message but posted announcemen
   const items = notificationsOf([mention, alert, settled, announcement, draft, decided].map(fromServer), (id) => `/inbox?message=${id}`);
   assert.deepEqual(items, [
     { kind: "inbox", id: "m-mention", from: "Ana", summary: "mentioned you in #renewals", at: announcement.at, url: "/inbox?message=m-mention" },
-    { kind: "inbox", id: "m-alert", from: "failure-rate", summary: "6 of 10 runs failed", at: announcement.at, url: "/inbox?message=m-alert" },
+    // Above normal, so it says so; a normal one carries no severity.
+    { kind: "inbox", id: "m-alert", from: "failure-rate", summary: "6 of 10 runs failed", at: announcement.at, severity: "critical", url: "/inbox?message=m-alert" },
     { kind: "inbox", id: "m-12", from: "warp-analyst", summary: "Field shipped two fixes", at: draft.at, url: "/inbox?message=m-12" },
   ]);
   // The same page makes What's new from what is left: the posted announcement, and never the draft.

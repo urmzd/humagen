@@ -94,7 +94,7 @@ export function HomeBoxes({ notifications, updates, canStart = true, onOpen, onI
                         <span className="font-medium">{n.from}</span> {n.summary}
                       </>
                     }
-                    detail={n.at ? ago(n.at) : undefined}
+                    detail={[n.severity ? c.urgency[n.severity] : null, n.at ? ago(n.at) : null].filter(Boolean).join(" · ") || undefined}
                   />
                 </li>
               ))}
