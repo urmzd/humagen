@@ -37,7 +37,9 @@ func (p *Platform) shower(tenant string) *shower {
 }
 
 // person is who a subject is in the directory, or a person known only by
-// that subject.
+// that subject. Their name is the one they chose for themselves, as the
+// Directory and the console's own header show it, else the one they signed
+// in with.
 func (s *shower) person(subject string) people.Person {
 	if who, ok := s.known[subject]; ok {
 		return who
@@ -46,6 +48,11 @@ func (s *shower) person(subject string) people.Person {
 	if s.p.People != nil {
 		if got, err := s.p.People.Get(s.tenant, subject); err == nil {
 			who = got
+		}
+	}
+	if s.p.Prefs != nil {
+		if own := s.p.Prefs.Get(s.tenant, subject).DisplayName; own != "" {
+			who.Name = own
 		}
 	}
 	s.known[subject] = who

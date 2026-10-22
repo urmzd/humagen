@@ -263,3 +263,18 @@ func TestAMessageIsCalledWhatItsPosterIsCalledNow(t *testing.T) {
 		t.Errorf("the message is by %v, called %v", m["by"], m["name"])
 	}
 }
+
+// A person who chose a name for themselves is called by it wherever they
+// are named, as the Directory and the console's header call them.
+func TestAPersonIsCalledTheNameTheyChose(t *testing.T) {
+	f, ana, pat := namesFixture(t)
+	want(t, f, pat, "PUT", "/api/preferences", `{"display_name":"Pat Quinn","theme":"system","accent":"purple"}`, http.StatusOK)
+	members := want(t, f, ana, "GET", "/api/projects/Globex/members", "", http.StatusOK)
+	if o := members["inherited"].([]any)[0].(map[string]any); o["name"] != "Pat Quinn" {
+		t.Errorf("Globex's owner from above is called %v", o["name"])
+	}
+	posted := want(t, f, pat, "POST", "/api/threads", `{"visibility":"shared","text":"hello","post_only":true}`, http.StatusCreated)
+	if m := posted["message"].(map[string]any); m["name"] != "Pat Quinn" {
+		t.Errorf("Pat's message is called %v", m["name"])
+	}
+}
