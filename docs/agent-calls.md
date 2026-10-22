@@ -89,6 +89,15 @@ one execution slot available so a chain of helpers cannot occupy every slot
 while waiting. Attached work stops with its caller; delegated work is independent.
 A return format never changes these lifecycle or delivery rules.
 
+`call_agent` offers a run only the agents available where its calls are filed:
+one that lives elsewhere would be refused, and the run's readers may not read
+it. An agent that lives in a project a reader may not read is left out of the
+spawn list and the call policy lists they read. Naming one when they write
+either is refused as naming an agent that does not exist, a call to one
+through the calls endpoint is refused as one the spawn allowlist does not
+name, and saving what they read keeps what they were not shown (see
+[security](security.md)).
+
 The low-level API's existing `handoff` mode is not exposed by `call_agent`.
 A real handoff needs explicit answer ownership transfer and caller termination;
 selecting a return format does neither.

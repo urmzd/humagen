@@ -973,11 +973,20 @@ One predicate, `p.Sees(who, place)`, filters every read of:
 - schedules and the inbox;
 - memory and pending memory;
 - `/api/agents` (homed agents);
-- the agents a client, a project's lists and the workspace's settings name.
+- the agents a client, a project's lists and the workspace's settings name;
+- the agents a spec may call and its approvals of those calls, a call
+  policy's `allow` and `trusted`, a run manifest's definition, and a
+  thread's default, participants, tags and `answers`;
+- the agents a list takes from runs: a conversation's agents, analytics by
+  agent, the analyst's summaries and a recap.
 
 A hidden object answers 404. A hidden agent a record names is left out of it,
 a change keeps it, and naming one, in any spelling of its name, answers as
-naming no agent.
+naming no agent: as a spec's spawn entry, a call policy's caller, a call's
+target, or a run's, a schedule's or a thread's agent. A default the asker may
+not read reads as none, so what a turn or a message did never names it. A
+run still names the agent that ran it, which was available where it ran. A
+refusal names where an agent lives only when everyone reads that project.
 
 ### Phase 8
 

@@ -51,13 +51,25 @@ projects under it and proposes notes, an owner changes it (see
 role in answers 404, and so does everything that lives in it: its runs,
 threads, events, files, notes, schedules, inbox messages, limits and eval
 suites, and the agents that live there, each answering exactly as an object
-that does not exist. A client, a project's lists of agents and the
-workspace's settings leave out an agent that lives there, and a change to
+that does not exist. Every record that names agents leaves out an agent that
+lives there, as if it were not there: a client, a project's lists of agents,
+the workspace's settings, an agent's spec (the agents it may call and the
+approvals of those calls, with the hash of what is shown), an agent's call
+policy (the callers it admits and trusts), the definition in a run's
+manifest, and a thread's default, participants and tags, and who answers
+untagged messages there, which reads as nobody, as is so. A change to any of
 them keeps what the caller was not shown. A request that names such an agent,
-there or as the agent a run, a schedule or a thread asks, answers as one
-naming an agent that does not exist. A model policy such an agent
-runs on is not removed, and the refusal does not name the agent. A private
-thread is read by its participants alone.
+there or as the agent a run, a call, a schedule or a thread asks, answers as
+one naming an agent that does not exist, and what a run or a message did
+never names a default the person it was for may not read. A list of agents
+taken from runs (a conversation's agents, analytics by agent, the analyst's
+summaries and a recap) leaves such an agent out too, though the runs it made
+where the caller reads are counted: a run names the agent that ran it, which
+was available there when it ran, even one moved since. A refusal that an
+agent is not available somewhere says where it lives only when everyone in
+the workspace reads that project, since it reaches whoever reads where it was
+made. A model policy such an agent runs on is not removed, and the refusal
+does not name the agent. A private thread is read by its participants alone.
 
 A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:

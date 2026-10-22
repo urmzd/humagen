@@ -55,6 +55,12 @@ what they were not shown:
 An agent the client routed to stays one it routes to, so a bot or an
 auto-label kept for it still stands.
 
+A default a person may not read is never available where they read, so it
+answers nothing for them. A thread on the client's surface says to them that
+nobody answers untagged messages there, and what their message, or their
+turn through the client, did says the same, never naming it; `@auto` never
+falls back to it for them.
+
 ### Which agents a client reaches
 
 Default deny. A client routes to its default agent and to the agents listed in
