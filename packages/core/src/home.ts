@@ -168,6 +168,44 @@ export function orderUpdates(items: HomeUpdate[]): HomeUpdate[] {
     .slice(0, HOME_UPDATES_MAX);
 }
 
+/** A project the person has a role in, for Your projects. */
+export interface HomeProject {
+  /** Its name: the address it opens at. */
+  name: string;
+  /** As people see it: its title, or its name. */
+  title: string;
+  /** The projects above it as people see them, top level first. Empty at the top level. */
+  within: string[];
+  /** Its kind: company, team, account, or one of the workspace's own. */
+  kind: string;
+  /** How many runs in it are in flight. */
+  active: number;
+  /** When a run in it last changed, ISO. Leave out when nothing has been filed in it. */
+  activeAt?: string;
+  /** Where it opens, such as the project's page in the console. */
+  url?: string;
+}
+
+/** How many projects Your projects shows. The rest are counted and linked. */
+export const HOME_PROJECTS_MAX = 8;
+
+/**
+ * Your projects in the order Home shows them: where something happened most
+ * recently first, then the ones where nothing has, in the order given (the
+ * tree's, from the platform). All of them: Home shows the first
+ * `HOME_PROJECTS_MAX` and counts the rest.
+ */
+export function orderProjects(items: HomeProject[]): HomeProject[] {
+  const time = (p: HomeProject) => {
+    const t = p.activeAt ? Date.parse(p.activeAt) : Number.NaN;
+    return Number.isNaN(t) ? 0 : t;
+  };
+  return items
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => time(b.p) - time(a.p) || a.i - b.i)
+    .map(({ p }) => p);
+}
+
 /** Which agent answers the person's direct messages. */
 export interface HomeAnsweredBy {
   agents: { id: string; name: string }[];
@@ -243,6 +281,10 @@ export interface HomeModel {
   notifications: HomeNotifications;
   /** What's new: announcements from the person's projects. Leave out to hide it. */
   updates?: HomeUpdate[];
+  /** Your projects: every project the person has a role in, in any order. Leave out to hide it. */
+  projects?: HomeProject[];
+  /** Where all of the person's projects are listed, for "N more". */
+  projectsUrl?: string;
   /** @deprecated Use `notifications`. Read only when `notifications` is absent. */
   waiting?: HomeWaiting[];
   /** Leave out when the person can't choose. */
@@ -252,7 +294,12 @@ export interface HomeModel {
   personal?: HomePersonal;
   /** Where all connections are managed. */
   connectionsUrl?: string;
-  access: HomeAccess;
+  /**
+   * What the person may do. Leave out when the host does not know, as the
+   * Slack app does not for the people it reads for: Slack then shows only
+   * the link to the console, and the web no access section.
+   */
+  access?: HomeAccess;
   /** The web console, linked from Slack. */
   consoleUrl?: string;
   links: HomeLink[];

@@ -4,6 +4,7 @@
  * warp's actions go back as platform calls.
  */
 export * from "./fold.ts";
+export * from "./home.ts";
 export * from "./mail.ts";
 export * from "./question.ts";
 export * from "./run.ts";

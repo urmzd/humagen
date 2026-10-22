@@ -3,9 +3,11 @@ import * as fx from "./fixtures";
 import {
   HOME_UPDATES_MAX,
   type HomeNotification,
+  type HomeProject,
   type HomeUpdate,
   notificationsFromWaiting,
   orderNotifications,
+  orderProjects,
   orderUpdates,
 } from "./home";
 
@@ -124,5 +126,50 @@ describe("orderUpdates", () => {
     const items = [update("x", "", true), update("y", "2026-10-21T09:00:00Z", true)];
     expect(orderUpdates(items).map((u) => u.id)).toEqual(["y", "x"]);
     expect(items.map((u) => u.id)).toEqual(["x", "y"]);
+  });
+});
+
+describe("orderProjects", () => {
+  const project = (name: string, activeAt?: string): HomeProject => ({
+    name,
+    title: name,
+    within: [],
+    kind: "team",
+    active: 0,
+    ...(activeAt ? { activeAt } : {}),
+  });
+
+  it("puts where something happened most recently first, then the rest in the tree's order", () => {
+    const items = [
+      project("Acme"),
+      project("Field", "2026-10-20T09:00:00Z"),
+      project("Globex", "2026-10-21T09:00:00Z"),
+      project("Launch"),
+      project("Ops", "not a time"),
+    ];
+    expect(orderProjects(items).map((p) => p.name)).toEqual([
+      "Globex",
+      "Field",
+      "Acme",
+      "Launch",
+      "Ops",
+    ]);
+  });
+
+  it("keeps every project and changes nothing it is given", () => {
+    const items = Array.from({ length: 12 }, (_, i) => project(`P${i}`));
+    items.push(project("Busy", "2026-10-21T09:00:00Z"));
+    const ordered = orderProjects(items);
+    expect(ordered).toHaveLength(13);
+    expect(ordered[0]?.name).toBe("Busy");
+    expect(items[0]?.name).toBe("P0");
+  });
+});
+
+describe("the Home a Slack app shows a person it reads for", () => {
+  it("knows nothing of their access or connections, so it holds neither", () => {
+    expect(fx.homes.readFor.access).toBeUndefined();
+    expect(fx.homes.readFor.connections).toEqual([]);
+    expect(fx.homes.readFor.notifications.items.every((n) => n.kind === "inbox")).toBe(true);
   });
 });

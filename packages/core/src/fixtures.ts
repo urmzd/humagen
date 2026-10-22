@@ -1,5 +1,5 @@
 import { ActionId } from "./actions";
-import type { HomeModel, HomeNotification } from "./home";
+import type { HomeModel, HomeNotification, HomeProject, HomeUpdate } from "./home";
 import { type InboxItem, type SystemAlert, sortInbox } from "./inbox";
 import { type InboxMessage, messageFromItem, sortMessages } from "./mailbox";
 import type { SessionState } from "./session";
@@ -1410,10 +1410,67 @@ export const ratedTurn: Turn = { ...doneTurn, id: "turn-rated", feedback: "up" }
 /** The older item list, read as messages: what `inboxFromTurns` producers get for free. */
 export const mailFromItems: InboxMessage[] = inboxItems.map((item) => messageFromItem(item));
 
+const CONSOLE = "https://example.com/console";
+
+/** Announcements from Ada's projects: one she has not read. */
+const updates: HomeUpdate[] = [
+  {
+    id: "m-offsite",
+    project: "Field",
+    projectTitle: "Field engineering",
+    subject: "The Field offsite moves to Lisbon, in May",
+    from: { kind: "person", name: "Dana" },
+    at: "2026-10-13T10:00:00Z",
+    unread: true,
+    url: `${CONSOLE}/projects/Field?message=m-offsite`,
+  },
+  {
+    id: "m-recap",
+    project: "Field",
+    projectTitle: "Field engineering",
+    subject: "Weekly recap: three renewals closed",
+    from: { kind: "agent", name: "warp-analyst" },
+    at: "2026-10-12T08:41:00Z",
+    unread: false,
+    url: `${CONSOLE}/projects/Field?message=m-recap`,
+  },
+];
+
+/** The projects Ada has a role in: one busy, one quiet, and an account inside Field. */
+const projects: HomeProject[] = [
+  {
+    name: "Field",
+    title: "Field engineering",
+    within: [],
+    kind: "team",
+    active: 1,
+    activeAt: "2026-10-13T13:50:00Z",
+    url: `${CONSOLE}/projects/Field`,
+  },
+  {
+    name: "Globex",
+    title: "Globex",
+    within: ["Field engineering"],
+    kind: "account",
+    active: 0,
+    activeAt: "2026-10-11T09:00:00Z",
+    url: `${CONSOLE}/projects/Globex`,
+  },
+  {
+    name: "Launch",
+    title: "Launch",
+    within: [],
+    kind: "team",
+    active: 0,
+    url: `${CONSOLE}/projects/Launch`,
+  },
+];
+
 /**
  * Home, as Ada sees it: an operator through eng-oncall, with two inbox items
- * waiting on her and two open alerts, GitHub connected and Jira not. Each
- * notification links to its own page. The variants change one thing each.
+ * waiting on her and two open alerts, an announcement she has not read, three
+ * projects, GitHub connected and Jira not. Each notification, announcement
+ * and project links to its own page. The variants change one thing each.
  */
 export const home: HomeModel = {
   person: { id: "U0ADA", name: "Ada Lovelace" },
@@ -1472,6 +1529,9 @@ export const home: HomeModel = {
     inbox: { total: 2, url: "https://example.com/console/?view=inbox" },
     alerts: { total: 2, url: "https://example.com/console/?view=alerts" },
   },
+  updates,
+  projects,
+  projectsUrl: `${CONSOLE}/projects`,
   answeredBy: {
     agents: [
       { id: "docs-bot", name: "docs-bot" },
@@ -1547,13 +1607,43 @@ const many: HomeNotification[] = [
   })),
 ];
 
+/** More announcements and projects than Home shows: five and eight, with the rest of the projects counted. */
+const manyUpdates: HomeUpdate[] = Array.from({ length: 7 }, (_, i) => ({
+  id: `m-${i + 1}`,
+  project: "Field",
+  projectTitle: "Field engineering",
+  subject: `Field update ${i + 1}`,
+  from: { kind: "person" as const, name: "Dana" },
+  at: new Date(Date.parse("2026-10-13T12:00:00Z") - i * 3_600_000).toISOString(),
+  unread: i % 3 === 0,
+  url: `${CONSOLE}/projects/Field?message=m-${i + 1}`,
+}));
+const manyProjects: HomeProject[] = Array.from({ length: 12 }, (_, i) => ({
+  name: `Account-${i + 1}`,
+  title: `Account ${i + 1}`,
+  within: ["Field engineering"],
+  kind: "account",
+  active: i === 0 ? 2 : 0,
+  ...(i < 10
+    ? { activeAt: new Date(Date.parse("2026-10-13T12:00:00Z") - i * 86_400_000).toISOString() }
+    : {}),
+  url: `${CONSOLE}/projects/Account-${i + 1}`,
+}));
+
 export const homes: Record<
-  "default" | "empty" | "alertsOnly" | "overflow" | "unlinked" | "noConnect" | "noGrants",
+  | "default"
+  | "empty"
+  | "alertsOnly"
+  | "overflow"
+  | "unlinked"
+  | "noConnect"
+  | "noGrants"
+  | "readFor",
   HomeModel
 > = {
   /** Inbox items and alerts together: a critical alert first, then what waits on Ada, then a warning. */
   default: home,
-  /** Nothing waiting and no alert open: the section stays and says so. */
+  /** Nothing waiting, no alert open, nothing announced and no project: each section stays and says so. */
   empty: {
     ...home,
     starts: home.starts.map((s) => (s.id === "review" ? { id: s.id } : s)),
@@ -1562,6 +1652,8 @@ export const homes: Record<
       inbox: { total: 0, url: home.notifications.inbox?.url },
       alerts: { total: 0, url: home.notifications.alerts?.url },
     },
+    updates: [],
+    projects: [],
   },
   /** Only alerts are open; the inbox is clear. */
   alertsOnly: {
@@ -1582,6 +1674,8 @@ export const homes: Record<
       inbox: { total: 14, url: home.notifications.inbox?.url },
       alerts: { total: 6, url: home.notifications.alerts?.url },
     },
+    updates: manyUpdates,
+    projects: manyProjects,
   },
   /** A host with no public console address: Slack shows each item without a link, and Review stays for inbox items. */
   unlinked: {
@@ -1590,6 +1684,9 @@ export const homes: Record<
     notifications: {
       items: home.notifications.items.map(({ url: _url, ...n }) => n),
     },
+    updates: updates.map(({ url: _url, ...u }) => u),
+    projects: projects.map(({ url: _url, ...p }) => p),
+    projectsUrl: undefined,
   },
   /** A viewer who may not connect workspace accounts: no Connect, and an admin is named instead. */
   noConnect: {
@@ -1606,9 +1703,31 @@ export const homes: Record<
     connections: home.connections.map((c) => ({ ...c, canConnect: false })),
     personal: { connected: 0, canConnect: false },
     access: {
-      via: home.access.via,
-      explainUrl: home.access.explainUrl,
-      policyUrl: home.access.policyUrl,
+      via: home.access?.via,
+      explainUrl: home.access?.explainUrl,
+      policyUrl: home.access?.policyUrl,
     },
+  },
+  /**
+   * The Slack app's Home for a person its client maps, read for them: what
+   * needs them from their inbox, what's new and their projects. It cannot
+   * know their access or what they connected, so it shows neither, and its
+   * starts are what it can answer on Slack, Search Context opening the console.
+   */
+  readFor: {
+    person: { id: "U0ADA", name: "Ada Lovelace" },
+    assistant: { name: "Warp", handle: "warp" },
+    intro: "I hand your questions to this workspace's agents.",
+    starts: [{ id: "talk" }, { id: "build" }, { id: "search", url: `${CONSOLE}/context` }],
+    notifications: {
+      items: home.notifications.items.filter((n) => n.kind === "inbox"),
+      inbox: { total: 2, url: home.notifications.inbox?.url },
+    },
+    updates,
+    projects,
+    projectsUrl: `${CONSOLE}/projects`,
+    connections: [],
+    consoleUrl: CONSOLE,
+    links: [],
   },
 };

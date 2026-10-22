@@ -202,3 +202,130 @@ describe("Home notifications on Slack", () => {
     expect((first?.text as { text: string }).text).toBe("Hi Ada, I'm Warp.");
   });
 });
+
+/** The section blocks under a heading, up to the next heading or divider. */
+function under(blocks: Block[], heading: string): Block[] {
+  const start = blocks.findIndex(
+    (b) => b.type === "header" && (b.text as { text: string }).text === heading,
+  );
+  if (start === -1) return [];
+  const out: Block[] = [];
+  for (const b of blocks.slice(start + 1)) {
+    if (b.type === "header" || b.type === "divider") break;
+    out.push(b);
+  }
+  return out;
+}
+
+const textOf = (b: Block) =>
+  b.type === "section"
+    ? (b.text as { text: string }).text
+    : ((b.elements as { text: string }[] | undefined) ?? []).map((e) => e.text).join(" ");
+
+describe("What's new and Your projects on Slack", () => {
+  it("shows what's new unread first, saying so in words, each with an Open button to where it lives", () => {
+    const rows = under(homeView(<Home home={fx.home} />).view.blocks, "What's new");
+    expect(rows.map((r) => textOf(r).split("\n")[0])).toEqual([
+      "*The Field offsite moves to Lisbon, in May*",
+      "Weekly recap: three renewals closed",
+    ]);
+    expect(textOf(rows[0] as Block)).toContain("Unread · Posted in Field engineering · <!date^");
+    expect(textOf(rows[1] as Block)).not.toContain("Unread");
+    const open = rows[0]?.accessory as { text: { text: string }; url: string; action_id: string };
+    expect(open.text.text).toBe("Open");
+    expect(open.url).toBe("https://example.com/console/projects/Field?message=m-offsite");
+    // The link is Slack's to open: the click carries nothing for the app to do.
+    expect(decodeSlackAction(open)).toBeNull();
+  });
+
+  it("shows the person's projects, the busiest first, with their kind and where they sit", () => {
+    const rows = under(homeView(<Home home={fx.home} />).view.blocks, "Your projects");
+    expect(rows.map((r) => textOf(r).split("\n"))).toEqual([
+      ["*Field engineering*", expect.stringMatching(/^Team · 1 running · active <!date\^\d+\^/)],
+      ["*Globex*", expect.stringMatching(/^Account · in Field engineering · active <!date/)],
+      ["*Launch*", "Team"],
+    ]);
+    expect((rows[2]?.accessory as { url: string }).url).toBe(
+      "https://example.com/console/projects/Launch",
+    );
+  });
+
+  it("shows five announcements and eight projects at most, and counts the rest of the projects", () => {
+    const { view, warnings } = homeView(<Home home={fx.homes.overflow} />);
+    expect(warnings).toEqual([]);
+    expect(under(view.blocks, "What's new")).toHaveLength(5);
+    const projects = under(view.blocks, "Your projects");
+    expect(projects.filter((b) => b.type === "section")).toHaveLength(8);
+    expect(textOf(projects.at(-1) as Block)).toBe(
+      "<https://example.com/console/projects|4 more in Projects>",
+    );
+    // The two projects where nothing happened come last.
+    expect(JSON.stringify(projects)).not.toContain("Account 11");
+  });
+
+  it("says when nothing is new and the person is in no project", () => {
+    const blocks = homeView(<Home home={fx.homes.empty} />).view.blocks;
+    expect(under(blocks, "What's new").map(textOf)).toEqual(["Nothing new from your projects."]);
+    expect(under(blocks, "Your projects").map(textOf)).toEqual(["You are not in any project yet."]);
+  });
+
+  it("offers no Open button where the host gave no absolute address, and leaves out a section it leaves out", () => {
+    const blocks = homeView(<Home home={fx.homes.unlinked} />).view.blocks;
+    for (const b of [...under(blocks, "What's new"), ...under(blocks, "Your projects")]) {
+      expect(b.accessory).toBeUndefined();
+    }
+    const relative: HomeModel = {
+      ...fx.home,
+      updates: fx.home.updates?.map((u) => ({ ...u, url: `/projects/${u.project}` })),
+      projects: undefined,
+    };
+    const shown = homeView(<Home home={relative} />).view.blocks;
+    expect(JSON.stringify(shown)).not.toContain('"/projects/');
+    expect(under(shown, "Your projects")).toEqual([]);
+    expect(
+      shown.some((b) => (b.text as { text?: string } | undefined)?.text === "Your projects"),
+    ).toBe(false);
+  });
+});
+
+describe("the Home the Slack app shows a person it reads for", () => {
+  const { view, warnings } = homeView(<Home home={fx.homes.readFor} />);
+
+  it("starts a question or an agent there, and searches in the console", () => {
+    expect(warnings).toEqual([]);
+    const start = view.blocks.find((b) => b.block_id === "home:start");
+    const [ask, build, search] = start?.elements as (Element & { url?: string; value?: string })[];
+    expect(decodeSlackAction(ask as { action_id: string; value: string })?.id).toBe(
+      ActionId.homeAsk,
+    );
+    expect(decodeSlackAction(build as { action_id: string; value: string })).toEqual({
+      id: ActionId.homeStart,
+      payload: { turnId: HOME_ID, target: "build" },
+    });
+    expect(search?.text?.text).toBe("Search Context");
+    expect(search?.url).toBe("https://example.com/console/context");
+    expect(search?.value).toBeUndefined();
+  });
+
+  it("shows no access it cannot know and no connections, only the way to the console", () => {
+    const text = JSON.stringify(view.blocks);
+    expect(text).not.toContain("Signed in as");
+    expect(text).not.toContain("Connections");
+    expect(textOf(view.blocks.at(-1) as Block)).toBe(
+      "<https://example.com/console|Open the console> for runs, schedules and access.",
+    );
+    expect(view.blocks.filter((b) => b.type === "divider").length).toBe(4);
+  });
+
+  it("stays within the Home budget with every section full", () => {
+    const full: HomeModel = {
+      ...fx.homes.readFor,
+      notifications: fx.homes.overflow.notifications,
+      updates: fx.homes.overflow.updates,
+      projects: fx.homes.overflow.projects,
+    };
+    const { view, warnings } = homeView(<Home home={full} />);
+    expect(warnings).toEqual([]);
+    expect(view.blocks.length).toBeLessThanOrEqual(LIMITS.blocks.home);
+  });
+});

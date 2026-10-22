@@ -21,6 +21,7 @@ export const LIMITS = {
   contextElements: 10,
   actionsElements: 25,
   buttonText: 75,
+  accessibilityLabel: 75,
   actionId: 255,
   markdownTotal: 12000,
   alertText: 200,
@@ -86,6 +87,11 @@ class Serializer {
   breaks = new Set<number>();
   /** Accessories each sit in their own block; number them across the layout so no two match. */
   accessories = 0;
+  /**
+   * A link button carries no action, so its id only has to be unique: links
+   * are numbered across the layout, whatever block they sit in.
+   */
+  links = 0;
 
   constructor(
     readonly placement: Placement,
@@ -455,10 +461,18 @@ class Serializer {
       text: this.plain(p.label, LIMITS.buttonText, "button label"),
       ...(p.action
         ? { action_id: this.actionId(p.action.id, index), value: encodeAction(p.action.payload) }
-        : { action_id: this.actionId("aui.link", index) }),
+        : { action_id: this.actionId("aui.link", this.links++) }),
       ...(p.url ? { url: p.url } : {}),
       ...(p.style ? { style: p.style } : {}),
-      ...(p.accessibilityLabel ? { accessibility_label: p.accessibilityLabel } : {}),
+      ...(p.accessibilityLabel
+        ? {
+            accessibility_label: this.clip(
+              p.accessibilityLabel,
+              LIMITS.accessibilityLabel,
+              "accessibility label",
+            ),
+          }
+        : {}),
       ...(p.confirm
         ? {
             confirm: {
