@@ -1126,3 +1126,38 @@ test("someone added to a private conversation is not offered Share: its starter,
   );
   assert.ok(await screen.findByRole("button", { name: words.share }));
 });
+
+test("two quick changes in a conversation's + menu are saved one after the other, the second from the version the first answered", async () => {
+  const lead = { spec: { ...helper.spec, name: "lead", description: "Coordinates" }, rev: 1 } as unknown as Revision;
+  let release: (() => void) | undefined;
+  const puts: unknown[] = [];
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => mine,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+    "PUT /api/threads/th-00000000000000aa": (body) => {
+      puts.push(body);
+      const b = body as { version: number; agents: string[] };
+      const answer = { ...mine.thread, agents: b.agents, mode: "best_fit", version: b.version + 1 };
+      // The first save is slow, so the second change is made while it is in flight.
+      return puts.length === 1 ? new Promise((resolve) => (release = () => resolve(answer))) : answer;
+    },
+  });
+  render(
+    <ThreadRoom id={mine.thread.id} me="ana" initial={mine} tick={0} agents={[helper, lead]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
+  fireEvent.click(await within(menu).findByRole("menuitemcheckbox", { name: /^helper/ }));
+  fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: /^lead/ }));
+  await waitFor(() => assert.equal(puts.length, 1));
+  release?.();
+  await waitFor(() => assert.equal(puts.length, 2));
+  assert.deepEqual(
+    puts.map((p) => [(p as { version: number }).version, (p as { agents: string[] }).agents]),
+    [
+      [1, ["helper"]],
+      [2, ["helper", "lead"]],
+    ],
+  );
+});
