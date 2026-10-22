@@ -634,6 +634,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             homes={homes}
             enabledIn={enabledIn}
             projects={projects}
+            kinds={root?.kinds ?? []}
             workspaceName={workspaceName}
             onOpenAgent={(name) => openAgent(name, "access")}
             onOpenProject={openProject}

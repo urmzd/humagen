@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { Person, ProjectAgentsView, Revision } from "./api.ts";
+import type { Person, ProjectAgentsView, ProjectKindSpec, Revision } from "./api.ts";
 import { DirectoryPage } from "./Directory.tsx";
 import { stubFetch } from "./dom.ts";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
-import { field, globex, tree } from "./projects.fixtures.ts";
+import { field, globex, tree, view } from "./projects.fixtures.ts";
 import type { DirectoryTab } from "./route.ts";
 
 const at = "2026-10-01T09:00:00Z";
@@ -33,7 +33,7 @@ afterEach(() => {
 const dana: Person = { subject: "okta|dana", name: "Dana Scully", handle: "dana-scully", roles: ["operator"], picture: "/api/people/dana-scully/photo?v=2" };
 const fox: Person = { subject: "okta|fox", handle: "fox", roles: [], picture: null };
 
-function openDirectory(tab: DirectoryTab, can = ["people:read", "agents:read", "projects:read"]) {
+function openDirectory(tab: DirectoryTab, can = ["people:read", "agents:read", "projects:read"], projects = tree, kinds: ProjectKindSpec[] = []) {
   net = stubFetch({ "GET /api/people": () => ({ people: [dana, fox], next: null }) });
   const opened: string[] = [];
   render(
@@ -44,7 +44,8 @@ function openDirectory(tab: DirectoryTab, can = ["people:read", "agents:read", "
       agents={agents}
       homes={homes}
       enabledIn={enabledIn}
-      projects={tree}
+      projects={projects}
+      kinds={kinds}
       workspaceName="Acme"
       onOpenAgent={(n) => opened.push(`agent:${n}`)}
       onOpenProject={(n) => opened.push(`project:${n}`)}
@@ -80,6 +81,19 @@ test("the Directory's projects: the tree in words, with the agents that live in 
   assert.ok(screen.getByText("Acme"));
   assert.ok(screen.getByText("Field engineering"));
   assert.ok(screen.getByText("globex-helper"));
+});
+
+test("the Directory's projects: a workspace's own kind is called by its title, as the Projects page calls it", () => {
+  const launch = view("Launch", { title: "Q4 robot launch", kind: "initiative" });
+  const northwind = view("Northwind", { kind: "partner", customer: "Northwind Logistics" });
+  const kinds: ProjectKindSpec[] = [
+    { name: "initiative", title: "Initiative", like: "team" },
+    { name: "partner", title: "Partner", like: "account" },
+  ];
+  openDirectory("projects", undefined, [...tree, launch, northwind], kinds);
+  assert.ok(screen.getByText(/^Initiative · /));
+  assert.ok(screen.getByText(/^Partner · /));
+  assert.ok(!screen.queryByText(/^initiative|^partner/), "not by its lowercase name");
 });
 
 test("a tab someone may not read is not offered, and the page opens on one they may", async () => {
