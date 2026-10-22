@@ -3534,8 +3534,10 @@ is left out.
     });
   }
 
-  /** A secret left out is kept. A client the server's configuration owns
-cannot be changed here and answers 409.
+  /** A secret left out is kept, and so is a home in a project the caller
+may not read, which they are not shown: naming none keeps it, and
+naming one they may read replaces it. A client the server's
+configuration owns cannot be changed here and answers 409.
  */
   async updateClient(id: string, body: ClientInput, options?: RequestOptions): Promise<ClientView> {
     let path = "/api/clients/{id}";

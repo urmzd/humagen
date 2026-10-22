@@ -2065,6 +2065,7 @@ export interface ClientView {
   bots?: Record<string, string>;
   slack?: SlackOptions;
   github?: GitHubOptions;
+  /** Absent when the client has none, and when it is in a project the caller may not read. */
   home?: ClientHome;
   enabled: boolean;
   /** Set on a client the server's configuration owns, which the API cannot change. */

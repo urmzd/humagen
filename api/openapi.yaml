@@ -3818,8 +3818,10 @@ paths:
       tags: [clients]
       summary: Replace a client's record
       description: |
-        A secret left out is kept. A client the server's configuration owns
-        cannot be changed here and answers 409.
+        A secret left out is kept, and so is a home in a project the caller
+        may not read, which they are not shown: naming none keeps it, and
+        naming one they may read replaces it. A client the server's
+        configuration owns cannot be changed here and answers 409.
       x-permission: clients:write
       parameters:
         - {$ref: "#/components/parameters/ClientID"}
@@ -7111,7 +7113,10 @@ components:
           additionalProperties: {type: string}
         slack: {$ref: "#/components/schemas/SlackOptions"}
         github: {$ref: "#/components/schemas/GitHubOptions"}
-        home: {$ref: "#/components/schemas/ClientHome"}
+        home:
+          description: Absent when the client has none, and when it is in a project the caller may not read.
+          allOf:
+            - $ref: "#/components/schemas/ClientHome"
         enabled: {type: boolean}
         managed:
           description: Set on a client the server's configuration owns, which the API cannot change.

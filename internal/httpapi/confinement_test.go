@@ -171,6 +171,14 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		must("POST", "/api/clients", slackApp(h.client, "A01ZQX", "svc-acme"), http.StatusCreated)
 	}
 	must("POST", "/api/projects/"+h.project+"/channels", `{"name":"`+h.channel+`","purpose":"Channel `+marker+`.","slack":{"client":"`+bound+`","channel":"C01CANARY"}}`, http.StatusCreated)
+	if inside {
+		// The open client's home is in the hidden project: the client is
+		// the outsider's to read, its home is not.
+		homed := strings.Replace(slackApp(h.open, "A01OPEN", "svc-acme"), `"slack":`, `"home":{"project":"`+h.project+`"},"slack":`, 1)
+		if out := must("PUT", "/api/clients/"+h.open, homed, http.StatusOK); !strings.Contains(fmt.Sprint(out["home"]), h.project) {
+			t.Fatalf("the owner does not see the open client's home: %v", out)
+		}
+	}
 	if out := must("GET", "/api/clients/"+bound+"/bindings", "", http.StatusOK); !strings.Contains(fmt.Sprint(out), h.channel) {
 		t.Fatalf("the owner does not see the hidden channel's binding: %v", out)
 	}
