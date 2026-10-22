@@ -5,7 +5,7 @@ import { inWords, presets } from "./cron.ts";
 import { ApiError, api, type Revision, type Schedule, type ScheduleView } from "./api.ts";
 import { type ProjectRef, projectOptions, titleIn } from "./projects.ts";
 import { deliverFor, deliverOptions } from "./recap.ts";
-import { AgentMark, agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Section } from "./ui.tsx";
+import { AgentMark, agentOptions, ago, button, card, Chip, Confirm, Empty, field, Label, Menu, Page, PageActions, Problem, primary, rows, Section, textLink } from "./ui.tsx";
 
 /** In UTC, because that is the zone the expression is written in. */
 function when(iso: string): string {
@@ -125,7 +125,7 @@ function ScheduleForm({
         <Label text="Agent" hint="Who gets the request.">
           <Menu label="Agent" value={agent} options={agentOptions(agents.map((a) => a.spec.name))} onChange={(next) => set({ agent: next })} />
         </Label>
-        <Label text="Project" hint="Where its tasks are filed. A project's shared memory is sent with each one.">
+        <Label text="Project" hint="Where its conversations are filed. A project's shared memory is sent with each one.">
           <Menu
             label="Project"
             value={draft.project ?? ""}
@@ -215,6 +215,8 @@ export function Schedules({
   const [editing, setEditing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [own, setOwn] = useState<string | null>(null);
+  // The schedule whose deletion is being confirmed: it cannot be undone, so it is asked twice.
+  const [deleting, setDeleting] = useState<string | null>(null);
   const open = onSelect ? selected : own;
   const select = (name: string | null) => {
     setEditing(false);
@@ -266,28 +268,40 @@ export function Schedules({
         }
         actions={
           canWrite ? (
-            <>
-              {!s.managed && (
-                <button type="button" className={button} onClick={() => act(api.deleteSchedule(s.name), "The schedule could not be deleted.", () => select(null))}>
-                  Delete
-                </button>
-              )}
-              <button type="button" className={button} onClick={() => act(api.pauseSchedule(s.name, !s.paused), "The schedule could not be changed.")}>
-                {s.paused ? "Resume" : "Pause"}
-              </button>
-              {!editing && !s.managed && (
-                <button type="button" className={button} onClick={() => setEditing(true)}>
-                  Edit
-                </button>
-              )}
-              <button type="button" className={primary} onClick={() => runNow(s)}>
-                Run Now
-              </button>
-            </>
+            <PageActions
+              primary={{ label: "Run Now", onSelect: () => runNow(s) }}
+              actions={[
+                ...(!editing && !s.managed ? [{ label: "Edit", onSelect: () => setEditing(true) }] : []),
+                {
+                  label: s.paused ? "Resume" : "Pause",
+                  onSelect: () => act(api.pauseSchedule(s.name, !s.paused), "The schedule could not be changed."),
+                },
+                ...(!s.managed
+                  ? [
+                      {
+                        label: "Delete",
+                        destructive: true,
+                        onSelect: () => setDeleting(s.name),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           ) : undefined
         }
       >
         <Problem message={problem} />
+        {deleting === s.name && (
+          <Confirm
+            question={defaultCopy.confirm.ask(s.name)}
+            action="Delete Schedule"
+            onConfirm={() => {
+              setDeleting(null);
+              act(api.deleteSchedule(s.name), "The schedule could not be deleted.", () => select(null));
+            }}
+            onKeep={() => setDeleting(null)}
+          />
+        )}
         {s.managed && <p className="text-aui-xs text-aui-muted">{copy.managed}</p>}
         {editing ? (
           <ScheduleForm
@@ -306,7 +320,7 @@ export function Schedules({
             <dd className="flex items-center gap-2 text-aui-fg">
               <AgentMark name={s.agent} size={14} />
               {onOpenAgent ? (
-                <button type="button" className="underline-offset-2 hover:underline" onClick={() => onOpenAgent(s.agent)}>
+                <button type="button" className={textLink} onClick={() => onOpenAgent(s.agent)}>
                   {s.agent}
                 </button>
               ) : (
@@ -338,7 +352,7 @@ export function Schedules({
         </Section>
         <Section
           title="Recent runs"
-          hint={s.recent.length > 0 ? `Last ${s.recent.length}: ${s.recent.length - failed} ok, ${failed} failed. Each opens the task it ran in.` : undefined}
+          hint={s.recent.length > 0 ? `Last ${s.recent.length}: ${s.recent.length - failed} ok, ${failed} failed. Each opens the conversation it ran in.` : undefined}
         >
           {s.recent.length === 0 ? (
             <p className="text-aui-sm text-aui-muted">Has not run yet.</p>
@@ -368,7 +382,7 @@ export function Schedules({
   return (
     <Page
       title="Schedules"
-      lede="A schedule sends an agent the same request on a timer. Each time it fires is a task you can open, filed in its project."
+      lede="A schedule sends an agent the same request on a timer. Each time it fires is a conversation you can open, filed in its project."
       actions={
         canWrite && agents.length > 0 && !adding ? (
           <button type="button" className={primary} onClick={() => setAdding(true)}>

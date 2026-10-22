@@ -457,12 +457,15 @@ func (w *write) commit() error {
 	return nil
 }
 
-// ptr is p as a change records it: without what the file owns, and with an
-// enable list even when the upgrade's root had none.
+// ptr is p as a change records it: without what the file owns, with an
+// enable list even when the upgrade's root had none, and with its skills'
+// names and descriptions but not their instructions, which only the
+// project's own record keeps.
 func ptr(p Project) *Project {
 	c := p.clone()
 	c.FileOwns = nil
 	c.Agents = c.Agents.listed()
+	c.Skills = BriefSkills(c.Skills)
 	return &c
 }
 
@@ -638,6 +641,8 @@ func (s *Store) update(tenantName, name string, version int, w Writer, at time.T
 		return Project{}, fmt.Errorf("%w: a project's experts are set on their own", ErrInvalid)
 	case what != KnowledgeChanged && !slices.Equal(next.Knowledge, cur.Knowledge):
 		return Project{}, fmt.Errorf("%w: a project's knowledge sources are set on their own", ErrInvalid)
+	case what != SkillsChanged && !slices.Equal(next.Skills, cur.Skills):
+		return Project{}, fmt.Errorf("%w: a project's skills are set on their own", ErrInvalid)
 	case next.Kind == Company && !w.Govern:
 		return Project{}, fmt.Errorf("%w: company projects need projects:govern", ErrForbidden)
 	}
@@ -743,6 +748,8 @@ func sameField(a, b Project, field string) bool {
 		return sameAgents(a.Agents, b.Agents)
 	case FieldKnowledge:
 		return slices.Equal(a.Knowledge, b.Knowledge)
+	case FieldSkills:
+		return slices.Equal(a.Skills, b.Skills)
 	}
 	return false
 }
@@ -871,6 +878,8 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 			next.Agents = p.Agents.canonical()
 		case FieldKnowledge:
 			next.Knowledge = slices.Clone(p.Knowledge)
+		case FieldSkills:
+			next.Skills = slices.Clone(p.Skills)
 		}
 	}
 	if next.IsRoot() {

@@ -538,7 +538,7 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 	pr := projects.Project{
 		Name: d.Name, Title: d.Title, Description: d.Description, Kind: projects.Kind(d.Kind),
 		Parent: spec.ParentOf(d), Instructions: d.Instructions, Experts: expertsOf(d.Experts), AgentPosts: d.AgentPosts,
-		Knowledge: append([]string(nil), d.Knowledge...),
+		Knowledge: append([]string(nil), d.Knowledge...), Skills: skillsOf(d.Skills),
 	}
 	if a := d.Account; a != nil {
 		pr.Account = &projects.AccountInfo{Customer: a.Customer, ExternalID: a.ExternalID, URL: a.URL}
@@ -560,6 +560,7 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 		projects.FieldAgentPosts:   d.AgentPosts != "",
 		projects.FieldExperts:      d.Experts != nil,
 		projects.FieldKnowledge:    d.Knowledge != nil,
+		projects.FieldSkills:       d.Skills != nil,
 		projects.FieldAgents:       d.Agents != nil,
 		projects.FieldMembers:      d.Members != nil,
 	} {
@@ -748,6 +749,9 @@ func configCmd(o Options, args []string, out io.Writer) error {
 		if len(unset) > 0 {
 			fmt.Fprintf(out, "note: not set in this shell: %s (start and deploy need them)\n", strings.Join(unset, ", "))
 		}
+		for _, w := range machineWarnings(cfg) {
+			fmt.Fprintf(out, "warning: %s\n", w)
+		}
 		_, err = fmt.Fprintf(out, "ok: %s\n", strings.Join(paths, ", "))
 		return err
 	}
@@ -758,6 +762,26 @@ func configCmd(o Options, args []string, out io.Writer) error {
 	}
 	_, err = out.Write(b)
 	return err
+}
+
+// machineWarnings is what config check says about the machines a spec
+// configures. Projects moved from runs:* to projects:*, so a machine whose
+// scopes read runs but not projects lists no projects (docs/projects.md,
+// Migration phase 1); a person is unaffected under the built-in policy.
+func machineWarnings(cfg spec.Config) []string {
+	var out []string
+	for _, p := range cfg.Platforms {
+		s := p.Spec.Surfaces.Slack
+		if s == nil || !s.Enabled || s.WarpClient == nil {
+			continue
+		}
+		scopes := s.WarpClient.Scopes
+		if slices.Contains(scopes, auth.ScopePrefix+string(auth.RunsRead)) && !slices.Contains(scopes, auth.ScopePrefix+string(auth.ProjectsRead)) {
+			out = append(out, fmt.Sprintf("platform %q: the Slack app's warp_client has %s%s but not %s%s, so it lists no projects; add %s%s (see docs/authorization.md)",
+				p.Metadata.Name, auth.ScopePrefix, auth.RunsRead, auth.ScopePrefix, auth.ProjectsRead, auth.ScopePrefix, auth.ProjectsRead))
+		}
+	}
+	return out
 }
 
 // defaultSpec is warp.yaml in the config directory, when there is one.

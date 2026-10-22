@@ -80,6 +80,25 @@ changes none. A policy file written before projects had their own permissions
 adds `projects` to the rule that lets operators write runs, as above, or only
 admins make projects.
 
+### Upgrading from before projects had their own permissions
+
+Project routes moved from `runs:*` to `projects:*`. A policy file written
+before then takes this one-line change, or only admins make projects:
+
+```diff
+ role operator extends viewer {
+-  allow write on runs, schedules, alerts, evals, artifacts
++  allow write on runs, schedules, alerts, evals, artifacts, projects
+ }
+```
+
+People are unaffected under the built-in policy, whose viewer reads `*`. A
+machine gets exactly the scopes on its token, so one with explicit scopes
+(the Slack app, CI) needs `warp:projects:read` to list projects.
+`warp config check` warns of a Slack app whose `warp_client` holds
+`warp:runs:read` but not `warp:projects:read`, the one machine a spec
+configures; a CI token's scopes are the identity provider's to check.
+
 ## Project roles
 
 A project role narrows what a permission allows; it never grants one. Every
@@ -115,6 +134,7 @@ and then `{who: "role:field-eng", role: member}` on the project.
 | Write or run an eval suite that tries an agent living in it | `evals:write` | member: its cases are filed where the agent lives |
 | Change it: title, description, instructions, account, kind, archiving, members, the agents it turns on, who may announce; add, keep or remove notes; delete it | `projects:write` | owner (the workspace and company projects: `projects:govern` too) |
 | Name the knowledge sources every run in it and below is grounded in | `projects:write` | owner (the workspace and company projects: `projects:govern` too), holding `knowledge:read` as well, which reads the sources anyway. A caller without `knowledge:read` is shown no source's name |
+| Declare the skills a message posted in it and below can name | `projects:write` | owner (the workspace and company projects: `projects:govern` too) |
 | Make an agent live in it, or move one out | `agents:write` | owner of the project it comes to and of the one it leaves |
 | Edit an agent that lives in it: its spec, call policy and notes, keeping or discarding its proposals in the inbox too | `agents:write` | owner (the agent's routes take its canonical name, in lower case, and answer 404 for another spelling) |
 | Move it | `projects:write` | owner, and member of the new parent; leaving a project that holds a limit needs `billing:write`, and so does moving one that holds, or has below it, an owner's limit set from a parent the caller does not own; leaving an ancestor whose allow list keeps agents out needs owning it, unless the new chain allows no more; and it is refused (409) while it would leave a project's, a channel's or a thread's default below it, an agent that lives there, or a schedule filed there without its agent |

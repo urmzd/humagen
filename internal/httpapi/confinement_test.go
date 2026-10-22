@@ -256,6 +256,10 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	if out := must("GET", "/api/clients/"+bound+"/bindings", "", http.StatusOK); !strings.Contains(fmt.Sprint(out), h.channel) {
 		t.Fatalf("the owner does not see the hidden channel's binding: %v", out)
 	}
+	// The hidden project declares a skill, which completes and lists only
+	// where it is seen.
+	at := must("GET", "/api/projects/"+h.project+"/skills", "", http.StatusOK)["version"]
+	must("PUT", "/api/projects/"+h.project+"/skills", fmt.Sprintf(`{"version":%v,"skills":[{"name":"canary-%s","description":"Skill %s.","instructions":"Steps %s."}]}`, at, marker, marker, marker), http.StatusOK)
 	h.announcement = str(must("POST", "/api/projects/"+h.project+"/announcements", `{"subject":"News `+marker+`","text":"Words `+marker+`."}`, http.StatusCreated), "id")
 	// An alert raised by the hidden run, in the hidden project.
 	raised, _, err := f.p.Alerts.Raise("acme", "canary-alert-"+marker, alerts.Alert{
@@ -271,7 +275,7 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		h.doc = str(must("POST", "/api/knowledge/"+h.source+"/documents", `{"title":"Doc `+marker+`","text":"Words `+marker+` here."}`, http.StatusCreated), "id")
 		must("POST", "/api/knowledge/"+h.source+"/variants", `{"name":"`+h.variant+`"}`, http.StatusCreated)
 		// The hidden project grounds its runs in the source.
-		at := must("GET", "/api/projects/"+h.project+"/knowledge", "", http.StatusOK)["version"]
+		at = must("GET", "/api/projects/"+h.project+"/knowledge", "", http.StatusOK)["version"]
 		must("PUT", "/api/projects/"+h.project+"/knowledge", fmt.Sprintf(`{"version":%v,"knowledge":["%s"]}`, at, h.source), http.StatusOK)
 		person, err := f.p.People.Seen("acme", people.Sighting{Subject: "okta|canary-" + marker, Name: "Canary " + marker, Source: people.SignIn}, time.Now())
 		if err != nil {

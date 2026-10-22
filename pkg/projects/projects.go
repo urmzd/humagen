@@ -210,6 +210,9 @@ type Project struct {
 	// Knowledge is the knowledge sources every run filed here and below is
 	// grounded in, besides its agent's own (Tree.Knowledge).
 	Knowledge []string `json:"knowledge,omitempty"`
+	// Skills are named instructions a message posted here and below can
+	// tell an agent to use (Tree.Skills).
+	Skills []Skill `json:"skills,omitempty"`
 
 	// Managed is ManagedFile when the platform file declares the project.
 	Managed string `json:"managed,omitempty"`
@@ -238,6 +241,7 @@ func (p Project) clone() Project {
 	p.Kinds = slices.Clone(p.Kinds)
 	p.Agents = p.Agents.clone()
 	p.Knowledge = slices.Clone(p.Knowledge)
+	p.Skills = slices.Clone(p.Skills)
 	return p
 }
 
@@ -314,7 +318,7 @@ func builtIn(k Kind) bool { return k == Company || k == Team || k == Account }
 
 var validField = map[string]bool{
 	FieldTitle: true, FieldDescription: true, FieldKind: true, FieldParent: true, FieldAccount: true, FieldInstructions: true,
-	FieldAgentPosts: true, FieldExperts: true, FieldMembers: true, FieldKinds: true, FieldAgents: true, FieldKnowledge: true,
+	FieldAgentPosts: true, FieldExperts: true, FieldMembers: true, FieldKinds: true, FieldAgents: true, FieldKnowledge: true, FieldSkills: true,
 }
 
 // validate checks a project on its own: its fields and bounds, not its place.
@@ -377,6 +381,9 @@ func (p Project) validate() error {
 		return err
 	}
 	if err := validKnowledge(p.Knowledge); err != nil {
+		return err
+	}
+	if err := validSkills(p.Skills); err != nil {
 		return err
 	}
 	return p.Agents.validate()

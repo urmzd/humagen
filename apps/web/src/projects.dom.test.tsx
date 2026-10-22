@@ -94,6 +94,89 @@ test("a project page shows where it sits, what sits below it, and every limit ab
   );
 });
 
+test("a project's meta line names its lead, the agent that answers what tags no agent there, in its color", async () => {
+  open(globexDetail, {
+    routes: {
+      "GET /api/projects/Globex/agents": () => ({
+        version: 1,
+        available: { all: true, names: [] },
+        homes: [],
+        default_resolved: { agent: "globex-helper", from: "project:Globex" },
+      }),
+    },
+  });
+  const lead = await screen.findByText("globex-helper");
+  const meta = lead.closest("span.inline-flex.flex-wrap");
+  assert.ok(meta);
+  assert.equal(meta.textContent, "Account · Globex Inc · in Field engineering·Leadglobex-helper");
+  // Told apart by color: the agent's mark sits beside its name.
+  assert.ok(lead.querySelector("[data-accent='agent']"));
+});
+
+test("a project's header is one primary action and a More menu, with Archive and Delete last after a rule", async () => {
+  open(globexDetail, { onMute: async () => {} });
+  const more = await screen.findByRole("button", { name: "More" });
+  // Only New Conversation is a button of its own; the rest wait in the menu.
+  assert.ok(screen.getByRole("button", { name: "New Conversation" }));
+  for (const name of ["Mute Project", "Edit Project", "Move Project", "Archive Project", "Delete Project"]) {
+    assert.ok(!screen.queryByRole("button", { name }), `${name} is not a button in the header`);
+  }
+  assert.equal(more.getAttribute("aria-expanded"), "false");
+  fireEvent.keyDown(more, { key: "ArrowDown" });
+  const menu = screen.getByRole("menu", { name: "More" });
+  assert.equal(more.getAttribute("aria-expanded"), "true");
+  const children = [...menu.children].map((el) => (el.getAttribute("role") === "separator" ? "---" : el.textContent));
+  assert.deepEqual(children, ["Mute Project", "Edit Project", "Move Project", "---", "Archive Project", "Delete Project"]);
+  // Escape closes it and puts focus back on More.
+  fireEvent.keyDown(menu, { key: "Escape" });
+  assert.ok(!screen.queryByRole("menu"));
+  assert.equal(document.activeElement, more);
+  // Each item still does what its button did.
+  fireEvent.click(more);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit Project" }));
+  assert.ok(!screen.queryByRole("menu"));
+  assert.ok(await screen.findByRole("button", { name: "Cancel" }));
+});
+
+test("Delete Project cannot be undone, so it asks twice, and Escape or moving away keeps the project", async () => {
+  let deleted = 0;
+  open(globexDetail, {
+    routes: {
+      "DELETE /api/projects/Globex": () => {
+        deleted++;
+        return undefined;
+      },
+    },
+  });
+  const ask = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete Project" }));
+    return screen.getByRole("group", { name: /^Delete .*\? This cannot be undone\.$/ });
+  };
+  // Step one only asks, in words, with focus on keeping it.
+  let step = await ask();
+  assert.equal(document.activeElement?.textContent, "Keep It");
+  fireEvent.keyDown(step, { key: "Escape" });
+  assert.ok(!screen.queryByRole("group", { name: /This cannot be undone/ }));
+  // Moving focus away keeps it too.
+  step = await ask();
+  fireEvent.blur(within(step).getByRole("button", { name: "Keep It" }), { relatedTarget: document.body });
+  assert.ok(!screen.queryByRole("group", { name: /This cannot be undone/ }));
+  assert.equal(deleted, 0);
+  // Step two deletes.
+  step = await ask();
+  fireEvent.click(within(step).getByRole("button", { name: "Delete Project" }));
+  await waitFor(() => assert.equal(deleted, 1));
+});
+
+test("Archive Project can be undone, so it acts at once", async () => {
+  open(globexDetail, { routes: { "PUT /api/projects/Globex": () => globex } });
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Archive Project" }));
+  assert.ok(!screen.queryByRole("group", { name: /This cannot be undone/ }));
+  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "PUT" && r.path === "/api/projects/Globex")));
+});
+
 test("Mute Project says so beside it when the mute could not be saved", async () => {
   const asked: [string, boolean][] = [];
   open(globexDetail, {
@@ -102,7 +185,8 @@ test("Mute Project says so beside it when the mute could not be saved", async ()
       return Promise.reject(new Error("the preferences could not be read"));
     },
   });
-  fireEvent.click(await screen.findByRole("button", { name: "Mute Project" }));
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Mute Project" }));
   await screen.findByText("Could not mute. Try again.");
   assert.deepEqual(asked, [["Globex", true]]);
 });
@@ -110,7 +194,8 @@ test("Mute Project says so beside it when the mute could not be saved", async ()
 test("Move Project sends the new parent by its name, spaces and all", async () => {
   const platformDetail: ProjectDetail = { project: platform, ancestors: [workspace], children: [], limits: [] };
   open(platformDetail, { routes: { "POST /api/projects/Platform/move": () => platform } });
-  fireEvent.click(await screen.findByRole("button", { name: "Move Project" }));
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Move Project" }));
   fireEvent.click(screen.getByRole("button", { name: /^Move under:/ }));
   fireEvent.click(await screen.findByRole("option", { name: /^Globex renewals/ }));
   fireEvent.click(screen.getByRole("button", { name: "Move" }));
@@ -188,6 +273,7 @@ test("the workspace and company-wide projects are changed only with projects:gov
   assert.ok(screen.getByText("Only those who govern projects change the workspace and company-wide projects."));
   assert.ok(!screen.queryByRole("navigation", { name: "Where this project sits" }), "the workspace sits nowhere");
   assert.ok(!screen.queryByRole("button", { name: "Delete Project" }));
+  assert.ok(!screen.queryByRole("menuitem", { name: "Delete Project" }));
   cleanup();
   net.restore();
 
@@ -284,7 +370,7 @@ test("the Schedules tab: one rule under the tabs, and each schedule's time in wo
     recent: [],
   };
   open(globexDetail, { tab: "schedules", can: [...everything, "schedules:write"], schedules: [recap] });
-  const heading = await screen.findByRole("heading", { name: "Scheduled (1)" });
+  const heading = await screen.findByRole("heading", { name: /^Scheduled ?, 1$/ });
   const section = heading.closest("section");
   assert.ok(section);
   // The tab strip draws the rule under the tabs. The section draws its own only after another.

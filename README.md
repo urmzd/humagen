@@ -26,7 +26,13 @@
 - Edit agents and revisions, run deterministic evals, schedule work and inspect run traces.
 - Apply tenant permissions, depth and fan-out limits, run admission policies and usage accounting.
 - Search knowledge, manage project memory and inspect alerts and analytics in the web console. Ground every run in a project, and the projects below it, in the knowledge sources the project names.
-- Tag who answers (`@agent` or `@auto`) or let the default a project inherits answer, enable platform agents per project or give an agent a home in one, and browse the workspace's people, agents and projects in the Directory.
+- Tag who answers (`@agent` or `@auto`), or pick a conversation's agents and let the best fit or all of them answer (on Slack and GitHub, the default a project inherits answers), enable platform agents per project or give an agent a home in one, and browse the workspace's people, agents and projects in the Directory.
+- Talk in channels and shared threads: people and agents in one room, tagging people, agents and a project's experts, with private threads for their participants alone.
+- Read a project's inbox and post announcements to its members, or let a scheduled agent post a recap of what changed.
+- Give each project members and owners, keep a project to its members alone, and let a project's owners set tighter limits below it.
+- Cowork from Slack and GitHub: bind a project's channel to a Slack channel, post a mapped person's Slack messages as their own, reply to an announcement in its Slack thread, and ask the app in a GitHub comment.
+- With `workspace.release_notes` on, see warp's release notes in the workspace's inbox after an upgrade.
+- Keep the inbox bounded: what was settled for everyone is dropped after the workspace's retention, 90 days by default.
 - Connect GitHub and Slack through signed webhook ingress and tenant-bound connector capabilities.
 - Give agents MCP tools that act as each person with that person's own credential, and never a shared one in its place.
 - Answer in Slack with the console's own components through a Socket Mode app that streams natively.

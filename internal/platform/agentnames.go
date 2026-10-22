@@ -275,6 +275,7 @@ func (s *Seer) Change(c projects.Change) projects.Change {
 			shown := **pr
 			shown.Agents = s.ProjectAgents(shown.Agents)
 			shown.Knowledge = s.Sources(shown.Knowledge)
+			shown.Skills = projects.BriefSkills(shown.Skills)
 			*pr = &shown
 		}
 	}
@@ -583,6 +584,15 @@ func (s *Seer) Thread(th threads.Thread) threads.Thread {
 	shown := s.participantShown(th)
 	if th.Default != "" && !s.threadAgents(th)(th.Default) {
 		th.Default = ""
+	}
+	// A selected agent the reader may not read is left out, as if not
+	// selected, and a mode means nothing with fewer than two.
+	th.Agents = slices.DeleteFunc(slices.Clone(th.Agents), func(a string) bool { return !s.threadAgents(th)(a) })
+	if len(th.Agents) == 0 {
+		th.Agents = nil
+	}
+	if len(th.Agents) < 2 {
+		th.Mode = ""
 	}
 	th.Participants = slices.DeleteFunc(slices.Clone(th.Participants), func(pt threads.Participant) bool {
 		return pt.Kind == threads.Agent && !shown(pt.Name)

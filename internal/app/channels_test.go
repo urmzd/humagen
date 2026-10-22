@@ -142,3 +142,70 @@ func TestTheFilesKnowledgeIsTheFiles(t *testing.T) {
 		t.Fatalf("changing the file's [] = %v", err)
 	}
 }
+
+// The skills the file declares are the file's, on the workspace and on a
+// project, even as []; a project that leaves them out keeps the console's.
+// A message in a project can name its own and the workspace's.
+func TestTheFilesSkillsAreTheFiles(t *testing.T) {
+	p := newProjectsPlatform(t)
+	const tenant = "acme"
+	ada := projects.Writer{By: "ada"}
+	skill := func(name string) spec.Skill {
+		return spec.Skill{Name: name, Description: "Does " + name + ".", Instructions: "Do " + name + "."}
+	}
+	file := spec.Workspace{
+		Skills: []spec.Skill{skill("summarize")},
+		Projects: []spec.Project{
+			{Name: "Field"},
+			{Name: "Globex", Parent: "Field", Kind: spec.ProjectAccount, Skills: []spec.Skill{skill("renewal")}},
+		},
+	}
+	for range 2 {
+		if err := applyProjects(p, tenant, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	globex := mustGet(t, p, tenant, "Globex")
+	if len(globex.Skills) != 1 || globex.Skills[0].Instructions != "Do renewal." || globex.Version != 1 {
+		t.Fatalf("the file's skills = %+v at version %d", globex.Skills, globex.Version)
+	}
+	if _, err := p.Projects.SetSkills(tenant, "Globex", globex.Version, nil, ada, time.Now()); !errors.Is(err, projects.ErrManaged) {
+		t.Fatalf("changing the file's skills = %v", err)
+	}
+	field := mustGet(t, p, tenant, "Field")
+	if _, err := p.Projects.SetSkills(tenant, "Field", field.Version, []projects.Skill{{Name: "review", Description: "Review.", Instructions: "Review it."}}, ada, time.Now()); err != nil {
+		t.Fatalf("the console's skills on Field = %v", err)
+	}
+	if err := applyProjects(p, tenant, file); err != nil {
+		t.Fatal(err)
+	}
+	var offered []string
+	for _, s := range p.ProjectTree(tenant).Skills("Globex") {
+		offered = append(offered, s.Name+"<"+s.From)
+	}
+	if !slices.Equal(offered, []string{"renewal<Globex", "review<Field", "summarize<"}) {
+		t.Fatalf("a message in Globex can name %v", offered)
+	}
+	file.Projects[1].Skills = []spec.Skill{}
+	if err := applyProjects(p, tenant, file); err != nil {
+		t.Fatal(err)
+	}
+	if globex = mustGet(t, p, tenant, "Globex"); len(globex.Skills) != 0 {
+		t.Fatalf("the file's [] = %+v", globex.Skills)
+	}
+	if _, err := p.Projects.SetSkills(tenant, "Globex", globex.Version, []projects.Skill{{Name: "x", Description: "x", Instructions: "x"}}, ada, time.Now()); !errors.Is(err, projects.ErrManaged) {
+		t.Fatalf("changing the file's [] = %v", err)
+	}
+}
+
+// The mention kinds each Platform document declares are its workspace's.
+func TestTheFilesMentionKindsAreItsWorkspaces(t *testing.T) {
+	cfg := spec.Config{Platforms: []spec.Platform{
+		{Metadata: spec.Metadata{Name: "acme"}, Spec: spec.PlatformSpec{Workspace: spec.Workspace{MentionKinds: []spec.MentionKind{{Kind: "team", Title: "Teams", Resolves: "role"}}}}},
+		{Metadata: spec.Metadata{Name: "globex"}},
+	}}
+	got := mentionKinds(cfg)
+	if len(got) != 1 || len(got["acme"]) != 1 || got["acme"][0] != (platform.MentionKind{Kind: "team", Title: "Teams", Resolves: "role"}) {
+		t.Fatalf("mention kinds = %+v", got)
+	}
+}

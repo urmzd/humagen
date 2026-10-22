@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"cmp"
 	"context"
 
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
@@ -22,8 +23,12 @@ type Ask struct {
 	// Yours says the reader may answer it, as answering would check them.
 	Yours bool `json:"yours"`
 	// For is whom it is for: ForAnyone, ForPerson, ForExperts,
-	// ForAnswerers or ForNobody.
+	// ForAnswerers, ForOwners or ForNobody.
 	For string `json:"for"`
+	// OwnersOf is what the project whose owners it is for, for ForOwners, is
+	// called: its title, else its name. Absent for the workspace, and for a
+	// project the reader may not see, which is never named.
+	OwnersOf string `json:"owners_of,omitempty"`
 	// Topic is the experts' topic, for ForExperts. Empty is every expert.
 	Topic string `json:"topic,omitempty"`
 	// Person is the person it is for, by handle, for ForPerson.
@@ -67,6 +72,11 @@ func (p *Platform) askOf(ctx context.Context, who auth.Principal, run runs.Run, 
 	ask := Ask{Question: q.ID, For: to.kind, Topic: to.topic}
 	if to.kind == ForPerson {
 		ask.Person = s.key(to.person)
+	}
+	if to.kind == ForOwners && to.project != "" && p.Seer(who).Project(to.project) {
+		if pr, ok := p.ProjectTree(who.Tenant).Get(to.project); ok {
+			ask.OwnersOf = cmp.Or(pr.Title, pr.Name)
+		}
 	}
 	i := -1
 	for n, part := range m.Parts {

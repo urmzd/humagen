@@ -113,7 +113,7 @@ test("the projects page heads Company-wide with the workspace, links every row, 
   assert.match(out, />Acme</);
   assert.match(out, /href="\/projects\/Globex"/);
   assert.match(out, /Account · Globex Inc · in Field engineering/);
-  assert.match(out, /1 running · 4 tasks/);
+  assert.match(out, /1 running · 4 conversations/);
   assert.doesNotMatch(out, /New Project/);
   assert.match(page({ canCreate: true }), /New Project/);
   assert.match(page({ projects: [], root: null, canCreate: true }), /No projects yet. Make one/);
@@ -216,6 +216,7 @@ test("every kind of change in a project's history reads as words", () => {
     agents: true,
     home: true,
     experts: true,
+    skills: true,
     knowledge: true,
     channel: true,
   };
@@ -241,6 +242,24 @@ test("knowledge: an owner who reads knowledge gets an editor of the sources the 
   assert.match(out, />Save Knowledge</);
   assert.match(out, /aria-label="Remove globex-contracts"/);
   assert.doesNotMatch(out, /The platform file sets/);
+});
+
+test("knowledge: an owner in a workspace with no sources is told so, and offered no Save with nothing to save", () => {
+  const out = html(
+    <KnowledgeLists
+      project="Globex"
+      view={{ ...globexKnowledge, knowledge: [] }}
+      titles={{}}
+      sources={[]}
+      draft={[]}
+      editable
+      fileOwned={false}
+    />,
+  );
+  assert.match(out, /The workspace has no sources yet/);
+  assert.doesNotMatch(out, /Save Knowledge|Add Source/);
+  // Both parts are titled sections, as the rest of the Context tab is.
+  assert.equal([...out.matchAll(/<section aria-labelledby=/g)].length, 2);
 });
 
 test("knowledge: at the cap of 8 nothing more can be added", () => {

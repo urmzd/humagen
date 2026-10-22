@@ -107,7 +107,7 @@ Warp now follows the same shape:
 - **Pinned** holds conversations a person pins from the pin beside each task.
   Pins are saved with their preferences (`pinned` on `PUT /api/preferences`), so
   they follow the person to another browser.
-- **Tasks** rows are one line: the agent's orb and the title, with the state and
+- **Conversations** rows (once called Tasks) are one line: the agent's orb and the title, with the state and
   project in the row's tooltip and read out to screen readers.
 
 Verified in the local browser with `make dev`: pinning, a pin surviving a
@@ -120,7 +120,7 @@ project by project, so the navigation follows the work rather than the
 platform's parts.
 
 - **Sidebar order:** New, Projects, Schedules, Alerts, Inbox, Knowledge,
-  Agents, Artifacts, then Pinned and Tasks. There is no More menu.
+  Agents, Artifacts, then Pinned and Conversations. There is no More menu.
   - Execution history leaves the sidebar: each task already holds the history
     of every run in it, and a run anywhere opens its task.
   - Evals live on the agent or knowledge source they test.
@@ -144,3 +144,119 @@ platform's parts.
     cooldown, and watch spend.
 - **Schedules:** each one has a page with its upcoming times and recent runs,
   and it can be edited without losing either.
+
+## Patterns
+
+The console is built from a small set of usage patterns. A change uses one of
+them; it does not add a new kind of UI. Web-only layout lives in
+`apps/web/src/ui.tsx`. Anything Slack also draws lives in the shared packages:
+the model and ordering in `packages/core` (such as `HomeModel`,
+`orderNotifications`, `HOME_NEEDS`), the words in
+`packages/components/src/copy.ts`.
+
+| Pattern | What it is for | Renders it | When not to use it |
+|---|---|---|---|
+| Page | One screen with one title (its only h1), a line on what it is for, its own actions on the right and tabs under it | `Page` | A pane inside another page; there the title is an h2. Home's title is its greeting, drawn by `HomePage` |
+| Page actions | A page's own actions in its header: at most one primary action as a button, and the rest beside it. With more than two in all, the rest are one More menu, a text control reached by Tab and worked with the arrow keys, Escape and Enter, with destructive ones (Archive, Delete) last after a rule. On a phone the header is its title, its meta and at most two controls on one line | `PageActions`, `MoreMenu` | Actions on one row or one item of a list; those sit at the row's end |
+| Destructive action | Undoable acts at once, permanent asks twice. Archive and Mute act at once, since they can be undone. Delete Project, a schedule's Delete and an artifact's Delete Version ask once to start and once to confirm, in words, in place on the page with no modal: the question, the action and Keep It, with focus on Keep It. Escape or moving focus away keeps things as they are | `Confirm` | An action that can be undone; asking twice there only slows people down |
+| Section | A titled part of a page: a heading, its count, a hint and its actions | `Section` | A single line or a single control; put it in the page or the section above |
+| Box | A section that stands on its own as a panel, such as Home's Needs you | `Section box` (the `card` panel) | Every part of a long page; boxes inside boxes |
+| Row that opens something | A list item whose whole row is the control: what it is on the first line, who, where or when under it | `RowButton`, or a button in a `rows` list | Rows that hold several controls of their own; put those controls at the row's end |
+| Text action | A section's way to the rest, in Title Case and underlined, so it reads as a control on a phone too: Open Inbox, See All | `textAction` | The page's main action, which is a `primary` button |
+| Text link | A control inside a line of text, a row's details or a table cell: an agent's name, Open the run, Download. Underlined and 24px tall | `textLink` | Anything a person reaches for first; give it a button |
+| Back link | Where the page sits: the list it came from | `Page`'s `back` | Navigation between siblings; use tabs |
+| Tabs | The parts of one thing, each with an address in `route.ts` | `Tabs` | Filters over one list; use chips |
+| Chips | Selections and attachments: a kind filter, a file to send, a tag on a row | `KindChips`, `Chip`, the composer's attachments | Actions, and one choice on its own (a lone pill reads as a stray control) |
+| Text controls under the composer | Choices under the chat bar, such as Best Fit or All of Them, as text, never boxes; the + menu's agents, project and channel, and attachments, are chips | The composer (`Composer.tsx`) | Anywhere else |
+| Count | How many there are, beside its label in a heading or a tab, never on its own and never a status color. Hidden at zero. Read as "Needs you, 3" | `Count`, `Section count`, `Tabs` | A count that is the content, such as a figure on Monitor; use `Stat` |
+| Empty | What a list or box says when it has nothing, in words, with what to do next | `Empty` on a page, a quiet line in a box | Hiding the section: an empty box says so, rather than vanishing |
+| Loading | A list being read, at the height it will have | `SkeletonRows`, or a still "Loading" line where something waits on a person | Spinners; anything that moves on Home or in the inbox |
+| Error | What could not be done, and where to look instead | `Problem` for a failed action, a quiet line in a box for a failed read | Toasts that vanish before they are read |
+
+Agents are told apart by color (`AgentMark`), never by letters in boxes.
+Anything waiting on a person does not animate.
+
+## Home under the chat bar
+
+October 22, 2026. The owner sent a phone screenshot of Home: under the chat bar,
+a lone starter pill and, far below, a bare line, "Needs you · 1", that read as
+text rather than a way into the inbox.
+
+Home now has two boxes under the chat bar, side by side on a desktop and
+stacked on a phone:
+
+- **Needs you** lists the five newest things waiting on the person, each a row
+  with who raised it and when, read with `needs=true` on `GET /api/inbox`. The
+  heading carries the count of all of them, and Open Inbox goes to the rest.
+- **What's new** lists announcements from the person's projects, unread first
+  and marked "Unread" for screen readers as well as by the dot, with where each
+  was posted. See All opens the inbox's announcements.
+- A box with nothing in it says so. A person with nothing in either sees one
+  Welcome box saying what Home is for.
+- While Home reads, each box says "Loading" without moving; a read that failed
+  says the inbox has it all.
+
+The starter prompts and the chat bar belong to the conversation work and were
+not changed here.
+
+## Audit at phone and desktop width
+
+October 22, 2026. Every console page and tab at 390x844 and 1280x800, against
+the patterns above, with the layout checks below.
+
+| Where | What broke the patterns | Fix |
+|---|---|---|
+| Home | "Needs you · N" was a bare line that read as text; What's new had no box or way to the rest | The two boxes above |
+| Every page on a phone | The sidebar button sat 8px from the edge, inside the gutter | It sits on the 16px gutter |
+| Settings on a phone | The section strip scrolled under both screen edges | The strip scrolls inside the gutter |
+| Inbox | The page had no h1: the mailbox's title was an h2, and the page was the one top-level screen without `Page` | The Inbox is a `Page`, as docs/projects.md asks: its title and open count are the page's, and the mailbox leaves out its own (`heading={false}`), with Open, Resolved and All at the end of the filters' row |
+| Project | The meta line did not say who answers there | It names the lead, the agent that answers a Slack or GitHub message that tags no agent, with its `AgentMark`: "Account · in Field · Lead globex-helper" |
+| Pages with a back link, project crumbs | "‹ All projects" and the crumbs were 18px tall text | 24px tall, still text |
+| Artifacts, Monitor, Limits | Three copies of a "linkish" style, 18px tall | One `textLink`, 24px tall |
+| Monitor, Schedules, Directory, an agent's Access | Agent names, "Open run" and project links were 18 to 20px tall, and some only underlined on hover, so they read as plain text | `textLink`, or a 24px line |
+| Directory | The agents list drew a second rule under the tabs | The tabs' rule is the only one above the first row |
+| Search fields, limit fields | The 20px input was the only target inside a 32px frame | The input fills its frame |
+| Switches | The label, which is the target, was 20px tall | 24px at least |
+| Project Overview | Counts written "Sub-projects (0)" and "Scheduled (0)" | `Count` beside the heading, hidden at zero |
+| Project, Schedule | Six and four boxed buttons in the header, three rows of them on a phone, Delete beside the everyday ones | `PageActions`: New Conversation and Run Now are the primary actions, the rest are under More, Archive and Delete last after a rule. Each keeps its permission check and does what its button did |
+| Project Context, Knowledge | The new knowledge editor drew its own headings, and with no sources in the workspace it showed only a disabled Save Knowledge, without saying why | Two `Section`s, as the rest of the tab; with nothing to name it says the workspace has no sources yet. `make screens` seeds two sources and captures the project's and the workspace's Context tabs |
+| Project, Schedule | Delete Project and a schedule's Delete acted at once, though neither can be undone | They ask twice with `Confirm`, the pattern Delete Version already used, now one shared control |
+| Inbox | The same announcements were "What's new" on Home and "Updates" in the inbox | "What's new" in both; the address is unchanged |
+| Home, Slack Home | An urgent item looked like any other | An item above normal says so in words before when it came ("Urgent · just now"); a normal one says nothing more |
+
+Left as they are: the mailbox's group counts ("NEEDS YOU 3") and a project
+inbox's "3 open" use the shared web package's own styles, and the run history
+panel beside a conversation writes its counts as "Running (2)"; both sit next
+to the conversation work.
+
+## Checking a UI change
+
+`make screens` builds warp and the console, starts warp on a free loopback port
+with the development sign-in, the seeded agents and state in memory, adds
+announcements, failed runs and a schedule through the API, and captures every
+page and tab at 390x844 and 1280x800. It uses an installed Chromium or Chrome
+(`CHROMIUM` names one) and downloads none. Screenshots go to `.screens/`, which
+git ignores: `index.html` shows phone and desktop side by side, and a page that
+scrolls also gets `name.full.png`. A screen may act on the page once it is drawn (`act`), so `project-more`
+and `schedule-more` show the More menu open, and the chat's states show
+completion and the + menu, each checked like the rest. Text in a floating layer
+(`data-layer`, or a menu, dialog, listbox or tooltip) is checked against its own
+lines, not against the page under it. `SCREENS_ONLY=home,inbox` captures only those.
+
+The run fails when a screen breaks a layout check (`scripts/screens/checks.ts`,
+a pure function of the measured page, tested in `checks.test.ts`):
+
+- No horizontal overflow: the document is exactly as wide as the window.
+- On a phone, no text or control past the 16px gutter.
+- No control under 24 by 24 pixels (WCAG 2.5.8). A control with words of its
+  own inside a paragraph is exempt; a field or checkbox is measured by its label.
+- Exactly one h1 on every page.
+- No line of text over another in the main column.
+
+The CI job "Console screens" runs it on every pull request that changes
+`apps/web`, `packages`, `scripts/screens`, the `Makefile`, the lockfile or the
+workflow, and uploads `.screens/` as the
+`console-screens` artifact.
+
+Every UI change lists the screens it changes, with the before and after
+screenshots from `make screens`, in its pull request.

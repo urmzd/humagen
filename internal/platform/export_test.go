@@ -16,6 +16,7 @@ import (
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/pick"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // UseTool calls one of a turn's file tools the way the agent loop would, and
@@ -95,8 +96,8 @@ func (p *Platform) CallToolApproval(req runtime.Request, args map[string]any) (a
 // AutoFor is @auto for a message a client raised, as stamp resolves it, in
 // the client's home.
 func (p *Platform) AutoFor(ctx context.Context, c clients.Client, text string) (pick.Choice, error) {
-	project, _, _ := p.filedFor(c.Tenant, c, "")
-	return p.autoFor(ctx, c, project, text)
+	project, channel, _ := p.filedFor(c.Tenant, c, "")
+	return p.autoFor(ctx, c, p.clientPlace(c, project, channel, ""), text)
 }
 
 // DelayRecord holds every run between being accepted and being recorded, as
@@ -134,3 +135,17 @@ func HousekeepingTag(tenant, id, agent string, turn Place) envelope.Tag {
 // RetainInbox runs one pass of inbox retention, as the platform's loop does
 // every hour.
 func (p *Platform) RetainInbox() { p.retainInbox(context.Background()) }
+
+// SkillNamesOf is the names of the skills the runs a message starts are told
+// to use, as a retry, which names no client, finds them.
+func (p *Platform) SkillNamesOf(tenant string, th threads.Thread, m threads.Message) []string {
+	var out []string
+	for _, s := range p.skillsOfMessage(tenant, th, m, "") {
+		out = append(out, s.Name)
+	}
+	return out
+}
+
+// BeforeCarryOut runs fn after each message is posted and before what it
+// starts is decided, as a share landing then would.
+func (p *Platform) BeforeCarryOut(fn func()) { p.beforeCarryOut = fn }

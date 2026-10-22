@@ -221,3 +221,95 @@ func TestOpenRefusesRecordsThatAreNotThreads(t *testing.T) {
 		})
 	}
 }
+
+// Sharing a thread moves it and makes it shared in one write, which is kept:
+// read back, it is where it was shared, with whom it added, and its old
+// project lists it no more. A thread on a surface stays where it was started.
+func TestShareIsKept(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		private := shared("Globex", "general")
+		private.Visibility = threads.Private
+		th, _ := start(t, s, "acme", private, msg("dana", "a draft"))
+		if _, err := s.Share("acme", th.ID, th.Version+1, "Field", "renewals", "", nil, "", nil, nil, "dana", t0); !errors.Is(err, threads.ErrVersion) {
+			t.Fatalf("a share at a stale version = %v", err)
+		}
+		got, err := s.Share("acme", th.ID, th.Version, "Field", "renewals", "", nil, "", []threads.Participant{{Kind: threads.Person, Name: "ana"}}, nil, "dana", t0.Add(time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Project != "Field" || got.Channel != "renewals" || got.Visibility != threads.Shared || got.Version != th.Version+1 || len(got.Participants) != 2 || got.Participants[1].AddedBy != "dana" {
+			t.Fatalf("shared, the thread is %+v", got)
+		}
+		same, err := s.Share("acme", th.ID, got.Version, "Field", "renewals", "", nil, "", nil, nil, "dana", t0.Add(2*time.Minute))
+		if err != nil || same.Version != got.Version {
+			t.Fatalf("sharing it again where it is = %+v, %v", same, err)
+		}
+		again, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kept, _ := everything(t, again, "acme", th.ID); !reflect.DeepEqual(kept, got) {
+			t.Fatalf("read back, the thread is %+v, not %+v", kept, got)
+		}
+		for _, c := range []struct {
+			project string
+			n       int
+		}{{"Field", 1}, {"Globex", 0}} {
+			if list, _, err := again.List("acme", threads.Query{Project: c.project}); err != nil || len(list) != c.n {
+				t.Fatalf("%s lists %d threads, %v", c.project, len(list), err)
+			}
+		}
+		onSlack := shared("Globex", "general")
+		onSlack.Surface = &threads.Surface{Client: "app", Channel: "C01", TS: "1700.1"}
+		sl, _ := start(t, again, "acme", onSlack, msg("dana", "from slack"))
+		if _, err := again.Share("acme", sl.ID, sl.Version, "Field", "general", "", nil, "", nil, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("a surface's thread moved: %v", err)
+		}
+		dm := shared("Globex", "general")
+		dm.Visibility, dm.Surface = threads.Private, &threads.Surface{Client: "app", Channel: "D01", TS: "1700.2"}
+		d, _ := start(t, again, "acme", dm, msg("dana", "a direct message"))
+		if _, err := again.Share("acme", d.ID, d.Version, "Globex", "general", "", nil, "", nil, nil, "dana", t0); !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("a surface's private thread was made shared: %v", err)
+		}
+	})
+}
+
+// A thread's selected agents and mode are kept, and a record that holds an
+// invalid selection is refused.
+func TestRoutingIsKept(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := shared("Globex", "general")
+		rec.Agents, rec.Mode = []string{"scribe", "ignite"}, threads.ModeAll
+		th, _ := start(t, s, "acme", rec, msg("dana", "both of you"))
+		got, err := s.Update("acme", th.ID, th.Version, t0, func(t *threads.Thread) error {
+			t.Agents, t.Mode = []string{"scribe", "ignite", "lead"}, threads.ModeBestFit
+			return nil
+		})
+		if err != nil || got.Version != th.Version+1 {
+			t.Fatalf("changing the selection = %+v, %v", got, err)
+		}
+		again, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kept, _ := everything(t, again, "acme", th.ID); !reflect.DeepEqual(kept.Agents, []string{"scribe", "ignite", "lead"}) || kept.Mode != threads.ModeBestFit {
+			t.Fatalf("read back, the selection is %v %q", kept.Agents, kept.Mode)
+		}
+		if _, err := again.Update("acme", th.ID, got.Version, t0, func(t *threads.Thread) error {
+			t.Agents, t.Mode = []string{"a", "b", "c", "d"}, threads.ModeAll
+			return nil
+		}); !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("four agents all at once were kept: %v", err)
+		}
+	})
+}

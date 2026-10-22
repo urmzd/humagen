@@ -485,6 +485,12 @@ export interface Query {
    * person's own inbox (`mailTransport`) takes it; a project's inbox does not.
    */
   news?: boolean;
+  /**
+   * Only what may need the person, which `open` counts (`needs=true`): never a
+   * posted announcement, but an agent's draft waiting on its owners. Only the
+   * person's own inbox (`mailTransport`) takes it; a project's inbox does not.
+   */
+  needs?: boolean;
 }
 
 /** Everything the inbox asks of the platform. Tests and the gallery pass their own. */
@@ -515,6 +521,7 @@ export function mailTransport(http: Http): Transport {
       if (q.before) params.set("before", q.before);
       if (q.kind) params.set("kind", q.kind);
       if (q.news) params.set("news", "true");
+      if (q.needs) params.set("needs", "true");
       const page = await http<{ messages: unknown[]; next: string | null; open: number; unread: number }>("GET", `/api/inbox?${params}`);
       return { messages: (page.messages ?? []).map(fromServer), next: page.next ?? null, open: page.open ?? 0, unread: page.unread ?? 0 };
     },
@@ -630,12 +637,15 @@ export function notificationsOf(messages: PlatformMessage[], url?: (id: string) 
       const name = m.from.name;
       const summary = name && m.subject.startsWith(`${name} `) ? m.subject.slice(name.length + 1) : m.subject;
       const at = url?.(m.id);
+      // Only what is above normal is said: it changes what a person does first.
+      const severity = m.severity === "bad" ? ("critical" as const) : m.severity === "warn" ? ("warning" as const) : undefined;
       return {
         kind: "inbox" as const,
         id: m.id,
         from: name,
         summary,
         at: m.at,
+        ...(severity ? { severity } : {}),
         ...(at ? { url: at } : {}),
       };
     });

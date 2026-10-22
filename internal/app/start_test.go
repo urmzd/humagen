@@ -471,3 +471,34 @@ spec:
 		t.Errorf("manifest:\n%s", got.String())
 	}
 }
+
+// Projects moved from runs:* to projects:*, so config check warns about a
+// configured machine that reads runs but not projects.
+func TestConfigCheckWarnsOfAMachineThatReadsRunsButNotProjects(t *testing.T) {
+	t.Setenv("WARP_TEST_B", "x")
+	t.Setenv("WARP_TEST_A", "x")
+	t.Setenv("WARP_TEST_C", "x")
+	check := func(scopes string) string {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "warp.yaml")
+		doc := "api_version: warp/v1\nkind: System\nspec:\n  auth: {kind: oidc, oidc: {issuer: 'https://login.example.com', client_id: warp, audience: warp}}\n---\n" +
+			"api_version: warp/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n  surfaces:\n    slack: {enabled: true, team: T1, bot_token: {ref: env:WARP_TEST_B}, app_token: {ref: env:WARP_TEST_A}," +
+			" warp_client: {token_url: 'https://login.example.com/token', client_id: warp-slack, client_secret: {ref: env:WARP_TEST_C}, scopes: [" + scopes + "]}}\n"
+		if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		if err := configCmd(Options{}, []string{"check", "-f", path}, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.String()
+	}
+	if got := check("warp:runs:read, warp:runs:write"); !strings.Contains(got, `warning: platform "default": the Slack app's warp_client has warp:runs:read but not warp:projects:read`) || !strings.Contains(got, "ok: ") {
+		t.Fatalf("check said:\n%s", got)
+	}
+	for _, scopes := range []string{"warp:runs:read, warp:projects:read", "warp:agents:read"} {
+		if got := check(scopes); strings.Contains(got, "warning") {
+			t.Fatalf("scopes %s: check said:\n%s", scopes, got)
+		}
+	}
+}

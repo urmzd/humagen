@@ -23,7 +23,7 @@ func TestRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 		rootTag := envelope.Tag{ID: "root", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "go", At: t0,
-			Meta: map[string]string{MetaThread: "th-1", MetaAsk: "what I typed"}}
+			Meta: map[string]string{MetaThread: "th-1", MetaAsk: "what I typed", MetaRouted: "best_fit"}}
 		rootID := runtime.RunID("acme", rootTag.ID)
 		if err := x.Record(rootID, rootTag, 2); err != nil {
 			t.Fatal(err)
@@ -71,7 +71,7 @@ func TestRestart(t *testing.T) {
 			}
 		}
 		r, _ := again.Get("acme", rootID)
-		if r.Text != "what I typed" || r.Thread != "th-1" || r.Calls != 1 || r.Granted != 0 || r.Spent != 120 || r.Status != Running {
+		if r.Text != "what I typed" || r.Thread != "th-1" || r.Routed != "best_fit" || r.Calls != 1 || r.Granted != 0 || r.Spent != 120 || r.Status != Running {
 			t.Fatalf("root after restart = %+v", r)
 		}
 		if got := again.Active(); len(got) != 2 {

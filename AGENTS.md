@@ -23,7 +23,7 @@ platform and its web and Slack presentation in one repository. The design is in
 - **The ledger decides whether a run is over.** Events report attempts. Do not infer an ending from silence.
 - **Bound every query.** A window, a row cap and a bucket cap, enforced on the server.
 - **Evals are deterministic.** A check is a pure function of the output. Do not add a model as a judge without saying so in the suite.
-- **One title per screen, on the page.** There is no top bar. Every page uses `Page` from `apps/web/src/ui.tsx`. What is running shows in the sidebar's Tasks, and a task holds the history of every run in it.
+- **One title per screen, on the page.** There is no top bar. Every page uses `Page` from `apps/web/src/ui.tsx`. What is running shows in the sidebar's Conversations, and a conversation holds the history of every run in it.
 - **Every place has an address.** Pages, tabs and selections are paths in `apps/web/src/route.ts`. A new page or tab adds its route there, with a test.
 - **Agents are told apart by color, not by letters in boxes.** Use `AgentMark`. Controls under the composer are text, not boxes.
 - **The API has one contract.** A route, a handler's answer or a type's JSON

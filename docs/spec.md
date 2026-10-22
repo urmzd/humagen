@@ -132,6 +132,10 @@ spec:
     channels: [{name: announcements, purpose: Company news}]      # the workspace's own; every project has general
     experts: [{who: "role:security", topics: [security]}]         # answer anywhere a nearer project names nobody
     knowledge: [handbook]   # every run in the workspace is grounded in these sources, besides its agent's own
+    skills:                 # a message anywhere names one with $summarize, and the agents it starts use it
+      - {name: summarize, description: Summarize a thread in five bullets., instructions: "Summarize the conversation so far in five bullets, newest last."}
+    mention_kinds:          # @oncall:sre notifies everyone holding sre, besides the built-in @sme: and @skill:
+      - {kind: oncall, title: On call, resolves: role}
     members: [{who: "*", role: member}, {who: "role:comms", role: owner}]   # the workspace's own
     project_kinds: [{name: partner, title: Partner, like: account}]          # the workspace's own kinds
     agent_posts: review     # what agents scheduled in the workspace itself post waits for its owners
@@ -143,6 +147,8 @@ spec:
         instructions: Customer accounts. Never promise dates.
         agents: {default: lead}             # answers untagged messages here and below
         knowledge: [field-playbook]         # runs filed here and below are grounded in it too, nearest first
+        skills:                             # $review here and below; a nearer project's of the same name wins
+          - {name: review, description: Review a renewal., argument_hint: "[account]", instructions: Check the renewal terms against the contract and list what changed.}
         members: [{who: "*", role: viewer}, {who: "role:field-eng", role: member}, {who: "role:field-leads", role: owner}]
         agent_posts: publish  # what its scheduled agents post goes out at once
         schedules:            # the file's: filed here, paused and run in the console, changed only here
@@ -219,7 +225,7 @@ spec:
         token_url: https://login.example.com/oauth2/v1/token
         client_id: warp-slack
         client_secret: {ref: env:WARP_SLACK_CLIENT_SECRET}
-        scopes: [warp:agents:read, warp:runs:read, warp:runs:write, warp:billing:read]
+        scopes: [warp:agents:read, warp:runs:read, warp:runs:write, warp:billing:read, warp:projects:read]
         audience: ""        # set when the provider needs one named
       # warp_token: {ref: env:WARP_SLACK_API_TOKEN}   # instead: a bearer token that does not expire
     github:
@@ -255,9 +261,9 @@ builds on:
   the same way: a channel the file declares is created or taken over, and
   one that leaves it stays, unmanaged; experts the file sets, even as `[]`,
   are the file's, and experts it leaves out stay the console's. The
-  **knowledge** sources a project or the workspace names are the same: the
-  file's when it sets them, even as `[]`, and the console's when it leaves
-  them out. A project's **schedules** are the file's whole: created, or taken over when
+  **knowledge** sources a project or the workspace names, and the
+  **skills** it declares, are the same: the file's when it sets them, even
+  as `[]`, and the console's when it leaves them out. A project's **schedules** are the file's whole: created, or taken over when
   the console made one by that name, filed in the project; the console can
   pause, resume and run one, not change or delete it (409), and one that
   leaves the file stays, the console's again. Schedules are applied last,
@@ -332,6 +338,7 @@ console's addresses. Each entry of `workspace.projects` is one project:
 | `instructions` | none | at most 4,000 characters, sent to every agent answering here and below |
 | `agent_posts` | the console's | what an agent scheduled here posts: `publish` posts it at once, `review` holds it as a draft until an owner publishes or discards it. A project that leaves both out reviews at the workspace and in company projects, which everyone reads, and publishes in team and account projects. `workspace.agent_posts` is the workspace's own |
 | `knowledge` | the console's | at most 8 knowledge sources, each named once: lower case letters, digits and dashes, starting with a letter or digit, at most 63. Runs filed here and below are grounded in them, see below |
+| `skills` | the console's | at most 32 skills, each `{name, description, argument_hint, instructions}`: a name of lower case letters and digits in words joined by single dashes, starting with a letter, at most 64, once; a description on one line of at most 1,024 characters; an optional argument hint of at most 100; instructions of at most 8,000. A message posted here and below names one with `$<name>`, see below |
 | `schedules` | none | agents scheduled here, see below |
 | `members` | the console's | at most 100 `{who, role}`: `who` is `*` (everyone who can see the parent), `role:<name>` (the holders of a policy role) or a subject; `role` is `viewer`, `member` or `owner`. An owner owns everything below. Until reads are confined to members, the list has an entry for `*` of at least `viewer`, a company project's of at least `member`, and a project is never more open than its parent. A new project the file leaves them out of has everyone as a member (a viewer of an account) and `projects:govern` as its owner |
 
@@ -358,6 +365,32 @@ does not change what it is grounded in. Sources are filled in the console,
 so the file cannot check that the workspace has them: one it does not have
 grounds nothing until it does. Through the API, naming one takes an owner of
 the project who holds `knowledge:read`.
+
+`skills` are named instructions a person can tell an agent to use: writing
+`$<name>`, or `@skill:<name>`, in a message has every run the message starts
+given the skill's instructions ahead of the turn, below the project's and the
+agent's own. A message posted in a project can name its project's skills, then
+each project's above it, `workspace.skills` last, nearest first, each name
+once; never a sibling's or a sub-project's. A skill nobody on the way declares
+refuses the message. A message a person posts in the console, as themselves
+and not posted only, that names a skill and tags no agent starts `@auto`; one
+a client posts is answered by the client's default with the skill. The skills
+are fixed when a run is accepted, so a change made while it works, or a
+restart, does not change what it was told. A skill's name and description are
+ones a SKILL.md takes. A Slack client's command whose name is a skill's uses
+that skill. Through the API, declaring one takes an owner of the project.
+
+`workspace.mention_kinds` are at most 16 kinds of `@<kind>:<name>` besides the
+built-in `sme` (experts) and `skill` (skills), each `{kind, title, resolves}`:
+a kind of lower case letters, digits and dashes, starting with a letter, at
+most 32, that is not `sme`, `skill` or `auto`, once; a title of at most 40
+characters, as the console shows it; and `resolves`, what its items are:
+`experts` (`@<kind>:<topic>` is `@sme:<topic>`), `skills` (`@<kind>:<name>` is
+`$<name>`), `role` (everyone holding the policy role `<name>` is notified,
+except in a private thread, where the tag is refused) or `people` (the person
+whose handle is `<name>`). Left out, a workspace has the built-in kinds only.
+Only the file declares them; the console completes each kind's items as a
+person types.
 
 `warp config check` refuses a mistake with its path, such as
 `workspace.projects[2].parent: "Feild" is not a project in this file`. A
@@ -576,7 +609,7 @@ no longer shows it. The log lines each inbox decision writes
 | Agents | Platform | the workspace's own |
 | Slack and GitHub | Platform | its identity on a surface |
 | History | Platform | how it behaves |
-| Project tree, kinds, instructions, channels, experts, knowledge sources and which agents are available where | Platform | the workspace's own |
+| Project tree, kinds, instructions, channels, experts, knowledge sources, skills, mention kinds and which agents are available where | Platform | the workspace's own |
 | Spend and run limits | Platform, in the console | versioned, scoped policies (`pkg/policy`) |
 
 ## Deploying it

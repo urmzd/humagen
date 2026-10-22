@@ -247,10 +247,19 @@ export type RunStatus = "accepted" | "running" | "parked" | "completed" | "faile
 /** How one agent calls another. A subagent is attached to its caller. A handoff or a delegate is independent. */
 export type CallMode = "subagent" | "handoff" | "delegate";
 
-/** Feedback metadata only. The referenced run owns the prompt, answer and conversation links. */
+/** Feedback metadata only. The referenced run owns the prompt, answer and
+conversation links. A rater is named as the platform calls them, by
+handle and by name, never by the subject they sign in with, which may
+hold an address.
+ */
 export interface RunFeedback {
   run: string;
-  subject: string;
+  /** The rater's handle, else their subject when it holds no address (a machine's), else "". */
+  by: string;
+  /** What the rater is called, their name, else their handle, else their subject when it holds no address, else "someone". Never an address. */
+  by_name: string;
+  /** Whether this is the rating of the person asking. */
+  mine: boolean;
   rating: "up" | "down";
   reason?: string;
   comment?: string;
@@ -294,6 +303,13 @@ turned back into it.
   prev?: string;
   /** Why the agent was chosen, when the caller left it to the platform. */
   picked?: string;
+  /** Set when the run was started by its thread's selected agents, and
+how: `best_fit`, the one that fit best (`picked` says why), or
+`all`, one of each selected agent. Absent for a run a tag, a
+default or anything else started, and kept whatever the
+selection becomes later.
+ */
+  routed?: "best_fit" | "all";
   project?: string;
   /** The project's ancestors, nearest first and the workspace left out,
 pinned when the run was admitted: what it counts toward besides
@@ -478,6 +494,14 @@ export interface Thread {
   participants: ThreadParticipant[];
   /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set. */
   default?: string;
+  /** The agents selected to answer the untagged messages people post in
+the thread as themselves (the console), at most 5; a client's
+messages from Slack or GitHub keep the defaults. A message that
+tags an agent is answered by the agents it tags instead. An agent the caller may not read is left out, as if
+not selected. Absent when none is selected.
+ */
+  agents?: string[];
+  mode?: ThreadMode;
   surface?: ThreadSurface;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
   announcement?: string;
@@ -492,8 +516,14 @@ export interface Thread {
 
 /** One tag in a message, and what it came to. */
 export interface ThreadMention {
-  kind: "agent" | "person" | "sme";
-  /** The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent. */
+  /** `agent`, `person` and `sme` as tagged; `skill` for `$<name>` and
+`@skill:<name>`, which the runs the message starts are told to
+use; `role` for the people holding a role, through a mention kind
+that resolves roles. A mention kind the workspace declares is
+recorded as what it resolves to.
+ */
+  kind: "agent" | "person" | "sme" | "skill" | "role";
+  /** The agent (`auto` for @auto, which a message that names a skill and tags no agent starts), the person's handle (as written, when nobody goes by it), the experts' topic (empty for every expert), the skill, or the role. A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent. */
   name: string;
   /** The run an agent's tag started. */
   run?: string;
@@ -579,18 +609,26 @@ whom it is for: `anyone` who may resume runs, one `person` (the
 person the run acts for, by handle, when an answer may reach their
 own credential), the `experts` on `topic` in the run's project (every
 expert when `topic` is absent), the `answerers` its agent's rules
-name or it asked, or `nobody`, when the rules cannot be read. It
-names nobody the reader may not see. The runtime still has the last
+name or it asked, the `owners` of the nearest project on the run's
+chain that names any, when it asked the experts and there are none
+(`owners_of` is what that project is called), or `nobody`, when the
+rules cannot be read. It names nobody, and no project, the reader may
+not see. The runtime still has the last
 word when an answer is given.
  */
 export interface ThreadAsk {
   /** The question's id, `question.id` on the run. */
   question: string;
   yours: boolean;
-  for: "anyone" | "person" | "experts" | "answerers" | "nobody";
+  for: "anyone" | "person" | "experts" | "answerers" | "owners" | "nobody";
   topic?: string;
   /** The handle of the person it is for, with `for` of `person`. */
   person?: string;
+  /** With `for` of `owners`, what the project whose owners it is for is
+called: its title, else its name. Absent for the workspace, and
+for a project the reader may not see.
+ */
+  owners_of?: string;
 }
 
 /** Who answers an untagged message in a place, and where that is set:
@@ -617,8 +655,9 @@ export interface ThreadPage {
   answers: ThreadAnswers;
 }
 
-/** A new thread and its first message. `visibility` is required, except
-with `surface`, where the platform files the thread and project,
+/** A new thread and its first message. `visibility` left out is
+`private` for a person posting as themselves, and required with
+`act_as` and no `surface`. With `surface` the platform files the thread, and project,
 channel, visibility and default are left out.
  */
 export interface ThreadInput {
@@ -630,11 +669,24 @@ export interface ThreadInput {
   title?: string;
   /** Answers untagged messages in the thread, an agent available in the project or `auto`. */
   default?: string;
+  /** Agents selected to answer the untagged messages people post in the thread as themselves (the console), at most 5, each available in the project (400; one the caller may not read is as one that does not exist). `all` takes at most 3. */
+  agents?: string[];
+  mode?: ThreadMode;
   text: string;
-  /** Post without any agent answering, unless the message tags one. */
+  /** Post without any agent answering, unless the message tags one. In the console this is what an untagged message does anyway. */
   post_only?: boolean;
   act_as?: ActAs;
   surface?: SurfaceRef;
+}
+
+/** Where a conversation is shared, and the people to add to it. */
+export interface ThreadShare {
+  /** The project it is shared in. Empty keeps the thread's own; `~` is the workspace. */
+  project?: string;
+  /** The project's channel. Empty keeps the thread's own in its own project, and is `general` in another. */
+  channel?: string;
+  /** People to add as participants, by handle. */
+  add?: string[];
 }
 
 /** A message posted in a thread. */
@@ -648,13 +700,43 @@ export interface ThreadMessageInput {
   surface?: SurfaceRef;
 }
 
-/** A thread's title, visibility and default, as a whole. */
+/** How a thread's selected agents answer an untagged message a person
+posts as themselves (the console):
+`best_fit`, the one of them that fits it best, picked as `@auto`
+picks among them alone (the run's `picked` says why), or `all`, each
+of them side by side, at most 3. Absent with fewer than two agents
+selected; `best_fit` when two or more are selected and none is named.
+ */
+export type ThreadMode = "best_fit" | "all";
+
+/** A thread's title, visibility, default and selected agents, as a
+whole, and where a private conversation is. Changing only `agents` and
+`mode` takes anyone who may post in the thread; anything else,
+moving it included, takes whoever started it, while a member, or an
+owner of its project. The selected agents and default must be able
+to answer where the thread is after the change.
+ */
 export interface ThreadUpdate {
   version: number;
   title?: string;
   visibility?: ThreadVisibility;
   /** Empty keeps a default the caller was not shown, one naming an agent that lives in a project they may not read. */
   default?: string;
+  /** The selected agents, as a whole; a selected agent the caller was not shown is kept. Each must be an agent available in the thread's project (400; one the caller may not read is as one that does not exist). */
+  agents?: string[];
+  mode?: ThreadMode;
+  /** Moves a private conversation to this project, `~` the workspace;
+empty keeps its own. It stays private (`shareThread` shares one).
+Takes what sharing it takes: whoever started it, while a member,
+or an owner of its project, and a member of the project it goes
+to (403; one the caller cannot see is 404), and is refused
+once a run has been filed in it (409, "a conversation that has
+runs stays in its project"). A shared thread, or one on a
+surface, does not move here (400).
+ */
+  project?: string;
+  /** The channel it moves to, by the same rule; empty keeps its own in its own project, and is `general` in another. An archived channel is 400, one the project does not have 404. */
+  channel?: string;
 }
 
 /** People and agents to add to a thread and to remove from it. */
@@ -668,10 +750,13 @@ export interface ThreadParticipantsUpdate {
 /** The rule that decided what a message starts, the first that applies:
 `tagged` (the agents it tags answer), `people` (it tags only people
 or experts), `reply` (it answers a question or replies to a
-mention), `post_only`, or `default` (the inherited default answers,
-if there is one).
+mention), `post_only`, `routed` (it tags no agent, and the thread's
+selected agents answer it, see `ThreadMode`), `untagged` (posted by
+a person as themselves, as the console does, and it tags no agent,
+so nothing runs), or `default` (the inherited default answers, if
+there is one).
  */
-export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "default";
+export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" | "untagged" | "default";
 
 /** What posting a message did. */
 export interface ThreadPosted {
@@ -856,6 +941,65 @@ export interface ProjectKnowledgeInput {
   knowledge: string[];
 }
 
+/** Named instructions an agent can be told to use, as a project declares them. Its name and description are ones a SKILL.md takes. */
+export interface ProjectSkill {
+  /** Lower case letters and digits in words joined by single dashes, starting with a letter. */
+  name: string;
+  description: string;
+  /** What the skill takes after its name, as the console shows it. */
+  argument_hint?: string;
+  instructions: string;
+}
+
+/** A skill a project declares, without its instructions, as a project and its history show it. */
+export interface ProjectSkillBrief {
+  name: string;
+  description: string;
+  argument_hint?: string;
+}
+
+/** A skill a message posted in a project can name, without its instructions, and the project that declares it. */
+export interface ProjectSkillRef {
+  name: string;
+  description: string;
+  argument_hint: string;
+  /** The project that declares it, the nearest when more than one does. Empty for the workspace. */
+  from: string;
+}
+
+/** The skills a project declares, at the project's version, and what a message posted in it can name. */
+export interface ProjectSkills {
+  version: number;
+  /** The skills the project declares itself, in its order, with their instructions. */
+  skills: ProjectSkill[];
+  /** What a message posted here can name, the project's own first, then each project's above it, nearest first, each name once. */
+  offered: ProjectSkillRef[];
+}
+
+/** The skills a project declares, as a whole, from the version read. */
+export interface ProjectSkillsInput {
+  /** The version the caller read. */
+  version: number;
+  /** The skills, each name once; `[]` for none. */
+  skills: ProjectSkill[];
+}
+
+/** A kind of `@<kind>:<name>`, and what its items resolve to. */
+export interface MentionKind {
+  kind: string;
+  title: string;
+  /** `experts` (as `@sme:<topic>`), `skills` (as `$<name>`), `role` (the people holding the role) or `people` (a person, by handle). */
+  resolves: "experts" | "skills" | "role" | "people";
+}
+
+/** An item a mention kind completes to. */
+export interface MentionItem {
+  /** What follows the colon. */
+  name: string;
+  /** A line about it, such as a skill's description or a person's name. */
+  description?: string;
+}
+
 /** What a project is for. `company` is company-wide: it sits under the
 workspace or another company project, and is created and changed only
 with `projects:govern`; a workspace has at most 10. `team` is the
@@ -944,6 +1088,13 @@ in, besides its agent's own. Set with `PUT
 for a caller without `knowledge:read`.
  */
   knowledge?: string[];
+  /** Named instructions a message posted here and below can tell an
+agent to use, by writing `$<name>`, without their instructions,
+which `GET /api/projects/{name}/skills` reads. Set with `PUT
+/api/projects/{name}/skills`. Absent when it declares none. A
+change in the project's history records them the same way.
+ */
+  skills?: ProjectSkillBrief[];
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
   /** The lowest role that may post an announcement here. Absent reads as owner. */
@@ -1117,7 +1268,7 @@ project names as experts, `knowledge` to the knowledge sources it
 names, and `channel` to one of its channels, which `channel`
 holds before and after.
  */
-  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "channel";
+  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "skills" | "channel";
   /** The agent a `home` change is about. Absent when it lives in a project the caller may not read. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
@@ -1232,6 +1383,24 @@ grants name. Absent when it holds an email address.
   picture: string | null;
   /** When they last signed in. Absent for someone who never has. */
   seen_at?: string;
+  /** Their own projects, in tree order: each project where an entry
+naming their subject, or a role they held when last seen, makes
+them a member or an owner, there or as an owner above. One reached
+only through everyone is not theirs. Only projects the reader may
+see are named, and none without `projects:read`. At most 20;
+absent when there are none.
+ */
+  projects?: PersonProject[];
+  /** How many more of their projects the reader may see than are listed. Absent when none. */
+  projects_more?: number;
+}
+
+/** One of a person's own projects. */
+export interface PersonProject {
+  name: string;
+  title?: string;
+  /** Their role there. */
+  role: "member" | "owner";
 }
 
 /** Workspace settings. The workspace default agent, which answers a
@@ -2898,6 +3067,15 @@ export interface ListChannelsResponse {
 export interface GetProjectInboxResponse {
   messages: InboxMessage[];
   next: string | null;
+}
+
+export interface ListSkillsResponse {
+  skills: ProjectSkillRef[];
+}
+
+export interface ListMentionsResponse {
+  kinds?: MentionKind[];
+  items?: MentionItem[];
 }
 
 export interface ListPeopleResponse {

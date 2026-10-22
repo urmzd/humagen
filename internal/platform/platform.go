@@ -118,6 +118,11 @@ type Config struct {
 	// inbox.DefaultRetention, and none keeps it less than
 	// inbox.MinRetention.
 	InboxRetention map[string]time.Duration
+	// MentionKinds are the mention kinds each tenant's Platform document
+	// declares besides the built-in ones, by tenant, as
+	// workspace.mention_kinds sets them. The file owns them: nothing in the
+	// API changes them.
+	MentionKinds map[string][]MentionKind
 	// SlackAPI and GitHubAPI build the API a client writes through from its
 	// token. Nil means the real one over HTTP.
 	SlackAPI  func(token string) slack.API
@@ -249,9 +254,14 @@ type Platform struct {
 	clientsMu sync.Mutex
 	// admitting holds runs between admission and their record, by run id.
 	admitting sync.Map
+	// moves serialize starting a thread's runs with moving the thread.
+	moves threadLocks
 	// afterAccept, when set, runs between a run's acceptance and its record.
 	// Only tests set it, to stand for a loaded machine.
 	afterAccept func(envelope.Tag)
+	// beforeCarryOut, when set, runs after a message is posted and before
+	// what it starts is decided. Only tests set it, to move a thread then.
+	beforeCarryOut func()
 	// halting holds runs being stopped at a limit, by run id, so a run is
 	// asked once however many of its calls cross it.
 	halting sync.Map
@@ -565,6 +575,11 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	delete(meta, runs.MetaSourcesV0)
 	if len(sources) > 0 {
 		meta[runs.MetaSources] = strings.Join(sources, ",")
+	}
+	// Only the platform pins skills, on a person's message (answerMessage):
+	// any other tag that carries the key is not believed.
+	if tag.Origin != runs.OriginAPI || edge.Parent != "" {
+		delete(meta, runs.MetaSkills)
 	}
 	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual) && edge.Parent == "" {
 		meta[runs.MetaAsk] = tag.Text

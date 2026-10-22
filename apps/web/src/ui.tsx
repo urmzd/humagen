@@ -1,4 +1,5 @@
 import { BanIcon, CheckIcon, ChevronDownIcon, ShieldIcon, Tooltip, XIcon } from "@warp/render-web";
+import { defaultCopy } from "@warp/components";
 import { AgentOrb, type OrbState } from "@warp/web";
 import { type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { Run } from "./adapter.ts";
@@ -259,7 +260,7 @@ export function Page({
             <button
               type="button"
               onClick={back.onClick}
-              className="self-start rounded-aui text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+              className="inline-flex min-h-6 items-center self-start rounded-aui text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
             >
               ‹ {back.label}
             </button>
@@ -289,29 +290,113 @@ export function Page({
   );
 }
 
-/** A titled part of a page: a heading, an optional line on it, and its own actions. */
+/**
+ * A count beside a label: a tab's, a section's heading. Read with its label,
+ * never on its own, and never a status color.
+ */
+export function Count({ n }: { n: number }) {
+  // Read as "Needs you, 3": a pause, so the number is heard as the heading's count.
+  return (
+    <>
+      <span className="sr-only">, </span>
+      <CountBadge n={n} />
+    </>
+  );
+}
+
+function CountBadge({ n }: { n: number }) {
+  return <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-aui-hover px-1.5 text-aui-2xs font-normal tabular-nums text-aui-muted">{n}</span>;
+}
+
+/**
+ * A control drawn as text: a section's way to see the rest ("See All"), a link
+ * back. Its label is Title Case, its hit area at least 24px tall, and it is
+ * underlined, so it reads as something to press, not as a line of text, on a
+ * phone too, where nothing hovers.
+ */
+export const textAction =
+  "inline-flex min-h-6 items-center gap-1 rounded-aui text-aui-sm font-medium text-aui-fg underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-aui-accent";
+
+/**
+ * A control inside a line of text, a row's details or a table cell: "Open the
+ * run", an agent's name, Download. Underlined, so it never reads as plain text,
+ * and a line 24px tall, so it is never too small to press.
+ */
+export const textLink =
+  "inline-block min-h-6 rounded-aui-sm leading-6 text-aui-fg underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-aui-accent";
+
+/**
+ * A titled part of a page: a heading, its count, an optional line on it, and
+ * its own actions. `box` draws it as a panel: a group that stands on its own,
+ * such as Home's Needs you, rather than one part of a longer page.
+ */
 export function Section({
   title,
+  count,
   hint,
   actions,
+  box,
   children,
 }: {
   title: ReactNode;
+  /** How many there are in all, beside the title. Hidden at zero. */
+  count?: number;
   hint?: ReactNode;
   actions?: ReactNode;
+  box?: boolean;
   children: ReactNode;
 }) {
+  const id = useId();
   return (
-    <section className="flex flex-col gap-3">
+    <section aria-labelledby={id} className={`flex min-w-0 flex-col gap-3 ${box ? card : ""}`}>
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <div className="min-w-0">
-          <h2 className="text-aui-base font-medium text-aui-fg">{title}</h2>
+          <h2 id={id} className="flex items-center gap-2 text-aui-base font-medium text-aui-fg">
+            {title}
+            {count !== undefined && count > 0 && <Count n={count} />}
+          </h2>
           {hint && <p className="max-w-[62ch] text-aui-xs text-aui-muted">{hint}</p>}
         </div>
         {actions && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div>}
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * One row of a list that opens something: what it is on the first line, and
+ * a quieter line under it (who, where, when). The whole row is the control.
+ * `lead` is drawn before the text in a column of its own, so marked and
+ * unmarked rows line up.
+ */
+export function RowButton({
+  title,
+  detail,
+  lead,
+  label,
+  onClick,
+}: {
+  title: ReactNode;
+  detail?: ReactNode;
+  lead?: ReactNode;
+  /** What a screen reader says for the row, when the visible text is not enough. */
+  label?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="flex min-h-11 w-full min-w-0 items-start gap-2 rounded-aui px-2 py-2 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent"
+    >
+      {lead !== undefined && <span className="flex w-2 shrink-0 justify-center self-stretch pt-[0.45rem]">{lead}</span>}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="min-w-0 truncate text-aui-sm text-aui-fg">{title}</span>
+        {detail && <span className="min-w-0 truncate text-aui-xs text-aui-muted">{detail}</span>}
+      </span>
+    </button>
   );
 }
 
@@ -413,11 +498,19 @@ export function Tape({
   );
 }
 
-/** A stable hue for a name, so an agent keeps its color everywhere it appears. */
+/** How many hues agents are drawn from: twelve, 30 degrees apart, so two that differ are told apart. */
+export const AGENT_HUES = 12;
+
+/**
+ * A stable hue for a name, so an agent keeps its color everywhere it
+ * appears. Names fall on one of AGENT_HUES evenly spaced hues, never on one
+ * a few degrees from another's, and the hash is seeded so warp's own agents
+ * and the seeded ones each take a hue of their own (ui.test.tsx).
+ */
 export function hueOf(name: string): number {
-  let h = 0;
-  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return h;
+  let h = 186;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 1000003;
+  return (h % AGENT_HUES) * (360 / AGENT_HUES);
 }
 
 /**
@@ -461,7 +554,7 @@ export function Switch({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <label className="flex items-start justify-between gap-4">
+    <label className="flex min-h-6 items-start justify-between gap-4">
       <span className="min-w-0">
         <span className="block text-aui-sm text-aui-fg">{label}</span>
         {hint && <span className="block text-aui-xs text-aui-muted">{hint}</span>}
@@ -608,9 +701,7 @@ export function Tabs<T extends string>({
             className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap border-transparent border-b-2 px-3 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-selected:border-aui-accent aria-selected:text-aui-fg"
           >
             {t.label}
-            {t.count !== undefined && t.count > 0 && (
-              <span className="rounded-full bg-aui-hover px-1.5 text-aui-2xs tabular-nums text-aui-muted">{t.count}</span>
-            )}
+            {t.count !== undefined && t.count > 0 && <Count n={t.count} />}
           </button>
         ))}
       </div>
@@ -640,6 +731,194 @@ function useInsideGutter(panel: RefObject<HTMLElement | null>, root: RefObject<H
     return () => window.removeEventListener("resize", place);
   }, [open, panel, root]);
   return shift;
+}
+
+/**
+ * The second step of an action that cannot be undone, in place on the page:
+ * what will happen in words, the action itself, and Keep It. It takes focus,
+ * on Keep It, and Escape or moving focus away from it keeps things as they
+ * are. An action that can be undone (Archive, Mute) acts at once instead.
+ */
+export function Confirm({ question, action, onConfirm, onKeep }: { question: string; action: string; onConfirm: () => void; onKeep: () => void }) {
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    root.current?.querySelector<HTMLButtonElement>("[data-keep]")?.focus();
+  }, []);
+  return (
+    <div
+      ref={root}
+      role="group"
+      aria-label={question}
+      className="flex flex-wrap items-center gap-3"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onKeep();
+        }
+      }}
+      onBlur={(e) => {
+        if (!root.current?.contains(e.relatedTarget as Node | null)) onKeep();
+      }}
+    >
+      <span className="text-aui-sm text-aui-fg">{question}</span>
+      <button type="button" className={button} onClick={onConfirm}>
+        {action}
+      </button>
+      <button type="button" data-keep className={button} onClick={onKeep}>
+        {defaultCopy.confirm.keep}
+      </button>
+    </div>
+  );
+}
+
+/** One of a page's own actions, for `PageActions`. */
+export interface PageAction {
+  label: string;
+  onSelect: () => void;
+  /** Archive, Delete: last in the menu, after a rule. What it does is the same in the menu as on a button. */
+  destructive?: boolean;
+}
+
+/**
+ * A page's actions in its header: at most one primary action, as a button,
+ * and the rest beside it. Two in all are drawn as buttons. With more, the
+ * rest are one More menu, a text control, with the destructive ones last
+ * after a rule, so the header on a phone is its title, its meta and two
+ * controls on one line. `note` sits beside them, such as a flash that says
+ * an action did not take.
+ */
+export function PageActions({ primary: main, actions, note }: { primary?: PageAction; actions: PageAction[]; note?: ReactNode }) {
+  const few = actions.length + (main ? 1 : 0) <= 2;
+  return (
+    <span className="relative inline-flex flex-wrap items-center gap-2">
+      {few
+        ? actions.map((a) => (
+            <button key={a.label} type="button" className={button} onClick={a.onSelect}>
+              {a.label}
+            </button>
+          ))
+        : actions.length > 0 && <MoreMenu items={actions} />}
+      {main && (
+        <button type="button" className={primary} onClick={main.onSelect}>
+          {main.label}
+        </button>
+      )}
+      {note}
+    </span>
+  );
+}
+
+/**
+ * The More menu: a text control that opens a list of actions. Arrow keys,
+ * Home and End move through it; Escape, Tab or a click outside close it and
+ * put focus back on the control. Destructive actions come last, after a rule.
+ */
+export function MoreMenu({ items, label = defaultCopy.more }: { items: PageAction[]; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLSpanElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const shift = useInsideGutter(list, root, open);
+  const everyday = items.filter((i) => !i.destructive);
+  const destructive = items.filter((i) => i.destructive);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+
+  const entries = () => Array.from(list.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]") ?? []);
+  const focusAt = (i: number) => {
+    const all = entries();
+    if (all.length) all[(i + all.length) % all.length]?.focus();
+  };
+  const show = (at = 0) => {
+    setOpen(true);
+    requestAnimationFrame(() => focusAt(at));
+  };
+  const close = () => {
+    setOpen(false);
+    root.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  };
+  const entry = (item: PageAction) => (
+    <button
+      key={item.label}
+      type="button"
+      role="menuitem"
+      tabIndex={-1}
+      onClick={() => {
+        close();
+        item.onSelect();
+      }}
+      className={`flex min-h-9 w-full items-center rounded-aui px-2.5 text-left text-aui-sm outline-none hover:bg-aui-hover focus-visible:bg-aui-hover ${item.destructive ? "text-aui-bad" : "text-aui-fg"}`}
+    >
+      {item.label}
+    </button>
+  );
+
+  return (
+    <span ref={root} className="relative inline-flex">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        className={textAction}
+        onClick={() => (open ? close() : show())}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            show();
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            show(-1);
+          }
+        }}
+      >
+        {label}
+        <ChevronDownIcon size={14} />
+      </button>
+      {open && (
+        <div
+          ref={list}
+          id={id}
+          role="menu"
+          aria-label={label}
+          tabIndex={-1}
+          style={shift ? { translate: `${shift}px 0` } : undefined}
+          onKeyDown={(e) => {
+            const i = entries().indexOf(document.activeElement as HTMLButtonElement);
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              focusAt(i + 1);
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              focusAt(i - 1);
+            } else if (e.key === "Home") {
+              e.preventDefault();
+              focusAt(0);
+            } else if (e.key === "End") {
+              e.preventDefault();
+              focusAt(-1);
+            } else if (e.key === "Escape" || e.key === "Tab") {
+              e.preventDefault();
+              e.stopPropagation();
+              close();
+            }
+          }}
+          className="warp-glass-pop absolute top-full right-0 z-40 mt-2 flex w-56 max-w-[calc(100vw-2rem)] flex-col rounded-aui-lg p-1.5"
+        >
+          {everyday.map(entry)}
+          {everyday.length > 0 && destructive.length > 0 && <div role="separator" className="my-1 border-[var(--warp-rule)] border-t" />}
+          {destructive.map(entry)}
+        </div>
+      )}
+    </span>
+  );
 }
 
 /**
@@ -811,7 +1090,7 @@ export function SearchField({
             onChange("");
           }
         }}
-        className="min-w-0 flex-1 bg-transparent text-aui-sm text-aui-fg outline-none placeholder:text-aui-muted [&::-webkit-search-cancel-button]:hidden"
+        className="min-w-0 flex-1 self-stretch bg-transparent text-aui-sm text-aui-fg outline-none placeholder:text-aui-muted [&::-webkit-search-cancel-button]:hidden"
       />
       {value ? (
         <button
@@ -1416,7 +1695,7 @@ export function LimitField({
             aria-invalid={bad}
             aria-describedby={hint ? `${id}-hint` : undefined}
             onChange={(e) => type(e.target.value)}
-            className="min-w-0 flex-1 bg-transparent text-aui-sm tabular-nums text-aui-fg outline-none placeholder:text-aui-muted disabled:cursor-not-allowed"
+            className="min-w-0 flex-1 self-stretch bg-transparent text-aui-sm tabular-nums text-aui-fg outline-none placeholder:text-aui-muted disabled:cursor-not-allowed"
           />
         </div>
         <Menu label={`${label} period`} className="w-28 shrink-0" value={period} options={periods} disabled={disabled} onChange={(p) => onChange(value, p)} />

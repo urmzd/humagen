@@ -530,11 +530,23 @@ func (s *Store) rewrite(tenantName string, th *thread, rec Thread, at time.Time)
 	return rec.clone(), nil
 }
 
-// Update changes a thread's title, visibility or default. fn edits a copy;
+// Update changes a thread's title, visibility, default or routing. fn edits a copy;
 // the id, place, participants and record fields cannot change, and version
 // must be the current one (ErrVersion). A change that changes nothing writes
 // nothing.
 func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func(*Thread) error) (Thread, error) {
+	return s.update(tenantName, id, version, at, fn, false)
+}
+
+// UpdateMoving is Update that may also move a private thread to another
+// project or channel: a shared thread, and one on a surface or started from
+// an announcement, stays where it is (ErrInvalid), and a project it moves to
+// that holds MaxProjectThreads already refuses it (ErrLimit).
+func (s *Store) UpdateMoving(tenantName, id string, version int, at time.Time, fn func(*Thread) error) (Thread, error) {
+	return s.update(tenantName, id, version, at, fn, true)
+}
+
+func (s *Store) update(tenantName, id string, version int, at time.Time, fn func(*Thread) error, moving bool) (Thread, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	th, err := s.writable(tenantName, id)
@@ -549,9 +561,15 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 	if err := fn(&next); err != nil {
 		return Thread{}, err
 	}
+	moves := next.Project != cur.Project || next.Channel != cur.Channel
+	tn := s.of(tenantName)
 	switch {
-	case next.ID != cur.ID || next.Project != cur.Project || next.Channel != cur.Channel || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement:
+	case next.ID != cur.ID || !sameSurface(next.Surface, cur.Surface) || next.Announcement != cur.Announcement:
 		return Thread{}, fmt.Errorf("%w: a thread stays where it was started", ErrInvalid)
+	case moves && (!moving || cur.Visibility != Private || next.Visibility != Private || cur.Surface != nil || cur.Announcement != ""):
+		return Thread{}, fmt.Errorf("%w: a thread stays where it was started; a private conversation moves, and Share moves one as it shares it", ErrInvalid)
+	case next.Project != cur.Project && tn.inProject[next.Project] >= MaxProjectThreads:
+		return Thread{}, fmt.Errorf("%w: a project holds at most %d threads", ErrLimit, MaxProjectThreads)
 	case !slices.Equal(next.Participants, cur.Participants):
 		return Thread{}, fmt.Errorf("%w: participants are changed on their own", ErrInvalid)
 	}
@@ -559,11 +577,16 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 	if err := next.validate(); err != nil {
 		return Thread{}, err
 	}
-	if next.Title == cur.Title && next.Visibility == cur.Visibility && next.Default == cur.Default {
+	if !moves && next.Title == cur.Title && next.Visibility == cur.Visibility && next.Default == cur.Default && slices.Equal(next.Agents, cur.Agents) && next.Mode == cur.Mode {
 		return cur.clone(), nil
 	}
 	next.Version, next.UpdatedAt = cur.Version+1, at
-	return s.rewrite(tenantName, th, next, at)
+	stored, err := s.rewrite(tenantName, th, next, at)
+	if err == nil && next.Project != cur.Project {
+		tn.inProject[cur.Project]--
+		tn.inProject[next.Project]++
+	}
+	return stored, err
 }
 
 // Participants adds and removes people and agents. add and remove hold at
@@ -635,6 +658,84 @@ func (s *Store) Participants(tenantName, id string, version int, add []Participa
 	}
 	next.Version, next.UpdatedAt = th.rec.Version+1, at
 	return s.rewrite(tenantName, th, next, at)
+}
+
+// Share makes a thread shared in a project's channel and adds people to
+// it, as one change: the thread moves to that place when it is another, with
+// def as its default and agents and mode as its selection, and a project it moves to that holds MaxProjectThreads
+// already refuses it (ErrLimit). A thread on a surface, or started from an
+// announcement, stays where and as it was started (ErrInvalid). add holds at
+// most MaxParticipants, and grows the ones counted reports true for to at
+// most MaxParticipants, as Participants does. version must be the current one
+// (ErrVersion). A share that changes nothing writes nothing.
+func (s *Store) Share(tenantName, id string, version int, project, channel, def string, agents []string, mode string, add []Participant, counted func(Participant) bool, by string, at time.Time) (Thread, error) {
+	if len(add) > MaxParticipants {
+		return Thread{}, fmt.Errorf("%w: at most %d people are added at once", ErrInvalid, MaxParticipants)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	th, err := s.writable(tenantName, id)
+	if err != nil {
+		return Thread{}, err
+	}
+	cur := th.rec
+	if version != cur.Version {
+		return Thread{}, fmt.Errorf("%w: %q is at version %d, not %d", ErrVersion, id, cur.Version, version)
+	}
+	next := cur.clone()
+	moves := project != cur.Project || channel != cur.Channel
+	if (moves || cur.Visibility != Shared) && (cur.Surface != nil || cur.Announcement != "") {
+		return Thread{}, fmt.Errorf("%w: a thread on a surface stays where and as it was started", ErrInvalid)
+	}
+	tn := s.of(tenantName)
+	if project != cur.Project && tn.inProject[project] >= MaxProjectThreads {
+		return Thread{}, fmt.Errorf("%w: a project holds at most %d threads", ErrLimit, MaxProjectThreads)
+	}
+	next.Project, next.Channel, next.Visibility = project, channel, Shared
+	if moves {
+		next.Default, next.Agents, next.Mode = def, slices.Clone(agents), mode
+	}
+	for _, p := range add {
+		p.Owner, p.AddedBy, p.At = false, by, at
+		if err := p.validate(); err != nil {
+			return Thread{}, err
+		}
+		if !next.has(p.Kind, p.Name) {
+			next.Participants = append(next.Participants, p)
+		}
+	}
+	shownOf := func(ps []Participant) int {
+		n := 0
+		for _, p := range ps {
+			if counted == nil || counted(p) {
+				n++
+			}
+		}
+		return n
+	}
+	shown := shownOf(next.Participants)
+	switch {
+	case shown > MaxParticipants && shown > shownOf(cur.Participants):
+		return Thread{}, fmt.Errorf("%w: a thread has at most %d participants", ErrInvalid, MaxParticipants)
+	case len(next.Participants) > MaxHeld:
+		return Thread{}, fmt.Errorf("%w: a thread holds at most %d participants", ErrInvalid, MaxHeld)
+	}
+	if err := next.validate(); err != nil {
+		return Thread{}, err
+	}
+	if !moves && next.Visibility == cur.Visibility && slices.Equal(next.Participants, cur.Participants) {
+		return cur.clone(), nil
+	}
+	next.Version, next.UpdatedAt = cur.Version+1, at
+	stored, err := s.rewrite(tenantName, th, next, at)
+	if err != nil {
+		return Thread{}, err
+	}
+	if project != cur.Project {
+		tn.inProject[cur.Project]--
+		tn.inProject[project]++
+	}
+	return stored, nil
 }
 
 func sameSurface(a, b *Surface) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }

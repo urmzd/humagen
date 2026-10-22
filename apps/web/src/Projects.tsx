@@ -47,11 +47,14 @@ import {
   agentOptions,
   ago,
   button,
+  Confirm,
+  Count,
   FlashNote,
   field,
   Label,
   Menu,
   Page,
+  PageActions,
   Problem,
   primary,
   rows,
@@ -698,8 +701,9 @@ function SubProjects({
   return (
     <section className={section} aria-label={words.subProjects}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={heading}>
-          {words.subProjects} ({detail.children.length})
+        <h2 className={`${heading} flex items-center gap-2`}>
+          {words.subProjects}
+          {detail.children.length > 0 && <Count n={detail.children.length} />}
         </h2>
         {canCreate && room && !adding && (
           <button type="button" className={button} onClick={() => setAdding(true)}>
@@ -793,7 +797,10 @@ function Scheduled({
   return (
     <section className={section}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className={heading}>Scheduled ({timed.length})</h2>
+        <h2 className={`${heading} flex items-center gap-2`}>
+          Scheduled
+          {timed.length > 0 && <Count n={timed.length} />}
+        </h2>
         <span className="flex flex-wrap gap-2">
           {recap && canSchedule && recapper && !hasRecap && (
             <button type="button" className={button} onClick={addRecap}>
@@ -1114,7 +1121,7 @@ function Breadcrumb({
       <ol className="flex flex-wrap items-center gap-x-1 text-aui-xs text-aui-muted">
         {detail.ancestors.map((a) => (
           <li key={a.name} className="flex items-center gap-1">
-            <Go to={projectHref(a.name)} onGo={() => onOpen(a.name)} className="rounded-aui hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent">
+            <Go to={projectHref(a.name)} onGo={() => onOpen(a.name)} className="inline-flex min-h-6 items-center rounded-aui hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent">
               {titleOf(a, workspaceName)}
             </Go>
             <span aria-hidden>›</span>
@@ -1207,6 +1214,10 @@ export function ProjectPage({
   const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState<string | null>(null);
   const [reads, setReads] = useState(0);
+  // The agent that answers what tags no agent here, for the meta line. Left out until read.
+  const [lead, setLead] = useState<string | null>(null);
+  // Deleting cannot be undone, so it is asked twice.
+  const [deleting, setDeleting] = useState(false);
   // A mute that did not take says so beside its button.
   const { flash: muteFlash, say: sayMute, clear: clearMute } = useFlash();
 
@@ -1223,6 +1234,10 @@ export function ProjectPage({
       .catch((e) => {
         if (live && e instanceof ApiError && e.status === 404) setMissing(true);
       });
+    api
+      .projectAgents(name)
+      .then((v) => live && setLead(v.default_resolved?.agent || null))
+      .catch(() => {});
     return () => {
       live = false;
     };
@@ -1273,58 +1288,60 @@ export function ProjectPage({
       back={back}
       icon={<FolderIcon size={28} />}
       title={titleOf(p, workspaceName)}
-      meta={<span>{meta}</span>}
+      meta={
+        <span className="inline-flex flex-wrap items-center gap-x-1.5">
+          {meta}
+          {lead && (
+            <>
+              <span aria-hidden>·</span>
+              {words.lead}
+              {lead === "auto" ? "@auto" : (
+                <span className="inline-flex items-center gap-1">
+                  <AgentMark name={lead} size={12} />
+                  {lead}
+                </span>
+              )}
+            </>
+          )}
+        </span>
+      }
       crumbs={root ? undefined : <Breadcrumb detail={detail} workspaceName={workspaceName} onOpen={onOpen} />}
       lede={root ? words.workspaceHint : p.description}
       actions={
-        <>
-          {!root && onMute && (
-            <span className="relative inline-flex">
-              <button
-                type="button"
-                className={button}
-                onClick={() => {
-                  clearMute();
-                  onMute(p.name, !isMuted).catch(() =>
-                    sayMute(isMuted ? defaultCopy.announcements.unmuteFailed : defaultCopy.announcements.muteFailed, true),
-                  );
-                }}
-              >
-                {isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute}
-              </button>
-              <FlashNote flash={muteFlash} align="left" />
-            </span>
-          )}
-          {canWrite && !root && !editing && (
-            <button type="button" className={button} onClick={() => setEditing(true)}>
-              {words.editProject}
-            </button>
-          )}
-          {may("move") && moving === null && (
-            <button type="button" className={button} onClick={() => setMoving(p.parent ?? "")}>
-              {defaultCopy.roles.moveProject}
-            </button>
-          )}
-          {may("archive") && (
-            <button
-              type="button"
-              className={button}
-              onClick={() => api.updateProject(p.name, { ...updateOf(p), archived: !p.archived }).then(changed).catch(fail(setProblem, words.failed.save))}
-            >
-              {p.archived ? defaultCopy.roles.unarchive : defaultCopy.roles.archive}
-            </button>
-          )}
-          {may("delete") && (
-            <button type="button" className={button} onClick={() => api.deleteProject(p.name).then(onDeleted).catch(fail(setProblem, words.failed.delete))}>
-              {words.deleteProject}
-            </button>
-          )}
-          {can("runs:write") && (
-            <button type="button" className={primary} onClick={onNewChat}>
-              {words.newTask}
-            </button>
-          )}
-        </>
+        <PageActions
+          primary={can("runs:write") ? { label: words.newTask, onSelect: onNewChat } : undefined}
+          actions={[
+            ...(!root && onMute
+              ? [
+                  {
+                    label: isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute,
+                    onSelect: () => {
+                      clearMute();
+                      onMute(p.name, !isMuted).catch(() =>
+                        sayMute(isMuted ? defaultCopy.announcements.unmuteFailed : defaultCopy.announcements.muteFailed, true),
+                      );
+                    },
+                  },
+                ]
+              : []),
+            ...(canWrite && !root && !editing ? [{ label: words.editProject, onSelect: () => setEditing(true) }] : []),
+            ...(may("move") && moving === null ? [{ label: defaultCopy.roles.moveProject, onSelect: () => setMoving(p.parent ?? "") }] : []),
+            ...(may("archive")
+              ? [
+                  {
+                    label: p.archived ? defaultCopy.roles.unarchive : defaultCopy.roles.archive,
+                    // Restoring is not destructive; archiving is.
+                    destructive: !p.archived,
+                    onSelect: () => api.updateProject(p.name, { ...updateOf(p), archived: !p.archived }).then(changed).catch(fail(setProblem, words.failed.save)),
+                  },
+                ]
+              : []),
+            ...(may("delete")
+              ? [{ label: words.deleteProject, destructive: true, onSelect: () => setDeleting(true) }]
+              : []),
+          ]}
+          note={<FlashNote flash={muteFlash} align="left" />}
+        />
       }
       tabs={
         <Tabs
@@ -1336,6 +1353,17 @@ export function ProjectPage({
       }
     >
       <Problem message={problem} />
+      {deleting && (
+        <Confirm
+          question={defaultCopy.confirm.ask(titleOf(p, workspaceName))}
+          action={words.deleteProject}
+          onConfirm={() => {
+            setDeleting(false);
+            api.deleteProject(p.name).then(onDeleted).catch(fail(setProblem, words.failed.delete));
+          }}
+          onKeep={() => setDeleting(false)}
+        />
+      )}
       {isMuted && <p className="text-aui-xs text-aui-muted">{defaultCopy.announcements.muted}</p>}
       {p.archived && <p className="text-aui-xs text-aui-muted">{defaultCopy.roles.archived}</p>}
       {moving !== null && (
