@@ -147,7 +147,15 @@ test("an announcement an agent wrote pings nobody: every Slack mention in it is 
   const posts = w.slack.of("chat.postMessage").filter((p) => p.channel === NEWS);
   assert.equal(posts.length, 1, "posted once");
   const sent = JSON.stringify({ text: posts[0]?.text, blocks: posts[0]?.blocks });
-  for (const token of ["<@U0DANA>", "<!channel>", "<!subteam^", "<@U0BOB>", "<!here>", "<!everyone>", "<@W0EVE"]) {
+  for (const token of [
+    "<@U0DANA>",
+    "<!channel>",
+    "<!subteam^",
+    "<@U0BOB>",
+    "<!here>",
+    "<!everyone>",
+    "<@W0EVE",
+  ]) {
     assert.ok(!sent.includes(token), `${token} reached the channel: ${sent}`);
   }
   assert.match(sent, /@U0BOB/);

@@ -1365,6 +1365,26 @@ test("a person the client maps asks as themselves, so their run is theirs", asyn
   await other.app.idle();
 });
 
+test("in a bound channel, someone the client maps to nobody is told to be connected, and warp is never asked", async () => {
+  const w = mapped();
+  w.warp.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
+  await deliver(w, mention("@helper what changed?", TS, { user: "U09NOBODY" }));
+  await w.app.idle();
+  assert.equal(w.warp.asked.length, 0, "no run is asked for around the channel's own rules");
+  assert.equal(w.warp.runs.size, 0);
+  assert.match(
+    textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
+    new RegExp(defaultCopy.threads.unmappedInBound.slice(0, 40)),
+  );
+  collect("unmapped in a bound channel", w.slack);
+  // The same person in a channel that is not bound asks through the app, as before.
+  const v = mapped();
+  await deliver(v, mention("@helper what changed?", TS, { user: "U09NOBODY" }));
+  assert.equal(v.warp.asked.length, 1);
+  await emit(v, "lifecycle.completed", { text: "ok" });
+  await v.app.idle();
+});
+
 test("an approval waits in the run's thread with live buttons, and a mapped person's answer settles it in place", async () => {
   const w = mapped();
   const { run, shown, ts } = await parkOn(w, "approval");

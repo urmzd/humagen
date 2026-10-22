@@ -803,6 +803,9 @@ export const defaultCopy = {
       post: "The message could not be posted. Try again.",
       channel: "The channel could not be created.",
     },
+    /** In a Slack channel bound to a project, to someone the app maps to nobody in warp. */
+    unmappedInBound:
+      "This channel is a project's channel in warp, and only people warp knows post in it. Ask an admin to connect your Slack account.",
   },
 };
 

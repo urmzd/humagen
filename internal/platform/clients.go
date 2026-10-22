@@ -299,7 +299,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		}
 		cfg := slack.Config{
 			API: api, Verifier: signature.NewSlack(secrets.signing), Team: c.Identity.Team,
-			Bots: c.Bots, Agents: agents, DefaultAgent: c.DefaultAgent,
+			Bots: c.Bots, Agents: agents, DefaultAgent: untagged,
 			Interval: p.cfg.ClientInterval, Log: p.log,
 		}
 		if c.Slack != nil {

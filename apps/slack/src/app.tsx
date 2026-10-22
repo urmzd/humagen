@@ -669,6 +669,15 @@ export class App {
         run = first;
         agent = run.agent;
       } else {
+        // A bound channel is a warp channel: its thread, its default, its
+        // allow list and its limits are the platform's, and only a person
+        // the client maps posts there. Anyone else is told so, never
+        // answered around it.
+        if (!asking && !job.again && (await this.isBound(job.session.channel)))
+          return this.refuse(job, presenter, "", {
+            kind: "forbidden",
+            message: this.copy.threads.unmappedInBound,
+          });
         placed = await this.place(job);
         // Warp already has a run for this Slack event: it was answered before a restart.
         if (placed === "duplicate") return "done" as const;
@@ -1408,6 +1417,11 @@ export class App {
     const first =
       run.id === run.thread ? run : await this.warp.getRun(run.thread).catch(() => null);
     return first?.tag_id ? sessionOf(this.opts.subject, first.tag_id) : null;
+  }
+
+  /** Whether a Slack channel is bound to a channel in warp, through this client. */
+  private async isBound(channel: string): Promise<boolean> {
+    return (await this.bound()).some((b) => b.slack_channel === channel);
   }
 
   /** The Slack channels this client is bound to, read again every half minute. */

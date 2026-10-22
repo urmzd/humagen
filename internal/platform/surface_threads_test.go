@@ -186,10 +186,12 @@ func TestAMachineReadsAMappedPersonsInbox(t *testing.T) {
 
 // A run a client's in-process connector raises is filed by the binding: in
 // the channel its Slack channel is bound to, or else in the client's home,
-// whatever the payload said.
+// whatever the payload said. A mention that names no agent is answered as
+// one in a thread there would be: in a bound channel by the channel's chain,
+// never the client's default, and in the home by the client's default.
 func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 	f := &fakes{}
-	c := &cast{says: map[string][][]saigetypes.Delta{"docs": {say("Docs here."), say("Again.")}}}
+	c := &cast{says: map[string][][]saigetypes.Delta{"docs": {say("Docs here."), say("Again.")}, "ops": {say("Ops here.")}}}
 	p := stage(t, c, f.config())
 	if _, err := p.CreateProject(t.Context(), tenant, ada, platform.ProjectInput{Name: "Field"}); err != nil {
 		t.Fatal(err)
@@ -198,9 +200,9 @@ func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	in := slackClient("docs-app", "A0DOCS", team, "docs")
-	in.Home = &clients.Home{Project: "Launch"}
+	in.Home, in.Agents = &clients.Home{Project: "Launch"}, []string{"ops"}
 	create(t, p, tenant, in)
-	if _, err := p.CreateChannel(t.Context(), tenant, "Field", ada, platform.ChannelInput{Name: "docs", Slack: &projects.SlackBinding{Client: "docs-app", Channel: "C01"}}); err != nil {
+	if _, err := p.CreateChannel(t.Context(), tenant, "Field", ada, platform.ChannelInput{Name: "docs", Default: "ops", Slack: &projects.SlackBinding{Client: "docs-app", Channel: "C01"}}); err != nil {
 		t.Fatal(err)
 	}
 	ingress := p.IngressHandler()
@@ -222,11 +224,11 @@ func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 		}
 		return bound.ID != "" && homed.ID != ""
 	})
-	if bound.Project != "Field" || bound.Channel != "docs" {
-		t.Fatalf("a run in a bound channel is filed at %q #%s", bound.Project, bound.Channel)
+	if bound.Project != "Field" || bound.Channel != "docs" || bound.Agent != "ops" {
+		t.Fatalf("a run in a bound channel is %s's, filed at %q #%s", bound.Agent, bound.Project, bound.Channel)
 	}
-	if homed.Project != "Launch" || homed.Channel != projects.General {
-		t.Fatalf("a run in an unbound channel is filed at %q #%s", homed.Project, homed.Channel)
+	if homed.Project != "Launch" || homed.Channel != projects.General || homed.Agent != "docs" {
+		t.Fatalf("a run in an unbound channel is %s's, filed at %q #%s", homed.Agent, homed.Project, homed.Channel)
 	}
 }
 

@@ -96,7 +96,10 @@ answers `repeated` and starts nothing again. Outside a bound channel the
 client's default answers an untagged message; the client's allow-list holds
 everywhere, and a client that lists its agents treats `@auto` as a name
 outside the list. The machine reads every thread on its own surface, wherever
-it is filed.
+it is filed. A bound channel is a project's channel, so only people the client
+maps post there: anyone else who mentions the app in one is told to ask an
+admin to connect their Slack account, and warp is not asked. Elsewhere they
+ask through the app as before.
 
 An announcement of a project whose general channel is bound is posted there,
 top-level, once; the app records where (`PUT /api/inbox/{id}/deliveries/{client}`),
@@ -114,7 +117,10 @@ the question. The Home tab reads the person's own inbox the same way.
 
 The webhook connector files its runs by the same binding: a run in a bound
 Slack channel is in the channel it is bound to, anything else in the client's
-home, whatever the payload said.
+home, whatever the payload said. A mention that names no agent is answered as
+it would be in a thread there: in a bound channel by the bound channel's
+default and then its project's, never the client's; in the home by the
+client's default first.
 
 The Slack connector accepts signed mentions, direct messages and code channel
 slash commands. Responses use one message per run, edited as events arrive.
