@@ -785,7 +785,8 @@ days by default (see Retention and counts).
   `inbox.Store.PostOnce` checks the key under the inbox lock: an
   announcement ever raised under it, withdrawn or not, is kept, and its key
   outlives it once retention drops it, so a restart or a later process on
-  the same database posts nothing. It is an
+  the same database posts nothing. Caller keys cannot start with `announce:`,
+  which ordinary posts use for their own keys. It is an
   announcement like any other in the root: everyone reads it, What's new
   shows it, and Hide for Me hides one reader's copy.
 
@@ -805,13 +806,14 @@ keeps what was settled for everyone. The platform passes it in
   copy.
 - **The record.** Each change is kept under its own key, as before, and a
   retention step deletes the dropped messages' keys and writes the tenant's
-  cut (key `cut`) in one write, all or none, deleting at most 5,000 records
-  a step, or one message's records when that message alone has more.
-  The cut holds the number of the last id issued and the keys of
-  announcements posted once. Replay applies what is kept, each raise under
-  the id its record names, then the cut, so it rebuilds exactly what the
-  inbox held, with `-state=postgres` as in memory. The inbox changes only
-  once its step is written; a step that cannot be written changes nothing
+  cut (key `cut`) in one write, all or none, at most 5,000 operations a step,
+  including the cut. The cut holds the number of the last id issued and the
+  keys of announcements posted once. If one message has more history than
+  a step can delete, the cut also names it while later steps delete the rest.
+  Replay reads the cut first and skips those records, so an interrupted
+  cleanup never brings a message back. It applies each kept raise under
+  the id its record names, with `-state=postgres` as in memory. The inbox
+  changes only once its step is written; a step that cannot be written changes nothing
   and is tried again at the next pass.
 - **What never repeats.** No message id is issued again, and a key posted
   once (`release:<version>`) is never posted again (`PostOnce`, which reads
@@ -1441,9 +1443,10 @@ Channels are bound only by a project owner.
 No migration. Retention's first pass runs at the first start after the
 upgrade and drops what was settled more than 90 days before, or the
 workspace's `inbox_retention`. Records written before phase 9 replay as they
-did: their raises already name their ids, and a broadcast announcement under
-a key its poster named (not `announce:`) replays as posted once, so a
-release posted before phase 9 is not posted again once it is dropped.
+did: their raises already name their ids. Older broadcasts carry no flag
+that distinguishes an ordinary post from `PostOnce`, so their keys are kept
+conservatively after retention, and a release posted before phase 9 is not
+posted again once it is dropped. New ordinary posts need no permanent key.
 
 No rollback after the first pass. A build from before phase 9 keys its next
 change by how many changes it loaded and numbers its next id by how many

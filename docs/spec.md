@@ -527,6 +527,13 @@ question a run still waits on, and an announcement stays while it is open
 for anyone, however many readers hid their own copy. Message ids are never
 issued again, and release notes dropped this way are not posted again.
 
+The badge and `Count.updates` use counters maintained as inbox changes
+apply and rebuilt on replay. Open messages share buckets by kind,
+addressing and source. Each reader's read and hidden marks reduce those
+counts. The same read rule checks each bucket, so counts reveal only what
+the reader may see. Snoozes whose time has passed are added separately.
+Settled messages are never scanned to answer a count.
+
 Once a withdrawn announcement is dropped, a reply under its Slack post
 starts a thread as any other in the channel, and a thread started from it
 no longer shows it. The log lines each inbox decision writes

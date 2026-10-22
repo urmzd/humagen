@@ -3,7 +3,9 @@ package inbox
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -169,15 +171,212 @@ func TestRetentionDropsOnlyWhatWasSettledBeforeTheCut(t *testing.T) {
 // failAfter is a store whose writes fail once it has taken n.
 type failAfter struct {
 	state.Store
-	n int
+	n      int
+	maxOps int
 }
 
 func (f *failAfter) Write(ctx context.Context, namespace string, ops ...state.Op) error {
+	f.maxOps = max(f.maxOps, len(ops))
 	if f.n == 0 {
 		return statetest.ErrInjected
 	}
 	f.n--
 	return f.Store.Write(ctx, namespace, ops...)
+}
+
+// Releases posted before retention existed have no Once field. Their keys
+// must still outlive the messages, including another restart after a cut.
+func TestRetentionKeepsLegacyPostOnceKeys(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := must[Message](t)(s.PostOnce(acme, "release:old", announcement("", "News"), t0, PostCaps{}))
+		must[Message](t)(s.Withdraw(acme, m.ID, "ada", "", t0))
+		// Write the exact shape the old writer kept: no once field.
+		recs, err := st.Load(t.Context(), "inbox")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range recs {
+			var sc storedChange
+			if err := json.Unmarshal(r.Value, &sc); err != nil {
+				t.Fatal(err)
+			}
+			if sc.Raised == nil {
+				continue
+			}
+			sc.Raised.Once = nil
+			raw, err := json.Marshal(sc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.Write(t.Context(), "inbox", state.Put(r.Tenant, r.Key, raw)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		s, err = OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n, err := s.Retain(acme, t0.Add(time.Hour)); n != 1 || err != nil {
+			t.Fatalf("retain = %d, %v", n, err)
+		}
+		s, err = OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, posted, err := s.PostOnce(acme, "release:old", announcement("", "News"), t0.Add(24*time.Hour), PostCaps{}); posted || err != nil {
+			t.Fatalf("legacy key posted again = %v, %v", posted, err)
+		}
+	})
+}
+
+// A single message's history can exceed the write limit. A cut makes it
+// absent at once, then clears its records in bounded steps. Restart and a
+// failed ordinary write must preserve that unfinished cleanup.
+func TestRetentionBoundsALongHistoryAcrossRestarts(t *testing.T) {
+	was := maxCut
+	maxCut = 5
+	t.Cleanup(func() { maxCut = was })
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := &failAfter{Store: open(t), n: -1}
+		s, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := must[Message](t)(s.PostOnce(acme, "release:long", announcement("", "News"), t0, PostCaps{}))
+		for i := range 17 {
+			if _, err := s.Read(acme, m.ID, "ada", i%2 == 0, t0); err != nil {
+				t.Fatal(err)
+			}
+		}
+		must[Message](t)(s.Withdraw(acme, m.ID, "ada", "", t0))
+		keep := raise(s, "keep", t0)
+		st.maxOps, st.n = 0, 1
+		if n, err := s.Retain(acme, t0.Add(time.Hour)); n != 1 || !errors.Is(err, statetest.ErrInjected) {
+			t.Fatalf("interrupted retain = %d, %v", n, err)
+		}
+		for range 2 {
+			if _, ok := s.ByID(acme, m.ID); ok {
+				t.Fatal("cut message survived")
+			}
+			if _, _, err := s.Dismiss(acme, keep.ID, "ada", t0); !errors.Is(err, statetest.ErrInjected) {
+				t.Fatalf("failed ordinary write = %v", err)
+			}
+			var err error
+			s, err = OpenStore(st)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		st.n = -1
+		added := raise(s, "added during cleanup", t0)
+		s, err = OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n, err := s.Retain(acme, t0.Add(time.Hour)); n != 0 || err != nil {
+			t.Fatalf("remaining cleanup = %d, %v", n, err)
+		}
+		if st.maxOps > maxCut {
+			t.Fatalf("write used %d operations, limit %d", st.maxOps, maxCut)
+		}
+		if changes, _ := records(t, st); changes != 2 {
+			t.Fatalf("kept %d changes, want only the two open messages", changes)
+		}
+		s, err = OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := s.ByID(acme, added.ID); !ok {
+			t.Fatal("cleanup deleted a message raised after the cut")
+		}
+		if _, posted, err := s.PostOnce(acme, "release:long", announcement("", "News"), t0.Add(24*time.Hour), PostCaps{}); posted || err != nil {
+			t.Fatalf("cut key posted again = %v, %v", posted, err)
+		}
+	})
+}
+
+// A workspace whose last message was cut still needs housekeeping until
+// the last records are deleted, including after a restart.
+func TestRetentionFinishesAnEmptyInbox(t *testing.T) {
+	was := maxCut
+	maxCut = 5
+	t.Cleanup(func() { maxCut = was })
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := &failAfter{Store: open(t), n: -1}
+		s, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := post(t, s, "Field", "News", t0)
+		for i := range 8 {
+			if _, err := s.Read(acme, m.ID, "ada", i%2 == 0, t0); err != nil {
+				t.Fatal(err)
+			}
+		}
+		must[Message](t)(s.Withdraw(acme, m.ID, "ada", "", t0))
+		st.n = 1
+		if _, err := s.Retain(acme, t0.Add(time.Hour)); !errors.Is(err, statetest.ErrInjected) {
+			t.Fatal(err)
+		}
+		for range 2 {
+			if !slices.Contains(s.Tenants(), acme) {
+				t.Fatal("workspace with unfinished cleanup was forgotten")
+			}
+			s, err = OpenStore(st)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		st.n = -1
+		if _, err := s.Retain(acme, t0.Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		if changes, _ := records(t, st); changes != 0 {
+			t.Fatalf("empty inbox kept %d changes", changes)
+		}
+		if len(s.of(acme).cut.Gone) != 0 {
+			t.Fatal("ordinary posts do not need permanent tombstones")
+		}
+	})
+}
+
+// Receipt lookups name the last recorded kept message, even when a client
+// reused a receipt. Delivery order can differ from message creation order.
+func TestRetentionRebuildsKeptReceiptLookups(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		first := post(t, s, "Field", "First", t0)
+		second := post(t, s, "Field", "Second", t0)
+		gone := post(t, s, "Field", "Gone", t0)
+		receipt := Delivery{Channel: "C1", TS: "1.0", At: t0}
+		for _, m := range []Message{second, first, gone} {
+			if err := s.Deliver(acme, m.ID, "client", receipt, nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		must[Message](t)(s.Withdraw(acme, gone.ID, "ada", "", t0))
+		if n, err := s.Retain(acme, t0.Add(time.Hour)); n != 1 || err != nil {
+			t.Fatalf("retain = %d, %v", n, err)
+		}
+		for range 2 {
+			if m, ok := s.ByDelivery(acme, "client", receipt); !ok || m.ID != first.ID {
+				t.Fatalf("receipt finds %s, %v; want %s", m.ID, ok, first.ID)
+			}
+			s, err = OpenStore(st)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
 }
 
 // Retention writes in steps. A step that cannot be written changes nothing,
