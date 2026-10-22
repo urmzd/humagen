@@ -31,7 +31,11 @@ auto-labels. A reader is shown only the agents they may read: one that lives
 in a project they may not read is left out of each, as if it were not there,
 as a home there is. The machine that hosts the client's surface, its
 `slack.machine`, is shown every agent the client names, since it routes by
-them.
+them. Naming the machine is trusted as the machine is: a writer who names
+themselves the `slack.machine` is that machine from then on, and is shown
+every agent the client names, as they read every thread on its surface and
+act for its people (see
+[People a Slack app answers for](#people-a-slack-app-answers-for)).
 
 Every agent a client saved through the API names is one that exists and that
 the writer may read. Any other is refused with one 400, "there is no agent
