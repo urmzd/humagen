@@ -188,8 +188,8 @@ function TurnView({
  * message in the chat bar.
  */
 export const STARTERS: { agent: string; label: string; text: string }[] = [
-  { agent: "warp-analyst", label: "How did my agents do today?", text: "How did my agents do today?" },
-  { agent: "warp-builder", label: "Build a new agent", text: "Help me build an agent that " },
+  { agent: "warp-analyst", label: "How are my agents doing?", text: "How did my agents do today?" },
+  { agent: "warp-builder", label: "Build an agent", text: "Help me build an agent that " },
   { agent: "warp-writer", label: "Write a report", text: "Write a one-page report on " },
 ];
 
@@ -587,19 +587,22 @@ export function Chat({
           the conversation, as a chip, not an @mention.
         */}
         {canRun && starters.length > 0 && draft.trim() === "" && (
-          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto -mt-1 flex w-full max-w-4xl flex-wrap gap-x-4 gap-y-1 px-7">
-            {starters.map((st) => (
-              <li key={st.agent} className="min-w-0">
+          // One line, never one left alone on a line of its own: a phone
+          // shows the first two, which fit inside its gutter, and a wider
+          // screen all of them.
+          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto -mt-1 flex w-full max-w-4xl flex-nowrap gap-x-4 overflow-hidden px-7">
+            {starters.map((st, i) => (
+              <li key={st.agent} className={`shrink-0 ${i >= 2 ? "hidden sm:block" : ""}`}>
                 <button
                   type="button"
                   onClick={() => {
                     setSelection((sel) => (sel.agents.includes(st.agent) ? sel : { ...sel, agents: [...sel.agents, st.agent] }));
                     setSeed({ text: st.text });
                   }}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-aui py-1 text-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-aui py-1 text-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
                   <AgentMark name={st.agent} size={12} />
-                  <span className="truncate">{st.label}</span>
+                  <span>{st.label}</span>
                 </button>
               </li>
             ))}

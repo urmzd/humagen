@@ -92,7 +92,7 @@ func TestSelectingAHiddenAgentAnswersAsAnUnknownOne(t *testing.T) {
 
 	started := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","agents":["helper"],"text":"hello"}`, http.StatusCreated)
 	th := obj(started["thread"])
-	if started["rule"] != "routed" || len(sliceOf(th["agents"])) != 1 || len(sliceOf(started["runs"])) != 1 {
+	if started["rule"] != "routed" || len(sliceOf(th["agents"])) != 1 || len(sliceOf(started["runs"])) != 1 || obj(sliceOf(started["runs"])[0])["routed"] != "all" {
 		t.Fatalf("a conversation with helper selected started %s", mustJSON(t, started))
 	}
 	id := th["id"].(string)

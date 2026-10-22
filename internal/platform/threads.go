@@ -992,7 +992,17 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	actor := envelope.Actor{ID: m.By, Display: m.Name, User: m.By}
 	var answered []threads.Participant
 	start := func(agent string) (runs.Run, error) {
-		run, err := p.answerMessage(ctx, tenant, th, m, via, agent, d.Among, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
+		// A run the selection starts says how: the best fit among the
+		// selected agents, or one of all of them (a lone selected agent
+		// answers as all of one).
+		routedBy := ""
+		switch {
+		case d.Rule == threads.RuleRouted && d.Among != nil:
+			routedBy = threads.ModeBestFit
+		case d.Rule == threads.RuleRouted:
+			routedBy = threads.ModeAll
+		}
+		run, err := p.answerMessage(ctx, tenant, th, m, via, agent, d.Among, routedBy, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
 		if err == nil {
 			out.Runs = append(out.Runs, run)
 			answered = append(answered, threads.Participant{Kind: threads.Agent, Name: run.Agent, AddedBy: m.By})
@@ -1100,7 +1110,7 @@ func answerTagID(thread, message, agent string) string {
 // keeps pins that the person it acts for may change the project's notes, as
 // a turn does (Turn.KeepsNotes). sees is the agents that person may read:
 // @auto never falls back to one they may not read.
-func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, actor envelope.Actor, tagID string, keeps bool, sees func(string) bool) (runs.Run, error) {
+func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor envelope.Actor, tagID string, keeps bool, sees func(string) bool) (runs.Run, error) {
 	if agent == Auto && len(among) > 0 {
 		// The best fit is picked among the selected agents the clients it
 		// reaches the thread through may route to, and it is the agent
@@ -1118,6 +1128,9 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	if keeps && th.Project != "" {
 		meta[metaKeepsNotes] = th.Project
+	}
+	if routed != "" {
+		meta[runs.MetaRouted] = routed
 	}
 	skills := p.skillsOfMessage(tenant, th, m, via)
 	pinSkills(meta, skills)
@@ -1433,10 +1446,10 @@ func (p *Platform) replyToMention(ctx context.Context, who auth.Principal, part 
 // UpdateThread changes a thread's title, visibility, default and selected
 // agents, and moves a private conversation. Title, visibility and default
 // take the thread's owner, the person who started it, or an owner of its
-// project (mayChangeThread). Selecting agents, and moving a private
-// conversation to another project or channel, take anyone who may post in it
-// (MayPost), and a move also takes being a member of the project it goes to,
-// whose channel is not archived (placeFor). A move keeps it private (Share
+// project (mayChangeThread), and so does moving a private conversation to
+// another project or channel, as sharing it does, which also takes being a
+// member of the project it goes to, whose channel is not archived
+// (placeFor). Selecting agents takes anyone who may post in it (MayPost). A move keeps it private (Share
 // makes it shared), and is refused once a run has been filed in it
 // (ErrStaysInProject, ErrStaysInChannel), serialized with its runs as a
 // share is. A default, and each selected agent, must be able to answer where
@@ -1463,9 +1476,9 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 		project, channel = projects.NameOf(in.Project), cmp.Or(in.Channel, projects.General)
 	}
 	moves := project != th.Project || channel != th.Channel
-	if strings.TrimSpace(in.Title) == th.Title && cmp.Or(in.Visibility, th.Visibility) == th.Visibility && keepsDefault {
-		// Only which agents answer, or where a private conversation is,
-		// changes: anyone who may post here does that, as they may tag.
+	if !moves && strings.TrimSpace(in.Title) == th.Title && cmp.Or(in.Visibility, th.Visibility) == th.Visibility && keepsDefault {
+		// Only which agents answer changes: anyone who may post here does
+		// that, as they may tag. Moving it takes what sharing it takes.
 		if err := p.changesThread(who, th); err != nil {
 			return threads.Thread{}, err
 		}
