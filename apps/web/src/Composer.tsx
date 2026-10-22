@@ -1,7 +1,8 @@
+import { defaultCopy } from "@warp/components";
 import { ArrowUpIcon, FileIcon, XIcon } from "@warp/render-web";
 import { type QueueControls, QueueStrip } from "@warp/web";
 import { type KeyboardEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { insertTag, matching, type TagOption, type Typing, tagAt } from "./tags.ts";
+import { insertTag, matching, sigilOf, type TagOption, type Typing, tagAt } from "./tags.ts";
 import { AgentMark } from "./ui.tsx";
 
 const MAX_HEIGHT = 260;
@@ -103,6 +104,7 @@ export function Composer({
   trailing,
   seed,
   tags,
+  plus,
 }: {
   /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
   seed?: { text: string };
@@ -113,13 +115,20 @@ export function Composer({
   onDraft?: (text: string) => void;
   /** Controls beside the plus, such as where the conversation is filed. */
   leading?: ReactNode;
-  /** Controls before the send or speak button, such as who answers. */
+  /** Controls before the send or speak button. */
   trailing?: ReactNode;
   /**
-   * The @ typeahead: what a message here can tag, and a call each time the
-   * name being typed changes, for options looked up as it is typed.
+   * Completion: what a message here can tag with `@` and `$`, and a call
+   * each time the tag being typed changes, for options looked up as it is
+   * typed.
    */
-  tags?: { label: string; options: TagOption[]; onQuery?: (query: string) => void };
+  tags?: { label: string; options: TagOption[]; onQuery?: (typing: Typing) => void };
+  /**
+   * The + menu, in place of + attaching files at once: what it shows, given
+   * a way to close it and to attach files, and the chips of what it
+   * selected, shown in the bottom row. Ctrl+/ (Cmd+/) opens it.
+   */
+  plus?: { menu: (close: () => void, attach: () => void) => ReactNode; chips?: ReactNode };
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<Attached[]>([]);
@@ -128,28 +137,60 @@ export function Composer({
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const speech = useRef<Recognizer | null>(null);
+  const form = useRef<HTMLFormElement>(null);
+  const [menu, setMenu] = useState(false);
+  const closeMenu = () => {
+    setMenu(false);
+    input.current?.focus();
+  };
+  // A press outside the menu closes it, as Escape does.
+  useEffect(() => {
+    if (!menu) return;
+    const away = (e: MouseEvent) => {
+      const panel = form.current?.querySelector('[data-plus-panel]');
+      if (panel && !panel.contains(e.target as Node) && !(e.target as HTMLElement).closest?.("[data-plus-button]")) setMenu(false);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [menu]);
   const canDictate = recognizer() !== undefined;
 
   const [typing, setTyping] = useState<Typing | null>(null);
   const [active, setActive] = useState(0);
-  const shown = tags && typing ? matching(tags.options, typing.query) : [];
+  const shown = tags && typing ? matching(tags.options, typing.query, 8, typing.sigil) : [];
+  // The highlighted option, kept inside the list as it shrinks under the caret.
+  const current = Math.max(0, Math.min(active, shown.length - 1));
+  // The list opens toward the side of the bar with more room, no taller than that room.
+  const open = shown.length > 0;
+  const [listAt, setListAt] = useState<{ up: boolean; max: number }>({ up: true, max: 256 });
+  useLayoutEffect(() => {
+    if (!open) return;
+    const r = form.current?.getBoundingClientRect();
+    if (!r) return;
+    const above = r.top - 8;
+    const below = window.innerHeight - r.bottom - 8;
+    const up = above >= Math.min(256, below);
+    setListAt({ up, max: Math.max(120, Math.min(256, up ? above : below)) });
+  }, [open]);
 
   // What is being tagged at the caret, read after every change and every
   // move of the caret.
-  const follow = (text: string) => {
+  const follow = (text: string, caret?: number) => {
     if (!tags) return;
     const el = input.current;
-    const at = tagAt(text, el?.selectionStart ?? text.length);
+    const at = tagAt(text, caret ?? el?.selectionStart ?? text.length);
     setTyping(at);
     setActive(0);
-    if (at && at.query !== typing?.query) tags.onQuery?.(at.query);
+    if (at && (at.query !== typing?.query || at.sigil !== typing?.sigil)) tags.onQuery?.(at);
   };
 
   const pickTag = (option: TagOption) => {
     if (!typing) return;
     const next = insertTag(value, typing, option);
     change(next.text);
-    setTyping(null);
+    // A mention kind is completed further: `@sme:` opens its items.
+    if (option.kind === "kind") follow(next.text, next.caret);
+    else setTyping(null);
     requestAnimationFrame(() => {
       const el = input.current;
       el?.focus();
@@ -204,6 +245,12 @@ export function Composer({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (plus && e.key === "/" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      setTyping(null);
+      setMenu(true);
+      return;
+    }
     // While the typeahead is open, the keys move through it and pick from it.
     if (shown.length > 0 && !e.nativeEvent.isComposing) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -211,9 +258,10 @@ export function Composer({
         setActive((i) => (i + (e.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length);
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      // Enter with a modifier sends or adds a line, as it does with the list closed.
+      if ((e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) || e.key === "Tab") {
         e.preventDefault();
-        const option = shown[Math.min(active, shown.length - 1)];
+        const option = shown[current];
         if (option) pickTag(option);
         return;
       }
@@ -268,6 +316,7 @@ export function Composer({
 
   return (
     <form
+      ref={form}
       aria-label="Message"
       onSubmit={(e) => {
         e.preventDefault();
@@ -281,14 +330,15 @@ export function Composer({
           id="composer-tags"
           role="listbox"
           aria-label={tags.label}
-          className="absolute right-2 bottom-full left-2 z-20 mb-1 max-h-64 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg"
+          style={{ maxHeight: listAt.max }}
+          className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1" : "top-full mt-1"}`}
         >
           {shown.map((o, i) => (
             <li
               key={`${o.kind}:${o.token}`}
               id={`composer-tag-${i}`}
               role="option"
-              aria-selected={i === active}
+              aria-selected={i === current}
               onMouseDown={(e) => {
                 // Keep the text box's focus and caret while picking.
                 e.preventDefault();
@@ -300,14 +350,25 @@ export function Composer({
                 <AgentMark name={o.token} size={16} />
               ) : (
                 <span aria-hidden className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-aui-hover text-[0.6rem] font-medium">
-                  {o.kind === "sme" ? "?" : (o.hint ?? o.label).trim().charAt(0).toUpperCase()}
+                  {o.kind === "person" ? (o.hint ?? o.label).trim().charAt(0).toUpperCase() : o.kind === "skill" ? "$" : "@"}
                 </span>
               )}
-              <span className="font-medium">@{o.token}</span>
+              <span className="shrink-0 font-medium">
+                {sigilOf(o)}
+                {o.token}
+              </span>
               {o.hint && <span className="min-w-0 truncate text-aui-xs text-aui-muted">{o.hint}</span>}
             </li>
           ))}
         </ul>
+      )}
+      {plus && menu && (
+        <div data-plus-panel className="contents">
+          {plus.menu(closeMenu, () => {
+            setMenu(false);
+            picker.current?.click();
+          })}
+        </div>
       )}
       <QueueStrip queue={queue} />
       {files.length > 0 && (
@@ -354,7 +415,7 @@ export function Composer({
         aria-expanded={tags ? shown.length > 0 : undefined}
         aria-controls={tags && shown.length > 0 ? "composer-tags" : undefined}
         aria-autocomplete={tags ? "list" : undefined}
-        aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${active}` : undefined}
+        aria-activedescendant={tags && shown.length > 0 ? `composer-tag-${current}` : undefined}
         className="max-h-[260px] min-h-14 w-full resize-none bg-transparent px-3 pt-2 text-aui-lg text-aui-fg outline-none placeholder:text-aui-muted"
       />
       {notice && (
@@ -375,11 +436,26 @@ export function Composer({
             e.target.value = "";
           }}
         />
-        <button type="button" className={tool} aria-label="Attach files" title="Attach text files" onClick={() => picker.current?.click()}>
-          <Glyph d={PLUS} />
-        </button>
+        {plus ? (
+          <button
+            type="button"
+            data-plus-button
+            className={`${tool} self-start`}
+            aria-label={defaultCopy.chat.plus}
+            aria-haspopup="dialog"
+            aria-expanded={menu}
+            title={`${defaultCopy.chat.plus} (${defaultCopy.chat.plusShortcut})`}
+            onClick={() => (menu ? closeMenu() : setMenu(true))}
+          >
+            <Glyph d={PLUS} />
+          </button>
+        ) : (
+          <button type="button" className={tool} aria-label="Attach files" title="Attach text files" onClick={() => picker.current?.click()}>
+            <Glyph d={PLUS} />
+          </button>
+        )}
         {leading}
-        <span className="min-w-2 flex-1" />
+        <div className="min-w-0 flex-1">{plus?.chips}</div>
         {trailing}
         {/*
           One button in one place. With nothing to send it listens, and once

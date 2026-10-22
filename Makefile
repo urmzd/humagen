@@ -1,4 +1,4 @@
-.PHONY: all init build test lint fmt check start dev dev-signin web up down chart-check image client client-check spec-lint oag-install
+.PHONY: all init build test lint fmt check start dev dev-signin web screens up down chart-check image client client-check spec-lint oag-install
 
 BIN := warp
 
@@ -57,6 +57,15 @@ dev-signin: build
 web:
 	pnpm install
 	pnpm --filter @warp/console dev
+
+# Every console screen at phone (390x844) and desktop (1280x800) width, from a
+# warp seeded with example data, with the layout checks that fail the run
+# (scripts/screens). Uses an installed Chromium or Chrome and downloads none.
+# Screenshots and index.html, which shows them side by side, go to .screens/.
+screens: build
+	pnpm install --frozen-lockfile
+	pnpm --filter @warp/console build
+	pnpm --filter @warp/screens screens
 
 # The container image, from the Dockerfile at the root.
 IMAGE ?= warp:local

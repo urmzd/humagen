@@ -43,6 +43,7 @@ packages:
       - apps/storybook/package.json
       - apps/web/package.json
       - examples/ui/basic/package.json
+      - scripts/screens/package.json
     stage_files:
       - pnpm-lock.yaml
     publish:

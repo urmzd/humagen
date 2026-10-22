@@ -6,10 +6,10 @@ import {
   updatesOf,
   type WireProject,
 } from "@warp/adapter";
-import { type HomeModel, type HomeStart, orderNotifications } from "@warp/core";
+import { HOME_NEEDS, type HomeModel, type HomeStart, orderNotifications } from "@warp/core";
 
-/** How many that need the person the Home tab shows. The rest are counted. */
-export const HOME_NEEDS = 5;
+/** How many that need the person the Home tab shows, as the console's Home does. The rest are counted. */
+export { HOME_NEEDS };
 
 /** What the Home tab is made of, all of it read for the person through the client. */
 export interface HomeReads {

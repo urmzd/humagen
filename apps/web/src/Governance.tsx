@@ -178,7 +178,7 @@ export function CallPolicyEditor({ agent, agents, canWrite }: { agent: string; a
                 <textarea className={`${field} min-h-14 font-aui-mono text-aui-sm`} spellCheck={false} disabled={!canWrite} value={people} onChange={(e) => setPeople(e.target.value)} />
               </Label>
               <Switch
-                label="The person who started the task may approve"
+                label="The person who started the conversation may approve"
                 hint="Off, an approval is always someone else's."
                 checked={draft.self_approval ?? false}
                 disabled={!canWrite}
@@ -303,7 +303,7 @@ export function ApprovalQueue({
   return (
     <Section
       title="Approval queue"
-      hint="Calls waiting for a person, ones this agent would make and ones that would call it. Answering here, in the task, or in the inbox settles it everywhere."
+      hint="Calls waiting for a person, ones this agent would make and ones that would call it. Answering here, in the conversation, or in the inbox settles it everywhere."
       actions={
         <span className="flex gap-1.5">
           {(["open", "resolved"] as const).map((s) => (
@@ -341,7 +341,7 @@ export function ApprovalQueue({
                 <div className="flex flex-wrap items-center gap-2">
                   {m.source.thread && onOpenTask && (
                     <button type="button" className={button} onClick={() => onOpenTask(m.source.thread as string)}>
-                      Open Task
+                      Open Conversation
                     </button>
                   )}
                   {state === "open" && q && (

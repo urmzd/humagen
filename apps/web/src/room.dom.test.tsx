@@ -5,6 +5,7 @@ import type { Turn } from "@warp/core";
 import { WebSurface } from "@warp/render-web";
 import { AgentMessage } from "@warp/web";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import type { Revision, ThreadPage, ThreadTurn } from "./api.ts";
 import { liveEventSource, stubEventSource, stubFetch } from "./dom.ts";
 import { ChannelPage, ChannelsTab, postedLine, ThreadRoom } from "./Room.tsx";
@@ -79,14 +80,18 @@ function room(routes: Record<string, (body: unknown) => unknown> = {}) {
   return { opened };
 }
 
-test("a shared thread shows people by name and agents by theirs, where it is shared, and who answers", async () => {
+test("a shared thread shows people by name and agents by theirs and where it is shared, with no line saying who answers and no Share", async () => {
   const { opened } = room();
   assert.ok(await screen.findByText("Ana"));
   // The thread is untitled, so its first message is its title as well.
   assert.equal(screen.getAllByText("@helper when does Globex renew?").length, 2);
   assert.ok(screen.getByText("It renews on May 3."));
   const where = screen.getByText(words.sharedIn(globex.title ?? "Globex", "renewals"));
-  assert.ok(screen.getByText(words.answers("helper")));
+  // Nobody answers untagged messages in the console, so nothing says who does.
+  assert.ok(!screen.queryByText(words.answers("helper")));
+  assert.ok(!screen.queryByText(words.nobody));
+  // A shared conversation is shared already.
+  assert.ok(!screen.queryByRole("button", { name: words.share }));
   fireEvent.click(where);
   assert.deepEqual(opened, ["Globex/renewals"]);
 });
@@ -131,21 +136,25 @@ test("under *, the typeahead never offers an agent that lives in another project
   assert.ok(!list.textContent?.includes("initech-bot"), list.textContent ?? "");
 });
 
-test("@ opens the typeahead, a pick writes the tag, and Post Only posts as the person and nothing more", async () => {
-  room({ "POST /api/threads/th-0123456789abcdef/messages": () => ({ ...page, message: page.turns[0]?.message, runs: [], notified: [], refused: [], rule: "post_only" }) });
+test("@ opens completion, Enter picks the highlighted, and an untagged message posts as the person with no Post Only and no run", async () => {
+  const noted = { id: "m-2", thread: "th-0123456789abcdef", by: "ana", name: "Ana", text: "noted for the record", mentions: [], via: "console", at };
+  room({ "POST /api/threads/th-0123456789abcdef/messages": () => ({ thread: page.thread, message: noted, runs: [], notified: [], refused: [], rule: "default", reason: "Nobody answers untagged messages here." }) });
   const box = (await screen.findByPlaceholderText(words.channel("renewals"))) as HTMLTextAreaElement;
+  assert.ok(!screen.queryByText(words.postOnly), "there is no Post Only");
   fireEvent.change(box, { target: { value: "ask @he" } });
   const list = await screen.findByRole("listbox");
   assert.ok(list.textContent?.includes("@helper"));
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => assert.equal(box.value, "ask @helper "));
-  fireEvent.click(screen.getByText(words.postOnly));
-  assert.ok(screen.getByText(words.postOnlyHint, { selector: "p" }));
   fireEvent.change(box, { target: { value: "noted for the record" } });
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "POST")));
   const sent = net?.seen.find((s) => s.method === "POST");
-  assert.deepEqual(sent?.body, { text: "noted for the record", post_only: true });
+  assert.deepEqual(sent?.body, { text: "noted for the record" });
+  // It shows as posted at once, and says nothing about who answers.
+  assert.ok(await screen.findByText("noted for the record"));
+  assert.ok(!screen.queryByText("Nobody answers untagged messages here."));
+  assert.equal(screen.queryAllByRole("article", { name: /^Answered by/ }).length, 1);
 });
 
 test("a channel lists its threads, and its composer starts a shared thread there", async () => {
@@ -178,7 +187,7 @@ test("a channel lists its threads, and its composer starts a shared thread there
   );
   assert.ok(await screen.findByText("Globex renewal"));
   assert.ok(screen.getByText("Renewal work"));
-  assert.ok(screen.getByText(words.nobody));
+  assert.ok(!screen.queryByText(words.nobody));
   fireEvent.click(screen.getByText("Globex renewal"));
   const box = screen.getByPlaceholderText(words.startThread);
   fireEvent.change(box, { target: { value: "who knows the PO?" } });
@@ -186,7 +195,7 @@ test("a channel lists its threads, and its composer starts a shared thread there
   await waitFor(() => assert.equal(opened.length, 2));
   assert.deepEqual(opened, ["th-0123456789abcdef", "th-00000000000000ff"]);
   const started = net?.seen.find((s) => s.method === "POST" && s.path === "/api/threads");
-  assert.deepEqual(started?.body, { project: "Globex", channel: "renewals", text: "who knows the PO?", post_only: false, visibility: "shared" });
+  assert.deepEqual(started?.body, { project: "Globex", channel: "renewals", text: "who knows the PO?", visibility: "shared" });
 });
 
 test("a viewer of a project reads its channel and its threads, and is offered no composer in either", async () => {
@@ -258,7 +267,7 @@ test("a private thread says so where a shared one says where it is shared", asyn
   assert.ok(!screen.queryByText(words.startPrivate, { selector: "button" }));
 });
 
-test("Private in a channel starts a thread only the people in it read, and its row says so", async () => {
+test("a channel's chat bar offers no Private and no Post Only, and a private thread's row says it is private", async () => {
   net = stubFetch({
     "GET /api/projects/Globex/channels": () => ({
       channels: [{ project: "Globex", name: "renewals", version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } }],
@@ -286,14 +295,9 @@ test("Private in a channel starts a thread only the people in it read, and its r
     />,
   );
   assert.ok(await screen.findByText(new RegExp(`^${words.private} · `)));
-  fireEvent.click(screen.getByText(words.startPrivate, { selector: "button" }));
-  assert.ok(screen.getByText(words.privateHint, { selector: "p" }));
-  const box = screen.getByPlaceholderText(words.startThread);
-  fireEvent.change(box, { target: { value: "the discount we can offer" } });
-  fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "POST" && s.path === "/api/threads")));
-  const started = net?.seen.find((s) => s.method === "POST" && s.path === "/api/threads");
-  assert.deepEqual(started?.body, { project: "Globex", channel: "renewals", text: "the discount we can offer", post_only: false, visibility: "private" });
+  assert.ok(screen.getByPlaceholderText(words.startThread));
+  assert.ok(!screen.queryByText(words.startPrivate, { selector: "button" }));
+  assert.ok(!screen.queryByText(words.postOnly, { selector: "button" }));
 });
 
 test("a project's channels open their pages, and a new one is made with a name that cannot change", async () => {
@@ -845,4 +849,280 @@ test("a channel its project does not hold says so, and offers no composer", asyn
   assert.ok(!screen.queryByPlaceholderText(words.startThread));
   fireEvent.click(screen.getByRole("button", { name: "‹ Globex" }));
   assert.equal(back, 1);
+});
+
+/** A private conversation of one untagged message: Ana's, in Globex, with no run yet. */
+const mine: ThreadPage = {
+  thread: { ...page.thread, id: "th-00000000000000aa", channel: "general", visibility: "private", participants: [{ kind: "person", name: "ana", owner: true, at }] },
+  turns: [{ kind: "message", message: { id: "m-1", thread: "th-00000000000000aa", by: "ana", name: "Ana", text: "thinking out loud about the renewal", mentions: [], via: "console", at } }],
+  next: null,
+  answers: { agent: "", from: "" },
+};
+
+/** A private conversation whose Share dialog opens and closes at its address, as App keeps it. */
+function Sharing({ initial, onShared }: { initial: ThreadPage; onShared?: (open: boolean) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <ThreadRoom
+      id={initial.thread.id}
+      me="ana"
+      initial={initial}
+      tick={0}
+      agents={[helper]}
+      projects={tree}
+      root={null}
+      workspaceName="Acme"
+      canRun
+      sharing={open}
+      onSharing={(next) => {
+        setOpen(next);
+        onShared?.(next);
+      }}
+      onOpenChannel={() => {}}
+      onChanged={() => {}}
+    />
+  );
+}
+
+const people = { people: [{ subject: "00u-dana", name: "Dana Scully", handle: "dana", picture: null }, { subject: "ana", name: "Ana", handle: "ana", picture: null }] };
+
+test("$ completes the project's skills and @kind: completes a mention kind's items; Tab picks and Escape closes", async () => {
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => mine,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/people": () => ({ people: [], next: null }),
+    "GET /api/skills": () => ({
+      skills: [
+        { name: "review", description: "Reviews a change", argument_hint: "<pr>", from: "" },
+        { name: "triage", description: "Sorts issues", argument_hint: "", from: "Globex" },
+      ],
+    }),
+    "GET /api/mentions": (_, q) =>
+      q.get("kind") === "skill"
+        ? { items: [{ name: "review", description: "Reviews a change" }, { name: "release-notes" }].filter((i) => i.name.startsWith(q.get("q") ?? "")) }
+        : {
+            kinds: [
+              { kind: "sme", title: "Experts", resolves: "experts" },
+              { kind: "skill", title: "Skills", resolves: "skills" },
+            ],
+          },
+  });
+  render(<Sharing initial={mine} />);
+  const box = (await screen.findByPlaceholderText(words.message)) as HTMLTextAreaElement;
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.path.startsWith("/api/skills?project=Globex"))));
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.path.startsWith("/api/mentions?project=Globex"))));
+
+  // $ offers skills alone.
+  fireEvent.change(box, { target: { value: "@helper $" } });
+  let list = await screen.findByRole("listbox");
+  await waitFor(() => assert.ok(list.textContent?.includes("$review") && list.textContent.includes("$triage"), list.textContent ?? ""));
+  assert.ok(!list.textContent?.includes("@helper"), list.textContent ?? "");
+  fireEvent.change(box, { target: { value: "@helper $tr" } });
+  fireEvent.keyDown(box, { key: "Tab" });
+  await waitFor(() => assert.equal(box.value, "@helper $triage "));
+  assert.equal(screen.queryByRole("listbox"), null);
+
+  // @ offers the mention kinds as kind:, and a kind picked opens its items.
+  fireEvent.change(box, { target: { value: "@sk" } });
+  list = await screen.findByRole("listbox");
+  assert.ok(list.textContent?.includes("@skill:"), list.textContent ?? "");
+  fireEvent.keyDown(box, { key: "Tab" });
+  await waitFor(() => assert.equal(box.value, "@skill:"));
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.path.includes("kind=skill")), JSON.stringify(net?.seen.map((s) => s.path))));
+  list = await screen.findByRole("listbox");
+  await waitFor(() => assert.ok(list.textContent?.includes("@skill:release-notes"), list.textContent ?? ""));
+  fireEvent.keyDown(box, { key: "ArrowDown" });
+  fireEvent.keyDown(box, { key: "Tab" });
+  await waitFor(() => assert.equal(box.value, "@skill:release-notes "));
+
+  // Escape closes the list and leaves the words.
+  fireEvent.change(box, { target: { value: "@he" } });
+  await screen.findByRole("listbox");
+  fireEvent.keyDown(box, { key: "Escape" });
+  assert.equal(screen.queryByRole("listbox"), null);
+  assert.equal(box.value, "@he");
+});
+
+test("a message that tags an agent starts its run, shown with the agent's answer, after messages that started nothing", async () => {
+  const restore = stubEventSource();
+  try {
+    const asked = { id: "m-2", thread: "th-00000000000000aa", by: "ana", name: "Ana", text: "@helper what do you make of it?", mentions: [{ kind: "agent" as const, name: "helper", run: "r2" }], via: "console", at };
+    const run = { id: "r2", agent: "helper", status: "running", text: asked.text, message: "m-2", prev: "m-2", thread: "th-00000000000000aa", calls: 0, created_at: at, updated_at: at } as never;
+    net = stubFetch({
+      "GET /api/threads/th-00000000000000aa": () => mine,
+      "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+      "POST /api/threads/th-00000000000000aa/messages": () => ({ thread: mine.thread, message: asked, runs: [run], notified: [], refused: [], rule: "tagged" }),
+      "GET /api/runs/r2/events": () => ({ events: [] }),
+    });
+    render(<Sharing initial={mine} />);
+    const box = (await screen.findByPlaceholderText(words.message)) as HTMLTextAreaElement;
+    assert.equal(screen.queryAllByRole("article", { name: /^Answered by/ }).length, 0, "the untagged message started nothing");
+    fireEvent.change(box, { target: { value: asked.text } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    assert.ok(await screen.findByRole("article", { name: "Answered by helper" }));
+    // Both messages are there: the one that started nothing, then the one that tagged helper.
+    assert.equal(screen.getAllByRole("article", { name: "Message from Ana" }).length, 2);
+  } finally {
+    // Unmounted before the stream goes, so no live run opens one after it.
+    cleanup();
+    restore();
+  }
+});
+
+test("Share at the top of a private conversation moves it into a project's channel and adds people, then shows it shared", async () => {
+  const opened: boolean[] = [];
+  const shared: ThreadPage = {
+    ...mine,
+    thread: { ...mine.thread, project: "Initech", channel: "general", visibility: "shared", participants: [...mine.thread.participants, { kind: "person", name: "dana", at }] },
+  };
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => mine,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Initech/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [{ project: "Globex", name: "general", version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } }] }),
+    "GET /api/projects/Initech/channels": () => ({
+      channels: ["general", "deals"].map((name) => ({ project: "Initech", name, version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } })),
+    }),
+    "GET /api/people": () => people,
+    "POST /api/threads/th-00000000000000aa/share": () => shared,
+  });
+  render(<Sharing initial={mine} onShared={(o) => opened.push(o)} />);
+  assert.ok(await screen.findByText(words.private));
+  // Share sits at the top, not under the chat bar.
+  const share = screen.getByRole("button", { name: words.share });
+  assert.ok(share.closest("header"), "Share is in the conversation's header");
+  fireEvent.click(share);
+  const dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  const project = within(dialog).getByLabelText(words.shareProject) as HTMLSelectElement;
+  assert.equal(project.value, "Globex");
+  assert.equal(project.disabled, false, "no agent has run here, so the project may change");
+  fireEvent.change(project, { target: { value: "Initech" } });
+  const channel = within(dialog).getByLabelText(words.shareChannel) as HTMLSelectElement;
+  await waitFor(() => assert.ok([...channel.options].some((o) => o.value === "deals")));
+  assert.equal(channel.value, "general", "general is the default");
+
+  // People are completed as they are typed, never the person sharing.
+  const who = within(dialog).getByRole("combobox", { name: words.shareAdd }) as HTMLInputElement;
+  fireEvent.change(who, { target: { value: "a" } });
+  const found = await within(dialog).findByRole("listbox");
+  await waitFor(() => assert.ok(found.textContent?.includes("@dana"), found.textContent ?? ""));
+  assert.ok(!found.textContent?.includes("@ana"), found.textContent ?? "");
+  fireEvent.keyDown(who, { key: "Tab" });
+  assert.ok(await within(dialog).findByRole("button", { name: words.shareRemove("dana") }));
+
+  fireEvent.click(within(dialog).getByRole("button", { name: words.share }));
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "POST")));
+  const sent = net?.seen.find((s) => s.method === "POST");
+  assert.equal(sent?.path, "/api/threads/th-00000000000000aa/share");
+  assert.deepEqual(sent?.body, { project: "Initech", channel: "general", add: ["dana"] });
+  // Shared, it says where, and offers no Share.
+  assert.ok(await screen.findByText(words.sharedIn("Initech", "general")));
+  assert.equal(screen.queryByRole("dialog"), null);
+  assert.equal(screen.queryByRole("button", { name: words.share }), null);
+  assert.deepEqual(opened, [true, false]);
+});
+
+test("the project is fixed once an agent has run, and a project the server will not move it to says why", async () => {
+  const ran: ThreadPage = { ...mine, turns: [...mine.turns, page.turns[1] as ThreadTurn] };
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => ran,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+    "GET /api/projects/Initech/channels": () => ({ channels: [] }),
+    "GET /api/runs/r1/events": () => ({ events: [] }),
+    "POST /api/threads/th-00000000000000aa/share": () =>
+      new Response(JSON.stringify({ error: "this thread has runs, so its project can't change" }), { status: 409 }),
+  });
+  render(<Sharing initial={ran} />);
+  fireEvent.click(await screen.findByRole("button", { name: words.share }));
+  let dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  const fixed = within(dialog).getByLabelText(new RegExp(`^${words.shareProject}`)) as HTMLSelectElement;
+  assert.equal(fixed.disabled, true);
+  assert.ok(within(dialog).getByText(words.shareProjectFixed));
+  cleanup();
+  net?.restore();
+
+  // A run the page has not read yet: the server refuses the move (409), and the dialog says why.
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => mine,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+    "GET /api/projects/Initech/channels": () => ({ channels: [] }),
+    "POST /api/threads/th-00000000000000aa/share": () =>
+      new Response(JSON.stringify({ error: "this thread has runs, so its project can't change" }), { status: 409 }),
+  });
+  render(<Sharing initial={mine} />);
+  fireEvent.click(await screen.findByRole("button", { name: words.share }));
+  dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  fireEvent.change(within(dialog).getByLabelText(words.shareProject), { target: { value: "Initech" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: words.share }));
+  assert.ok(await within(dialog).findByText(words.shareConflict));
+  // The refused project goes back to where the conversation is, and stays.
+  const moved = within(dialog).getByLabelText(new RegExp(`^${words.shareProject}`)) as HTMLSelectElement;
+  assert.equal(moved.value, "Globex");
+  assert.equal(moved.disabled, true);
+  // Still private, and the dialog stays open to share it where it is.
+  assert.ok(screen.getByText(words.private));
+});
+
+test("agents checked in a conversation's + menu are saved on the thread, and an answer they were routed to says so", async () => {
+  const restore = stubEventSource();
+  try {
+    const routedRun = { id: "r3", agent: "helper", status: "completed", answer: "Renewal is on track.", text: "how is it going?", message: "m-1", prev: "m-1", thread: "th-00000000000000aa", calls: 0, created_at: at, updated_at: at } as never;
+    const saved = { ...mine.thread, agents: ["helper", "lead"], mode: "all" as const, version: 2 };
+    const lead = { spec: { ...helper.spec, name: "lead", description: "Coordinates" }, rev: 1 } as unknown as Revision;
+    let current = mine;
+    net = stubFetch({
+      "GET /api/threads/th-00000000000000aa": () => current,
+      "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+      "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+      "PUT /api/threads/th-00000000000000aa": () => saved,
+      "GET /api/runs/r3/events": () => ({ events: [] }),
+    });
+    render(
+      <ThreadRoom id={mine.thread.id} me="ana" initial={mine} tick={0} agents={[helper, lead]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
+    const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
+    fireEvent.click(await within(menu).findByRole("menuitemcheckbox", { name: /^helper/ }));
+    await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "PUT")));
+    assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, { version: 1, title: "", visibility: "private", default: "", agents: ["helper"], mode: "best_fit" });
+    cleanup();
+
+    // Read back, the selection is the thread's, for everyone in it; a run its message did not tag was routed.
+    const routed: ThreadPage = { ...mine, thread: saved, turns: [...mine.turns, { kind: "run", run: routedRun }] };
+    current = routed;
+    render(
+      <ThreadRoom id={mine.thread.id} me="ana" initial={routed} tick={0} agents={[helper, lead]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+    );
+    const row = await screen.findByRole("list", { name: defaultCopy.chat.selected });
+    assert.ok(within(row).getByText("helper") && within(row).getByText("lead"));
+    assert.equal(within(row).getByRole("button", { name: defaultCopy.chat.all }).getAttribute("aria-pressed"), "true");
+    assert.ok(screen.getByText(defaultCopy.chat.routedAll("helper")));
+    // The project of a conversation is not removed from its chip.
+    assert.equal(within(row).queryByRole("button", { name: /^Remove Globex/ }), null);
+    cleanup();
+  } finally {
+    restore();
+  }
+});
+
+test("someone added to a private conversation is not offered Share: its starter, or an owner of its project, publishes it", async () => {
+  const added: ThreadPage = { ...mine, thread: { ...mine.thread, created_by: "ben" } };
+  const member = tree.map((p) => (p.name === "Globex" ? { ...p, access: { role: "member" as const, from: "Globex", via: "*" } } : p));
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => added,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+  });
+  render(
+    <ThreadRoom id={added.thread.id} me="ana" initial={added} tick={0} agents={[helper]} projects={member} root={null} workspaceName="Acme" canRun sharing={false} onSharing={() => {}} onOpenChannel={() => {}} onChanged={() => {}} />,
+  );
+  assert.ok(await screen.findByText(words.private));
+  assert.equal(screen.queryByRole("button", { name: words.share }), null);
+  cleanup();
+  // An owner of the project may.
+  render(
+    <ThreadRoom id={added.thread.id} me="ana" initial={added} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun sharing={false} onSharing={() => {}} onOpenChannel={() => {}} onChanged={() => {}} />,
+  );
+  assert.ok(await screen.findByRole("button", { name: words.share }));
 });
