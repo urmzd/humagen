@@ -74,6 +74,16 @@ type Workspace struct {
 	// grounded in, besides its agent's own. Set here, even as [], the
 	// console cannot change them.
 	Knowledge []string `json:"knowledge,omitempty"`
+	// Skills are named instructions a message posted anywhere in the
+	// workspace can tell an agent to use, $<name>, unless a project nearer
+	// declares one of the same name. Set here, even as [], the console
+	// cannot change them.
+	Skills []Skill `json:"skills,omitempty"`
+	// MentionKinds are the kinds of @<kind>:<name> the workspace has
+	// besides the built-in sme (experts) and skill (skills), each resolving
+	// its items to experts, skills, the people holding a role, or a person.
+	// Only the file declares them.
+	MentionKinds []MentionKind `json:"mention_kinds,omitempty"`
 	// PersonCredentials is what people may give for the tools that take
 	// their own credential.
 	PersonCredentials *PersonCredentials `json:"person_credentials,omitempty"`
@@ -213,6 +223,10 @@ type Project struct {
 	// grounded in, besides its agent's own. Set here, even as [], the
 	// console cannot change them.
 	Knowledge []string `json:"knowledge,omitempty"`
+	// Skills are named instructions a message posted here and below can
+	// tell an agent to use, $<name>. Set here, even as [], the console
+	// cannot change them.
+	Skills []Skill `json:"skills,omitempty"`
 	// AgentPosts is what becomes of what an agent scheduled here posts:
 	// publish, or review by the project's owners. Left out, it is the
 	// console's, and a new project takes its kind's default.
@@ -271,6 +285,23 @@ type ChannelSlack struct {
 type Expert struct {
 	Who    string   `json:"who"`
 	Topics []string `json:"topics"`
+}
+
+// Skill is named instructions an agent can be told to use: a SKILL.md's
+// name and description, what it takes after its name, and its body.
+type Skill struct {
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	ArgumentHint string `json:"argument_hint,omitempty"`
+	Instructions string `json:"instructions"`
+}
+
+// MentionKind is a kind of @<kind>:<name>: its name, what the console calls
+// it, and what its items resolve to: experts, skills, role or people.
+type MentionKind struct {
+	Kind     string `json:"kind"`
+	Title    string `json:"title"`
+	Resolves string `json:"resolves"`
 }
 
 // Account is an account project's customer.

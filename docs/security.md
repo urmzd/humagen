@@ -107,7 +107,9 @@ Which agents may run where is a policy the platform enforces, never an
 instruction in a prompt. A run is refused at admission when its agent is not
 available in the project it is filed in, whatever started it, and an agent
 that lives in a project is not available in the workspace itself or in any
-project outside its home's subtree. A message that tags no agent goes to the
+project outside its home's subtree. A message posted in the console runs
+only the agents it tags: untagged, it starts nothing, whatever default is set.
+A message a client posts from Slack or GitHub that tags no agent goes to the
 default its place inherits, and with none nothing runs: nothing routes on its
 own. Setting the workspace default changes who answers everyone's untagged
 messages, so it needs `projects:govern`. Owning the workspace is not enough,
@@ -209,6 +211,13 @@ no permission, grants nothing.
   and nothing writes an agent's turn but its run. A shared thread is read by
   everyone with `runs:read` who sees its project; a private one by its
   participants alone, and every read path answers 404 for it to anyone else.
+  A conversation the console starts is private until it is shared, which
+  takes whoever started it (or an owner of its project), never only someone
+  tagged into it, and a member of the project it goes to: from
+  then on everyone who sees that project reads it, the messages written
+  while it was private included. A share never makes a thread private again,
+  and a conversation that has runs does not move to another project, so its
+  runs stay read where they were filed.
 - **The machine holds its people's votes.** Whoever holds the credential a
   Slack client names as `machine` can answer every question as any person the
   client maps, within what each may answer, and raise runs as them, which
@@ -279,6 +288,22 @@ no permission, grants nothing.
   reader without it is shown no source's name. Naming a source lets the
   runs filed there, and the people they act for, read what it holds through
   their answers, as an agent's own sources do.
+- **A skill's instructions reach only the runs a person asked for.** A
+  message names skills its project's chain declares, and only the runs that
+  message starts are given them, pinned when it is accepted. Admission drops
+  the pinned key from every tag but a root run the platform's API raised,
+  which only the platform does, so no connector, schedule, caller or calling
+  agent puts instructions in a run, and a run an agent calls is not given its
+  caller's. The instructions reach the model ahead of the turn, under a line
+  that ranks them below the agent's own and says the platform enforces
+  limits, approvals and availability whatever they say; the pinned key itself
+  is taken out of what fiber writes into the prompt. A skill is read by
+  whoever reads its project, and a hidden project's skills answer as missing
+  ones in every list and completion.
+- **A mention kind resolves on the server.** `@<kind>:<name>` is resolved
+  as the workspace's Platform document says, which only the file sets;
+  completing people reads the directory and takes `people:read`, as the
+  directory does.
 - **Project memory reaches only that project.** A turn is sent a project's
   shared notes only when its conversation is filed in that project.
 - **Knowledge stays in its tenant.** A turn is grounded only in the sources
