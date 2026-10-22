@@ -992,7 +992,17 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	actor := envelope.Actor{ID: m.By, Display: m.Name, User: m.By}
 	var answered []threads.Participant
 	start := func(agent string) (runs.Run, error) {
-		run, err := p.answerMessage(ctx, tenant, th, m, via, agent, d.Among, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
+		// A run the selection starts says how: the best fit among the
+		// selected agents, or one of all of them (a lone selected agent
+		// answers as all of one).
+		routedBy := ""
+		switch {
+		case d.Rule == threads.RuleRouted && d.Among != nil:
+			routedBy = threads.ModeBestFit
+		case d.Rule == threads.RuleRouted:
+			routedBy = threads.ModeAll
+		}
+		run, err := p.answerMessage(ctx, tenant, th, m, via, agent, d.Among, routedBy, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
 		if err == nil {
 			out.Runs = append(out.Runs, run)
 			answered = append(answered, threads.Participant{Kind: threads.Agent, Name: run.Agent, AddedBy: m.By})
@@ -1100,7 +1110,7 @@ func answerTagID(thread, message, agent string) string {
 // keeps pins that the person it acts for may change the project's notes, as
 // a turn does (Turn.KeepsNotes). sees is the agents that person may read:
 // @auto never falls back to one they may not read.
-func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, actor envelope.Actor, tagID string, keeps bool, sees func(string) bool) (runs.Run, error) {
+func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, among []string, routed string, actor envelope.Actor, tagID string, keeps bool, sees func(string) bool) (runs.Run, error) {
 	if agent == Auto && len(among) > 0 {
 		// The best fit is picked among the selected agents the clients it
 		// reaches the thread through may route to, and it is the agent
@@ -1118,6 +1128,9 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	if keeps && th.Project != "" {
 		meta[metaKeepsNotes] = th.Project
+	}
+	if routed != "" {
+		meta[runs.MetaRouted] = routed
 	}
 	skills := p.skillsOfMessage(tenant, th, m, via)
 	pinSkills(meta, skills)
