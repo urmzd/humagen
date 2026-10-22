@@ -63,6 +63,7 @@ export function Settings({
   onWorkspace,
   onOpenProjects,
   onOpenWorkspace,
+  onConnections,
 }: {
   me: Me;
   prefs: Preferences;
@@ -82,6 +83,8 @@ export function Settings({
   onOpenProjects: () => void;
   /** Opens the workspace's own project, where its instructions and notes are. */
   onOpenWorkspace: () => void;
+  /** Opens Your connections, the tools that act as you. */
+  onConnections?: () => void;
 }) {
   const setSection = onSection;
   const [problem, setProblem] = useState<string | null>(null);
@@ -236,6 +239,17 @@ export function Settings({
                   </button>
                 </div>
               </form>
+              {onConnections && (
+                <section className={`${card} flex flex-wrap items-center justify-between gap-3`}>
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <p className="text-aui-sm text-aui-fg">Your connections</p>
+                    <p className="text-aui-xs text-aui-muted">The tools that act as you, and the credential you gave each.</p>
+                  </div>
+                  <a href={href({ page: "connections" })} className={button} onClick={follow(onConnections)}>
+                    Open Your Connections
+                  </a>
+                </section>
+              )}
             </>
           )}
 

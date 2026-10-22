@@ -1,11 +1,14 @@
 package spec
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/urmzd/fiber/pkg/toolprovider"
 )
 
 // The reference's own examples load, so docs/spec.md cannot drift from the
@@ -73,6 +76,17 @@ func TestMistakesAreRefusedWithTheirPlace(t *testing.T) {
 		"slack without tokens":     {plat + "  surfaces: {slack: {enabled: true, team: T1}}\n", "bot_token"},
 		"an unreachable tenant":    {plat[:len(plat)-len("metadata: {name: default}\nspec:\n")] + "metadata: {name: other}\n", "cannot be reached"},
 		"two systems":              {sys + "---\n" + sys, "second System"},
+		"a person-scoped tool with a credential": {plat + "  tools: [{name: d, kind: mcp, mcp: {transport: http, endpoint: 'https://a', credential_scope: person, credential: {ref: env:X}}}]\n",
+			"names no credential"},
+		"an unknown credential scope": {plat + "  tools: [{name: d, kind: mcp, mcp: {transport: http, endpoint: 'https://a', credential_scope: team}}]\n", "shared or person"},
+		"a person-scoped stdio tool with nowhere to send it": {plat + "  tools: [{name: d, kind: mcp, mcp: {transport: stdio, endpoint: srv, credential_scope: person}}]\n",
+			"credential_as"},
+		"a person-scoped tool without its form": {plat + "  tools: [{name: d, kind: mcp, mcp: {transport: http, endpoint: 'https://a', credential_scope: person, accept: [{name: s, schema_hash: abc}]}}]\n",
+			"tools[0] \"d\": accept[0] \"s\""},
+		"a person reference the server cannot confine": {sys + "  person_refs: {default: ['env:ANTHROPIC_']}\n", "person_refs.default"},
+		"a person reference that is nobody's own":      {sys + "  person_refs: {default: ['op://People/']}\n", "person_refs.default"},
+		"two workspaces' people in one place": {sys + "  person_refs: {default: ['op://People/{subject}/'], globex: ['op://People/{subject}/']}\n",
+			"could name one reference for two people"},
 	} {
 		path := filepath.Join(t.TempDir(), "warp.yaml")
 		writeFile(t, path, tc.body)
@@ -125,6 +139,46 @@ func TestWhatWarpWritesItReads(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(b), "api_version: warp/v1\nkind: System\n") {
 		t.Errorf("not in declaration order:\n%s", b)
+	}
+}
+
+// A person-scoped tool is declared with each tool's whole form, and what
+// warp writes it reads back.
+func TestAPersonScopedToolDeclaresItsWholeForm(t *testing.T) {
+	schema := json.RawMessage(`{"type":"object","properties":{"q":{"type":"string"}}}`)
+	full, err := toolprovider.NewTool("search", "Search issues", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Platforms: []Platform{{Metadata: Metadata{Name: "default"}, Spec: PlatformSpec{
+		Workspace: Workspace{PersonCredentials: &PersonCredentials{Values: true}},
+		Tools: []Tool{{ToolShared: ToolShared{Name: "issues"}, Slot: Slot{Kind: "mcp", Block: MustJSON(MCP{
+			Transport: "http", Endpoint: "https://issues.example.com/mcp", CredentialScope: ScopePerson,
+			Accept: []AcceptTool{{Name: "search", Description: "Search issues", InputSchema: schema, SchemaHash: full.SchemaHash, Class: "read"}},
+		})}}},
+	}}}}
+	cfg.System.Defaults()
+	cfg.System.Spec.PersonRefs = map[string][]string{"default": {"op://People/{subject}/"}}
+	b, err := Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "warp.yaml")
+	writeFile(t, path, string(b))
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, b)
+	}
+	tool, err := Block[MCP](got.Platforms[0].Spec.Tools[0].Slot)
+	if err != nil || tool.CredentialScope != ScopePerson || len(tool.Accept) != 1 || tool.Accept[0].Description != "Search issues" {
+		t.Fatalf("the tool came back as %+v, %v\n%s", tool, err, b)
+	}
+	again, err := toolprovider.NewTool("search", tool.Accept[0].Description, tool.Accept[0].InputSchema)
+	if err != nil || again.SchemaHash != full.SchemaHash {
+		t.Fatalf("the schema came back differently: %s", tool.Accept[0].InputSchema)
+	}
+	if !got.Platforms[0].Spec.Workspace.PersonCredentials.Values || got.System.Spec.PersonRefs["default"][0] != "op://People/{subject}/" {
+		t.Fatalf("round trip lost something:\n%s", b)
 	}
 }
 

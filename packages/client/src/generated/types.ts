@@ -188,8 +188,41 @@ export interface Actor {
   id: string;
   display?: string;
   bot?: boolean;
-  /** The person's own account in the product that sent the request, next to the connector's id for them. */
+  /** The person the run acts for, by their subject in this workspace: the person signed in, the person a surface asked for (`act_as`), or the person a Slack client maps the Slack user to. Its tools that act as a person use this person's own credentials. Absent when the run acts for nobody. */
   user?: string;
+}
+
+/** The workspace's tools that act as the caller, how the caller stands with each, and what the workspace lets people give. */
+export interface ToolCredentials {
+  providers: ToolCredential[];
+  /** Whether this workspace lets people store a credential's value with warp. Off, people give only a reference to where it is kept. */
+  values: boolean;
+  /** How the references the caller may give start, their own under each start the operator listed, with the caller's subject in place of `{subject}`. A start the caller's subject cannot be written in is left out, and a machine gets none. Empty means no reference can be given. */
+  references: string[];
+}
+
+/** A tool provider that is reached with each person's own credential, and whether the caller has connected one. A value is never shown. */
+export interface ToolCredential {
+  provider: string;
+  transport: "http" | "stdio";
+  /** Where an http provider is reached, so a person sees where their credential is sent. A stdio provider runs on the server and has none. */
+  endpoint?: string;
+  /** How many tools the workspace accepted from the provider. */
+  tools: number;
+  connected: boolean;
+  kind?: CredentialKind;
+  /** The reference, when the credential is one. It names where the secret is kept, never the secret. */
+  ref?: string;
+  updated_at?: string;
+}
+
+/** How a credential is held. A `reference` is a name, and only the name is stored; a `value` is the secret itself, stored in the secrets store client secrets are kept in. */
+export type CredentialKind = "reference" | "value";
+
+/** A reference (`env:NAME`, `keychain:SERVICE[/ACCOUNT]` or `op://VAULT/ITEM/FIELD`) or a value, exactly one. A value is stored and never answered back. */
+export interface ToolCredentialInput {
+  ref?: string;
+  value?: string;
 }
 
 /** Where a run stands. `completed`, `failed` and `stopped` are final. */
@@ -1463,6 +1496,8 @@ export interface QuestionTool {
   arguments?: unknown;
   /** The tool's parameter schema. */
   schema?: unknown;
+  /** The call runs with the credential of the person the run acts for, a tool that acts as them. Anyone who may approve it may approve or deny it as asked, but only that person may approve it with edited `arguments`; anyone else's edit is 403. */
+  acts_for_person?: boolean;
 }
 
 /** What a run is waiting on a person for: to approve a tool call, to

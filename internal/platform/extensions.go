@@ -150,7 +150,9 @@ func (p *Platform) toolGroups(ctx context.Context) (runtime.ToolGroupSource, fun
 		resolver = mcptools.EnvResolver()
 	}
 	dial := mcptools.Dialer(mcptools.WithResolver(resolver), mcptools.WithLogger(p.log))
-	grants := mcptools.NewGrants(store, dial)
+	// A person-scoped provider is reached with the credential of the person
+	// the run acts for, and the person sessions are bounded by fiber.
+	grants := mcptools.NewGrants(store, dial, mcptools.WithPersonResolver(mcptools.PersonResolverFunc(p.personCredential)))
 	if err := seedToolProviders(ctx, store, e.ToolProviders, dial, p.log); err != nil {
 		_ = grants.Close()
 		return nil, nil, err
@@ -171,7 +173,14 @@ func seedToolProviders(ctx context.Context, store toolprovider.Store, seeds []To
 		if len(s.Accept) == 0 {
 			continue
 		}
-		held, err := acceptDeclared(ctx, store, rec, s.Accept, dial)
+		var held []heldBack
+		if rec.Scope() == toolprovider.ScopePerson {
+			// It has no credential of its own to be dialled with, so the
+			// declaration carries every tool's whole form.
+			held, err = acceptDeclaredInFull(ctx, store, rec, s.Accept)
+		} else {
+			held, err = acceptDeclared(ctx, store, rec, s.Accept, dial)
+		}
 		if err != nil {
 			log.Warn("tool provider not reachable at startup; its tools stay pending", "provider", rec.Name, "error", err)
 			continue
@@ -193,7 +202,7 @@ func putProvider(ctx context.Context, store toolprovider.Store, p toolprovider.P
 		return toolprovider.Provider{}, err
 	}
 	if cur.Transport == p.Transport && cur.Endpoint == p.Endpoint && slices.Equal(cur.Args, p.Args) &&
-		cur.CredentialRef == p.CredentialRef && cur.CredentialEnv == p.CredentialEnv {
+		cur.Scope() == p.Scope() && cur.CredentialRef == p.CredentialRef && cur.CredentialEnv == p.CredentialEnv {
 		return cur, nil
 	}
 	p.Version, p.UpdatedBy = cur.Version, "config"
@@ -275,6 +284,46 @@ func acceptDeclared(ctx context.Context, store toolprovider.Store, p toolprovide
 		if !slices.ContainsFunc(declared, func(d toolprovider.Tool) bool { return d.Name == o.Name }) {
 			held = append(held, heldBack{tool: o, reason: "offered but not declared"})
 		}
+	}
+	if !sameTools(cur.Tools, accept) {
+		if _, err := store.Accept(ctx, p.Tenant, p.Name, cur.Version, accept, "config"); err != nil {
+			return nil, err
+		}
+	}
+	return held, nil
+}
+
+// acceptDeclaredInFull accepts the declared tools of a person-scoped
+// provider, which is not dialled at startup: it has no credential of its
+// own, and dialling it with nobody's, or with someone's, is what its scope
+// rules out. So each declared tool carries its whole form, the description
+// and input schema the server offers, and is accepted in that form when its
+// schema hash is the hash of that schema. A tool declared without a matching
+// form stays pending and is logged. Each person's session then compares what
+// the server offers them with what was accepted and holds back anything
+// that differs, as every session does.
+func acceptDeclaredInFull(ctx context.Context, store toolprovider.Store, p toolprovider.Provider, declared []toolprovider.Tool) ([]heldBack, error) {
+	cur, err := store.Snapshot(ctx, p.Tenant, p.Name, 0)
+	if err != nil {
+		return nil, err
+	}
+	var accept []toolprovider.Tool
+	var held []heldBack
+	for _, d := range declared {
+		full, err := toolprovider.NewTool(d.Name, d.Description, d.InputSchema)
+		switch {
+		case err != nil:
+			held = append(held, heldBack{tool: d, reason: err.Error()})
+			continue
+		case full.SchemaHash != d.SchemaHash:
+			held = append(held, heldBack{tool: d, reason: "a person-scoped tool is declared with its description and input_schema, and this schema does not match its schema_hash"})
+			continue
+		}
+		full.Class = d.Class
+		if full.Class == "" {
+			full.Class = toolprovider.ClassWrite
+		}
+		accept = append(accept, full)
 	}
 	if !sameTools(cur.Tools, accept) {
 		if _, err := store.Accept(ctx, p.Tenant, p.Name, cur.Version, accept, "config"); err != nil {

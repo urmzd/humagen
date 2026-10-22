@@ -9,6 +9,8 @@ import (
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/credentials"
+	"github.com/urmzd/warp/pkg/spec"
 )
 
 // The environment configures at most one client per surface: the default one,
@@ -100,6 +102,47 @@ func secretRefs(raw, tenant string, env func(string) string) (map[string][]strin
 		}
 	}
 	return out, nil
+}
+
+// personRefs is where each tenant's people may keep their own tool
+// credentials: how the references they give may start, each with
+// {subject} where the person's subject goes. It is read from -person-refs,
+// written "tenant=START,START;tenant=START". A tenant not listed may
+// reference nothing, and no two starts may share a place.
+func personRefs(raw string) (map[string][]string, error) {
+	out := map[string][]string{}
+	for _, entry := range strings.Split(raw, ";") {
+		if entry = strings.TrimSpace(entry); entry == "" {
+			continue
+		}
+		name, starts, ok := strings.Cut(entry, "=")
+		name = strings.TrimSpace(name)
+		if !ok || name == "" || len(list(starts)) == 0 {
+			return nil, fmt.Errorf("-person-refs: %q is not tenant=START,START", entry)
+		}
+		for _, start := range list(starts) {
+			if err := credentials.CheckStart(start); err != nil {
+				return nil, fmt.Errorf("-person-refs: %w", err)
+			}
+			out[name] = append(out[name], start)
+		}
+	}
+	if err := credentials.CheckStarts(out); err != nil {
+		return nil, fmt.Errorf("-person-refs: %w", err)
+	}
+	return out, nil
+}
+
+// personValues is the workspaces whose Platform document lets people store
+// their own tool credentials with warp.
+func personValues(cfg spec.Config) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range cfg.Platforms {
+		if pc := p.Spec.Workspace.PersonCredentials; pc != nil && pc.Values {
+			out[p.Metadata.Name] = true
+		}
+	}
+	return out
 }
 
 // seedClients creates the clients the environment configures, in one tenant.

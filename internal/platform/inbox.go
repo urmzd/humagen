@@ -9,8 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urmzd/fiber/pkg/envelope"
-
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
@@ -561,7 +559,7 @@ func (p *Platform) retry(ctx context.Context, who auth.Principal, runID string) 
 	t := Turn{
 		// One retry per failed run: asking twice joins the first.
 		ID: "api-retry-" + run.ID, Agent: run.Agent, Text: run.Text, After: run.Prev,
-		Actor: envelope.Actor{ID: who.Subject, Display: who.Name, Bot: who.Kind == auth.Machine},
+		Actor: ActorOf(who),
 	}
 	if run.Prev == "" {
 		t.Project = run.Project

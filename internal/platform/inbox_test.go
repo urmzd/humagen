@@ -320,6 +320,19 @@ func TestMemoryDecidedElsewhereClosesItsMessage(t *testing.T) {
 // refusing is a model that fails every call at once.
 type refusing struct{ saigetypes.Provider }
 
+// spoken reports whether an operator's inbox holds a message about a run.
+func spoken(p *platform.Platform, run string) bool {
+	page, _, _ := p.InboxPage(operator, inbox.Query{})
+	for _, m := range page {
+		for _, part := range m.Parts {
+			if m.Source.Run == run || (part.Failure != nil && part.Failure.Run == run) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (refusing) Stream(context.Context, saigetypes.Request) (<-chan saigetypes.Delta, error) {
 	return nil, errors.New("the model is unavailable")
 }
@@ -350,11 +363,14 @@ func TestInboxHoldsFailures(t *testing.T) {
 		deadline := time.Now().Add(60 * time.Second)
 		for {
 			got, _ := p.Runs.Get(tenant, r.ID)
-			if got.Status == runs.Failed {
+			// A run is failed before its ending is dealt with, so the
+			// message about it is waited for as well. Every message here
+			// reaches an operator.
+			if got.Status == runs.Failed && spoken(p, got.ID) {
 				return got
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("run is still %q", got.Status)
+				t.Fatalf("run is %q, and spoken of in the inbox: %v", got.Status, spoken(p, got.ID))
 			}
 			time.Sleep(50 * time.Millisecond)
 		}

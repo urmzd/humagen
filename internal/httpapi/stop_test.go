@@ -2,6 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -55,10 +58,30 @@ func TestStoppingARunIsAcceptedThenConfirmed(t *testing.T) {
 		_, out := f.do(t, nil, "GET", "/api/runs/"+id, acme, "")
 		return out
 	}
+	// said is the text the run has streamed, from its events as published.
+	said := func() string {
+		_, out := f.do(t, nil, "GET", "/api/runs/"+id+"/events", acme, "")
+		events, _ := out["events"].([]any)
+		text := ""
+		for _, e := range events {
+			e, _ := e.(map[string]any)
+			raw, _ := base64.StdEncoding.DecodeString(fmt.Sprint(e["payload"]))
+			var body struct {
+				Text string `json:"text"`
+			}
+			if e["kind"] == "delta.text" && json.Unmarshal(raw, &body) == nil {
+				text += body.Text
+			}
+		}
+		return text
+	}
+	// A run reads running as soon as its attempt opens, before its model has
+	// said a word, and a run stopped then has no partial answer to keep. So
+	// the stop waits for the text it is meant to keep.
 	deadline := time.Now().Add(10 * time.Second)
-	for read()["status"] != "running" {
+	for read()["status"] != "running" || said() != "So far" {
 		if time.Now().After(deadline) {
-			t.Fatalf("run never started: %v", read())
+			t.Fatalf("run never said anything: %v, said %q", read(), said())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

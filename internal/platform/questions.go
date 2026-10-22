@@ -154,6 +154,10 @@ func (p *Platform) resolveRequester(tenant string, tag envelope.Tag, client stri
 	if tag.Origin != "" {
 		out = append(out, tag.Origin+":"+id)
 	}
+	// The person the run acts for asked for it, by whatever name.
+	if u := strings.TrimSpace(tag.Actor.User); u != "" && !slices.Contains(out, u) {
+		out = append(out, u)
+	}
 	if tag.Origin != string(clients.Slack) {
 		return out
 	}

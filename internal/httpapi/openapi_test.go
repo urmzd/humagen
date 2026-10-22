@@ -30,6 +30,7 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/toolprovider"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 	"go.yaml.in/yaml/v4"
@@ -40,6 +41,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/callpolicy"
 	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/journal"
@@ -349,9 +351,12 @@ func registeredRoutes(t *testing.T) []route {
 func exportImporter(t *testing.T, fset *gotoken.FileSet) types.Importer {
 	t.Helper()
 	cmd := exec.Command("go", "list", "-export", "-deps", "-f", "{{.ImportPath}}={{.Export}}", ".")
+	// What the go command said is the only account of why it failed.
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	raw, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("go list -export: %v", err)
+		t.Fatalf("go list -export: %v\n%s", err, stderr.Bytes())
 	}
 	exports := map[string]string{}
 	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
@@ -582,6 +587,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectDetail": {typ: projectDetail{}}, "ProjectChange": {typ: projects.Change{}},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
+		"ToolCredentials": {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
 		"InboxNotice": {typ: inbox.Notice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
 		"InboxOutcome": {typ: inbox.Outcome{}}, "InboxLimits": {typ: inbox.Limits{}}, "InboxAlertPart": {typ: inbox.AlertPart{}},
@@ -837,7 +843,16 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 				agenttest.TextResponse("Red."),
 			}}, nil
 		}),
-	}})
+	},
+		// A tool that acts as each person, and one the workspace reaches as
+		// itself. Neither is reached here.
+		Ext: platform.Extensions{ToolProviders: []platform.ToolProviderSeed{
+			{Provider: toolprovider.Provider{Tenant: "acme", Name: "issues", Transport: toolprovider.TransportHTTP, Endpoint: "https://issues.example.com/mcp", CredentialScope: toolprovider.ScopePerson}},
+			{Provider: toolprovider.Provider{Tenant: "acme", Name: "wiki", Transport: toolprovider.TransportHTTP, Endpoint: "https://wiki.example.com/mcp", CredentialRef: "env:WIKI_TOKEN"}},
+		}},
+		CredentialRefs:   map[string][]string{"acme": {"op://People/{subject}/"}},
+		CredentialValues: map[string]bool{"acme": true},
+	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
 
@@ -849,6 +864,30 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(f.machine(t, "acme"), "GET", "/api/access/explain", "/api/access/explain?permission=runs:read", "", http.StatusOK)
 	c.call(acme, "GET", "/api/access/explain", "/api/access/explain?permission=runs:read", "", http.StatusOK)
 	c.call(acme, "GET", "/api/access/explain", "/api/access/explain?permission=everything", "", http.StatusBadRequest)
+
+	// A person's own credentials for the tools that act as them. A value
+	// goes in and never comes back out.
+	ana := f.iss.Sign(t, "ana", audience, map[string]any{"org": "acme", "groups": []any{"warp-admins"}})
+	const mine = "/api/me/credentials/{provider}"
+	if list := c.call(ana, "GET", "/api/me/credentials", "/api/me/credentials", "", http.StatusOK); len(sliceOf(list.field("providers"))) != 1 || list.field("values") != true {
+		t.Errorf("the tools that act as ana = %s", list.raw)
+	}
+	c.call(ana, "PUT", mine, "/api/me/credentials/issues", `{"ref":"op://People/ana/issues"}`, http.StatusOK)
+	if stored := c.call(ana, "PUT", mine, "/api/me/credentials/issues", `{"value":"tok-ana-contract"}`, http.StatusOK); strings.Contains(string(stored.raw), "tok-ana-contract") || stored.str("kind") != "value" {
+		t.Errorf("a stored value = %s", stored.raw)
+	}
+	if listed := c.call(ana, "GET", "/api/me/credentials", "/api/me/credentials", "", http.StatusOK); strings.Contains(string(listed.raw), "tok-ana-contract") {
+		t.Errorf("a stored value was listed: %s", listed.raw)
+	}
+	c.call(ana, "PUT", mine, "/api/me/credentials/issues", `{"ref":"op://Infra/db/password"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", mine, "/api/me/credentials/issues", `{"ref":"op://People/ben/issues"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", mine, "/api/me/credentials/issues", `{"ref":"op://People/a/b","value":"v"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", mine, "/api/me/credentials/wiki", `{"ref":"op://People/ana/wiki"}`, http.StatusBadRequest)
+	c.call(ana, "PUT", mine, "/api/me/credentials/ghost", `{"ref":"op://People/ana/ghost"}`, http.StatusNotFound)
+	c.call(acme, "PUT", mine, "/api/me/credentials/issues", `{"ref":"op://People/svc/issues"}`, http.StatusForbidden)
+	c.call(acme, "GET", "/api/me/credentials", "/api/me/credentials", "", http.StatusOK)
+	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNoContent)
+	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNotFound)
 
 	// Agents, revisions and what they remember.
 	c.call(acme, "POST", "/api/agents", "/api/agents", helperSpec, http.StatusCreated)
@@ -1263,6 +1302,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/snooze": {"id": mid}, "/api/inbox/{id}/parts/{part}/resolve": {"id": mid},
 		"/api/artifacts/{id}": {"id": published.ID}, "/api/artifacts/{id}/versions": {"id": published.ID},
 		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
+		"/api/me/credentials/{provider}": {"provider": "issues"},
 	}
 	valid := map[string]string{
 		"/api/agents/{name}": revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
@@ -1271,9 +1311,10 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
 		"/api/projects/{name}": `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
-		"/api/runs/{id}/calls":    `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
-		"/api/alert-rules/{name}": `{"kind":"run_failed","severity":"critical"}`,
-		"/api/schedules/{name}":   `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
+		"/api/runs/{id}/calls":           `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
+		"/api/alert-rules/{name}":        `{"kind":"run_failed","severity":"critical"}`,
+		"/api/schedules/{name}":          `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
+		"/api/me/credentials/{provider}": `{"ref":"op://People/svc/issues"}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
@@ -1393,6 +1434,10 @@ var unexercised = map[string]string{
 	// run. createRun's 402 is exercised; a schedule's run now goes through
 	// the same admission.
 	"POST /api/schedules/{name}/run 402": "spend refusal, exercised through createRun",
+	// A person holds one credential per provider and at most 64, and a
+	// workspace lists at most 64 providers that take one. pkg/credentials
+	// tests the cap.
+	"PUT /api/me/credentials/{provider} 429": "credential cap",
 }
 
 // The event stream is server-sent events. Each message's data is validated
