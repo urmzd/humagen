@@ -93,13 +93,23 @@ func WithinOf(tag envelope.Tag) []string {
 // comma separated (a source's name holds no comma). Like MetaWithin it is
 // overwritten whatever a caller put there, so it is believed from every
 // origin, and every attempt of the run is grounded in the same sources
-// whatever the projects name later.
-const MetaSources = "warp.sources"
+// whatever the projects name later. It is a private key (it starts with
+// envelope.PrivateMetaPrefix), so fiber keeps it out of everything a model is
+// sent: the model is grounded in the sources without being told their names.
+const MetaSources = envelope.PrivateMetaPrefix + "warp.sources"
+
+// MetaSourcesV0 is the key a run accepted before MetaSources was private was
+// pinned with. It is still read, so such a run keeps its sources, and the
+// platform takes it out of what fiber renders.
+const MetaSourcesV0 = "warp.sources"
 
 // SourcesOf returns the knowledge sources a run's tag was pinned with, from
-// its Meta.
+// its Meta: MetaSources, or MetaSourcesV0 for a run pinned before it.
 func SourcesOf(meta map[string]string) []string {
-	v := meta[MetaSources]
+	v, ok := meta[MetaSources]
+	if !ok {
+		v = meta[MetaSourcesV0]
+	}
 	if v == "" {
 		return nil
 	}

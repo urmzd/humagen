@@ -2567,7 +2567,8 @@ in a project takes a member of that project (403).
   }
 
   /** Refused (409) while a project the caller can see names the source,
-and those projects are named. A project hidden from the caller does
+and those projects are named; a caller without `projects:read` is
+told only that a project names it. A project hidden from the caller does
 not hold the delete up and is not named; it keeps the name, which
 grounds nothing until a source of that name is made again.
  */

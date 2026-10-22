@@ -153,13 +153,21 @@ export function ProjectKnowledgeSection({
   const [fileOwned, setFileOwned] = useState(false);
   const { flash, say } = useFlash();
   const editable = canRead && canWrite;
-  // What was last read, so a read caused by another change keeps an edit in progress.
+  // What was last read, so a read caused by a change to another of the
+  // project's fields keeps an edit in progress. A read that finds the list
+  // itself changed shows the latest and says so, so a save never writes over
+  // a change it did not see.
   const read = useRef<string[] | null>(null);
+  const editing = useRef<string[]>([]);
+  editing.current = draft;
   const show = (v: ProjectKnowledge, keepEdit: boolean) => {
     const before = read.current;
     read.current = v.knowledge;
     setView(v);
-    setDraft((d) => (keepEdit && before && !same(d, before) ? d : v.knowledge));
+    const edited = keepEdit && before !== null && !same(editing.current, before);
+    if (edited && same(v.knowledge, before)) return;
+    if (edited) setProblem(words.stale);
+    setDraft(v.knowledge);
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: version is the signal to read again

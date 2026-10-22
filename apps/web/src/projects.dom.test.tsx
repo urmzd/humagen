@@ -3,6 +3,7 @@ import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Note, Policy, ProjectDetail, ScheduleView } from "./api.ts";
 import { stubFetch } from "./dom.ts";
+import { ProjectKnowledgeSection } from "./ProjectKnowledge.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
 import { east, field, globex, globexDetail, globexKnowledge, knowledgeSources, platform, renewals, retail, stores, tree, workspace } from "./projects.fixtures.ts";
 import type { ProjectTab } from "./route.ts";
@@ -376,6 +377,37 @@ test("the Context tab: a knowledge list changed since it was read shows the late
   const section = await screen.findByRole("region", { name: "Knowledge" });
   fireEvent.click(await within(section).findByRole("button", { name: "Remove globex-contracts" }));
   fireEvent.click(within(section).getByRole("button", { name: "Save Knowledge" }));
-  await within(section).findByText("Someone changed this project's sources since you opened them. The latest are shown now.");
+  await within(section).findByText("Someone changed this project since you opened it. Its latest sources are shown now. Make your change again.");
   assert.ok(within(section).getByRole("button", { name: "Remove handbook" }));
+});
+
+test("the Context tab: an edit in progress is kept across a change to another field, and never saved over a change to the list", async () => {
+  let current = globexKnowledge;
+  const puts: unknown[] = [];
+  net = stubFetch(
+    knowledgeRoutes({
+      "GET /api/projects/Globex/knowledge": () => current,
+      "PUT /api/projects/Globex/knowledge": (body) => (puts.push(body), current),
+    }),
+  );
+  const section = (version: number) => (
+    <ProjectKnowledgeSection project="Globex" ancestors={[]} workspaceName="Acme" version={version} canRead canWrite />
+  );
+  const { rerender } = render(section(4));
+  fireEvent.click(await screen.findByRole("button", { name: "Remove globex-contracts" }));
+  assert.ok(!screen.queryByRole("button", { name: "Remove globex-contracts" }));
+
+  // Another field changed: the project's version moved, the list did not.
+  current = { ...globexKnowledge, version: 5 };
+  rerender(section(5));
+  await waitFor(() => assert.equal(net.seen.filter((r) => r.path === "/api/projects/Globex/knowledge").length, 2));
+  assert.ok(!screen.queryByRole("button", { name: "Remove globex-contracts" }), "the edit is kept");
+  assert.ok(!screen.queryByText(/Someone changed this project/));
+
+  // Someone changed the list: their list is shown, and the edit goes.
+  current = { ...globexKnowledge, version: 6, knowledge: ["handbook"] };
+  rerender(section(6));
+  await screen.findByText("Someone changed this project since you opened it. Its latest sources are shown now. Make your change again.");
+  assert.ok(screen.getByRole("button", { name: "Remove handbook" }));
+  assert.equal(puts.length, 0);
 });

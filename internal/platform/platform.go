@@ -560,7 +560,9 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	if len(within) > 0 {
 		meta[runs.MetaWithin] = strings.Join(within, ",")
 	}
+	// The old key too: SourcesOf falls back to it when the new one is absent.
 	delete(meta, runs.MetaSources)
+	delete(meta, runs.MetaSourcesV0)
 	if len(sources) > 0 {
 		meta[runs.MetaSources] = strings.Join(sources, ",")
 	}

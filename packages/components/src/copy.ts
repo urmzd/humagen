@@ -825,7 +825,7 @@ export const defaultCopy = {
       from: (title: string) => `From ${title}`,
       managed: "The platform file sets these sources. They can't be changed here.",
       stale:
-        "Someone changed this project's sources since you opened them. The latest are shown now.",
+        "Someone changed this project since you opened it. Its latest sources are shown now. Make your change again.",
       failed: "The sources could not be saved.",
       readFailed: "The sources could not be read.",
     },
