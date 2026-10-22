@@ -689,6 +689,15 @@ export interface ThreadShare {
   add?: string[];
 }
 
+/** A thread as `getThread` reads it, after a share, and the people the share named who were not added. */
+export type ThreadShared = ThreadPage & { not_added: ThreadNotAdded[] };
+
+/** A person a share named who was not added, by handle, and why, in words that say nothing the sharer may not see. */
+export interface ThreadNotAdded {
+  handle: string;
+  reason: string;
+}
+
 /** A message posted in a thread. */
 export interface ThreadMessageInput {
   text: string;

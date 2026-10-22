@@ -237,12 +237,13 @@ func (s *Server) getThread(w http.ResponseWriter, r *http.Request, who auth.Prin
 		}
 		limit = n
 	}
-	s.threadView(w, r, who, r.PathValue("id"), q.Get("before"), limit, http.StatusOK)
+	s.threadView(w, r, who, r.PathValue("id"), q.Get("before"), limit, http.StatusOK, nil)
 }
 
 // threadView answers a thread as getThread reads it: its record, who answers
 // untagged messages in it, and one page of its turns.
-func (s *Server) threadView(w http.ResponseWriter, r *http.Request, who auth.Principal, id, before string, limit, status int) {
+// extra adds fields to the view, as a share's not_added.
+func (s *Server) threadView(w http.ResponseWriter, r *http.Request, who auth.Principal, id, before string, limit, status int, extra map[string]any) {
 	th, turns, next, err := s.P.ThreadTurns(who.Tenant, id, before, limit)
 	if err != nil {
 		s.problem(w, err)
@@ -258,10 +259,14 @@ func (s *Server) threadView(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if next != "" {
 		cursor = &next
 	}
-	ok(w, status, map[string]any{
+	view := map[string]any{
 		"thread": th, "turns": turns, "next": cursor,
 		"answers": answers{Agent: d.Agent, From: d.From, Unavailable: why},
-	})
+	}
+	for k, v := range extra {
+		view[k] = v
+	}
+	ok(w, status, view)
 }
 
 // shareThread makes a conversation shared in a project's channel and adds
@@ -272,11 +277,12 @@ func (s *Server) shareThread(w http.ResponseWriter, r *http.Request, who auth.Pr
 		return
 	}
 	id := r.PathValue("id")
-	if _, err := s.P.ShareThread(r.Context(), who, id, in); err != nil {
+	got, err := s.P.Share(r.Context(), who, id, in)
+	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	s.threadView(w, r, who, id, "", 0, http.StatusOK)
+	s.threadView(w, r, who, id, "", 0, http.StatusOK, map[string]any{"not_added": got.NotAdded})
 }
 
 // threadProblem answers the errors of threads, and reports whether err was
