@@ -12,8 +12,8 @@ import (
 
 // Each workspace's inbox keeps what was settled for as long as its Platform
 // document says, 90 days when it says nothing, and never less than a week.
-// The platform drops the rest when it starts and every hour after, on
-// memory and on Postgres, and a release whose notes were dropped is not
+// A pass, which the platform runs when it starts and every hour after,
+// drops the rest, on memory and on Postgres, and a release whose notes were dropped is not
 // posted again, across a restart.
 func TestEachInboxKeepsWhatWasSettledForItsRetention(t *testing.T) {
 	eachBackend(t, func(t *testing.T, first platform.Backends, again func() platform.Backends) {

@@ -103,7 +103,7 @@ func ParseRetention(s string) (time.Duration, error) {
 	if s == "" {
 		return inbox.DefaultRetention, nil
 	}
-	bad := fmt.Errorf("%q is whole days, like 90d, or a duration, like 2160h", s)
+	bad := fmt.Errorf("%q is whole days, like 90d, or a duration, like 2160h, of at most 100 years", s)
 	var d time.Duration
 	if days, ok := strings.CutSuffix(s, "d"); ok {
 		n, err := strconv.Atoi(days)
@@ -113,7 +113,7 @@ func ParseRetention(s string) (time.Duration, error) {
 		d = time.Duration(n) * 24 * time.Hour
 	} else {
 		var err error
-		if d, err = time.ParseDuration(s); err != nil {
+		if d, err = time.ParseDuration(s); err != nil || d > maxRetentionDays*24*time.Hour {
 			return 0, bad
 		}
 	}
@@ -123,7 +123,7 @@ func ParseRetention(s string) (time.Duration, error) {
 	return d, nil
 }
 
-// maxRetentionDays bounds a retention in days, so it fits a duration.
+// maxRetentionDays bounds a retention, 100 years, so it fits a duration.
 const maxRetentionDays = 100 * 365
 
 // PersonCredentials is what a workspace's people may give for a
