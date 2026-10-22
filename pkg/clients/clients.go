@@ -212,12 +212,10 @@ type GitHubOptions struct {
 	// read through this client.
 	ReadRepositories []string `json:"read_repositories,omitempty"`
 	// Login is the app's own GitHub login, such as "warp[bot]", mentioned as
-	// @warp. It is kept and not yet given to the GitHub connector: it takes
-	// effect once warp is built with a fiber whose connector reads it. From
-	// then, a comment that mentions it and names no agent is addressed to the
-	// client and answered by its default, as an untagged Slack message is
-	// (see docs/github.md). Until then, and while it is empty, a comment that
-	// names no agent starts nothing.
+	// @warp. A comment that mentions it and names no agent is addressed to
+	// the client and answered by its default, as an untagged Slack message is
+	// (see docs/github.md). While it is empty, a comment that names no agent
+	// starts nothing.
 	Login string `json:"login,omitempty"`
 }
 
