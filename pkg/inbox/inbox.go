@@ -672,8 +672,9 @@ func (sc storedChange) change(tenant string) Change {
 	if sc.Raised != nil {
 		m := sc.Raised.Message
 		m.Key, m.Audience, m.Excluded, m.Broadcast = sc.Raised.Key, sc.Raised.Audience, sc.Raised.Excluded, sc.Raised.Broadcast
-		// Older writers did not distinguish PostOnce from Post. Preserve
-		// their broadcast keys conservatively, so none can be posted twice.
+		// Older writers did not distinguish PostOnce from Post. Post used
+		// announce: keys, but callers could name those too. Preserve old
+		// broadcast keys conservatively, so none can be posted twice.
 		m.Once = m.Broadcast && m.Key != ""
 		if sc.Raised.Once != nil {
 			m.Once = *sc.Raised.Once
@@ -1441,6 +1442,9 @@ func (s *Store) Post(tenantName string, m Message, at time.Time, caps PostCaps) 
 func (s *Store) PostOnce(tenantName, key string, m Message, at time.Time, caps PostCaps) (Message, bool, error) {
 	if key == "" {
 		return Message{}, false, fmt.Errorf("%w: what is posted once is named by a key", ErrInvalid)
+	}
+	if strings.HasPrefix(key, "announce:") {
+		return Message{}, false, fmt.Errorf("%w: the keys of what is posted once do not start with announce:, which Post keys its own", ErrInvalid)
 	}
 	return s.post(tenantName, key, m, at, caps)
 }

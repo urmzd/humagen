@@ -2,6 +2,7 @@ package platform
 
 import (
 	"cmp"
+	"context"
 	"time"
 
 	"github.com/urmzd/warp/pkg/inbox"
@@ -21,10 +22,13 @@ func (p *Platform) inboxRetention(tenant string) time.Duration {
 // retainInbox drops from every workspace's inbox what was settled for
 // everyone, resolved, dismissed or withdrawn, longer ago than its
 // retention (inbox.Store.Retain). What a step could not write is tried
-// again at the next pass.
-func (p *Platform) retainInbox() {
+// again at the next pass. A pass stops between workspaces once ctx is done.
+func (p *Platform) retainInbox(ctx context.Context) {
 	now := p.now()
 	for _, tenant := range p.Inbox.Tenants() {
+		if ctx.Err() != nil {
+			return
+		}
 		n, err := p.Inbox.Retain(tenant, now.Add(-p.inboxRetention(tenant)))
 		if n > 0 {
 			p.log.Info("platform: inbox retention dropped what was settled", "tenant", tenant, "messages", n)

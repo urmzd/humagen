@@ -785,7 +785,8 @@ days by default (see Retention and counts).
   `inbox.Store.PostOnce` checks the key under the inbox lock: an
   announcement ever raised under it, withdrawn or not, is kept, and its key
   outlives it once retention drops it, so a restart or a later process on
-  the same database posts nothing. It is an
+  the same database posts nothing. Caller keys cannot start with `announce:`,
+  which ordinary posts use for their own keys. It is an
   announcement like any other in the root: everyone reads it, What's new
   shows it, and Hide for Me hides one reader's copy.
 

@@ -857,7 +857,7 @@ func (p *Platform) Run(ctx context.Context) error {
 		tick := time.NewTicker(retainEvery)
 		defer tick.Stop()
 		for {
-			p.retainInbox()
+			p.retainInbox(ctx)
 			select {
 			case <-ctx.Done():
 				return nil
