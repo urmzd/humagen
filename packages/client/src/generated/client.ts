@@ -1370,13 +1370,13 @@ credential acting for nobody is refused (403). What the message
 starts follows the tag rules: the agents it tags answer, at most 3,
 and a `$skill` with no agent tagged goes to `@auto`; tagging only
 people or experts notifies them; posted only, nothing answers. A
-message that tags no agent in a thread with selected agents
-(`agents`, `mode`) is answered by them (rule `routed`): the best fit
-among them, or each of them; a `$skill` with no agent goes to them
-too. Otherwise a message a person posts as themselves, as the
-console does, runs only the agents it tags: untagged, it starts
-nothing (rule `untagged`), whatever the thread's, channel's or
-project's default. Otherwise,
+message a person posts as themselves, as the console does, that tags
+no agent in a thread with selected agents (`agents`, `mode`) is
+answered by them (rule `routed`): the best fit among them, or each
+of them; a `$skill` with no agent goes to them too. With none
+selected, such a message runs only the agents it tags: untagged, it
+starts nothing (rule `untagged`), whatever the thread's, channel's
+or project's default. Otherwise,
 for a message a client posts, the default the thread inherits
 answers. `visibility` left out, by a person posting as themselves,
 is `private`: the conversation is its starter's alone until they
@@ -1513,8 +1513,9 @@ then owns it.
 client that maps them, as for `startThread`, and each run it starts
 acts for that person. What it starts follows the tag rules of
 `startThread`: posted as the caller themselves, as the console
-does, it runs only the agents it tags, and untagged it starts
-nothing; each run is sent the conversation up to it. `after` is the
+does, it runs the agents it tags, else the thread's selected agents,
+and with none selected, untagged, it starts nothing; each run is
+sent the conversation up to it. `after` is the
 turn it follows: a message of
 the thread, a run answering one, or in a conversation from before
 threads one of its runs; left out, it follows the latest. `answers`

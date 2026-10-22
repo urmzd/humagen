@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/threads"
@@ -276,5 +277,61 @@ func TestOnlyItsStarterMovesAPrivateConversation(t *testing.T) {
 	sel, err := p.UpdateThread(ctx, bo, th.ID, platform.ThreadUpdate{Version: th.Version, Agents: []string{"lead"}})
 	if err != nil || !slices.Equal(sel.Agents, []string{"lead"}) {
 		t.Fatalf("a tagged participant selecting agents = %+v, %v", sel, err)
+	}
+}
+
+// One who governs the workspace reads a private conversation without taking
+// part, and does not move it.
+func TestAGovernorWhoTakesNoPartDoesNotMoveAPrivateConversation(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator)
+	got, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Initech", Text: "mine"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := got.Thread
+	if !p.SeesThread(admin, th.ID) {
+		t.Fatal("the test needs admin to read the conversation")
+	}
+	if _, err := p.UpdateThread(t.Context(), admin, th.ID, platform.ThreadUpdate{Version: th.Version, Project: "Field"}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a governor who takes no part moved it: %v", err)
+	}
+}
+
+// The best fit, when nothing matches, says it fell back to a selected agent,
+// not to a default.
+func TestABestFitThatMatchesNothingSaysSo(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator)
+	got, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Initech", Agents: []string{"helper", "lead"}, Text: "qqqq zzzz"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Runs) != 1 || !strings.HasPrefix(got.Runs[0].Picked, "Picked from the selected agents") {
+		t.Fatalf("the best fit that matched nothing = %+v", got.Runs)
+	}
+}
+
+// Only a person posting as themselves is held to their tags: a client whose
+// id is "console" posting for someone keeps a client's rules.
+func TestAClientCalledConsoleKeepsAClientsRules(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	in := slackClient("console", "A0CON", "T0TEAM", "helper")
+	in.Agents = []string{clients.AnyAgent}
+	in.Slack.Machine, in.Slack.People = "svc-slack", map[string]string{"U0ANA": "ana"}
+	in.Home = &clients.Home{Project: "Initech"}
+	create(t, p, tenant, in)
+	got, err := p.StartThread(t.Context(), machine, platform.ThreadInput{Project: "Initech", Visibility: threads.Shared, Text: "anyone?", ActAs: &platform.ActAs{Client: "console", User: "U0ANA"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Message.Via != "console" || got.Rule == threads.RuleUntagged {
+		t.Fatalf("a client called console posting untagged did %s (via %s)", got.Rule, got.Message.Via)
+	}
+	ana := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	if mine := post(t, p, ana, got.Thread.ID, platform.MessageInput{Text: "and me?"}); mine.Rule != threads.RuleUntagged {
+		t.Fatalf("a person posting as themselves untagged did %s", mine.Rule)
 	}
 }
