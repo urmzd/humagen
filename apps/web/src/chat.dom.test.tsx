@@ -62,10 +62,13 @@ afterEach(() => {
   net.restore();
 });
 
-function open(turn: Run, me: string) {
+/** Open conversation t1 as me. Of turns at one point, the newest is on screen. */
+function open(turn: Run | Run[], me: string) {
+  const turns = Array.isArray(turn) ? turn : [turn];
+  const last = turns[turns.length - 1] as Run;
   net = stubFetch({
-    "GET /api/threads/t1": () => ({ turns: [turn] }),
-    "POST /api/runs": (body) => ({ ...turn, id: "t2", text: (body as { text: string }).text, status: "accepted", actor: { id: me, user: me } }),
+    "GET /api/threads/t1": () => ({ turns }),
+    "POST /api/runs": (body) => ({ ...last, id: "t2", text: (body as { text: string }).text, status: "accepted", actor: { id: me, user: me } }),
   });
   const noop = () => {};
   render(
@@ -150,4 +153,36 @@ test("a reader's own turn from before warp said whom a run acts for may be asked
   open(failed(before, "api-r-0123456789abcdefghijkl"), "ana");
   await screen.findByText("This turn acted for Ben, so only they can retry it.");
   assert.ok(!screen.queryByRole("button", { name: "Retry" }));
+});
+
+test("a turn from before warp said whom a run acts for is not the reader's when its words were someone else's", async () => {
+  // Before actor.user, the console's Retry and Regenerate asked an earlier
+  // turn's words again at the same point, as an ordinary turn of whoever
+  // pressed, and the Slack app asked for a person it maps under its own
+  // key, whatever message the words came from.
+  const anas: Run = { ...answered({ id: "ana", display: "Ana" }, "api-r-aaaaaaaaaaaaaaaaaaaaaa"), id: "t0", root: "t0" };
+  const bens = { id: "ben", display: "Ben" };
+  for (const turn of [
+    answered(bens, "api-r-bbbbbbbbbbbbbbbbbbbbbb"),
+    failed(bens, "api-r-bbbbbbbbbbbbbbbbbbbbbb"),
+  ]) {
+    open([anas, turn], "ben");
+    await screen.findByText(turn.status === "failed" ? "This turn acted for nobody, so it is not retried here, where it would act for you." : "Filed.");
+    assert.ok(!screen.queryByRole("button", { name: "Regenerate" }), "ben's Regenerate of ana's words is not his");
+    assert.ok(!screen.queryByRole("button", { name: "Retry" }), "ben's Retry of ana's words is not his");
+    cleanup();
+    net.restore();
+  }
+  for (const turn of [answered(bens, "api-9-svc-slack-slack-T1-C1-1700000000-000100"), failed(bens, "api-9-svc-slack-slack-T1-C1-1700000000-000100")]) {
+    open(turn, "ben");
+    await screen.findByText(turn.status === "failed" ? "This turn acted for nobody, so it is not retried here, where it would act for you." : "Filed.");
+    assert.ok(!screen.queryByRole("button", { name: "Regenerate" }), "a turn the Slack app asked for ben is not his here");
+    assert.ok(!screen.queryByRole("button", { name: "Retry" }));
+    cleanup();
+    net.restore();
+  }
+  // His own words asked again by him are still his.
+  open([{ ...anas, actor: bens, tag_id: "api-r-cccccccccccccccccccccc" }, failed(bens, "api-r-bbbbbbbbbbbbbbbbbbbbbb")], "ben");
+  fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
 });
