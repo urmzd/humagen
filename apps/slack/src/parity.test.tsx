@@ -6,7 +6,6 @@ import {
   follow,
   fromServer,
   type PlatformMessage,
-  projectsOf,
   type Run,
   replay,
   toRequest,
@@ -522,7 +521,7 @@ test("an agent's draft reads the same on both, with Publish and Discard for its 
   assert.ok(!web(<MessageView message={message} />).includes('href="https://evil.example"'));
 });
 
-test("Home's What's new and Your projects are one model, made as the console makes it, and read the same on both", () => {
+test("Home's What's new is made as the console makes it, and What's new and Your projects read the same on both", () => {
   const announcements = [
     announcementMail({
       id: "m-old",
@@ -565,7 +564,7 @@ test("Home's What's new and Your projects are one model, made as the console mak
     build: false,
     href,
   });
-  // The console makes What's new and Your projects with the same calls, from the same reads.
+  // The console's Home makes What's new with the same call, from the same reads (apps/web/src/App.tsx).
   const titles = new Map(projects.map((p) => [p.name, p.title || p.name]));
   assert.deepEqual(
     model.updates,
@@ -575,10 +574,26 @@ test("Home's What's new and Your projects are one model, made as the console mak
       (name, id) => href(`/projects/${name || "~"}?message=${id}`),
     ),
   );
-  assert.deepEqual(
-    model.projects,
-    projectsOf(projects, (name) => href(`/projects/${name}`)),
-  );
+  // The console's Home has no Your projects: the busiest first, each opening its page.
+  assert.deepEqual(model.projects, [
+    {
+      name: "Field",
+      title: "Field engineering",
+      within: [],
+      kind: "team",
+      active: 2,
+      activeAt: "2026-10-09T00:30:00Z",
+      url: "https://warp.test/projects/Field",
+    },
+    {
+      name: "Launch",
+      title: "Launch",
+      within: [],
+      kind: "team",
+      active: 0,
+      url: "https://warp.test/projects/Launch",
+    },
+  ]);
 
   const el = <Home home={model} />;
   const onSlack = plain(JSON.stringify(homeView(el).view.blocks).replace(/\\n/g, " "));

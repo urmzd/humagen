@@ -1,7 +1,8 @@
 /**
- * The platform's projects as Home shows them. The console and the Slack app
- * read the same list (`GET /api/projects`, the Slack app for one of its
- * people with `act_as_client` and `act_as_user`) and map it here.
+ * The platform's projects as the shared Home shows them, from
+ * `GET /api/projects`. The Slack app reads the list for one of its people,
+ * with `act_as_client` and `act_as_user`, and maps it here. The console's
+ * Home has no Your projects.
  */
 import { type HomeProject, orderProjects } from "@warp/core";
 

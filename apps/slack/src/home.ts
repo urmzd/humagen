@@ -37,11 +37,12 @@ const projectPath = (name: string) => `/projects/${name === "" ? "~" : enc(name)
 /**
  * The shared Home for a person the client maps, as the Slack app shows it:
  * what needs them (five at most, the rest counted), what's new in their
- * projects, and their projects, each opening its page in the console. It
- * knows nothing of their access or connections, so it shows neither, and it
- * starts only what it can answer here: a question, an agent when the builder
- * is reachable, and the console's search when it has the console's address.
- * The model is the console's: the same adapter turns the same reads into it.
+ * projects, and their projects, each linking its page in the console when
+ * `href` gives an address. It knows nothing of their access or connections,
+ * so it shows neither, and it starts only what it can answer here: a
+ * question, an agent when the builder is reachable, and the console's search
+ * when it has the console's address. What's new is made with the adapter
+ * call the console's Home makes, from the same reads.
  */
 export function homeModel(r: HomeReads): HomeModel {
   const titles = new Map((r.projects ?? []).map((p) => [p.name, p.title || p.name]));
