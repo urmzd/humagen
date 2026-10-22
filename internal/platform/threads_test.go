@@ -1064,3 +1064,62 @@ func TestAQuestionForExpertsWithNoExpertGoesToTheNearestOwners(t *testing.T) {
 		t.Fatalf("the question's subject = %q", q.Subject)
 	}
 }
+
+// The owners a question for the experts falls back to are those who own the
+// run's project now: an owner entry under a members-only project that does
+// not let its person in grants nothing, so the question goes on up the chain
+// to an owner who can read the run.
+func TestAQuestionForExpertsSkipsOwnersWhoCannotReadTheRun(t *testing.T) {
+	c := &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"asker": {asked(map[string]any{"question": "What is the PO number?", "asked_of": "sme"}), say("Filed.")}},
+		tools: map[string][]string{"asker": {"ask_person"}},
+	}
+	p := stage(t, c, platform.Config{})
+	field(t, p)
+	// Renewals is narrowed first, as a sub-project is never more open.
+	for _, step := range []struct {
+		name    string
+		members []projects.Entry
+	}{
+		{"Renewals", []projects.Entry{{Who: olu.Subject, Role: projects.Owner}}},
+		{"Globex", []projects.Entry{{Who: "ada", Role: projects.Owner}}},
+	} {
+		cur, _ := p.ProjectTree(tenant).Get(step.name)
+		if _, err := p.Projects.Update(tenant, step.name, cur.Version, ada, time.Now(), func(pr *projects.Project) error {
+			pr.Members = step.members
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: envelope.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	q := questionFor(t, p, run.ID)
+	if sees(p, olu, q.ID) || sees(p, grace, q.ID) || !slices.Equal(q.Audience, []string{"ada"}) {
+		t.Fatalf("the question went to %v, want Globex's owner, who owns Renewals from above", q.Audience)
+	}
+}
+
+// A question for the experts in a private thread with no expert is not sent
+// to the project's owners, who do not take part in it, but stays with whoever
+// may answer there.
+func TestAQuestionForExpertsInAPrivateThreadStaysWithItsParticipants(t *testing.T) {
+	c := &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"asker": {asked(map[string]any{"question": "What is the PO number?", "asked_of": "sme"}), say("Filed.")}},
+		tools: map[string][]string{"asker": {"ask_person"}},
+	}
+	p := stage(t, c, platform.Config{})
+	field(t, p)
+	posted := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "@asker file it"})
+	if len(posted.Runs) != 1 {
+		t.Fatalf("the thread started %d runs", len(posted.Runs))
+	}
+	run := await(t, p, posted.Runs[0].ID, runs.Parked)
+	q := questionFor(t, p, run.ID)
+	if !sees(p, operator, q.ID) {
+		t.Fatalf("the question in a private thread went to %v, not to who takes part in it", q.Audience)
+	}
+}

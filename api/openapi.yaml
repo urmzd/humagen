@@ -877,11 +877,11 @@ paths:
         - {$ref: "#/components/parameters/RunID"}
         - name: after
           in: query
-          schema: {type: string}
-          description: The `next` cursor of the previous page. It is not a subject.
+          schema: {type: string, pattern: "^[1-9][0-9]*$"}
+          description: The `next` cursor of the previous page, a positive number. It is not a subject.
       responses:
         "200":
-          description: Feedback in the order it was first given, and a cursor for the next page, empty at the end.
+          description: Feedback in the order it was first given (ratings kept before feedback was numbered come first, in the order they were last rated), and a cursor for the next page, empty at the end.
           content:
             application/json:
               schema:
@@ -4722,10 +4722,10 @@ components:
       properties:
         run: {type: string}
         by:
-          description: The rater's handle, or "" for a person known by no name that can be shown.
+          description: The rater's handle, else their subject when it holds no address (a machine's), else "".
           type: string
         by_name:
-          description: What the rater is called, their name or else their handle, never an address.
+          description: What the rater is called, their name, else their handle, else their subject when it holds no address, else "someone". Never an address.
           type: string
         mine:
           description: Whether this is the rating of the person asking.

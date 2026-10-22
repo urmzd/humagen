@@ -172,6 +172,9 @@ func TestTheDirectoryListsAPersonsProjectsTheReaderMaySee(t *testing.T) {
 	}
 	reader := f.machine(t, "acme", "warp:people:read", "warp:projects:read")
 	got := projectsOf(reader)
+	if out := want(t, f, reader, "GET", "/api/people", "", http.StatusOK); strings.Contains(fmt.Sprint(out), "projects_more") {
+		t.Fatalf("a hidden project is counted: %v", out)
+	}
 	if len(got) != 1 || got[0].(map[string]any)["name"] != "Field" || got[0].(map[string]any)["title"] != "Field engineering" || got[0].(map[string]any)["role"] != "member" {
 		t.Fatalf("a reader outside Globex reads Ada's projects as %v, want Field alone", got)
 	}

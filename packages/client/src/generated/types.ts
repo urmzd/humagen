@@ -254,9 +254,9 @@ hold an address.
  */
 export interface RunFeedback {
   run: string;
-  /** The rater's handle, or "" for a person known by no name that can be shown. */
+  /** The rater's handle, else their subject when it holds no address (a machine's), else "". */
   by: string;
-  /** What the rater is called, their name or else their handle, never an address. */
+  /** What the rater is called, their name, else their handle, else their subject when it holds no address, else "someone". Never an address. */
   by_name: string;
   /** Whether this is the rating of the person asking. */
   mine: boolean;

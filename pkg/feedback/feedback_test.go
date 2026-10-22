@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/urmzd/warp/pkg/feedback"
 	"github.com/urmzd/warp/pkg/state"
@@ -74,9 +75,11 @@ func TestFeedbackSurvivesRestartAndScopesPeopleAndTenants(t *testing.T) {
 // record kept before records were numbered.
 func TestFeedbackPagesByANumberThatSurvivesARestart(t *testing.T) {
 	st := state.NewMemory()
-	// Kept before records were numbered.
-	for _, who := range []string{"zed@example.com", "amy@example.com"} {
-		if err := state.NewTable[feedback.Record](st, "feedback").Put("one", "k-"+who, feedback.Record{Run: "run", Subject: who, Rating: "up"}); err != nil {
+	// Kept before records were numbered: they are numbered in the order they
+	// were last rated, zed first.
+	for i, who := range []string{"zed@example.com", "amy@example.com"} {
+		at := time.Date(2026, 1, 1+i, 0, 0, 0, 0, time.UTC)
+		if err := state.NewTable[feedback.Record](st, "feedback").Put("one", "k-"+who, feedback.Record{Run: "run", Subject: who, Rating: "up", UpdatedAt: at}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -85,7 +88,7 @@ func TestFeedbackPagesByANumberThatSurvivesARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := s.List("one", "run", 0)
-	if len(first) != 2 || first[0].Seq == 0 || first[1].Seq <= first[0].Seq {
+	if len(first) != 2 || first[0].Seq == 0 || first[1].Seq <= first[0].Seq || first[0].Subject != "zed@example.com" {
 		t.Fatalf("old records are not numbered: %+v", first)
 	}
 	for i := range feedback.MaxPage + 1 {

@@ -261,7 +261,7 @@ func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Questi
 				// With no expert on the chain, the question goes to the
 				// project's owners, narrowed to the answerers as experts
 				// are.
-				if owners := p.nearestOwners(run.Tenant, run.Project); len(owners) > 0 {
+				if owners := p.nearestOwners(run); len(owners) > 0 {
 					audience = expertAudience(rev.Spec.Answerers, owners)
 					if slices.ContainsFunc(audience, func(who string) bool { return slices.Contains(owners, who) }) {
 						return audience, nil, addressee{kind: ForAnswerers, owners: true}
@@ -319,14 +319,29 @@ func (p *Platform) expertsAsked(run runs.Run, q payload.Question) (experts []str
 
 // nearestOwners is whom a question for the experts goes to when the run's
 // chain lists no expert: the owners of the nearest project on the chain, the
-// run's own first and the workspace last, that names any by its own entries.
-// An entry for everyone names no owner. Nil when no project on the chain
-// names one.
-func (p *Platform) nearestOwners(tenant, project string) []string {
-	for _, pr := range p.Projects.Tree(tenant).Chain(project) {
+// run's own first and the workspace last, that names any by its own entries
+// who own the run's project now. An entry for everyone names no owner, and
+// one that grants nothing, as under a members-only project that does not let
+// its person in, is passed over. A run in a private thread has none: its
+// owners do not take part in it, so the question stays with whoever may
+// answer there. Nil when no project on the chain names one.
+func (p *Platform) nearestOwners(run runs.Run) []string {
+	if p.privateThread(run.Tenant, run.Thread) {
+		return nil
+	}
+	tree := p.Projects.Tree(run.Tenant)
+	owns := func(who string) bool {
+		r := projects.Reader{Subject: who}
+		if role, ok := strings.CutPrefix(who, projects.RolePrefix); ok {
+			// The holders of a role, as one who holds that role alone.
+			r = projects.Reader{Subject: who, Roles: []string{role}}
+		}
+		return tree.Resolve(run.Project, r).Role == projects.Owner
+	}
+	for _, pr := range tree.Chain(run.Project) {
 		var out []string
 		for _, m := range pr.Members {
-			if m.Role == projects.Owner && m.Who != projects.Everyone && !slices.Contains(out, m.Who) {
+			if m.Role == projects.Owner && m.Who != projects.Everyone && !slices.Contains(out, m.Who) && owns(m.Who) {
 				out = append(out, m.Who)
 			}
 		}

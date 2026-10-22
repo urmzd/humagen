@@ -95,8 +95,9 @@ before then takes this one-line change, or only admins make projects:
 People are unaffected under the built-in policy, whose viewer reads `*`. A
 machine gets exactly the scopes on its token, so one with explicit scopes
 (the Slack app, CI) needs `warp:projects:read` to list projects.
-`warp config check` warns of a configured machine that holds `warp:runs:read`
-but not `warp:projects:read`.
+`warp config check` warns of a Slack app whose `warp_client` holds
+`warp:runs:read` but not `warp:projects:read`, the one machine a spec
+configures; a CI token's scopes are the identity provider's to check.
 
 ## Project roles
 

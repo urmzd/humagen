@@ -66,7 +66,6 @@ func projectsOf(who auth.Principal, seer *platform.Seer, tree *projects.Tree, p 
 		return out, 0
 	}
 	r := projects.Reader{Subject: p.Subject, Roles: p.Roles}
-	access := tree.Roles(r)
 	for _, name := range tree.Named(r) {
 		if name == projects.Root || !seer.Project(name) {
 			continue
@@ -76,7 +75,7 @@ func projectsOf(who auth.Principal, seer *platform.Seer, tree *projects.Tree, p 
 			continue
 		}
 		pr, _ := tree.Get(name)
-		out = append(out, personProject{Name: name, Title: pr.Title, Role: access[name].Role})
+		out = append(out, personProject{Name: name, Title: pr.Title, Role: tree.Resolve(name, r).Role})
 	}
 	return out, more
 }

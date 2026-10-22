@@ -1269,7 +1269,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	mv := version(members)
 	c.call(acme, "GET", "/api/projects/{name}/members", "/api/projects/Ghost/members", "", http.StatusNotFound)
 	mset := c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members",
-		fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"viewer"},{"who":"okta|ana","role":"owner"}]}`, mv), http.StatusOK)
+		fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"viewer"},{"who":"okta|ana","role":"owner"},{"who":"okta|dana","role":"member"}]}`, mv), http.StatusOK)
+	// A person's own projects are listed in the directory, as the schema says.
+	if dir := c.call(acme, "GET", "/api/people", "/api/people", "", http.StatusOK); !strings.Contains(string(dir.raw), `"projects":[{"name":"Globex"`) {
+		t.Errorf("the directory does not list Dana's projects: %s", dir.raw)
+	}
 	c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"viewer"}]}`, mv), http.StatusConflict)
 	// Members only: read by its members, and by projects:govern.
 	closed := c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"okta|ana","role":"owner"}]}`, version(mset)), http.StatusOK)

@@ -41,23 +41,28 @@ type Store struct {
 const MaxPage = 200
 
 // Open loads what was kept. A record kept before records were numbered is
-// given the next number in the order of its key, and kept with it, so a
+// given the next number in the order it was last rated, and kept with it, so a
 // cursor still means the same record after a restart.
 func Open(st state.Store) (*Store, error) {
 	s := &Store{by: map[string]map[string]Record{}, seq: map[string]int64{}, kept: state.NewTable[Record](st, "feedback")}
-	type unnumbered struct{ tenant, key string }
+	type unnumbered struct {
+		tenant, key string
+		at          time.Time
+	}
 	var old []unnumbered
 	err := s.kept.Load(func(tenant, key string, r Record) error {
 		s.put(tenant, key, r)
 		if r.Seq == 0 {
-			old = append(old, unnumbered{tenant, key})
+			old = append(old, unnumbered{tenant, key, r.UpdatedAt})
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	slices.SortFunc(old, func(a, b unnumbered) int { return strings.Compare(a.tenant+"\x00"+a.key, b.tenant+"\x00"+b.key) })
+	slices.SortFunc(old, func(a, b unnumbered) int {
+		return cmp.Or(strings.Compare(a.tenant, b.tenant), a.at.Compare(b.at), strings.Compare(a.key, b.key))
+	})
 	for _, u := range old {
 		r := s.by[u.tenant][u.key]
 		s.seq[u.tenant]++

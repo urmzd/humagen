@@ -624,9 +624,11 @@ names an agent, so it is a tag. fiber's in-process connectors may set an
 agent of `auto`; `surface.stamp` resolves it with `@auto` before admission,
 among the agents the client may route to. The Slack app built on the API
 names the client it answers for: `POST /api/runs` takes `act_as {client,
-user}`, and `Converse` applies that client's allow-list and default, so a
-client that lists its agents refuses `@auto`, and a default of `auto`, as
-names outside the list.
+user}`, and `Converse` applies that client's allow-list and default, picking
+`@auto` among the agents the client may route to. The Slack app still sends
+`auto` only for a client whose list is `*`, its own choice: a client that
+lists its agents treats `@auto`, and a default of `auto`, as names outside the
+list.
 `stamp` also writes `warp.project` and `warp.channel` from the binding, and
 `runs.ProjectOf` believes them for `slack` and `github` origins, because
 ingress overwrites whatever a connector put there (phase 8).
@@ -1434,7 +1436,7 @@ and its total, What's new and Your projects to the same on both renderers.
 
 Every Slack change passes `pnpm validate:slack`, and
 `TestTheSlackManifestIsWhatWarpGenerates` stays green. The projects work
-added no Slack scope, but the uploads and canvases that came with it (#47)
+added no Slack scope, but the uploads and canvases that landed alongside it (#47)
 added `files:read` and `canvases:write`, so an app installed before then is
 reinstalled from the generated manifest to grant them.
 
