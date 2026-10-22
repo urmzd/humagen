@@ -1212,8 +1212,11 @@ Shared pieces: `packages/core` gains `HomeModel.updates`, and
   projects (at most 8), read as the mapped person through `act_as`, within the
   100-block budget.
 - **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
-  a tag; otherwise the client's default; otherwise nothing. Threads are filed
-  in the client's home.
+  a tag; otherwise the client's default; otherwise nothing. As Slack delivers
+  only what mentions the app, a comment that names no agent asks the client
+  only when it mentions the app's own login (`github.login`): `@warp what
+  changed?`. One that mentions neither starts nothing, so a busy repository
+  wakes no agent. Threads are filed in the client's home.
 
 Every Slack change passes `pnpm validate:slack`, and
 `TestTheSlackManifestIsWhatWarpGenerates` stays green with no new scope.

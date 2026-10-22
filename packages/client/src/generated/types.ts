@@ -2021,6 +2021,8 @@ export interface GitHubOptions {
   guides?: boolean;
   mutations?: boolean;
   read_repositories?: string[];
+  /** The app's own GitHub login, such as `warp[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default. */
+  login?: string;
 }
 
 /** A client as a caller writes it. The tenant, who manages it and its version are the server's to say. */

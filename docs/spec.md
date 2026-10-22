@@ -223,6 +223,7 @@ spec:
       owners: [acme]
       token: {ref: env:WARP_GITHUB_TOKEN}
       webhook_secret: {ref: env:WARP_GITHUB_WEBHOOK_SECRET}
+      login: warp[bot]      # the app's own login: "@warp what changed?" names no agent, so the default chain answers
 ```
 
 ### What the file owns

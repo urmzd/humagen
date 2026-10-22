@@ -421,6 +421,8 @@ export interface Client {
     guides?: boolean;
     mutations?: boolean;
     read_repositories?: string[];
+    /** The app's own login. A comment that mentions it and names no agent is answered by the default. */
+    login?: string;
   };
   /** Where the client files threads it starts outside a bound channel. Absent, the workspace's general. */
   home?: { project: string; channel?: string };

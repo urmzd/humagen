@@ -662,7 +662,7 @@ func applyGitHub(ctx context.Context, p *platform.Platform, tenant string, g spe
 			ID: "file-github", Name: "GitHub", Surface: clients.GitHub, Enabled: true, Managed: clients.ManagedFile,
 			Agents:   []string{clients.AnyAgent},
 			Identity: clients.Identity{Owners: g.Owners, AppID: g.App, Installation: g.Installation},
-			GitHub:   &clients.GitHubOptions{ReadRepositories: g.ReadRepos, Checks: g.Checks, Guides: g.Guides, Mutations: g.Mutations},
+			GitHub:   &clients.GitHubOptions{ReadRepositories: g.ReadRepos, Checks: g.Checks, Guides: g.Guides, Mutations: g.Mutations, Login: g.Login},
 		},
 		Token:         clients.SecretInput{Ref: g.Token.Ref},
 		SigningSecret: clients.SecretInput{Ref: g.WebhookSecret.Ref},

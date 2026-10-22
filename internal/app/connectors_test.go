@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/integrations/github"
 	"github.com/urmzd/warp/pkg/integrations/slack"
+	"github.com/urmzd/warp/pkg/spec"
 )
 
 func envOf(vars map[string]string) func(string) string {
@@ -76,7 +78,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		EnvSlackCommands: `[{"name":"create-pr","description":"Open a pull request","argument_hint":"[title]"}]`,
 		EnvGitHubToken:   "ghs-legacy", EnvGitHubSecret: "legacy-github-secret-of-16-bytes", EnvGitHubOwners: "acme, acme-labs",
 		EnvGitHubBots: "helper[bot]=helper", EnvGitHubChecks: "false", EnvGitHubReadRepositories: "acme/handbook",
-		EnvGitHubAutoLabels: `{"acme/handbook":{"agent:auto":"helper"}}`,
+		EnvGitHubAutoLabels: `{"acme/handbook":{"agent:auto":"helper"}}`, EnvGitHubLogin: "warp[bot]", EnvGitHubDefault: "helper",
 	}
 	defaults, err := defaultClients(envOf(vars))
 	if err != nil {
@@ -139,7 +141,8 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		t.Fatalf("slack client = %+v", sl)
 	}
 	gh, _ := p.Clients.Get("trial", defaultGitHubClient)
-	if len(gh.Identity.Owners) != 2 || gh.GitHub.AutoLabels["acme/handbook"]["agent:auto"] != "helper" || gh.GitHub.ReadRepositories[0] != "acme/handbook" {
+	if len(gh.Identity.Owners) != 2 || gh.GitHub.AutoLabels["acme/handbook"]["agent:auto"] != "helper" || gh.GitHub.ReadRepositories[0] != "acme/handbook" ||
+		gh.GitHub.Login != "warp[bot]" || gh.DefaultAgent != "helper" {
 		t.Fatalf("github client = %+v", gh)
 	}
 
@@ -234,5 +237,40 @@ func TestSecretReferencesAreGivenToTenantsByTheOperator(t *testing.T) {
 		if _, err := secretRefs(raw, "trial", envOf(nil)); err == nil {
 			t.Errorf("-secret-refs %q was accepted", raw)
 		}
+	}
+}
+
+// The file's GitHub installation carries the app's own login, which tells a
+// comment addressed to the app apart from one addressed to nobody. A login
+// that is not one fails the start.
+func TestTheFilesGitHubClientCarriesTheAppsLogin(t *testing.T) {
+	vars := map[string]string{EnvGitHubToken: "ghs-file", EnvGitHubSecret: "file-github-secret-of-16-bytes"}
+	apply := func(login string) (*platform.Platform, error) {
+		p, err := platform.New(platform.Config{
+			Workspace:  t.TempDir(),
+			Env:        func(name string) (string, bool) { v, ok := vars[name]; return v, ok },
+			SecretRefs: map[string][]string{"acme": {EnvGitHubToken, EnvGitHubSecret}},
+			GitHubAPI:  func(string) github.API { return github.NewFake() },
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = p.Close() })
+		g := spec.GitHub{
+			Enabled: true, Owners: []string{"acme"}, Login: login,
+			Token: &spec.Ref{Ref: "env:" + EnvGitHubToken}, WebhookSecret: &spec.Ref{Ref: "env:" + EnvGitHubSecret},
+		}
+		return p, applyGitHub(t.Context(), p, "acme", g, slog.Default())
+	}
+	p, err := apply("warp[bot]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := p.Clients.Get("acme", "file-github")
+	if err != nil || c.GitHub == nil || c.GitHub.Login != "warp[bot]" || c.Managed != clients.ManagedFile {
+		t.Fatalf("the file's client = %+v, %v", c, err)
+	}
+	if _, err := apply("@warp"); err == nil {
+		t.Fatal("a login that is no GitHub login was accepted")
 	}
 }
