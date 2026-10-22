@@ -317,7 +317,7 @@ decided per message:
 | Kind | To see | To settle |
 |------|--------|-----------|
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
-| Failed run | `runs:read` | `runs:write` |
+| Failed run | `runs:read` | `runs:write` to acknowledge; retrying a turn filed in a project needs a member of it as well |
 | Proposed memory | `agents:read` | `agents:write` for an agent's, and owning its home for one that lives in a project; `projects:write` and owning the project for a project's, and `projects:govern` as well for the workspace's and a company project's |
 | Announcement | `projects:read`, and a member of its project or one below it (anyone who reads the project's own inbox) | hiding or snoozing it is the reader's own (`projects:read`); withdrawing it is its author's or an owner's (`projects:write`) |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |

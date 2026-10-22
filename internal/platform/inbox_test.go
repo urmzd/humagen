@@ -3,6 +3,7 @@ package platform_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -518,5 +519,79 @@ func TestKeepingAHomedAgentsNotesNeedsItsHome(t *testing.T) {
 	}
 	if done, err := p.InboxResolve(ctx, owner, msg.ID, part.ID, keep); err != nil || done.Parts[0].Outcome.By != "own" {
 		t.Fatalf("Field's owner keeping = %+v, %v", done, err)
+	}
+}
+
+// Retrying a failed turn starts it again, so it takes what starting one there
+// takes: being a member of the project it is filed in, whoever asked it
+// first. A viewer of the project reads the failure and may acknowledge it,
+// but is not offered Retry and is refused it; a member's retry starts the
+// turn again in the project.
+func TestRetryingAFailedTurnInAProjectTakesAMember(t *testing.T) {
+	p := startWith(t, platform.Config{
+		Backoff: func(int) time.Duration { return time.Millisecond },
+		AgentOptions: []agentrt.Option{agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) {
+			return refusing{}, nil
+		})},
+	})
+	ctx := t.Context()
+	broken := agentspec.AgentSpec{Name: "broken", Model: "offline", Provider: "offline", SystemPrompt: "x"}
+	if _, err := p.Agents.Create(ctx, tenant, broken, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{
+		Name: "Globex", Kind: projects.Account,
+		Members: []projects.Entry{{Who: "*", Role: projects.Viewer}, {Who: "ada", Role: projects.Owner}, {Who: "mel", Role: projects.Member}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-globex", Agent: "broken", Text: "Plan the renewal", Project: "Globex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, first.ID, runs.Failed)
+	var msg inbox.Message
+	within(t, "the failure reached the inbox", func() bool {
+		page, _, _ := p.InboxPage(admin, inbox.Query{Kind: inbox.KindFailure})
+		for _, m := range page {
+			if m.Source.Run == first.ID {
+				msg = m
+				return true
+			}
+		}
+		return false
+	})
+	part := msg.Parts[0]
+	retry := platform.Resolution{Action: platform.ActRetry}
+
+	// opal is an operator, so holds runs:write, and only a viewer of Globex.
+	seen, err := p.InboxGet(operator, msg.ID)
+	if err != nil || !slices.Equal(seen.Parts[0].Actions, []string{platform.ActAcknowledge}) {
+		t.Fatalf("a viewer of Globex is offered %+v (%v)", seen.Parts, err)
+	}
+	if _, err := p.InboxResolve(ctx, operator, msg.ID, part.ID, retry); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a viewer of Globex retrying = %v, want forbidden", err)
+	}
+	for _, r := range p.Runs.List(tenant, 10) {
+		if r.ID != first.ID {
+			t.Fatalf("a refused retry started %+v", r)
+		}
+	}
+
+	member := auth.Principal{Subject: "mel", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	if seen, err := p.InboxGet(member, msg.ID); err != nil || !slices.Equal(seen.Parts[0].Actions, []string{platform.ActRetry, platform.ActAcknowledge}) {
+		t.Fatalf("a member of Globex is offered %+v (%v)", seen.Parts, err)
+	}
+	if _, err := p.InboxResolve(ctx, member, msg.ID, part.ID, retry); err != nil {
+		t.Fatalf("a member of Globex retrying = %v", err)
+	}
+	var again []runs.Run
+	for _, r := range p.Runs.List(tenant, 10) {
+		if r.ID != first.ID {
+			again = append(again, r)
+		}
+	}
+	if len(again) != 1 || again[0].Project != "Globex" || again[0].Actor.ID != "mel" {
+		t.Fatalf("the retry is %+v, want one run filed in Globex for mel", again)
 	}
 }
