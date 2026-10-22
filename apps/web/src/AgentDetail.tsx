@@ -1,5 +1,7 @@
+import { defaultCopy } from "@warp/components";
 import { useEffect, useMemo, useState } from "react";
 import {
+  type AgentPlace,
   type AgentSpec,
   type Alert,
   type AlertRule,
@@ -10,10 +12,13 @@ import {
   type ModelPolicy,
   type ModelRef,
   type Note,
+  type ProjectView,
   type Revision,
   type Source,
   type SuiteView,
 } from "./api.ts";
+import { losing, nameOfAddress } from "./availability.ts";
+import { titleOf } from "./projects.ts";
 import { Evals } from "./Evals.tsx";
 import { ASK_PERSON, approvable, withApproval, withAsking, withNames } from "./people.ts";
 import { ApprovalQueue, CallPolicyEditor, useReach } from "./Governance.tsx";
@@ -260,8 +265,12 @@ export function AgentDetail({
   rules,
   alerts,
   stats,
-  baseline,
+  workspaceDefault = "",
+  tree = [],
+  place,
+  workspaceName = "",
   canWrite,
+  canGovern = false,
   builtin = false,
   canEval,
   canAlert,
@@ -275,7 +284,8 @@ export function AgentDetail({
   onOpenSource,
   onOpenAlerts,
   onOpenTask,
-  onBaseline,
+  onHomed,
+  onOpenProject,
   policies = [],
   onManagePolicies,
   seed,
@@ -291,8 +301,16 @@ export function AgentDetail({
   rules: AlertRule[];
   alerts: Alert[];
   stats: Group | undefined;
-  baseline: string;
+  /** Who answers a message that tags no agent in the workspace itself. */
+  workspaceDefault?: string;
+  /** The project tree, for where the agent may live and the titles of where it is enabled. */
+  tree?: ProjectView[];
+  /** Where it lives and which projects enable it, for a saved agent. */
+  place?: AgentPlace;
+  workspaceName?: string;
   canWrite: boolean;
+  /** Holds projects:govern, which homing into or out of a company project needs. */
+  canGovern?: boolean;
   /** Provided by the platform. It can be read and run, and its memory kept, but its spec is not saved here. */
   builtin?: boolean;
   canEval: boolean;
@@ -311,7 +329,9 @@ export function AgentDetail({
   onOpenAlerts?: () => void;
   /** Open a task, from an approval waiting in it. */
   onOpenTask?: (thread: string) => void;
-  onBaseline: (name: string) => void;
+  /** Where the agent lives changed. */
+  onHomed?: () => void;
+  onOpenProject?: (name: string) => void;
   /** The workspace's model policies an agent can follow. */
   policies?: ModelPolicy[];
   onManagePolicies?: () => void;
@@ -464,7 +484,7 @@ export function AgentDetail({
             <span>
               Saved {ago(revision.created_at)} by {revision.created_by}
             </span>
-            {baseline === name && <Chip>Baseline</Chip>}
+            {workspaceDefault === name && <Chip>{defaultCopy.workspaceDefault}</Chip>}
           </>
         ) : (
           <span>Not saved yet</span>
@@ -535,7 +555,7 @@ export function AgentDetail({
             )}
             <Label
               text="Description"
-              hint="One or two lines on what this agent is for. Auto reads it first when deciding who answers, the way a skill's description is read. Leave it empty and the prompt is searched instead."
+              hint="One or two lines on what this agent is for. @auto reads it first when deciding who answers, the way a skill's description is read. Leave it empty and the prompt is searched instead."
             >
               <textarea
                 className={`${field} min-h-14`}
@@ -545,16 +565,6 @@ export function AgentDetail({
                 onChange={(e) => set({ description: e.target.value })}
               />
             </Label>
-            {revision && (
-              <Switch
-                label="Baseline agent"
-                hint="Answers when Auto finds no agent that fits. One agent holds this at a time."
-                checked={baseline === name}
-                // The baseline is the workspace's setting, not the agent's spec, so a built-in can hold it.
-                disabled={!canWrite}
-                onChange={(on) => onBaseline(on ? name : "")}
-              />
-            )}
             <div className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between">
                 <label htmlFor="agent-prompt" className="text-aui-xs font-medium text-aui-muted">
@@ -605,6 +615,19 @@ export function AgentDetail({
 
         {tab === "access" && (
           <div className="flex flex-col gap-8">
+            {revision && place && (
+              <WhereItAnswers
+                name={name}
+                place={place}
+                tree={tree}
+                workspaceName={workspaceName}
+                // The platform's own agents live nowhere.
+                canMove={canWrite && !builtin}
+                canGovern={canGovern}
+                onMoved={() => onHomed?.()}
+                onOpenProject={onOpenProject}
+              />
+            )}
             <Section
               title="Agents it may call"
               hint="The agents this one may hand work to. Only agents whose own policy takes its calls are offered. Depth, fan-out and budget limits still apply to every call."
@@ -1009,5 +1032,91 @@ export function AgentDetail({
           </ol>
         )}
     </Page>
+  );
+}
+
+const placeWords = defaultCopy.agentPlace;
+
+/**
+ * Where an agent answers: the project it lives in, if any, and the projects
+ * that enable it. A platform agent answers wherever a project enables it; an
+ * agent that lives in a project answers there and below, and nowhere else.
+ */
+function WhereItAnswers({
+  name,
+  place,
+  tree,
+  workspaceName,
+  canMove,
+  canGovern,
+  onMoved,
+  onOpenProject,
+}: {
+  name: string;
+  place: AgentPlace;
+  tree: ProjectView[];
+  workspaceName: string;
+  canMove: boolean;
+  canGovern: boolean;
+  onMoved: () => void;
+  onOpenProject?: (name: string) => void;
+}) {
+  const [problem, setProblem] = useState<string | null>(null);
+  const title = (n: string) => {
+    if (n === "") return workspaceName || defaultCopy.projects.workspace;
+    const p = tree.find((x) => x.name === n);
+    return p ? titleOf(p) : n;
+  };
+  const enabled = place.enabled_in.map(nameOfAddress);
+  const home = place.home ? nameOfAddress(place.home) : "";
+  const everywhere = !home && enabled.includes("");
+  const move = (to: string) => {
+    setProblem(null);
+    api
+      .setAgentHome(name, to)
+      .then(onMoved)
+      .catch((e) => setProblem(e instanceof ApiError ? e.message : placeWords.failed));
+  };
+  return (
+    <Section title={placeWords.title} hint={placeWords.hint}>
+      <Problem message={problem} />
+      <Label text={placeWords.home}>
+        <Menu
+          label={placeWords.home}
+          value={home}
+          disabled={!canMove}
+          options={[
+            { value: "", label: placeWords.noHome },
+            ...tree
+              .filter((p) => canGovern || p.kind !== "company")
+              .map((p) => {
+                const n = losing(p.name, place.enabled_in, tree);
+                return { value: p.name, label: titleOf(p), hint: n > 0 && p.name !== home ? placeWords.loses(n) : undefined };
+              }),
+          ]}
+          onChange={move}
+        />
+      </Label>
+      <div className="flex flex-col gap-1">
+        <p className="text-aui-xs font-medium text-aui-muted">{placeWords.availableIn}</p>
+        {home ? (
+          <p className="text-aui-sm text-aui-fg">{placeWords.homeAndBelow(title(home))}</p>
+        ) : everywhere ? (
+          <p className="text-aui-sm text-aui-fg">{placeWords.everywhere}</p>
+        ) : enabled.length === 0 ? (
+          <p className="text-aui-sm text-aui-muted">{placeWords.nowhere}</p>
+        ) : (
+          <ul className="flex flex-wrap gap-x-3 gap-y-1">
+            {enabled.map((e) => (
+              <li key={e}>
+                <button type="button" className="text-aui-sm text-aui-fg hover:underline" onClick={() => onOpenProject?.(e)}>
+                  {title(e)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Section>
   );
 }

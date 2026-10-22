@@ -34,7 +34,7 @@ import {
 import { words } from "./host.ts";
 import { runId, tagId } from "./keys.ts";
 import { validateBlocks } from "./validate.ts";
-import { WarpError } from "./warp.ts";
+import { type ClientRecord, WarpError } from "./warp.ts";
 
 const TS = "1700000000.000100";
 const KEY = `slack-${TEAM}-${CHANNEL}-1700000000-000100`;
@@ -1147,6 +1147,37 @@ test("a client for another team, or one that is gone, routes to nothing", async 
   assert.equal(v.warp.asked.length, 0);
 });
 
+test("a message that names no agent leaves the choice to the platform's default", async () => {
+  const w = world({ defaultAgent: undefined });
+  await deliver(w, mention("what changed?", TS));
+  assert.equal(w.warp.asked[0]?.agent, "", "the app picks nobody itself");
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await w.app.idle();
+});
+
+test("with no default anywhere, the person is asked to tag an agent, for example one this app may reach", async () => {
+  const w = world({ defaultAgent: undefined });
+  w.warp.refuse = new WarpError(409, "tag an agent: nothing answers in the workspace by default");
+  await deliver(w, mention("what changed?", TS));
+  await w.app.idle();
+  assert.equal(w.warp.runs.size, 0);
+  const said = textIn(blocksOf(w.slack.of("chat.postMessage")[0]));
+  assert.match(said, new RegExp(defaultCopy.auto.tagOne("helper")));
+  assert.ok(
+    !said.includes("nothing answers in the workspace"),
+    "the platform's words are not shown",
+  );
+  collect("tag an agent", w.slack);
+
+  // A named agent that is refused for another reason is not told to tag one.
+  const v = world();
+  v.warp.refuse = new WarpError(409, "conflict");
+  await deliver(v, mention("@helper hi", TS));
+  await v.app.idle();
+  assert.ok(!textIn(blocksOf(v.slack.of("chat.postMessage")[0])).includes("Tag an agent"));
+});
+
 test("a run a limit refuses is shown in warp's words, and warp's are kept in the log", async () => {
   const w = world();
   w.warp.refuse = new WarpError(429, "the workspace reached 200 runs today", {
@@ -1458,14 +1489,17 @@ test("asking from the shortcut form cannot make the app notify a whole channel",
 // Questions a run waits on.
 
 const CLIENT = "app";
-/** A world whose app is a client that maps USER to ana and OTHER_USER to olu. */
-function mapped(opts: Parameters<typeof world>[0] = {}): World {
+/** A world whose app is a client that maps USER to ana and OTHER_USER to olu, with routing over it. */
+function mapped(
+  opts: Parameters<typeof world>[0] = {},
+  routing: Pick<ClientRecord, "default_agent" | "agents"> = { default_agent: "lead" },
+): World {
   const w = world({ clientId: CLIENT, ...opts });
   w.warp.clients.set(CLIENT, {
     id: CLIENT,
     surface: "slack",
     enabled: true,
-    default_agent: "lead",
+    ...routing,
     identity: { team: TEAM },
     slack: { machine: SUBJECT, people: { [USER]: "ana", [OTHER_USER]: "olu" } },
   });
@@ -1524,6 +1558,17 @@ test("asking about someone else's message asks for nobody: their words are never
   assert.equal(w.warp.last.actor?.user, "ana");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Yes." });
+  await w.app.idle();
+});
+
+test("a mapped person's message that names no agent, through a client that reaches every agent with no default, leaves the agent to the platform and asks as them", async () => {
+  const w = mapped({ defaultAgent: undefined }, { agents: ["*"] });
+  await deliver(w, mention("what changed?", TS));
+  assert.equal(w.warp.asked[0]?.agent, "", "the app picks nobody itself");
+  assert.deepEqual(w.warp.asked[0]?.act_as, { client: CLIENT, user: USER });
+  assert.equal(w.warp.last.actor?.user, "ana", "the run is the person's");
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Nothing changed." });
   await w.app.idle();
 });
 

@@ -10,11 +10,14 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/urmzd/warp/internal/httpapi"
+	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/auth/mockidp"
+	"github.com/urmzd/warp/pkg/authz"
 )
 
 // policyEnv names the file holding the authorization policy. Unset means the
@@ -69,6 +72,46 @@ func loadPolicy(fs *flag.FlagSet, g groupFlags, getenv func(string) string) (*au
 		}
 	})
 	return pol, set, nil
+}
+
+// seeGranted records whom the policy grants a role by subject in the
+// workspace -tenant names, so they are in its directory before they first
+// sign in. With tenants from a claim (-tenant-claim, as the caller set it)
+// it records nobody: the one policy is every tenant's and a grant names no
+// tenant, so a person enters a workspace's directory only through a
+// Principal of it, or a client of it mapping them.
+func seeGranted(p *platform.Platform, tenant, tenantClaim string, pol *auth.Policy, log *slog.Logger) {
+	if tenantClaim != "" {
+		return
+	}
+	if err := p.SeeGranted(tenant, granted(pol)); err != nil {
+		log.Warn("people the policy names could not all be recorded", "error", err)
+	}
+}
+
+// granted is the roles the policy grants to subjects by name, one entry per
+// subject.
+func granted(pol *auth.Policy) []platform.Grant {
+	by := map[string][]string{}
+	var order []string
+	for _, g := range pol.Compiled().Grants() {
+		if g.Subject.Kind != authz.SubjectID || g.Subject.Value == "" {
+			continue
+		}
+		if _, seen := by[g.Subject.Value]; !seen {
+			order = append(order, g.Subject.Value)
+		}
+		for _, r := range g.Roles {
+			if !slices.Contains(by[g.Subject.Value], r.Text) {
+				by[g.Subject.Value] = append(by[g.Subject.Value], r.Text)
+			}
+		}
+	}
+	out := make([]platform.Grant, 0, len(order))
+	for _, subject := range order {
+		out = append(out, platform.Grant{Subject: subject, Roles: by[subject]})
+	}
+	return out
 }
 
 // authConfig is what the sign-in modes are built from.

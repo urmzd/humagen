@@ -10,24 +10,20 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/runtime"
 
-	"github.com/urmzd/warp/pkg/pick"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state"
 )
-
-// Auto asks the platform to pick the agent.
-const Auto = "auto"
 
 // maxTranscript bounds how much of a conversation is replayed to the next
 // agent, in bytes. Older turns are dropped first. This is truncation, not
 // summarization: nothing is rewritten, and the dropped turns stay on record.
 const maxTranscript = 12_000
 
-// ErrNoBaseline reports a baseline that names no agent in the tenant.
+// ErrNoBaseline reports a setting that names no agent in the tenant: the
+// agent that names conversations or the one that keeps memory.
 var ErrNoBaseline = errors.New("platform: a setting names an agent that is not in this tenant")
 
 // ErrSettings reports settings that cannot be stored.
@@ -53,9 +49,6 @@ const (
 
 // Settings is what a tenant has chosen for itself.
 type Settings struct {
-	// Baseline is the agent that answers when nobody picked one and no
-	// agent's description matched. Empty means there is none.
-	Baseline string `json:"baseline"`
 	// History and HistoryLimit decide how much of a conversation is replayed
 	// to the agent answering the next turn.
 	History      History `json:"history"`
@@ -106,6 +99,10 @@ type settings struct {
 	// A tenant whose record an earlier version wrote is here even when the
 	// array was null.
 	legacy map[string][]legacyProject
+	// baselines is the baseline agent a tenant's settings still named when
+	// they were read, by tenant, until the migration makes it the root's
+	// default. A tenant whose settings never named one is not in it.
+	baselines map[string]string
 }
 
 // storedSettings is a tenant's settings as they are written. Settings once
@@ -116,6 +113,10 @@ type settings struct {
 type storedSettings struct {
 	Settings
 	LegacyProjects json.RawMessage `json:"projects,omitempty"`
+	// LegacyBaseline is the agent that once answered when nobody chose one.
+	// The root's default replaces it: the migration reads it once, and it is
+	// never written again.
+	LegacyBaseline *string `json:"baseline,omitempty"`
 }
 
 // legacyProject is a project as settings kept it.
@@ -130,7 +131,7 @@ const settingsKey = "settings"
 // open reads every tenant's settings from st and keeps them there from now
 // on. A nil st keeps them in memory.
 func (s *settings) open(st state.Store) error {
-	s.by, s.legacy, s.kept = map[string]Settings{}, map[string][]legacyProject{}, state.NewTable[storedSettings](st, "settings")
+	s.by, s.legacy, s.baselines, s.kept = map[string]Settings{}, map[string][]legacyProject{}, map[string]string{}, state.NewTable[storedSettings](st, "settings")
 	err := s.kept.Load(func(tenant, _ string, v storedSettings) error {
 		s.by[tenant] = v.Settings
 		if v.LegacyProjects != nil {
@@ -140,6 +141,9 @@ func (s *settings) open(st state.Store) error {
 			}
 			s.legacy[tenant] = held
 		}
+		if v.LegacyBaseline != nil {
+			s.baselines[tenant] = *v.LegacyBaseline
+		}
 		return nil
 	})
 	if err != nil {
@@ -148,9 +152,15 @@ func (s *settings) open(st state.Store) error {
 	return nil
 }
 
-// put keeps a tenant's settings. The caller holds the lock.
+// put keeps a tenant's settings. A baseline the migration has not yet made
+// the workspace default is kept with them, so no write loses it. The caller
+// holds the lock.
 func (s *settings) put(tenant string, v Settings) error {
-	if err := s.kept.Put(tenant, settingsKey, storedSettings{Settings: v}); err != nil {
+	rec := storedSettings{Settings: v}
+	if b, ok := s.baselines[tenant]; ok {
+		rec.LegacyBaseline = &b
+	}
+	if err := s.kept.Put(tenant, settingsKey, rec); err != nil {
 		return fmt.Errorf("platform: write settings: %w", err)
 	}
 	if s.by == nil {
@@ -179,7 +189,7 @@ func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings
 	if len(next.WorkspaceName) > 80 || strings.ContainsAny(next.WorkspaceName, "\r\n\t<>") {
 		return fmt.Errorf("%w: a workspace name is plain text on one line, at most 80 characters", ErrSettings)
 	}
-	for _, name := range []string{next.Baseline, next.TitleAgent, next.MemoryAgent} {
+	for _, name := range []string{next.TitleAgent, next.MemoryAgent} {
 		if name == "" {
 			continue
 		}
@@ -226,32 +236,11 @@ func (p *Platform) MarkSetup(tenant, by string) (Settings, error) {
 	return cfg.withDefaults(), nil
 }
 
-// Pick chooses an agent for a message without starting anything.
-func (p *Platform) Pick(ctx context.Context, tenant, message string) (pick.Choice, error) {
-	var candidates []pick.Candidate
-	page := registry.Page{Size: 100}
-	for {
-		revs, next, err := p.Agents.List(ctx, tenant, page)
-		if err != nil {
-			return pick.Choice{}, err
-		}
-		for _, r := range revs {
-			candidates = append(candidates, pick.Candidate{
-				Name: r.Spec.Name, Description: r.Spec.Description, Prompt: r.Spec.SystemPrompt,
-			})
-		}
-		if next == "" {
-			break
-		}
-		page.Token = next
-	}
-	return pick.Agent(message, candidates, p.Settings(tenant).Baseline)
-}
-
 // Turn is one message a person sends.
 type Turn struct {
 	ID string
-	// Agent is who should answer, or Auto.
+	// Agent is who should answer: an agent, Auto for @auto, or "" for the
+	// default the conversation's place inherits.
 	Agent string
 	Text  string
 	// After is the turn this one follows. Empty starts a conversation. Naming
@@ -265,10 +254,13 @@ type Turn struct {
 
 // Converse sends a message into a conversation and starts the run that answers.
 //
-// Any agent can answer any turn. The agent that answers is sent the branch so
-// far, so a different agent picking up mid-conversation knows what was said,
-// and ahead of it what the conversation's project chain and the agent itself
-// bring (see contextOf).
+// Any agent available where the conversation is filed can answer any turn.
+// The turn names it, or names Auto for @auto, or names none and the default
+// the conversation's place inherits answers; with no default set it is
+// ErrNoDefault, and nothing starts. The agent that answers is sent the branch
+// so far, so a different agent picking up mid-conversation knows what was
+// said, and ahead of it what the conversation's project chain and the agent
+// itself bring (see contextOf).
 func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Run, error) {
 	cfg := p.Settings(tenant)
 	meta := map[string]string{runs.MetaAsk: t.Text}
@@ -293,14 +285,13 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		meta[runs.MetaProject] = project
 	}
 
-	agent := t.Agent
-	if agent == "" || agent == Auto {
-		choice, err := p.Pick(ctx, tenant, t.Text)
-		if err != nil {
-			return runs.Run{}, err
-		}
-		agent = choice.Agent
-		meta[runs.MetaPicked] = choice.Reason
+	who, err := p.resolveAgent(ctx, tenant, Place{Project: meta[runs.MetaProject]}, strings.TrimSpace(t.Agent), t.Text)
+	if err != nil {
+		return runs.Run{}, err
+	}
+	agent := who.Agent
+	if who.Picked != "" {
+		meta[runs.MetaPicked] = who.Picked
 	}
 
 	return p.Invoke(ctx, envelope.Tag{

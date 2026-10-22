@@ -31,12 +31,20 @@ func (e *Denied) Error() string { return "platform: " + e.Decision.Reason }
 // eval, or another agent. Only the platform's own housekeeping is exempt, since
 // refusing it would leave a conversation unnamed for a reason nobody chose.
 //
+// The run's agent must be available in its project (ErrNotAvailable), which
+// is the one place availability is enforced.
+//
 // A run counts toward its project and every ancestor it is within, and is
 // refused by the strictest of their limits, so nothing below a project escapes
 // the project's limit.
 func (p *Platform) admit(tag envelope.Tag, edge call.Edge, project string, within []string, client string) error {
 	if tag.Origin == runs.OriginSystem {
 		return nil
+	}
+	// The agent must be available where the run is filed, before any limit
+	// is judged or anything counted.
+	if err := p.admitAgent(tag, project); err != nil {
+		return err
 	}
 	now := p.now()
 	d := policy.Decide(p.applied(tag.Tenant, chainOf(project, within), tag.Agent, client, now), policy.Request{Lease: edge.Lease})

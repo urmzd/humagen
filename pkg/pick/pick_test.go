@@ -22,6 +22,18 @@ func TestPicksByDescription(t *testing.T) {
 	}
 }
 
+// The reason says @auto picked, and the words that decided it.
+func TestTheReasonSaysAutoPickedAndWhy(t *testing.T) {
+	c, err := Agent("Can you tag the next release?", team, "lead")
+	if err != nil || c.Reason != "Picked by @auto: matched tag, release." {
+		t.Fatalf("got %+v, %v", c, err)
+	}
+	c, _ = Agent("What is the weather like?", team, "lead")
+	if c.Reason != "Picked by @auto: nothing matched, so the default answered." {
+		t.Fatalf("the fallback's reason = %q", c.Reason)
+	}
+}
+
 func TestPicksByName(t *testing.T) {
 	c, _ := Agent("ask oncall what happened", team, "lead")
 	if c.Agent != "oncall" {
@@ -29,28 +41,33 @@ func TestPicksByName(t *testing.T) {
 	}
 }
 
-func TestBaselineWhenNothingMatches(t *testing.T) {
+func TestTheFallbackAnswersWhenNothingMatches(t *testing.T) {
 	c, err := Agent("What is the weather like?", team, "lead")
 	if err != nil || c.Agent != "lead" || len(c.Matched) != 0 {
 		t.Fatalf("got %+v, %v", c, err)
 	}
 }
 
-func TestBaselineOnATie(t *testing.T) {
+func TestTheFallbackAnswersATie(t *testing.T) {
 	c, err := Agent("writes", team, "lead")
 	if err != nil || c.Agent != "lead" {
-		t.Fatalf("a tie did not fall to the baseline: %+v, %v", c, err)
+		t.Fatalf("a tie did not fall to the fallback: %+v, %v", c, err)
 	}
 }
 
-func TestNoBaselineIsAnError(t *testing.T) {
-	for _, baseline := range []string{"", "ghost"} {
-		if _, err := Agent("What is the weather like?", team, baseline); !errors.Is(err, ErrNoAgent) {
-			t.Errorf("baseline %q: got %v", baseline, err)
+// A fallback that is not among the candidates, which are the agents available
+// where the message was sent, cannot answer: nothing is picked.
+func TestNoFallbackAmongTheCandidatesPicksNothing(t *testing.T) {
+	for _, fallback := range []string{"", "ghost"} {
+		if _, err := Agent("What is the weather like?", team, fallback); !errors.Is(err, ErrNoAgent) {
+			t.Errorf("fallback %q: got %v", fallback, err)
 		}
 	}
 	if _, err := Agent("anything", nil, "lead"); !errors.Is(err, ErrNoAgent) {
 		t.Errorf("no candidates: got %v", err)
+	}
+	if ErrNoAgent.Error() != "pick: no agent fits; tag one" {
+		t.Errorf("ErrNoAgent says %q", ErrNoAgent)
 	}
 }
 

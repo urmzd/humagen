@@ -7,7 +7,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import { actedFor, type Run } from "./adapter.ts";
 import { Composer } from "./Composer.tsx";
-import { ApiError, api, type Choice, type ProjectView, type Revision, type Settings, type ThreadSummary } from "./api.ts";
+import { ApiError, api, type Choice, type ProjectAgentsView, type ProjectView, type Revision, type ThreadSummary } from "./api.ts";
+import { answersLine, AUTO, availableOf } from "./availability.ts";
 import { HomePage } from "./HomePage.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
 import { useRunTurn } from "./Runs.tsx";
@@ -15,7 +16,7 @@ import { itemActions } from "./itemActions.tsx";
 import { SessionGaugeFor } from "./SessionGauge.tsx";
 import { AgentMark, AgentTint, cause, Popover, Presence, Problem } from "./ui.tsx";
 
-const AUTO = "auto";
+const auto = defaultCopy.auto;
 // Controls in the dock are text, not boxes: they sit under the composer and
 // should not compete with it.
 /** The answers to one point in the conversation, oldest first. */
@@ -183,7 +184,7 @@ export function Chat({
   summary,
   tick,
   agents,
-  settings,
+  homes = {},
   projects,
   canRun,
   canCreateProject,
@@ -205,7 +206,8 @@ export function Chat({
   /** Changes whenever any run starts or ends. */
   tick: number;
   agents: Revision[];
-  settings: Settings | null;
+  /** Where each agent that lives in a project lives, so the menu offers only what may answer here. */
+  homes?: Record<string, string>;
   /** The project tree a new conversation can be filed in, or null while it loads. */
   projects: ProjectView[] | null;
   canRun: boolean;
@@ -218,7 +220,7 @@ export function Chat({
 }) {
   const [turns, setTurns] = useState<Run[]>([]);
   const [chosen, setChosen] = useState<Record<string, string>>({});
-  const [auto, setAuto] = useState(!startAgent);
+  // Who the person chose: an agent, AUTO for @auto, or "" for whoever answers untagged messages here.
   const [agent, setAgent] = useState(startAgent ?? "");
   const [seed, setSeed] = useState<{ text: string } | undefined>(() => (startAsk ? { text: startAsk } : undefined));
   const [project, setProject] = useState<string | null>(startIn ?? null);
@@ -253,16 +255,48 @@ export function Chat({
   const path = useMemo(() => pathOf(turns, chosen), [turns, chosen]);
   const tail = path[path.length - 1];
   const tailEnded = !tail || tail.status === "completed" || tail.status === "failed";
-  const named = agent || settings?.baseline || agents[0]?.spec.name || "";
-  const target = auto ? AUTO : named;
+  // What may answer where the next message goes, and who answers it untagged.
+  const where = threadId ? (tail?.project ?? "") : (project ?? "");
+  const [here, setHere] = useState<ProjectAgentsView | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
+  useEffect(() => {
+    let live = true;
+    api
+      .projectAgents(where)
+      .then((v) => live && setHere(v))
+      .catch(() => live && setHere(null));
+    return () => {
+      live = false;
+    };
+  }, [where, tick]);
+  const offered = useMemo(() => {
+    const names = availableOf(
+      agents.map((a) => a.spec.name),
+      here,
+      homes,
+    );
+    return agents.filter((a) => names.includes(a.spec.name));
+  }, [agents, here, homes]);
+  const fallback = here?.default_resolved?.agent ?? "";
+  // The agent that answers: the one chosen, or the place's default.
+  const answering = agent || fallback;
+  const isAuto = answering === AUTO;
+  const named = isAuto ? "" : answering;
+  // What is sent: "" leaves the agent out, so the platform's default chain decides, as the person did.
+  const target = agent;
+  // Who answers the next message, in words under the composer, once it is known.
+  const answersHere = agent || here ? answersLine(answering, isAuto ? preview?.agent : undefined) : "";
 
   // What this conversation's queue is waiting on, so it knows when to go on.
   const waiting = useRef<string | null>(null);
 
+  // A turn that follows another joins its conversation, filed where that is.
+  // One that starts a conversation is filed in `filed`: by default the project
+  // picked for a new one.
   const post = useCallback(
-    async (text: string, to: string, after: string | undefined) => {
+    async (text: string, to: string, after: string | undefined, filed: string | null = project) => {
       setProblem(null);
-      const run = await api.createRun(to, text, after ? { after } : project ? { project } : {});
+      const run = await api.createRun(to, text, after ? { after } : filed ? { project: filed } : {});
       setTurns((t) => (t.some((x) => x.id === run.id) ? t : [...t, run]));
       setChosen((c) => ({ ...c, [run.prev ?? ""]: run.id }));
       onChanged();
@@ -297,8 +331,10 @@ export function Chat({
     queue.turnEnded(run.status === "completed" ? "done" : "failed");
   }, [turns]);
 
+  // A branch of the first turn starts the conversation again, so it is filed
+  // where the turn was: the picker's project is only for a new conversation.
   const branch = (run: Run, to: string) => {
-    post(run.text, to, run.prev).catch((e) =>
+    post(run.text, to, run.prev, run.project ?? null).catch((e) =>
       setProblem(e instanceof ApiError ? e.message : "The branch could not be started."),
     );
   };
@@ -326,18 +362,18 @@ export function Chat({
     branch(run, run.agent);
   };
 
-  // Show who Auto would send the next message to, before it is sent.
+  // Show who @auto would send the next message to, before it is sent.
   const [draft, setDraft] = useState("");
   useEffect(() => {
-    if (!auto || draft.trim().length < 3) return setPreview(null);
+    if (!isAuto || draft.trim().length < 3) return setPreview(null);
     const timer = window.setTimeout(() => {
       api
-        .pick(draft)
+        .pick(draft, where)
         .then(setPreview)
         .catch(() => setPreview(null));
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [auto, draft]);
+  }, [isAuto, draft, where]);
 
   const starters = STARTERS.filter((st) => agents.some((a) => a.spec.name === st.agent));
 
@@ -345,7 +381,7 @@ export function Chat({
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
       <Problem message={problem} />
       <Composer
-        placeholder={auto ? "Ask anything" : `Ask ${named}`}
+        placeholder={isAuto ? "Ask anything" : named ? `Ask ${named}` : auto.tagToAsk}
         queue={queue}
         autoFocus={!threadId}
         onDraft={setDraft}
@@ -369,74 +405,95 @@ export function Chat({
           <>
         {/* The reason for a pick is one hover away, and announced, without taking a line. */}
         <span className="sr-only" aria-live="polite">
-          {auto && preview ? `${preview.agent}. ${preview.reason}` : ""}
+          {isAuto && preview ? `${preview.agent}. ${preview.reason}` : ""}
         </span>
         <Popover
-          label={auto && preview ? `Choose who answers. ${preview.reason}` : "Choose who answers"}
+          label={isAuto && preview ? `${auto.choose}. ${preview.reason}` : `${auto.choose}. ${answersLine(answering, preview?.agent)}`}
           align="right"
           up
           className="inline-flex h-7 items-center gap-1.5 rounded-aui px-1.5 text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
           button={
             <>
-              {(!auto || preview) && <AgentMark name={auto ? (preview?.agent ?? "?") : named} size={16} />}
-              <span className="max-w-16 truncate sm:max-w-32">{auto ? (preview?.agent ?? "Auto") : named}</span>
-              {auto && preview && <span className="hidden text-aui-xs text-aui-muted sm:inline">Auto</span>}
+              {(named || preview) && <AgentMark name={isAuto ? (preview?.agent ?? "?") : named} size={16} />}
+              <span className="max-w-16 truncate sm:max-w-32">
+                {isAuto ? (preview?.agent ?? auto.handle) : named || auto.choose}
+              </span>
+              {isAuto && preview && <span className="hidden text-aui-xs text-aui-muted sm:inline">{auto.handle}</span>}
               <ChevronDownIcon size={14} className="text-aui-muted" />
             </>
           }
         >
-          {(close) => (
-            <div className="flex flex-col">
-              <label className="flex items-center justify-between gap-3 rounded-aui px-2.5 py-2">
-                <span className="min-w-0">
-                  <span className="block text-aui-sm text-aui-fg">Auto</span>
-                  <span className="block text-aui-xs text-aui-muted">
-                    Send each message to the agent it fits best
-                    {settings?.baseline ? `, or ${settings.baseline} when none does.` : "."}
+          {(close) => {
+            // @auto is first when it is the default here, last otherwise.
+            const autoRow = (
+              <li key={AUTO}>
+                <button
+                  type="button"
+                  aria-pressed={agent === AUTO}
+                  onClick={() => {
+                    setAgent(AUTO);
+                    close();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-aui px-2.5 py-2 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover"
+                >
+                  <span className="w-[18px]" aria-hidden />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2 text-aui-sm text-aui-fg">
+                      {auto.handle}
+                      {fallback === AUTO && (
+                        <span className="rounded-full border border-aui-border px-1.5 text-aui-2xs text-aui-muted">{auto.defaultChip}</span>
+                      )}
+                    </span>
+                    <span className="block truncate text-aui-xs text-aui-muted">{auto.description}</span>
                   </span>
-                </span>
-                <input type="checkbox" className="warp-switch" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
-              </label>
-              <div className="my-1 h-px bg-aui-border" />
-              <ul className="aui-scroll max-h-72 overflow-y-auto" aria-label="Agents">
-                {agents.map((a) => {
-                  const on = !auto && a.spec.name === named;
-                  return (
-                    <li key={a.spec.name}>
-                      <button
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => {
-                          setAuto(false);
-                          setAgent(a.spec.name);
-                          close();
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-aui px-2.5 py-2 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover"
-                      >
-                        <AgentMark name={a.spec.name} size={18} />
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2 text-aui-sm text-aui-fg">
-                            {a.spec.name}
-                            {a.spec.name === settings?.baseline && (
-                              <span className="rounded-full border border-aui-border px-1.5 text-aui-2xs text-aui-muted">Baseline</span>
-                            )}
+                  {agent === AUTO && <CheckIcon size={14} className="text-aui-fg" />}
+                </button>
+              </li>
+            );
+            return (
+              <div className="flex flex-col">
+                <p className="px-2.5 py-2 text-aui-xs text-aui-muted">{answersLine(fallback)}</p>
+                <div className="my-1 h-px bg-aui-border" />
+                <ul className="aui-scroll max-h-72 overflow-y-auto" aria-label="Agents">
+                  {fallback === AUTO && autoRow}
+                  {offered.map((a) => {
+                    const on = agent === a.spec.name;
+                    return (
+                      <li key={a.spec.name}>
+                        <button
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => {
+                            setAgent(a.spec.name);
+                            close();
+                          }}
+                          className="flex w-full items-center gap-2.5 rounded-aui px-2.5 py-2 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover"
+                        >
+                          <AgentMark name={a.spec.name} size={18} />
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-2 text-aui-sm text-aui-fg">
+                              {a.spec.name}
+                              {a.spec.name === fallback && (
+                                <span className="rounded-full border border-aui-border px-1.5 text-aui-2xs text-aui-muted">{auto.defaultChip}</span>
+                              )}
+                            </span>
+                            <span className="block truncate text-aui-xs text-aui-muted">{a.spec.description || "No description"}</span>
                           </span>
-                          <span className="block truncate text-aui-xs text-aui-muted">
-                            {a.spec.description || "No description"}
-                          </span>
-                        </span>
-                        {on && <CheckIcon size={14} className="text-aui-fg" />}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
+                          {on && <CheckIcon size={14} className="text-aui-fg" />}
+                        </button>
+                      </li>
+                    );
+                  })}
+                  {fallback !== AUTO && autoRow}
+                </ul>
+              </div>
+            );
+          }}
         </Popover>
           </>
         }
       />
+      {answersHere && <p className="px-3 text-aui-xs text-aui-muted">{answersHere}</p>}
     </div>
   );
 
@@ -451,7 +508,6 @@ export function Chat({
                 <button
                   type="button"
                   onClick={() => {
-                    setAuto(false);
                     setAgent(st.agent);
                     setSeed({ text: st.text });
                   }}

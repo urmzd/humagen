@@ -102,13 +102,21 @@ events.
 ## Who answers
 
 1. An agent named as `@name` in the message, when it exists and the app may
-   reach it. The name is taken out of the message.
+   reach it, or `@auto`, which picks among the agents available where the
+   message lands, when the app may reach any agent. The name is taken out of
+   the message.
 2. The client's default agent, or `WARP_DEFAULT_AGENT`.
-3. Warp's picker, when the app may reach any agent.
+3. When the app may reach any agent, nobody is named: the app sends no agent,
+   and the default the workspace's projects set answers. With none set, Warp
+   answers 409 and the app asks the person to tag an agent, naming one it may
+   reach.
 
-With `WARP_CLIENT` set, the client record's default agent and `agents`
-list apply, read again every 30 seconds. A client that lists agents and names
-no default answers nothing, because the picker does not know the list.
+Nothing is picked in the app. With `WARP_CLIENT` set, the client record's
+default agent and `agents` list apply, read again every 30 seconds. A client
+that lists agents and names no default answers nothing: the default Warp would
+use is not known here, so it could be one the list leaves out. For the same
+reason such a client never sends `auto`, as a tag or as its default, since
+`@auto` picks among every agent available where the run lands.
 
 ## Identity and permissions
 
