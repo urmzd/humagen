@@ -54,6 +54,7 @@ import type {
   ListProjectsResponse,
   ListReachableAgentsResponse,
   ListRunEventsResponse,
+  ListRunFeedbackResponse,
   ListSchedulesResponse,
   ListThreadsResponse,
   ListUsageNoticesResponse,
@@ -86,8 +87,10 @@ import type {
   ReviseAgentBody,
   Revision,
   Run,
+  RunFeedback,
   RunList,
   SaveKnowledgeVariantBody,
+  SaveRunFeedbackBody,
   Schedule,
   ScheduleView,
   SearchKnowledgeResponse,
@@ -565,24 +568,39 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
   }
 
   /** Lists the workspace's person-scoped tool providers, at most 64, with whether the caller has connected a credential for each and how it is held. A value is never shown. A machine holds no credentials, so it sees every provider unconnected. */
-  async listToolCredentials(options?: RequestOptions): Promise<ToolCredentials> {
-    const path = "/api/me/credentials";
+  async listToolCredentials(actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ToolCredentials> {
+    let path = "/api/me/credentials";
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<ToolCredentials>("GET", path, {
       ...options,
     });
   }
 
-  async listToolCredentialsRaw(options?: RequestOptions): Promise<ApiResponse<ToolCredentials>> {
-    const path = "/api/me/credentials";
+  async listToolCredentialsRaw(actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ToolCredentials>> {
+    let path = "/api/me/credentials";
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<ToolCredentials>("GET", path, {
       ...options,
     });
   }
 
   /** Sets the caller's credential for a person-scoped provider, in place of the one they had. A reference must start with one of the starts the operator listed for the workspace, and is not read here; any reason it cannot be used is answered with one message. A value is accepted only where the workspace keeps them (403 otherwise), and is stored; a reference that replaces a value forgets it. A provider the workspace reaches with its own credential is 400, and a machine is 403: each person connects their own. */
-  async putToolCredential(provider: string, body: ToolCredentialInput, options?: RequestOptions): Promise<ToolCredential> {
+  async putToolCredential(provider: string, body: ToolCredentialInput, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ToolCredential> {
     let path = "/api/me/credentials/{provider}";
     path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<ToolCredential>("PUT", path, {
       body,
       contentType: "application/json",
@@ -590,9 +608,14 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     });
   }
 
-  async putToolCredentialRaw(provider: string, body: ToolCredentialInput, options?: RequestOptions): Promise<ApiResponse<ToolCredential>> {
+  async putToolCredentialRaw(provider: string, body: ToolCredentialInput, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ToolCredential>> {
     let path = "/api/me/credentials/{provider}";
     path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<ToolCredential>("PUT", path, {
       body,
       contentType: "application/json",
@@ -601,17 +624,27 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
   }
 
   /** Removes it, and the value if it was one. The caller's runs then get no tools from the provider. */
-  async deleteToolCredential(provider: string, options?: RequestOptions): Promise<void> {
+  async deleteToolCredential(provider: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<void> {
     let path = "/api/me/credentials/{provider}";
     path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     await this.request<void>("DELETE", path, {
       ...options,
     });
   }
 
-  async deleteToolCredentialRaw(provider: string, options?: RequestOptions): Promise<ApiResponse<void>> {
+  async deleteToolCredentialRaw(provider: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<void>> {
     let path = "/api/me/credentials/{provider}";
     path = path.replace("{provider}", encodeURIComponent(String(provider)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<void>("DELETE", path, {
       ...options,
     });
@@ -1028,18 +1061,74 @@ agents answering the next message are sent.
   }
 
   /** Get a run */
-  async getRun(id: string, options?: RequestOptions): Promise<Run> {
+  async getRun(id: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<Run> {
     let path = "/api/runs/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<Run>("GET", path, {
       ...options,
     });
   }
 
-  async getRunRaw(id: string, options?: RequestOptions): Promise<ApiResponse<Run>> {
+  async getRunRaw(id: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<Run>> {
     let path = "/api/runs/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<Run>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Collect feedback for a visible run, at most 200 records per page */
+  async listRunFeedback(id: string, after?: string, options?: RequestOptions): Promise<ListRunFeedbackResponse> {
+    let path = "/api/runs/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListRunFeedbackResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listRunFeedbackRaw(id: string, after?: string, options?: RequestOptions): Promise<ApiResponse<ListRunFeedbackResponse>> {
+    let path = "/api/runs/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (after !== undefined && after !== null) _q.set("after", String(after));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListRunFeedbackResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Save a rating and optional reason and comment linked to a run */
+  async saveRunFeedback(id: string, body: SaveRunFeedbackBody, options?: RequestOptions): Promise<RunFeedback> {
+    let path = "/api/runs/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<RunFeedback>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async saveRunFeedbackRaw(id: string, body: SaveRunFeedbackBody, options?: RequestOptions): Promise<ApiResponse<RunFeedback>> {
+    let path = "/api/runs/{id}/feedback";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<RunFeedback>("PUT", path, {
+      body,
+      contentType: "application/json",
       ...options,
     });
   }

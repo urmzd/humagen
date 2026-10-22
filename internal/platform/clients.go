@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/urmzd/fiber/pkg/connectors"
 	"github.com/urmzd/fiber/pkg/connectors/mention"
 	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/signature"
@@ -396,6 +397,7 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 		}
 		cfg := slack.Config{
 			API: api, Verifier: signature.NewSlack(secrets.signing), Team: c.Identity.Team,
+			Tenant: c.Tenant, Files: connectors.Files{Store: p.files, Log: p.log}, FileToken: secrets.token,
 			Bots: c.Bots, Agents: agents, DefaultAgent: untagged,
 			Interval: p.cfg.ClientInterval, Log: p.log,
 		}

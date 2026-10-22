@@ -1,5 +1,8 @@
 {
-  "_metadata": { "major_version": 2, "minor_version": 1 },
+  "_metadata": {
+    "major_version": 2,
+    "minor_version": 1
+  },
   "display_information": {
     "name": "Warp",
     "description": "Your workspace's agents in Slack. Ask a question, or review what one is waiting on.",
@@ -11,7 +14,10 @@
       "messages_tab_enabled": true,
       "messages_tab_read_only_enabled": false
     },
-    "bot_user": { "display_name": "warp", "always_online": true },
+    "bot_user": {
+      "display_name": "warp",
+      "always_online": true
+    },
     "shortcuts": [
       {
         "name": "Ask Warp",
@@ -30,7 +36,13 @@
       {
         "command": "/agent",
         "description": "Ask Warp in this channel",
-        "usage_hint": "[question] or help",
+        "usage_hint": "[question], skills, connections or canvas RUN_ID",
+        "should_escape": false
+      },
+      {
+        "command": "/skill",
+        "description": "Run a configured agent skill",
+        "usage_hint": "[name] [arguments]",
         "should_escape": false
       }
     ],
@@ -50,7 +62,9 @@
         "im:history",
         "mpim:history",
         "reactions:write",
-        "users:read"
+        "users:read",
+        "files:read",
+        "canvases:write"
       ]
     }
   },
@@ -64,7 +78,9 @@
         "message.im"
       ]
     },
-    "interactivity": { "is_enabled": true },
+    "interactivity": {
+      "is_enabled": true
+    },
     "org_deploy_enabled": false,
     "socket_mode_enabled": true,
     "token_rotation_enabled": false

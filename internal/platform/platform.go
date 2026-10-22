@@ -28,6 +28,8 @@ import (
 	drun "github.com/urmzd/anchor/pkg/run"
 	"github.com/urmzd/anchor/pkg/worker"
 	"github.com/urmzd/fiber/pkg/agentrt"
+	"github.com/urmzd/fiber/pkg/attachment/resolve"
+	filesblob "github.com/urmzd/fiber/pkg/blob"
 	"github.com/urmzd/fiber/pkg/bus"
 	"github.com/urmzd/fiber/pkg/connector"
 	"github.com/urmzd/fiber/pkg/connectors/cron"
@@ -52,6 +54,7 @@ import (
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/evals"
+	"github.com/urmzd/warp/pkg/feedback"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/integrations/github"
 	"github.com/urmzd/warp/pkg/integrations/slack"
@@ -175,6 +178,8 @@ type Config struct {
 
 // Platform is the assembled system.
 type Platform struct {
+	files filesblob.Store
+
 	cfg Config
 	log *slog.Logger
 	now func() time.Time
@@ -186,6 +191,7 @@ type Platform struct {
 	Alerts    *alerts.Engine
 	Knowledge *knowledge.Store
 	Evals     *evals.Store
+	Feedback  *feedback.Store
 	Prefs     *prefs.Store
 	Memory    *memory.Store
 	// Projects is each tenant's tree of projects.
@@ -309,6 +315,20 @@ func New(cfg Config) (*Platform, error) {
 	if p.ledger == nil {
 		p.ledger, p.queue = ledger.NewMemory(), dqueue.NewMemory()
 	}
+	dir := cfg.Workspace
+	if dir == "" {
+		base, err := os.UserCacheDir()
+		if err != nil {
+			base = os.TempDir()
+		}
+		dir = filepath.Join(base, "warp", "workspace")
+	}
+	files, err := filesblob.NewFS(filepath.Join(dir, "attachments"))
+	if err != nil {
+		return nil, fmt.Errorf("platform: attachments: %w", err)
+	}
+	p.files = files
+	p.closers = append(p.closers, files.Close)
 	// Every store is in memory, reading back what Backends.State holds.
 	if err := p.openStores(cfg); err != nil {
 		return nil, err
@@ -436,7 +456,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 		// A run waiting on an attached run of the same agent holds one of
 		// that agent's nodes, so there are as many as there are places.
 		runtime.WithReplicas(p.slots()),
-		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions)...),
+		runtime.WithAgentOptions(slices.Concat(p.cfg.Ext.agentOptions(), p.cfg.AgentOptions, []agentrt.Option{agentrt.WithAttachments(resolve.New(p.files))})...),
 		runtime.WithSandboxLogger(p.log),
 	)
 	if err != nil {

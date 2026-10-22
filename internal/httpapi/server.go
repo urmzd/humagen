@@ -109,6 +109,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/settings", s.authed(auth.AgentsRead, s.getSettings))
 	mux.HandleFunc("PUT /api/settings", s.authed(auth.AgentsWrite, s.putSettings))
 	mux.HandleFunc("GET /api/runs/{id}", s.authed(auth.RunsRead, s.seenRun(s.getRun)))
+	mux.HandleFunc("PUT /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.putFeedback)))
+	mux.HandleFunc("GET /api/runs/{id}/feedback", s.authed(auth.RunsRead, s.seenRun(s.listFeedback)))
 	mux.HandleFunc("GET /api/runs/{id}/tree", s.authed(auth.RunsRead, s.seenRun(s.runTree)))
 	mux.HandleFunc("POST /api/runs/{id}/calls", s.authed(auth.RunsWrite, s.seenRun(s.createCall)))
 	mux.HandleFunc("POST /api/runs/{id}/stop", s.authed(auth.RunsWrite, s.seenRun(s.stopRun)))
@@ -695,7 +697,15 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request, who auth.Pr
 }
 
 func (s *Server) getRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	person, allowed := s.actingFor(w, r, who, auth.RunsRead, "a run")
+	if !allowed {
+		return
+	}
 	run, err := s.P.Runs.Get(who.Tenant, r.PathValue("id"))
+	if err == nil && !s.P.Seer(person).Run(run) {
+		notFound(w)
+		return
+	}
 	if err != nil {
 		s.problem(w, err)
 		return

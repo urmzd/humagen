@@ -47,10 +47,26 @@ before(async () => {
   const env = Object.fromEntries(
     ["PATH", "HOME", "TMPDIR"].flatMap((k) => (process.env[k] ? [[k, process.env[k]]] : [])),
   );
-  server = spawn(bin, ["serve", "-auth=dev", "-seed", "-addr", `127.0.0.1:${port}`], {
-    cwd: dir,
-    env,
-    stdio: ["ignore", "ignore", "pipe"],
+  server = spawn(
+    bin,
+    [
+      "serve",
+      "-auth=dev",
+      "-seed",
+      "-workspace",
+      join(dir, "workspace"),
+      "-addr",
+      `127.0.0.1:${port}`,
+    ],
+    {
+      cwd: dir,
+      env,
+      stdio: ["ignore", "ignore", "pipe"],
+    },
+  );
+  let startup = "";
+  server.stderr?.on("data", (chunk) => {
+    startup = (startup + String(chunk)).slice(-4000);
   });
   for (let i = 0; i < 100; i++) {
     const up = await fetch(`${base}/healthz`).then(
@@ -60,7 +76,7 @@ before(async () => {
     if (up) return;
     await new Promise((r) => setTimeout(r, 100));
   }
-  throw new Error("warp did not start");
+  throw new Error(`warp did not start: ${startup}`);
 });
 
 after(() => {

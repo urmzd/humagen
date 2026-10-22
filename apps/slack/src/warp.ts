@@ -46,7 +46,11 @@ export interface ClientRecord {
   agents?: string[];
   identity?: { team?: string; app_id?: string };
   /** The credential that may act for Slack people, and who each of them is in the workspace. */
-  slack?: { machine?: string; people?: Record<string, string> };
+  slack?: {
+    machine?: string;
+    people?: Record<string, string>;
+    commands?: { name: string; description: string; argument_hint?: string }[];
+  };
 }
 
 /** A Slack person this app speaks for, as the client that maps them names them. */
@@ -77,6 +81,7 @@ export interface RunRequest {
  * machine sends one, and the platform files the thread from the binding.
  */
 export interface SurfaceRef {
+  files?: boolean;
   client: string;
   channel: string;
   ts: string;
@@ -187,7 +192,23 @@ export class WarpError extends Error {
  * this interface answers null for a 404, the generated client throws: the
  * swap wraps those three calls.
  */
+export interface FeedbackInput {
+  rating: "up" | "down";
+  reason?: string;
+  comment?: string;
+  act_as?: ActAs;
+}
+
+export interface ToolConnections {
+  providers: { provider: string; connected: boolean; endpoint?: string }[];
+  references: string[];
+  values: boolean;
+}
 export interface Warp {
+  connections(as: ActAs): Promise<ToolConnections>;
+  connect(provider: string, ref: string, as: ActAs): Promise<unknown>;
+  disconnect(provider: string, as: ActAs): Promise<void>;
+  saveFeedback(run: string, body: FeedbackInput): Promise<unknown>;
   getMe(options?: CallOptions): Promise<Me>;
   listAgents(options?: CallOptions): Promise<{ agents: Revision[]; builtin?: string[] }>;
   /** One client record, or null when it does not exist for this caller. */
@@ -196,6 +217,7 @@ export interface Warp {
   createRun(body: RunRequest, idempotencyKey?: string, options?: CallOptions): Promise<Run>;
   /** A run's record, or null when it does not exist for this caller. */
   getRun(id: string, options?: CallOptions): Promise<Run | null>;
+  getRunFor(id: string, as: ActAs): Promise<Run | null>;
   /**
    * The agents' turns of a conversation, its newest 200, or null when there
    * is no such conversation. People's messages in a shared thread are left
@@ -536,6 +558,30 @@ export function httpWarp(cfg: {
 
   const never = new AbortController().signal;
   return {
+    connections: (as) =>
+      http(
+        "GET",
+        `/api/me/credentials?${new URLSearchParams({ act_as_client: as.client, act_as_user: as.user })}`,
+      ),
+    connect: (provider, ref, as) =>
+      http(
+        "PUT",
+        `/api/me/credentials/${enc(provider)}?${new URLSearchParams({ act_as_client: as.client, act_as_user: as.user })}`,
+        { ref },
+      ),
+    disconnect: (provider, as) =>
+      http(
+        "DELETE",
+        `/api/me/credentials/${enc(provider)}?${new URLSearchParams({ act_as_client: as.client, act_as_user: as.user })}`,
+      ),
+    saveFeedback: (run, body) => http("PUT", `/api/runs/${enc(run)}/feedback`, body),
+    getRunFor: (id, as) =>
+      orNull(
+        http(
+          "GET",
+          `/api/runs/${enc(id)}?${new URLSearchParams({ act_as_client: as.client, act_as_user: as.user })}`,
+        ),
+      ),
     getMe: () => http<Me>("GET", "/api/me"),
     listAgents: () => http<{ agents: Revision[]; builtin?: string[] }>("GET", "/api/agents"),
     getClient: (id) => orNull(http<ClientRecord>("GET", `/api/clients/${enc(id)}`)),

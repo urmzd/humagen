@@ -214,11 +214,11 @@ test("a request is cancelled by its signal", async () => {
   });
   const client = createClient({ baseUrl: base });
   const controller = new AbortController();
-  const pending = client.getRun("r1", { signal: controller.signal });
+  const pending = client.getRun("r1", undefined, undefined, { signal: controller.signal });
   setTimeout(() => controller.abort(), 20);
   await assert.rejects(pending, { name: "AbortError" });
 
-  await assert.rejects(client.getRun("r1", { timeout: 20 }), { name: "TimeoutError" });
+  await assert.rejects(client.getRun("r1", undefined, undefined, { timeout: 20 }), { name: "TimeoutError" });
 
   // A download honours the client's own timeout too.
   const patient = createClient({ baseUrl: base, timeout: 20 });

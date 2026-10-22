@@ -343,7 +343,7 @@ export class Warp extends ApiClient {
         throw new StreamEndedError("ended", `run ${run.id} ended without an event that says so`, record, cause);
       }
       try {
-        record = await this.getRun(run.id, { signal: options?.signal });
+        record = await this.getRun(run.id, undefined, undefined, { signal: options?.signal });
       } catch (error) {
         // A server that is restarting cannot answer either. That is one more
         // failed attempt, not the end.

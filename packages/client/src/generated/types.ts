@@ -247,6 +247,16 @@ export type RunStatus = "accepted" | "running" | "parked" | "completed" | "faile
 /** How one agent calls another. A subagent is attached to its caller. A handoff or a delegate is independent. */
 export type CallMode = "subagent" | "handoff" | "delegate";
 
+/** Feedback metadata only. The referenced run owns the prompt, answer and conversation links. */
+export interface RunFeedback {
+  run: string;
+  subject: string;
+  rating: "up" | "down";
+  reason?: string;
+  comment?: string;
+  updated_at: string;
+}
+
 /** One run and its place in the call tree and in its conversation. */
 export interface Run {
   /** The run's id, `r` and 32 hex digits, derived from the workspace and the trigger's id. */
@@ -497,8 +507,19 @@ export interface ThreadAnswerRef {
   question: string;
 }
 
+export interface Attachment {
+  digest: string;
+  media_type: string;
+  size: number;
+  name?: string;
+  alt?: string;
+  origin?: string;
+  unread?: string;
+}
+
 /** A person's turn in a thread. It starts no run of its own. Its author is always a person. */
 export interface ThreadMessage {
+  attachments?: Attachment[];
   /** `m-` and its place in the thread, from 1. */
   id: string;
   thread: string;
@@ -777,6 +798,8 @@ plain and refused. A thread under an announcement the client posted
 is seeded with it (see `startThread`).
  */
 export interface SurfaceRef {
+  /** Ingest files from the verified Slack message as agent attachments. */
+  files?: boolean;
   client: string;
   channel: string;
   /** The thread's, the ts of its first message. */
@@ -2735,6 +2758,18 @@ export interface ListReachableAgentsResponse {
 
 export interface ListPendingMemoryResponse {
   proposals: MemoryProposal[];
+}
+
+export interface ListRunFeedbackResponse {
+  feedback: RunFeedback[];
+  next: string;
+}
+
+export interface SaveRunFeedbackBody {
+  rating: "up" | "down";
+  reason?: string;
+  comment?: string;
+  act_as?: ActAs;
 }
 
 export interface GetRunTraceResponse {
