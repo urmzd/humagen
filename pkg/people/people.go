@@ -2,18 +2,23 @@
 // tagged, and named on a project.
 //
 // A person is recorded when they sign in, when a client maps a Slack person
-// to them, and when the policy grants a role to their subject. Nothing here
-// decides who anyone is or what they may do: the identity provider and the
-// policy do. This is what the rest of warp shows and addresses them by, a
+// to them, and when the policy grants a role to their subject in a server of
+// one tenant (a grant names no tenant, so with tenants from a claim it
+// records nobody). Nothing here decides who anyone is or what they may do:
+// the identity provider and the policy do. This is what the rest of warp shows and addresses them by, a
 // name and a handle.
 //
 // # No email
 //
-// No email is kept or shown, and no field could hold one. A name that is an
-// email address is not kept as a name, and a handle is never made from an
-// address's domain. A person's picture is their own photo in pkg/prefs,
-// served by warp: a picture URL from the identity provider is never kept, so
-// showing the directory sends nobody else a request.
+// No email is asked for or shown. A name that is an email address is not kept
+// as a name, and a handle is never made from an address's domain. A subject
+// is kept as the identity provider gives it, since it is the key the person
+// signs in with, and some subjects hold an address: a Tailscale login, or the
+// subject a Slack people map names. Such a subject is never shown
+// (ShownSubject), and the directory never searches subjects. A person's
+// picture is their own photo in pkg/prefs, served by warp: a picture URL from
+// the identity provider is never kept, so showing the directory sends nobody
+// else a request.
 //
 // # Handles
 //
@@ -102,6 +107,15 @@ type Person struct {
 	// SeenAt is when they last signed in. Zero for someone who never has.
 	SeenAt    time.Time `json:"seen_at,omitzero"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// ShownSubject is the person's subject as the directory may show it: "" when
+// it holds an email address.
+func (p Person) ShownSubject() string {
+	if strings.Contains(p.Subject, "@") {
+		return ""
+	}
+	return p.Subject
 }
 
 func (p Person) clone() Person {

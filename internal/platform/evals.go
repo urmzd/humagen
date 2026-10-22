@@ -100,8 +100,10 @@ func (p *Platform) evalCase(ctx context.Context, tenant string, suite evals.Suit
 		}
 	}
 	meta := map[string]string{"eval_suite": suite.Name, "eval_case": c.ID}
-	// An agent that lives in a project is tried there, and filed there, so
-	// the limits of its home's chain hold for its evals as for its work.
+	// An eval tries an agent where it lives, as any run of it would be: a
+	// project agent's case is filed in its home, under the home's limits
+	// and allow lists, and so are the runs it calls. A platform agent's is
+	// filed at the workspace.
 	if home, ok := p.Projects.Tree(tenant).Home(suite.Subject); ok {
 		meta[runs.MetaProject] = home
 	}

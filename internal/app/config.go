@@ -365,6 +365,16 @@ func tenantOnly(tenant string, c runtime.Catalog) runtime.Catalog {
 	}
 }
 
+// checkNewAgentName refuses, for an agent the workspace does not have yet, a
+// reserved word or a person's handle, as the API does: a tag must name one of
+// them. An agent the workspace already has keeps its name.
+func checkNewAgentName(ctx context.Context, p *platform.Platform, tenant, name string) error {
+	if _, err := p.Agents.Get(ctx, tenant, name, 0); !errors.Is(err, registry.ErrNotFound) {
+		return nil
+	}
+	return p.CheckAgentName(tenant, name)
+}
+
 // applyPlatforms makes the platform what the Platform documents declare: the
 // workspace's instructions and its projects merged into the tree, agents
 // created or revised, declared settings applied, a GitHub client managed by
@@ -391,6 +401,9 @@ func applyPlatforms(ctx context.Context, p *platform.Platform, cfg spec.Config, 
 			}
 			if err := p.CheckAgentModel(tenant, *s); err != nil && !errors.Is(err, platform.ErrModelPolicy) {
 				return fmt.Errorf("platform %q: agent %q: %w", tenant, s.Name, err)
+			}
+			if err := checkNewAgentName(ctx, p, tenant, s.Name); err != nil {
+				return fmt.Errorf("platform %q: agents[%d] %q: %w", tenant, i, s.Name, err)
 			}
 			_, err := p.Agents.Create(ctx, tenant, *s, "file")
 			if errors.Is(err, registry.ErrExists) {

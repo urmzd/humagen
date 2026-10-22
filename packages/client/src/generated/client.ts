@@ -2804,7 +2804,8 @@ and company projects need `projects:govern`.
   }
 
   /** Everyone who signed in, every person a client maps, and every
-subject the policy grants a role to, at most 5,000 a workspace.
+subject the policy grants a role to (unless tenants come from a
+claim, since a grant names no tenant), at most 5,000 a workspace.
 `next` is the cursor for the page after this one, or null at the
 end; pass it back as `before`.
  */

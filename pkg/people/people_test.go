@@ -172,6 +172,22 @@ func TestNoEmailReachesTheDirectory(t *testing.T) {
 	if strings.Contains(string(raw), "@") {
 		t.Fatalf("an address reached the JSON: %s", raw)
 	}
+	// The store keeps a subject as given, since it is the key; one that
+	// holds an address is never shown, and subjects are never searched.
+	if got := q.ShownSubject(); got != "" {
+		t.Fatalf("a subject holding an address is shown as %q", got)
+	}
+	if got := p.ShownSubject(); got != "okta|00u1ada" {
+		t.Fatalf("an opaque subject is shown as %q", got)
+	}
+	for _, needle := range []string{"acme.test", "tailscale", "okta"} {
+		if found, _, err := s.List("acme", people.Query{Q: needle}); err != nil || len(found) != 0 {
+			t.Fatalf("q=%q found %+v, %v: subjects are not searched", needle, found, err)
+		}
+	}
+	if found, _, err := s.List("acme", people.Query{Q: "grace"}); err != nil || len(found) != 1 {
+		t.Fatalf("q=grace found %+v, %v, want grace by handle", found, err)
+	}
 }
 
 func TestTheCapHolds(t *testing.T) {
@@ -358,7 +374,7 @@ func TestListPagesByHandleAndSearches(t *testing.T) {
 	if !slices.Equal(handles, want) {
 		t.Fatalf("paged %v, want %v", handles, want)
 	}
-	for q, want := range map[string][]string{"SCUL": {"dana-scully"}, "j": {"jeffrey-spender", "john-doggett"}, "okta|4": {"john-doggett"}, "nobody": {}} {
+	for q, want := range map[string][]string{"SCUL": {"dana-scully"}, "j": {"jeffrey-spender", "john-doggett"}, "okta|4": {}, "nobody": {}} {
 		page, _, _ := s.List("acme", people.Query{Q: q})
 		got := []string{}
 		for _, p := range page {

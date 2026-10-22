@@ -3,6 +3,7 @@ package platform_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -159,52 +160,92 @@ func TestAScheduleWhoseAgentStoppedBeingAvailableIsRefusedAndRaisedOnce(t *testi
 	}
 }
 
-// An eval tries an agent where it lives, and files its runs there, so the
-// limits of its home's chain hold for its evals as for its work. An eval tag
-// that names no home is filed at the root, where a project agent is not
-// available.
-func TestAnEvalOfAProjectAgentIsFiledAndLimitedInItsHome(t *testing.T) {
+// Asked about a project the tree does not hold, as a schedule is when its
+// project's delete wins between being looked up and being checked, the answer
+// is that the project is not found, not that the agent is refused there.
+func TestAvailabilityInAProjectThatIsGoneIsNotFound(t *testing.T) {
 	p := start(t, call.Limits{})
-	globexHelper(t, p)
-	tg := tag("eval-1", "globex-helper")
-	tg.Origin = platform.OriginEval
-	if _, err := p.Invoke(t.Context(), tg); !errors.Is(err, platform.ErrNotAvailable) {
-		t.Fatalf("an eval of a project agent filed at the root = %v", err)
+	field(t, p)
+	if err := p.Available(tenant, "Nowhere", "helper"); !errors.Is(err, platform.ErrProjectNotFound) || errors.Is(err, platform.ErrNotAvailable) {
+		t.Fatalf("helper in a project that is gone = %v, want ErrProjectNotFound", err)
 	}
-	if _, err := p.Policies.Put(tenant, policy.Policy{Scope: policy.Scope{Kind: policy.Project, Name: "Field"}, Period: policy.Day, MaxRuns: 1, Action: policy.Block}, "test", time.Now()); err != nil {
-		t.Fatal(err)
+	if err := p.Available(tenant, "Globex", "helper"); err != nil {
+		t.Fatalf("helper in Globex = %v", err)
 	}
-	suite := evals.Suite{Name: "globex", Target: evals.Agent, Subject: "globex-helper", Cases: []evals.Case{
-		{ID: "one", Input: "hello", Checks: []evals.Check{{Kind: evals.Contains, Value: "offline"}}},
-		{ID: "two", Input: "again", Checks: []evals.Check{{Kind: evals.Contains, Value: "offline"}}},
-	}}
+}
+
+// evalOf runs a suite of n cases against an agent and returns the cases'
+// results once it has finished.
+func evalOf(t *testing.T, p *platform.Platform, agent string, n int) []evals.Result {
+	t.Helper()
+	suite := evals.Suite{Name: "of-" + agent, Target: evals.Agent, Subject: agent}
+	for i := range n {
+		suite.Cases = append(suite.Cases, evals.Case{ID: fmt.Sprintf("c%d", i), Input: "hello", Checks: []evals.Check{{Kind: evals.Contains, Value: "offline"}}})
+	}
 	if err := p.Evals.Put(tenant, suite, false); err != nil {
 		t.Fatal(err)
 	}
-	started, err := p.StartEval(t.Context(), tenant, "globex", "ada")
+	run, err := p.StartEval(t.Context(), tenant, suite.Name, "ada")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var done evals.Run
-	eventually(t, "the eval finished", func() bool {
-		all, err := p.Evals.Runs(tenant, "globex")
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		all, err := p.Evals.Runs(tenant, suite.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
 		for _, r := range all {
-			if r.ID == started.ID && r.Status != evals.Running {
-				done = r
-				return true
+			if r.ID == run.ID && r.Status != evals.Running {
+				return r.Results
 			}
 		}
-		return err != nil
-	})
-	if len(done.Results) != 2 || done.Results[0].Error != "" {
-		t.Fatalf("the eval's results are %+v", done.Results)
+		if time.Now().After(deadline) {
+			t.Fatalf("the eval of %s did not finish", agent)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	first, err := p.Runs.Get(tenant, done.Results[0].RunID)
-	if err != nil || first.Project != "Globex" || !slices.Equal(first.Within, []string{"Field"}) {
-		t.Fatalf("the eval's run is filed at %q within %v (%v)", first.Project, first.Within, err)
+}
+
+// An eval tries an agent where it lives, as any run of it would be: a
+// project agent's cases are filed in its home, so the home's limits hold
+// them and the runs they call are checked there. A platform agent's are
+// filed at the workspace.
+func TestAnEvalTriesAnAgentWhereItLives(t *testing.T) {
+	p := start(t, call.Limits{})
+	globexHelper(t, p)
+	for _, c := range []struct {
+		agent, project string
+		within         []string
+	}{{"globex-helper", "Globex", []string{"Field"}}, {"helper", "", nil}} {
+		results := evalOf(t, p, c.agent, 1)
+		if len(results) != 1 || results[0].RunID == "" {
+			t.Fatalf("the eval of %s = %+v", c.agent, results)
+		}
+		r, err := p.Runs.Get(tenant, results[0].RunID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Project != c.project || !slices.Equal(r.Within, c.within) {
+			t.Fatalf("an eval of %s was filed in %q within %v, want %q within %v", c.agent, r.Project, r.Within, c.project, c.within)
+		}
 	}
-	if !strings.Contains(done.Results[1].Error, "limit") {
-		t.Fatalf("a second eval run escaped Field's limit of one: %+v", done.Results[1])
+}
+
+// An eval's cases count toward the limits of the project its agent lives in,
+// so evaluating a project agent never gets around them.
+func TestAnEvalIsHeldByTheLimitsWhereItsAgentLives(t *testing.T) {
+	p := start(t, call.Limits{})
+	globexHelper(t, p)
+	if _, err := p.Policies.Put(tenant, policy.Policy{Scope: policy.Scope{Kind: policy.Project, Name: "Globex"}, Period: policy.Day, MaxRuns: 1, Action: policy.Block}, "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	results := evalOf(t, p, "globex-helper", 2)
+	if len(results) != 2 || results[0].Error != "" || results[1].Error == "" {
+		t.Fatalf("two cases under Globex's limit of one run = %+v, want the second refused", results)
+	}
+	if _, err := p.Invoke(t.Context(), inProject("after", "globex-helper", "Globex")); err == nil {
+		t.Fatal("a run in Globex was let in after the eval used its one run")
 	}
 }
 

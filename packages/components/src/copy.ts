@@ -294,6 +294,8 @@ export const defaultCopy = {
     home: "Lives in",
     noHome: "No project: a platform agent",
     livesHere: "Lives here",
+    /** Where a project agent answers: its home and everything below it. */
+    homeAndBelow: (title: string) => `${title} and the projects below it`,
     fromProject: (title: string) => `from ${title}`,
     moved: "Saved. It answers where it lives now.",
     failed: "Where the agent lives could not be changed.",

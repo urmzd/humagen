@@ -1100,7 +1100,7 @@ function WhereItAnswers({
       <div className="flex flex-col gap-1">
         <p className="text-aui-xs font-medium text-aui-muted">{placeWords.availableIn}</p>
         {home ? (
-          <p className="text-aui-sm text-aui-fg">{placeWords.livesIn(title(home))}</p>
+          <p className="text-aui-sm text-aui-fg">{placeWords.homeAndBelow(title(home))}</p>
         ) : everywhere ? (
           <p className="text-aui-sm text-aui-fg">{placeWords.everywhere}</p>
         ) : enabled.length === 0 ? (
