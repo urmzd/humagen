@@ -2,10 +2,9 @@ import { defaultCopy } from "@warp/components";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api, coworking, type ProjectKnowledge, type ProjectView, type Source } from "./api.ts";
 import { titleOf } from "./projects.ts";
-import { type Flash, FlashNote, PickMany, Problem, primary, SkeletonRows, useFlash } from "./ui.tsx";
+import { type Flash, FlashNote, PickMany, Problem, primary, Section, SkeletonRows, useFlash } from "./ui.tsx";
 
 const words = defaultCopy.projects.knowledge;
-const heading = "text-aui-base font-medium text-aui-fg";
 
 /** The most knowledge sources a project names. */
 export const MAX_KNOWLEDGE = 8;
@@ -64,13 +63,15 @@ export function KnowledgeLists({
   // At the cap, only what is named is offered, so nothing more can be added.
   const options = full ? all.filter((o) => draft.includes(o.value)) : all;
   const dirty = !same(draft, view.knowledge);
+  // Nothing named and nothing to name: say why, rather than offer a Save with nothing to save.
+  const nothing = sources !== null && all.length === 0 && draft.length === 0 && view.knowledge.length === 0;
   return (
-    <div className="flex flex-col gap-5">
-      <section className="flex flex-col gap-2" aria-label={words.heading}>
-        <h2 className={heading}>{words.heading}</h2>
-        <p className="text-aui-xs text-aui-muted">{words.hint}</p>
+    <div className="flex flex-col gap-6">
+      <Section title={words.heading} hint={words.hint}>
         {fileOwned && <p className="text-aui-xs text-aui-muted">{words.managed}</p>}
-        {editable && !fileOwned ? (
+        {editable && !fileOwned && nothing ? (
+          <p className="text-aui-sm text-aui-muted">{words.noSources}</p>
+        ) : editable && !fileOwned ? (
           <>
             <PickMany label={words.heading} add={words.add} disabled={saving} empty={words.none} value={draft} options={options} onChange={onChange} />
             {full && <p className="text-aui-xs text-aui-muted">{words.full}</p>}
@@ -93,10 +94,8 @@ export function KnowledgeLists({
           </ul>
         )}
         <Problem message={problem} />
-      </section>
-      <section className="flex flex-col gap-2" aria-label={words.given}>
-        <h3 className="text-aui-sm font-medium text-aui-fg">{words.given}</h3>
-        <p className="text-aui-xs text-aui-muted">{words.givenHint}</p>
+      </Section>
+      <Section title={words.given} hint={words.givenHint}>
         {view.given.length === 0 ? (
           <p className="text-aui-sm text-aui-muted">{words.noneGiven}</p>
         ) : (
@@ -109,7 +108,7 @@ export function KnowledgeLists({
             ))}
           </ol>
         )}
-      </section>
+      </Section>
     </div>
   );
 }

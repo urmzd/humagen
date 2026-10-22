@@ -138,6 +138,45 @@ test("a project's header is one primary action and a More menu, with Archive and
   assert.ok(await screen.findByRole("button", { name: "Cancel" }));
 });
 
+test("Delete Project cannot be undone, so it asks twice, and Escape or moving away keeps the project", async () => {
+  let deleted = 0;
+  open(globexDetail, {
+    routes: {
+      "DELETE /api/projects/Globex": () => {
+        deleted++;
+        return undefined;
+      },
+    },
+  });
+  const ask = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete Project" }));
+    return screen.getByRole("group", { name: /^Delete .*\? This cannot be undone\.$/ });
+  };
+  // Step one only asks, in words, with focus on keeping it.
+  let step = await ask();
+  assert.equal(document.activeElement?.textContent, "Keep It");
+  fireEvent.keyDown(step, { key: "Escape" });
+  assert.ok(!screen.queryByRole("group", { name: /This cannot be undone/ }));
+  // Moving focus away keeps it too.
+  step = await ask();
+  fireEvent.blur(within(step).getByRole("button", { name: "Keep It" }), { relatedTarget: document.body });
+  assert.ok(!screen.queryByRole("group", { name: /This cannot be undone/ }));
+  assert.equal(deleted, 0);
+  // Step two deletes.
+  step = await ask();
+  fireEvent.click(within(step).getByRole("button", { name: "Delete Project" }));
+  await waitFor(() => assert.equal(deleted, 1));
+});
+
+test("Archive Project can be undone, so it acts at once", async () => {
+  open(globexDetail, { routes: { "PUT /api/projects/Globex": () => globex } });
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Archive Project" }));
+  assert.ok(!screen.queryByRole("group", { name: /This cannot be undone/ }));
+  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "PUT" && r.path === "/api/projects/Globex")));
+});
+
 test("Mute Project says so beside it when the mute could not be saved", async () => {
   const asked: [string, boolean][] = [];
   open(globexDetail, {
