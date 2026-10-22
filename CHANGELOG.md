@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.1 (2026-10-22)
+
+### Bug Fixes
+
+- **deps**: fiber v0.22.1 and anchor v0.5.1; drop the run queue's own connections (#42) ([04e6271](https://github.com/urmzd/warp/commit/04e6271d6cb43276abd43aed3648d57f149c1cb7))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.13.0...v0.13.1)
+
+
 ## 0.13.0 (2026-10-22)
 
 ### Features

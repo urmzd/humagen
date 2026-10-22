@@ -1,6 +1,6 @@
 {
   "name": "@warp/client",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "private": true,
   "description": "TypeScript client for the warp HTTP API, generated from api/openapi.yaml by oag.",
   "license": "Apache-2.0",
