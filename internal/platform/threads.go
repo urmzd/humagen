@@ -1371,7 +1371,7 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 		}
 		switch {
 		case outside && !reached:
-			mn.Refused = "no expert takes part in this private conversation, so nobody was told; share it, or tag people"
+			mn.Refused = "no expert takes part in this private conversation, so nobody was told; share it first, or tag people"
 		case outside:
 			mn.Refused = "only the experts taking part were told; the others cannot read this private conversation"
 		case cut && !reached:
