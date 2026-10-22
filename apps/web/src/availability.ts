@@ -16,7 +16,7 @@ export const AUTO = "auto";
 export const EVERYONE = "*";
 
 /** The agents of `all` that may run where `view` was read, in the order given. */
-export function availableOf(all: string[], view: ProjectAgentsView | null, homes: Record<string, string>): string[] {
+export function availableOf(all: string[], view: Pick<ProjectAgentsView, "available"> | null, homes: Record<string, string>): string[] {
   if (!view) return all;
   const names = new Set(view.available.names);
   // With "*", every agent with no home, and the project agents on the chain the platform listed.

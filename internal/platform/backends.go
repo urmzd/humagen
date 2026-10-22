@@ -30,6 +30,7 @@ import (
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/warp/pkg/threads"
 	"github.com/urmzd/warp/pkg/usage"
 )
 
@@ -47,8 +48,8 @@ type Backends struct {
 	// State is where warp's own stores keep their records: clients and
 	// their secrets (unless Config sets its own), people's own credentials
 	// for tool providers (their values beside the clients' secrets), the
-	// inbox, preferences,
-	// memory, projects, limits, call policies, alerts, evals, schedules, the journal,
+	// inbox, preferences, memory, projects, threads, limits, call policies,
+	// alerts, evals, schedules, the journal,
 	// artifacts, the run index, the usage ledger, knowledge and workspace
 	// settings. Nil keeps them in memory.
 	State state.Store
@@ -179,6 +180,8 @@ func (p *Platform) openStores(cfg Config) error {
 	// An agent's name is a handle no person is given.
 	p.People, err = people.Open(st, people.WithTaken(p.agentTaken))
 	keep("people", err)
+	p.Threads, err = threads.Open(st)
+	keep("threads", err)
 	p.Policies, err = policy.Open(st)
 	keep("policies", err)
 	p.CallPolicies, err = callpolicy.Open(st)

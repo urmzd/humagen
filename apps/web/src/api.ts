@@ -303,7 +303,14 @@ export interface ThreadSummary {
   named: boolean;
   origin: string;
   project?: string;
+  /** The project's channel it is in, `general` when its runs name none. */
+  channel: string;
   agents: string[];
+  /** The people who asked or posted in it, by subject. */
+  people: string[];
+  visibility: "shared" | "private";
+  /** How many messages people have posted in it. */
+  messages: number;
   turns: number;
   branches: number;
   active: number;
@@ -623,8 +630,11 @@ export const api = {
     for (const k of ["before", "origin", "agent", "standing", "project", "within"] as const) if (q[k]) params.set(k, q[k]);
     return call<{ threads: ThreadSummary[]; next?: string | null }>("GET", `/api/threads?${params}`);
   },
+  /** The agents' turns of a conversation, its newest page. `coworking.thread` reads people's messages too. */
   thread: (id: string) =>
-    call<{ turns: Run[] }>("GET", `/api/threads/${encodeURIComponent(id)}`).then((r) => r.turns),
+    call<ThreadPage>("GET", `/api/threads/${encodeURIComponent(id)}`).then((r) =>
+      r.turns.flatMap((t) => (t.run ? [t.run] : [])),
+    ),
   /** Who @auto would pick for a message in a project, "" for the workspace. */
   pick: (q: string, project = "") =>
     call<Choice>("GET", `/api/pick?${new URLSearchParams(project ? { q, project } : { q })}`),
@@ -799,6 +809,8 @@ export function subscribe(
     onState?: (live: boolean) => void;
     /** The inbox changed. It arrives as a named event, apart from run events. */
     onInbox?: () => void;
+    /** Something happened in a shared thread: a message was posted, or its record changed. */
+    onThread?: () => void;
   },
 ): () => void {
   const source = new EventSource(`/api/events?topic=${encodeURIComponent(topic)}`);
@@ -815,6 +827,7 @@ export function subscribe(
     }
   };
   source.addEventListener("inbox", () => handlers.onInbox?.());
+  source.addEventListener("thread", () => handlers.onThread?.());
   return () => source.close();
 }
 
@@ -893,4 +906,162 @@ export const callGovernance = {
       "GET",
       `/api/inbox?${new URLSearchParams({ kind: "approval", agent, state })}`,
     ),
+};
+
+/** Who answers an untagged message in a place, and where that is set: `thread`, `client`, `channel`, or `project:<name>`. An empty agent is nobody. */
+export interface ThreadAnswers {
+  agent: string;
+  from: string;
+  /** Why the default cannot answer, when it has stopped being available. */
+  unavailable?: string;
+}
+
+export interface ThreadParticipant {
+  kind: "person" | "agent";
+  /** A person's subject or an agent's name. */
+  name: string;
+  owner?: boolean;
+  added_by?: string;
+  at: string;
+}
+
+/** A shared thread's record. A conversation from before threads reads at version 0. */
+export interface Thread {
+  id: string;
+  project: string;
+  channel: string;
+  title?: string;
+  visibility: "shared" | "private";
+  participants: ThreadParticipant[];
+  default?: string;
+  version: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ThreadMention {
+  kind: "agent" | "person" | "sme";
+  /** The agent (`auto` for @auto), the person's subject, or the experts' topic. */
+  name: string;
+  run?: string;
+  refused?: string;
+}
+
+/** A person's turn in a thread. It starts no run of its own. */
+export interface ThreadMessage {
+  id: string;
+  thread: string;
+  prev?: string;
+  by: string;
+  name: string;
+  text: string;
+  mentions: ThreadMention[];
+  answers?: { run: string; question: string };
+  via: string;
+  surface_id?: string;
+  at: string;
+}
+
+export interface ThreadTurn {
+  kind: "message" | "run";
+  message?: ThreadMessage;
+  run?: Run;
+}
+
+export interface ThreadPage {
+  thread: Thread;
+  turns: ThreadTurn[];
+  next: string | null;
+  answers: ThreadAnswers;
+}
+
+export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "default";
+
+/** What posting a message did. */
+export interface ThreadPosted {
+  thread: Thread;
+  message: ThreadMessage;
+  runs: Run[];
+  notified: string[];
+  refused: ThreadMention[];
+  rule: ThreadRule;
+  reason?: string;
+}
+
+/** One place in a project where threads live, and who answers there. */
+export interface Channel {
+  project: string;
+  name: string;
+  title?: string;
+  purpose?: string;
+  default?: string;
+  archived?: boolean;
+  managed?: string;
+  version: number;
+  created_by?: string;
+  created_at: string;
+  updated_by?: string;
+  updated_at: string;
+  answers: ThreadAnswers;
+}
+
+export interface ProjectExpert {
+  /** A person's subject, or `role:<name>`. */
+  who: string;
+  topics: string[];
+}
+
+/** One person in the directory, as the typeahead shows them. */
+export interface DirectoryPerson {
+  subject: string;
+  name?: string;
+  handle: string;
+  picture: string | null;
+}
+
+/** Which agents may answer in a project. */
+export interface ProjectAvailability {
+  version: number;
+  available: { all: boolean; names: string[] };
+  homes: string[];
+  default_resolved: { agent: string; from: string } | null;
+}
+
+/** A project's API path: `~` is the workspace itself. */
+const projectAt = (name: string) => `/api/projects/${projectPath(name)}`;
+const threadPath = (id: string) => `/api/threads/${encodeURIComponent(id)}`;
+
+/** Channels, experts and shared threads: where people and agents work together. */
+export const coworking = {
+  channels: (project: string) => call<{ channels: Channel[] }>("GET", `${projectAt(project)}/channels`).then((r) => r.channels),
+  createChannel: (project: string, c: { name: string; title?: string; purpose?: string; default?: string }) =>
+    call<Channel>("POST", `${projectAt(project)}/channels`, c),
+  updateChannel: (project: string, name: string, c: { version: number; title: string; purpose: string; default: string }) =>
+    call<Channel>("PUT", `${projectAt(project)}/channels/${encodeURIComponent(name)}`, c),
+  archiveChannel: (project: string, name: string) =>
+    call<void>("DELETE", `${projectAt(project)}/channels/${encodeURIComponent(name)}`),
+  experts: (project: string) => call<{ version: number; experts: ProjectExpert[] }>("GET", `${projectAt(project)}/experts`),
+  setExperts: (project: string, version: number, experts: ProjectExpert[]) =>
+    call<{ version: number; experts: ProjectExpert[] }>("PUT", `${projectAt(project)}/experts`, { version, experts }),
+  /** One page of a channel's threads, most recently active first. */
+  threads: (project: string, channel: string, before?: string) => {
+    const q = new URLSearchParams({ project: project === "" ? "~" : project, channel, limit: "30" });
+    if (before) q.set("before", before);
+    return call<{ threads: ThreadSummary[]; next: string | null }>("GET", `/api/threads?${q}`);
+  },
+  /** A thread and one page of its turns, the newest first; `before` reads the page above. */
+  thread: (id: string, before?: string) =>
+    call<ThreadPage>("GET", before ? `${threadPath(id)}?${new URLSearchParams({ before })}` : threadPath(id)),
+  start: (t: { project: string; channel: string; text: string; title?: string; post_only?: boolean }) =>
+    call<ThreadPosted>("POST", "/api/threads", { ...t, visibility: "shared" }),
+  post: (id: string, m: { text: string; after?: string; post_only?: boolean; answers?: { run: string; question: string } }) =>
+    call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
+  update: (id: string, t: { version: number; title: string; visibility: "shared"; default: string }) =>
+    call<Thread>("PUT", threadPath(id), t),
+  /** The workspace's people whose name or handle holds `q`, for the @ typeahead. */
+  people: (q: string) =>
+    call<{ people: DirectoryPerson[] }>("GET", `/api/people?${new URLSearchParams({ q, limit: "8" })}`).then((r) => r.people),
+  /** Which agents may answer in a project, for the @ typeahead. */
+  available: (project: string) => call<ProjectAvailability>("GET", `${projectAt(project)}/agents`),
 };

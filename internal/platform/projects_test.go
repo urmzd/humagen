@@ -309,8 +309,10 @@ func TestALegacyScheduleFiledInADroppedProjectStillRunsAfterTheUpgrade(t *testin
 		if l := p.Projects.List("globex"); len(l) != 1 || l[0].Name != "Away" {
 			t.Fatalf("globex after the upgrade = %+v", l)
 		}
-		if p.Projects.Stored("initech") {
-			t.Fatal("settings that held no projects, with nothing naming one, were given a tree")
+		// The baseline's migration writes the root of every workspace whose
+		// settings named one, so the root is all initech gains.
+		if l := p.Projects.List("initech"); len(l) != 0 {
+			t.Fatalf("settings that held no projects, with nothing naming one, were given %+v", l)
 		}
 		for _, name := range []string{tenant, "globex", "initech"} {
 			if _, held := storedSettings(t, st, name)["projects"]; held {

@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,11 +11,11 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/fiber/pkg/runtime"
 
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // maxTranscript bounds how much of a conversation is replayed to the next
@@ -250,21 +251,31 @@ type Turn struct {
 	// project, whatever is passed here.
 	Project string
 	Actor   envelope.Actor
+	// Client is the client a surface's credential sends the turn through,
+	// when it acts for a person (act_as): its default is nearer than the
+	// channel's, and @auto picks only among the agents it may route to.
+	Client string
 }
 
 // Converse sends a message into a conversation and starts the run that answers.
 //
 // Any agent available where the conversation is filed can answer any turn.
 // The turn names it, or names Auto for @auto, or names none and the default
-// the conversation's place inherits answers; with no default set it is
-// ErrNoDefault, and nothing starts. The agent that answers is sent the branch
-// so far, so a different agent picking up mid-conversation knows what was
-// said, and ahead of it what the conversation's project chain and the agent
-// itself bring (see contextOf).
+// the conversation's place inherits answers: the thread's, the client's, the
+// channel's, then the project chain's, as for a message posted in the thread
+// (a new conversation is in general of its project). With no default set it
+// is ErrNoDefault, and nothing starts. The agent that answers is sent the
+// branch so far, so a different agent picking up mid-conversation knows what
+// was said, and when the branch follows a message people posted, the room up
+// to it, each turn with who asked or said it, fenced off from the words it
+// answers, which follow with who asks them (threads.Ask); ahead of it is
+// what the conversation's project chain, its channel and the agent itself
+// bring (see contextIn).
 func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Run, error) {
 	cfg := p.Settings(tenant)
 	meta := map[string]string{runs.MetaAsk: t.Text}
 	body := t.Text
+	th := threads.Thread{Channel: projects.General}
 	if t.After != "" {
 		path, err := p.Runs.Path(tenant, t.After)
 		if err != nil {
@@ -275,8 +286,12 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		// A project deleted since is refused at admission (see placeOf),
 		// after a retry of a turn already let in has joined it.
 		meta[runs.MetaProject] = path[0].Project
+		th = p.threadOf(tenant, path[0])
+		if th.Channel != projects.General {
+			meta[runs.MetaChannel] = th.Channel
+		}
 		if cfg.History == HistoryRecent {
-			body = transcript(path, cfg.HistoryLimit) + "\n\nUser: " + t.Text
+			body = threads.Ask(p.branchBefore(tenant, th, path), cfg.HistoryLimit, p.shower(tenant), threads.AskerOf(t.Actor), t.Text)
 		}
 	} else if project := projects.NameOf(t.Project); project != "" {
 		if !p.HasProject(tenant, project) {
@@ -284,8 +299,18 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 		meta[runs.MetaProject] = project
 	}
+	th.Project = meta[runs.MetaProject]
 
-	who, err := p.resolveAgent(ctx, tenant, Place{Project: meta[runs.MetaProject]}, strings.TrimSpace(t.Agent), t.Text)
+	var routes func(string) bool
+	clientDefault := ""
+	if t.Client != "" {
+		c, err := p.Clients.Get(tenant, t.Client)
+		if err != nil {
+			return runs.Run{}, fmt.Errorf("%w: this credential does not answer for people of that client", ErrForbidden)
+		}
+		routes, clientDefault = c.Routes, c.DefaultAgent
+	}
+	who, err := p.resolveAgent(ctx, tenant, p.placeIn(tenant, th, clientDefault), strings.TrimSpace(t.Agent), t.Text, routes)
 	if err != nil {
 		return runs.Run{}, err
 	}
@@ -296,49 +321,15 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 
 	return p.Invoke(ctx, envelope.Tag{
 		ID: t.ID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
-		Text: p.contextOf(tenant, meta[runs.MetaProject], agent, body), Actor: t.Actor, Meta: meta,
+		Text: p.contextIn(tenant, th.Project, th.Channel, agent, body), Actor: t.Actor, Meta: meta,
 	})
 }
 
-// stopMarker ends a stopped reply in the transcript. It is the runtime's own
-// marker, so a conversation reads the same whichever of them replays it, and
-// like the runtime's it says nothing about who stopped the reply or why.
-const stopMarker = runtime.StopMarker
-
-// transcript renders a branch for the next agent, newest turns kept.
-func transcript(path []runs.Run, limit int) string {
-	var turns []string
-	size := 0
-	for i := len(path) - 1; i >= 0; i-- {
-		r := path[i]
-		reply := r.Answer
-		switch {
-		case r.Status == runs.Failed:
-			reply = "(this reply failed)"
-		case r.Status == runs.Stopped && strings.TrimSpace(r.Answer) == "":
-			reply = stopMarker
-		case r.Status == runs.Stopped:
-			// What the person read, and that it is not the whole answer.
-			reply = strings.TrimRight(r.Answer, " \t\r\n") + "\n" + stopMarker
-		case !r.Status.Terminal():
-			reply = "(still working)"
-		}
-		turn := fmt.Sprintf("User: %s\n%s: %s", r.Text, r.Agent, reply)
-		if size+len(turn) > limit && len(turns) > 0 {
-			break
-		}
-		size += len(turn)
-		turns = append(turns, turn)
+// threadOf is the thread a conversation's first run is in: its record, or
+// what a conversation from before threads reads as.
+func (p *Platform) threadOf(tenant string, first runs.Run) threads.Thread {
+	if th, err := p.ThreadRecord(tenant, first.Thread); err == nil {
+		return th
 	}
-	var b strings.Builder
-	b.WriteString("Conversation so far:\n")
-	if len(turns) < len(path) {
-		fmt.Fprintf(&b, "(%d earlier turns omitted)\n", len(path)-len(turns))
-	}
-	for i := len(turns) - 1; i >= 0; i-- {
-		b.WriteString("\n")
-		b.WriteString(turns[i])
-		b.WriteString("\n")
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return threads.Thread{ID: first.Thread, Project: first.Project, Channel: cmp.Or(first.Channel, projects.General), Visibility: threads.Shared}
 }

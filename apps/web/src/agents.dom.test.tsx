@@ -15,6 +15,7 @@ const writer: Revision = {
 const field: ProjectView = {
   name: "Field",
   kind: "team",
+  experts: [],
   agents: { enable: [] },
   version: 1,
   created_at: new Date().toISOString(),

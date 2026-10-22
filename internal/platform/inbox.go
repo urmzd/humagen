@@ -41,6 +41,8 @@ const (
 	ActKeep        = "keep"
 	ActDiscard     = "discard"
 	ActRaiseLimit  = "raise_limit"
+	// ActDone sets a mention aside: the person has seen to it.
+	ActDone = "done"
 )
 
 // Resolution is what a person decided about a part.
@@ -79,7 +81,7 @@ func reads(k inbox.Kind) auth.Permission {
 	switch k {
 	case inbox.KindMemory:
 		return auth.AgentsRead
-	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult:
+	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
 		return auth.RunsRead
 	case inbox.KindArtifact:
 		return auth.ArtifactsRead
@@ -92,7 +94,7 @@ func writes(k inbox.Kind) auth.Permission {
 	switch k {
 	case inbox.KindMemory:
 		return auth.AgentsWrite
-	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult:
+	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
 		return auth.RunsWrite
 	case inbox.KindArtifact:
 		return auth.ArtifactsWrite
@@ -113,6 +115,9 @@ func needs(t inbox.PartType, action string) (auth.Permission, bool) {
 		return auth.BillingWrite, true
 	case t == inbox.PartBudget && action == ActAcknowledge:
 		return auth.AlertsWrite, true
+	case t == inbox.PartMention && (action == ActReply || action == ActDone):
+		// Replying posts a message in the thread as the reader.
+		return auth.RunsWrite, true
 	case t == inbox.PartApproval && (action == ActApprove || action == ActDeny),
 		t == inbox.PartChoice && action == ActChoose,
 		t == inbox.PartReply && action == ActReply:
@@ -131,6 +136,7 @@ var offered = map[inbox.PartType][]string{
 	inbox.PartApproval: {ActApprove, ActDeny},
 	inbox.PartChoice:   {ActChoose},
 	inbox.PartReply:    {ActReply},
+	inbox.PartMention:  {ActReply, ActDone},
 }
 
 // allows reports whether who may take an action on a part, and if not, why.
@@ -347,6 +353,12 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			return inbox.Message{}, err
 		}
 		note = fmt.Sprintf("Kept %d of %d", kept, len(part.Memory.Notes))
+	case part.Type == inbox.PartMention && r.Action == ActReply:
+		m, err := p.replyToMention(ctx, who, *part.Mention, r.Text)
+		if err != nil {
+			return inbox.Message{}, err
+		}
+		note = "Replied as " + m.ID
 	case part.Type == inbox.PartBudget:
 		saved, err := p.raiseLimit(who, *part.Budget, r.Limits)
 		if err != nil {
@@ -603,10 +615,30 @@ func (p *Platform) retry(ctx context.Context, who auth.Principal, runID string) 
 		ID:    "api-retry-" + strconv.Itoa(len(who.Subject)) + "-" + who.Subject + "-" + run.ID,
 		Agent: run.Agent, Text: run.Text, After: run.Prev, Actor: actor,
 	}
+	if run.Message != "" {
+		return p.retryAnswer(ctx, who.Tenant, run, t)
+	}
 	if run.Prev == "" {
 		t.Project = run.Project
 	}
 	return p.Converse(ctx, who.Tenant, t)
+}
+
+// retryAnswer asks a failed run that answered a person's message in a
+// shared thread to answer that message again: the same agent, sent the room
+// up to the message, filed under it beside the failed run. The message is
+// the poster's, and the retry acts as t says, for the person the failed run
+// acted for, who posted it.
+func (p *Platform) retryAnswer(ctx context.Context, tenant string, run runs.Run, t Turn) (runs.Run, error) {
+	th, err := p.ThreadRecord(tenant, run.Thread)
+	if err != nil {
+		return runs.Run{}, err
+	}
+	m, err := p.Threads.Message(tenant, th.ID, run.Message)
+	if err != nil {
+		return runs.Run{}, err
+	}
+	return p.answerMessage(ctx, tenant, th, m, t.Agent, t.Actor, t.ID)
 }
 
 // decideMemory keeps the chosen proposals and discards the rest.

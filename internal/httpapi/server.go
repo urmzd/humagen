@@ -126,6 +126,7 @@ func (s *Server) Handler() http.Handler {
 	s.preferenceRoutes(mux)
 	s.projectRoutes(mux)
 	s.peopleRoutes(mux)
+	s.threadRoutes(mux)
 	s.billingRoutes(mux)
 	s.clientRoutes(mux)
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) { fail(w, http.StatusNotFound, "no such route") })
@@ -402,8 +403,11 @@ func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Princ
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
 		// Agent is who should answer. "auto" is @auto, which picks among the
-		// agents available where the conversation is filed. Empty is the
-		// default the conversation's place inherits; with none, 409.
+		// agents available where the conversation is filed, and for a person
+		// a client's credential acts for, only among the agents the client
+		// may route to. Empty is the default the conversation's place
+		// inherits: its thread's, the client's, its channel's, then its
+		// project chain's; with none, 409.
 		Agent string `json:"agent"`
 		Text  string `json:"text"`
 		// After is the turn this message follows. Empty starts a conversation.
@@ -424,13 +428,14 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	// The run acts for the caller, or for the person a surface asks for:
 	// their credentials are the ones its person-scoped tools use.
 	actor := platform.ActorOf(who)
+	client := ""
 	if body.ActAs != nil {
 		person, err := s.P.ActsFor(who, *body.ActAs)
 		if err != nil {
 			s.problem(w, err)
 			return
 		}
-		actor = platform.PersonActor(person)
+		actor, client = platform.PersonActor(person), body.ActAs.Client
 	}
 	// A caller that retries sends the same key and joins the run it started.
 	id := "api-r-" + token()[:22]
@@ -438,7 +443,7 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		id = APITagID(who.Subject, key)
 	}
 	run, err := s.P.Converse(r.Context(), who.Tenant, platform.Turn{
-		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor,
+		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor, Client: client,
 	})
 	if err != nil {
 		s.problem(w, err)
@@ -457,7 +462,11 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 	q := r.URL.Query()
 	query := runs.ThreadQuery{
 		Origin: q.Get("origin"), Agent: q.Get("agent"), Before: q.Get("before"),
-		Standing: runs.Standing(q.Get("standing")),
+		Standing: runs.Standing(q.Get("standing")), Channel: q.Get("channel"),
+	}
+	if query.Channel != "" && !projects.ValidChannel(query.Channel) {
+		fail(w, http.StatusBadRequest, "channel is a channel's name")
+		return
 	}
 	var found bool
 	if query.Projects, found = s.projectsWithin(w, who.Tenant, q.Get("project"), q.Get("within")); !found {
@@ -477,7 +486,7 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 		fail(w, http.StatusBadRequest, "standing is running or failed")
 		return
 	}
-	page, next, err := s.P.Runs.ThreadPage(who.Tenant, query)
+	page, next, err := s.P.ThreadPage(who.Tenant, query)
 	if err != nil {
 		fail(w, http.StatusBadRequest, "before is not a cursor this server issued")
 		return
@@ -486,16 +495,7 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if next != "" {
 		cursor = &next
 	}
-	ok(w, http.StatusOK, map[string]any{"threads": page, "next": cursor})
-}
-
-func (s *Server) getThread(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	turns, err := s.P.Runs.Conversation(who.Tenant, r.PathValue("id"))
-	if err != nil {
-		s.problem(w, err)
-		return
-	}
-	ok(w, http.StatusOK, map[string]any{"turns": turns})
+	ok(w, http.StatusOK, map[string]any{"threads": s.P.ShowSummaries(who.Tenant, page), "next": cursor})
 }
 
 // pickAgent previews which agent @auto would pick for a message in a project,
@@ -637,6 +637,13 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 	notices, unwatch := s.P.Inbox.Watch(who.Tenant)
 	defer unwatch()
 
+	// So do threads: a notice names a thread and the message posted or
+	// settled. Every thread is shared until reads are confined, so whoever
+	// may read conversations is told of each. They are watched before the
+	// stream is answered too.
+	posts, unwatchThreads := s.P.WatchThreads(who.Tenant)
+	defer unwatchThreads()
+
 	rc := http.NewResponseController(w)
 	// A stream outlives the server's write timeout by design.
 	_ = rc.SetWriteDeadline(time.Time{})
@@ -681,6 +688,14 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			if _, err := fmt.Fprintf(w, "event: inbox\ndata: %s\n\n", b); err != nil {
 				return
 			}
+		case n := <-posts:
+			b, err := json.Marshal(n)
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(w, "event: thread\ndata: %s\n\n", b); err != nil {
+				return
+			}
 		case <-tick.C:
 			if _, err := fmt.Fprint(w, ": keep-alive\n\n"); err != nil {
 				return
@@ -709,7 +724,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 // and reported without detail, so an internal error never leaks through.
 func (s *Server) problem(w http.ResponseWriter, err error) {
 	var tooBig *http.MaxBytesError
-	if denied(w, err) {
+	if denied(w, err) || threadProblem(w, err) {
 		return
 	}
 	switch {

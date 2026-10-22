@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/ast"
 	gotypesconst "go/constant"
@@ -52,6 +53,7 @@ import (
 	"github.com/urmzd/warp/pkg/prefs"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 	"github.com/urmzd/warp/pkg/usage"
 )
 
@@ -582,7 +584,15 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: agentspec.AgentSpec{}}, "AgentSource": {typ: agentspec.Source{}},
 		"AgentAccess": {typ: agentspec.Access{}}, "Revision": {typ: agentspec.Revision{}}, "Choice": {typ: pick.Choice{}},
 		"Note": {typ: memory.Note{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
-		"ThreadSummary": {typ: runs.ThreadSummary{}}, "Project": {typ: projects.Project{}}, "ProjectView": {typ: projectView{}},
+		"ThreadSummary": {typ: platform.ThreadSummary{}},
+		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
+		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}},
+		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}},
+		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
+		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
+		"Channel": {typ: projects.Channel{}}, "ChannelView": {typ: channelView{}},
+		"ChannelInput": {typ: platform.ChannelInput{}, written: true}, "ChannelUpdate": {typ: platform.ChannelUpdate{}, written: true},
+		"ProjectExpert": {typ: projects.Expert{}}, "ProjectExperts": {typ: platform.Experts{}}, "Project": {typ: projects.Project{}}, "ProjectView": {typ: projectView{}},
 		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectLimit": {typ: projectLimit{}},
 		"ProjectDetail": {typ: projectDetail{}}, "ProjectChange": {typ: projects.Change{}},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
@@ -596,7 +606,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"InboxNotice": {typ: inbox.Notice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
 		"InboxOutcome": {typ: inbox.Outcome{}}, "InboxLimits": {typ: inbox.Limits{}}, "InboxAlertPart": {typ: inbox.AlertPart{}},
 		"InboxFailurePart": {typ: inbox.FailurePart{}}, "InboxNoteRef": {typ: inbox.NoteRef{}}, "InboxMemoryPart": {typ: inbox.MemoryPart{}},
-		"InboxBudgetPart": {typ: inbox.BudgetPart{}}, "InboxPart": {typ: inbox.Part{}}, "InboxQuestionPart": {typ: inbox.QuestionPart{}}, "InboxQuestionTool": {typ: inbox.QuestionTool{}}, "InboxMessage": {typ: inbox.Message{}},
+		"InboxBudgetPart": {typ: inbox.BudgetPart{}}, "InboxPart": {typ: inbox.Part{}}, "InboxQuestionPart": {typ: inbox.QuestionPart{}}, "InboxQuestionTool": {typ: inbox.QuestionTool{}}, "InboxMessage": {typ: inbox.Message{}}, "InboxMentionPart": {typ: inbox.MentionPart{}},
 		"InboxChange": {typ: inbox.Change{}},
 		"CallPolicy":  {typ: callpolicy.Policy{}}, "CallPolicyInput": {typ: callPolicyBody{}, written: true}, "Reach": {typ: platform.Reach{}},
 		"Artifact": {typ: artifacts.Artifact{}}, "StorageShare": {typ: artifacts.Share{}},
@@ -1265,6 +1275,114 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(globex, "GET", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
 	c.call(acme, "PUT", "/api/clients/{id}", "/api/clients/support", `{"name":"Support","surface":"slack","identity":{"app_id":"A01CONTRACT","team":"T01ABCDEF"},"default_agent":"helper","agents":["*"],"slack":{"sessions":true},"enabled":false}`, http.StatusOK)
 
+	// Channels, experts and shared threads. A person posts; a credential
+	// posts only for a person it acts for. From here Ana signs in as a
+	// person the directory knows by her handle.
+	ana = f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
+	vic := f.person(t, "acme", "00u-vic", "Vic", "warp-viewers")
+	bo := f.person(t, "acme", "00u-bo", "Bo", "warp-admins")
+	channels := "/api/projects/{name}/channels"
+	c.call(acme, "GET", channels, "/api/projects/Field/channels", "", http.StatusOK)
+	c.call(acme, "GET", channels, "/api/projects/~/channels", "", http.StatusOK)
+	c.call(acme, "POST", channels, "/api/projects/Field/channels", `{"name":"renewals","title":"Renewals","purpose":"Renewal work","default":"helper"}`, http.StatusCreated)
+	c.call(acme, "POST", channels, "/api/projects/Field/channels", `{"name":"renewals"}`, http.StatusConflict)
+	c.call(acme, "POST", channels, "/api/projects/Field/channels", `{"name":"Not A Slug"}`, http.StatusBadRequest)
+	c.call(acme, "POST", channels, "/api/projects/Field/channels", `{"name":"ghosts","default":"ghost"}`, http.StatusBadRequest)
+	channel := "/api/projects/{name}/channels/{channel}"
+	c.call(acme, "PUT", channel, "/api/projects/Field/channels/renewals", `{"version":1,"title":"Renewals","purpose":"Renewals and pricing","default":"helper"}`, http.StatusOK)
+	c.call(acme, "PUT", channel, "/api/projects/Field/channels/renewals", `{"version":1,"purpose":"stale"}`, http.StatusConflict)
+	c.call(acme, "PUT", channel, "/api/projects/Field/channels/renewals", `{"version":2,"default":"ghost"}`, http.StatusBadRequest)
+	c.call(acme, "PUT", channel, "/api/projects/Field/channels/nowhere", `{"version":1}`, http.StatusNotFound)
+	c.call(acme, "DELETE", channel, "/api/projects/Field/channels/general", "", http.StatusConflict)
+	c.call(acme, "POST", "/api/projects", "/api/projects", `{"name":"Crowded"}`, http.StatusCreated)
+	for i := range projects.MaxChannels - 1 {
+		c.call(acme, "POST", channels, "/api/projects/Crowded/channels", fmt.Sprintf(`{"name":"c%d"}`, i), http.StatusCreated)
+	}
+	c.call(acme, "POST", channels, "/api/projects/Crowded/channels", `{"name":"one-more"}`, http.StatusTooManyRequests)
+	c.call(acme, "DELETE", channel, "/api/projects/Crowded/channels/c0", "", http.StatusNoContent)
+	experts := "/api/projects/{name}/experts"
+	got := c.call(acme, "GET", experts, "/api/projects/Field/experts", "", http.StatusOK)
+	version, _ := strconv.Atoi(fmt.Sprint(got.field("version")))
+	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[{"who":"00u-vic","topics":["billing"]}]}`, version), http.StatusOK)
+	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[]}`, version), http.StatusConflict)
+	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[{"who":"00u-vic","topics":["Not a topic"]}]}`, version+1), http.StatusBadRequest)
+
+	c.call(acme, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"shared","text":"hi"}`, http.StatusForbidden)
+	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"hi"}`, http.StatusBadRequest)
+	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"private","text":"hi"}`, http.StatusConflict)
+	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Ghost","visibility":"shared","text":"hi"}`, http.StatusNotFound)
+	started := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","channel":"renewals","visibility":"shared","title":"Globex renewal","text":"@helper when does Globex renew? @vic @sme:billing"}`, http.StatusCreated)
+	tid, _ := obj(started.field("thread"))["id"].(string)
+	if started.str("rule") != "tagged" || len(sliceOf(started.field("runs"))) != 1 || len(sliceOf(started.field("notified"))) != 1 {
+		t.Errorf("the first message did %s", started.raw)
+	}
+	if rs := sliceOf(started.field("runs")); len(rs) > 0 {
+		c.settled(acme, obj(rs[0])["id"].(string))
+	}
+	threadPath := "/api/threads/" + tid
+	c.call(acme, "GET", "/api/threads", "/api/threads?project=Field&channel=renewals", "", http.StatusOK)
+	c.call(acme, "GET", "/api/threads", "/api/threads?channel=Not+A+Slug", "", http.StatusBadRequest)
+	turnPage := c.call(acme, "GET", "/api/threads/{id}", threadPath+"?limit=1", "", http.StatusOK)
+	if cur, _ := turnPage.field("next").(string); cur == "" {
+		t.Errorf("a page of one turn of two has no cursor: %s", turnPage.raw)
+	} else {
+		c.call(acme, "GET", "/api/threads/{id}", threadPath+"?before="+cur, "", http.StatusOK)
+	}
+	c.call(acme, "GET", "/api/threads/{id}", threadPath+"?before=nonsense", "", http.StatusBadRequest)
+	messages := "/api/threads/{id}/messages"
+	c.call(acme, "POST", messages, threadPath+"/messages", `{"text":"as myself"}`, http.StatusForbidden)
+	c.call(ana, "POST", messages, threadPath+"/messages", `{"text":"noted","post_only":true}`, http.StatusCreated)
+	c.call(ana, "POST", messages, threadPath+"/messages", `{"text":"x","after":"m-99"}`, http.StatusBadRequest)
+	c.call(ana, "POST", messages, "/api/threads/th-0000000000000000/messages", `{"text":"x"}`, http.StatusNotFound)
+	c.call(ana, "PUT", "/api/threads/{id}", threadPath, `{"version":1,"title":"Globex renewal","visibility":"shared","default":"helper"}`, http.StatusOK)
+	c.call(ana, "PUT", "/api/threads/{id}", threadPath, `{"version":1,"title":"stale"}`, http.StatusConflict)
+	c.call(ana, "PUT", "/api/threads/{id}", threadPath, `{"version":2,"default":"ghost"}`, http.StatusBadRequest)
+	participants := "/api/threads/{id}/participants"
+	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"add":[{"kind":"person","name":"vic","at":"2026-01-01T00:00:00Z"}]}`, http.StatusOK)
+	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"remove":["vic"]}`, http.StatusConflict)
+	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":3,"add":[{"kind":"person","name":"nobody","at":"2026-01-01T00:00:00Z"}]}`, http.StatusBadRequest)
+	// A person's messages start no run, so a rate holds them: at most
+	// PostsPerPerson a minute, in any thread, a new one included.
+	quick := f.person(t, "acme", "00u-quick", "Quick", "warp-admins")
+	for range platform.PostsPerPerson {
+		c.call(quick, "POST", messages, threadPath+"/messages", `{"text":"again","post_only":true}`, http.StatusCreated)
+	}
+	c.call(quick, "POST", messages, threadPath+"/messages", `{"text":"once more","post_only":true}`, http.StatusTooManyRequests)
+	c.call(quick, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"shared","text":"a new one"}`, http.StatusTooManyRequests)
+	// A mention, read by the person it tags: replied to, set aside, and
+	// refused to a viewer, who may read it but not act on it.
+	c.call(ana, "POST", messages, threadPath+"/messages", `{"text":"@bo one for you"}`, http.StatusCreated)
+	c.call(ana, "POST", messages, threadPath+"/messages", `{"text":"@bo and another"}`, http.StatusCreated)
+	partPath := func(m any) string {
+		msg := obj(m)
+		return "/api/inbox/" + fmt.Sprint(msg["id"]) + "/parts/" + fmt.Sprint(obj(sliceOf(msg["parts"])[0])["id"]) + "/resolve"
+	}
+	if ms := sliceOf(c.call(bo, "GET", "/api/inbox", "/api/inbox?kind=mention", "", http.StatusOK).field("messages")); len(ms) != 2 {
+		t.Errorf("bo holds %d mentions, want 2", len(ms))
+	} else {
+		c.call(bo, "POST", resolve, partPath(ms[0]), `{"action":"reply","text":"On it."}`, http.StatusOK)
+		c.call(bo, "POST", resolve, partPath(ms[1]), `{"action":"done"}`, http.StatusOK)
+		c.call(bo, "POST", resolve, partPath(ms[1]), `{"action":"approve"}`, http.StatusBadRequest)
+	}
+	if ms := sliceOf(c.call(vic, "GET", "/api/inbox", "/api/inbox?kind=mention", "", http.StatusOK).field("messages")); len(ms) != 1 {
+		t.Errorf("vic holds %d mentions, want 1", len(ms))
+	} else {
+		c.call(vic, "POST", resolve, partPath(ms[0]), `{"action":"done"}`, http.StatusForbidden)
+	}
+	// A thread holds 5,000 messages, and then is full.
+	for {
+		_, _, err := f.p.Threads.Post("acme", tid, threads.Message{By: "00u-ana", Text: "filler"}, time.Now())
+		if errors.Is(err, threads.ErrFull) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if full := c.call(ana, "POST", messages, threadPath+"/messages", `{"text":"one more"}`, http.StatusConflict); !strings.Contains(full.str("error"), "start a new thread") {
+		t.Errorf("a full thread says %s", full.raw)
+	}
+
 	// Settings and the caller's own preferences.
 	settings := c.call(acme, "GET", "/api/settings", "/api/settings", "", http.StatusOK)
 	c.call(acme, "PUT", "/api/settings", "/api/settings", string(settings.raw), http.StatusOK)
@@ -1355,7 +1473,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// does not know is refused. Both are asked of every operation the spec
 	// says can answer them, against the objects made above.
 	ids := map[string]string{
-		"name": "helper", "id": "x", "part": parts["alert"], "variant": "lean", "handle": "dana-scully",
+		"name": "helper", "id": "x", "part": parts["alert"], "variant": "lean", "handle": "dana-scully", "channel": "general",
 	}
 	real := map[string]map[string]string{
 		"/api/agents/{name}/memory/{id}": {"id": note.str("id")}, "/api/alert-rules/{name}": {"name": "any"},
@@ -1373,6 +1491,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/artifacts/{id}": {"id": published.ID}, "/api/artifacts/{id}/versions": {"id": published.ID},
 		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
 		"/api/me/credentials/{provider}": {"provider": "issues"},
+		"/api/projects/{name}/channels":  {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
+		"/api/projects/{name}/experts": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
+		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
 	}
 	valid := map[string]string{
 		"/api/agents/{name}": revised, "/api/agents/{name}/memory": `{"text":"x"}`, "/api/agents/{name}/call-policy": `{"callers":"anyone","approval":"never"}`, "/api/agents/{name}/memory/approve": `{"ids":[]}`,
@@ -1386,6 +1507,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/alert-rules/{name}":        `{"kind":"run_failed","severity":"critical"}`,
 		"/api/schedules/{name}":          `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 		"/api/me/credentials/{provider}": `{"ref":"op://People/svc/issues"}`,
+		"/api/projects/{name}/channels":  `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
+		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/threads/{id}": `{"version":1}`,
+		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
 	}
 	for _, op := range c.spec.ops {
 		params := pathParams(op.path)
@@ -1501,6 +1625,11 @@ var unexercised = map[string]string{
 	// conversation each, and would only test a counter, which pkg/projects'
 	// tests do.
 	"DELETE /api/projects/{name} 429": "tombstone cap",
+	// A workspace holds at most 10,000 threads. Changing a conversation
+	// from before threads writes its record, which that cap can refuse;
+	// filling it here would only test a counter, which pkg/threads' tests do.
+	"PUT /api/threads/{id} 429":              "thread cap",
+	"PUT /api/threads/{id}/participants 429": "thread cap",
 	// A spend refusal is the same answer through every route that starts a
 	// run. createRun's 402 is exercised; a schedule's run now goes through
 	// the same admission.
@@ -1517,7 +1646,7 @@ var unexercised = map[string]string{
 func TestEventStreamMatchesTheSpec(t *testing.T) {
 	f := newFixture(t)
 	s := loadSpec(t)
-	event, notice := s.component(t, "RunEvent"), s.component(t, "InboxNotice")
+	event, notice, posted := s.component(t, "RunEvent"), s.component(t, "InboxNotice"), s.component(t, "ThreadNotice")
 	tok := f.machine(t, "acme", everything...)
 	f.do(t, nil, "POST", "/api/agents", tok, helperSpec)
 	f.do(t, nil, "POST", "/api/projects", tok, `{"name":"Launch"}`)
@@ -1544,9 +1673,14 @@ func TestEventStreamMatchesTheSpec(t *testing.T) {
 		t.Fatalf("the second run = %d, want 429", res.StatusCode)
 	}
 
-	kinds, notices, name := map[string]int{}, 0, ""
+	// A person's message in a thread is a notice on the stream too.
+	if res, out := f.do(t, nil, "POST", "/api/threads", f.person(t, "acme", "00u-ana", "Ana", "warp-admins"), `{"visibility":"shared","text":"hello room","post_only":true}`); res.StatusCode != http.StatusCreated {
+		t.Fatalf("starting a thread = %d %v", res.StatusCode, out)
+	}
+
+	kinds, notices, posts, name := map[string]int{}, 0, 0, ""
 	sc := bufio.NewScanner(res.Body)
-	for sc.Scan() && (kinds["lifecycle.completed"] == 0 || notices == 0) {
+	for sc.Scan() && (kinds["lifecycle.completed"] == 0 || notices == 0 || posts == 0) {
 		line := sc.Text()
 		if v, isName := strings.CutPrefix(line, "event: "); isName {
 			name = v
@@ -1578,6 +1712,11 @@ func TestEventStreamMatchesTheSpec(t *testing.T) {
 				t.Errorf("a notice does not match InboxNotice:\n%v\ndata: %s", err, data)
 			}
 			notices++
+		case "thread":
+			if err := posted.Validate(value); err != nil {
+				t.Errorf("a notice does not match ThreadNotice:\n%v\ndata: %s", err, data)
+			}
+			posts++
 		default:
 			t.Errorf("the stream sent an event named %q, which the spec does not describe", name)
 		}
@@ -1589,6 +1728,9 @@ func TestEventStreamMatchesTheSpec(t *testing.T) {
 	}
 	if notices == 0 {
 		t.Error("the stream carried no inbox notice")
+	}
+	if posts == 0 {
+		t.Error("the stream carried no thread notice")
 	}
 }
 
