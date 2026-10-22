@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.0 (2026-10-22)
+
+### Breaking
+
+- **projects**: explicit addressing, @auto, agents in projects, and the directory (#39) ([412b9c1](https://github.com/urmzd/warp/commit/412b9c18473805c9447521a6e315ec5ccab70187))
+
+### Features
+
+- **credentials**: each person's own credential for the tools that act as them (#38) ([371d10c](https://github.com/urmzd/warp/commit/371d10ca09c819ec4769ce4c21419aea9b3b9230))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.11.0...v0.12.0)
+
+
 ## 0.11.0 (2026-10-22)
 
 ### Breaking
