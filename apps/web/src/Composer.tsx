@@ -128,7 +128,7 @@ export function Composer({
    * a way to close it and to attach files, and the chips of what it
    * selected, shown in the bottom row. Ctrl+/ (Cmd+/) opens it.
    */
-  plus?: { menu: (close: () => void, attach: () => void) => ReactNode; chips?: ReactNode };
+  plus?: { menu: (close: () => void, attach: () => void, leave: () => void) => ReactNode; chips?: ReactNode };
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<Attached[]>([]);
@@ -160,6 +160,18 @@ export function Composer({
   const shown = tags && typing ? matching(tags.options, typing.query, 8, typing.sigil) : [];
   // The highlighted option, kept inside the list as it shrinks under the caret.
   const current = Math.max(0, Math.min(active, shown.length - 1));
+  // The list opens toward the side of the bar with more room, no taller than that room.
+  const open = shown.length > 0;
+  const [listAt, setListAt] = useState<{ up: boolean; max: number }>({ up: true, max: 256 });
+  useLayoutEffect(() => {
+    if (!open) return;
+    const r = form.current?.getBoundingClientRect();
+    if (!r) return;
+    const above = r.top - 8;
+    const below = window.innerHeight - r.bottom - 8;
+    const up = above >= Math.min(256, below);
+    setListAt({ up, max: Math.max(120, Math.min(256, up ? above : below)) });
+  }, [open]);
 
   // What is being tagged at the caret, read after every change and every
   // move of the caret.
@@ -318,7 +330,8 @@ export function Composer({
           id="composer-tags"
           role="listbox"
           aria-label={tags.label}
-          className="absolute right-2 bottom-full left-2 z-20 mb-1 max-h-64 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg"
+          style={{ maxHeight: listAt.max }}
+          className={`absolute right-2 left-2 z-20 overflow-y-auto rounded-aui border border-aui-border bg-aui-surface p-1 shadow-lg ${listAt.up ? "bottom-full mb-1" : "top-full mt-1"}`}
         >
           {shown.map((o, i) => (
             <li
@@ -351,10 +364,14 @@ export function Composer({
       )}
       {plus && menu && (
         <div data-plus-panel className="contents">
-          {plus.menu(closeMenu, () => {
-            setMenu(false);
-            picker.current?.click();
-          })}
+          {plus.menu(
+            closeMenu,
+            () => {
+              setMenu(false);
+              picker.current?.click();
+            },
+            () => setMenu(false),
+          )}
         </div>
       )}
       <QueueStrip queue={queue} />
@@ -431,7 +448,7 @@ export function Composer({
             aria-label={defaultCopy.chat.plus}
             aria-haspopup="dialog"
             aria-expanded={menu}
-            title={`${defaultCopy.chat.plus} (${defaultCopy.chat.plusShortcut})`}
+            title={`${defaultCopy.chat.plus} (${defaultCopy.chat.plusShortcut(/Mac|iPhone|iPad/.test(navigator.platform))})`}
             onClick={() => (menu ? closeMenu() : setMenu(true))}
           >
             <Glyph d={PLUS} />

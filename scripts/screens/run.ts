@@ -50,7 +50,7 @@ interface Screen {
 function screens(ids: { task: string; artifact: string; schedule: string }): Screen[] {
   const list: Screen[] = [
     { name: "home", path: "/" },
-    { name: "task", path: `/tasks/${ids.task}` },
+    { name: "task", path: `/conversations/${ids.task}` },
     { name: "projects", path: "/projects" },
     ...[
       "inbox",

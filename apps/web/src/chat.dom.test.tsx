@@ -173,22 +173,22 @@ test("+ opens a menu where agents are checked with Space and the project with it
   fireEvent.keyDown(box(), { key: "/", ctrlKey: true });
   let menu = await screen.findByRole("dialog", { name: chat.menu });
   assert.ok(within(menu).getByRole("button", { name: chat.attach }));
-  const lead = await within(menu).findByRole("menuitemcheckbox", { name: /^lead/ });
+  const lead = await within(menu).findByRole("checkbox", { name: /^lead/ });
   // The arrows move between items; Space checks the one focused.
   lead.focus();
   fireEvent.keyDown(lead, { key: "ArrowDown" });
-  const helperRow = within(menu).getByRole("menuitemcheckbox", { name: /^helper/ });
+  const helperRow = within(menu).getByRole("checkbox", { name: /^helper/ });
   assert.equal(document.activeElement, helperRow);
   fireEvent.click(lead);
   fireEvent.click(helperRow);
   assert.equal(lead.getAttribute("aria-checked"), "true");
-  assert.ok(!within(menu).queryByRole("menuitemcheckbox", { name: /globex-helper/ }), "an agent homed elsewhere is not offered at the workspace");
+  assert.ok(!within(menu).queryByRole("checkbox", { name: /globex-helper/ }), "an agent homed elsewhere is not offered at the workspace");
   // Search narrows the list.
   fireEvent.change(within(menu).getByRole("searchbox", { name: chat.findAgent }), { target: { value: "zzz" } });
   assert.ok(within(menu).getByText(chat.noAgentMatch));
   fireEvent.change(within(menu).getByRole("searchbox", { name: chat.findAgent }), { target: { value: "" } });
   // Enter closes it.
-  fireEvent.keyDown(within(menu).getByRole("menuitemcheckbox", { name: /^lead/ }), { key: "Enter" });
+  fireEvent.keyDown(within(menu).getByRole("checkbox", { name: /^lead/ }), { key: "Enter" });
   assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
   assert.deepEqual(chips().slice(0, 2), ["lead", "helper"]);
 
@@ -216,7 +216,7 @@ test("+ opens a menu where agents are checked with Space and the project with it
   fireEvent.click(screen.getByRole("button", { name: chat.removeAgent("helper") }));
   assert.equal(screen.queryByRole("button", { name: chat.all }), null, "one agent has nothing to route between");
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
-  fireEvent.click(within(await screen.findByRole("dialog", { name: chat.menu })).getByRole("menuitemcheckbox", { name: /^helper/ }));
+  fireEvent.click(within(await screen.findByRole("dialog", { name: chat.menu })).getByRole("checkbox", { name: /^helper/ }));
   fireEvent.click(screen.getByRole("button", { name: chat.plus }));
 
   fireEvent.change(box(), { target: { value: "Plan the renewal" } });
@@ -546,3 +546,43 @@ test("a task the reader may not read reads as one that does not exist, never as 
   assert.ok(!screen.queryByRole("textbox"));
   assert.ok(!net?.seen.some((r) => r.method === "POST"));
 });
+
+test("completion and the + menu open toward the side of the chat bar with room, so on a phone neither runs off the screen", async () => {
+  const real = HTMLFormElement.prototype.getBoundingClientRect;
+  const height = window.innerHeight;
+  // A phone's Home: the chat bar near the top of a tall screen.
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: 844 });
+  HTMLFormElement.prototype.getBoundingClientRect = () => ({ top: 220, bottom: 330, left: 16, right: 374, width: 358, height: 110, x: 16, y: 220, toJSON() {} }) as DOMRect;
+  try {
+    openChat(workspace("lead"));
+    fireEvent.change(box(), { target: { value: "@" } });
+    const list = await screen.findByRole("listbox");
+    assert.match(list.className, /(^|\s)top-full(\s|$)/, list.className);
+    assert.ok(Number.parseInt(list.style.maxHeight, 10) <= 844 - 330 - 8, list.style.maxHeight);
+    fireEvent.keyDown(box(), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+    const menu = await screen.findByRole("dialog", { name: chat.menu });
+    assert.match(menu.className, /(^|\s)top-full(\s|$)/, menu.className);
+    assert.ok(Number.parseInt(menu.style.maxHeight, 10) <= 844 - 330 - 8, menu.style.maxHeight);
+  } finally {
+    HTMLFormElement.prototype.getBoundingClientRect = real;
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
+  }
+});
+
+test("an agent the project picked does not offer is not kept as a chip, so it is never sent", async () => {
+  // globex-helper lives in Globex, so it can't answer at the workspace.
+  openChat(workspace("lead"), { startAgent: "globex-helper" });
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/~/agents")));
+  await waitFor(() => assert.deepEqual(chips(), []));
+  openChatClose();
+  openChat(workspace("lead"), { startAgent: "helper" });
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/~/agents")));
+  assert.deepEqual(chips(), ["helper"]);
+});
+
+function openChatClose() {
+  cleanup();
+  net?.restore();
+  net = undefined;
+}

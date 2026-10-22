@@ -432,8 +432,12 @@ export const defaultCopy = {
   chat: {
     /** The + button, which opens the menu. */
     plus: "Add files, agents or a project",
-    /** The shortcut that opens it, said in its tooltip. */
-    plusShortcut: "Ctrl+/",
+    /** The shortcut that opens it, said in its tooltip: Cmd+/ on a Mac, Ctrl+/ elsewhere. */
+    plusShortcut: (mac: boolean) => (mac ? "Cmd+/" : "Ctrl+/"),
+    /** The sidebar's filter of conversations, and how many filters are on. */
+    filter: (on: number) => (on > 0 ? `Filter conversations, ${on} on` : "Filter conversations"),
+    /** Why a Slack conversation's project can't change. */
+    projectFromSlack: "A conversation started in Slack stays in the project of its Slack channel.",
     menu: "Add to this conversation",
     attach: "Attach Files",
     agents: "Agents",
@@ -458,8 +462,8 @@ export const defaultCopy = {
     /** The chat bar's prompt with nothing selected, with one agent, and with several. */
     placeholder: "Message, or @ an agent",
     placeholderOne: (agent: string) => `Message ${agent}`,
-    placeholderBest: (n: number) => `Message, and the best fit of ${n} agents answers`,
-    placeholderAll: (n: number) => `Message, and all ${n} agents answer`,
+    placeholderBest: (_n: number) => "Message, and the agent that fits best answers",
+    placeholderAll: (n: number) => (n === 2 ? "Message, and both agents answer" : `Message, and all ${n} agents answer`),
     /** Under an answer that went to an agent because it was selected, not tagged. */
     routedBest: (agent: string) => `Routed to ${agent}, the best fit`,
     routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,

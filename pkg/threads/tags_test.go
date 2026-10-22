@@ -383,3 +383,14 @@ func TestAMessageThatNamesASkillAndNoAgentStartsAuto(t *testing.T) {
 		t.Fatal("WithSkillAgent wrote into its input's backing array")
 	}
 }
+
+// A skill refused on a surface starts no @auto, so it keeps no room for one.
+func TestARefusedSkillKeepsNoRoomForAuto(t *testing.T) {
+	var nine []string
+	for i := range threads.MaxMentions - 1 {
+		nine = append(nine, fmt.Sprintf("@p%d", i))
+	}
+	if _, err := threads.Parse(strings.Join(nine, " ")+" $ghost", newWorkspace()); err != nil {
+		t.Fatalf("nine tags and an unknown skill = %v", err)
+	}
+}
