@@ -1084,7 +1084,7 @@ test("agents checked in a conversation's + menu are saved on the thread, and an 
     );
     fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
     const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
-    fireEvent.click(await within(menu).findByRole("menuitemcheckbox", { name: /^helper/ }));
+    fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
     await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "PUT")));
     assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, { version: 1, title: "", visibility: "private", default: "", agents: ["helper"], mode: "best_fit" });
     cleanup();
@@ -1148,8 +1148,8 @@ test("two quick changes in a conversation's + menu are saved one after the other
   );
   fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
   const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
-  fireEvent.click(await within(menu).findByRole("menuitemcheckbox", { name: /^helper/ }));
-  fireEvent.click(within(menu).getByRole("menuitemcheckbox", { name: /^lead/ }));
+  fireEvent.click(await within(menu).findByRole("checkbox", { name: /^helper/ }));
+  fireEvent.click(within(menu).getByRole("checkbox", { name: /^lead/ }));
   await waitFor(() => assert.equal(puts.length, 1));
   release?.();
   await waitFor(() => assert.equal(puts.length, 2));
@@ -1160,4 +1160,22 @@ test("two quick changes in a conversation's + menu are saved one after the other
       [2, ["helper", "lead"]],
     ],
   );
+});
+
+test("in a conversation an agent has run in, the arrow keys skip the project, which can't change", async () => {
+  const ran: ThreadPage = { ...mine, turns: [...mine.turns, page.turns[1] as ThreadTurn] };
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => ran,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+    "GET /api/runs/r1/events": () => ({ events: [] }),
+  });
+  render(<ThreadRoom id={ran.thread.id} me="ana" initial={ran} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
+  const last = await within(menu).findByRole("checkbox", { name: /^helper/ });
+  last.focus();
+  fireEvent.keyDown(last, { key: "ArrowDown" });
+  // Past the last agent, the project is disabled, so focus wraps to the top.
+  assert.equal(document.activeElement?.textContent, defaultCopy.chat.attach);
 });

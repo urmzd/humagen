@@ -128,7 +128,7 @@ export function Composer({
    * a way to close it and to attach files, and the chips of what it
    * selected, shown in the bottom row. Ctrl+/ (Cmd+/) opens it.
    */
-  plus?: { menu: (close: () => void, attach: () => void) => ReactNode; chips?: ReactNode };
+  plus?: { menu: (close: () => void, attach: () => void, leave: () => void) => ReactNode; chips?: ReactNode };
 }) {
   const [value, setValue] = useState("");
   const [files, setFiles] = useState<Attached[]>([]);
@@ -364,10 +364,14 @@ export function Composer({
       )}
       {plus && menu && (
         <div data-plus-panel className="contents">
-          {plus.menu(closeMenu, () => {
-            setMenu(false);
-            picker.current?.click();
-          })}
+          {plus.menu(
+            closeMenu,
+            () => {
+              setMenu(false);
+              picker.current?.click();
+            },
+            () => setMenu(false),
+          )}
         </div>
       )}
       <QueueStrip queue={queue} />
@@ -444,7 +448,7 @@ export function Composer({
             aria-label={defaultCopy.chat.plus}
             aria-haspopup="dialog"
             aria-expanded={menu}
-            title={`${defaultCopy.chat.plus} (${defaultCopy.chat.plusShortcut})`}
+            title={`${defaultCopy.chat.plus} (${defaultCopy.chat.plusShortcut(/Mac|iPhone|iPad/.test(navigator.platform))})`}
             onClick={() => (menu ? closeMenu() : setMenu(true))}
           >
             <Glyph d={PLUS} />

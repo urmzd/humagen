@@ -397,7 +397,7 @@ export function ThreadRoom({
   const saved: Selection = { agents: th.agents ?? [], mode: th.mode ?? "best_fit", project: th.project, channel: th.channel };
   const [shown, setShown] = useState<Selection | null>(null);
   const selection = shown ?? saved;
-  const fixedWhy = hasRuns ? defaultCopy.threads.shareProjectFixed : th.surface ? words.inSlack : undefined;
+  const fixedWhy = hasRuns ? defaultCopy.threads.shareProjectFixed : th.surface ? defaultCopy.chat.projectFromSlack : undefined;
   // One save at a time: a change made while one is in flight waits for it,
   // then is saved from the version it answered, so quick changes never
   // send a version already gone.
@@ -595,8 +595,9 @@ export function ThreadRoom({
             placeholder={selection.agents.length > 0 ? placeholderFor(selection) : th.visibility === "private" ? words.message : words.channel(th.channel)}
             tags={tags}
             plus={{
-              menu: (close, attach) => (
+              menu: (close, attach, leave) => (
                 <PlusMenu
+                  onLeave={leave}
                   agents={tags.agents}
                   selection={selection}
                   onChange={select}
@@ -793,7 +794,9 @@ export function ChannelPage({
           placeholder={picked.agents.length > 0 ? placeholderFor(picked) : words.startThread}
           tags={tags}
           plus={{
-            menu: (close, attach) => <PlusMenu agents={tags.agents} selection={picked} onChange={setPicked} onAttach={attach} onClose={close} />,
+            menu: (close, attach, leave) => (
+              <PlusMenu agents={tags.agents} selection={picked} onChange={setPicked} onAttach={attach} onClose={close} onLeave={leave} />
+            ),
             chips: <SelectionChips selection={picked} onChange={setPicked} />,
           }}
           onPost={(text) =>
