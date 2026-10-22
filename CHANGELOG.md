@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.0 (2026-10-22)
+
+### Features
+
+- **projects**: channels and shared threads, tagging, experts (#41) ([7751b36](https://github.com/urmzd/warp/commit/7751b362070fd4acc046bccd879d72afec152987))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.12.1...v0.13.0)
+
+
 ## 0.12.1 (2026-10-22)
 
 ### Bug Fixes
