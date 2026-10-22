@@ -149,11 +149,14 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 			i++
 		}
 	}
-	skills, agent := 0, false
+	skills, named, agent := 0, 0, false
 	for _, m := range out {
 		switch m.Kind {
 		case Skill:
 			skills++
+			if m.Refused == "" {
+				named++
+			}
 		case Agent:
 			agent = true
 		}
@@ -163,7 +166,7 @@ func Parse(text string, r Resolver) ([]Mention, error) {
 		return nil, tooMany
 	case skills > MaxSkills:
 		return nil, fmt.Errorf("%w: a message names at most %d skills", ErrInvalid, MaxSkills)
-	case skills > 0 && !agent && len(out) == MaxMentions:
+	case named > 0 && !agent && len(out) == MaxMentions:
 		// The @auto a skill starts is one more tag.
 		return nil, tooMany
 	}
