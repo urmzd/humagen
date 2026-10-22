@@ -49,8 +49,8 @@ function openChat(view: ProjectAgentsView, props: Partial<Parameters<typeof Chat
     "GET /api/projects/~/agents": () => view,
     "GET /api/projects/Globex/agents": () => ({ ...view, homes: ["globex-helper"], available: { all: true, names: ["globex-helper"] } }),
     "GET /api/people": () => ({ people: [{ subject: "ada", name: "Ada", handle: "ada", picture: null }, { subject: "00u-ben", name: "Ben Ito", handle: "ben", picture: null }] }),
-    "GET /api/skills": () => [{ name: "review", description: "Reviews a change", from: "warp" }],
-    "GET /api/mentions": () => [{ kind: "sme", title: "Experts", resolves: "people" }],
+    "GET /api/skills": () => ({ skills: [{ name: "review", description: "Reviews a change", argument_hint: "", from: "" }] }),
+    "GET /api/mentions": () => ({ kinds: [{ kind: "sme", title: "Experts", resolves: "experts" }] }),
     "POST /api/threads": (body) => ({
       thread: { id: "th-00000000000000ab", project: (body as { project: string }).project, channel: "general", visibility: "private", participants: [], version: 1, created_by: "ada", created_at: at, updated_at: at },
       message: { id: "m-1", thread: "th-00000000000000ab", by: "ada", name: "Ada", text: (body as { text: string }).text, mentions: [], via: "console", at },

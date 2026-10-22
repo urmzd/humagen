@@ -891,14 +891,21 @@ test("$ completes the project's skills and @kind: completes a mention kind's ite
     "GET /api/threads/th-00000000000000aa": () => mine,
     "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
     "GET /api/people": () => ({ people: [], next: null }),
-    "GET /api/skills": () => [{ name: "review", description: "Reviews a change", argument_hint: "<pr>", from: "warp" }, { name: "triage", description: "Sorts issues", from: "Globex" }],
+    "GET /api/skills": () => ({
+      skills: [
+        { name: "review", description: "Reviews a change", argument_hint: "<pr>", from: "" },
+        { name: "triage", description: "Sorts issues", argument_hint: "", from: "Globex" },
+      ],
+    }),
     "GET /api/mentions": (_, q) =>
       q.get("kind") === "skill"
-        ? [{ name: "review", description: "Reviews a change" }, { name: "release-notes" }].filter((i) => i.name.startsWith(q.get("q") ?? ""))
-        : [
-            { kind: "sme", title: "Experts", resolves: "people" },
-            { kind: "skill", title: "Skills", resolves: "skills" },
-          ],
+        ? { items: [{ name: "review", description: "Reviews a change" }, { name: "release-notes" }].filter((i) => i.name.startsWith(q.get("q") ?? "")) }
+        : {
+            kinds: [
+              { kind: "sme", title: "Experts", resolves: "experts" },
+              { kind: "skill", title: "Skills", resolves: "skills" },
+            ],
+          },
   });
   render(<Sharing initial={mine} />);
   const box = (await screen.findByPlaceholderText(words.message)) as HTMLTextAreaElement;

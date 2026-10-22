@@ -12,6 +12,10 @@ import type {
   ProjectMembers,
   ProjectUpdate,
   ProjectView,
+  ProjectSkillRef,
+  MentionKind,
+  MentionItem,
+  ThreadShare,
 } from "../../../packages/client/src/generated/types.ts";
 import type { BusEvent, Run } from "./adapter.ts";
 
@@ -1155,28 +1159,9 @@ export interface DirectoryPerson {
   picture: string | null;
 }
 
-/** A skill a `$name` picks for the agent a message tags, or for @auto. */
-export interface Skill {
-  name: string;
-  description?: string;
-  argument_hint?: string;
-  /** Where it comes from: an agent, a project, or warp. */
-  from?: string;
-}
-
-/** A kind of `@kind:name` mention, such as sme (experts by topic) or skill. */
-export interface MentionKind {
-  kind: string;
-  title?: string;
-  /** What a mention of it reaches, in words. */
-  resolves?: string;
-}
-
-/** One item of a mention kind, as completion offers it. */
-export interface MentionItem {
-  name: string;
-  description?: string;
-}
+/** A skill a `$name` picks for the agent a message tags, or for @auto, and the project that declares it. */
+export type Skill = ProjectSkillRef;
+export type { MentionItem, MentionKind };
 
 /** Which agents may answer in a project. */
 export interface ProjectAvailability {
@@ -1231,23 +1216,18 @@ export const coworking = {
    * and adds people by handle. The project may change only while the thread
    * has no runs: the server answers 409 otherwise.
    */
-  share: (id: string, s: { project?: string; channel?: string; add?: string[] }) => call<ThreadPage>("POST", `${threadPath(id)}/share`, s),
+  share: (id: string, s: ThreadShare) => call<ThreadPage>("POST", `${threadPath(id)}/share`, s),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>
-    call<Skill[] | { skills: Skill[] }>("GET", `/api/skills?${new URLSearchParams({ project: project === "" ? "~" : project })}`).then((r) =>
-      Array.isArray(r) ? r : (r.skills ?? []),
-    ),
+    call<{ skills: Skill[] }>("GET", `/api/skills?${new URLSearchParams({ project: project === "" ? "~" : project })}`).then((r) => r.skills),
   /** The kinds a `@kind:name` mention can take in a project, such as sme and skill. */
   mentionKinds: (project: string) =>
-    call<MentionKind[] | { kinds: MentionKind[] }>("GET", `/api/mentions?${new URLSearchParams({ project: project === "" ? "~" : project })}`).then((r) =>
-      Array.isArray(r) ? r : (r.kinds ?? []),
-    ),
+    call<{ kinds?: MentionKind[] }>("GET", `/api/mentions?${new URLSearchParams({ project: project === "" ? "~" : project })}`).then((r) => r.kinds ?? []),
   /** At most 20 items of one mention kind, whose names start with `q`. */
   mentionItems: (project: string, kind: string, q: string) =>
-    call<MentionItem[] | { items: MentionItem[] }>(
-      "GET",
-      `/api/mentions?${new URLSearchParams({ project: project === "" ? "~" : project, kind, q })}`,
-    ).then((r) => (Array.isArray(r) ? r : (r.items ?? []))),
+    call<{ items?: MentionItem[] }>("GET", `/api/mentions?${new URLSearchParams({ project: project === "" ? "~" : project, kind, q })}`).then(
+      (r) => r.items ?? [],
+    ),
   post: (id: string, m: { text: string; after?: string; answers?: { run: string; question: string } }) =>
     call<ThreadPosted>("POST", `${threadPath(id)}/messages`, m),
   /** Changes a thread's record: its title, visibility, default, the agents it routes to and how, and while it has no runs, where it lives. */
