@@ -351,9 +351,12 @@ func registeredRoutes(t *testing.T) []route {
 func exportImporter(t *testing.T, fset *gotoken.FileSet) types.Importer {
 	t.Helper()
 	cmd := exec.Command("go", "list", "-export", "-deps", "-f", "{{.ImportPath}}={{.Export}}", ".")
+	// What the go command said is the only account of why it failed.
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	raw, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("go list -export: %v", err)
+		t.Fatalf("go list -export: %v\n%s", err, stderr.Bytes())
 	}
 	exports := map[string]string{}
 	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
