@@ -54,7 +54,7 @@ type Option func(*app.Options)
 // Main runs the warp command tree with the options applied and returns the
 // process exit code, for os.Exit. Arguments come from os.Args.
 func Main(v Version, opts ...Option) int {
-	o := app.Options{Version: app.Version(v)}
+	o := app.Options{Version: app.Version(v), Changelog: changelog}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(&o)

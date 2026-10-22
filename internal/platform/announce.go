@@ -13,10 +13,11 @@ import (
 
 // Every project has an inbox: the inbox messages whose Source.Project is the
 // project, read by everyone who can see it. An announcement is a message in
-// it, posted by a person or by an agent scheduled in the project. It reaches
-// the members of the project and of every project below it, decided when it
-// is read: one message, never a copy per person. Each reader keeps their own
-// copy hidden or snoozed, and a withdrawal is everyone's.
+// it, posted by a person, by an agent scheduled in the project, or by warp
+// in the workspace's own inbox for a release. It reaches the members of the
+// project and of every project below it, decided when it is read: one
+// message, never a copy per person. Each reader keeps their own copy hidden
+// or snoozed, and a withdrawal is everyone's.
 
 // Announcement is what is posted: a subject line, the text, and how much it
 // matters. Run is the run that wrote it, for an agent's.
@@ -29,13 +30,21 @@ type Announcement struct {
 
 // Announce posts an announcement in a project's inbox, "~" for the
 // workspace's, from a person or an agent. It is the platform's one way in, for
-// people (PostAnnouncement) and for agents scheduled in a project. A project
-// may post 20 a day and a workspace 200 (inbox.ErrLimit), and the text is
-// plain: surfaces escape any mention syntax in it before rendering.
+// people (PostAnnouncement), for agents scheduled in a project and for warp's
+// own release notes (PostReleaseNotes). A project may post 20 a day and a
+// workspace 200 (inbox.ErrLimit), and the text is plain: surfaces escape any
+// mention syntax in it before rendering.
 func (p *Platform) Announce(tenant, project string, from inbox.From, a Announcement, at time.Time) (inbox.Message, error) {
+	m, _, err := p.announce(tenant, project, "", from, a, at)
+	return m, err
+}
+
+// announce is Announce, posted once under key when key is set: an
+// announcement ever posted under it is returned with false instead.
+func (p *Platform) announce(tenant, project, key string, from inbox.From, a Announcement, at time.Time) (inbox.Message, bool, error) {
 	project = projects.NameOf(project)
 	if !p.Projects.Tree(tenant).Has(project) {
-		return inbox.Message{}, fmt.Errorf("%w: %q", projects.ErrNotFound, project)
+		return inbox.Message{}, false, fmt.Errorf("%w: %q", projects.ErrNotFound, project)
 	}
 	m := inbox.Message{
 		Subject: a.Subject, From: from, Severity: a.Severity,
@@ -45,7 +54,24 @@ func (p *Platform) Announce(tenant, project string, from inbox.From, a Announcem
 	if from.Kind == "agent" {
 		m.Source.Agent = from.Name
 	}
-	return p.Inbox.Post(tenant, m, at, inbox.DefaultPostCaps())
+	if key != "" {
+		return p.Inbox.PostOnce(tenant, key, m, at, inbox.DefaultPostCaps())
+	}
+	m, err := p.Inbox.Post(tenant, m, at, inbox.DefaultPostCaps())
+	return m, err == nil, err
+}
+
+// PostReleaseNotes posts what a release of warp brings in the workspace's
+// own inbox, from warp, so it reaches everyone who reads the workspace as any
+// announcement there does. It is keyed release:<version> and posted once: a
+// restart, a later process on the same state or a withdrawal never posts it
+// again, and posted reports whether this call posted it.
+func (p *Platform) PostReleaseNotes(tenant, version string, a Announcement) (m inbox.Message, posted bool, err error) {
+	if version == "" {
+		return inbox.Message{}, false, fmt.Errorf("%w: release notes name their version", inbox.ErrInvalid)
+	}
+	a.Severity, a.Run = inbox.Info, ""
+	return p.announce(tenant, projects.Root, "release:"+version, inbox.From{Kind: "system", Name: "warp"}, a, p.now())
 }
 
 // Announcer is the lowest role that may post in a project: its Announce, or

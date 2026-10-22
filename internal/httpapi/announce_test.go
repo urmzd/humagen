@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/inbox"
 )
 
@@ -224,4 +225,57 @@ func TestWithdrawingAnAnnouncementOneHidWithdrawsItForEveryone(t *testing.T) {
 	}
 	// Withdrawing it again changes nothing.
 	want(t, f, ana, "DELETE", "/api/projects/Field/announcements/"+id, "", http.StatusNoContent)
+}
+
+// A release's notes are an announcement in the workspace's own inbox, from
+// warp: everyone who reads the workspace is sent it, and finds it in What's
+// new and in the workspace's inbox, each hides their own copy, an owner of
+// the workspace withdraws it for everyone, and it is posted once.
+func TestReleaseNotesReachEveryoneWhoReadsTheWorkspace(t *testing.T) {
+	f, ana, bo, cy := acmeNews(t)
+	notes := platform.Announcement{Subject: "What's new in warp 0.16.0", Text: "- projects: release notes in the inbox"}
+	m, posted, err := f.p.PostReleaseNotes("acme", "0.16.0", notes)
+	if err != nil || !posted || m.Source.Project != "" || m.From != (inbox.From{Kind: "system", Name: "warp"}) || m.Key != "release:0.16.0" {
+		t.Fatalf("posted = %+v, %v, %v", m, posted, err)
+	}
+	for _, who := range []string{ana, bo, cy} {
+		if got := subjects(want(t, f, who, "GET", "/api/inbox?kind=announcement", "", http.StatusOK)); !slices.Equal(got, []string{notes.Subject}) {
+			t.Errorf("what's new = %q", got)
+		}
+		if got := subjects(want(t, f, who, "GET", "/api/projects/~/inbox", "", http.StatusOK)); !slices.Equal(got, []string{notes.Subject}) {
+			t.Errorf("the workspace's inbox = %q", got)
+		}
+	}
+	out := want(t, f, bo, "GET", "/api/inbox/"+m.ID, "", http.StatusOK)["message"].(map[string]any)
+	if from := out["from"].(map[string]any); from["kind"] != "system" || from["name"] != "warp" || out["kind"] != "announcement" {
+		t.Fatalf("as read = %v", out)
+	}
+	if again, posted, err := f.p.PostReleaseNotes("acme", "0.16.0", notes); err != nil || posted || again.ID != m.ID {
+		t.Fatalf("posted again = %+v, %v, %v", again, posted, err)
+	}
+	other := f.machine(t, "globex", "warp:runs:read", "warp:projects:read")
+	if got := subjects(want(t, f, other, "GET", "/api/inbox?kind=announcement", "", http.StatusOK)); len(got) != 0 {
+		t.Fatalf("another workspace is sent %q", got)
+	}
+	want(t, f, other, "GET", "/api/inbox/"+m.ID, "", http.StatusNotFound)
+
+	// Hide for Me hides one reader's copy.
+	want(t, f, bo, "POST", "/api/inbox/"+m.ID+"/dismiss", `{}`, http.StatusOK)
+	if got := subjects(want(t, f, bo, "GET", "/api/inbox?kind=announcement", "", http.StatusOK)); len(got) != 0 {
+		t.Fatalf("the reader who hid it sees %q", got)
+	}
+	if got := subjects(want(t, f, cy, "GET", "/api/inbox?kind=announcement", "", http.StatusOK)); !slices.Equal(got, []string{notes.Subject}) {
+		t.Fatalf("another reader sees %q", got)
+	}
+	// It is nobody's to withdraw but an owner's of the workspace, and once
+	// withdrawn it is not posted again.
+	want(t, f, ana, "DELETE", "/api/projects/~/announcements/"+m.ID, "", http.StatusForbidden)
+	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	want(t, f, admin, "DELETE", "/api/projects/~/announcements/"+m.ID, "", http.StatusNoContent)
+	if _, posted, err := f.p.PostReleaseNotes("acme", "0.16.0", notes); err != nil || posted {
+		t.Fatalf("posted after its withdrawal: %v, %v", posted, err)
+	}
+	if got := subjects(want(t, f, cy, "GET", "/api/projects/~/inbox", "", http.StatusOK)); len(got) != 0 {
+		t.Fatalf("after its withdrawal = %q", got)
+	}
 }

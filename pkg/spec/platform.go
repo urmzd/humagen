@@ -69,6 +69,10 @@ type Workspace struct {
 	// PersonCredentials is what people may give for the tools that take
 	// their own credential.
 	PersonCredentials *PersonCredentials `json:"person_credentials,omitempty"`
+	// ReleaseNotes posts what each release of warp brings in the
+	// workspace's own inbox, from warp: the features the changelog lists
+	// for the release this process runs, once a release. Off by default.
+	ReleaseNotes bool `json:"release_notes,omitempty"`
 }
 
 // PersonCredentials is what a workspace's people may give for a

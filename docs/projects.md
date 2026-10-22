@@ -717,6 +717,8 @@ the reader cannot see never reaches their stream.
 - `deliver: inbox` sends the answer to the schedule's creator (kind
   `result`), which closes the gap that a scheduled run's answer reaches nobody
   today.
+- **warp**: a release's notes in the root, `From{system, warp}` (see
+  Release notes).
 
 ### A recap is a scheduled agent
 
@@ -754,6 +756,23 @@ cursor. Inbox retention for closed broadcasts is a follow-up (see Risks).
 `workspace.release_notes: true` (default false) posts the running version's
 `feat` entries from the embedded CHANGELOG.md into the root's inbox as
 `From{system, warp}`, keyed `release:<version>`, once.
+
+- The module root package embeds CHANGELOG.md, the one package that can
+  reach it, and `internal/release` reads it: a release is a `## 0.16.0
+  (date)` heading, and its `feat` entries are its `### Features` group, each
+  without its markup and commit link. Breaking changes and fixes are not
+  posted.
+- The running version is what a release build stamps with `-ldflags`, which
+  counts only in warp's own binary, else the module version Go records for
+  warp, in its binary or in a program that imports it. `dev`, a local build
+  and a pseudo-version are not releases, and post nothing.
+- At each start, once the Platform documents are applied, each workspace
+  that sets it is posted the release, unless it has no features.
+  `inbox.Store.PostOnce` checks the key under the inbox lock: an
+  announcement ever raised under it, withdrawn or not, is kept, so a restart
+  or a later process on the same database posts nothing. It is an
+  announcement like any other in the root: everyone reads it, What's new
+  shows it, and Hide for Me hides one reader's copy.
 
 ## Permissions
 

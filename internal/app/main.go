@@ -26,6 +26,7 @@ import (
 
 	"github.com/urmzd/warp/internal/httpapi"
 	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/internal/release"
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/blob"
 	"github.com/urmzd/warp/pkg/call"
@@ -42,6 +43,10 @@ type Version struct {
 // metadata and what it adds to the platform. The warp package fills it.
 type Options struct {
 	Version Version
+	// Changelog is warp's CHANGELOG.md, which the warp package embeds. A
+	// workspace that sets workspace.release_notes is posted the running
+	// release's features from it.
+	Changelog string
 	// Ext is added to whatever a providers file declares. A name declared
 	// by both is an error rather than an override.
 	Ext platform.Extensions
@@ -329,6 +334,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err := applyPlatforms(ctx, p, file.cfg, log); err != nil {
 		return err
 	}
+	postReleaseNotes(p, file.cfg, release.Running(o.Version.Version), o.Changelog, log)
 	// After the agents, so an agent the file or the seed names keeps its
 	// name and a person whose handle would be it gets a suffix.
 	seeGranted(p, *tenant, ac.claimed(), pol, log)

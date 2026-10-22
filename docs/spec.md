@@ -156,6 +156,7 @@ spec:
         agents: {allow: [globex-helper, lead], default: globex-helper}  # narrows: only these run here and below
         members: [{who: "okta|00u1ana", role: owner}]   # no "*": members only, read by its members alone
     person_credentials: {values: false}   # true lets people store a tool credential's value with warp
+    release_notes: true     # each release's new features, posted once in the workspace's inbox from warp
 
   models:                   # each a slot: anthropic | openai | ollama
     - name: anthropic       # what an agent names as its provider
@@ -477,6 +478,30 @@ A recap is such a schedule: `warp-analyst`, a Monday morning, "What changed in
 Field this week?", `deliver: project`. Its `project_changes` tool reads only
 the project and the projects below it.
 
+### Release notes
+
+`workspace.release_notes: true` (off by default) posts what the release of
+warp this process runs brings in the workspace's own inbox, as an
+announcement from warp: "What's new in warp 0.16.0", then each entry of the
+release's Features group in the changelog the binary carries
+(`CHANGELOG.md`), and the link to the full changelog. Breaking changes and
+fixes are not posted. It reaches everyone who reads the workspace, shows in
+What's new and in the workspace's inbox like any announcement there, and
+each reader hides it for themselves.
+
+Each release is posted once, at the start that first runs it: a restart, a
+later process on the same database, or a withdrawal never posts it again.
+With memory stores every start is a new inbox, so it is posted at each
+start. A release with no features posts nothing, and so does a build that is
+not a release: `dev`, a local build or a pseudo-version. The release is the
+version a release build stamps (`-ldflags "-X main.version=v0.16.0"`, as the
+Dockerfile does), else the version Go records for warp's module
+(`go install github.com/urmzd/warp/cmd/warp@v0.16.0`, or a program that
+imports warp at that version). It counts against the workspace's 20
+announcements a day; a start past them posts it at the next start. The
+Slack app, which connects after the start, does not post it in a channel
+bound to the workspace's general.
+
 ## Which level a knob lives at
 
 | Concern | Level | Why |
@@ -488,6 +513,7 @@ the project and the projects below it.
 | Variables a workspace may reference | System | the environment is the process's |
 | Where people may keep their own tool credentials (`person_refs`) | System | a reference is read with the process's own access |
 | Whether people may store a tool credential's value (`workspace.person_credentials`) | Platform | it is the workspace's people's data |
+| Release notes in the workspace's inbox (`workspace.release_notes`) | Platform | it is the workspace's people's news |
 | Names people see | both | the deployment's, then each workspace's |
 | Models and model policies | Platform | what the workspace's agents run on |
 | MCP tools and pinned schemas | Platform | what its agents may touch |
