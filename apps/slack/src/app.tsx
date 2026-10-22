@@ -1626,9 +1626,15 @@ export class App {
     }
   }
 
-  /** A person's message as a direct message with the app: the message, and where it was said. */
+  /**
+   * A person's message as a direct message with the app: the message, and
+   * where it was said. Warp snoozes and dismisses only as the caller, so here
+   * they would be the app's: they are not offered.
+   */
   private personalView(raw: WireMessage) {
-    const view = renderToSlack(<MessageView message={forSlack(fromServer(raw))} />);
+    const view = renderToSlack(
+      <MessageView message={forSlack(fromServer(raw))} setAside={false} />,
+    );
     const thread = raw.source?.thread;
     const url = thread ? this.href(`/tasks/${encodeURIComponent(thread)}`) : undefined;
     const blocks = url

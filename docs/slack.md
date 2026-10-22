@@ -136,7 +136,9 @@ one, what needs them has Review, which sends the message to their direct
 messages with the app, where it can be answered, and What's new and Your
 projects are shown to read. A press on what Review sent is the person's own,
 done for them through the client even where the app may read the message
-too, and Retry asks the run again in its own thread. Ask a Question and Build
+too, and Retry asks the run again in its own thread. Neither it nor a
+mention's message offers Snooze or Dismiss: warp does those only as the
+caller, so in Slack they would be the app's. Ask a Question and Build
 an Agent open a form, and the words are posted as the person in their direct
 messages with the app, as the shortcut's are; Build an Agent tags
 `@warp-builder`, and is offered only where the client may reach it. Search

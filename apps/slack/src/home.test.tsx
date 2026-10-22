@@ -265,6 +265,16 @@ for (const operators of [[], [USER]]) {
   });
 }
 
+test("what Review sent offers no Snooze or Dismiss, which warp does only as the caller", async () => {
+  const w = mapping("");
+  w.warp.personal.set("ana", [alertMail()]);
+  const text = JSON.stringify(await reviewed(w));
+  assert.match(text, new RegExp(`"${defaultCopy.acknowledge}"`), "what it can do for them stays");
+  for (const label of [defaultCopy.snooze, defaultCopy.dismiss]) {
+    assert.ok(!text.includes(`"${label}"`), `${label} would be done as the app, or not at all`);
+  }
+});
+
 test("Retry in what Review sent asks again as the person, in the run's thread, and acknowledges it as them", async () => {
   const w = mapping("");
   w.warp.personal.set("ana", []);
