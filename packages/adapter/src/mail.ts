@@ -480,6 +480,8 @@ export interface Query {
   before?: string;
   state?: "open" | "resolved" | "all";
   kind?: string;
+  /** Only posted announcements, never an agent's draft (`news=true`). */
+  news?: boolean;
 }
 
 /** Everything the inbox asks of the platform. Tests and the gallery pass their own. */
@@ -509,6 +511,7 @@ export function mailTransport(http: Http): Transport {
       const params = new URLSearchParams({ limit: String(q.limit), state: q.state ?? "open" });
       if (q.before) params.set("before", q.before);
       if (q.kind) params.set("kind", q.kind);
+      if (q.news) params.set("news", "true");
       const page = await http<{ messages: unknown[]; next: string | null; open: number; unread: number }>("GET", `/api/inbox?${params}`);
       return { messages: (page.messages ?? []).map(fromServer), next: page.next ?? null, open: page.open ?? 0, unread: page.unread ?? 0 };
     },

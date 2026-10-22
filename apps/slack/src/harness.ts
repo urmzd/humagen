@@ -175,7 +175,13 @@ export class FakeWarp implements Warp {
   /** Every inbox read made for someone, and for whom. */
   readonly readFor: ActAs[] = [];
   /** Each inbox page asked for, in order. */
-  readonly inboxQueries: { state?: string; kind?: string; needs?: boolean; limit?: number }[] = [];
+  readonly inboxQueries: {
+    state?: string;
+    kind?: string;
+    needs?: boolean;
+    news?: boolean;
+    limit?: number;
+  }[] = [];
   /** Each mapped person's projects, by subject: every one they see, `mine` on those that name them. */
   readonly projects = new Map<string, WireProject[]>();
   /** Every projects read made for someone, and for whom. */
@@ -408,7 +414,7 @@ export class FakeWarp implements Warp {
 
   async inboxFor(
     actAs: ActAs,
-    query: { state?: string; kind?: string; needs?: boolean; limit?: number },
+    query: { state?: string; kind?: string; needs?: boolean; news?: boolean; limit?: number },
   ) {
     this.readFor.push(actAs);
     this.inboxQueries.push(query);
@@ -424,6 +430,7 @@ export class FakeWarp implements Warp {
       (m) =>
         (!query.kind || m.kind === query.kind) &&
         (!query.needs || !posted(m)) &&
+        (!query.news || posted(m)) &&
         (query.state === "all" || m.state === (query.state ?? "open")),
     );
     // The counts are the whole inbox's, as warp's are: posted announcements

@@ -1627,15 +1627,6 @@ paths:
           in: query
           description: Only `true` narrows to messages the caller has not read.
           schema: {type: string, enum: ["true"]}
-        - name: needs
-          in: query
-          description: |
-            Only `true` narrows to what may need the caller, which `open`
-            counts: a posted announcement, which counts only in `updates`, is
-            left out before the page is cut, and an agent's draft waiting on
-            its owners is kept. The Slack app's Home reads what needs a person
-            this way.
-          schema: {type: string, enum: ["true"]}
         - name: alert
           in: query
           description: The message about this alert, in any state.
@@ -1664,6 +1655,22 @@ paths:
           schema: {type: string, maxLength: 63}
         - {$ref: "#/components/parameters/ActAsClient"}
         - {$ref: "#/components/parameters/ActAsUser"}
+        - name: needs
+          in: query
+          description: |
+            Only `true` narrows to what may need the caller, which `open`
+            counts: a posted announcement, which counts only in `updates`, is
+            left out before the page is cut, and an agent's draft waiting on
+            its owners is kept. The Slack app's Home reads what needs a person
+            this way.
+          schema: {type: string, enum: ["true"]}
+        - name: news
+          in: query
+          description: |
+            Only `true` narrows to posted announcements, which `updates`
+            counts: an agent's draft, which shares their kind, is left out
+            before the page is cut. Home reads What's new this way.
+          schema: {type: string, enum: ["true"]}
       responses:
         "200":
           description: One page, with the caller's counts.
@@ -2796,8 +2803,8 @@ paths:
         deleted between pages neither breaks nor shifts the paging. A
         client's machine lists one of its people's projects with
         `act_as_client` and `act_as_user`, as the Slack app's Home does: the
-        projects that person has a role in, each with their role, their
-        actions and what they may read in it. The person must hold
+        projects that person may see, each with their role, their actions
+        and what they may read in it. The person must hold
         `projects:read` themselves. `mine` marks the projects that name the
         caller, which Home lists as theirs.
       x-permission: projects:read

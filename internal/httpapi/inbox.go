@@ -84,9 +84,10 @@ func (s *Server) readingInbox(w http.ResponseWriter, r *http.Request, who auth.P
 // listInbox pages the caller's inbox, newest first.
 //
 // state is open (the default), resolved, dismissed, snoozed or all. kind,
-// unread, needs, alert, agent, project, limit and before are optional. needs
-// keeps what open counts: every message but a posted announcement, an
-// agent's draft included. alert finds the message about one alert, in any
+// unread, needs, news, alert, agent, project, limit and before are optional.
+// needs keeps what open counts: every message but a posted announcement, an
+// agent's draft included. news keeps only posted announcements, what updates
+// counts. alert finds the message about one alert, in any
 // state. agent keeps the messages an agent
 // raised or whose call would reach it: with kind=approval, that agent's
 // approval queue. project keeps what is filed in one project, "~" for the
@@ -98,7 +99,7 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	q := r.URL.Query()
-	query := inbox.Query{State: inbox.State(q.Get("state")), Kind: inbox.Kind(q.Get("kind")), Before: q.Get("before"), Unread: q.Get("unread") == "true", Needs: q.Get("needs") == "true", Alert: q.Get("alert"), Agent: q.Get("agent")}
+	query := inbox.Query{State: inbox.State(q.Get("state")), Kind: inbox.Kind(q.Get("kind")), Before: q.Get("before"), Unread: q.Get("unread") == "true", Needs: q.Get("needs") == "true", News: q.Get("news") == "true", Alert: q.Get("alert"), Agent: q.Get("agent")}
 	// Asking after one alert means its message, wherever it stands.
 	if query.Alert != "" && query.State == "" {
 		query.State = inbox.All

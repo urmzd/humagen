@@ -387,6 +387,32 @@ test("however much news is newer, Needs you shows what needs her and agrees with
   );
 });
 
+test("however many drafts are newer, What's new shows the posted announcement", async () => {
+  const w = mapping();
+  // Twenty open drafts, the most a project holds, every one newer than the
+  // one post: a page of the twenty newest announcements would hold no news.
+  const drafts = Array.from({ length: 20 }, (_, i) =>
+    draftMail({
+      id: `m-draft-${i}`,
+      subject: `Draft ${i}`,
+      at: `2026-10-10T00:${String(i).padStart(2, "0")}:00Z`,
+      updated_at: `2026-10-10T00:${String(i).padStart(2, "0")}:00Z`,
+    }),
+  );
+  w.warp.personal.set("ana", [...drafts.reverse(), announcementMail()]);
+  await w.app.handle(homeOpened(USER));
+  await settle();
+  const news = under(published(w), defaultCopy.home.whatsNew);
+  assert.deepEqual(
+    news.filter((b) => b.type === "section").map((b) => b.text?.text.split("\n")[0]),
+    ["*Field offsite*"],
+  );
+  assert.ok(
+    w.warp.inboxQueries.some((q) => q.news === true && !q.kind),
+    JSON.stringify(w.warp.inboxQueries),
+  );
+});
+
 test("What's new names where it was posted by its title, in a project that is not one of hers too", async () => {
   const w = mapping();
   w.warp.personal.set("ana", [

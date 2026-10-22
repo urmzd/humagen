@@ -250,7 +250,7 @@ func TestBroadcastsCountOnlyInUpdates(t *testing.T) {
 
 // Needs pages what may need a reader, what Open counts: posted announcements
 // are left out before the page is cut, however many are newer, and an
-// agent's draft for the project's owners stays.
+// agent's draft for the project's owners stays. News pages the posts alone.
 func TestNeedsLeavesOutBroadcastsBeforeThePageIsCut(t *testing.T) {
 	s := NewStore()
 	alert := raise(s, "alert:1", t0, Part{Type: PartAlert})
@@ -275,6 +275,13 @@ func TestNeedsLeavesOutBroadcastsBeforeThePageIsCut(t *testing.T) {
 	if c := s.Count(acme, q); c != (Counts{Open: 2, Unread: 2, Updates: 3}) {
 		t.Fatalf("counts = %+v", c)
 	}
+	// News is the other side: the posted announcements alone, the draft left
+	// out however new it is.
+	q.Needs, q.News, q.Limit = false, true, 0
+	if got := ids(t, s, q); len(got) != 3 || slices.Contains(got, draft.ID) || slices.Contains(got, alert.ID) {
+		t.Fatalf("ada's news = %q, want the three posts", got)
+	}
+	q.News, q.Needs, q.Limit = false, true, 2
 	// An announcement she hid is still news, not something that needs her.
 	if _, _, err := s.Dismiss(acme, news.ID, "ada", t0); err != nil {
 		t.Fatal(err)

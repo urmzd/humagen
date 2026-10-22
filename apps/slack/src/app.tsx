@@ -1838,7 +1838,8 @@ export class App {
       // What needs them, posted announcements left out before the page is
       // cut, so however much news is newer the rows agree with the total.
       this.warp.inboxFor(mapped.as, { state: "open", needs: true, limit: 30 }),
-      this.warp.inboxFor(mapped.as, { state: "open", kind: "announcement", limit: 20 }),
+      // Posted announcements only, so drafts never crowd them off the page.
+      this.warp.inboxFor(mapped.as, { state: "open", news: true, limit: 20 }),
       this.warp.projectsFor(mapped.as).catch((e: Error): WireProject[] | null => {
         this.log(`Home shows no projects for ${user}: ${e.message}`);
         return null;

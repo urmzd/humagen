@@ -1268,29 +1268,27 @@ and its total, What's new and Your projects to the same on both renderers.
   seeded: after the Slack channel is bound to another project, or unbound, a
   reply under an old post starts a thread there as any other.
 - **App Home.** The shared Home, through `homeView`, replaces the bare
-  MailboxView for a person the client maps. It shows Needs you (at most 5,
-  the rest counted as the inbox's `open` counts them: an agent's draft
-  waiting on its owners is one, a posted announcement is not, and read with
-`needs=true` so that news newer than them never pushes them off the page),
-What's new
-  (at most 5 posted announcements) and Your projects, read as the mapped
-  person through `act_as` (`GET /api/inbox` and `GET /api/projects` with
-  `act_as_client` and `act_as_user`), within the 100-block budget. Your
-  projects are the projects that name the person (`mine` on each view):
-  they are a member or an owner through an entry for their subject or a
+  MailboxView for a person the client maps. It shows Needs you (at most 5, the
+  rest counted as the inbox's `open` counts them: an agent's draft waiting on
+  its owners is one, a posted announcement is not, and read with `needs=true`
+  so that news newer than them never pushes them off the page), What's new (at
+  most 5 posted announcements, read with `news=true`) and Your projects, read
+  as the mapped person through `act_as` (`GET /api/inbox` and `GET
+  /api/projects` with `act_as_client` and `act_as_user`), within the 100-block
+  budget. Your projects are the projects that name the person (`mine` on each
+  view): they are a member or an owner through an entry for their subject or a
   `role:<name>` they hold, on the project or as an owner of a project above
   it. Access only through `*`, or only through `projects:govern`, does not
   count, and neither does an entry in a project they could not see without
-  `projects:govern`. At most 8, where something happened most recently
-  first and then in tree order, archived ones left out, the rest counted in
-  "N more in Projects", which links the console's Projects. Each opens
-  in the console when the app has its address. Without it, Review sends what
-  needs the person to their messages with the app, and What's new and Your
-  projects are shown to read. Ask a Question and Build an Agent open a form
-  whose words are posted as the person in their messages with the app, Build
-  an Agent tagging `@warp-builder` where the client reaches it; Search
-  Context opens the console. Someone the client maps to nobody keeps the
-  mailbox.
+  `projects:govern`. At most 8, where something happened most recently first
+  and then in tree order, archived ones left out, the rest counted in "N more
+  in Projects", which links the console's Projects. Each opens in the console
+  when the app has its address. Without it, Review sends what needs the person
+  to their messages with the app, and What's new and Your projects are shown
+  to read. Ask a Question and Build an Agent open a form whose words are
+  posted as the person in their messages with the app, Build an Agent tagging
+  `@warp-builder` where the client reaches it; Search Context opens the
+  console. Someone the client maps to nobody keeps the mailbox.
 - **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
   a tag; otherwise the client's default; otherwise nothing. As Slack delivers
   only what mentions the app, a comment that names no agent asks the client

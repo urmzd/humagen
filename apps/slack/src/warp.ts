@@ -234,11 +234,12 @@ export interface Warp {
   /**
    * One page of a person's inbox, read for them through the client that maps
    * them. `needs` leaves out posted announcements before the page is cut, so
-   * the page holds what `open` counts.
+   * the page holds what `open` counts; `news` keeps only posted
+   * announcements, what `updates` counts.
    */
   inboxFor(
     actAs: ActAs,
-    query: { state?: string; kind?: string; needs?: boolean; limit?: number },
+    query: { state?: string; kind?: string; needs?: boolean; news?: boolean; limit?: number },
     options?: CallOptions,
   ): Promise<{
     messages: Record<string, unknown>[];
@@ -557,6 +558,7 @@ export function httpWarp(cfg: {
       if (query.state) q.set("state", query.state);
       if (query.kind) q.set("kind", query.kind);
       if (query.needs) q.set("needs", "true");
+      if (query.news) q.set("news", "true");
       if (query.limit) q.set("limit", String(query.limit));
       return http("GET", `/api/inbox?${q}`);
     },

@@ -1,4 +1,4 @@
-import { messageState } from "@warp/core";
+import { isAnnouncement, messageState } from "@warp/core";
 import { fromServer, type PlatformMessage, type Transport } from "./mail.ts";
 
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
@@ -243,7 +243,7 @@ export function memoryTransport(seed: PlatformMessage[] = sampleMail(), size = 3
     list: async (q) => {
       guard("list");
       const state = q.state ?? "open";
-      const kept = all.filter((m) => (state === "all" || (state === "open") === isOpen(m)) && (!q.kind || m.kind === q.kind));
+      const kept = all.filter((m) => (state === "all" || (state === "open") === isOpen(m)) && (!q.kind || m.kind === q.kind) && (!q.news || (m.kind === "announcement" && isAnnouncement(m))));
       const from = q.before ? kept.findIndex((m) => m.id === q.before) + 1 : 0;
       const messages = kept.slice(from, from + Math.min(q.limit, size));
       const last = messages[messages.length - 1];

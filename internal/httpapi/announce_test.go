@@ -284,8 +284,9 @@ func TestReleaseNotesReachEveryoneWhoReadsTheWorkspace(t *testing.T) {
 // needs=true pages what needs the caller, what `open` counts: posted
 // announcements are left out before the page is cut, however many are newer,
 // and an agent's draft waiting on the project's owners stays, for its owners
-// alone. The Slack app's Home reads what needs a person this way.
-func TestNeedsPagesWhatTheBadgeCounts(t *testing.T) {
+// alone. news=true pages the posts alone, what `updates` counts, however many
+// drafts are newer. Home reads both this way.
+func TestNeedsAndNewsPageWhatOpenAndUpdatesCount(t *testing.T) {
 	f, ana, bo, _ := acmeNews(t)
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	draft, _, err := f.p.Inbox.Raise("acme", "draft:r-recap", inbox.Message{
@@ -312,6 +313,21 @@ func TestNeedsPagesWhatTheBadgeCounts(t *testing.T) {
 	}
 	if needs.field("next") != nil || fmt.Sprint(needs.field("open")) != "1" {
 		t.Fatalf("what needs ana: next %v, open %v", needs.field("next"), needs.field("open"))
+	}
+	// news=true is the other side: the posts alone, the newer draft left out.
+	if _, _, err := f.p.Inbox.Raise("acme", "draft:r-later", inbox.Message{
+		Kind: inbox.KindAnnouncement, Subject: "Later draft", Severity: inbox.Info,
+		From:     inbox.From{Kind: "agent", Name: "recap"},
+		Audience: []string{inbox.OwnersAudience("Field")},
+		Source:   inbox.Source{Project: "Field"},
+		Parts: []inbox.Part{{Type: inbox.PartDraft, Draft: &inbox.DraftPart{
+			Project: "Field", Agent: "recap", Subject: "Later draft", Text: "More.",
+		}}},
+	}, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got := subjects(c.call(ana, "GET", "/api/inbox", "/api/inbox?news=true&limit=1", "", http.StatusOK).body.(map[string]any)); !slices.Equal(got, []string{"News 2"}) {
+		t.Fatalf("ana's news = %q", got)
 	}
 	// Bo is a member of Field, not an owner: the news is his, the draft is not.
 	if got := subjects(c.call(bo, "GET", "/api/inbox", "/api/inbox?needs=true", "", http.StatusOK).body.(map[string]any)); len(got) != 0 {
