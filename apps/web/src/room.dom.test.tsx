@@ -998,7 +998,7 @@ test("Share at the top of a private conversation moves it into a project's chann
       channels: ["general", "deals"].map((name) => ({ project: "Initech", name, version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } })),
     }),
     "GET /api/people": () => people,
-    "POST /api/threads/th-00000000000000aa/share": () => shared,
+    "POST /api/threads/th-00000000000000aa/share": () => ({ ...shared, not_added: [] }),
   });
   render(<Sharing initial={mine} onShared={(o) => opened.push(o)} />);
   assert.ok(await screen.findByText(words.private));
@@ -1034,6 +1034,7 @@ test("Share at the top of a private conversation moves it into a project's chann
   assert.equal(screen.queryByRole("dialog"), null);
   assert.equal(screen.queryByRole("button", { name: words.share }), null);
   assert.deepEqual(opened, [true, false]);
+  assert.ok(screen.getByText(words.sharedTold(["dana"])));
 });
 
 test("the project is fixed once an agent has run, and a project the server will not move it to says why", async () => {
@@ -1443,4 +1444,30 @@ test("a starter whose subject holds an address is known by their handle: Share a
   const list = await screen.findByRole("listbox");
   await waitFor(() => assert.ok(list.textContent?.includes("@dana"), list.textContent ?? ""));
   assert.ok(!list.textContent?.includes("@pat"), list.textContent ?? "");
+});
+
+test("Share says who the platform did not add, and why, beside who was told", async () => {
+  const people2 = { people: [{ subject: "00u-dana", name: "Dana Scully", handle: "dana", picture: null }, { subject: "00u-eve", name: "Eve", handle: "eve", picture: null }] };
+  const shared: ThreadPage = { ...mine, thread: { ...mine.thread, visibility: "shared" } };
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => mine,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+    "GET /api/people": () => people2,
+    "POST /api/threads/th-00000000000000aa/share": () => ({ ...shared, not_added: [{ handle: "eve", reason: "they cannot read this project, so they were not added" }] }),
+  });
+  render(<Sharing initial={mine} />);
+  fireEvent.click(await screen.findByRole("button", { name: words.share }));
+  const dialog = await screen.findByRole("dialog", { name: words.shareTitle });
+  assert.ok(within(dialog).getByText(words.shareLede));
+  const who = within(dialog).getByRole("combobox", { name: words.shareAdd }) as HTMLInputElement;
+  for (const h of ["dana", "eve"]) {
+    fireEvent.change(who, { target: { value: h } });
+    const found = await within(dialog).findByRole("listbox");
+    await waitFor(() => assert.ok(found.textContent?.includes(`@${h}`), found.textContent ?? ""));
+    fireEvent.keyDown(who, { key: "Enter" });
+    await within(dialog).findByRole("button", { name: words.shareRemove(h) });
+  }
+  fireEvent.click(within(dialog).getByRole("button", { name: words.share }));
+  assert.ok(await screen.findByText(`${words.sharedTold(["dana"])} ${words.notAdded([{ handle: "eve", reason: "they cannot read this project, so they were not added" }])}`));
 });

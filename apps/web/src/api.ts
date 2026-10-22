@@ -1166,6 +1166,9 @@ export interface DirectoryPerson {
   picture: string | null;
 }
 
+/** A thread after a share, and the people the share named who were not added, each with why. */
+export type ThreadShared = ThreadPage & { not_added: { handle: string; reason: string }[] };
+
 /** A skill a `$name` picks for the agent a message tags, or for @auto, and the project that declares it. */
 export type Skill = ProjectSkillRef;
 export type { MentionItem, MentionKind };
@@ -1228,7 +1231,7 @@ export const coworking = {
    * and adds people by handle. The project may change only while the thread
    * has no runs: the server answers 409 otherwise.
    */
-  share: (id: string, s: ThreadShare) => call<ThreadPage>("POST", `${threadPath(id)}/share`, s),
+  share: (id: string, s: ThreadShare) => call<ThreadShared>("POST", `${threadPath(id)}/share`, s),
   /** The skills a `$name` can pick in a project. */
   skills: (project: string) =>
     call<{ skills: Skill[] }>("GET", `/api/skills?${new URLSearchParams({ project: project === "" ? "~" : project })}`).then((r) => r.skills),
