@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useHeld, useInbox } from "./inbox.ts";
 import { platformParts } from "./MailParts.tsx";
 import { kinds, type PlatformMessage, type Source, shownAbout, type Transport, transport as platform } from "./mail.ts";
-import { AgentMark, Empty, Problem, SkeletonRows, Stroke, type StrokeState } from "./ui.tsx";
+import { AgentMark, Empty, Problem, SkeletonRows, Stroke, type StrokeState, useStrip } from "./ui.tsx";
 
 /** The id in the address, so a message can be linked to. */
 function linked(): string | null {
@@ -38,12 +38,14 @@ export function edgeOf(message: InboxMessage): { agent?: string; state: StrokeSt
 /**
  * What kind of message to show, as a row of chips like an email client's
  * categories. It scrolls sideways in a narrow pane rather than wrapping, so
- * the row stays one line and nothing spills out of it.
+ * the row stays one line and nothing spills out of it. The end with more
+ * fades, and the chosen chip is kept in view.
  */
 export function KindChips({ value, onChange }: { value: string; onChange: (kind: string) => void }) {
   const options = [{ id: "", label: "Everything" }, ...kinds];
+  const strip = useStrip<HTMLDivElement>(value);
   return (
-    <div role="group" aria-label="Kind" className="aui-scroll -mx-1 flex min-w-0 gap-1.5 overflow-x-auto px-1 pb-1">
+    <div ref={strip} role="group" aria-label="Kind" className="warp-strip aui-scroll -mx-1 flex min-w-0 gap-1.5 overflow-x-auto px-1 pb-1">
       {options.map((k) => (
         <button
           key={k.id || "all"}

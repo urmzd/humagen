@@ -1,34 +1,11 @@
 import { defaultCopy } from "@warp/components";
 import { type FormEvent, useState } from "react";
 import type { Run } from "./adapter.ts";
+import { inWords, presets } from "./cron.ts";
 import { ApiError, api, type Revision, type Schedule, type ScheduleView } from "./api.ts";
 import { type ProjectRef, projectOptions, titleIn } from "./projects.ts";
 import { deliverFor, deliverOptions } from "./recap.ts";
 import { AgentMark, agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Section } from "./ui.tsx";
-
-const presets: { label: string; expression: string }[] = [
-  { label: "Every minute", expression: "* * * * *" },
-  { label: "Hourly", expression: "0 * * * *" },
-  { label: "Daily at 09:00 UTC", expression: "0 9 * * *" },
-  { label: "Weekdays at 09:00 UTC", expression: "0 9 * * 1-5" },
-];
-
-const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-/** A cron expression in words, for the common shapes. Otherwise the expression itself. */
-function inWords(expression: string): string {
-  const preset = presets.find((p) => p.expression === expression);
-  if (preset) return preset.label;
-  const [min, hour, dom, month, dow] = expression.trim().split(/\s+/);
-  const at = (h: string, m: string) => `${h.padStart(2, "0")}:${m.padStart(2, "0")} UTC`;
-  const num = (s?: string) => s !== undefined && /^\d+$/.test(s);
-  if (!num(min) || dom !== "*" || month !== "*") return expression;
-  if (hour === "*" && dow === "*") return `Hourly at minute ${min}`;
-  if (!num(hour)) return expression;
-  if (dow === "*") return `Daily at ${at(hour as string, min as string)}`;
-  if (num(dow)) return `${days[Number(dow) % 7]}s at ${at(hour as string, min as string)}`;
-  return expression;
-}
 
 /** In UTC, because that is the zone the expression is written in. */
 function when(iso: string): string {

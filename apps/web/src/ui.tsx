@@ -1,17 +1,19 @@
 import { BanIcon, CheckIcon, ChevronDownIcon, ShieldIcon, Tooltip, XIcon } from "@warp/render-web";
 import { AgentOrb, type OrbState } from "@warp/web";
-import { type CSSProperties, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { Run } from "./adapter.ts";
 import { cause, dollars, elapsed, took } from "./format.ts";
+import { moreOf, nudgeInto, revealAt } from "./layout.ts";
 
 export const field =
   "w-full rounded-aui border border-aui-border bg-aui-bg px-2.5 py-1.5 text-aui-sm text-aui-fg outline-none placeholder:text-aui-muted focus-visible:border-aui-accent focus-visible:ring-2 focus-visible:ring-aui-ring";
 
+// A button's label stays on one line: the button is one line tall.
 export const button =
-  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 warp-press rounded-aui border border-aui-border bg-aui-surface px-3 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 whitespace-nowrap warp-press rounded-aui border border-aui-border bg-aui-surface px-3 text-aui-sm text-aui-fg hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
 
 export const primary =
-  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 warp-press rounded-aui bg-aui-primary px-3 text-aui-sm font-medium text-aui-primary-fg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex h-8 pointer-coarse:h-10 items-center justify-center gap-1.5 whitespace-nowrap warp-press rounded-aui bg-aui-primary px-3 text-aui-sm font-medium text-aui-primary-fg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aui-accent disabled:cursor-not-allowed disabled:opacity-50";
 
 export function Label({ text, hint, children }: { text: string; hint?: string; children: ReactNode }) {
   return (
@@ -239,7 +241,7 @@ export function Page({
   back?: { label: string; onClick: () => void };
   /** The page's own actions. The primary one goes last. */
   actions?: ReactNode;
-  /** Tabs under the header, sticking to the top while the page scrolls. */
+  /** Tabs under the header, sticking to the top while the page scrolls. What the page shows under them is a column of its own. */
   tabs?: ReactNode;
   /** A reading width, for forms and settings. */
   narrow?: boolean;
@@ -272,11 +274,16 @@ export function Page({
                 {lede && <p className={pageLede}>{lede}</p>}
               </div>
             </div>
-            {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+            {/* The actions may shrink to the column, so on a narrow screen they wrap onto more lines instead of running off it. */}
+            {actions && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div>}
           </div>
         </header>
         {tabs && <div className="sticky top-0 z-10 -mx-1 bg-[var(--aui-bg)] px-1">{tabs}</div>}
-        {children}
+        {/*
+          Under tabs, what a tab shows is one column of its own. The tab strip draws a rule,
+          so a section that opens the column, and draws its rule only after something, draws none.
+        */}
+        {tabs ? <div className="flex min-w-0 flex-col gap-6">{children}</div> : children}
       </div>
     </div>
   );
@@ -301,7 +308,7 @@ export function Section({
           <h2 className="text-aui-base font-medium text-aui-fg">{title}</h2>
           {hint && <p className="max-w-[62ch] text-aui-xs text-aui-muted">{hint}</p>}
         </div>
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        {actions && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div>}
       </div>
       {children}
     </section>
@@ -482,22 +489,94 @@ export function Segmented<T extends string>({
   options: { id: T; label: string }[];
   onChange: (next: T) => void;
 }) {
+  const strip = useStrip<HTMLDivElement>(value);
+  // A fieldset is as wide as its content unless told otherwise, so min-w-0 lets it
+  // fit the column; its choices then scroll inside the box, each on one line.
   return (
-    <fieldset className="inline-flex rounded-aui border border-aui-border p-0.5">
+    <fieldset className="inline-flex min-w-0 max-w-full rounded-aui border border-aui-border p-0.5">
       <legend className="sr-only">{label}</legend>
-      {options.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          aria-pressed={value === o.id}
-          onClick={() => onChange(o.id)}
-          className="h-7 rounded-aui-sm px-2.5 text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:text-aui-fg"
-        >
-          {o.label}
-        </button>
-      ))}
+      <div ref={strip} className="warp-strip flex min-w-0 overflow-x-auto [scrollbar-width:none]">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            aria-pressed={value === o.id}
+            onClick={() => onChange(o.id)}
+            className="h-7 shrink-0 whitespace-nowrap rounded-aui-sm px-2.5 text-aui-xs text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover aria-pressed:text-aui-fg"
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
     </fieldset>
   );
+}
+
+/**
+ * A row that scrolls sideways inside itself when it does not fit: tabs, chips,
+ * a segmented choice. Whenever `chosen` changes, whenever items are added to
+ * or taken from the row, and whenever the row or what is in it changes size,
+ * it brings the chosen item (aria-selected, aria-pressed or aria-current) into
+ * view. It marks which ends have more as data-more, which warp-strip fades, so
+ * an item cut off at the edge reads as more to scroll to.
+ */
+export function useStrip<E extends HTMLElement>(chosen: unknown): RefObject<E | null> {
+  const ref = useRef<E>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new choice is the signal to bring it into view
+  useLayoutEffect(() => {
+    if (ref.current) fit(ref.current);
+  }, [chosen]);
+  useEffect(() => {
+    const strip = ref.current;
+    if (!strip) return;
+    const marked = () => mark(strip);
+    strip.addEventListener("scroll", marked, { passive: true });
+    // Widths settle late, when a face loads or the window turns, so the place is found again.
+    const sized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => fit(strip));
+    sized?.observe(strip);
+    for (const item of strip.children) sized?.observe(item);
+    // Items come and go after the strip shows, as an agent's tabs do once it loads. The new
+    // ones are watched too, and the place is found again: what fitted may no longer.
+    const changed =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver((records) => {
+            for (const r of records) {
+              for (const node of r.addedNodes) if (node instanceof Element) sized?.observe(node);
+              for (const node of r.removedNodes) if (node instanceof Element) sized?.unobserve(node);
+            }
+            fit(strip);
+          });
+    changed?.observe(strip, { childList: true });
+    return () => {
+      strip.removeEventListener("scroll", marked);
+      sized?.disconnect();
+      changed?.disconnect();
+    };
+  }, []);
+  return ref;
+}
+
+/** The strip's own measurements: how far it is scrolled, how wide it is, and how wide its content is. */
+const viewOf = (strip: HTMLElement) => ({ scroll: strip.scrollLeft, width: strip.clientWidth, content: strip.scrollWidth });
+
+function fit(strip: HTMLElement) {
+  const item = strip.querySelector<HTMLElement>('[aria-selected="true"], [aria-pressed="true"], [aria-current="page"]');
+  if (item) {
+    const box = strip.getBoundingClientRect();
+    const r = item.getBoundingClientRect();
+    // Where the item sits in the strip's content, which starts inside its border.
+    const start = r.left - box.left - strip.clientLeft + strip.scrollLeft;
+    const at = revealAt({ start, end: start + r.width }, viewOf(strip));
+    if (at !== strip.scrollLeft) strip.scrollLeft = at;
+  }
+  mark(strip);
+}
+
+function mark(strip: HTMLElement) {
+  const more = moreOf(viewOf(strip));
+  if (more === "none") delete strip.dataset.more;
+  else strip.dataset.more = more;
 }
 
 /** Tabs for the sections of one thing. */
@@ -512,25 +591,55 @@ export function Tabs<T extends string>({
   tabs: { id: T; label: string; count?: number }[];
   onChange: (next: T) => void;
 }) {
+  const strip = useStrip<HTMLDivElement>(value);
+  // The rule under the tabs is drawn beside the strip rather than on it, so it runs the
+  // full width while the strip's ends fade, and the chosen tab's line sits on it.
   return (
-    <div role="tablist" aria-label={label} className="aui-scroll flex gap-1 overflow-x-auto border-aui-border border-b">
-      {tabs.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          role="tab"
-          aria-selected={value === t.id}
-          onClick={() => onChange(t.id)}
-          className="-mb-px inline-flex h-9 shrink-0 items-center gap-1.5 border-transparent border-b-2 px-3 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-selected:border-aui-accent aria-selected:text-aui-fg"
-        >
-          {t.label}
-          {t.count !== undefined && t.count > 0 && (
-            <span className="rounded-full bg-aui-hover px-1.5 text-aui-2xs tabular-nums text-aui-muted">{t.count}</span>
-          )}
-        </button>
-      ))}
+    <div className="relative">
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 border-aui-border border-b" />
+      <div ref={strip} role="tablist" aria-label={label} className="warp-strip aui-scroll relative flex gap-1 overflow-x-auto">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={value === t.id}
+            onClick={() => onChange(t.id)}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap border-transparent border-b-2 px-3 text-aui-sm text-aui-muted transition-colors hover:text-aui-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aui-accent aria-selected:border-aui-accent aria-selected:text-aui-fg"
+          >
+            {t.label}
+            {t.count !== undefined && t.count > 0 && (
+              <span className="rounded-full bg-aui-hover px-1.5 text-aui-2xs tabular-nums text-aui-muted">{t.count}</span>
+            )}
+          </button>
+        ))}
+      </div>
     </div>
   );
+}
+
+/**
+ * How far to move an open panel sideways so it stays inside the screen's
+ * gutter, when the control it hangs from sits near an edge, as the composer's
+ * agent menu does on a phone. It is measured from the panel's laid-out box,
+ * which its opening scale does not change, and again when the window resizes.
+ */
+function useInsideGutter(panel: RefObject<HTMLElement | null>, root: RefObject<HTMLElement | null>, open: boolean): number {
+  const [shift, setShift] = useState(0);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const p = panel.current;
+      const r = root.current;
+      if (!p || !r) return;
+      const left = r.getBoundingClientRect().left + r.clientLeft + p.offsetLeft;
+      setShift(nudgeInto({ left, width: p.offsetWidth }, document.documentElement.clientWidth || window.innerWidth));
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [open, panel, root]);
+  return shift;
 }
 
 /**
@@ -563,7 +672,10 @@ export function Popover({
   const [open, setOpen] = useState(false);
   const present = usePresence(open);
   const root = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const id = useId();
+  // A flyout is placed by hand beside its trigger; anything else hangs from it and is kept inside the gutter.
+  const shift = useInsideGutter(panel, root, open && side !== "right");
 
   useEffect(() => {
     if (!open) return;
@@ -615,11 +727,18 @@ export function Popover({
       {tooltip ? <Tooltip label={tooltip}>{triggerButton}</Tooltip> : triggerButton}
       {present.mounted && (
         <div
+          ref={panel}
           id={id}
           role="dialog"
           aria-label={label}
           data-leaving={present.leaving}
-          style={{ ...(side === "right" ? flyout : {}), "--warp-pop-origin": side === "right" ? "top left" : `${up ? "bottom" : "top"} ${align}` } as CSSProperties}
+          style={
+            {
+              ...(side === "right" ? flyout : {}),
+              ...(shift ? { translate: `${shift}px 0` } : {}),
+              "--warp-pop-origin": side === "right" ? "top left" : `${up ? "bottom" : "top"} ${align}`,
+            } as CSSProperties
+          }
           className={`warp-glass-pop warp-pop ${side === "right" ? "fixed" : "absolute"} z-40 max-w-[calc(100vw-2rem)] rounded-aui-lg p-1.5 ${narrow ? "w-56" : "w-80"} ${
             side === "right" ? "" : align === "right" ? "right-0" : "left-0"
           } ${side === "right" ? "" : up ? "bottom-full mb-2" : "top-full mt-2"}`}
@@ -847,10 +966,12 @@ export function Menu<T extends string>({
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const root = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const filter = useRef<HTMLInputElement>(null);
   const typed = useRef({ text: "", at: 0 });
   const id = useId();
+  const shift = useInsideGutter(panel, root, open);
 
   const searchable = options.length > 8;
   const q = query.trim().toLowerCase();
@@ -947,9 +1068,10 @@ export function Menu<T extends string>({
       {present.mounted && (
         // biome-ignore lint/a11y/noStaticElementInteractions: keys are handled here for the filter and the list together
         <div
+          ref={panel}
           onKeyDown={onKey}
           data-leaving={present.leaving}
-          style={{ "--warp-pop-origin": `${up ? "bottom" : "top"} ${align}` } as CSSProperties}
+          style={{ ...(shift ? { translate: `${shift}px 0` } : {}), "--warp-pop-origin": `${up ? "bottom" : "top"} ${align}` } as CSSProperties}
           className={`warp-glass-pop warp-pop absolute z-40 flex max-h-80 min-w-full max-w-[min(22rem,calc(100vw-2rem))] flex-col rounded-aui-lg p-1 ${
             quiet ? "w-max min-w-44" : ""
           } ${align === "right" ? "right-0" : "left-0"} ${up ? "bottom-full mb-1.5" : "top-full mt-1.5"}`}

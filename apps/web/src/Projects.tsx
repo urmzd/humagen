@@ -16,6 +16,7 @@ import {
   type ThreadSummary,
 } from "./api.ts";
 import { ScopeLimits } from "./Billing.tsx";
+import { inWords } from "./cron.ts";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
 import type { Source } from "./mail.ts";
 import { ProjectHistory, ProjectInbox, ProjectLimits, ProjectPeople } from "./ProjectTabs.tsx";
@@ -63,7 +64,8 @@ import {
 
 const words = defaultCopy.projects;
 const scheduleWords = defaultCopy.schedules;
-const section = "flex flex-col gap-2 border-aui-border border-t pt-5";
+// A rule over each section parts it from the one before. The first in its column has none: what is above it draws its own.
+const section = "flex flex-col gap-2 border-aui-border border-t pt-5 first:border-t-0 first:pt-0";
 const heading = "text-aui-base font-medium text-aui-fg";
 const fail = (set: (m: string) => void, fallback: string) => (e: unknown) => set(e instanceof ApiError ? e.message : fallback);
 
@@ -789,9 +791,9 @@ function Scheduled({
 
   return (
     <section className={section}>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className={heading}>Scheduled ({timed.length})</h2>
-        <span className="flex gap-2">
+        <span className="flex flex-wrap gap-2">
           {recap && canSchedule && recapper && !hasRecap && (
             <button type="button" className={button} onClick={addRecap}>
               {scheduleWords.addWeeklyRecap}
@@ -870,7 +872,7 @@ function Scheduled({
                 <span className="block text-aui-sm text-aui-fg">
                   {s.name}
                   <span className="pl-2 text-aui-xs text-aui-muted">
-                    <code className="font-aui-mono">{s.expression}</code> to {s.agent}
+                    <span title={s.expression}>{inWords(s.expression)}</span> to {s.agent}
                     {s.paused ? ", paused" : ""}
                     {s.deliver === "project" ? `, ${scheduleWords.deliverProject.toLowerCase()}` : ""}
                   </span>

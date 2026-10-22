@@ -521,6 +521,20 @@ export const defaultCopy = {
     managed: "From the platform file. Change it there.",
     tab: "Schedules",
     none: "Nothing runs on a timer here.",
+    /**
+     * When a schedule runs, in words. Its expression is read in UTC, and `at`
+     * is a time of day in it, "08:09". `day` is 0 for Sunday to 6 for Saturday.
+     */
+    when: {
+      everyMinute: "Every minute",
+      hourly: "Hourly",
+      hourlyAt: (minute: number) => `Hourly at minute ${minute}`,
+      daily: (at: string) => `Daily at ${at} UTC`,
+      weekdays: (at: string) => `Weekdays at ${at} UTC`,
+      weekends: (at: string) => `Weekends at ${at} UTC`,
+      weekly: (day: number, at: string) =>
+        `${["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"][day]} at ${at} UTC`,
+    },
   },
   /** The one-field form a Slack mention or an expert's question opens to reply. */
   replyModal: {

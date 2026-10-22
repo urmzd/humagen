@@ -68,12 +68,16 @@ export function titleIn(projects: readonly ProjectRef[], name: string): string {
 /** A picker's options for the projects the reader has, each by its title. */
 export const projectOptions = (projects: readonly ProjectRef[]) => projects.map((p) => ({ value: p.name, label: titleOf(p) }));
 
-/** A kind in words: "Account", or the title the workspace gives its own. */
-export const kindWord = (kind: ProjectKind, kinds: ProjectKindSpec[] = []): string =>
+/**
+ * A kind in words: "Account", or the title the workspace gives its own. The
+ * workspace's kinds are not optional: without them its own kinds show by
+ * their lowercase names.
+ */
+export const kindWord = (kind: ProjectKind, kinds: ProjectKindSpec[]): string =>
   words.kind[kind] ?? (kinds.find((k) => k.name === kind)?.title || kind);
 
 /** A kind's group on the Projects page: "Accounts", or the title the workspace gives its own. */
-export const groupWord = (kind: ProjectKind, kinds: ProjectKindSpec[] = []): string =>
+export const groupWord = (kind: ProjectKind, kinds: ProjectKindSpec[]): string =>
   words.group[kind] ?? (kinds.find((k) => k.name === kind)?.title || kind);
 
 /** The projects above one, top first, by title. Empty at the top level. */
@@ -130,7 +134,7 @@ export function treeOf(projects: ProjectView[], opts: { narrow: boolean; q?: str
         const placed = depth > 0 && indent === depth;
         return { project: p, indent, path: placed ? [] : above(p) };
       });
-    return { kind, title: groupWord(kind, opts.kinds), rows };
+    return { kind, title: groupWord(kind, opts.kinds ?? []), rows };
   }).filter((g) => g.rows.length > 0);
 }
 

@@ -464,6 +464,7 @@ export function Chat({
           <ProjectPicker
             value={project}
             projects={projects}
+            kinds={root?.kinds}
             canCreate={canCreateProject}
             onChange={setProject}
             onCreated={onProjectCreated}
