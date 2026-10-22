@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ActionId, messageAsks, messageTemplate, type UiAction } from "@warp/core";
-import { fromServer, kinds, projectTransport, toRequest, updatesOf } from "./mail.ts";
+import { fromServer, kinds, projectTransport, shownAbout, toRequest, updatesOf } from "./mail.ts";
 
 /** An announcement as the platform sends it: a broadcast in a project's inbox, only there to be read. */
 const announcement = {
@@ -152,15 +152,33 @@ test("what a question is about names its conversation by what it is called, and 
     parts: [],
   };
   const m = fromServer(question);
+  // The run stays in what it is about, by its id: a surface finds the run
+  // there, as Slack does to post into the run's own thread.
   assert.deepEqual(
-    m.about.map((s) => `${s.kind}:${s.label}`),
-    ["thread:INV-2041 double charge", "agent:Agent ledger", "project:Project Globex"],
+    m.about.map((s) => `${s.kind}:${s.id}:${s.label}`),
+    [
+      "run:r7141b73d4cd9f6d7fbee963ea0c1d2e3:INV-2041 double charge",
+      "thread:th-083973d191362dea:INV-2041 double charge",
+      "agent:ledger:Agent ledger",
+      "project:Globex:Project Globex",
+    ],
   );
   assert.deepEqual(m.source, { kind: "run", id: "r7141b73d4cd9f6d7fbee963ea0c1d2e3", label: "INV-2041 double charge" });
+  // Drawn, the run and its thread are one conversation.
+  assert.deepEqual(
+    shownAbout(m.about).map((s) => `${s.kind}:${s.label}`),
+    ["thread:INV-2041 double charge", "agent:Agent ledger", "project:Project Globex"],
+  );
+  // A run in no thread is the conversation itself.
+  const alone = fromServer({ ...question, source: { run: "r-1", agent: "ledger" } });
+  assert.deepEqual(
+    shownAbout(alone.about).map((s) => `${s.kind}:${s.id}`),
+    ["run:r-1", "agent:ledger"],
+  );
   // A conversation the reader is not told the name of is called one.
   const unnamed = fromServer({ ...question, source: { ...question.source, thread_title: undefined } });
   assert.deepEqual(
-    unnamed.about.map((s) => s.label),
+    shownAbout(unnamed.about).map((s) => s.label),
     ["Conversation", "Agent ledger", "Project Globex"],
   );
   for (const s of [...m.about, ...unnamed.about]) assert.ok(!/\b(r[0-9a-f]{8,}|th-[0-9a-f]+)\b/.test(s.label), s.label);

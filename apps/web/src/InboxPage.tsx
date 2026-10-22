@@ -3,7 +3,7 @@ import { Mailbox, type MailboxShow } from "@warp/web";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useInbox } from "./inbox.ts";
 import { platformParts } from "./MailParts.tsx";
-import { kinds, type PlatformMessage, type Source, type Transport, transport as platform } from "./mail.ts";
+import { kinds, type PlatformMessage, type Source, shownAbout, type Transport, transport as platform } from "./mail.ts";
 import { AgentMark, Empty, Problem, SkeletonRows, Stroke, type StrokeState } from "./ui.tsx";
 
 /** The id in the address, so a message can be linked to. */
@@ -112,7 +112,7 @@ export function MailboxView({
       onShow={onShow}
       renderFrame={(message, children) => {
         const edge = edgeOf(message);
-        const sources = (message as PlatformMessage).about ?? [];
+        const sources = shownAbout((message as PlatformMessage).about ?? []);
         return (
           <Stroke agent={edge.agent} state={edge.state} testId="mail-frame" className="flex min-h-0 min-w-0 flex-1 flex-col pl-4">
             {children}

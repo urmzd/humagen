@@ -681,6 +681,20 @@ test("fromServer: an artifact arrives as a file to open, laid out as an artifact
   assert.equal(messageTemplate(mailOf("m-budget")), "limit");
 });
 
+test("MailboxView: a run and the thread it is in are one conversation under About, though the message keeps both", () => {
+  // The run stays in what the message is about, where a surface finds it.
+  assert.deepEqual(
+    mailOf("m-result").about.map((s) => `${s.kind}:${s.id}`),
+    ["run:api-9c3a", "thread:th-signups", "agent:helper", "project:Launch"],
+  );
+  const out = mailbox("m-result");
+  const about = out.slice(out.indexOf('aria-label="About"'));
+  const row = about.slice(0, about.indexOf("</ul>"));
+  assert.equal(row.match(/<li/g)?.length, 3, row);
+  assert.equal(row.match(/>Conversation</g)?.length, 1, "the conversation is drawn once");
+  assert.match(row, />Agent helper</);
+});
+
 test("MailboxView: an artifact shows the file, opens it in Artifacts, and offers a download", () => {
   const out = mailbox("m-artifact");
   assert.match(out, /data-template="artifact"/);

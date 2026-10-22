@@ -323,19 +323,29 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
   }
 }
 
+/**
+ * What a message is about, as a list of things to open: a run and the
+ * thread it is in are one conversation, so the run is left out beside its
+ * thread, which opens the whole of it.
+ */
+export function shownAbout(about: Source[]): Source[] {
+  return about.some((s) => s.kind === "thread") ? about.filter((s) => s.kind !== "run") : about;
+}
+
 /** The platform's message as a mailbox message. */
 export function fromServer(raw: unknown): PlatformMessage {
   const m = obj(raw);
   const from = obj(m.from);
   const source = obj(m.source);
   const at = str(m.updated_at) || str(m.at);
-  // A run and the thread it is in open the same conversation, so it is
-  // named once, by what the thread is called, and never by an id.
+  // A run and the thread it is in are one conversation, named by what the
+  // thread is called and never by an id. Both stay in about: surfaces find
+  // the run there, and the console draws the conversation once (shownAbout).
   const conversation = str(source.thread_title) || sourceWord.thread;
   const labelOf = (k: (typeof sourceKinds)[number]) =>
     k === "run" || k === "thread" ? conversation : `${sourceWord[k]} ${str(source[k])}`;
   const sources: Source[] = sourceKinds
-    .filter((k) => str(source[k]) && !(k === "run" && str(source.thread)))
+    .filter((k) => str(source[k]))
     .map((k) => ({ kind: k, id: str(source[k]), label: labelOf(k) }));
   // A published file is something to open too, by the version the message is about.
   for (const p of list(m.parts)) {
@@ -344,8 +354,7 @@ export function fromServer(raw: unknown): PlatformMessage {
       sources.unshift({ kind: "artifact", id: str(a.id), label: str(a.title) || "Artifact" });
     }
   }
-  const run: Source | undefined = str(source.run) ? { kind: "run", id: str(source.run), label: conversation } : undefined;
-  const first = run ?? sources.find((s) => s.kind === "rule" || s.kind === "project");
+  const first = sources.find((s) => s.kind === "run" || s.kind === "rule" || s.kind === "project");
   const state = str(m.state);
   return {
     id: str(m.id),
