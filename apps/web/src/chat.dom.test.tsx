@@ -178,11 +178,12 @@ class QuietStream {
 }
 (globalThis as { EventSource?: unknown }).EventSource ??= QuietStream;
 
-function open(turn: Run, me: string) {
+function open(turn: Run, me: string, turns: Run[] = [turn]) {
   net = stubFetch({
-    "GET /api/threads/t1": () => ({ turns: [turn] }),
+    "GET /api/threads/t1": () => ({ turns }),
     "GET /api/projects/~/agents": () => workspace("lead"),
-    "POST /api/runs": (body) => ({ ...turn, id: "t2", text: (body as { text: string }).text, status: "accepted", actor: { id: me, user: me } }),
+    "GET /api/projects/Globex/agents": () => ({ ...workspace(), homes: ["globex-helper"] }),
+    "POST /api/runs": (body) => ({ ...turn, id: "t9", text: (body as { text: string }).text, status: "accepted", actor: { id: me, user: me } }),
   });
   const noop = () => {};
   render(
@@ -192,6 +193,7 @@ function open(turn: Run, me: string) {
       summary={undefined}
       tick={0}
       agents={agents}
+      homes={homes}
       projects={[]}
       canRun
       canCreateProject={false}
@@ -210,6 +212,34 @@ test("Retry in a conversation asks the turn again only for the person it acted f
   await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
   const asked = net?.seen.find((r) => r.method === "POST" && r.path === "/api/runs");
   assert.deepEqual(asked?.body, { agent: "lead", text: "file the flaky test" });
+});
+
+test("Retry of the first turn of a project's conversation files it in that project again, and a later turn follows the turn before", async () => {
+  const ana = { id: "ana", display: "Ana", user: "ana" };
+  // globex-helper lives in Globex: asked anywhere else, it is refused as not available.
+  const first: Run = { ...failed(ana), agent: "globex-helper", project: "Globex" };
+  open(first, "ana");
+  fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+  assert.deepEqual(net?.seen.find((r) => r.method === "POST" && r.path === "/api/runs")?.body, {
+    agent: "globex-helper",
+    text: "file the flaky test",
+    project: "Globex",
+  });
+  cleanup();
+  net?.restore();
+
+  // A later turn joins the conversation after the one before it, which carries the project.
+  const answered: Run = { ...first, status: "completed", error: undefined };
+  const second: Run = { ...first, id: "t2", tag_id: "api-t2", text: "and the other one", prev: "t1" };
+  open(second, "ana", [answered, second]);
+  fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+  assert.deepEqual(net?.seen.find((r) => r.method === "POST" && r.path === "/api/runs")?.body, {
+    agent: "globex-helper",
+    text: "and the other one",
+    after: "t1",
+  });
 });
 
 test("Retry is not offered on another person's turn, nor on one that acted for nobody, and nothing is asked", async () => {

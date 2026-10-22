@@ -276,10 +276,13 @@ export function Chat({
   // What this conversation's queue is waiting on, so it knows when to go on.
   const waiting = useRef<string | null>(null);
 
+  // A turn that follows another joins its conversation, filed where that is.
+  // One that starts a conversation is filed in `filed`: by default the project
+  // picked for a new one.
   const post = useCallback(
-    async (text: string, to: string, after: string | undefined) => {
+    async (text: string, to: string, after: string | undefined, filed: string | null = project) => {
       setProblem(null);
-      const run = await api.createRun(to, text, after ? { after } : project ? { project } : {});
+      const run = await api.createRun(to, text, after ? { after } : filed ? { project: filed } : {});
       setTurns((t) => (t.some((x) => x.id === run.id) ? t : [...t, run]));
       setChosen((c) => ({ ...c, [run.prev ?? ""]: run.id }));
       onChanged();
@@ -314,8 +317,10 @@ export function Chat({
     queue.turnEnded(run.status === "completed" ? "done" : "failed");
   }, [turns]);
 
+  // A branch of the first turn starts the conversation again, so it is filed
+  // where the turn was: the picker's project is only for a new conversation.
   const branch = (run: Run, to: string) => {
-    post(run.text, to, run.prev).catch((e) =>
+    post(run.text, to, run.prev, run.project ?? null).catch((e) =>
       setProblem(e instanceof ApiError ? e.message : "The branch could not be started."),
     );
   };
