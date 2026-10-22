@@ -1517,7 +1517,8 @@ An unknown tab falls back to the default through `pick`. Names never hold
     has run in it; the server's 409 is said in words), the channel (general
     by default) and people to add, completed as they are typed. It calls
     `POST /api/threads/{id}/share` and then reads as shared there, with no
-    Share;
+    Share, and says who was told in their inbox and who was not added, with
+    the platform's reason (`not_added`);
   - a question addressed to an expert shown still, with "Reply".
 
   Nothing waiting on a person animates; a mark shows thinking only while its

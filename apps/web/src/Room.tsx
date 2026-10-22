@@ -449,6 +449,8 @@ export function ThreadRoom({
     return undefined;
   };
   const shareButton = useRef<HTMLButtonElement>(null);
+  // What sharing did: who was told, and who was not added and why.
+  const [shareNote, setShareNote] = useState("");
   // The Share address of a conversation that can't be shared is the conversation's.
   useEffect(() => {
     if (sharing && !shareable) onSharing?.(false);
@@ -556,7 +558,12 @@ export function ThreadRoom({
               onSharing?.(false);
               shareButton.current?.focus();
             }}
-            onShared={(p) => {
+            onShared={(p, asked) => {
+              // Say who was told, and who was not added and why, as the platform decided.
+              const missed = new Set((p.not_added ?? []).map((n) => n.handle));
+              const told = asked.filter((h) => !missed.has(h));
+              const lines = [words.sharedTold(told), ...((p.not_added ?? []).length > 0 ? [words.notAdded(p.not_added)] : [])];
+              setShareNote(lines.join(" "));
               setPage(p);
               setTurns((t) => mergeTurns(t, p.turns));
               onSharing?.(false);
@@ -564,6 +571,11 @@ export function ThreadRoom({
             }}
           />
         </div>
+      )}
+      {shareNote && (
+        <p role="status" className="mx-auto w-full max-w-4xl px-4 pb-2 text-aui-xs text-aui-muted">
+          {shareNote}
+        </p>
       )}
       <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
         <ThreadList className="mx-auto w-full max-w-4xl flex-1 px-4" busy={busy} label="Thread">
