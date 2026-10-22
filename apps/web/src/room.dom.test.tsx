@@ -1214,3 +1214,33 @@ test("All of Them is offered for three agents at most, and a conversation checks
   render(<SelectionChips selection={{ ...sel, agents: ["a1", "a2", "a3"] }} onChange={() => {}} />);
   assert.equal((screen.getByRole("button", { name: defaultCopy.chat.all }) as HTMLButtonElement).disabled, false);
 });
+
+test("a shared conversation's project can't change from the + menu, which says why; a private one's can", async () => {
+  net = stubFetch({
+    "GET /api/threads/th-0123456789abcdef": () => ({ ...page, turns: [page.turns[0]] }),
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+  });
+  const shared: ThreadPage = { ...page, turns: [page.turns[0] as ThreadTurn] };
+  render(<ThreadRoom id={shared.thread.id} me="ana" initial={shared} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
+  assert.ok(within(menu).getByText(defaultCopy.chat.projectShared));
+  assert.equal((within(menu).getByRole("button", { name: /Globex/ }) as HTMLButtonElement).disabled, true);
+});
+
+test("someone added to a private conversation may change its agents but not move it, and the + menu says who may", async () => {
+  const added: ThreadPage = { ...mine, thread: { ...mine.thread, created_by: "ben" } };
+  const member = tree.map((p) => (p.name === "Globex" ? { ...p, access: { role: "member" as const, from: "Globex", via: "*" } } : p));
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => added,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+  });
+  render(<ThreadRoom id={added.thread.id} me="ana" initial={added} tick={0} agents={[helper]} projects={member} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
+  assert.ok(within(menu).getByText(defaultCopy.chat.projectStarter));
+  assert.equal((within(menu).getByRole("button", { name: /Globex/ }) as HTMLButtonElement).disabled, true);
+  assert.equal((await within(menu).findByRole("checkbox", { name: /^helper/ }) as HTMLButtonElement).disabled, false);
+});

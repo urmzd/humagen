@@ -436,6 +436,11 @@ export const defaultCopy = {
     plusShortcut: (mac: boolean) => (mac ? "Cmd+/" : "Ctrl+/"),
     /** The sidebar's filter of conversations, and how many filters are on. */
     filter: (on: number) => (on > 0 ? `Filter conversations, ${on} on` : "Filter conversations"),
+    /** Why a shared conversation's project can't change from the + menu. */
+    projectShared: "A shared conversation stays in the project it was shared in.",
+    /** Why someone added to a conversation can't move it. */
+    projectStarter:
+      "Only the person who started this conversation, or an owner of its project, can move it.",
     /** Why a Slack conversation's project can't change. */
     projectFromSlack: "A conversation started in Slack stays in the project of its Slack channel.",
     menu: "Add to this conversation",
