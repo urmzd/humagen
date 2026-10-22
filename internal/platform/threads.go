@@ -429,8 +429,12 @@ func (p *Platform) clientDefault(tenant string, th threads.Thread) string {
 
 // defaultOf is the default a message in a thread inherits, and why it
 // cannot answer when it has stopped being available there.
-func (p *Platform) defaultOf(tenant string, th threads.Thread) (threads.Default, string) {
-	n := p.DefaultAt(tenant, p.placeOfThread(tenant, th))
+//
+// sees, when set, is the agents the person it is for may read: a default
+// nearer than the project naming one they may not read is passed over for
+// them, as if unset (placeSeen).
+func (p *Platform) defaultOf(tenant string, th threads.Thread, sees func(string) bool) (threads.Default, string) {
+	n := p.DefaultAt(tenant, placeSeen(p.placeOfThread(tenant, th), sees))
 	d := threads.Default{Agent: n.Agent, From: n.From}
 	if d.Agent == "" || d.Agent == Auto {
 		return d, ""
@@ -452,8 +456,31 @@ func (p *Platform) DefaultFor(tenant, id, project, channel string) (d threads.De
 			return threads.Default{}, "", err
 		}
 	}
-	d, unavailable = p.defaultOf(tenant, th)
+	d, unavailable = p.defaultOf(tenant, th, nil)
 	return d, unavailable, nil
+}
+
+// placeSeen is a place as a person who may read only the agents sees reads
+// it: each default nearer than the project (the thread's, the client's, the
+// channel's) that names an agent they may not read is passed over, as if
+// unset, so who answers them is the next default along. Such an agent is
+// never available where they read, so it could not answer them; and a
+// default they are shown in its place reads exactly as it would were the
+// hidden one not set. A project's default is never passed over: it is
+// available where it is set, so it lives on that project's chain, which
+// whoever reads the place reads. A nil sees passes over nothing.
+func placeSeen(at Place, sees func(string) bool) Place {
+	if sees == nil {
+		return at
+	}
+	out := at
+	out.Nearer = slices.Clone(at.Nearer)
+	for i, n := range out.Nearer {
+		if n.Agent != "" && n.Agent != Auto && !sees(n.Agent) {
+			out.Nearer[i].Agent = ""
+		}
+	}
+	return out
 }
 
 // ThreadRecord returns a thread's record. A conversation from before
@@ -657,7 +684,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
-	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, false, keeps)
+	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, false, keeps, seer.Agent)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
 }
@@ -719,7 +746,8 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
 		surfaceID, slack = on.ref.message(), nil
 	}
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: p.Seer(person).Agent})
+	sees := p.Seer(person).Agent
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees})
 	if err != nil {
 		return Posted{}, err
 	}
@@ -754,7 +782,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return again, nil
 	}
 	p.repliedTo(who.Tenant, th.ID, m)
-	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps)
+	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps, sees)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
 }
@@ -849,9 +877,11 @@ func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, as 
 // its tags came to, and notifies the people and experts it tags. via is the
 // client whose credential posted it for its poster, "" for a person who
 // posted as themselves. keeps says the poster may change the project's notes
-// (mayPost).
-func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, via string, postOnly, reply, keeps bool) (Posted, error) {
-	def, unavailable := p.defaultOf(tenant, th)
+// (mayPost). sees is the agents the poster may read: a default naming one
+// they may not read is passed over for them, as if unset (placeSeen), so
+// what the message did never names it.
+func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, via string, postOnly, reply, keeps bool, sees func(string) bool) (Posted, error) {
+	def, unavailable := p.defaultOf(tenant, th, sees)
 	d := threads.Decide(threads.Input{Mentions: m.Mentions, Reply: reply, PostOnly: postOnly, Default: def, Unavailable: unavailable})
 	out := Posted{Runs: []runs.Run{}, Notified: []string{}, Refused: []threads.Mention{}, Rule: d.Rule, Reason: d.Reason}
 	mentions := d.Mentions
@@ -863,7 +893,7 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	actor := envelope.Actor{ID: m.By, Display: m.Name, User: m.By}
 	var answered []threads.Participant
 	start := func(agent string) (runs.Run, error) {
-		run, err := p.answerMessage(ctx, tenant, th, m, via, agent, actor, answerTagID(th.ID, m.ID, agent), keeps)
+		run, err := p.answerMessage(ctx, tenant, th, m, via, agent, actor, answerTagID(th.ID, m.ID, agent), keeps, sees)
 		if err == nil {
 			out.Runs = append(out.Runs, run)
 			answered = append(answered, threads.Participant{Kind: threads.Agent, Name: run.Agent, AddedBy: m.By})
@@ -955,8 +985,9 @@ func answerTagID(thread, message, agent string) string {
 // the room's transcript up to the message, then the message. via is the
 // client whose credential posted the message for its poster, if one did.
 // keeps pins that the person it acts for may change the project's notes, as
-// a turn does (Turn.KeepsNotes).
-func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, actor envelope.Actor, tagID string, keeps bool) (runs.Run, error) {
+// a turn does (Turn.KeepsNotes). sees is the agents that person may read:
+// @auto never falls back to one they may not read.
+func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, actor envelope.Actor, tagID string, keeps bool, sees func(string) bool) (runs.Run, error) {
 	if err := p.mayRoute(tenant, th, via, agent); err != nil {
 		return runs.Run{}, err
 	}
@@ -968,7 +999,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 		meta[metaKeepsNotes] = th.Project
 	}
 	if agent == Auto {
-		who, err := p.resolveAgent(ctx, tenant, p.placeOfThread(tenant, th), Auto, m.Text, nil)
+		who, err := p.resolveAgent(ctx, tenant, placeSeen(p.placeOfThread(tenant, th), sees), Auto, m.Text, sees)
 		if err != nil {
 			return runs.Run{}, err
 		}
@@ -1217,14 +1248,21 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	if in.Version != th.Version {
 		return threads.Thread{}, fmt.Errorf("%w: %q is at version %d, not %d", threads.ErrVersion, id, th.Version, in.Version)
 	}
-	if err := p.checkDefault(ctx, who.Tenant, th.Project, in.Default, p.Seer(who).Agent); err != nil {
+	seer := p.Seer(who)
+	if err := p.checkDefault(ctx, who.Tenant, th.Project, in.Default, seer.Agent); err != nil {
 		return threads.Thread{}, err
 	}
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return threads.Thread{}, err
 	}
+	// A default naming an agent the caller may not read was not shown to
+	// them, so naming none keeps it.
+	shown := seer.threadAgents(th)
 	return p.Threads.Update(who.Tenant, id, th.Version, p.now(), func(t *threads.Thread) error {
-		t.Title, t.Visibility, t.Default = strings.TrimSpace(in.Title), cmp.Or(in.Visibility, t.Visibility), in.Default
+		t.Title, t.Visibility = strings.TrimSpace(in.Title), cmp.Or(in.Visibility, t.Visibility)
+		if in.Default != "" || t.Default == "" || shown(t.Default) {
+			t.Default = in.Default
+		}
 		return nil
 	})
 }
@@ -1287,10 +1325,20 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 			return threads.Thread{}, err
 		}
 	}
+	// An agent the caller may not read that never answered here is not
+	// among the participants they are shown, so removing it is removing one
+	// that is not there, and it counts toward no limit they are told of.
+	shown := p.Seer(who).participantShownNow(th)
+	remove = slices.DeleteFunc(remove, func(name string) bool {
+		return !shown(name) && slices.ContainsFunc(th.Participants, func(pt threads.Participant) bool {
+			return pt.Kind == threads.Agent && pt.Name == name
+		})
+	})
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
 		return threads.Thread{}, err
 	}
-	return p.Threads.Participants(who.Tenant, id, th.Version, add, remove, who.Subject, p.now())
+	counted := func(pt threads.Participant) bool { return pt.Kind != threads.Agent || shown(pt.Name) }
+	return p.Threads.Participants(who.Tenant, id, th.Version, add, remove, counted, who.Subject, p.now())
 }
 
 // byHandle is the subject of the person who goes by a handle.

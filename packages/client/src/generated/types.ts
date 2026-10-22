@@ -74,7 +74,13 @@ export interface AgentSource {
 }
 
 export interface AgentAccess {
-  /** The agents this one may call. */
+  /** The agents this one may call. An agent that lives in a project the
+caller may not read is left out. Written, each must be an agent
+that exists and that the caller may read, or one this list already
+names that they are shown: any other, in any spelling, is 400 in
+the words for an agent that does not exist. The ones left out are
+kept.
+ */
   spawn?: string[];
   workspace_areas?: string[];
 }
@@ -100,7 +106,11 @@ most 4, none repeating the primary or each other.
   access?: AgentAccess;
   /** Tools whose every call waits for a person to approve it. Each is a
 tool the agent is granted. `ask_person` in `tools` lets the agent
-ask a person to choose or reply.
+ask a person to choose or reply. The approval of a call to an agent
+left out of `access.spawn` (`tag_<agent>`) is left out too, and
+kept. When every approval is left out, so are `approvers` and
+`self_approval`, which apply only to approvals, and a spec written
+with no approvals or approvers of its own keeps them.
  */
   approvals?: string[];
   /** When set, the only people who may answer an approval: principals by
@@ -136,6 +146,7 @@ export interface ModelRef {
 export interface Revision {
   spec: AgentSpec;
   rev: number;
+  /** The hash of the definition, or when an agent is left out of `spec` for the caller, the hash of what they are shown. */
   hash: string;
   created_at: string;
   created_by: string;
@@ -413,6 +424,7 @@ export interface ThreadSummary {
   project?: string;
   /** The project's channel it is in, `general` when its runs name none. */
   channel: string;
+  /** The agents whose runs answered in it. A run names the agent that ran it, even one that lives since in a project the caller may not read. */
   agents: string[];
   /** The people who asked or posted in it, by handle. A run counts as asked by the person it acted for, so a connector's run names the person its user is mapped to, never that user, and a run that acted for nobody names nobody. Someone the directory cannot name, and whose subject holds an address, is left out. */
   people: string[];
@@ -462,8 +474,9 @@ export interface Thread {
   channel: string;
   title?: string;
   visibility: ThreadVisibility;
+  /** Who takes part. An agent that lives in a project the caller may not read is left out unless it answered in the thread, as its runs there name it. The caller adds people and agents up to 50 they are shown; with the ones they are not shown, and the people who post and the agents who answer, who join on their own, the record holds at most 100. */
   participants: ThreadParticipant[];
-  /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. */
+  /** Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set. */
   default?: string;
   surface?: ThreadSurface;
   /** The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it. */
@@ -480,7 +493,7 @@ export interface Thread {
 /** One tag in a message, and what it came to. */
 export interface ThreadMention {
   kind: "agent" | "person" | "sme";
-  /** The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). */
+  /** The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent. */
   name: string;
   /** The run an agent's tag started. */
   run?: string;
@@ -528,17 +541,18 @@ export interface ThreadMessage {
 /** The announcement a thread was started from, as it stands when the
 thread is read: who posted it and what it says. It is the inbox's,
 never a message of the thread, so it is from whoever posted it, a
-person or the agent a schedule ran, and never from the person whose
-reply started the thread. A withdrawn one says nothing more.
+person, the agent a schedule ran, or warp itself for a release's
+notes, and never from the person whose reply started the thread. A
+withdrawn one says nothing more.
  */
 export interface ThreadAnnouncement {
   /** The announcement's inbox id. */
   id: string;
-  /** Who posted it. */
-  kind: "person" | "agent";
-  /** The person's handle, or the agent's name. */
+  /** Who posted it. `system` is warp itself, as for a release's notes. */
+  kind: "person" | "agent" | "system";
+  /** The person's handle, the agent's name, or `warp` for what warp posted itself. */
   by: string;
-  /** What the person is called. Absent for an agent. */
+  /** What the person is called. Absent for an agent and for warp itself (`system`). */
   name?: string;
   subject?: string;
   text?: string;
@@ -582,7 +596,11 @@ export interface ThreadAsk {
 /** Who answers an untagged message in a place, and where that is set:
 `thread`, `client`, `channel`, or `project:<name>` (`project:~` for
 the workspace). An empty agent is nobody. `unavailable` says why the
-default cannot answer, when it has stopped being available.
+default cannot answer, when it has stopped being available. A
+thread's, a client's or a channel's default naming an agent that
+lives in a project the reader may not read is passed over for them,
+as if it were not set, so this is the next default along: such an
+agent is never available where they read.
  */
 export interface ThreadAnswers {
   agent: string;
@@ -635,6 +653,7 @@ export interface ThreadUpdate {
   version: number;
   title?: string;
   visibility?: ThreadVisibility;
+  /** Empty keeps a default the caller was not shown, one naming an agent that lives in a project they may not read. */
   default?: string;
 }
 
@@ -642,7 +661,7 @@ export interface ThreadUpdate {
 export interface ThreadParticipantsUpdate {
   version: number;
   add?: ThreadParticipant[];
-  /** People by handle and agents by name, which no person and agent share. */
+  /** People by handle and agents by name, which no person and agent share. An agent the caller was not shown is not removed, as one that is not there. */
   remove?: string[];
 }
 
@@ -665,7 +684,7 @@ export interface ThreadPosted {
   /** Its tags that started or notified nothing, each saying why. */
   refused: ThreadMention[];
   rule: ThreadRule;
-  /** Why no agent answers, when none does. */
+  /** Why no agent answers, when none does. It never names an agent the poster may not read. */
   reason?: string;
   /** The message was posted before, by its surface's id. This is what it did then; nothing was started again. */
   repeated?: boolean;
@@ -691,9 +710,15 @@ export interface Channel {
   title?: string;
   /** Sent to every agent answering in the channel. */
   purpose?: string;
-  /** Answers untagged messages here, an agent or `auto`. Absent inherits from the project. */
+  /** Answers untagged messages here, an agent or `auto`. Absent inherits from the project. One naming an agent that lives in a project the reader may not read reads as absent, here and in the project's history. */
   default?: string;
   slack?: SlackBinding;
+  /** When `slack` was bound as it stands: set when a binding is made
+or moved, kept while it holds. Absent while unbound, and on a
+binding made before warp kept the time, which the client's
+bindings then read as bound at the channel's last change.
+ */
+  bound_at?: string;
   /** It and its threads stay, and it takes no new threads. */
   archived?: boolean;
   /** `file` when the platform file declares the channel. */
@@ -751,6 +776,14 @@ export interface ClientBinding {
   /** The project. Empty is the workspace itself. */
   project: string;
   channel: string;
+  /** When the Slack channel was bound to this channel. The client's
+app catches up on nothing announced before it: what was
+announced before the binding, or while the channel was unbound,
+never reached the Slack channel and is not news there now.
+Present for every binding; a binding made before warp kept the
+time reads as bound at its channel's last change.
+ */
+  bound_at?: string;
 }
 
 /** Where on a client's surface a message was posted: for Slack, the
@@ -794,6 +827,33 @@ export interface ProjectExpert {
 export interface ProjectExperts {
   version: number;
   experts: ProjectExpert[];
+}
+
+/** A knowledge source a run filed in a project is grounded in, and the project that names it. */
+export interface ProjectKnowledgeSource {
+  name: string;
+  /** The project that names it, the nearest when more than one does. Empty for the workspace. */
+  from: string;
+}
+
+/** The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in. */
+export interface ProjectKnowledge {
+  version: number;
+  /** The sources the project names itself, in its order. Empty for a caller without `knowledge:read`. */
+  knowledge: string[];
+  /** What a run filed here is grounded in besides its agent's own: the
+project's sources, then each project's above it, nearest first,
+each once. Empty for a caller without `knowledge:read`.
+ */
+  given: ProjectKnowledgeSource[];
+}
+
+/** The knowledge sources a project names, as a whole, from the version read. */
+export interface ProjectKnowledgeInput {
+  /** The version the caller read. */
+  version: number;
+  /** Knowledge sources of the workspace, each once; `[]` for none. */
+  knowledge: string[];
 }
 
 /** What a project is for. `company` is company-wide: it sits under the
@@ -878,6 +938,12 @@ is members only unless everyone owns a project above it.
   /** Who answers for some topics here and below. Set with `PUT /api/projects/{name}/experts`. */
   experts: ProjectExpert[];
   agents: ProjectAgents;
+  /** The knowledge sources every run filed here and below is grounded
+in, besides its agent's own. Set with `PUT
+/api/projects/{name}/knowledge`. Absent when it names none, and
+for a caller without `knowledge:read`.
+ */
+  knowledge?: string[];
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
   /** The lowest role that may post an announcement here. Absent reads as owner. */
@@ -901,7 +967,7 @@ export interface ProjectStep {
 }
 
 /** A project, where it sits, and what is in it. */
-export type ProjectView = Project & { depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[] };
+export type ProjectView = Project & { depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[]; mine: boolean };
 
 /** A limit a run filed in the project falls under for being there, and
 the project it is set on. What the limit allows is read from
@@ -1047,10 +1113,11 @@ back, and `members` a change to who holds a role and nothing
 else. `agents` is a change to what the project turns on. `home`
 is an agent coming to live in the project, or leaving it: `agent`
 names it and `note` says which. `experts` is a change to who the
-project names as experts, and `channel` to one of its channels,
-which `channel` holds before and after.
+project names as experts, `knowledge` to the knowledge sources it
+names, and `channel` to one of its channels, which `channel`
+holds before and after.
  */
-  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "channel";
+  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "channel";
   /** The agent a `home` change is about. Absent when it lives in a project the caller may not read. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
@@ -1519,6 +1586,11 @@ export interface InboxDraftPart {
 export interface InboxDelivery {
   channel: string;
   ts: string;
+  /** When the client last said the post shows the message as it stands:
+when it was posted, or when it recorded the post again after
+bringing it up to date. A message whose `updated_at` is later has
+changed since.
+ */
   at: string;
 }
 
@@ -1725,6 +1797,7 @@ export interface Summary {
   bucket_ns: number;
   total: AnalyticsGroup;
   buckets: AnalyticsBucket[];
+  /** Each agent's runs the caller may read. A run names the agent that ran it, so this and `slowest` name it even when it lives since in a project the caller may not read. */
   by_agent: AnalyticsGroup[];
   by_origin: AnalyticsGroup[];
   slowest: Run[] | null;

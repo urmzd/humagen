@@ -1436,7 +1436,7 @@ const updates: HomeUpdate[] = [
   },
 ];
 
-/** The projects Ada has a role in: one busy, one quiet, and an account inside Field. */
+/** The projects that name Ada: one busy, one quiet, and an account inside Field. */
 const projects: HomeProject[] = [
   {
     name: "Field",

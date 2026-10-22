@@ -25,7 +25,7 @@
 - Branch conversations across agents, with a shared call primitive for subagents, handoffs and delegations.
 - Edit agents and revisions, run deterministic evals, schedule work and inspect run traces.
 - Apply tenant permissions, depth and fan-out limits, run admission policies and usage accounting.
-- Search knowledge, manage project memory and inspect alerts and analytics in the web console.
+- Search knowledge, manage project memory and inspect alerts and analytics in the web console. Ground every run in a project, and the projects below it, in the knowledge sources the project names.
 - Tag who answers (`@agent` or `@auto`) or let the default a project inherits answer, enable platform agents per project or give an agent a home in one, and browse the workspace's people, agents and projects in the Directory.
 - Connect GitHub and Slack through signed webhook ingress and tenant-bound connector capabilities.
 - Give agents MCP tools that act as each person with that person's own credential, and never a shared one in its place.
@@ -150,6 +150,7 @@ generated from it. See [the API guide](docs/api.md).
 | `GET /api/threads`, `GET /api/threads/{id}` | `runs:read` |
 | `GET /api/pick?q=&project=`, `GET`, `PUT /api/settings`, `PUT /api/agents/{name}/home` | `agents:read`, `agents:write` |
 | `GET`, `PUT /api/projects/{name}/agents` | `projects:read`, `projects:write` |
+| `GET`, `PUT /api/projects/{name}/knowledge` | `projects:read`, `projects:write` (naming sources also takes `knowledge:read`) |
 | `GET /api/people`, `GET /api/people/{handle}/photo` | `people:read` |
 | `GET`, `POST /api/evals`, `PUT`, `DELETE /api/evals/{name}`, `POST .../run`, `GET .../runs` | `evals:read`, `evals:write` |
 | `GET`, `PUT /api/preferences`, `GET`, `PUT`, `DELETE /api/preferences/photo` | Signed in, the caller's own |

@@ -190,7 +190,7 @@ func TestTheCallToolOffersOnlyCalleesThatAdmitTheCaller(t *testing.T) {
 	setPolicy(t, p, "closed", callpolicy.Policy{Callers: callpolicy.Listed, Allow: []string{"helper"}, Approval: callpolicy.Never})
 	setPolicy(t, p, "gated", callpolicy.Policy{Callers: callpolicy.Anyone, Approval: callpolicy.Always})
 
-	if got := p.CallTargets(tenant, "lead", []string{"helper", "closed", "gated"}); !slices.Equal(got, []string{"helper", "gated"}) {
+	if got := p.CallTargets(tenant, "", "lead", []string{"helper", "closed", "gated"}); !slices.Equal(got, []string{"helper", "gated"}) {
 		t.Fatalf("targets = %v", got)
 	}
 	first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "enum", Agent: "lead", Text: "Go"})

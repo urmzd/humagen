@@ -34,9 +34,11 @@ export function view(
     members: [{ who: "*", role: "member" }],
     experts: [],
     agents: { enable: [] },
-    // Fixtures read as a workspace admin's: owner everywhere, every action.
+    // Fixtures read as a workspace admin's: owner everywhere, every action,
+    // and named in none of it.
     access: { role: "owner", from: "", via: "projects:govern" },
     actions: ["create", "propose", "notes", "edit", "move", "archive", "delete", "limits", "announce"],
+    mine: false,
     version: opts.version ?? 1,
     created_by: "ada",
     created_at: at,

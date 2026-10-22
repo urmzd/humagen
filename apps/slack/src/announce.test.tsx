@@ -13,12 +13,15 @@ import {
   type World,
   world,
 } from "./harness.ts";
+import { SlackError } from "./slack.ts";
+import { WarpError } from "./warp.ts";
 
 const NEWS = "C01NEWS";
+const HOUR = 60 * 60_000;
 
-/** A client app whose general channel of Field is bound to NEWS. */
+/** A client app whose general channel of Field is bound to NEWS, two days ago. */
 function bound(): World {
-  const w = world({ clientId: "app" });
+  const w = world({ clientId: "app", catchUpRetryMs: 1 });
   w.warp.clients.set("app", {
     id: "app",
     surface: "slack",
@@ -26,7 +29,9 @@ function bound(): World {
     identity: { team: TEAM },
     slack: { machine: SUBJECT, people: {} },
   });
-  w.warp.bound.set("app", [{ slack_channel: NEWS, project: "Field", channel: "general" }]);
+  w.warp.bound.set("app", [
+    { slack_channel: NEWS, project: "Field", channel: "general", bound_at: w.warp.ago(48 * HOUR) },
+  ]);
   return w;
 }
 
@@ -140,6 +145,470 @@ test("an announcement an agent wrote pings nobody: every Slack mention in it is 
   }
   assert.match(sent, /@U0BOB/);
   assert.match(sent, /@oncall/);
+});
+
+// Catching up. The event stream does not replay what it carried while the
+// app was not listening, so each time it opens the app reads the newest
+// announcements of every project whose general channel is bound here and
+// compares them with its receipts.
+
+/** An announcement put in warp while the app was not listening: no notice is sent. */
+function missed(w: World, over: Record<string, unknown>) {
+  const at = String(over.at ?? w.warp.ago(HOUR));
+  const m = announcementMail({ at, updated_at: at, ...over });
+  w.warp.mailbox.set(String(m.id), m);
+  return m;
+}
+
+const postsIn = (w: World, channel: string) =>
+  w.slack.of("chat.postMessage").filter((p) => p.channel === channel);
+
+test("what was announced while the app was away is posted when it connects, oldest first, and once", async () => {
+  const w = bound();
+  missed(w, { id: "m-early", subject: "Early news", at: w.warp.ago(2 * HOUR) });
+  missed(w, { id: "m-late", subject: "Late news", at: w.warp.ago(HOUR) });
+  await watching(w, async () => {
+    await settle();
+    await w.app.idle();
+    // The stream reconnects: the receipts say both are posted.
+    w.warp.reopen();
+  });
+  const posts = postsIn(w, NEWS);
+  assert.deepEqual(
+    posts.map((p) => p.text),
+    ["Early news", "Late news"],
+    "each posted once, in the order announced",
+  );
+  assert.ok(
+    posts.every((p) => p.thread_ts === undefined),
+    "top-level",
+  );
+  assert.deepEqual(
+    w.warp.deliveries.map((d) => d.message),
+    ["m-early", "m-late"],
+  );
+  assert.equal(w.slack.of("chat.update").length, 0, "nothing posted is edited for nothing");
+});
+
+test("a withdrawal while the app was away turns its post into the withdrawn text, once", async () => {
+  const w = bound();
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+    await settle();
+    await w.app.idle();
+    w.warp.quietly("m-news", { state: "dismissed" });
+    w.warp.reopen();
+    await settle();
+    await w.app.idle();
+    w.warp.reopen();
+  });
+  assert.equal(postsIn(w, NEWS).length, 1, "never posted again");
+  const edits = w.slack.of("chat.update");
+  assert.equal(edits.length, 1, "edited once, and not again at the next reconnect");
+  const sent = JSON.stringify({ text: edits[0]?.text, blocks: edits[0]?.blocks });
+  assert.equal(edits[0]?.ts, w.warp.deliveries[0]?.ts);
+  assert.match(sent, new RegExp(defaultCopy.announcements.seedWithdrawn));
+  assert.ok(
+    !sent.includes("Lisbon") && !sent.includes("Field offsite"),
+    `withdrawn words stayed: ${sent}`,
+  );
+  // The receipt is recorded again, so it says the post shows the withdrawal.
+  assert.deepEqual(
+    w.warp.deliveries.map((d) => d.message),
+    ["m-news", "m-news"],
+  );
+});
+
+test("a withdrawal heard on the stream turns the post into the withdrawn text too", async () => {
+  const w = bound();
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+    await settle();
+    await w.app.idle();
+    w.warp.raise({ ...(w.warp.mailbox.get("m-news") ?? {}), state: "dismissed" });
+    await settle();
+    await w.app.idle();
+    w.warp.reopen();
+  });
+  const edits = w.slack.of("chat.update");
+  assert.equal(edits.length, 1);
+  assert.match(
+    JSON.stringify(edits[0]?.blocks),
+    new RegExp(defaultCopy.announcements.seedWithdrawn),
+  );
+  assert.ok(!JSON.stringify(edits[0]).includes("Lisbon"));
+});
+
+test("a catch-up posts nothing older than a day, withdrawn, or a draft, and posts what it missed between its posts", async () => {
+  const w = bound();
+  missed(w, { id: "m-ancient", subject: "Ancient", at: w.warp.ago(30 * HOUR) });
+  missed(w, { id: "m-early", subject: "Early", at: w.warp.ago(4 * HOUR) });
+  const posted = missed(w, { id: "m-posted", subject: "Posted", at: w.warp.ago(3 * HOUR) });
+  posted.deliveries = {
+    app: { channel: NEWS, ts: "1700000000.000100", at: w.warp.ago(3 * HOUR - 1000) },
+  };
+  missed(w, { id: "m-gone", subject: "Gone", state: "dismissed", at: w.warp.ago(2 * HOUR) });
+  missed(w, {
+    id: "m-draft",
+    subject: "Draft",
+    at: w.warp.ago(HOUR),
+    parts: [{ id: "p1", type: "draft", state: "open", actions: [] }],
+  });
+  missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR / 2) });
+  await watching(w, async () => {});
+  assert.deepEqual(
+    postsIn(w, NEWS).map((p) => p.text),
+    ["Early", "Missed"],
+  );
+  assert.equal(w.slack.of("chat.update").length, 0, "the post that has a receipt is up to date");
+});
+
+test("a catch-up posts nothing announced before its Slack channel was bound", async () => {
+  // Field's general was bound half an hour ago; X was announced an hour before that.
+  const w = bound();
+  w.warp.bound.set("app", [
+    { slack_channel: NEWS, project: "Field", channel: "general", bound_at: w.warp.ago(HOUR / 2) },
+  ]);
+  missed(w, { id: "m-x", subject: "Before the binding", at: w.warp.ago(HOUR + HOUR / 2) });
+  missed(w, { id: "m-y", subject: "After the binding", at: w.warp.ago(HOUR / 4) });
+  await watching(w, async () => {});
+  assert.deepEqual(
+    postsIn(w, NEWS).map((p) => p.text),
+    ["After the binding"],
+  );
+});
+
+test("a binding that does not say when it was made posts nothing new, and still edits what changed", async () => {
+  const w = bound();
+  w.warp.bound.set("app", [{ slack_channel: NEWS, project: "Field", channel: "general" }]);
+  const gone = missed(w, {
+    id: "m-gone",
+    state: "dismissed",
+    at: w.warp.ago(2 * HOUR),
+    updated_at: w.warp.ago(HOUR),
+  });
+  gone.deliveries = {
+    app: { channel: NEWS, ts: "1700000000.000404", at: w.warp.ago(2 * HOUR - 1000) },
+  };
+  missed(w, { id: "m-new", subject: "New", at: w.warp.ago(HOUR / 4) });
+  await watching(w, async () => {});
+  assert.equal(postsIn(w, NEWS).length, 0);
+  assert.deepEqual(
+    w.slack.of("chat.update").map((u) => u.ts),
+    ["1700000000.000404"],
+  );
+});
+
+test("an app whose client names another machine catches up on nothing and posts nothing, and says why", async () => {
+  const w = bound();
+  w.warp.clients.set("app", {
+    id: "app",
+    surface: "slack",
+    enabled: true,
+    identity: { team: TEAM },
+    slack: { machine: "svc:rotated", people: {} },
+  });
+  missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR) });
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+  });
+  assert.equal(w.warp.newsReads.length, 0, "nothing read");
+  assert.equal(w.slack.of("chat.postMessage").length, 0, "nothing posted");
+  assert.ok(w.logs.some((l) => l.includes("does not name this app's credential as its machine")));
+});
+
+test("an app whose client is disabled posts nothing, as warp shows it no receipts", async () => {
+  const w = bound();
+  w.warp.clients.set("app", {
+    id: "app",
+    surface: "slack",
+    enabled: false,
+    identity: { team: TEAM },
+    slack: { machine: SUBJECT, people: {} },
+  });
+  missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR) });
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+  });
+  assert.equal(w.warp.newsReads.length, 0, "nothing read");
+  assert.equal(w.slack.of("chat.postMessage").length, 0, "nothing posted");
+  assert.ok(w.logs.some((l) => l.includes("is disabled")));
+});
+
+test("a notice about an announcement from before the binding, or days old, posts nothing", async () => {
+  const w = bound();
+  w.warp.bound.set("app", [
+    { slack_channel: NEWS, project: "Field", channel: "general", bound_at: w.warp.ago(HOUR / 2) },
+  ]);
+  await watching(w, async () => {
+    w.warp.raise(
+      announcementMail({ id: "m-before", at: w.warp.ago(HOUR), updated_at: w.warp.ago(HOUR) }),
+    );
+    w.warp.raise(
+      announcementMail({
+        id: "m-now",
+        subject: "Now",
+        at: w.warp.ago(60_000),
+        updated_at: w.warp.ago(60_000),
+      }),
+    );
+  });
+  assert.deepEqual(
+    postsIn(w, NEWS).map((p) => p.text),
+    ["Now"],
+  );
+});
+
+test("a change between an edit and its receipt is shown too, though no notice tells of it", async () => {
+  const w = bound();
+  const news = missed(w, { id: "m-news", subject: "Field offsite", at: w.warp.ago(2 * HOUR) });
+  news.deliveries = {
+    app: { channel: NEWS, ts: "1700000000.000100", at: w.warp.ago(2 * HOUR - 1000) },
+  };
+  w.warp.quietly("m-news", { subject: "Field offsite moved" });
+  let first = true;
+  w.slack.failing["chat.update"] = () => {
+    if (first) {
+      first = false;
+      // Withdrawn while the post is being edited, before the receipt is recorded.
+      w.warp.quietly("m-news", { state: "dismissed" });
+    }
+    return undefined;
+  };
+  await watching(w, async () => {
+    await settle();
+    await w.app.idle();
+    w.warp.reopen();
+  });
+  const edits = w.slack.of("chat.update");
+  assert.equal(edits.length, 2, "edited for the move, then for the withdrawal, and not again");
+  assert.match(
+    JSON.stringify(edits[1]?.blocks),
+    new RegExp(defaultCopy.announcements.seedWithdrawn),
+  );
+});
+
+test("a catch-up that could not read warp is tried again until it finishes", async () => {
+  const w = bound();
+  w.warp.failNews = 2;
+  missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR) });
+  await watching(w, async () => {});
+  assert.deepEqual(
+    postsIn(w, NEWS).map((p) => p.text),
+    ["Missed"],
+  );
+  assert.equal(w.warp.newsReads.length, 3, "read until it could");
+  assert.ok(w.logs.some((l) => l.includes("trying again")));
+});
+
+test("an announcement warp could not be read for is tried again, not taken as nothing to post", async () => {
+  const w = bound();
+  w.warp.failReads = 1;
+  missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR) });
+  await watching(w, async () => {});
+  assert.deepEqual(
+    postsIn(w, NEWS).map((p) => p.text),
+    ["Missed"],
+  );
+  assert.ok(w.logs.some((l) => l.includes("trying again")));
+});
+
+test("a post that could not be checked after its receipt is brought up to date on the next try", async () => {
+  const w = bound();
+  missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR) });
+  // The announcement is withdrawn just before its receipt is recorded, so
+  // the change reads older than the receipt, and the read that would show
+  // it fails once.
+  const record = w.warp.recordDelivery.bind(w.warp);
+  let first = true;
+  w.warp.recordDelivery = async (message, client, at) => {
+    if (first) {
+      first = false;
+      w.warp.quietly(message, { state: "dismissed" });
+      w.warp.failReads = 1;
+    }
+    return record(message, client, at);
+  };
+  await watching(w, async () => {});
+  const edits = w.slack.of("chat.update");
+  assert.ok(edits.length >= 1, "the post is edited once warp answers");
+  assert.match(
+    JSON.stringify(edits.at(-1)?.blocks),
+    new RegExp(defaultCopy.announcements.seedWithdrawn),
+  );
+  assert.ok(w.logs.some((l) => l.includes("trying again")));
+});
+
+test("a bound project the app may not read is skipped, not tried again and again", async () => {
+  const w = bound();
+  w.warp.bound.set("app", [
+    { slack_channel: NEWS, project: "Field", channel: "general", bound_at: w.warp.ago(48 * HOUR) },
+    {
+      slack_channel: "C01VAULT",
+      project: "Vault",
+      channel: "general",
+      bound_at: w.warp.ago(48 * HOUR),
+    },
+  ]);
+  w.warp.unseen.add("Vault");
+  missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR) });
+  await watching(w, async () => {});
+  assert.deepEqual(w.warp.newsReads, ["Field", "Vault"], "each read once");
+  assert.deepEqual(
+    postsIn(w, NEWS).map((p) => p.text),
+    ["Missed"],
+  );
+  assert.ok(!w.logs.some((l) => l.includes("trying again")));
+});
+
+test("a look that fails does not drop the one a catch-up asked for meanwhile", async () => {
+  const w = bound();
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+    await settle();
+    await w.app.idle();
+    // The next edit fails, and while it is under way the announcement is
+    // withdrawn quietly and the stream reconnects.
+    const call = w.slack.call.bind(w.slack);
+    let first = true;
+    w.slack.call = async <T,>(method: string, args: Record<string, unknown> = {}): Promise<T> => {
+      if (method === "chat.update" && first) {
+        first = false;
+        w.warp.quietly("m-news", { state: "dismissed" });
+        w.warp.reopen();
+        await settle();
+        throw new SlackError(method, "ratelimited");
+      }
+      return call<T>(method, args);
+    };
+    w.warp.raise({ ...(w.warp.mailbox.get("m-news") ?? {}), subject: "Field offsite moved" });
+  });
+  const last = w.slack.of("chat.update").at(-1);
+  assert.match(JSON.stringify(last?.blocks), new RegExp(defaultCopy.announcements.seedWithdrawn));
+  assert.ok(!JSON.stringify(last).includes("Lisbon"), "the withdrawn words are gone");
+});
+
+test("a notice that comes during a catch-up never posts twice: the receipt is the record", async () => {
+  const w = bound();
+  missed(w, { id: "m-news" });
+  await watching(w, async () => {
+    // The catch-up and the notice both look at it as the stream opens.
+    w.warp.raise(w.warp.mailbox.get("m-news") ?? {});
+    w.warp.reopen();
+  });
+  assert.equal(postsIn(w, NEWS).length, 1, "posted once");
+  assert.equal(w.warp.deliveries.length, 1, "one receipt");
+});
+
+test("a post whose receipt warp did not take is recorded at the next look, never posted again", async () => {
+  const w = bound();
+  w.warp.refuseDelivery = new WarpError(503, "warp is restarting");
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+    await settle();
+    await w.app.idle();
+    w.warp.reopen();
+  });
+  assert.equal(postsIn(w, NEWS).length, 1, "posted once");
+  assert.deepEqual(
+    w.warp.deliveries.map((d) => ({ message: d.message, channel: d.channel })),
+    [{ message: "m-news", channel: NEWS }],
+  );
+  // The post this process made is the one recorded, and brought up to date.
+  assert.equal(w.slack.of("chat.update")[0]?.ts, w.warp.deliveries[0]?.ts);
+});
+
+test("a post Slack will not edit holds up nothing else in a catch-up", async () => {
+  const w = bound();
+  w.warp.bound.set("app", [
+    { slack_channel: NEWS, project: "Field", channel: "general", bound_at: w.warp.ago(48 * HOUR) },
+    {
+      slack_channel: "C01LAUNCH",
+      project: "Launch",
+      channel: "general",
+      bound_at: w.warp.ago(48 * HOUR),
+    },
+  ]);
+  // Withdrawn after it was posted, while the app was away.
+  const gone = missed(w, {
+    id: "m-gone",
+    state: "dismissed",
+    at: w.warp.ago(2 * HOUR),
+    updated_at: w.warp.ago(HOUR + HOUR / 2),
+  });
+  gone.deliveries = {
+    app: { channel: NEWS, ts: "1700000000.000404", at: w.warp.ago(2 * HOUR - 1000) },
+  };
+  missed(w, { id: "m-field", subject: "Field news", at: w.warp.ago(HOUR) });
+  missed(w, { id: "m-launch", subject: "Launch news", source: { project: "Launch" } });
+  w.slack.failing["chat.update"] = "message_not_found";
+  await watching(w, async () => {});
+  assert.deepEqual(
+    w.slack.of("chat.postMessage").map((p) => p.text),
+    ["Field news", "Launch news"],
+  );
+  assert.ok(w.logs.some((l) => l.includes("m-gone") && l.includes("message_not_found")));
+});
+
+test("an app that is no client, or has no bound general channel, reads nothing to catch up on", async () => {
+  const plain = world();
+  missed(plain, { id: "m-news" });
+  await watching(plain, async () => {});
+  const w = bound();
+  w.warp.bound.set("app", [{ slack_channel: NEWS, project: "Field", channel: "renewals" }]);
+  missed(w, { id: "m-news" });
+  await watching(w, async () => {});
+  assert.equal(plain.warp.newsReads.length + w.warp.newsReads.length, 0);
+  assert.equal(
+    plain.slack.of("chat.postMessage").length + w.slack.of("chat.postMessage").length,
+    0,
+  );
+});
+
+// Release notes. warp posts them in the workspace's inbox at start, before
+// the app connects, so only a catch-up brings them to Slack.
+
+/** A client app whose workspace's general channel is bound to ALL, and which maps USER to ana. */
+const ALL = "C01ALL";
+function releaseRoom(): World {
+  const w = world({ clientId: "app", catchUpRetryMs: 1 });
+  w.warp.clients.set("app", {
+    id: "app",
+    surface: "slack",
+    enabled: true,
+    identity: { team: TEAM },
+    slack: { machine: SUBJECT, people: { [USER]: "ana" } },
+  });
+  w.warp.bound.set("app", [
+    { slack_channel: ALL, project: "", channel: "general", bound_at: w.warp.ago(48 * HOUR) },
+  ]);
+  return w;
+}
+
+test("release notes posted before the app connects reach the workspace's channel, and a reply under them is seeded with them", async () => {
+  const w = releaseRoom();
+  missed(w, {
+    id: "m-release",
+    subject: "What's new in warp 0.16.0",
+    from: { kind: "system", name: "warp" },
+    source: { project: "" },
+    at: w.warp.ago(60_000),
+    parts: [{ id: "p1", type: "text", state: "info", actions: [], text: "- Slack catch-up" }],
+  });
+  await watching(w, async () => {});
+  const posts = postsIn(w, ALL);
+  assert.equal(posts.length, 1, "posted once");
+  assert.match(JSON.stringify(posts[0]?.blocks), /Slack catch-up/);
+  assert.deepEqual(w.warp.newsReads, [""], "the workspace's own inbox is read");
+  const post = w.warp.deliveries[0]?.ts ?? "";
+  await w.app.handle(
+    mention("@lead what is catch-up?", "1800000200.000100", { channel: ALL, thread_ts: post }),
+  );
+  await settle();
+  assert.deepEqual([...w.warp.seeded.values()], ["m-release"]);
+  w.warp.emit(w.warp.last.id, "lifecycle.completed", { text: "It posts what was missed." });
+  await settle();
+  await w.app.idle();
 });
 
 // Replies in an announcement's Slack thread. Slack delivers a message in a

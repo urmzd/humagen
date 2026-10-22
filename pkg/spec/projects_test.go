@@ -141,6 +141,11 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 		"an expert topic in capitals": {tree(`{name: Field, experts: [{who: "okta|00u1ana", topics: [Billing]}]}`), `workspace.projects[0].experts[0].topics[0]: "Billing" is not a topic`},
 		"everyone as an expert":       {tree(`{name: Field, experts: [{who: "*", topics: [billing]}]}`), `workspace.projects[0].experts[0].who: a person's subject or role:<name>`},
 		"a role that is no role":      {"    experts: [{who: \"role:Field Leads\", topics: [security]}]\n", `workspace.experts[0].who: "role:Field Leads" is not a role`},
+		// Knowledge sources: a source's name, each once, at most 8.
+		"a source in capitals":        {tree(`{name: Field, knowledge: [Handbook]}`), `workspace.projects[0].knowledge[0]: "Handbook" is not a knowledge source's name`},
+		"a source twice":              {tree(`{name: Field, knowledge: [handbook, playbook, handbook]}`), `workspace.projects[0].knowledge[2]: handbook is knowledge[0] again`},
+		"nine sources":                {tree(`{name: Field, knowledge: [a, b, c, d, e, f, g, h, i]}`), `workspace.projects[0].knowledge: a project names at most 8 knowledge sources, not 9`},
+		"a workspace source misnamed": {"    knowledge: [\"the handbook\"]\n", `workspace.knowledge[0]: "the handbook" is not a knowledge source's name`},
 	} {
 		_, err := loadBody(t, platformWith(tc.body))
 		if want := `platform "default": ` + tc.want; err == nil || !strings.Contains(err.Error(), want) {
@@ -161,6 +166,19 @@ func channelList(n int) string {
 		names[i] = fmt.Sprintf("{name: c%d}", i)
 	}
 	return strings.Join(names, ", ")
+}
+
+// Knowledge sources the store accepts pass, on the workspace and on a
+// project, whether or not the workspace has them yet.
+func TestKnowledgeTheStoreTakesPasses(t *testing.T) {
+	got, err := loadBody(t, platformWith("    knowledge: [handbook]\n"+tree(`{name: Field, knowledge: [playbook, 0-day, handbook, a, b, c, d, e]}`, `{name: Globex, parent: Field, knowledge: []}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := got.Platforms[0].Spec.Workspace
+	if len(w.Knowledge) != 1 || len(w.Projects[0].Knowledge) != 8 || w.Projects[0].Knowledge[0] != "playbook" || w.Projects[1].Knowledge == nil || len(w.Projects[1].Knowledge) != 0 {
+		t.Fatalf("read %+v", w)
+	}
 }
 
 // Channels and experts the store accepts pass: general declared to set its
@@ -262,6 +280,7 @@ func TestTheLanguagesBoundsAreTheProjectStores(t *testing.T) {
 		"channel title": {maxChannelTitle, projects.MaxTitle},
 		"purpose":       {maxPurpose, projects.MaxPurpose},
 		"experts":       {maxExperts, projects.MaxExperts},
+		"knowledge":     {maxKnowledge, projects.MaxKnowledge},
 		"topics":        {maxExpertTopics, projects.MaxTopics},
 		"expert who":    {maxExpertWho, projects.MaxWho},
 		"members":       {maxMembers, projects.MaxMembers},
@@ -288,6 +307,11 @@ func TestTheLanguagesBoundsAreTheProjectStores(t *testing.T) {
 	for _, topic := range []string{"billing", "a", "q4-renewals", strings.Repeat("a", 32), strings.Repeat("a", 33), "", "4q", "Billing", "a_b"} {
 		if topicName.MatchString(topic) != projects.ValidTopic(topic) {
 			t.Errorf("topic %q: the spec says %v, the store %v", topic, topicName.MatchString(topic), projects.ValidTopic(topic))
+		}
+	}
+	for _, source := range []string{"handbook", "a", "0-day", "q4-notes", strings.Repeat("a", 63), strings.Repeat("a", 64), "", "-x", "Handbook", "a_b", "a b", "a,b", "ünï"} {
+		if sourceName.MatchString(source) != projects.ValidSource(source) {
+			t.Errorf("source %q: the spec says %v, the store %v", source, sourceName.MatchString(source), projects.ValidSource(source))
 		}
 	}
 	for _, agent := range []string{"auto", "globex-helper", "warp_writer", "Ignite", "@x", "a.b", strings.Repeat("a", 64), strings.Repeat("a", 65)} {

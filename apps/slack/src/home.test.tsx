@@ -8,6 +8,7 @@ import {
   CHANNEL,
   click,
   DM,
+  draftMail,
   failureMail,
   homeClick,
   homeOpened,
@@ -26,7 +27,11 @@ import type { WireProject } from "./warp.ts";
 
 const CONSOLE = "https://warp.test";
 
-/** Field and its account Globex, as warp lists them for ana: Secret, which she may not see, is not among them. */
+/**
+ * What warp lists for ana: Field and its account Globex, which name her, and
+ * News, which she reads as one of everyone. Secret, which she may not see, is
+ * not among them.
+ */
 const ANAS: WireProject[] = [
   {
     name: "Field",
@@ -35,12 +40,23 @@ const ANAS: WireProject[] = [
     path: [{ name: "Field", title: "Field engineering" }],
     active: 1,
     active_at: "2026-10-09T00:30:00Z",
+    mine: true,
   },
   {
     name: "Globex",
     kind: "account",
     path: [{ name: "Field", title: "Field engineering" }, { name: "Globex" }],
     active: 0,
+    mine: true,
+  },
+  {
+    name: "News",
+    title: "Company news",
+    kind: "company",
+    path: [{ name: "News", title: "Company news" }],
+    active: 4,
+    active_at: "2026-10-09T00:55:00Z",
+    mine: false,
   },
 ];
 
@@ -125,6 +141,7 @@ test("a person the client maps sees the shared Home, every part of it read as th
   assert.match(news?.text?.text ?? "", /^\*Field offsite\*\nUnread · Posted in Field engineering/);
   assert.equal(news?.accessory?.url, "https://warp.test/projects/Field?message=m-news");
 
+  // The projects that name her: News, everyone's and the busiest, is not one.
   const projects = under(blocks, defaultCopy.home.yourProjects);
   assert.deepEqual(
     projects.map((b) => b.text?.text.split("\n")[0]),
@@ -312,6 +329,108 @@ test("Retry in what Review sent asks again as the person, in the run's thread, a
   w.warp.emit(w.warp.last.id, "lifecycle.completed", { text: "ok" });
   await settle();
   await w.app.idle();
+});
+
+test("an agent's draft waits in Needs you, counted as warp counts it, and is not news", async () => {
+  const w = mapping();
+  w.warp.personal.set("ana", [
+    mentionMail(),
+    announcementMail(),
+    draftMail({ subject: "Field shipped two fixes <!here>" }),
+  ]);
+  await w.app.handle(homeOpened(USER));
+  await settle();
+  const blocks = published(w);
+  const needs = under(blocks, defaultCopy.home.needsYou);
+  const rows = needs.filter((b) => b.type === "section").map((b) => b.text?.text ?? "");
+  assert.equal(rows.length, 2, JSON.stringify(needs));
+  assert.match(rows[0] ?? "", /^\*warp-analyst\* Field shipped two fixes @here/);
+  assert.match(rows[0] ?? "", /https:\/\/warp\.test\/inbox\?message=m-draft/);
+  assert.match(rows[1] ?? "", /^\*Ana\* mentioned you in #renewals/);
+  // Two need her, and both are shown: nothing more is counted.
+  const text = JSON.stringify(blocks);
+  assert.ok(!text.includes("more in the inbox"), text);
+  assert.ok(!text.includes("<!here>"), "its words ping nobody");
+  const news = under(blocks, defaultCopy.home.whatsNew);
+  assert.deepEqual(
+    news.map((b) => b.text?.text.split("\n")[0]),
+    ["*Field offsite*"],
+  );
+});
+
+test("however much news is newer, Needs you shows what needs her and agrees with its total", async () => {
+  const w = mapping();
+  // Thirty open announcements, every one newer than the one mention: a page
+  // of the thirty newest open messages would hold none of what needs her.
+  const news = Array.from({ length: 30 }, (_, i) =>
+    announcementMail({
+      id: `m-news-${i}`,
+      subject: `News ${i}`,
+      at: `2026-10-10T00:${String(i).padStart(2, "0")}:00Z`,
+      updated_at: `2026-10-10T00:${String(i).padStart(2, "0")}:00Z`,
+    }),
+  );
+  w.warp.personal.set("ana", [...news.reverse(), mentionMail()]);
+  await w.app.handle(homeOpened(USER));
+  await settle();
+  const blocks = published(w);
+  const rows = under(blocks, defaultCopy.home.needsYou)
+    .filter((b) => b.type === "section")
+    .map((b) => b.text?.text ?? "");
+  assert.equal(rows.length, 1, JSON.stringify(rows));
+  assert.match(rows[0] ?? "", /^\*Ana\* mentioned you in #renewals/);
+  const text = JSON.stringify(blocks);
+  assert.ok(!text.includes("more in the inbox"), "one needs her, and it is shown");
+  assert.ok(
+    w.warp.inboxQueries.some((q) => q.needs === true && !q.kind),
+    JSON.stringify(w.warp.inboxQueries),
+  );
+});
+
+test("however many drafts are newer, What's new shows the posted announcement", async () => {
+  const w = mapping();
+  // Twenty open drafts, the most a project holds, every one newer than the
+  // one post: a page of the twenty newest announcements would hold no news.
+  const drafts = Array.from({ length: 20 }, (_, i) =>
+    draftMail({
+      id: `m-draft-${i}`,
+      subject: `Draft ${i}`,
+      at: `2026-10-10T00:${String(i).padStart(2, "0")}:00Z`,
+      updated_at: `2026-10-10T00:${String(i).padStart(2, "0")}:00Z`,
+    }),
+  );
+  w.warp.personal.set("ana", [...drafts.reverse(), announcementMail()]);
+  await w.app.handle(homeOpened(USER));
+  await settle();
+  const news = under(published(w), defaultCopy.home.whatsNew);
+  assert.deepEqual(
+    news.filter((b) => b.type === "section").map((b) => b.text?.text.split("\n")[0]),
+    ["*Field offsite*"],
+  );
+  assert.ok(
+    w.warp.inboxQueries.some((q) => q.news === true && !q.kind),
+    JSON.stringify(w.warp.inboxQueries),
+  );
+});
+
+test("What's new names where it was posted by its title, in a project that is not one of hers too", async () => {
+  const w = mapping();
+  w.warp.personal.set("ana", [
+    announcementMail({ id: "m-all", subject: "Office closed Friday", source: { project: "News" } }),
+  ]);
+  await w.app.handle(homeOpened(USER));
+  await settle();
+  const blocks = published(w);
+  const [news] = under(blocks, defaultCopy.home.whatsNew);
+  assert.match(
+    news?.text?.text ?? "",
+    /^\*Office closed Friday\*\nUnread · Posted in Company news/,
+  );
+  assert.ok(
+    !under(blocks, defaultCopy.home.yourProjects).some((b) =>
+      b.text?.text.includes("Company news"),
+    ),
+  );
 });
 
 test("a person whose projects cannot be read sees the rest of their Home", async () => {

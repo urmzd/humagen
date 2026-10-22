@@ -66,15 +66,26 @@ func (p *Platform) Available(tenant, project, agent string) error {
 }
 
 // notAvailable says why an agent may not run in a project the tree holds.
+// It says where the agent lives only when everyone in the workspace reads
+// that project: the refusal reaches whoever reads the place it was made in
+// (a run's events, a message's tags), and they may not read the agent's
+// home.
 func (p *Platform) notAvailable(tenant string, tree *projects.Tree, project, agent string) error {
 	where := p.whereOf(tenant, tree, project)
 	if agent == Auto {
 		return fmt.Errorf("%w: @auto picks an agent before anything runs, so it never runs itself", ErrNotAvailable)
 	}
-	if home, ok := tree.Home(agent); ok && !onChain(tree, project, home) {
+	if home, ok := tree.Home(agent); ok && !onChain(tree, project, home) && everyoneIn(tree, home) {
 		return fmt.Errorf("%w: %s is not available in %s; it lives in %s and is available only there and below", ErrNotAvailable, agent, where, p.whereOf(tenant, tree, home))
 	}
 	return fmt.Errorf("%w: %s is not available in %s", ErrNotAvailable, agent, where)
+}
+
+// everyoneIn reports whether everyone in the workspace reads a project: no
+// project on its chain is members only.
+func everyoneIn(tree *projects.Tree, project string) bool {
+	chain := tree.Chain(project)
+	return chain != nil && !slices.ContainsFunc(chain, projects.MembersOnly)
 }
 
 // onChain reports whether a project other than the root is the project
@@ -515,9 +526,9 @@ func (p *Platform) AgentPlaces(tenant string, agents []string) map[string]AgentP
 // and nowhere else. "" or "~" makes it a platform agent again, available
 // wherever it is enabled. It is refused (projects.ErrInUse, naming them)
 // while something outside the new home's subtree would lose the agent: a
-// default, an enable or allow list, a schedule filed elsewhere, an alert rule
-// watching it elsewhere, or a client that routes to it, since a client files
-// its runs at the root. The platform's own agents live nowhere.
+// project's or a channel's default, an enable or allow list, a schedule filed
+// elsewhere, an alert rule watching it elsewhere, or a client that routes to
+// it, since a client files its runs at the root. The platform's own agents live nowhere.
 func (p *Platform) SetAgentHome(ctx context.Context, tenant, agent, project string, w projects.Writer) error {
 	if IsBuiltin(agent) {
 		return fmt.Errorf("%w: %s is one of the platform's own agents, which live nowhere and are available wherever they are enabled", projects.ErrInvalid, agent)

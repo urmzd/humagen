@@ -73,6 +73,8 @@ import type {
   ProjectDetail,
   ProjectExperts,
   ProjectInput,
+  ProjectKnowledge,
+  ProjectKnowledgeInput,
   ProjectLimitInput,
   ProjectMembers,
   ProjectMembersInput,
@@ -648,7 +650,10 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     });
   }
 
-  /** The latest revision of every agent in the workspace. Not paged. */
+  /** The latest revision of every agent in the workspace the caller may
+read: one that lives in a project they may not read is left out, and
+so is every agent it names in another's spec. Not paged.
+ */
   async listAgents(options?: RequestOptions): Promise<ListAgentsResponse> {
     const path = "/api/agents";
     return this.request<ListAgentsResponse>("GET", path, {
@@ -665,7 +670,8 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
 
   /** A tag names an agent or a person, so an agent cannot take a name a
 person in the workspace goes by ("a person goes by @dana"), nor
-`auto` or `sme`: each is 409.
+`auto` or `sme`: each is 409. Every agent `access.spawn` names must
+exist and be one the caller may read (400).
  */
   async createAgent(body: AgentSpec, options?: RequestOptions): Promise<Revision> {
     const path = "/api/agents";
@@ -687,6 +693,9 @@ person in the workspace goes by ("a person goes by @dana"), nor
 
   /** Writes a new revision. `expected_rev` is the revision the caller
 edited from: if someone else revised the agent since, the answer is 409.
+Every agent `access.spawn` names must exist and be one the caller may
+read, or one it already names that they are shown (400); the agents
+they were not shown, and the approvals of calls to them, are kept.
  */
   async reviseAgent(name: string, body: ReviseAgentBody, options?: RequestOptions): Promise<Revision> {
     let path = "/api/agents/{name}";
@@ -715,8 +724,9 @@ makes it a platform agent again, available wherever it is enabled.
 
 Refused with 409, naming them, while something outside the new home
 would lose the agent: a project's default, enable or allow list, a
-schedule filed elsewhere, an alert rule watching it elsewhere, or a
-client that routes to it. Homing an agent into or out of a company
+channel's default (an archived channel's aside), a schedule filed
+elsewhere, an alert rule watching it elsewhere, or a client that
+routes to it. Homing an agent into or out of a company
 project needs `projects:govern`. The platform's own agents live
 nowhere (400).
  */
@@ -759,7 +769,9 @@ nowhere (400).
 
   /** The agent's stored call policy, or the default an agent with none has
 (`version` 0): any caller its own spec allows, without approval. 404
-for an agent that does not exist in the caller's workspace.
+for an agent that does not exist in the caller's workspace. An agent
+that lives in a project the caller may not read is left out of
+`allow` and `trusted`.
  */
   async getCallPolicy(name: string, options?: RequestOptions): Promise<CallPolicy> {
     let path = "/api/agents/{name}/call-policy";
@@ -780,9 +792,12 @@ for an agent that does not exist in the caller's workspace.
   /** Replaces the agent's call policy. The callee decides: a caller also
 needs the callee in its own spawn allowlist, so a policy can only
 narrow what callers' specs allow. An unknown mode, an agent name that
-does not exist, more than 100 callers or 32 approvers, or a field that does not
-apply to the chosen mode is 400. An agent that lives in a project is
-that project's to change: without owning its home it is 403.
+does not exist or lives in a project the caller may not read, more
+than 100 callers or 32 approvers, or a field that does not apply to
+the chosen mode is 400. The callers the caller was not shown are kept
+in `allow` while `callers` is `listed`, and in `trusted` while
+`approval` is `unlisted`. An agent that lives in a project is that
+project's to change: without owning its home it is 403.
  */
   async putCallPolicy(name: string, body: CallPolicyInput, options?: RequestOptions): Promise<CallPolicy> {
     let path = "/api/agents/{name}/call-policy";
@@ -1137,6 +1152,8 @@ agents answering the next message are sent.
 
   /** Starts a child run of the run in the path. The caller's agent must be
 allowed to spawn the target, and depth, fan-out and lease limits apply.
+A target that lives in a project the caller may not read is refused as
+one the spawn allowlist does not name (403).
 `key` is the call's idempotency key within the run. The call is a turn
 of the run's conversation, filed where it lives, so the caller must be
 a member of the run's project, and in a private thread a participant
@@ -1513,8 +1530,11 @@ here too (429).
     });
   }
 
-  /** At most 50 added and removed together, and a thread has at most 50
-participants. An agent added must be available in the thread's
+  /** At most 50 added and removed together, and a change that adds leaves
+at most 50 participants, counting the ones the caller is shown: an
+agent they were not shown is kept, and counts toward neither. People
+who post and agents who answer join on their own past 50, and a
+thread holds at most 100 in all. An agent added must be available in the thread's
 project, and a person, named by handle, must be in the workspace's
 directory (400). The person who started the thread stays in it.
 Adding takes posting there: a member of the thread's project, and in
@@ -1783,7 +1803,7 @@ may do with each part, is decided per message: a memory proposal needs
 null at the end. A client's machine reads one of its people's inbox
 with `act_as_client` and `act_as_user`, as the Slack app's Home does.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1796,6 +1816,8 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     if (project !== undefined && project !== null) _q.set("project", String(project));
     if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
     if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    if (needs !== undefined && needs !== null) _q.set("needs", String(needs));
+    if (news !== undefined && news !== null) _q.set("news", String(news));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListInboxResponse>("GET", path, {
@@ -1803,7 +1825,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, needs?: "true", news?: "true", options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1816,6 +1838,8 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     if (project !== undefined && project !== null) _q.set("project", String(project));
     if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
     if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    if (needs !== undefined && needs !== null) _q.set("needs", String(needs));
+    if (news !== undefined && news !== null) _q.set("news", String(news));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListInboxResponse>("GET", path, {
@@ -2030,8 +2054,11 @@ such as an announcement, so that after a restart, an edit or a
 withdrawal it updates that post instead of posting again. Only the
 credential the client names as `slack.machine` may record one: for
 anyone else, and for a message of a kind the caller may not read, the
-answer is 404. Recording the same post again changes nothing. The
-receipt shows in the message's `deliveries`, to that machine only.
+answer is 404. Recording the same post again after the message
+changed (its `updated_at` is after the receipt's `at`) says the post
+now shows it as it stands, and moves the receipt's `at` on; otherwise
+it changes nothing. The receipt shows in the message's `deliveries`,
+to that machine only, wherever the message is read.
  */
   async recordInboxDelivery(id: string, client: string, body: InboxDeliveryInput, options?: RequestOptions): Promise<void> {
     let path = "/api/inbox/{id}/deliveries/{client}";
@@ -2771,9 +2798,10 @@ end; a cursor is where its last row sat in the tree, so a project
 deleted between pages neither breaks nor shifts the paging. A
 client's machine lists one of its people's projects with
 `act_as_client` and `act_as_user`, as the Slack app's Home does: the
-projects that person has a role in, each with their role, their
-actions and what they may read in it. The person must hold
-`projects:read` themselves.
+projects that person may see, each with their role, their actions
+and what they may read in it. The person must hold
+`projects:read` themselves. `mine` marks the projects that name the
+caller, which Home lists as theirs.
  */
   async listProjects(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListProjectsResponse> {
     let path = "/api/projects";
@@ -3136,7 +3164,10 @@ Past 20 channels, 429.
     });
   }
 
-  /** The body replaces those four as a whole: one left out is cleared.
+  /** The body replaces those four as a whole: one left out is cleared,
+except a default the caller was not shown, one naming an agent that
+lives in a project they may not read, which is kept. Naming such an
+agent is 400, in the words for one that does not exist.
 `version` is the one the caller read (`general` reads 0 until it is
 first written), so a change made since answers 409. A field the
 platform file sets answers 409. It needs ownership of the project.
@@ -3227,6 +3258,60 @@ need `projects:govern` as well.
     let path = "/api/projects/{name}/experts";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<ProjectExperts>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** A run filed in a project is grounded in the knowledge sources its
+project names, then each project above it, nearest first, besides
+its agent's own: `given`, each source once, from the nearest project
+that names it, at most 16. A sibling's or a sub-project's are never
+given. They are fixed when the run is accepted, so a later change
+here does not change a run already working. A caller without
+`knowledge:read` is shown no source.
+ */
+  async getProjectKnowledge(name: string, options?: RequestOptions): Promise<ProjectKnowledge> {
+    let path = "/api/projects/{name}/knowledge";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectKnowledge>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectKnowledgeRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectKnowledge>> {
+    let path = "/api/projects/{name}/knowledge";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectKnowledge>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** At most 8, named once, each newly named a knowledge source the
+workspace has (400); one already named may stay after it is deleted,
+and grounds nothing. Every run filed here and below from now on is grounded in
+them; a run already working keeps what it was accepted with. It
+needs ownership of the project and `knowledge:read`
+(403), which reads the sources anyway; the workspace and company
+projects need `projects:govern` as well. `version` is the project's,
+as read; a change made since answers 409, as does a list the
+platform file sets.
+ */
+  async setProjectKnowledge(name: string, body: ProjectKnowledgeInput, options?: RequestOptions): Promise<ProjectKnowledge> {
+    let path = "/api/projects/{name}/knowledge";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectKnowledge>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setProjectKnowledgeRaw(name: string, body: ProjectKnowledgeInput, options?: RequestOptions): Promise<ApiResponse<ProjectKnowledge>> {
+    let path = "/api/projects/{name}/knowledge";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectKnowledge>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,
@@ -3358,8 +3443,10 @@ questions, results, files, proposed notes, mentions and announcements. Everyone
 who can see the project reads it, so an announcement here reaches
 every reader, member or not; a message addressed to someone in
 particular still reaches only them, and each kind still needs its
-own permission. `next` is the cursor for the page after this one, or
-null at the end.
+own permission. A client's machine is shown its own client's
+receipts (`deliveries`), and nobody else any, so a Slack app catches
+up here on the announcements it may have missed. `next` is the cursor
+for the page after this one, or null at the end.
  */
   async getProjectInbox(name: string, kind?: ("alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "mention" | "announcement")[], children?: "true" | "false", state?: "open" | "all", limit?: number, before?: string, options?: RequestOptions): Promise<GetProjectInboxResponse> {
     let path = "/api/projects/{name}/inbox";

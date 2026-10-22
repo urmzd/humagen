@@ -34,6 +34,8 @@ const (
 	autoDefault      = "auto"
 	expertRolePrefix = "role:"
 
+	maxKnowledge = 8
+
 	maxMembers    = 100
 	maxKinds      = 16
 	maxKindTitle  = 40
@@ -60,6 +62,9 @@ var (
 	// public (C) or private (G): a direct message is never bound.
 	clientID     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 	slackChannel = regexp.MustCompile(`^[CG][A-Z0-9]{2,31}$`)
+	// sourceName is a knowledge source's name, as the knowledge store
+	// takes it.
+	sourceName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 )
 
 // checkProjects holds the workspace's instructions and project tree to what
@@ -93,6 +98,9 @@ func checkProjects(w Workspace) error {
 		return err
 	}
 	if err := checkExperts(w.Experts); err != nil {
+		return fmt.Errorf("workspace.%w", err)
+	}
+	if err := checkKnowledge(w.Knowledge); err != nil {
 		return fmt.Errorf("workspace.%w", err)
 	}
 	likes, err := checkKinds(w.ProjectKinds)
@@ -327,6 +335,9 @@ func checkProjectFields(p Project, like string) error {
 	if err := checkExperts(p.Experts); err != nil {
 		return err
 	}
+	if err := checkKnowledge(p.Knowledge); err != nil {
+		return err
+	}
 	a := p.Account
 	if a == nil {
 		return nil
@@ -459,6 +470,27 @@ func checkExperts(es []Expert) error {
 		for j, topic := range e.Topics {
 			if !topicName.MatchString(topic) {
 				return fmt.Errorf("%s.topics[%d]: %q is not a topic: lower case letters, digits and dashes, starting with a letter, at most 32", at, j, topic)
+			}
+		}
+	}
+	return nil
+}
+
+// checkKnowledge checks the knowledge sources a project names: at most 8,
+// each a source's name, each once. Whether the workspace has them cannot be
+// checked here, as sources are filled through the console: one it does not
+// have grounds nothing. Its error starts with "knowledge".
+func checkKnowledge(names []string) error {
+	if len(names) > maxKnowledge {
+		return fmt.Errorf("knowledge: a project names at most %d knowledge sources, not %d", maxKnowledge, len(names))
+	}
+	for i, n := range names {
+		if !sourceName.MatchString(n) {
+			return fmt.Errorf("knowledge[%d]: %q is not a knowledge source's name: lower case letters, digits and dashes, starting with a letter or digit, at most 63", i, n)
+		}
+		for j := range i {
+			if names[j] == n {
+				return fmt.Errorf("knowledge[%d]: %s is knowledge[%d] again", i, n, j)
 			}
 		}
 	}

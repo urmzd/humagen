@@ -88,6 +88,24 @@ func WithinOf(tag envelope.Tag) []string {
 	return strings.Split(v, ",")
 }
 
+// MetaSources is the key the platform writes into a tag's Meta at admission:
+// the knowledge sources the run's project chain gives it, nearest first and
+// comma separated (a source's name holds no comma). Like MetaWithin it is
+// overwritten whatever a caller put there, so it is believed from every
+// origin, and every attempt of the run is grounded in the same sources
+// whatever the projects name later.
+const MetaSources = "warp.sources"
+
+// SourcesOf returns the knowledge sources a run's tag was pinned with, from
+// its Meta.
+func SourcesOf(meta map[string]string) []string {
+	v := meta[MetaSources]
+	if v == "" {
+		return nil
+	}
+	return strings.Split(v, ",")
+}
+
 // MetaClient is the key the platform's ingress writes into a tag's Meta to
 // say which external client raised it. Ingress overwrites whatever a
 // connector put there, and only a tag whose origin is a client surface is

@@ -13,7 +13,7 @@
 | `/agent`, shortcuts, Home tab | No | Yes, from warp's sandbox manifest |
 | Inbox items about a run | No | In the run's thread, and on Home |
 | Several apps per workspace, as [clients](clients.md) | Yes: tenant, limits and allow-list come from the client | Reads one client's default agent and allow-list, in full as the client's `slack.machine`, though they name an agent that lives in a project the machine may not read. A mapped person's messages are the client's (threads with a surface, below); anyone else's runs are not yet recorded as the client's |
-| Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a warp thread filed by the binding, someone the client maps to nobody is refused in a bound channel, and announcements reach a bound general channel, where a reply that mentions the app starts a thread seeded with the announcement |
+| Channels bound to projects | Yes: a run in a bound Slack channel is filed in the channel it is bound to, and an untagged one answered by that channel's chain, else in the client's home | Yes: a mapped person's Slack thread is a warp thread filed by the binding, someone the client maps to nobody is refused in a bound channel, and announcements reach a bound general channel, caught up on after a restart or a reconnect, where a reply that mentions the app starts a thread seeded with the announcement |
 | Mentions of a person | No | In their direct messages with the app, with Open Thread and Reply, unless they are in the Slack thread already (they wrote there or were mentioned there with `<@U…>`). Experts named by a role are each told |
 | Who asked | Recorded on the run, and the run acts for the person the team's clients map the Slack user to | Recorded as the person, and acts for them, when the app's client maps them (`act_as`): their message is theirs in the warp thread, and so are the runs it starts. Else as the app, acting for nobody. Tools that act as a person use the person's own credential |
 | Questions a run waits on | No | In the run's thread, answered for the person the client maps. See below |
@@ -108,14 +108,66 @@ the bindings again.
 
 An announcement of a project whose general channel is bound is posted there,
 top-level, once; the app records where (`PUT /api/inbox/{id}/deliveries/{client}`),
-so an edit, a withdrawal or a restart updates that post. A draft never reaches
-a channel. The app's machine is told of a bound project's announcements
-wherever it may see the project, though it is only a viewer there. A
-members-only project's reach Slack only where its owners name the machine
-among its members: binding its general channel alone sends nothing. The app
-posts what it hears of on the event stream while it is connected, so an
-announcement posted while it is not, such as the release notes warp posts
-at start (`workspace.release_notes`), stays in warp's inbox and the Home tab.
+and that receipt is the record of the post, so an edit, a withdrawal or a
+restart updates that post instead of posting again. Once the announcement
+is withdrawn the post says only "This announcement was withdrawn.", and the
+app records the same post again, so the receipt says the post shows the
+withdrawal. A draft never reaches a channel, and a post offers nothing that
+would set it aside for one reader: it is the channel's. The app's machine
+is told of a bound project's announcements wherever it may see the project,
+though it is only a viewer there. A members-only project's reach Slack only
+where its owners name the machine among its members: binding its general
+channel alone sends nothing.
+
+The event stream does not replay what it carried while the app was not
+listening, so each time the stream opens, when the app starts and after
+every reconnect, the app catches up. For each project whose general channel
+is bound to its client it reads the project's newest 50 announcements,
+withdrawn ones too, as its machine reads them (`GET /api/projects/{name}/inbox`,
+where the machine is shown its own client's receipts and nobody else any),
+and compares them with its receipts:
+
+- a post whose announcement changed since its receipt says the post showed
+  it (`updated_at` after the receipt's `at`), as when it was withdrawn, is
+  edited, and its receipt recorded again;
+- an open announcement it has no receipt for is posted, oldest first, when it
+  was announced in the last 24 hours and no earlier than the Slack channel
+  was bound there (`bound_at` on `GET /api/clients/{id}/bindings`, kept while
+  the binding holds and moved when it is made again or moved).
+
+So the release notes warp posts at start (`workspace.release_notes`), before
+the app connects, reach a channel bound to the workspace's general, once it
+was bound before that start. The bounds keep a reconnect to one read a
+bound project, and keep from the channel what is no longer news: a post a
+day late reads as new, and what was announced before the channel was bound,
+or while it was unbound, is not posted at all. What falls outside them
+stays in warp's inbox and on the Home tab. A change is caught up on only in
+the newest 50: an older announcement edited or withdrawn while the app was
+not listening keeps its post as it was, withdrawn words included, until a
+later notice about it. Only bound projects are caught up on: once a Slack
+channel is unbound, or bound to another project, its old posts are left as
+they are.
+
+The app catches up, and posts announcements at all, only when its client
+names the app's own credential as its machine (`slack.machine`): warp shows
+the client's receipts to that credential alone, so any other would post
+everything again. It logs that it skipped the catch-up and why. A catch-up
+that could not read warp, or could not bring a post up to date because warp
+was away, is tried again after 5 seconds, then twice as long each time up to
+5 minutes, until one finishes. What would answer the same next time is
+logged and skipped, not tried again until the next catch-up: a bound project
+the machine may not read (403 or 404), such as a members-only one that does
+not name it, a receipt warp refuses the machine the same way, and a post
+Slack refuses to edit, such as one deleted there. None holds up another. A
+notice that comes during a catch-up never posts twice: the app looks at each
+announcement one look at a time, reads it afresh each time, receipt and
+all, and posts only what has none. A notice posts an announcement with no
+receipt only as a catch-up would: open, from the last day, and announced
+after the binding. warp dates a receipt when it takes it, so after each
+receipt the app reads the announcement once more and shows a change made
+meanwhile, which no catch-up would see. A post whose receipt warp did not
+take, as when it went away just then, is recorded at the next look rather
+than posted again, while the app keeps running.
 
 A reply in an announcement's Slack thread starts a shared thread seeded with
 the announcement. Slack delivers a message in a channel thread to the app
@@ -127,8 +179,9 @@ ahead of it as the room, each as its person and posted only. The app posts
 them as for any Slack thread, with the post's surface: the platform finds
 the announcement by the receipt the app recorded at that channel and ts, and
 starts the thread in the bound channel with it. Its turns start with the
-announcement, from the person who posted it or, for a recap, the agent the
-schedule ran, never from whoever replied; then comes the reply, the person's
+announcement, from the person who posted it, for a recap the agent the
+schedule ran, or for release notes warp itself, never from whoever replied;
+then comes the reply, the person's
 own message, read in the one grammar and answered by the channel's chain as
 any message there. What the announcement says tags nobody. A later reply
 finds the same thread by its surface. The thread reads the announcement as
@@ -141,7 +194,10 @@ before anyone replied starts nothing, and the app says so (warp answers
 410); a draft never reaches a channel. After the Slack channel is bound to
 another project, or unbound, a reply under an old post starts a thread where
 it is now filed, as any other, open or withdrawn: nothing of the
-announcement comes with it, and nobody there is told what became of it.
+announcement comes with it, and nobody there is told what became of it. So
+does a reply under an announcement withdrawn longer ago than the
+workspace's inbox retention (`workspace.inbox_retention`, 90 days by
+default), which warp has dropped, receipt and all.
 Once a thread is seeded, the announcement is part of it and of what its runs
 are sent, so it is read as they are, with `runs:read`, and not as the inbox
 reads it, with `projects:read`.
@@ -159,27 +215,36 @@ The Home tab of a mapped person is the shared Home, everything on it read for
 them the same way: their open inbox and announcements (`GET /api/inbox`) and
 their projects (`GET /api/projects`, both with `act_as_client` and
 `act_as_user`), so it holds only what that person may read. It shows at most
-five messages that need them, with the rest counted; What's new, five
-announcements of their projects, unread first; and Your projects, eight of
-the projects they have a role in, where something happened most recently
-first, archived ones left out and the rest counted. Each opens its page in the
-console when the app has the console's address (`WARP_PUBLIC_URL`). Without
-one, what needs them has Review, which sends the message to their direct
-messages with the app, where it can be answered, and What's new and Your
-projects are shown to read. A press on what Review sent is the person's own,
-done for them through the client even where the app may read the message
-too, and Retry asks the run again in its own thread. Neither it nor a
-mention's message offers Snooze or Dismiss: warp does those only as the
-caller, so in Slack they would be the app's. Ask a Question and Build
-an Agent open a form, and the words are posted as the person in their direct
-messages with the app, as the shortcut's are; Build an Agent tags
-`@warp-builder`, and is offered only where the client may reach it. Search
-Context opens the console. The tab shows no access or connections, which the
-app cannot know for the person.
-Their projects are left out when they cannot be read: the app's machine
-needs `warp:projects:read` for them, and the person `projects:read`. Someone
-the client maps to nobody sees the mailbox, as before: an operator the whole
-inbox the app may read, anyone else what they may settle.
+five messages that need them, newest first, with the rest counted as warp
+counts what may need them (`open`): an agent's draft waiting on them as an
+owner is one of them, and a posted announcement is not. They are read with
+`needs=true`, which leaves posted announcements out before the page is cut, so
+however much news is newer the rows and their count agree. What's new holds
+five announcements of their projects, read with `news=true` so an agent's
+draft never crowds them off the page, unread first, posted ones only. Your
+projects holds the projects that name them, which warp marks `mine`: they are
+a member or an owner there through an entry for their subject or a
+`role:<name>` they hold, on the project itself or as an owner of a project
+above it. A project they see only through `*`, or only through
+`projects:govern`, is not theirs. At most eight, where something happened most
+recently first and then in the tree's order, archived ones left out, and the
+rest counted in "N more in Projects", which links the console's Projects. Each
+opens its page in the console when the app has the console's address
+(`WARP_PUBLIC_URL`). Without one, what needs them has Review, which sends the
+message to their direct messages with the app, where it can be answered, and
+What's new and Your projects are shown to read. A press on what Review sent is
+the person's own, done for them through the client even where the app may read
+the message too, and Retry asks the run again in its own thread. Neither it
+nor a mention's message offers Snooze or Dismiss: warp does those only as the
+caller, so in Slack they would be the app's. Ask a Question and Build an Agent
+open a form, and the words are posted as the person in their direct messages
+with the app, as the shortcut's are; Build an Agent tags `@warp-builder`, and
+is offered only where the client may reach it. Search Context opens the
+console. The tab shows no access or connections, which the app cannot know for
+the person. Their projects are left out when they cannot be read: the app's
+machine needs `warp:projects:read` for them, and the person `projects:read`.
+Someone the client maps to nobody sees the mailbox, as before: an operator the
+whole inbox the app may read, anyone else what they may settle.
 
 The webhook connector files its runs by the same binding: a run in a bound
 Slack channel is in the channel it is bound to, anything else in the client's

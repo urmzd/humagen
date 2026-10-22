@@ -57,6 +57,16 @@ func (p *Platform) ownDeliveries(who auth.Principal, m inbox.Message) inbox.Mess
 	return m
 }
 
+// InboxHistory is what happened to one message as who is shown it: their own
+// marks and what changed it for everyone, and a client's receipts only where
+// who is that client's machine, as ownDeliveries keeps them.
+func (p *Platform) InboxHistory(who auth.Principal, id string) []inbox.Change {
+	return p.Inbox.HistoryFor(who.Tenant, id, who.Subject, func(client string) bool {
+		c, err := p.Clients.Get(who.Tenant, client)
+		return err == nil && machineOf(c, who)
+	})
+}
+
 // checkHome checks that a client's home is somewhere the workspace has: a
 // project, and a channel of it that is not archived. A project or channel
 // that is gone later leaves the client's threads unfiled rather than filed

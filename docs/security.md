@@ -51,13 +51,53 @@ projects under it and proposes notes, an owner changes it (see
 role in answers 404, and so does everything that lives in it: its runs,
 threads, events, files, notes, schedules, inbox messages, limits and eval
 suites, and the agents that live there, each answering exactly as an object
-that does not exist. A client, a project's lists of agents and the
-workspace's settings leave out an agent that lives there, and a change to
-them keeps what the caller was not shown. A request that names such an agent,
-there or as the agent a run, a schedule or a thread asks, answers as one
-naming an agent that does not exist. A model policy such an agent
-runs on is not removed, and the refusal does not name the agent. A private
-thread is read by its participants alone.
+that does not exist.
+
+An agent that lives there is named to a reader who may not read it in one
+way only: as the agent that ran a run they may read. A run names the agent
+that ran it, which was available where it ran, even one moved since. So does
+what is built only from such runs: a conversation's agents, the agents that
+joined a thread by answering there, a tag in a thread that started a run, analytics and the analyst's summaries by
+agent and their slowest runs, a recap's rows of what was done, and a filter
+of runs by agent. That is history the reader may already read, so one page
+never hides a name another shows.
+
+Everything that names an agent as configuration, or as a choice going
+forward, leaves it out, as if it were not there: a client, a project's lists
+of agents, the workspace's settings, an agent's spec (the agents it may call,
+the approvals of those calls, and who may approve when every approval is
+left out, with the hash of what is shown), an agent's call policy (the
+callers it admits and trusts), the definition in a run's manifest, a
+channel's default and its history, a thread's default, the agents added to it
+by name who never answered there, and the tags in its turns that started
+nothing, the lists of
+agents available, and a project's history. A default left out is passed over
+for the reader, as if it were not set: who answers there, for them, is the
+next default along, as it would be were it not set, so neither what they read
+nor what their messages do tells it apart from none. A refusal that an agent
+is not available somewhere says where it lives only when everyone in the
+workspace reads that project, since it reaches whoever reads where it was
+made.
+
+A change to any of them keeps what the caller was not shown, in place. A
+spec's is kept against the revision the write expects, a call policy's under
+its store's lock, and a channel's and a thread's default under theirs, so an
+entry another writer adds meanwhile is kept too; a client's and the
+settings' are kept against what was read when the write began. What the
+caller was not shown counts toward no limit they are told of: a call
+policy's lists hold more than 100 callers only with ones already stored, and
+a change that adds to a thread leaves at most 50 participants they are
+shown, of at most 100 in all. Who may approve a spec's kept approvals is
+kept with them when the writer was shown none of its approvals or wrote
+none, so it guards them still; a writer shown no approvals who adds one
+then reads back the approvers kept, which tells them a hidden approval
+exists, never whose. A request that names such an
+agent, there or as the agent a run, a call, a schedule or a thread asks,
+answers as one naming an agent that does not exist. Moving an agent into a
+project is refused while a project's, a channel's or a client's default
+would lose it; a thread's default is kept and left out instead. A model
+policy such an agent runs on is not removed, and the refusal does not name
+the agent. A private thread is read by its participants alone.
 
 A machine whose token names its scopes, such as the Slack app or CI, needs
 `warp:projects:read` to list projects and `warp:projects:write` to make them:
@@ -230,10 +270,20 @@ no permission, grants nothing.
   tool, is never posted in its project, held for its owners as a draft, or
   sent to someone else who created the schedule: its answer goes to that
   person's inbox alone, saying where it would have gone.
+- **A project's knowledge reaches only that project and below.** A run is
+  grounded in the sources its project and the projects above it name, as
+  they stood when it was accepted, and never in a sibling's or a
+  sub-project's; whatever a caller writes in the tag for them is replaced.
+  A source is the workspace's, read with `knowledge:read`, so naming one in
+  a project takes `knowledge:read` as well as owning the project, and a
+  reader without it is shown no source's name. Naming a source lets the
+  runs filed there, and the people they act for, read what it holds through
+  their answers, as an agent's own sources do.
 - **Project memory reaches only that project.** A turn is sent a project's
   shared notes only when its conversation is filed in that project.
 - **Knowledge stays in its tenant.** A turn is grounded only in the sources
-  its agent's pinned revision names, searched in the run's own tenant, so one
+  its agent's pinned revision names and those its project's chain named when
+  the run was accepted, searched in the run's own tenant, so one
   workspace's agent never reads another's documents. A source the workspace no
   longer has grounds nothing. Passages reach the model labelled as reference
   material, not instructions. `TestAnAgentsSourcesGroundItsTurnsInItsOwnTenant`
@@ -479,7 +529,18 @@ decided per message:
 | A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to set it aside or to reply in the thread as themselves, which takes seeing the thread's project; a reply that tags anyone takes a member of it, since its tags start the agents and tell the people they name as any message's do |
 
 A message a caller may not see answers 404, not 403, and is left out of their
-count, and a notice about it never reaches their event stream. An
+count, and a notice about it never reaches their event stream. Where a
+client's app posted a message (`deliveries`) is shown only to that client's
+machine, wherever the message is read, a project's inbox included, and so is
+each receipt (`delivered`) in the message's history. A count is added up
+from counters, one for each bucket of open messages alike in kind,
+addressing and what they are about (and one for each group of messages
+snoozed for everyone, alike in the same), and each is asked of the same rule
+a message is, so it counts only what the caller may see. What was settled
+for everyone is dropped with its record after the workspace's
+`inbox_retention` (90 days by default, at least 7); the log line each
+decision in the inbox writes (`platform: inbox`) is the operator's, and
+stays. An
 announcement's audience (`project:<name>`) and a proposed note's
 (`owners:<name>`) are decided from the project tree at each read, so a revoked
 membership hides past announcements at the next one. Announcements are plain

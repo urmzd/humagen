@@ -112,6 +112,12 @@ type Config struct {
 	// value with warp, kept in Secrets as a client's secret is. Everyone
 	// else may only reference one.
 	CredentialValues map[string]bool
+	// InboxRetention is how long each tenant's inbox keeps what was settled
+	// for everyone before it is dropped, by tenant, as its Platform document
+	// sets workspace.inbox_retention. A tenant with no entry keeps it
+	// inbox.DefaultRetention, and none keeps it less than
+	// inbox.MinRetention.
+	InboxRetention map[string]time.Duration
 	// SlackAPI and GitHubAPI build the API a client writes through from its
 	// token. Nil means the real one over HTTP.
 	SlackAPI  func(token string) slack.API
@@ -456,7 +462,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveModel}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision}, nil
 }
 
 // reroute registers the routes of every run the index holds that has not
@@ -509,7 +515,7 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	if err != nil {
 		return runs.Run{}, err
 	}
-	tag = p.pin(tag, edge, project, within)
+	tag = p.pin(tag, edge, project, within, p.sourcesFor(tag, edge, project))
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
@@ -540,18 +546,23 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 }
 
 // pin writes into a tag what the platform decides at admission, so every
-// attempt of the run replays it: the ancestors its project counts toward,
-// whatever the tag said, what the person it acts for is called (namedActor),
-// and for a scheduled or run-now run its project's context ahead of the
-// schedule's text, which the run's record keeps as what was asked. A called
-// run keeps its explicit input.
-func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within []string) envelope.Tag {
+// attempt of the run replays it: the ancestors its project counts toward and
+// the knowledge sources its project's chain gives it, whatever the tag said,
+// what the person it acts for is called (namedActor), and for a scheduled or
+// run-now run its project's context ahead of the schedule's text, which the
+// run's record keeps as what was asked. A called run keeps its explicit
+// input.
+func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within, sources []string) envelope.Tag {
 	tag.Actor = p.namedActor(tag.Tenant, tag.Actor)
-	meta := make(map[string]string, len(tag.Meta)+2)
+	meta := make(map[string]string, len(tag.Meta)+3)
 	maps.Copy(meta, tag.Meta)
 	delete(meta, runs.MetaWithin)
 	if len(within) > 0 {
 		meta[runs.MetaWithin] = strings.Join(within, ",")
+	}
+	delete(meta, runs.MetaSources)
+	if len(sources) > 0 {
+		meta[runs.MetaSources] = strings.Join(sources, ",")
 	}
 	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual) && edge.Parent == "" {
 		meta[runs.MetaAsk] = tag.Text
@@ -569,7 +580,14 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within 
 // caller, the tree's limits must allow the call, and the caller's remaining
 // budget must cover the lease.
 func (p *Platform) Call(ctx context.Context, tenant, runID string, req call.Request) (runs.Run, error) {
-	return p.call(ctx, tenant, runID, req, false)
+	return p.call(ctx, tenant, runID, req, false, nil)
+}
+
+// CallAs is Call as who asks it: an agent who may not read is not among the
+// agents the caller's spec is shown to them to call, so it is refused as one
+// its spawn allowlist does not name.
+func (p *Platform) CallAs(ctx context.Context, who auth.Principal, runID string, req call.Request) (runs.Run, error) {
+	return p.call(ctx, who.Tenant, runID, req, false, p.Seer(who).Agent)
 }
 
 // call is Call. With grant, a call from a run that holds a lease and asked for
@@ -580,8 +598,9 @@ func (p *Platform) Call(ctx context.Context, tenant, runID string, req call.Requ
 // it, and for anything else still in flight. Everything is trued up when the
 // call settles. That is how an agent's own calls (tagging, delegate_task)
 // lease budget, since a model never names an amount. A caller with nothing
-// left is refused.
-func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Request, grant bool) (runs.Run, error) {
+// left is refused. sees, when set, is the agents whoever asks may read (see
+// CallAs).
+func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Request, grant bool, sees func(string) bool) (runs.Run, error) {
 	p.calls.Lock()
 	defer p.calls.Unlock()
 
@@ -593,7 +612,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err != nil {
 		return runs.Run{}, fmt.Errorf("platform: caller's spec: %w", err)
 	}
-	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) {
+	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
 	}
 	// The callee agrees too: its call policy must admit the caller.
@@ -867,6 +886,18 @@ func (p *Platform) Run(ctx context.Context) error {
 		}
 	})
 	loop("connector flush", func() error { return p.flushConnections(ctx) })
+	loop("inbox retention", func() error {
+		tick := time.NewTicker(retainEvery)
+		defer tick.Stop()
+		for {
+			p.retainInbox(ctx)
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-tick.C:
+			}
+		}
+	})
 	loop("sandbox sweep", func() error {
 		tick := time.NewTicker(time.Hour)
 		defer tick.Stop()

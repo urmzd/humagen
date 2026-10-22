@@ -50,6 +50,8 @@ func (s *Server) projectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/projects/{name}/announcements/{id}", s.authed(auth.ProjectsWrite, s.seenProject(s.withdrawAnnouncement)))
 	mux.HandleFunc("GET /api/projects/{name}/agents", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectAgents)))
 	mux.HandleFunc("PUT /api/projects/{name}/agents", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectAgents)))
+	mux.HandleFunc("GET /api/projects/{name}/knowledge", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectKnowledge)))
+	mux.HandleFunc("PUT /api/projects/{name}/knowledge", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectKnowledge)))
 }
 
 // writer is who a change to the tree is made by, and whether they may change
@@ -91,6 +93,10 @@ type projectView struct {
 	// Actions are what the caller may do here: their permission and their
 	// role together.
 	Actions []string `json:"actions"`
+	// Mine says the project names the caller: they are a member or an owner
+	// through an entry for their subject or a role they hold, here or as
+	// an owner above. Everyone's entry and projects:govern name nobody.
+	Mine bool `json:"mine"`
 }
 
 // What a caller may do on a project, as a view lists it.
@@ -115,22 +121,26 @@ const (
 )
 
 // projectFacts is what a tenant's project views are made of, read once for a
-// whole answer: the tree, the caller's role in every project of it, what
-// they may read, and the counts of it.
+// whole answer: the tree, the caller's role in every project of it, the ones
+// that name them, what they may read, and the counts of it.
 type projectFacts struct {
 	tenant    string
 	who       auth.Principal
 	seer      *platform.Seer
 	tree      *projects.Tree
 	access    map[string]projects.Access
+	named     map[string]bool
 	counts    map[string]runs.ProjectCount
 	schedules map[string]int
 }
 
 func (s *Server) projectFacts(who auth.Principal) projectFacts {
 	tenant := who.Tenant
-	f := projectFacts{tenant: tenant, who: who, seer: s.P.Seer(who), tree: s.P.ProjectTree(tenant), counts: s.P.ProjectCounts(who), schedules: map[string]int{}}
+	f := projectFacts{tenant: tenant, who: who, seer: s.P.Seer(who), tree: s.P.ProjectTree(tenant), named: map[string]bool{}, counts: s.P.ProjectCounts(who), schedules: map[string]int{}}
 	f.access = f.tree.Roles(platform.ReaderOf(who))
+	for _, name := range f.tree.Named(platform.ReaderOf(who)) {
+		f.named[name] = true
+	}
 	for _, sc := range s.P.Schedules.List(tenant) {
 		f.schedules[sc.Meta[runs.MetaProject]]++
 	}
@@ -181,10 +191,12 @@ func actionsOf(f projectFacts, p projects.Project) []string {
 }
 
 // projectView is a project as the caller reads it. Its lists of agents leave
-// out every agent that lives in a project the caller may not read.
+// out every agent that lives in a project the caller may not read, and its
+// knowledge sources are shown only to a caller who may read knowledge.
 func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 	chain := f.tree.Chain(p.Name)
 	p.Agents = f.seer.ProjectAgents(p.Agents)
+	p.Knowledge = f.seer.Sources(p.Knowledge)
 	v := projectView{Project: p, Depth: max(len(chain)-1, 0), Path: []pathStep{}, Schedules: f.schedules[p.Name]}
 	// A sub-project the caller may not see is not counted, as it is not
 	// listed.
@@ -193,7 +205,7 @@ func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 			v.Children++
 		}
 	}
-	v.Access, v.Actions = f.access[p.Name], actionsOf(f, p)
+	v.Access, v.Actions, v.Mine = f.access[p.Name], actionsOf(f, p), f.named[p.Name]
 	// The chain is nearest first and ends at the workspace, which a path
 	// leaves out.
 	for i := len(chain) - 2; i >= 0; i-- {
@@ -241,8 +253,9 @@ func (s *Server) named(w http.ResponseWriter, tree *projects.Tree, address strin
 // below it, q searches name, title, description and customer, and kind keeps
 // one kind. limit is at most 200, and before is the next of the page before.
 // A client's machine lists one of its people's projects with act_as_client
-// and act_as_user: the projects that person may see, each as they see it.
-// The person must hold projects:read themselves.
+// and act_as_user: the projects that person may see, each as they see it,
+// with mine on the ones that name them, which Home lists as theirs. The
+// person must hold projects:read themselves.
 func (s *Server) listProjects(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	who, acting := s.actingFor(w, r, who, auth.ProjectsRead, "projects")
 	if !acting {
@@ -636,4 +649,45 @@ func (s *Server) projectsWithin(w http.ResponseWriter, who auth.Principal, proje
 		}
 	}
 	return keep, true
+}
+
+// getProjectKnowledge reads the knowledge sources a project names and what a
+// run filed in it is given, its ancestors' included. A caller who may not
+// read knowledge is shown no source.
+func (s *Server) getProjectKnowledge(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Viewer)
+	if !found {
+		return
+	}
+	got, err := s.P.ProjectKnowledgeAs(who, pr.Name)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, got)
+}
+
+// putProjectKnowledge replaces the knowledge sources a project names, as a
+// whole. It needs ownership of the project, and knowledge:read, as naming a
+// source grounds every run here and below in it; the workspace and company
+// projects need projects:govern as well.
+func (s *Server) putProjectKnowledge(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in platform.KnowledgeInput
+	if !decode(w, r, &in) {
+		return
+	}
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
+	if !found {
+		return
+	}
+	if in.Knowledge == nil {
+		fail(w, http.StatusBadRequest, "knowledge is a list, [] for none")
+		return
+	}
+	got, err := s.P.SetProjectKnowledge(who, pr.Name, writer(who), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, got)
 }

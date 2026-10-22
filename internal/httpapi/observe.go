@@ -86,7 +86,9 @@ func (s *Server) analytics(w http.ResponseWriter, r *http.Request, who auth.Prin
 		}
 		bucket = parsed
 	}
-	// Only what the caller may read is counted.
+	// Only what the caller may read is counted. A run names the agent that
+	// ran it, so by_agent and slowest name it, even one moved since into a
+	// project the caller may not read.
 	summary, err := s.P.Runs.SummarizeWhere(who.Tenant, runs.SummaryQuery{
 		Since: since, Until: until.Add(time.Nanosecond), Bucket: bucket, AllProjects: true, Keep: s.P.Seer(who).Run,
 	})
@@ -196,6 +198,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		runs.Accepted: "queued", runs.Running: "running", runs.Parked: "waiting", runs.Failed: "failed", runs.Completed: "done", runs.Stopped: "stopped",
 	}
 	out := make([]entry, 0, len(tree))
+	seer := s.P.Seer(who)
 	for _, run := range tree {
 		e := entry{Run: run, State: states[run.Status], DurationMs: run.UpdatedAt.Sub(run.CreatedAt).Milliseconds(), Events: []event{}}
 		if run.Stopping {
@@ -207,8 +210,11 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, who auth.Princ
 		if run.Status == runs.Stopped {
 			e.Cause = run.Cause
 		}
-		if rev, err := s.P.Agents.Get(r.Context(), who.Tenant, run.Agent, run.Rev); err == nil {
-			e.Definition = &rev
+		// The definition of an agent the caller may not read, one moved
+		// since into a project they may not read, is left out.
+		if rev, err := s.P.Agents.Get(r.Context(), who.Tenant, run.Agent, run.Rev); err == nil && seer.Agent(run.Agent) {
+			shown := seer.Revision(rev)
+			e.Definition = &shown
 		}
 		held := s.P.Journal.Events(who.Tenant, []string{run.ID})
 		e.Complete = complete(held)

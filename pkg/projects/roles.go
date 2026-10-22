@@ -477,6 +477,45 @@ func (t *Tree) Memberships(r Reader) []string {
 	return out
 }
 
+// Named returns, in tree order, every project that names the reader: one
+// where they are a member or an owner through an entry naming them, their
+// subject or a role they hold, on the project itself or as an owner of a
+// project above it. A role reached only through Everyone, or only through
+// projects:govern, names nobody, and neither does an entry on a project the
+// reader could not see without projects:govern. These are a person's own
+// projects, as Home lists them. A reader with no subject is named nowhere.
+func (t *Tree) Named(r Reader) []string {
+	r.Govern = false
+	out := []string{}
+	if r.Subject == "" {
+		return out
+	}
+	access := t.Roles(r)
+	// owns holds the projects the reader owns through an entry naming them,
+	// there or above: the parent always comes before its children.
+	owns := map[string]bool{}
+	for _, name := range t.order {
+		if access[name].Role == None {
+			continue
+		}
+		p := t.nodes[name].p
+		above := !p.IsRoot() && owns[p.Parent]
+		named, owner := above, above
+		for _, m := range p.Members {
+			if m.Who == Everyone || !r.matches(m.Who) {
+				continue
+			}
+			named = named || m.Role.AtLeast(Member)
+			owner = owner || m.Role == Owner
+		}
+		owns[name] = owner
+		if named {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 // MembersOnly reports a project with no entry for everyone: read by its
 // members alone.
 func MembersOnly(p Project) bool { return everyoneOf(p.Members) == None }

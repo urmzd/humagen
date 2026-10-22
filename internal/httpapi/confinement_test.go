@@ -19,6 +19,7 @@ import (
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/people"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // The confinement sweep reads every GET in the contract, and the event
@@ -57,6 +58,14 @@ type hidden struct {
 	// openProject is, in a sweep inside the workspace, a project the
 	// outsider may read whose allow list names the hidden agent.
 	openProject string
+	// openAgent is, in a sweep inside the workspace, an agent the outsider
+	// may read whose spec may call the hidden agent, and whose call policy
+	// admits and trusts it; openRun is a
+	// run of it in openProject, pinned to that spec. openThread is a
+	// conversation in the workspace whose default, and one of whose
+	// participants, is an agent that came to live in the hidden project
+	// after.
+	openAgent, openRun, openThread string
 	// inside is true when the outsider is in the same workspace: what
 	// lives outside the project is theirs to see, and is not hidden.
 	inside bool
@@ -188,6 +197,34 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		h.openProject = "Open"
 		must("POST", "/api/projects", `{"name":"`+h.openProject+`"}`, http.StatusCreated)
 		must("PUT", "/api/projects/"+h.openProject+"/agents", `{"version":1,"enable":["mover"],"allow":["mover","`+h.agent+`"]}`, http.StatusOK)
+		// A channel of it whose default is the hidden agent, as the
+		// platform file may set one: the file's channels are not checked
+		// against where an agent lives.
+		must("POST", "/api/projects/"+h.openProject+"/channels", `{"name":"lookout"}`, http.StatusCreated)
+		if _, err := f.p.Projects.UpdateChannel("acme", h.openProject, "lookout", 1, projects.Writer{By: "file", Govern: true}, time.Now(), func(c *projects.Channel) error {
+			c.Default = h.agent
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		// mover, which everyone in acme reads, may call the hidden agent,
+		// and admits and trusts its calls.
+		h.openAgent = "mover"
+		must("PUT", "/api/agents/mover", `{"spec":{"name":"mover","model":"offline","provider":"offline","system_prompt":"Moves.",`+
+			`"access":{"spawn":["`+h.agent+`"]}},"expected_rev":1}`, http.StatusOK)
+		must("PUT", "/api/agents/mover/call-policy", `{"callers":"listed","allow":["`+h.agent+`"],"approval":"unlisted","trusted":["`+h.agent+`"]}`, http.StatusOK)
+		// A conversation in the workspace whose default and participant
+		// comes to live in the hidden project once they are set.
+		drifter := "drifter-" + marker
+		must("POST", "/api/agents", `{"name":"`+drifter+`","model":"offline","provider":"offline","system_prompt":"Drifts."}`, http.StatusCreated)
+		dana := f.person(t, "acme", "00u-dana", "Dana", "warp-operators")
+		started := want(t, f, dana, "POST", "/api/threads", `{"visibility":"shared","text":"Plans.","post_only":true,"default":"`+drifter+`"}`, http.StatusCreated)
+		h.openThread = obj(started["thread"])["id"].(string)
+		want(t, f, dana, "PUT", "/api/threads/"+h.openThread+"/participants", `{"version":1,"add":[{"kind":"agent","name":"`+drifter+`"}]}`, http.StatusOK)
+		must("PUT", "/api/agents/"+drifter+"/home", `{"project":"`+h.project+`"}`, http.StatusOK)
+		if out := must("GET", "/api/threads/"+h.openThread, "", http.StatusOK); !strings.Contains(fmt.Sprint(out["thread"]), drifter) {
+			t.Fatalf("the owner does not see the conversation's agent: %v", out)
+		}
 		// And the workspace's title agent is the hidden agent. It titles a
 		// conversation in the hidden project, and its run, and the
 		// conversation of its own that run makes, are hidden with it. It is
@@ -200,7 +237,8 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		}
 		titled := str(must("POST", "/api/runs", `{"agent":"`+h.agent+`","text":"Titled `+marker+`.","project":"`+h.project+`"}`, http.StatusAccepted), "id")
 		ended(t, f, owner, titled)
-		ended(t, f, owner, str(must("POST", "/api/runs", `{"agent":"mover","text":"Open work.","project":"`+h.openProject+`"}`, http.StatusAccepted), "id"))
+		h.openRun = str(must("POST", "/api/runs", `{"agent":"mover","text":"Open work.","project":"`+h.openProject+`"}`, http.StatusAccepted), "id")
+		ended(t, f, owner, h.openRun)
 		hook := ""
 		for i := 0; hook == ""; i++ {
 			if i == 400 {
@@ -232,6 +270,9 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		must("POST", "/api/knowledge", `{"name":"`+h.source+`","description":"Source `+marker+`."}`, http.StatusCreated)
 		h.doc = str(must("POST", "/api/knowledge/"+h.source+"/documents", `{"title":"Doc `+marker+`","text":"Words `+marker+` here."}`, http.StatusCreated), "id")
 		must("POST", "/api/knowledge/"+h.source+"/variants", `{"name":"`+h.variant+`"}`, http.StatusCreated)
+		// The hidden project grounds its runs in the source.
+		at := must("GET", "/api/projects/"+h.project+"/knowledge", "", http.StatusOK)["version"]
+		must("PUT", "/api/projects/"+h.project+"/knowledge", fmt.Sprintf(`{"version":%v,"knowledge":["%s"]}`, at, h.source), http.StatusOK)
 		person, err := f.p.People.Seen("acme", people.Sighting{Subject: "okta|canary-" + marker, Name: "Canary " + marker, Source: people.SignIn}, time.Now())
 		if err != nil {
 			t.Fatal(err)
@@ -347,15 +388,31 @@ func (h hidden) visiblePath(path string) (string, bool) {
 	return out, true
 }
 
-// openPath is an operation's path naming the project the outsider may read
-// whose allow list names the hidden agent, for one that names nothing else.
-// What it reads must hold nothing hidden.
+// openPath is an operation's path naming, for an operation that names one
+// object, what the outsider may read that names the hidden agent: the
+// project whose allow list names it, the agent whose spec and call policy
+// name it, a run of that agent, and the conversation whose default and
+// participant came to live in the hidden project. What it reads must hold
+// nothing hidden.
 func (h hidden) openPath(path string) (string, bool) {
 	params := pathParams(path)
-	if h.openProject == "" || !strings.HasPrefix(path, "/api/projects/{name}") || len(params) != 1 {
+	if h.openProject == "" || len(params) != 1 {
 		return "", false
 	}
-	return strings.ReplaceAll(path, "{name}", url.PathEscape(h.openProject)), true
+	var v string
+	switch {
+	case strings.HasPrefix(path, "/api/projects/{name}"):
+		v = h.openProject
+	case strings.HasPrefix(path, "/api/agents/{name}"):
+		v = h.openAgent
+	case strings.HasPrefix(path, "/api/runs/{id}"):
+		v = h.openRun
+	case strings.HasPrefix(path, "/api/threads/{id}"):
+		v = h.openThread
+	default:
+		return "", false
+	}
+	return strings.ReplaceAll(path, "{"+params[0]+"}", url.PathEscape(v)), true
 }
 
 // holds reports whether a body shows anything hidden.
@@ -865,6 +922,20 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 			{"POST", "/api/evals", func(a string) string {
 				return `{"name":"probe","target":"agent","subject":"` + a + `","cases":[{"id":"c1","input":"hi","checks":[{"kind":"contains","value":"hi"}]}]}`
 			}},
+			{"POST", "/api/agents", func(a string) string {
+				return `{"name":"probe","model":"offline","provider":"offline","system_prompt":"Probes.","access":{"spawn":["` + a + `"]}}`
+			}},
+			{"PUT", "/api/agents/" + h.openAgent, func(a string) string {
+				return `{"spec":{"name":"mover","model":"offline","provider":"offline","system_prompt":"Moves.","access":{"spawn":["` + a + `"]}},"expected_rev":0}`
+			}},
+			{"PUT", "/api/agents/" + h.openAgent, func(a string) string {
+				return `{"spec":{"name":"mover","model":"offline","provider":"offline","system_prompt":"Moves.","approvals":["tag_` + a + `"]},"expected_rev":0}`
+			}},
+			{"PUT", "/api/agents/" + h.openAgent + "/call-policy", func(a string) string { return `{"callers":"listed","allow":["` + a + `"]}` }},
+			{"PUT", "/api/agents/" + h.openAgent + "/call-policy", func(a string) string {
+				return `{"callers":"anyone","approval":"unlisted","trusted":["` + a + `"]}`
+			}},
+			{"POST", "/api/runs/" + h.openRun + "/calls", func(a string) string { return `{"key":"probe","agent":"` + a + `","text":"probe"}` }},
 		} {
 			for _, a := range []string{h.agent, strings.ToUpper(h.agent)} {
 				code, out := send(t, f, outsider, tc.method, tc.path, tc.body(a))
@@ -890,10 +961,40 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 		if code, out := send(t, f, outsider, "PUT", "/api/settings", settings("")); code != http.StatusOK || h.holds(out) {
 			t.Errorf("the outsider's save of the settings as they read them = %d %s", code, out)
 		}
+		// And so does saving the open agent's spec and its call policy.
+		_, history := get(t, f, outsider, "/api/agents/"+h.openAgent+"/history")
+		var revs struct {
+			Revisions []struct {
+				Spec json.RawMessage `json:"spec"`
+				Rev  int             `json:"rev"`
+			} `json:"revisions"`
+		}
+		if err := json.Unmarshal([]byte(history), &revs); err != nil || len(revs.Revisions) == 0 {
+			t.Fatalf("the open agent's history = %s (%v)", history, err)
+		}
+		latest := revs.Revisions[0]
+		if code, out := send(t, f, outsider, "PUT", "/api/agents/"+h.openAgent, fmt.Sprintf(`{"spec":%s,"expected_rev":%d}`, latest.Spec, latest.Rev)); code != http.StatusOK || h.holds(out) {
+			t.Errorf("the outsider's save of the open agent as they read it = %d %s", code, out)
+		}
+		_, raw := get(t, f, outsider, "/api/agents/"+h.openAgent+"/call-policy")
+		var pol map[string]any
+		if err := json.Unmarshal([]byte(raw), &pol); err != nil {
+			t.Fatal(err)
+		}
+		polBody, _ := json.Marshal(map[string]any{
+			"callers": pol["callers"], "allow": pol["allow"], "approval": pol["approval"], "trusted": pol["trusted"],
+			"approvers": pol["approvers"], "self_approval": pol["self_approval"], "expires_seconds": pol["expires_seconds"],
+		})
+		if code, out := send(t, f, outsider, "PUT", "/api/agents/"+h.openAgent+"/call-policy", string(polBody)); code != http.StatusOK || h.holds(out) {
+			t.Errorf("the outsider's save of the open agent's call policy as they read it = %d %s", code, out)
+		}
 		for path, want := range map[string][]string{
-			"/api/clients/" + h.open:                     {`"default_agent":"` + h.agent + `"`, `"U0CANARY":"` + h.agent + `"`, `"project":"` + h.project + `"`},
-			"/api/projects/" + h.openProject + "/agents": {`"allow":["` + h.agent + `","mover"]`},
-			"/api/settings":                              {`"title_agent":"` + h.agent + `"`},
+			"/api/clients/" + h.open:                       {`"default_agent":"` + h.agent + `"`, `"U0CANARY":"` + h.agent + `"`, `"project":"` + h.project + `"`},
+			"/api/projects/" + h.openProject + "/agents":   {`"allow":["` + h.agent + `","mover"]`},
+			"/api/projects/" + h.openProject + "/channels": {`"default":"` + h.agent + `","version":2`},
+			"/api/settings":                                {`"title_agent":"` + h.agent + `"`},
+			"/api/agents/" + h.openAgent + "/history":      {`"spawn":["` + h.agent + `"]`},
+			"/api/agents/" + h.openAgent + "/call-policy":  {`"allow":["` + h.agent + `"]`, `"trusted":["` + h.agent + `"]`},
 		} {
 			_, body := get(t, f, owner, path)
 			for _, w := range want {

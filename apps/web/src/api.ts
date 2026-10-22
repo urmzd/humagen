@@ -1061,12 +1061,13 @@ export interface ThreadMessage {
 
 /**
  * The announcement a thread was started from, as it stands now: who posted
- * it, a person by handle or an agent by name, and what it says. A withdrawn
- * one says nothing more.
+ * it, a person by handle, an agent by name, or warp itself (`system`, by
+ * `warp`) for a release's notes, and what it says. A withdrawn one says
+ * nothing more.
  */
 export interface ThreadAnnouncement {
   id: string;
-  kind: "person" | "agent";
+  kind: "person" | "agent" | "system";
   by: string;
   name?: string;
   subject?: string;

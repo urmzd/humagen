@@ -7,10 +7,14 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/toolprovider"
+
+	"github.com/urmzd/warp/pkg/inbox"
 )
 
 // Platform is what one workspace offers. Metadata.Name is its tenant.
@@ -66,6 +70,10 @@ type Workspace struct {
 	// workspace itself posts: publish, or review (the default) by its
 	// owners. Set here, the console cannot change it.
 	AgentPosts *string `json:"agent_posts,omitempty"`
+	// Knowledge is the knowledge sources every run in the workspace is
+	// grounded in, besides its agent's own. Set here, even as [], the
+	// console cannot change them.
+	Knowledge []string `json:"knowledge,omitempty"`
 	// PersonCredentials is what people may give for the tools that take
 	// their own credential.
 	PersonCredentials *PersonCredentials `json:"person_credentials,omitempty"`
@@ -74,7 +82,53 @@ type Workspace struct {
 	// the changelog lists for the release this process runs, once a
 	// release. Off by default.
 	ReleaseNotes bool `json:"release_notes,omitempty"`
+	// InboxRetention is how long the workspace's inbox keeps what was
+	// settled for everyone, resolved, dismissed or withdrawn, before it is
+	// dropped: whole days, such as "90d", or a Go duration, such as
+	// "2160h". At least 7 days. Left out, 90 days.
+	InboxRetention string `json:"inbox_retention,omitempty"`
 }
+
+// Retention is how long the workspace's inbox keeps what was settled
+// (InboxRetention), 90 days when the file leaves it out. A document that
+// passed its check never sets one it cannot read.
+func (w Workspace) Retention() time.Duration {
+	d, err := ParseRetention(w.InboxRetention)
+	if err != nil {
+		return inbox.DefaultRetention
+	}
+	return d
+}
+
+// ParseRetention reads an inbox retention: whole days written like "90d", or
+// a Go duration like "2160h". Empty is inbox.DefaultRetention, and less than
+// inbox.MinRetention is refused.
+func ParseRetention(s string) (time.Duration, error) {
+	if s == "" {
+		return inbox.DefaultRetention, nil
+	}
+	bad := fmt.Errorf("%q is whole days, like 90d, or a duration, like 2160h, of at most 100 years", s)
+	var d time.Duration
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		n, err := strconv.Atoi(days)
+		if err != nil || n < 1 || n > maxRetentionDays || days[0] < '0' || days[0] > '9' {
+			return 0, bad
+		}
+		d = time.Duration(n) * 24 * time.Hour
+	} else {
+		var err error
+		if d, err = time.ParseDuration(s); err != nil || d > maxRetentionDays*24*time.Hour {
+			return 0, bad
+		}
+	}
+	if d < inbox.MinRetention {
+		return 0, fmt.Errorf("%q is less than the least retention, 7d", s)
+	}
+	return d, nil
+}
+
+// maxRetentionDays bounds a retention, 100 years, so it fits a duration.
+const maxRetentionDays = 100 * 365
 
 // PersonCredentials is what a workspace's people may give for a
 // person-scoped tool. A reference is always theirs to give, from where the
@@ -155,6 +209,10 @@ type Project struct {
 	// Experts are who answers for some topics here and below. Set here,
 	// even as [], the console cannot change them.
 	Experts []Expert `json:"experts,omitempty"`
+	// Knowledge is the knowledge sources every run filed here and below is
+	// grounded in, besides its agent's own. Set here, even as [], the
+	// console cannot change them.
+	Knowledge []string `json:"knowledge,omitempty"`
 	// AgentPosts is what becomes of what an agent scheduled here posts:
 	// publish, or review by the project's owners. Left out, it is the
 	// console's, and a new project takes its kind's default.
@@ -438,6 +496,9 @@ func (p Platform) check(kinds Kinds) error {
 	sp := p.Spec
 	if h := sp.Workspace.History; h != nil && h.Mode != "" && h.Mode != "recent" && h.Mode != "none" {
 		return fmt.Errorf("%s: workspace.history.mode is recent or none", where)
+	}
+	if _, err := ParseRetention(sp.Workspace.InboxRetention); err != nil {
+		return fmt.Errorf("%s: workspace.inbox_retention: %w", where, err)
 	}
 	if err := checkProjects(sp.Workspace); err != nil {
 		return fmt.Errorf("%s: %w", where, err)

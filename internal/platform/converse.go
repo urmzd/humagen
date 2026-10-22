@@ -359,7 +359,8 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 		}
 		routes, clientDefault = c.Routes, c.DefaultAgent
 	}
-	if asked := strings.TrimSpace(t.Agent); t.Sees != nil && asked != "" && asked != Auto {
+	asked := strings.TrimSpace(t.Agent)
+	if t.Sees != nil && asked != "" && asked != Auto {
 		if _, err := p.Agents.Get(ctx, tenant, asked, 0); err != nil {
 			return runs.Run{}, err
 		}
@@ -367,7 +368,16 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 			return runs.Run{}, fmt.Errorf("%w: %q", registry.ErrNotFound, asked)
 		}
 	}
-	who, err := p.resolveAgent(ctx, tenant, p.placeIn(tenant, th, clientDefault), strings.TrimSpace(t.Agent), t.Text, routes)
+	place := p.placeIn(tenant, th, clientDefault)
+	if t.Sees != nil {
+		// A default naming an agent the person may not read is passed over
+		// for them, as if unset (placeSeen), and @auto falls back to no
+		// agent they may not read.
+		place = placeSeen(place, t.Sees)
+		client := routes
+		routes = func(a string) bool { return (client == nil || client(a)) && t.Sees(a) }
+	}
+	who, err := p.resolveAgent(ctx, tenant, place, asked, t.Text, routes)
 	if err != nil {
 		return runs.Run{}, err
 	}

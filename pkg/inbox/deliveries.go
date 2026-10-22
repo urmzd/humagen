@@ -20,7 +20,11 @@ type Delivery struct {
 	// Channel is where it was posted, such as a Slack channel id.
 	Channel string `json:"channel"`
 	// TS identifies the post there, such as a Slack message ts.
-	TS string    `json:"ts"`
+	TS string `json:"ts"`
+	// At is when the client last said the post shows the message as it
+	// stands: when it was posted, or when the client recorded it again
+	// after bringing it up to date. A message updated after At has changed
+	// since its post last showed it.
 	At time.Time `json:"at"`
 }
 
@@ -52,13 +56,17 @@ func postKey(client string, d Delivery) string {
 }
 
 // delivered applies a Delivered change, and reports whether it changed
-// anything: the same post recorded again does not.
+// anything. The same post recorded again moves the receipt's time on only
+// when the message changed since it was recorded: the client brought the
+// post up to date. Otherwise it changes nothing, so a client that reports
+// one post however often records it once a change.
 func (m *Message) delivered(c Change) bool {
 	if c.Delivery == nil || c.By == "" {
 		return false
 	}
 	have, ok := m.Deliveries[c.By]
-	if ok && have.Channel == c.Delivery.Channel && have.TS == c.Delivery.TS {
+	if ok && have.Channel == c.Delivery.Channel && have.TS == c.Delivery.TS &&
+		(!m.UpdatedAt.After(have.At) || !c.Delivery.At.After(have.At)) {
 		return false
 	}
 	if !ok && len(m.Deliveries) >= MaxDeliveries {
@@ -69,6 +77,35 @@ func (m *Message) delivered(c Change) bool {
 	}
 	m.Deliveries[c.By] = *c.Delivery
 	return true
+}
+
+// deliver applies a receipt and its reverse lookup, as replay does.
+func (t *tenant) deliver(m *Message, c Change) bool {
+	was, had := m.Deliveries[c.By]
+	if !m.delivered(c) {
+		return false
+	}
+	if had && t.byPost[postKey(c.By, was)] == m {
+		delete(t.byPost, postKey(c.By, was))
+	}
+	t.byPost[postKey(c.By, *c.Delivery)] = m
+	return true
+}
+
+// rebuildPosts restores the lookups from kept receipts in delivery order.
+// Clients may reuse a receipt, so message creation order cannot decide it.
+func (t *tenant) rebuildPosts() {
+	t.byPost = map[string]*Message{}
+	for _, m := range t.messages {
+		m.Deliveries = nil
+	}
+	for _, c := range t.log {
+		if c.What == Delivered {
+			if m := t.byID[c.Message]; m != nil {
+				t.deliver(m, c)
+			}
+		}
+	}
 }
 
 // Deliver records where a client posted a message. allow is asked about the

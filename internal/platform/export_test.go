@@ -77,12 +77,12 @@ func (p *Platform) CallApproval(tenant, caller, callee string) (bool, []string, 
 
 // CallApproved makes a call as the call tool will once a person approved it.
 func (p *Platform) CallApproved(ctx context.Context, tenant, runID string, req call.Request) (runs.Run, error) {
-	return p.call(withApprovedCall(ctx, req.Agent), tenant, runID, req, false)
+	return p.call(withApprovedCall(ctx, req.Agent), tenant, runID, req, false, nil)
 }
 
-// CallTargets is what the call_agent tool offers a caller.
-func (p *Platform) CallTargets(tenant, caller string, spawn []string) []string {
-	return p.callTargets(tenant, caller, spawn)
+// CallTargets is what the call_agent tool offers a caller's run.
+func (p *Platform) CallTargets(tenant, runID, caller string, spawn []string) []string {
+	return p.callTargets(tenant, runID, caller, spawn)
 }
 
 // CallToolApproval asks the call tool a turn would get whether a call needs
@@ -130,3 +130,7 @@ func HousekeepingTag(tenant, id, agent string, turn Place) envelope.Tag {
 		Meta: map[string]string{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread},
 	}
 }
+
+// RetainInbox runs one pass of inbox retention, as the platform's loop does
+// every hour.
+func (p *Platform) RetainInbox() { p.retainInbox(context.Background()) }

@@ -6,7 +6,7 @@ import {
   updatesOf,
   type WireProject,
 } from "@warp/adapter";
-import type { HomeModel, HomeStart } from "@warp/core";
+import { type HomeModel, type HomeStart, orderNotifications } from "@warp/core";
 
 /** How many that need the person the Home tab shows. The rest are counted. */
 export const HOME_NEEDS = 5;
@@ -17,11 +17,19 @@ export interface HomeReads {
   person: { id: string; name: string };
   assistant: { name: string; handle?: string };
   intro: string;
-  /** A page of their open inbox, and how many in it may need them. */
+  /**
+   * A page of their open inbox, and how many in it may need them: the
+   * server's `open`, which counts an agent's draft and never a posted
+   * announcement, as Needs you does. Already made unable to ping anyone.
+   */
   inbox: { messages: Record<string, unknown>[]; open: number };
   /** A page of their open announcements, already made unable to ping anyone. */
   announcements: Record<string, unknown>[];
-  /** Every project they have a role in, or null when it could not be read. */
+  /**
+   * Every project they may see, or null when they could not be read: What's
+   * new names a project by its title from here, and Your projects are the
+   * ones marked `mine`.
+   */
   projects: WireProject[] | null;
   /** The workspace's name, for what is announced in the workspace itself. */
   workspace: string;
@@ -36,13 +44,14 @@ const projectPath = (name: string) => `/projects/${name === "" ? "~" : enc(name)
 
 /**
  * The shared Home for a person the client maps, as the Slack app shows it:
- * what needs them (five at most, the rest counted), what's new in their
- * projects, and their projects, each linking its page in the console when
- * `href` gives an address. It knows nothing of their access or connections,
- * so it shows neither, and it starts only what it can answer here: a
- * question, an agent when the builder is reachable, and the console's search
- * when it has the console's address. What's new is made with the adapter
- * call the console's Home makes, from the same reads.
+ * what needs them (five at most, the rest counted, a draft waiting on them
+ * among them), what's new in their projects (posted announcements only), and
+ * the projects that name them (eight at most, the rest counted), each linking
+ * its page in the console when `href` gives an address. It knows nothing of
+ * their access or connections, so it shows neither, and it starts only what
+ * it can answer here: a question, an agent when the builder is reachable,
+ * and the console's search when it has the console's address. What's new is
+ * made with the adapter call the console's Home makes, from the same reads.
  */
 export function homeModel(r: HomeReads): HomeModel {
   const titles = new Map((r.projects ?? []).map((p) => [p.name, p.title || p.name]));
@@ -65,7 +74,8 @@ export function homeModel(r: HomeReads): HomeModel {
     intro: r.intro,
     starts,
     notifications: {
-      items: needs.slice(0, HOME_NEEDS),
+      // The five Home would show first, whatever order the page came in.
+      items: orderNotifications(needs).slice(0, HOME_NEEDS),
       inbox: {
         total: Math.max(r.inbox.open, needs.length),
         ...(inboxUrl ? { url: inboxUrl } : {}),

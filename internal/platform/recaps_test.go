@@ -350,7 +350,9 @@ func TestAHousekeepingRunIsCountedWithTheTurnItServes(t *testing.T) {
 
 // A recap names an agent only when everyone it reaches may read it. An agent
 // that moved from Field to a members-only project below it is left out of
-// Field's row for the move, as Field's history leaves it out for them.
+// Field's row for the move, as Field's history leaves it out for them. The
+// rows of what it did in Field before name it, as its runs do: its runs, its
+// conversation and its file.
 func TestARecapNamesOnlyTheAgentsEveryoneItReachesMayRead(t *testing.T) {
 	p := start(t, call.Limits{})
 	project(t, p, "Field")
@@ -359,6 +361,21 @@ func TestARecapNamesOnlyTheAgentsEveryoneItReachesMayRead(t *testing.T) {
 	}
 	for _, home := range []string{"Field", "Vault"} {
 		if err := p.SetAgentHome(t.Context(), tenant, "helper", home, govern); err != nil {
+			t.Fatal(err)
+		}
+		if home != "Field" {
+			continue
+		}
+		// While it lives in Field, helper answers there and publishes a file.
+		r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-h1", Agent: "helper", Text: "Help with the plan", Project: "Field"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		await(t, p, r.ID, runs.Completed)
+		if _, err := p.Artifacts.Publish(tenant, artifacts.Artifact{
+			ID: p.Artifacts.NextID(tenant), Key: "k-plan", Thread: r.Thread, Title: "Plan", Kind: artifacts.Document,
+			Agent: "helper", Project: "Field", CreatedAt: time.Now().UTC(),
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -371,7 +388,8 @@ func TestARecapNamesOnlyTheAgentsEveryoneItReachesMayRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "Field: home by root\n") || !strings.Contains(out, "Field: home by root (lead)") || strings.Contains(out, "helper") {
+	if !strings.Contains(out, "Field: home by root\n") || !strings.Contains(out, "Field: home by root (lead)") || strings.Contains(out, "(helper)") ||
+		!strings.Contains(out, "- helper: 1 run") || !strings.Contains(out, "1 turn, agent helper") || !strings.Contains(out, "Plan, version 1, by helper") {
 		t.Fatalf("Field's recap of helper's move to Vault:\n%s", out)
 	}
 }

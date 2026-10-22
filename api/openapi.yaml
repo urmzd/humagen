@@ -312,7 +312,10 @@ paths:
       operationId: listAgents
       tags: [agents]
       summary: List agents
-      description: The latest revision of every agent in the workspace. Not paged.
+      description: |
+        The latest revision of every agent in the workspace the caller may
+        read: one that lives in a project they may not read is left out, and
+        so is every agent it names in another's spec. Not paged.
       x-permission: agents:read
       responses:
         "200":
@@ -356,7 +359,8 @@ paths:
       description: |
         A tag names an agent or a person, so an agent cannot take a name a
         person in the workspace goes by ("a person goes by @dana"), nor
-        `auto` or `sme`: each is 409.
+        `auto` or `sme`: each is 409. Every agent `access.spawn` names must
+        exist and be one the caller may read (400).
       x-permission: agents:write
       requestBody:
         required: true
@@ -383,6 +387,9 @@ paths:
       description: |
         Writes a new revision. `expected_rev` is the revision the caller
         edited from: if someone else revised the agent since, the answer is 409.
+        Every agent `access.spawn` names must exist and be one the caller may
+        read, or one it already names that they are shown (400); the agents
+        they were not shown, and the approvals of calls to them, are kept.
       x-permission: agents:write
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
@@ -422,8 +429,9 @@ paths:
 
         Refused with 409, naming them, while something outside the new home
         would lose the agent: a project's default, enable or allow list, a
-        schedule filed elsewhere, an alert rule watching it elsewhere, or a
-        client that routes to it. Homing an agent into or out of a company
+        channel's default (an archived channel's aside), a schedule filed
+        elsewhere, an alert rule watching it elsewhere, or a client that
+        routes to it. Homing an agent into or out of a company
         project needs `projects:govern`. The platform's own agents live
         nowhere (400).
       x-permission: agents:write
@@ -485,7 +493,9 @@ paths:
       description: |
         The agent's stored call policy, or the default an agent with none has
         (`version` 0): any caller its own spec allows, without approval. 404
-        for an agent that does not exist in the caller's workspace.
+        for an agent that does not exist in the caller's workspace. An agent
+        that lives in a project the caller may not read is left out of
+        `allow` and `trusted`.
       x-permission: agents:read
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
@@ -507,9 +517,12 @@ paths:
         Replaces the agent's call policy. The callee decides: a caller also
         needs the callee in its own spawn allowlist, so a policy can only
         narrow what callers' specs allow. An unknown mode, an agent name that
-        does not exist, more than 100 callers or 32 approvers, or a field that does not
-        apply to the chosen mode is 400. An agent that lives in a project is
-        that project's to change: without owning its home it is 403.
+        does not exist or lives in a project the caller may not read, more
+        than 100 callers or 32 approvers, or a field that does not apply to
+        the chosen mode is 400. The callers the caller was not shown are kept
+        in `allow` while `callers` is `listed`, and in `trusted` while
+        `approval` is `unlisted`. An agent that lives in a project is that
+        project's to change: without owning its home it is 403.
       x-permission: agents:write
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
@@ -909,6 +922,8 @@ paths:
       description: |
         Starts a child run of the run in the path. The caller's agent must be
         allowed to spawn the target, and depth, fan-out and lease limits apply.
+        A target that lives in a project the caller may not read is refused as
+        one the spawn allowlist does not name (403).
         `key` is the call's idempotency key within the run. The call is a turn
         of the run's conversation, filed where it lives, so the caller must be
         a member of the run's project, and in a private thread a participant
@@ -1385,8 +1400,11 @@ paths:
       tags: [threads]
       summary: Add and remove a thread's people and agents
       description: |
-        At most 50 added and removed together, and a thread has at most 50
-        participants. An agent added must be available in the thread's
+        At most 50 added and removed together, and a change that adds leaves
+        at most 50 participants, counting the ones the caller is shown: an
+        agent they were not shown is kept, and counts toward neither. People
+        who post and agents who answer join on their own past 50, and a
+        thread holds at most 100 in all. An agent added must be available in the thread's
         project, and a person, named by handle, must be in the workspace's
         directory (400). The person who started the thread stays in it.
         Adding takes posting there: a member of the thread's project, and in
@@ -1750,6 +1768,22 @@ paths:
           schema: {type: string, maxLength: 63}
         - {$ref: "#/components/parameters/ActAsClient"}
         - {$ref: "#/components/parameters/ActAsUser"}
+        - name: needs
+          in: query
+          description: |
+            Only `true` narrows to what may need the caller, which `open`
+            counts: a posted announcement, which counts only in `updates`, is
+            left out before the page is cut, and an agent's draft waiting on
+            its owners is kept. The Slack app's Home reads what needs a person
+            this way.
+          schema: {type: string, enum: ["true"]}
+        - name: news
+          in: query
+          description: |
+            Only `true` narrows to posted announcements, which `updates`
+            counts: an agent's draft, which shares their kind, is left out
+            before the page is cut. Home reads What's new this way.
+          schema: {type: string, enum: ["true"]}
       responses:
         "200":
           description: One page, with the caller's counts.
@@ -1829,7 +1863,9 @@ paths:
                       changes, the newest kept. What changed it for everyone,
                       and the caller's own marks; another reader's reads, and
                       their hiding or snoozing of an announcement, are theirs
-                      alone and left out.
+                      alone and left out. A client's receipt (`delivered`,
+                      by the client's id) is shown only to that client's
+                      machine.
                     type: array
                     maxItems: 100
                     items: {$ref: "#/components/schemas/InboxChange"}
@@ -2021,8 +2057,11 @@ paths:
         withdrawal it updates that post instead of posting again. Only the
         credential the client names as `slack.machine` may record one: for
         anyone else, and for a message of a kind the caller may not read, the
-        answer is 404. Recording the same post again changes nothing. The
-        receipt shows in the message's `deliveries`, to that machine only.
+        answer is 404. Recording the same post again after the message
+        changed (its `updated_at` is after the receipt's `at`) says the post
+        now shows it as it stands, and moves the receipt's `at` on; otherwise
+        it changes nothing. The receipt shows in the message's `deliveries`,
+        to that machine only, wherever the message is read.
       x-permission: runs:write
       parameters:
         - {$ref: "#/components/parameters/MessageID"}
@@ -2882,9 +2921,10 @@ paths:
         deleted between pages neither breaks nor shifts the paging. A
         client's machine lists one of its people's projects with
         `act_as_client` and `act_as_user`, as the Slack app's Home does: the
-        projects that person has a role in, each with their role, their
-        actions and what they may read in it. The person must hold
-        `projects:read` themselves.
+        projects that person may see, each with their role, their actions
+        and what they may read in it. The person must hold
+        `projects:read` themselves. `mine` marks the projects that name the
+        caller, which Home lists as theirs.
       x-permission: projects:read
       parameters:
         - name: parent
@@ -3317,7 +3357,10 @@ paths:
       tags: [projects]
       summary: Change a channel's title, purpose, default and Slack binding
       description: |
-        The body replaces those four as a whole: one left out is cleared.
+        The body replaces those four as a whole: one left out is cleared,
+        except a default the caller was not shown, one naming an agent that
+        lives in a project they may not read, which is kept. Naming such an
+        agent is 400, in the words for one that does not exist.
         `version` is the one the caller read (`general` reads 0 until it is
         first written), so a change made since answers 409. A field the
         platform file sets answers 409. It needs ownership of the project.
@@ -3411,6 +3454,67 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/ProjectExperts"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/knowledge:
+    get:
+      operationId: getProjectKnowledge
+      tags: [projects]
+      summary: Read the knowledge sources a project names, and what a run filed in it is grounded in
+      description: |
+        A run filed in a project is grounded in the knowledge sources its
+        project names, then each project above it, nearest first, besides
+        its agent's own: `given`, each source once, from the nearest project
+        that names it, at most 16. A sibling's or a sub-project's are never
+        given. They are fixed when the run is accepted, so a later change
+        here does not change a run already working. A caller without
+        `knowledge:read` is shown no source.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "200":
+          description: The project's knowledge sources.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectKnowledge"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: setProjectKnowledge
+      tags: [projects]
+      summary: Replace the knowledge sources a project names
+      description: |
+        At most 8, named once, each newly named a knowledge source the
+        workspace has (400); one already named may stay after it is deleted,
+        and grounds nothing. Every run filed here and below from now on is grounded in
+        them; a run already working keeps what it was accepted with. It
+        needs ownership of the project and `knowledge:read`
+        (403), which reads the sources anyway; the workspace and company
+        projects need `projects:govern` as well. `version` is the project's,
+        as read; a change made since answers 409, as does a list the
+        platform file sets.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectKnowledgeInput"}
+      responses:
+        "200":
+          description: The project's knowledge sources as they now stand.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectKnowledge"}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -3567,8 +3671,10 @@ paths:
         who can see the project reads it, so an announcement here reaches
         every reader, member or not; a message addressed to someone in
         particular still reaches only them, and each kind still needs its
-        own permission. `next` is the cursor for the page after this one, or
-        null at the end.
+        own permission. A client's machine is shown its own client's
+        receipts (`deliveries`), and nobody else any, so a Slack app catches
+        up here on the announcements it may have missed. `next` is the cursor
+        for the page after this one, or null at the end.
       x-permission: projects:read
       parameters:
         - {$ref: "#/components/parameters/ProjectName"}
@@ -4359,7 +4465,13 @@ components:
       type: object
       properties:
         spawn:
-          description: The agents this one may call.
+          description: |
+            The agents this one may call. An agent that lives in a project the
+            caller may not read is left out. Written, each must be an agent
+            that exists and that the caller may read, or one this list already
+            names that they are shown: any other, in any spelling, is 400 in
+            the words for an agent that does not exist. The ones left out are
+            kept.
           type: array
           items: {type: string}
         workspace_areas:
@@ -4401,7 +4513,11 @@ components:
           description: |
             Tools whose every call waits for a person to approve it. Each is a
             tool the agent is granted. `ask_person` in `tools` lets the agent
-            ask a person to choose or reply.
+            ask a person to choose or reply. The approval of a call to an agent
+            left out of `access.spawn` (`tag_<agent>`) is left out too, and
+            kept. When every approval is left out, so are `approvers` and
+            `self_approval`, which apply only to approvals, and a spec written
+            with no approvals or approvers of its own keeps them.
           type: array
           items: {type: string}
         approvers:
@@ -4452,7 +4568,9 @@ components:
       properties:
         spec: {$ref: "#/components/schemas/AgentSpec"}
         rev: {type: integer}
-        hash: {type: string}
+        hash:
+          description: The hash of the definition, or when an agent is left out of `spec` for the caller, the hash of what they are shown.
+          type: string
         created_at: {type: string, format: date-time}
         created_by: {type: string}
         created_by_name:
@@ -4896,6 +5014,7 @@ components:
           description: The project's channel it is in, `general` when its runs name none.
           type: string
         agents:
+          description: The agents whose runs answered in it. A run names the agent that ran it, even one that lives since in a project the caller may not read.
           type: array
           items: {type: string}
         people:
@@ -4961,11 +5080,12 @@ components:
         title: {type: string, maxLength: 200}
         visibility: {$ref: "#/components/schemas/ThreadVisibility"}
         participants:
+          description: Who takes part. An agent that lives in a project the caller may not read is left out unless it answered in the thread, as its runs there name it. The caller adds people and agents up to 50 they are shown; with the ones they are not shown, and the people who post and the agents who answer, who join on their own, the record holds at most 100.
           type: array
-          maxItems: 50
+          maxItems: 100
           items: {$ref: "#/components/schemas/ThreadParticipant"}
         default:
-          description: Answers an untagged message here, an agent or `auto`. Absent inherits from the channel.
+          description: Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set.
           type: string
         surface: {$ref: "#/components/schemas/ThreadSurface"}
         announcement:
@@ -4989,7 +5109,7 @@ components:
       properties:
         kind: {type: string, enum: [agent, person, sme]}
         name:
-          description: The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert).
+          description: The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent.
           type: string
         run:
           description: The run an agent's tag started.
@@ -5053,8 +5173,9 @@ components:
         The announcement a thread was started from, as it stands when the
         thread is read: who posted it and what it says. It is the inbox's,
         never a message of the thread, so it is from whoever posted it, a
-        person or the agent a schedule ran, and never from the person whose
-        reply started the thread. A withdrawn one says nothing more.
+        person, the agent a schedule ran, or warp itself for a release's
+        notes, and never from the person whose reply started the thread. A
+        withdrawn one says nothing more.
       type: object
       required: [id, kind, by, at]
       properties:
@@ -5062,14 +5183,14 @@ components:
           description: The announcement's inbox id.
           type: string
         kind:
-          description: Who posted it.
+          description: Who posted it. `system` is warp itself, as for a release's notes.
           type: string
-          enum: [person, agent]
+          enum: [person, agent, system]
         by:
-          description: The person's handle, or the agent's name.
+          description: The person's handle, the agent's name, or `warp` for what warp posted itself.
           type: string
         name:
-          description: What the person is called. Absent for an agent.
+          description: What the person is called. Absent for an agent and for warp itself (`system`).
           type: string
         subject: {type: string, maxLength: 150}
         text: {type: string, maxLength: 4000}
@@ -5120,7 +5241,11 @@ components:
         Who answers an untagged message in a place, and where that is set:
         `thread`, `client`, `channel`, or `project:<name>` (`project:~` for
         the workspace). An empty agent is nobody. `unavailable` says why the
-        default cannot answer, when it has stopped being available.
+        default cannot answer, when it has stopped being available. A
+        thread's, a client's or a channel's default naming an agent that
+        lives in a project the reader may not read is passed over for them,
+        as if it were not set, so this is the next default along: such an
+        agent is never available where they read.
       type: object
       required: [agent, from]
       properties:
@@ -5192,7 +5317,9 @@ components:
         version: {type: integer}
         title: {type: string, maxLength: 200}
         visibility: {$ref: "#/components/schemas/ThreadVisibility"}
-        default: {type: string}
+        default:
+          description: Empty keeps a default the caller was not shown, one naming an agent that lives in a project they may not read.
+          type: string
     ThreadParticipantsUpdate:
       description: People and agents to add to a thread and to remove from it.
       type: object
@@ -5205,7 +5332,7 @@ components:
           maxItems: 50
           items: {$ref: "#/components/schemas/ThreadParticipant"}
         remove:
-          description: People by handle and agents by name, which no person and agent share.
+          description: People by handle and agents by name, which no person and agent share. An agent the caller was not shown is not removed, as one that is not there.
           type: array
           maxItems: 50
           items: {type: string}
@@ -5240,7 +5367,7 @@ components:
           items: {$ref: "#/components/schemas/ThreadMention"}
         rule: {$ref: "#/components/schemas/ThreadRule"}
         reason:
-          description: Why no agent answers, when none does.
+          description: Why no agent answers, when none does. It never names an agent the poster may not read.
           type: string
         repeated:
           description: The message was posted before, by its surface's id. This is what it did then; nothing was started again.
@@ -5274,9 +5401,17 @@ components:
           type: string
           maxLength: 200
         default:
-          description: Answers untagged messages here, an agent or `auto`. Absent inherits from the project.
+          description: Answers untagged messages here, an agent or `auto`. Absent inherits from the project. One naming an agent that lives in a project the reader may not read reads as absent, here and in the project's history.
           type: string
         slack: {$ref: "#/components/schemas/SlackBinding"}
+        bound_at:
+          description: |
+            When `slack` was bound as it stands: set when a binding is made
+            or moved, kept while it holds. Absent while unbound, and on a
+            binding made before warp kept the time, which the client's
+            bindings then read as bound at the channel's last change.
+          type: string
+          format: date-time
         archived:
           description: It and its threads stay, and it takes no new threads.
           type: boolean
@@ -5355,6 +5490,16 @@ components:
           description: The project. Empty is the workspace itself.
           type: string
         channel: {type: string}
+        bound_at:
+          description: |
+            When the Slack channel was bound to this channel. The client's
+            app catches up on nothing announced before it: what was
+            announced before the binding, or while the channel was unbound,
+            never reached the Slack channel and is not news there now.
+            Present for every binding; a binding made before warp kept the
+            time reads as bound at its channel's last change.
+          type: string
+          format: date-time
     SurfaceRef:
       description: |
         Where on a client's surface a message was posted: for Slack, the
@@ -5419,6 +5564,51 @@ components:
           type: array
           maxItems: 50
           items: {$ref: "#/components/schemas/ProjectExpert"}
+    ProjectKnowledgeSource:
+      description: A knowledge source a run filed in a project is grounded in, and the project that names it.
+      type: object
+      additionalProperties: false
+      required: [name, from]
+      properties:
+        name: {type: string, maxLength: 63}
+        from:
+          description: The project that names it, the nearest when more than one does. Empty for the workspace.
+          type: string
+          maxLength: 63
+    ProjectKnowledge:
+      description: The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in.
+      type: object
+      additionalProperties: false
+      required: [version, knowledge, given]
+      properties:
+        version: {type: integer}
+        knowledge:
+          description: The sources the project names itself, in its order. Empty for a caller without `knowledge:read`.
+          type: array
+          maxItems: 8
+          items: {type: string, maxLength: 63}
+        given:
+          description: |
+            What a run filed here is grounded in besides its agent's own: the
+            project's sources, then each project's above it, nearest first,
+            each once. Empty for a caller without `knowledge:read`.
+          type: array
+          maxItems: 16
+          items: {$ref: "#/components/schemas/ProjectKnowledgeSource"}
+    ProjectKnowledgeInput:
+      description: The knowledge sources a project names, as a whole, from the version read.
+      type: object
+      additionalProperties: false
+      required: [version, knowledge]
+      properties:
+        version:
+          description: The version the caller read.
+          type: integer
+        knowledge:
+          description: Knowledge sources of the workspace, each once; `[]` for none.
+          type: array
+          maxItems: 8
+          items: {type: string, maxLength: 63}
 
     ProjectKind:
       description: |
@@ -5538,6 +5728,15 @@ components:
           maxItems: 50
           items: {$ref: "#/components/schemas/ProjectExpert"}
         agents: {$ref: "#/components/schemas/ProjectAgents"}
+        knowledge:
+          description: |
+            The knowledge sources every run filed here and below is grounded
+            in, besides its agent's own. Set with `PUT
+            /api/projects/{name}/knowledge`. Absent when it names none, and
+            for a caller without `knowledge:read`.
+          type: array
+          maxItems: 8
+          items: {type: string, maxLength: 63}
         archived:
           description: An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived.
           type: boolean
@@ -5571,7 +5770,7 @@ components:
       allOf:
         - {$ref: "#/components/schemas/Project"}
         - type: object
-          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions]
+          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine]
           properties:
             depth:
               description: How many levels below the workspace it sits, 1 to 4. The workspace itself is 0.
@@ -5618,6 +5817,15 @@ components:
               items:
                 type: string
                 enum: [create, propose, notes, edit, move, archive, delete, limits, announce]
+            mine:
+              description: |
+                Whether the project names the caller: they are a member or an
+                owner through an entry for their subject or a `role:` they
+                hold, on this project or as an owner of a project above it.
+                A role reached only through `*`, or only through
+                `projects:govern`, does not name them. Home lists these as
+                the caller's own projects.
+              type: boolean
     ProjectLimit:
       description: |
         A limit a run filed in the project falls under for being there, and
@@ -5845,10 +6053,11 @@ components:
             else. `agents` is a change to what the project turns on. `home`
             is an agent coming to live in the project, or leaving it: `agent`
             names it and `note` says which. `experts` is a change to who the
-            project names as experts, and `channel` to one of its channels,
-            which `channel` holds before and after.
+            project names as experts, `knowledge` to the knowledge sources it
+            names, and `channel` to one of its channels, which `channel`
+            holds before and after.
           type: string
-          enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, channel]
+          enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, knowledge, channel]
         agent:
           description: The agent a `home` change is about. Absent when it lives in a project the caller may not read.
           type: string
@@ -6518,7 +6727,14 @@ components:
       properties:
         channel: {type: string}
         ts: {type: string}
-        at: {type: string, format: date-time}
+        at:
+          description: |
+            When the client last said the post shows the message as it stands:
+            when it was posted, or when it recorded the post again after
+            bringing it up to date. A message whose `updated_at` is later has
+            changed since.
+          type: string
+          format: date-time
     InboxDeliveryInput:
       description: Where a client posted a message.
       type: object
@@ -6809,6 +7025,7 @@ components:
           type: array
           items: {$ref: "#/components/schemas/AnalyticsBucket"}
         by_agent:
+          description: Each agent's runs the caller may read. A run names the agent that ran it, so this and `slowest` name it even when it lives since in a project the caller may not read.
           type: array
           items: {$ref: "#/components/schemas/AnalyticsGroup"}
         by_origin:
@@ -8358,7 +8575,7 @@ components:
           description: Why a failed run failed or a stopped run was stopped, in one line.
           type: string
         definition:
-          description: The agent revision the run was pinned to.
+          description: The agent revision the run was pinned to, as the caller is shown it. Absent for an agent moved since into a project the caller may not read.
           $ref: "#/components/schemas/Revision"
         duration_ms: {type: integer, format: int64}
         events:

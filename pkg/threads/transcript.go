@@ -31,19 +31,20 @@ func RunTurn(r runs.Run) Turn { return Turn{Run: &r} }
 func AnnouncementTurn(a Announcement) Turn { return Turn{Announcement: &a} }
 
 // Announcement is the announcement a thread was started from, as the thread
-// reads it when it is read: who posted it, a person or the agent a schedule
-// ran, and what it says. It is the inbox's, never a message here, so its
-// author is whoever posted it and never the person whose reply started the
-// thread, and a withdrawn one says nothing.
+// reads it when it is read: who posted it, a person, the agent a schedule
+// ran, or warp itself, and what it says. It is the inbox's, never a message
+// here, so its author is whoever posted it and never the person whose reply
+// started the thread, and a withdrawn one says nothing.
 type Announcement struct {
 	// ID is the announcement's inbox id.
 	ID string `json:"id"`
-	// Kind is person or agent.
+	// Kind is person, agent or system.
 	Kind string `json:"kind"`
-	// By is the person's subject, handed out as their handle, or the
-	// agent's name.
+	// By is the person's subject, handed out as their handle, the agent's
+	// name, or for a system one the name warp posted it under.
 	By string `json:"by"`
-	// Name is what the person is called. An agent has none.
+	// Name is what the person is called. An agent and warp itself (System)
+	// have none.
 	Name string `json:"name,omitempty"`
 	// Subject and Text are what it says. A withdrawn one has neither.
 	Subject string `json:"subject,omitempty"`
@@ -52,6 +53,10 @@ type Announcement struct {
 	Withdrawn bool      `json:"withdrawn,omitempty"`
 	At        time.Time `json:"at"`
 }
+
+// System is the kind of an announcement warp posted itself, such as a
+// release's notes: from no person and no agent.
+const System = "system"
 
 // Names says who the people of a transcript are: what the person with a
 // subject is called, and their handle, which no one else in the workspace
@@ -174,14 +179,19 @@ func askers(t Turn) []Asker {
 // one as its agent's, a run that answers no message, a follow-up through
 // the API or a turn of a conversation from before threads, as who asked it
 // and then its agent's answer, and an announcement as the line of the
-// person or agent who posted it, marked as one.
+// person, agent or system that posted it, marked as one.
 func (s *speakers) lines(t Turn) []string {
 	switch {
 	case t.Announcement != nil:
 		a := t.Announcement
-		by := agentLabel(a.By)
-		if a.Kind == Person {
+		var by string
+		switch a.Kind {
+		case Person:
 			by = s.asker(askers(t)[0])
+		case System:
+			by = systemLabel(a.By)
+		default:
+			by = agentLabel(a.By)
 		}
 		if a.Withdrawn {
 			return []string{by + ": (announcement, since withdrawn)"}
@@ -224,6 +234,11 @@ func (s *speakers) asker(a Asker) string {
 const someone = "someone"
 
 func agentLabel(name string) string { return flat(name) + " (agent)" }
+
+// systemLabel is how a transcript names warp, posting as itself. No agent's
+// or person's line can read the same: an agent is marked (agent), and a
+// person's shown name holds no parentheses.
+func systemLabel(name string) string { return flat(name) + " (system)" }
 
 // shownName is a name as a transcript shows it: on one line, without the
 // marks a label is made of, so a name cannot pass for a handle or end a

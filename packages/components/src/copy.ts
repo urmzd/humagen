@@ -231,7 +231,11 @@ export const defaultCopy = {
     unmuteFailed: "Could not unmute. Try again.",
     rootNotMuted: "The workspace's announcements are for everyone, so they can't be muted.",
     tooMany: (n: number) => `At most ${n} announcements a day are posted here. Try again tomorrow.`,
-    /** The first turn of a thread a reply to an announcement started, once it was withdrawn. */
+    /**
+     * What an announcement says once it was withdrawn, where it was posted:
+     * the first turn of a thread a reply to it started, and its post in a
+     * Slack channel.
+     */
     seedWithdrawn: "This announcement was withdrawn.",
     /** In Slack, to someone replying under an announcement that was withdrawn. */
     replyGone: "This announcement was withdrawn, so a reply to it starts nothing.",
@@ -347,6 +351,7 @@ export const defaultCopy = {
       agents: "Agents changed",
       home: "An agent's home changed",
       experts: "Experts changed",
+      knowledge: "Knowledge sources changed",
       channel: "A channel changed",
     } as Record<string, string>,
     noHistory: "Nothing has changed here yet.",

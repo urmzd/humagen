@@ -153,12 +153,17 @@ test("the stand-in client against the real routes", { skip: !enabled }, async ()
   const page = await c.inbox.list({ limit: 5, state: "open" });
   assert.ok(Array.isArray(page.messages));
 
-  // The inbox-only stream opens and closes cleanly.
+  // A catch-up reads the workspace's announcements, withdrawn ones too.
+  assert.ok(Array.isArray(await c.announcements("", 5)));
+
+  // The inbox-only stream opens, says so, and closes cleanly.
   const quiet = new AbortController();
   setTimeout(() => quiet.abort(), 300);
-  for await (const _ of c.notices({ signal: quiet.signal })) {
+  let opened = 0;
+  for await (const _ of c.notices({ signal: quiet.signal, opened: () => opened++ })) {
     // Nothing is raised here.
   }
+  assert.equal(opened, 1);
 });
 
 test(
