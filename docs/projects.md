@@ -623,10 +623,10 @@ may not route to is refused, never swapped. A GitHub label in `auto_labels`
 names an agent, so it is a tag. fiber's in-process connectors may set an
 agent of `auto`; `surface.stamp` resolves it with `@auto` before admission,
 among the agents the client may route to. The Slack app built on the API
-cannot have its list applied by the platform (`POST /api/runs` takes no
-client), so it sends `auto` only for a client whose list is `*`: a client that
-lists its agents treats `@auto`, and a default of `auto`, as names outside the
-list.
+names the client it answers for: `POST /api/runs` takes `act_as {client,
+user}`, and `Converse` applies that client's allow-list and default, so a
+client that lists its agents refuses `@auto`, and a default of `auto`, as
+names outside the list.
 `stamp` also writes `warp.project` and `warp.channel` from the binding, and
 `runs.ProjectOf` believes them for `slack` and `github` origins, because
 ingress overwrites whatever a connector put there (phase 8).
@@ -1433,7 +1433,10 @@ and its total, What's new and Your projects to the same on both renderers.
   wakes no agent. Threads are filed in the client's home.
 
 Every Slack change passes `pnpm validate:slack`, and
-`TestTheSlackManifestIsWhatWarpGenerates` stays green with no new scope.
+`TestTheSlackManifestIsWhatWarpGenerates` stays green. The projects work
+added no Slack scope, but the uploads and canvases that came with it (#47)
+added `files:read` and `canvases:write`, so an app installed before then is
+reinstalled from the generated manifest to grant them.
 
 ## Migration
 
@@ -1509,8 +1512,8 @@ everyone. Make it members only?"). Nothing is closed automatically.
   - a workspace with no baseline gets `auto`, which keeps the picker for API
     and Slack callers that name no agent.
 
-  Settings shows "Workspace Default: @auto, set by the upgrade". An admin can
-  clear it.
+  The migration records it in the workspace's history, which the History
+  tab shows as a change made by the upgrade. An admin can clear it.
 - Setting the workspace default moves from `agents:write` (managers) to
   `projects:govern` (admins by default), since it changes the workspace
   itself. Owning the root is not enough: to keep the old split, an admin
@@ -1561,12 +1564,17 @@ changes and issue ids again. Roll back only to a build with phase 9.
 
 ### Docs in the same PRs
 
-- docs/architecture.md#status, existing rows:
-  - conversations (404), `pkg/pick` (407), Projects (408), composer selection
-    (409), the rail flyout claim (410), labels (411);
-  - `pkg/policy` (414), owner limits (421), membership (424);
-  - the Slack app (381), Slack questions and the reply modal (382);
-  - schedule delivery (465), the inbox and addressing (470 to 475).
+- docs/architecture.md#status, existing rows, by name (rows move, so they
+  are not cited by line):
+  - "Conversations", "`@auto`, the built-in router", "Projects", "Composer
+    project selection and creation", the console navigation rows' claim
+    about the projects flyout, "Configurable console titles and labels";
+  - "`pkg/policy`", "Limits set by a project's owner", "Project membership
+    and per-project access";
+  - "Slack app (`apps/slack`)", "Questions in Slack";
+  - "Schedule delivery", and the inbox and addressing rows from "`pkg/inbox`"
+    to "Messages addressed to one person, one role, a project's members or
+    its owners".
 - New status rows: project tree, project policies along the tree, layered
   context, agent availability and homes, `@auto`, project inbox and
   announcements, scheduled agents in projects, channels, shared threads and
@@ -1644,8 +1652,8 @@ its parent's limit, and nothing claims privacy.
     level at 390px; the picker shows paths.
   - The commands `make check`, `pnpm typecheck && pnpm test`,
     `make client-check` and `make spec-lint` all pass.
-- **Status.** Row 408 becomes "a tree with kinds, in its own store", and row
-  414 adds the chain. A new row says plainly that every project is visible to
+- **Status.** The "Projects" row becomes "a tree with kinds, in its own
+  store", and the "`pkg/policy`" row adds the chain. A new row says plainly that every project is visible to
   everyone and has no owners yet.
 
 ### Later phases
