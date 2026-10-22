@@ -413,6 +413,32 @@ test("an announcement warp could not be read for is tried again, not taken as no
   assert.ok(w.logs.some((l) => l.includes("trying again")));
 });
 
+test("a post that could not be checked after its receipt is brought up to date on the next try", async () => {
+  const w = bound();
+  missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR) });
+  // The announcement is withdrawn just before its receipt is recorded, so
+  // the change reads older than the receipt, and the read that would show
+  // it fails once.
+  const record = w.warp.recordDelivery.bind(w.warp);
+  let first = true;
+  w.warp.recordDelivery = async (message, client, at) => {
+    if (first) {
+      first = false;
+      w.warp.quietly(message, { state: "dismissed" });
+      w.warp.failReads = 1;
+    }
+    return record(message, client, at);
+  };
+  await watching(w, async () => {});
+  const edits = w.slack.of("chat.update");
+  assert.ok(edits.length >= 1, "the post is edited once warp answers");
+  assert.match(
+    JSON.stringify(edits.at(-1)?.blocks),
+    new RegExp(defaultCopy.announcements.seedWithdrawn),
+  );
+  assert.ok(w.logs.some((l) => l.includes("trying again")));
+});
+
 test("a bound project the app may not read is skipped, not tried again and again", async () => {
   const w = bound();
   w.warp.bound.set("app", [
