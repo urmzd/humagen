@@ -182,6 +182,14 @@ export class FakeWarp implements Warp {
       this.refuse = null;
       throw e;
     }
+    // As the real route does: a person the client maps is the run's actor, so
+    // it acts for them; anyone else is asked for by the app, for nobody.
+    let actor: Run["actor"] = { id: SUBJECT, bot: true };
+    if (t.act_as) {
+      const person = this.clients.get(t.act_as.client)?.slack?.people?.[t.act_as.user];
+      if (!person) throw new WarpError(403, "this client does not map that person");
+      actor = { id: person, display: person, user: person };
+    }
     const id = runId("acme", SUBJECT, t.idempotencyKey);
     const existing = this.runs.get(id);
     if (existing) return existing;
@@ -197,7 +205,7 @@ export class FakeWarp implements Warp {
       rev: 1,
       origin: "api",
       text: t.text,
-      actor: { id: SUBJECT, bot: true },
+      actor,
       root: id,
       depth: 0,
       thread: prev?.thread ?? id,

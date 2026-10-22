@@ -1,6 +1,7 @@
 import "./react.ts";
 import { createHash } from "node:crypto";
 import {
+  actedFor,
   answerOfAction,
   answers,
   ended,
@@ -104,11 +105,15 @@ interface Job {
   user: string;
   /** Names the Slack event, so the same event is one run. */
   key: string;
-  /** Set when a turn is asked again: who answers and where it continues are already known. */
-  again?: { agent: string; after?: string };
   /**
-   * Who the run is for, when that is not the person who sent this. A turn
-   * asked again stays its first asker's; null when nobody is known.
+   * Set when a turn is asked again: who answers, where it continues, and whom
+   * it acts for are already known. `as` is the person who pressed, asked as
+   * themselves, when the turn acted for them; null when it acted for nobody.
+   */
+  again?: { agent: string; after?: string; as: ActAs | null };
+  /**
+   * Who may settle what the run raises, when that is not the person who sent
+   * this; null when nobody here is known to have asked.
    */
   requester?: string | null;
   /** A mention in a channel thread: what people said there since the app was last asked goes with it. */
@@ -260,9 +265,14 @@ const NO_AGENT: Failure = {
   message: "No agent answers here yet. Name one this app may reach, as @name.",
 };
 
-/** A retry by someone who did not ask, and is not an operator. */
+/** A retry of a turn that acted for nobody, by someone who did not ask, and is not an operator. */
 // warp: needs copy for this, such as copy.notYoursRetry; copy.notYours speaks of approving.
 const RETRY_NOT_YOURS = "Only the person who asked can retry this.";
+
+/** A retry of a turn that acted for a person, by anyone this app's client does not map to them. */
+// warp: needs copy for this, such as copy.notTheirsRetry.
+const RETRY_NOT_THEIRS =
+  "This turn used the credentials of the person it acted for, so only they can retry it.";
 
 /** Wait, or stop waiting when the signal aborts. */
 const sleep = (ms: number, signal: AbortSignal) =>
@@ -278,6 +288,9 @@ const sleep = (ms: number, signal: AbortSignal) =>
   });
 
 const short = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 20);
+
+/** What asking a turn again came to. */
+type Again = "started" | "not-theirs" | "not-yours" | "elsewhere" | "not-routed";
 
 export class App {
   private readonly threads = new Map<string, Thread>();
@@ -620,8 +633,9 @@ export class App {
       // Who asked, the client and the thread are known here and have nowhere to go:
       // the route takes none of them. See the README.
       // A person the client maps asks as themselves, so they do not approve
-      // their own run's calls. Anyone else asks through the app.
-      const asking = await this.actAs(job.requester ?? job.user);
+      // their own run's calls. Anyone else asks through the app. A turn asked
+      // again acts for whom again() decided, never for whoever else is known.
+      const asking = job.again ? job.again.as : await this.actAs(job.user);
       run = await this.warp.createRun(
         {
           agent,
@@ -1011,26 +1025,49 @@ export class App {
   }
 
   /** Say why a turn was not asked again. */
-  private refuseRetry(p: ActionPayload, outcome: "not-yours" | "elsewhere" | "not-routed") {
-    return this.whisper(p, outcome === "not-yours" ? RETRY_NOT_YOURS : defaultCopy.cantRetry);
+  private refuseRetry(p: ActionPayload, outcome: Exclude<Again, "started">) {
+    const text =
+      outcome === "not-theirs"
+        ? RETRY_NOT_THEIRS
+        : outcome === "not-yours"
+          ? RETRY_NOT_YOURS
+          : defaultCopy.cantRetry;
+    return this.whisper(p, text);
   }
 
   /**
-   * Ask a turn again, in the thread it was asked in. Only the person who asked
-   * for it, or an operator, may: a retry is a new run on their behalf. When
-   * who asked is not known (after a restart) only an operator may. The new run
-   * stays its first asker's, and the routing rules are checked again.
+   * Ask a turn again, in the thread it was asked in, for whoever the turn
+   * acted for, as Retry in warp's inbox does. Retry and Resume both come here.
+   *
+   * A turn that acted for a person used their own credentials, so only a
+   * Slack person this app's client maps to that same person may ask it again,
+   * and the new run is asked as them. Anyone else, an operator included, is
+   * refused: they would either run that person's words with their own
+   * credentials, or that person's credentials on a choice the person never
+   * made. A turn that acted for nobody is asked again for nobody, through the
+   * app, by the person who asked for it or an operator, so nobody's
+   * credentials are put behind words that were not theirs. Warp's record
+   * says whom a turn acted for, so a restart, which forgets who asked, changes
+   * none of this, except that only an operator may then ask again for nobody.
+   *
+   * The key names who pressed, so two people's presses are two runs and one
+   * person pressing twice joins their first. The routing rules are checked
+   * again.
    */
-  private async again(
-    run: Run,
-    user: string,
-    clickedTs?: string,
-  ): Promise<"started" | "not-yours" | "elsewhere" | "not-routed"> {
+  private async again(run: Run, user: string, clickedTs?: string): Promise<Again> {
     const session = await this.sessionOfRun(run);
     if (!session || session.team !== this.opts.team) return "elsewhere";
     const owner = this.requesters.get(run.id);
-    const operator = (this.opts.operators ?? []).includes(user);
-    if (!operator && (!owner || owner !== user)) return "not-yours";
+    const person = actedFor(run);
+    let as: ActAs | null = null;
+    if (person) {
+      const mapped = await this.mapped(user);
+      if (!mapped || mapped.person !== person) return "not-theirs";
+      as = mapped.as;
+    } else {
+      const operator = (this.opts.operators ?? []).includes(user);
+      if (!operator && (!owner || owner !== user)) return "not-yours";
+    }
     if (!mayRoute(await this.routing(), run.agent)) return "not-routed";
     const { agent, text, after } = retryOf(run);
     this.enqueue({
@@ -1038,11 +1075,12 @@ export class App {
       text,
       triggerTs: clickedTs ?? session.threadTs,
       user,
-      requester: owner ?? null,
-      // One retry per run: a second click joins the first.
-      key: `slack-again-${short(run.id)}`,
+      // A turn asked again for its person is theirs to settle; one asked again
+      // for nobody stays its first asker's.
+      requester: person ? user : (owner ?? null),
+      key: `slack-again-${short(`${user}\n${run.id}`)}`,
       // The first turn of a conversation is asked again after itself, so the thread stays one conversation.
-      again: { agent, after: after ?? run.id },
+      again: { agent, after: after ?? run.id, as },
     });
     return "started";
   }
@@ -1067,12 +1105,16 @@ export class App {
    * credential it names, which must be this app's own.
    */
   private async actAs(user: string): Promise<ActAs | null> {
+    return (await this.mapped(user))?.as ?? null;
+  }
+
+  /** How to ask as a Slack person, and whom the client maps them to, or null (see actAs). */
+  private async mapped(user: string): Promise<{ as: ActAs; person: string } | null> {
     const routing = await this.routing().catch(() => null);
     const client = routing?.client;
     if (!client || !this.opts.clientId || !client.enabled) return null;
-    const mapped =
-      client.slack?.machine === this.opts.subject && Boolean(client.slack?.people?.[user]);
-    return mapped ? { client: this.opts.clientId, user } : null;
+    const person = client.slack?.machine === this.opts.subject ? client.slack?.people?.[user] : "";
+    return person ? { as: { client: this.opts.clientId, user }, person } : null;
   }
 
   /**
@@ -1123,7 +1165,8 @@ export class App {
     // Who may answer a question is warp's to decide, for the person as it knows them.
     const as = question ? await this.actAs(p.user.id) : null;
     if (question && !as) return this.whisper(p, defaultCopy.noPermission);
-    if (!question && !this.maySettle(p.user.id, message)) {
+    // Who may ask a failed turn again is again()'s to decide, as in the thread.
+    if (!question && ui.id !== ActionId.retry && !this.maySettle(p.user.id, message)) {
       return this.whisper(p, defaultCopy.notYours);
     }
     if (part?.type === "reply" && ui.id === ActionId.reply && !ui.payload.text) {
