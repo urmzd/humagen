@@ -497,11 +497,19 @@ export function Tape({
   );
 }
 
-/** A stable hue for a name, so an agent keeps its color everywhere it appears. */
+/** How many hues agents are drawn from: twelve, 30 degrees apart, so two that differ are told apart. */
+export const AGENT_HUES = 12;
+
+/**
+ * A stable hue for a name, so an agent keeps its color everywhere it
+ * appears. Names fall on one of AGENT_HUES evenly spaced hues, never on one
+ * a few degrees from another's, and the hash is seeded so warp's own agents
+ * and the seeded ones each take a hue of their own (ui.test.tsx).
+ */
 export function hueOf(name: string): number {
-  let h = 0;
-  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return h;
+  let h = 186;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 1000003;
+  return (h % AGENT_HUES) * (360 / AGENT_HUES);
 }
 
 /**

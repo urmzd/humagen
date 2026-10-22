@@ -124,7 +124,7 @@ import { after, merge } from "./inbox.ts";
 import { edgeOf, KindChips, MailboxView } from "./InboxPage.tsx";
 import { fromServer, type PlatformMessage, reached, toRequest } from "./mail.ts";
 import { memoryTransport, sampleMail, wireMail } from "./mail.fixtures.ts";
-import { button, counted, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf } from "./ui.tsx";
+import { AGENT_HUES, button, counted, hueOf, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf } from "./ui.tsx";
 
 const M = 1_000_000;
 const html = (el: ReactElement) => renderToStaticMarkup(el);
@@ -1394,3 +1394,17 @@ test("what floats above the page is opaque, so nothing under a menu shows throug
   assert.doesNotMatch(css, /--warp-glass-strong/, "the see-through surface is gone");
 });
 
+
+test("agents shown together are told apart by color: warp's own and the seeded agents each take a hue of their own", () => {
+  const builtin = ["warp-analyst", "warp-builder", "warp-writer"];
+  const seeded = ["helper", "lead", "intake", "triage"];
+  const hues = [...builtin, ...seeded].map(hueOf);
+  assert.equal(new Set(hues).size, hues.length, JSON.stringify(hues));
+  // Every hue is one of twelve, 30 degrees apart.
+  for (const h of hues) assert.equal(h % (360 / AGENT_HUES), 0, String(h));
+  // warp's own agents sit side by side as Home's suggestions, so they are far apart.
+  const apart = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+  for (const [i, a] of builtin.entries()) for (const b of builtin.slice(i + 1)) assert.ok(apart(hueOf(a), hueOf(b)) >= 90, `${a} and ${b}`);
+  // A name keeps its hue.
+  assert.equal(hueOf("helper"), hueOf("helper"));
+});
