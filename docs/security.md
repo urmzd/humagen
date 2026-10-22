@@ -36,11 +36,17 @@ company projects carry instructions and notes sent to every agent answering
 under them, and because reusing the name of a deleted project adopts the
 conversations still filed under it. `projects:govern` grants nothing on its
 own: every project route checks `projects:read` or `projects:write` first, and
-govern is asked for on top, for the workspace, a company project, or a deleted
-name. Then the caller's role on the project decides, and only narrows: a viewer
-reads, a member creates projects under it and proposes notes, an owner changes
-it (see [Project roles](authorization.md#project-roles)). A project the caller
-has no role in answers 404. Reads are not confined to members yet: every
+govern is asked for on top, for the workspace, a company project, its notes, or
+a deleted name. A deleted name's tombstone is never forgotten while
+conversations or files are still filed under it, so later deletes cannot clear
+the way to adopting them. Then the caller's role on the project decides, and
+only narrows: a viewer reads, a member creates projects under it and proposes
+notes, an owner changes it (see [Project roles](authorization.md#project-roles)).
+A project the caller has no role in answers 404. A project's notes are asked
+the same through every route that changes them: the project's memory routes
+and the inbox. The agent memory routes reach an agent's own
+notes only, and answer 404 for a project's memory owner (`project:<name>`, and
+`project:` for the workspace). Reads are not confined to members yet: every
 project keeps an entry for everyone of at least viewer, and a members-only
 project is refused (409), so a role never claims a privacy that is not
 enforced. A project's runs, threads and memory stay readable by everyone with
@@ -64,12 +70,18 @@ such as `steward` in [authorization](authorization.md#example).
 
 The directory (`people:read`, which every built-in role holds) shows each
 person's name, handle, roles and picture to everyone in the workspace. No
-email address is kept or shown, a name that is an address is not kept as a
-name, and a picture is only one a person uploaded themselves, served by warp:
-reading the directory sends nobody else a request. People are recorded when
-they make a request holding any permission, when a client maps a Slack person
-to them, and when the policy grants a role to their subject. A machine is not
-a person. A policy that should not list someone grants them no role.
+email address is asked for or shown, and a name that is an address is not
+kept as a name. A subject is kept as the identity provider gives it, since it
+is the key a person signs in with, and can hold an address: a Tailscale login
+does, and so can the subject a Slack people map names. The directory leaves
+such a subject out and never searches subjects. A picture is only one a
+person uploaded themselves, served by warp: reading the directory sends
+nobody else a request. People are recorded when they make a request holding
+any permission, when a client maps a Slack person to them, and when the
+policy grants a role to their subject, unless tenants come from a claim: a
+grant names no tenant, so it puts nobody in a directory they may not belong
+to. A machine is not a person. A policy that should not list someone grants
+them no role.
 
 A webhook from Slack or GitHub is not a `Principal`. It is authorized by the
 signing secret of the [client](clients.md) it is for, and takes its tenant from
@@ -173,6 +185,9 @@ no permission, grants nothing.
 - **A proposed memory is not a memory.** What the memory agent writes is held
   as pending and is not sent to any agent until a person approves it, unless
   the workspace turned approval off. This is saige's default for memory writes.
+  What it writes for the workspace or a company project waits for someone
+  holding `projects:govern` even then: the turn that taught it needed only
+  `runs:write`, and turning approval off needs only `agents:write`.
 - **Memory refuses personal data.** Every note, from a person or an agent,
   passes saige's memory policy, which rejects text its detector finds personal
   data in.
@@ -303,7 +318,7 @@ decided per message:
 |------|--------|-----------|
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
 | Failed run | `runs:read` | `runs:write` |
-| Proposed memory | `agents:read` | `agents:write`; a project's proposed notes, `projects:write` and owning the project |
+| Proposed memory | `agents:read` | `agents:write` for an agent's, and owning its home for one that lives in a project; `projects:write` and owning the project for a project's, and `projects:govern` as well for the workspace's and a company project's |
 | Announcement | `projects:read`, and a member of its project or one below it (anyone who reads the project's own inbox) | hiding or snoozing it is the reader's own (`projects:read`); withdrawing it is its author's or an owner's (`projects:write`) |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |
 

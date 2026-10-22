@@ -16,8 +16,9 @@ import (
 // The directory: who is in the workspace, readable by everyone in it with
 // people:read. A person is listed by the name they go by, their handle, the
 // picture they uploaded themselves and the roles they held when last seen.
-// No email address is kept or shown, and no picture is fetched from anywhere
-// else, so reading the directory sends nobody else a request.
+// No email address is shown: a subject that holds one is left out, and
+// subjects are not searched. No picture is fetched from anywhere else, so
+// reading the directory sends nobody else a request.
 func (s *Server) peopleRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/people", s.authed(auth.PeopleRead, s.listPeople))
 	mux.HandleFunc("GET /api/people/{handle}/photo", s.authed(auth.PeopleRead, s.personPhoto))
@@ -25,7 +26,8 @@ func (s *Server) peopleRoutes(mux *http.ServeMux) {
 
 // personView is one person as the directory shows them.
 type personView struct {
-	Subject string `json:"subject"`
+	// Subject is left out when it holds an address (people.ShownSubject).
+	Subject string `json:"subject,omitempty"`
 	// Name is the name they chose for themselves, or the one they signed in
 	// with. Empty until one is known.
 	Name   string   `json:"name,omitempty"`
@@ -37,7 +39,7 @@ type personView struct {
 }
 
 func (s *Server) personOf(tenant string, p people.Person) personView {
-	v := personView{Subject: p.Subject, Name: p.Name, Handle: p.Handle, Roles: orEmpty(p.Roles), SeenAt: p.SeenAt}
+	v := personView{Subject: p.ShownSubject(), Name: p.Name, Handle: p.Handle, Roles: orEmpty(p.Roles), SeenAt: p.SeenAt}
 	own := s.P.Prefs.Get(tenant, p.Subject)
 	if own.DisplayName != "" {
 		v.Name = own.DisplayName
@@ -51,8 +53,8 @@ func (s *Server) personOf(tenant string, p people.Person) personView {
 	return v
 }
 
-// listPeople pages the directory by handle. q searches names, handles and
-// subjects; limit is at most 50, and before is the next of the page before.
+// listPeople pages the directory by handle. q searches names and handles;
+// limit is at most 50, and before is the next of the page before.
 func (s *Server) listPeople(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
 	query := people.Query{Q: q.Get("q"), Before: q.Get("before")}

@@ -165,12 +165,14 @@ func TestOlderRecordsReadAsEveryoneOwns(t *testing.T) {
 	if a := s.Tree("acme").Resolve("Renewals", projects.Reader{Subject: "anyone"}); a.Role != projects.Owner {
 		t.Fatalf("anyone in a new child = %+v", a)
 	}
-	// The migration writes the same entries.
+	// The migration writes the same entries, for a name it keeps too.
 	m := projects.NewStore()
-	if err := m.Import("acme", []projects.Project{{Name: "Ops"}}, "migration", t0); err != nil {
+	if err := m.Import("acme", []projects.Project{{Name: "Ops"}}, []projects.Project{{Name: "Dropped"}}, "migration", t0); err != nil {
 		t.Fatal(err)
 	}
-	if ops, _ := m.Get("acme", "Ops"); !slices.Equal(ops.Members, members("*=owner")) {
-		t.Fatalf("an imported project = %+v", ops.Members)
+	for _, name := range []string{"Ops", "Dropped"} {
+		if p, _ := m.Get("acme", name); !slices.Equal(p.Members, members("*=owner")) {
+			t.Fatalf("imported project %s = %+v", name, p.Members)
+		}
 	}
 }

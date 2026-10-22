@@ -278,17 +278,15 @@ func serve(o Options, args []string, d serveDefaults) error {
 		if spec.Model == "" {
 			return fmt.Errorf("agent spec %s needs a model or WARP_AGENT_MODEL", path)
 		}
+		if err := checkNewAgentName(ctx, p, *tenant, spec.Name); err != nil {
+			return fmt.Errorf("agent spec %s: %w", path, err)
+		}
 		if err := registerSpec(ctx, p.Agents, *tenant, spec); err != nil {
 			return fmt.Errorf("agent spec %s: %w", path, err)
 		}
 	}
 	if err := seedClients(ctx, p, *tenant, getenv); err != nil {
 		return err
-	}
-	// Whom the policy grants a role by subject is in the workspace's
-	// directory before they first sign in.
-	if err := p.SeeGranted(*tenant, granted(pol)); err != nil {
-		log.Warn("people the policy names could not all be recorded", "error", err)
 	}
 	if *seed {
 		if err := seedAgents(ctx, p, *tenant); err != nil {
@@ -298,6 +296,9 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err := applyPlatforms(ctx, p, file.cfg, log); err != nil {
 		return err
 	}
+	// After the agents, so an agent the file or the seed names keeps its
+	// name and a person whose handle would be it gets a suffix.
+	seeGranted(p, *tenant, *tenantClaim, pol, log)
 	extensions, err := fileRunners(ctx, o, file.cfg)
 	if err != nil {
 		return err

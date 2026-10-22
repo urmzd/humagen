@@ -1,9 +1,11 @@
 package spec
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/urmzd/warp/pkg/people"
 	"github.com/urmzd/warp/pkg/projects"
 )
 
@@ -65,6 +67,14 @@ func TestEachAgentCheckNamesItsPath(t *testing.T) {
 			"    projects:\n      - {name: Field, agents: {allow: [lead]}}\n      - {name: Globex, parent: Field, kind: account, agents: {default: helper}}\n", fileAgentsYAML,
 			`workspace.projects[1].agents.default: helper is not available in "Globex": the allow list of "Field" leaves it out`,
 		},
+		"an agent named auto": {
+			"", platformAgentsYAML + "    - spec: {name: auto, provider: p, model: m, system_prompt: X.}\n",
+			`agents[2].spec.name: @auto is reserved: it is never an agent's name`,
+		},
+		"an agent named sme": {
+			"", "    - spec: {name: sme, provider: p, model: m, system_prompt: X.}\n",
+			`agents[0].spec.name: @sme is reserved`,
+		},
 		"a default nothing enables": {
 			"    agents: {enable: [lead]}\n    projects:\n      - {name: Field, agents: {default: helper}}\n", platformAgentsYAML,
 			`workspace.projects[0].agents.default: helper is not available in "Field": nothing on its chain enables it`,
@@ -110,5 +120,13 @@ func TestAgentListsTheStoreTakesPass(t *testing.T) {
 func TestTheLanguagesAgentWordsAreTheProjectStores(t *testing.T) {
 	if AutoAgent != projects.Auto || EveryAgent != projects.Everyone || maxAgentList != projects.MaxAgentList {
 		t.Fatalf("spec %q %q %d, store %q %q %d", AutoAgent, EveryAgent, maxAgentList, projects.Auto, projects.Everyone, projects.MaxAgentList)
+	}
+}
+
+// The names the language keeps from agents are the ones the directory keeps
+// from people.
+func TestTheLanguagesReservedNamesAreTheDirectorys(t *testing.T) {
+	if !slices.Equal(ReservedNames, people.Reserved) {
+		t.Fatalf("the spec reserves %v, the directory %v", ReservedNames, people.Reserved)
 	}
 }

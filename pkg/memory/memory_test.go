@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/urmzd/fiber/pkg/topic"
 )
 
 var now = time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
@@ -143,5 +145,38 @@ func TestPersonalDataIsRefused(t *testing.T) {
 	}
 	if len(s.List("acme", "lead")) != 0 {
 		t.Fatal("a refused note was stored")
+	}
+}
+
+// No agent's name is a project's memory owner, the workspace's included, so
+// an agent named workspace keeps its own notes and never reaches the
+// workspace's.
+func TestNoAgentNameIsAProjectsOwner(t *testing.T) {
+	for _, project := range []string{"", "News", "workspace"} {
+		owner := ProjectOwner(project)
+		if _, err := topic.Agent(owner); err == nil {
+			t.Errorf("the owner %q of project %q is a name an agent can take", owner, project)
+		}
+		if got, ok := OwnerProject(owner); !ok || got != project {
+			t.Errorf("OwnerProject(%q) = %q, %v, want %q", owner, got, ok, project)
+		}
+	}
+	for _, agent := range []string{"workspace", "project", "lead"} {
+		if project, ok := OwnerProject(agent); ok {
+			t.Errorf("the agent %q is taken for the project %q", agent, project)
+		}
+	}
+	s := NewStore()
+	if _, err := s.Add("acme", "workspace", "The agent's own.", Person, Approved, "ada", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Add("acme", ProjectOwner(""), "Everyone's.", Person, Approved, "ada", now); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Prompt("acme", "workspace"); strings.Contains(got, "Everyone's.") || !strings.Contains(got, "The agent's own.") {
+		t.Fatalf("the agent named workspace is sent %q", got)
+	}
+	if got := s.List("acme", ProjectOwner("")); len(got) != 1 || got[0].Text != "Everyone's." {
+		t.Fatalf("the workspace's notes are %+v", got)
 	}
 }

@@ -209,6 +209,83 @@ func TestATombstonedNameNeedsGovern(t *testing.T) {
 	}
 }
 
+// churn creates and deletes n throwaway names, each a second after the last.
+func churn(s *projects.Store, tenant string, n int) error {
+	for i := range n {
+		name, at := fmt.Sprintf("Junk %04d", i), t0.Add(time.Duration(i+1)*time.Second)
+		if _, err := s.Create(tenant, team(name, ""), ada, at); err != nil {
+			return err
+		}
+		if err := s.Delete(tenant, name, ada, at, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// However many names are deleted after it, a deleted name that still has
+// conversations under it keeps its tombstone, so taking it back still needs
+// projects:govern. The oldest names with nothing under them make room.
+func TestADeletedNameWithConversationsIsNeverForgotten(t *testing.T) {
+	filed := func(string) func(string) bool {
+		return func(name string) bool { return strings.EqualFold(name, "Target") }
+	}
+	s := projects.NewStore(projects.WithFiled(filed))
+	mustCreate(t, s, "acme", team("Target", ""), ada)
+	if err := s.Delete("acme", "Target", ada, t0, nil); err != nil {
+		t.Fatal(err)
+	}
+	later := projects.MaxTombstones + 10
+	if err := churn(s, "acme", later); err != nil {
+		t.Fatalf("a delete with an empty name to forget = %v", err)
+	}
+	if _, ok := s.Tombstone("acme", "Target"); !ok {
+		t.Fatal("the tombstone of a name with conversations was forgotten")
+	}
+	if _, err := s.Create("acme", team("target", ""), ada, t0); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("reusing it without govern after %d later deletes = %v, want ErrForbidden", later, err)
+	}
+	if _, ok := s.Tombstone("acme", "Junk 0000"); ok {
+		t.Fatal("the oldest empty name is still remembered")
+	}
+	if _, ok := s.Tombstone("acme", fmt.Sprintf("Junk %04d", later-1)); !ok {
+		t.Fatal("the latest delete left no tombstone")
+	}
+}
+
+// With as many tombstones as a tenant keeps and none it may forget, the next
+// delete is refused and changes nothing. A store told nothing about what is
+// filed forgets none.
+func TestAFullTombstoneTableRefusesTheNextDelete(t *testing.T) {
+	everything := projects.WithFiled(func(string) func(string) bool { return func(string) bool { return true } })
+	for name, opts := range map[string][]projects.Option{"told nothing": nil, "every name still filed": {everything}} {
+		t.Run(name, func(t *testing.T) {
+			s := projects.NewStore(opts...)
+			if err := churn(s, "acme", projects.MaxTombstones); err != nil {
+				t.Fatal(err)
+			}
+			mustCreate(t, s, "acme", team("Last", ""), ada)
+			if err := s.Delete("acme", "Last", ada, t0, nil); !errors.Is(err, projects.ErrLimit) {
+				t.Fatalf("a delete past the cap = %v, want ErrLimit", err)
+			}
+			if !s.Tree("acme").Has("Last") {
+				t.Fatal("a refused delete removed the project")
+			}
+			if _, ok := s.Tombstone("acme", "Junk 0000"); !ok {
+				t.Fatal("a refused delete forgot a tombstone")
+			}
+			if h, _ := s.History("acme", "Last", 0, 0); len(h) != 1 {
+				t.Fatalf("a refused delete recorded a change: %+v", h)
+			}
+			// Taking a deleted name back with govern makes room.
+			mustCreate(t, s, "acme", team("Junk 0000", ""), admin)
+			if err := s.Delete("acme", "Last", ada, t0, nil); err != nil {
+				t.Fatalf("a delete once there is room = %v", err)
+			}
+		})
+	}
+}
+
 func TestDeleteIsRefusedWhileAnythingPointsAtTheProject(t *testing.T) {
 	s := projects.NewStore()
 	mustCreate(t, s, "acme", team("Field", ""), ada)
@@ -489,7 +566,7 @@ func TestHistoryPagesNewestFirst(t *testing.T) {
 func TestImportWritesOnceAndAsTeams(t *testing.T) {
 	s := projects.NewStore()
 	legacy := []projects.Project{{Name: "Launch", Description: "Everything for the Q4 launch"}, {Name: "Ops", Kind: projects.Company, Parent: "x"}}
-	if err := s.Import("acme", legacy, "migration", t0); err != nil {
+	if err := s.Import("acme", legacy, nil, "migration", t0); err != nil {
 		t.Fatal(err)
 	}
 	ops, _ := s.Get("acme", "Ops")
@@ -499,11 +576,29 @@ func TestImportWritesOnceAndAsTeams(t *testing.T) {
 	if root, _ := s.Get("acme", ""); root.Version != 1 {
 		t.Fatalf("the root was not created: %+v", root)
 	}
-	if err := s.Import("acme", legacy, "migration", t0); !errors.Is(err, projects.ErrExists) {
+	if err := s.Import("acme", legacy, nil, "migration", t0); !errors.Is(err, projects.ErrExists) {
 		t.Fatalf("a second import = %v", err)
 	}
+	// What something outside the tree still names is kept, and says so.
+	if err := s.Import("initech", []projects.Project{{Name: "Launch"}}, []projects.Project{{Name: "Dropped"}}, "migration", t0); err != nil {
+		t.Fatal(err)
+	}
+	if h, _ := s.History("initech", "Dropped", 0, 0); len(h) != 1 || h[0].Note != projects.KeptNote || h[0].After.Kind != projects.Team {
+		t.Fatalf("a kept name's history = %+v", h)
+	}
+	if h, _ := s.History("initech", "Launch", 0, 0); len(h) != 1 || h[0].Note != "" {
+		t.Fatalf("an imported project's history = %+v", h)
+	}
+	// Past the cap together, nothing is written.
+	capped := projects.NewStore(projects.WithCaps(projects.Caps{Projects: 2}))
+	if err := capped.Import("acme", []projects.Project{{Name: "A"}, {Name: "B"}}, []projects.Project{{Name: "C"}}, "migration", t0); !errors.Is(err, projects.ErrLimit) {
+		t.Fatalf("an import past the cap = %v, want ErrLimit", err)
+	}
+	if capped.Stored("acme") {
+		t.Fatal("an import past the cap left records")
+	}
 	// An import that cannot be written whole writes nothing.
-	if err := s.Import("globex", []projects.Project{{Name: "A"}, {Name: "a"}}, "migration", t0); !errors.Is(err, projects.ErrExists) {
+	if err := s.Import("globex", []projects.Project{{Name: "A"}, {Name: "a"}}, nil, "migration", t0); !errors.Is(err, projects.ErrExists) {
 		t.Fatalf("an import with one name twice = %v", err)
 	}
 	if s.Stored("globex") {

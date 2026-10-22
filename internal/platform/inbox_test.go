@@ -30,6 +30,14 @@ var (
 // to reach the inbox.
 func proposals(t *testing.T) (*platform.Platform, inbox.Message) {
 	t.Helper()
+	p := withMemoryAgent(t)
+	return p, proposed(t, p, "api-1", "")
+}
+
+// withMemoryAgent runs a platform with the agent lead and the memory agent
+// scribe, whose proposals wait for a person.
+func withMemoryAgent(t *testing.T) *platform.Platform {
+	t.Helper()
 	p, err := platform.New(platform.Config{Workspace: t.TempDir(), OfflineHooks: true})
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +60,14 @@ func proposals(t *testing.T) (*platform.Platform, inbox.Message) {
 	if err := p.SetSettings(ctx, tenant, platform.Settings{MemoryAgent: "scribe"}); err != nil {
 		t.Fatal(err)
 	}
-	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-1", Agent: "lead", Text: "Plan the launch"})
+	return p
+}
+
+// proposed runs one turn filed in a project and waits for the message about
+// what the memory agent proposed after it.
+func proposed(t *testing.T, p *platform.Platform, id, project string) inbox.Message {
+	t.Helper()
+	first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: id, Agent: "lead", Text: "Plan the launch", Project: project})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,8 +78,16 @@ func proposals(t *testing.T) (*platform.Platform, inbox.Message) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(page) == 1 {
-			return p, page[0]
+		// A turn at the root teaches its agent, and one in a project the
+		// project.
+		owner := "lead"
+		if project != "" {
+			owner = memory.ProjectOwner(project)
+		}
+		for _, m := range page {
+			if m.Parts[0].Memory != nil && m.Parts[0].Memory.Owner == owner {
+				return m
+			}
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("no memory message reached the inbox: %+v", page)
@@ -131,6 +154,156 @@ func TestInboxDecidesProposedMemory(t *testing.T) {
 	}
 }
 
+// A proposal for a project's notes is the project's to decide, as its own
+// memory routes ask: projects:write and owning the project, and
+// projects:govern as well for a company project's and the workspace's, which
+// every agent in a wide part of the tree is sent. The message reaches the
+// project's owners only, and agents:write is not a way around either rule.
+func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
+	p := withMemoryAgent(t)
+	ctx := t.Context()
+	manager := auth.Principal{Subject: "mo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	outsider := auth.Principal{Subject: "max", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	if _, err := p.CreateProject(ctx, tenant, govern, platform.ProjectInput{
+		Name: "News", Kind: projects.Company, Members: []projects.Entry{{Who: "*", Role: projects.Member}, {Who: "mo", Role: projects.Owner}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{
+		Name: "Launch", Members: []projects.Entry{{Who: "*", Role: projects.Member}, {Who: "opal", Role: projects.Owner}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	news, launch := proposed(t, p, "api-news", "News"), proposed(t, p, "api-launch", "Launch")
+	pending := func(owner string) int {
+		n := 0
+		for _, note := range p.Memory.List(tenant, owner) {
+			if note.Status == memory.Pending {
+				n++
+			}
+		}
+		return n
+	}
+
+	// A company project's: a manager who owns it holds agents:write and
+	// projects:write, not govern, and is offered nothing. One who does not
+	// own it is not sent it.
+	part := news.Parts[0]
+	seen, err := p.InboxGet(manager, news.ID)
+	if err != nil {
+		t.Fatalf("News's owner reading its proposals = %v", err)
+	}
+	if len(seen.Parts[0].Actions) != 0 {
+		t.Fatalf("a manager is offered %v on a company project's proposals", seen.Parts[0].Actions)
+	}
+	for _, action := range []string{platform.ActKeep, platform.ActDiscard} {
+		r := platform.Resolution{Action: action, IDs: []string{part.Memory.Notes[0].ID}}
+		if _, err := p.InboxResolve(ctx, manager, news.ID, part.ID, r); !errors.Is(err, projects.ErrForbidden) {
+			t.Fatalf("a manager's %s on a company project's proposals = %v, want forbidden", action, err)
+		}
+	}
+	if _, err := p.InboxGet(outsider, news.ID); !errors.Is(err, inbox.ErrNotFound) {
+		t.Fatalf("a manager who owns nothing reading News's proposals = %v, want not found", err)
+	}
+	if n := pending(memory.ProjectOwner("News")); n != len(part.Memory.Notes) {
+		t.Fatalf("a refused decision changed News's proposals: %d pending", n)
+	}
+	if seen, _ := p.InboxGet(admin, news.ID); len(seen.Parts) == 0 || len(seen.Parts[0].Actions) != 2 {
+		t.Fatalf("an admin is offered %+v", seen.Parts)
+	}
+	if _, err := p.InboxResolve(ctx, admin, news.ID, part.ID, platform.Resolution{Action: platform.ActKeep, IDs: []string{part.Memory.Notes[0].ID}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A team project's: projects:write and owning it, without agents:write.
+	part = launch.Parts[0]
+	if _, err := p.InboxGet(viewer, launch.ID); !errors.Is(err, inbox.ErrNotFound) {
+		t.Fatalf("a viewer reading Launch's proposals = %v, want not found", err)
+	}
+	if seen, err := p.InboxGet(operator, launch.ID); err != nil || len(seen.Parts[0].Actions) != 2 {
+		t.Fatalf("Launch's owner, an operator, is offered %+v (%v)", seen.Parts, err)
+	}
+	if _, err := p.InboxResolve(ctx, operator, launch.ID, part.ID, platform.Resolution{Action: platform.ActDiscard}); err != nil {
+		t.Fatalf("an operator discarding a team project's proposals = %v", err)
+	}
+	if n := len(p.Memory.List(tenant, memory.ProjectOwner("Launch"))); n != 0 {
+		t.Fatalf("%d of Launch's proposals outlived the discard", n)
+	}
+
+// The workspace's own: govern again.
+	note, err := p.Memory.Add(tenant, memory.ProjectOwner(""), "Everyone ships on Tuesdays.", memory.Consolidated, memory.Pending, "run-x", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _, err := p.Inbox.Raise(tenant, "memory:root", inbox.Message{
+		Kind: inbox.KindMemory, Subject: "1 proposed memory for the workspace", Severity: inbox.Info,
+		Parts: []inbox.Part{{Type: inbox.PartMemory, Memory: &inbox.MemoryPart{Owner: memory.ProjectOwner(""), Notes: []inbox.NoteRef{{ID: note.ID, Text: note.Text}}}}},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.InboxResolve(ctx, manager, root.ID, root.Parts[0].ID, platform.Resolution{Action: platform.ActKeep, IDs: []string{note.ID}}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a manager keeping the workspace's proposal = %v, want forbidden", err)
+	}
+	if _, err := p.InboxResolve(ctx, admin, root.ID, root.Parts[0].ID, platform.Resolution{Action: platform.ActKeep, IDs: []string{note.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Memory.List(tenant, memory.ProjectOwner("")); len(got) != 1 || got[0].Status != memory.Approved {
+		t.Fatalf("the workspace's notes = %+v", got)
+	}
+}
+
+// With the workspace keeping what the memory agent writes without asking, an
+// agent's notes and a team project's are kept as they come, and a company
+// project's still wait for someone holding projects:govern: the turn that
+// taught them needed only runs:write, and agents:write turns the setting on.
+func TestAutoApproveStillAsksGovernForACompanyProjectsNotes(t *testing.T) {
+	p := withMemoryAgent(t)
+	ctx := t.Context()
+	if err := p.SetSettings(ctx, tenant, platform.Settings{MemoryAgent: "scribe", MemoryAutoApprove: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, govern, platform.ProjectInput{
+		Name: "News", Kind: projects.Company, Members: []projects.Entry{{Who: "*", Role: projects.Member}, {Who: "mo", Role: projects.Owner}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Launch"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ id, project, owner string }{
+		{"api-launch", "Launch", memory.ProjectOwner("Launch")},
+		{"api-root", "", "lead"},
+	} {
+		first, err := p.Converse(ctx, tenant, platform.Turn{ID: c.id, Agent: "lead", Text: "Plan the launch", Project: c.project})
+		if err != nil {
+			t.Fatal(err)
+		}
+		await(t, p, first.ID, runs.Completed)
+		within(t, c.owner+"'s notes are written", func() bool { return len(p.Memory.List(tenant, c.owner)) > 0 })
+		for _, n := range p.Memory.List(tenant, c.owner) {
+			if n.Status != memory.Approved {
+				t.Fatalf("with approval off, %s's note waits: %+v", c.owner, n)
+			}
+		}
+	}
+
+	msg := proposed(t, p, "api-news", "News")
+	notes := p.Memory.List(tenant, memory.ProjectOwner("News"))
+	if len(notes) == 0 || len(notes) != len(msg.Parts[0].Memory.Notes) {
+		t.Fatalf("News holds %+v, and the inbox proposes %+v", notes, msg.Parts[0].Memory.Notes)
+	}
+	for _, n := range notes {
+		if n.Status != memory.Pending {
+			t.Fatalf("a company project's note was kept unasked: %+v", n)
+		}
+	}
+	manager := auth.Principal{Subject: "mo", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Manager}}
+	if seen, err := p.InboxGet(manager, msg.ID); err != nil || len(seen.Parts[0].Actions) != 0 {
+		t.Fatalf("News's owner, a manager, is offered %+v on its proposals (%v)", seen.Parts, err)
+	}
+}
+
 // Proposals dealt with on the agent's own page close their message.
 func TestMemoryDecidedElsewhereClosesItsMessage(t *testing.T) {
 	p, msg := proposals(t)
@@ -161,6 +334,7 @@ func TestMemoryDecidedElsewhereClosesItsMessage(t *testing.T) {
 // an alert and its message are settled together from either side.
 // refusing is a model that fails every call at once.
 type refusing struct{ saigetypes.Provider }
+
 
 func (refusing) Stream(context.Context, saigetypes.Request) (<-chan saigetypes.Delta, error) {
 	return nil, errors.New("the model is unavailable")

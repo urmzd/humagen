@@ -150,6 +150,7 @@ func headers(next http.Handler) http.Handler {
 
 type handler func(w http.ResponseWriter, r *http.Request, who auth.Principal)
 
+
 // authed authenticates, authorizes, bounds the body, and records every change.
 // An empty permission means any signed-in caller.
 func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
@@ -659,12 +660,12 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 		return
 	}
 	defer func() { _ = stream.Close() }()
-
 	// Inbox changes ride the same stream as a named event, so a reader that
 	// only listens for run events never sees them. A notice names a message
 	// and nothing more: the reader fetches it and is shown what they may see.
-	// It is watched before the stream opens, so a reader that connects and
-	// then acts is told of what it did.
+	// The watch starts before the stream is answered, as the run events'
+	// subscription does, so a reader that acts once it is connected cannot
+	// miss the notice its action raises.
 	notices, unwatch := s.P.Inbox.Watch(who.Tenant)
 	defer unwatch()
 
@@ -773,6 +774,8 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusConflict, detail(err, projects.ErrManaged))
 	case errors.Is(err, projects.ErrInUse):
 		fail(w, http.StatusConflict, detail(err, projects.ErrInUse))
+	case errors.Is(err, platform.ErrProjectDeleted):
+		fail(w, http.StatusConflict, detail(err, platform.ErrProjectDeleted))
 	case errors.Is(err, projects.ErrVersion):
 		fail(w, http.StatusConflict, detail(err, projects.ErrVersion)+"; reload and try again")
 	case errors.Is(err, projects.ErrForbidden):

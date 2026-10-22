@@ -191,7 +191,11 @@ builds on:
 
 - **Agents** in the file are created, or revised to the file's spec. An
   unchanged spec makes no new revision. An edit made in the console to an agent
-  the file declares lasts until the next start.
+  the file declares lasts until the next start. `auto` and `sme` are tags, so
+  never an agent's name (`warp config check` refuses one written inline, the
+  start one read from a file), and a new agent named like a handle a person
+  in the workspace goes by fails the start with "a person goes by @dana", as
+  the API answers 409.
 - **Workspace** fields that are set are applied; fields left out stay as the
   console left them.
 - **Projects** in the file are created, or taken over when the console made

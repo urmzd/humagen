@@ -3,6 +3,7 @@ package httpapi
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -120,6 +121,101 @@ func TestTheWorkspaceAndCompanyProjectsNeedGovern(t *testing.T) {
 	changes := want(t, f, op, "GET", "/api/projects/Platform/history", "", http.StatusOK)["changes"].([]any)
 	if latest := changes[0].(map[string]any); latest["what"] != "created" || latest["note"] != "adopts its old conversations" {
 		t.Fatalf("the newest change = %v", latest)
+	}
+}
+
+// The workspace's notes and a company project's are reached only through the
+// project routes, where projects:govern is asked for. An agent named
+// workspace keeps notes of its own, and the agent memory routes answer 404
+// for a name that is a project's owner, so agents:write is no way around
+// govern.
+func TestAnAgentNamedWorkspaceNeverReachesTheWorkspacesNotes(t *testing.T) {
+	f := newFixture(t)
+	admin := f.machine(t, "acme", everything...)
+	// A manager: agents:write and projects:write, not projects:govern.
+	manager := f.machine(t, "acme", append([]string{"warp:agents:write"}, operator...)...)
+	want(t, f, admin, "POST", "/api/projects", `{"name":"News","kind":"company"}`, http.StatusCreated)
+	// The manager is a member of the workspace, so their note is only a
+	// proposal, which they may not keep.
+	proposal := want(t, f, manager, "POST", "/api/projects/~/memory", `{"text":"Smuggled."}`, http.StatusCreated)
+	if proposal["status"] != "pending" {
+		t.Fatalf("a manager's note on the workspace = %v, want a proposal", proposal)
+	}
+	want(t, f, manager, "POST", "/api/projects/~/memory/approve", `{"ids":["`+proposal["id"].(string)+`"]}`, http.StatusForbidden)
+	want(t, f, admin, "DELETE", "/api/projects/~/memory/"+proposal["id"].(string), "", http.StatusNoContent)
+
+	want(t, f, manager, "POST", "/api/agents", `{"name":"workspace","model":"offline","provider":"offline","system_prompt":"x"}`, http.StatusCreated)
+	own := want(t, f, manager, "POST", "/api/agents/workspace/memory", `{"text":"Smuggled."}`, http.StatusCreated)
+	everyone := want(t, f, admin, "POST", "/api/projects/~/memory", `{"text":"We sell robots."}`, http.StatusCreated)
+	news := want(t, f, admin, "POST", "/api/projects/News/memory", `{"text":"Fridays are quiet."}`, http.StatusCreated)
+	texts := func(path string) []string {
+		t.Helper()
+		var out []string
+		for _, n := range want(t, f, admin, "GET", path, "", http.StatusOK)["notes"].([]any) {
+			out = append(out, n.(map[string]any)["text"].(string))
+		}
+		return out
+	}
+	if got := texts("/api/projects/~/memory"); !slices.Equal(got, []string{"We sell robots."}) {
+		t.Fatalf("the workspace's notes are %q", got)
+	}
+	if got := texts("/api/agents/workspace/memory"); !slices.Equal(got, []string{"Smuggled."}) {
+		t.Fatalf("the agent named workspace holds %q", got)
+	}
+	if out := want(t, f, admin, "GET", "/api/projects/~", "", http.StatusOK)["project"].(map[string]any); out["notes"].(float64) != 1 {
+		t.Fatalf("the workspace counts %v notes", out["notes"])
+	}
+
+	// No project's owner is an agent's name, whatever exists.
+	for _, name := range []string{"project:", "project:News", "nobody"} {
+		for _, tc := range []struct{ method, path, body string }{
+			{"GET", "/api/agents/" + name + "/memory", ""},
+			{"POST", "/api/agents/" + name + "/memory", `{"text":"Smuggled."}`},
+			{"POST", "/api/agents/" + name + "/memory/approve", `{"ids":[]}`},
+			{"DELETE", "/api/agents/" + name + "/memory/" + everyone["id"].(string), ""},
+			{"DELETE", "/api/agents/" + name + "/memory/" + news["id"].(string), ""},
+		} {
+			if got, out := status(t, f, manager, tc.method, tc.path, tc.body); got != http.StatusNotFound {
+				t.Errorf("%s %s = %d %v, want 404", tc.method, tc.path, got, out)
+			}
+		}
+	}
+	// The workspace's note is not the agent's to remove, and its own is.
+	want(t, f, manager, "DELETE", "/api/agents/workspace/memory/"+everyone["id"].(string), "", http.StatusNotFound)
+	want(t, f, manager, "DELETE", "/api/agents/workspace/memory/"+own["id"].(string), "", http.StatusNoContent)
+	if got := texts("/api/projects/~/memory"); !slices.Equal(got, []string{"We sell robots."}) {
+		t.Fatalf("after the agent routes the workspace's notes are %q", got)
+	}
+	if got := texts("/api/projects/News/memory"); !slices.Equal(got, []string{"Fridays are quiet."}) {
+		t.Fatalf("after the agent routes News's notes are %q", got)
+	}
+}
+
+// A conversation filed in a project that was deleted can be read, and its
+// next turn is 409: it would count toward none of the limits above it.
+func TestAConversationInADeletedProjectIsReadNotContinued(t *testing.T) {
+	f := newFixture(t)
+	op := f.machine(t, "acme", operator...)
+	admin := f.machine(t, "acme", everything...)
+	f.do(t, nil, "POST", "/api/agents", admin, helperSpec)
+	want(t, f, op, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
+	want(t, f, op, "POST", "/api/projects", `{"name":"Sub","parent":"Field"}`, http.StatusCreated)
+	want(t, f, admin, "PUT", "/api/policies", `{"scope":{"kind":"project","name":"Field"},"period":"day","max_runs":1}`, http.StatusOK)
+	first := want(t, f, op, "POST", "/api/runs", `{"agent":"helper","text":"hi","project":"Sub"}`, http.StatusAccepted)
+	if within, _ := first["within"].([]any); len(within) != 1 || within[0] != "Field" {
+		t.Fatalf("the first turn is within %v", first["within"])
+	}
+	id := first["id"].(string)
+	want(t, f, op, "DELETE", "/api/projects/Sub", "", http.StatusNoContent)
+	for range 3 {
+		out := want(t, f, op, "POST", "/api/runs", `{"agent":"helper","text":"more","after":"`+id+`"}`, http.StatusConflict)
+		if msg := out["error"].(string); !strings.Contains(msg, `"Sub" was deleted`) {
+			t.Fatalf("the refusal says %q", msg)
+		}
+	}
+	thread := want(t, f, op, "GET", "/api/threads/"+first["thread"].(string), "", http.StatusOK)
+	if turns := thread["turns"].([]any); len(turns) != 1 {
+		t.Fatalf("the conversation holds %d turns", len(turns))
 	}
 }
 

@@ -51,22 +51,25 @@ func (p *Platform) whereOf(tenant string, tree *projects.Tree, project string) s
 // it may not. It is the one check: admission makes it for every run, and the
 // places that write an agent into a project make it first, so a person hears
 // the same answer sooner. Whether the agent exists is the registry's to say.
+// A project the tree does not hold is ErrProjectNotFound, as it is to the
+// caller that looked it up just before a delete won.
 func (p *Platform) Available(tenant, project, agent string) error {
 	project = projects.NameOf(project)
 	tree := p.Projects.Tree(tenant)
 	if tree.IsAvailable(project, agent) {
 		return nil
 	}
+	if !tree.Has(project) {
+		return fmt.Errorf("%w: %q", ErrProjectNotFound, project)
+	}
 	return p.notAvailable(tenant, tree, project, agent)
 }
 
+// notAvailable says why an agent may not run in a project the tree holds.
 func (p *Platform) notAvailable(tenant string, tree *projects.Tree, project, agent string) error {
 	where := p.whereOf(tenant, tree, project)
-	switch {
-	case agent == Auto:
+	if agent == Auto {
 		return fmt.Errorf("%w: @auto picks an agent before anything runs, so it never runs itself", ErrNotAvailable)
-	case !tree.Has(project):
-		return fmt.Errorf("%w: there is no project %q to run %s in", ErrNotAvailable, project, agent)
 	}
 	if home, ok := tree.Home(agent); ok && !onChain(tree, project, home) {
 		return fmt.Errorf("%w: %s is not available in %s; it lives in %s and is available only there and below", ErrNotAvailable, agent, where, p.whereOf(tenant, tree, home))
@@ -82,21 +85,22 @@ func onChain(tree *projects.Tree, project, name string) bool {
 
 // admitAgent is admission's availability check. A run filed in a project,
 // the root included, must use an agent available there. Housekeeping is
-// exempt, as it is from admission. An eval tries an agent where it lives, so
-// a project agent can be evaluated without being filed outside its home. A
-// scheduled run refused here keeps firing and is refused each time, and the
-// refusal is raised once, as an alert, until someone acknowledges it.
+// exempt, as it is from admission. An eval is filed where its agent lives
+// (evalCase), so it is checked as any run there is. A scheduled run refused
+// here keeps firing and is refused each time, and the refusal is raised
+// once, as an alert, until someone acknowledges it.
 func (p *Platform) admitAgent(tag envelope.Tag, project string) error {
 	if tag.Origin == runs.OriginSystem {
 		return nil
 	}
 	tree := p.Projects.Tree(tag.Tenant)
 	at := project
-	if home, ok := tree.Home(tag.Agent); ok && tag.Origin == OriginEval {
-		at = home
-	}
 	if tree.IsAvailable(at, tag.Agent) {
 		return nil
+	}
+	if !tree.Has(at) {
+		// Deleted between placeOf and here: refused as placeOf refuses it.
+		return projectDeleted(at)
 	}
 	err := p.notAvailable(tag.Tenant, tree, at, tag.Agent)
 	p.log.Warn("platform: run refused: agent not available", "tenant", tag.Tenant, "agent", tag.Agent, "project", at, "origin", tag.Origin)
@@ -286,7 +290,9 @@ func (p *Platform) autoFor(ctx context.Context, c clients.Client, text string) (
 // whose settings named a baseline gets that agent as its default, which is
 // what the console sent when nobody chose one; one whose settings named none
 // gets auto, which keeps the picker for callers that name no agent. Then its
-// settings are written again without the baseline.
+// settings are written again without the baseline. A workspace whose settings
+// named none and that has no tree is given none: its root already reads as
+// every agent enabled and auto, so the upgrade changes nothing there.
 //
 // The root is written first. Stopping between the two writes is repaired at
 // the next start: the settings still name the baseline, the root already has
@@ -306,8 +312,9 @@ func (p *Platform) migrateBaseline() error {
 	for _, tenant := range tenants {
 		baseline, had := p.settings.baselines[tenant]
 		// The root is written even when the upgrade leaves it as it reads,
-		// so its history says the upgrade set the workspace default.
-		if had {
+		// so its history says the upgrade set the workspace default. An
+		// empty baseline was the picker, which auto still is.
+		if had && baseline != "" {
 			if err := p.Projects.EnsureRoot(tenant, migration, p.now()); err != nil {
 				return fmt.Errorf("platform: write the root of %q: %w", tenant, err)
 			}
