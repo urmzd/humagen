@@ -121,3 +121,12 @@ func (p *Platform) SeatPeer(tenant, id string, peer Peer) error {
 	p.seat(c, &seat{client: c, peer: peer})
 	return nil
 }
+
+// HousekeepingTag is what a hook sends for a turn at a place: a run of
+// origin system, read where the turn is.
+func HousekeepingTag(tenant, id, agent string, turn Place) envelope.Tag {
+	return envelope.Tag{
+		ID: id, Tenant: tenant, Agent: agent, Origin: runs.OriginSystem, Text: "title it", At: time.Now(),
+		Meta: map[string]string{metaPlaceProject: turn.Project, metaPlaceThread: turn.Thread},
+	}
+}

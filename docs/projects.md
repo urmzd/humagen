@@ -574,9 +574,17 @@ because every run passes through admission:
   and the root for a platform agent, so the home's limits count it and the
   runs it calls are checked there, as for any run of that agent.
 
-Housekeeping (`OriginSystem`) is exempt, as it is from admission. Earlier
-checks use the same function and give the same answer sooner: writing a
-schedule, a default or a tag, and `GET /api/pick`.
+Housekeeping (`OriginSystem`) is exempt, as it is from admission. It is read
+where the turn it serves is, so a title or memory agent that lives in a
+project is asked only about the turns there and below, whose readers all read
+it. The conversation of its own a housekeeping run makes is filed at the
+workspace, and is counted there only for a reader who may read the turn it
+serves. A reader's counts are decided as of one moment, so a conversation
+opened while they are read, a housekeeping run's or a private thread's, is
+counted from the next read. Earlier checks use the same function and give the same answer sooner:
+writing a schedule, a default or a tag, and `GET /api/pick`. An agent the
+writer may not read is not one they are told about: naming it answers as
+naming an agent that does not exist, at every one of them.
 
 ### Homes
 
@@ -735,7 +743,8 @@ the chain, never housekeeping. Its grounding:
   - runs (a `Summarize` filtered by project);
   - threads started and finished;
   - artifacts, approved notes and announcements;
-  - schedule and project record changes.
+  - schedule and project record changes. A change of an agent's home names
+    the agent only when everyone the recap reaches may read it.
 
   It returns at most 50 rows a section and 32 KB in all. A run with no
   project gets an error;
@@ -963,9 +972,12 @@ One predicate, `p.Sees(who, place)`, filters every read of:
 - artifacts and their downloads;
 - schedules and the inbox;
 - memory and pending memory;
-- `/api/agents` (homed agents).
+- `/api/agents` (homed agents);
+- the agents a client, a project's lists and the workspace's settings name.
 
-A hidden object answers 404.
+A hidden object answers 404. A hidden agent a record names is left out of it,
+a change keeps it, and naming one, in any spelling of its name, answers as
+naming no agent.
 
 ### Phase 8
 

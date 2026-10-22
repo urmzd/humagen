@@ -115,11 +115,12 @@ const (
 )
 
 // projectFacts is what a tenant's project views are made of, read once for a
-// whole answer: the tree, the caller's role in every project of it, and the
-// counts of what they may read.
+// whole answer: the tree, the caller's role in every project of it, what
+// they may read, and the counts of it.
 type projectFacts struct {
 	tenant    string
 	who       auth.Principal
+	seer      *platform.Seer
 	tree      *projects.Tree
 	access    map[string]projects.Access
 	counts    map[string]runs.ProjectCount
@@ -128,7 +129,7 @@ type projectFacts struct {
 
 func (s *Server) projectFacts(who auth.Principal) projectFacts {
 	tenant := who.Tenant
-	f := projectFacts{tenant: tenant, who: who, tree: s.P.ProjectTree(tenant), counts: s.P.ProjectCounts(who), schedules: map[string]int{}}
+	f := projectFacts{tenant: tenant, who: who, seer: s.P.Seer(who), tree: s.P.ProjectTree(tenant), counts: s.P.ProjectCounts(who), schedules: map[string]int{}}
 	f.access = f.tree.Roles(platform.ReaderOf(who))
 	for _, sc := range s.P.Schedules.List(tenant) {
 		f.schedules[sc.Meta[runs.MetaProject]]++
@@ -179,8 +180,11 @@ func actionsOf(f projectFacts, p projects.Project) []string {
 	return out
 }
 
+// projectView is a project as the caller reads it. Its lists of agents leave
+// out every agent that lives in a project the caller may not read.
 func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 	chain := f.tree.Chain(p.Name)
+	p.Agents = f.seer.ProjectAgents(p.Agents)
 	v := projectView{Project: p, Depth: max(len(chain)-1, 0), Path: []pathStep{}, Schedules: f.schedules[p.Name]}
 	// A sub-project the caller may not see is not counted, as it is not
 	// listed.
@@ -445,7 +449,8 @@ func historySeq(cursor string) (int64, bool) {
 }
 
 // projectHistory pages what changed on a project, newest first. A deleted
-// project's history is not read here: its name is gone from the tree.
+// project's history is not read here: its name is gone from the tree. Each
+// change names only the agents the caller may read (platform.Seer.Change).
 func (s *Server) projectHistory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	q := r.URL.Query()
 	limit := projects.DefaultPage
@@ -473,6 +478,10 @@ func (s *Server) projectHistory(w http.ResponseWriter, r *http.Request, who auth
 	if err != nil {
 		s.problem(w, err)
 		return
+	}
+	seer := s.P.Seer(who)
+	for i, c := range changes {
+		changes[i] = seer.Change(c)
 	}
 	var cursor *string
 	if next > 0 {

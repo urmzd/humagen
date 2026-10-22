@@ -160,6 +160,8 @@ func postSlack(t *testing.T, f *fixture, secret, body string) int {
 func TestAnotherTenantsClientIsNotFound(t *testing.T) {
 	f, _, _ := clientFixture(t)
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
+	want(t, f, acme, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, globex, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	if res, out := f.do(t, nil, "POST", "/api/clients", acme, slackBody("docs", "A0DOCS", "helper")); res.StatusCode != http.StatusCreated {
 		t.Fatalf("create = %d %v", res.StatusCode, out)
 	}
@@ -197,6 +199,7 @@ func TestClientRoutesEachNeedTheirPermission(t *testing.T) {
 	reader := f.machine(t, "acme", "warp:clients:read")
 	writer := f.machine(t, "acme", "warp:clients:write")
 	other := f.machine(t, "acme", "warp:agents:write", "warp:runs:write", "warp:billing:write")
+	want(t, f, f.machine(t, "acme", everything...), "POST", "/api/agents", helperSpec, http.StatusCreated)
 	body := slackBody("docs", "A0DOCS", "helper")
 	for _, tc := range []struct {
 		method, path, body, bearer string
@@ -236,6 +239,7 @@ func TestClientRoutesEachNeedTheirPermission(t *testing.T) {
 func TestTheClientCapIsEnforcedThroughTheAPI(t *testing.T) {
 	f, _, _ := clientFixture(t)
 	admin := f.machine(t, "acme", everything...)
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	_, list := f.do(t, nil, "GET", "/api/clients", admin, "")
 	if caps := list["caps"].(map[string]any); caps["max"].(float64) != clients.DefaultMax || caps["max_per_surface"].(float64) != clients.DefaultMaxPerSurface {
 		t.Fatalf("default caps = %v", caps)
@@ -270,7 +274,8 @@ func TestTheClientCapIsEnforcedThroughTheAPI(t *testing.T) {
 func TestAClientsLimitsAreAPolicyScopedToIt(t *testing.T) {
 	f, _, _ := clientFixture(t)
 	admin := f.machine(t, "acme", everything...)
-	f.do(t, nil, "POST", "/api/clients", admin, slackBody("docs", "A0DOCS", "helper"))
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, admin, "POST", "/api/clients", slackBody("docs", "A0DOCS", "helper"), http.StatusCreated)
 	if res, out := f.do(t, nil, "PUT", "/api/policies", admin, `{"scope":{"kind":"client","name":"docs"},"period":"day","max_runs":50,"max_concurrent":2}`); res.StatusCode != http.StatusOK {
 		t.Fatalf("set limits = %d %v", res.StatusCode, out)
 	}
@@ -344,11 +349,12 @@ func TestTheAPIRefusesASecretReferenceItsTenantWasNotGiven(t *testing.T) {
 		return `{"id":"` + id + `","name":"` + id + `","surface":"slack","identity":{"app_id":"` + app + `","team":"T01ABCDEF"},"default_agent":"helper",` +
 			`"credentials":{"token":{"ref":"` + token + `"},"signing_secret":{"ref":"` + signing + `"}}}`
 	}
+	want(t, f, acme, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, globex, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	// The tenant the variables were given to may reference them.
 	if res, out := f.do(t, nil, "POST", "/api/clients", acme, withRefs("mine", "A0MINE", "env:WARP_SLACK_TOKEN_ACME", "env:WARP_SLACK_SECRET_ACME")); res.StatusCode != http.StatusCreated {
 		t.Fatalf("acme create = %d %v", res.StatusCode, out)
 	}
-	f.do(t, nil, "POST", "/api/agents", acme, helperSpec)
 	body := `{"type":"event_callback","api_app_id":"A0MINE","team_id":"T01ABCDEF","event_id":"Ev1","event":{"type":"app_mention","user":"U01","channel":"C01","ts":"1700000000.000100","text":"explain"}}`
 	if code := postSlack(t, f, signingSecret, body); code != http.StatusOK {
 		t.Fatalf("a webhook signed with the referenced secret answered %d", code)

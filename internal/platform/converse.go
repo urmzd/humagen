@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/registry"
 
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
@@ -182,6 +184,12 @@ func (p *Platform) Settings(tenant string) Settings { return p.settings.get(tena
 
 // SetSettings replaces a tenant's settings.
 func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings) error {
+	return p.setSettings(ctx, tenant, next, nil)
+}
+
+// setSettings is SetSettings for a writer shown only the agents shown
+// reports, nil for every agent: a refusal names no other.
+func (p *Platform) setSettings(ctx context.Context, tenant string, next Settings, shown func(string) bool) error {
 	next = next.withDefaults()
 	// Who set the workspace up, and when, is the server's to say.
 	stored := p.Settings(tenant)
@@ -190,13 +198,17 @@ func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings
 	if len(next.WorkspaceName) > 80 || strings.ContainsAny(next.WorkspaceName, "\r\n\t<>") {
 		return fmt.Errorf("%w: a workspace name is plain text on one line, at most 80 characters", ErrSettings)
 	}
-	for _, name := range []string{next.TitleAgent, next.MemoryAgent} {
-		if name == "" {
+	// Each agent is kept by its own name, whatever spelling named it, as a
+	// home and a list are.
+	for _, name := range []*string{&next.TitleAgent, &next.MemoryAgent} {
+		if *name == "" {
 			continue
 		}
-		if _, err := p.Agents.Get(ctx, tenant, name, 0); err != nil {
-			return fmt.Errorf("%w: %q", ErrNoBaseline, name)
+		rev, err := p.Agents.Get(ctx, tenant, *name, 0)
+		if err != nil {
+			return fmt.Errorf("%w: %q", ErrNoBaseline, *name)
 		}
+		*name = rev.Spec.Name
 	}
 	switch {
 	case next.History != HistoryRecent && next.History != HistoryNone:
@@ -214,12 +226,29 @@ func (p *Platform) SetSettings(ctx context.Context, tenant string, next Settings
 			continue
 		}
 		if users := p.policyUsers(ctx, tenant, old.Name); len(users) > 0 {
-			return fmt.Errorf("%w: %q is used by %s; move them to another policy first", ErrModelPolicyInUse, old.Name, strings.Join(users, ", "))
+			return policyInUse(old.Name, users, shown)
 		}
 	}
 	p.settings.mu.Lock()
 	defer p.settings.mu.Unlock()
 	return p.settings.put(tenant, next)
+}
+
+// policyInUse refuses removing a policy that users still run on, naming the
+// ones shown reports (every one when it is nil). The others are said to live
+// where the writer may not read, by no name and no count.
+func policyInUse(policy string, users []string, shown func(string) bool) error {
+	named := users
+	if shown != nil {
+		named = slices.DeleteFunc(slices.Clone(users), func(a string) bool { return !shown(a) })
+	}
+	switch {
+	case len(named) == len(users):
+		return fmt.Errorf("%w: %q is used by %s; move them to another policy first", ErrModelPolicyInUse, policy, strings.Join(users, ", "))
+	case len(named) > 0:
+		return fmt.Errorf("%w: %q is used by %s, and by agents in projects you may not read; move them to another policy first", ErrModelPolicyInUse, policy, strings.Join(named, ", "))
+	}
+	return fmt.Errorf("%w: %q is used by agents in projects you may not read; their owners can move them to another policy", ErrModelPolicyInUse, policy)
 }
 
 // MarkSetup records who first set the workspace up. It does nothing once that
@@ -261,6 +290,10 @@ type Turn struct {
 	// that. Anyone else's turn teaches the project only proposals for its
 	// owners. Only a caller that asked MayChangeNotes for that person sets it.
 	KeepsNotes bool
+	// Sees, when set, is the agents the person the turn is for may read. An
+	// agent the turn names that they may not read is refused as one that
+	// does not exist, before anything is asked of it.
+	Sees func(agent string) bool
 }
 
 // NoProjectCalled is what a turn filed in a project that is not there is
@@ -325,6 +358,14 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 			return runs.Run{}, fmt.Errorf("%w: this credential does not answer for people of that client", ErrForbidden)
 		}
 		routes, clientDefault = c.Routes, c.DefaultAgent
+	}
+	if asked := strings.TrimSpace(t.Agent); t.Sees != nil && asked != "" && asked != Auto {
+		if _, err := p.Agents.Get(ctx, tenant, asked, 0); err != nil {
+			return runs.Run{}, err
+		}
+		if !t.Sees(asked) {
+			return runs.Run{}, fmt.Errorf("%w: %q", registry.ErrNotFound, asked)
+		}
 	}
 	who, err := p.resolveAgent(ctx, tenant, p.placeIn(tenant, th, clientDefault), strings.TrimSpace(t.Agent), t.Text, routes)
 	if err != nil {
