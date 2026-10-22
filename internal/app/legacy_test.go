@@ -245,3 +245,42 @@ func TestTheComposeStackSetsTheDatabaseURLUnderBothNames(t *testing.T) {
 		}
 	}
 }
+
+// start -f reads only the file named: the default spec is not looked for, so
+// an old one there is not noted, and two there do not stop it.
+func TestStartWithAFileLooksForNoDefaultSpec(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HUMAGEN_HOME", home)
+	t.Setenv(envWebDir, "")
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	for _, f := range []string{"warp.yaml", "humagen.yaml"} {
+		if err := os.WriteFile(filepath.Join(home, f), []byte("not read"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	named := filepath.Join(t.TempDir(), "acme.yaml")
+	if err := os.WriteFile(named, []byte("api_version: humagen/v1\nkind: System\nmetadata: {name: acme}\nspec: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ready := make(chan string, 1)
+	done := make(chan error, 1)
+	var notes bytes.Buffer
+	o := Options{ctx: ctx, ready: func(a string) { ready <- a }, notes: legacy.NewNotes(&notes)}
+	go func() { done <- start(o, []string{"-f", named, "-addr", "127.0.0.1:0"}, failingReader{t}, io.Discard) }()
+	select {
+	case <-ready:
+	case err := <-done:
+		t.Fatalf("start returned: %v", err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("start did not listen")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if notes.Len() != 0 {
+		t.Errorf("start noted %q for a file it did not read", notes.String())
+	}
+}

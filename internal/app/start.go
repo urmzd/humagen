@@ -46,14 +46,15 @@ func start(o Options, args []string, in io.Reader, out io.Writer) error {
 	// Example agents are seeded only when nothing is configured: a spec
 	// declares its own agents.
 	d := serveDefaults{auth: "dev", seed: true, web: webDir(os.Getenv), notes: out}
-	path, err := specPath(o.notes)
-	if err != nil {
-		return err
-	}
 	if len(scanFiles(rest)) > 0 {
 		d.seed = false
 	} else {
-		_, err := os.Stat(path)
+		// The default spec is looked for only when -f names none.
+		path, err := specPath(o.notes)
+		if err != nil {
+			return err
+		}
+		_, err = os.Stat(path)
 		exists := err == nil
 		// The questions are asked, and humagen.yaml written, only once serve
 		// knows its command line parses: -h, or a flag it does not know,

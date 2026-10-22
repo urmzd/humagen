@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -62,6 +63,15 @@ func TestTheSlackAppIsGivenOnlyWhatItNeeds(t *testing.T) {
 		"HUMAGEN_OIDC_CLIENT_SECRET": "the-apps-secret", "HUMAGEN_OIDC_SCOPES": "humagen:runs:read humagen:runs:write",
 		"HUMAGEN_OIDC_AUDIENCE": "humagen",
 	}
+	// Each of the app's own settings also under its old name, for an app
+	// directory from before the rename, which reads only those; the new app
+	// is told they are copies and notes nothing.
+	for k, v := range maps.Clone(want) {
+		if rest, ok := strings.CutPrefix(k, "HUMAGEN_"); ok {
+			want["WARP_"+rest] = v
+		}
+	}
+	want["HUMAGEN_OLD_NAMES_COPIED"] = "1"
 	for k, v := range want {
 		if got[k] != v {
 			t.Errorf("%s = %q, want %q", k, got[k], v)

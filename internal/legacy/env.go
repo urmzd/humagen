@@ -153,10 +153,14 @@ func NoteNamed(look func(string) (string, bool), names []string, n *Notes) {
 		if old == "" {
 			continue
 		}
-		if v, ok := look(Canonical(name)); ok && strings.TrimSpace(v) != "" {
-			continue
-		}
-		if v, ok := look(old); ok && strings.TrimSpace(v) != "" {
+		cur, curOK := look(Canonical(name))
+		was, wasOK := look(old)
+		hasNew := curOK && strings.TrimSpace(cur) != ""
+		hasOld := wasOK && strings.TrimSpace(was) != ""
+		switch {
+		case hasNew && hasOld && cur != was:
+			notes = append(notes, Canonical(name)+" and "+old+" differ; using "+Canonical(name))
+		case !hasNew && hasOld:
 			notes = append(notes, old+" is read as "+Canonical(name)+"; it still works, rename it (references to env:"+old+" keep working)")
 		}
 	}
