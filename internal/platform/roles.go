@@ -323,11 +323,7 @@ func (p *Platform) Acting(who auth.Principal, as ActAs) (auth.Principal, error) 
 	if err != nil {
 		return auth.Principal{}, err
 	}
-	roles := make([]auth.Role, 0, len(person.Roles))
-	for _, r := range person.Roles {
-		roles = append(roles, auth.Role(r))
-	}
-	return auth.Principal{Subject: person.Subject, Name: person.Subject, Tenant: who.Tenant, Kind: auth.User, Roles: roles}.WithPolicy(who.Policy()), nil
+	return principalOf(who, person), nil
 }
 
 // OwnsHome holds a caller to owning the project an agent lives in, when it

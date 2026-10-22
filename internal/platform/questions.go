@@ -611,11 +611,7 @@ func (p *Platform) mapped(who auth.Principal, subject string) inbox.Reader {
 // themselves. The credential holding it is not enough: a viewer is no
 // approver because a machine relays their click.
 func mayResume(who auth.Principal, person inbox.Reader) bool {
-	roles := make([]auth.Role, 0, len(person.Roles))
-	for _, r := range person.Roles {
-		roles = append(roles, auth.Role(r))
-	}
-	return auth.Principal{Subject: person.Subject, Tenant: who.Tenant, Kind: auth.User, Roles: roles}.WithPolicy(who.Policy()).Can(auth.RunsWrite)
+	return principalOf(who, person).Can(auth.RunsWrite)
 }
 
 // isSelfApproval reports whether the person answering, or the credential

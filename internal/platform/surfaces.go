@@ -112,5 +112,5 @@ func principalOf(who auth.Principal, person inbox.Reader) auth.Principal {
 	for _, r := range person.Roles {
 		roles = append(roles, auth.Role(r))
 	}
-	return auth.Principal{Subject: person.Subject, Tenant: who.Tenant, Kind: auth.User, Roles: roles}.WithPolicy(who.Policy())
+	return auth.Principal{Subject: person.Subject, Name: person.Subject, Tenant: who.Tenant, Kind: auth.User, Roles: roles}.WithPolicy(who.Policy())
 }
