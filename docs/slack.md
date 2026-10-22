@@ -112,7 +112,10 @@ so an edit, a withdrawal or a restart updates that post. A draft never reaches
 a channel. The app's machine is told of a bound project's announcements
 wherever it may see the project, though it is only a viewer there. A
 members-only project's reach Slack only where its owners name the machine
-among its members: binding its general channel alone sends nothing.
+among its members: binding its general channel alone sends nothing. The app
+posts what it hears of on the event stream while it is connected, so an
+announcement posted while it is not, such as the release notes warp posts
+at start (`workspace.release_notes`), stays in warp's inbox and the Home tab.
 
 A reply in an announcement's Slack thread starts a shared thread seeded with
 the announcement. Slack delivers a message in a channel thread to the app

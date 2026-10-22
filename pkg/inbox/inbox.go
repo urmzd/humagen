@@ -1276,24 +1276,42 @@ func DefaultPostCaps() PostCaps { return PostCaps{PerProject: 20, PerTenant: 200
 // announcement raised under one lock, so racing posts stop at the caps
 // (ErrLimit).
 func (s *Store) Post(tenantName string, m Message, at time.Time, caps PostCaps) (Message, error) {
+	out, _, err := s.post(tenantName, "", m, at, caps)
+	return out, err
+}
+
+// PostOnce is Post under a key the caller names, such as "release:0.15.0",
+// for news posted once for as long as the inbox is kept. When an
+// announcement was ever raised under the key, open or withdrawn since, it is
+// returned with false and nothing is posted, whatever the day's caps.
+func (s *Store) PostOnce(tenantName, key string, m Message, at time.Time, caps PostCaps) (Message, bool, error) {
+	if key == "" {
+		return Message{}, false, fmt.Errorf("%w: what is posted once is named by a key", ErrInvalid)
+	}
+	return s.post(tenantName, key, m, at, caps)
+}
+
+// post is Post and PostOnce: key is the caller's, or "" for the next
+// "announce:<project>:<n>".
+func (s *Store) post(tenantName, key string, m Message, at time.Time, caps PostCaps) (Message, bool, error) {
 	d := DefaultPostCaps()
 	caps.PerProject, caps.PerTenant = cmp.Or(caps.PerProject, d.PerProject), cmp.Or(caps.PerTenant, d.PerTenant)
 	m = m.clone()
 	m.Severity = cmp.Or(m.Severity, Info)
 	switch n := utf8.RuneCountInString(m.Subject); {
 	case n == 0 || n > MaxSubject || strings.ContainsFunc(m.Subject, unicode.IsControl) || !utf8.ValidString(m.Subject):
-		return Message{}, fmt.Errorf("%w: an announcement's subject is one line of 1 to %d characters", ErrInvalid, MaxSubject)
+		return Message{}, false, fmt.Errorf("%w: an announcement's subject is one line of 1 to %d characters", ErrInvalid, MaxSubject)
 	case m.Severity != Info && m.Severity != Warning:
-		return Message{}, fmt.Errorf("%w: an announcement is info or a warning", ErrInvalid)
+		return Message{}, false, fmt.Errorf("%w: an announcement is info or a warning", ErrInvalid)
 	case m.From.Kind == "" || m.From.Name == "":
-		return Message{}, fmt.Errorf("%w: an announcement says who it is from", ErrInvalid)
+		return Message{}, false, fmt.Errorf("%w: an announcement says who it is from", ErrInvalid)
 	case len(m.Parts) == 0:
-		return Message{}, fmt.Errorf("%w: an announcement says something", ErrInvalid)
+		return Message{}, false, fmt.Errorf("%w: an announcement says something", ErrInvalid)
 	}
 	for i := range m.Parts {
 		p := &m.Parts[i]
 		if n := utf8.RuneCountInString(p.Text); p.Type != PartText || n == 0 || n > MaxText || !utf8.ValidString(p.Text) {
-			return Message{}, fmt.Errorf("%w: an announcement is text of 1 to %d characters", ErrInvalid, MaxText)
+			return Message{}, false, fmt.Errorf("%w: an announcement is text of 1 to %d characters", ErrInvalid, MaxText)
 		}
 		p.State = PartInfo
 	}
@@ -1303,16 +1321,18 @@ func (s *Store) Post(tenantName string, m Message, at time.Time, caps PostCaps) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := s.of(tenantName)
+	if prior := t.byKey[key]; key != "" && prior != nil {
+		return prior.clone(), false, nil
+	}
 	inProject, inTenant := t.posted.on(project, at)
 	switch {
 	case inProject >= caps.PerProject:
-		return Message{}, fmt.Errorf("%w: a project posts at most %d announcements a day", ErrLimit, caps.PerProject)
+		return Message{}, false, fmt.Errorf("%w: a project posts at most %d announcements a day", ErrLimit, caps.PerProject)
 	case inTenant >= caps.PerTenant:
-		return Message{}, fmt.Errorf("%w: a workspace posts at most %d announcements a day", ErrLimit, caps.PerTenant)
+		return Message{}, false, fmt.Errorf("%w: a workspace posts at most %d announcements a day", ErrLimit, caps.PerTenant)
 	}
-	m.Key = "announce:" + project + ":" + strconv.Itoa(t.next+1)
-	out, _, err := s.doLocked(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
-	return out, err
+	m.Key = cmp.Or(key, "announce:"+project+":"+strconv.Itoa(t.next+1))
+	return s.doLocked(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
 }
 
 // OpenOf returns the open and snoozed messages of a kind, for keeping the

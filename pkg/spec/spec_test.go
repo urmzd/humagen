@@ -44,7 +44,7 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 		t.Fatalf("strict check: %v", err)
 	}
 	w := cfg.Platforms[0].Spec.Workspace
-	if w.Instructions == nil || len(w.Projects) != 3 {
+	if w.Instructions == nil || len(w.Projects) != 3 || !w.ReleaseNotes {
 		t.Fatalf("workspace = %+v", w)
 	}
 	if g := w.Projects[2]; g.Parent != "Field" || g.Kind != ProjectAccount || g.Account == nil || g.Account.URL != "https://crm.example.com/globex" {
