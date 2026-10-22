@@ -606,8 +606,9 @@ export const api = {
   run: (id: string) => call<Run>("GET", `/api/runs/${encodeURIComponent(id)}`),
   tree: (id: string) =>
     call<{ runs: Run[] }>("GET", `/api/runs/${encodeURIComponent(id)}/tree`).then((r) => r.runs),
+  /** `agent` "" leaves it out, so the default the conversation's place inherits answers. */
   createRun: (agent: string, text: string, opts: { after?: string; project?: string } = {}) =>
-    call<Run>("POST", "/api/runs", { agent, text, ...opts }),
+    call<Run>("POST", "/api/runs", { ...(agent ? { agent } : {}), text, ...opts }),
   threads: () => call<{ threads: ThreadSummary[] }>("GET", "/api/threads").then((r) => r.threads),
   /**
    * One page of conversations, newest first. `next` is the cursor for the page after it, null at the end, and absent from a server that does not page.

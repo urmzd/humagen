@@ -179,6 +179,14 @@ func (t *tenant) load(key string, raw json.RawMessage) error {
 		if p.Members == nil {
 			p.Members = legacyMembers(p.Name)
 		}
+		// A record written before projects had agents has no enable list.
+		// The root keeps it nil, so the upgrade knows to enable every agent
+		// there; any other project enables nothing, which is an empty list.
+		if !p.IsRoot() {
+			p.Agents = p.Agents.listed()
+		}
+		// One written before projects had experts lists none.
+		p.Experts = cloneExperts(p.Experts)
 		t.projects[p.Name] = p
 	case strings.HasPrefix(key, keyHistory):
 		var c Change
@@ -190,9 +198,13 @@ func (t *tenant) load(key string, raw json.RawMessage) error {
 			return fmt.Errorf("%w: a change is kept under %q", ErrInvalid, key)
 		}
 		// A change from before roles shows the project as it read then.
-		for _, p := range []*Project{c.Before, c.After} {
-			if p != nil && p.Members == nil {
-				p.Members = legacyMembers(p.Name)
+		for _, side := range []*Project{c.Before, c.After} {
+			if side != nil {
+				if side.Members == nil {
+					side.Members = legacyMembers(side.Name)
+				}
+				side.Agents = side.Agents.listed()
+				side.Experts = cloneExperts(side.Experts)
 			}
 		}
 		t.history = append(t.history, c)
@@ -445,9 +457,12 @@ func (w *write) commit() error {
 	return nil
 }
 
+// ptr is p as a change records it: without what the file owns, and with an
+// enable list even when the upgrade's root had none.
 func ptr(p Project) *Project {
 	c := p.clone()
 	c.FileOwns = nil
+	c.Agents = c.Agents.listed()
 	return &c
 }
 
