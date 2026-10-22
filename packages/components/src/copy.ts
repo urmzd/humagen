@@ -102,6 +102,8 @@ export const defaultCopy = {
       .filter(Boolean)
       .join(" · "),
   cantRetry: "This turn can't be retried. Send a new message instead.",
+  /** A turn that acted for a person is theirs to retry, and the reader is not them. */
+  retryOnlyTheirs: "Only the person this turn acted for can retry it.",
   compacting: "Compacting the conversation to stay within context",
   compacted: (saved: string) => `Compacted the conversation, freed ${saved} tokens`,
   compactFailed: (reason: string) => `Couldn't compact: ${reason}`,
