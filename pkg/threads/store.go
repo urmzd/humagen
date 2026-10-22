@@ -771,6 +771,25 @@ func (s *Store) Summaries(tenantName string, keep func(Thread) bool) (out []Summ
 	return out, elsewhere
 }
 
+// Records returns the records of a tenant's threads that keep, called under
+// the lock with each record as it stands, holds, in no order. Only those are
+// copied.
+func (s *Store) Records(tenantName string, keep func(Thread) bool) []Thread {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := []Thread{}
+	t, ok := s.tenants[tenantName]
+	if !ok {
+		return out
+	}
+	for _, th := range t.threads {
+		if keep(th.rec) {
+			out = append(out, th.rec.clone())
+		}
+	}
+	return out
+}
+
 // clipText is the start of a text, at most n characters.
 func clipText(text string, n int) string {
 	if utf8.RuneCountInString(text) <= n {

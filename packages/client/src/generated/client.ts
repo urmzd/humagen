@@ -3030,7 +3030,9 @@ one that breaks a kind or openness rule; 403 without `billing:write`
 for leaving a project that holds a limit, or for moving one that
 holds (or has below it) a limit an owner set that the caller could
 not change before, since a move never escapes a limit; 409 for a stale version, a parent the platform file
-sets, or a default below it that would stop being available. The
+sets, or anything below it that would lose an agent it is available
+to now: a project's, a channel's or a thread's default, an agent that
+lives there, or a schedule filed there. The error names each. The
 workspace cannot move.
  */
   async moveProject(name: string, body: ProjectMove, options?: RequestOptions): Promise<ProjectView> {

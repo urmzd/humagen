@@ -108,3 +108,36 @@ func TestAMoveNeverStrandsADefault(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Nor a channel's default below it, nor an agent that lives there, which
+// would be available nowhere: a move under an allow list that leaves either
+// out is refused, naming it, and moves nothing. An archived channel, which
+// takes no new threads and whose default cannot change, holds no move back.
+func TestAMoveNeverStrandsAChannelsDefaultOrAHomedAgent(t *testing.T) {
+	s := field(t)
+	setAgents(t, s, "Field", projects.Agents{Enable: []string{"field-helper"}}, admin)
+	setAgents(t, s, "Launch", projects.Agents{Enable: []string{}, Allow: []string{"other"}}, admin)
+	if _, err := s.CreateChannel("acme", projects.Channel{Project: "Renewals", Name: "q3", Default: "field-helper"}, admin, t0); err != nil {
+		t.Fatal(err)
+	}
+	mustHome(t, s, "renewals-bot", "Renewals")
+	globex, _ := s.Get("acme", "Globex")
+	_, err := s.Move("acme", "Globex", globex.Version, "Launch", admin, t0, nil)
+	if !errors.Is(err, projects.ErrInUse) || !strings.Contains(err.Error(), "the default of #q3 in Renewals, field-helper, would not be available") ||
+		!strings.Contains(err.Error(), "renewals-bot, which lives in Renewals, would not be available there") {
+		t.Fatalf("a move that strands a channel's default and a homed agent = %v", err)
+	}
+	if again, _ := s.Get("acme", "Globex"); again.Parent != "Field" || again.Version != globex.Version {
+		t.Fatalf("a refused move changed Globex: %+v", again)
+	}
+	if _, err := s.ArchiveChannel("acme", "Renewals", "q3", admin, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Move("acme", "Globex", globex.Version, "Launch", admin, t0, nil); !errors.Is(err, projects.ErrInUse) || strings.Contains(err.Error(), "#q3") {
+		t.Fatalf("a move that strands a homed agent alone = %v", err)
+	}
+	setAgents(t, s, "Launch", projects.Agents{Enable: []string{}, Allow: []string{"other", "renewals-bot"}}, admin)
+	if _, err := s.Move("acme", "Globex", globex.Version, "Launch", admin, t0, nil); err != nil {
+		t.Fatal(err)
+	}
+}

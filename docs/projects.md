@@ -801,7 +801,7 @@ need `projects:govern`.
 | See a project, its inbox, channels, instructions, memory, experts | `projects:read` | viewer |
 | Create a project under P (top level: P is the root) | `projects:write` | member of P. Company kind: `projects:govern` |
 | Edit title, description, instructions, account | `projects:write` | owner |
-| Move | `projects:write` | owner, and member of the new parent. Leaving an ancestor that holds a policy also needs `billing:write`, and so does moving a project that holds, or has below it, an owner's limit the caller could not change before (they do not own the parent it was set from): a move never escapes a limit. Leaving an ancestor whose allow list keeps agents out needs owning it, unless the new chain allows no more: a move never widens which agents may run |
+| Move | `projects:write` | owner, and member of the new parent. Leaving an ancestor that holds a policy also needs `billing:write`, and so does moving a project that holds, or has below it, an owner's limit the caller could not change before (they do not own the parent it was set from): a move never escapes a limit. Leaving an ancestor whose allow list keeps agents out needs owning it, unless the new chain allows no more: a move never widens which agents may run. Nor does it leave anything below it without an agent it has now (409, naming each): a project's, a channel's or a thread's default, an agent that lives there, or a schedule filed there. An archived channel holds no move back |
 | Archive, delete | `projects:write` | owner |
 | Members, experts, channels, agents (`enable`, `allow`, `default`), `announce`, `agent_posts` | `projects:write` | owner |
 | Make an agent live here | `agents:write` | owner of the new and old home |
@@ -875,7 +875,7 @@ mirror. `{name}` is `~` for the root (a name cannot start with `~`).
 | `GET /api/projects` | `projects:read` | paged: `limit` (<= 200), `before`, `q` (name, title, description, customer), `kind`; the cap rises to 500. Each view adds `access {role, from, via}` and `actions: string[]` |
 | `GET`, `PUT /api/projects/{name}/members` | `projects:read` / `projects:write` | `{version, members (<= 100)}`; GET also lists inherited owners with `from` |
 | `GET`, `PUT /api/projects/{name}/experts` | `projects:read` / `projects:write` | `{version, experts (<= 50)}` |
-| `POST /api/projects/{name}/move` | `projects:write` | `{version, parent}` → ProjectView. 400 cycle, depth, kind, openness; 403 the limit rule |
+| `POST /api/projects/{name}/move` | `projects:write` | `{version, parent}` → ProjectView. 400 cycle, depth, kind, openness; 403 the limit rule; 409 a default, a homed agent or a schedule below it that would lose its agent |
 | `PUT /api/projects/{name}` | `projects:write` | gains `kind`, `archived`; on the root, `kinds` |
 | `PUT`, `DELETE /api/projects/{name}/limits` | `projects:write` | owner of a strict ancestor; writes a project-scope policy with `Authority: owner`; looser than the effective chain is 400 naming the binding scope; an admin policy is 409 |
 | `GET /api/people` | `projects:read` | `?q=&limit=` (<= 50) → `{people: [{subject, name, handle}]}` |
