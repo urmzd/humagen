@@ -92,6 +92,40 @@ test("what a post did names people by handle and experts a role names by the rol
   assert.equal(postedLine(posted), "Sent to @ada, role:finance.");
 });
 
+test("under *, the typeahead never offers an agent that lives in another project, which * does not reach", async () => {
+  const initechBot = { spec: { ...helper.spec, name: "initech-bot", description: "Initech's own" }, rev: 1 } as unknown as Revision;
+  const globexBot = { spec: { ...helper.spec, name: "globex-bot", description: "Lives here" }, rev: 1 } as unknown as Revision;
+  net = stubFetch({
+    "GET /api/threads/th-0123456789abcdef": () => page,
+    // The platform lists the project agents on Globex's chain: globex-bot.
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: ["globex-bot"] }, homes: ["globex-bot"], default_resolved: null }),
+    "GET /api/people": () => ({ people: [], next: null }),
+    "GET /api/runs/r1/events": () => ({ events: [] }),
+  });
+  render(
+    <ThreadRoom
+      id="th-0123456789abcdef"
+      initial={page}
+      tick={0}
+      agents={[helper, initechBot, globexBot]}
+      homes={{ "initech-bot": "Initech", "globex-bot": "Globex" }}
+      projects={tree}
+      root={null}
+      workspaceName="Acme"
+      canRun
+      onOpenChannel={() => {}}
+      onChanged={() => {}}
+    />,
+  );
+  const box = (await screen.findByPlaceholderText(words.channel("renewals"))) as HTMLTextAreaElement;
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/Globex/agents")));
+  fireEvent.change(box, { target: { value: "ask @" } });
+  const list = await screen.findByRole("listbox");
+  await waitFor(() => assert.ok(list.textContent?.includes("@globex-bot"), list.textContent ?? ""));
+  assert.ok(list.textContent?.includes("@helper"), list.textContent ?? "");
+  assert.ok(!list.textContent?.includes("initech-bot"), list.textContent ?? "");
+});
+
 test("@ opens the typeahead, a pick writes the tag, and Post Only posts as the person and nothing more", async () => {
   room({ "POST /api/threads/th-0123456789abcdef/messages": () => ({ ...page, message: page.turns[0]?.message, runs: [], notified: [], refused: [], rule: "post_only" }) });
   const box = (await screen.findByPlaceholderText(words.channel("renewals"))) as HTMLTextAreaElement;

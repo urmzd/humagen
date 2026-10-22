@@ -496,6 +496,7 @@ export function Chat({
         initial={room}
         tick={tick}
         agents={agents}
+        homes={homes}
         projects={projects ?? []}
         root={root ?? null}
         workspaceName={workspaceName ?? ""}
