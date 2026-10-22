@@ -303,6 +303,13 @@ turned back into it.
   prev?: string;
   /** Why the agent was chosen, when the caller left it to the platform. */
   picked?: string;
+  /** Set when the run was started by its thread's selected agents, and
+how: `best_fit`, the one that fit best (`picked` says why), or
+`all`, one of each selected agent. Absent for a run a tag, a
+default or anything else started, and kept whatever the
+selection becomes later.
+ */
+  routed?: "best_fit" | "all";
   project?: string;
   /** The project's ancestors, nearest first and the workspace left out,
 pinned when the run was admitted: what it counts toward besides
