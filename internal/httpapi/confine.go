@@ -7,6 +7,7 @@ import (
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/projects"
 )
 
@@ -101,6 +102,13 @@ func (s *Server) seenSuite(h handler) handler {
 		}
 		h(w, r, who)
 	}
+}
+
+// inboxNotice is an inbox notice on the event stream: to a client's machine,
+// about a message addressed to a person it maps, it says for whom.
+type inboxNotice struct {
+	inbox.Notice
+	For *platform.ActAs `json:"for,omitempty"`
 }
 
 // gateRefresh is how long an event stream trusts what it decided about a

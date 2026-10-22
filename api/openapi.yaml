@@ -1513,10 +1513,15 @@ paths:
       operationId: getInboxMessage
       tags: [inbox]
       summary: Get a message and the record of what was done to it
-      description: A message of a kind the caller may not read answers 404.
+      description: |
+        A message of a kind the caller may not read answers 404. A client's
+        machine reads one for a person it maps with `act_as_client` and
+        `act_as_user`.
       x-permission: runs:read
       parameters:
         - {$ref: "#/components/parameters/MessageID"}
+        - {$ref: "#/components/parameters/ActAsClient"}
+        - {$ref: "#/components/parameters/ActAsUser"}
       responses:
         "200":
           description: The message and its history.
@@ -1530,6 +1535,7 @@ paths:
                   history:
                     type: array
                     items: {$ref: "#/components/schemas/InboxChange"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -1637,7 +1643,10 @@ paths:
         Answering a question is `answerQuestion` by another route, with the
         same rules: a person the question is not addressed to does not see
         it, and one the runtime refuses is 403. `act_as` answers for a person
-        a surface authenticated. Resolving a part that is already resolved
+        a surface authenticated, and settles a mention of them (`reply` posts
+        in the thread as them, through the client); they must hold
+        `runs:write` themselves. A reply in the thread, from anywhere,
+        settles the mention too. Resolving a part that is already resolved
         returns the first outcome. `retry` starts a new run, so it can be
         refused by a limit with 429 or 402, and with 409 when the turn's
         project was deleted since.
@@ -5615,6 +5624,13 @@ components:
         kind: {$ref: "#/components/schemas/InboxKind"}
         state: {$ref: "#/components/schemas/InboxState"}
         updated_at: {type: string, format: date-time}
+        for:
+          description: |
+            To a client's machine only: the person it maps whom a mention or a
+            question is addressed to, so it reads the message for them
+            (`act_as_client`, `act_as_user`) and tells them in Slack.
+          allOf:
+            - {$ref: "#/components/schemas/ActAs"}
     InboxFrom:
       type: object
       required: [kind, name]

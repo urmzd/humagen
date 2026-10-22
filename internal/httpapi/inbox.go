@@ -141,6 +141,10 @@ func (s *Server) countInbox(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 func (s *Server) getInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	who, acting := s.actingFor(w, r, who)
+	if !acting {
+		return
+	}
 	m, err := s.P.InboxGet(who, r.PathValue("id"))
 	if err != nil {
 		s.problem(w, err)

@@ -2,6 +2,7 @@ package platform
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/urmzd/warp/pkg/auth"
@@ -129,6 +130,40 @@ func (p *Platform) ProjectInbox(who auth.Principal, project string, children boo
 		msgs[i] = p.seenBy(tree, msgs[i], who)
 	}
 	return msgs, next, err
+}
+
+// SurfaceNoticeFor reports, for a client's machine, a notice of a message
+// addressed by subject to a person one of its clients maps, and who that
+// person is there: a mention of them, or a question they may answer. The
+// machine reads it for them (act_as) and tells them in a direct message.
+// Nothing reaches the machine about anyone it does not map.
+func (p *Platform) SurfaceNoticeFor(who auth.Principal, n inbox.Notice) (ActAs, bool) {
+	switch n.Kind {
+	case inbox.KindMention, inbox.KindClarification, inbox.KindApproval:
+	default:
+		return ActAs{}, false
+	}
+	if who.Kind != auth.Machine {
+		return ActAs{}, false
+	}
+	tree := p.Projects.Tree(who.Tenant)
+	for _, c := range p.Clients.List(who.Tenant) {
+		if !machineOf(c, who) || c.Slack == nil {
+			continue
+		}
+		for user, subject := range c.Slack.People {
+			person := personOf(who, p.mapped(who, subject))
+			if !InboxSees(person, n.Kind) {
+				continue
+			}
+			m, err := p.Inbox.GetAs(who.Tenant, n.ID, p.inboxReader(tree, person))
+			if err != nil || (m.To != subject && !slices.Contains(m.Audience, subject)) || !p.Seer(person).Message(m) {
+				continue
+			}
+			return ActAs{Client: c.ID, User: user}, true
+		}
+	}
+	return ActAs{}, false
 }
 
 // InboxNoticeFor reports whether a notice about an inbox message may reach a

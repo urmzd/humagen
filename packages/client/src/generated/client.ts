@@ -1601,18 +1601,31 @@ its people with `act_as_client` and `act_as_user`.
     });
   }
 
-  /** A message of a kind the caller may not read answers 404. */
-  async getInboxMessage(id: string, options?: RequestOptions): Promise<GetInboxMessageResponse> {
+  /** A message of a kind the caller may not read answers 404. A client's
+machine reads one for a person it maps with `act_as_client` and
+`act_as_user`.
+ */
+  async getInboxMessage(id: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<GetInboxMessageResponse> {
     let path = "/api/inbox/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.request<GetInboxMessageResponse>("GET", path, {
       ...options,
     });
   }
 
-  async getInboxMessageRaw(id: string, options?: RequestOptions): Promise<ApiResponse<GetInboxMessageResponse>> {
+  async getInboxMessageRaw(id: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<GetInboxMessageResponse>> {
     let path = "/api/inbox/{id}";
     path = path.replace("{id}", encodeURIComponent(String(id)));
+    const _q = new URLSearchParams();
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
     return this.rawRequest<GetInboxMessageResponse>("GET", path, {
       ...options,
     });
@@ -1695,7 +1708,10 @@ inbox, and an action the caller lacks the permission for answers 403:
 Answering a question is `answerQuestion` by another route, with the
 same rules: a person the question is not addressed to does not see
 it, and one the runtime refuses is 403. `act_as` answers for a person
-a surface authenticated. Resolving a part that is already resolved
+a surface authenticated, and settles a mention of them (`reply` posts
+in the thread as them, through the client); they must hold
+`runs:write` themselves. A reply in the thread, from anywhere,
+settles the mention too. Resolving a part that is already resolved
 returns the first outcome. `retry` starts a new run, so it can be
 refused by a limit with 429 or 402, and with 409 when the turn's
 project was deleted since.

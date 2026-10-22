@@ -688,10 +688,17 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			// A notice reaches only a reader the message is for, so an id
 			// from a project they cannot see, or an announcement for
 			// others, never reaches their stream.
+			var sent any = n
 			if !s.P.InboxNoticeFor(who, n) {
-				continue
+				// A client's machine hears of a message addressed to a
+				// person it maps, and for whom, to tell them in Slack.
+				as, mapped := s.P.SurfaceNoticeFor(who, n)
+				if !mapped {
+					continue
+				}
+				sent = inboxNotice{Notice: n, For: &as}
 			}
-			b, err := json.Marshal(n)
+			b, err := json.Marshal(sent)
 			if err != nil {
 				continue
 			}

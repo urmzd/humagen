@@ -513,9 +513,28 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		again.Repeated = true
 		return again, nil
 	}
+	p.repliedTo(who.Tenant, th.ID, m)
 	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, in.Answers != nil || in.reply)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
+}
+
+// repliedTo settles the mention of a message's poster in the message it
+// follows: a person who replies in the thread, from wherever they read it,
+// has answered being mentioned.
+func (p *Platform) repliedTo(tenant, thread string, m threads.Message) {
+	if !strings.HasPrefix(m.Prev, "m-") {
+		return
+	}
+	mention, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(thread, m.Prev, m.By))
+	if !ok || mention.State == inbox.Resolved || mention.State == inbox.Dismissed {
+		return
+	}
+	for _, part := range mention.Parts {
+		if part.Type == inbox.PartMention && part.State == inbox.PartOpen {
+			_, _, _ = p.Inbox.Resolve(tenant, mention.ID, part.ID, inbox.Outcome{Action: ActReply, By: m.By, At: p.now(), Note: "Replied in the thread"})
+		}
+	}
 }
 
 // prevOf is the turn a message follows, from what the poster named: a
@@ -810,11 +829,11 @@ func (p *Platform) raiseMention(tenant string, th threads.Thread, m threads.Mess
 
 // replyToMention posts the reader's reply to a message that mentioned them,
 // as a human message that starts no run.
-func (p *Platform) replyToMention(ctx context.Context, who auth.Principal, part inbox.MentionPart, text string) (threads.Message, error) {
+func (p *Platform) replyToMention(ctx context.Context, who auth.Principal, part inbox.MentionPart, text string, as *ActAs) (threads.Message, error) {
 	if strings.TrimSpace(text) == "" {
 		return threads.Message{}, fmt.Errorf("%w: a reply says something", threads.ErrInvalid)
 	}
-	posted, err := p.PostMessage(ctx, who, part.Thread, MessageInput{Text: text, After: part.Message, reply: true})
+	posted, err := p.PostMessage(ctx, who, part.Thread, MessageInput{Text: text, After: part.Message, reply: true, ActAs: as})
 	return posted.Message, err
 }
 

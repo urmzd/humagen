@@ -89,10 +89,16 @@ func (p *Platform) ActingFor(who auth.Principal, as ActAs) (auth.Principal, erro
 	if !ok {
 		return auth.Principal{}, fmt.Errorf("%w: that person is not mapped to anyone in this workspace", ErrForbidden)
 	}
-	person := p.mapped(who, subject)
+	return personOf(who, p.mapped(who, subject)), nil
+}
+
+// personOf is the principal a person a surface reads or acts for is: their
+// subject, the roles the workspace's policy grants it, under the policy the
+// surface's credential is decided by.
+func personOf(who auth.Principal, person inbox.Reader) auth.Principal {
 	roles := make([]auth.Role, 0, len(person.Roles))
 	for _, r := range person.Roles {
 		roles = append(roles, auth.Role(r))
 	}
-	return auth.Principal{Subject: subject, Tenant: who.Tenant, Kind: auth.User, Roles: roles}.WithPolicy(who.Policy()), nil
+	return auth.Principal{Subject: person.Subject, Tenant: who.Tenant, Kind: auth.User, Roles: roles}.WithPolicy(who.Policy())
 }

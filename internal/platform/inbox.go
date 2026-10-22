@@ -273,8 +273,13 @@ func (p *Platform) inboxGetAs(who auth.Principal, reader inbox.Reader, id string
 		return inbox.Message{}, err
 	}
 	// What a caller may not see does not exist for them: a kind they may
-	// not read, or what lives where they may not read.
-	if !who.Can(reads(m.Kind)) || !p.Seer(who).Message(m) {
+	// not read, or what lives where they may not read. A surface reading for
+	// a person it maps reads where that person may.
+	seer := p.Seer(who)
+	if reader.Subject != "" && reader.Subject != who.Subject {
+		seer = p.Seer(personOf(who, reader))
+	}
+	if !who.Can(reads(m.Kind)) || !seer.Message(m) {
 		return inbox.Message{}, fmt.Errorf("%w: message %q", inbox.ErrNotFound, id)
 	}
 	if m.State == inbox.Snoozed && !p.now().Before(m.SnoozedUntil) {
@@ -368,8 +373,17 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			Action: r.Action, Arguments: r.Arguments, Choice: r.Choice, Text: r.Text, Note: r.Note, ActAs: r.ActAs,
 		})
 	}
+	// A surface answers a question for the person it maps, and settles a
+	// mention of them: reply posts in the thread as them, through the client.
+	if r.ActAs != nil && part.Type != inbox.PartMention {
+		return inbox.Message{}, fmt.Errorf("%w: only a question or a mention is answered for someone else", ErrAction)
+	}
+	by := who.Subject
 	if r.ActAs != nil {
-		return inbox.Message{}, fmt.Errorf("%w: only a question is answered for someone else", ErrAction)
+		if !mayResume(who, reader) {
+			return inbox.Message{}, fmt.Errorf("%w: that person cannot settle it", ErrForbidden)
+		}
+		by = reader.Subject
 	}
 	// The right is checked before saying whether there is anything left to
 	// do, so a caller without it learns nothing from trying.
@@ -410,7 +424,7 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 	case part.Type == inbox.PartDraft:
 		note = "Discarded"
 	case part.Type == inbox.PartMention && r.Action == ActReply:
-		m, err := p.replyToMention(ctx, who, *part.Mention, r.Text)
+		m, err := p.replyToMention(ctx, who, *part.Mention, r.Text, r.ActAs)
 		if err != nil {
 			return inbox.Message{}, err
 		}
@@ -423,7 +437,7 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 		note = fmt.Sprintf("Now version %d", saved.Version)
 	}
 
-	if _, _, err := p.Inbox.Resolve(who.Tenant, id, partID, inbox.Outcome{Action: r.Action, By: who.Subject, At: p.now(), Note: note}); err != nil {
+	if _, _, err := p.Inbox.Resolve(who.Tenant, id, partID, inbox.Outcome{Action: r.Action, By: by, At: p.now(), Note: note}); err != nil {
 		return inbox.Message{}, err
 	}
 	p.audit(who, m, partID, r.Action, note)
@@ -433,9 +447,9 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			return inbox.Message{}, err
 		}
 	} else {
-		p.settle(who.Tenant, id, reader, who.Subject)
+		p.settle(who.Tenant, id, reader, by)
 	}
-	return p.InboxGet(who, id)
+	return p.inboxGetAs(who, reader, id)
 }
 
 // audit writes one line for every decision made in the inbox. The inbox's own

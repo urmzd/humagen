@@ -229,3 +229,53 @@ func TestAConnectorsRunIsFiledByItsBinding(t *testing.T) {
 		t.Fatalf("a run in an unbound channel is filed at %q #%s", homed.Project, homed.Channel)
 	}
 }
+
+// A client's machine hears of a mention of a person it maps, and for whom,
+// reads it for them, and settles it for them: a reply posts in the thread
+// as them, through the client. Another machine hears nothing.
+func TestAMachineHearsOfAMentionOfAPersonItMapsAndSettlesItForThem(t *testing.T) {
+	p, machine := slackRoom(t, nil)
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "@ana can you check the price?"})
+	m, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "ana"))
+	if !ok {
+		t.Fatal("ana was not told")
+	}
+	notice := inbox.Notice{ID: m.ID, Kind: inbox.KindMention, State: inbox.Open}
+	if p.InboxNoticeFor(machine, notice) {
+		t.Fatal("the machine reads ana's mention as its own")
+	}
+	as, mapped := p.SurfaceNoticeFor(machine, notice)
+	if !mapped || as != (platform.ActAs{Client: "app", User: "U0ANA"}) {
+		t.Fatalf("the machine hears of it for %+v, %v", as, mapped)
+	}
+	other := auth.Principal{Subject: "svc-other", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.RunsRead, auth.RunsWrite}}.WithPolicy(machine.Policy())
+	if _, heard := p.SurfaceNoticeFor(other, notice); heard {
+		t.Fatal("another machine hears of ana's mention")
+	}
+	done, err := p.InboxResolve(t.Context(), machine, m.ID, m.Parts[0].ID, platform.Resolution{Action: platform.ActReply, Text: "On it.", ActAs: &as})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done.State != inbox.Resolved || done.Parts[0].Outcome.By != "ana" {
+		t.Fatalf("settled as %+v", done.Parts[0].Outcome)
+	}
+	reply, err := p.Threads.Message(tenant, got.Thread.ID, "m-2")
+	if err != nil || reply.By != "ana" || reply.Via != "app" || reply.Prev != "m-1" {
+		t.Fatalf("the reply is %+v, %v", reply, err)
+	}
+}
+
+// A person who replies in the thread, from anywhere, has answered being
+// mentioned there.
+func TestAReplyInTheThreadSettlesTheMention(t *testing.T) {
+	p, _ := slackRoom(t, nil)
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "@ana can you check the price?"})
+	ana := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	if _, err := p.PostMessage(t.Context(), ana, got.Thread.ID, platform.MessageInput{Text: "Checked: it holds.", After: "m-1", PostOnly: true}); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "ana"))
+	if m.State != inbox.Resolved || m.Parts[0].Outcome == nil || m.Parts[0].Outcome.Action != platform.ActReply {
+		t.Fatalf("after ana replied, her mention is %s, %+v", m.State, m.Parts[0].Outcome)
+	}
+}

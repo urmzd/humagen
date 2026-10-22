@@ -1145,6 +1145,11 @@ export interface InboxNotice {
   kind: InboxKind;
   state: InboxState;
   updated_at: string;
+  /** To a client's machine only: the person it maps whom a mention or a
+question is addressed to, so it reads the message for them
+(`act_as_client`, `act_as_user`) and tells them in Slack.
+ */
+  for?: ActAs;
 }
 
 export interface InboxFrom {
