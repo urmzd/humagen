@@ -437,18 +437,23 @@ func (p *Platform) questionMessage(ctx context.Context, run runs.Run, q payload.
 // holds, in bytes. The whole question is the message's part.
 const maxQuestionSubject = 80
 
-// headline is the first line of text, at most limit bytes: a longer one is
-// cut at a word and ends with an ellipsis, so a subject never stops part of
-// the way through without saying so.
+// headline is text as one line, at most limit bytes: its lines are joined,
+// so a question asked below a line of context is still in it, and a longer
+// one is cut at a word and ends with an ellipsis, so a subject never stops
+// part of the way through without saying so.
 func headline(text string, limit int) string {
-	line := oneLine(text, len(text))
+	line := strings.Trim(strings.Join(strings.Fields(text), " "), "\"'`.")
 	if len(line) <= limit {
 		return line
 	}
 	const more = "…"
 	cut := clip(line, limit-len(more))
-	if i := strings.LastIndexByte(cut, ' '); i > len(cut)/2 {
-		cut = cut[:i]
+	// A cut that ends a word is kept; one inside a word goes back to the
+	// space before it.
+	if line[len(cut)] != ' ' {
+		if i := strings.LastIndexByte(cut, ' '); i > len(cut)/2 {
+			cut = cut[:i]
+		}
 	}
 	return strings.TrimRight(cut, " ,;:-") + more
 }
