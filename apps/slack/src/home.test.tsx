@@ -110,11 +110,12 @@ test("a person the client maps sees the shared Home, every part of it read as th
 
   const blocks = published(w);
   assert.ok(blocks.length <= LIMITS.blocks.home);
+  // The sections the design names.
   assert.deepEqual(headers(blocks), [
     "Hi Ana, I'm Warp.",
-    defaultCopy.home.needsYou,
-    defaultCopy.home.whatsNew,
-    defaultCopy.home.yourProjects,
+    "Needs you",
+    "What's new",
+    "Your projects",
   ]);
   const [mention] = under(blocks, defaultCopy.home.needsYou);
   assert.match(mention?.text?.text ?? "", /^\*Ana\* mentioned you in #renewals/);

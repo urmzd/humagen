@@ -557,7 +557,7 @@ export const defaultCopy = {
         description: "A nightly digest, a weekly review, a check every hour.",
       },
     } as Record<string, { label: string; description: string; slack?: string }>,
-    needsYou: "Notifications",
+    needsYou: "Needs you",
     nothingWaiting: "Nothing needs you right now, and no alerts are open.",
     /** The page's one-line point, after the greeting. */
     notificationCount: (n: number) =>

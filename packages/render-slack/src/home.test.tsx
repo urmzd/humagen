@@ -113,7 +113,7 @@ describe("homeView", () => {
 /** The section text of each notification row, in order. */
 function notificationRows(blocks: Block[]): string[] {
   const start = blocks.findIndex(
-    (b) => b.type === "header" && (b.text as { text: string }).text === "Notifications",
+    (b) => b.type === "header" && (b.text as { text: string }).text === "Needs you",
   );
   const rows: string[] = [];
   for (const b of blocks.slice(start + 1)) {
