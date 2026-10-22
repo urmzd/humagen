@@ -45,6 +45,12 @@ func cloneDeliveries(d map[string]Delivery) map[string]Delivery {
 	return maps.Clone(d)
 }
 
+// postKey is where a client's post is found: the client, the channel and the
+// post there.
+func postKey(client string, d Delivery) string {
+	return client + "\x00" + d.Channel + "\x00" + d.TS
+}
+
 // delivered applies a Delivered change, and reports whether it changed
 // anything: the same post recorded again does not.
 func (m *Message) delivered(c Change) bool {
@@ -82,4 +88,18 @@ func (s *Store) Deliver(tenantName, id, client string, d Delivery, allow func(Me
 	d.At = d.At.UTC()
 	_, _, err := s.do(Change{Tenant: tenantName, Message: id, What: Delivered, By: client, At: d.At, Delivery: &d})
 	return err
+}
+
+// ByDelivery returns the message a client last recorded posting at a place,
+// such as the announcement a Slack app posted at a channel and ts, for the
+// platform's own use: who may read it is the caller's to decide. A message
+// whose receipt moved to another post is no longer found at the old one.
+func (s *Store) ByDelivery(tenantName, client string, at Delivery) (Message, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.of(tenantName).byPost[postKey(client, at)]
+	if m == nil {
+		return Message{}, false
+	}
+	return m.clone(), true
 }

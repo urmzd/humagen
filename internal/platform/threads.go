@@ -129,18 +129,21 @@ type Posted struct {
 	Repeated bool `json:"repeated,omitempty"`
 }
 
-// ThreadTurn is one turn of a thread: a person's message or an agent's run.
+// ThreadTurn is one turn of a thread: a person's message, an agent's run,
+// or the announcement the thread was started from, which is its first.
 type ThreadTurn struct {
-	// Kind is message or run.
-	Kind    string           `json:"kind"`
-	Message *threads.Message `json:"message,omitempty"`
-	Run     *runs.Run        `json:"run,omitempty"`
+	// Kind is message, run or announcement.
+	Kind         string                `json:"kind"`
+	Message      *threads.Message      `json:"message,omitempty"`
+	Run          *runs.Run             `json:"run,omitempty"`
+	Announcement *threads.Announcement `json:"announcement,omitempty"`
 }
 
 // Turn kinds.
 const (
-	TurnMessage = "message"
-	TurnRun     = "run"
+	TurnMessage      = "message"
+	TurnRun          = "run"
+	TurnAnnouncement = "announcement"
 )
 
 // ThreadSummary is one conversation at a glance: what its runs say, with
@@ -628,7 +631,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if on != nil {
 		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
 		sf := on.ref.surface(on.client.ID)
-		rec.Surface, first.SurfaceID, slack = &sf, on.ref.message(), nil
+		rec.Surface, rec.Announcement, first.SurfaceID, slack = &sf, on.announcement, on.ref.message(), nil
 	}
 	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack})
 	if err != nil {
@@ -1038,14 +1041,14 @@ func (rm room) after(id string, before time.Time) []threads.Turn {
 // it and the follow-ups to those made before the message, and ahead of them
 // the turns that the first message follows.
 func (p *Platform) roomBefore(tenant string, th threads.Thread, m threads.Message) []threads.Turn {
-	return p.messagesBefore(tenant, th, p.roomOf(tenant, th.ID), m, maxRoomDepth)
+	return append(p.seedTurns(tenant, th), p.messagesBefore(tenant, th, p.roomOf(tenant, th.ID), m, maxRoomDepth)...)
 }
 
 // branchBefore is the conversation as a follow-up through the API finds it:
 // the runs of its branch and, when the first of them answers a message, the
 // room up to and with that message ahead of them.
 func (p *Platform) branchBefore(tenant string, th threads.Thread, path []runs.Run) []threads.Turn {
-	return p.runsBefore(tenant, th, p.roomOf(tenant, th.ID), path, maxRoomDepth)
+	return append(p.seedTurns(tenant, th), p.runsBefore(tenant, th, p.roomOf(tenant, th.ID), path, maxRoomDepth)...)
 }
 
 func (p *Platform) messagesBefore(tenant string, th threads.Thread, rm room, m threads.Message, depth int) []threads.Turn {
@@ -1330,7 +1333,8 @@ func (p *Platform) ThreadTurns(tenant, id, before string, limit int) (threads.Th
 
 // turnsOf is every turn of a thread, in the order they were made: each
 // message by when it was posted, each run by when it was accepted, a
-// message ahead of the runs that answer it.
+// message ahead of the runs that answer it. A thread started from an
+// announcement starts with it, as it stands now.
 func (p *Platform) turnsOf(tenant string, th threads.Thread) []ThreadTurn {
 	var out []ThreadTurn
 	if turns, err := p.Runs.Conversation(tenant, th.ID); err == nil {
@@ -1362,6 +1366,9 @@ func (p *Platform) turnsOf(tenant string, th threads.Thread) []ThreadTurn {
 		// may answer it.
 		return cmp.Compare(rank(a), rank(b))
 	})
+	if a, ok := p.seedOf(tenant, th); ok {
+		out = append([]ThreadTurn{{Kind: TurnAnnouncement, Announcement: &a}}, out...)
+	}
 	if out == nil {
 		out = []ThreadTurn{}
 	}
@@ -1377,8 +1384,11 @@ func rank(t ThreadTurn) int {
 }
 
 func (t ThreadTurn) at() time.Time {
-	if t.Message != nil {
+	switch {
+	case t.Message != nil:
 		return t.Message.At
+	case t.Announcement != nil:
+		return t.Announcement.At
 	}
 	return t.Run.CreatedAt
 }

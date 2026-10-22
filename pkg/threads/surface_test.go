@@ -60,3 +60,47 @@ func TestASurfacesThreadIsFoundAfterARestart(t *testing.T) {
 		}
 	})
 }
+
+// A thread started from an announcement names it for good: only a surface's
+// thread may, by the announcement's inbox id, it is kept across a restart,
+// and no change moves it to another.
+func TestAThreadStartedFromAnAnnouncementKeepsIt(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in := shared("Globex", "general")
+		in.Surface, in.Announcement = &slackThread, "m-7"
+		th, _ := start(t, s, "acme", in, msg("dana", "who has the PO?"))
+		if th.Announcement != "m-7" {
+			t.Fatalf("the thread names %q", th.Announcement)
+		}
+		if _, err := s.Update("acme", th.ID, th.Version, t0, func(t *threads.Thread) error {
+			t.Announcement = "m-8"
+			return nil
+		}); !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("moving a thread to another announcement = %v", err)
+		}
+		again, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := again.BySurface("acme", slackThread); !ok || got.Announcement != "m-7" {
+			t.Fatalf("after a restart = %+v, %v", got, ok)
+		}
+		for name, bad := range map[string]func(*threads.Thread){
+			"no surface":   func(t *threads.Thread) { t.Surface = nil },
+			"not an id":    func(t *threads.Thread) { t.Announcement = "announce:Field:1" },
+			"far too long": func(t *threads.Thread) { t.Announcement = "m-1234567890123456789" },
+		} {
+			in := shared("Globex", "general")
+			in.Surface, in.Announcement = &threads.Surface{Client: "slack-acme", Channel: "C0123", TS: "2"}, "m-7"
+			bad(&in)
+			if _, _, err := s.Start("acme", in, msg("dana", "x"), t0); !errors.Is(err, threads.ErrInvalid) {
+				t.Errorf("%s: %v", name, err)
+			}
+		}
+	})
+}

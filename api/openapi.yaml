@@ -1123,6 +1123,14 @@ paths:
         the same message ts again changes nothing. To any other caller the
         client is not found (404); a client's home that is gone is 404 too.
         An agent the client may not route to is refused, never swapped.
+
+        A Slack thread under an announcement the client posted, at the
+        channel and ts its receipt records (`recordInboxDelivery`), is that
+        announcement's: the new thread names it in `announcement` and its
+        turns start with it, from whoever posted it, ahead of the reply,
+        which is the person's own message. It is seeded only where it is
+        filed in the announcement's project. A reply to one that was
+        withdrawn, or to a draft, starts nothing (410).
       x-permission: runs:write
       requestBody:
         required: true
@@ -1139,6 +1147,11 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "410":
+          description: The surface's thread is under an announcement that was withdrawn, or under a draft, so a reply there starts nothing.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErrorBody"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
@@ -1151,9 +1164,10 @@ paths:
         A thread's turns are its people's messages and its agents' runs, in
         the order they were made, oldest first. A run that answers a message
         names it in `message`; runs answering one message answer it side by
-        side and are not branches. A conversation from before threads reads
-        as shared, in `general` of its project, at version 0, and its id is
-        the id of the run that started it.
+        side and are not branches. A thread started from an announcement
+        starts with it, as it stands when it is read. A conversation from
+        before threads reads as shared, in `general` of its project, at
+        version 0, and its id is the id of the run that started it.
 
         The first page is the newest 200 turns, or `limit`. `next` is the
         cursor for the turns before them, or null at the start: pass it back
@@ -4778,6 +4792,9 @@ components:
           description: Answers an untagged message here, an agent or `auto`. Absent inherits from the channel.
           type: string
         surface: {$ref: "#/components/schemas/ThreadSurface"}
+        announcement:
+          description: The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it.
+          type: string
         version:
           description: Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written.
           type: integer
@@ -4841,14 +4858,44 @@ components:
           type: string
         surface_id: {type: string}
         at: {type: string, format: date-time}
+    ThreadAnnouncement:
+      description: |
+        The announcement a thread was started from, as it stands when the
+        thread is read: who posted it and what it says. It is the inbox's,
+        never a message of the thread, so it is from whoever posted it, a
+        person or the agent a schedule ran, and never from the person whose
+        reply started the thread. A withdrawn one says nothing more.
+      type: object
+      required: [id, kind, by, at]
+      properties:
+        id:
+          description: The announcement's inbox id.
+          type: string
+        kind:
+          description: Who posted it.
+          type: string
+          enum: [person, agent]
+        by:
+          description: The person's handle, or the agent's name.
+          type: string
+        name:
+          description: What the person is called. Absent for an agent.
+          type: string
+        subject: {type: string, maxLength: 150}
+        text: {type: string, maxLength: 4000}
+        withdrawn:
+          description: Withdrawn for everyone. Its subject and text are then absent.
+          type: boolean
+        at: {type: string, format: date-time}
     ThreadTurn:
-      description: One turn of a thread, a person's message or an agent's run.
+      description: One turn of a thread, a person's message, an agent's run, or the announcement the thread was started from, which comes first.
       type: object
       required: [kind]
       properties:
-        kind: {type: string, enum: [message, run]}
+        kind: {type: string, enum: [message, run, announcement]}
         message: {$ref: "#/components/schemas/ThreadMessage"}
         run: {$ref: "#/components/schemas/Run"}
+        announcement: {$ref: "#/components/schemas/ThreadAnnouncement"}
     ThreadAnswers:
       description: |
         Who answers an untagged message in a place, and where that is set:
@@ -5099,7 +5146,8 @@ components:
         shared, or else the client's home, private for a direct message or
         the assistant pane. The text is Slack's own: the app's mention is
         dropped, a mapped bot or person is their tag, and anyone else is
-        plain and refused.
+        plain and refused. A thread under an announcement the client posted
+        is seeded with it (see `startThread`).
       type: object
       additionalProperties: false
       required: [client, channel, ts]

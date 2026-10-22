@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
@@ -274,6 +275,8 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 		fail(w, http.StatusForbidden, detail(err, platform.ErrThreadAuthor))
 	case errors.Is(err, platform.ErrAnswered):
 		fail(w, http.StatusConflict, detail(err, platform.ErrAnswered))
+	case errors.Is(err, platform.ErrAnnouncementGone):
+		fail(w, http.StatusGone, strings.TrimPrefix(err.Error(), "platform: "))
 	case errors.Is(err, threads.ErrLimit):
 		fail(w, http.StatusTooManyRequests, detail(err, threads.ErrLimit))
 	case errors.Is(err, platform.ErrPostRate):

@@ -5,10 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/clients"
+	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/threads"
 )
@@ -21,6 +23,11 @@ import (
 // in the client's home, private for a direct message or the assistant pane
 // and shared otherwise. The message is Slack's own text, which the platform
 // reads in the one grammar (slackText).
+//
+// A Slack thread under an announcement the client posted is that
+// announcement's: the thread it starts is seeded with it (announcementAt),
+// so its turns start with the announcement, from whoever posted it, and then
+// the reply, as its poster's own message.
 
 // SurfaceRef is where a message was posted on a client's surface.
 type SurfaceRef struct {
@@ -46,6 +53,11 @@ func (r SurfaceRef) message() string { return cmp.Or(r.Message, r.TS) }
 
 // ErrSurfacePlace is a surface's message that names where to file its thread.
 var ErrSurfacePlace = fmt.Errorf("%w: a surface's thread is filed where its channel is bound, never where the request says", threads.ErrInvalid)
+
+// ErrAnnouncementGone reports a reply to an announcement's post on a
+// client's surface that starts nothing: the announcement was withdrawn, or
+// it is a draft, which never reaches a channel.
+var ErrAnnouncementGone = errors.New("platform: a reply to this announcement starts nothing")
 
 // directMessage reports a Slack conversation with one person: a direct
 // message or the assistant pane, whose ids start with D.
@@ -132,8 +144,12 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	if err != nil {
 		return Posted{}, err
 	}
+	seed, err := p.announcementAt(who.Tenant, c, ref, project)
+	if err != nil {
+		return Posted{}, err
+	}
 	in.Project, in.Channel, in.Visibility = project, channel, vis
-	got, err := p.startThread(ctx, who, in, &surfaced{client: c, ref: ref})
+	got, err := p.startThread(ctx, who, in, &surfaced{client: c, ref: ref, announcement: seed})
 	if errors.Is(err, threads.ErrExists) {
 		// Another post started it first: this one joins it.
 		if th, ok := p.Threads.BySurface(who.Tenant, sf); ok {
@@ -143,10 +159,89 @@ func (p *Platform) startFromSurface(ctx context.Context, who auth.Principal, in 
 	return got, err
 }
 
-// surfaced is a message's surface, as the platform has checked it.
+// surfaced is a message's surface, as the platform has checked it, and the
+// announcement a thread it starts is seeded with, if any.
 type surfaced struct {
-	client clients.Client
-	ref    SurfaceRef
+	client       clients.Client
+	ref          SurfaceRef
+	announcement string
+}
+
+// announcementAt is the announcement a new thread on a client's surface is
+// seeded with: the one whose post there the client's machine recorded
+// (RecordDelivery) as the Slack thread's own first message, since a reply to
+// it is what starts the thread. One that was withdrawn, or a draft, starts
+// nothing (ErrAnnouncementGone). It seeds only a thread filed in its own
+// project, whose readers are the announcement's: a thread filed anywhere
+// else, after the Slack channel was bound to another project or unbound,
+// starts as any other there.
+func (p *Platform) announcementAt(tenant string, c clients.Client, ref SurfaceRef, project string) (string, error) {
+	m, ok := p.Inbox.ByDelivery(tenant, c.ID, inbox.Delivery{Channel: ref.Channel, TS: ref.TS})
+	if !ok || m.Kind != inbox.KindAnnouncement {
+		return "", nil
+	}
+	if slices.ContainsFunc(m.Parts, func(pt inbox.Part) bool { return pt.Type == inbox.PartDraft }) {
+		return "", fmt.Errorf("%w: it is a draft, which never reaches a channel", ErrAnnouncementGone)
+	}
+	if closedForAll(m) {
+		return "", fmt.Errorf("%w: it was withdrawn", ErrAnnouncementGone)
+	}
+	if m.Source.Project != project {
+		return "", nil
+	}
+	return m.ID, nil
+}
+
+// closedForAll reports a message closed for everyone: an announcement
+// withdrawn, or a draft published or discarded. A reader who hid a
+// broadcast for themselves closed only their own copy.
+func closedForAll(m inbox.Message) bool {
+	return m.State == inbox.Dismissed || m.State == inbox.Resolved
+}
+
+// seedOf is the announcement a thread was started from, as it stands when
+// the thread is read: who posted it, a person or an agent, and what it
+// says, or only that it was withdrawn. It is read under the thread's own
+// read rule, which is the announcement's project's, as announcementAt
+// filed it.
+func (p *Platform) seedOf(tenant string, th threads.Thread) (threads.Announcement, bool) {
+	if th.Announcement == "" {
+		return threads.Announcement{}, false
+	}
+	m, ok := p.Inbox.ByID(tenant, th.Announcement)
+	if !ok || m.Kind != inbox.KindAnnouncement || m.Source.Project != th.Project {
+		return threads.Announcement{}, false
+	}
+	a := threads.Announcement{ID: m.ID, By: m.From.Name, At: m.At}
+	switch m.From.Kind {
+	case "person":
+		a.Kind = threads.Person
+	case "agent":
+		a.Kind = threads.Agent
+	default:
+		return threads.Announcement{}, false
+	}
+	if closedForAll(m) {
+		a.Withdrawn = true
+		return a, true
+	}
+	var texts []string
+	for _, part := range m.Parts {
+		if part.Type == inbox.PartText && part.Text != "" {
+			texts = append(texts, part.Text)
+		}
+	}
+	a.Subject, a.Text = m.Subject, strings.Join(texts, "\n\n")
+	return a, true
+}
+
+// seedTurns is the turn a thread's room starts with: its announcement, when
+// it was started from one.
+func (p *Platform) seedTurns(tenant string, th threads.Thread) []threads.Turn {
+	if a, ok := p.seedOf(tenant, th); ok {
+		return []threads.Turn{threads.AnnouncementTurn(a)}
+	}
+	return nil
 }
 
 // surfaceOfPost checks a message posted with its surface into a thread: the

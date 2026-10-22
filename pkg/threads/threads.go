@@ -7,7 +7,9 @@
 // its own. An agent's turn exists only as a run, kept in the run index and
 // pointing at the message it answers. So no record here is ever an agent's
 // words: a message's author is always a person's subject, and nothing in
-// this package writes a turn for an agent.
+// this package writes a turn for an agent. A thread a reply to an
+// announcement started names it (Thread.Announcement) and starts with it,
+// read from the inbox, from whoever posted it: it is no message here.
 //
 // The package also holds what the platform decides with, as pure functions:
 // the tag grammar (Parse), what a message starts (Decide), the defaults set
@@ -139,6 +141,12 @@ type Thread struct {
 	// thread: a client, its channel there and the thread's own id. It is
 	// fixed when the thread is started, and one surface is one thread.
 	Surface *Surface `json:"surface,omitempty"`
+	// Announcement is the inbox id of the announcement the thread was
+	// started from: its surface is the announcement's post there, and a
+	// reply to it started the thread. It is fixed when the thread is
+	// started, only a thread with a surface has one, and the thread's
+	// turns start with it.
+	Announcement string `json:"announcement,omitempty"`
 	// Version counts the edits made to the record: its title, visibility,
 	// default and participants. Posting, and joining by posting, leave it.
 	Version int `json:"version"`
@@ -264,6 +272,9 @@ var (
 	validRun = regexp.MustCompile(`^r[0-9a-f]{32}$`)
 	// validVia is a client's id.
 	validVia = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+	// validInboxID is an inbox message's id, as a thread names the
+	// announcement it was started from.
+	validInboxID = regexp.MustCompile(`^m-[0-9]{1,18}$`)
 )
 
 // ValidID reports whether an id can name a thread.
@@ -322,6 +333,9 @@ func (t Thread) validate() error {
 		if err := t.Surface.validate(); err != nil {
 			return err
 		}
+	}
+	if t.Announcement != "" && (t.Surface == nil || !validInboxID.MatchString(t.Announcement)) {
+		return fmt.Errorf("%w: a thread started from an announcement is a surface's, and names it by its id", ErrInvalid)
 	}
 	seen := map[[2]string]bool{}
 	for _, p := range t.Participants {
