@@ -402,6 +402,9 @@ export function ThreadRoom({
   // then is saved from the version it answered, so quick changes never
   // send a version already gone.
   const saving = useRef<{ busy: boolean; next: Selection | null }>({ busy: false, next: null });
+  // The newest thread a save answered, which a render may not show yet.
+  const latest = useRef<Thread>(th);
+  if (th.version > latest.current.version || th.id !== latest.current.id) latest.current = th;
   const save = (from: Thread, next: Selection) => {
     saving.current = { busy: true, next: null };
     const moved = next.project !== from.project || next.channel !== from.channel;
@@ -416,6 +419,7 @@ export function ThreadRoom({
         ...(moved && next.project !== null ? { project: next.project === "" ? "~" : next.project, channel: next.channel } : {}),
       })
       .then((t) => {
+        latest.current = t;
         setPage((p) => ({ ...p, thread: t }));
         onChanged();
         const later = saving.current.next;
@@ -433,7 +437,7 @@ export function ThreadRoom({
     setShown(next);
     setProblem(null);
     if (saving.current.busy) saving.current.next = next;
-    else save(th, next);
+    else save(latest.current, next);
   };
   // A run answers because the conversation routes to its agent when its message did not tag it.
   const messages = new Map(turns.flatMap((t) => (t.message ? [[t.message.id, t.message] as const] : [])));

@@ -570,15 +570,16 @@ test("completion and the + menu open toward the side of the chat bar with room, 
   }
 });
 
-test("an agent the project picked does not offer is not kept as a chip, so it is never sent", async () => {
-  // globex-helper lives in Globex, so it can't answer at the workspace.
+test("a link's agent that lives in a project opens that project; one that can't answer where it goes is taken off, and the page says so", async () => {
+  // globex-helper lives in Globex: its link opens Globex, and keeps it.
   openChat(workspace("lead"), { startAgent: "globex-helper" });
-  await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/~/agents")));
-  await waitFor(() => assert.deepEqual(chips(), []));
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/Globex/agents")));
+  await waitFor(() => assert.deepEqual(chips(), ["globex-helper", "Globex"]));
   openChatClose();
-  openChat(workspace("lead"), { startAgent: "helper" });
-  await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/~/agents")));
-  assert.deepEqual(chips(), ["helper"]);
+  // Here only lead may answer, so helper is taken off, in words.
+  openChat({ ...workspace("lead"), available: { all: false, names: ["lead"] } }, { startAgent: "helper" });
+  await waitFor(() => assert.deepEqual(chips(), []));
+  assert.ok(screen.getByText(defaultCopy.chat.notHere(["helper"])));
 });
 
 function openChatClose() {
@@ -586,3 +587,19 @@ function openChatClose() {
   net?.restore();
   net = undefined;
 }
+
+test("+ closes the menu it opened, though focus moves to it from the menu first", async () => {
+  openChat(workspace("lead"));
+  const plus = screen.getByRole("button", { name: chat.plus });
+  fireEvent.click(plus);
+  const menu = await screen.findByRole("dialog", { name: chat.menu });
+  // A press on + moves focus there from the menu's search, then clicks it.
+  fireEvent.focusOut(within(menu).getByRole("searchbox"), { relatedTarget: plus });
+  fireEvent.click(plus);
+  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
+  // Focus going anywhere else closes it.
+  fireEvent.click(plus);
+  const again = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.focusOut(within(again).getByRole("searchbox"), { relatedTarget: document.body });
+  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
+});
