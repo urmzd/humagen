@@ -1137,12 +1137,19 @@ An unknown tab falls back to the default through `pick`. Names never hold
   run is live.
 - **Home.** The prompt-first composer, then two quiet lines from the shared
   `HomeModel`: "Needs you · 2" and "What's new" (up to 5 announcements from
-  your projects, unread first), each linking to
-  `/projects/{name}/inbox?message=`.
+  your projects, unread first, never an unpublished draft), each linking to
+  `/projects/{name}/inbox?message=` in the project it was filed in. A
+  project's inbox opens by id only a message filed in that project.
 - **Inbox.** Announcements sit under Updates with a megaphone template;
   drafts and mentions sit in Needs you. On a broadcast the header reads "Hide
-  for Me", with "Hidden for you. Others still see it." The Inbox adopts
-  `Page` for its title. The badge counts `open` only.
+  for Me", with "Hidden for you. Others still see it." and "Show for Me",
+  which brings the reader's own copy back (`POST /api/inbox/{id}/unhide`;
+  `hidden` on the message says the copy is set aside for them alone). The
+  author or an owner withdraws an announcement from the message itself, in
+  the project it was filed in. A draft is laid out as an announcement but
+  reads "Dismiss", which sets it aside for every owner, and offers no
+  Withdraw, as it was never announced. The Inbox adopts `Page` for its
+  title. The badge counts `open` only.
 - **Composer ProjectPicker.** Reads `GET /api/projects`, shows paths and kind
   words, and searches name, title, description and customer. With a project
   chosen, a channel select appears. The agent menu lists only available
@@ -1161,7 +1168,8 @@ Copy goes in `packages/components/src/copy.ts`:
   Announcement", "Add Weekly Recap", "Hide for Me", "Publish", "Discard
   Draft", "Post Only", "Add Person", "Name Owners", "New Channel", "Lives
   Here", "Workspace Default";
-- sentence-case empty states ("Nothing has been announced here yet.").
+- sentence-case empty states ("New announcements land here. What you hid is
+  under Resolved.").
 
 Shared pieces: `packages/core` gains `HomeModel.updates`, and
 `packages/adapter` maps `announcement`, `draft` and `mention` (`kinds`,

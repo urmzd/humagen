@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { defaultCopy } from "@warp/components";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
 import type { ProjectAgentsView, Revision, ThreadPage } from "./api.ts";
@@ -258,6 +259,8 @@ test("Retry of the first turn of a project's conversation files it in that proje
 test("Retry is not offered on another person's turn, nor on one that acted for nobody, and nothing is asked", async () => {
   for (const [actor, tag, says] of [
     [{ id: "ana", display: "Ana", user: "ana" }, "api-t1", "This turn acted for Ana, so only they can retry it."],
+    // A turn recorded with no name for its person never names them by subject.
+    [{ id: "tailscale:pat@example.com", user: "tailscale:pat@example.com" }, "api-t1", "This turn acted for someone else, so only they can retry it."],
     [{ id: "slack-app", bot: true }, "api-t1", "This turn acted for nobody, so it is not retried here, where it would act for you."],
     // A person who pressed Retry on a turn that acted for nobody, such as a machine's.
     [{ id: "ben", display: "Ben" }, NOBODY_RETRY, "This turn acted for nobody, so it is not retried here, where it would act for you."],
@@ -395,4 +398,50 @@ test("a turn from before warp said whom a run acts for is not the reader's when 
   open(again, "ben", [{ ...anas, actor: bens, tag_id: "api-r-cccccccccccccccccccccc" }, again]);
   fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
   await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+});
+
+test("a follow-up on a run's page goes to the agent that ran it, not the place's default, unless the person picks another", async () => {
+  // lead answers untagged messages here, and helper took the last turn.
+  const ana = { id: "ana", display: "Ana", user: "ana" };
+  open({ ...answered(ana), agent: "helper" }, "ana");
+  const box = (await screen.findByPlaceholderText("Ask helper")) as HTMLTextAreaElement;
+  fireEvent.change(box, { target: { value: "and the week before?" } });
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+  assert.deepEqual(net?.seen.find((r) => r.method === "POST" && r.path === "/api/runs")?.body, { agent: "helper", text: "and the week before?", after: "t1" });
+  close();
+  // An agent that may no longer answer here is not asked: the default is.
+  open({ ...answered(ana), agent: "globex-helper" }, "ana");
+  assert.ok(await screen.findByPlaceholderText("Ask lead"));
+});
+
+test("a task the reader may not read reads as one that does not exist, never as Home with a composer", async () => {
+  // The server answers a private thread the reader is not in as it does one
+  // that is not there: 404, which stubFetch gives a route it was not told.
+  net = stubFetch({ "GET /api/projects/~/agents": () => workspace("lead") });
+  const noop = () => {};
+  render(
+    <Chat
+      threadId="th-private"
+      me="lee"
+      summary={undefined}
+      tick={0}
+      agents={agents}
+      homes={homes}
+      projects={[]}
+      canRun
+      canCreateProject={false}
+      greeting="Good morning, Lee"
+      onThread={noop}
+      onChanged={noop}
+      onProjectCreated={noop}
+    />,
+  );
+  // While it is read it is not Home either.
+  assert.ok(!screen.queryByText("Good morning, Lee"));
+  assert.ok(await screen.findByRole("heading", { level: 1, name: defaultCopy.threads.missingTask }));
+  assert.ok(screen.getByText(defaultCopy.projects.missingHint));
+  assert.ok(!screen.queryByText("Good morning, Lee"));
+  assert.ok(!screen.queryByRole("textbox"));
+  assert.ok(!net?.seen.some((r) => r.method === "POST"));
 });

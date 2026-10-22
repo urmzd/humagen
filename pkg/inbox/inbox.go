@@ -134,7 +134,16 @@ const (
 type From struct {
 	// Kind is "rule", "agent", "system" or "person".
 	Kind string `json:"kind"`
+	// Name is the rule, the agent or the part of the system, and a person's
+	// subject. A mention keeps no subject: the store keeps the name its
+	// poster went by when they posted, and it is handed out naming them as
+	// threads do, by handle.
 	Name string `json:"name"`
+	// Display is what a person who sent it is called: their name, else their
+	// handle, never a subject that holds an address; for a mention, what its
+	// message is called now. The store leaves it empty: it is filled in when
+	// the message is read.
+	Display string `json:"display,omitempty"`
 	// ApprovedBy is the person who published an agent's draft, by subject.
 	ApprovedBy string `json:"approved_by,omitempty"`
 }
@@ -150,6 +159,10 @@ type Source struct {
 	// Target is the agent a question's tool call would call, when the
 	// question is about calling one: the callee whose queue it is in.
 	Target string `json:"target,omitempty"`
+	// ThreadTitle is what the conversation it is about is called, Thread
+	// or else Run's, for a reader who may read it. It is filled in when the
+	// message is shown, and never stored.
+	ThreadTitle string `json:"thread_title,omitempty"`
 }
 
 // AlertPart is an alert to acknowledge.
@@ -312,14 +325,21 @@ type QuestionPart struct {
 	// arguments or a note; anyone else approves or denies as asked. It is a
 	// hint for surfaces: answering checks again.
 	SteeredFor string `json:"steered_for,omitempty"`
+	// SteeredForName is what that person is called (see From.Display). The
+	// store leaves it empty: it is filled in when the message is read.
+	SteeredForName string `json:"steered_for_name,omitempty"`
 }
 
 // Outcome is what was decided about a part, and by whom.
 type Outcome struct {
-	Action string    `json:"action"`
-	By     string    `json:"by"`
-	At     time.Time `json:"at"`
-	Note   string    `json:"note,omitempty"`
+	Action string `json:"action"`
+	// By is who decided, by subject, or system.
+	By string    `json:"by"`
+	At time.Time `json:"at"`
+	// ByName is what whoever decided is called (see From.Display). The store
+	// leaves it empty: it is filled in when the message is read.
+	ByName string `json:"by_name,omitempty"`
+	Note   string `json:"note,omitempty"`
 }
 
 // Part is one piece of a message.
@@ -376,7 +396,11 @@ type Message struct {
 	State        State     `json:"state"`
 	SnoozedUntil time.Time `json:"snoozed_until,omitzero"`
 	// Unread is filled in for whoever is reading.
-	Unread bool   `json:"unread"`
+	Unread bool `json:"unread"`
+	// Hidden is filled in for whoever is reading: they hid or snoozed this
+	// broadcast for themselves, so State is theirs alone and everyone else
+	// still has it. Unhide brings it back.
+	Hidden bool   `json:"hidden,omitempty"`
 	Source Source `json:"source"`
 	Parts  []Part `json:"parts"`
 	// Deliveries are where clients posted the message, by client id.
@@ -493,6 +517,9 @@ const (
 	DidDismiss  What = "dismissed"
 	DidSnooze   What = "snoozed"
 	DidWithdraw What = "withdrawn"
+	// DidUnhide is a reader bringing back a broadcast they hid or snoozed
+	// for themselves.
+	DidUnhide What = "unhidden"
 )
 
 // Change is one thing that happened to a message. The list of them is the
@@ -697,7 +724,7 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 	if m == nil {
 		return nil, false
 	}
-	if m.Broadcast && (c.What == DidDismiss || c.What == DidSnooze) {
+	if m.Broadcast && (c.What == DidDismiss || c.What == DidSnooze || c.What == DidUnhide) {
 		return m, t.hideFor(m, c)
 	}
 	switch c.What {
@@ -751,13 +778,25 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 	return m, true
 }
 
-// hideFor records one reader dismissing or snoozing a broadcast for
-// themselves. It changes nothing anyone else sees, so it reports no change
-// to tell watchers about. A broadcast already closed for everyone, one the
-// reader dismissed, a snooze to the time it is already snoozed until, or a
+// hideFor records one reader dismissing, snoozing or unhiding a broadcast
+// for themselves. It changes nothing anyone else sees, so it reports no
+// change to tell watchers about. A broadcast already closed for everyone, a
+// dismiss or snooze of one the reader dismissed, a snooze to the time it is
+// already snoozed until, an unhide of one the reader never set aside, or a
 // change with no reader, is not recorded.
 func (t *tenant) hideFor(m *Message, c Change) bool {
-	if c.By == "" || m.State == Resolved || m.State == Dismissed || t.hidden[m.ID][c.By].state == Dismissed {
+	if c.By == "" || m.State == Resolved || m.State == Dismissed {
+		return false
+	}
+	if c.What == DidUnhide {
+		if _, ok := t.hidden[m.ID][c.By]; !ok {
+			return false
+		}
+		delete(t.hidden[m.ID], c.By)
+		t.log = append(t.log, c)
+		return false
+	}
+	if t.hidden[m.ID][c.By].state == Dismissed {
 		return false
 	}
 	h := hide{state: Dismissed}
@@ -777,22 +816,23 @@ func (t *tenant) hideFor(m *Message, c Change) bool {
 
 // stateFor is a message's state for one reader at a moment: a broadcast as
 // the reader set it aside, and a snooze that has run out open. A zero now
-// leaves a snooze as it is.
-func (t *tenant) stateFor(m *Message, subject string, now time.Time) (State, time.Time) {
-	st, until := m.State, m.SnoozedUntil
+// leaves a snooze as it is. own reports that the state is the reader's own
+// hide or snooze of a broadcast, which nobody else has.
+func (t *tenant) stateFor(m *Message, subject string, now time.Time) (st State, until time.Time, own bool) {
+	st, until = m.State, m.SnoozedUntil
 	if h, ok := t.hidden[m.ID][subject]; ok && m.Broadcast && (st == Open || st == Snoozed) {
-		st, until = h.state, h.until
+		st, until, own = h.state, h.until, true
 	}
 	if st == Snoozed && !now.IsZero() && !now.Before(until) {
-		return Open, time.Time{}
+		return Open, time.Time{}, false
 	}
-	return st, until
+	return st, until, own
 }
 
 // view is a message as one reader sees it.
 func (t *tenant) view(m *Message, subject string, now time.Time) Message {
 	out := m.clone()
-	out.State, out.SnoozedUntil = t.stateFor(m, subject, now)
+	out.State, out.SnoozedUntil, out.Hidden = t.stateFor(m, subject, now)
 	out.Unread = !t.read[m.ID][subject]
 	return out
 }
@@ -823,15 +863,8 @@ func (s *Store) doLocked(c Change) (Message, bool, error) {
 	}
 	n := len(t.log)
 	m, changed := t.apply(c)
-	if len(t.log) > n && s.kept.Enabled() {
-		b := s.kept.Batch()
-		for i := n; i < len(t.log); i++ {
-			b.Put(c.Tenant, state.Seq(int64(i)), storedOf(t.log[i]))
-		}
-		if err := b.Commit(); err != nil {
-			s.replay(c.Tenant, n)
-			return Message{}, false, fmt.Errorf("inbox: write: %w", err)
-		}
+	if err := s.commitLocked(c.Tenant, n); err != nil {
+		return Message{}, false, err
 	}
 	if m == nil {
 		return Message{}, false, nil
@@ -840,6 +873,25 @@ func (s *Store) doLocked(c Change) (Message, bool, error) {
 		t.tell(m)
 	}
 	return t.view(m, c.By, time.Time{}), changed, nil
+}
+
+// commitLocked writes what a tenant's record gained after its first n
+// changes, in one batch, or puts the tenant back to those n when it cannot
+// be written. The lock is held.
+func (s *Store) commitLocked(name string, n int) error {
+	t := s.tenants[name]
+	if len(t.log) == n || !s.kept.Enabled() {
+		return nil
+	}
+	b := s.kept.Batch()
+	for i := n; i < len(t.log); i++ {
+		b.Put(name, state.Seq(int64(i)), storedOf(t.log[i]))
+	}
+	if err := b.Commit(); err != nil {
+		s.replay(name, n)
+		return fmt.Errorf("inbox: write: %w", err)
+	}
+	return nil
 }
 
 // Raise puts a message in the inbox. key names what it is about: while a
@@ -914,6 +966,14 @@ func (s *Store) Withdraw(tenantName, id, by, note string, at time.Time) (Message
 	return s.do(Change{Tenant: tenantName, Message: id, What: DidWithdraw, By: by, Note: note, At: at})
 }
 
+// Unhide brings back a broadcast one reader hid or snoozed for themselves,
+// as everyone else has it. It changes nothing for anyone else, and nothing
+// at all for a message that is not a broadcast or that the reader never set
+// aside.
+func (s *Store) Unhide(tenantName, id, by string, at time.Time) (Message, bool, error) {
+	return s.do(Change{Tenant: tenantName, Message: id, What: DidUnhide, By: by, At: at})
+}
+
 // Snooze hides a message until a time, when it is open again. A broadcast is
 // hidden for the one who snoozes it alone.
 func (s *Store) Snooze(tenantName, id, by string, until, at time.Time) (Message, bool, error) {
@@ -965,12 +1025,13 @@ func (s *Store) HistoryFor(tenantName, id, subject string) []Change {
 }
 
 // ownMark reports whether a change is one reader's mark on their own copy of
-// a message: a read or an unread, and on a broadcast a hide or a snooze.
+// a message: a read or an unread, and on a broadcast a hide, a snooze or an
+// unhide.
 func ownMark(what What, broadcast bool) bool {
 	switch what {
 	case MarkRead, MarkUnread:
 		return true
-	case DidDismiss, DidSnooze:
+	case DidDismiss, DidSnooze, DidUnhide:
 		return broadcast
 	}
 	return false
@@ -1112,7 +1173,7 @@ func (t *tenant) match(m *Message, q filter) bool {
 	if want == "" {
 		want = Open
 	}
-	if st, _ := t.stateFor(m, q.Reader, q.Now); want != All && st != want {
+	if st, _, _ := t.stateFor(m, q.Reader, q.Now); want != All && st != want {
 		return false
 	}
 	return !q.Unread || !t.read[m.ID][q.Reader]
@@ -1252,9 +1313,10 @@ func DefaultPostCaps() PostCaps { return PostCaps{PerProject: 20, PerTenant: 200
 // the project, the root's "" included. It is a broadcast that reaches the
 // members of the project and of every project below it, so its kind, its
 // audience and its key ("announce:<project>:<n>") are set here, and every
-// part is text, only there to be read. The day's posts are counted and the
-// announcement raised under one lock, so racing posts stop at the caps
-// (ErrLimit).
+// part is text, only there to be read. The person who posted it, its author
+// or whoever published an agent's draft, has read it. The day's posts are
+// counted and the announcement raised under one lock, so racing posts stop
+// at the caps (ErrLimit).
 func (s *Store) Post(tenantName string, m Message, at time.Time, caps PostCaps) (Message, error) {
 	d := DefaultPostCaps()
 	caps.PerProject, caps.PerTenant = cmp.Or(caps.PerProject, d.PerProject), cmp.Or(caps.PerTenant, d.PerTenant)
@@ -1291,8 +1353,33 @@ func (s *Store) Post(tenantName string, m Message, at time.Time, caps PostCaps) 
 		return Message{}, fmt.Errorf("%w: a workspace posts at most %d announcements a day", ErrLimit, caps.PerTenant)
 	}
 	m.Key = "announce:" + project + ":" + strconv.Itoa(t.next+1)
-	out, _, err := s.doLocked(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
-	return out, err
+	n := len(t.log)
+	raised, _ := t.apply(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
+	if raised == nil {
+		return Message{}, fmt.Errorf("%w: %s was raised already", ErrInvalid, m.Key)
+	}
+	// The poster's read is written with the raise, so nobody, their own
+	// console on the notice included, reads it unread for them first.
+	if who := m.From.poster(); who != "" {
+		t.apply(Change{Tenant: tenantName, Message: raised.ID, What: MarkRead, By: who, At: at})
+	}
+	if err := s.commitLocked(tenantName, n); err != nil {
+		return Message{}, err
+	}
+	t.tell(raised)
+	return t.view(raised, m.From.Name, time.Time{}), nil
+}
+
+// poster is the person who posted a message, by subject: a person who
+// wrote it, or who published an agent's draft. "" for nobody.
+func (f From) poster() string {
+	if f.ApprovedBy != "" {
+		return f.ApprovedBy
+	}
+	if f.Kind == "person" {
+		return f.Name
+	}
+	return ""
 }
 
 // OpenOf returns the open and snoozed messages of a kind, for keeping the

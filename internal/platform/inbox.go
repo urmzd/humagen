@@ -18,6 +18,7 @@ import (
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // The inbox is one state seen from two sides. An alert and the message about
@@ -207,8 +208,25 @@ func (p *Platform) mayRetryIn(tree *projects.Tree, who auth.Principal, runID str
 	return err
 }
 
-// seenBy fills in what a reader may do with each part.
-func (p *Platform) seenBy(tree *projects.Tree, m inbox.Message, who auth.Principal) inbox.Message {
+// seenBy fills in what a reader may do with each part, what the people it
+// names by subject are called (named), and what the thread it is about is
+// called, when they may read that thread.
+func (p *Platform) seenBy(tree *projects.Tree, names Names, m inbox.Message, who auth.Principal) inbox.Message {
+	m = named(names, m)
+	m.Source.ThreadTitle = ""
+	id := m.Source.Thread
+	if id == "" && m.Source.Run != "" {
+		// A message about a run, such as a recap's announcement, is about
+		// the conversation the run is in.
+		if r, err := p.Runs.Get(who.Tenant, m.Source.Run); err == nil {
+			id = r.Thread
+		}
+	}
+	if id != "" {
+		if th, err := p.ThreadRecord(who.Tenant, id); err == nil && p.Seer(who).Place(Place{Project: th.Project, Thread: id}) {
+			m.Source.ThreadTitle = p.threadTitle(who.Tenant, th)
+		}
+	}
 	for i := range m.Parts {
 		part := &m.Parts[i]
 		part.Actions = []string{}
@@ -222,6 +240,46 @@ func (p *Platform) seenBy(tree *projects.Tree, m inbox.Message, who auth.Princip
 			if p.allows(tree, who, *part, a) == nil {
 				part.Actions = append(part.Actions, a)
 			}
+		}
+	}
+	return m
+}
+
+// threadTitle is what a thread is called: its title, else the start of its
+// first message, else of what its first run was asked, as its room heads it.
+func (p *Platform) threadTitle(tenant string, th threads.Thread) string {
+	if th.Title != "" {
+		return th.Title
+	}
+	if th.Version > 0 {
+		if msgs, _, err := p.Threads.Messages(tenant, th.ID, "", 1); err == nil && len(msgs) > 0 {
+			return headline(msgs[0].Text, threads.MaxTitle)
+		}
+	}
+	if turns, err := p.Runs.Conversation(tenant, th.ID); err == nil && len(turns) > 0 {
+		return headline(turns[0].Text, threads.MaxTitle)
+	}
+	return ""
+}
+
+// named fills in what the people a message names by subject are called: a
+// person who sent it, whoever decided each part, and the person whose own
+// credentials a question's answer may reach. The subjects stay, as the keys
+// they are. A mention keeps no subject: it is from its poster as
+// the thread calls them now (Names.mention).
+func named(names Names, m inbox.Message) inbox.Message {
+	switch {
+	case m.Kind == inbox.KindMention:
+		m = names.mention(m)
+	case m.From.Kind == "person":
+		m.From.Display = names.Of(m.From.Name)
+	}
+	for i := range m.Parts {
+		if o := m.Parts[i].Outcome; o != nil {
+			o.ByName = names.Of(o.By)
+		}
+		if q := m.Parts[i].Question; q != nil {
+			q.SteeredForName = names.Of(q.SteeredFor)
 		}
 	}
 	return m
@@ -273,8 +331,9 @@ func (p *Platform) InboxPage(who auth.Principal, q inbox.Query) ([]inbox.Message
 	tree := p.Projects.Tree(who.Tenant)
 	q.Shared = false
 	msgs, next, err := p.Inbox.Page(who.Tenant, p.inboxQuery(tree, who, q))
+	names := p.Names(who.Tenant)
 	for i := range msgs {
-		msgs[i] = p.ownDeliveries(who, p.seenBy(tree, msgs[i], who))
+		msgs[i] = p.ownDeliveries(who, p.seenBy(tree, names, msgs[i], who))
 	}
 	return msgs, next, err
 }
@@ -325,9 +384,9 @@ func (p *Platform) inboxGetAs(who auth.Principal, reader inbox.Reader, id string
 		return inbox.Message{}, fmt.Errorf("%w: message %q", inbox.ErrNotFound, id)
 	}
 	if m.State == inbox.Snoozed && !p.now().Before(m.SnoozedUntil) {
-		m.State = inbox.Open
+		m.State, m.Hidden = inbox.Open, false
 	}
-	return p.ownDeliveries(who, p.seenBy(p.Projects.Tree(who.Tenant), m, who)), nil
+	return p.ownDeliveries(who, p.seenBy(p.Projects.Tree(who.Tenant), p.Names(who.Tenant), m, who)), nil
 }
 
 // readerSeer is what reader may read: the caller, or the person a surface
@@ -393,6 +452,32 @@ func (p *Platform) InboxDismiss(who auth.Principal, id string) (inbox.Message, e
 		return inbox.Message{}, err
 	}
 	p.audit(who, m, "", "dismiss", "")
+	return p.InboxGet(who, id)
+}
+
+// InboxUnhide brings back an announcement the caller hid or snoozed for
+// themselves, as everyone else has it. Only their own copy changes, so it
+// takes what hiding it took. One they never set aside, or one withdrawn for
+// everyone, is answered as it is. Any other message is everyone's to set
+// aside, and is not brought back this way.
+func (p *Platform) InboxUnhide(who auth.Principal, id string) (inbox.Message, error) {
+	m, err := p.InboxGet(who, id)
+	if err != nil {
+		return inbox.Message{}, err
+	}
+	if !m.Broadcast {
+		return inbox.Message{}, fmt.Errorf("%w: only an announcement you hid for yourself is brought back", ErrAction)
+	}
+	if !who.Can(writes(m.Kind)) {
+		return inbox.Message{}, fmt.Errorf("%w: bringing this back needs %s", ErrForbidden, writes(m.Kind))
+	}
+	if !m.Hidden {
+		return m, nil
+	}
+	if _, _, err := p.Inbox.Unhide(who.Tenant, id, who.Subject, p.now()); err != nil {
+		return inbox.Message{}, err
+	}
+	p.audit(who, m, "", "unhide", "")
 	return p.InboxGet(who, id)
 }
 
@@ -717,7 +802,8 @@ func (p *Platform) mayRetry(who auth.Principal, runID string) error {
 		return err
 	}
 	if person := personOf(run.Actor); person != "" && (who.Kind == auth.Machine || who.Subject != person) {
-		return fmt.Errorf("%w: this turn acted for %s, so only %s may ask it again", ErrForbidden, person, person)
+		name := p.NameOf(who.Tenant, person)
+		return fmt.Errorf("%w: this turn acted for %s, so only %s may ask it again", ErrForbidden, name, name)
 	}
 	return nil
 }

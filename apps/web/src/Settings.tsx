@@ -6,7 +6,8 @@ import { ApiError, api, type Me, type ModelPolicy, type Preferences, type Revisi
 import { ModelChain, POLICY, chainProblem, starterPolicy } from "./ModelChain.tsx";
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
-import { agentOptions, button, card, field, Label, Menu, Problem, primary, Segmented, Switch, pageLede, pageTitle } from "./ui.tsx";
+import type { PrefsRead } from "./preferences.ts";
+import { agentOptions, button, card, field, Label, Menu, Problem, primary, Segmented, SkeletonRows, Switch, pageLede, pageTitle, useStrip } from "./ui.tsx";
 
 export type Section = SettingsSection;
 
@@ -52,6 +53,7 @@ const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
 export function Settings({
   me,
   prefs,
+  prefsRead = "read",
   workspace,
   agents,
   projects,
@@ -68,7 +70,9 @@ export function Settings({
   onConnections,
 }: {
   me: Me;
+  /** The saved preferences once prefsRead is "read"; until then, defaults that only draw the page. */
   prefs: Preferences;
+  prefsRead?: PrefsRead;
   workspace: Workspace | null;
   agents: Revision[];
   /** The workspace's project names, for limits. */
@@ -92,19 +96,31 @@ export function Settings({
 }) {
   const setSection = onSection;
   const [problem, setProblem] = useState<string | null>(null);
-  const [name, setName] = useState(prefs.display_name);
+  // What the person typed, or null to show the saved name. A copy taken once
+  // would be the empty default on a page opened before the saved name is read.
+  const [draft, setDraft] = useState<string | null>(null);
+  const name = draft ?? prefs.display_name;
   const file = useRef<HTMLInputElement>(null);
   const who = me.principal;
   const shown = prefs.display_name || who.name || who.email || who.subject;
+  const read = prefsRead === "read";
 
   const fail = (fallback: string) => (e: unknown) => setProblem(e instanceof ApiError ? e.message : fallback);
+  // A save sends every field, so none is sent before the saved ones are read.
   const savePrefs = (patch: Partial<Pick<Preferences, "display_name" | "theme" | "accent">>) => {
+    if (!read) return;
     setProblem(null);
     api
       .savePreferences({ display_name: prefs.display_name, theme: prefs.theme, accent: prefs.accent, ...patch })
-      .then(onPrefs)
+      .then((next) => {
+        onPrefs(next);
+        if (patch.display_name !== undefined) setDraft(null);
+      })
       .catch(fail("Your preferences could not be saved."));
   };
+  // In place of a control that would save over what is not read yet.
+  const notRead =
+    prefsRead === "failed" ? <Problem message="Your preferences could not be read. Reload to try again." /> : <SkeletonRows count={2} />;
   const saveWorkspace = (patch: Partial<Workspace>) => {
     if (!workspace) return;
     setProblem(null);
@@ -124,25 +140,30 @@ export function Settings({
     { id: "connections", label: "Connections" },
     { id: "access", label: "Access" },
   ];
+  // On a phone the sections are a row that scrolls inside itself, kept on the open one.
+  const strip = useStrip<HTMLElement>(section);
 
   return (
     <div className="warp-fade flex min-h-0 flex-1 flex-col md:flex-row">
-      <nav aria-label="Settings sections" className="flex shrink-0 gap-0.5 overflow-x-auto border-aui-border border-b p-2 md:w-52 md:flex-col md:border-r md:border-b-0 md:p-3">
-        {sections.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            aria-current={section === s.id ? "page" : undefined}
-            onClick={() => {
-              setSection(s.id);
-              setProblem(null);
-            }}
-            className="h-8 shrink-0 rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
-          >
-            {s.label}
-          </button>
-        ))}
-      </nav>
+      {/* The rule is drawn on a frame around the sections, so it runs the full width while the row's ends fade. */}
+      <div className="shrink-0 border-aui-border border-b md:w-52 md:border-r md:border-b-0">
+        <nav ref={strip} aria-label="Settings sections" className="warp-strip flex gap-0.5 overflow-x-auto px-4 py-2 md:flex-col md:p-3">
+          {sections.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              aria-current={section === s.id ? "page" : undefined}
+              onClick={() => {
+                setSection(s.id);
+                setProblem(null);
+              }}
+              className="h-8 shrink-0 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
+            >
+              {s.label}
+            </button>
+          ))}
+        </nav>
+      </div>
 
       <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-5 pt-8 pb-12 md:px-10">
@@ -224,22 +245,28 @@ export function Settings({
                   </div>
                 </div>
               </section>
-              <form
-                className={`${card} flex flex-col gap-3`}
-                onSubmit={(e: FormEvent) => {
-                  e.preventDefault();
-                  savePrefs({ display_name: name });
-                }}
-              >
-                <Label text="Display name" hint={`Leave empty to use the name from sign-in${who.name ? `: ${who.name}` : ""}.`}>
-                  <input className={field} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
-                </Label>
-                <div className="flex justify-end">
-                  <button type="submit" className={primary} disabled={name === prefs.display_name}>
-                    Save Name
-                  </button>
-                </div>
-              </form>
+              {read ? (
+                <form
+                  className={`${card} flex flex-col gap-3`}
+                  onSubmit={(e: FormEvent) => {
+                    e.preventDefault();
+                    savePrefs({ display_name: name });
+                  }}
+                >
+                  <Label text="Display name" hint={`Leave empty to use the name from sign-in${who.name ? `: ${who.name}` : ""}.`}>
+                    <input className={field} value={name} maxLength={80} onChange={(e) => setDraft(e.target.value)} />
+                  </Label>
+                  <div className="flex justify-end">
+                    <button type="submit" className={primary} disabled={name === prefs.display_name}>
+                      Save Name
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <section className={card} aria-label="Display name">
+                  {notRead}
+                </section>
+              )}
               {onConnections && (
                 <section className={`${card} flex flex-wrap items-center justify-between gap-3`}>
                   <div className="flex min-w-0 flex-col gap-1">
@@ -260,31 +287,34 @@ export function Settings({
                 <h1 className={pageTitle}>Appearance</h1>
                 <p className={pageLede}>These follow you to any browser you sign in from.</p>
               </header>
-              <section className={`${card} flex flex-col gap-4`}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span>
-                    <span className="block text-aui-sm text-aui-fg">Theme</span>
-                    <span className="block text-aui-xs text-aui-muted">System follows your device.</span>
-                  </span>
-                  <Segmented
-                    label="Theme"
-                    value={prefs.theme}
-                    onChange={(theme) => savePrefs({ theme })}
-                    options={[
-                      { id: "system", label: "System" },
-                      { id: "light", label: "Light" },
-                      { id: "dark", label: "Dark" },
-                    ]}
-                  />
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span>
-                    <span className="block text-aui-sm text-aui-fg">Accent</span>
-                    <span className="block text-aui-xs text-aui-muted">Used for focus, selection and progress.</span>
-                  </span>
-                  <Segmented label="Accent" value={prefs.accent} onChange={(accent) => savePrefs({ accent })} options={accents} />
-                </div>
-              </section>
+              {!read && <section className={card}>{notRead}</section>}
+              {read && (
+                <section className={`${card} flex flex-col gap-4`}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span>
+                      <span className="block text-aui-sm text-aui-fg">Theme</span>
+                      <span className="block text-aui-xs text-aui-muted">System follows your device.</span>
+                    </span>
+                    <Segmented
+                      label="Theme"
+                      value={prefs.theme}
+                      onChange={(theme) => savePrefs({ theme })}
+                      options={[
+                        { id: "system", label: "System" },
+                        { id: "light", label: "Light" },
+                        { id: "dark", label: "Dark" },
+                      ]}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span>
+                      <span className="block text-aui-sm text-aui-fg">Accent</span>
+                      <span className="block text-aui-xs text-aui-muted">Used for focus, selection and progress.</span>
+                    </span>
+                    <Segmented label="Accent" value={prefs.accent} onChange={(accent) => savePrefs({ accent })} options={accents} />
+                  </div>
+                </section>
+              )}
             </>
           )}
 

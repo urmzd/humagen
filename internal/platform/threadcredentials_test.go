@@ -10,6 +10,7 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 
 	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/inbox"
@@ -131,6 +132,25 @@ func TestAnExpertDoesNotAnswerWhatARunAsksWithAnotherPersonsCredential(t *testin
 	th, run, msg := parked("@asker file the PO")
 	if sees(w.p, ben, msg.ID) || !sees(w.p, ana, msg.ID) {
 		t.Errorf("a question for the experts, in a run with ana's credential, is addressed to %v, want ana alone", msg.Audience)
+	}
+	// The thread tells the expert it is ana's to answer, and offers it to ana.
+	_, turns, _, err := w.p.ThreadTurns(tenant, th.ID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asks := map[string]*platform.Ask{}
+	for _, who := range []auth.Principal{ana, ben} {
+		for _, turn := range w.p.AsksIn(ctx, who, slices.Clone(turns)) {
+			if turn.Run != nil && turn.Run.ID == run.ID {
+				asks[who.Subject] = turn.Ask
+			}
+		}
+	}
+	if a := asks["ben"]; a == nil || a.Yours || a.For != platform.ForPerson || a.Person != "ana" {
+		t.Errorf("the expert's ask = %+v, want it for ana and not theirs", a)
+	}
+	if a := asks["ana"]; a == nil || !a.Yours || a.For != platform.ForPerson {
+		t.Errorf("ana's ask = %+v, want it theirs", a)
 	}
 	calls := len(w.server.Calls())
 	ref := &threads.AnswerRef{Run: run.ID, Question: run.Question.ID}

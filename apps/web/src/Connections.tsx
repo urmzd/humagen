@@ -1,14 +1,34 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, type MouseEvent, useCallback, useEffect, useState } from "react";
 import { ApiError, api, type ToolCredential, type ToolCredentials } from "./api.ts";
-import { destination, offers, standing, startsAllowed, type Way, ways, whereReferences } from "./connections.ts";
+import { CONNECT_PERMISSION, cannotConnect, destination, offers, standing, startsAllowed, type Way, ways, whereReferences } from "./connections.ts";
+import { href } from "./route.ts";
 import { button, card, Empty, field, Label, Page, primary, Problem, Segmented } from "./ui.tsx";
+
+/** A plain click goes there in place; a modified one is the browser's. */
+const follow = (go: () => void) => (e: MouseEvent<HTMLAnchorElement>) => {
+  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  go();
+};
 
 /**
  * Your connections: the tools in this workspace that act as you, reached with
  * your own credential, and whether you have given one. Everything here is
  * yours alone; nobody else's credential is shown or used for you.
  */
-export function YourConnections({ open, onOpen }: { open?: string; onOpen: (provider?: string) => void }) {
+export function YourConnections({
+  open,
+  onOpen,
+  canConnect = true,
+  onWhy,
+}: {
+  open?: string;
+  onOpen: (provider?: string) => void;
+  /** May give or remove a credential, which the server holds to CONNECT_PERMISSION. */
+  canConnect?: boolean;
+  /** Opens why the person may not connect, in Settings > Access. */
+  onWhy?: () => void;
+}) {
   const [state, setState] = useState<ToolCredentials | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,6 +66,23 @@ export function YourConnections({ open, onOpen }: { open?: string; onOpen: (prov
       narrow
     >
       <Problem message={problem} />
+      {!canConnect && state && state.providers.length > 0 && (
+        <p className="text-aui-sm text-aui-muted">
+          {cannotConnect}
+          {onWhy && (
+            <>
+              {" "}
+              <a
+                href={href({ page: "settings", section: "access", permission: CONNECT_PERMISSION })}
+                onClick={follow(onWhy)}
+                className="rounded-aui text-aui-fg underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+              >
+                Why can't I?
+              </a>
+            </>
+          )}
+        </p>
+      )}
       {state && state.providers.length === 0 && (
         <Empty title="No tools here act as you">A tool acts as each person when the workspace declares it with credential_scope: person.</Empty>
       )}
@@ -55,7 +92,8 @@ export function YourConnections({ open, onOpen }: { open?: string; onOpen: (prov
           connection={c}
           ways={ways(state)}
           references={state.references}
-          open={open === c.provider}
+          canConnect={canConnect}
+          open={canConnect && open === c.provider}
           busy={busy}
           onOpen={() => onOpen(c.provider)}
           onCancel={() => onOpen(undefined)}
@@ -72,6 +110,7 @@ export function ConnectionCard({
   connection: c,
   ways,
   references,
+  canConnect = true,
   open,
   busy = false,
   onOpen,
@@ -82,6 +121,8 @@ export function ConnectionCard({
   connection: ToolCredential;
   ways: Way[];
   references: string[];
+  /** May give or remove a credential. One who may not is shown where they stand, and nothing to press. */
+  canConnect?: boolean;
   open: boolean;
   busy?: boolean;
   onOpen: () => void;
@@ -99,7 +140,7 @@ export function ConnectionCard({
       </div>
       <p className="text-aui-sm text-aui-muted">{standing(c)}</p>
       <p className="text-aui-xs text-aui-muted">{destination(c)}</p>
-      {open ? (
+      {!canConnect ? null : open ? (
         <ConnectForm ways={ways} references={references} replacing={c.connected} busy={busy} onSave={onSave} onCancel={onCancel} />
       ) : (
         <div className="flex flex-wrap items-center gap-2">

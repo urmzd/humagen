@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -77,6 +78,27 @@ func ActorOf(who auth.Principal) envelope.Actor {
 	if who.Kind != auth.Machine {
 		a.User = who.Subject
 	}
+	return a
+}
+
+// namedActor is an actor as a run records it: the person it acts for called
+// what the directory calls them, as every route names them, rather than by
+// the name their sign-in carried, which can be missing, or by their subject,
+// which is all a surface asking for them gives and can hold an address. A
+// person the directory has not recorded keeps the name they were given,
+// unless it is their subject or an address. A caller that acts for nobody
+// is named as it named itself.
+func (p *Platform) namedActor(tenant string, a envelope.Actor) envelope.Actor {
+	person := personOf(a)
+	if person == "" {
+		return a
+	}
+	who := p.shower(tenant).person(person)
+	given := a.Display
+	if given == person || strings.Contains(given, "@") {
+		given = ""
+	}
+	a.Display = cmp.Or(who.Name, given, who.Handle, who.ShownSubject(), someone)
 	return a
 }
 

@@ -42,11 +42,23 @@ async function deny(): Promise<unknown> {
 }
 
 test("on a run that takes words only from its person, anyone else is offered no note", async () => {
-  open(waiting({ steered_for: "ana" }), "ben");
+  open(waiting({ steered_for: "ana", steered_for_name: "Ana" }), "ben");
   await screen.findByText("Search the wiki?");
   assert.ok(!screen.queryByLabelText("Note with the answer"));
-  assert.ok(screen.getByText(/Only ana may add a note/));
+  assert.ok(screen.getByText(/Only Ana may add a note/));
   assert.deepEqual(await deny(), { action: "deny" });
+});
+
+test("the person whose credentials the run uses is named by what they are called, never by subject", async () => {
+  open(waiting({ steered_for: "tailscale:pat@example.com", steered_for_name: "pat" }), "ben");
+  await screen.findByText(/Only pat may add a note/);
+  assert.ok(!screen.queryByText(/example\.com/));
+  cleanup();
+  net?.restore();
+  // A server that sends no name still names nobody by subject.
+  open(waiting({ steered_for: "tailscale:pat@example.com" }), "ben");
+  await screen.findByText(/Only the person it acts for may add a note/);
+  assert.ok(!screen.queryByText(/example\.com/));
 });
 
 test("that person, and anyone on any other run, may add one", async () => {

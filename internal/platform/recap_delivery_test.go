@@ -96,6 +96,10 @@ func TestARecapIsPostedInItsProject(t *testing.T) {
 	case !m.For(inbox.Reader{Subject: "cy", Projects: []string{"Field"}}) || m.For(inbox.Reader{Subject: "cy"}):
 		t.Fatal("the announcement does not reach exactly the project's members")
 	}
+	// What it is about is the run's conversation, named by what it asked.
+	if seen, err := p.InboxGet(adaSigned, m.ID); err != nil || seen.Source.ThreadTitle != "What changed?" {
+		t.Fatalf("the recap's conversation is called %q (%v)", seen.Source.ThreadTitle, err)
+	}
 }
 
 // An agent that has nothing to say says NONE, and nothing is posted.

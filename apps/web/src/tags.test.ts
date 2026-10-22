@@ -31,6 +31,32 @@ test("options that start with what is typed come first, then the rest that hold 
   assert.equal(options[0]?.kind, "auto");
 });
 
+test("when more match than the list holds, agents, people and expert topics each keep places in it", () => {
+  const options = tagOptions(
+    ["globex-helper", "helper", "lead", "ledger", "recap-writer"].map((name) => ({ name })),
+    ["ada-okafor", "lee-wong", "priya-nair", "sam-ortiz", "zoe-quinn"].map((handle) => ({ handle })),
+    ["billing", "renewals"],
+    words,
+  );
+  const shown = matching(options, "");
+  assert.equal(shown.length, 8);
+  // @auto and the first agents, the first people, then every expert and the first topic.
+  assert.deepEqual(
+    shown.map((o) => o.token),
+    ["auto", "globex-helper", "helper", "ada-okafor", "lee-wong", "priya-nair", "sme", "sme:billing"],
+  );
+  // A short list still holds one of each, in the order given.
+  assert.deepEqual(
+    matching(options, "", 4).map((o) => o.token),
+    ["auto", "globex-helper", "ada-okafor", "sme"],
+  );
+  // A kind with fewer matches than its share gives the rest to the others.
+  assert.deepEqual(
+    matching(options, "r", 7).map((o) => o.token),
+    ["recap-writer", "globex-helper", "helper", "ada-okafor", "priya-nair", "sam-ortiz", "sme:renewals"],
+  );
+});
+
 test("picking an option writes the tag and a space, and puts the caret after it", () => {
   const option: TagOption = { kind: "agent", token: "ignite", label: "ignite" };
   assert.deepEqual(insertTag("ask @ig please", { start: 4, query: "ig" }, option), { text: "ask @ignite please", caret: 12 });

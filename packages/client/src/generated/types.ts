@@ -139,6 +139,8 @@ export interface Revision {
   hash: string;
   created_at: string;
   created_by: string;
+  /** What whoever saved it is called, their name, else their handle, never a subject that holds an address. `created_by` is the subject. */
+  created_by_name?: string;
 }
 
 /** Which agent @auto would pick for a message, and why. */
@@ -157,6 +159,8 @@ export interface Note {
   /** A pending note is a proposal, not used until a person approves it. */
   status: "approved" | "pending";
   by?: string;
+  /** What the person who wrote it is called, their name, else their handle, never a subject that holds an address. `by` is the subject. */
+  by_name?: string;
   at: string;
 }
 
@@ -503,6 +507,30 @@ export interface ThreadTurn {
   kind: "message" | "run";
   message?: ThreadMessage;
   run?: Run;
+  ask?: ThreadAsk;
+}
+
+/** The question a parked run waits on, as the reader stands to it, on a
+run turn whose run is parked on a question a person answers. `yours`
+says the reader may answer it, as answering would check them: it is
+addressed to them, they hold `runs:write`, and nothing else refuses
+them, such as approving a call their own request raised. `for` says
+whom it is for: `anyone` who may resume runs, one `person` (the
+person the run acts for, by handle, when an answer may reach their
+own credential), the `experts` on `topic` in the run's project (every
+expert when `topic` is absent), the `answerers` its agent's rules
+name or it asked, or `nobody`, when the rules cannot be read. It
+names nobody the reader may not see. The runtime still has the last
+word when an answer is given.
+ */
+export interface ThreadAsk {
+  /** The question's id, `question.id` on the run. */
+  question: string;
+  yours: boolean;
+  for: "anyone" | "person" | "experts" | "answerers" | "nobody";
+  topic?: string;
+  /** The handle of the person it is for, with `for` of `person`. */
+  person?: string;
 }
 
 /** Who answers an untagged message in a place, and where that is set:
@@ -902,15 +930,26 @@ export interface ProjectAccess {
 /** An owner entry of a project above, which owns this one too. */
 export interface ProjectInheritedOwner {
   who: string;
+  /** What the person `who` names is called, their name, else their handle, never a subject that holds an address. Absent on `*` and `role:<name>`. */
+  name?: string;
   /** The project above whose entry it is, `""` for the workspace. */
   from: string;
+}
+
+/** One member of a project, the role it grants, and what a person it names is called. */
+export interface ProjectMember {
+  /** `*`, `role:<name>`, or a subject: the key a change sends back. */
+  who: string;
+  role: ProjectRole;
+  /** What the person `who` names is called, their name, else their handle, never a subject that holds an address. Absent on `*` and `role:<name>`. */
+  name?: string;
 }
 
 /** Who holds a role in a project, and who owns it from above. */
 export interface ProjectMembers {
   /** The project's version, to name when changing them. */
   version: number;
-  members: ProjectEntry[];
+  members: ProjectMember[];
   /** The owner entries of the projects above, nearest first. */
   inherited: ProjectInheritedOwner[];
 }
@@ -950,6 +989,8 @@ export interface ProjectChange {
   at: string;
   /** Who made the change. `migration` for projects moved out of settings. */
   by: string;
+  /** What whoever made the change is called, their name, else their handle, never a subject that holds an address. */
+  by_name?: string;
   project: string;
   /** `managed` is the platform file taking the project over or letting
 it go, `moved` a new parent, `archived` archiving or bringing it
@@ -1144,6 +1185,8 @@ export interface ScheduleView {
   /** `file` while the platform file declares the schedule: it can be paused, resumed and run here, and changing or deleting it answers 409. */
   managed: "file";
   created_by?: string;
+  /** What the person who made it is called, their name, else their handle, never a subject that holds an address. `created_by` is the subject. */
+  created_by_name?: string;
   /** Who last changed the schedule. Absent until it is changed. */
   updated_by?: string;
   updated_at?: string;
@@ -1202,9 +1245,12 @@ experts named by a role, is one notice for each, at most 20.
 }
 
 export interface InboxFrom {
-  /** What sent the message, such as `agent`, `rule` or `system`. */
+  /** What sent the message, such as `agent`, `rule`, `system` or `person`. */
   kind: string;
+  /** The agent, the rule or the part of the system, and a person's subject. A mention, a thread's artefact, names its poster as threads do, by handle, and never by subject. */
   name: string;
+  /** What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's. A mention's poster is called what their message is called now. */
+  display?: string;
   /** The person who published an agent's draft, by subject. Absent on what an agent posted itself. */
   approved_by?: string;
 }
@@ -1242,6 +1288,8 @@ export interface CallPolicy {
   expires_seconds: number;
   version: number;
   updated_by?: string;
+  /** What whoever last saved it is called, their name, else their handle, never a subject that holds an address. `updated_by` is the subject. */
+  updated_by_name?: string;
   updated_at?: string;
 }
 
@@ -1267,11 +1315,16 @@ export interface InboxSource {
   project?: string;
   /** The agent a question's tool call would call, when it calls one. */
   target?: string;
+  /** What the conversation it is about is called, `thread`'s or else `run`'s, its title or else the start of its first message, for a reader who may read it. */
+  thread_title?: string;
 }
 
 export interface InboxOutcome {
   action: string;
+  /** Who decided, by subject, or `system`. */
   by: string;
+  /** What whoever decided is called, their name, else their handle, never a subject that holds an address. */
+  by_name?: string;
   at: string;
   note?: string;
 }
@@ -1387,6 +1440,8 @@ note or edit. Said as it stood when the question was raised;
 answering checks again.
  */
   steered_for?: string;
+  /** What the person in `steered_for` is called, their name, else their handle, never a subject that holds an address. Set with `steered_for`. */
+  steered_for_name?: string;
 }
 
 /** A post an agent wrote for a project, waiting for one of its owners. */
@@ -1465,8 +1520,15 @@ export interface InboxMessage {
   severity: InboxSeverity;
   state: InboxState;
   snoozed_until?: string;
-  /** Whether this caller has read it. Read state is per person. */
+  /** Whether this caller has read it. Read state is per person, and
+whoever posted an announcement has read it.
+ */
   unread: boolean;
+  /** The caller hid or snoozed this announcement for themselves, so
+`state` is theirs alone and everyone else still has it. Left out
+otherwise. `unhideInboxMessage` brings it back.
+ */
+  hidden?: boolean;
   source: InboxSource;
   parts: InboxPart[];
   /** Where the reading client posted the message, by client id. Shown only to that client's machine. */
@@ -1478,7 +1540,7 @@ export interface InboxChange {
   message: string;
   at: string;
   by?: string;
-  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered";
+  what: "raised" | "read" | "unread" | "resolved" | "dismissed" | "snoozed" | "withdrawn" | "delivered" | "unhidden";
   part?: string;
   action?: string;
   note?: string;
@@ -1680,6 +1742,8 @@ lists every alert to them. At most 20 entries.
  */
   notify?: string[];
   created_by?: string;
+  /** What the person who made it is called, their name, else their handle, never a subject that holds an address. `created_by` is the subject. Sent back with the rule, it is ignored, as `created_by` is. */
+  created_by_name?: string;
   created_at?: string;
   /** Who last replaced the rule. Absent until it is replaced. */
   updated_by?: string;
@@ -1700,6 +1764,8 @@ export interface Alert {
   body?: string;
   at: string;
   acked_by?: string;
+  /** What whoever acknowledged it is called, their name, else their handle, never a subject that holds an address. `acked_by` is the subject. */
+  acked_by_name?: string;
   acked_at?: string;
 }
 
@@ -1879,12 +1945,16 @@ export interface Policy {
   authority?: "admin" | "owner";
   version: number;
   updated_by?: string;
+  /** What whoever last changed it is called, their name, else their handle, never a subject that holds an address. `updated_by` is the subject. Absent on the policies a change holds. */
+  updated_by_name?: string;
   updated_at: string;
 }
 
 export interface PolicyChange {
   scope: PolicyScope;
   by: string;
+  /** What whoever made the change is called, their name, else their handle, never a subject that holds an address. `by` is the subject. */
+  by_name?: string;
   at: string;
   before?: Policy;
   after?: Policy;
@@ -2212,8 +2282,10 @@ export interface Answer {
   choice?: string;
   text?: string;
   note?: string;
-  /** Who answered. */
+  /** Who answered, by subject, as the platform authenticated them. */
   by?: string;
+  /** What whoever answered is called, their name, else their handle, never a subject that holds an address. Set on what a route hands out, never in the journal. */
+  by_name?: string;
   at?: string;
   expired?: boolean;
   run_id?: string;

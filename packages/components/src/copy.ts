@@ -38,6 +38,8 @@ export const defaultCopy = {
   cancelled: "Cancelled, the request was stopped.",
   somethingElse: "Something Else",
   answeredBy: (by: string, choice: string, time: string) => `${by} chose ${choice} · ${time}`,
+  /** A question answered in words, not by picking one of its options. */
+  repliedBy: (by: string, text: string, time: string) => `${by} answered "${text}" · ${time}`,
   declinedBy: (by: string, time: string) => `Declined by ${by} · ${time}`,
   approvalNeeded: (summary: string) => `Approval needed: ${summary}`,
   inputNeeded: (question: string) => `Input needed: ${question}`,
@@ -208,16 +210,32 @@ export const defaultCopy = {
     post: "Post Announcement",
     withdraw: "Withdraw",
     hideForMe: "Hide for Me",
+    showForMe: "Show for Me",
+    /** A row the reader hid for themselves, where others' rows say Dismissed. */
+    hidden: "Hidden",
     hiddenForYou: "Hidden for you. Others still see it.",
-    empty: "Nothing has been announced here yet.",
+    snoozedForYou: "Snoozed for you. Others still see it.",
+    withdrawn: "Withdrawn for everyone.",
+    /** Under an open announcement, whose button is Hide for Me. */
+    readOnly: "Nothing to decide. Hide it when you're done. Others still see it.",
+    /** A project's inbox with nothing open for the reader. */
+    emptyOpenHint: "New announcements land here. What you hid is under Resolved.",
     includeSubProjects: "Include Sub-projects",
     postedIn: (project: string) => `Posted in ${project}`,
     withdrawnBy: (who: string) => `Withdrawn by ${who}`,
     mute: "Mute Project",
     unmute: "Unmute Project",
     muted: "Muted. Its announcements stay out of your inbox and stay in the project's.",
+    /** Beside Mute Project, when the change could not be saved, or the preferences it is saved with could not be read. */
+    muteFailed: "Could not mute. Try again.",
+    unmuteFailed: "Could not unmute. Try again.",
     rootNotMuted: "The workspace's announcements are for everyone, so they can't be muted.",
     tooMany: (n: number) => `At most ${n} announcements a day are posted here. Try again tomorrow.`,
+  },
+  /** A task pinned to the top of the sidebar. Said beside its pin when the change could not be saved, or the preferences it is saved with could not be read. */
+  pins: {
+    pinFailed: "Could not pin. Try again.",
+    unpinFailed: "Could not unpin. Try again.",
   },
   /** Who holds a role in a project, and what it lets them do. */
   roles: {
@@ -282,6 +300,8 @@ export const defaultCopy = {
     proposeHint: "Your note is a proposal. The project's owners keep or discard it in their inbox.",
     members: "Members",
     ownersAbove: "Owners from above",
+    /** The project above that an owner entry is on, when it is the workspace. */
+    theWorkspace: "the workspace",
     remove: "Remove",
     who: "Who",
     whoHint: "A person's subject, or role:<name> for everyone who holds a role.",
@@ -300,6 +320,11 @@ export const defaultCopy = {
       `Everyone owns ${project}, so everyone sees this project too. To make it members only, name owners for ${project} first.`,
     limitFrom: (project: string) => `${project}'s limit also applies here.`,
     workspaceLimit: "The workspace's own limit applies here too.",
+    /** A Limits tab the reader can only read: who may change it. */
+    limitsReadOnly: (above?: string) =>
+      above
+        ? `Only an admin can change these. An owner of ${above} can set a tighter one.`
+        : "Only an admin can change these.",
     ownerLimit: "A tighter limit, as an owner above",
     ownerLimitHint:
       "It can only be tighter than every limit over this project. An admin's limit is changed under Settings.",
@@ -504,6 +529,20 @@ export const defaultCopy = {
     managed: "From the platform file. Change it there.",
     tab: "Schedules",
     none: "Nothing runs on a timer here.",
+    /**
+     * When a schedule runs, in words. Its expression is read in UTC, and `at`
+     * is a time of day in it, "08:09". `day` is 0 for Sunday to 6 for Saturday.
+     */
+    when: {
+      everyMinute: "Every minute",
+      hourly: "Hourly",
+      hourlyAt: (minute: number) => `Hourly at minute ${minute}`,
+      daily: (at: string) => `Daily at ${at} UTC`,
+      weekdays: (at: string) => `Weekdays at ${at} UTC`,
+      weekends: (at: string) => `Weekends at ${at} UTC`,
+      weekly: (day: number, at: string) =>
+        `${["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"][day]} at ${at} UTC`,
+    },
   },
   /** The one-field form a Slack mention or an expert's question opens to reply. */
   replyModal: {
@@ -774,6 +813,14 @@ export const defaultCopy = {
       purposeHint: "Sent to every agent answering here.",
     },
     noChannels: "Only general so far.",
+    /** A channel's page, when the project holds no channel by that name. The name wraps in the line under the title. */
+    missingChannel: "No such channel",
+    missingChannelHint: (name: string) =>
+      `This project has no channel named #${name}. Its Channels tab lists the ones it has.`,
+    /** A task the reader may not read reads as one that does not exist, as a project does. */
+    missingTask: "No such task",
+    /** A task that could not be read for a reason other than its not being there. */
+    readFailed: "This task could not be read. Reload to try again.",
     /** A channel bound to Slack, in its row: which app, and which Slack channel. */
     boundTo: (client: string, slackChannel: string) =>
       `In Slack through ${client}, channel ${slackChannel}`,
@@ -808,6 +855,26 @@ export const defaultCopy = {
     refused: (tag: string, why: string) => `${tag}: ${why}`,
     /** A question an agent asked of a person, shown still in the thread. */
     asks: (agent: string) => `${agent} asks`,
+    /** A run's status, to someone its question is not for. */
+    waitingOnOthers: "Waiting for an answer",
+    /** Under a question, to someone it is not for: whom it is for. */
+    questionFor: {
+      experts: (topic: string) =>
+        topic
+          ? `This question is for the ${topic} experts.`
+          : "This question is for this project's experts.",
+      person: (handle: string) =>
+        handle
+          ? `This question is for @${handle}.`
+          : "This question is for the person this run acts for.",
+      answerers: (agent: string) => `This question is for the people who answer for ${agent}.`,
+      anyone: "You can read this question, but you can't answer it.",
+      nobody: "Nobody can answer this question, because the rules of its run can't be read.",
+    },
+    /** A thread started in Slack, in its meta line. */
+    inSlack: "Also in Slack",
+    /** A message posted in Slack, beside when it was posted. */
+    fromSlack: "From Slack",
     /** A failed answer to the reader's own message: it is asked again for them from their inbox. */
     retryFromInbox: "Retry it from your inbox, where it answers your message again.",
     /** A failed turn that acted for nobody, such as a machine's from before threads: it is retried for nobody, by anyone who may start runs. */

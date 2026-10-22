@@ -302,7 +302,7 @@ func (p *Platform) AddProjectNote(who auth.Principal, name, text string) (memory
 	}
 	title := titleOf(pr, p.Settings(who.Tenant).WorkspaceName)
 	p.raiseInbox(who.Tenant, "memory:note:"+owner+":"+note.ID, inbox.Message{
-		Kind: inbox.KindMemory, Subject: fmt.Sprintf("%s proposed a note for %s", who.Subject, title),
+		Kind: inbox.KindMemory, Subject: fmt.Sprintf("%s proposed a note for %s", p.NameOf(who.Tenant, who.Subject), title),
 		From: inbox.From{Kind: "person", Name: who.Subject}, Severity: inbox.Info,
 		Audience: []string{inbox.OwnersAudience(name)},
 		Source:   inbox.Source{Project: name},

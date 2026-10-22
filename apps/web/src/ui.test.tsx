@@ -8,10 +8,11 @@ import { ActivityPanel, ordered, ordinals, trailOf } from "./Activity.tsx";
 import { isEnded } from "./format.ts";
 import { sampleTrees } from "./activity.fixtures.ts";
 import { AskAnalyst, FiredStrip, Monitor } from "./Monitor.tsx";
+import { Schedules } from "./Schedules.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
-import type { Me, ThreadSummary } from "./api.ts";
+import type { Me, ScheduleView, ThreadSummary } from "./api.ts";
 import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
 import { bindingWords, SessionGauge } from "./SessionGauge.tsx";
@@ -61,7 +62,7 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
       can={(p) => all.includes(p)}
       threads={[task("t1", "Quarterly report"), task("t2", "Fix the build")]}
       pinned={[]}
-      onPin={() => {}}
+      onPin={async () => {}}
       inboxCount={0}
       live
       onSignOut={() => {}}
@@ -123,7 +124,7 @@ import { after, merge } from "./inbox.ts";
 import { edgeOf, KindChips, MailboxView } from "./InboxPage.tsx";
 import { fromServer, type PlatformMessage, reached, toRequest } from "./mail.ts";
 import { memoryTransport, sampleMail, wireMail } from "./mail.fixtures.ts";
-import { counted, dollars, LimitField, PolicyBadge, parseDollars, Stroke, strokeOf, UsageMeter, usageOf } from "./ui.tsx";
+import { button, counted, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf } from "./ui.tsx";
 
 const M = 1_000_000;
 const html = (el: ReactElement) => renderToStaticMarkup(el);
@@ -681,6 +682,20 @@ test("fromServer: an artifact arrives as a file to open, laid out as an artifact
   assert.equal(messageTemplate(mailOf("m-budget")), "limit");
 });
 
+test("MailboxView: a run and the thread it is in are one conversation under About, though the message keeps both", () => {
+  // The run stays in what the message is about, where a surface finds it.
+  assert.deepEqual(
+    mailOf("m-result").about.map((s) => `${s.kind}:${s.id}`),
+    ["run:api-9c3a", "thread:th-signups", "agent:helper", "project:Launch"],
+  );
+  const out = mailbox("m-result");
+  const about = out.slice(out.indexOf('aria-label="About"'));
+  const row = about.slice(0, about.indexOf("</ul>"));
+  assert.equal(row.match(/<li/g)?.length, 3, row);
+  assert.equal(row.match(/>Conversation</g)?.length, 1, "the conversation is drawn once");
+  assert.match(row, />Agent helper</);
+});
+
 test("MailboxView: an artifact shows the file, opens it in Artifacts, and offers a download", () => {
   const out = mailbox("m-artifact");
   assert.match(out, /data-template="artifact"/);
@@ -723,6 +738,23 @@ test("Monitor: each rule says what it watches, how loud it is, and where its mes
   assert.match(out, /Watches oncall\. Raises a warning message for everyone who can see alerts\./);
   assert.match(out, />Critical</);
   assert.match(out, />Warning</);
+});
+
+test("Monitor and Schedules name a project by its title, in a rule's words and in their pickers", () => {
+  const benefits = { name: "Benefits", title: "Benefits and leave" };
+  const scoped: AlertRule = { name: "benefits-fails", kind: "run_failed", severity: "warning", project: "Benefits", created_by: "priya", created_by_name: "Priya Nair" };
+  const out = monitor({ rules: [scoped], alerts: [], projects: [benefits] });
+  assert.match(out, /When a run of any agent in Benefits and leave fails\./);
+  assert.match(out, /Watches every agent in Benefits and leave\. Raises a warning message for everyone who can see alerts\. Made by Priya Nair\./);
+  assert.doesNotMatch(out, /in Benefits\./);
+  // A project the reader does not have is named as the rule names it.
+  assert.match(monitor({ rules: [scoped], alerts: [] }), /Watches every agent in Benefits\./);
+
+  const nightly: ScheduleView = { name: "leave-digest", expression: "0 9 * * 1", agent: "hr", text: "Sum up leave.", project: "Benefits", paused: false, next: [], recent: [] };
+  const list = html(<Schedules schedules={[nightly]} agents={[]} projects={[benefits]} canWrite={false} onChanged={() => {}} onOpenRun={() => {}} />);
+  assert.match(list, />in Benefits and leave</);
+  const detail = html(<Schedules schedules={[nightly]} agents={[]} projects={[benefits]} selected="leave-digest" onSelect={() => {}} canWrite={false} onChanged={() => {}} onOpenRun={() => {}} />);
+  assert.match(detail, /<dd[^>]*>Benefits and leave<\/dd>/);
 });
 
 test("Monitor: a rule's recent firings are listed newest first, as links into the inbox", () => {
@@ -1087,6 +1119,34 @@ test("motion: every class moves only transform and opacity, and reduced motion r
   }
 });
 
+test("motion: what arrives lets go of its last frame, so glass inside it keeps its blur", () => {
+  // A finished animation that still holds its end (fill both or forwards) keeps the element
+  // a backdrop root, as if it were still fading, so a blur behind anything inside it is lost:
+  // a tooltip over a chart in a page that faded in showed the chart's lines through it.
+  // What arrives ends on the element's own style, so it needs to hold nothing.
+  const sheets = {
+    console: readFileSync(new URL("./styles.css", import.meta.url), "utf8"),
+    shared: readFileSync(new URL("../../../packages/render-web/src/theme.css", import.meta.url), "utf8"),
+  };
+  for (const [sheet, css] of Object.entries(sheets)) {
+    const arrives = new Set(
+      [...css.matchAll(/@keyframes ([a-z-]+) \{((?:[^{}]|\{[^{}]*\})*)\}/g)]
+        .filter(([, , body = ""]) => {
+          const stops = [...body.matchAll(/([^{}]+)\{/g)].flatMap((m) => (m[1] ?? "").split(",").map((stop) => stop.trim()));
+          return stops.every((stop) => stop === "from" || stop === "0%");
+        })
+        .map(([, name]) => name),
+    );
+    assert.ok(arrives.size >= 4, `${sheet}: the keyframes for what arrives were found`);
+    const uses = [...css.matchAll(/animation:\s*([^;]+);/g)].map((m) => (m[1] ?? "").trim().split(/\s+/));
+    const arriving = uses.filter((words) => words.some((w) => arrives.has(w)));
+    assert.ok(arriving.length >= 4, `${sheet}: the animations that arrive were found`);
+    for (const words of arriving) {
+      assert.ok(!words.includes("both") && !words.includes("forwards"), `${sheet}: ${words.join(" ")} holds its last frame`);
+    }
+  }
+});
+
 test("motion: a copy control keeps its label, and its confirmation is a live region beside it", () => {
   const out = html(<CopyAs item={{ kind: "answer", run: runOf({}) }} />);
   assert.match(out, />Copy as</);
@@ -1296,3 +1356,41 @@ test("Activity preserves a helper's constructed examples and resolved input", ()
   assert.match(out, /Frozen artifact contents/);
   assert.ok(out.indexOf("Example question") < out.indexOf("Example answer"));
 });
+
+test("a page's actions shrink to its column and wrap there, so none runs off a phone's edge", () => {
+  const actions = (
+    <>
+      <button type="button">Mute Project</button>
+      <button type="button">New Task</button>
+    </>
+  );
+  // The wrapper's classes, for the page header and for a section of the page.
+  const wrapper = (markup: string) => markup.match(/<div class="([^"]*)"><button type="button">Mute Project/)?.[1] ?? "";
+  for (const markup of [html(<Page title="Globex" actions={actions}>{null}</Page>), html(<Section title="Scheduled" actions={actions}>{null}</Section>)]) {
+    const classes = wrapper(markup).split(/\s+/);
+    assert.ok(classes.includes("flex-wrap"), "they wrap onto another line");
+    assert.ok(classes.includes("min-w-0") && classes.includes("max-w-full"), "they may be narrower than all of them in a row");
+    assert.ok(!classes.includes("shrink-0"), "a wrapper that may not shrink never wraps");
+  }
+});
+
+test("a button's label stays on one line, as tall as the button", () => {
+  for (const style of [button, primary]) assert.match(style, /\bwhitespace-nowrap\b/);
+});
+
+test("what floats above the page is opaque, so nothing under a menu shows through its rows", () => {
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  // Each rule's selector, without the comment before it.
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .map(([, selector = "", body = ""]) => [selector.split("*/").at(-1)?.trim() ?? "", body] as const)
+    .filter(([selector]) => /\.warp-glass-pop\b/.test(selector));
+  assert.ok(rules.length > 0, "the floating surface was found");
+  const own = rules.find(([selector]) => selector === ".warp-glass-pop")?.[1] ?? "";
+  assert.match(own, /background:\s*var\(--aui-pop\)/, "the theme's popover surface, which is opaque");
+  for (const [selector, body] of rules) {
+    assert.doesNotMatch(body, /backdrop-filter/, `no blur is relied on in ${selector}`);
+    assert.doesNotMatch(body, /background:[^;]*\/\s*\d+%/, `no see-through background in ${selector}`);
+  }
+  assert.doesNotMatch(css, /--warp-glass-strong/, "the see-through surface is gone");
+});
+

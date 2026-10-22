@@ -183,6 +183,11 @@ export interface InboxMessage {
   /** Set by the reader, not by resolving: put away, or hidden until a time. */
   dismissedAt?: string;
   snoozedUntil?: string;
+  /**
+   * Put away or snoozed by this reader alone, while everyone else still has
+   * it, as an announcement is. `ActionId.unhide` brings it back.
+   */
+  hidden?: boolean;
 }
 
 const RESOLVABLE: Record<Exclude<PartType, "custom">, boolean> = {
@@ -338,6 +343,19 @@ export function messageTemplate(message: InboxMessage): TemplateId {
   const t = TEMPLATE_OF_PART[messageKind(message)];
   // Prose from an agent is its answer; from anyone else it is a note.
   return t === "note" && message.from.kind === "agent" ? "result" : t;
+}
+
+/**
+ * True for an announcement as posted: one message every reader keeps a copy
+ * of, so setting it aside hides only the reader's own, and only its author or
+ * an owner withdraws it for everyone. An agent's draft is laid out as an
+ * announcement too, but it is a question for the project's owners until one
+ * publishes it, and setting it aside sets it aside for all of them.
+ */
+export function isAnnouncement(message: InboxMessage): boolean {
+  return (
+    messageTemplate(message) === "announcement" && !message.parts.some((p) => p.type === "draft")
+  );
 }
 
 /**
@@ -568,9 +586,16 @@ export function resolveMessage(
   const { by, at } = who;
   const typed = payload.text ?? payload.option;
   if (id === ActionId.read) return message.unread ? { ...message, unread: false } : message;
-  if (id === ActionId.dismiss) return { ...message, dismissedAt: at, unread: false };
+  // An announcement set aside is set aside for this reader alone, as the platform will say.
+  const own = isAnnouncement(message) ? { hidden: true } : {};
+  if (id === ActionId.dismiss) return { ...message, dismissedAt: at, unread: false, ...own };
+  if (id === ActionId.unhide) {
+    if (!message.hidden) return message;
+    const { dismissedAt: _dismissed, snoozedUntil: _snoozed, hidden: _hidden, ...back } = message;
+    return back;
+  }
   if (id === ActionId.snooze && !message.parts.some((p) => partMatches(p, payload.target))) {
-    return { ...message, snoozedUntil: payload.option ?? at };
+    return { ...message, snoozedUntil: payload.option ?? at, ...own };
   }
   const done = (outcome: string, detail?: string): Resolution => ({
     outcome,

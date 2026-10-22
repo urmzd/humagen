@@ -114,6 +114,10 @@ func TestProjectChangesReadsOnlyItsSubtree(t *testing.T) {
 	if _, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Title: "hushhush", Text: "between us", PostOnly: true}); err != nil {
 		t.Fatal(err)
 	}
+	// A thread of people alone has had no turns and no agent.
+	if _, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Project: "Field", Visibility: threads.Shared, Title: "Site 1 handover checklist", Text: "Who signs it off?", PostOnly: true}); err != nil {
+		t.Fatal(err)
+	}
 	turn(t, p, "api-o1", "Other")
 	now := time.Now().UTC()
 	for project, subject := range map[string]string{"Field": "Field moved to the new office", "Other": "Other news"} {
@@ -148,7 +152,8 @@ func TestProjectChangesReadsOnlyItsSubtree(t *testing.T) {
 	}
 	for _, want := range []string{
 		"What changed in Field and the projects below it", "Field ships on Friday.", "field-plan.md", "field-recap created by ada",
-		"In all, 2 runs: 2 completed", "In Ops: 1 runs", "Field #general: \"Write the report\" started, settled",
+		"In all, 2 runs: 2 completed", "In Ops: 1 run: 1 completed", "Field #general: \"Write the report\" started, settled, 1 turn, agent lead\n",
+		"Field #general: \"Site 1 handover checklist\" started, settled, 0 turns\n",
 		"Ops #general", "\"Field moved to the new office\", from person ada", "Ops: created by ada",
 	} {
 		if !strings.Contains(out, want) {

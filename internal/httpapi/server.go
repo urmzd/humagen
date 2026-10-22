@@ -7,6 +7,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -245,7 +246,22 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 		}
 		enabled[name] = slices.DeleteFunc(place.EnabledIn, func(p string) bool { return !seer.Project(projects.NameOf(p)) })
 	}
-	ok(w, http.StatusOK, map[string]any{"agents": orEmpty(all), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled})
+	ok(w, http.StatusOK, map[string]any{"agents": viewRevisions(s.P.Names(who.Tenant), all), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled})
+}
+
+// revisionView is an agent's revision and what the person who saved it is
+// called. The revision names them by subject; the console shows the name.
+type revisionView struct {
+	agentspec.Revision
+	CreatedByName string `json:"created_by_name,omitempty"`
+}
+
+func viewRevisions(names platform.Names, revs []agentspec.Revision) []revisionView {
+	out := make([]revisionView, len(revs))
+	for i, rev := range revs {
+		out[i] = revisionView{Revision: rev, CreatedByName: names.Of(rev.CreatedBy)}
+	}
+	return out
 }
 
 func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -272,7 +288,7 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, rev)
+	ok(w, http.StatusCreated, viewRevisions(s.P.Names(who.Tenant), []agentspec.Revision{rev})[0])
 }
 
 func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -315,7 +331,7 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, rev)
+	ok(w, http.StatusOK, viewRevisions(s.P.Names(who.Tenant), []agentspec.Revision{rev})[0])
 }
 
 // agentHistory returns every revision of an agent, newest first.
@@ -326,7 +342,7 @@ func (s *Server) agentHistory(w http.ResponseWriter, r *http.Request, who auth.P
 		return
 	}
 	slices.SortFunc(revs, func(a, b agentspec.Revision) int { return b.Rev - a.Rev })
-	ok(w, http.StatusOK, map[string]any{"revisions": orEmpty(revs)})
+	ok(w, http.StatusOK, map[string]any{"revisions": viewRevisions(s.P.Names(who.Tenant), revs)})
 }
 
 // agentOwner resolves the agent in the path to its memory owner, or answers
@@ -365,7 +381,26 @@ func (s *Server) listMemory(w http.ResponseWriter, r *http.Request, who auth.Pri
 	if !found {
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"notes": orEmpty(s.P.Memory.List(who.Tenant, owner))})
+	ok(w, http.StatusOK, map[string]any{"notes": viewNotes(s.P.Names(who.Tenant), s.P.Memory.List(who.Tenant, owner))})
+}
+
+// noteView is a note and what the person who wrote it is called. The note
+// names them by subject; the console shows the name.
+type noteView struct {
+	memory.Note
+	ByName string `json:"by_name,omitempty"`
+}
+
+func viewNote(names platform.Names, n memory.Note) noteView {
+	return noteView{Note: n, ByName: names.Of(n.By)}
+}
+
+func viewNotes(names platform.Names, notes []memory.Note) []noteView {
+	out := make([]noteView, len(notes))
+	for i, n := range notes {
+		out[i] = viewNote(names, n)
+	}
+	return out
 }
 
 func (s *Server) addMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -385,7 +420,7 @@ func (s *Server) addMemory(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, note)
+	ok(w, http.StatusCreated, viewNote(s.P.Names(who.Tenant), note))
 }
 
 // approveMemory keeps the proposals a person selected. The rest stay pending
@@ -413,12 +448,13 @@ func (s *Server) approveMemory(w http.ResponseWriter, r *http.Request, who auth.
 // an agent or for a project, and says which.
 func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	type proposal struct {
-		Agent   string      `json:"agent,omitempty"`
-		Project string      `json:"project,omitempty"`
-		Note    memory.Note `json:"note"`
+		Agent   string   `json:"agent,omitempty"`
+		Project string   `json:"project,omitempty"`
+		Note    noteView `json:"note"`
 	}
 	out := []proposal{}
 	seer := s.P.Seer(who)
+	names := s.P.Names(who.Tenant)
 	for _, p := range s.P.Memory.Pending(who.Tenant) {
 		if !seer.MemoryOwner(p.Agent) {
 			continue
@@ -429,9 +465,9 @@ func (s *Server) pendingMemory(w http.ResponseWriter, _ *http.Request, who auth.
 			if project == projects.Root {
 				project = projects.RootAddress
 			}
-			out = append(out, proposal{Project: project, Note: p.Note})
+			out = append(out, proposal{Project: project, Note: viewNote(names, p.Note)})
 		} else {
-			out = append(out, proposal{Agent: p.Agent, Note: p.Note})
+			out = append(out, proposal{Agent: p.Agent, Note: viewNote(names, p.Note)})
 		}
 	}
 	ok(w, http.StatusOK, map[string]any{"proposals": out})
@@ -493,7 +529,7 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 			return
 		}
 		if !person.Can(auth.RunsWrite) {
-			s.problem(w, fmt.Errorf("%w: %s may not start runs (asking needs %s)", platform.ErrForbidden, person.Subject, auth.RunsWrite))
+			s.problem(w, fmt.Errorf("%w: %s may not start runs (asking needs %s)", platform.ErrForbidden, s.P.NameOf(who.Tenant, person.Subject), auth.RunsWrite))
 			return
 		}
 		asks, actor, client = person, platform.PersonActor(person.Subject), body.ActAs.Client
@@ -834,6 +870,10 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			if !gate.seen(e.RunID) {
 				continue
 			}
+			// Who answered a question is called by name (shownEvent).
+			if e.Kind == envelope.KindResumed {
+				e = shownEvent(s.P.Names(who.Tenant), e)
+			}
 			b, err := json.Marshal(e)
 			if err != nil {
 				continue
@@ -948,11 +988,20 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		fail(w, http.StatusServiceUnavailable, "this server cannot interrupt a run; it will start nothing more and ends when its current work does")
 	case errors.As(err, &tooBig):
 		fail(w, http.StatusRequestEntityTooLarge, "request is too large")
+	case errors.Is(err, context.Canceled):
+		// The caller went away, as a browser does when a page moves on, and
+		// what it asked stopped with it. Nothing went wrong here.
+		s.Log.Debug("httpapi: request cancelled", "error", err)
+		fail(w, statusClientClosed, "the request was cancelled")
 	default:
 		s.Log.Error("httpapi: internal error", "error", err)
 		fail(w, http.StatusInternalServerError, "something went wrong on our side")
 	}
 }
+
+// statusClientClosed answers a request its caller cancelled. Nobody reads
+// it; it keeps the request out of the server's own errors (5xx).
+const statusClientClosed = 499
 
 // detail is what an error says after the error it wraps, for an answer: the
 // project store's "projects: in use: "Launch" is still used by the schedule

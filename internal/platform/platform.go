@@ -521,10 +521,12 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 
 // pin writes into a tag what the platform decides at admission, so every
 // attempt of the run replays it: the ancestors its project counts toward,
-// whatever the tag said, and for a scheduled or run-now run its project's
-// context ahead of the schedule's text, which the run's record keeps as what
-// was asked. A called run keeps its explicit input.
+// whatever the tag said, what the person it acts for is called (namedActor),
+// and for a scheduled or run-now run its project's context ahead of the
+// schedule's text, which the run's record keeps as what was asked. A called
+// run keeps its explicit input.
 func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within []string) envelope.Tag {
+	tag.Actor = p.namedActor(tag.Tenant, tag.Actor)
 	meta := make(map[string]string, len(tag.Meta)+2)
 	maps.Copy(meta, tag.Meta)
 	delete(meta, runs.MetaWithin)

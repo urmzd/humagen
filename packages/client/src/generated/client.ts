@@ -1310,7 +1310,10 @@ the id of the run that started it.
 
 The first page is the newest 200 turns, or `limit`. `next` is the
 cursor for the turns before them, or null at the start: pass it back
-as `before`. `answers` is who answers an untagged message here.
+as `before`. `answers` is who answers an untagged message here. A run
+turn whose run is parked on a question a person answers carries
+`ask`: whether the reader may answer it, and whom it is for, so a
+surface offers the answer only to the people it is for.
  */
   async getThread(id: string, before?: string, limit?: number, options?: RequestOptions): Promise<ThreadPage> {
     let path = "/api/threads/{id}";
@@ -1830,6 +1833,28 @@ it maps with `act_as_client` and `act_as_user`.
     return this.rawRequest<InboxMessage>("POST", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** An announcement the caller hid or snoozed (`hidden`) is open for them
+again, as everyone else has it. Only their own copy changes, so it
+needs what hiding it needs. One they never set aside, or one withdrawn
+for everyone, is answered as it is. Any other message is set aside for
+everyone, and is not brought back this way (400).
+ */
+  async unhideInboxMessage(id: string, options?: RequestOptions): Promise<InboxMessage> {
+    let path = "/api/inbox/{id}/unhide";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<InboxMessage>("POST", path, {
+      ...options,
+    });
+  }
+
+  async unhideInboxMessageRaw(id: string, options?: RequestOptions): Promise<ApiResponse<InboxMessage>> {
+    let path = "/api/inbox/{id}/unhide";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<InboxMessage>("POST", path, {
       ...options,
     });
   }

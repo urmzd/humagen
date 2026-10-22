@@ -51,15 +51,31 @@ const rank = (o: TagOption, q: string): number => {
   return -1;
 };
 
-/** The options that match what is typed: closest first, then in the order given, at most limit. */
+/** Which share of the list an option takes: agents with @auto, people, or experts by topic. */
+const shareOf = (o: TagOption): string => (o.kind === "auto" ? "agent" : o.kind);
+
+/**
+ * The options that match what is typed: closest first, then in the order
+ * given, at most limit. When more match than that, agents, people and
+ * expert topics take the places in turn, each its best first, so a kind
+ * later in the order is never crowded out of the list by an earlier one.
+ */
 export function matching(options: TagOption[], query: string, limit = 8): TagOption[] {
   const q = query.toLowerCase();
-  return options
+  const ranked = options
     .map((o, i) => ({ o, i, r: rank(o, q) }))
     .filter((x) => x.r >= 0)
-    .sort((a, b) => a.r - b.r || a.i - b.i)
-    .slice(0, limit)
-    .map((x) => x.o);
+    .sort((a, b) => a.r - b.r || a.i - b.i);
+  if (ranked.length <= limit) return ranked.map((x) => x.o);
+  const shares = new Map<string, typeof ranked>();
+  for (const x of ranked) shares.set(shareOf(x.o), [...(shares.get(shareOf(x.o)) ?? []), x]);
+  const taken = new Set<(typeof ranked)[number]>();
+  for (let round = 0; taken.size < limit; round++) {
+    const next = [...shares.values()].map((share) => share[round]).filter((x) => x !== undefined);
+    if (next.length === 0) break;
+    for (const x of next.slice(0, limit - taken.size)) taken.add(x);
+  }
+  return ranked.filter((x) => taken.has(x)).map((x) => x.o);
 }
 
 /** The text with the tag being typed replaced by a picked one, and where the caret goes after it. */

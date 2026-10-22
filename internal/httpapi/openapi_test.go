@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,17 +40,14 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/artifacts"
 	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/callpolicy"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/evals"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/journal"
 	"github.com/urmzd/warp/pkg/knowledge"
-	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/pick"
 	"github.com/urmzd/warp/pkg/policy"
 	"github.com/urmzd/warp/pkg/prefs"
@@ -591,11 +589,11 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 	}
 	shapes := map[string]shape{
 		"Principal": {typ: auth.Principal{}}, "AccessDecision": {typ: accessDecision{}}, "AccessHeldRole": {typ: heldRole{}}, "AgentSpec": {typ: agentspec.AgentSpec{}}, "AgentSource": {typ: agentspec.Source{}},
-		"AgentAccess": {typ: agentspec.Access{}}, "Revision": {typ: agentspec.Revision{}}, "Choice": {typ: pick.Choice{}},
-		"Note": {typ: memory.Note{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
+		"AgentAccess": {typ: agentspec.Access{}}, "Revision": {typ: revisionView{}}, "Choice": {typ: pick.Choice{}},
+		"Note": {typ: noteView{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
-		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}},
+		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAsk": {typ: platform.Ask{}},
 		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
@@ -603,14 +601,14 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ChannelInput": {typ: platform.ChannelInput{}, written: true}, "ChannelUpdate": {typ: platform.ChannelUpdate{}, written: true},
 		"ProjectExpert": {typ: projects.Expert{}}, "ProjectExperts": {typ: platform.Experts{}}, "Project": {typ: projects.Project{}}, "ProjectView": {typ: projectView{}},
 		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectLimit": {typ: projectLimit{}},
-		"ProjectDetail": {typ: projectDetail{}}, "ProjectChange": {typ: projects.Change{}},
+		"ProjectDetail": {typ: projectDetail{}}, "ProjectChange": {typ: projectChangeView{}},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
 		"ProjectAgentsInput": {typ: platform.AgentsInput{}, written: true}, "AgentPlace": {typ: platform.AgentPlace{}}, "AgentHome": {typ: agentHome{}},
 		"Person":       {typ: personView{}},
 		"ProjectEntry": {typ: projects.Entry{}}, "ProjectKindSpec": {typ: projects.KindSpec{}}, "ProjectAccess": {typ: projects.Access{}},
-		"ProjectInheritedOwner": {typ: projects.InheritedOwner{}}, "ProjectMembers": {typ: projectMembersView{}},
+		"ProjectInheritedOwner": {typ: inheritedOwner{}}, "ProjectMember": {typ: memberView{}}, "ProjectMembers": {typ: projectMembersView{}},
 		"ProjectLimitInput": {typ: projectLimitBody{}, written: true}, "InboxCounts": {typ: inbox.Counts{}},
 		"AnnouncementInput": {typ: struct {
 			Subject  string `json:"subject"`
@@ -625,25 +623,29 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"InboxFailurePart": {typ: inbox.FailurePart{}}, "InboxNoteRef": {typ: inbox.NoteRef{}}, "InboxMemoryPart": {typ: inbox.MemoryPart{}},
 		"InboxBudgetPart": {typ: inbox.BudgetPart{}}, "InboxPart": {typ: inbox.Part{}}, "InboxQuestionPart": {typ: inbox.QuestionPart{}}, "InboxQuestionTool": {typ: inbox.QuestionTool{}}, "InboxMessage": {typ: inbox.Message{}}, "InboxMentionPart": {typ: inbox.MentionPart{}},
 		"InboxChange": {typ: inbox.Change{}},
-		"CallPolicy":  {typ: callpolicy.Policy{}}, "CallPolicyInput": {typ: callPolicyBody{}, written: true}, "Reach": {typ: platform.Reach{}},
+		"CallPolicy":  {typ: callPolicyView{}}, "CallPolicyInput": {typ: callPolicyBody{}, written: true}, "Reach": {typ: platform.Reach{}},
 		"Artifact": {typ: artifacts.Artifact{}}, "StorageShare": {typ: artifacts.Share{}},
 		"InboxDraftPart": {typ: inbox.DraftPart{}}, "InboxDelivery": {typ: inbox.Delivery{}}, "InboxDeliveryInput": {typ: deliveryBody{}, written: true}, "ClientHome": {typ: clients.Home{}},
 		"AnalyticsGroup": {typ: runs.Group{}}, "AnalyticsBucket": {typ: runs.Bucket{}}, "Summary": {typ: runs.Summary{}},
 		"JournalEntry": {typ: journal.Entry{}}, "Span": {typ: journal.Span{}},
-		"AlertRule": {typ: alerts.Rule{}}, "Alert": {typ: alerts.Alert{}},
+		"AlertRule": {typ: ruleView{}}, "Alert": {typ: alertView{}},
 		"EvalCheck": {typ: evals.Check{}}, "EvalCase": {typ: evals.Case{}}, "EvalSuite": {typ: evals.Suite{}, written: true},
 		"EvalVerdict": {typ: evals.Verdict{}}, "EvalHit": {typ: evals.Hit{}}, "EvalResult": {typ: evals.Result{}},
 		"EvalRun": {typ: evals.Run{}}, "EvalSuiteView": {typ: suiteView{}, written: true},
 		"KnowledgeVariant": {typ: knowledge.Variant{}}, "KnowledgeSource": {typ: knowledge.Source{}},
 		"KnowledgeDocument": {typ: knowledge.Document{}}, "KnowledgeHit": {typ: knowledge.Hit{}},
-		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policy.Policy{}}, "PolicyChange": {typ: policy.Change{}},
+		"PolicyScope": {typ: policy.Scope{}}, "Policy": {typ: policyView{}}, "PolicyChange": {typ: policyChangeView{}},
 		"Measure": {typ: measure{}}, "ScopeUsage": {typ: scopeUsage{}}, "UsageEntry": {typ: usage.Entry{}},
 		"ClientIdentity": {typ: clients.Identity{}}, "SecretRef": {typ: clients.SecretRef{}}, "SecretInput": {typ: clients.SecretInput{}},
 		"SlackCommand": {typ: clients.Command{}}, "SlackOptions": {typ: clients.SlackOptions{}}, "GitHubOptions": {typ: clients.GitHubOptions{}},
 		"ClientView": {typ: clientView{}}, "ClientCaps": {typ: clients.Caps{}}, "ClientInput": {typ: clientBody{}, written: true},
 		"TextPayload": {typ: payload.Text{}}, "ThinkingPayload": {typ: payload.Thinking{}}, "ToolCallPayload": {typ: payload.ToolCall{}},
 		"ToolDonePayload": {typ: payload.ToolDone{}}, "Provenance": {typ: payload.Provenance{}}, "CitationPayload": {typ: payload.Citation{}},
-		"LifecyclePayload": {typ: payload.Lifecycle{}}, "Question": {typ: payload.Question{}}, "Answer": {typ: payload.Answer{}},
+		"LifecyclePayload": {typ: payload.Lifecycle{}}, "Question": {typ: payload.Question{}}, "Answer": {typ: struct {
+			payload.Answer
+			// What a route hands out beside the subject (shownEvent).
+			ByName string `json:"by_name,omitempty"`
+		}{}},
 		"QuestionTool": {typ: payload.QuestionTool{}}, "ChildQuestion": {typ: payload.ChildQuestion{}}, "ActAs": {typ: platform.ActAs{}}, "ActionPayload": {typ: payload.Action{}},
 		"StoppedPayload": {typ: payload.Stopped{}}, "Cost": {typ: payload.Cost{}}, "Usage": {typ: payload.Usage{}},
 		"ContextUsage": {typ: payload.ContextUsage{}}, "RunUsage": {typ: payload.RunUsage{}},
@@ -1024,6 +1026,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	if question == "" {
 		t.Fatal("the asking run never parked on its question")
 	}
+	// Its thread says, to someone it asks, that the question is theirs.
+	room := c.call(acme, "GET", "/api/threads/{id}", "/api/threads/"+parked.str("thread"), "", http.StatusOK)
+	var ask map[string]any
+	for _, turn := range sliceOf(room.field("turns")) {
+		if a := obj(obj(turn)["ask"]); a != nil {
+			ask = a
+		}
+	}
+	if ask["question"] != question || ask["yours"] != true || ask["for"] != "answerers" {
+		t.Errorf("the parked run's ask = %v in %s", ask, room.raw)
+	}
 	answer := "/api/runs/{id}/questions/{question}/answer"
 	at := "/api/runs/" + parked.str("id") + "/questions/" + question + "/answer"
 	c.call(acme, "GET", "/api/inbox", "/api/inbox?kind=clarification", "", http.StatusOK)
@@ -1036,6 +1049,27 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Errorf("the answered question = %s", settledQ.raw)
 	}
 	c.settled(acme, parked.str("id"))
+	// The run's events say who answered, by subject and by name, and the
+	// answer validates against the spec's body for it.
+	answeredBy := ""
+	for _, e := range sliceOf(c.call(acme, "GET", "/api/runs/{id}/events", "/api/runs/"+parked.str("id")+"/events", "", http.StatusOK).field("events")) {
+		if obj(e)["kind"] != "lifecycle.resumed" {
+			continue
+		}
+		raw, _ := base64.StdEncoding.DecodeString(obj(e)["payload"].(string))
+		var body struct {
+			Answer struct {
+				By     string `json:"by"`
+				ByName string `json:"by_name"`
+			} `json:"answer"`
+		}
+		if json.Unmarshal(raw, &body) == nil {
+			answeredBy = body.Answer.By + " " + body.Answer.ByName
+		}
+	}
+	if answeredBy != "svc-acme svc-acme" {
+		t.Errorf("the run's events say it was answered by %q", answeredBy)
+	}
 	c.call(acme, "POST", "/api/runs/{id}/calls", "/api/runs/"+id+"/calls", `{"key":"k1","agent":"helper","text":"hi","mode":"subagent"}`, http.StatusForbidden)
 	c.call(acme, "POST", "/api/runs/{id}/calls", "/api/runs/"+id+"/calls", `{"mode":7}`, http.StatusBadRequest)
 	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"lead","model":"offline","provider":"offline","system_prompt":"Lead.","access":{"spawn":["helper"]}}`, http.StatusCreated)
@@ -1261,8 +1295,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// A project's inbox and its announcements.
 	news := c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Field/announcements",
 		`{"subject":"Field offsite","text":"We meet in Lisbon in May.","severity":"info"}`, http.StatusCreated)
-	if news.str("kind") != "announcement" {
-		t.Errorf("an announcement = %s", news.raw)
+	if news.str("kind") != "announcement" || news.field("unread") != false {
+		t.Errorf("an announcement, as its author has it = %s", news.raw)
 	}
 	c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Field/announcements", `{"subject":"","text":"Nothing to say."}`, http.StatusBadRequest)
 	c.call(acme, "POST", "/api/projects/{name}/announcements", "/api/projects/Ghost/announcements", `{"subject":"Hi","text":"Hi."}`, http.StatusNotFound)
@@ -1280,6 +1314,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "GET", "/api/projects/{name}/inbox", "/api/projects/Ghost/inbox", "", http.StatusNotFound)
 	c.call(acme, "GET", "/api/inbox", "/api/inbox?project=Field&kind=announcement", "", http.StatusOK)
 	c.call(acme, "GET", "/api/inbox", "/api/inbox?project=Ghost", "", http.StatusNotFound)
+	// Hidden for the caller alone, and brought back. A message that is not
+	// an announcement is set aside for everyone, so it is not.
+	newsPath := "/api/inbox/" + news.str("id")
+	if hid := c.call(acme, "POST", "/api/inbox/{id}/dismiss", newsPath+"/dismiss", "", http.StatusOK); hid.str("state") != "dismissed" || hid.field("hidden") != true {
+		t.Errorf("an announcement hidden for the caller = %s", hid.raw)
+	}
+	if back := c.call(acme, "POST", "/api/inbox/{id}/unhide", newsPath+"/unhide", "", http.StatusOK); back.str("state") != "open" || back.field("hidden") != nil {
+		t.Errorf("an announcement brought back = %s", back.raw)
+	}
+	c.call(acme, "POST", "/api/inbox/{id}/unhide", newsPath+"/unhide", "", http.StatusOK)
+	c.call(acme, "POST", "/api/inbox/{id}/unhide", inboxPath+"/unhide", "", http.StatusBadRequest)
 	c.call(acme, "DELETE", "/api/projects/{name}/announcements/{id}", "/api/projects/Ops/announcements/"+news.str("id"), "", http.StatusNotFound)
 	c.call(acme, "DELETE", "/api/projects/{name}/announcements/{id}", "/api/projects/Field/announcements/"+news.str("id"), "", http.StatusNoContent)
 
@@ -1631,7 +1676,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/schedules/{name}":                   {"name": "nightly"}, "/api/schedules/{name}/pause": {"name": "nightly"},
 		"/api/schedules/{name}/resume": {"name": "nightly"}, "/api/schedules/{name}/run": {"name": "nightly"},
 		"/api/inbox/{id}": {"id": mid}, "/api/inbox/{id}/read": {"id": mid}, "/api/inbox/{id}/dismiss": {"id": mid},
-		"/api/inbox/{id}/snooze": {"id": mid}, "/api/inbox/{id}/parts/{part}/resolve": {"id": mid},
+		"/api/inbox/{id}/snooze": {"id": mid}, "/api/inbox/{id}/parts/{part}/resolve": {"id": mid}, "/api/inbox/{id}/unhide": {"id": mid},
 		"/api/artifacts/{id}": {"id": published.ID}, "/api/artifacts/{id}/versions": {"id": published.ID},
 		"/api/artifacts/{id}/content": {"id": published.ID}, "/api/runs/{id}/calls": {"id": lead.str("id")},
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
@@ -1647,7 +1692,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/inbox/{id}/parts/{part}/resolve": `{"action":"acknowledge"}`, "/api/knowledge/{name}/documents": `{"title":"t","text":"words here"}`,
 		"/api/knowledge/{name}/documents/{id}": `{"excluded":false}`, "/api/knowledge/{name}/variants": `{"name":"other"}`,
 		"/api/projects/{name}": `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
-		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``,
+		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``, "/api/inbox/{id}/unhide": ``,
 		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`,
 		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
 		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,

@@ -23,6 +23,7 @@ import {
   OTHER_USER,
   QUESTIONS,
   questionMail,
+  resultMail,
   SUBJECT,
   settle,
   stopPressed,
@@ -1354,6 +1355,31 @@ test("an inbox item about a run lands in its thread, and the button resolves it 
   );
   assert.match(textIn(blocksOf(updated)), /Kept 1 of 2/);
   collect("inbox in thread", w.slack);
+
+  watching.abort();
+  await watch;
+});
+
+// The platform sends a run's thread beside the run on a result, an artifact,
+// a recap and a draft: the message still lands where the run was asked for.
+test("an inbox item about a run in a warp thread lands in the run's Slack thread", async () => {
+  const w = world();
+  const watching = new AbortController();
+  const watch = w.app.watchInbox(watching.signal);
+  await deliver(w, mention("check the deploy", TS));
+  const run = w.warp.last.id;
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "On it." });
+  await w.app.idle();
+  const before = w.slack.of("chat.postMessage").length;
+
+  w.warp.raise(resultMail(run));
+  await settle();
+  await w.app.idle();
+  const posted = w.slack.of("chat.postMessage");
+  assert.equal(posted.length, before + 1, "the result is posted");
+  assert.equal(posted.at(-1)?.thread_ts, TS, "it is shown where the run was asked for");
+  assert.match(textIn(blocksOf(posted.at(-1))), /The deploy is green/);
 
   watching.abort();
   await watch;

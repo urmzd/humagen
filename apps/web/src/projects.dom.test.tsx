@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { Note, Policy, ProjectDetail } from "./api.ts";
+import type { Note, Policy, ProjectDetail, ScheduleView } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
 import { east, field, globex, globexDetail, platform, renewals, retail, stores, tree, workspace } from "./projects.fixtures.ts";
@@ -19,7 +19,16 @@ afterEach(() => {
 
 const everything = ["projects:read", "projects:write", "projects:govern", "runs:read", "runs:write", "billing:read", "schedules:read"];
 
-function open(detail: ProjectDetail, opts: { tab?: ProjectTab; can?: string[]; routes?: Record<string, (body: unknown) => unknown> } = {}) {
+function open(
+  detail: ProjectDetail,
+  opts: {
+    tab?: ProjectTab;
+    can?: string[];
+    routes?: Record<string, (body: unknown) => unknown>;
+    schedules?: ScheduleView[];
+    onMute?: (project: string, muted: boolean) => Promise<void>;
+  } = {},
+) {
   const address = detail.project.name === "" ? "~" : encodeURIComponent(detail.project.name);
   net = stubFetch({
     [`GET /api/projects/${address}`]: () => detail,
@@ -42,7 +51,7 @@ function open(detail: ProjectDetail, opts: { tab?: ProjectTab; can?: string[]; r
       onTab={noop}
       workspaceName="Acme"
       projects={tree}
-      schedules={[]}
+      schedules={opts.schedules ?? []}
       agents={[]}
       can={(p) => can.includes(p)}
       onOpen={(name) => opened.push(name)}
@@ -52,6 +61,7 @@ function open(detail: ProjectDetail, opts: { tab?: ProjectTab; can?: string[]; r
       onChanged={noop}
       onSchedulesChanged={noop}
       onDeleted={noop}
+      onMute={opts.onMute}
     />,
   );
   return { opened };
@@ -76,8 +86,24 @@ test("a project page shows where it sits, what sits below it, and every limit ab
   assert.ok(within(below).getByText("Globex renewals"));
   assert.equal(within(below).getByRole("link").getAttribute("href"), "/projects/Globex%20renewals");
 
-  // Its tasks are read from the server, filed in this project only.
-  assert.ok(net.seen.some((r) => r.method === "GET" && r.path === "/api/threads?limit=20&project=Globex"));
+  // Its tasks are read from the server, filed in this project only. The read
+  // starts in an effect, so it may not have been sent when the page first shows.
+  await waitFor(() =>
+    assert.ok(net.seen.some((r) => r.method === "GET" && r.path === "/api/threads?limit=20&project=Globex")),
+  );
+});
+
+test("Mute Project says so beside it when the mute could not be saved", async () => {
+  const asked: [string, boolean][] = [];
+  open(globexDetail, {
+    onMute: (project, muted) => {
+      asked.push([project, muted]);
+      return Promise.reject(new Error("the preferences could not be read"));
+    },
+  });
+  fireEvent.click(await screen.findByRole("button", { name: "Mute Project" }));
+  await screen.findByText("Could not mute. Try again.");
+  assert.deepEqual(asked, [["Globex", true]]);
 });
 
 test("Move Project sends the new parent by its name, spaces and all", async () => {
@@ -98,6 +124,20 @@ test("the Limits tab says, in words, every limit above a project", async () => {
   const limits = await screen.findByRole("region", { name: "Limits" });
   await within(limits).findByText("Field engineering's limit also applies here: 7 runs a day.");
   assert.ok(within(limits).getByText("The workspace's limit also applies here."));
+});
+
+test("a Limits tab the reader cannot change says who can", async () => {
+  // A member of Globex, who neither sets billing nor owns a project above it.
+  const member = { ...globex, access: { role: "member" as const, from: "Globex", via: "*" }, actions: ["propose" as const] };
+  open({ ...globexDetail, project: member }, { tab: "limits" });
+  const limits = await screen.findByRole("region", { name: "Limits" });
+  assert.ok(await within(limits).findByText("Only an admin can change these. An owner of Field engineering can set a tighter one."));
+  cleanup();
+  net.restore();
+  // An owner above sets a tighter one there, so is not told only others can.
+  open(globexDetail, { tab: "limits" });
+  await screen.findByText("A tighter limit, as an owner above");
+  assert.ok(!screen.queryByText(/Only an admin can change these/));
 });
 
 test("including sub-projects reads the tasks of everything below", async () => {
@@ -229,3 +269,28 @@ test("New Project offers company-wide only to those who govern, and puts the pro
   assert.deepEqual(posts[0], { name: "Hooli", kind: "account", account: { customer: "Hooli Inc" } });
   await waitFor(() => assert.deepEqual(made, ["Globex"]));
 });
+
+test("the Schedules tab: one rule under the tabs, and each schedule's time in words", async () => {
+  const recap: ScheduleView = {
+    name: "globex-recap",
+    expression: "9 8 * * 1",
+    agent: "recap-writer",
+    text: "What changed in Globex since the last recap?",
+    project: "Globex",
+    deliver: "project",
+    paused: false,
+    next: [],
+    recent: [],
+  };
+  open(globexDetail, { tab: "schedules", can: [...everything, "schedules:write"], schedules: [recap] });
+  const heading = await screen.findByRole("heading", { name: "Scheduled (1)" });
+  const section = heading.closest("section");
+  assert.ok(section);
+  // The tab strip draws the rule under the tabs. The section draws its own only after another.
+  assert.equal(section.parentElement?.firstElementChild === section, true, "it opens the tab's column");
+  assert.match(section.className, /first:border-t-0/);
+  assert.ok(screen.getByText("Mondays at 08:09 UTC"));
+  assert.ok(!screen.queryByText(/9 8 \* \* 1/), "not as cron");
+  assert.equal(screen.getByText("Mondays at 08:09 UTC").getAttribute("title"), "9 8 * * 1", "the expression is a hover away");
+});
+

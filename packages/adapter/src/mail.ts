@@ -14,6 +14,7 @@ import {
   type ArtifactKind,
   type HomeUpdate,
   type InboxMessage,
+  isAnnouncement,
   type MessagePart,
   messageState,
   orderUpdates,
@@ -37,6 +38,13 @@ export type PlatformMessage = InboxMessage & {
   about: Source[];
   /** For each part that is a limit that was reached: which limit, on what, by part id. */
   budgets: Record<string, BudgetData>;
+  /**
+   * Who sent it as the platform keeps them: a person's subject, a mention's
+   * poster by handle (a thread's artefact names nobody by subject), or the
+   * agent's, rule's or system part's name. `from.name` is what they are
+   * called, which is what is shown; this tells the reader's own apart.
+   */
+  sender: string;
 };
 
 /** The server's kinds, in the order the inbox offers them as filters. */
@@ -153,7 +161,18 @@ export const unitOf = (which: LimitKind) =>
 const inUnit = (which: LimitKind, value: number) => (which === "spend" ? value / 1_000_000 : value);
 const fromUnit = (which: LimitKind, value: number) => (which === "spend" ? Math.round(value * 1_000_000) : Math.floor(value));
 
-function partFrom(raw: unknown, at: string): MessagePart | null {
+/**
+ * Who decided a part, as a person reads it: what the platform calls them
+ * (`by_name`), never the subject it keeps them by, which can hold an address.
+ * The system keeps its word, which the mailbox reads as nobody.
+ */
+function decidedBy(out: Record<string, unknown>): string {
+  const by = str(out.by);
+  return by === "system" ? by : str(out.by_name) || by;
+}
+
+/** A part of a message raised at `at` and last changed at `updated`. */
+function partFrom(raw: unknown, at: string, updated: string): MessagePart | null {
   const p = obj(raw);
   const id = str(p.id);
   const out = obj(p.outcome);
@@ -162,7 +181,7 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
     .map((a) => actionIds[str(a)])
     .filter((a): a is ActionId => a !== undefined);
   const resolution: { resolution?: Resolution } = out.action
-    ? { resolution: { outcome: str(out.action), by: str(out.by), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
+    ? { resolution: { outcome: str(out.action), by: decidedBy(out), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
     : {};
   switch (p.type) {
     case "text":
@@ -179,7 +198,7 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
           title: str(a.title),
           ...(str(a.body) ? { body: str(a.body) } : {}),
           startedAt: at,
-          updatedAt: str(out.at) || at,
+          updatedAt: str(out.at) || updated,
         },
         allowed,
         ...resolution,
@@ -313,7 +332,7 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
         prompt: str(mn.excerpt),
         allowed,
         ...(out.action
-          ? { resolution: { outcome: str(out.action) === "reply" ? "replied" : str(out.action), by: str(out.by), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
+          ? { resolution: { outcome: str(out.action) === "reply" ? "replied" : str(out.action), by: decidedBy(out), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
           : {}),
       };
     }
@@ -323,15 +342,33 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
   }
 }
 
+/**
+ * What a message is about, as a list of things to open: a run and the
+ * thread it is in are one conversation, so the run is left out beside its
+ * thread, which opens the whole of it.
+ */
+export function shownAbout(about: Source[]): Source[] {
+  return about.some((s) => s.kind === "thread") ? about.filter((s) => s.kind !== "run") : about;
+}
+
 /** The platform's message as a mailbox message. */
 export function fromServer(raw: unknown): PlatformMessage {
   const m = obj(raw);
   const from = obj(m.from);
   const source = obj(m.source);
-  const at = str(m.updated_at) || str(m.at);
+  // A message keeps the time it was raised. Resolving or setting it aside
+  // later says when on its own record, never in place of this.
+  const at = str(m.at) || str(m.updated_at);
+  const updated = str(m.updated_at) || at;
+  // A run and the thread it is in are one conversation, named by what the
+  // thread is called and never by an id. Both stay in about: surfaces find
+  // the run there, and the console draws the conversation once (shownAbout).
+  const conversation = str(source.thread_title) || sourceWord.thread;
+  const labelOf = (k: (typeof sourceKinds)[number]) =>
+    k === "run" || k === "thread" ? conversation : `${sourceWord[k]} ${str(source[k])}`;
   const sources: Source[] = sourceKinds
     .filter((k) => str(source[k]))
-    .map((k) => ({ kind: k, id: str(source[k]), label: `${sourceWord[k]} ${str(source[k])}` }));
+    .map((k) => ({ kind: k, id: str(source[k]), label: labelOf(k) }));
   // A published file is something to open too, by the version the message is about.
   for (const p of list(m.parts)) {
     const a = obj(obj(p).artifact);
@@ -344,16 +381,20 @@ export function fromServer(raw: unknown): PlatformMessage {
   return {
     id: str(m.id),
     subject: str(m.subject),
-    from: { kind: (str(from.kind) || "system") as InboxMessage["from"]["kind"], name: str(from.name) },
+    // A person is shown by what the platform calls them, never by subject.
+    from: { kind: (str(from.kind) || "system") as InboxMessage["from"]["kind"], name: str(from.display) || str(from.name) },
+    sender: str(from.name),
     at,
     unread: m.unread === true,
     severity: tone[str(m.severity)] ?? "neutral",
     ...(first ? { source: { kind: first.kind as "run" | "rule" | "project", id: first.id, label: first.label } } : {}),
     parts: list(m.parts)
-      .map((p) => partFrom(p, at))
+      .map((p) => partFrom(p, at, updated))
       .filter((p): p is MessagePart => p !== null),
-    ...(state === "dismissed" ? { dismissedAt: at } : {}),
-    ...(state === "snoozed" ? { snoozedUntil: str(m.snoozed_until) || at } : {}),
+    ...(state === "dismissed" ? { dismissedAt: updated } : {}),
+    ...(state === "snoozed" ? { snoozedUntil: str(m.snoozed_until) || updated } : {}),
+    // Set aside by this reader alone, so theirs to bring back.
+    ...(m.hidden === true ? { hidden: true } : {}),
     // A message about a limit leads with an alert part, so it is laid out by what it is about.
     ...(templateOf[str(m.kind)] ? { template: templateOf[str(m.kind)] } : {}),
     kind: str(m.kind),
@@ -370,6 +411,7 @@ export function fromServer(raw: unknown): PlatformMessage {
 export type Request =
   | { call: "read" }
   | { call: "dismiss" }
+  | { call: "unhide" }
   | { call: "snooze"; until: string }
   | { call: "resolve"; partId: string; action: string; values?: Record<string, unknown> };
 
@@ -384,6 +426,7 @@ export function toRequest(message: PlatformMessage, action: UiAction): Request |
   if (payload.turnId !== message.id) return null;
   if (id === ActionId.read) return { call: "read" };
   if (id === ActionId.dismiss) return { call: "dismiss" };
+  if (id === ActionId.unhide) return message.hidden ? { call: "unhide" } : null;
   // The shared failure card names its part by the failure's kind, which partMatches knows.
   const part = message.parts.find((p) => partTarget(p) === payload.target) ?? message.parts.find((p) => partMatches(p, payload.target));
   // Snoozing puts the whole message away until a time. It is never a part's own action.
@@ -473,6 +516,7 @@ export function mailTransport(http: Http): Transport {
       const to = at(message.id);
       if (r.call === "read") return fromServer(await http("POST", `${to}/read`, { read: true }));
       if (r.call === "dismiss") return fromServer(await http("POST", `${to}/dismiss`, {}));
+      if (r.call === "unhide") return fromServer(await http("POST", `${to}/unhide`, {}));
       if (r.call === "snooze") return fromServer(await http("POST", `${to}/snooze`, { until: r.until }));
       // What a part needs to be resolved travels beside the action: ids to keep, new limits, a note.
       return fromServer(await http("POST", `${to}/parts/${encodeURIComponent(r.partId)}/resolve`, { action: r.action, ...r.values }));
@@ -483,17 +527,30 @@ export function mailTransport(http: Http): Transport {
 /** A project's address in a route: `~` is the workspace. */
 const projectAt = (project: string) => `/api/projects/${project === "" || project === "~" ? "~" : encodeURIComponent(project)}`;
 
+/** The project a message is filed in, "" for the workspace: where it is announced, and withdrawn. */
+export function projectOf(message: PlatformMessage): string {
+  return message.about.find((s) => s.kind === "project")?.id ?? "";
+}
+
 /**
  * A project's inbox, over the inbox's own calls: it lists what is filed in the
  * project (and, with `children`, in the projects below it), and reads and
  * answers each message as the inbox does. Everyone who can see the project
  * reads it, so its totals are counted from what is loaded, not the reader's
- * whole inbox. Resolved is read as everything, less what is still open.
+ * whole inbox. Resolved is read as everything, less what is still open. A
+ * message read by its id is one filed in this project: any other is not
+ * found here, as a link to a message names the project it is filed in.
  */
 export function projectTransport(http: Http, project: string, children = false): Transport {
   const inbox = mailTransport(http);
+  const name = project === "~" ? "" : project;
   return {
     ...inbox,
+    get: async (id) => {
+      const m = await inbox.get(id);
+      if (projectOf(m) !== name) throw new MailError(404, "That message is not in this project's inbox.");
+      return m;
+    },
     list: async (q) => {
       const params = new URLSearchParams({ limit: String(q.limit), state: q.state === "open" || q.state === undefined ? "open" : "all" });
       if (children) params.set("children", "true");
@@ -510,7 +567,8 @@ export function projectTransport(http: Http, project: string, children = false):
 
 /**
  * What's new on Home, from a page of the reader's own announcements: the open
- * ones, unread first and then newest, at most five. `titles` names a project
+ * ones, unread first and then newest, at most five. An agent's draft, which an
+ * owner reads under the same kind, was never posted, so it is not news. `titles` names a project
  * as people see it ("" is the workspace), and `url` is where one opens.
  */
 export function updatesOf(
@@ -520,9 +578,9 @@ export function updatesOf(
 ): HomeUpdate[] {
   return orderUpdates(
     messages
-      .filter((m) => m.kind === "announcement" && messageState(m) === "open")
+      .filter((m) => m.kind === "announcement" && isAnnouncement(m) && messageState(m) === "open")
       .map((m) => {
-        const project = m.about.find((s) => s.kind === "project")?.id ?? "";
+        const project = projectOf(m);
         const kind = m.from.kind === "person" || m.from.kind === "agent" ? m.from.kind : "system";
         return {
           id: m.id,

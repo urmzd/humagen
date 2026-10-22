@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/term"
 )
 
 // configDir is where start and setup keep warp.yaml: WARP_HOME, else the
@@ -54,26 +56,29 @@ func start(o Options, args []string, in io.Reader, out io.Writer) error {
 	}
 	// Example agents are seeded only when nothing is configured: a spec
 	// declares its own agents.
-	d := serveDefaults{auth: "dev", seed: true, web: webDir(os.Getenv)}
+	d := serveDefaults{auth: "dev", seed: true, web: webDir(os.Getenv), notes: out}
 	path := filepath.Join(configDir(os.Getenv), "warp.yaml")
 	if len(scanFiles(rest)) > 0 {
 		d.seed = false
 	} else {
 		_, err := os.Stat(path)
 		exists := err == nil
-		if *ask || (!exists && !*yes && interactive(in)) {
-			if err := runSetup(bufio.NewReader(in), out, path); err != nil {
-				return err
-			}
-			exists = true
-		}
-		if exists {
+		// The questions are asked, and warp.yaml written, only once serve
+		// knows its command line parses: -h, or a flag it does not know,
+		// asks and writes nothing.
+		setup := *ask || (!exists && !*yes && interactive(in))
+		if exists || setup {
 			d.files, d.seed = []string{path}, false
-			fmt.Fprintf(out, "warp: reading %s\n", path)
+			d.prepare = func() error {
+				if setup {
+					if err := runSetup(bufio.NewReader(in), out, path); err != nil {
+						return err
+					}
+				}
+				fmt.Fprintf(out, "warp: reading %s\n", path)
+				return nil
+			}
 		}
-	}
-	if d.web == "" {
-		fmt.Fprintln(out, "warp: no built console found (run pnpm --filter @warp/console build, or set WARP_WEB_DIR); serving the API only")
 	}
 	return serve(o, rest, d)
 }
@@ -115,12 +120,37 @@ func indexOf(args []string, s string) int {
 	return -1
 }
 
-// interactive reports whether in is a terminal a person can answer on.
+// interactive reports whether in is a terminal a person can answer on. A
+// character device is not enough: /dev/null is one.
 func interactive(in io.Reader) bool {
 	f, ok := in.(*os.File)
-	if !ok {
-		return false
-	}
-	st, err := f.Stat()
-	return err == nil && st.Mode()&os.ModeCharDevice != 0
+	return ok && term.IsTerminal(int(f.Fd()))
+}
+
+// probe parses args as fs would, without setting any of fs's flags, and
+// returns what parsing would: flag.ErrHelp for -h, an error for a flag fs
+// does not define or one missing its value. A value fs would refuse is left
+// to fs.
+func probe(fs *flag.FlagSet, args []string) error {
+	dry := flag.NewFlagSet(fs.Name(), flag.ContinueOnError)
+	dry.SetOutput(io.Discard)
+	fs.VisitAll(func(f *flag.Flag) {
+		b, ok := f.Value.(interface{ IsBoolFlag() bool })
+		dry.Var(ignored{isBool: ok && b.IsBoolFlag()}, f.Name, "")
+	})
+	return dry.Parse(args)
+}
+
+// ignored is a flag's value that keeps nothing, for probe.
+type ignored struct{ isBool bool }
+
+func (ignored) String() string     { return "" }
+func (ignored) Set(string) error   { return nil }
+func (v ignored) IsBoolFlag() bool { return v.isBool }
+
+// given reports whether a parse set the flag name, to anything.
+func given(fs *flag.FlagSet, name string) bool {
+	set := false
+	fs.Visit(func(f *flag.Flag) { set = set || f.Name == name })
+	return set
 }
