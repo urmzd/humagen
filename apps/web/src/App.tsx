@@ -498,6 +498,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             channel={route.channel}
             tick={tick}
             agents={agents}
+            homes={homes}
             projects={projects ?? []}
             root={root}
             workspaceName={workspaceName}

@@ -289,7 +289,7 @@ test("coworking: tagging only a person starts nothing and says who was told", as
       /chat\.(postMessage|update|stopStream|appendStream)/.test(c.method),
     ),
   );
-  assert.match(said, /Sent to dana/);
+  assert.match(said, /Sent to @dana/);
 });
 
 test("coworking: where nothing answers by default, the app says to tag an agent", async () => {

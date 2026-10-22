@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/urmzd/warp/pkg/state"
 )
@@ -50,6 +51,8 @@ type thread struct {
 
 type tenant struct {
 	threads map[string]*thread
+	// inProject counts the threads of each project, "" the root.
+	inProject map[string]int
 	// surfaces finds a thread by its surface, built from the records.
 	surfaces map[string]string
 	watchers map[int]chan Notice
@@ -57,12 +60,13 @@ type tenant struct {
 }
 
 func newTenant() *tenant {
-	return &tenant{threads: map[string]*thread{}, surfaces: map[string]string{}, watchers: map[int]chan Notice{}}
+	return &tenant{threads: map[string]*thread{}, inProject: map[string]int{}, surfaces: map[string]string{}, watchers: map[int]chan Notice{}}
 }
 
-// keep holds a thread's record in memory, with its surface found.
-func (t *tenant) keep(th *thread) {
+// hold adds a thread to a tenant's records, with its surface found.
+func (t *tenant) hold(th *thread) {
 	t.threads[th.rec.ID] = th
+	t.inProject[th.rec.Project]++
 	if th.rec.Surface != nil {
 		t.surfaces[th.rec.Surface.key()] = th.rec.ID
 	}
@@ -124,7 +128,7 @@ func Open(st state.Store) (*Store, error) {
 			if rec.Surface != nil && tn.surfaces[rec.Surface.key()] != "" {
 				return fmt.Errorf("%w: %q and %q are one surface's thread", ErrInvalid, tn.surfaces[rec.Surface.key()], rec.ID)
 			}
-			tn.keep(&thread{rec: rec, surfaces: map[string]int{}})
+			tn.hold(&thread{rec: rec, surfaces: map[string]int{}})
 		case strings.HasPrefix(key, keyMessage):
 			var m Message
 			if err := json.Unmarshal(raw, &m); err != nil {
@@ -241,19 +245,27 @@ func newID() string {
 }
 
 // opening checks a new thread's record and fills in what the store sets: its
-// id, version and times, and the person who starts it as its owner. The
-// caller holds the lock.
+// id, version and times, and the person who starts it as its owner. A
+// workspace holds at most MaxThreads, and a project MaxProjectThreads
+// (ErrLimit). The caller holds the lock.
 func (s *Store) opening(tenantName string, t Thread, at time.Time) (Thread, error) {
 	t = t.clone()
 	if t.Surface != nil && s.of(tenantName).surfaces[t.Surface.key()] != "" {
 		return Thread{}, fmt.Errorf("%w: that surface's thread is %q", ErrExists, s.of(tenantName).surfaces[t.Surface.key()])
 	}
-	have := s.of(tenantName).threads
+	tn := s.of(tenantName)
+	have := tn.threads
 	if t.ID == "" {
 		for t.ID = newID(); have[t.ID] != nil; t.ID = newID() {
 		}
 	} else if have[t.ID] != nil {
 		return Thread{}, fmt.Errorf("%w: thread %q", ErrExists, t.ID)
+	}
+	if len(have) >= MaxThreads {
+		return Thread{}, fmt.Errorf("%w: a workspace holds at most %d threads", ErrLimit, MaxThreads)
+	}
+	if tn.inProject[t.Project] >= MaxProjectThreads {
+		return Thread{}, fmt.Errorf("%w: a project holds at most %d threads", ErrLimit, MaxProjectThreads)
 	}
 	for i := range t.Participants {
 		p := &t.Participants[i]
@@ -295,7 +307,7 @@ func (s *Store) Create(tenantName string, t Thread, at time.Time) (Thread, error
 		return Thread{}, err
 	}
 	tn := s.of(tenantName)
-	tn.keep(&thread{rec: t, surfaces: map[string]int{}})
+	tn.hold(&thread{rec: t, surfaces: map[string]int{}})
 	tn.tell(Notice{ID: t.ID, At: at})
 	return t.clone(), nil
 }
@@ -332,7 +344,7 @@ func (s *Store) Start(tenantName string, t Thread, m Message, at time.Time) (Thr
 	th := &thread{rec: t, surfaces: map[string]int{}}
 	th.add(m)
 	tn := s.of(tenantName)
-	tn.keep(th)
+	tn.hold(th)
 	tn.tell(Notice{ID: t.ID, Message: m.ID, At: at})
 	return t.clone(), m.clone(), nil
 }
@@ -748,29 +760,44 @@ type Summary struct {
 	Thread
 	// Messages is how many messages it holds.
 	Messages int `json:"messages"`
-	// First is what its first message says, "" when it has none.
+	// First is the start of what its first message says, at most MaxTitle
+	// characters, "" when it has none.
 	First string `json:"first,omitempty"`
 }
 
-// Summaries returns every thread a tenant has a record of, in no order. It is
-// what a list of conversations merges with the run index's, which holds
-// every run of the tenant in the same way.
-func (s *Store) Summaries(tenantName string) []Summary {
+// Summaries returns, in no order, the threads a tenant has a record of that
+// keep, called under the lock with each record as it stands, holds; only
+// those are copied. Elsewhere is the ids of the rest. It is what a list of
+// conversations merges with the run index's: a record says where its
+// conversation is, so one kept elsewhere is left out of the list too.
+func (s *Store) Summaries(tenantName string, keep func(Thread) bool) (out []Summary, elsewhere map[string]bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	out, elsewhere = []Summary{}, map[string]bool{}
 	t, ok := s.tenants[tenantName]
 	if !ok {
-		return []Summary{}
+		return out, elsewhere
 	}
-	out := make([]Summary, 0, len(t.threads))
-	for _, th := range t.threads {
+	for id, th := range t.threads {
+		if !keep(th.rec) {
+			elsewhere[id] = true
+			continue
+		}
 		sum := Summary{Thread: th.rec.clone(), Messages: len(th.msgs)}
 		if len(th.msgs) > 0 {
-			sum.First = th.msgs[0].Text
+			sum.First = clipText(th.msgs[0].Text, MaxTitle)
 		}
 		out = append(out, sum)
 	}
-	return out
+	return out, elsewhere
+}
+
+// clipText is the start of a text, at most n characters.
+func clipText(text string, n int) string {
+	if utf8.RuneCountInString(text) <= n {
+		return text
+	}
+	return string([]rune(text)[:n])
 }
 
 // Watch reports what happens in a tenant's threads until cancel is called.

@@ -894,11 +894,21 @@ which projects above it the run would count toward.
 The body takes no metadata: an unknown field answers 400.
 
 Nothing routes on its own. With `agent` left out, the default the
-conversation's place inherits answers: the project's, each
-ancestor's nearest first, then the workspace's. With none set it is
-409, "tag an agent". `auto` is `@auto`. An agent not available in the
+conversation's place inherits answers, the first set of: the
+thread's (`updateThread`), the acting client's when `act_as` names
+one, the channel's (a new conversation is in `general` of its
+project), then the project's, each ancestor's nearest first, and the
+workspace's. With none set it is 409, "tag an agent". `auto` is
+`@auto`, which for a person a client acts for picks only among the
+agents that client may route to. An agent not available in the
 conversation's project, or a default that has stopped being
 available there, is 403.
+
+A follow-up is filed in its conversation's channel. When it follows
+a turn in a shared thread people have posted in, it is sent the room
+up to that turn, people's messages by name and agents' answers by
+theirs, and it is part of the room the agents answering the next
+message are sent.
  */
   async createRun(body: CreateRunRequest, idempotencyKey?: string, options?: RequestOptions): Promise<Run> {
     const path = "/api/runs";
@@ -1166,6 +1176,13 @@ answers; otherwise the default the thread inherits answers. A
 starts it first; tagging a person in it invites them. A `default`
 must be able to answer in the project (400).
 
+A workspace holds at most 10,000 threads and a project 2,000, a
+conversation from before threads counting once its record is written
+(429). A person posts at most 30 messages a minute, here and in
+`postThreadMessage`, and a project takes at most 120 (429). One
+message notifies at most 20 people and roles; a tag it reaches nobody
+for is in `refused`.
+
 With `surface`, a client's machine posts a person's message from a
 Slack thread: into the thread that surface already is, or into a new
 one the platform files from the binding (see SurfaceRef). Posting
@@ -1263,7 +1280,8 @@ follows the latest. `answers` records the message as a question's
 answer, which resumes the run parked on it; who may answer is
 checked as on every other path, and a refused answer posts nothing.
 An answer, like a reply, starts no run. A thread holds at most 5,000
-messages: past that, 409 "start a new thread".
+messages: past that, 409 "start a new thread". The rates and caps of
+`startThread` hold here too (429).
  */
   async postThreadMessage(id: string, body: ThreadMessageInput, options?: RequestOptions): Promise<ThreadPosted> {
     let path = "/api/threads/{id}/messages";
@@ -1287,8 +1305,8 @@ messages: past that, 409 "start a new thread".
 
   /** At most 50 added and removed together, and a thread has at most 50
 participants. An agent added must be available in the thread's
-project, and a person must be in the workspace's directory (400).
-The person who started the thread stays in it. `version` is the one
+project, and a person, named by handle, must be in the workspace's
+directory (400). The person who started the thread stays in it. `version` is the one
 the caller read.
  */
   async updateThreadParticipants(id: string, body: ThreadParticipantsUpdate, options?: RequestOptions): Promise<Thread> {
@@ -1533,7 +1551,7 @@ may do with each part, is decided per message: a memory proposal needs
 null at the end. A client's machine reads one of its people's inbox
 with `act_as_client` and `act_as_user`, as the Slack app's Home does.
  */
-  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListInboxResponse> {
+  async listInbox(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "clarification" | "result" | "announcement" | "mention", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListInboxResponse> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1553,7 +1571,7 @@ with `act_as_client` and `act_as_user`, as the Slack app's Home does.
     });
   }
 
-  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "approval" | "clarification" | "result" | "artifact" | "announcement", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
+  async listInboxRaw(state?: "open" | "resolved" | "dismissed" | "snoozed" | "all", kind?: "alert" | "failure" | "memory" | "budget" | "artifact" | "approval" | "clarification" | "result" | "announcement" | "mention", unread?: "true", alert?: string, limit?: number, before?: string, agent?: string, project?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ListInboxResponse>> {
     let path = "/api/inbox";
     const _q = new URLSearchParams();
     if (state !== undefined && state !== null) _q.set("state", String(state));
@@ -1704,6 +1722,10 @@ inbox, and an action the caller lacks the permission for answers 403:
 | `approval` | `approve` (optionally with `arguments`), `deny` | `runs:write` |
 | `choice` | `choose` (with `choice`) | `runs:write` |
 | `reply` | `reply` (with `text`) | `runs:write` |
+| `mention` | `reply` (with `text`), `done` | `runs:write` |
+
+A mention's `reply` posts the words in its thread as the reader,
+which starts no run, and `done` sets it aside.
 
 Answering a question is `answerQuestion` by another route, with the
 same rules: a person the question is not addressed to does not see

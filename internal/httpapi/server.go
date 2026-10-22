@@ -411,8 +411,11 @@ func (s *Server) listRuns(w http.ResponseWriter, _ *http.Request, who auth.Princ
 func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var body struct {
 		// Agent is who should answer. "auto" is @auto, which picks among the
-		// agents available where the conversation is filed. Empty is the
-		// default the conversation's place inherits; with none, 409.
+		// agents available where the conversation is filed, and for a person
+		// a client's credential acts for, only among the agents the client
+		// may route to. Empty is the default the conversation's place
+		// inherits: its thread's, the client's, its channel's, then its
+		// project chain's; with none, 409.
 		Agent string `json:"agent"`
 		Text  string `json:"text"`
 		// After is the turn this message follows. Empty starts a conversation.
@@ -431,13 +434,14 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	actor := envelope.Actor{ID: who.Subject, Display: who.Name, Bot: who.Kind == auth.Machine}
+	client := ""
 	if body.ActAs != nil {
 		person, err := s.P.ActsFor(who, *body.ActAs)
 		if err != nil {
 			s.problem(w, err)
 			return
 		}
-		actor = envelope.Actor{ID: person, Display: person}
+		actor, client = envelope.Actor{ID: person, Display: person}, body.ActAs.Client
 	}
 	// A caller that retries sends the same key and joins the run it started.
 	id := "api-r-" + token()[:22]
@@ -445,7 +449,7 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		id = APITagID(who.Subject, key)
 	}
 	run, err := s.P.Converse(r.Context(), who.Tenant, platform.Turn{
-		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor,
+		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor, Client: client,
 	})
 	if err != nil {
 		s.problem(w, err)
@@ -497,7 +501,7 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if next != "" {
 		cursor = &next
 	}
-	ok(w, http.StatusOK, map[string]any{"threads": page, "next": cursor})
+	ok(w, http.StatusOK, map[string]any{"threads": s.P.ShowSummaries(who.Tenant, page), "next": cursor})
 }
 
 // pickAgent previews which agent @auto would pick for a message in a project,

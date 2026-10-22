@@ -1349,7 +1349,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// Channels, experts and shared threads. A person posts; a credential
 	// posts only for a person it acts for.
 	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
-	f.person(t, "acme", "00u-vic", "Vic", "warp-viewers")
+	vic := f.person(t, "acme", "00u-vic", "Vic", "warp-viewers")
+	bo := f.person(t, "acme", "00u-bo", "Bo", "warp-admins")
 	channels := "/api/projects/{name}/channels"
 	c.call(acme, "GET", channels, "/api/projects/Field/channels", "", http.StatusOK)
 	c.call(acme, "GET", channels, "/api/projects/~/channels", "", http.StatusOK)
@@ -1423,9 +1424,37 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "PUT", "/api/threads/{id}", threadPath, `{"version":1,"title":"stale"}`, http.StatusConflict)
 	c.call(ana, "PUT", "/api/threads/{id}", threadPath, `{"version":2,"default":"ghost"}`, http.StatusBadRequest)
 	participants := "/api/threads/{id}/participants"
-	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"add":[{"kind":"person","name":"00u-vic","at":"2026-01-01T00:00:00Z"}]}`, http.StatusOK)
-	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"remove":["00u-vic"]}`, http.StatusConflict)
+	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"add":[{"kind":"person","name":"vic","at":"2026-01-01T00:00:00Z"}]}`, http.StatusOK)
+	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"remove":["vic"]}`, http.StatusConflict)
 	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":3,"add":[{"kind":"person","name":"nobody","at":"2026-01-01T00:00:00Z"}]}`, http.StatusBadRequest)
+	// A person's messages start no run, so a rate holds them: at most
+	// PostsPerPerson a minute, in any thread, a new one included.
+	quick := f.person(t, "acme", "00u-quick", "Quick", "warp-admins")
+	for range platform.PostsPerPerson {
+		c.call(quick, "POST", messages, threadPath+"/messages", `{"text":"again","post_only":true}`, http.StatusCreated)
+	}
+	c.call(quick, "POST", messages, threadPath+"/messages", `{"text":"once more","post_only":true}`, http.StatusTooManyRequests)
+	c.call(quick, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"shared","text":"a new one"}`, http.StatusTooManyRequests)
+	// A mention, read by the person it tags: replied to, set aside, and
+	// refused to a viewer, who may read it but not act on it.
+	c.call(ana, "POST", messages, threadPath+"/messages", `{"text":"@bo one for you"}`, http.StatusCreated)
+	c.call(ana, "POST", messages, threadPath+"/messages", `{"text":"@bo and another"}`, http.StatusCreated)
+	partPath := func(m any) string {
+		msg := obj(m)
+		return "/api/inbox/" + fmt.Sprint(msg["id"]) + "/parts/" + fmt.Sprint(obj(sliceOf(msg["parts"])[0])["id"]) + "/resolve"
+	}
+	if ms := sliceOf(c.call(bo, "GET", "/api/inbox", "/api/inbox?kind=mention", "", http.StatusOK).field("messages")); len(ms) != 2 {
+		t.Errorf("bo holds %d mentions, want 2", len(ms))
+	} else {
+		c.call(bo, "POST", resolve, partPath(ms[0]), `{"action":"reply","text":"On it."}`, http.StatusOK)
+		c.call(bo, "POST", resolve, partPath(ms[1]), `{"action":"done"}`, http.StatusOK)
+		c.call(bo, "POST", resolve, partPath(ms[1]), `{"action":"approve"}`, http.StatusBadRequest)
+	}
+	if ms := sliceOf(c.call(vic, "GET", "/api/inbox", "/api/inbox?kind=mention", "", http.StatusOK).field("messages")); len(ms) != 1 {
+		t.Errorf("vic holds %d mentions, want 1", len(ms))
+	} else {
+		c.call(vic, "POST", resolve, partPath(ms[0]), `{"action":"done"}`, http.StatusForbidden)
+	}
 	// A thread holds 5,000 messages, and then is full.
 	for {
 		_, _, err := f.p.Threads.Post("acme", tid, threads.Message{By: "00u-ana", Text: "filler"}, time.Now())
@@ -1691,6 +1720,11 @@ var unexercised = map[string]string{
 	// conversation each, and would only test a counter, which pkg/projects'
 	// tests do.
 	"DELETE /api/projects/{name} 429": "tombstone cap",
+	// A workspace holds at most 10,000 threads. Changing a conversation
+	// from before threads writes its record, which that cap can refuse;
+	// filling it here would only test a counter, which pkg/threads' tests do.
+	"PUT /api/threads/{id} 429":              "thread cap",
+	"PUT /api/threads/{id}/participants 429": "thread cap",
 	// A spend refusal is the same answer through every route that starts a
 	// run. createRun's 402 is exercised; a schedule's run now goes through
 	// the same admission.

@@ -76,8 +76,8 @@ func loadPolicy(fs *flag.FlagSet, g groupFlags, getenv func(string) string) (*au
 
 // seeGranted records whom the policy grants a role by subject in the
 // workspace -tenant names, so they are in its directory before they first
-// sign in. With tenants from a claim (-tenant-claim, as the caller set it)
-// it records nobody: the one policy is every tenant's and a grant names no
+// sign in. With tenants from a claim (authConfig.claimed: -tenant-claim, or
+// the mock's) it records nobody: the one policy is every tenant's and a grant names no
 // tenant, so a person enters a workspace's directory only through a
 // Principal of it, or a client of it mapping them.
 func seeGranted(p *platform.Platform, tenant, tenantClaim string, pol *auth.Policy, log *slog.Logger) {
@@ -123,6 +123,16 @@ type authConfig struct {
 	mockAddr, mockPersonas      string
 	getenv                      func(string) string
 	log                         *slog.Logger
+}
+
+// claimed is the claim each caller's tenant is read from, or "" when every
+// caller is in the one workspace -tenant names. The mock always reads one:
+// personas may name their own tenant, and one without gets -tenant.
+func (c authConfig) claimed() string {
+	if c.mode == "mock" && c.tenantClaim == "" {
+		return "tenant"
+	}
+	return c.tenantClaim
 }
 
 // newAuthn builds the authenticator for a mode. stop releases what it started.
@@ -187,12 +197,7 @@ func mockAuthn(ctx context.Context, c authConfig) (*httpapi.Authn, func(), error
 			return nil, stop, err
 		}
 	}
-	tenantClaim := c.tenantClaim
-	if tenantClaim == "" {
-		// Personas may name their own tenant, so the tenant comes from a
-		// claim the mock always sets. A persona without one gets -tenant.
-		tenantClaim = "tenant"
-	}
+	tenantClaim := c.claimed()
 	idp, err := mockidp.Start(mockidp.Config{
 		Enabled:      true,
 		Addr:         c.mockAddr,

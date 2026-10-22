@@ -636,11 +636,21 @@ paths:
         The body takes no metadata: an unknown field answers 400.
 
         Nothing routes on its own. With `agent` left out, the default the
-        conversation's place inherits answers: the project's, each
-        ancestor's nearest first, then the workspace's. With none set it is
-        409, "tag an agent". `auto` is `@auto`. An agent not available in the
+        conversation's place inherits answers, the first set of: the
+        thread's (`updateThread`), the acting client's when `act_as` names
+        one, the channel's (a new conversation is in `general` of its
+        project), then the project's, each ancestor's nearest first, and the
+        workspace's. With none set it is 409, "tag an agent". `auto` is
+        `@auto`, which for a person a client acts for picks only among the
+        agents that client may route to. An agent not available in the
         conversation's project, or a default that has stopped being
         available there, is 403.
+
+        A follow-up is filed in its conversation's channel. When it follows
+        a turn in a shared thread people have posted in, it is sent the room
+        up to that turn, people's messages by name and agents' answers by
+        theirs, and it is part of the room the agents answering the next
+        message are sent.
       x-permission: runs:write
       parameters:
         - name: Idempotency-Key
@@ -984,6 +994,13 @@ paths:
         starts it first; tagging a person in it invites them. A `default`
         must be able to answer in the project (400).
 
+        A workspace holds at most 10,000 threads and a project 2,000, a
+        conversation from before threads counting once its record is written
+        (429). A person posts at most 30 messages a minute, here and in
+        `postThreadMessage`, and a project takes at most 120 (429). One
+        message notifies at most 20 people and roles; a tag it reaches nobody
+        for is in `refused`.
+
         With `surface`, a client's machine posts a person's message from a
         Slack thread: into the thread that surface already is, or into a new
         one the platform files from the binding (see SurfaceRef). Posting
@@ -1007,6 +1024,7 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/threads/{id}:
     get:
@@ -1077,6 +1095,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/threads/{id}/messages:
     post:
@@ -1092,7 +1111,8 @@ paths:
         answer, which resumes the run parked on it; who may answer is
         checked as on every other path, and a refused answer posts nothing.
         An answer, like a reply, starts no run. A thread holds at most 5,000
-        messages: past that, 409 "start a new thread".
+        messages: past that, 409 "start a new thread". The rates and caps of
+        `startThread` hold here too (429).
       x-permission: runs:write
       parameters:
         - {$ref: "#/components/parameters/ThreadID"}
@@ -1113,6 +1133,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/threads/{id}/participants:
     put:
@@ -1122,8 +1143,8 @@ paths:
       description: |
         At most 50 added and removed together, and a thread has at most 50
         participants. An agent added must be available in the thread's
-        project, and a person must be in the workspace's directory (400).
-        The person who started the thread stays in it. `version` is the one
+        project, and a person, named by handle, must be in the workspace's
+        directory (400). The person who started the thread stays in it. `version` is the one
         the caller read.
       x-permission: runs:write
       parameters:
@@ -1145,6 +1166,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
+        "429": {$ref: "#/components/responses/TooMany"}
         "500": {$ref: "#/components/responses/ServerError"}
 
   /api/events:
@@ -1428,7 +1450,7 @@ paths:
         - name: kind
           in: query
           description: Only messages of this kind. An unknown kind matches nothing.
-          schema: {type: string, enum: [alert, failure, memory, budget, approval, clarification, result, artifact, announcement]}
+          schema: {type: string, enum: [alert, failure, memory, budget, artifact, approval, clarification, result, announcement, mention]}
         - name: unread
           in: query
           description: Only `true` narrows to messages the caller has not read.
@@ -1639,6 +1661,10 @@ paths:
         | `approval` | `approve` (optionally with `arguments`), `deny` | `runs:write` |
         | `choice` | `choose` (with `choice`) | `runs:write` |
         | `reply` | `reply` (with `text`) | `runs:write` |
+        | `mention` | `reply` (with `text`), `done` | `runs:write` |
+
+        A mention's `reply` posts the words in its thread as the reader,
+        which starts no run, and `done` sets it aside.
 
         Answering a question is `answerQuestion` by another route, with the
         same rules: a person the question is not addressed to does not see
@@ -3807,7 +3833,7 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/ErrorBody"}
     TooMany:
-      description: A cap on how many may exist was reached.
+      description: A cap on how many may exist, or on how fast they may be made, was reached.
       content:
         application/json:
           schema: {$ref: "#/components/schemas/ErrorBody"}
@@ -4292,7 +4318,9 @@ components:
           description: |
             Who should answer: an agent, or `auto` for `@auto`, which picks
             among the agents available where the conversation is filed. Left
-            out, the default the conversation's place inherits answers.
+            out, the default the conversation's place inherits answers: the
+            thread's, the acting client's, the channel's, then the project
+            chain's and the workspace's.
           type: string
         text:
           description: The message. It must not be blank.
@@ -4440,7 +4468,7 @@ components:
           type: array
           items: {type: string}
         people:
-          description: The people who asked or posted in it, by subject.
+          description: The people who asked or posted in it, by handle. Someone the directory cannot name, and whose subject holds an address, is left out.
           type: array
           items: {type: string}
         visibility: {$ref: "#/components/schemas/ThreadVisibility"}
@@ -4464,19 +4492,26 @@ components:
       type: string
       enum: [shared, private]
     ThreadParticipant:
-      description: A person or an agent taking part in a thread.
+      description: |
+        A person or an agent taking part in a thread. A thread names a
+        person by their handle, and is sent one by handle: a subject, the key
+        a person signs in with, can hold an address and is never shown. A
+        person with no handle, whose subject holds no address, is named by
+        their subject; one with neither reads as empty.
       type: object
       required: [kind, name, at]
       properties:
         kind: {type: string, enum: [person, agent]}
         name:
-          description: A person's subject or an agent's name.
+          description: A person's handle or an agent's name.
           type: string
           maxLength: 200
         owner:
           description: The person who started the thread.
           type: boolean
-        added_by: {type: string}
+        added_by:
+          description: The handle of the person who added them.
+          type: string
         at: {type: string, format: date-time}
     Thread:
       description: |
@@ -4506,7 +4541,9 @@ components:
         version:
           description: Counts edits to the record, from 1. A conversation from before threads reads 0 until its record is written.
           type: integer
-        created_by: {type: string}
+        created_by:
+          description: The handle of the person who started it, the first person to ask or post in it.
+          type: string
         created_at: {type: string, format: date-time}
         updated_at:
           description: When anything last happened in it.
@@ -4519,7 +4556,7 @@ components:
       properties:
         kind: {type: string, enum: [agent, person, sme]}
         name:
-          description: The agent (`auto` for @auto), the person's subject, or the experts' topic (empty for every expert).
+          description: The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert).
           type: string
         run:
           description: The run an agent's tag started.
@@ -4548,9 +4585,11 @@ components:
           description: The turn it follows. Absent for the first.
           type: string
         by:
-          description: The subject of the person who posted it.
+          description: The handle of the person who posted it.
           type: string
-        name: {type: string}
+        name:
+          description: What they are called, their name in the directory or else their handle. Never an address.
+          type: string
         text: {type: string, maxLength: 8000}
         mentions:
           type: array
@@ -4660,7 +4699,7 @@ components:
           maxItems: 50
           items: {$ref: "#/components/schemas/ThreadParticipant"}
         remove:
-          description: People by subject and agents by name.
+          description: People by handle and agents by name, which no person and agent share.
           type: array
           maxItems: 50
           items: {type: string}
@@ -4686,7 +4725,7 @@ components:
           maxItems: 3
           items: {$ref: "#/components/schemas/Run"}
         notified:
-          description: Who it was sent to, people by subject and experts by subject or role.
+          description: Who it was sent to, people and experts by handle and the experts a role names as `role:<name>`.
           type: array
           items: {type: string}
         refused:
@@ -5947,7 +5986,7 @@ components:
         draft: {$ref: "#/components/schemas/InboxDraftPart"}
         mention: {$ref: "#/components/schemas/InboxMentionPart"}
     InboxMentionPart:
-      description: A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which starts no run; `done` sets it aside.
+      description: A message in a shared thread that tags the reader. `reply` posts the resolution's `text` in the thread as the reader, which starts no run; `done` sets it aside. The console and the Slack app offer Reply, and set a mention aside by dismissing its message; `done` is the API's.
       type: object
       required: [thread, message, project, channel, by, excerpt]
       properties:
@@ -5960,7 +5999,7 @@ components:
           type: string
         channel: {type: string}
         by:
-          description: The subject of the person who posted it.
+          description: The handle of the person who posted it. A subject is never given, since one can hold an address.
           type: string
         excerpt:
           description: The start of what they wrote.

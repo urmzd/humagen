@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -98,6 +99,71 @@ func TestATaggedAgentAnswersSeeingTheRoomUpToTheMessage(t *testing.T) {
 	sum, _, err := p.ThreadPage(tenant, runs.ThreadQuery{Channel: projects.General})
 	if err != nil || len(sum) != 1 || sum[0].Branches != 0 || sum[0].Messages != 2 {
 		t.Fatalf("answers to one message read as branches: %+v, %v", sum, err)
+	}
+}
+
+// An untagged turn through the API is answered as a message posted in its
+// thread would be: by the thread's default, then the channel's, ahead of the
+// project chain's, and a new conversation is in general of its project. A
+// follow-up inside a room is sent the room up to it, and is part of the room
+// the next message's agents are sent.
+func TestAnUntaggedAPITurnIsAnsweredByTheDefaultItsThreadInherits(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	ctx := t.Context()
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}, Default: "lead"})
+	if _, err := p.UpdateChannel(ctx, tenant, "Globex", projects.General, ada, platform.ChannelUpdate{Default: "helper"}); err != nil {
+		t.Fatal(err)
+	}
+	turn := func(in platform.Turn) runs.Run {
+		t.Helper()
+		r, err := p.Converse(ctx, tenant, in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return await(t, p, r.ID, runs.Completed)
+	}
+	first := turn(platform.Turn{ID: "t-new", Text: "hello", Project: "Globex"})
+	if first.Agent != "helper" {
+		t.Fatalf("a new conversation in Globex went to %s, not general's default", first.Agent)
+	}
+	if next := turn(platform.Turn{ID: "t-next", Text: "and?", After: first.ID}); next.Agent != "helper" {
+		t.Fatalf("an untagged follow-up went to %s, not general's default", next.Agent)
+	}
+
+	if _, err := p.CreateChannel(ctx, tenant, "Globex", ada, platform.ChannelInput{Name: "renewals", Default: "lead"}); err != nil {
+		t.Fatal(err)
+	}
+	room := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Channel: "renewals", Text: "FIRST-QUESTION @helper"})
+	r1 := await(t, p, room.Runs[0].ID, runs.Completed)
+	second := post(t, p, operator, room.Thread.ID, platform.MessageInput{Text: "SECOND-QUESTION @helper"})
+	r2 := await(t, p, second.Runs[0].ID, runs.Completed)
+	api := turn(platform.Turn{ID: "t-room", Text: "THIRD-QUESTION", After: r2.ID})
+	if api.Agent != "lead" || api.Channel != "renewals" || api.Thread != room.Thread.ID {
+		t.Fatalf("an untagged follow-up in #renewals is %+v", api)
+	}
+	order := []string{"opal: FIRST-QUESTION @helper", "helper: " + r1.Answer, "opal: SECOND-QUESTION @helper", "helper: " + r2.Answer, "User: THIRD-QUESTION"}
+	text, at := api.Tag().Text, 0
+	for _, want := range order {
+		i := strings.Index(text[at:], want)
+		if i < 0 {
+			t.Fatalf("the follow-up was sent, without %q in order:\n%s", want, text)
+		}
+		at += i + len(want)
+	}
+	th, err := p.ThreadRecord(tenant, room.Thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.UpdateThread(ctx, operator, room.Thread.ID, platform.ThreadUpdate{Version: th.Version, Default: "helper"}); err != nil {
+		t.Fatal(err)
+	}
+	if again := turn(platform.Turn{ID: "t-room-2", Text: "FOURTH-QUESTION", After: api.ID}); again.Agent != "helper" {
+		t.Fatalf("an untagged follow-up went to %s, not the thread's default", again.Agent)
+	}
+	later := post(t, p, operator, room.Thread.ID, platform.MessageInput{Text: "@lead sum it up"})
+	if text := later.Runs[0].Tag().Text; !strings.Contains(text, "User: THIRD-QUESTION\nlead: "+api.Answer) || !strings.Contains(text, "User: FOURTH-QUESTION") {
+		t.Fatalf("the room's next agent was not sent the follow-ups:\n%s", text)
 	}
 }
 
@@ -253,6 +319,36 @@ func TestExpertsAreFoundAlongTheChainAndNotifiedWhenTagged(t *testing.T) {
 	}
 }
 
+// The experts of a topic can be many, so one message notifies at most
+// MaxNotified of them, and a tag it can reach nobody for is refused, saying
+// so.
+func TestAMessageNotifiesAtMostMaxNotifiedPeople(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	var es []projects.Expert
+	for i := range platform.MaxNotified + 5 {
+		es = append(es, projects.Expert{Who: fmt.Sprintf("expert-%02d", i), Topics: []string{"billing"}})
+	}
+	es = append(es, projects.Expert{Who: "late", Topics: []string{"legal"}})
+	cur, err := p.ProjectExperts(tenant, "Globex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SetProjectExperts(tenant, "Globex", ada, platform.Experts{Version: cur.Version, Experts: es}); err != nil {
+		t.Fatal(err)
+	}
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Globex", Text: "@sme:billing and @sme:legal"})
+	if len(got.Notified) != platform.MaxNotified || got.Notified[0] != "expert-00" {
+		t.Fatalf("notified %d: %v", len(got.Notified), got.Notified)
+	}
+	if len(got.Refused) != 1 || got.Refused[0].Name != "legal" || !strings.Contains(got.Refused[0].Refused, "at most") {
+		t.Fatalf("refused %+v", got.Refused)
+	}
+	if _, sent := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "late")); sent {
+		t.Fatal("a mention was raised past the cap")
+	}
+}
+
 // A question an agent asks of the experts reaches the experts of its
 // project's chain, and an expert's message in the thread that answers it
 // resumes the run. The answer starts no run of its own.
@@ -299,6 +395,66 @@ func TestAQuestionForExpertsReachesThemAndAnAnswerInTheThreadResumesTheRun(t *te
 	}
 }
 
+// An answer a surface's credential posts in a thread for a mapped person is
+// checked against that person and recorded as theirs, with the credential as
+// the way it came: an expert answers through Slack as themselves, and the
+// machine relaying them answers nothing of its own.
+func TestAnAnswerPostedForAPersonIsCheckedAndRecordedAsThem(t *testing.T) {
+	f := &fakes{}
+	c := &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"asker": {asked(map[string]any{"question": "What is the PO number?", "asked_of": "sme:billing"}), say("Filed.")}},
+		tools: map[string][]string{"asker": {"ask_person"}},
+	}
+	p := stage(t, c, f.config())
+	field(t, p)
+	cur, err := p.ProjectExperts(tenant, "Field")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SetProjectExperts(tenant, "Field", ada, platform.Experts{Version: cur.Version, Experts: []projects.Expert{{Who: "olu", Topics: []string{"billing"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	in := slackClient("app", "A0APP", team, "asker")
+	in.Slack.Machine, in.Slack.People = "svc-slack", map[string]string{"U0OLU": "olu", "U0GRACE": "grace"}
+	create(t, p, tenant, in)
+	pol, err := auth.ParsePolicy("test", `
+role viewer { allow read on * }
+role operator extends viewer { allow write on runs }
+grant operator to subject "olu"
+grant operator to subject "grace"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine := auth.Principal{Subject: "svc-slack", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.RunsRead, auth.RunsWrite}}.WithPolicy(pol)
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Globex", Actor: envelope.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	ref := &threads.AnswerRef{Run: run.ID, Question: run.Question.ID}
+	// A mapped person the question is not for is refused by their own name.
+	if _, err := p.PostMessage(t.Context(), machine, run.Thread, platform.MessageInput{Text: "x", Answers: ref, ActAs: &platform.ActAs{Client: "app", User: "U0GRACE"}}); !errors.Is(err, platform.ErrForbidden) || !strings.Contains(err.Error(), "grace") {
+		t.Fatalf("an answer for someone the question is not for = %v", err)
+	}
+	got, err := p.PostMessage(t.Context(), machine, run.Thread, platform.MessageInput{Text: "PO-77", Answers: ref, ActAs: &platform.ActAs{Client: "app", User: "U0OLU"}})
+	if err != nil {
+		t.Fatalf("the expert's answer through Slack was refused: %v", err)
+	}
+	if got.Message.By != "olu" || got.Message.Via != "app" {
+		t.Fatalf("the answer was posted as %+v", got.Message)
+	}
+	await(t, p, run.ID, runs.Completed)
+	q, ok := p.Inbox.ByKey(tenant, "question:"+run.ID+":"+run.Question.ID)
+	if !ok {
+		t.Fatal("the question's message is gone")
+	}
+	o := q.Parts[0].Outcome
+	if o == nil || o.By != "olu" || !strings.Contains(o.Note, "slack:U0OLU") {
+		t.Fatalf("the answer was recorded as %+v", o)
+	}
+}
+
 // A conversation from before threads reads as shared, in general of its
 // project, with its people and agents taking part, at version 0. A message
 // posted in it writes its record, follows its last run, and an agent tagged
@@ -331,6 +487,37 @@ func TestAConversationFromBeforeThreadsGainsItsRecordWhenSomeonePosts(t *testing
 	_, turns, next, err := p.ThreadTurns(tenant, old.Thread, "", 0)
 	if err != nil || next != "" || len(turns) != 3 || turns[0].Run == nil || turns[1].Message == nil || turns[2].Run == nil {
 		t.Fatalf("its turns are %+v, %q, %v", turns, next, err)
+	}
+}
+
+// A conversation a machine started, through POST /api/runs, has no person
+// in it until one posts. The first who does is its owner: the credential is
+// never a participant, and never the owner, so it gains no say over the
+// thread's record.
+func TestAConversationAMachineStartedIsOwnedByThePersonWhoFirstPosts(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	run, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-ci", Agent: "lead", Text: "nightly report", Project: "Field", Actor: envelope.Actor{ID: "svc-ci", Bot: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run = await(t, p, run.ID, runs.Completed)
+	rec, err := p.ThreadRecord(tenant, run.Thread)
+	if err != nil || rec.CreatedBy != "" || len(rec.Participants) != 1 || rec.Participants[0].Kind != threads.Agent {
+		t.Fatalf("before anyone posts the record reads %+v, %v", rec, err)
+	}
+	got := post(t, p, admin, run.Thread, platform.MessageInput{Text: "thanks", PostOnly: true})
+	th := got.Thread
+	if th.CreatedBy != admin.Subject {
+		t.Fatalf("the thread is owned by %q, want %q", th.CreatedBy, admin.Subject)
+	}
+	for _, who := range th.Participants {
+		if who.Name == "svc-ci" || who.AddedBy == "svc-ci" {
+			t.Fatalf("the machine is in the record: %+v", th.Participants)
+		}
+		if who.Owner != (who.Kind == threads.Person && who.Name == admin.Subject) {
+			t.Fatalf("the owner is wrong: %+v", th.Participants)
+		}
 	}
 }
 
@@ -477,5 +664,22 @@ func TestThreadsAreTheirTenants(t *testing.T) {
 	}
 	if _, _, _, err := p.ThreadTurns("globex", got.Thread.ID, "", 0); !errors.Is(err, threads.ErrNotFound) {
 		t.Fatalf("another tenant read: %v", err)
+	}
+}
+
+// A message too long to post is refused as it arrives, however many names
+// it writes, and nothing is kept.
+func TestAMessageTooLongToPostIsRefusedAsItArrives(t *testing.T) {
+	p := start(t, call.Limits{})
+	flood := strings.Repeat("@lead ", 1<<17)
+	if _, err := p.StartThread(t.Context(), operator, platform.ThreadInput{Visibility: threads.Shared, Text: flood}); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("starting a thread with a flood of tags = %v", err)
+	}
+	got := startThread(t, p, operator, platform.ThreadInput{Text: "hello", PostOnly: true})
+	if _, err := p.PostMessage(t.Context(), operator, got.Thread.ID, platform.MessageInput{Text: flood}); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("posting a flood of tags = %v", err)
+	}
+	if _, turns, _, err := p.ThreadTurns(tenant, got.Thread.ID, "", 0); err != nil || len(turns) != 1 {
+		t.Fatalf("the thread holds %d turns, %v", len(turns), err)
 	}
 }

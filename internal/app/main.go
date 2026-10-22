@@ -184,13 +184,14 @@ func serve(o Options, args []string, d serveDefaults) error {
 		return err
 	}
 	maps.Copy(groupRoles, file.roles)
-	authn, stopAuthn, err := newAuthn(ctx, authConfig{
+	ac := authConfig{
 		mode: *authMode, addr: *addr, publicURL: *publicURL,
 		tenant: *tenant, tenantClaim: *tenantClaim, groups: *groupsClaim,
 		policy: pol, groupRoles: groupRoles,
 		mockAddr: *mockAddr, mockPersonas: *mockPersonas,
 		getenv: getenv, log: log,
-	})
+	}
+	authn, stopAuthn, err := newAuthn(ctx, ac)
 	if err != nil {
 		return err
 	}
@@ -298,7 +299,7 @@ func serve(o Options, args []string, d serveDefaults) error {
 	}
 	// After the agents, so an agent the file or the seed names keeps its
 	// name and a person whose handle would be it gets a suffix.
-	seeGranted(p, *tenant, *tenantClaim, pol, log)
+	seeGranted(p, *tenant, ac.claimed(), pol, log)
 	extensions, err := fileRunners(ctx, o, file.cfg)
 	if err != nil {
 		return err

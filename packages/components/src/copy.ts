@@ -788,8 +788,9 @@ export const defaultCopy = {
     nobody: "Nobody answers untagged messages here. Tag an agent with @.",
     stale: (agent: string, why: string) =>
       `@${agent} answers untagged messages here, but ${why}. Tag an agent with @.`,
-    /** What a message did, said once it is posted. */
-    notified: (names: string[]) => `Sent to ${names.join(", ")}.`,
+    /** What a message did, said once it is posted: people by handle, experts a role names as the role. */
+    notified: (names: string[]) =>
+      `Sent to ${names.map((n) => (n.startsWith("role:") ? n : `@${n}`)).join(", ")}.`,
     refused: (tag: string, why: string) => `${tag}: ${why}`,
     /** A question an agent asked of a person, shown still in the thread. */
     asks: (agent: string) => `${agent} asks`,

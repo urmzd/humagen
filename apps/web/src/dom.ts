@@ -12,11 +12,12 @@ export interface Seen {
 
 /**
  * Replaces fetch with routes answered in memory: "GET /api/agents/x/history"
- * maps to the JSON returned for it. A route left out answers 404, so a test
- * sees a request it did not expect. Returns what was requested, and a way to
- * put the real fetch back.
+ * maps to the JSON returned for it. A route is matched by its path alone, and
+ * is handed the request's query to read. A route left out answers 404, so a
+ * test sees a request it did not expect. Returns what was requested, and a
+ * way to put the real fetch back.
  */
-export function stubFetch(routes: Record<string, (body: unknown) => unknown>): { seen: Seen[]; restore: () => void } {
+export function stubFetch(routes: Record<string, (body: unknown, query: URLSearchParams) => unknown>): { seen: Seen[]; restore: () => void } {
   const real = globalThis.fetch;
   const seen: Seen[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -26,8 +27,28 @@ export function stubFetch(routes: Record<string, (body: unknown) => unknown>): {
     seen.push({ method, path: url.pathname + url.search, body });
     const route = routes[`${method} ${url.pathname}`];
     if (!route) return new Response(JSON.stringify({ error: "not stubbed" }), { status: 404 });
-    const out = route(body);
+    const out = route(body, url.searchParams);
     return out === undefined ? new Response(null, { status: 204 }) : new Response(JSON.stringify(out), { status: 200 });
   }) as typeof fetch;
   return { seen, restore: () => (globalThis.fetch = real) };
+}
+
+/**
+ * Installs an EventSource that never delivers anything, for a page that
+ * follows a run's events while a test looks at it. Returns a way to put back
+ * whatever was there.
+ */
+export function stubEventSource(): () => void {
+  const g = globalThis as { EventSource?: unknown };
+  const real = g.EventSource;
+  g.EventSource = class {
+    onopen: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    onmessage: ((m: { data: string }) => void) | null = null;
+    addEventListener() {}
+    close() {}
+  };
+  return () => {
+    g.EventSource = real;
+  };
 }

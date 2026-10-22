@@ -129,3 +129,71 @@ func TestAMessageTagsAtMostTen(t *testing.T) {
 		t.Fatalf("one tag forty times = %+v, %v", got, err)
 	}
 }
+
+// counting is a Resolver that counts its lookups.
+type counting struct {
+	directory
+	agents, people, slack int
+}
+
+func (c *counting) Agent(name string) bool { c.agents++; return c.directory.Agent(name) }
+
+func (c *counting) Person(handle string) (string, bool) {
+	c.people++
+	return c.directory.Person(handle)
+}
+
+func (c *counting) Slack(user string) (string, bool) { c.slack++; return c.directory.Slack(user) }
+
+// A message costs at most MaxMentions lookups of each kind, however long it
+// is and however often it names someone: each name is looked up once, and a
+// message naming more than MaxMentions is refused before the next lookup.
+func TestAMessageCostsAtMostTenLookupsOfEachKind(t *testing.T) {
+	r := &counting{directory: acme}
+	if got, err := threads.Parse(strings.Repeat("@a ", 1<<18)+strings.Repeat("<@U0EVE> ", 1<<14), r); err != nil || len(got) != 2 {
+		t.Fatalf("two names written many times = %+v, %v", got, err)
+	}
+	if r.agents != 1 || r.people != 1 || r.slack != 1 {
+		t.Fatalf("one name each was looked up %d, %d and %d times", r.agents, r.people, r.slack)
+	}
+	for _, text := range []string{
+		func() string {
+			var b strings.Builder
+			for i := range 1 << 15 {
+				fmt.Fprintf(&b, "@p%d ", i)
+			}
+			return b.String()
+		}(),
+		// A colon after a name is punctuation, not another name.
+		func() string {
+			var b strings.Builder
+			for i := range 1 << 15 {
+				fmt.Fprintf(&b, "@x:%d ", i)
+			}
+			return b.String() + strings.Repeat("@q ", 20)
+		}(),
+	} {
+		r := &counting{directory: acme}
+		_, err := threads.Parse(text, r)
+		if r.agents > threads.MaxMentions || r.people > threads.MaxMentions {
+			t.Fatalf("a message looked up %d agents and %d people", r.agents, r.people)
+		}
+		if strings.HasPrefix(text, "@p") && !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("a message naming thousands = %v, want ErrInvalid", err)
+		}
+	}
+}
+
+// Text that cannot be posted is refused before anything reads it.
+func TestTextThatCannotBePostedIsRefusedBeforeItIsRead(t *testing.T) {
+	for _, text := range []string{"", "  \n", strings.Repeat("a", threads.MaxText+1), strings.Repeat("é", threads.MaxText+1), "bell\a"} {
+		if err := threads.CheckText(text); !errors.Is(err, threads.ErrInvalid) {
+			t.Errorf("CheckText(%.20q) = %v, want ErrInvalid", text, err)
+		}
+	}
+	for _, text := range []string{"hi", strings.Repeat("é", threads.MaxText), "two\nlines\tand a tab"} {
+		if err := threads.CheckText(text); err != nil {
+			t.Errorf("CheckText(%.20q) = %v", text, err)
+		}
+	}
+}

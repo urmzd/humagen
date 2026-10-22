@@ -117,7 +117,10 @@ const sourceKinds = ["run", "thread", "rule", "agent", "project"] as const;
 const sourceWord: Record<(typeof sourceKinds)[number], string> = { run: "Run", thread: "Conversation", rule: "Rule", agent: "Agent", project: "Project" };
 const tone: Record<string, Tone> = { critical: "bad", warning: "warn", info: "info" };
 
-/** The platform's name for an action as the mailbox's. What this reader may do to a part is a list of these. */
+/**
+ * The platform's name for an action as the mailbox's. What this reader may do to a part is a list of these.
+ * A mention's `done` is the API's: the mailbox sets a message aside with Dismiss.
+ */
 const actionIds: Record<string, ActionId> = {
   acknowledge: ActionId.acknowledge,
   retry: ActionId.retry,

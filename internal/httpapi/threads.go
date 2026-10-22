@@ -151,7 +151,8 @@ func (s *Server) putExperts(w http.ResponseWriter, r *http.Request, who auth.Pri
 
 // startThread starts a shared thread with its first message. The person
 // posting is the caller, or the person a surface's credential acts for: no
-// field names an author.
+// field names an author. Every thread route names people by handle
+// (platform.ShowThread), never by a subject, which can hold an address.
 func (s *Server) startThread(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	var in platform.ThreadInput
 	if !decode(w, r, &in) {
@@ -166,7 +167,7 @@ func (s *Server) startThread(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, got)
+	ok(w, http.StatusCreated, s.P.ShowPosted(who.Tenant, got))
 }
 
 func (s *Server) postMessage(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -179,7 +180,7 @@ func (s *Server) postMessage(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, got)
+	ok(w, http.StatusCreated, s.P.ShowPosted(who.Tenant, got))
 }
 
 func (s *Server) updateThread(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -192,7 +193,7 @@ func (s *Server) updateThread(w http.ResponseWriter, r *http.Request, who auth.P
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, got)
+	ok(w, http.StatusOK, s.P.ShowThread(who.Tenant, got))
 }
 
 func (s *Server) putParticipants(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -205,7 +206,7 @@ func (s *Server) putParticipants(w http.ResponseWriter, r *http.Request, who aut
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, got)
+	ok(w, http.StatusOK, s.P.ShowThread(who.Tenant, got))
 }
 
 // getThread reads a thread: its record, who answers untagged messages in
@@ -230,6 +231,7 @@ func (s *Server) getThread(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	d, why, _ := s.P.DefaultFor(who.Tenant, id, "", "")
+	th, turns = s.P.ShowTurns(who.Tenant, th, turns)
 	var cursor *string
 	if next != "" {
 		cursor = &next
@@ -260,6 +262,10 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 		fail(w, http.StatusBadRequest, "before is not a cursor this server issued")
 	case errors.Is(err, platform.ErrThreadAuthor):
 		fail(w, http.StatusForbidden, detail(err, platform.ErrThreadAuthor))
+	case errors.Is(err, threads.ErrLimit):
+		fail(w, http.StatusTooManyRequests, detail(err, threads.ErrLimit))
+	case errors.Is(err, platform.ErrPostRate):
+		fail(w, http.StatusTooManyRequests, detail(err, platform.ErrPostRate))
 	default:
 		return false
 	}

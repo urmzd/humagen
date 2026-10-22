@@ -95,9 +95,10 @@ type ThreadUpdate struct {
 // ParticipantsUpdate adds and removes people and agents.
 type ParticipantsUpdate struct {
 	Version int `json:"version"`
-	// Add names people by subject and agents by name, as participants.
+	// Add names people by handle and agents by name, as participants.
 	Add []threads.Participant `json:"add,omitempty"`
-	// Remove names them by subject or name.
+	// Remove names them by handle or name, which no person and agent
+	// share.
 	Remove []string `json:"remove,omitempty"`
 }
 
@@ -107,8 +108,8 @@ type Posted struct {
 	Message threads.Message `json:"message"`
 	// Runs are the runs it started, at most threads.MaxRuns.
 	Runs []runs.Run `json:"runs"`
-	// Notified is who it was sent to: people by subject, experts by subject
-	// or role.
+	// Notified is who it was sent to: people and experts by subject, the
+	// experts a role names as the role. ShowPosted names them by handle.
 	Notified []string `json:"notified"`
 	// Refused are its tags that started or notified nothing, each saying
 	// why.
@@ -155,7 +156,7 @@ func (p *Platform) author(who auth.Principal, as *ActAs) (subject, name, via str
 		if who.Kind == auth.Machine {
 			return "", "", "", nil, fmt.Errorf("%w: a credential posts only for a person it acts for (act_as)", ErrThreadAuthor)
 		}
-		return who.Subject, cmp.Or(who.Name, who.Subject), threads.ViaConsole, nil, nil
+		return who.Subject, p.nameOf(who.Tenant, who.Subject), threads.ViaConsole, nil, nil
 	}
 	reader, _, err := p.answerer(who, as)
 	if err != nil {
@@ -174,15 +175,11 @@ func (p *Platform) author(who auth.Principal, as *ActAs) (subject, name, via str
 	return reader.Subject, p.nameOf(who.Tenant, reader.Subject), c.ID, slack, nil
 }
 
-// nameOf is what a person is called: their name in the directory, or their
-// subject.
+// nameOf is what a person is called when they post: their name in the
+// directory, which is never an address, else their handle, else their
+// subject when it holds no address (see shower.name).
 func (p *Platform) nameOf(tenant, subject string) string {
-	if p.People != nil {
-		if who, err := p.People.Get(tenant, subject); err == nil && who.Name != "" {
-			return who.Name
-		}
-	}
-	return subject
+	return p.shower(tenant).name(subject)
 }
 
 // tagLookup resolves the names a message tags, within one tenant.
@@ -252,9 +249,15 @@ func (p *Platform) checkTags(tenant string, tree *projects.Tree, project string,
 // answers it: the thread's project, with the thread's and its channel's
 // defaults nearer than the project's.
 func (p *Platform) placeOfThread(tenant string, th threads.Thread) Place {
-	ch, _ := p.Projects.Channel(tenant, th.Project, th.Channel)
+	return p.placeIn(tenant, th, "")
+}
+
+// placeIn is placeOfThread for a message a client sends, with the client's
+// default between the thread's and the channel's.
+func (p *Platform) placeIn(tenant string, th threads.Thread, clientDefault string) Place {
+	ch, _ := p.Projects.Channel(tenant, th.Project, cmp.Or(th.Channel, projects.General))
 	at := Place{Project: th.Project}
-	for _, d := range threads.Nearer(th, p.clientDefault(tenant, th), ch) {
+	for _, d := range threads.Nearer(th, cmp.Or(clientDefault, p.clientDefault(tenant, th)), ch) {
 		at.Nearer = append(at.Nearer, Nearer{Agent: d.Agent, From: d.From})
 	}
 	return at
@@ -310,8 +313,11 @@ func (p *Platform) DefaultFor(tenant, id, project, channel string) (d threads.De
 // ThreadRecord returns a thread's record. A conversation from before
 // threads has none, and reads as shared, in general of its project, with
 // the people who asked in it and the agents who answered as its
-// participants, at version 0. Its record is written the first time anything
-// about it changes.
+// participants, at version 0. The first person who asked in it started it:
+// a credential that is no person (a machine's call to POST /api/runs, or a
+// surface's run for someone it maps to nobody) is never a participant, and
+// never the owner. Its record is written the first time anything about it
+// changes.
 func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 	th, err := p.Threads.Get(tenant, id)
 	if err == nil || !errors.Is(err, threads.ErrNotFound) {
@@ -325,7 +331,13 @@ func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 	th = threads.Thread{
 		ID: id, Project: first.Project, Channel: cmp.Or(first.Channel, projects.General),
 		Visibility: threads.Shared, Participants: []threads.Participant{},
-		CreatedBy: first.Actor.ID, CreatedAt: first.CreatedAt, UpdatedAt: first.UpdatedAt,
+		CreatedAt: first.CreatedAt, UpdatedAt: first.UpdatedAt,
+	}
+	for _, r := range turns {
+		if !r.Actor.Bot && r.Actor.ID != "" {
+			th.CreatedBy = r.Actor.ID
+			break
+		}
 	}
 	add := func(kind, name string) {
 		if name == "" || len(th.Participants) >= threads.MaxParticipants {
@@ -334,7 +346,7 @@ func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 		if slices.ContainsFunc(th.Participants, func(x threads.Participant) bool { return x.Kind == kind && x.Name == name }) {
 			return
 		}
-		th.Participants = append(th.Participants, threads.Participant{Kind: kind, Name: name, Owner: kind == threads.Person && name == first.Actor.ID})
+		th.Participants = append(th.Participants, threads.Participant{Kind: kind, Name: name, Owner: kind == threads.Person && name == th.CreatedBy})
 	}
 	for _, r := range turns {
 		if !r.Actor.Bot {
@@ -350,8 +362,8 @@ func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 
 // recordOf returns a thread's stored record, writing the one a
 // conversation from before threads reads as the first time it is needed.
-// by is who the change is made by, the record's owner when the
-// conversation's first turn names nobody.
+// by is the person the change is made by, the record's owner when no
+// person asked in the conversation.
 func (p *Platform) recordOf(tenant, id, by string) (threads.Thread, error) {
 	th, err := p.ThreadRecord(tenant, id)
 	if err != nil || th.Version > 0 {
@@ -419,6 +431,10 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
+	// Refused before its tags are looked up.
+	if err := threads.CheckText(in.Text); err != nil {
+		return Posted{}, err
+	}
 	switch in.Visibility {
 	case threads.Shared, threads.Private:
 	default:
@@ -429,6 +445,9 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 		return Posted{}, err
 	}
 	if err := p.checkDefault(ctx, who.Tenant, project, in.Default); err != nil {
+		return Posted{}, err
+	}
+	if err := p.posts.take(who.Tenant, by, project, p.now()); err != nil {
 		return Posted{}, err
 	}
 	tree := p.Projects.Tree(who.Tenant)
@@ -467,6 +486,10 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
+	// Refused before its tags are looked up.
+	if err := threads.CheckText(in.Text); err != nil {
+		return Posted{}, err
+	}
 	by, name, via, slack, err := p.author(who, in.ActAs)
 	if err != nil {
 		return Posted{}, err
@@ -477,6 +500,9 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	}
 	prev, err := p.prevOf(who.Tenant, th, in.After)
 	if err != nil {
+		return Posted{}, err
+	}
+	if err := p.posts.take(who.Tenant, by, th.Project, p.now()); err != nil {
 		return Posted{}, err
 	}
 	tree := p.Projects.Tree(who.Tenant)
@@ -492,7 +518,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
 	msg := threads.Message{By: by, Name: name, Text: text, Mentions: mentions, Via: via, Prev: prev, SurfaceID: surfaceID}
 	if in.Answers != nil {
-		if err := p.answerFromThread(ctx, who, th, *in.Answers, in.Text); err != nil {
+		if err := p.answerFromThread(ctx, who, in.ActAs, th, *in.Answers, in.Text); err != nil {
 			return Posted{}, err
 		}
 		a := *in.Answers
@@ -573,8 +599,10 @@ func (p *Platform) prevOf(tenant string, th threads.Thread, after string) (strin
 // answerFromThread records a message as a question's answer: the reply's
 // words, or the option it names. The question must be one a run of this
 // thread is parked on, and who may answer it is checked as on every other
-// path.
-func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, th threads.Thread, ref threads.AnswerRef, text string) error {
+// path. as is the person a surface's credential posts for, so the answer is
+// checked against and recorded as the person the message is posted as, with
+// the credential as the way it came.
+func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, as *ActAs, th threads.Thread, ref threads.AnswerRef, text string) error {
 	run, err := p.Runs.Get(who.Tenant, ref.Run)
 	if err != nil || run.Thread != th.ID {
 		return fmt.Errorf("%w: no run of this thread asked that", threads.ErrInvalid)
@@ -583,7 +611,7 @@ func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, th 
 	if !ok || len(m.Parts) == 0 {
 		return fmt.Errorf("%w: no run of this thread asked that", threads.ErrInvalid)
 	}
-	a := QuestionAnswer{Text: strings.TrimSpace(text)}
+	a := QuestionAnswer{Text: strings.TrimSpace(text), ActAs: as}
 	switch m.Parts[0].Type {
 	case inbox.PartReply:
 		a.Action = ActReply
@@ -711,7 +739,7 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	}
 	tagID := answerTagID(th.ID, m.ID, agent)
 	if agent == Auto {
-		who, err := p.resolveAgent(ctx, tenant, p.placeOfThread(tenant, th), Auto, m.Text)
+		who, err := p.resolveAgent(ctx, tenant, p.placeOfThread(tenant, th), Auto, m.Text, nil)
 		if err != nil {
 			return runs.Run{}, err
 		}
@@ -731,46 +759,113 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	})
 }
 
-// roomBefore is the thread as it stands before a message, on the message's
-// branch: the messages leading to it, each followed by the runs that answer
-// it, and ahead of them the turns of the conversation from before threads
-// that the first message follows.
-func (p *Platform) roomBefore(tenant string, th threads.Thread, m threads.Message) []threads.Turn {
-	path, err := p.Threads.Path(tenant, th.ID, m.ID)
-	if err != nil {
-		return nil
-	}
-	answers := map[string][]runs.Run{}
-	if turns, err := p.Runs.Conversation(tenant, th.ID); err == nil {
+// maxRoomDepth bounds how many times a transcript follows a branch back from
+// the runs that answer a message to the room before it.
+const maxRoomDepth = 8
+
+// room is a conversation's runs, read once for one transcript: the runs that
+// answer each message, and the runs that follow a run, as the API's
+// follow-ups do.
+type room struct {
+	answers map[string][]runs.Run
+	follows map[string][]runs.Run
+}
+
+func (p *Platform) roomOf(tenant, id string) room {
+	rm := room{answers: map[string][]runs.Run{}, follows: map[string][]runs.Run{}}
+	if turns, err := p.Runs.Conversation(tenant, id); err == nil {
 		for _, r := range turns {
-			if r.Message != "" {
-				answers[r.Message] = append(answers[r.Message], r)
+			switch {
+			case r.Message != "":
+				rm.answers[r.Message] = append(rm.answers[r.Message], r)
+			case r.Prev != "":
+				rm.follows[r.Prev] = append(rm.follows[r.Prev], r)
 			}
 		}
 	}
+	return rm
+}
+
+// after is the runs that follow a run, and the runs that follow them, made
+// before a moment: what the room showed after it then.
+func (rm room) after(id string, before time.Time) []threads.Turn {
 	var out []threads.Turn
-	if first := path[0]; first.Prev != "" && !strings.HasPrefix(first.Prev, "m-") {
-		if legacy, err := p.Runs.Path(tenant, first.Prev); err == nil {
-			for _, r := range legacy {
+	next := []string{id}
+	for len(next) > 0 {
+		at := next[0]
+		next = next[1:]
+		for _, r := range rm.follows[at] {
+			if r.CreatedAt.Before(before) {
 				out = append(out, threads.RunTurn(r))
+				next = append(next, r.ID)
 			}
-		}
-	}
-	for _, msg := range path[:len(path)-1] {
-		out = append(out, threads.MessageTurn(msg))
-		for _, r := range answers[msg.ID] {
-			out = append(out, threads.RunTurn(r))
 		}
 	}
 	return out
 }
 
+// roomBefore is the thread as it stands before a message, on the message's
+// branch: the messages leading to it, each followed by the runs that answer
+// it and the follow-ups to those made before the message, and ahead of them
+// the turns that the first message follows.
+func (p *Platform) roomBefore(tenant string, th threads.Thread, m threads.Message) []threads.Turn {
+	return p.messagesBefore(tenant, th, p.roomOf(tenant, th.ID), m, maxRoomDepth)
+}
+
+// branchBefore is the conversation as a follow-up through the API finds it:
+// the runs of its branch and, when the first of them answers a message, the
+// room up to and with that message ahead of them.
+func (p *Platform) branchBefore(tenant string, th threads.Thread, path []runs.Run) []threads.Turn {
+	return p.runsBefore(tenant, th, p.roomOf(tenant, th.ID), path, maxRoomDepth)
+}
+
+func (p *Platform) messagesBefore(tenant string, th threads.Thread, rm room, m threads.Message, depth int) []threads.Turn {
+	path, err := p.Threads.Path(tenant, th.ID, m.ID)
+	if err != nil {
+		return nil
+	}
+	var out []threads.Turn
+	if first := path[0]; first.Prev != "" && !strings.HasPrefix(first.Prev, "m-") {
+		if branch, err := p.Runs.Path(tenant, first.Prev); err == nil {
+			out = p.runsBefore(tenant, th, rm, branch, depth)
+		}
+	}
+	for _, msg := range path[:len(path)-1] {
+		out = append(out, threads.MessageTurn(msg))
+		for _, r := range rm.answers[msg.ID] {
+			out = append(out, threads.RunTurn(r))
+			out = append(out, rm.after(r.ID, m.At)...)
+		}
+	}
+	return out
+}
+
+func (p *Platform) runsBefore(tenant string, th threads.Thread, rm room, path []runs.Run, depth int) []threads.Turn {
+	var out []threads.Turn
+	if head := path[0]; depth > 0 && strings.HasPrefix(head.Prev, "m-") {
+		if m, err := p.Threads.Message(tenant, th.ID, head.Prev); err == nil {
+			out = append(p.messagesBefore(tenant, th, rm, m, depth-1), threads.MessageTurn(m))
+		}
+	}
+	for _, r := range path {
+		out = append(out, threads.RunTurn(r))
+	}
+	return out
+}
+
+// MaxNotified is how many people, and roles, one message sends a mention to.
+// The experts of a topic can be many, so a tag of them stops there: a tag
+// none of whose people is reached past it is refused, saying so.
+const MaxNotified = 20
+
 // notifyTagged sends the people and experts a message tags a mention in
-// their inbox, once each, and returns who was sent one. The poster is not
-// sent their own.
+// their inbox, once each and at most MaxNotified in all, and returns who was
+// sent one. The poster is not sent their own. A tag that reaches nobody for
+// the cap is marked refused in mentions.
 func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, mentions []threads.Mention) []string {
 	sent := []string{}
-	for _, mn := range mentions {
+	for i := range mentions {
+		mn := &mentions[i]
 		if mn.Refused != "" {
 			continue
 		}
@@ -781,9 +876,15 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 		case threads.SME:
 			to, _ = tree.ExpertsFor(th.Project, mn.Name)
 		}
+		reached, cut := false, false
 		for _, who := range to {
 			if who == m.By || slices.Contains(sent, who) {
+				reached = true
 				continue
+			}
+			if len(sent) >= MaxNotified {
+				cut = true
+				break
 			}
 			// In a private thread, tagging a person invites them: they
 			// take part from now on, so they can read what they were
@@ -794,29 +895,34 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 					continue
 				}
 			}
-			p.raiseMention(tenant, th, m, who, mn)
+			p.raiseMention(tenant, th, m, who, *mn)
 			sent = append(sent, who)
+			reached = true
+		}
+		if cut && !reached {
+			mn.Refused = fmt.Sprintf("a message notifies at most %d people", MaxNotified)
 		}
 	}
 	return sent
 }
 
 // raiseMention puts a mention in the inbox of the person or experts tagged.
+// It names the poster as the thread shows them, never by subject.
 func (p *Platform) raiseMention(tenant string, th threads.Thread, m threads.Message, to string, mn threads.Mention) {
+	s := p.shower(tenant)
+	shown := s.message(m)
 	where := "#" + th.Channel
-	subject := fmt.Sprintf("%s mentioned you in %s", cmp.Or(m.Name, m.By), where)
+	subject := fmt.Sprintf("%s mentioned you in %s", shown.Name, where)
 	if mn.Kind == threads.SME {
-		subject = fmt.Sprintf("%s asked the experts in %s", cmp.Or(m.Name, m.By), where)
+		subject = fmt.Sprintf("%s asked the experts in %s", shown.Name, where)
 		if mn.Name != "" {
-			subject = fmt.Sprintf("%s asked the %s experts in %s", cmp.Or(m.Name, m.By), mn.Name, where)
+			subject = fmt.Sprintf("%s asked the %s experts in %s", shown.Name, mn.Name, where)
 		}
 	}
 	msg := inbox.Message{
-		Kind: inbox.KindMention, Subject: subject, From: inbox.From{Kind: "person", Name: cmp.Or(m.Name, m.By)}, Severity: inbox.Info,
+		Kind: inbox.KindMention, Subject: subject, From: inbox.From{Kind: "person", Name: shown.Name}, Severity: inbox.Info,
 		Source: inbox.Source{Thread: th.ID, Project: th.Project},
-		Parts: []inbox.Part{{Type: inbox.PartMention, Mention: &inbox.MentionPart{
-			Thread: th.ID, Message: m.ID, Project: th.Project, Channel: th.Channel, By: m.By, Excerpt: inbox.Excerpt(m.Text),
-		}}},
+		Parts:  []inbox.Part{{Type: inbox.PartMention, Mention: s.mentionOf(th, m)}},
 	}
 	// A person is sent their own; experts named by a role share one.
 	if strings.HasPrefix(to, projects.RolePrefix) {
@@ -832,6 +938,9 @@ func (p *Platform) raiseMention(tenant string, th threads.Thread, m threads.Mess
 func (p *Platform) replyToMention(ctx context.Context, who auth.Principal, part inbox.MentionPart, text string, as *ActAs) (threads.Message, error) {
 	if strings.TrimSpace(text) == "" {
 		return threads.Message{}, fmt.Errorf("%w: a reply says something", threads.ErrInvalid)
+	}
+	if err := threads.CheckText(text); err != nil {
+		return threads.Message{}, err
 	}
 	posted, err := p.PostMessage(ctx, who, part.Thread, MessageInput{Text: text, After: part.Message, reply: true, ActAs: as})
 	return posted.Message, err
@@ -862,7 +971,8 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 
 // SetParticipants adds and removes a thread's people and agents. An agent
 // added must be available in the thread's project, and a person must be in
-// the workspace's directory.
+// the workspace's directory. People are named by handle, as a thread shows
+// them, and kept by subject.
 func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id string, in ParticipantsUpdate) (threads.Thread, error) {
 	th, err := p.ThreadRecord(who.Tenant, id)
 	if err != nil {
@@ -874,7 +984,8 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 	if len(in.Add)+len(in.Remove) > threads.MaxParticipants {
 		return threads.Thread{}, fmt.Errorf("%w: at most %d people and agents are added or removed at once", threads.ErrInvalid, threads.MaxParticipants)
 	}
-	for _, a := range in.Add {
+	add := make([]threads.Participant, len(in.Add))
+	for i, a := range in.Add {
 		switch a.Kind {
 		case threads.Agent:
 			if _, err := p.Agents.Get(ctx, who.Tenant, a.Name, 0); err != nil {
@@ -884,18 +995,34 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 				return threads.Thread{}, fmt.Errorf("%w: %s", threads.ErrInvalid, reason)
 			}
 		case threads.Person:
-			if p.People == nil {
-				return threads.Thread{}, fmt.Errorf("%w: no one in this workspace is %s", threads.ErrInvalid, a.Name)
+			subject, found := p.byHandle(who.Tenant, a.Name)
+			if !found {
+				return threads.Thread{}, fmt.Errorf("%w: no one in this workspace goes by @%s", threads.ErrInvalid, a.Name)
 			}
-			if _, err := p.People.Get(who.Tenant, a.Name); err != nil {
-				return threads.Thread{}, fmt.Errorf("%w: no one in this workspace is %s", threads.ErrInvalid, a.Name)
-			}
+			a.Name = subject
 		}
+		add[i] = a
+	}
+	remove := make([]string, len(in.Remove))
+	for i, name := range in.Remove {
+		if subject, found := p.byHandle(who.Tenant, name); found {
+			name = subject
+		}
+		remove[i] = name
 	}
 	if th, err = p.recordOf(who.Tenant, id, who.Subject); err != nil {
 		return threads.Thread{}, err
 	}
-	return p.Threads.Participants(who.Tenant, id, th.Version, in.Add, in.Remove, who.Subject, p.now())
+	return p.Threads.Participants(who.Tenant, id, th.Version, add, remove, who.Subject, p.now())
+}
+
+// byHandle is the subject of the person who goes by a handle.
+func (p *Platform) byHandle(tenant, handle string) (string, bool) {
+	if p.People == nil || handle == "" {
+		return "", false
+	}
+	who, err := p.People.ByHandle(tenant, handle)
+	return who.Subject, err == nil
 }
 
 // MaxTurnPage is how many turns one read of a thread returns.
@@ -1037,14 +1164,30 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 			return nil, "", err
 		}
 	}
+	// A record says where its conversation is, so only the records the
+	// query keeps are copied, and a conversation whose record is elsewhere
+	// is left out.
+	var in map[string]bool
+	if q.Projects != nil {
+		in = make(map[string]bool, len(q.Projects))
+		for _, name := range q.Projects {
+			in[name] = true
+		}
+	}
+	recs, elsewhere := p.Threads.Summaries(tenant, func(th threads.Thread) bool {
+		return (in == nil || in[th.Project]) && (q.Channel == "" || th.Channel == q.Channel)
+	})
 	byID := map[string]*ThreadSummary{}
 	var order []*ThreadSummary
 	for _, s := range p.Runs.Threads(tenant, 0) {
+		if elsewhere[s.ID] {
+			continue
+		}
 		sum := &ThreadSummary{ThreadSummary: s, Visibility: threads.Shared}
 		byID[s.ID] = sum
 		order = append(order, sum)
 	}
-	for _, rec := range p.Threads.Summaries(tenant) {
+	for _, rec := range recs {
 		sum, ok := byID[rec.ID]
 		if !ok {
 			sum = &ThreadSummary{ThreadSummary: runs.ThreadSummary{
@@ -1072,7 +1215,7 @@ func (p *Platform) threadPage(tenant string, q runs.ThreadQuery, keep func(Threa
 	page := []ThreadSummary{}
 	for _, s := range order {
 		switch {
-		case q.Projects != nil && !slices.Contains(q.Projects, s.Project):
+		case in != nil && !in[s.Project]:
 			continue
 		case q.Origin != "" && s.Origin != q.Origin:
 			continue

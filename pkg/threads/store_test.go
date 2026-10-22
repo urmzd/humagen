@@ -419,3 +419,51 @@ func TestWatchTellsWhatHappenedAndNothingAboutIt(t *testing.T) {
 	default:
 	}
 }
+
+// A workspace holds at most MaxThreads threads and a project at most
+// MaxProjectThreads, so nobody who may post can grow the store without end.
+// The thread one past a cap is refused (ErrLimit) and nothing is kept.
+func TestThreadsAreCappedByWorkspaceAndByProject(t *testing.T) {
+	s := threads.NewStore()
+	full := func(project string) {
+		for range threads.MaxProjectThreads {
+			if _, _, err := s.Start("acme", shared(project, "general"), msg("dana", "hi"), t0); err != nil {
+				t.Fatalf("a thread in %s under its cap = %v", project, err)
+			}
+		}
+	}
+	full("Globex")
+	if _, _, err := s.Start("acme", shared("Globex", "general"), msg("dana", "one more"), t0); !errors.Is(err, threads.ErrLimit) {
+		t.Fatalf("one past a project's cap = %v, want ErrLimit", err)
+	}
+	if _, err := s.Create("acme", threads.Thread{ID: run, Project: "Globex", Channel: "general", Visibility: threads.Shared, CreatedBy: "dana"}, t0); !errors.Is(err, threads.ErrLimit) {
+		t.Fatalf("a conversation's record one past a project's cap = %v, want ErrLimit", err)
+	}
+	for i := 1; i < threads.MaxThreads/threads.MaxProjectThreads; i++ {
+		full(fmt.Sprintf("P%d", i))
+	}
+	if _, _, err := s.Start("acme", shared("Elsewhere", "general"), msg("dana", "one more"), t0); !errors.Is(err, threads.ErrLimit) {
+		t.Fatalf("one past a workspace's cap = %v, want ErrLimit", err)
+	}
+	if _, _, err := s.Start("initech", shared("Globex", "general"), msg("dana", "hi"), t0); err != nil {
+		t.Fatalf("another workspace's thread = %v", err)
+	}
+	if got, _ := s.Summaries("acme", func(threads.Thread) bool { return true }); len(got) != threads.MaxThreads {
+		t.Fatalf("acme holds %d threads, want %d", len(got), threads.MaxThreads)
+	}
+}
+
+// A list copies only the records it keeps, names the rest as elsewhere, and
+// carries no more of a first message than a title holds.
+func TestSummariesCopyOnlyWhatTheyKeep(t *testing.T) {
+	s := threads.NewStore()
+	here, _ := start(t, s, "acme", shared("Globex", "renewals"), msg("dana", strings.Repeat("long ", 2*threads.MaxTitle)))
+	there, _ := start(t, s, "acme", shared("Initech", "general"), msg("dana", "elsewhere"))
+	got, elsewhere := s.Summaries("acme", func(th threads.Thread) bool { return th.Project == "Globex" })
+	if len(got) != 1 || got[0].ID != here.ID || len([]rune(got[0].First)) != threads.MaxTitle || got[0].Messages != 1 {
+		t.Fatalf("kept %+v", got)
+	}
+	if len(elsewhere) != 1 || !elsewhere[there.ID] {
+		t.Fatalf("elsewhere = %v", elsewhere)
+	}
+}

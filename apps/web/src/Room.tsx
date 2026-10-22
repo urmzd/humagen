@@ -20,11 +20,13 @@ import {
   type ThreadSummary,
   type ThreadTurn,
 } from "./api.ts";
+import { availableOf } from "./availability.ts";
 import { Composer } from "./Composer.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { type TagOption, tagOptions } from "./tags.ts";
-import { AgentMark, AgentTint, ago, button, cause, field, Label, Page, Problem, primary } from "./ui.tsx";
+import { mergeTurns } from "./turns.ts";
+import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
 
 /**
  * Channels and shared threads: where people and agents work together in a
@@ -102,9 +104,16 @@ export function topicsOf(projects: ProjectView[], root: ProjectView | null, name
 
 /**
  * What a message in a project can tag: @auto, the agents that can answer
- * there, people as their names are typed, and experts by topic.
+ * there, people as their names are typed, and experts by topic. With `*`,
+ * an agent that lives in a project is offered only where the platform lists
+ * it, on its home's chain: `*` never reaches it.
  */
-function useTags(project: string, agents: Revision[], topics: string[]): { label: string; options: TagOption[]; onQuery: (q: string) => void } {
+function useTags(
+  project: string,
+  agents: Revision[],
+  homes: Record<string, string>,
+  topics: string[],
+): { label: string; options: TagOption[]; onQuery: (q: string) => void } {
   const [names, setNames] = useState<{ all: boolean; names: string[] } | null>(null);
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
   const timer = useRef<number | undefined>(undefined);
@@ -129,11 +138,16 @@ function useTags(project: string, agents: Revision[], topics: string[]): { label
   }, []);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   const options = useMemo(() => {
-    const here = agents
-      .filter((a) => !names || names.all || names.names.includes(a.spec.name))
-      .map((a) => ({ name: a.spec.name, description: a.spec.description }));
+    const offered = new Set(
+      availableOf(
+        agents.map((a) => a.spec.name),
+        names ? { available: names } : null,
+        homes,
+      ),
+    );
+    const here = agents.filter((a) => offered.has(a.spec.name)).map((a) => ({ name: a.spec.name, description: a.spec.description }));
     return tagOptions(here, people, topics, { auto: defaultCopy.auto.description, experts: words.experts });
-  }, [agents, names, people, topics]);
+  }, [agents, homes, names, people, topics]);
   return { label: words.typeahead, options, onQuery };
 }
 
@@ -282,6 +296,9 @@ function AnswerView({ run, live }: { run: Run; live: boolean }) {
   );
 }
 
+/** No agent lives in a project, for a page not told where any does. */
+const noHomes: Record<string, string> = {};
+
 /**
  * A shared thread: its people's messages and its agents' answers in the
  * order they were made, who takes part, and a composer that tags with @.
@@ -291,6 +308,7 @@ export function ThreadRoom({
   initial,
   tick,
   agents,
+  homes = noHomes,
   projects,
   root,
   workspaceName,
@@ -304,6 +322,8 @@ export function ThreadRoom({
   initial: ThreadPage;
   tick: number;
   agents: Revision[];
+  /** Where each agent that lives in a project lives, by name. */
+  homes?: Record<string, string>;
   projects: ProjectView[];
   root: ProjectView | null;
   workspaceName: string;
@@ -314,7 +334,10 @@ export function ThreadRoom({
   onChanged: () => void;
 }) {
   const [page, setPage] = useState<ThreadPage>(initial);
-  const [earlier, setEarlier] = useState<ThreadTurn[]>([]);
+  // Every turn read so far, oldest first. A refresh reads the newest page,
+  // which moves on as the thread grows; the turns it no longer holds stay.
+  const [turns, setTurns] = useState<ThreadTurn[]>(initial.turns);
+  // The cursor for the turns before the oldest one read.
   const [before, setBefore] = useState<string | null>(initial.next);
   const [problem, setProblem] = useState<string | null>(null);
 
@@ -326,7 +349,7 @@ export function ThreadRoom({
       .then((p) => {
         if (!live) return;
         setPage(p);
-        if (earlier.length === 0) setBefore(p.next);
+        setTurns((t) => mergeTurns(t, p.turns));
       })
       .catch(() => {});
     return () => {
@@ -339,20 +362,20 @@ export function ThreadRoom({
     coworking
       .thread(id, before)
       .then((p) => {
-        setEarlier((e) => [...p.turns, ...e]);
+        setTurns((t) => mergeTurns(p.turns, t));
         setBefore(p.next);
       })
       .catch(() => setProblem(defaultCopy.failure.internal()));
   };
 
   const th = page.thread;
-  const turns = [...earlier, ...page.turns];
-  const tags = useTags(th.project, agents, topicsOf(projects, root, th.project));
+  const tags = useTags(th.project, agents, homes, topicsOf(projects, root, th.project));
   const people = th.participants.filter((p) => p.kind === "person");
   const answering = th.participants.filter((p) => p.kind === "agent").map((p) => p.name);
   const title = th.title || turns.find((t) => t.message)?.message?.text || turns[0]?.run?.text || words.channel(th.channel);
   const last = turns[turns.length - 1];
-  const busy = turns.some((t) => t.run && t.run.status !== "completed" && t.run.status !== "failed" && t.run.status !== "stopped");
+  // A run waiting on a person, such as an expert's answer, is shown still.
+  const busy = turns.some((t) => t.run && isWorking(t.run.status));
 
   const onAction = (a: UiAction) => {
     if (!isAnswer(a)) return;
@@ -388,7 +411,14 @@ export function ThreadRoom({
               {words.sharedIn(projectTitle(projects, th.project, workspaceName), th.channel)}
             </button>
           )}
-          <span title={people.map((p) => p.name).join(", ")}>{words.participants(people.length)}</span>
+          <span
+            title={people
+              .filter((p) => p.name)
+              .map((p) => `@${p.name}`)
+              .join(", ")}
+          >
+            {words.participants(people.length)}
+          </span>
           {answering.map((a) => (
             <span key={a} className="inline-flex items-center gap-1">
               <AgentMark name={a} size={14} />
@@ -472,6 +502,7 @@ export function ChannelPage({
   channel,
   tick,
   agents,
+  homes = noHomes,
   projects,
   root,
   workspaceName,
@@ -483,6 +514,8 @@ export function ChannelPage({
   channel: string;
   tick: number;
   agents: Revision[];
+  /** Where each agent that lives in a project lives, by name. */
+  homes?: Record<string, string>;
   projects: ProjectView[];
   root: ProjectView | null;
   workspaceName: string;
@@ -494,7 +527,7 @@ export function ChannelPage({
   const [threads, setThreads] = useState<ThreadSummary[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const tags = useTags(project, agents, topicsOf(projects, root, project));
+  const tags = useTags(project, agents, homes, topicsOf(projects, root, project));
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {

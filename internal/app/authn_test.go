@@ -380,8 +380,15 @@ grant admin to subject "okta|bob-of-other"
 	if n := claimed.People.Len("home"); n != 0 {
 		t.Fatalf("with tenants from a claim, the grant put %d people in home's directory", n)
 	}
+	// The mock reads every caller's tenant from a claim, -tenant-claim set
+	// or not, since its personas may name their own.
+	mock := newProjectsPlatform(t)
+	seeGranted(mock, "home", authConfig{mode: "mock"}.claimed(), pol, log)
+	if n := mock.People.Len("home"); n != 0 {
+		t.Fatalf("under the mock, the grant put %d people in home's directory", n)
+	}
 	one := newProjectsPlatform(t)
-	seeGranted(one, "home", "", pol, log)
+	seeGranted(one, "home", authConfig{mode: "oidc"}.claimed(), pol, log)
 	if bob, err := one.People.Get("home", "okta|bob-of-other"); err != nil || !slices.Equal(bob.Roles, []string{"admin"}) {
 		t.Fatalf("with one tenant, the granted subject = %+v, %v", bob, err)
 	}

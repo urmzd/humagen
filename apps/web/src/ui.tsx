@@ -1050,6 +1050,14 @@ export function Stroke({
   );
 }
 
+/**
+ * Whether a run is at work: accepted or running. One waiting on a person is
+ * not, so nothing about it animates; nor is one that has ended.
+ */
+export function isWorking(status: Run["status"]): boolean {
+  return strokeOf(status) === "working";
+}
+
 /** Which stroke state a run's status is. */
 export function strokeOf(status: Run["status"]): StrokeState {
   // A stopped run is at rest: it is neither working nor a failure.
