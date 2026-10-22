@@ -518,14 +518,16 @@ person's credential. Any other run, one that acts for nobody, or reaches
 only shared credentials, and was called by none that reaches a person's, is
 answered by whoever `answerers` and `approvers` allow.
 
-`answerers` still decides who may answer at all. When it leaves out the
-person such a run acts for, nobody may answer its reply or choice: the
-question is addressed to that person, the runtime refuses them, and warp
-refuses everyone else. The run waits until the question expires (a day by
-default) and takes its default, or someone stops it, the same fail-closed
-outcome as `approvers` naming only the person who asked, without
-`self_approval`. On an agent granted a person-scoped tool provider, leave
-`answerers` unset, or name everyone who uses the agent.
+`answerers` still decides who may answer at all: the asking run's own, so
+a called agent's for what a called run asks. When it leaves out the person
+whose credentials the answer may reach, nobody may answer its reply or
+choice: the question is addressed to that person, the runtime refuses them,
+and warp refuses everyone else. The run waits until the question expires (a
+day by default) and takes its default, or someone stops it, the same
+fail-closed outcome as `approvers` naming only the person who asked, without
+`self_approval`. On an agent granted a person-scoped tool provider, and on
+every agent it may call, directly or through another, leave `answerers`
+unset, or name everyone who uses the agent.
 
 The right is checked before saying whether a part is still open. A
 change is pushed to the browser as an id only, and only to callers who may see
