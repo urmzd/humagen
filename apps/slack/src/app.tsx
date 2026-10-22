@@ -644,7 +644,13 @@ export class App {
             // One post Slack refuses to edit, such as one deleted there, holds up no other.
             await this.announce(id, "catch-up").catch((e: Error) => {
               this.log(`announcement ${id} was not brought up to date: ${e.message}`);
-              if (!(e instanceof SlackError)) done = false;
+              // Slack refusing an edit, or warp refusing this machine (403,
+              // 404), answers the same next time: only warp being away is
+              // tried again.
+              const lasting =
+                e instanceof SlackError ||
+                (e instanceof WarpError && (e.status === 403 || e.status === 404));
+              if (!lasting) done = false;
             });
           }
         }
@@ -1877,6 +1883,8 @@ export class App {
     const at = (await this.bound()).find((b) => b.project === project && b.channel === "general");
     if (!at) return shown;
     const receipt = raw.deliveries?.[client];
+    // A receipt warp took though its answer was lost needs no remembering.
+    if (receipt) this.unrecorded.delete(id);
     const posted = this.unrecorded.get(id);
     if (!receipt && posted) {
       // Posted by this process, and warp did not take the receipt then.

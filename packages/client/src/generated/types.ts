@@ -741,7 +741,8 @@ export interface ClientBinding {
 app catches up on nothing announced before it: what was
 announced before the binding, or while the channel was unbound,
 never reached the Slack channel and is not news there now.
-Always present for a binding warp keeps.
+Present for every binding; a binding made before warp kept the
+time reads as bound at its channel's last change.
  */
   bound_at?: string;
 }

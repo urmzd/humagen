@@ -153,7 +153,7 @@ names the app's own credential as its machine (`slack.machine`): warp shows
 the client's receipts to that credential alone, so any other would post
 everything again. It logs that it skipped the catch-up and why. A catch-up
 that could not read warp, or could not bring a post up to date for a reason
-other than Slack refusing it, is tried again after 5 seconds, then twice as
+other than Slack refusing it, such as warp being away, is tried again after 5 seconds, then twice as
 long each time up to 5 minutes, until one finishes. A bound project the
 machine may not read (403 or 404), such as a members-only one that does not
 name it, is logged and skipped, not tried again until the next catch-up. A post Slack refuses to
