@@ -102,7 +102,11 @@ parent.
   of a project (`general` by default, the project the person picked, else the
   workspace) and makes it shared there, so everyone who can see that project
   reads it and can join it; people named in the same step become
-  participants. Only a participant shares, into a project they are a member
+  participants, each told once in their inbox ("Ana added you to Renewal
+  plan in Globex #general", a mention of the latest message, read where the
+  conversation is). One who cannot read that project is not added, and the
+  answer's `not_added` says so ("they cannot read this project, so they
+  were not added"), as a tag that cannot reach someone does. Only a participant shares, into a project they are a member
   of; making a private conversation shared, or moving one, also takes whoever
   started it or an owner of its project, so someone tagged into a private
   conversation does not publish it. It moves to another project or channel
@@ -1267,7 +1271,7 @@ from counters.
 |---|---|---|
 | `POST /api/threads` | `runs:write` | `visibility` left out (with no `surface`) is `private`: the starter is the first participant. A message a person posts as themselves runs only the agents it tags; untagged it starts nothing, `rule: untagged` |
 | `POST /api/threads/{id}/messages` | `runs:write` | the same rule: posted as the caller themselves, only tags start runs, and a tagged agent is sent the conversation so far. A client posting with `act_as` keeps the defaults |
-| `POST /api/threads/{id}/share` | `runs:write` | `ThreadShare{project?, channel?, add?: [handle] (<= 50)}` → 200 `ThreadPage`, the thread as `getThread` reads it. Only a participant shares (403); making a private thread shared or moving one also takes its starter, while a member, or an owner of its project (403), and a member of the target project (403, 404 for one the caller cannot see); `project` left out keeps the thread's own, `channel` left out keeps the thread's own in its own project and is `general` in another; an archived channel or a handle nobody goes by is 400; moving a thread that has runs is 409 "a conversation that has runs stays in its project" (or "in its channel"); a default that cannot answer where it moves is cleared; a surface's thread does not move or change visibility (400); a change made meanwhile is 409 |
+| `POST /api/threads/{id}/share` | `runs:write` | `ThreadShare{project?, channel?, add?: [handle] (<= 50)}` → 200 `ThreadShared`, the thread as `getThread` reads it with `not_added: [{handle, reason}]`. A person who cannot read the target project is not added; each person added is told once in their inbox. Only a participant shares (403); making a private thread shared or moving one also takes its starter, while a member, or an owner of its project (403), and a member of the target project (403, 404 for one the caller cannot see); `project` left out keeps the thread's own, `channel` left out keeps the thread's own in its own project and is `general` in another; an archived channel or a handle nobody goes by is 400; moving a thread that has runs is 409 "a conversation that has runs stays in its project" (or "in its channel"); a default that cannot answer where it moves is cleared; a surface's thread does not move or change visibility (400); a change made meanwhile is 409 |
 | `GET /api/threads/{id}` | `runs:read` | `answers` stays on the wire: who answers an untagged message a client posts. The console no longer shows it. `thread.agents` and `thread.mode` are the selection, without agents the caller may not read |
 | `POST /api/threads`, `PUT /api/threads/{id}` | `runs:write` | gain `agents: [name] (<= 5)` and `mode: best_fit \| all` (`best_fit` when two or more are named and no mode; none with fewer than two). Each agent must be available in the project (400, one the caller may not read as one that does not exist); `all` over more than 3 is 400. The PUT also takes `project` and `channel`, which move a private conversation while no run has been filed in it (409 after; 400 for a shared or surface thread). A PUT that changes only `agents` and `mode` takes anyone who may post in the thread; a move takes its starter or an owner of its project, as Share does |
 
