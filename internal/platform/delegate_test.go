@@ -434,6 +434,29 @@ func TestACallerWaitsForWhatIsAttached(t *testing.T) {
 	}
 }
 
+// A run starts before its record is written, and on a loaded machine the
+// gap is long enough for its first call to come first. That call waits for
+// the record rather than being refused as one from a run that does not
+// exist.
+func TestACallMadeBeforeItsCallerIsRecordedWaitsForTheRecord(t *testing.T) {
+	p := stage(t, &cast{
+		says: map[string][][]saigetypes.Delta{
+			"lead":   {tagging("helper", "Your part"), say("Done.")},
+			"helper": {say("Mine.")},
+		},
+		spawn: map[string][]string{"lead": {"helper"}},
+	}, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 4}})
+	p.DelayRecord(30 * time.Millisecond)
+	first, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-1", Agent: "lead", Text: "Start"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, first.ID, runs.Completed)
+	if helper := called(t, p, first.ID, "helper", runs.Completed); helper.Answer != "Mine." || helper.Parent != first.ID {
+		t.Fatalf("helper = %+v", helper)
+	}
+}
+
 // Every run that waits holds a place. The last place is never given to a
 // waiter, so there is always one for work that answers somebody.
 func TestWaitingNeverTakesTheLastPlace(t *testing.T) {
