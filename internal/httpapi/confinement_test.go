@@ -856,7 +856,9 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 			}},
 			{"POST", "/api/projects/Mine/channels", func(a string) string { return `{"name":"probe","default":"` + a + `"}` }},
 			{"PUT", "/api/projects/Mine/channels/general", func(a string) string { return `{"version":1,"default":"` + a + `"}` }},
-			{"PUT", "/api/policies", func(a string) string { return `{"scope":{"kind":"agent","name":"` + a + `"},"period":"day","max_runs":1}` }},
+			{"PUT", "/api/policies", func(a string) string {
+				return `{"scope":{"kind":"agent","name":"` + a + `"},"period":"day","max_runs":1}`
+			}},
 			{"POST", "/api/alert-rules", func(a string) string {
 				return `{"name":"probe","kind":"run_failed","severity":"critical","agent":"` + a + `"}`
 			}},
