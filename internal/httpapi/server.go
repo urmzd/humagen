@@ -579,6 +579,14 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 		return
 	}
 	defer func() { _ = stream.Close() }()
+	// Inbox changes ride the same stream as a named event, so a reader that
+	// only listens for run events never sees them. A notice names a message
+	// and nothing more: the reader fetches it and is shown what they may see.
+	// The watch starts before the stream is answered, as the run events'
+	// subscription does, so a reader that acts once it is connected cannot
+	// miss the notice its action raises.
+	notices, unwatch := s.P.Inbox.Watch(who.Tenant)
+	defer unwatch()
 
 	rc := http.NewResponseController(w)
 	// A stream outlives the server's write timeout by design.
@@ -606,12 +614,6 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			}
 		}
 	}()
-
-	// Inbox changes ride the same stream as a named event, so a reader that
-	// only listens for run events never sees them. A notice names a message
-	// and nothing more: the reader fetches it and is shown what they may see.
-	notices, unwatch := s.P.Inbox.Watch(who.Tenant)
-	defer unwatch()
 
 	tick := time.NewTicker(heartbeat)
 	defer tick.Stop()
