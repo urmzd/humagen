@@ -23,6 +23,7 @@ func (s *Server) inboxRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/inbox/{id}/read", s.authed(auth.RunsRead, s.readInbox))
 	mux.HandleFunc("POST /api/inbox/{id}/dismiss", s.authed(auth.RunsRead, s.dismissInbox))
 	mux.HandleFunc("POST /api/inbox/{id}/snooze", s.authed(auth.RunsRead, s.snoozeInbox))
+	mux.HandleFunc("POST /api/inbox/{id}/unhide", s.authed(auth.RunsRead, s.unhideInbox))
 	mux.HandleFunc("POST /api/inbox/{id}/parts/{part}/resolve", s.authed(auth.RunsRead, s.resolveInbox))
 	// A client's machine records where it posted a message. The platform
 	// answers 404 to anyone else.
@@ -174,6 +175,13 @@ func (s *Server) readInbox(w http.ResponseWriter, r *http.Request, who auth.Prin
 
 func (s *Server) dismissInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	m, err := s.P.InboxDismiss(who, r.PathValue("id"))
+	s.inboxAnswer(w, m, err)
+}
+
+// unhideInbox brings back an announcement the caller hid or snoozed for
+// themselves.
+func (s *Server) unhideInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	m, err := s.P.InboxUnhide(who, r.PathValue("id"))
 	s.inboxAnswer(w, m, err)
 }
 

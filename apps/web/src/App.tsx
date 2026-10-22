@@ -21,6 +21,7 @@ import {
 import type { Run } from "./adapter.ts";
 import { Chat } from "./Chat.tsx";
 import { YourConnections } from "./Connections.tsx";
+import { CONNECT_PERMISSION } from "./connections.ts";
 import { DirectoryPage } from "./Directory.tsx";
 import { InboxPage } from "./InboxPage.tsx";
 import { Knowledge } from "./Knowledge.tsx";
@@ -33,6 +34,7 @@ import { Storage } from "./Storage.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import { updatesOf } from "@warp/adapter";
 import { HomeLines } from "./HomePage.tsx";
+import { usePreferences } from "./preferences.ts";
 import { type Source as About, type PlatformMessage, transport as mail } from "./mail.ts";
 import { type AgentTab, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { Page, primary } from "./ui.tsx";
@@ -155,15 +157,9 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const [sources, setSources] = useState<Source[]>([]);
   const [suites, setSuites] = useState<SuiteView[]>([]);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [prefs, setPrefs] = useState<Preferences>({
-    display_name: "",
-    theme: "system",
-    accent: "purple",
-    has_photo: false,
-    photo_version: 0,
-    pinned: [],
-    muted: [],
-  });
+  // Until the saved preferences are read, defaults only draw the page: a save
+  // sends every field, so nothing is saved over values not read yet.
+  const { prefs, prefsRead, setPrefs, pin, mute } = usePreferences();
   // The reader's own open announcements, for What's new on Home.
   const [announced, setAnnounced] = useState<PlatformMessage[]>([]);
   const [day, setDay] = useState<Summary | null>(null);
@@ -263,8 +259,6 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     loadRuns();
     loadAgents();
     loadSources();
-    // Preferences are optional: render immediately with defaults while they load.
-    api.preferences().then(setPrefs).catch(() => {});
   }, [loadRuns, loadAgents, loadSources]);
 
   // One stream for the whole tenant keeps every list current. Lifecycle and
@@ -332,17 +326,6 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const workspaceName = workspace?.workspace_name || me.principal.tenant;
   const openAgent = (name: string | null, tab: AgentTab = "prompt") => go({ page: "agent", name, tab });
   const openSettings = (section: SettingsSection) => go({ page: "settings", section });
-  // Pinning shows at once and is saved with the person's preferences. If the
-  // save fails, the sidebar goes back to what the server has.
-  const pin = (id: string, on: boolean) => {
-    const next = on ? [id, ...prefs.pinned.filter((p) => p !== id)] : prefs.pinned.filter((p) => p !== id);
-    const before = prefs;
-    setPrefs({ ...prefs, pinned: next });
-    api
-      .savePreferences({ display_name: prefs.display_name, theme: prefs.theme, accent: prefs.accent, pinned: next })
-      .then(setPrefs)
-      .catch(() => setPrefs(before));
-  };
   // What a message is about, opened where it lives.
   const openSource = (source: About) =>
     source.kind === "run"
@@ -356,16 +339,6 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             : source.kind === "artifact"
               ? go({ page: "artifacts", artifact: source.id })
               : go({ page: "monitor", tab: "rules" });
-  // Muting shows at once and is saved with the person's preferences.
-  const mute = (project: string, on: boolean) => {
-    const next = on ? [...prefs.muted.filter((p) => p !== project), project] : prefs.muted.filter((p) => p !== project);
-    const before = prefs;
-    setPrefs({ ...prefs, muted: next });
-    api
-      .savePreferences({ display_name: prefs.display_name, theme: prefs.theme, accent: prefs.accent, muted: next })
-      .then(setPrefs)
-      .catch(() => setPrefs(before));
-  };
   const stats = useMemo(() => new Map((day?.by_agent ?? []).map((g) => [g.name, g])), [day]);
   const agentName = route.page === "agent" ? route.name : null;
   const editing = agents.find((a) => a.spec.name === agentName) ?? null;
@@ -498,6 +471,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             key={`${route.project}/${route.channel}`}
             project={route.project}
             channel={route.channel}
+            me={me.principal.subject}
             tick={tick}
             agents={agents}
             homes={homes}
@@ -506,6 +480,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             workspaceName={workspaceName}
             canRun={can("runs:write")}
             onOpenProject={() => go({ page: "project", name: route.project, tab: "channels" })}
+            onOpenProjects={() => go({ page: "projects" })}
             onOpenThread={openThread}
           />
         )}
@@ -513,7 +488,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
           <Schedules
             schedules={schedules}
             agents={agents}
-            projects={projectNames}
+            projects={projects ?? []}
             selected={route.name ?? null}
             onSelect={(name) => go({ page: "schedules", name: name ?? undefined })}
             canWrite={can("schedules:write")}
@@ -529,7 +504,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             alerts={alerts}
             rules={rules}
             agents={agents}
-            projects={projectNames}
+            projects={projects ?? []}
             canWrite={can("alerts:write")}
             canAnalytics={can("runs:read")}
             tick={tick}
@@ -634,6 +609,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             homes={homes}
             enabledIn={enabledIn}
             projects={projects}
+            kinds={root?.kinds ?? []}
             workspaceName={workspaceName}
             onOpenAgent={(name) => openAgent(name, "access")}
             onOpenProject={openProject}
@@ -652,12 +628,18 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
           />
         )}
         {route.page === "connections" && (
-          <YourConnections open={route.provider} onOpen={(provider) => go({ page: "connections", provider }, { replace: true })} />
+          <YourConnections
+            open={route.provider}
+            onOpen={(provider) => go({ page: "connections", provider }, { replace: true })}
+            canConnect={can(CONNECT_PERMISSION)}
+            onWhy={() => go({ page: "settings", section: "access", permission: CONNECT_PERMISSION })}
+          />
         )}
         {route.page === "settings" && (
           <Settings
             me={me}
             prefs={prefs}
+            prefsRead={prefsRead}
             workspace={workspace}
             agents={agents}
             canAdmin={can("agents:write")}

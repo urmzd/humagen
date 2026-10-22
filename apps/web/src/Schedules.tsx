@@ -1,33 +1,11 @@
 import { defaultCopy } from "@warp/components";
 import { type FormEvent, useState } from "react";
 import type { Run } from "./adapter.ts";
+import { inWords, presets } from "./cron.ts";
 import { ApiError, api, type Revision, type Schedule, type ScheduleView } from "./api.ts";
+import { type ProjectRef, projectOptions, titleIn } from "./projects.ts";
 import { deliverFor, deliverOptions } from "./recap.ts";
 import { AgentMark, agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Section } from "./ui.tsx";
-
-const presets: { label: string; expression: string }[] = [
-  { label: "Every minute", expression: "* * * * *" },
-  { label: "Hourly", expression: "0 * * * *" },
-  { label: "Daily at 09:00 UTC", expression: "0 9 * * *" },
-  { label: "Weekdays at 09:00 UTC", expression: "0 9 * * 1-5" },
-];
-
-const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-/** A cron expression in words, for the common shapes. Otherwise the expression itself. */
-function inWords(expression: string): string {
-  const preset = presets.find((p) => p.expression === expression);
-  if (preset) return preset.label;
-  const [min, hour, dom, month, dow] = expression.trim().split(/\s+/);
-  const at = (h: string, m: string) => `${h.padStart(2, "0")}:${m.padStart(2, "0")} UTC`;
-  const num = (s?: string) => s !== undefined && /^\d+$/.test(s);
-  if (!num(min) || dom !== "*" || month !== "*") return expression;
-  if (hour === "*" && dow === "*") return `Hourly at minute ${min}`;
-  if (!num(hour)) return expression;
-  if (dow === "*") return `Daily at ${at(hour as string, min as string)}`;
-  if (num(dow)) return `${days[Number(dow) % 7]}s at ${at(hour as string, min as string)}`;
-  return expression;
-}
 
 /** In UTC, because that is the zone the expression is written in. */
 function when(iso: string): string {
@@ -104,7 +82,7 @@ function ScheduleForm({
 }: {
   editing?: ScheduleView;
   agents: Revision[];
-  projects: string[];
+  projects: ProjectRef[];
   onClose: () => void;
   onSaved: (name: string) => void;
 }) {
@@ -151,7 +129,7 @@ function ScheduleForm({
           <Menu
             label="Project"
             value={draft.project ?? ""}
-            options={[{ value: "", label: "No project" }, ...projects.map((p) => ({ value: p, label: p }))]}
+            options={[{ value: "", label: "No project" }, ...projectOptions(projects)]}
             onChange={(next) => set({ project: next || undefined, deliver: deliverFor(next || undefined, draft.deliver) })}
           />
         </Label>
@@ -223,7 +201,8 @@ export function Schedules({
 }: {
   schedules: ScheduleView[];
   agents: Revision[];
-  projects?: string[];
+  /** Projects a schedule can file its tasks in, each named by its title. */
+  projects?: ProjectRef[];
   /** The open schedule, by name. null lists them all. */
   selected?: string | null;
   onSelect?: (name: string | null) => void;
@@ -282,7 +261,7 @@ export function Schedules({
           <>
             <Chip>{s.paused ? "Paused" : "Active"}</Chip>
             <span>{inWords(s.expression)}</span>
-            {s.created_by && <span>Made by {s.created_by}</span>}
+            {s.created_by && <span>Made by {s.created_by_name || s.created_by}</span>}
           </>
         }
         actions={
@@ -335,7 +314,7 @@ export function Schedules({
               )}
             </dd>
             <dt className="text-aui-xs text-aui-muted">Project</dt>
-            <dd className="text-aui-fg">{s.project || <span className="text-aui-muted">None</span>}</dd>
+            <dd className="text-aui-fg">{s.project ? titleIn(projects, s.project) : <span className="text-aui-muted">None</span>}</dd>
             <dt className="text-aui-xs text-aui-muted">When</dt>
             <dd className="text-aui-fg">
               {inWords(s.expression)} <code className="font-aui-mono text-aui-xs text-aui-muted">{s.expression}</code>
@@ -433,7 +412,7 @@ export function Schedules({
                 <span className="flex min-w-0 items-center gap-2 text-aui-sm text-aui-fg">
                   <AgentMark name={s.agent} size={12} />
                   <span className="truncate">{s.agent}</span>
-                  {s.project && <span className="truncate text-aui-xs text-aui-muted">in {s.project}</span>}
+                  {s.project && <span className="truncate text-aui-xs text-aui-muted">in {titleIn(projects, s.project)}</span>}
                 </span>
                 <span className="min-w-0 text-aui-sm">
                   <span className="block truncate text-aui-fg">{inWords(s.expression)}</span>

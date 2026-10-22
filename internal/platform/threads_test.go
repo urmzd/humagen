@@ -502,6 +502,74 @@ func TestAQuestionForExpertsReachesThemAndAnAnswerInTheThreadResumesTheRun(t *te
 	}
 }
 
+// A thread says to each reader whether a question its run waits on is
+// theirs to answer, and whom it is for otherwise: the expert is offered it,
+// anyone else is told it is for the billing experts. The question's message
+// says whom the agent asked, ends a long question with an ellipsis at a
+// word, and names the thread it is about by what the thread is called.
+func TestAThreadSaysWhomAQuestionIsForAndOffersItOnlyToThem(t *testing.T) {
+	long := "INV-2041 bills the March maintenance twice ($2,400 each). Should the credit note cover only the duplicated line, or the full invoice?"
+	c := &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"asker": {asked(map[string]any{"question": long, "asked_of": "sme:billing"}), say("Filed.")}},
+		tools: map[string][]string{"asker": {"ask_person"}},
+	}
+	p := stage(t, c, platform.Config{})
+	field(t, p)
+	cur, err := p.ProjectExperts(tenant, "Field")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SetProjectExperts(tenant, "Field", ada, platform.Experts{Version: cur.Version, Experts: []projects.Expert{{Who: "olu", Topics: []string{"billing"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "Draft the credit note", Project: "Globex", Actor: envelope.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	askOf := func(who auth.Principal) *platform.Ask {
+		t.Helper()
+		_, turns, _, err := p.ThreadTurns(tenant, run.Thread, "", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, turn := range p.AsksIn(t.Context(), who, turns) {
+			if turn.Run != nil && turn.Run.ID == run.ID {
+				return turn.Ask
+			}
+		}
+		t.Fatal("the parked run is not in its thread")
+		return nil
+	}
+	if got := askOf(olu); got == nil || !got.Yours || got.For != platform.ForExperts || got.Topic != "billing" || got.Question != run.Question.ID {
+		t.Fatalf("the expert's ask = %+v", got)
+	}
+	if got := askOf(grace); got == nil || got.Yours || got.For != platform.ForExperts || got.Topic != "billing" || got.Person != "" {
+		t.Fatalf("someone it is not for: ask = %+v, want it for the billing experts and not theirs", got)
+	}
+	q := questionFor(t, p, run.ID)
+	head, cut := strings.CutSuffix(q.Subject, "…")
+	if !cut || !strings.HasPrefix(head, "asker asks the billing experts: ") || len(q.Subject) > len("asker asks the billing experts: ")+80 {
+		t.Fatalf("the question's subject = %q", q.Subject)
+	}
+	if words := strings.TrimPrefix(head, "asker asks the billing experts: "); !strings.HasPrefix(long, words+" ") {
+		t.Fatalf("the subject %q stops part of the way through a word", q.Subject)
+	}
+	seen, err := p.InboxGet(olu, q.ID)
+	if err != nil || seen.Source.ThreadTitle != "Draft the credit note" {
+		t.Fatalf("the question's thread is called %q (%v)", seen.Source.ThreadTitle, err)
+	}
+	if stored, _ := p.Inbox.ByKey(tenant, "question:"+run.ID+":"+run.Question.ID); stored.Source.ThreadTitle != "" {
+		t.Fatalf("a thread's title was stored with the message: %q", stored.Source.ThreadTitle)
+	}
+	// Once it is answered, nothing in the thread waits on anyone.
+	post(t, p, olu, run.Thread, platform.MessageInput{Text: "Only the duplicated line", Answers: &threads.AnswerRef{Run: run.ID, Question: run.Question.ID}})
+	await(t, p, run.ID, runs.Completed)
+	if got := askOf(olu); got != nil {
+		t.Fatalf("an answered question still asks: %+v", got)
+	}
+}
+
 // A viewer answers in a thread only what they were asked, once, and tags no
 // one: an answer's tags would start the agents it tags and tell the people
 // it tags, as any message's do, so an answer that tags is refused as a

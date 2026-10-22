@@ -917,3 +917,41 @@ func TestAConnectorRunsRequesterIsKnownThroughAnyClientOfTheTeam(t *testing.T) {
 	}
 	await(t, p, run.ID, runs.Completed)
 }
+
+// A refusal to answer names the person refused as the directory calls them,
+// never by a subject, which can hold an address. Dee signs in with one and no
+// name, and goes by her handle.
+func TestARefusedAnswerNamesThePersonByName(t *testing.T) {
+	p := stage(t, &cast{continues: true,
+		says: map[string][][]saigetypes.Delta{
+			"deployer": {writing("plan.md", "ship"), say("Written.")},
+			"picker":   {asking("Which colour?", "red", "blue"), say("Done.")},
+		},
+		tools: map[string][]string{"deployer": {platform.ToolFileWrite}, "picker": {"ask_person"}},
+		shape: map[string]func(*agentspec.AgentSpec){
+			"deployer": func(s *agentspec.AgentSpec) { s.Approvals = []string{platform.ToolFileWrite} },
+			"picker":   func(s *agentspec.AgentSpec) { s.Answerers = []string{"grace"} },
+		},
+	}, platform.Config{})
+	ctx := t.Context()
+	dee := auth.Principal{Subject: "tailscale:dee@example.com", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	p.SeePerson(dee)
+	refused := func(what string, err error, want string) {
+		t.Helper()
+		if !errors.Is(err, platform.ErrForbidden) || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "example.com") {
+			t.Errorf("%s = %v, want forbidden saying %q", what, err, want)
+		}
+	}
+
+	r, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-dee", Agent: "deployer", Text: "Go", Actor: platform.ActorOf(dee)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	_, err = p.AnswerQuestion(ctx, dee, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove})
+	refused("Dee approving her own call", err, "dee asked for this work")
+
+	run = ask(t, p, "api-picker", "picker")
+	_, err = p.AnswerQuestion(ctx, dee, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActChoose, Choice: "red"})
+	refused("Dee answering a question that is not hers", err, "dee may not answer this question")
+}

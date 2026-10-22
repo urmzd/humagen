@@ -267,7 +267,7 @@ export function Limits({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-aui-xs text-aui-muted">
               {policy
-                ? `Version ${policy.version}, ${ago(policy.updated_at)}${policy.updated_by ? ` by ${policy.updated_by}` : ""}`
+                ? `Version ${policy.version}, ${ago(policy.updated_at)}${policy.updated_by ? ` by ${policy.updated_by_name || policy.updated_by}` : ""}`
                 : "No limits set."}
             </span>
             <span className="flex gap-2">
@@ -473,7 +473,7 @@ export function BillingSettings({ projects, agents, canWrite }: { projects: stri
                     </span>
                     <span className="block text-aui-xs text-aui-muted">
                       {c.before && c.after ? `Was ${brief(c.before)}. ` : ""}
-                      {c.by}, {ago(c.at)}
+                      {c.by_name || c.by}, {ago(c.at)}
                     </span>
                   </li>
                 ))}

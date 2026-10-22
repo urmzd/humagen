@@ -7,7 +7,8 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Activity } from "./Activity.tsx";
 import { actedFor, type Run } from "./adapter.ts";
 import { Composer } from "./Composer.tsx";
-import { ApiError, api, type Choice, coworking, type ProjectAgentsView, type ProjectView, type Revision, type ThreadPage, type ThreadSummary } from "./api.ts";
+import { ApiError, api, type Choice, coworking, type ProjectAgentsView, type ProjectView, type Revision, type ThreadAsk, type ThreadPage, type ThreadSummary } from "./api.ts";
+import { askedOf, copyFor } from "./asks.ts";
 import { answersLine, AUTO, availableOf } from "./availability.ts";
 import { HomePage } from "./HomePage.tsx";
 import { ProjectPicker } from "./ProjectPicker.tsx";
@@ -16,7 +17,7 @@ import { useRunTurn } from "./Runs.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { SessionGaugeFor } from "./SessionGauge.tsx";
 import { readFromStart } from "./turns.ts";
-import { AgentMark, AgentTint, cause, isWorking, Popover, Presence, Problem } from "./ui.tsx";
+import { AgentMark, AgentTint, cause, isWorking, Page, Popover, Presence, Problem, SkeletonRows } from "./ui.tsx";
 
 const auto = defaultCopy.auto;
 // Controls in the dock are text, not boxes: they sit under the composer and
@@ -80,7 +81,9 @@ function ownerOf(run: Run, siblings: Run[]): string {
 export function notAskable(run: Run, me: string, siblings: Run[]): string {
   const person = ownerOf(run, siblings);
   if (me !== "" && person === me) return "";
-  if (person) return `This turn acted for ${run.actor?.display || person}, so only they can retry it.`;
+  // The person by what the run calls them, never by subject, which can hold
+  // an address: a run recorded with no name for them names nobody.
+  if (person) return `This turn acted for ${run.actor?.display || "someone else"}, so only they can retry it.`;
   return "This turn acted for nobody, so it is not retried here, where it would act for you.";
 }
 
@@ -89,12 +92,15 @@ function TurnView({
   me,
   siblings,
   live,
+  ask,
   onSwitch,
 }: {
   run: Run;
   /** The reader's subject. */
   me: string;
   siblings: Run[];
+  /** The question the run waits on, as the reader stands to it: it is offered only when it is theirs. */
+  ask?: ThreadAsk;
   /** Follow the run's events. Off for settled turns, whose record is enough. */
   live: boolean;
   onSwitch: (id: string) => void;
@@ -123,10 +129,10 @@ function TurnView({
   );
   // Neither Retry nor Regenerate is offered on a turn the reader may not ask
   // again (notAskable). A failure says why instead of offering Retry.
-  const shown = useMemo(
-    () => (refused && drawn.failure ? { ...drawn, failure: { ...drawn.failure, retryNotOffered: refused } } : drawn),
-    [drawn, refused],
-  );
+  const shown = useMemo(() => {
+    const asked = askedOf(drawn, ask);
+    return refused && asked.failure ? { ...asked, failure: { ...asked.failure, retryNotOffered: refused } } : asked;
+  }, [drawn, refused, ask]);
 
   return (
     <article id={`turn-${run.id}`} className="flex flex-col gap-3" aria-label={`Turn answered by ${run.agent}`}>
@@ -142,7 +148,7 @@ function TurnView({
       </div>
 
       <AgentTint name={run.agent}>
-        <AgentMessage turn={shown} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} />
+        <AgentMessage turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} />
       </AgentTint>
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
@@ -264,10 +270,15 @@ export function Chat({
   const lastActivity = useRef(activity);
   if (activity) lastActivity.current = activity;
 
+  // What reading the conversation came to. One not read yet is not a new
+  // conversation, and one the reader may not see is not there: the server
+  // answers both alike (404), and so does the page.
+  const [read, setRead] = useState<"reading" | "read" | "missing" | "failed">(threadId ? "reading" : "read");
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {
     if (!threadId) {
       setRoom(null);
+      setRead("read");
       return setTurns([]);
     }
     let live = true;
@@ -278,8 +289,19 @@ export function Chat({
         if (!live) return;
         setRoom(p);
         setTurns(p.turns.flatMap((t) => (t.run ? [t.run] : [])));
+        setRead("read");
       })
-      .catch(() => live && setTurns([]));
+      .catch((e) => {
+        if (!live) return;
+        if (e instanceof ApiError && e.status === 404) {
+          setRoom(null);
+          setTurns([]);
+          setRead("missing");
+          return;
+        }
+        // A refresh that fails keeps what was read.
+        setRead((was) => (was === "reading" ? "failed" : was));
+      });
     return () => {
       live = false;
     };
@@ -293,6 +315,8 @@ export function Chat({
   }, [threadId]);
 
   const path = useMemo(() => pathOf(turns, chosen), [turns, chosen]);
+  // What each parked run asks, as the reader stands to it.
+  const asks = useMemo(() => Object.fromEntries((room?.turns ?? []).flatMap((t) => (t.run && t.ask ? [[t.run.id, t.ask]] : []))), [room]);
   const tail = path[path.length - 1];
   // A run waiting on a person is still, like one that has ended.
   const tailWorking = !!tail && isWorking(tail.status);
@@ -319,12 +343,16 @@ export function Chat({
     return agents.filter((a) => names.includes(a.spec.name));
   }, [agents, here, homes]);
   const fallback = here?.default_resolved?.agent ?? "";
-  // The agent that answers: the one chosen, or the place's default.
-  const answering = agent || fallback;
+  // A follow-up goes to the agent that took the last turn, unless the person
+  // picks another, while it may still answer here. It is named only when it
+  // is not who answers untagged anyway.
+  const ran = threadId && tail && offered.some((a) => a.spec.name === tail.agent) && tail.agent !== fallback ? tail.agent : "";
+  // The agent that answers: the one chosen, the one that ran, or the place's default.
+  const answering = agent || ran || fallback;
   const isAuto = answering === AUTO;
   const named = isAuto ? "" : answering;
   // What is sent: "" leaves the agent out, so the platform's default chain decides, as the person did.
-  const target = agent;
+  const target = agent || ran;
   // Who answers the next message, in words under the composer, once it is known.
   const answersHere = agent || here ? answersLine(answering, isAuto ? preview?.agent : undefined) : "";
 
@@ -452,6 +480,7 @@ export function Chat({
           <ProjectPicker
             value={project}
             projects={projects}
+            kinds={root?.kinds}
             canCreate={canCreateProject}
             onChange={setProject}
             onCreated={onProjectCreated}
@@ -515,7 +544,7 @@ export function Chat({
                 <ul className="aui-scroll max-h-72 overflow-y-auto" aria-label="Agents">
                   {fallback === AUTO && autoRow}
                   {offered.map((a) => {
-                    const on = agent === a.spec.name;
+                    const on = (agent || ran) === a.spec.name;
                     return (
                       <li key={a.spec.name}>
                         <button
@@ -577,6 +606,21 @@ export function Chat({
     );
   }
 
+  if (threadId && read === "missing") {
+    return (
+      <Page title={defaultCopy.threads.missingTask} lede={defaultCopy.projects.missingHint}>
+        {null}
+      </Page>
+    );
+  }
+  if (threadId && path.length === 0 && (read === "reading" || read === "failed")) {
+    return (
+      <section aria-label="Conversation" aria-busy={read === "reading"} className="mx-auto flex w-full max-w-4xl flex-col gap-3 px-4 pt-4">
+        {read === "failed" ? <Problem message={defaultCopy.threads.readFailed} /> : <SkeletonRows count={3} height="2.5rem" />}
+      </section>
+    );
+  }
+
   if (!threadId || path.length === 0) {
     return (
       <HomePage greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={home}>
@@ -615,9 +659,10 @@ export function Chat({
         The arrival animation is on the title and the agents, not the header: an animated
         ancestor stops a glass panel from blurring the page behind it.
       */}
+      {/* On a narrow screen the title has a line of its own, and the rest wraps under it. */}
       <header className="relative z-10 mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-4 pb-2">
-        <h1 className="aui-fade-up min-w-0 flex-1 truncate text-aui-lg font-semibold text-aui-fg">{summary?.title ?? path[0]?.text}</h1>
-        <ul className="aui-fade-up flex shrink-0 items-center gap-3 text-aui-xs text-aui-muted" aria-label="Agents in this conversation">
+        <h1 className="aui-fade-up w-full min-w-0 truncate text-aui-lg font-semibold text-aui-fg sm:w-auto sm:flex-1">{summary?.title ?? path[0]?.text}</h1>
+        <ul className="aui-fade-up flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-aui-xs text-aui-muted sm:shrink-0" aria-label="Agents in this conversation">
           {(summary?.agents ?? []).map((a) => (
             <li key={a} className="inline-flex items-center gap-1">
               <AgentMark name={a} size={14} />
@@ -631,7 +676,7 @@ export function Chat({
           type="button"
           aria-expanded={activity !== null}
           onClick={() => setActivity(activity ? null : { focus: null })}
-          className="shrink-0 rounded-aui px-2 py-1 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:text-aui-fg"
+          className="shrink-0 whitespace-nowrap rounded-aui px-2 py-1 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:text-aui-fg"
         >
           Execution history{running > 0 ? ` ${running}` : ""}
         </button>
@@ -643,6 +688,7 @@ export function Chat({
               key={run.id}
               run={run}
               me={me}
+              ask={asks[run.id]}
               siblings={siblingsOf(turns, run)}
               live={i === path.length - 1 || (run.status !== "completed" && run.status !== "failed")}
               onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}

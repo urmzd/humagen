@@ -293,6 +293,14 @@ func row(format string, args ...any) string {
 
 func day(t time.Time) string { return t.UTC().Format(time.DateOnly) }
 
+// counted is a count with its noun: "1 run", "2 runs".
+func counted(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return strconv.Itoa(n) + " " + noun + "s"
+}
+
 // micros formats micro-USD as dollars and cents.
 func micros(n int64) string { return fmt.Sprintf("$%d.%02d", n/1_000_000, n%1_000_000/10_000) }
 
@@ -330,7 +338,7 @@ func (p *Platform) runChanges(scope changesScope) []changeRow {
 	}
 	at := scope.until
 	counts := func(g runs.Group) string {
-		return fmt.Sprintf("%d runs: %d completed, %d failed, %d stopped, %d still going", g.Runs, g.Completed, g.Failed, g.Stopped, g.Active)
+		return fmt.Sprintf("%s: %d completed, %d failed, %d stopped, %d still going", counted(g.Runs, "run"), g.Completed, g.Failed, g.Stopped, g.Active)
 	}
 	out := []changeRow{{at, row("In all, %s; %d tokens, %s spent", counts(s.Total), s.Total.Usage.Tokens, micros(s.Total.Usage.Spend))}}
 	for _, g := range s.ByAgent {
@@ -459,7 +467,14 @@ func (p *Platform) threadChanges(scope changesScope) []changeRow {
 			if where == "" {
 				where = "the workspace"
 			}
-			text := row("%s %s #%s: %q %s, %s, %d turns, agents %s", day(t.UpdatedAt), where, t.Channel, t.Title, how, state, t.Turns, strings.Join(t.Agents, ", "))
+			text := row("%s %s #%s: %q %s, %s, %s", day(t.UpdatedAt), where, t.Channel, t.Title, how, state, counted(t.Turns, "turn"))
+			switch len(t.Agents) {
+			case 0:
+			case 1:
+				text = row("%s, agent %s", text, t.Agents[0])
+			default:
+				text = row("%s, agents %s", text, strings.Join(t.Agents, ", "))
+			}
 			if t.Failed > 0 {
 				text = row("%s, %d failed", text, t.Failed)
 			}

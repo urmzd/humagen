@@ -161,6 +161,11 @@ export interface Clarification {
   allowOther?: boolean;
   /** Offer "I'm not sure" as an answer. */
   allowUnsure?: boolean;
+  /**
+   * Set when the reader is not someone it is for: whom it is for, in words.
+   * The card shows the question and this line, and no way to answer it.
+   */
+  forOthers?: string;
   answer: Answer;
 }
 

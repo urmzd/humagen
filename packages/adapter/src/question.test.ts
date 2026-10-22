@@ -164,3 +164,21 @@ test("a question nobody answered, or whose run was stopped, says so", () => {
     reason: "Nobody answered in time, so it went with blue",
   });
 });
+
+// The platform keeps who answered by subject, which can hold an address, and
+// sends what they are called beside it. Both the run and the inbox show the
+// name, and never the subject.
+test("whoever answered is shown by name, on the run and in the inbox, never by subject", () => {
+  const subject = "tailscale:olu@example.com";
+  const f = follow({ id: "r1", agent: "lead" });
+  f.apply(ev("lifecycle.parked", { question: questions.choice }));
+  const onRun = f.apply(ev("lifecycle.resumed", { answer: { ...answers.choice.answer, by: subject, by_name: "Olu Ade" } })).interrupts[0];
+  assert.equal(onRun?.type === "clarification" && onRun.answer.kind === "answered" && onRun.answer.by, "Olu Ade");
+  const inMail = part("choice", { ...answers.choice.outcome, by: subject, by_name: "Olu Ade" }).parts[0];
+  assert.deepEqual(inMail?.type === "choice" && inMail.clarification, onRun);
+  const replied = part("reply", { ...answers.reply.outcome, by: subject, by_name: "Olu Ade" }).parts[0];
+  assert.equal(replied?.type === "reply" && replied.resolution?.by, "Olu Ade");
+  // The system is still nobody, whatever it is called.
+  const closed = part("reply", { action: "closed", by: "system", by_name: "system", at }).parts[0];
+  assert.equal(closed?.type === "reply" && closed.resolution?.by, "");
+});

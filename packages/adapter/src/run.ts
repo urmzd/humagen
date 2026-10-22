@@ -158,7 +158,8 @@ interface Lifecycle {
   reason: string;
   text: string;
   question: WireQuestion;
-  answer: { question_id: string; decision?: string; choice?: string; text?: string; note?: string; by?: string; at?: string; expired?: boolean };
+  /** `by` is who answered by subject, `by_name` what they are called, which is what is shown. */
+  answer: { question_id: string; decision?: string; choice?: string; text?: string; note?: string; by?: string; by_name?: string; at?: string; expired?: boolean };
 }
 interface Tool {
   id: string;

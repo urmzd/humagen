@@ -1,6 +1,6 @@
 import { defaultCopy } from "@warp/components";
 import { type MouseEvent, useEffect, useState } from "react";
-import { ApiError, api, type Person, type ProjectView, type Revision } from "./api.ts";
+import { ApiError, api, type Person, type ProjectKindSpec, type ProjectView, type Revision } from "./api.ts";
 import { nameOfAddress } from "./availability.ts";
 import { factsOf } from "./Projects.tsx";
 import { kindWord, titleOf } from "./projects.ts";
@@ -30,6 +30,7 @@ export function DirectoryPage({
   homes,
   enabledIn,
   projects,
+  kinds,
   workspaceName,
   onOpenAgent,
   onOpenProject,
@@ -42,6 +43,8 @@ export function DirectoryPage({
   enabledIn: Record<string, string[]>;
   /** The tree, null while it loads. */
   projects: ProjectView[] | null;
+  /** The workspace's own kinds, so a project of one is called by its title. */
+  kinds: ProjectKindSpec[];
   workspaceName: string;
   onOpenAgent: (name: string) => void;
   onOpenProject: (name: string) => void;
@@ -69,7 +72,7 @@ export function DirectoryPage({
         <Agents agents={agents} homes={homes} enabledIn={enabledIn} title={title} onOpen={onOpenAgent} onOpenProject={onOpenProject} />
       )}
       {shown === "projects" && readable.projects && (
-        <Projects projects={projects} homes={homes} workspaceName={workspaceName} onOpen={onOpenProject} />
+        <Projects projects={projects} kinds={kinds} homes={homes} workspaceName={workspaceName} onOpen={onOpenProject} />
       )}
     </Page>
   );
@@ -205,11 +208,13 @@ function Agents({
 
 function Projects({
   projects,
+  kinds,
   homes,
   workspaceName,
   onOpen,
 }: {
   projects: ProjectView[] | null;
+  kinds: ProjectKindSpec[];
   homes: Record<string, string>;
   workspaceName: string;
   onOpen: (name: string) => void;
@@ -240,7 +245,7 @@ function Projects({
                     {titleOf(p)}
                   </a>
                   <span className="block truncate text-aui-xs text-aui-muted">
-                    {[kindWord(p.kind), factsOf(p), words.holds(p.schedules, p.notes)].filter(Boolean).join(" · ")}
+                    {[kindWord(p.kind, kinds), factsOf(p), words.holds(p.schedules, p.notes)].filter(Boolean).join(" · ")}
                   </span>
                   {here.length > 0 && (
                     <span className="flex flex-wrap items-center gap-1.5 pt-1 text-aui-xs text-aui-muted">

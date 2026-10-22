@@ -36,6 +36,7 @@ export type {
   ProjectKindSpec,
   ProjectLimit,
   ProjectLimitInput,
+  ProjectMember,
   ProjectMembers,
   ProjectRole,
   ProjectStep,
@@ -128,6 +129,8 @@ export interface Revision {
   hash: string;
   created_at: string;
   created_by: string;
+  /** What whoever saved it is called. Shown in place of `created_by`, the subject. */
+  created_by_name?: string;
 }
 
 export interface Schedule {
@@ -159,6 +162,8 @@ export interface ScheduleView extends Schedule {
   /** "file" while the platform file declares it: run and pause it here, change it in the file. */
   managed?: "file";
   created_by?: string;
+  /** What the person who made it is called. Shown in place of `created_by`, the subject. */
+  created_by_name?: string;
   /** Who last edited the schedule, and when. Absent until it is edited. */
   updated_by?: string;
   updated_at?: string;
@@ -252,6 +257,8 @@ export interface AlertRule {
    */
   notify?: string[];
   created_by?: string;
+  /** What the person who made it is called. Shown in place of `created_by`, the subject. */
+  created_by_name?: string;
   created_at?: string;
   /** Who last replaced the rule, and when. Absent until it is replaced. */
   updated_by?: string;
@@ -266,7 +273,7 @@ export type AlertRuleConfig = AlertRule;
  * cannot change. Fields left out are cleared, not kept. The server sets who
  * created and updated it.
  */
-export type AlertRuleEdit = Omit<AlertRuleConfig, "name" | "created_by" | "created_at" | "updated_by" | "updated_at">;
+export type AlertRuleEdit = Omit<AlertRuleConfig, "name" | "created_by" | "created_by_name" | "created_at" | "updated_by" | "updated_at">;
 
 export interface Alert {
   id: string;
@@ -282,6 +289,8 @@ export interface Alert {
   body?: string;
   at: string;
   acked_by?: string;
+  /** What whoever acknowledged it is called. Shown in place of `acked_by`, the subject. */
+  acked_by_name?: string;
   acked_at?: string;
 }
 
@@ -393,6 +402,8 @@ export interface Policy {
   authority?: "admin" | "owner";
   version: number;
   updated_by?: string;
+  /** What whoever last changed it is called. Shown in place of `updated_by`, the subject. */
+  updated_by_name?: string;
   updated_at: string;
 }
 
@@ -466,6 +477,8 @@ export interface ScopeUsage {
 export interface PolicyChange {
   scope: PolicyScope;
   by: string;
+  /** What whoever made the change is called. Shown in place of `by`, the subject. */
+  by_name?: string;
   at: string;
   before?: Policy;
   after?: Policy;
@@ -478,6 +491,8 @@ export interface Note {
   /** Pending notes are proposals: not used until a person approves them. */
   status: "approved" | "pending";
   by?: string;
+  /** What the person who wrote it is called. Shown in place of `by`, the subject. */
+  by_name?: string;
   at: string;
 }
 
@@ -607,6 +622,7 @@ export function alertRuleEdit(rule: AlertRuleConfig): AlertRuleEdit {
   const edit: AlertRuleEdit & Partial<AlertRuleConfig> = { ...rule };
   delete edit.name;
   delete edit.created_by;
+  delete edit.created_by_name;
   delete edit.created_at;
   delete edit.updated_by;
   delete edit.updated_at;
@@ -924,6 +940,8 @@ export interface CallPolicy extends Required<CallPolicyInput> {
   /** 0 is the default of an agent with no stored policy. */
   version: number;
   updated_by?: string;
+  /** What whoever last saved it is called. Shown in place of `updated_by`, the subject. */
+  updated_by_name?: string;
   updated_at?: string;
 }
 
@@ -953,8 +971,10 @@ export interface QueuedApproval {
       approvers?: string[];
       expires_at?: string;
       tool?: { name: string; acts_for_person?: boolean };
-      /** The person whose own credentials an answer may reach: only they add a note. */
+      /** The person whose own credentials an answer may reach, by subject: only they add a note. */
       steered_for?: string;
+      /** What that person is called. Shown in place of `steered_for`, the subject. */
+      steered_for_name?: string;
     };
   }[];
 }
@@ -1008,6 +1028,8 @@ export interface Thread {
   default?: string;
   /** The inbox id of the announcement a reply to which, in Slack, started the thread. */
   announcement?: string;
+  /** The Slack thread this thread is, when it was started from Slack. It never changes. */
+  surface?: { client: string; channel: string; ts: string };
   version: number;
   created_by: string;
   created_at: string;
@@ -1053,11 +1075,27 @@ export interface ThreadAnnouncement {
   at: string;
 }
 
+/**
+ * The question a parked run waits on, as the reader stands to it: whether
+ * they may answer it, and whom it is for otherwise.
+ */
+export interface ThreadAsk {
+  question: string;
+  yours: boolean;
+  for: "anyone" | "person" | "experts" | "answerers" | "nobody";
+  /** The experts' topic, for `experts`. Absent is every expert. */
+  topic?: string;
+  /** The person it is for, by handle, for `person`. */
+  person?: string;
+}
+
 export interface ThreadTurn {
   kind: "message" | "run" | "announcement";
   message?: ThreadMessage;
   run?: Run;
   announcement?: ThreadAnnouncement;
+  /** On a run parked on a question a person answers. */
+  ask?: ThreadAsk;
 }
 
 export interface ThreadPage {
@@ -1154,8 +1192,8 @@ export const coworking = {
   update: (id: string, t: { version: number; title: string; visibility: "shared" | "private"; default: string }) =>
     call<Thread>("PUT", threadPath(id), t),
   /** The workspace's people whose name or handle holds `q`, for the @ typeahead. */
-  people: (q: string) =>
-    call<{ people: DirectoryPerson[] }>("GET", `/api/people?${new URLSearchParams({ q, limit: "8" })}`).then((r) => r.people),
+  people: (q: string, limit = 8) =>
+    call<{ people: DirectoryPerson[] }>("GET", `/api/people?${new URLSearchParams({ q, limit: String(limit) })}`).then((r) => r.people),
   /** Which agents may answer in a project, for the @ typeahead. */
   available: (project: string) => call<ProjectAvailability>("GET", `${projectAt(project)}/agents`),
 };

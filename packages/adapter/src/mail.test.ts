@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ActionId, messageAsks, messageTemplate, type UiAction } from "@warp/core";
-import { fromServer, kinds, notificationsOf, projectTransport, toRequest, updatesOf } from "./mail.ts";
+import { fromServer, kinds, MailError, notificationsOf, projectOf, projectTransport, shownAbout, toRequest, updatesOf } from "./mail.ts";
 
 /** An announcement as the platform sends it: a broadcast in a project's inbox, only there to be read. */
 const announcement = {
@@ -28,6 +28,16 @@ test("an announcement is laid out as one, about its project, from the person who
   assert.deepEqual(m.parts, [{ id: "p1", type: "text", text: "Globex renewed for two years." }]);
 });
 
+test("a person's announcement shows what they are called, and keeps who they are to tell the reader's own apart", () => {
+  const m = fromServer({ ...announcement, from: { kind: "person", name: "tailscale:dana@example.com", display: "Dana Scully" } });
+  assert.deepEqual(m.from, { kind: "person", name: "Dana Scully" });
+  assert.equal(m.sender, "tailscale:dana@example.com");
+  // An agent's is named as it is.
+  const agent = fromServer({ ...announcement, from: { kind: "agent", name: "recap" } });
+  assert.deepEqual(agent.from, { kind: "agent", name: "recap" });
+  assert.equal(agent.sender, "recap");
+});
+
 test("an announcement never asks anything of the reader, so it sits under Updates", () => {
   assert.equal(messageAsks(fromServer(announcement)), false);
 });
@@ -41,6 +51,59 @@ test("an announcement reads as hidden for the reader who hid it", () => {
   assert.equal(fromServer({ ...announcement, state: "dismissed" }).dismissedAt, announcement.updated_at);
   const later = fromServer({ ...announcement, state: "snoozed", snoozed_until: "2026-10-22T09:00:00Z" });
   assert.equal(later.snoozedUntil, "2026-10-22T09:00:00Z");
+});
+
+test("a message keeps the time it was raised after it is resolved or set aside", () => {
+  const answered = fromServer({ ...announcement, updated_at: "2026-10-21T09:05:00Z" });
+  assert.equal(answered.at, "2026-10-21T09:00:00Z");
+  const hidden = fromServer({ ...announcement, state: "dismissed", updated_at: "2026-10-21T09:05:00Z" });
+  assert.equal(hidden.at, "2026-10-21T09:00:00Z");
+  assert.equal(hidden.dismissedAt, "2026-10-21T09:05:00Z");
+  const alert = fromServer({
+    ...announcement,
+    kind: "alert",
+    updated_at: "2026-10-21T09:05:00Z",
+    parts: [{ id: "p1", type: "alert", state: "open", actions: ["acknowledge"], alert: { id: "a1", rule: "api", severity: "warning", title: "Slow" } }],
+  });
+  assert.equal(alert.at, "2026-10-21T09:00:00Z");
+  const part = alert.parts[0];
+  assert.ok(part?.type === "alert");
+  assert.equal(part.alert.startedAt, "2026-10-21T09:00:00Z");
+  assert.equal(part.alert.updatedAt, "2026-10-21T09:05:00Z");
+});
+
+test("an announcement the reader hid for themselves is theirs to bring back, and nothing else is", async () => {
+  const hidden = fromServer({ ...announcement, state: "dismissed", hidden: true });
+  assert.equal(hidden.hidden, true);
+  const unhide: UiAction = { id: ActionId.unhide, payload: { turnId: hidden.id, target: hidden.id } };
+  assert.deepEqual(toRequest(hidden, unhide), { call: "unhide" });
+  // Withdrawn for everyone, it is not the reader's to bring back.
+  const withdrawn = fromServer({ ...announcement, state: "dismissed" });
+  assert.equal(withdrawn.hidden, undefined);
+  assert.equal(toRequest(withdrawn, unhide), null);
+  const seen: string[] = [];
+  const via = projectTransport(async <T,>(method: string, path: string) => {
+    seen.push(`${method} ${path}`);
+    return { ...announcement } as T;
+  }, "Globex");
+  const back = await via.send(hidden, { call: "unhide" });
+  assert.deepEqual(seen, ["POST /api/inbox/m-9/unhide"]);
+  assert.equal(back.hidden, undefined);
+});
+
+test("a project's inbox reads by id only what is filed in it, so another project's message is not found there", async () => {
+  const via = (project: string, children = false) =>
+    projectTransport(async <T,>() => ({ message: { ...announcement }, history: [] }) as T, project, children);
+  assert.equal(projectOf(fromServer(announcement)), "Globex");
+  assert.equal((await via("Globex").get("m-9")).id, "m-9");
+  // Read as the reader may, it is still Globex's: Field's inbox does not show it, below Field or not.
+  for (const children of [false, true]) {
+    await assert.rejects(via("Field", children).get("m-9"), (e: unknown) => e instanceof MailError && e.status === 404);
+  }
+  // The workspace's own inbox holds what is filed in no project.
+  const root = projectTransport(async <T,>() => ({ message: { ...announcement, source: {} }, history: [] }) as T, "~");
+  assert.equal((await root.get("m-9")).id, "m-9");
+  await assert.rejects(projectTransport(async <T,>() => ({ message: { ...announcement } }) as T, "").get("m-9"));
 });
 
 /** An agent's post held for a project's owners, as the platform sends it to one. */
@@ -117,8 +180,10 @@ test("What's new holds the open announcements, unread first, at most five, each 
   const root = { ...announcement, id: "m-root", source: {}, unread: false, at: at(7), updated_at: at(7) };
   const hidden = { ...announcement, id: "m-hidden", state: "dismissed" };
   const alert = { ...announcement, id: "m-alert", kind: "alert" };
+  // An owner's inbox holds an agent's draft under the same kind, unpublished.
+  const unpublished = { ...draft, id: "m-draft", at: at(8), updated_at: at(8) };
   const updates = updatesOf(
-    [...raw, root, hidden, alert].map(fromServer),
+    [...raw, root, hidden, alert, unpublished].map(fromServer),
     (p) => (p === "" ? "Acme" : `${p} Inc`),
     (p, id) => `/projects/${p || "~"}?message=${id}`,
   );
@@ -162,4 +227,49 @@ test("what needs the reader on Home is every open message but announcements, sai
     { kind: "inbox", id: "m-mention", from: "Ana", summary: "mentioned you in #renewals", at: announcement.at, url: "/inbox?message=m-mention" },
     { kind: "inbox", id: "m-alert", from: "failure-rate", summary: "6 of 10 runs failed", at: announcement.at, url: "/inbox?message=m-alert" },
   ]);
+});
+
+test("what a question is about names its conversation by what it is called, and never by an id", () => {
+  const question = {
+    id: "m-4",
+    kind: "clarification",
+    subject: "ledger asks the billing experts: INV-2041 bills the March maintenance twice…",
+    from: { kind: "agent", name: "ledger" },
+    at: "2026-10-22T10:26:00Z",
+    severity: "info",
+    state: "open",
+    source: { run: "r7141b73d4cd9f6d7fbee963ea0c1d2e3", thread: "th-083973d191362dea", agent: "ledger", project: "Globex", thread_title: "INV-2041 double charge" },
+    parts: [],
+  };
+  const m = fromServer(question);
+  // The run stays in what it is about, by its id: a surface finds the run
+  // there, as Slack does to post into the run's own thread.
+  assert.deepEqual(
+    m.about.map((s) => `${s.kind}:${s.id}:${s.label}`),
+    [
+      "run:r7141b73d4cd9f6d7fbee963ea0c1d2e3:INV-2041 double charge",
+      "thread:th-083973d191362dea:INV-2041 double charge",
+      "agent:ledger:Agent ledger",
+      "project:Globex:Project Globex",
+    ],
+  );
+  assert.deepEqual(m.source, { kind: "run", id: "r7141b73d4cd9f6d7fbee963ea0c1d2e3", label: "INV-2041 double charge" });
+  // Drawn, the run and its thread are one conversation.
+  assert.deepEqual(
+    shownAbout(m.about).map((s) => `${s.kind}:${s.label}`),
+    ["thread:INV-2041 double charge", "agent:Agent ledger", "project:Project Globex"],
+  );
+  // A run in no thread is the conversation itself.
+  const alone = fromServer({ ...question, source: { run: "r-1", agent: "ledger" } });
+  assert.deepEqual(
+    shownAbout(alone.about).map((s) => `${s.kind}:${s.id}`),
+    ["run:r-1", "agent:ledger"],
+  );
+  // A conversation the reader is not told the name of is called one.
+  const unnamed = fromServer({ ...question, source: { ...question.source, thread_title: undefined } });
+  assert.deepEqual(
+    shownAbout(unnamed.about).map((s) => s.label),
+    ["Conversation", "Agent ledger", "Project Globex"],
+  );
+  for (const s of [...m.about, ...unnamed.about]) assert.ok(!/\b(r[0-9a-f]{8,}|th-[0-9a-f]+)\b/.test(s.label), s.label);
 });

@@ -1173,7 +1173,10 @@ paths:
 
         The first page is the newest 200 turns, or `limit`. `next` is the
         cursor for the turns before them, or null at the start: pass it back
-        as `before`. `answers` is who answers an untagged message here.
+        as `before`. `answers` is who answers an untagged message here. A run
+        turn whose run is parked on a question a person answers carries
+        `ask`: whether the reader may answer it, and whom it is for, so a
+        surface offers the answer only to the people it is for.
       x-permission: runs:read
       parameters:
         - {$ref: "#/components/parameters/ThreadID"}
@@ -1818,6 +1821,31 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/inbox/{id}/unhide:
+    post:
+      operationId: unhideInboxMessage
+      tags: [inbox]
+      summary: Bring back an announcement the caller hid for themselves
+      description: |
+        An announcement the caller hid or snoozed (`hidden`) is open for them
+        again, as everyone else has it. Only their own copy changes, so it
+        needs what hiding it needs. One they never set aside, or one withdrawn
+        for everyone, is answered as it is. Any other message is set aside for
+        everyone, and is not brought back this way (400).
+      x-permission: runs:read
+      parameters:
+        - {$ref: "#/components/parameters/MessageID"}
+      responses:
+        "200":
+          description: The message, as the caller now has it.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/InboxMessage"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/inbox/{id}/parts/{part}/resolve:
     post:
@@ -4332,6 +4360,9 @@ components:
         hash: {type: string}
         created_at: {type: string, format: date-time}
         created_by: {type: string}
+        created_by_name:
+          description: What whoever saved it is called, their name, else their handle, never a subject that holds an address. `created_by` is the subject.
+          type: string
     Choice:
       description: Which agent @auto would pick for a message, and why.
       type: object
@@ -4358,6 +4389,9 @@ components:
           type: string
           enum: [approved, pending]
         by: {type: string}
+        by_name:
+          description: What the person who wrote it is called, their name, else their handle, never a subject that holds an address. `by` is the subject.
+          type: string
         at: {type: string, format: date-time}
     NoteList:
       type: object
@@ -4932,6 +4966,35 @@ components:
         message: {$ref: "#/components/schemas/ThreadMessage"}
         run: {$ref: "#/components/schemas/Run"}
         announcement: {$ref: "#/components/schemas/ThreadAnnouncement"}
+        ask: {$ref: "#/components/schemas/ThreadAsk"}
+    ThreadAsk:
+      description: |
+        The question a parked run waits on, as the reader stands to it, on a
+        run turn whose run is parked on a question a person answers. `yours`
+        says the reader may answer it, as answering would check them: it is
+        addressed to them, they hold `runs:write`, and nothing else refuses
+        them, such as approving a call their own request raised. `for` says
+        whom it is for: `anyone` who may resume runs, one `person` (the
+        person the run acts for, by handle, when an answer may reach their
+        own credential), the `experts` on `topic` in the run's project (every
+        expert when `topic` is absent), the `answerers` its agent's rules
+        name or it asked, or `nobody`, when the rules cannot be read. It
+        names nobody the reader may not see. The runtime still has the last
+        word when an answer is given.
+      type: object
+      required: [question, yours, for]
+      properties:
+        question:
+          description: The question's id, `question.id` on the run.
+          type: string
+        yours: {type: boolean}
+        for:
+          type: string
+          enum: [anyone, person, experts, answerers, nobody]
+        topic: {type: string}
+        person:
+          description: The handle of the person it is for, with `for` of `person`.
+          type: string
     ThreadAnswers:
       description: |
         Who answers an untagged message in a place, and where that is set:
@@ -5549,8 +5612,24 @@ components:
       required: [who, from]
       properties:
         who: {type: string}
+        name:
+          description: What the person `who` names is called, their name, else their handle, never a subject that holds an address. Absent on `*` and `role:<name>`.
+          type: string
         from:
           description: The project above whose entry it is, `""` for the workspace.
+          type: string
+    ProjectMember:
+      description: One member of a project, the role it grants, and what a person it names is called.
+      type: object
+      required: [who, role]
+      properties:
+        who:
+          description: "`*`, `role:<name>`, or a subject: the key a change sends back."
+          type: string
+          maxLength: 255
+        role: {$ref: "#/components/schemas/ProjectRole"}
+        name:
+          description: What the person `who` names is called, their name, else their handle, never a subject that holds an address. Absent on `*` and `role:<name>`.
           type: string
     ProjectMembers:
       description: Who holds a role in a project, and who owns it from above.
@@ -5563,7 +5642,7 @@ components:
         members:
           type: array
           maxItems: 100
-          items: {$ref: "#/components/schemas/ProjectEntry"}
+          items: {$ref: "#/components/schemas/ProjectMember"}
         inherited:
           description: The owner entries of the projects above, nearest first.
           type: array
@@ -5630,6 +5709,9 @@ components:
         at: {type: string, format: date-time}
         by:
           description: Who made the change. `migration` for projects moved out of settings.
+          type: string
+        by_name:
+          description: What whoever made the change is called, their name, else their handle, never a subject that holds an address.
           type: string
         project: {type: string}
         what:
@@ -5938,6 +6020,9 @@ components:
           type: string
           enum: [file]
         created_by: {type: string}
+        created_by_name:
+          description: What the person who made it is called, their name, else their handle, never a subject that holds an address. `created_by` is the subject.
+          type: string
         updated_by:
           description: Who last changed the schedule. Absent until it is changed.
           type: string
@@ -6023,9 +6108,14 @@ components:
       required: [kind, name]
       properties:
         kind:
-          description: What sent the message, such as `agent`, `rule` or `system`.
+          description: What sent the message, such as `agent`, `rule`, `system` or `person`.
           type: string
-        name: {type: string}
+        name:
+          description: The agent, the rule or the part of the system, and a person's subject. A mention, a thread's artefact, names its poster as threads do, by handle, and never by subject.
+          type: string
+        display:
+          description: What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's. A mention's poster is called what their message is called now.
+          type: string
         approved_by:
           description: The person who published an agent's draft, by subject. Absent on what an agent posted itself.
           type: string
@@ -6090,6 +6180,9 @@ components:
         expires_seconds: {type: integer}
         version: {type: integer}
         updated_by: {type: string}
+        updated_by_name:
+          description: What whoever last saved it is called, their name, else their handle, never a subject that holds an address. `updated_by` is the subject.
+          type: string
         updated_at: {type: string, format: date-time}
     Reach:
       description: Whether one agent may call another.
@@ -6121,12 +6214,20 @@ components:
         target:
           description: The agent a question's tool call would call, when it calls one.
           type: string
+        thread_title:
+          description: What the conversation it is about is called, `thread`'s or else `run`'s, its title or else the start of its first message, for a reader who may read it.
+          type: string
     InboxOutcome:
       type: object
       required: [action, by, at]
       properties:
         action: {type: string}
-        by: {type: string}
+        by:
+          description: Who decided, by subject, or `system`.
+          type: string
+        by_name:
+          description: What whoever decided is called, their name, else their handle, never a subject that holds an address.
+          type: string
         at: {type: string, format: date-time}
         note: {type: string}
     InboxLimits:
@@ -6272,6 +6373,9 @@ components:
             note or edit. Said as it stood when the question was raised;
             answering checks again.
           type: string
+        steered_for_name:
+          description: What the person in `steered_for` is called, their name, else their handle, never a subject that holds an address. Set with `steered_for`.
+          type: string
     InboxDraftPart:
       description: A post an agent wrote for a project, waiting for one of its owners.
       type: object
@@ -6377,7 +6481,15 @@ components:
         state: {$ref: "#/components/schemas/InboxState"}
         snoozed_until: {type: string, format: date-time}
         unread:
-          description: Whether this caller has read it. Read state is per person.
+          description: |
+            Whether this caller has read it. Read state is per person, and
+            whoever posted an announcement has read it.
+          type: boolean
+        hidden:
+          description: |
+            The caller hid or snoozed this announcement for themselves, so
+            `state` is theirs alone and everyone else still has it. Left out
+            otherwise. `unhideInboxMessage` brings it back.
           type: boolean
         source: {$ref: "#/components/schemas/InboxSource"}
         parts:
@@ -6397,7 +6509,7 @@ components:
         by: {type: string}
         what:
           type: string
-          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered]
+          enum: [raised, read, unread, resolved, dismissed, snoozed, withdrawn, delivered, unhidden]
         part: {type: string}
         action: {type: string}
         note: {type: string}
@@ -6681,6 +6793,9 @@ components:
           maxItems: 20
           items: {type: string, minLength: 1, maxLength: 254}
         created_by: {type: string}
+        created_by_name:
+          description: What the person who made it is called, their name, else their handle, never a subject that holds an address. `created_by` is the subject. Sent back with the rule, it is ignored, as `created_by` is.
+          type: string
         created_at: {type: string, format: date-time}
         updated_by:
           description: Who last replaced the rule. Absent until it is replaced.
@@ -6704,6 +6819,9 @@ components:
         body: {type: string}
         at: {type: string, format: date-time}
         acked_by: {type: string}
+        acked_by_name:
+          description: What whoever acknowledged it is called, their name, else their handle, never a subject that holds an address. `acked_by` is the subject.
+          type: string
         acked_at: {type: string, format: date-time}
 
     EvalTarget:
@@ -6947,6 +7065,9 @@ components:
           enum: [admin, owner]
         version: {type: integer}
         updated_by: {type: string}
+        updated_by_name:
+          description: What whoever last changed it is called, their name, else their handle, never a subject that holds an address. `updated_by` is the subject. Absent on the policies a change holds.
+          type: string
         updated_at: {type: string, format: date-time}
     PolicyChange:
       type: object
@@ -6954,6 +7075,9 @@ components:
       properties:
         scope: {$ref: "#/components/schemas/PolicyScope"}
         by: {type: string}
+        by_name:
+          description: What whoever made the change is called, their name, else their handle, never a subject that holds an address. `by` is the subject.
+          type: string
         at: {type: string, format: date-time}
         before: {$ref: "#/components/schemas/Policy"}
         after: {$ref: "#/components/schemas/Policy"}
@@ -7438,7 +7562,10 @@ components:
         text: {type: string}
         note: {type: string}
         by:
-          description: Who answered.
+          description: Who answered, by subject, as the platform authenticated them.
+          type: string
+        by_name:
+          description: What whoever answered is called, their name, else their handle, never a subject that holds an address. Set on what a route hands out, never in the journal.
           type: string
         at: {type: string, format: date-time}
         expired: {type: boolean}

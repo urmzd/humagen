@@ -24,12 +24,31 @@ func (s *Server) billingRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/usage/notices", s.authed(auth.BillingRead, s.usageNotices))
 }
 
+// policyView is a policy and what whoever last changed it is called. The
+// policy names them by subject; the console shows the name.
+type policyView struct {
+	policy.Policy
+	UpdatedByName string `json:"updated_by_name,omitempty"`
+}
+
+func viewPolicy(names platform.Names, pol policy.Policy) policyView {
+	return policyView{Policy: pol, UpdatedByName: names.Of(pol.UpdatedBy)}
+}
+
+// policyChangeView is one change to a policy and what whoever made it is
+// called.
+type policyChangeView struct {
+	policy.Change
+	ByName string `json:"by_name,omitempty"`
+}
+
 func (s *Server) listPolicies(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	out := []policy.Policy{}
+	names := s.P.Names(who.Tenant)
+	out := []policyView{}
 	for _, pol := range s.P.Policies.List(who.Tenant) {
 		if seer.Scope(pol.Scope) {
-			out = append(out, pol)
+			out = append(out, viewPolicy(names, pol))
 		}
 	}
 	ok(w, http.StatusOK, map[string]any{"policies": out})
@@ -106,7 +125,7 @@ func (s *Server) putPolicy(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, saved)
+	ok(w, http.StatusOK, viewPolicy(s.P.Names(who.Tenant), saved))
 }
 
 func (s *Server) deletePolicy(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -125,10 +144,11 @@ func (s *Server) deletePolicy(w http.ResponseWriter, r *http.Request, who auth.P
 
 func (s *Server) policyHistory(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	out := []policy.Change{}
+	names := s.P.Names(who.Tenant)
+	out := []policyChangeView{}
 	for _, c := range s.P.Policies.History(who.Tenant) {
 		if seer.Scope(c.Scope) {
-			out = append(out, c)
+			out = append(out, policyChangeView{Change: c, ByName: names.Of(c.By)})
 		}
 	}
 	ok(w, http.StatusOK, map[string]any{"changes": out})

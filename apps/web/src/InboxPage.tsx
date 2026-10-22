@@ -1,10 +1,10 @@
 import { ActionId, type InboxMessage, messageState, openParts, type UiAction } from "@warp/core";
 import { Mailbox, type MailboxShow } from "@warp/web";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { useInbox } from "./inbox.ts";
+import { useHeld, useInbox } from "./inbox.ts";
 import { platformParts } from "./MailParts.tsx";
-import { kinds, type PlatformMessage, type Source, type Transport, transport as platform } from "./mail.ts";
-import { AgentMark, Empty, Problem, SkeletonRows, Stroke, type StrokeState } from "./ui.tsx";
+import { kinds, type PlatformMessage, type Source, shownAbout, type Transport, transport as platform } from "./mail.ts";
+import { AgentMark, Empty, Problem, SkeletonRows, Stroke, type StrokeState, useStrip } from "./ui.tsx";
 
 /** The id in the address, so a message can be linked to. */
 function linked(): string | null {
@@ -38,12 +38,14 @@ export function edgeOf(message: InboxMessage): { agent?: string; state: StrokeSt
 /**
  * What kind of message to show, as a row of chips like an email client's
  * categories. It scrolls sideways in a narrow pane rather than wrapping, so
- * the row stays one line and nothing spills out of it.
+ * the row stays one line and nothing spills out of it. The end with more
+ * fades, and the chosen chip is kept in view.
  */
 export function KindChips({ value, onChange }: { value: string; onChange: (kind: string) => void }) {
   const options = [{ id: "", label: "Everything" }, ...kinds];
+  const strip = useStrip<HTMLDivElement>(value);
   return (
-    <div role="group" aria-label="Kind" className="aui-scroll -mx-1 flex min-w-0 gap-1.5 overflow-x-auto px-1 pb-1">
+    <div ref={strip} role="group" aria-label="Kind" className="warp-strip aui-scroll -mx-1 flex min-w-0 gap-1.5 overflow-x-auto px-1 pb-1">
       {options.map((k) => (
         <button
           key={k.id || "all"}
@@ -79,7 +81,13 @@ export function MailboxView({
   openCount,
   show,
   onShow,
+  messageActions,
+  emptyOpen,
 }: {
+  /** The page's own controls for the message being read, such as Withdraw. */
+  messageActions?: (message: PlatformMessage) => ReactNode;
+  /** What an empty Open view says, when the default does not fit the page. */
+  emptyOpen?: { title: string; hint: string };
   /** Open, resolved or all, when the host filters on the server. Leave out to let the mailbox filter what it is given. */
   show?: MailboxShow;
   onShow?: (show: MailboxShow) => void;
@@ -110,9 +118,11 @@ export function MailboxView({
       openCount={openCount}
       show={show}
       onShow={onShow}
+      messageActions={messageActions && ((m) => messageActions(m as PlatformMessage))}
+      emptyOpen={emptyOpen}
       renderFrame={(message, children) => {
         const edge = edgeOf(message);
-        const sources = (message as PlatformMessage).about ?? [];
+        const sources = shownAbout((message as PlatformMessage).about ?? []);
         return (
           <Stroke agent={edge.agent} state={edge.state} testId="mail-frame" className="flex min-h-0 min-w-0 flex-1 flex-col pl-4">
             {children}
@@ -177,38 +187,12 @@ export function InboxPage({
   const setKind = (next: string) => (onKind ? onKind(next) : setOwnKind(next));
   const [show, setShow] = useState<MailboxShow>("open");
   const [selected, setSelected] = useState<string | null>(() => openId ?? linked());
-  // The message being read, held apart from the list. A linked message may not be on a
-  // loaded page, and one just resolved leaves the open list while its record is still
-  // being read. Either way it stays on screen until another is chosen.
-  const [held, setHeld] = useState<PlatformMessage | null>(null);
-  const [missing, setMissing] = useState(false);
   const inbox = useInbox(kind, show, signal, via, viewer);
-
-  const found = inbox.messages.find((m) => m.id === selected);
-  const listed = found !== undefined;
-  const messages = held && held.id === selected && !listed ? [held, ...inbox.messages] : inbox.messages;
-
-  useEffect(() => {
-    if (found) setHeld(found);
-  }, [found]);
+  const { messages, missing, keep } = useHeld(inbox.messages, selected, inbox.loading === "first", via);
 
   useEffect(() => {
     if (openId) setSelected(openId);
   }, [openId]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: fetch once per selection that the list does not hold
-  useEffect(() => {
-    setMissing(false);
-    if (!selected || inbox.loading === "first" || listed || held?.id === selected) return;
-    let live = true;
-    via
-      .get(selected)
-      .then((m) => live && setHeld(m))
-      .catch(() => live && setMissing(true));
-    return () => {
-      live = false;
-    };
-  }, [selected, inbox.loading]);
 
   useEffect(() => link(selected), [selected]);
 
@@ -224,9 +208,7 @@ export function InboxPage({
     const message = messages.find((m) => m.id === action.payload.turnId);
     if (!message) return;
     // The message being read is kept in step even when the list no longer holds it.
-    inbox.act(message, action).then((server) => {
-      if (server) setHeld((was) => (was?.id === server.id ? server : was));
-    });
+    inbox.act(message, action).then(keep);
     if (action.id === ActionId.dismiss && selected === message.id) setSelected(null);
   }
 

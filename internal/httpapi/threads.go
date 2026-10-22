@@ -245,6 +245,7 @@ func (s *Server) getThread(w http.ResponseWriter, r *http.Request, who auth.Prin
 	}
 	d, why, _ := s.P.DefaultFor(who.Tenant, id, "", "")
 	th, turns = s.P.ShowTurns(who.Tenant, th, turns)
+	turns = s.P.AsksIn(r.Context(), who, turns)
 	var cursor *string
 	if next != "" {
 		cursor = &next

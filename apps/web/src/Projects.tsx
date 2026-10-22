@@ -16,6 +16,7 @@ import {
   type ThreadSummary,
 } from "./api.ts";
 import { ScopeLimits } from "./Billing.tsx";
+import { inWords } from "./cron.ts";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
 import type { Source } from "./mail.ts";
 import { ProjectHistory, ProjectInbox, ProjectLimits, ProjectPeople } from "./ProjectTabs.tsx";
@@ -63,7 +64,8 @@ import {
 
 const words = defaultCopy.projects;
 const scheduleWords = defaultCopy.schedules;
-const section = "flex flex-col gap-2 border-aui-border border-t pt-5";
+// A rule over each section parts it from the one before. The first in its column has none: what is above it draws its own.
+const section = "flex flex-col gap-2 border-aui-border border-t pt-5 first:border-t-0 first:pt-0";
 const heading = "text-aui-base font-medium text-aui-fg";
 const fail = (set: (m: string) => void, fallback: string) => (e: unknown) => set(e instanceof ApiError ? e.message : fallback);
 
@@ -537,7 +539,7 @@ function SharedMemory({
               <span className="min-w-0">
                 <span className="block text-aui-sm text-aui-fg">{n.text}</span>
                 <span className="block text-aui-xs text-aui-muted">
-                  {n.source === "person" ? `Written by ${n.by}` : "Proposed by the memory agent and approved"}, {ago(n.at)}
+                  {n.source === "person" ? `Written by ${n.by_name || n.by}` : "Proposed by the memory agent and approved"}, {ago(n.at)}
                 </span>
               </span>
               {canWrite && (
@@ -789,9 +791,9 @@ function Scheduled({
 
   return (
     <section className={section}>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className={heading}>Scheduled ({timed.length})</h2>
-        <span className="flex gap-2">
+        <span className="flex flex-wrap gap-2">
           {recap && canSchedule && recapper && !hasRecap && (
             <button type="button" className={button} onClick={addRecap}>
               {scheduleWords.addWeeklyRecap}
@@ -870,7 +872,7 @@ function Scheduled({
                 <span className="block text-aui-sm text-aui-fg">
                   {s.name}
                   <span className="pl-2 text-aui-xs text-aui-muted">
-                    <code className="font-aui-mono">{s.expression}</code> to {s.agent}
+                    <span title={s.expression}>{inWords(s.expression)}</span> to {s.agent}
                     {s.paused ? ", paused" : ""}
                     {s.deliver === "project" ? `, ${scheduleWords.deliverProject.toLowerCase()}` : ""}
                   </span>
@@ -1160,7 +1162,8 @@ export function ProjectPage({
   inboxTick?: unknown;
   /** The projects whose announcements stay out of the reader's own inbox. */
   muted?: string[];
-  onMute?: (project: string, muted: boolean) => void;
+  /** Resolves once the change is saved, and rejects when it could not be. */
+  onMute?: (project: string, muted: boolean) => Promise<void>;
   /** Open what an inbox message is about. */
   onOpenSource?: (source: Source) => void;
   workspaceName: string;
@@ -1190,6 +1193,8 @@ export function ProjectPage({
   const [editing, setEditing] = useState(false);
   const [moving, setMoving] = useState<string | null>(null);
   const [reads, setReads] = useState(0);
+  // A mute that did not take says so beside its button.
+  const { flash: muteFlash, say: sayMute, clear: clearMute } = useFlash();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
   useEffect(() => {
@@ -1260,9 +1265,21 @@ export function ProjectPage({
       actions={
         <>
           {!root && onMute && (
-            <button type="button" className={button} onClick={() => onMute(p.name, !isMuted)}>
-              {isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute}
-            </button>
+            <span className="relative inline-flex">
+              <button
+                type="button"
+                className={button}
+                onClick={() => {
+                  clearMute();
+                  onMute(p.name, !isMuted).catch(() =>
+                    sayMute(isMuted ? defaultCopy.announcements.unmuteFailed : defaultCopy.announcements.muteFailed, true),
+                  );
+                }}
+              >
+                {isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute}
+              </button>
+              <FlashNote flash={muteFlash} align="left" />
+            </span>
           )}
           {canWrite && !root && !editing && (
             <button type="button" className={button} onClick={() => setEditing(true)}>
@@ -1359,7 +1376,14 @@ export function ProjectPage({
       ) : tab === "people" ? (
         <ProjectPeople key={`${p.name}:${p.version}`} project={p} onChanged={changed} />
       ) : tab === "limits" ? (
-        <ProjectLimits project={p} scope={ownScope} chain={chain} canBilling={can("billing:write")} tick={tick} />
+        <ProjectLimits
+          project={p}
+          scope={ownScope}
+          chain={chain}
+          canBilling={can("billing:write")}
+          above={parent ? titleOf(parent, workspaceName) : undefined}
+          tick={tick}
+        />
       ) : tab === "history" ? (
         <ProjectHistory project={p} tick={tick} />
       ) : tab === "agents" ? (

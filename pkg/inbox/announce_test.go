@@ -302,8 +302,9 @@ func TestWithdrawRecordsWho(t *testing.T) {
 	if _, _, err := s.Withdraw(acme, m.ID, "dana", "Moved to Friday", t0.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
+	// Raised, read by dana, who posted it, and withdrawn.
 	h := s.History(acme, m.ID)
-	if len(h) != 2 || h[1].What != DidWithdraw || h[1].By != "dana" || h[1].Note != "Moved to Friday" {
+	if len(h) != 3 || h[2].What != DidWithdraw || h[2].By != "dana" || h[2].Note != "Moved to Friday" {
 		t.Fatalf("history = %+v", h)
 	}
 	other := raise(s, "alert:1", t0, Part{Type: PartAlert})
@@ -473,8 +474,12 @@ func TestAReadersOwnMarksStayOutOfAnotherReadersHistory(t *testing.T) {
 	if got := whats(s.HistoryFor(acme, m.ID, "dee")); !slices.Equal(got, []string{"raised dana", "snoozed dee", "read dee", "dismissed dee"}) {
 		t.Fatalf("dee is shown %q", got)
 	}
-	if n := len(s.History(acme, m.ID)); n != 5 {
+	// dana's own read of what she posted is a mark like any other.
+	if n := len(s.History(acme, m.ID)); n != 6 {
 		t.Fatalf("the record holds %d changes, want every mark once", n)
+	}
+	if got := whats(s.HistoryFor(acme, m.ID, "dana")); !slices.Equal(got, []string{"raised dana", "read dana"}) {
+		t.Fatalf("dana is shown %q", got)
 	}
 
 	// Snoozing to a new time each time is recorded each time, and shown
@@ -535,4 +540,151 @@ func TestPostOnceNeverPostsAKeyTwice(t *testing.T) {
 			t.Errorf("no key = %v", err)
 		}
 	})
+}
+
+// Whoever posts an announcement has read it: a person who wrote it, or who
+// published an agent's draft. Everyone else still has it to read, and the
+// mark is written with the post, so a rebuilt inbox has it too.
+func TestThePosterHasReadWhatTheyPosted(t *testing.T) {
+	s := NewStore()
+	m := post(t, s, "Field", "Field offsite", t0)
+	if m.Unread {
+		t.Fatal("Post answers the author with their own post unread")
+	}
+	for who, unread := range map[string]bool{"dana": false, "ada": true} {
+		got, err := s.GetAs(acme, m.ID, Reader{Subject: who, Projects: []string{"Field"}})
+		if err != nil || got.Unread != unread {
+			t.Errorf("%s reads it unread=%v, %v, want %v", who, got.Unread, err, unread)
+		}
+	}
+	if c := s.Count(acme, readerIn("dana", "Field")); c.Updates != 0 {
+		t.Fatalf("the author has %d updates to read", c.Updates)
+	}
+	published := announcement("Field", "Weekly recap")
+	published.From = From{Kind: "agent", Name: "recap-writer", ApprovedBy: "olu"}
+	if _, err := s.Post(acme, published, t0, PostCaps{}); err != nil {
+		t.Fatal(err)
+	}
+	agent := announcement("Field", "Nightly recap")
+	agent.From = From{Kind: "agent", Name: "recap-writer"}
+	if _, err := s.Post(acme, agent, t0, PostCaps{}); err != nil {
+		t.Fatal(err)
+	}
+	_, read := s.Snapshot(acme)
+	if !slices.Equal(read["m-1"], []string{"dana"}) || !slices.Equal(read["m-2"], []string{"olu"}) || len(read["m-3"]) != 0 {
+		t.Fatalf("who has read what = %v", read)
+	}
+	_, rebuilt := Rebuild(s.Changes(acme)).Snapshot(acme)
+	if !reflect.DeepEqual(rebuilt, read) {
+		t.Fatalf("rebuilt, who has read what = %v, want %v", rebuilt, read)
+	}
+}
+
+// A reader brings back an announcement they hid or snoozed for themselves,
+// and is told which of their copies are hidden that way. Nobody else's copy
+// changes, an unhide that would change nothing is not recorded, a
+// withdrawal is not undone, and a message that is not a broadcast is not
+// reopened.
+func TestAReaderBringsBackWhatTheyHid(t *testing.T) {
+	s := NewStore()
+	m := post(t, s, "Field", "Field offsite", t0)
+	as := func(who string) Message {
+		t.Helper()
+		got, err := s.GetAs(acme, m.ID, Reader{Subject: who, Projects: []string{"Field"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if _, _, err := s.Dismiss(acme, m.ID, "ada", t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Snooze(acme, m.ID, "bo", t0.Add(time.Hour), t0); err != nil {
+		t.Fatal(err)
+	}
+	if got := as("ada"); got.State != Dismissed || !got.Hidden {
+		t.Fatalf("ada's hidden copy = %s, hidden %v", got.State, got.Hidden)
+	}
+	if got := as("bo"); got.State != Snoozed || !got.Hidden {
+		t.Fatalf("bo's snoozed copy = %s, hidden %v", got.State, got.Hidden)
+	}
+	if got := as("cy"); got.State != Open || got.Hidden {
+		t.Fatalf("cy's copy = %s, hidden %v", got.State, got.Hidden)
+	}
+	if got, _, err := s.Unhide(acme, m.ID, "ada", t0.Add(time.Minute)); err != nil || got.State != Open || got.Hidden {
+		t.Fatalf("ada's unhide = %s, hidden %v, %v", got.State, got.Hidden, err)
+	}
+	if got := ids(t, s, readerIn("ada", "Field")); !slices.Equal(got, []string{m.ID}) {
+		t.Fatalf("ada's open page after the unhide = %q", got)
+	}
+	if got := as("bo"); got.State != Snoozed || !got.Hidden {
+		t.Fatalf("bo's copy after ada's unhide = %s", got.State)
+	}
+	if _, _, err := s.Unhide(acme, m.ID, "bo", t0.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if got := as("bo"); got.State != Open || got.Hidden {
+		t.Fatalf("bo's copy after bo's unhide = %s, hidden %v", got.State, got.Hidden)
+	}
+	// Hiding it again works as the first time did.
+	if _, _, err := s.Dismiss(acme, m.ID, "ada", t0.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if got := as("ada"); got.State != Dismissed || !got.Hidden {
+		t.Fatalf("ada's copy hidden again = %s", got.State)
+	}
+	n := len(s.History(acme, m.ID))
+	if _, _, err := s.Unhide(acme, m.ID, "cy", t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Unhide(acme, m.ID, "", t0); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.History(acme, m.ID)) != n {
+		t.Fatal("an unhide of a copy never set aside was recorded")
+	}
+	whats := func(cs []Change) []string {
+		var out []string
+		for _, c := range cs {
+			out = append(out, string(c.What)+" "+c.By)
+		}
+		return out
+	}
+	if got := whats(s.HistoryFor(acme, m.ID, "cy")); !slices.Equal(got, []string{"raised dana"}) {
+		t.Fatalf("cy is shown %q", got)
+	}
+	if got := whats(s.HistoryFor(acme, m.ID, "ada")); !slices.Equal(got, []string{"raised dana", "dismissed ada", "unhidden ada", "dismissed ada"}) {
+		t.Fatalf("ada is shown %q", got)
+	}
+	rebuilt := Rebuild(s.Changes(acme))
+	for _, who := range []string{"ada", "bo", "cy"} {
+		r := Reader{Subject: who, Projects: []string{"Field"}}
+		live, _ := s.GetAs(acme, m.ID, r)
+		got, _ := rebuilt.GetAs(acme, m.ID, r)
+		if !reflect.DeepEqual(live, got) {
+			t.Errorf("%s reads %+v live and %+v rebuilt", who, live, got)
+		}
+	}
+	// A withdrawal is everyone's: unhiding changes nothing.
+	if _, _, err := s.Withdraw(acme, m.ID, "dana", "", t0.Add(3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ := s.Unhide(acme, m.ID, "ada", t0.Add(4*time.Minute)); got.State != Dismissed || got.Hidden {
+		t.Fatalf("ada unhiding a withdrawn announcement = %s, hidden %v", got.State, got.Hidden)
+	}
+	if got := as("cy"); got.State != Dismissed || got.Hidden {
+		t.Fatalf("cy's withdrawn copy = %s, hidden %v", got.State, got.Hidden)
+	}
+	// A message that is not a broadcast is everyone's to set aside, and
+	// not a reader's to bring back.
+	alert := raise(s, "alert:1", t0, Part{Type: PartAlert})
+	if _, _, err := s.Dismiss(acme, alert.ID, "ada", t0); err != nil {
+		t.Fatal(err)
+	}
+	if got, changed, _ := s.Unhide(acme, alert.ID, "ada", t0); changed || got.State != Dismissed || got.Hidden {
+		t.Fatalf("an unhidden alert = %s, changed %v, hidden %v", got.State, changed, got.Hidden)
+	}
+	if _, _, err := s.Unhide(acme, "m-404", "ada", t0); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unhiding a message that is not there = %v", err)
+	}
 }

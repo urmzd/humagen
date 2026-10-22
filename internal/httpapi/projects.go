@@ -488,7 +488,19 @@ func (s *Server) projectHistory(w http.ResponseWriter, r *http.Request, who auth
 		c := historyCursor(next)
 		cursor = &c
 	}
-	ok(w, http.StatusOK, map[string]any{"changes": changes, "next": cursor})
+	names := s.P.Names(who.Tenant)
+	out := make([]projectChangeView, len(changes))
+	for i, c := range changes {
+		out[i] = projectChangeView{Change: c, ByName: names.Of(c.By)}
+	}
+	ok(w, http.StatusOK, map[string]any{"changes": out, "next": cursor})
+}
+
+// projectChangeView is one change to a project and what whoever made it is
+// called. The change names them by subject; the console shows the name.
+type projectChangeView struct {
+	projects.Change
+	ByName string `json:"by_name,omitempty"`
 }
 
 // projectOwner resolves the project in the path to its memory owner, or
@@ -520,7 +532,7 @@ func (s *Server) projectMemory(w http.ResponseWriter, r *http.Request, who auth.
 	if !found {
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"notes": orEmpty(s.P.Memory.List(who.Tenant, owner))})
+	ok(w, http.StatusOK, map[string]any{"notes": viewNotes(s.P.Names(who.Tenant), s.P.Memory.List(who.Tenant, owner))})
 }
 
 // addProjectMemory adds a note. An owner's is in use at once; a member's is
@@ -537,7 +549,7 @@ func (s *Server) addProjectMemory(w http.ResponseWriter, r *http.Request, who au
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, note)
+	ok(w, http.StatusCreated, viewNote(s.P.Names(who.Tenant), note))
 }
 
 func (s *Server) approveProjectMemory(w http.ResponseWriter, r *http.Request, who auth.Principal) {

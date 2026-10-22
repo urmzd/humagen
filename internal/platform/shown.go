@@ -37,7 +37,9 @@ func (p *Platform) shower(tenant string) *shower {
 }
 
 // person is who a subject is in the directory, or a person known only by
-// that subject.
+// that subject. Their name is the one they chose for themselves, as the
+// Directory and the console's own header show it, else the one they signed
+// in with.
 func (s *shower) person(subject string) people.Person {
 	if who, ok := s.known[subject]; ok {
 		return who
@@ -46,6 +48,11 @@ func (s *shower) person(subject string) people.Person {
 	if s.p.People != nil {
 		if got, err := s.p.People.Get(s.tenant, subject); err == nil {
 			who = got
+		}
+	}
+	if s.p.Prefs != nil {
+		if own := s.p.Prefs.Get(s.tenant, subject).DisplayName; own != "" {
+			who.Name = own
 		}
 	}
 	s.known[subject] = who
@@ -74,6 +81,60 @@ func (s *shower) Person(subject string) (name, handle string) {
 func (s *shower) name(subject string) string {
 	who := s.person(subject)
 	return cmp.Or(who.Name, who.Handle, who.ShownSubject(), someone)
+}
+
+// Names calls the people of one tenant as the console shows them. Every
+// route that names a person by subject, the key the platform keeps them by,
+// sends what Names calls them beside it, so a reader sees a name and never a
+// subject that holds an address. It looks each subject up in the directory
+// once, and is made for one answer.
+type Names struct{ s *shower }
+
+// Names is how one answer in a tenant calls people.
+func (p *Platform) Names(tenant string) Names { return Names{s: p.shower(tenant)} }
+
+// Of is what a subject is called: the person's name, else their handle,
+// else the subject itself when it holds no address (a machine's, or a word
+// such as system), else someone. No subject is called nothing.
+func (n Names) Of(subject string) string {
+	if subject == "" {
+		return ""
+	}
+	return n.s.name(subject)
+}
+
+// NameOf is what a person is called, for one name (see Names).
+func (p *Platform) NameOf(tenant, subject string) string { return p.Names(tenant).Of(subject) }
+
+// mention is a mention as it is handed out: from its poster as their message
+// is shown now (message), by handle and by name, its part naming them by the
+// same handle, and its subject by the same name. What a mention keeps of its
+// poster is the name they went by when they posted, which is no subject, so
+// it is never looked up as one: it is what a mention whose message cannot be
+// read is shown from, as it was kept.
+func (n Names) mention(m inbox.Message) inbox.Message {
+	kept := m.From.Name
+	m.From.Display = kept
+	for i := range m.Parts {
+		part := m.Parts[i].Mention
+		if part == nil || n.s.p.Threads == nil {
+			continue
+		}
+		posted, err := n.s.p.Threads.Message(n.s.tenant, part.Thread, part.Message)
+		if err != nil {
+			continue
+		}
+		shown := n.s.message(posted)
+		if shown.By != "" {
+			m.From.Name, part.By = shown.By, shown.By
+		}
+		m.From.Display = shown.Name
+		if rest, ok := strings.CutPrefix(m.Subject, kept+" "); ok && kept != "" {
+			m.Subject = shown.Name + " " + rest
+		}
+		break
+	}
+	return m
 }
 
 // who names whoever a message was sent to: a person or an expert by key,
@@ -124,10 +185,17 @@ func (s *shower) mentions(ms []threads.Mention) []threads.Mention {
 }
 
 func (s *shower) message(m threads.Message) threads.Message {
-	// A name kept before names were checked could be the subject.
-	if m.Name == "" || strings.Contains(m.Name, "@") {
-		m.Name = s.name(m.By)
+	// A message is called what its poster is called now, as everywhere else
+	// shows them: one who had no name yet when they posted (only a handle,
+	// or a subject recorded from a grant) and has given one since reads by
+	// it. A poster the directory does not know keeps the name they posted
+	// under, unless it was kept before names were checked and is an address.
+	who := s.person(m.By)
+	kept := m.Name
+	if strings.Contains(kept, "@") {
+		kept = ""
 	}
+	m.Name = cmp.Or(who.Name, kept, who.Handle, who.ShownSubject(), someone)
 	m.By = s.key(m.By)
 	m.Mentions = s.mentions(m.Mentions)
 	return m

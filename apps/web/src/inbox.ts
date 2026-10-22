@@ -13,6 +13,45 @@ export function merge(loaded: PlatformMessage[], fresh: PlatformMessage[], end: 
   return [...fresh, ...loaded.filter((m) => !seen.has(m.id) && m.at < edge)];
 }
 
+/**
+ * The message being read, held apart from the list. A linked message may not
+ * be on a loaded page, or not in the state shown (one the reader hid, while
+ * Open is shown), and one just resolved leaves the list while its record is
+ * still being read. Either way it stays on screen until another is chosen.
+ * `messages` is the list with it, `missing` says a linked one could not be
+ * read, and `keep` takes the platform's answer to an action on it.
+ */
+export function useHeld(list: PlatformMessage[], selected: string | null | undefined, loading: boolean, via: Transport) {
+  const [held, setHeld] = useState<PlatformMessage | null>(null);
+  const [missing, setMissing] = useState(false);
+  const found = list.find((m) => m.id === selected);
+  const listed = found !== undefined;
+
+  useEffect(() => {
+    if (found) setHeld(found);
+  }, [found]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fetch once per selection that the list does not hold
+  useEffect(() => {
+    setMissing(false);
+    if (!selected || loading || listed || held?.id === selected) return;
+    let live = true;
+    via
+      .get(selected)
+      .then((m) => live && setHeld(m))
+      .catch(() => live && setMissing(true));
+    return () => {
+      live = false;
+    };
+  }, [selected, loading]);
+
+  const keep = useCallback((server: PlatformMessage | null) => {
+    if (server) setHeld((was) => (was?.id === server.id ? server : was));
+  }, []);
+  const messages = held && held.id === selected && !listed ? [held, ...list] : list;
+  return { messages, missing, keep };
+}
+
 /** A message as it will look once an action lands, for showing a click before the platform confirms it. */
 export function after(message: PlatformMessage, action: UiAction, by: string): PlatformMessage {
   return resolveMessage(message, action, { by, at: new Date().toISOString() }) as PlatformMessage;

@@ -1161,3 +1161,43 @@ func TestOnlyThePersonARunActsForAnswersWhatItAsksWithTheirCredential(t *testing
 	}
 	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
 }
+
+// A run that acts for a person calls them what the directory calls them,
+// however it was asked: a sign-in can carry no name, and a surface asks for
+// a person by subject alone, which can hold an address. Dee signs in with an
+// address and no name, so is called by her handle on her turn, on her retry
+// of it, and on a turn the Slack app asks for her; Ana, asked for by subject,
+// by her name.
+func TestARunCallsThePersonItActsForByName(t *testing.T) {
+	w := newWorld(t, platform.Config{Backoff: func(int) time.Duration { return time.Millisecond }})
+	ctx := t.Context()
+	dee := auth.Principal{Subject: "tailscale:dee@example.com", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	w.p.SeePerson(dee)
+	w.p.SeePerson(ana)
+
+	failed, msg := w.failure(t, "api-dee-fails", platform.ActorOf(dee))
+	if failed.Actor.User != dee.Subject || failed.Actor.Display != "dee" {
+		t.Errorf("Dee's turn acts for %+v", failed.Actor)
+	}
+	done, err := w.p.InboxResolve(ctx, dee, msg.ID, msg.Parts[0].ID, platform.Resolution{Action: platform.ActRetry})
+	if err != nil {
+		t.Fatalf("Dee retrying her turn: %v", err)
+	}
+	id, _ := strings.CutPrefix(done.Parts[0].Outcome.Note, "Started again as ")
+	again, err := w.p.Runs.Get(tenant, id)
+	if err != nil {
+		t.Fatalf("the retry %q: %v", id, err)
+	}
+	if again.Actor.User != dee.Subject || again.Actor.Display != "dee" {
+		t.Errorf("Dee's retry acts for %+v", again.Actor)
+	}
+	for _, c := range []struct {
+		who  auth.Principal
+		want string
+	}{{dee, "dee"}, {ana, "Ana"}} {
+		r := w.ask(t, "api-for-"+c.want, platform.PersonActor(c.who.Subject))
+		if r.Actor.User != c.who.Subject || r.Actor.Display != c.want {
+			t.Errorf("a turn asked for %s acts for %+v", c.want, r.Actor)
+		}
+	}
+}
