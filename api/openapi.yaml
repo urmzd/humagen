@@ -3323,6 +3323,67 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/knowledge:
+    get:
+      operationId: getProjectKnowledge
+      tags: [projects]
+      summary: Read the knowledge sources a project names, and what a run filed in it is grounded in
+      description: |
+        A run filed in a project is grounded in the knowledge sources its
+        project names, then each project above it, nearest first, besides
+        its agent's own: `given`, each source once, from the nearest project
+        that names it, at most 16. A sibling's or a sub-project's are never
+        given. They are fixed when the run is accepted, so a later change
+        here does not change a run already working. A caller without
+        `knowledge:read` is shown no source.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "200":
+          description: The project's knowledge sources.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectKnowledge"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: setProjectKnowledge
+      tags: [projects]
+      summary: Replace the knowledge sources a project names
+      description: |
+        At most 8, named once, each newly named a knowledge source the
+        workspace has (400); one already named may stay after it is deleted,
+        and grounds nothing. Every run filed here and below from now on is grounded in
+        them; a run already working keeps what it was accepted with. It
+        needs ownership of the project and `knowledge:read`
+        (403), which reads the sources anyway; the workspace and company
+        projects need `projects:govern` as well. `version` is the project's,
+        as read; a change made since answers 409, as does a list the
+        platform file sets.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectKnowledgeInput"}
+      responses:
+        "200":
+          description: The project's knowledge sources as they now stand.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectKnowledge"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/projects/{name}/members:
     get:
       operationId: getProjectMembers
@@ -5296,6 +5357,51 @@ components:
           type: array
           maxItems: 50
           items: {$ref: "#/components/schemas/ProjectExpert"}
+    ProjectKnowledgeSource:
+      description: A knowledge source a run filed in a project is grounded in, and the project that names it.
+      type: object
+      additionalProperties: false
+      required: [name, from]
+      properties:
+        name: {type: string, maxLength: 63}
+        from:
+          description: The project that names it, the nearest when more than one does. Empty for the workspace.
+          type: string
+          maxLength: 63
+    ProjectKnowledge:
+      description: The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in.
+      type: object
+      additionalProperties: false
+      required: [version, knowledge, given]
+      properties:
+        version: {type: integer}
+        knowledge:
+          description: The sources the project names itself, in its order. Empty for a caller without `knowledge:read`.
+          type: array
+          maxItems: 8
+          items: {type: string, maxLength: 63}
+        given:
+          description: |
+            What a run filed here is grounded in besides its agent's own: the
+            project's sources, then each project's above it, nearest first,
+            each once. Empty for a caller without `knowledge:read`.
+          type: array
+          maxItems: 16
+          items: {$ref: "#/components/schemas/ProjectKnowledgeSource"}
+    ProjectKnowledgeInput:
+      description: The knowledge sources a project names, as a whole, from the version read.
+      type: object
+      additionalProperties: false
+      required: [version, knowledge]
+      properties:
+        version:
+          description: The version the caller read.
+          type: integer
+        knowledge:
+          description: Knowledge sources of the workspace, each once; `[]` for none.
+          type: array
+          maxItems: 8
+          items: {type: string, maxLength: 63}
 
     ProjectKind:
       description: |
@@ -5415,6 +5521,15 @@ components:
           maxItems: 50
           items: {$ref: "#/components/schemas/ProjectExpert"}
         agents: {$ref: "#/components/schemas/ProjectAgents"}
+        knowledge:
+          description: |
+            The knowledge sources every run filed here and below is grounded
+            in, besides its agent's own. Set with `PUT
+            /api/projects/{name}/knowledge`. Absent when it names none, and
+            for a caller without `knowledge:read`.
+          type: array
+          maxItems: 8
+          items: {type: string, maxLength: 63}
         archived:
           description: An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived.
           type: boolean
@@ -5722,10 +5837,11 @@ components:
             else. `agents` is a change to what the project turns on. `home`
             is an agent coming to live in the project, or leaving it: `agent`
             names it and `note` says which. `experts` is a change to who the
-            project names as experts, and `channel` to one of its channels,
-            which `channel` holds before and after.
+            project names as experts, `knowledge` to the knowledge sources it
+            names, and `channel` to one of its channels, which `channel`
+            holds before and after.
           type: string
-          enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, channel]
+          enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, knowledge, channel]
         agent:
           description: The agent a `home` change is about. Absent when it lives in a project the caller may not read.
           type: string

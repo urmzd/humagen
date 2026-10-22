@@ -20,7 +20,7 @@ here is a second system. Each piece is built on what warp or fiber already has:
 | Project inbox and announcements | `pkg/inbox`, read by `Source.Project`. An announcement is a message kind, not a store |
 | Shared threads | warp's conversations (threads, branches, any agent on any turn), plus human messages that start no run |
 | Experts (SMEs) | `ask_person`, inbox questions and their addressing |
-| Context | fiber's pinned system prompt (the agent's instructions), `pkg/memory` (agent and project notes), instructions on the project record |
+| Context | fiber's pinned system prompt (the agent's instructions), `pkg/memory` (agent and project notes), instructions on the project record, and the knowledge sources the project chain names, through fiber's knowledge hook |
 
 Decisions:
 
@@ -75,7 +75,8 @@ Members and reach apply from phase 2, when projects gain roles.
 | custom | as its `like` | as its `like` | as its `like` | a workspace label over `team` or `account` (phase 2). Behaviors stay closed and testable, names stay open |
 
 A project inherits down the tree: policies tighten, instructions and memory
-are sent, enabled agents add up, ownership flows down. Membership, the `*`
+are sent, knowledge sources ground its runs, enabled agents add up, ownership
+flows down. Membership, the `*`
 entry and schedules do not flow down, and a child is never more open than its
 parent.
 
@@ -295,6 +296,7 @@ type Project struct {
 	Agents       Agents     `json:"agents"`                 // phase 3
 	Announce     Role       `json:"announce,omitempty"`     // lowest role that may post; default owner (phase 4)
 	AgentPosts   string     `json:"agent_posts,omitempty"`  // publish | review (phase 5)
+	Knowledge    []string   `json:"knowledge,omitempty"`    // <= 8 knowledge sources, inherited down the tree (phase 9)
 
 	Managed   string    `json:"managed,omitempty"` // "file" when a Platform document declares it
 	Version   int       `json:"version"`           // from 1; every write names it
@@ -324,7 +326,7 @@ type Change struct {
 	At      time.Time       `json:"at"`
 	By      string          `json:"by"`
 	Project string          `json:"project"`
-	What    string          `json:"what"` // created | updated | moved | archived | deleted | members | experts | agents | channel | managed
+	What    string          `json:"what"` // created | updated | moved | archived | deleted | members | experts | agents | knowledge | channel | managed
 	Before  json.RawMessage `json:"before,omitempty"`
 	After   json.RawMessage `json:"after,omitempty"`
 }
@@ -658,11 +660,36 @@ ingress overwrites whatever a connector put there (phase 8).
   the project's notes themselves (phase 4: an owner): a member's turn
   teaches only proposals, which reach the project's owners, as a member's
   own note does. Filing the turn decides it, and the turn carries it.
-- Knowledge sources inherited down the tree (phase 9) use warp's executor
-  seam, `callExecutor.resolve`, which already rewrites the revision for model
-  policies. The chain's sources are pinned at accept as `warp.sources` and
-  added to the revision's `Sources` before fiber's knowledge hook reads them.
-  No fiber change.
+- Knowledge sources are inherited down the tree (phase 9). A project, the
+  workspace included, names at most 8 of the workspace's knowledge sources
+  (`Project.Knowledge`). A run filed in a project is grounded in the
+  project's, then each ancestor's, nearest first, each once from the nearest
+  project that names it, at most 16, besides its agent's own
+  (`Tree.Knowledge`). A sibling's and a child's are never given.
+  - **Pinned at accept.** `pin` writes them into the tag as `warp.sources`,
+    over whatever a caller put there, so every attempt of the run, after a
+    restart too, is grounded in the same sources whatever the projects name
+    later. A called run is given its root's, as it counts toward its root's
+    ancestors. A housekeeping run, filed at the workspace whatever turn it
+    serves, is given none.
+  - **Through the executor seam.** `callExecutor.resolve`, which already
+    rewrites the revision for model policies, adds them to the request's copy
+    of the revision's `Sources` (as `knowledge://<name>`) before fiber's
+    knowledge hook reads them, so the run's retriever searches them in its
+    own tenant. The pinned definition is not changed, and fiber is not
+    changed.
+  - **Confined.** A project's sources ground only the runs filed in it and
+    below it. A source is the workspace's, read with `knowledge:read`
+    wherever it is named, so naming one in a project takes an owner and
+    `knowledge:read` (403), which reads it anyway, and a source the
+    workspace has (400). One a project names already may stay after it is
+    deleted, so an edit is not refused for it. A reader without
+    `knowledge:read` is shown no source's name: not in the knowledge route,
+    the project's record or its history. A turn is not sent their names with
+    its trigger context; a turn stopped before its attempt starts is still
+    journaled with them, as fiber writes the tag's meta there, which keeping
+    warp's own keys out of fiber's rendering would close. A source the
+    workspace no longer has grounds nothing, as one an agent names does.
 - fiber's own thread journal (`pkg/thread`) is per agent by design ("not a
   transcript of the room"), so warp keeps its own room transcript.
 
@@ -837,6 +864,7 @@ need `projects:govern`.
 | Move | `projects:write` | owner, and member of the new parent. Leaving an ancestor that holds a policy also needs `billing:write`, and so does moving a project that holds, or has below it, an owner's limit the caller could not change before (they do not own the parent it was set from): a move never escapes a limit. Leaving an ancestor whose allow list keeps agents out needs owning it, unless the new chain allows no more: a move never widens which agents may run. Nor does it leave anything below it without an agent it has now (409, naming each): a project's, a channel's or a thread's default, an agent that lives there, or a schedule filed there. An archived channel holds no move back |
 | Archive, delete | `projects:write` | owner |
 | Members, experts, channels, agents (`enable`, `allow`, `default`), `announce`, `agent_posts` | `projects:write` | owner |
+| Knowledge sources (phase 9) | `projects:write` | owner, and `knowledge:read` |
 | Make an agent live here | `agents:write` | owner of the new and old home |
 | Edit a homed agent: its spec, call policy and notes, in its routes and the inbox | `agents:write` | owner of its home |
 | Propose a project note (stored pending, owners approve in the inbox) | `projects:write` | member |
@@ -990,6 +1018,16 @@ naming no agent.
 | `PUT /api/inbox/{id}/deliveries/{client}` | `runs:write` | `{channel, ts}` → 204; only the client's machine |
 | `GET /api/inbox`, `GET /api/inbox/count` | `runs:read` | gain `act_as` for a client's machine, resolved through `Client.ActsFor` |
 
+### Phase 9
+
+| Route | Permission | Notes |
+|---|---|---|
+| `GET /api/projects/{name}/knowledge` | `projects:read` | `{version, knowledge (<= 8), given: [{name, from}] (<= 16)}`: what the project names, and what a run filed there is given, nearest first. Both empty for a caller without `knowledge:read` |
+| `PUT /api/projects/{name}/knowledge` | `projects:write` | `{version, knowledge}`; owner, and `knowledge:read` (403); each newly named a source the workspace has (400); 409 stale version or a list the file sets |
+
+`Project` gains `knowledge`, left out for a caller without `knowledge:read`,
+and `ProjectChange.what` gains `knowledge`.
+
 ### Contract upkeep, every phase
 
 - New schemas go in the `shapes` map of
@@ -1013,6 +1051,7 @@ examples.
 spec:
   workspace:
     instructions: Acme sells warehouse robots. Answer plainly.  # the root's (phase 1)
+    knowledge: [handbook]                   # the root's (phase 9): every run is grounded in it
     agents: {enable: [warp-writer, warp-analyst], default: auto}  # the root's (phase 3); replaces baseline
     members: [{who: "*", role: member}, {who: "role:comms", role: owner}]  # phase 2
     experts: [{who: "role:security", topics: [security]}]                # phase 2
@@ -1025,6 +1064,7 @@ spec:
         title: Field engineering           # phase 1
         kind: team                         # phase 1: company | team | account | a project_kinds name
         instructions: Customer accounts. Never promise dates.            # phase 1
+        knowledge: [field-playbook]        # phase 9: runs here and below are grounded in it too
         members: [{who: "*", role: viewer}, {who: "role:field-eng", role: member}, {who: "role:field-leads", role: owner}]
         agents: {enable: [field-helper], default: field-helper}  # phase 3: adds to what the root enables
         schedules:                         # phase 5: file-managed, filed here
@@ -1067,6 +1107,10 @@ error with its path, such as `workspace.projects[2].parent`:
    the file. A default is available where it is set.
 7. A schedule's cron parses, its agent is available in its project, and
    `deliver: project` sits on a project.
+8. `knowledge` names at most 8 knowledge sources, each a source's name, once
+   (phase 9). Whether the workspace has them is not checked: sources are
+   filled in the console, and one the workspace does not have grounds
+   nothing.
 
 **Applying** (`internal/app/config.go` `applyWorkspace` becomes
 `applyProjects`) is a merge, never a replace. This fixes today's

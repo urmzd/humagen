@@ -38,6 +38,10 @@ const passageSize = 800
 
 var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
+// ValidName reports whether a name can name a source: lower case letters,
+// digits and dashes, starting with a letter or digit, at most 63.
+func ValidName(name string) bool { return validName.MatchString(name) }
+
 // Source is a named collection of documents.
 type Source struct {
 	Name        string `json:"name"`

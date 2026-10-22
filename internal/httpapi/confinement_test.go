@@ -232,6 +232,9 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		must("POST", "/api/knowledge", `{"name":"`+h.source+`","description":"Source `+marker+`."}`, http.StatusCreated)
 		h.doc = str(must("POST", "/api/knowledge/"+h.source+"/documents", `{"title":"Doc `+marker+`","text":"Words `+marker+` here."}`, http.StatusCreated), "id")
 		must("POST", "/api/knowledge/"+h.source+"/variants", `{"name":"`+h.variant+`"}`, http.StatusCreated)
+		// The hidden project grounds its runs in the source.
+		at := must("GET", "/api/projects/"+h.project+"/knowledge", "", http.StatusOK)["version"]
+		must("PUT", "/api/projects/"+h.project+"/knowledge", fmt.Sprintf(`{"version":%v,"knowledge":["%s"]}`, at, h.source), http.StatusOK)
 		person, err := f.p.People.Seen("acme", people.Sighting{Subject: "okta|canary-" + marker, Name: "Canary " + marker, Source: people.SignIn}, time.Now())
 		if err != nil {
 			t.Fatal(err)

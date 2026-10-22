@@ -244,13 +244,14 @@ func (s *Seer) AgentsView(v ProjectAgents) ProjectAgents {
 }
 
 // Change is a project's change as the reader is shown it: its record before
-// and after with their lists as ProjectAgents leaves them, and the agent a
-// change of home is about left out when they may not read it.
+// and after with their lists as ProjectAgents and Sources leave them, and the
+// agent a change of home is about left out when they may not read it.
 func (s *Seer) Change(c projects.Change) projects.Change {
 	for _, pr := range []**projects.Project{&c.Before, &c.After} {
 		if *pr != nil {
 			shown := **pr
 			shown.Agents = s.ProjectAgents(shown.Agents)
+			shown.Knowledge = s.Sources(shown.Knowledge)
 			*pr = &shown
 		}
 	}

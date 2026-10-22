@@ -2,7 +2,9 @@ package app
 
 import (
 	"errors"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/projects"
@@ -80,5 +82,63 @@ func TestTheFilesChannelsAndExpertsMergeIntoTheTree(t *testing.T) {
 	}
 	if f := mustGet(t, p, tenant, "Field"); len(f.Experts) != 1 || f.Experts[0].Who != "vic" {
 		t.Fatalf("the console's experts = %+v", f.Experts)
+	}
+}
+
+// The knowledge sources the file names are the file's, on the workspace and
+// on a project, even as []; a project that leaves them out keeps the
+// console's. A run in a project is given its own and the workspace's.
+func TestTheFilesKnowledgeIsTheFiles(t *testing.T) {
+	p := newProjectsPlatform(t)
+	const tenant = "acme"
+	ada := projects.Writer{By: "ada"}
+	file := spec.Workspace{
+		Knowledge: []string{"handbook"},
+		Projects: []spec.Project{
+			{Name: "Field"},
+			{Name: "Globex", Parent: "Field", Kind: spec.ProjectAccount, Knowledge: []string{"globex-notes"}},
+		},
+	}
+	for range 2 {
+		if err := applyProjects(p, tenant, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	globex := mustGet(t, p, tenant, "Globex")
+	if !slices.Equal(globex.Knowledge, []string{"globex-notes"}) || globex.Version != 1 {
+		t.Fatalf("the file's knowledge = %+v at version %d", globex.Knowledge, globex.Version)
+	}
+	if _, err := p.Projects.SetKnowledge(tenant, "Globex", globex.Version, nil, ada, time.Now()); !errors.Is(err, projects.ErrManaged) {
+		t.Fatalf("changing the file's knowledge = %v", err)
+	}
+	if root := mustGet(t, p, tenant, "~"); !slices.Equal(root.Knowledge, []string{"handbook"}) {
+		t.Fatalf("the workspace's knowledge = %+v", root.Knowledge)
+	}
+	field := mustGet(t, p, tenant, "Field")
+	if _, err := p.Projects.SetKnowledge(tenant, "Field", field.Version, []string{"playbook"}, ada, time.Now()); err != nil {
+		t.Fatalf("the console's knowledge on Field = %v", err)
+	}
+	if err := applyProjects(p, tenant, file); err != nil {
+		t.Fatal(err)
+	}
+	var given []string
+	for _, s := range p.ProjectTree(tenant).Knowledge("Globex") {
+		given = append(given, s.Name)
+	}
+	if !slices.Equal(given, []string{"globex-notes", "playbook", "handbook"}) {
+		t.Fatalf("a run in Globex is given %v", given)
+	}
+	// [] is the file's too: Globex names nothing, and the console cannot
+	// change that.
+	file.Projects[1].Knowledge = []string{}
+	if err := applyProjects(p, tenant, file); err != nil {
+		t.Fatal(err)
+	}
+	globex = mustGet(t, p, tenant, "Globex")
+	if len(globex.Knowledge) != 0 {
+		t.Fatalf("the file's [] = %+v", globex.Knowledge)
+	}
+	if _, err := p.Projects.SetKnowledge(tenant, "Globex", globex.Version, []string{"pricing"}, ada, time.Now()); !errors.Is(err, projects.ErrManaged) {
+		t.Fatalf("changing the file's [] = %v", err)
 	}
 }

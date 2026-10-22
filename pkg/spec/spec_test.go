@@ -53,6 +53,9 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if g := w.Projects[2]; len(w.Channels) != 1 || len(w.Experts) != 1 || len(g.Channels) != 2 || g.Channels[0].Default != "auto" || g.Channels[1].Slack == nil || len(g.Experts) != 1 {
 		t.Fatalf("the example's channels and experts = %+v %+v %+v", w.Channels, w.Experts, g)
 	}
+	if f := w.Projects[1]; len(w.Knowledge) != 1 || len(f.Knowledge) != 1 || f.Knowledge[0] != "field-playbook" {
+		t.Fatalf("the example's knowledge = %v %v", w.Knowledge, f.Knowledge)
+	}
 }
 
 func TestNoFileIsAWorkingDefault(t *testing.T) {

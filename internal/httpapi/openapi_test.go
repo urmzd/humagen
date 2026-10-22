@@ -602,6 +602,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectExpert": {typ: projects.Expert{}}, "ProjectExperts": {typ: platform.Experts{}}, "Project": {typ: projects.Project{}}, "ProjectView": {typ: projectView{}},
 		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectLimit": {typ: projectLimit{}},
 		"ProjectDetail": {typ: projectDetail{}}, "ProjectChange": {typ: projectChangeView{}},
+		"ProjectKnowledge": {typ: platform.ProjectKnowledge{}}, "ProjectKnowledgeSource": {typ: projects.KnowledgeSource{}}, "ProjectKnowledgeInput": {typ: platform.KnowledgeInput{}, written: true},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
@@ -1496,6 +1497,18 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[{"who":"00u-vic","topics":["billing"]}]}`, expertsAt), http.StatusOK)
 	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[]}`, expertsAt), http.StatusConflict)
 	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[{"who":"00u-vic","topics":["Not a topic"]}]}`, expertsAt+1), http.StatusBadRequest)
+	// The knowledge sources a project names ground every run filed there
+	// and below; each must be one the workspace has.
+	know := "/api/projects/{name}/knowledge"
+	got = c.call(acme, "GET", know, "/api/projects/Field/knowledge", "", http.StatusOK)
+	knownAt := version(got)
+	got = c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":["handbook"]}`, knownAt), http.StatusOK)
+	if g := sliceOf(got.field("given")); len(g) != 1 || obj(g[0])["name"] != "handbook" || obj(g[0])["from"] != "Field" {
+		t.Errorf("Field's knowledge is %s", got.raw)
+	}
+	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":[]}`, knownAt), http.StatusConflict)
+	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":["ghost"]}`, knownAt+1), http.StatusBadRequest)
+	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d}`, knownAt+1), http.StatusBadRequest)
 
 	c.call(acme, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"shared","text":"hi"}`, http.StatusForbidden)
 	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"hi"}`, http.StatusBadRequest)
@@ -1698,7 +1711,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
-		"/api/projects/{name}/experts": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
+		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
 	}
 	valid := map[string]string{
@@ -1716,7 +1729,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/schedules/{name}":                      `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 		"/api/me/credentials/{provider}":             `{"ref":"op://People/svc/issues"}`,
 		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
-		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/threads/{id}": `{"version":1}`,
+		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
