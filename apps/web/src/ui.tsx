@@ -1,4 +1,5 @@
 import { BanIcon, CheckIcon, ChevronDownIcon, ShieldIcon, Tooltip, XIcon } from "@warp/render-web";
+import { defaultCopy } from "@warp/components";
 import { AgentOrb, type OrbState } from "@warp/web";
 import { type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { Run } from "./adapter.ts";
@@ -730,6 +731,156 @@ function useInsideGutter(panel: RefObject<HTMLElement | null>, root: RefObject<H
     return () => window.removeEventListener("resize", place);
   }, [open, panel, root]);
   return shift;
+}
+
+/** One of a page's own actions, for `PageActions`. */
+export interface PageAction {
+  label: string;
+  onSelect: () => void;
+  /** Archive, Delete: last in the menu, after a rule. What it does is the same in the menu as on a button. */
+  destructive?: boolean;
+}
+
+/**
+ * A page's actions in its header: at most one primary action, as a button,
+ * and the rest beside it. Two in all are drawn as buttons. With more, the
+ * rest are one More menu, a text control, with the destructive ones last
+ * after a rule, so the header on a phone is its title, its meta and two
+ * controls on one line. `note` sits beside them, such as a flash that says
+ * an action did not take.
+ */
+export function PageActions({ primary: main, actions, note }: { primary?: PageAction; actions: PageAction[]; note?: ReactNode }) {
+  const few = actions.length + (main ? 1 : 0) <= 2;
+  return (
+    <span className="relative inline-flex flex-wrap items-center gap-2">
+      {few
+        ? actions.map((a) => (
+            <button key={a.label} type="button" className={button} onClick={a.onSelect}>
+              {a.label}
+            </button>
+          ))
+        : actions.length > 0 && <MoreMenu items={actions} />}
+      {main && (
+        <button type="button" className={primary} onClick={main.onSelect}>
+          {main.label}
+        </button>
+      )}
+      {note}
+    </span>
+  );
+}
+
+/**
+ * The More menu: a text control that opens a list of actions. Arrow keys,
+ * Home and End move through it; Escape, Tab or a click outside close it and
+ * put focus back on the control. Destructive actions come last, after a rule.
+ */
+export function MoreMenu({ items, label = defaultCopy.more }: { items: PageAction[]; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLSpanElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const id = useId();
+  const shift = useInsideGutter(list, root, open);
+  const everyday = items.filter((i) => !i.destructive);
+  const destructive = items.filter((i) => i.destructive);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+
+  const entries = () => Array.from(list.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]") ?? []);
+  const focusAt = (i: number) => {
+    const all = entries();
+    if (all.length) all[(i + all.length) % all.length]?.focus();
+  };
+  const show = (at = 0) => {
+    setOpen(true);
+    requestAnimationFrame(() => focusAt(at));
+  };
+  const close = () => {
+    setOpen(false);
+    root.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  };
+  const entry = (item: PageAction) => (
+    <button
+      key={item.label}
+      type="button"
+      role="menuitem"
+      tabIndex={-1}
+      onClick={() => {
+        close();
+        item.onSelect();
+      }}
+      className={`flex min-h-9 w-full items-center rounded-aui px-2.5 text-left text-aui-sm outline-none hover:bg-aui-hover focus-visible:bg-aui-hover ${item.destructive ? "text-aui-bad" : "text-aui-fg"}`}
+    >
+      {item.label}
+    </button>
+  );
+
+  return (
+    <span ref={root} className="relative inline-flex">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? id : undefined}
+        className={textAction}
+        onClick={() => (open ? close() : show())}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            show();
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            show(-1);
+          }
+        }}
+      >
+        {label}
+        <ChevronDownIcon size={14} />
+      </button>
+      {open && (
+        <div
+          ref={list}
+          id={id}
+          role="menu"
+          aria-label={label}
+          tabIndex={-1}
+          style={shift ? { translate: `${shift}px 0` } : undefined}
+          onKeyDown={(e) => {
+            const i = entries().indexOf(document.activeElement as HTMLButtonElement);
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              focusAt(i + 1);
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              focusAt(i - 1);
+            } else if (e.key === "Home") {
+              e.preventDefault();
+              focusAt(0);
+            } else if (e.key === "End") {
+              e.preventDefault();
+              focusAt(-1);
+            } else if (e.key === "Escape" || e.key === "Tab") {
+              e.preventDefault();
+              e.stopPropagation();
+              close();
+            }
+          }}
+          className="warp-glass-pop absolute top-full right-0 z-40 mt-2 flex w-56 max-w-[calc(100vw-2rem)] flex-col rounded-aui-lg p-1.5"
+        >
+          {everyday.map(entry)}
+          {everyday.length > 0 && destructive.length > 0 && <div role="separator" className="my-1 border-[var(--warp-rule)] border-t" />}
+          {destructive.map(entry)}
+        </div>
+      )}
+    </span>
+  );
 }
 
 /**

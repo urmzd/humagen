@@ -117,6 +117,8 @@ export const defaultCopy = {
   approveAll: (n: number) => `Approve All (${n})`,
   moreOptions: "More options",
   inbox: "Inbox",
+  /** A page's menu of its other actions, beside its one primary action. */
+  more: "More",
   inboxCount: (n: number) => (n === 0 ? "Nothing needs you" : `${n} need${n === 1 ? "s" : ""} you`),
   needsYou: "Needs you",
   alerts: "System alerts",
