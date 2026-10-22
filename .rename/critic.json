@@ -1,0 +1,155 @@
+{
+ "missing": [
+  {
+   "what": "Flux reinstalls the release when the chart name changes. The plan's nameOverride and lookup guard do not cover this.",
+   "where": "deploy/flux/app/helmrelease.yaml (no spec.upgrade.chartNameChangeStrategy), deploy/helm/warp/Chart.yaml name: warp -> humagen (plan 2.9.1 and 2.9.8)",
+   "why": "In fluxcd/helm-controller (internal/controller/helmrelease_controller.go:383, action.ReleaseTargetChanged, verified in its source), a changed chart name makes the controller uninstall the current release and install it again. The default is Upgrade.GetChartNameChangeStrategy() == Reinstall, and older controllers do this unconditionally. As a result the Deployment, Service, ConfigMap and Ingress are deleted, so there is downtime. Guard 2.9.3 looks up a Deployment that has already been deleted, so it never fires: a cluster that forgot nameOverride comes back as warp-humagen with a new empty PVC. The old PVC survives only because of helm.sh/resource-policy: keep (pvc.yaml:10). Guard 2.9.4 fails after the uninstall, so the app stays down. Fix: set upgrade.chartNameChangeStrategy: InPlaceUpdate in helmrelease.yaml and in the docs for copied app/ dirs, or treat Chart.yaml name: warp as a kept tier-2 identity. Add a Flux reconcile to the kind test in section 7."
+  },
+  {
+   "what": "The keep regexes in the bulk script match TS code, which breaks the Slack app build",
+   "where": "apps/slack/src/app.tsx:2430 `this.warp.connections(as)` (matched by \\bwarp\\.connections\\b); apps/slack/src/main.ts:20,53 `config.warp.client` (matched by \\bwarp\\.client\\b)",
+   "why": "I ran 3.3 and 3.4 in a scratch copy. tsc reports TS2339 three times: 'warp' does not exist on App, and twice on Config. The Slack test 'account controls load privately and submit as the mapped person' throws TypeError reading 'connections'. Fix: anchor the meta, connections and client keep patterns to quoted literals or the defining files, or rename this.warp and config.warp before the pass."
+  },
+  {
+   "what": "The case-sensitive keep regex misses capitalised built-in agent names, so a Go test fails",
+   "where": "internal/platform/agents_test.go:396 \"Warp-Writer\", \" WARP-WRITER \"",
+   "why": "The bulk pass turns them into Humagen-Writer and HUMAGEN-WRITER. The dry run's go test fails TestAnAgentIsTheSameAgentUnderEverySpellingOfItsName, because IsBuiltin is false for those names. Test 1 does not cover this."
+  },
+  {
+   "what": "A length assertion depends on the product name",
+   "where": "packages/render-slack/src/home.test.tsx:62 expects \"header clipped from 214 to 150 chars\"",
+   "why": "After the rename the header is 217 characters (verified). Step 3.6 `vitest run -u` updates snapshots only, not inline toEqual, so pnpm test stays red."
+  },
+  {
+   "what": "The keep list is fixed by hand and is already out of date. The re-pin in 3.0 cannot notice new kept keys.",
+   "where": "HEAD 61d8b4a: pkg/runs/runs.go:63 MetaRouted = \"warp.routed\"; pkg/runs/runs.go:102 MetaSources = PrivateMetaPrefix+\"warp.sources\" (stored as _warp.sources), with the literal in pkg/runs/sources_test.go:25 and docs/architecture.md and docs/projects.md",
+   "why": "In the dry run the bulk pass rewrote MetaRouted to \"humagen.routed\" and no test failed, so stored runs lose their routed marker. `_warp.sources` is renamed because \\b does not match after `_`. The 3.0 grep reports only word shapes, so a new warp.x key shows up as plain 'warp'. Fix: derive the keep list from every \"_?warp\\.[a-z_.]+\" constant, protect `_warp.`, and pin MetaRouted, MetaSources and MetaSourcesV0 in test 1."
+  },
+  {
+   "what": "Every 0.20.0 pin is the wrong release",
+   "where": "Chart.yaml appVersion, both image guards (2.9.4, 2.10), Flux placeholder humagen:0.20.0, docs/spec.md:557 replacement, step 6.4 and 6.5 go install @v0.20.0",
+   "why": "Main is at v0.19.0 (tag list). Chat v2 is a feat and has to merge first (step 0); it is still on origin/claude/warp-platform-refactor-7l50id. So sr gives v0.20.0 to chat v2, and the rename becomes v0.21.0 or later. A <0.20.0 guard then accepts the pre-rename v0.20.0 image, which cannot read humagen/v1, so it crash-loops under Recreate. `go install .../humagen@v0.20.0` fails because that tag's go.mod says warp. Compute the version at merge, or guard on something other than a version number."
+  },
+  {
+   "what": "The deploy paths read spec-named variables by exact name, and AdoptEnv copies only from old to new",
+   "where": "internal/app/deploy.go:572 applySecret os.Getenv(v); deploy.go:331 env[v] = \"${\"+v+\":-}\" in generated compose; carry() deploy.go:180-186 passes env:NAME through",
+   "why": "A spec that still says env:WARP_X, on a shell where the operator renamed the variable to HUMAGEN_X as the note tells them, breaks two ways. Kubernetes deploy fails with 'the spec references WARP_X, which this shell has not set'. Compose interpolates an empty value. The same applies to renamed WARP_REF_n for `deploy -o` users whose own env or CI supplies the values: generated compose has no env_file, so the old name never reaches the container. Use legacy.LookupEnv in applySecret and write `${X:-${OTHER:-}}` in generated compose."
+  },
+  {
+   "what": "Exact-name grants and person starts are tied to the prefix of stored refs. The overlap check does not treat WARP_ and HUMAGEN_ as the same.",
+   "where": "internal/platform/clients.go:284 slices.Contains(SecretRefs[tenant], name); pkg/credentials/starts.go CheckStart, CheckStarts and Owns",
+   "why": "Following the rename note breaks stored data. Renaming a -secret-refs or secret_env grant to HUMAGEN_X stops every stored client ref env:WARP_X. Renaming a person_refs start to env:HUMAGEN_PERSON_{subject}_ (or keychain:humagen-people-\u2026 as the bulk-renamed docs/spec.md:103 suggests) makes every stored person ref no longer 'owned'. CheckStarts also lets tenant A use env:WARP_PERSON_{subject}_ and tenant B use env:HUMAGEN_PERSON_{subject}_. AdoptEnv and LookupEnv then make B's ana read A's ana's credential, which breaks the 'no reference under two people' invariant. Normalise the prefix in grant matching, Owns, Expand and CheckStarts, and do not tell people to rename refs that stored data names."
+  },
+  {
+   "what": "`humagen deploy` detects an old release only on the first upgrade",
+   "where": "plan 2.9.7, internal/app/deploy.go:404-480",
+   "why": "After the first upgrade, `helm list` reports chart humagen-0.2.0. The next deploy therefore leaves out nameOverride: warp, and guard 2.9.3 fails every later deploy. Detect from `helm get values` (nameOverride) or from the live Deployment's selector, not from the chart name."
+  },
+  {
+   "what": "AdoptEnv copies and notes every WARP_* variable, including ones that belong to other software",
+   "where": "plan 2.2 AdoptEnv rules; apps/slack/src/legacy.ts adoptEnv",
+   "why": "The Warp terminal (warp.dev) exports WARP_IS_LOCAL_SHELL_SESSION, WARP_USE_SSH_WRAPPER and WARP_HONOR_PS1. Every `humagen start` run in it would print 'WARP_IS_LOCAL_SHELL_SESSION is the old name of HUMAGEN_\u2026; rename it'. Note only the names the code reads, the known families, and names a spec, grant or stored ref uses."
+  },
+  {
+   "what": "AdoptEnv and LookupEnv disagree about which name wins",
+   "where": "plan 2.2: the note 'HUMAGEN_X and WARP_X differ; using HUMAGEN_X' versus LookupEnv 'exact name, then the other prefix'",
+   "why": "A stored ref env:WARP_SLACK_TOKEN_DOCS keeps reading the old WARP_ value after an operator rotates the secret under HUMAGEN_. The note says the opposite."
+  },
+  {
+   "what": "Test 12's allowlist rejects text that the plan itself requires",
+   "where": "internal/legacy/names_test.go (test 12)",
+   "why": "These would all fail it: docs/deploy.md must name namespace warp, warp-env and HelmRelease warp (step 3.5); the Dockerfile header keeps `-v warp-data:/var/lib/warp`; the chart guard and values text say 'installed by the warp chart'; api/openapi.yaml and the generated client say '`warp` in records written before the rename'; the .gitignore:47 and .dockerignore:14,18 comments; tests 2-11 need old literals (WARP_POSTGRES_URL, warp:runs:read, warp-admins, warp/v1, warp_client, warp.sidebar, {system, warp}) in *_test.go and *.test.ts outside the allowed files. Failing when git is missing also breaks `go test` from a module zip."
+  },
+  {
+   "what": "Rewriting the shipped compose specs conflicts with the plan's reason for keeping them",
+   "where": "deploy/compose/config/warp.yaml, deploy/compose/dev/warp.yaml (plan 2.10)",
+   "why": "The plan keeps these file names because 'people edit them in place', yet it rewrites their api_version, refs and display_name. Every user who edited them gets a refused or conflicting `git pull`. With compat in place they work unchanged, so leave them alone."
+  },
+  {
+   "what": "The prose capitaliser in 3.5 rewrites stored values inside inline code",
+   "where": "docs/architecture.md:513, docs/projects.md:899,939 `From{system, warp}`; docs/projects.md:1241 `by: warp`; apps/slack-sandbox/README.md:23",
+   "why": "The regex skips only fenced blocks, so these become `From{system, Humagen}` and `by: Humagen`. The real stored value is lowercase."
+  },
+  {
+   "what": "CI does not run the chart or Postgres checks",
+   "where": ".github/workflows/ci.yml (no helm or chart-check job, no Postgres URL)",
+   "why": "The guards in test 11 and the check.sh ConfigMap-key change are never run in CI, and neither is test 9(d). '(CI repeats most of this)' in 3.7 is too strong. Add a helm job or say these checks are manual."
+  },
+  {
+   "what": "The scope rename needs the identity provider to define the new scopes first",
+   "where": "internal/app/config.go:771-783 machineWarnings note; apps/slack/.envrc.local.example:31 becomes humagen:runs:read",
+   "why": "An operator who follows the note and writes humagen:* scopes into humagen_client.scopes, before the identity provider defines them, gets invalid_scope. The Slack app then cannot sign in."
+  },
+  {
+   "what": "The install layout beside the binary is renamed with no fallback",
+   "where": "internal/app/start.go:109 filepath.Join(dir(exe), \"share\", \"warp\") (used by webDir and slackDir)",
+   "why": "The bulk pass makes it share/humagen. An install that keeps web/ or slack/ there silently loses its console and its Slack app. This path is in neither 1a nor 1b."
+  },
+  {
+   "what": "The Dockerfile edit drops required adduser flags",
+   "where": "plan 2.11 vs Dockerfile:65-68 (addgroup -S, adduser -S -D -H)",
+   "why": "Taken literally, `adduser -u 10001 -G humagen -h /var/lib/warp humagen` without -D prompts for a password and fails a non-interactive build. Keep -S -D -H."
+  },
+  {
+   "what": "The catch-up recipe for in-flight branches causes conflicts",
+   "where": "plan step 0 and the 3.8 PR text",
+   "why": "'Run 3.4 then rebase' replays each original commit onto the renamed main and conflicts on every touched line. It also leaves out the 3.3 moves and go mod edit. A safer recipe: rebase onto the commit before the rename, apply 3.3 and 3.4 as one commit, then rebase past the rename with that commit resolved in favour of the rename."
+  },
+  {
+   "what": "The inventory has drifted since 60e527c",
+   "where": "scripts/screens (WARP_BIN, WARP_WEB, bin/warp, @warp/screens), the Makefile screens target, the ci.yml screens job; go.mod now pins fiber v0.24.0",
+   "why": "These are not in 1a, and the section 5 library versions are stale."
+  },
+  {
+   "what": "setup rewrites the old spec in the new format, which breaks downgrade",
+   "where": "plan 2.3 step 5 and step 7, internal/app/setup.go runSetup and spec.Marshal",
+   "why": "'Do not move it, so a downgrade still finds it' does not hold: setup writes humagen/v1 and humagen_client into ~/.config/warp/warp.yaml, which an older binary refuses."
+  }
+ ],
+ "wrong": [
+  {
+   "claim": "2.4: an unexported old field with json:\"warp_client\" lets the strict decoder (spec.go:230) keep accepting old files",
+   "truth": "encoding/json ignores unexported fields. With DisallowUnknownFields every old spec fails with `json: unknown field \"warp_client\"` (checked with a Go snippet). The old field must be exported, cleared after decode, and marked omitempty."
+  },
+  {
+   "claim": "2.9.4: when the image guard fails, the render fails and the running release stays",
+   "truth": "Under Flux, helm-controller first uninstalls the release because the chart name changed (default Reinstall strategy). The failed render then leaves nothing running."
+  },
+  {
+   "claim": "No word in the repo contains warp other than the product's own names, so a case-preserving replace is safe once the kept names are protected",
+   "truth": "The protect regexes match code (this.warp.connections, config.warp.client). The case-sensitive keep misses Warp-Writer and WARP-WRITER, and `_warp.sources` slips past \\b. The dry run gives 3 TS errors, 1 Slack test failure and 1 Go test failure, plus the render-slack length assertion."
+  },
+  {
+   "claim": "The first humagen release is 0.20.0 (Chart appVersion, guards, go install @v0.20.0)",
+   "truth": "Chat v2 is a feat that merges first, onto main at v0.19.0. It takes v0.20.0, and the rename becomes v0.21.0 or later."
+  },
+  {
+   "claim": "2.2: after AdoptEnv, each of the ~14 raw reads (including deploy.go:572) needs nothing more than its constant changed",
+   "truth": "deploy.go:572 and the generated compose read whatever variable the spec's ref names, which is user data. They need LookupEnv or nested interpolation."
+  },
+  {
+   "claim": "2.5: WARP_REF_n is renamed with no compat because every deploy regenerates all three places, so a stale key is harmless",
+   "truth": "With `deploy -o`, the user supplies the values from their own env or CI. Generated compose then passes an empty HUMAGEN_REF_n into the container."
+  },
+  {
+   "claim": "2.2: the overlap rule in CheckStarts is unchanged",
+   "truth": "With two accepted prefixes and two-way LookupEnv, the rule must compare starts with the prefix normalised. Otherwise starts in two tenants can name one secret."
+  },
+  {
+   "claim": "2.9.7: setting nameOverride when `helm list` shows a warp-* chart is enough for humagen deploy",
+   "truth": "That works only for the first upgrade. Later deploys see humagen-* and fail the guard."
+  },
+  {
+   "claim": "3.6: `vitest run -u` brings render-slack in line",
+   "truth": "home.test.tsx:62 is an inline toEqual on a length (214, now 217). -u does not change it."
+  },
+  {
+   "claim": "Test 1 (package legacy_test) asserts the hooks and sees keys and recaps.MetaDeliver",
+   "truth": "metaHook, metaFor, metaKeepsNotes, metaPlaceProject and metaPlaceThread are unexported (internal/platform/hooks.go:32-36, sees.go:63-64), so legacy_test cannot reach them. There is no recaps package: the constant is platform.MetaDeliver."
+  },
+  {
+   "claim": "Section 7: test 12 plus the AGENTS rule keep old names only in docs/renaming.md and internal/legacy",
+   "truth": "The plan's own required text breaks the allowlist: kept names in docs/deploy.md, Dockerfile warp-data, the chart guard messages, openapi and generated-client wording, and old-name literals in tests 2-11."
+  }
+ ]
+}
