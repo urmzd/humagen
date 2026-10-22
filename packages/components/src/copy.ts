@@ -119,6 +119,11 @@ export const defaultCopy = {
   inbox: "Inbox",
   /** A page's menu of its other actions, beside its one primary action. */
   more: "More",
+  /** The second step of an action that cannot be undone. */
+  confirm: {
+    ask: (what: string) => `Delete ${what}? This cannot be undone.`,
+    keep: "Keep It",
+  },
   inboxCount: (n: number) => (n === 0 ? "Nothing needs you" : `${n} need${n === 1 ? "s" : ""} you`),
   needsYou: "Needs you",
   alerts: "System alerts",

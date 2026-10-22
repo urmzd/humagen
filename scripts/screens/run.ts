@@ -154,6 +154,14 @@ function screens(ids: Ids): Screen[] {
     })),
     { name: "project-more", path: "/projects/Launch", act: more },
     { name: "schedule-more", path: `/schedules/${ids.schedule}`, act: more },
+    {
+      name: "project-delete",
+      path: "/projects/Support",
+      act: async (page) => {
+        await more(page);
+        await page.getByRole("menuitem", { name: "Delete Project" }).click();
+      },
+    },
     { name: "workspace", path: "/projects/~" },
     { name: "workspace-context", path: "/projects/~/context" },
     { name: "inbox", path: "/inbox" },
