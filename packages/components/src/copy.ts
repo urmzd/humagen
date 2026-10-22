@@ -665,6 +665,19 @@ export const defaultCopy = {
     whatsNew: "What's new",
     nothingNew: "Nothing new from your projects.",
     moreUpdates: (n: number) => `${n} more under Updates`,
+    /** The console's Needs you box: its way to the rest. */
+    openInbox: "Open Inbox",
+    /** What's new's way to every announcement in the inbox. */
+    seeAll: "See All",
+    /** A box on Home before what it lists has been read. */
+    loading: "Loading",
+    needsFailed: "What needs you could not be loaded. It is all in the inbox.",
+    newsFailed: "What's new could not be loaded. It is all in the inbox.",
+    /** Home for a person with nothing waiting and nothing new: what Home is for. */
+    welcome: {
+      title: "Welcome",
+      text: "Ask an agent above to start. When an agent needs you, or someone posts in one of your projects, it shows here.",
+    },
     yourProjects: "Your projects",
     noProjects: "You are not in any project yet.",
     moreProjects: (n: number) => `${n} more in Projects`,

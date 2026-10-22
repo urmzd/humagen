@@ -10,6 +10,7 @@
       "packages/**",
       "apps/**",
       "examples/ui/**",
+      "scripts/screens/**",
       "package.json",
       "tsconfig.base.json",
       "turbo.json",

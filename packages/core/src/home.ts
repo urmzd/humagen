@@ -98,6 +98,13 @@ export interface HomeNotifications {
 /** How many notifications Home shows in full; the rest are counted and linked. */
 export const HOME_NOTIFICATIONS = 8;
 
+/**
+ * How many of what needs the person a host reads for Home and lists, newest
+ * first: the Slack Home tab and the console's Needs you box. The rest are
+ * counted and are in the inbox.
+ */
+export const HOME_NEEDS = 5;
+
 /** 0 for critical alerts, 1 for inbox items, 2 for every other alert. */
 export function notificationGroup(n: HomeNotification): number {
   if (n.kind === "inbox") return 1;
