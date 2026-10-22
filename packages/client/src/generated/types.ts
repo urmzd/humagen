@@ -1149,7 +1149,7 @@ export interface ScheduleView {
   updated_at?: string;
   /** The next three fires. Empty while paused. */
   next: string[];
-  /** Up to 20 recent runs. */
+  /** Up to 20 recent runs the caller may read, newest first. A schedule's runs are found by its name, so they are those of every schedule that has had it, each where it was filed: one moved out of a project, or a name used again, lists only those the caller may read where they live. */
   recent: Run[];
 }
 

@@ -5849,7 +5849,7 @@ components:
           type: array
           items: {type: string, format: date-time}
         recent:
-          description: Up to 20 recent runs.
+          description: "Up to 20 recent runs the caller may read, newest first. A schedule's runs are found by its name, so they are those of every schedule that has had it, each where it was filed: one moved out of a project, or a name used again, lists only those the caller may read where they live."
           type: array
           items: {$ref: "#/components/schemas/Run"}
 

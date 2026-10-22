@@ -147,6 +147,15 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	h.artifact = published.ID
 
 	must("POST", "/api/schedules", `{"name":"`+h.schedule+`","expression":"0 3 * * *","agent":"`+h.agent+`","text":"Schedule `+marker+`.","project":"`+h.project+`","deliver":"inbox"}`, http.StatusCreated)
+	if inside {
+		// A schedule that ran in the project and was then moved out of it,
+		// to the workspace, which the outsider sees. Its runs are found by
+		// its name, so its view must not show the one it ran here.
+		must("POST", "/api/agents", `{"name":"mover","model":"offline","provider":"offline","system_prompt":"Moves."}`, http.StatusCreated)
+		must("POST", "/api/schedules", `{"name":"moved","expression":"0 3 * * *","agent":"mover","text":"Moved `+marker+`.","project":"`+h.project+`"}`, http.StatusCreated)
+		ended(t, f, owner, str(must("POST", "/api/schedules/moved/run", ``, http.StatusAccepted), "id"))
+		must("PUT", "/api/schedules/moved", `{"expression":"0 3 * * *","agent":"mover","text":"Moved."}`, http.StatusOK)
+	}
 	must("POST", "/api/alert-rules", `{"name":"`+h.rule+`","kind":"run_failed","severity":"critical","project":"`+h.project+`","description":"Rule `+marker+`."}`, http.StatusCreated)
 	must("POST", "/api/evals", `{"name":"`+h.eval+`","target":"agent","subject":"`+h.agent+`","cases":[{"id":"c-`+marker+`","input":"hi","checks":[{"kind":"contains","value":"`+marker+`"}]}]}`, http.StatusCreated)
 	// A channel and an announcement of the hidden project. The channel is

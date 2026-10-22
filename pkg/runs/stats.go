@@ -205,12 +205,17 @@ func percentile(sorted []int64, p int) int64 {
 }
 
 // ForSchedule returns a tenant's runs raised by one schedule, newest first.
-func (x *Index) ForSchedule(tenant, schedule string, limit int) []Run {
+// A schedule's runs are found by its name, so they are those of every
+// schedule that has had the name, wherever each run was filed. keep, when
+// set, is asked about each, and the runs it refuses are left out and do not
+// count toward limit: those a reader may not see. It is given a copy, under
+// the index's read lock, so it must not call the index.
+func (x *Index) ForSchedule(tenant, schedule string, limit int, keep func(Run) bool) []Run {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
 	var out []Run
 	for _, id := range slices.Backward(x.order) {
-		if r := x.runs[id]; r.Tenant == tenant && r.Schedule == schedule {
+		if r := x.runs[id]; r.Tenant == tenant && r.Schedule == schedule && (keep == nil || keep(*r)) {
 			out = append(out, *r)
 			if limit > 0 && len(out) == limit {
 				break

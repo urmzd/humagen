@@ -45,7 +45,12 @@ type scheduleView struct {
 	Recent    []runs.Run  `json:"recent"`
 }
 
-func (s *Server) viewOf(sc cron.Schedule, now time.Time) scheduleView {
+// viewOf is a schedule as the reader seer stands for reads it. Its recent
+// runs are found by its name, so they are those of every schedule that has
+// had the name, filed wherever each was then: one moved out of a project, or
+// a name used again, keeps them. Each is shown only to a reader who may read
+// it where it lives, as GET /api/runs/{id} would.
+func (s *Server) viewOf(seer *platform.Seer, sc cron.Schedule, now time.Time) scheduleView {
 	about := s.P.Schedules.About(sc.Name)
 	v := scheduleView{
 		schedule: schedule{
@@ -58,7 +63,7 @@ func (s *Server) viewOf(sc cron.Schedule, now time.Time) scheduleView {
 		UpdatedBy: about.UpdatedBy,
 		UpdatedAt: about.UpdatedAt,
 		Next:      []time.Time{},
-		Recent:    orEmpty(s.P.Runs.ForSchedule(sc.Tenant, sc.Name, 20)),
+		Recent:    orEmpty(s.P.Runs.ForSchedule(sc.Tenant, sc.Name, 20, seer.Run)),
 	}
 	if !v.Paused {
 		v.Next = orEmpty(platform.Upcoming(sc.Expression, now, 3))
@@ -76,7 +81,7 @@ func (s *Server) listSchedules(w http.ResponseWriter, _ *http.Request, who auth.
 		if !seer.Project(sc.Meta[runs.MetaProject]) {
 			continue
 		}
-		out = append(out, s.viewOf(sc, now))
+		out = append(out, s.viewOf(seer, sc, now))
 	}
 	ok(w, http.StatusOK, map[string]any{"schedules": out})
 }
@@ -101,7 +106,7 @@ func (s *Server) createSchedule(w http.ResponseWriter, r *http.Request, who auth
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, s.viewOf(sc, time.Now()))
+	ok(w, http.StatusCreated, s.viewOf(s.P.Seer(who), sc, time.Now()))
 }
 
 // updateSchedule changes what a schedule runs and when. Its name cannot
@@ -146,7 +151,7 @@ func (s *Server) updateSchedule(w http.ResponseWriter, r *http.Request, who auth
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, s.viewOf(sc, time.Now()))
+	ok(w, http.StatusOK, s.viewOf(s.P.Seer(who), sc, time.Now()))
 }
 
 // filedBy holds the caller to being a member of the project a stored
@@ -249,7 +254,7 @@ func (s *Server) pauseSchedule(paused bool) handler {
 			s.problem(w, err)
 			return
 		}
-		ok(w, http.StatusOK, s.viewOf(sc, time.Now()))
+		ok(w, http.StatusOK, s.viewOf(s.P.Seer(who), sc, time.Now()))
 	}
 }
 
