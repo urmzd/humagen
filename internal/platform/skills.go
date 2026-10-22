@@ -110,6 +110,11 @@ func (p *Platform) skillsOfMessage(tenant string, th threads.Thread, m threads.M
 			names = append(names, mn.Name)
 		}
 	}
+	// The client is the one that posted it now, or for a retry, which
+	// passes none, the one the message records it came through.
+	if via == "" && m.Via != threads.ViaConsole {
+		via = m.Via
+	}
 	if name, ok := p.commandSkill(tenant, th, m.Text, via); ok && !slices.Contains(names, name) {
 		names = append(names, name)
 	}

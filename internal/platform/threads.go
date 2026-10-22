@@ -1307,6 +1307,9 @@ const MaxNotified = 20
 // the cap is marked refused in mentions.
 func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, mentions []threads.Mention) []string {
 	sent := []string{}
+	// invited are the people this message invited into a private thread by
+	// tagging them, who take part from now on.
+	var invited []string
 	for i := range mentions {
 		mn := &mentions[i]
 		if mn.Refused != "" {
@@ -1327,10 +1330,17 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 			}
 			to = []string{projects.RolePrefix + mn.Name}
 		}
-		reached, cut, blocked := false, false, false
+		reached, cut, blocked, outside := false, false, false, false
 		for _, who := range to {
 			if who == m.By || slices.Contains(sent, who) {
 				reached = true
+				continue
+			}
+			// Experts are found, not chosen by the poster, so in a private
+			// thread they are told only when they take part: none is
+			// invited, and a role, which takes no part, is told nothing.
+			if mn.Kind == threads.SME && th.Visibility == threads.Private && !slices.Contains(invited, who) && !takesPart(th, who) {
+				outside = true
 				continue
 			}
 			// Only someone who can read the conversation is told of it: a
@@ -1348,17 +1358,22 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 			// In a private thread, tagging a person invites them: they
 			// take part from now on, so they can read what they were
 			// tagged in.
-			if th.Visibility == threads.Private && !strings.HasPrefix(who, projects.RolePrefix) {
+			if th.Visibility == threads.Private && mn.Kind == threads.Person && !takesPart(th, who) {
 				if _, err := p.Threads.Join(tenant, th.ID, []threads.Participant{{Kind: threads.Person, Name: who, AddedBy: m.By}}, p.now()); err != nil {
 					p.log.Warn("platform: a person tagged in a private thread could not be invited", "tenant", tenant, "thread", th.ID, "error", err)
 					continue
 				}
+				invited = append(invited, who)
 			}
 			p.raiseMention(tenant, th, m, who, *mn)
 			sent = append(sent, who)
 			reached = true
 		}
 		switch {
+		case outside && !reached:
+			mn.Refused = "no expert takes part in this private conversation, so nobody was told; share it, or tag people"
+		case outside:
+			mn.Refused = "only the experts taking part were told; the others cannot read this private conversation"
 		case cut && !reached:
 			mn.Refused = fmt.Sprintf("a message notifies at most %d people", MaxNotified)
 		case blocked && !reached && mn.Kind == threads.Person:
