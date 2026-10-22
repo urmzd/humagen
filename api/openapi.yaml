@@ -287,7 +287,10 @@ paths:
       operationId: listAgents
       tags: [agents]
       summary: List agents
-      description: The latest revision of every agent in the workspace. Not paged.
+      description: |
+        The latest revision of every agent in the workspace the caller may
+        read: one that lives in a project they may not read is left out, and
+        so is every agent it names in another's spec. Not paged.
       x-permission: agents:read
       responses:
         "200":
@@ -331,7 +334,8 @@ paths:
       description: |
         A tag names an agent or a person, so an agent cannot take a name a
         person in the workspace goes by ("a person goes by @dana"), nor
-        `auto` or `sme`: each is 409.
+        `auto` or `sme`: each is 409. Every agent `access.spawn` names must
+        exist and be one the caller may read (400).
       x-permission: agents:write
       requestBody:
         required: true
@@ -358,6 +362,9 @@ paths:
       description: |
         Writes a new revision. `expected_rev` is the revision the caller
         edited from: if someone else revised the agent since, the answer is 409.
+        Every agent `access.spawn` names must exist and be one the caller may
+        read, or one it already names that they are shown (400); the agents
+        they were not shown, and the approvals of calls to them, are kept.
       x-permission: agents:write
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
@@ -460,7 +467,9 @@ paths:
       description: |
         The agent's stored call policy, or the default an agent with none has
         (`version` 0): any caller its own spec allows, without approval. 404
-        for an agent that does not exist in the caller's workspace.
+        for an agent that does not exist in the caller's workspace. An agent
+        that lives in a project the caller may not read is left out of
+        `allow` and `trusted`.
       x-permission: agents:read
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
@@ -482,9 +491,12 @@ paths:
         Replaces the agent's call policy. The callee decides: a caller also
         needs the callee in its own spawn allowlist, so a policy can only
         narrow what callers' specs allow. An unknown mode, an agent name that
-        does not exist, more than 100 callers or 32 approvers, or a field that does not
-        apply to the chosen mode is 400. An agent that lives in a project is
-        that project's to change: without owning its home it is 403.
+        does not exist or lives in a project the caller may not read, more
+        than 100 callers or 32 approvers, or a field that does not apply to
+        the chosen mode is 400. The callers the caller was not shown are kept
+        in `allow` while `callers` is `listed`, and in `trusted` while
+        `approval` is `unlisted`. An agent that lives in a project is that
+        project's to change: without owning its home it is 403.
       x-permission: agents:write
       parameters:
         - {$ref: "#/components/parameters/AgentName"}
@@ -814,6 +826,8 @@ paths:
       description: |
         Starts a child run of the run in the path. The caller's agent must be
         allowed to spawn the target, and depth, fan-out and lease limits apply.
+        A target that lives in a project the caller may not read is refused as
+        one the spawn allowlist does not name (403).
         `key` is the call's idempotency key within the run. The call is a turn
         of the run's conversation, filed where it lives, so the caller must be
         a member of the run's project, and in a private thread a participant
@@ -4264,7 +4278,13 @@ components:
       type: object
       properties:
         spawn:
-          description: The agents this one may call.
+          description: |
+            The agents this one may call. An agent that lives in a project the
+            caller may not read is left out. Written, each must be an agent
+            that exists and that the caller may read, or one this list already
+            names that they are shown: any other, in any spelling, is 400 in
+            the words for an agent that does not exist. The ones left out are
+            kept.
           type: array
           items: {type: string}
         workspace_areas:
@@ -4306,7 +4326,9 @@ components:
           description: |
             Tools whose every call waits for a person to approve it. Each is a
             tool the agent is granted. `ask_person` in `tools` lets the agent
-            ask a person to choose or reply.
+            ask a person to choose or reply. The approval of a call to an agent
+            left out of `access.spawn` (`tag_<agent>`) is left out too, and
+            kept.
           type: array
           items: {type: string}
         approvers:
@@ -4357,7 +4379,9 @@ components:
       properties:
         spec: {$ref: "#/components/schemas/AgentSpec"}
         rev: {type: integer}
-        hash: {type: string}
+        hash:
+          description: The hash of the definition, or when an agent is left out of `spec` for the caller, the hash of what they are shown.
+          type: string
         created_at: {type: string, format: date-time}
         created_by: {type: string}
         created_by_name:
@@ -4790,6 +4814,7 @@ components:
           description: The project's channel it is in, `general` when its runs name none.
           type: string
         agents:
+          description: The agents whose runs answered in it, leaving out one that lives in a project the caller may not read.
           type: array
           items: {type: string}
         people:
@@ -4855,11 +4880,12 @@ components:
         title: {type: string, maxLength: 200}
         visibility: {$ref: "#/components/schemas/ThreadVisibility"}
         participants:
+          description: Who takes part, leaving out an agent that lives in a project the caller may not read.
           type: array
           maxItems: 50
           items: {$ref: "#/components/schemas/ThreadParticipant"}
         default:
-          description: Answers an untagged message here, an agent or `auto`. Absent inherits from the channel.
+          description: Answers an untagged message here, an agent or `auto`. Absent inherits from the channel, and so reads one naming an agent that lives in a project the caller may not read.
           type: string
         surface: {$ref: "#/components/schemas/ThreadSurface"}
         announcement:
@@ -4883,7 +4909,7 @@ components:
       properties:
         kind: {type: string, enum: [agent, person, sme]}
         name:
-          description: The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert).
+          description: The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). A tag of an agent that lives in a project the reader may not read reads as one of a person nobody goes by, as a tag of an agent that does not exist does.
           type: string
         run:
           description: The run an agent's tag started.
@@ -5000,7 +5026,9 @@ components:
         Who answers an untagged message in a place, and where that is set:
         `thread`, `client`, `channel`, or `project:<name>` (`project:~` for
         the workspace). An empty agent is nobody. `unavailable` says why the
-        default cannot answer, when it has stopped being available.
+        default cannot answer, when it has stopped being available. A default
+        naming an agent that lives in a project the reader may not read is
+        never available where they read, and reads as nobody.
       type: object
       required: [agent, from]
       properties:
@@ -5072,7 +5100,9 @@ components:
         version: {type: integer}
         title: {type: string, maxLength: 200}
         visibility: {$ref: "#/components/schemas/ThreadVisibility"}
-        default: {type: string}
+        default:
+          description: Empty keeps a default the caller was not shown, one naming an agent that lives in a project they may not read.
+          type: string
     ThreadParticipantsUpdate:
       description: People and agents to add to a thread and to remove from it.
       type: object
@@ -5085,7 +5115,7 @@ components:
           maxItems: 50
           items: {$ref: "#/components/schemas/ThreadParticipant"}
         remove:
-          description: People by handle and agents by name, which no person and agent share.
+          description: People by handle and agents by name, which no person and agent share. An agent the caller was not shown is not removed, as one that is not there.
           type: array
           maxItems: 50
           items: {type: string}
@@ -5120,7 +5150,7 @@ components:
           items: {$ref: "#/components/schemas/ThreadMention"}
         rule: {$ref: "#/components/schemas/ThreadRule"}
         reason:
-          description: Why no agent answers, when none does.
+          description: Why no agent answers, when none does. It never names an agent the poster may not read.
           type: string
         repeated:
           description: The message was posted before, by its surface's id. This is what it did then; nothing was started again.
@@ -6686,6 +6716,7 @@ components:
           type: array
           items: {$ref: "#/components/schemas/AnalyticsBucket"}
         by_agent:
+          description: Each agent's runs, leaving out an agent that lives in a project the caller may not read; its runs the caller may read still count in `total`.
           type: array
           items: {$ref: "#/components/schemas/AnalyticsGroup"}
         by_origin:
@@ -8235,7 +8266,7 @@ components:
           description: Why a failed run failed or a stopped run was stopped, in one line.
           type: string
         definition:
-          description: The agent revision the run was pinned to.
+          description: The agent revision the run was pinned to, as the caller is shown it. Absent for an agent moved since into a project the caller may not read.
           $ref: "#/components/schemas/Revision"
         duration_ms: {type: integer, format: int64}
         events:

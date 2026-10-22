@@ -7,21 +7,34 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/urmzd/fiber/pkg/agentspec"
+
 	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/warp/pkg/callpolicy"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // The agents a record names, as a reader is shown them.
 //
-// Besides the agents routes, three records name agents: a client (its
+// Besides the agents routes, these records name agents: a client (its
 // default, its list, its bots and its auto-labels), a project's lists of
-// agents, and the workspace's settings (its title and memory agents). A
-// reader is shown a name in them only when they may read the agent
-// (Seer.Agent): one that lives in a project they may not read is left out,
-// as if it were not there. A change they send keeps what they were not
-// shown, and a name they may not read is refused exactly as one that names
-// no agent, so writing learns nothing either.
+// agents, the workspace's settings (its title and memory agents), an agent's
+// spec (the agents it may call, and the approvals of those calls), an
+// agent's call policy (the callers it admits and trusts), and a thread (its
+// default, its participants, its tags and who answers it). A reader is shown
+// a name in them only when they may read the agent (Seer.Agent): one that
+// lives in a project they may not read is left out, as if it were not there.
+// A change they send keeps what they were not shown, and a name they may not
+// read is refused exactly as one that names no agent, so writing learns
+// nothing either.
+//
+// A run is what happened, not a record of who may act, so it names the
+// agent that ran it: the reader reads where it ran, and the agent was
+// available there when it did. What lists agents from runs (a conversation's
+// agents, counts by agent, a recap's rows) leaves out one the reader may not
+// read, as every list of agents does.
 
 // shownNames is names, each one the reader may read, in order. "*" is no
 // agent, so it stays.
@@ -333,4 +346,267 @@ func (p *Platform) SetSettingsBy(ctx context.Context, who auth.Principal, next S
 		next.MemoryAgent = stored.MemoryAgent
 	}
 	return p.setSettings(ctx, who.Tenant, next, seer.Agent)
+}
+
+// tagTool is how the tool that calls an agent a spec may call is named, as
+// an approval names it: "tag_<agent>" (runtime.DelegateToolName).
+const tagTool = "tag_"
+
+// Revision is an agent's revision as the reader is shown it: every agent they
+// may not read left out of the agents it may call (access.spawn), and the
+// approval of a call to one left out of its approvals. When anything is left
+// out, its hash is the hash of what is shown, so it confirms no guess at what
+// is not.
+func (s *Seer) Revision(rev agentspec.Revision) agentspec.Revision {
+	return revisionShown(rev, s.Agent)
+}
+
+// revisionShown is a revision with every agent that shown does not keep left
+// out of its spawn list and its approvals, hashed as Seer.Revision says.
+func revisionShown(rev agentspec.Revision, shown func(string) bool) agentspec.Revision {
+	spawn := rev.Spec.Access.Spawn
+	if spawn != nil {
+		spawn = slices.DeleteFunc(slices.Clone(spawn), func(a string) bool { return !shown(a) })
+	}
+	approvals := slices.DeleteFunc(slices.Clone(rev.Spec.Approvals), func(t string) bool {
+		a, isCall := strings.CutPrefix(t, tagTool)
+		return isCall && !shown(a)
+	})
+	if len(spawn) == len(rev.Spec.Access.Spawn) && len(approvals) == len(rev.Spec.Approvals) {
+		return rev
+	}
+	rev = rev.Clone()
+	rev.Spec.Access.Spawn, rev.Spec.Approvals = spawn, approvals
+	if len(rev.Spec.Access.Spawn) == 0 {
+		rev.Spec.Access.Spawn = nil
+	}
+	if len(rev.Spec.Approvals) == 0 {
+		rev.Spec.Approvals = nil
+	}
+	rev.Hash = rev.Spec.Hash()
+	return rev
+}
+
+// Revisions is Revision of each.
+func (s *Seer) Revisions(revs []agentspec.Revision) []agentspec.Revision {
+	out := make([]agentspec.Revision, len(revs))
+	for i, rev := range revs {
+		out[i] = s.Revision(rev)
+	}
+	return out
+}
+
+// SpecWrittenBy settles the agents a spec may call as who writes it, against
+// old, the revision it replaces, nil for a new agent.
+//
+// Every agent its spawn list names must be one that exists and that who may
+// read, or one old already names that who is shown; any other is refused
+// with agentspec.ErrInvalid, as no agent, whether it lives in a project who
+// may not read or does not exist. The spec as written must then hold on its
+// own, so an approval of a call to an agent who may not read is refused as
+// one of a call the spec does not grant, as it is for an agent that does
+// not exist. What old names that who is not shown is kept: those agents in
+// its spawn list, and the approvals of calls to them.
+func (p *Platform) SpecWrittenBy(ctx context.Context, who auth.Principal, old *agentspec.Revision, spec agentspec.AgentSpec) (agentspec.AgentSpec, error) {
+	seer := p.Seer(who)
+	shown := map[string]bool{}
+	var hidden []string
+	if old != nil {
+		for _, a := range old.Spec.Access.Spawn {
+			if seer.Agent(a) {
+				shown[a] = true
+			} else {
+				hidden = append(hidden, a)
+			}
+		}
+	}
+	if err := p.EnsureBuiltins(ctx, who.Tenant); err != nil {
+		p.log.Warn("platform: built-in agents", "error", err)
+	}
+	for _, written := range spec.Access.Spawn {
+		a := agentspec.NormalizeName(written)
+		if shown[a] {
+			continue
+		}
+		if _, err := p.Agents.Get(ctx, who.Tenant, a, 0); err != nil || !seer.Agent(a) {
+			return agentspec.AgentSpec{}, noAgent(agentspec.ErrInvalid, written)
+		}
+		shown[a] = true
+	}
+	if err := spec.Normalize().ValidateWith(p.agentProviders()); err != nil {
+		return agentspec.AgentSpec{}, err
+	}
+	if len(hidden) == 0 {
+		return spec, nil
+	}
+	spec = spec.Clone()
+	spec.Access.Spawn = append(spec.Access.Spawn, hidden...)
+	for _, t := range old.Spec.Approvals {
+		if a, isCall := strings.CutPrefix(t, tagTool); isCall && slices.Contains(hidden, a) && !slices.Contains(spec.Approvals, t) {
+			spec.Approvals = append(spec.Approvals, t)
+		}
+	}
+	return spec, nil
+}
+
+// agentProviders are the providers an agent's spec may name here, as the
+// registry holds it to them.
+func (p *Platform) agentProviders() []string {
+	return append(providers(), p.cfg.Ext.ProviderNames()...)
+}
+
+// CallPolicy is an agent's call policy as the reader is shown it: every agent
+// they may not read left out of the callers it admits and of those it
+// trusts. A list stays a list, so one whose every name is left out reads as
+// an empty one, which admits or trusts no agent the reader is shown, as it
+// does.
+func (s *Seer) CallPolicy(pol callpolicy.Policy) callpolicy.Policy {
+	pol.Allow, pol.Trusted = s.shownNames(pol.Allow), s.shownNames(pol.Trusted)
+	return pol
+}
+
+// SetCallPolicyBy is SetCallPolicy as who writes it. An agent who may not
+// read is refused in the words for one that is not an agent. The callers in
+// the stored policy that who is not shown are kept in its lists while the
+// written policy still has them: in allow while it admits only the agents
+// it lists, and in trusted while it holds every caller it does not trust. A
+// policy that admits anyone, or no one, reaches them too.
+func (p *Platform) SetCallPolicyBy(ctx context.Context, who auth.Principal, agent string, pol callpolicy.Policy) (callpolicy.Policy, error) {
+	if _, err := p.Agents.Get(ctx, who.Tenant, agent, 0); err != nil {
+		return callpolicy.Policy{}, err
+	}
+	seer := p.Seer(who)
+	pol.Agent = agent
+	written := pol.Normalize()
+	if err := written.Validate(func(name string) bool {
+		_, err := p.Agents.Get(ctx, who.Tenant, name, 0)
+		return err == nil && seer.Agent(name)
+	}); err != nil {
+		return callpolicy.Policy{}, err
+	}
+	stored, _ := p.CallPolicies.Get(who.Tenant, agent)
+	keep := func(into []string, from []string) []string {
+		for _, a := range from {
+			if !seer.Agent(a) && !slices.Contains(into, a) {
+				into = append(into, a)
+			}
+		}
+		return into
+	}
+	if written.Callers == callpolicy.Listed {
+		written.Allow = keep(written.Allow, stored.Allow)
+	}
+	if written.Approval == callpolicy.Unlisted {
+		written.Trusted = keep(written.Trusted, stored.Trusted)
+	}
+	return p.SetCallPolicy(ctx, who.Tenant, agent, who.Subject, written)
+}
+
+// threadAgents is which agents the reader is shown in a thread: every one to
+// the machine that hosts the surface the thread is on, which routes by them
+// as it does by its client's, and otherwise the ones they may read.
+func (s *Seer) threadAgents(th threads.Thread) func(string) bool {
+	if th.Surface != nil && s.hosting(th.Surface.Client) {
+		return func(string) bool { return true }
+	}
+	return s.Agent
+}
+
+// Thread is a thread's record as the reader is shown it: a default naming an
+// agent they may not read left out, as if none were set, and every such
+// agent left out of its participants.
+func (s *Seer) Thread(th threads.Thread) threads.Thread {
+	shown := s.threadAgents(th)
+	if th.Default != "" && !shown(th.Default) {
+		th.Default = ""
+	}
+	th.Participants = slices.DeleteFunc(slices.Clone(th.Participants), func(pt threads.Participant) bool {
+		return pt.Kind == threads.Agent && !shown(pt.Name)
+	})
+	return th
+}
+
+// mentions are a message's tags as the reader is shown them: a tag of an
+// agent they may not read reads as one that names no one, as tagging an
+// agent that does not exist does (threads.NoOne).
+func mentions(ms []threads.Mention, shown func(string) bool) []threads.Mention {
+	if ms == nil {
+		return nil
+	}
+	out := slices.Clone(ms)
+	for i, m := range out {
+		if m.Kind == threads.Agent && !shown(m.Name) {
+			out[i] = threads.NoOne(m.Name)
+		}
+	}
+	return out
+}
+
+// Turns is a page of a thread's turns as the reader is shown them: each
+// message's tags as mentions leaves them. A run is what happened, and names
+// the agent that ran it.
+func (s *Seer) Turns(th threads.Thread, turns []ThreadTurn) []ThreadTurn {
+	shown := s.threadAgents(th)
+	out := make([]ThreadTurn, len(turns))
+	for i, t := range turns {
+		if t.Message != nil {
+			m := *t.Message
+			m.Mentions = mentions(m.Mentions, shown)
+			t.Message = &m
+		}
+		out[i] = t
+	}
+	return out
+}
+
+// Posted is what a message did as its poster is shown it: the thread as
+// Thread leaves it, and its tags, refused ones included, as mentions leaves
+// them.
+func (s *Seer) Posted(posted Posted) Posted {
+	shown := s.threadAgents(posted.Thread)
+	posted.Thread = s.Thread(posted.Thread)
+	posted.Message.Mentions = mentions(posted.Message.Mentions, shown)
+	posted.Refused = mentions(posted.Refused, shown)
+	return posted
+}
+
+// Summaries is a page of conversations as the reader is shown it: every
+// agent they may not read left out of the agents each was answered by.
+func (s *Seer) Summaries(page []ThreadSummary) []ThreadSummary {
+	out := make([]ThreadSummary, len(page))
+	for i, sum := range page {
+		if sum.Agents != nil {
+			sum.Agents = slices.DeleteFunc(slices.Clone(sum.Agents), func(a string) bool { return !s.Agent(a) })
+		}
+		out[i] = sum
+	}
+	return out
+}
+
+// Answers is who answers an untagged message in a place as the reader is
+// shown it: a default naming an agent they may not read reads as none set,
+// so nobody answers, as is so: such an agent is never available where they
+// read.
+func (s *Seer) Answers(th threads.Thread, d threads.Default, unavailable string) (threads.Default, string) {
+	if d.Agent != "" && !s.threadAgents(th)(d.Agent) {
+		return threads.Default{}, ""
+	}
+	return d, unavailable
+}
+
+// DefaultForAs is DefaultFor as the reader is shown it (Seer.Answers).
+func (p *Platform) DefaultForAs(who auth.Principal, id, project, channel string) (threads.Default, string, error) {
+	th := threads.Thread{Project: projects.NameOf(project), Channel: channel}
+	if id != "" {
+		var err error
+		if th, err = p.ThreadRecord(who.Tenant, id); err != nil {
+			return threads.Default{}, "", err
+		}
+	}
+	d, unavailable, err := p.DefaultFor(who.Tenant, id, project, channel)
+	if err != nil {
+		return threads.Default{}, "", err
+	}
+	d, unavailable = p.Seer(who).Answers(th, d, unavailable)
+	return d, unavailable, nil
 }

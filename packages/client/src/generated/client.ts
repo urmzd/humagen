@@ -615,7 +615,10 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     });
   }
 
-  /** The latest revision of every agent in the workspace. Not paged. */
+  /** The latest revision of every agent in the workspace the caller may
+read: one that lives in a project they may not read is left out, and
+so is every agent it names in another's spec. Not paged.
+ */
   async listAgents(options?: RequestOptions): Promise<ListAgentsResponse> {
     const path = "/api/agents";
     return this.request<ListAgentsResponse>("GET", path, {
@@ -632,7 +635,8 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
 
   /** A tag names an agent or a person, so an agent cannot take a name a
 person in the workspace goes by ("a person goes by @dana"), nor
-`auto` or `sme`: each is 409.
+`auto` or `sme`: each is 409. Every agent `access.spawn` names must
+exist and be one the caller may read (400).
  */
   async createAgent(body: AgentSpec, options?: RequestOptions): Promise<Revision> {
     const path = "/api/agents";
@@ -654,6 +658,9 @@ person in the workspace goes by ("a person goes by @dana"), nor
 
   /** Writes a new revision. `expected_rev` is the revision the caller
 edited from: if someone else revised the agent since, the answer is 409.
+Every agent `access.spawn` names must exist and be one the caller may
+read, or one it already names that they are shown (400); the agents
+they were not shown, and the approvals of calls to them, are kept.
  */
   async reviseAgent(name: string, body: ReviseAgentBody, options?: RequestOptions): Promise<Revision> {
     let path = "/api/agents/{name}";
@@ -726,7 +733,9 @@ nowhere (400).
 
   /** The agent's stored call policy, or the default an agent with none has
 (`version` 0): any caller its own spec allows, without approval. 404
-for an agent that does not exist in the caller's workspace.
+for an agent that does not exist in the caller's workspace. An agent
+that lives in a project the caller may not read is left out of
+`allow` and `trusted`.
  */
   async getCallPolicy(name: string, options?: RequestOptions): Promise<CallPolicy> {
     let path = "/api/agents/{name}/call-policy";
@@ -747,9 +756,12 @@ for an agent that does not exist in the caller's workspace.
   /** Replaces the agent's call policy. The callee decides: a caller also
 needs the callee in its own spawn allowlist, so a policy can only
 narrow what callers' specs allow. An unknown mode, an agent name that
-does not exist, more than 100 callers or 32 approvers, or a field that does not
-apply to the chosen mode is 400. An agent that lives in a project is
-that project's to change: without owning its home it is 403.
+does not exist or lives in a project the caller may not read, more
+than 100 callers or 32 approvers, or a field that does not apply to
+the chosen mode is 400. The callers the caller was not shown are kept
+in `allow` while `callers` is `listed`, and in `trusted` while
+`approval` is `unlisted`. An agent that lives in a project is that
+project's to change: without owning its home it is 403.
  */
   async putCallPolicy(name: string, body: CallPolicyInput, options?: RequestOptions): Promise<CallPolicy> {
     let path = "/api/agents/{name}/call-policy";
@@ -1048,6 +1060,8 @@ agents answering the next message are sent.
 
   /** Starts a child run of the run in the path. The caller's agent must be
 allowed to spawn the target, and depth, fan-out and lease limits apply.
+A target that lives in a project the caller may not read is refused as
+one the spawn allowlist does not name (403).
 `key` is the call's idempotency key within the run. The call is a turn
 of the run's conversation, filed where it lives, so the caller must be
 a member of the run's project, and in a private thread a participant

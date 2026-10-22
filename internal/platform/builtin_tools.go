@@ -77,11 +77,12 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 					}
 					hours = n
 				}
-				scope, err := p.summaryScope(req.Tenant, p.ownProject(req.Tenant, req.RunID), strings.TrimSpace(arg(args, "project")))
+				own := p.ownProject(req.Tenant, req.RunID)
+				scope, err := p.summaryScope(req.Tenant, own, strings.TrimSpace(arg(args, "project")))
 				if err != nil {
 					return "", err
 				}
-				return p.runsSummary(req.Tenant, time.Duration(hours)*time.Hour, strings.TrimSpace(arg(args, "agent")), scope)
+				return p.runsSummary(req.Tenant, time.Duration(hours)*time.Hour, strings.TrimSpace(arg(args, "agent")), scope, p.agentOpenFor(req.Tenant, own))
 			}),
 		ToolProjectChanges: p.projectChangesTool(req),
 		ToolListAlerts: tool(ToolListAlerts,
@@ -101,13 +102,17 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 			schema([]string{"name"}, map[string]string{"name": "The agent's name"}),
 			func(ctx context.Context, args map[string]any) (string, error) {
 				name := strings.TrimSpace(arg(args, "name"))
-				if !p.agentOpenFor(req.Tenant, p.ownProject(req.Tenant, req.RunID))(name) {
+				open := p.agentOpenFor(req.Tenant, p.ownProject(req.Tenant, req.RunID))
+				if !open(name) {
 					return "", fmt.Errorf("%w: %q", registry.ErrNotFound, name)
 				}
 				rev, err := p.Agents.Get(ctx, req.Tenant, name, 0)
 				if err != nil {
 					return "", err
 				}
+				// Nor are the agents it may call named past what everyone
+				// the answer reaches may read.
+				rev = revisionShown(rev, open)
 				b, _ := json.MarshalIndent(map[string]any{"rev": rev.Rev, "spec": rev.Spec}, "", "  ")
 				return string(b), nil
 			}),
@@ -136,8 +141,11 @@ func (p *Platform) builtinTools(req runtime.Request) map[string]saigetypes.Tool 
 	}
 }
 
-// runsSummary is runs_summary's answer: compact JSON a model can read and quote.
-func (p *Platform) runsSummary(tenant string, window time.Duration, agent string, scope runs.SummaryQuery) (string, error) {
+// runsSummary is runs_summary's answer: compact JSON a model can read and
+// quote. An agent open does not pass is not listed by name, and asked
+// about, has no runs; its runs that the answer may read still count in the
+// total.
+func (p *Platform) runsSummary(tenant string, window time.Duration, agent string, scope runs.SummaryQuery, open func(string) bool) (string, error) {
 	until := p.now()
 	bucket := time.Hour
 	if window > 7*24*time.Hour {
@@ -186,7 +194,7 @@ func (p *Platform) runsSummary(tenant string, window time.Duration, agent string
 		Note string `json:"note,omitempty"`
 	}{Since: s.Since, Until: s.Until, Total: of(s.Total)}
 	for _, g := range s.ByAgent {
-		if agent == "" || g.Name == agent {
+		if open(g.Name) && (agent == "" || g.Name == agent) {
 			out.ByAgent = append(out.ByAgent, of(g))
 		}
 	}
@@ -204,7 +212,7 @@ func (p *Platform) runsSummary(tenant string, window time.Duration, agent string
 	sort.SliceStable(out.ByAgent, func(i, j int) bool { return out.ByAgent[i].Runs > out.ByAgent[j].Runs })
 	out.ByAgent = out.ByAgent[:min(len(out.ByAgent), 20)]
 	for _, r := range s.Slowest {
-		if agent != "" && r.Agent != agent {
+		if agent != "" && (r.Agent != agent || !open(agent)) {
 			continue
 		}
 		if len(out.Slowest) == 5 {

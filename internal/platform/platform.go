@@ -549,7 +549,14 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within 
 // caller, the tree's limits must allow the call, and the caller's remaining
 // budget must cover the lease.
 func (p *Platform) Call(ctx context.Context, tenant, runID string, req call.Request) (runs.Run, error) {
-	return p.call(ctx, tenant, runID, req, false)
+	return p.call(ctx, tenant, runID, req, false, nil)
+}
+
+// CallAs is Call as who asks it: an agent who may not read is not among the
+// agents the caller's spec is shown to them to call, so it is refused as one
+// its spawn allowlist does not name.
+func (p *Platform) CallAs(ctx context.Context, who auth.Principal, runID string, req call.Request) (runs.Run, error) {
+	return p.call(ctx, who.Tenant, runID, req, false, p.Seer(who).Agent)
 }
 
 // call is Call. With grant, a call from a run that holds a lease and asked for
@@ -560,8 +567,9 @@ func (p *Platform) Call(ctx context.Context, tenant, runID string, req call.Requ
 // it, and for anything else still in flight. Everything is trued up when the
 // call settles. That is how an agent's own calls (tagging, delegate_task)
 // lease budget, since a model never names an amount. A caller with nothing
-// left is refused.
-func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Request, grant bool) (runs.Run, error) {
+// left is refused. sees, when set, is the agents whoever asks may read (see
+// CallAs).
+func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Request, grant bool, sees func(string) bool) (runs.Run, error) {
 	p.calls.Lock()
 	defer p.calls.Unlock()
 
@@ -573,7 +581,7 @@ func (p *Platform) call(ctx context.Context, tenant, runID string, req call.Requ
 	if err != nil {
 		return runs.Run{}, fmt.Errorf("platform: caller's spec: %w", err)
 	}
-	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) {
+	if !slices.Contains(rev.Spec.Access.Spawn, req.Agent) || sees != nil && !sees(req.Agent) {
 		return runs.Run{}, fmt.Errorf("%w: refused by the caller: %q may not call %q, which its spec's spawn allowlist does not name", ErrForbidden, parent.Agent, req.Agent)
 	}
 	// The callee agrees too: its call policy must admit the caller.

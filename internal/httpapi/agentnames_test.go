@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/urmzd/fiber/pkg/agentspec"
+
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/clients"
 )
@@ -479,5 +481,194 @@ func TestAThreadNamesOnlyTheAgentsItsPosterMayRead(t *testing.T) {
 		if code := asGhost(t, f, ana, "PUT", tc.path, tc.body); code != http.StatusBadRequest {
 			t.Errorf("PUT %s naming spy = %d, want 400", tc.path, code)
 		}
+	}
+}
+
+// alike sends a body naming spy, and the same body naming an agent that does
+// not exist, and fails unless both answer alike: the same status and the
+// same words, the name aside. Unlike asGhost, it swaps spy inside a word, as
+// in the tool tag_spy.
+func alike(t *testing.T, f *fixture, tok, method, path string, body func(name string) string) int {
+	t.Helper()
+	code, out := send(t, f, tok, method, path, body("spy"))
+	ghostCode, ghostOut := send(t, f, tok, method, path, body("spz"))
+	if code != ghostCode || strings.ReplaceAll(out, "spy", "spz") != ghostOut {
+		t.Errorf("%s %s naming spy = %d %s, and naming an agent that does not exist %d %s", method, path, code, out, ghostCode, ghostOut)
+	}
+	return code
+}
+
+// A spec and a call policy name only the agents their reader may read. One
+// that lives in a project they may not read is left out of the agents a spec
+// may call and the approvals of those calls, with a hash of what is shown,
+// and of the callers a policy admits and trusts. A writer who saves either as
+// they read it keeps that agent, names one only as an agent that exists and
+// that they may read, and learns nothing by naming one they may not; nor by
+// calling it from a run.
+func TestASpecAndItsCallPolicyNameOnlyTheAgentsTheCallerMayRead(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	writer := f.machineAs(t, "svc-ops", "acme", "warp:agents:read", "warp:agents:write", "warp:runs:read", "warp:runs:write")
+	secretAgent(t, f, owner)
+	lead := func(spawn, approvals string) string {
+		return `{"name":"lead","model":"offline","provider":"offline","system_prompt":"Leads.","access":{"spawn":` + spawn + `},"approvals":` + approvals + `}`
+	}
+	want(t, f, owner, "POST", "/api/agents", lead(`["helper","spy"]`, `["tag_helper","tag_spy"]`), http.StatusCreated)
+	want(t, f, owner, "PUT", "/api/agents/helper/call-policy", `{"callers":"listed","allow":["lead","spy"],"approval":"unlisted","trusted":["lead","spy"]}`, http.StatusOK)
+
+	ownerRaw, ownerList := read(t, f, owner, "/api/agents")
+	if !strings.Contains(ownerRaw, `"spawn":["helper","spy"]`) || !strings.Contains(ownerRaw, `"tag_spy"`) {
+		t.Fatalf("the owner does not see lead call spy: %s", ownerRaw)
+	}
+	revOf := func(list map[string]any) map[string]any {
+		for _, r := range sliceOf(list["agents"]) {
+			if obj(obj(r)["spec"])["name"] == "lead" {
+				return obj(r)
+			}
+		}
+		t.Fatalf("no lead in %v", list)
+		return nil
+	}
+	for _, path := range []string{"/api/agents", "/api/agents/lead/history", "/api/agents/helper/call-policy"} {
+		if raw, _ := read(t, f, writer, path); strings.Contains(raw, "spy") {
+			t.Errorf("%s shows a writer who may not read Secret spy: %s", path, raw)
+		}
+	}
+	_, list := read(t, f, writer, "/api/agents")
+	shown := revOf(list)
+	var spec agentspec.AgentSpec
+	if err := json.Unmarshal([]byte(mustJSON(t, shown["spec"])), &spec); err != nil {
+		t.Fatal(err)
+	}
+	if shown["hash"] == revOf(ownerList)["hash"] || shown["hash"] != spec.Normalize().Hash() {
+		t.Errorf("the writer's lead hashes to %v, the owner's to %v, and what the writer is shown to %s", shown["hash"], revOf(ownerList)["hash"], spec.Normalize().Hash())
+	}
+	if _, pol := read(t, f, writer, "/api/agents/helper/call-policy"); !slices.Equal(listed(pol["allow"]), []string{"lead"}) || !slices.Equal(listed(pol["trusted"]), []string{"lead"}) {
+		t.Errorf("the writer reads helper's call policy as %v", pol)
+	}
+
+	// Naming spy answers as naming an agent that does not exist.
+	for _, tc := range []struct {
+		method, path string
+		body         func(string) string
+		code         int
+	}{
+		{"POST", "/api/agents", func(a string) string {
+			return `{"name":"probe","model":"offline","provider":"offline","system_prompt":"x","access":{"spawn":["` + a + `"]}}`
+		}, http.StatusBadRequest},
+		{"PUT", "/api/agents/lead", func(a string) string {
+			return `{"spec":` + lead(`["helper","`+a+`"]`, `[]`) + `,"expected_rev":0}`
+		}, http.StatusBadRequest},
+		{"PUT", "/api/agents/lead", func(a string) string {
+			return `{"spec":` + lead(`["helper"]`, `["tag_`+a+`"]`) + `,"expected_rev":0}`
+		}, http.StatusBadRequest},
+		{"PUT", "/api/agents/helper/call-policy", func(a string) string { return `{"callers":"listed","allow":["lead","` + a + `"]}` }, http.StatusBadRequest},
+		{"PUT", "/api/agents/helper/call-policy", func(a string) string {
+			return `{"callers":"anyone","approval":"unlisted","trusted":["` + a + `"]}`
+		}, http.StatusBadRequest},
+	} {
+		if code := alike(t, f, writer, tc.method, tc.path, tc.body); code != tc.code {
+			t.Errorf("%s %s naming spy = %d, want %d", tc.method, tc.path, code, tc.code)
+		}
+	}
+	// And so does calling it from a run of lead, which may call it.
+	run := want(t, f, owner, "POST", "/api/runs", `{"agent":"lead","text":"Lead."}`, http.StatusAccepted)["id"].(string)
+	if code := alike(t, f, writer, "POST", "/api/runs/"+run+"/calls", func(a string) string { return `{"key":"probe","agent":"` + a + `","text":"probe"}` }); code != http.StatusForbidden {
+		t.Errorf("calling spy from lead's run = %d, want 403", code)
+	}
+
+	// Saved as the writer reads them, both keep spy.
+	_, list = read(t, f, writer, "/api/agents")
+	shown = revOf(list)
+	saved := want(t, f, writer, "PUT", "/api/agents/lead", mustJSON(t, map[string]any{"spec": shown["spec"], "expected_rev": shown["rev"]}), http.StatusOK)
+	if strings.Contains(mustJSON(t, saved), "spy") {
+		t.Errorf("the writer's save of lead answers %v", saved)
+	}
+	_, pol := read(t, f, writer, "/api/agents/helper/call-policy")
+	want(t, f, writer, "PUT", "/api/agents/helper/call-policy", mustJSON(t, map[string]any{
+		"callers": pol["callers"], "allow": pol["allow"], "approval": pol["approval"], "trusted": pol["trusted"],
+		"approvers": pol["approvers"], "self_approval": pol["self_approval"], "expires_seconds": pol["expires_seconds"],
+	}), http.StatusOK)
+	// What the writer saved is what lead was, so it is not even a revision.
+	if raw, _ := read(t, f, owner, "/api/agents/lead/history"); strings.Contains(raw, `"rev":2`) || !strings.Contains(raw, `"spawn":["helper","spy"]`) || !strings.Contains(raw, `"tag_spy"`) {
+		t.Errorf("after the writer's save lead is %s", raw)
+	}
+	if _, pol := read(t, f, owner, "/api/agents/helper/call-policy"); !slices.Equal(listed(pol["allow"]), []string{"lead", "spy"}) || !slices.Equal(listed(pol["trusted"]), []string{"lead", "spy"}) {
+		t.Errorf("after the writer's save helper's call policy is %v", pol)
+	}
+}
+
+// A thread names only the agents its reader may read. An agent moved into a
+// project they may not read is left out of its default and its participants,
+// and of who answers there, which reads as nobody, as is so; a tag of it reads
+// as one of nobody, and what posting there did, or asking after a turn there,
+// never names it. Saving the thread as they read it keeps it, and removing it
+// answers as removing an agent that is not there.
+func TestAThreadShowsOnlyTheAgentsItsReaderMayRead(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, owner, "POST", "/api/agents", spySpec, http.StatusCreated)
+	want(t, f, owner, "POST", "/api/projects", `{"name":"Secret"}`, http.StatusCreated)
+	want(t, f, owner, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
+	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
+	olu := f.person(t, "acme", "00u-olu", "Olu", "warp-admins")
+
+	// While spy is a platform agent, Ana makes it the thread's default and
+	// a participant; then it comes to live in Secret.
+	started := want(t, f, ana, "POST", "/api/threads", `{"visibility":"shared","text":"Plans for the week.","post_only":true,"default":"spy"}`, http.StatusCreated)
+	id := started["thread"].(map[string]any)["id"].(string)
+	want(t, f, ana, "PUT", "/api/threads/"+id+"/participants", `{"version":1,"add":[{"kind":"agent","name":"spy"}]}`, http.StatusOK)
+	want(t, f, owner, "PUT", "/api/agents/spy/home", `{"project":"Secret"}`, http.StatusOK)
+	// Olu, who reads Secret, tags spy, and an agent that does not exist.
+	for _, name := range []string{"spy", "spz"} {
+		want(t, f, olu, "POST", "/api/threads/"+id+"/messages", `{"text":"@`+name+` have a look"}`, http.StatusCreated)
+	}
+
+	if raw, page := read(t, f, owner, "/api/threads/"+id); !strings.Contains(raw, `"default":"spy"`) || !strings.Contains(mustJSON(t, page["thread"]), `"name":"spy"`) ||
+		obj(page["answers"])["agent"] != "spy" {
+		t.Fatalf("the owner does not see spy in the thread: %s", raw)
+	}
+	raw, page := read(t, f, ana, "/api/threads/"+id)
+	if record := mustJSON(t, page["thread"]); strings.Contains(record, "spy") || strings.Contains(record, `"default"`) ||
+		obj(page["answers"])["agent"] != "" || obj(page["answers"])["unavailable"] != nil {
+		t.Errorf("Ana reads spy in the thread: %s", raw)
+	}
+	var tags []string
+	for _, turn := range sliceOf(page["turns"]) {
+		if m := obj(obj(turn)["message"]); m != nil && strings.HasSuffix(fmt.Sprint(m["text"]), "have a look") {
+			tags = append(tags, mustJSON(t, m["mentions"]))
+		}
+	}
+	if len(tags) != 2 || strings.ReplaceAll(tags[0], "spy", "spz") != tags[1] {
+		t.Errorf("to Ana, Olu's tag of spy reads %v, and of an agent that does not exist the second", tags)
+	}
+	if code, raw := get(t, f, ana, "/api/threads"); code != http.StatusOK || strings.Contains(raw, `"spy"`) {
+		t.Errorf("Ana's threads = %d %s", code, raw)
+	}
+
+	// What posting there does names no agent Ana may not read.
+	posted := want(t, f, ana, "POST", "/api/threads/"+id+"/messages", `{"text":"Any news?"}`, http.StatusCreated)
+	if out := mustJSON(t, posted); strings.Contains(out, "spy") || posted["reason"] != "Nobody answers untagged messages here; tag an agent." {
+		t.Errorf("Ana's untagged message did %s", out)
+	}
+	asked := want(t, f, ana, "POST", "/api/threads/"+id+"/messages", `{"text":"@helper what's new?"}`, http.StatusCreated)
+	turn := sliceOf(asked["runs"])[0].(map[string]any)["id"].(string)
+	ended(t, f, ana, turn)
+	if code, out := send(t, f, ana, "POST", "/api/runs", `{"text":"And then?","after":"`+turn+`"}`); code != http.StatusConflict || strings.Contains(out, "spy") {
+		t.Errorf("Ana's untagged turn after one in the thread = %d %s", code, out)
+	}
+
+	// Saved as Ana reads it, the thread keeps spy as its default; removing
+	// spy answers as removing an agent that is not there.
+	_, page = read(t, f, ana, "/api/threads/"+id)
+	th := obj(page["thread"])
+	version := int(th["version"].(float64))
+	want(t, f, ana, "PUT", "/api/threads/"+id, fmt.Sprintf(`{"version":%d,"title":"Week","visibility":"shared"}`, version), http.StatusOK)
+	if code := asGhost(t, f, ana, "PUT", "/api/threads/"+id+"/participants", fmt.Sprintf(`{"version":%d,"remove":["spy"]}`, version+1)); code != http.StatusOK {
+		t.Errorf("Ana's removal of spy = %d", code)
+	}
+	if raw, page := read(t, f, owner, "/api/threads/"+id); !strings.Contains(raw, `"default":"spy"`) || !strings.Contains(mustJSON(t, page["thread"]), `"name":"spy"`) {
+		t.Errorf("after Ana's saves the thread is %s", raw)
 	}
 }

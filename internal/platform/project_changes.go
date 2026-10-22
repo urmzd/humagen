@@ -102,8 +102,20 @@ func (p *Platform) everyoneReads(tenant, own string) func(project string) bool {
 		if onChain(tree, own, project) || slices.Contains(mine, project) {
 			return true
 		}
-		chain := tree.Chain(project)
-		return chain != nil && !slices.ContainsFunc(chain, projects.MembersOnly)
+		return everyoneIn(tree, project)
+	}
+}
+
+// agentsEveryoneReads reports, for a recap of own, whether everyone it
+// reaches may read an agent: a platform agent, or one that lives in a project
+// everyoneReads. A row names no other, though what it ran is counted: an
+// agent moved since into a members-only project ran where everyone reads.
+func (p *Platform) agentsEveryoneReads(tenant, own string) func(agent string) bool {
+	tree := p.ProjectTree(tenant)
+	reads := p.everyoneReads(tenant, own)
+	return func(agent string) bool {
+		home, homed := tree.Home(agentspec.NormalizeName(agent))
+		return !homed || reads(home)
 	}
 }
 
@@ -153,6 +165,9 @@ type changesScope struct {
 	// asking is the root of the run that asked, and thread its
 	// conversation: its own runs are not news to it.
 	asking, thread string
+	// shown is whether an agent is named in a row: only one that everyone
+	// the recap reaches may read (agentsEveryoneReads).
+	shown func(agent string) bool
 }
 
 // changeRow is one row of a section, ordered newest first by at.
@@ -223,6 +238,7 @@ func (p *Platform) projectChanges(tenant, runID string, days int) (string, error
 	scope := changesScope{
 		tenant: tenant, project: run.Project, projects: names,
 		since: until.Add(-time.Duration(days) * 24 * time.Hour), until: until, asking: run.Root, thread: run.Thread,
+		shown: p.agentsEveryoneReads(tenant, run.Project),
 	}
 	sections := p.changeSections()
 	rows := make([][]changeRow, len(sections))
@@ -342,7 +358,9 @@ func (p *Platform) runChanges(scope changesScope) []changeRow {
 	}
 	out := []changeRow{{at, row("In all, %s; %d tokens, %s spent", counts(s.Total), s.Total.Usage.Tokens, micros(s.Total.Usage.Spend))}}
 	for _, g := range s.ByAgent {
-		out = append(out, changeRow{at, row("%s: %s", g.Name, counts(g))})
+		if scope.shown(g.Name) {
+			out = append(out, changeRow{at, row("%s: %s", g.Name, counts(g))})
+		}
 	}
 	if len(scope.projects) > 1 {
 		groups := make([]runs.Group, 0, len(byProject))
@@ -376,8 +394,11 @@ func (p *Platform) artifactChanges(scope changesScope) []changeRow {
 				continue
 			}
 			by := a.Agent
-			if by == "" {
+			switch {
+			case by == "":
 				by = a.CreatedBy
+			case !scope.shown(by):
+				by = "an agent"
 			}
 			text := row("%s %s: %s, version %d, by %s", day(a.CreatedAt), a.Project, a.Title, a.Version, by)
 			if a.Description != "" {
@@ -423,11 +444,15 @@ func (p *Platform) scheduleChanges(scope changesScope) []changeRow {
 			continue
 		}
 		about := p.Schedules.About(sc.Name)
+		agent := sc.Agent
+		if !scope.shown(agent) {
+			agent = "an agent"
+		}
 		switch {
 		case inWindow(about.UpdatedAt):
-			out = append(out, changeRow{about.UpdatedAt, row("%s %s: %s changed by %s, runs %s at %q", day(about.UpdatedAt), project, sc.Name, about.UpdatedBy, sc.Agent, sc.Expression)})
+			out = append(out, changeRow{about.UpdatedAt, row("%s %s: %s changed by %s, runs %s at %q", day(about.UpdatedAt), project, sc.Name, about.UpdatedBy, agent, sc.Expression)})
 		case inWindow(about.CreatedAt):
-			out = append(out, changeRow{about.CreatedAt, row("%s %s: %s created by %s, runs %s at %q", day(about.CreatedAt), project, sc.Name, sc.Meta[metaCreatedBy], sc.Agent, sc.Expression)})
+			out = append(out, changeRow{about.CreatedAt, row("%s %s: %s created by %s, runs %s at %q", day(about.CreatedAt), project, sc.Name, sc.Meta[metaCreatedBy], agent, sc.Expression)})
 		}
 	}
 	return out
@@ -468,12 +493,13 @@ func (p *Platform) threadChanges(scope changesScope) []changeRow {
 				where = "the workspace"
 			}
 			text := row("%s %s #%s: %q %s, %s, %s", day(t.UpdatedAt), where, t.Channel, t.Title, how, state, counted(t.Turns, "turn"))
-			switch len(t.Agents) {
+			agents := slices.DeleteFunc(slices.Clone(t.Agents), func(a string) bool { return !scope.shown(a) })
+			switch len(agents) {
 			case 0:
 			case 1:
-				text = row("%s, agent %s", text, t.Agents[0])
+				text = row("%s, agent %s", text, agents[0])
 			default:
-				text = row("%s, agents %s", text, strings.Join(t.Agents, ", "))
+				text = row("%s, agents %s", text, strings.Join(agents, ", "))
 			}
 			if t.Failed > 0 {
 				text = row("%s, %d failed", text, t.Failed)
@@ -506,7 +532,11 @@ func (p *Platform) announcementChanges(scope changesScope) []changeRow {
 		if where == "" {
 			where = "the workspace"
 		}
-		out = append(out, changeRow{m.At, row("%s %s: %q, from %s %s", day(m.At), where, m.Subject, m.From.Kind, m.From.Name)})
+		from := m.From.Kind + " " + m.From.Name
+		if m.From.Kind == "agent" && !scope.shown(m.From.Name) {
+			from = "an agent"
+		}
+		out = append(out, changeRow{m.At, row("%s %s: %q, from %s", day(m.At), where, m.Subject, from)})
 	}
 	return out
 }
@@ -516,12 +546,6 @@ func (p *Platform) announcementChanges(scope changesScope) []changeRow {
 // tells it. A change of home names its agent only when everyone the recap
 // reaches may read it, as the history route names it only to who may.
 func (p *Platform) recordChanges(scope changesScope) []changeRow {
-	tree := p.ProjectTree(scope.tenant)
-	reads := p.everyoneReads(scope.tenant, scope.project)
-	shown := func(agent string) bool {
-		home, homed := tree.Home(agentspec.NormalizeName(agent))
-		return !homed || reads(home)
-	}
 	var out []changeRow
 	for _, project := range scope.projects {
 		changes, _ := p.Projects.History(scope.tenant, project, MaxChangeRows, 0)
@@ -535,7 +559,7 @@ func (p *Platform) recordChanges(scope changesScope) []changeRow {
 			}
 			text := row("%s %s: %s by %s", day(c.At), where, c.What, c.By)
 			switch {
-			case c.Agent != "" && shown(c.Agent):
+			case c.Agent != "" && scope.shown(c.Agent):
 				text = row("%s (%s)", text, c.Agent)
 			case c.Agent != "":
 				// Its agent is left out, as it is from the history.

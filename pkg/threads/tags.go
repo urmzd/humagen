@@ -207,6 +207,12 @@ func tag(token string, r Resolver) Mention {
 			return Mention{Kind: Person, Name: subject}
 		}
 	}
+	return NoOne(token)
+}
+
+// NoOne is what a tag that names nobody comes to: a person nobody goes by,
+// kept as written.
+func NoOne(token string) Mention {
 	return Mention{Kind: Person, Name: token, Refused: "no one goes by @" + token}
 }
 

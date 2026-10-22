@@ -246,7 +246,7 @@ func (s *Server) listAgents(w http.ResponseWriter, r *http.Request, who auth.Pri
 		}
 		enabled[name] = slices.DeleteFunc(place.EnabledIn, func(p string) bool { return !seer.Project(projects.NameOf(p)) })
 	}
-	ok(w, http.StatusOK, map[string]any{"agents": viewRevisions(s.P.Names(who.Tenant), all), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled})
+	ok(w, http.StatusOK, map[string]any{"agents": viewRevisions(s.P.Names(who.Tenant), seer.Revisions(all)), "builtin": platform.Builtins(), "homes": homes, "enabled_in": enabled})
 }
 
 // revisionView is an agent's revision and what the person who saved it is
@@ -283,12 +283,18 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
+	// Every agent it may call is one the caller may read.
+	spec, err := s.P.SpecWrittenBy(r.Context(), who, nil, spec)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
 	rev, err := s.P.Agents.Create(r.Context(), who.Tenant, spec, who.Subject)
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, viewRevisions(s.P.Names(who.Tenant), []agentspec.Revision{rev})[0])
+	ok(w, http.StatusCreated, viewRevisions(s.P.Names(who.Tenant), []agentspec.Revision{s.P.Seer(who).Revision(rev)})[0])
 }
 
 func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -298,7 +304,8 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 	}
 	// One that is not there is said so before the body is read, as one the
 	// caller may not see is, so neither tells them apart.
-	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, r.PathValue("name"), 0); err != nil {
+	old, err := s.P.Agents.Get(r.Context(), who.Tenant, r.PathValue("name"), 0)
+	if err != nil {
 		s.problem(w, err)
 		return
 	}
@@ -326,12 +333,19 @@ func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 		s.problem(w, err)
 		return
 	}
-	rev, err := s.P.Agents.Revise(r.Context(), who.Tenant, body.Spec, body.ExpectedRev, who.Subject)
+	// Every agent it may call is one the caller may read, and the ones it
+	// may call that they were not shown stay.
+	spec, err := s.P.SpecWrittenBy(r.Context(), who, &old, body.Spec)
 	if err != nil {
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, viewRevisions(s.P.Names(who.Tenant), []agentspec.Revision{rev})[0])
+	rev, err := s.P.Agents.Revise(r.Context(), who.Tenant, spec, body.ExpectedRev, who.Subject)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, viewRevisions(s.P.Names(who.Tenant), []agentspec.Revision{s.P.Seer(who).Revision(rev)})[0])
 }
 
 // agentHistory returns every revision of an agent, newest first.
@@ -342,7 +356,7 @@ func (s *Server) agentHistory(w http.ResponseWriter, r *http.Request, who auth.P
 		return
 	}
 	slices.SortFunc(revs, func(a, b agentspec.Revision) int { return b.Rev - a.Rev })
-	ok(w, http.StatusOK, map[string]any{"revisions": viewRevisions(s.P.Names(who.Tenant), revs)})
+	ok(w, http.StatusOK, map[string]any{"revisions": viewRevisions(s.P.Names(who.Tenant), s.P.Seer(who).Revisions(revs))})
 }
 
 // agentOwner resolves the agent in the path to its memory owner, or answers
@@ -629,7 +643,7 @@ func (s *Server) listThreads(w http.ResponseWriter, r *http.Request, who auth.Pr
 	if next != "" {
 		cursor = &next
 	}
-	ok(w, http.StatusOK, map[string]any{"threads": s.P.ShowSummaries(who.Tenant, page), "next": cursor})
+	ok(w, http.StatusOK, map[string]any{"threads": s.P.Seer(who).Summaries(s.P.ShowSummaries(who.Tenant, page)), "next": cursor})
 }
 
 // pickAgent previews which agent @auto would pick for a message in a project,
@@ -725,7 +739,7 @@ func (s *Server) createCall(w http.ResponseWriter, r *http.Request, who auth.Pri
 			return
 		}
 	}
-	run, err := s.P.Call(r.Context(), who.Tenant, r.PathValue("id"), call.Request{Key: body.Key, Agent: body.Agent, Text: body.Text, Input: body.Input, Mode: body.Mode, Lease: body.Lease})
+	run, err := s.P.CallAs(r.Context(), who, r.PathValue("id"), call.Request{Key: body.Key, Agent: body.Agent, Text: body.Text, Input: body.Input, Mode: body.Mode, Lease: body.Lease})
 	if err != nil {
 		s.problem(w, err)
 		return
