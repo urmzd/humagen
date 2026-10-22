@@ -67,7 +67,9 @@ async function main() {
     Promise.race([app.idle(), patience]).finally(() => process.exit(0));
   });
 
-  // The inbox is followed beside the socket. If warp goes away it is followed again.
+  // The inbox is followed beside the socket. If warp goes away it is followed
+  // again, and each time the stream opens the app catches up on the
+  // announcements of its bound channels, which the stream does not replay.
   (async () => {
     while (!stop.signal.aborted) {
       await app.watchInbox(stop.signal).catch((e: Error) => log(`inbox watch ended: ${e.message}`));

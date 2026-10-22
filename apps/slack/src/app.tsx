@@ -12,7 +12,15 @@ import {
   retryOf,
   toRequest,
 } from "@warp/adapter";
-import { type Copy, defaultCopy, Home, MailboxView, MessageView, TurnView } from "@warp/components";
+import {
+  AnnouncementPost,
+  type Copy,
+  defaultCopy,
+  Home,
+  MailboxView,
+  MessageView,
+  TurnView,
+} from "@warp/components";
 import {
   ActionId,
   emptyQueue,
@@ -55,6 +63,7 @@ import {
   type Binding,
   type ClientRecord,
   type InboxNotice,
+  type Receipt,
   type Run,
   type StreamItem,
   type SurfaceRef,
@@ -107,6 +116,8 @@ export interface AppOptions {
    * seconds to wrap up by default.
    */
   stopWaitMs?: number;
+  /** What time it is, in milliseconds since the epoch. Left out, the system's clock. */
+  now?: () => number;
   log?: (line: string) => void;
 }
 
@@ -328,6 +339,53 @@ const sleep = (ms: number, signal: AbortSignal) =>
 
 const short = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 20);
 
+/**
+ * How far back a catch-up posts an announcement this app has no receipt for:
+ * a restart, a deploy or a night without the app. An older one stays in
+ * warp's inbox and the Home tab, as a post days late would read as news.
+ */
+export const CATCH_UP_WINDOW_MS = 24 * 60 * 60_000;
+
+/** How many of a bound project's newest announcements a catch-up reads: one page. */
+export const CATCH_UP_PAGE = 50;
+
+/** Why an announcement is looked at: a notice says it changed, or a catch-up found it behind. */
+type Look = "notice" | "catch-up";
+
+const isDraft = (m: WireMessage) => m.parts.some((p) => p.type === "draft");
+
+/** Whether a message changed after its receipt last said the post shows it. */
+const changedSince = (m: WireMessage, r: Receipt) =>
+  Date.parse(m.updated_at ?? "") > Date.parse(r.at ?? "");
+
+/**
+ * What a catch-up brings up to date, of one page of a bound project's
+ * announcements as this client's machine reads them, newest first: their
+ * ids, oldest first, so the channel reads in order. One with this client's
+ * receipt is edited when it changed since the receipt, as when it was
+ * withdrawn. One without is posted when it is open, from the last
+ * CATCH_UP_WINDOW_MS, and no older than the oldest one in the page that has
+ * a receipt: what came before this app posted there, such as what was
+ * announced before the channel was bound, is not news now. A draft never
+ * reaches a channel.
+ */
+export function catchUpOn(page: WireMessage[], client: string, now: number): string[] {
+  const news = page.filter((m) => m.kind === "announcement" && !isDraft(m));
+  const receipted = news
+    .filter((m) => m.deliveries?.[client])
+    .map((m) => Date.parse(m.at ?? ""))
+    .filter((t) => !Number.isNaN(t));
+  const oldest = receipted.length > 0 ? Math.min(...receipted) : -Infinity;
+  const since = Math.max(now - CATCH_UP_WINDOW_MS, oldest);
+  const due: string[] = [];
+  for (const m of news.toReversed()) {
+    const receipt = m.deliveries?.[client];
+    if (receipt ? changedSince(m, receipt) : m.state === "open" && Date.parse(m.at ?? "") >= since)
+      due.push(m.id);
+  }
+  return due;
+}
+
 /** What asking a turn again came to. */
 type Again = "started" | "not-theirs" | "not-yours" | "elsewhere" | "not-routed";
 
@@ -359,8 +417,19 @@ export class App {
   private agentList: { at: number; agents: Agent[] } | null = null;
   private clientRecord: { at: number; client: ClientRecord | null } | null = null;
   private bindings: { at: number; list: Binding[] } | null = null;
-  /** Announcements being posted right now, so two notices post one. */
-  private readonly announcing = new Set<string>();
+  /**
+   * Announcements being brought up to date right now, and why to look again
+   * once that is done: a notice or a catch-up that comes meanwhile waits its
+   * turn, so two never post one twice.
+   */
+  private readonly announcing = new Map<string, { again: Look | null }>();
+  /**
+   * Announcements this process posted whose receipt warp did not take, so
+   * the next look records it instead of posting again.
+   */
+  private readonly unrecorded = new Recent<{ channel: string; ts: string }>(2_000);
+  /** Whether a catch-up is running, and whether another is due once it ends. */
+  private catching: { again: boolean } | null = null;
   /**
    * Where each mention or question sent to a person's direct messages was
    * posted, by person and message, to keep it current. A question to a role
@@ -447,12 +516,69 @@ export class App {
     await this.track(work);
   }
 
-  /** Follow the inbox for as long as the signal allows, and show what concerns this app's threads. */
+  /**
+   * Follow the inbox for as long as the signal allows, and show what concerns
+   * this app's threads. The stream does not replay what it missed, so each
+   * time it opens, at the start and after every reconnect, the app catches up
+   * on the announcements of its bound channels.
+   */
   async watchInbox(signal: AbortSignal): Promise<void> {
-    for await (const notice of this.warp.notices({ signal })) {
+    const opened = () => {
+      this.track(this.catchUp().catch((e: Error) => this.log(`catch-up failed: ${e.message}`)));
+    };
+    for await (const notice of this.warp.notices({ signal, opened })) {
       await this.track(
         this.onNotice(notice).catch((e: Error) => this.log(`inbox notice failed: ${e.message}`)),
       );
+    }
+  }
+
+  /**
+   * Bring the posts of every project whose general channel is bound here up
+   * to date with what was announced, edited or withdrawn while the app was
+   * not listening: each project's newest CATCH_UP_PAGE announcements are read
+   * as the app's machine reads them, and compared with this client's
+   * receipts (catchUpOn). The receipt is the record, so a notice that comes
+   * meanwhile changes nothing it does. One catch-up runs at a time, and one
+   * asked for meanwhile runs once it ends.
+   */
+  async catchUp(): Promise<void> {
+    const client = this.opts.clientId;
+    if (!client) return;
+    if (this.catching) {
+      this.catching.again = true;
+      return;
+    }
+    const run = { again: true };
+    this.catching = run;
+    try {
+      while (run.again) {
+        run.again = false;
+        // Read afresh: a channel bound while the app was away counts now.
+        this.bindings = null;
+        const generals = (await this.bound()).filter((b) => b.channel === "general");
+        for (const b of generals) {
+          let page: WireMessage[];
+          try {
+            page = await this.warp.announcements(b.project, CATCH_UP_PAGE);
+          } catch (e) {
+            this.log(`announcements of ${b.project || "~"} were not read: ${(e as Error).message}`);
+            continue;
+          }
+          const due = catchUpOn(page, client, (this.opts.now ?? Date.now)());
+          // A post whose receipt warp did not take is looked at whatever became of it.
+          for (const m of page)
+            if (this.unrecorded.has(m.id) && !due.includes(m.id)) due.push(m.id);
+          for (const id of due) {
+            // One post Slack refuses to edit, such as one deleted there, holds up no other.
+            await this.announce(id, "catch-up").catch((e: Error) =>
+              this.log(`announcement ${id} was not brought up to date: ${e.message}`),
+            );
+          }
+        }
+      }
+    } finally {
+      this.catching = null;
     }
   }
 
@@ -1595,44 +1721,97 @@ export class App {
    * posted there, top-level, once. Where it went is recorded in warp, so a
    * restart, an edit or a withdrawal updates that post instead of posting
    * again. A draft never reaches a channel, and one withdrawn before it was
-   * posted is not posted.
+   * posted is not posted. A notice and a catch-up both come here, one look
+   * at a time for each announcement, and each look reads it afresh, receipt
+   * and all: a look asked for meanwhile waits for the one under way.
    */
-  private async announce(id: string): Promise<void> {
+  private async announce(id: string, why: Look = "notice"): Promise<void> {
     const client = this.opts.clientId;
-    if (!client || this.announcing.has(id)) return;
-    this.announcing.add(id);
+    if (!client) return;
+    const busy = this.announcing.get(id);
+    if (busy) {
+      if (busy.again !== "notice") busy.again = why;
+      return;
+    }
+    const turn: { again: Look | null } = { again: why };
+    this.announcing.set(id, turn);
     try {
-      const raw = await this.warp.getInboxMessage(id).catch(() => null);
-      if (!raw || raw.kind !== "announcement" || raw.parts.some((p) => p.type === "draft")) return;
-      const project = raw.source?.project ?? "";
-      const at = (await this.bound()).find((b) => b.project === project && b.channel === "general");
-      if (!at) return;
-      const safe = untrustedAnnouncement(raw);
-      const view = renderToSlack(<MessageView message={forSlack(fromServer(safe))} />);
-      const text = (view.text || safe.subject).slice(0, LIMITS.fallbackText);
-      const receipt = raw.deliveries?.[client];
-      if (receipt) {
-        await this.slack.call("chat.update", {
-          channel: receipt.channel,
-          ts: receipt.ts,
-          text,
-          blocks: view.blocks,
-        });
-        return;
+      // What the post shows after each look, so a look asked for meanwhile
+      // leaves alone a post that already shows the announcement as it stands.
+      let shown: string | undefined;
+      while (turn.again) {
+        const look = turn.again;
+        turn.again = null;
+        shown = await this.announceOnce(id, client, look, shown);
       }
-      if (raw.state !== "open") return;
-      const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
-        channel: at.slack_channel,
-        text,
-        blocks: view.blocks,
-      });
-      await this.warp.recordDelivery(id, client, {
-        channel: sent.channel ?? at.slack_channel,
-        ts: sent.ts,
-      });
     } finally {
       this.announcing.delete(id);
     }
+  }
+
+  /**
+   * One look at an announcement, which answers the `updated_at` its post
+   * shows after it. With this client's receipt, the post is edited: on a
+   * notice unless the last look already showed it as it stands, on a
+   * catch-up when it changed since the receipt. Once the post shows a
+   * change, the receipt is recorded again, so it says so. Without one, an
+   * open announcement is posted and its receipt recorded, then read once
+   * more: a withdrawal between the first read and the receipt is older than
+   * the receipt, and the post is edited for it now.
+   */
+  private async announceOnce(
+    id: string,
+    client: string,
+    look: Look,
+    shown: string | undefined,
+  ): Promise<string | undefined> {
+    const raw = await this.warp.getInboxMessage(id).catch(() => null);
+    if (!raw || raw.kind !== "announcement" || isDraft(raw)) return shown;
+    const project = raw.source?.project ?? "";
+    const at = (await this.bound()).find((b) => b.project === project && b.channel === "general");
+    if (!at) return shown;
+    const receipt = raw.deliveries?.[client];
+    const posted = this.unrecorded.get(id);
+    if (!receipt && posted) {
+      // Posted by this process, and warp did not take the receipt then.
+      await this.warp.recordDelivery(id, client, posted);
+      this.unrecorded.delete(id);
+      await this.slack.call("chat.update", { ...posted, ...this.newsView(raw) });
+      return raw.updated_at;
+    }
+    if (receipt) {
+      const changed = changedSince(raw, receipt);
+      if (look === "catch-up" ? !changed : raw.updated_at === shown) return shown;
+      const where = { channel: receipt.channel, ts: receipt.ts };
+      await this.slack.call("chat.update", { ...where, ...this.newsView(raw) });
+      if (changed) await this.warp.recordDelivery(id, client, where);
+      return raw.updated_at;
+    }
+    if (raw.state !== "open") return shown;
+    const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
+      channel: at.slack_channel,
+      ...this.newsView(raw),
+    });
+    const where = { channel: sent.channel ?? at.slack_channel, ts: sent.ts };
+    this.unrecorded.set(id, where);
+    await this.warp.recordDelivery(id, client, where);
+    this.unrecorded.delete(id);
+    const now = await this.warp.getInboxMessage(id).catch(() => null);
+    if (!now || now.updated_at === raw.updated_at) return raw.updated_at;
+    await this.slack.call("chat.update", { ...where, ...this.newsView(now) });
+    return now.updated_at;
+  }
+
+  /**
+   * An announcement as its channel post shows it: its words made unable to
+   * ping anyone, or once withdrawn only that it was.
+   */
+  private newsView(raw: WireMessage): { text: string; blocks: unknown[] } {
+    const safe = untrustedAnnouncement(raw);
+    const view = renderToSlack(
+      <AnnouncementPost message={forSlack(fromServer(safe))} copy={this.copy} />,
+    );
+    return { text: (view.text || safe.subject).slice(0, LIMITS.fallbackText), blocks: view.blocks };
   }
 
   /**
