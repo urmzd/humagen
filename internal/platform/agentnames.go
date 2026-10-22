@@ -270,10 +270,14 @@ func (s *Seer) Change(c projects.Change) projects.Change {
 // what the project holds. Every name in them must be an agent that exists
 // and that who may read; any other is refused as no agent, in the words
 // SetProjectAgents uses for one that does not exist. The names in its allow
-// list that who is not shown are kept, since they let those agents run in
-// their homes below. An enable entry or a default naming one does nothing in
-// a project who may read, as an agent that lives in a project is available
-// only there and below, so neither is kept.
+// list that who is not shown are kept, as a change keeps what its writer was
+// not shown. They let nothing run here or below while those agents live
+// where they do: only an owner writes the lists, an owner here owns every
+// project below, and so every agent that lives below is one who reads. They
+// would if one came to live below. An enable entry or a default never names
+// an agent who may not read: an agent that lives in a project is never
+// enabled (projects' checkAgents), and a default is available where it is
+// set, so its agent lives on this project's chain, which who reads.
 func (p *Platform) ProjectAgentsWrittenBy(ctx context.Context, who auth.Principal, project string, in AgentsInput) (AgentsInput, error) {
 	seer := p.Seer(who)
 	if err := p.EnsureBuiltins(ctx, who.Tenant); err != nil {
