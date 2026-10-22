@@ -112,3 +112,21 @@ func TestAnAnnouncementsSlackPostKeepsItsReceipt(t *testing.T) {
 		t.Fatalf("the receipt reads back as %v", got["deliveries"])
 	}
 }
+
+// The app posts the news of a project whose general channel is bound to it
+// whatever its role there, so its machine reads and keeps the receipt of an
+// announcement of Globex, where everyone is only a viewer.
+func TestAnAnnouncementWhereTheAppOnlyViewsKeepsItsReceipt(t *testing.T) {
+	f, ana, _, _ := acmeNews(t)
+	admin, one := f.machine(t, "acme", everything...), f.signedAs(t, "svc-one")
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, admin, "POST", "/api/clients", slackApp("one", "A01ONE", "svc-one"), http.StatusCreated)
+	want(t, f, admin, "PUT", "/api/projects/Globex/channels/general", `{"version":0,"slack":{"client":"one","channel":"C01GLX"}}`, http.StatusOK)
+	id := want(t, f, ana, "POST", "/api/projects/Globex/announcements", `{"subject":"Renewal signed","text":"Three more years."}`, http.StatusCreated)["id"].(string)
+	want(t, f, one, "GET", "/api/inbox/"+id, "", http.StatusOK)
+	want(t, f, one, "PUT", "/api/inbox/"+id+"/deliveries/one", `{"channel":"C01GLX","ts":"1700000000.000200"}`, http.StatusNoContent)
+	got := want(t, f, one, "GET", "/api/inbox/"+id, "", http.StatusOK)["message"].(map[string]any)
+	if d, _ := got["deliveries"].(map[string]any)["one"].(map[string]any); d["ts"] != "1700000000.000200" {
+		t.Fatalf("the receipt reads back as %v", got["deliveries"])
+	}
+}

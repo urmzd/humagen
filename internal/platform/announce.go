@@ -171,12 +171,43 @@ func (p *Platform) SurfaceNoticeFor(who auth.Principal, n inbox.Notice) (ActAs, 
 
 // InboxNoticeFor reports whether a notice about an inbox message may reach a
 // caller's event stream: they may see its kind, and it is addressed to them
-// as their own inbox reads it, so an id from a project they cannot see, or an
-// announcement not for them, never reaches it.
+// as their own inbox reads it (noticeReader), so an id from a project they
+// cannot see, or an announcement not for them, never reaches it.
 func (p *Platform) InboxNoticeFor(who auth.Principal, n inbox.Notice) bool {
 	if !InboxSees(who, n.Kind) {
 		return false
 	}
-	m, err := p.Inbox.GetAs(who.Tenant, n.ID, p.inboxReader(p.Projects.Tree(who.Tenant), who))
+	m, err := p.Inbox.GetAs(who.Tenant, n.ID, p.noticeReader(p.Projects.Tree(who.Tenant), who))
 	return err == nil && p.Seer(who).Message(m)
+}
+
+// noticeReader is who a caller is to the notices on their stream: their own
+// inbox's reader, and for a client's machine every project whose general
+// channel one of its clients is bound to and which it may see, a viewer's
+// included, as the app posts that project's announcements there whatever
+// its role. A members-only project, which a machine has no role in, is
+// never among them.
+func (p *Platform) noticeReader(tree *projects.Tree, who auth.Principal) inbox.Reader {
+	r := p.inboxReader(tree, who)
+	if who.Kind != auth.Machine {
+		return r
+	}
+	var seer *Seer
+	for _, c := range p.Clients.List(who.Tenant) {
+		if !machineOf(c, who) {
+			continue
+		}
+		for _, b := range p.Projects.Bindings(who.Tenant, c.ID) {
+			if b.Channel != projects.General || slices.Contains(r.Projects, b.Project) {
+				continue
+			}
+			if seer == nil {
+				seer = p.Seer(who)
+			}
+			if seer.Project(b.Project) {
+				r.Projects = append(r.Projects, b.Project)
+			}
+		}
+	}
+	return r
 }

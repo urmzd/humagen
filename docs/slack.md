@@ -104,7 +104,10 @@ ask through the app as before.
 An announcement of a project whose general channel is bound is posted there,
 top-level, once; the app records where (`PUT /api/inbox/{id}/deliveries/{client}`),
 so an edit, a withdrawal or a restart updates that post. A draft never reaches
-a channel.
+a channel. The app's machine is told of a bound project's announcements
+wherever it may see the project, though it is only a viewer there. A
+members-only project's reach Slack only where its owners name the machine
+among its members: binding its general channel alone sends nothing.
 
 A mention of a mapped person, or a question addressed to them, reaches the
 app's event stream with `for {client, user}`. The app reads it for them
