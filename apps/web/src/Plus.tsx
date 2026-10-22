@@ -164,6 +164,7 @@ export function PlusMenu({
     <div
       ref={panel}
       role="dialog"
+      data-layer="menu"
       aria-label={words.menu}
       onKeyDown={onKeyDown}
       // Focus leaving the menu, by Tab or otherwise, closes it.
@@ -280,7 +281,7 @@ export function PlusMenu({
 
 const chip = "inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-aui-border pr-1 pl-2 text-aui-xs text-aui-fg";
 const remove =
-  "inline-flex size-5 shrink-0 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
+  "inline-flex size-6 shrink-0 items-center justify-center rounded-full text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent";
 
 /**
  * What the + menu selected, as chips in the chat bar's bottom row: each

@@ -116,9 +116,9 @@ parent.
   anyone who may post in the thread selects agents, while the title,
   visibility and default stay its starter's or its project owners'. The same
   PUT moves a private conversation to another project or channel (`project`,
-  `channel`), keeping it private, by anyone who may post in it and is a
-  member where it goes, and only while no run has been filed in it (409), as
-  Share moves one. The selection answers only in the console: Slack and
+  `channel`), keeping it private, and takes the same people as Share: its
+  starter or an owner of its project, a member where it goes, and only while
+  no run has been filed in it (409). The selection answers only in the console: Slack and
   GitHub keep their defaults. An agent the caller may not read is refused as
   one that does not exist, left out of the view, and kept when the caller
   rewrites the selection, while it still fits beside theirs and can answer
@@ -1250,7 +1250,7 @@ from counters.
 | `POST /api/threads/{id}/messages` | `runs:write` | the same rule: posted as the caller themselves, only tags start runs, and a tagged agent is sent the conversation so far. A client posting with `act_as` keeps the defaults |
 | `POST /api/threads/{id}/share` | `runs:write` | `ThreadShare{project?, channel?, add?: [handle] (<= 50)}` → 200 `ThreadPage`, the thread as `getThread` reads it. Only a participant shares (403); making a private thread shared or moving one also takes its starter, while a member, or an owner of its project (403), and a member of the target project (403, 404 for one the caller cannot see); `project` left out keeps the thread's own, `channel` left out keeps the thread's own in its own project and is `general` in another; an archived channel or a handle nobody goes by is 400; moving a thread that has runs is 409 "a conversation that has runs stays in its project" (or "in its channel"); a default that cannot answer where it moves is cleared; a surface's thread does not move or change visibility (400); a change made meanwhile is 409 |
 | `GET /api/threads/{id}` | `runs:read` | `answers` stays on the wire: who answers an untagged message a client posts. The console no longer shows it. `thread.agents` and `thread.mode` are the selection, without agents the caller may not read |
-| `POST /api/threads`, `PUT /api/threads/{id}` | `runs:write` | gain `agents: [name] (<= 5)` and `mode: best_fit \| all` (`best_fit` when two or more are named and no mode; none with fewer than two). Each agent must be available in the project (400, one the caller may not read as one that does not exist); `all` over more than 3 is 400. The PUT also takes `project` and `channel`, which move a private conversation while no run has been filed in it (409 after; 400 for a shared or surface thread). A PUT that changes only `agents`, `mode`, `project` and `channel` takes anyone who may post in the thread |
+| `POST /api/threads`, `PUT /api/threads/{id}` | `runs:write` | gain `agents: [name] (<= 5)` and `mode: best_fit \| all` (`best_fit` when two or more are named and no mode; none with fewer than two). Each agent must be available in the project (400, one the caller may not read as one that does not exist); `all` over more than 3 is 400. The PUT also takes `project` and `channel`, which move a private conversation while no run has been filed in it (409 after; 400 for a shared or surface thread). A PUT that changes only `agents` and `mode` takes anyone who may post in the thread; a move takes its starter or an owner of its project, as Share does |
 
 `ThreadRule` gains `untagged` and `routed`. `ThreadMode` is new. `Run` gains
 `routed` (`best_fit` or `all`): set on a run the thread's selection started,

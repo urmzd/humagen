@@ -1446,10 +1446,10 @@ func (p *Platform) replyToMention(ctx context.Context, who auth.Principal, part 
 // UpdateThread changes a thread's title, visibility, default and selected
 // agents, and moves a private conversation. Title, visibility and default
 // take the thread's owner, the person who started it, or an owner of its
-// project (mayChangeThread). Selecting agents, and moving a private
-// conversation to another project or channel, take anyone who may post in it
-// (MayPost), and a move also takes being a member of the project it goes to,
-// whose channel is not archived (placeFor). A move keeps it private (Share
+// project (mayChangeThread), and so does moving a private conversation to
+// another project or channel, as sharing it does, which also takes being a
+// member of the project it goes to, whose channel is not archived
+// (placeFor). Selecting agents takes anyone who may post in it (MayPost). A move keeps it private (Share
 // makes it shared), and is refused once a run has been filed in it
 // (ErrStaysInProject, ErrStaysInChannel), serialized with its runs as a
 // share is. A default, and each selected agent, must be able to answer where
@@ -1476,9 +1476,9 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 		project, channel = projects.NameOf(in.Project), cmp.Or(in.Channel, projects.General)
 	}
 	moves := project != th.Project || channel != th.Channel
-	if strings.TrimSpace(in.Title) == th.Title && cmp.Or(in.Visibility, th.Visibility) == th.Visibility && keepsDefault {
-		// Only which agents answer, or where a private conversation is,
-		// changes: anyone who may post here does that, as they may tag.
+	if !moves && strings.TrimSpace(in.Title) == th.Title && cmp.Or(in.Visibility, th.Visibility) == th.Visibility && keepsDefault {
+		// Only which agents answer changes: anyone who may post here does
+		// that, as they may tag. Moving it takes what sharing it takes.
 		if err := p.changesThread(who, th); err != nil {
 			return threads.Thread{}, err
 		}

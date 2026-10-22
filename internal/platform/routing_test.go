@@ -251,3 +251,30 @@ func TestAPrivateConversationMovesWhileItHasNoRuns(t *testing.T) {
 		t.Fatalf("moving a shared thread through an update = %v", err)
 	}
 }
+
+// Moving a private conversation takes what sharing it takes: its starter, or
+// an owner of its project. Someone tagged into it selects agents, but does
+// not move it.
+func TestOnlyItsStarterMovesAPrivateConversation(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator, bo)
+	workIn(t, p, "Field", operator, bo)
+	seePeople(t, p, operator, bo)
+	ctx := t.Context()
+	got, err := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Initech", Text: "@bo a draft for you"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, _ := p.Threads.Get(tenant, got.Thread.ID)
+	if _, err := p.UpdateThread(ctx, bo, th.ID, platform.ThreadUpdate{Version: th.Version, Project: "Field"}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a tagged participant moved a private conversation: %v", err)
+	}
+	if cur, _ := p.Threads.Get(tenant, th.ID); cur.Project != "Initech" {
+		t.Fatalf("the refused move left it in %s", cur.Project)
+	}
+	sel, err := p.UpdateThread(ctx, bo, th.ID, platform.ThreadUpdate{Version: th.Version, Agents: []string{"lead"}})
+	if err != nil || !slices.Equal(sel.Agents, []string{"lead"}) {
+		t.Fatalf("a tagged participant selecting agents = %+v, %v", sel, err)
+	}
+}

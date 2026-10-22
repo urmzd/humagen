@@ -44,15 +44,99 @@ const VIEWPORTS: Viewport[] = [
 interface Screen {
   name: string;
   path: string;
-  /** A button to press once the page is drawn, by its accessible name, such as a menu to show open. */
-  press?: string;
+  /** What a person does on the page before it is captured, such as opening a menu. */
+  act?: (page: Page) => Promise<void>;
 }
 
-/** Every main screen: each page, and each tab of the pages that have them. */
-function screens(ids: { task: string; artifact: string; schedule: string }): Screen[] {
+interface Ids {
+  task: string;
+  artifact: string;
+  schedule: string;
+  /** Conversations the chat states open: a private one answered, a shared one, and one its selected agents answered. */
+  privateChat: string;
+  sharedChat: string;
+  routedChat: string;
+}
+
+/** Opens a page's More menu. */
+const more = (page: Page) =>
+  page.getByRole("button", { name: "More", exact: true }).click({ timeout: 5_000 });
+
+/** The chat bar's textarea. */
+const bar = (page: Page) => page.locator("form[aria-label='Message'] textarea");
+const plus = (page: Page) => page.getByRole("button", { name: "Add files, agents or a project" });
+
+/** Opens the + menu and checks two agents in it. */
+async function twoAgents(page: Page): Promise<void> {
+  await plus(page).click();
+  const menu = page.getByRole("dialog", { name: "Add to this conversation" });
+  await menu.getByRole("checkbox", { name: /^helper/ }).click();
+  await menu.getByRole("checkbox", { name: /^lead/ }).click();
+}
+
+/**
+ * The chat's states, each a page and what a person does on it: completion
+ * open after @ and after $, the + menu with two agents checked, the chips
+ * with Best Fit and All of Them, a private conversation answered, its Share
+ * dialog, a shared conversation, and answers its selected agents were
+ * routed to.
+ */
+function chats(ids: Ids): Screen[] {
+  return [
+    {
+      name: "chat-at",
+      path: "/",
+      act: async (page) => {
+        await bar(page).fill("@");
+        await page.getByRole("listbox").getByText("@helper").waitFor();
+      },
+    },
+    {
+      name: "chat-dollar",
+      path: "/",
+      act: async (page) => {
+        await bar(page).fill("@helper $");
+        await page.getByRole("listbox").getByText("$launch-review").waitFor();
+      },
+    },
+    { name: "chat-plus", path: "/", act: twoAgents },
+    {
+      name: "chat-chips",
+      path: "/",
+      act: async (page) => {
+        await twoAgents(page);
+        await page.keyboard.press("Escape");
+        await page.getByRole("button", { name: "All of Them" }).click();
+      },
+    },
+    { name: "chat-private", path: `/conversations/${ids.privateChat}` },
+    {
+      name: "chat-share",
+      path: `/conversations/${ids.privateChat}/share`,
+      act: async (page) => {
+        await page.getByRole("dialog", { name: "Share this conversation" }).waitFor();
+      },
+    },
+    { name: "chat-shared", path: `/conversations/${ids.sharedChat}` },
+    {
+      name: "chat-routed",
+      path: `/conversations/${ids.routedChat}`,
+      act: async (page) => {
+        await page
+          .getByText(/^Routed to /)
+          .first()
+          .waitFor();
+      },
+    },
+  ];
+}
+
+/** Every main screen: each page, and each tab of the pages that have them, and the chat's states. */
+function screens(ids: Ids): Screen[] {
   const list: Screen[] = [
     { name: "home", path: "/" },
     { name: "task", path: `/conversations/${ids.task}` },
+    ...chats(ids),
     { name: "projects", path: "/projects" },
     ...[
       "inbox",
@@ -68,8 +152,8 @@ function screens(ids: { task: string; artifact: string; schedule: string }): Scr
       name: `project-${tab}`,
       path: tab === "inbox" ? "/projects/Launch" : `/projects/Launch/${tab}`,
     })),
-    { name: "project-more", path: "/projects/Launch", press: "More" },
-    { name: "schedule-more", path: `/schedules/${ids.schedule}`, press: "More" },
+    { name: "project-more", path: "/projects/Launch", act: more },
+    { name: "schedule-more", path: `/schedules/${ids.schedule}`, act: more },
     { name: "workspace", path: "/projects/~" },
     { name: "inbox", path: "/inbox" },
     { name: "schedules", path: "/schedules" },
@@ -233,7 +317,83 @@ async function emptied(call: Call): Promise<void> {
 }
 
 /** Ids the screen list is checked against before anything is seeded. */
-const ids0 = { task: "", artifact: "", schedule: "" };
+const ids0: Ids = {
+  task: "",
+  artifact: "",
+  schedule: "",
+  privateChat: "",
+  sharedChat: "",
+  routedChat: "",
+};
+
+interface Posted {
+  thread: { id: string };
+  runs: { id: string }[];
+}
+
+/**
+ * The chat's states: skills for $ to complete, a private conversation with
+ * two untagged messages and a tagged one answered, one shared in Launch, and
+ * one whose two selected agents each answered an untagged message.
+ */
+async function seedChats(
+  call: Call,
+): Promise<Pick<Ids, "privateChat" | "sharedChat" | "routedChat">> {
+  const skills = await call<{ version: number }>("GET", "/api/projects/~/skills");
+  await call("PUT", "/api/projects/~/skills", {
+    version: skills.version,
+    skills: [
+      {
+        name: "launch-review",
+        description: "Reviews a launch plan against the checklist",
+        argument_hint: "<plan>",
+        instructions: "Review the plan.",
+      },
+      {
+        name: "release-notes",
+        description: "Drafts release notes from what changed",
+        argument_hint: "",
+        instructions: "Draft the notes.",
+      },
+    ],
+  });
+  const answered = async (p: Posted) => {
+    for (const r of p.runs) await settled(call, r.id);
+  };
+  const mine = await call<Posted>("POST", "/api/threads", {
+    project: "Launch",
+    text: "Thinking about the launch plan for next week.",
+    visibility: "private",
+  });
+  await call("POST", `/api/threads/${mine.thread.id}/messages`, {
+    text: "The budget is the open question.",
+  });
+  await answered(
+    await call<Posted>("POST", `/api/threads/${mine.thread.id}/messages`, {
+      text: "@helper what would you check first?",
+    }),
+  );
+  const shared = await call<Posted>("POST", "/api/threads", {
+    project: "Launch",
+    text: "@lead draft the launch checklist with me",
+    visibility: "private",
+  });
+  await answered(shared);
+  await call("POST", `/api/threads/${shared.thread.id}/share`, { channel: "general" });
+  const routed = await call<Posted>("POST", "/api/threads", {
+    project: "Launch",
+    text: "What should we check before the launch?",
+    visibility: "private",
+    agents: ["helper", "lead"],
+    mode: "all",
+  });
+  await answered(routed);
+  return {
+    privateChat: mine.thread.id,
+    sharedChat: shared.thread.id,
+    routedChat: routed.thread.id,
+  };
+}
 
 async function waitFor(ok: () => Promise<boolean>, failure: string): Promise<void> {
   for (let i = 0; i < 100; i++) {
@@ -270,8 +430,7 @@ async function shoot(
     )
     .catch(() => {});
   await page.evaluate(() => document.fonts.ready);
-  if (s.press)
-    await page.getByRole("button", { name: s.press, exact: true }).click({ timeout: 5_000 });
+  if (s.act) await s.act(page);
   await sleep(300);
   const file = join(out, vp.name, `${s.name}.png`);
   await page.screenshot({ path: file });
@@ -454,10 +613,11 @@ async function main(): Promise<void> {
       description: "A summary every Monday morning",
     });
     const files = await call<{ artifacts?: { id: string }[] }>("GET", "/api/artifacts");
-    const ids = {
+    const ids: Ids = {
       task: ran.thread ?? ran.id,
       artifact: files.artifacts?.[0]?.id ?? "art-1",
       schedule: "weekly-summary",
+      ...(await seedChats(call)),
     };
     results.push(...(await capture(browser, base, screens(ids))));
 

@@ -19,6 +19,12 @@ export interface TextRun {
   boxes: Box[];
   /** Inside the page's main column, where text must never overlap. */
   main: boolean;
+  /**
+   * The layer it is drawn in: "" for the page, or the name of the floating
+   * piece it is in (`data-layer`), such as a menu or a list that opens over
+   * the page. Text overlaps only text in its own layer.
+   */
+  layer?: string;
 }
 
 export interface Control {
@@ -124,13 +130,15 @@ export function judge(s: Snapshot, rules: Rules): Problem[] {
   // only touch, as tight line heights make them, are not covering.
   const lines = s.texts
     .filter((t) => t.main)
-    .flatMap((t, i) => t.boxes.map((box) => ({ i, text: t.text, box })));
+    .flatMap((t, i) => t.boxes.map((box) => ({ i, text: t.text, box, layer: t.layer })));
   const seen = new Set<string>();
   for (let a = 0; a < lines.length; a++) {
     for (let b = a + 1; b < lines.length; b++) {
       const x = lines[a];
       const y = lines[b];
       if (!x || !y || x.i === y.i) continue;
+      // A menu or a list that opens over the page covers it by design.
+      if ((x.layer ?? "") !== (y.layer ?? "")) continue;
       const o = overlap(x.box, y.box);
       const shorter = Math.min(x.box.bottom - x.box.top, y.box.bottom - y.box.top);
       if (o.w > 2 && o.h > Math.max(2, shorter * 0.3)) {
@@ -202,8 +210,14 @@ export function collect(): Snapshot {
     if (boxes.length === 0) continue;
     texts.push({
       text: value.slice(0, 48),
-      boxes, // A menu, dialog or tooltip floats over the page on purpose, so it is not text covering text.
-      main: Boolean(main?.contains(parent)) && !parent.closest(FLOATING),
+      boxes,
+      main: Boolean(main?.contains(parent)),
+      // A menu, dialog, listbox or tooltip floats over the page on purpose: its
+      // text is checked against its own lines, not against the page under it.
+      layer:
+        parent.closest("[data-layer]")?.getAttribute("data-layer") ??
+        parent.closest(FLOATING)?.getAttribute("role") ??
+        "",
     });
   }
 

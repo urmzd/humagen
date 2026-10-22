@@ -234,8 +234,11 @@ announcements, failed runs and a schedule through the API, and captures every
 page and tab at 390x844 and 1280x800. It uses an installed Chromium or Chrome
 (`CHROMIUM` names one) and downloads none. Screenshots go to `.screens/`, which
 git ignores: `index.html` shows phone and desktop side by side, and a page that
-scrolls also gets `name.full.png`. A screen may press a button once it is drawn, so `project-more` and
-`schedule-more` show the More menu open, and it is checked like the rest. `SCREENS_ONLY=home,inbox` captures only those.
+scrolls also gets `name.full.png`. A screen may act on the page once it is drawn (`act`), so `project-more`
+and `schedule-more` show the More menu open, and the chat's states show
+completion and the + menu, each checked like the rest. Text in a floating layer
+(`data-layer`, or a menu, dialog, listbox or tooltip) is checked against its own
+lines, not against the page under it. `SCREENS_ONLY=home,inbox` captures only those.
 
 The run fails when a screen breaks a layout check (`scripts/screens/checks.ts`,
 a pure function of the measured page, tested in `checks.test.ts`):

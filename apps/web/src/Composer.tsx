@@ -328,6 +328,7 @@ export function Composer({
         // Still: a list waiting on a person does not animate.
         <ul
           id="composer-tags"
+          data-layer="completion"
           role="listbox"
           aria-label={tags.label}
           style={{ maxHeight: listAt.max }}
