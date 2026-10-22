@@ -1518,7 +1518,11 @@ it, and one the runtime refuses is 403. `act_as` answers for a person
 a surface authenticated. Resolving a part that is already resolved
 returns the first outcome. `retry` starts a new run, so it can be
 refused by a limit with 429 or 402, and with 409 when the turn's
-project was deleted since.
+project was deleted since. The run acts for whoever the failed turn
+acted for: a turn that acted for a person is retried only by that
+person, signed in as themselves, and anyone else is 403; a turn that
+acted for nobody is retried for nobody. Each person's retry is a run
+of its own, and pressing it again returns the same one.
  */
   async resolveInboxPart(id: string, part: string, body: Resolution, options?: RequestOptions): Promise<InboxMessage> {
     let path = "/api/inbox/{id}/parts/{part}/resolve";

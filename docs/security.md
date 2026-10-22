@@ -212,6 +212,7 @@ from answers, run events, what the model was sent and the server log.
 | asked by a machine for a person its client maps (`act_as`) | the mapped person |
 | raised by a Slack client's connector | the one person the team's enabled Slack clients map the Slack user to; none, or two different people, is nobody |
 | Run Now on a schedule | whoever pressed it |
+| Retry on a failed turn in the inbox | whoever the turn acted for. A turn that acted for a person is retried only by that person, signed in as themselves: anyone else is not offered Retry and is refused (403), so one person's words never run with another's credential, nor a person's credential on someone else's choice. A turn that acted for nobody is retried for nobody, by anyone with `runs:write` |
 | asked by a machine as itself, a schedule on its own clock, an eval, housekeeping, a call from another agent, GitHub | nobody |
 
 A person connects their own credential at `PUT /api/me/credentials/{tool}`
@@ -391,7 +392,7 @@ decided per message:
 | Kind | To see | To settle |
 |------|--------|-----------|
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
-| Failed run | `runs:read` | `runs:write` |
+| Failed run | `runs:read` | `runs:write`, and to retry a turn that acted for a person, being that person ([Tool credentials](#tool-credentials)) |
 | Proposed memory | `agents:read` | `agents:write` for an agent's; `projects:write` for a project's, and `projects:govern` as well for the workspace's and a company project's |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |
 

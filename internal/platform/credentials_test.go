@@ -27,6 +27,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/credref"
+	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state/statetest"
@@ -64,6 +65,8 @@ type toolUser struct {
 	sent   []string
 	tools  [][]string
 	recall bool
+	// failing makes every call fail, so a run fails.
+	failing bool
 }
 
 // found is what the issues search tells a recalling model.
@@ -76,6 +79,10 @@ func (m *toolUser) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 	}
 	text := userText(req.Messages)
 	m.mu.Lock()
+	if m.failing {
+		m.mu.Unlock()
+		return nil, errors.New("the model is unavailable")
+	}
 	m.sent = append(m.sent, fmt.Sprintf("%+v", req.Messages))
 	m.tools = append(m.tools, names)
 	recall := m.recall
@@ -134,6 +141,12 @@ func hasToolResult(msgs []saigetypes.Message) bool {
 		}
 	}
 	return false
+}
+
+func (m *toolUser) fail(failing bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.failing = failing
 }
 
 func (m *toolUser) requests() ([]string, [][]string) {
@@ -765,4 +778,138 @@ func TestWhatAPersonsCredentialReachedIsNotTaughtToMemory(t *testing.T) {
 	within(t, "lead's turn at the root is taught", func() bool { return len(w.p.Memory.List(tenant, "lead")) > 0 })
 	untaught(later)
 	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
+}
+
+// failure asks worker once for an actor while its model fails, and returns
+// the failed run and the inbox message about it.
+func (w *world) failure(t *testing.T, id string, actor envelope.Actor) (runs.Run, inbox.Message) {
+	t.Helper()
+	w.model.fail(true)
+	defer w.model.fail(false)
+	r, err := w.p.Converse(t.Context(), tenant, platform.Turn{ID: id, Agent: "worker", Text: "Any open bugs?", Actor: actor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := await(t, w.p, r.ID, runs.Failed)
+	var msg inbox.Message
+	eventually(t, "the failure reached the inbox", func() bool {
+		page, _, _ := w.p.InboxPage(admin, inbox.Query{Kind: inbox.KindFailure})
+		for _, m := range page {
+			if m.Source.Run == failed.ID {
+				msg = m
+				return true
+			}
+		}
+		return false
+	})
+	return failed, msg
+}
+
+// retried is the run a Retry started, from the note its part settled with.
+func retried(t *testing.T, w *world, msg inbox.Message) runs.Run {
+	t.Helper()
+	id, ok := strings.CutPrefix(msg.Parts[0].Outcome.Note, "Started again as ")
+	if !ok {
+		t.Fatalf("the part settled with %+v", msg.Parts[0].Outcome)
+	}
+	return await(t, w.p, id, runs.Completed)
+}
+
+func offersRetry(t *testing.T, w *world, who auth.Principal, msg inbox.Message) bool {
+	t.Helper()
+	seen, err := w.p.InboxGet(who, msg.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return slices.Contains(seen.Parts[0].Actions, platform.ActRetry)
+}
+
+// A retry asks the same turn again for the same person. Ana's failed turn,
+// asked for her by the Slack app (act_as), acted for her: only she may press
+// Retry, and hers reaches the provider with her token. Ben, who may start
+// runs and has connected a credential of his own, is not offered it and is
+// refused, and so is the app, so neither her words with his token nor her
+// token on his choice is ever run. A turn that acted for nobody is retried
+// for nobody, whoever presses it, and two people's presses never join one
+// run.
+func TestARetryActsOnlyForThePersonTheTurnActedFor(t *testing.T) {
+	w := newWorld(t, platform.Config{Backoff: func(int) time.Duration { return time.Millisecond }})
+	ctx := t.Context()
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	w.connect(t, ben, credentials.Input{Value: benValue})
+
+	failed, msg := w.failure(t, "api-ana-fails", platform.PersonActor(ana.Subject))
+	if failed.Actor.User != "ana" || !msg.Parts[0].Failure.Retryable {
+		t.Fatalf("the failed turn acts for %+v, retryable %t", failed.Actor, msg.Parts[0].Failure.Retryable)
+	}
+	// Asking opened her session with the provider before the model failed.
+	reached := len(w.server.Requests())
+	retry := platform.Resolution{Action: platform.ActRetry}
+	app := slackApp
+	app.Scopes = []auth.Permission{auth.RunsRead, auth.RunsWrite}
+	for _, who := range []auth.Principal{ben, app} {
+		if offersRetry(t, w, who, msg) {
+			t.Fatalf("%s is offered Retry on ana's turn", who.Subject)
+		}
+		if _, err := w.p.InboxResolve(ctx, who, msg.ID, msg.Parts[0].ID, retry); !errors.Is(err, platform.ErrForbidden) {
+			t.Fatalf("%s retrying ana's turn = %v, want forbidden", who.Subject, err)
+		}
+	}
+	if got, _ := w.p.InboxGet(ana, msg.ID); got.Parts[0].State != inbox.PartOpen {
+		t.Fatalf("a refused retry settled the part: %+v", got.Parts[0])
+	}
+	if got := w.server.Requests()[reached:]; len(got) != 0 {
+		t.Fatalf("a refused retry reached the server with %q", got)
+	}
+	if !offersRetry(t, w, ana, msg) {
+		t.Fatal("ana is not offered Retry on her own turn")
+	}
+	done, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, retry)
+	if err != nil {
+		t.Fatalf("ana retrying her turn: %v", err)
+	}
+	again := retried(t, w, done)
+	if again.Actor.User != "ana" || again.Text != failed.Text || again.Answer != "Done." {
+		t.Fatalf("ana's retry = actor %+v, text %q, answer %q", again.Actor, again.Text, again.Answer)
+	}
+	if calls := w.server.Calls(); len(calls) != 1 || calls[0] != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] {
+		t.Fatalf("ana's retry reached the server with %q", calls)
+	}
+
+	// The app asking as itself acted for nobody. Ben may retry it, and his
+	// retry acts for nobody: his credential is not put behind its words.
+	before := len(w.server.Requests())
+	_, msg = w.failure(t, "api-app-fails", platform.ActorOf(slackApp))
+	if !offersRetry(t, w, ben, msg) {
+		t.Fatal("ben is not offered Retry on a turn that acted for nobody")
+	}
+	done, err = w.p.InboxResolve(ctx, ben, msg.ID, msg.Parts[0].ID, retry)
+	if err != nil {
+		t.Fatalf("ben retrying the app's turn: %v", err)
+	}
+	again = retried(t, w, done)
+	if again.Actor.User != "" || again.Actor.ID != ben.Subject || again.Answer != "I have no issue tools." {
+		t.Fatalf("ben's retry of the app's turn = actor %+v, answer %q", again.Actor, again.Answer)
+	}
+	if got := w.server.Requests()[before:]; len(got) != 0 {
+		t.Fatalf("ben's retry of the app's turn reached the server with %q", got)
+	}
+
+	// Two people pressing at once are two runs, each its presser's.
+	failed, _ = w.failure(t, "api-app-fails-again", platform.ActorOf(slackApp))
+	first, err := w.p.Retry(ctx, ben, failed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := w.p.Retry(ctx, cyd, failed.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID == second.ID || first.Actor.ID != ben.Subject || second.Actor.ID != cyd.Subject {
+		t.Fatalf("two presses = %s for %+v and %s for %+v", first.ID, first.Actor, second.ID, second.Actor)
+	}
+	if joined, err := w.p.Retry(ctx, ben, failed.ID); err != nil || joined.ID != first.ID {
+		t.Fatalf("ben pressing twice = %s (%v), want his first %s", joined.ID, err, first.ID)
+	}
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"], benValue)
 }

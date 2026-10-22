@@ -35,6 +35,8 @@ import (
 //     that person (PersonActor);
 //   - a run a Slack connector raised acts for the one person the team's
 //     Slack clients map its Slack user to (surface.stamp);
+//   - a retry of a failed turn acts for whoever the turn acted for, and only
+//     that person may ask for one (mayRetry);
 //   - everything else acts for nobody: a machine asking as itself, a
 //     schedule firing on its own clock, the platform's own housekeeping, an
 //     eval, a run another agent called, and every GitHub actor, since no
@@ -63,6 +65,15 @@ func ActorOf(who auth.Principal) envelope.Actor {
 		a.User = who.Subject
 	}
 	return a
+}
+
+// personOf is the person an actor acts for, as personCredential reads it:
+// their subject, or "" for nobody. A bot acts for nobody, whatever it names.
+func personOf(a envelope.Actor) string {
+	if a.Bot {
+		return ""
+	}
+	return a.User
 }
 
 // PersonActor is the actor of a run a surface asks for a person its client

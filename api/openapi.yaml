@@ -1448,7 +1448,11 @@ paths:
         a surface authenticated. Resolving a part that is already resolved
         returns the first outcome. `retry` starts a new run, so it can be
         refused by a limit with 429 or 402, and with 409 when the turn's
-        project was deleted since.
+        project was deleted since. The run acts for whoever the failed turn
+        acted for: a turn that acted for a person is retried only by that
+        person, signed in as themselves, and anyone else is 403; a turn that
+        acted for nobody is retried for nobody. Each person's retry is a run
+        of its own, and pressing it again returns the same one.
       x-permission: runs:read
       parameters:
         - {$ref: "#/components/parameters/MessageID"}
