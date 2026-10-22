@@ -152,21 +152,22 @@ The app catches up, and posts announcements at all, only when its client
 names the app's own credential as its machine (`slack.machine`): warp shows
 the client's receipts to that credential alone, so any other would post
 everything again. It logs that it skipped the catch-up and why. A catch-up
-that could not read warp, or could not bring a post up to date for a reason
-other than Slack refusing it, such as warp being away, is tried again after 5 seconds, then twice as
-long each time up to 5 minutes, until one finishes. A bound project the
-machine may not read (403 or 404), such as a members-only one that does not
-name it, is logged and skipped, not tried again until the next catch-up. A post Slack refuses to
-edit, such as one deleted there, is logged and holds up no other. A notice
-that comes during a catch-up never posts twice: the app
-looks at each announcement one look at a time, reads it afresh each time, receipt and
-all, and posts only what has none. A notice posts an announcement with no receipt only as a catch-up
-would: open, from the last day, and announced after the binding. warp dates
-a receipt when it takes it, so after each receipt the app reads the
-announcement once more and shows a change made meanwhile, which no catch-up
-would see. A post whose receipt warp did not take,
-as when it went away just then, is recorded at the next look rather than
-posted again, while the app keeps running.
+that could not read warp, or could not bring a post up to date because warp
+was away, is tried again after 5 seconds, then twice as long each time up to
+5 minutes, until one finishes. What would answer the same next time is
+logged and skipped, not tried again until the next catch-up: a bound project
+the machine may not read (403 or 404), such as a members-only one that does
+not name it, a receipt warp refuses the machine the same way, and a post
+Slack refuses to edit, such as one deleted there. None holds up another. A
+notice that comes during a catch-up never posts twice: the app looks at each
+announcement one look at a time, reads it afresh each time, receipt and
+all, and posts only what has none. A notice posts an announcement with no
+receipt only as a catch-up would: open, from the last day, and announced
+after the binding. warp dates a receipt when it takes it, so after each
+receipt the app reads the announcement once more and shows a change made
+meanwhile, which no catch-up would see. A post whose receipt warp did not
+take, as when it went away just then, is recorded at the next look rather
+than posted again, while the app keeps running.
 
 A reply in an announcement's Slack thread starts a shared thread seeded with
 the announcement. Slack delivers a message in a channel thread to the app
