@@ -1004,6 +1004,8 @@ export interface Thread {
   visibility: "shared" | "private";
   participants: ThreadParticipant[];
   default?: string;
+  /** The Slack thread this thread is, when it was started from Slack. It never changes. */
+  surface?: { client: string; channel: string; ts: string };
   version: number;
   created_by: string;
   created_at: string;
@@ -1033,10 +1035,26 @@ export interface ThreadMessage {
   at: string;
 }
 
+/**
+ * The question a parked run waits on, as the reader stands to it: whether
+ * they may answer it, and whom it is for otherwise.
+ */
+export interface ThreadAsk {
+  question: string;
+  yours: boolean;
+  for: "anyone" | "person" | "experts" | "answerers" | "nobody";
+  /** The experts' topic, for `experts`. Absent is every expert. */
+  topic?: string;
+  /** The person it is for, by handle, for `person`. */
+  person?: string;
+}
+
 export interface ThreadTurn {
   kind: "message" | "run";
   message?: ThreadMessage;
   run?: Run;
+  /** On a run parked on a question a person answers. */
+  ask?: ThreadAsk;
 }
 
 export interface ThreadPage {
@@ -1133,8 +1151,8 @@ export const coworking = {
   update: (id: string, t: { version: number; title: string; visibility: "shared" | "private"; default: string }) =>
     call<Thread>("PUT", threadPath(id), t),
   /** The workspace's people whose name or handle holds `q`, for the @ typeahead. */
-  people: (q: string) =>
-    call<{ people: DirectoryPerson[] }>("GET", `/api/people?${new URLSearchParams({ q, limit: "8" })}`).then((r) => r.people),
+  people: (q: string, limit = 8) =>
+    call<{ people: DirectoryPerson[] }>("GET", `/api/people?${new URLSearchParams({ q, limit: String(limit) })}`).then((r) => r.people),
   /** Which agents may answer in a project, for the @ typeahead. */
   available: (project: string) => call<ProjectAvailability>("GET", `${projectAt(project)}/agents`),
 };

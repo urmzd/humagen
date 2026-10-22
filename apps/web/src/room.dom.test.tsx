@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { defaultCopy } from "@warp/components";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { Turn } from "@warp/core";
+import { WebSurface } from "@warp/render-web";
+import { AgentMessage } from "@warp/web";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Revision, ThreadPage, ThreadTurn } from "./api.ts";
 import { stubEventSource, stubFetch } from "./dom.ts";
 import { ChannelPage, ChannelsTab, postedLine, ThreadRoom } from "./Room.tsx";
@@ -437,4 +440,217 @@ test("turns read earlier stay when the newest page moves on", async () => {
   assert.ok(await screen.findByText("turn 4", { selector: "p" }));
   for (const n of [1, 2, 3, 4]) assert.equal(screen.getAllByText(`turn ${n}`, { selector: "p" }).length, 1, `turn ${n} is shown once`);
   assert.equal(screen.queryByText(words.olderTurns), null);
+});
+
+/** The room with ledger parked on a question for the billing experts, as the platform says it to `ask`. */
+function questionRoom(ask: ThreadTurn["ask"], me = "priya", routes: Record<string, (body: unknown) => unknown> = {}) {
+  const parked = {
+    ...page.turns[1]?.run,
+    agent: "ledger",
+    status: "parked",
+    answer: "",
+    question: { id: "q1", kind: "reply", prompt: "Should the credit note cover only the duplicated line?", asked_of: "sme:billing" },
+  } as never;
+  const waiting: ThreadPage = { ...page, turns: [page.turns[0] as ThreadTurn, { kind: "run", run: parked, ask }] };
+  net = stubFetch({
+    "GET /api/threads/th-0123456789abcdef": () => waiting,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/runs/r1/events": () => ({ events: [] }),
+    ...routes,
+  });
+  render(
+    <ThreadRoom id="th-0123456789abcdef" me={me} initial={waiting} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+  );
+}
+
+const forBilling = { question: "q1", yours: true, for: "experts", topic: "billing" } as const;
+
+test("an expert's typed answer is posted in the room as their own message, and recorded as the answer", async () => {
+  const restore = stubEventSource();
+  try {
+    const posted = { ...page, message: { id: "m-2", thread: "th-0123456789abcdef", by: "priya", name: "Priya", text: "Only the duplicated line.", mentions: [], via: "console", at }, runs: [], notified: [], refused: [], rule: "reply" };
+    questionRoom(forBilling, "priya", { "POST /api/threads/th-0123456789abcdef/messages": () => posted });
+    fireEvent.click(await screen.findByRole("button", { name: defaultCopy.somethingElse }));
+    const box = screen.getByRole("textbox", { name: "Tell me what you need" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "Only the duplicated line." } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST")));
+    const sent = net?.seen.filter((r) => r.method === "POST") ?? [];
+    assert.deepEqual(sent.map((r) => r.path), ["/api/threads/th-0123456789abcdef/messages"], "the answer is a message in the room, not a click on the run");
+    assert.deepEqual(sent[0]?.body, { text: "Only the duplicated line.", answers: { run: "r1", question: "q1" } });
+  } finally {
+    restore();
+  }
+});
+
+test("a question for the billing experts is not offered to anyone else, who is told whom it is for", async () => {
+  const restore = stubEventSource();
+  try {
+    questionRoom({ ...forBilling, yours: false }, "sam");
+    assert.ok(await screen.findByText(words.questionFor.experts("billing")));
+    assert.ok(screen.getAllByText(words.waitingOnOthers).length > 0, "the run waits on someone else, not on the reader");
+    assert.equal(screen.queryByText(defaultCopy.status.waiting), null);
+    assert.ok(screen.getByText("Should the credit note cover only the duplicated line?"));
+    assert.equal(screen.queryByRole("button", { name: defaultCopy.somethingElse }), null);
+    assert.equal(screen.queryByRole("textbox", { name: "Tell me what you need" }), null);
+    cleanup();
+    net?.restore();
+    // One for the person a run acts for names them by handle.
+    questionRoom({ question: "q1", yours: false, for: "person", person: "ana" }, "ben");
+    assert.ok(await screen.findByText(words.questionFor.person("ana")));
+    assert.equal(screen.queryByRole("button", { name: defaultCopy.somethingElse }), null);
+  } finally {
+    restore();
+  }
+});
+
+test("an answer the platform refuses says why under the question, and keeps the words typed for it", async () => {
+  const restore = stubEventSource();
+  try {
+    questionRoom(forBilling, "priya", {
+      "POST /api/threads/th-0123456789abcdef/messages": () => new Response(JSON.stringify({ error: "forbidden" }), { status: 403 }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: defaultCopy.somethingElse }));
+    const box = screen.getByRole("textbox", { name: "Tell me what you need" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "Waive it in full." } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    const turn = document.getElementById("turn-r1") as HTMLElement;
+    assert.ok(await within(turn).findByText(defaultCopy.noPermission), "the refusal is said with the question");
+    fireEvent.click(screen.getByRole("button", { name: defaultCopy.somethingElse }));
+    assert.equal((screen.getByRole("textbox", { name: "Tell me what you need" }) as HTMLTextAreaElement).value, "Waive it in full.");
+  } finally {
+    restore();
+  }
+});
+
+test("the box for a typed answer grows with its words up to a few lines, then scrolls", async () => {
+  const restore = stubEventSource();
+  // happy-dom lays nothing out: a line of the box is 20px of its height.
+  const proto = HTMLTextAreaElement.prototype;
+  Object.defineProperty(proto, "scrollHeight", { configurable: true, get(this: HTMLTextAreaElement) { return 20 * this.value.split("\n").length + 4; } });
+  try {
+    questionRoom(forBilling);
+    fireEvent.click(await screen.findByRole("button", { name: defaultCopy.somethingElse }));
+    const box = screen.getByRole("textbox", { name: "Tell me what you need" }) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "one\ntwo\nthree" } });
+    await waitFor(() => assert.equal(box.style.height, "64px"));
+    assert.equal(box.style.overflowY, "hidden");
+    fireEvent.change(box, { target: { value: Array.from({ length: 9 }, (_, i) => `line ${i}`).join("\n") } });
+    await waitFor(() => assert.equal(box.style.height, "112px"));
+    assert.equal(box.style.overflowY, "auto");
+  } finally {
+    delete (proto as { scrollHeight?: number }).scrollHeight;
+    restore();
+  }
+});
+
+test("a question's buttons are one card with the question: the row carries no utility that would undo the card's own box", async () => {
+  const restore = stubEventSource();
+  try {
+    questionRoom(forBilling);
+    await screen.findByRole("button", { name: defaultCopy.somethingElse });
+    const row = document.querySelector('fieldset[data-aui-block="clarification"]');
+    assert.ok(row, "the question's row of actions");
+    // A utility sits in a later layer than the card's rules, and would beat
+    // the margin, border and padding that join the row to the question.
+    assert.ok(!/(^|\s)(m|mt|p|pt|border|border-t)-0(\s|$)/.test(row.className), row.className);
+  } finally {
+    restore();
+  }
+});
+
+test("a settled question sits between its step and the answer, and a typed answer reads as an answer, not a choice", async () => {
+  const turn: Turn = {
+    id: "r1",
+    agent: { name: "ledger" },
+    status: "done",
+    text: "I drafted credit note CN-0187.",
+    tasks: [{ id: "t1", title: "Ask person", status: "complete", tool: "ask_person" }],
+    citations: [],
+    notices: [],
+    interrupts: [
+      {
+        type: "clarification",
+        id: "q1",
+        question: "Should the credit note cover only the duplicated line?",
+        options: [],
+        allowOther: true,
+        answer: { kind: "answered", by: "priya", at, optionIds: [], other: "Only the duplicated line." },
+      },
+    ],
+  };
+  render(
+    <WebSurface onAction={() => {}}>
+      <AgentMessage turn={turn} />
+    </WebSurface>,
+  );
+  const text = document.body.textContent ?? "";
+  const step = text.indexOf("Ask person");
+  const question = text.indexOf("Should the credit note cover only the duplicated line?");
+  const answer = text.indexOf("I drafted credit note CN-0187.");
+  assert.ok(step >= 0 && step < question && question < answer, `step ${step}, question ${question}, answer ${answer}`);
+  assert.ok(/priya answered "Only the duplicated line\."/.test(text), text);
+  assert.ok(!/priya chose/.test(text), text);
+});
+
+test("the typeahead never offers the person writing", async () => {
+  room({ "GET /api/people": () => ({ people: [{ subject: "ana", name: "Ana", handle: "ana", roles: [], picture: null }, { subject: "00u-dana", name: "Dana Scully", handle: "dana", roles: [], picture: null }], next: null }) });
+  const box = (await screen.findByPlaceholderText(words.channel("renewals"))) as HTMLTextAreaElement;
+  fireEvent.change(box, { target: { value: "@" } });
+  const list = await screen.findByRole("listbox");
+  await waitFor(() => assert.ok(list.textContent?.includes("@dana"), list.textContent ?? ""));
+  assert.ok(!list.textContent?.includes("@ana"), list.textContent ?? "");
+});
+
+test("a thread started in Slack says so, and so does each message posted there; the title has a line of its own on a phone", async () => {
+  const restore = stubEventSource();
+  try {
+    const slack: ThreadPage = {
+      ...page,
+      thread: { ...page.thread, surface: { client: "slack-acme", channel: "C0123GLOBEX", ts: "1700000000.000100" } },
+      turns: [
+        { kind: "message", message: { ...(page.turns[0]?.message as NonNullable<ThreadTurn["message"]>), surface_id: "1700000000.000100", via: "slack-acme" } },
+        { kind: "message", message: { id: "m-2", thread: "th-0123456789abcdef", by: "ben", name: "Ben", text: "Asked here.", mentions: [], via: "console", at } },
+      ],
+    };
+    net = stubFetch({
+      "GET /api/threads/th-0123456789abcdef": () => slack,
+      "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    });
+    render(
+      <ThreadRoom id="th-0123456789abcdef" me="ana" initial={slack} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+    );
+    assert.ok(await screen.findByText(words.inSlack));
+    assert.equal(screen.getAllByText(words.fromSlack).length, 1, "only the message posted in Slack says it came from there");
+    const fromAna = screen.getByRole("article", { name: "Message from Ana" });
+    assert.ok(within(fromAna).getByText(words.fromSlack));
+    // Below the small breakpoint the title takes the whole first line.
+    const title = screen.getByRole("heading", { level: 1 });
+    assert.ok(/(^|\s)w-full(\s|$)/.test(title.className) && /(^|\s)sm:flex-1(\s|$)/.test(title.className), title.className);
+  } finally {
+    restore();
+  }
+});
+
+test("a run a message in the room answered is read from its journal, so its question shows though turns came after it", async () => {
+  const restore = stubEventSource();
+  try {
+    const answeredBy: ThreadTurn = {
+      kind: "message",
+      message: { id: "m-2", thread: "th-0123456789abcdef", by: "priya", name: "Priya", text: "Only the duplicated line.", mentions: [], via: "console", answers: { run: "r1", question: "q1" }, at },
+    };
+    const later: ThreadPage = { ...page, turns: [...page.turns, answeredBy] };
+    net = stubFetch({
+      "GET /api/threads/th-0123456789abcdef": () => later,
+      "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+      "GET /api/runs/r1/events": () => ({ events: [] }),
+    });
+    render(
+      <ThreadRoom id="th-0123456789abcdef" me="ana" initial={later} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+    );
+    await screen.findByText("Only the duplicated line.");
+    await waitFor(() => assert.ok(net?.seen.some((r) => r.path === "/api/runs/r1/events"), "the answered run's journal is read"));
+  } finally {
+    restore();
+  }
 });
