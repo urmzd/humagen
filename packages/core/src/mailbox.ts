@@ -183,6 +183,11 @@ export interface InboxMessage {
   /** Set by the reader, not by resolving: put away, or hidden until a time. */
   dismissedAt?: string;
   snoozedUntil?: string;
+  /**
+   * Put away or snoozed by this reader alone, while everyone else still has
+   * it, as an announcement is. `ActionId.unhide` brings it back.
+   */
+  hidden?: boolean;
 }
 
 const RESOLVABLE: Record<Exclude<PartType, "custom">, boolean> = {
@@ -569,6 +574,11 @@ export function resolveMessage(
   const typed = payload.text ?? payload.option;
   if (id === ActionId.read) return message.unread ? { ...message, unread: false } : message;
   if (id === ActionId.dismiss) return { ...message, dismissedAt: at, unread: false };
+  if (id === ActionId.unhide) {
+    if (!message.hidden) return message;
+    const { dismissedAt: _dismissed, snoozedUntil: _snoozed, hidden: _hidden, ...back } = message;
+    return back;
+  }
   if (id === ActionId.snooze && !message.parts.some((p) => partMatches(p, payload.target))) {
     return { ...message, snoozedUntil: payload.option ?? at };
   }

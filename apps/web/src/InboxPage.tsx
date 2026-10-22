@@ -79,7 +79,13 @@ export function MailboxView({
   openCount,
   show,
   onShow,
+  messageActions,
+  emptyOpen,
 }: {
+  /** The page's own controls for the message being read, such as Withdraw. */
+  messageActions?: (message: PlatformMessage) => ReactNode;
+  /** What an empty Open view says, when the default does not fit the page. */
+  emptyOpen?: { title: string; hint: string };
   /** Open, resolved or all, when the host filters on the server. Leave out to let the mailbox filter what it is given. */
   show?: MailboxShow;
   onShow?: (show: MailboxShow) => void;
@@ -110,6 +116,8 @@ export function MailboxView({
       openCount={openCount}
       show={show}
       onShow={onShow}
+      messageActions={messageActions && ((m) => messageActions(m as PlatformMessage))}
+      emptyOpen={emptyOpen}
       renderFrame={(message, children) => {
         const edge = edgeOf(message);
         const sources = (message as PlatformMessage).about ?? [];

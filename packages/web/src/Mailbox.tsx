@@ -24,6 +24,7 @@ import {
   buttonClass,
   CheckCircleIcon,
   ClockIcon,
+  EyeIcon,
   FileIcon,
   GaugeIcon,
   InfoIcon,
@@ -63,7 +64,8 @@ export interface MailboxProps {
    * Every click, in the shared contract: `payload.turnId` is the message id and
    * `payload.target` the part. Opening an unread message sends `ActionId.read`;
    * Dismiss sends `ActionId.dismiss`, Snooze `ActionId.snooze` with the time in
-   * `option`. Apply them with `resolveMessage` from core.
+   * `option`, and Show for Me, on a message the reader hid for themselves
+   * (`hidden`), `ActionId.unhide`. Apply them with `resolveMessage` from core.
    */
   onAction?: ActionHandler;
   viewer?: string;
@@ -86,6 +88,13 @@ export interface MailboxProps {
   listEnd?: ReactNode;
   /** Wrap the reading pane, for example to mark who sent the message. */
   renderFrame?: (message: InboxMessage, children: ReactNode) => ReactNode;
+  /**
+   * The host's own controls for the message being read, beside Snooze and
+   * Hide: withdrawing what the reader posted, say. Return nothing for none.
+   */
+  messageActions?: (message: InboxMessage) => ReactNode;
+  /** What an empty Open view says, for a host whose inbox holds other things. */
+  emptyOpen?: { title: string; hint: string };
   defaultShow?: MailboxShow;
   /**
    * Controlled state filter, for a host that pages on the server. `null` hides
@@ -263,6 +272,8 @@ export function Mailbox({
   toolbar,
   listEnd,
   renderFrame,
+  messageActions,
+  emptyOpen,
   filter,
   defaultShow = "open",
   show: controlledShow,
@@ -316,6 +327,8 @@ export function Mailbox({
       id: ActionId.snooze,
       payload: { turnId: message.id, target: message.id, option: tomorrowMorning() },
     });
+  const unhide = (message: InboxMessage) =>
+    onAction({ id: ActionId.unhide, payload: { turnId: message.id, target: message.id } });
 
   const onListKey = (e: KeyboardEvent) => {
     const i = ordered.findIndex((m) => m.id === current);
@@ -442,6 +455,8 @@ export function Mailbox({
       onBack={() => select(null)}
       onDismiss={() => dismiss(selected)}
       onSnooze={() => snooze(selected)}
+      onUnhide={() => unhide(selected)}
+      actions={messageActions?.(selected)}
     />
   ) : (
     <div className="flex flex-1 flex-col items-center justify-center gap-1 py-16 text-center">
@@ -491,10 +506,12 @@ export function Mailbox({
             <div className="flex flex-col items-center gap-1.5 px-4 py-14 text-center">
               <CheckCircleIcon size={22} className="text-aui-ok" />
               <p className="font-medium text-aui-sm">
-                {nothingOpen ? copy.mailbox.emptyOpen : copy.mailbox.empty}
+                {nothingOpen ? (emptyOpen?.title ?? copy.mailbox.emptyOpen) : copy.mailbox.empty}
               </p>
               <p className="max-w-64 text-aui-muted text-aui-xs">
-                {nothingOpen ? copy.mailbox.emptyOpenHint : copy.mailbox.emptyHint}
+                {nothingOpen
+                  ? (emptyOpen?.hint ?? copy.mailbox.emptyOpenHint)
+                  : copy.mailbox.emptyHint}
               </p>
             </div>
           ) : (
@@ -545,6 +562,8 @@ function ReadingPane({
   onBack,
   onDismiss,
   onSnooze,
+  onUnhide,
+  actions,
 }: {
   message: InboxMessage;
   now?: string;
@@ -555,11 +574,17 @@ function ReadingPane({
   onBack: () => void;
   onDismiss: () => void;
   onSnooze: () => void;
+  onUnhide: () => void;
+  /** The host's own controls for this message. */
+  actions?: ReactNode;
 }) {
   const copy = defaultCopy;
   const state = messageState(message, now);
   const open = state === "open";
   const template = messageTemplate(message);
+  const announcement = template === "announcement";
+  // Set aside by this reader alone, so it is theirs to bring back.
+  const hidden = Boolean(message.hidden) && (state === "dismissed" || state === "snoozed");
   return (
     <article
       data-aui="message"
@@ -570,26 +595,38 @@ function ReadingPane({
       data-state={state}
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <div className="flex min-w-0 items-center gap-1 pt-2 pb-1">
+      {/* On a narrow pane the controls wrap under Back rather than run off the edge. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-1 pt-2 pb-1">
         <button type="button" onClick={onBack} className={`${headerButton} -ml-2 @2xl:hidden`}>
           <span aria-hidden="true">←</span>
           {copy.mailbox.back}
         </button>
-        {open && (
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={onSnooze}
-              title={copy.mailbox.snoozeTitle}
-              className={headerButton}
-            >
-              <ClockIcon size={14} />
-              {copy.mailbox.snooze}
-            </button>
-            <button type="button" onClick={onDismiss} className={headerButton}>
-              <XIcon size={14} />
-              {hideLabel(message)}
-            </button>
+        {(open || hidden || actions) && (
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
+            {open && (
+              <>
+                <button
+                  type="button"
+                  onClick={onSnooze}
+                  title={copy.mailbox.snoozeTitle}
+                  className={headerButton}
+                >
+                  <ClockIcon size={14} />
+                  {copy.mailbox.snooze}
+                </button>
+                <button type="button" onClick={onDismiss} className={headerButton}>
+                  <XIcon size={14} />
+                  {hideLabel(message)}
+                </button>
+              </>
+            )}
+            {hidden && (
+              <button type="button" onClick={onUnhide} className={headerButton}>
+                <EyeIcon size={14} />
+                {copy.announcements.showForMe}
+              </button>
+            )}
+            {actions}
           </div>
         )}
       </div>
@@ -647,10 +684,19 @@ function ReadingPane({
           </div>
         </WebSurface>
         {open && openParts(message).length === 0 && (
-          <p className="pt-4 text-aui-muted text-aui-xs">{copy.mailbox.readOnly}</p>
+          <p className="pt-4 text-aui-muted text-aui-xs">
+            {announcement ? copy.announcements.readOnly : copy.mailbox.readOnly}
+          </p>
         )}
-        {state === "dismissed" && template === "announcement" && (
-          <p className="pt-4 text-aui-muted text-aui-xs">{copy.announcements.hiddenForYou}</p>
+        {hidden && (
+          <p className="pt-4 text-aui-muted text-aui-xs">
+            {state === "snoozed"
+              ? copy.announcements.snoozedForYou
+              : copy.announcements.hiddenForYou}
+          </p>
+        )}
+        {announcement && state === "dismissed" && !hidden && (
+          <p className="pt-4 text-aui-muted text-aui-xs">{copy.announcements.withdrawn}</p>
         )}
       </div>
     </article>

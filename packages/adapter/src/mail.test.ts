@@ -62,6 +62,25 @@ test("a message keeps the time it was raised after it is resolved or set aside",
   assert.equal(part.alert.updatedAt, "2026-10-21T09:05:00Z");
 });
 
+test("an announcement the reader hid for themselves is theirs to bring back, and nothing else is", async () => {
+  const hidden = fromServer({ ...announcement, state: "dismissed", hidden: true });
+  assert.equal(hidden.hidden, true);
+  const unhide: UiAction = { id: ActionId.unhide, payload: { turnId: hidden.id, target: hidden.id } };
+  assert.deepEqual(toRequest(hidden, unhide), { call: "unhide" });
+  // Withdrawn for everyone, it is not the reader's to bring back.
+  const withdrawn = fromServer({ ...announcement, state: "dismissed" });
+  assert.equal(withdrawn.hidden, undefined);
+  assert.equal(toRequest(withdrawn, unhide), null);
+  const seen: string[] = [];
+  const via = projectTransport(async <T,>(method: string, path: string) => {
+    seen.push(`${method} ${path}`);
+    return { ...announcement } as T;
+  }, "Globex");
+  const back = await via.send(hidden, { call: "unhide" });
+  assert.deepEqual(seen, ["POST /api/inbox/m-9/unhide"]);
+  assert.equal(back.hidden, undefined);
+});
+
 /** An agent's post held for a project's owners, as the platform sends it to one. */
 const draft = {
   id: "m-12",

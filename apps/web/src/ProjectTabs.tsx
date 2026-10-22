@@ -1,5 +1,6 @@
 import { ActionId, messageState, type UiAction } from "@warp/core";
 import { defaultCopy } from "@warp/components";
+import { BanIcon, buttonClass } from "@warp/render-web";
 import { type MailboxShow } from "@warp/web";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
@@ -26,10 +27,15 @@ const sorry = (fallback: string) => (e: unknown) => (e instanceof ApiError ? e.m
 
 const roleOptions = (["viewer", "member", "owner"] as const).map((r) => ({ value: r, label: copy.roles[r] }));
 
+/** A control in the reading pane's header, beside Snooze and Hide for Me. */
+const paneButton = `${buttonClass("ghost")} h-7 px-2`;
+
 /**
  * A project's inbox: what is filed in it, and its announcements, which reach
  * the members of the project and of every project below it. Those allowed post
- * here, and the author or an owner withdraws what was posted.
+ * here, and the author or an owner withdraws what was posted, from the
+ * announcement itself. The inbox and its Open, Resolved and All switch stay
+ * whatever is open, so what the reader hid is always found under Resolved.
  */
 export function ProjectInbox({
   project,
@@ -63,12 +69,21 @@ export function ProjectInbox({
   const [problem, setProblem] = useState<string | null>(null);
   const may = project.actions.includes("announce");
   const owner = project.access.role === "owner";
-  const selected: PlatformMessage | undefined = inbox.messages.find((m) => m.id === message);
-  const withdrawable =
-    selected?.kind === "announcement" &&
-    messageState(selected) !== "resolved" &&
+  // Its author or an owner withdraws an announcement still standing for
+  // everyone: one this reader only hid for themselves still is.
+  const withdrawable = (m: PlatformMessage) =>
+    m.kind === "announcement" &&
     project.actions.length > 0 &&
-    (owner || (selected.from.kind === "person" && selected.from.name === me));
+    (messageState(m) === "open" || Boolean(m.hidden)) &&
+    (owner || (m.from.kind === "person" && m.from.name === me));
+  const withdraw = (m: PlatformMessage) =>
+    api
+      .withdrawAnnouncement(project.name, m.id)
+      .then(() => {
+        onMessage(null);
+        setPosted((n) => n + 1);
+      })
+      .catch((err) => setProblem(sorry("It could not be withdrawn.")(err)));
 
   const post = (e: FormEvent) => {
     e.preventDefault();
@@ -101,30 +116,11 @@ export function ProjectInbox({
     <div className="flex min-h-[28rem] flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Switch label={copy.announcements.includeSubProjects} checked={children} onChange={setChildren} />
-        <div className="flex flex-wrap gap-2">
-          {withdrawable && (
-            <button
-              type="button"
-              className={button}
-              onClick={() =>
-                api
-                  .withdrawAnnouncement(project.name, selected.id)
-                  .then(() => {
-                    onMessage(null);
-                    setPosted((n) => n + 1);
-                  })
-                  .catch((err) => setProblem(sorry("It could not be withdrawn.")(err)))
-              }
-            >
-              {copy.announcements.withdraw}
-            </button>
-          )}
-          {may && !writing && (
-            <button type="button" className={primary} onClick={() => setWriting(true)}>
-              {copy.announcements.post}
-            </button>
-          )}
-        </div>
+        {may && !writing && (
+          <button type="button" className={primary} onClick={() => setWriting(true)}>
+            {copy.announcements.post}
+          </button>
+        )}
       </div>
       <Problem message={problem ?? inbox.problem} />
       {writing && (
@@ -162,8 +158,6 @@ export function ProjectInbox({
         <Empty title="The project's inbox could not be loaded">It will be tried again when something changes.</Empty>
       ) : inbox.loading === "first" && inbox.messages.length === 0 ? (
         <SkeletonRows count={4} height="3rem" className="max-w-md" />
-      ) : inbox.messages.length === 0 && show === "open" && !kind ? (
-        <p className="text-aui-sm text-aui-muted">{copy.announcements.empty}</p>
       ) : (
         <MailboxView
           messages={inbox.messages}
@@ -174,6 +168,15 @@ export function ProjectInbox({
           viewer={me}
           show={show}
           onShow={setShow}
+          emptyOpen={{ title: copy.mailbox.emptyOpen, hint: copy.announcements.emptyOpenHint }}
+          messageActions={(m) =>
+            withdrawable(m) && (
+              <button type="button" className={paneButton} onClick={() => withdraw(m)}>
+                <BanIcon size={14} />
+                {copy.announcements.withdraw}
+              </button>
+            )
+          }
           toolbar={<KindChips value={kind} onChange={setKind} />}
           listEnd={
             inbox.hasMore && (

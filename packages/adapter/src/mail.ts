@@ -358,6 +358,8 @@ export function fromServer(raw: unknown): PlatformMessage {
       .filter((p): p is MessagePart => p !== null),
     ...(state === "dismissed" ? { dismissedAt: updated } : {}),
     ...(state === "snoozed" ? { snoozedUntil: str(m.snoozed_until) || updated } : {}),
+    // Set aside by this reader alone, so theirs to bring back.
+    ...(m.hidden === true ? { hidden: true } : {}),
     // A message about a limit leads with an alert part, so it is laid out by what it is about.
     ...(templateOf[str(m.kind)] ? { template: templateOf[str(m.kind)] } : {}),
     kind: str(m.kind),
@@ -374,6 +376,7 @@ export function fromServer(raw: unknown): PlatformMessage {
 export type Request =
   | { call: "read" }
   | { call: "dismiss" }
+  | { call: "unhide" }
   | { call: "snooze"; until: string }
   | { call: "resolve"; partId: string; action: string; values?: Record<string, unknown> };
 
@@ -388,6 +391,7 @@ export function toRequest(message: PlatformMessage, action: UiAction): Request |
   if (payload.turnId !== message.id) return null;
   if (id === ActionId.read) return { call: "read" };
   if (id === ActionId.dismiss) return { call: "dismiss" };
+  if (id === ActionId.unhide) return message.hidden ? { call: "unhide" } : null;
   // The shared failure card names its part by the failure's kind, which partMatches knows.
   const part = message.parts.find((p) => partTarget(p) === payload.target) ?? message.parts.find((p) => partMatches(p, payload.target));
   // Snoozing puts the whole message away until a time. It is never a part's own action.
@@ -477,6 +481,7 @@ export function mailTransport(http: Http): Transport {
       const to = at(message.id);
       if (r.call === "read") return fromServer(await http("POST", `${to}/read`, { read: true }));
       if (r.call === "dismiss") return fromServer(await http("POST", `${to}/dismiss`, {}));
+      if (r.call === "unhide") return fromServer(await http("POST", `${to}/unhide`, {}));
       if (r.call === "snooze") return fromServer(await http("POST", `${to}/snooze`, { until: r.until }));
       // What a part needs to be resolved travels beside the action: ids to keep, new limits, a note.
       return fromServer(await http("POST", `${to}/parts/${encodeURIComponent(r.partId)}/resolve`, { action: r.action, ...r.values }));

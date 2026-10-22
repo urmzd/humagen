@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { stubFetch } from "./dom.ts";
 import { ProjectInbox, ProjectPeople } from "./ProjectTabs.tsx";
 import { projectView } from "./projects.fixtures.ts";
@@ -136,4 +136,47 @@ test("an announcement is hidden for the reader alone, and its author withdraws i
   fireEvent.click(screen.getByText("Withdraw"));
   await waitFor(() => assert.ok(cleared));
   assert.ok(net?.seen.some((s) => s.method === "DELETE" && s.path === "/api/projects/Field/announcements/m-1"));
+});
+
+test("hiding the only announcement keeps the inbox and its switch, and Show for Me brings it back", async () => {
+  let hidden = true;
+  const mine = () => (hidden ? { ...news, state: "dismissed", hidden: true, unread: false } : { ...news, unread: false });
+  net = stubFetch({
+    // Open holds nothing for the reader while their copy is hidden; All holds it.
+    "GET /api/projects/Field/inbox": (_b, q) => ({ messages: q.get("state") === "open" && hidden ? [] : [mine()], next: null }),
+    "POST /api/inbox/m-1/unhide": () => {
+      hidden = false;
+      return mine();
+    },
+  });
+  let opened: string | null = null;
+  const member = projectView({ name: "Field", access: { role: "member", from: "Field", via: "*" }, actions: ["propose"] });
+  const { rerender } = render(<ProjectInbox project={member} me="cy" signal={0} onMessage={(id) => (opened = id)} onOpen={() => {}} onChanged={() => {}} />);
+  assert.ok(await screen.findByText("New announcements land here. What you hid is under Resolved."));
+  assert.ok(!screen.queryByText(/Nothing has been announced/));
+  assert.ok(screen.getByText("Everything"), "the kind chips stay");
+  fireEvent.click(screen.getByText("Resolved"));
+  fireEvent.click(await screen.findByText("Field offsite"));
+  assert.equal(opened, "m-1");
+  rerender(<ProjectInbox project={member} me="cy" signal={0} message="m-1" onMessage={(id) => (opened = id)} onOpen={() => {}} onChanged={() => {}} />);
+  assert.ok(await screen.findByText("Hidden for you. Others still see it."));
+  assert.ok(!screen.queryByText("Withdraw"), "a member who did not post it withdraws nothing");
+  fireEvent.click(screen.getByText("Show for Me"));
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "POST" && s.path === "/api/inbox/m-1/unhide")));
+  await waitFor(() => assert.ok(!screen.queryByText("Hidden for you. Others still see it.")));
+  assert.ok(screen.getAllByText("Hide for Me").length > 0);
+});
+
+test("an open announcement says to hide it, as its button does, and Withdraw sits on the message", async () => {
+  net = stubFetch({ "GET /api/projects/Field/inbox": () => ({ messages: [news], next: null }) });
+  const owner = projectView({ name: "Field", access: { role: "owner", from: "Field", via: "ana" }, actions: ["announce", "edit"] });
+  const { rerender } = render(<ProjectInbox project={owner} me="ana" signal={0} onMessage={() => {}} onOpen={() => {}} onChanged={() => {}} />);
+  await screen.findAllByText("Field offsite");
+  assert.ok(!screen.queryByText("Withdraw"), "nothing to withdraw until an announcement is open");
+  rerender(<ProjectInbox project={owner} me="ana" signal={0} message="m-1" onMessage={() => {}} onOpen={() => {}} onChanged={() => {}} />);
+  const pane = await screen.findByRole("region", { name: "Message" });
+  assert.ok(within(pane).getByText("Withdraw"));
+  assert.ok(within(pane).getByText("Hide for Me"));
+  assert.ok(within(pane).getByText("Nothing to decide. Hide it when you're done. Others still see it."));
+  assert.ok(!screen.queryByText(/Dismiss it/));
 });

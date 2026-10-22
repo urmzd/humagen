@@ -54,6 +54,20 @@ describe("mailbox", () => {
     expect(messageState(gone)).toBe("dismissed");
   });
 
+  it("brings back what the reader hid for themselves alone, and nothing else", () => {
+    const m = get("m-fyi");
+    const unhide = { id: ActionId.unhide, payload: { turnId: m.id, target: m.id } };
+    const hidden = { ...m, dismissedAt: "2026-10-08T16:00:00Z", hidden: true };
+    const back = resolveMessage(hidden, unhide, who);
+    expect(messageState(back)).toBe("open");
+    expect(back.hidden).toBeUndefined();
+    const snoozed = { ...m, snoozedUntil: "2999-01-01T00:00:00Z", hidden: true };
+    expect(messageState(resolveMessage(snoozed, unhide, who))).toBe("open");
+    // Set aside for everyone, it is not the reader's to bring back.
+    const everyone = { ...m, dismissedAt: "2026-10-08T16:00:00Z" };
+    expect(resolveMessage(everyone, unhide, who)).toBe(everyone);
+  });
+
   it("resolves each kind of part its own way", () => {
     const choice = get("m-choice");
     expect(

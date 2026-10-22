@@ -208,8 +208,14 @@ export const defaultCopy = {
     post: "Post Announcement",
     withdraw: "Withdraw",
     hideForMe: "Hide for Me",
+    showForMe: "Show for Me",
     hiddenForYou: "Hidden for you. Others still see it.",
-    empty: "Nothing has been announced here yet.",
+    snoozedForYou: "Snoozed for you. Others still see it.",
+    withdrawn: "Withdrawn for everyone.",
+    /** Under an open announcement, whose button is Hide for Me. */
+    readOnly: "Nothing to decide. Hide it when you're done. Others still see it.",
+    /** A project's inbox with nothing open for the reader. */
+    emptyOpenHint: "New announcements land here. What you hid is under Resolved.",
     includeSubProjects: "Include Sub-projects",
     postedIn: (project: string) => `Posted in ${project}`,
     withdrawnBy: (who: string) => `Withdrawn by ${who}`,
