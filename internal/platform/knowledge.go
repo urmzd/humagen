@@ -1,9 +1,11 @@
 package platform
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/envelope"
@@ -74,16 +76,21 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 }
 
 // withSources adds the knowledge sources a run's tag was pinned with to its
-// revision's Sources, after the agent's own and each once. The list is taken
-// out of the request's copy of the tag's meta, which fiber writes into the
-// prompt: the model is grounded in the sources, not told their names, so it
-// cannot repeat them to someone who may not read knowledge. The run's tag
-// keeps it, so a later attempt reads it again.
+// revision's Sources, after the agent's own and each once. The pin is a
+// private key, which fiber never writes into anything a model is sent, so
+// the model cannot repeat the sources' names to someone who may not read
+// knowledge, not even from a turn stopped before it began. The request's copy
+// of the meta loses both keys as well, the old public one
+// (runs.MetaSourcesV0) a run pinned before may carry among them; the run's
+// tag keeps them, so a later attempt reads them again.
 func withSources(req runtime.Request) runtime.Request {
 	pinned := runs.SourcesOf(req.Meta)
-	if _, ok := req.Meta[runs.MetaSources]; ok {
+	_, now := req.Meta[runs.MetaSources]
+	_, before := req.Meta[runs.MetaSourcesV0]
+	if now || before {
 		meta := maps.Clone(req.Meta)
 		delete(meta, runs.MetaSources)
+		delete(meta, runs.MetaSourcesV0)
 		req.Meta = meta
 	}
 	if len(pinned) == 0 {
@@ -99,6 +106,41 @@ func withSources(req runtime.Request) runtime.Request {
 	spec.Sources = sources
 	req.Revision.Spec = spec
 	return req
+}
+
+// ErrSourceInUse is a knowledge source a project the caller can see still
+// names.
+var ErrSourceInUse = errors.New("platform: knowledge source in use")
+
+// DeleteSource deletes a knowledge source and its documents. It is refused
+// while a project the caller can see names it (ErrSourceInUse), with those
+// projects named, so a team's runs do not lose their grounding unannounced.
+// A project the caller cannot see does not hold it up and is not named: it
+// keeps the name, which grounds nothing, as a source the platform file names
+// before the console fills it does, until its owners drop it or a source of
+// that name is made again. So neither the refusal nor its words reveal a
+// project hidden from the caller, and a caller without projects:read is told
+// that a project names it, not which. A source that does not exist is not
+// found, whoever names it.
+func (p *Platform) DeleteSource(who auth.Principal, name string) error {
+	if !slices.ContainsFunc(p.Knowledge.List(who.Tenant), func(s knowledge.Source) bool { return s.Name == name }) {
+		return fmt.Errorf("%w: %q", knowledge.ErrNotFound, name)
+	}
+	tree := p.Projects.Tree(who.Tenant)
+	seer := p.Seer(who)
+	var by []string
+	for _, pr := range append([]projects.Project{tree.Root()}, tree.Projects()...) {
+		if slices.Contains(pr.Knowledge, name) && seer.Project(pr.Name) {
+			by = append(by, titleOf(pr, p.Settings(who.Tenant).WorkspaceName))
+		}
+	}
+	switch {
+	case len(by) == 0:
+		return p.Knowledge.Delete(who.Tenant, name)
+	case !who.Can(auth.ProjectsRead):
+		return fmt.Errorf("%w: a project names %q; stop naming it there, or in the platform file, first", ErrSourceInUse, name)
+	}
+	return fmt.Errorf("%w: %s names %q; stop naming it there, or in the platform file, first", ErrSourceInUse, strings.Join(by, ", "), name)
 }
 
 // ProjectKnowledge is the knowledge sources a project names, at the project's

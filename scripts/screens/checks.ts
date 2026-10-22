@@ -161,6 +161,7 @@ export function collect(): Snapshot {
   const height = window.innerHeight;
   const root = document.documentElement;
   const main = document.querySelector("main");
+  const FLOATING = "[role=menu], [role=dialog], [role=listbox], [role=tooltip]";
   const shown = (el: Element) =>
     el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
 
@@ -211,7 +212,12 @@ export function collect(): Snapshot {
       text: value.slice(0, 48),
       boxes,
       main: Boolean(main?.contains(parent)),
-      layer: parent.closest("[data-layer]")?.getAttribute("data-layer") ?? "",
+      // A menu, dialog, listbox or tooltip floats over the page on purpose: its
+      // text is checked against its own lines, not against the page under it.
+      layer:
+        parent.closest("[data-layer]")?.getAttribute("data-layer") ??
+        parent.closest(FLOATING)?.getAttribute("role") ??
+        "",
     });
   }
 

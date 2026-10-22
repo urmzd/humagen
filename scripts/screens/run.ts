@@ -58,6 +58,10 @@ interface Ids {
   routedChat: string;
 }
 
+/** Opens a page's More menu. */
+const more = (page: Page) =>
+  page.getByRole("button", { name: "More", exact: true }).click({ timeout: 5_000 });
+
 /** The chat bar's textarea. */
 const bar = (page: Page) => page.locator("form[aria-label='Message'] textarea");
 const plus = (page: Page) => page.getByRole("button", { name: "Add files, agents or a project" });
@@ -148,7 +152,18 @@ function screens(ids: Ids): Screen[] {
       name: `project-${tab}`,
       path: tab === "inbox" ? "/projects/Launch" : `/projects/Launch/${tab}`,
     })),
+    { name: "project-more", path: "/projects/Launch", act: more },
+    { name: "schedule-more", path: `/schedules/${ids.schedule}`, act: more },
+    {
+      name: "project-delete",
+      path: "/projects/Support",
+      act: async (page) => {
+        await more(page);
+        await page.getByRole("menuitem", { name: "Delete Project" }).click();
+      },
+    },
     { name: "workspace", path: "/projects/~" },
+    { name: "workspace-context", path: "/projects/~/context" },
     { name: "inbox", path: "/inbox" },
     { name: "schedules", path: "/schedules" },
     { name: "schedule", path: `/schedules/${ids.schedule}` },
@@ -553,6 +568,18 @@ async function main(): Promise<void> {
 
     // Something in every list: announcements, a conversation, a failed run
     // whose alert waits on the person, and a schedule.
+    // Knowledge sources, so the Context pages show them, and Launch names one.
+    for (const [name, description] of [
+      ["handbook", "How the company works"],
+      ["release-notes", "Every release, newest first"],
+    ]) {
+      await call("POST", "/api/knowledge", { name, description });
+    }
+    const launch = await call<{ version: number }>("GET", "/api/projects/Launch/knowledge");
+    await call("PUT", "/api/projects/Launch/knowledge", {
+      version: launch.version,
+      knowledge: ["handbook"],
+    });
     await call("POST", "/api/projects", {
       name: "Support",
       description: "Customer tickets and escalations",

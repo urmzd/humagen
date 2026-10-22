@@ -124,7 +124,7 @@ import { after, merge } from "./inbox.ts";
 import { edgeOf, KindChips, MailboxView } from "./InboxPage.tsx";
 import { fromServer, type PlatformMessage, reached, toRequest } from "./mail.ts";
 import { memoryTransport, sampleMail, wireMail } from "./mail.fixtures.ts";
-import { AGENT_HUES, button, counted, hueOf, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf } from "./ui.tsx";
+import { AGENT_HUES, button, counted, hueOf, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf, PageActions } from "./ui.tsx";
 
 const M = 1_000_000;
 const html = (el: ReactElement) => renderToStaticMarkup(el);
@@ -1372,6 +1372,25 @@ test("a page's actions shrink to its column and wrap there, so none runs off a p
     assert.ok(classes.includes("min-w-0") && classes.includes("max-w-full"), "they may be narrower than all of them in a row");
     assert.ok(!classes.includes("shrink-0"), "a wrapper that may not shrink never wraps");
   }
+});
+
+test("a page's header shows two actions as buttons, and with more, one primary and a More menu", () => {
+  const noop = () => {};
+  const two = html(<PageActions primary={{ label: "Run Now", onSelect: noop }} actions={[{ label: "Edit", onSelect: noop }]} />);
+  assert.match(two, />Edit<\/button>/);
+  assert.doesNotMatch(two, /aria-haspopup="menu"/);
+  const many = html(
+    <PageActions
+      primary={{ label: "Run Now", onSelect: noop }}
+      actions={[
+        { label: "Edit", onSelect: noop },
+        { label: "Delete", destructive: true, onSelect: noop },
+      ]}
+    />,
+  );
+  assert.match(many, /aria-haspopup="menu"[^>]*>More/);
+  assert.doesNotMatch(many, />Edit<\/button>|>Delete<\/button>/);
+  assert.match(many, />Run Now<\/button>/);
 });
 
 test("a button's label stays on one line, as tall as the button", () => {

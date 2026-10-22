@@ -21,6 +21,7 @@ import (
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
+	"github.com/urmzd/warp/pkg/knowledge"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
@@ -79,7 +80,7 @@ func sent(t *testing.T, call agenttest.ScriptedCall) string {
 // sibling's or a child's. The sources are pinned into the run's tag when it
 // is accepted, nearest first, and whatever a caller put there is replaced.
 func TestARunIsGroundedInTheKnowledgeOfItsProjectAndThoseAboveIt(t *testing.T) {
-	model := &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{say("1"), say("2"), say("3"), say("4")}}
+	model := &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{say("1"), say("2"), say("3"), say("4"), say("5"), say("6")}}
 	p := startWith(t, platform.Config{Ext: platform.Extensions{Providers: map[string]agentrt.ProviderFunc{
 		"scripted": func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil },
 	}}})
@@ -116,7 +117,7 @@ func TestARunIsGroundedInTheKnowledgeOfItsProjectAndThoseAboveIt(t *testing.T) {
 			t.Errorf("a run in %q was pinned %q, want %q", c.project, got, c.pinned)
 		}
 		text := sent(t, model.Calls[i])
-		if strings.Contains(text, runs.MetaSources) {
+		if strings.Contains(text, runs.MetaSourcesV0) {
 			t.Errorf("a run in %q was told the names of its sources: %s", c.project, text)
 		}
 		for _, word := range every {
@@ -138,6 +139,21 @@ func TestARunIsGroundedInTheKnowledgeOfItsProjectAndThoseAboveIt(t *testing.T) {
 	}
 	if text := sent(t, model.Calls[4]); strings.Contains(text, "Ivan") {
 		t.Fatalf("a run was grounded in sources its tag claimed: %s", text)
+	}
+
+	// Nor under the key runs were pinned with before it was private, even
+	// where no project names anything for the pin to replace it with.
+	name(t, p, projects.Root)
+	r, err = p.Invoke(ctx, envelope.Tag{ID: "claims-v0", Tenant: tenant, Agent: "support", Origin: "api", Text: "Who signs renewals?",
+		Meta: map[string]string{runs.MetaProject: projects.Root, runs.MetaSourcesV0: "initech-notes"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := runs.SourcesOf(await(t, p, r.ID, runs.Completed).Tag().Meta); len(got) != 0 {
+		t.Fatalf("a run that claimed its sources under the old key was pinned %q", got)
+	}
+	if text := sent(t, model.Calls[5]); strings.Contains(text, "Ivan") || strings.Contains(text, "Gus") {
+		t.Fatalf("a run was grounded in sources its tag claimed under the old key: %s", text)
 	}
 }
 
@@ -388,5 +404,59 @@ func TestAKnowledgeWriteAnswersWithWhatItWrote(t *testing.T) {
 		if err := <-errs; err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// A source a project names is not deleted from under it: the delete is
+// refused, naming the projects the caller can see. A project hidden from the
+// caller neither holds the delete up nor is named, and keeps a name that
+// grounds nothing.
+func TestASourceAProjectNamesIsNotDeletedFromUnderIt(t *testing.T) {
+	p := startWith(t, platform.Config{})
+	ctx := t.Context()
+	ada := projects.Writer{By: "ada"}
+	for _, in := range []platform.ProjectInput{
+		{Name: "Field"},
+		{Name: "Secret", Members: []projects.Entry{{Who: "ada", Role: projects.Owner}}},
+	} {
+		if _, err := p.CreateProject(ctx, tenant, ada, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shelf(t, p, map[string]string{"playbook": "Paula", "pricing": "Priya", "spare": "Sam"})
+	name(t, p, "Field", "playbook")
+	name(t, p, "Secret", "pricing")
+	bo := auth.Principal{Subject: "bo", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.ProjectsRead, auth.KnowledgeRead, auth.KnowledgeWrite}}
+
+	err := p.DeleteSource(bo, "playbook")
+	if !errors.Is(err, platform.ErrSourceInUse) || !strings.Contains(err.Error(), "Field") {
+		t.Fatalf("deleting a source Field names = %v", err)
+	}
+	if !slices.ContainsFunc(p.Knowledge.List(tenant), func(s knowledge.Source) bool { return s.Name == "playbook" }) {
+		t.Fatal("a refused delete deleted the source")
+	}
+	// A caller who may not read projects is told a project names it, not which.
+	machine := auth.Principal{Subject: "bo", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.KnowledgeWrite}}
+	if err := p.DeleteSource(machine, "playbook"); !errors.Is(err, platform.ErrSourceInUse) || strings.Contains(err.Error(), "Field") {
+		t.Fatalf("deleting a source Field names, without projects:read = %v", err)
+	}
+	// A source that does not exist is not found, though a project names it.
+	name(t, p, "Field", "playbook", "ghost")
+	if err := p.DeleteSource(bo, "ghost"); !errors.Is(err, knowledge.ErrNotFound) {
+		t.Fatalf("deleting a source that does not exist = %v", err)
+	}
+	if err := p.DeleteSource(bo, "pricing"); err != nil {
+		t.Fatalf("deleting a source only a project hidden from the caller names = %v", err)
+	}
+	if err := p.DeleteSource(bo, "spare"); err != nil {
+		t.Fatalf("deleting a source no project names = %v", err)
+	}
+	if pr, _ := p.Projects.Get(tenant, "Secret"); !slices.Equal(pr.Knowledge, []string{"pricing"}) {
+		t.Fatalf("Secret's knowledge after the delete = %v", pr.Knowledge)
+	}
+
+	name(t, p, "Field")
+	if err := p.DeleteSource(bo, "playbook"); err != nil {
+		t.Fatalf("deleting a source no longer named = %v", err)
 	}
 }

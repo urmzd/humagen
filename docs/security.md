@@ -297,7 +297,8 @@ no permission, grants nothing.
   caller's. The instructions reach the model ahead of the turn, under a line
   that ranks them below the agent's own and says the platform enforces
   limits, approvals and availability whatever they say; the pinned key itself
-  is taken out of what fiber writes into the prompt. A skill is read by
+  is private (`_warp.skills`), so fiber writes it into no prompt and no
+  record of one, a run stopped before it starts included. A skill is read by
   whoever reads its project, and a hidden project's skills answer as missing
   ones in every list and completion.
 - **A mention kind resolves on the server.** `@<kind>:<name>` is resolved

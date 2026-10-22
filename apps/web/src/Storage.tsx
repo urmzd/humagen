@@ -1,6 +1,7 @@
+import { defaultCopy } from "@warp/components";
 import { useEffect, useState } from "react";
 import { bytes, contentUrl, deleteProblem, type Filter, kindWord, type Stored, type StorageTransport, type StorageUse, OVER_LIMIT, overLimit, showsInline, transport as platform, useStorage } from "./storage.ts";
-import { AgentMark, agentOptions, ago, button, Chip, Empty, Menu, Page, Problem, primary, rows, SearchField, SkeletonRows, UsageMeter, textLink } from "./ui.tsx";
+import { AgentMark, agentOptions, Confirm, ago, button, Chip, Empty, Menu, Page, Problem, primary, rows, SearchField, SkeletonRows, UsageMeter, textLink } from "./ui.tsx";
 
 /** How much is stored, against the limit when there is one, and where it is. */
 export function StorageUsed({ use }: { use: StorageUse }) {
@@ -48,15 +49,7 @@ export function DeleteVersion({
   return (
     <div className="flex flex-wrap items-center gap-3 border-[var(--warp-rule)] border-t pt-3">
       {confirming ? (
-        <>
-          <span className="text-aui-sm text-aui-fg">Delete version {version} of this artifact? This cannot be undone.</span>
-          <button type="button" className={button} onClick={onDelete}>
-            Delete Version
-          </button>
-          <button type="button" className={button} onClick={onKeep}>
-            Keep It
-          </button>
-        </>
+        <Confirm question={defaultCopy.confirm.ask(`version ${version} of this artifact`)} action="Delete Version" onConfirm={onDelete} onKeep={onKeep} />
       ) : (
         <button type="button" className={button} onClick={onAsk}>
           Delete
