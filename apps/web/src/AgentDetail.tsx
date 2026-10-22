@@ -289,6 +289,7 @@ export function AgentDetail({
   policies = [],
   onManagePolicies,
   seed,
+  viewer,
 }: {
   /** null creates a new agent. */
   revision: Revision | null;
@@ -337,6 +338,8 @@ export function AgentDetail({
   onManagePolicies?: () => void;
   /** What to show before the revisions and memory are fetched, for the gallery and tests. */
   seed?: { history?: Revision[]; notes?: Note[] };
+  /** The signed-in person's subject, whom the approval queue offers a note only where a run takes one from them. */
+  viewer?: string;
 }) {
   const saved: AgentSpec = revision?.spec ?? {
     name: "",
@@ -718,7 +721,7 @@ export function AgentDetail({
         )}
 
         {tab === "queue" && revision && (
-          <ApprovalQueue agent={name} onOpenTask={onOpenTask} onCount={setWaiting} />
+          <ApprovalQueue agent={name} viewer={viewer} onOpenTask={onOpenTask} onCount={setWaiting} />
         )}
 
         {tab === "context" && (

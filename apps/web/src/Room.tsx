@@ -37,6 +37,19 @@ import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page
 
 const words = defaultCopy.threads;
 
+/**
+ * Whether the reader posts in a project, as the server holds them to it: a
+ * member or an owner of it. A viewer reads its threads and answers only what
+ * they were asked, from the inbox. The workspace asks nothing more than
+ * starting runs, and a project whose role is not known here is the
+ * server's to decide.
+ */
+export function postsIn(projects: ProjectView[], name: string): boolean {
+  if (name === "") return true;
+  const role = projects.find((p) => p.name === name)?.access?.role;
+  return role === undefined || role === "member" || role === "owner";
+}
+
 /** The title of a project, as a thread's meta line names it. */
 function projectTitle(projects: ProjectView[], name: string, workspace: string): string {
   if (name === "") return workspace || defaultCopy.projects.workspace;
@@ -439,7 +452,8 @@ export function ThreadRoom({
       </WebSurface>
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
         <Problem message={problem} />
-        {canRun && (
+        {canRun && !postsIn(projects, th.project) && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
+        {canRun && postsIn(projects, th.project) && (
           <RoomComposer
             placeholder={words.channel(th.channel)}
             answers={page.answers}
@@ -575,7 +589,8 @@ export function ChannelPage({
           {words.moreThreads}
         </button>
       )}
-      {canRun && !info?.archived && (
+      {canRun && !info?.archived && !postsIn(projects, project) && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
+      {canRun && !info?.archived && postsIn(projects, project) && (
         <RoomComposer
           placeholder={words.startThread}
           answers={info?.answers}

@@ -129,12 +129,23 @@ func (s *Store) of(name string) *tenant {
 // within the tenant's, and tightening the tenant's must not leave a narrower
 // one claiming more than it.
 func (s *Store) Put(tenantName string, p Policy, by string, at time.Time) (Policy, error) {
+	return s.putIf(tenantName, p, by, at, nil)
+}
+
+// putIf is Put, with check called under the lock on the tenant's policies as
+// they stand, before anything is written.
+func (s *Store) putIf(tenantName string, p Policy, by string, at time.Time, check func(all []Policy) error) (Policy, error) {
 	if err := p.Validate(); err != nil {
 		return Policy{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := s.of(tenantName)
+	if check != nil {
+		if err := check(t.policies); err != nil {
+			return Policy{}, err
+		}
+	}
 	for _, other := range t.policies {
 		switch {
 		case p.Scope.Kind != Tenant && other.Scope.Kind == Tenant:
@@ -170,6 +181,48 @@ func (t *tenant) record(c Change) {
 	if len(t.history) > maxHistory {
 		t.history = t.history[len(t.history)-maxHistory:]
 	}
+}
+
+// PutOwned sets a tighten-only limit a project's owner chose, on a project
+// scope: Put, with p.Authority set to AuthorityOwner. Under the store's lock
+// it is refused with ErrAdmin where an admin's policy is set, and with
+// ErrInvalid, naming the scope that binds, when it is looser than any policy
+// over it: those of above (the project's ancestors nearest first, the root
+// left out) and the tenant's.
+func (s *Store) PutOwned(tenantName string, p Policy, above []string, by string, at time.Time) (Policy, error) {
+	p.Authority = AuthorityOwner
+	return s.putIf(tenantName, p, by, at, func(all []Policy) error {
+		if i := slices.IndexFunc(all, func(x Policy) bool { return x.Scope == p.Scope }); i >= 0 && !all[i].ByOwner() {
+			return fmt.Errorf("%w: the limits of %s are an admin's, and change with billing:write", ErrAdmin, p.Scope)
+		}
+		var over []Policy
+		for _, name := range above {
+			if i := slices.IndexFunc(all, func(x Policy) bool { return x.Scope == Scope{Project, name} }); i >= 0 {
+				over = append(over, all[i])
+			}
+		}
+		return Tighter(p, over)
+	})
+}
+
+// DeleteOwned removes a limit a project's owner set. One an admin set is
+// ErrAdmin, and a scope with none is ErrNotFound.
+func (s *Store) DeleteOwned(tenantName string, scope Scope, by string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.of(tenantName)
+	i := slices.IndexFunc(t.policies, func(x Policy) bool { return x.Scope == scope })
+	if i < 0 {
+		return fmt.Errorf("%w: no policy for %s", ErrNotFound, scope)
+	}
+	if !t.policies[i].ByOwner() {
+		return fmt.Errorf("%w: the limits of %s are an admin's, and change with billing:write", ErrAdmin, scope)
+	}
+	saved := t.copy()
+	before := t.policies[i]
+	t.policies = slices.Delete(slices.Clone(t.policies), i, i+1)
+	t.record(Change{Scope: scope, By: by, At: at, Before: &before})
+	return s.save(tenantName, t, saved)
 }
 
 // Delete removes a scope's policy and records the change.

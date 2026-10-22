@@ -70,7 +70,7 @@ func validExperts(es []Expert) error {
 	}
 	seen := map[string]bool{}
 	for _, e := range es {
-		if err := validWho(e.Who); err != nil {
+		if err := validExpertWho(e.Who); err != nil {
 			return err
 		}
 		if seen[e.Who] {
@@ -94,9 +94,9 @@ func validExperts(es []Expert) error {
 	return nil
 }
 
-// validWho checks who an expert is: a subject, or "role:<name>". Everyone
-// ("*") is no one's expert.
-func validWho(who string) error {
+// validExpertWho checks who an expert is: a subject, or "role:<name>".
+// Everyone ("*") is no one's expert.
+func validExpertWho(who string) error {
 	if name, ok := strings.CutPrefix(who, RolePrefix); ok {
 		if !validRole.MatchString(name) {
 			return fmt.Errorf("%w: a role is lower case letters, digits, dashes and underscores; not %q", ErrInvalid, who)

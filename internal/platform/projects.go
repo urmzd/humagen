@@ -46,16 +46,35 @@ type ProjectInput struct {
 	Parent       string                `json:"parent,omitempty"`
 	Account      *projects.AccountInfo `json:"account,omitempty"`
 	Instructions string                `json:"instructions,omitempty"`
+	// Members are who holds a role in it. Left out, everyone is a member
+	// (a viewer of an account) and the creator its owner, no more open than
+	// the parent allows.
+	Members []projects.Entry `json:"members,omitempty"`
 }
 
-// ProjectUpdate is what a person may change on a project once it exists, as a
-// whole: a field left empty is cleared. Version is the one they read.
+// ProjectUpdate is what a person may change on a project once it exists.
+// Title, description, account and instructions are replaced as a whole: one
+// left empty is cleared. Kind, Archived, Announce and Kinds change only when
+// they are given. Version is the one they read.
 type ProjectUpdate struct {
 	Version      int                   `json:"version"`
 	Title        string                `json:"title"`
 	Description  string                `json:"description"`
 	Account      *projects.AccountInfo `json:"account"`
 	Instructions string                `json:"instructions"`
+	// Kind is a built-in kind or one the workspace defines. Making a
+	// project company, or making a company project another kind, needs
+	// projects:govern.
+	Kind *projects.Kind `json:"kind,omitempty"`
+	// Archived archives the project or brings it back. The workspace is
+	// never archived.
+	Archived *bool `json:"archived,omitempty"`
+	// Announce is the lowest role that may post an announcement; "" reads
+	// as owner.
+	Announce *projects.Role `json:"announce,omitempty"`
+	// Kinds are the workspace's own kinds, on the workspace only. A kind a
+	// project still has cannot be removed.
+	Kinds *[]projects.KindSpec `json:"kinds,omitempty"`
 }
 
 // HasProject reports whether a tenant has a project by this exact name, as it
@@ -81,15 +100,29 @@ func (p *Platform) CreateProject(_ context.Context, tenant string, w projects.Wr
 	return p.Projects.Create(tenant, projects.Project{
 		Name: strings.TrimSpace(in.Name), Title: strings.TrimSpace(in.Title), Description: in.Description,
 		Kind: in.Kind, Parent: projects.NameOf(in.Parent), Account: in.Account, Instructions: in.Instructions,
+		Members: slices.Clone(in.Members),
 	}, w, p.now())
 }
 
 // UpdateProject replaces what a person may change on a project. The root and
 // company projects need projects:govern, a field the platform file sets
-// answers projects.ErrManaged, and a stale version projects.ErrVersion.
+// answers projects.ErrManaged, and a stale version projects.ErrVersion. A
+// new kind, archiving and the workspace's kinds are held to the tree.
 func (p *Platform) UpdateProject(_ context.Context, tenant, name string, w projects.Writer, in ProjectUpdate) (projects.Project, error) {
 	return p.Projects.Update(tenant, projects.NameOf(name), in.Version, w, p.now(), func(pr *projects.Project) error {
 		pr.Title, pr.Description, pr.Account, pr.Instructions = strings.TrimSpace(in.Title), in.Description, in.Account, in.Instructions
+		if in.Kind != nil {
+			pr.Kind = *in.Kind
+		}
+		if in.Archived != nil {
+			pr.Archived = *in.Archived
+		}
+		if in.Announce != nil {
+			pr.Announce = *in.Announce
+		}
+		if in.Kinds != nil {
+			pr.Kinds = slices.Clone(*in.Kinds)
+		}
 		return nil
 	})
 }
@@ -184,18 +217,26 @@ func (p *Platform) ProjectMemoryOwner(tenant, name string) (string, error) {
 
 // MayChangeNotes reports whether who may add, approve or remove a project's
 // notes, by any route: the project's memory routes and the inbox alike. It
-// takes projects:write, and for the workspace and company projects, whose
-// notes every agent in a wide part of the tree is sent, projects:govern as
-// well, as changing the project does. A project the tenant does not have is
-// projects.ErrNotFound.
+// takes projects:write and ownership of the project, and for the workspace and
+// company projects, whose notes every agent in a wide part of the tree is
+// sent, projects:govern as well, as changing the project does. A project the
+// caller cannot see is projects.ErrNotFound, and one they may not change
+// projects.ErrForbidden, saying what it needs.
 func (p *Platform) MayChangeNotes(who auth.Principal, name string) error {
+	return p.mayChangeNotes(p.Projects.Tree(who.Tenant), who, name)
+}
+
+func (p *Platform) mayChangeNotes(tree *projects.Tree, who auth.Principal, name string) error {
 	name = projects.NameOf(name)
-	pr, ok := p.Projects.Tree(who.Tenant).Get(name)
-	if !ok {
-		return fmt.Errorf("%w: %q", projects.ErrNotFound, name)
+	pr, _, err := p.projectRole(tree, who, name, projects.Viewer)
+	if err != nil {
+		return err
 	}
 	if !who.Can(auth.ProjectsWrite) {
-		return fmt.Errorf("%w: changing a project's notes needs %s", ErrForbidden, auth.ProjectsWrite)
+		return fmt.Errorf("%w: changing a project's notes needs %s", projects.ErrForbidden, auth.ProjectsWrite)
+	}
+	if _, _, err := p.projectRole(tree, who, name, projects.Owner); err != nil {
+		return err
 	}
 	if governedNotes(pr) && !who.Can(auth.ProjectsGovern) {
 		return fmt.Errorf("%w: the notes of the workspace and of company projects are changed with %s", projects.ErrForbidden, auth.ProjectsGovern)
@@ -209,17 +250,21 @@ func (p *Platform) MayChangeNotes(who auth.Principal, name string) error {
 func governedNotes(pr projects.Project) bool { return pr.IsRoot() || pr.Kind == projects.Company }
 
 // mayKeepUnasked reports whether what the memory agent writes for an owner may
-// be kept without a person approving it, when the workspace chose that. A
+// be kept without a person approving it, when the workspace chose that. An
+// agent's own notes may. A project's may only when the person the turn was
+// for could have kept them themselves, as Converse pinned on the turn
+// (keptBy names that project): a member's turn teaches only proposals, which
+// reach its owners, since filing a turn needs no more than a member. A
 // project whose notes need projects:govern waits for someone holding it
 // whatever the workspace chose, since the turn that taught it needed only
 // runs:write. So does a project the tree no longer holds.
-func (p *Platform) mayKeepUnasked(tenant, owner string) bool {
+func (p *Platform) mayKeepUnasked(tenant, owner, keptBy string) bool {
 	name, isProject := memory.OwnerProject(owner)
 	if !isProject {
 		return true
 	}
 	pr, ok := p.Projects.Tree(tenant).Get(name)
-	return ok && !governedNotes(pr)
+	return ok && !governedNotes(pr) && keptBy != "" && strings.EqualFold(keptBy, pr.Name)
 }
 
 // migration is who the projects moved out of settings were created by.

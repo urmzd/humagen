@@ -41,6 +41,21 @@ func newFixture(t *testing.T) *fixture {
 // newFixtureWith is newFixture over a platform a test has configured further.
 func newFixtureWith(t *testing.T, cfg platform.Config) *fixture {
 	t.Helper()
+	return newFixtureGranting(t, cfg, "")
+}
+
+// newFixtureGranting is newFixtureWith whose policy also holds grants, such
+// as `grant operator to subject "ana"`: what a person a surface acts for
+// holds, since a surface's request carries none of their groups.
+func newFixtureGranting(t *testing.T, cfg platform.Config, grants string) *fixture {
+	t.Helper()
+	var pol *auth.Policy
+	if grants != "" {
+		var err error
+		if pol, err = auth.ParsePolicy("test", fixtureRoles+grants); err != nil {
+			t.Fatal(err)
+		}
+	}
 	cfg.Workspace, cfg.Limits = t.TempDir(), call.Limits{MaxDepth: 2, MaxFanOut: 4}
 	p, err := platform.New(cfg)
 	if err != nil {
@@ -52,8 +67,8 @@ func newFixtureWith(t *testing.T, cfg platform.Config) *fixture {
 
 	iss := authtest.New(t)
 	v, err := auth.NewVerifier(ctx, auth.OIDCConfig{
-		Issuer: iss.URL, ClientID: clientID, Audience: audience, TenantClaim: "org",
-		GroupRoles: map[string]auth.Role{"warp-admins": auth.Admin, "warp-viewers": auth.Viewer},
+		Issuer: iss.URL, ClientID: clientID, Audience: audience, TenantClaim: "org", Policy: pol,
+		GroupRoles: map[string]auth.Role{"warp-admins": auth.Admin, "warp-operators": auth.Operator, "warp-viewers": auth.Viewer},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -76,9 +91,25 @@ func newFixtureWith(t *testing.T, cfg platform.Config) *fixture {
 	return &fixture{srv: srv, iss: iss, p: p}
 }
 
+// fixtureRoles are the built-in policy's roles, which newFixtureGranting's
+// grants name.
+const fixtureRoles = `
+role viewer { allow read on * }
+role operator extends viewer { allow write on runs, schedules, alerts, evals, artifacts, projects }
+role manager extends operator { allow write on agents, knowledge }
+role admin { allow * on * }
+`
+
 func (f *fixture) machine(t *testing.T, org string, scopes ...string) string {
 	t.Helper()
 	return f.iss.Sign(t, "svc-"+org, audience, map[string]any{"org": org, "scp": scopes})
+}
+
+// machineAs is a machine of its own subject, for a test that tells callers
+// in one workspace apart by who they are.
+func (f *fixture) machineAs(t *testing.T, subject, org string, scopes ...string) string {
+	t.Helper()
+	return f.iss.Sign(t, subject, audience, map[string]any{"org": org, "scp": scopes})
 }
 
 func (f *fixture) do(t *testing.T, c *http.Client, method, path, bearer, body string, hdr ...string) (*http.Response, map[string]any) {

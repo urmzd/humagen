@@ -16,6 +16,7 @@ import (
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -79,6 +80,8 @@ func severityOf(s alerts.Severity) inbox.Severity {
 // reads is the right needed to see a kind of message.
 func reads(k inbox.Kind) auth.Permission {
 	switch k {
+	case inbox.KindAnnouncement:
+		return auth.ProjectsRead
 	case inbox.KindMemory:
 		return auth.AgentsRead
 	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
@@ -89,9 +92,13 @@ func reads(k inbox.Kind) auth.Permission {
 	return auth.AlertsRead
 }
 
-// writes is the right needed to set a kind of message aside.
+// writes is the right needed to set a kind of message aside. Hiding an
+// announcement hides the reader's own copy and changes nothing others see,
+// so reading it is enough.
 func writes(k inbox.Kind) auth.Permission {
 	switch k {
+	case inbox.KindAnnouncement:
+		return auth.ProjectsRead
 	case inbox.KindMemory:
 		return auth.AgentsWrite
 	case inbox.KindFailure, inbox.KindApproval, inbox.KindClarification, inbox.KindResult, inbox.KindMention:
@@ -140,27 +147,53 @@ var offered = map[inbox.PartType][]string{
 }
 
 // allows reports whether who may take an action on a part, and if not, why.
-// An action needs what needs says, except a proposal for a project's notes:
-// that is the project's to decide, by MayChangeNotes, as its own memory
-// routes ask, so the inbox is no way around projects:govern.
-func (p *Platform) allows(who auth.Principal, part inbox.Part, action string) error {
+// An action needs what needs says, except a proposal for notes, which is
+// decided as the notes' own memory routes decide it: a project's by
+// MayChangeNotes (projects:write, ownership, and projects:govern for the
+// workspace's and a company project's), and an agent's that lives in a
+// project by ownership of its home as well. A retry starts a turn, so it
+// takes what starting one there takes: being a member of the project the
+// failed turn is filed in. So the inbox is no way around any of them.
+func (p *Platform) allows(tree *projects.Tree, who auth.Principal, part inbox.Part, action string) error {
 	perm, known := needs(part.Type, action)
 	if !known {
 		return fmt.Errorf("%w: a %s part does not take %q", ErrAction, part.Type, action)
 	}
-	if part.Type == inbox.PartMemory && part.Memory != nil {
-		if project, isProject := memory.OwnerProject(part.Memory.Owner); isProject {
-			return p.MayChangeNotes(who, project)
-		}
+	if project, ok := memoryProject(part); ok {
+		return p.mayChangeNotes(tree, who, project)
 	}
 	if !who.Can(perm) {
 		return fmt.Errorf("%w: %s needs %s", ErrForbidden, action, perm)
 	}
+	if part.Type == inbox.PartMemory && part.Memory != nil {
+		return p.ownsHome(tree, who, part.Memory.Owner)
+	}
+	if part.Type == inbox.PartFailure && action == ActRetry && part.Failure != nil {
+		return p.mayRetryIn(tree, who, part.Failure.Run)
+	}
 	return nil
 }
 
+// mayRetryIn holds a retry of a failed turn to MayFileIn: the person retrying
+// must be a member of the project the turn is filed in, whoever asked it
+// first. A run the index does not hold is not retried. A project the tree no
+// longer holds is Converse's to refuse, saying it was deleted. Whose turn it
+// is to retry at all is mayRetry's to say: this only adds the project's role.
+func (p *Platform) mayRetryIn(tree *projects.Tree, who auth.Principal, runID string) error {
+	run, err := p.Runs.Get(who.Tenant, runID)
+	if err != nil {
+		return err
+	}
+	project := projects.NameOf(run.Project)
+	if project == projects.Root || !tree.Has(project) {
+		return nil
+	}
+	_, _, err = p.projectRole(tree, who, project, projects.Member)
+	return err
+}
+
 // seenBy fills in what a reader may do with each part.
-func (p *Platform) seenBy(m inbox.Message, who auth.Principal) inbox.Message {
+func (p *Platform) seenBy(tree *projects.Tree, m inbox.Message, who auth.Principal) inbox.Message {
 	for i := range m.Parts {
 		part := &m.Parts[i]
 		part.Actions = []string{}
@@ -171,7 +204,7 @@ func (p *Platform) seenBy(m inbox.Message, who auth.Principal) inbox.Message {
 			if a == ActRetry && (part.Failure == nil || !part.Failure.Retryable || p.mayRetry(who, part.Failure.Run) != nil) {
 				continue
 			}
-			if p.allows(who, *part, a) == nil {
+			if p.allows(tree, who, *part, a) == nil {
 				part.Actions = append(part.Actions, a)
 			}
 		}
@@ -189,8 +222,27 @@ func readerOf(who auth.Principal) inbox.Reader {
 	return inbox.Reader{Subject: who.Subject, Roles: roles}
 }
 
-func (p *Platform) inboxQuery(who auth.Principal, q inbox.Query) inbox.Query {
-	q.Reader, q.Roles, q.Now = who.Subject, readerOf(who).Roles, p.now()
+// inboxReader is who a person is to their own inbox: readerOf, with the
+// projects whose announcements reach them (where they are a member, and every
+// ancestor of those, less the projects they muted) and the projects they own,
+// read from the tree as it is now. Revoking a membership hides its
+// announcements at the next read.
+func (p *Platform) inboxReader(tree *projects.Tree, who auth.Principal) inbox.Reader {
+	r := readerOf(who)
+	reader := ReaderOf(who)
+	muted := p.Prefs.Get(who.Tenant, who.Subject).Muted
+	for _, name := range tree.Memberships(reader) {
+		if name == projects.Root || !slices.Contains(muted, name) {
+			r.Projects = append(r.Projects, name)
+		}
+	}
+	r.Owns = tree.Owned(reader)
+	return r
+}
+
+func (p *Platform) inboxQuery(tree *projects.Tree, who auth.Principal, q inbox.Query) inbox.Query {
+	r := p.inboxReader(tree, who)
+	q.Reader, q.Roles, q.ReaderProjects, q.ReaderOwns, q.Now = r.Subject, r.Roles, r.Projects, r.Owns, p.now()
 	q.Visible = func(k inbox.Kind) bool { return who.Can(reads(k)) }
 	return q
 }
@@ -198,24 +250,48 @@ func (p *Platform) inboxQuery(who auth.Principal, q inbox.Query) inbox.Query {
 // InboxSees reports whether a caller may see messages of a kind.
 func InboxSees(who auth.Principal, k inbox.Kind) bool { return who.Can(reads(k)) }
 
-// InboxPage returns one page of a person's inbox.
+// InboxPage returns one page of a person's inbox. q.Projects narrows it to
+// what is filed in those projects; it never reaches further than their own
+// inbox does.
 func (p *Platform) InboxPage(who auth.Principal, q inbox.Query) ([]inbox.Message, string, error) {
-	msgs, next, err := p.Inbox.Page(who.Tenant, p.inboxQuery(who, q))
+	tree := p.Projects.Tree(who.Tenant)
+	q.Shared = false
+	msgs, next, err := p.Inbox.Page(who.Tenant, p.inboxQuery(tree, who, q))
 	for i := range msgs {
-		msgs[i] = p.seenBy(msgs[i], who)
+		msgs[i] = p.seenBy(tree, msgs[i], who)
 	}
 	return msgs, next, err
 }
 
-// InboxCount returns how many messages are open for a person, and how many of
-// those they have not read.
-func (p *Platform) InboxCount(who auth.Principal) (open, unread int) {
-	return p.Inbox.Count(who.Tenant, p.inboxQuery(who, inbox.Query{}))
+// InboxCount returns how many messages are open for a person, how many of
+// those they have not read, and how many announcements they have not read.
+// Announcements count only in Updates, so they never grow the badge.
+func (p *Platform) InboxCount(who auth.Principal) inbox.Counts {
+	return p.Inbox.Count(who.Tenant, p.inboxQuery(p.Projects.Tree(who.Tenant), who, inbox.Query{}))
 }
 
-// InboxGet returns one message as a person sees it.
+// InboxGet returns one message as a person sees it: one in their own inbox,
+// or an announcement in the inbox of a project they can see, which a viewer
+// reads there, and so does a member who muted the project. Reading it,
+// hiding it and snoozing it go through here, so whatever a project's inbox
+// shows a reader they may also act on.
 func (p *Platform) InboxGet(who auth.Principal, id string) (inbox.Message, error) {
-	return p.inboxGetAs(who, readerOf(who), id)
+	return p.inboxGetAs(who, p.sharedReader(p.Projects.Tree(who.Tenant), who), id)
+}
+
+// sharedReader is inboxReader with every project the person can see, so an
+// announcement in any of those projects' inboxes reaches them, member or
+// not, muted or not. Only announcements are addressed to a project, so it
+// reaches nothing else further. It reads one message; their own inbox and
+// its notices keep inboxReader, so they are sent nothing more.
+func (p *Platform) sharedReader(tree *projects.Tree, who auth.Principal) inbox.Reader {
+	r := p.inboxReader(tree, who)
+	for name, a := range tree.Roles(ReaderOf(who)) {
+		if a.Role != projects.None && !slices.Contains(r.Projects, name) {
+			r.Projects = append(r.Projects, name)
+		}
+	}
+	return r
 }
 
 // inboxGetAs returns one message as it is shown to reader, with the actions
@@ -233,7 +309,7 @@ func (p *Platform) inboxGetAs(who auth.Principal, reader inbox.Reader, id string
 	if m.State == inbox.Snoozed && !p.now().Before(m.SnoozedUntil) {
 		m.State = inbox.Open
 	}
-	return p.seenBy(m, who), nil
+	return p.seenBy(p.Projects.Tree(who.Tenant), m, who), nil
 }
 
 // InboxRead marks a message read or unread for the caller alone.
@@ -296,7 +372,8 @@ func (p *Platform) InboxDismiss(who auth.Principal, id string) (inbox.Message, e
 // and records it. Resolving a part that is already resolved does nothing and
 // returns the message with the first outcome.
 func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, partID string, r Resolution) (inbox.Message, error) {
-	reader := readerOf(who)
+	tree := p.Projects.Tree(who.Tenant)
+	reader := p.inboxReader(tree, who)
 	if r.ActAs != nil {
 		var err error
 		if reader, _, err = p.answerer(who, r.ActAs); err != nil {
@@ -325,7 +402,7 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 	}
 	// The right is checked before saying whether there is anything left to
 	// do, so a caller without it learns nothing from trying.
-	if err := p.allows(who, part, r.Action); err != nil {
+	if err := p.allows(tree, who, part, r.Action); err != nil {
 		return inbox.Message{}, err
 	}
 	if part.Type == inbox.PartFailure && r.Action == ActRetry && part.Failure != nil {
@@ -377,7 +454,7 @@ func (p *Platform) InboxResolve(ctx context.Context, who auth.Principal, id, par
 			return inbox.Message{}, err
 		}
 	} else {
-		p.settle(who.Tenant, id, who.Subject)
+		p.settle(who.Tenant, id, reader, who.Subject)
 	}
 	return p.InboxGet(who, id)
 }
@@ -389,9 +466,10 @@ func (p *Platform) audit(who auth.Principal, m inbox.Message, part, action, note
 		"part", part, "action", action, "note", note, "alert", m.Source.Alert, "run", m.Source.Run)
 }
 
-// settle closes whatever is still open in a message once it has been dealt with.
-func (p *Platform) settle(tenant, id, by string) {
-	m, err := p.Inbox.Get(tenant, id, by)
+// settle closes whatever is still open in a message once it has been dealt
+// with, reading it as the reader who dealt with it.
+func (p *Platform) settle(tenant, id string, reader inbox.Reader, by string) {
+	m, err := p.Inbox.GetAs(tenant, id, reader)
 	if err != nil {
 		return
 	}
@@ -482,11 +560,14 @@ func (p *Platform) inboxMemory(run runs.Run, owner string, notes []memory.Note) 
 	}
 	part := inbox.MemoryPart{Owner: owner}
 	about := owner
+	var audience []string
 	if project, ok := memory.OwnerProject(owner); ok {
 		part.Project, about = project, "the project "+project
 		if project == "" {
 			about = "the workspace"
 		}
+		// A project's notes are its owners' to decide.
+		audience = []string{inbox.OwnersAudience(project)}
 	} else {
 		part.Agent = owner
 	}
@@ -499,7 +580,7 @@ func (p *Platform) inboxMemory(run runs.Run, owner string, notes []memory.Note) 
 	}
 	p.raiseInbox(run.Tenant, "memory:"+run.ID, inbox.Message{
 		Kind: inbox.KindMemory, Subject: fmt.Sprintf("%d proposed %s for %s", len(notes), noun, about),
-		From: inbox.From{Kind: "agent", Name: run.Agent}, Severity: inbox.Info,
+		From: inbox.From{Kind: "agent", Name: run.Agent}, Severity: inbox.Info, Audience: audience,
 		Source: inbox.Source{Run: run.ID, Agent: part.Agent, Project: part.Project},
 		Parts:  []inbox.Part{{Type: inbox.PartMemory, Memory: &part}},
 	}, p.now())
@@ -535,7 +616,7 @@ func (p *Platform) inboxArtifact(tenant string, a artifacts.Artifact) {
 					part.Previous = v.ID
 				}
 				if m, ok := p.Inbox.ByKey(tenant, artifactKey(v.ID)); ok && m.State != inbox.Resolved && m.State != inbox.Dismissed {
-					_, _, _ = p.Inbox.Withdraw(tenant, m.ID, fmt.Sprintf("Replaced by version %d", a.Version), p.now())
+					_, _, _ = p.Inbox.Withdraw(tenant, m.ID, "system", fmt.Sprintf("Replaced by version %d", a.Version), p.now())
 				}
 			}
 		}
@@ -561,7 +642,7 @@ func (p *Platform) raiseInbox(tenant, key string, m inbox.Message, at time.Time)
 // inboxArtifactGone withdraws the message about a version that was deleted.
 func (p *Platform) inboxArtifactGone(tenant string, a artifacts.Artifact) {
 	if m, ok := p.Inbox.ByKey(tenant, artifactKey(a.ID)); ok && m.State != inbox.Resolved && m.State != inbox.Dismissed {
-		_, _, _ = p.Inbox.Withdraw(tenant, m.ID, "The file was deleted", p.now())
+		_, _, _ = p.Inbox.Withdraw(tenant, m.ID, "system", "The file was deleted", p.now())
 	}
 }
 
@@ -615,6 +696,9 @@ func (p *Platform) retry(ctx context.Context, who auth.Principal, runID string) 
 		ID:    "api-retry-" + strconv.Itoa(len(who.Subject)) + "-" + who.Subject + "-" + run.ID,
 		Agent: run.Agent, Text: run.Text, After: run.Prev, Actor: actor,
 	}
+	// The retry is the person retrying's turn, so what it teaches the
+	// project is kept unasked only if they could keep it themselves.
+	t.KeepsNotes = run.Project != "" && p.MayChangeNotes(who, run.Project) == nil
 	if run.Message != "" {
 		return p.retryAnswer(ctx, who.Tenant, run, t)
 	}
@@ -638,7 +722,7 @@ func (p *Platform) retryAnswer(ctx context.Context, tenant string, run runs.Run,
 	if err != nil {
 		return runs.Run{}, err
 	}
-	return p.answerMessage(ctx, tenant, th, m, t.Agent, t.Actor, t.ID)
+	return p.answerMessage(ctx, tenant, th, m, t.Agent, t.Actor, t.ID, t.KeepsNotes)
 }
 
 // decideMemory keeps the chosen proposals and discards the rest.
@@ -727,7 +811,7 @@ func (p *Platform) syncMemory(tenant, owner string) {
 				continue
 			}
 			if !slices.ContainsFunc(part.Memory.Notes, func(n inbox.NoteRef) bool { return slices.Contains(pending, n.ID) }) {
-				_, _, _ = p.Inbox.Withdraw(tenant, m.ID, "Dealt with on the "+strings.TrimPrefix(owner, "project:")+" memory page", p.now())
+				_, _, _ = p.Inbox.Withdraw(tenant, m.ID, "system", "Dealt with on the "+strings.TrimPrefix(owner, "project:")+" memory page", p.now())
 			}
 		}
 	}

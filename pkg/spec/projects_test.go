@@ -40,7 +40,7 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 	for i := range companies {
 		companies[i] = fmt.Sprintf("{name: C%d, kind: company}", i)
 	}
-	many := make([]string, 101)
+	many := make([]string, 501)
 	for i := range many {
 		many[i] = fmt.Sprintf("{name: P%d}", i)
 	}
@@ -83,10 +83,36 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 			tree(`{name: Field, account: {customer: Globex Inc}}`),
 			`workspace.projects[0].account: only an account project carries an account, and "Field" is a team`,
 		},
-		// 4. Kinds are built in.
-		"an unknown kind": {tree(`{name: Partners, kind: partner}`), `workspace.projects[0].kind: "partner" is not a kind: company, team or account`},
+		// 4. Kinds are built in or the workspace's own, which behave as team
+		// or account, and the kind rules follow what a kind behaves as.
+		"an unknown kind": {tree(`{name: Partners, kind: partner}`), `workspace.projects[0].kind: "partner" is not a kind: company, team, account or one of workspace.project_kinds`},
+		"a kind like company": {
+			"    project_kinds: [{name: division, like: company}]\n", `workspace.project_kinds[0].like: "company" is not team or account`,
+		},
+		"a built-in kind defined again": {"    project_kinds: [{name: team, like: team}]\n", `workspace.project_kinds[0].name: "team" is a kind warp defines`},
+		"a kind defined twice": {
+			"    project_kinds: [{name: partner, like: account}, {name: partner, like: team}]\n", `workspace.project_kinds[1].name: "partner" is defined twice`,
+		},
+		"a kind's name in capitals": {"    project_kinds: [{name: Partner, like: account}]\n", `workspace.project_kinds[0].name: "Partner" is not a kind's name`},
+		"an account-like kind under an account": {
+			"    project_kinds: [{name: partner, like: account}]\n" + tree(`{name: Globex, kind: account}`, `{name: Reseller, kind: partner, parent: Globex}`),
+			`workspace.projects[1].kind: an account cannot sit under another account, and "Globex" is one`,
+		},
+		// 5. Members: their forms, roles and caps, and an entry for everyone.
+		"a member with no role": {tree(`{name: Field, members: [{who: "*", role: member}, {who: ana, role: boss}]}`), `workspace.projects[0].members[1].role: "boss" is not a role`},
+		"a role with a space":   {tree(`{name: Field, members: [{who: "*", role: member}, {who: "role:field eng", role: owner}]}`), `workspace.projects[0].members[1].who: "role:field eng" names no role`},
+		"one person twice":      {tree(`{name: Field, members: [{who: "*", role: member}, {who: ana, role: owner}, {who: ana, role: member}]}`), `workspace.projects[0].members[2].who: "ana" is listed twice`},
+		"members only": {
+			tree(`{name: Field, members: [{who: ana, role: owner}]}`), `workspace.projects[0].members: an entry for everyone ("*") of at least viewer is needed: members-only projects need read confinement`,
+		},
+		"a company project for viewers": {tree(`{name: News, kind: company, members: [{who: "*", role: viewer}]}`), `workspace.projects[0].members: a company project is open to everyone ("*") as a member at least`},
+		"the workspace for viewers":     {"    members: [{who: \"*\", role: viewer}]\n", `workspace.members: a company project is open to everyone ("*") as a member at least`},
+		"a child more open than its parent": {
+			tree(`{name: Field, members: [{who: "*", role: viewer}]}`, `{name: Globex, parent: Field, members: [{who: "*", role: member}]}`),
+			`workspace.projects[1].members: "Globex" would be more open than "Field"`,
+		},
 		// The fields' bounds, which the store would refuse at start.
-		"101 projects":                 {tree(many...), `workspace.projects: a workspace has at most 100 projects, not 101`},
+		"501 projects":                 {tree(many...), `workspace.projects: a workspace has at most 500 projects, not 501`},
 		"a long title":                 {tree(`{name: Field, title: ` + strings.Repeat("t", 81) + `}`), `workspace.projects[0].title: at most 80 characters, not 81`},
 		"a title on two lines":         {tree(`{name: Field, title: "Field\nengineering"}`), `workspace.projects[0].title: one line of plain text`},
 		"a long description":           {tree(`{name: Field, description: ` + strings.Repeat("d", 501) + `}`), `workspace.projects[0].description: at most 500 characters`},
@@ -189,8 +215,11 @@ func TestWhatWarpWritesOfATreeItReads(t *testing.T) {
 		Projects: []Project{
 			{Name: "Field", Title: "Field engineering", Kind: ProjectTeam, Instructions: "Never promise dates.\nBe brief.",
 				Channels: []Channel{{Name: "renewals", Purpose: "Renewal work", Default: "auto"}}, Experts: []Expert{{Who: "role:billing", Topics: []string{"billing"}}}},
-			{Name: "Globex", Parent: "Field", Kind: ProjectAccount, Account: &Account{Customer: "Globex Inc", ExternalID: "sf:1", URL: "https://crm.example.com/g"}},
+			{Name: "Globex", Parent: "Field", Kind: "partner", Account: &Account{Customer: "Globex Inc", ExternalID: "sf:1", URL: "https://crm.example.com/g"},
+				Members: []Member{{Who: "*", Role: RoleViewer}, {Who: "okta|00u1ana", Role: RoleOwner}}},
 		},
+		Members:      []Member{{Who: "*", Role: RoleMember}, {Who: "role:comms", Role: RoleOwner}},
+		ProjectKinds: []ProjectKind{{Name: "partner", Title: "Partner", Like: ProjectAccount}},
 	}}}}}
 	cfg.System.Defaults()
 	b, err := Marshal(cfg)
@@ -202,7 +231,7 @@ func TestWhatWarpWritesOfATreeItReads(t *testing.T) {
 		t.Fatalf("%v\n%s", err, b)
 	}
 	w := got.Platforms[0].Spec.Workspace
-	if *w.Instructions != instr || len(w.Projects) != 2 || !reflect.DeepEqual(w.Projects[0], cfg.Platforms[0].Spec.Workspace.Projects[0]) || *w.Projects[1].Account != *cfg.Platforms[0].Spec.Workspace.Projects[1].Account {
+	if *w.Instructions != instr || len(w.Projects) != 2 || !reflect.DeepEqual(w.Projects, cfg.Platforms[0].Spec.Workspace.Projects) {
 		t.Fatalf("round trip lost something:\n%s", b)
 	}
 }
@@ -227,6 +256,9 @@ func TestTheLanguagesBoundsAreTheProjectStores(t *testing.T) {
 		"experts":       {maxExperts, projects.MaxExperts},
 		"topics":        {maxExpertTopics, projects.MaxTopics},
 		"expert who":    {maxExpertWho, projects.MaxWho},
+		"members":       {maxMembers, projects.MaxMembers},
+		"kinds":         {maxKinds, projects.MaxKinds},
+		"kind title":    {maxKindTitle, projects.MaxKindTitle},
 	} {
 		if pair[0] != pair[1] {
 			t.Errorf("%s: the spec allows %d, the store %d", name, pair[0], pair[1])

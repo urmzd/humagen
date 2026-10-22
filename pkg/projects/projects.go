@@ -20,6 +20,16 @@
 // cannot reuse the name of a deleted project. A project the platform file
 // declares cannot be deleted through the API, and the fields the file sets
 // cannot be changed there.
+//
+// # Roles
+//
+// A project's members hold viewer, member or owner, through an entry for
+// everyone ("*"), a role ("role:<name>") or a subject. Resolve reads a
+// reader's role along the chain, root first: an owner above owns everything
+// below, and no role at one level means no role below it. A role only
+// narrows what a tenant permission allows; it never grants one. Until reads
+// are confined, every project keeps an entry for everyone of at least viewer,
+// so every project stays visible.
 package projects
 
 import (
@@ -55,6 +65,10 @@ var (
 	ErrVersion = errors.New("projects: changed since it was read")
 	// ErrForbidden reports a change that needs projects:govern.
 	ErrForbidden = errors.New("projects: forbidden")
+	// ErrConfinement reports a project nobody but its members could see.
+	// Reads are not confined to members yet, so such a project is refused
+	// rather than shown to everyone.
+	ErrConfinement = errors.New("projects: members-only projects need read confinement, not built")
 )
 
 // Root is the root project's name: the workspace itself.
@@ -72,7 +86,8 @@ func NameOf(segment string) string {
 	return segment
 }
 
-// Kind is what a project is for.
+// Kind is what a project is for: a built-in kind, or a name the workspace
+// defines over one (see KindSpec).
 type Kind string
 
 const (
@@ -97,6 +112,9 @@ const (
 	FieldParent       = "parent"
 	FieldAccount      = "account"
 	FieldInstructions = "instructions"
+	FieldMembers      = "members"
+	// FieldKinds is the root's own kinds.
+	FieldKinds = "kinds"
 )
 
 // Bounds.
@@ -118,6 +136,14 @@ const (
 	MaxPage = 200
 	// DefaultPage is a page of history when none is asked for.
 	DefaultPage = 50
+	// MaxMembers bounds a project's entries.
+	MaxMembers = 100
+	// MaxList bounds one page of projects, and DefaultList is a page when
+	// none is asked for.
+	MaxList     = 200
+	DefaultList = 100
+	// MaxQuery bounds what a listing searches for, in characters.
+	MaxQuery = 200
 )
 
 // Caps bound a tenant's tree.
@@ -132,9 +158,9 @@ type Caps struct {
 	Company int
 }
 
-// DefaultCaps are phase 1's: 100 projects, 4 levels, 100 children and 10
-// company projects.
-func DefaultCaps() Caps { return Caps{Projects: 100, Depth: 4, Children: 100, Company: 10} }
+// DefaultCaps are 500 projects, 4 levels, 100 children and 10 company
+// projects. A listing of them is paged (Tree.Page).
+func DefaultCaps() Caps { return Caps{Projects: 500, Depth: 4, Children: 100, Company: 10} }
 
 // AccountInfo is what an account project records about its customer.
 type AccountInfo struct {
@@ -161,6 +187,18 @@ type Project struct {
 	Instructions string `json:"instructions,omitempty"`
 	// Experts are who answers for some topics here and below. Never nil.
 	Experts []Expert `json:"experts"`
+	// Members are who holds a role here. A stored project always lists
+	// them; a record from before roles reads as everyone owning it, the root
+	// as everyone a member.
+	Members []Entry `json:"members"`
+	// Kinds are the workspace's own kinds. Only the root carries them.
+	Kinds []KindSpec `json:"kinds,omitempty"`
+	// Archived projects take no new projects under them, and nothing moves
+	// under them. The root is never archived.
+	Archived bool `json:"archived,omitempty"`
+	// Announce is the lowest role that may post an announcement here. ""
+	// reads as owner.
+	Announce Role `json:"announce,omitempty"`
 	// Agents is what the project turns on: which agents are available here
 	// and below, and which answers a message that tags none.
 	Agents Agents `json:"agents"`
@@ -188,6 +226,8 @@ func (p Project) clone() Project {
 	}
 	p.FileOwns = slices.Clone(p.FileOwns)
 	p.Experts = cloneExperts(p.Experts)
+	p.Members = slices.Clone(p.Members)
+	p.Kinds = slices.Clone(p.Kinds)
 	p.Agents = p.Agents.clone()
 	return p
 }
@@ -207,6 +247,12 @@ const (
 	Deleted = "deleted"
 	// Managed is the platform file taking a project over or letting it go.
 	Managed = "managed"
+	// Moved is a project put under another parent.
+	Moved = "moved"
+	// Archived is a project archived, or brought back.
+	Archived = "archived"
+	// Members is a change to who holds a role, and nothing else.
+	Members = "members"
 )
 
 // AdoptsNote is recorded on a project created under a deleted name.
@@ -246,17 +292,17 @@ var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,62}$`)
 // one: the root is never created.
 func ValidName(name string) bool { return validName.MatchString(name) }
 
-func validKind(k Kind) bool { return k == Company || k == Team || k == Account }
-
-// accountLike is a kind that carries an account and never nests in another.
-func accountLike(k Kind) bool { return k == Account }
+// builtIn reports whether a kind is one warp defines.
+func builtIn(k Kind) bool { return k == Company || k == Team || k == Account }
 
 var validField = map[string]bool{
 	FieldTitle: true, FieldDescription: true, FieldKind: true, FieldParent: true, FieldAccount: true, FieldInstructions: true,
-	FieldExperts: true, FieldAgents: true,
+	FieldExperts: true, FieldMembers: true, FieldKinds: true, FieldAgents: true,
 }
 
 // validate checks a project on its own: its fields and bounds, not its place.
+// Whether its kind is one the workspace defines, and whether an account fits
+// that kind, depend on the root, so the tree checks them (kindRules).
 func (p Project) validate() error {
 	chars := utf8.RuneCountInString
 	switch {
@@ -266,8 +312,8 @@ func (p Project) validate() error {
 		return fmt.Errorf("%w: the workspace has no title, parent or account of its own", ErrInvalid)
 	case !p.IsRoot() && !ValidName(p.Name):
 		return fmt.Errorf("%w: a project's name is letters, digits, spaces, dashes and underscores, starting with a letter or digit, at most 63", ErrInvalid)
-	case !validKind(p.Kind):
-		return fmt.Errorf("%w: a project's kind is company, team or account", ErrInvalid)
+	case !builtIn(p.Kind) && !validKindName(p.Kind):
+		return fmt.Errorf("%w: a project's kind is company, team, account or one the workspace defines", ErrInvalid)
 	case p.Parent != Root && !ValidName(p.Parent):
 		return fmt.Errorf("%w: no project can be called %q", ErrInvalid, p.Parent)
 	case strings.EqualFold(p.Parent, p.Name) && !p.IsRoot():
@@ -278,10 +324,20 @@ func (p Project) validate() error {
 		return fmt.Errorf("%w: a description is at most %d characters", ErrInvalid, MaxDescription)
 	case chars(p.Instructions) > MaxInstructions || !plain(p.Instructions):
 		return fmt.Errorf("%w: instructions are at most %d characters", ErrInvalid, MaxInstructions)
-	case p.Account != nil && !accountLike(p.Kind):
-		return fmt.Errorf("%w: only an account project carries an account", ErrInvalid)
 	case p.Managed != "" && p.Managed != ManagedFile:
 		return fmt.Errorf("%w: a project is managed by the file or not at all", ErrInvalid)
+	case p.IsRoot() && p.Archived:
+		return fmt.Errorf("%w: the workspace cannot be archived", ErrInvalid)
+	case !p.IsRoot() && len(p.Kinds) > 0:
+		return fmt.Errorf("%w: only the workspace defines kinds", ErrInvalid)
+	case p.Announce != None && !p.Announce.valid():
+		return fmt.Errorf("%w: who may announce is viewer, member or owner", ErrInvalid)
+	}
+	if err := validMembers(p.Members); err != nil {
+		return err
+	}
+	if err := validKinds(p.Kinds); err != nil {
+		return err
 	}
 	if a := p.Account; a != nil {
 		switch {
@@ -347,10 +403,11 @@ type node struct {
 }
 
 // virtualRoot is the root of a tenant that has written nothing yet. It reads
-// as what the upgrade writes on a workspace's root: every platform agent
-// available, and the built-in router answering a message that tags no agent.
+// as what the upgrade writes on a workspace's root: everyone a member, every
+// platform agent available, and the built-in router answering a message that
+// tags no agent.
 func virtualRoot() Project {
-	return Project{Name: Root, Kind: Company, Agents: Agents{Enable: []string{Everyone}, Default: Auto}}
+	return Project{Name: Root, Kind: Company, Members: legacyMembers(Root), Agents: Agents{Enable: []string{Everyone}, Default: Auto}}
 }
 
 // build makes a tree. Every parent and every home must be in projects; build
