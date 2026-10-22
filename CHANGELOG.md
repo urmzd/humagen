@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.16.0 (2026-10-22)
+
+### Features
+
+- **projects**: Slack App Home, replies under announcements, GitHub comments to the app, release notes, agent-name confinement (#46) ([a42bb5a](https://github.com/urmzd/warp/commit/a42bb5a172505fd51541fb58e1c93e8b6f584979))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.15.1...v0.16.0)
+
+
 ## 0.15.1 (2026-10-22)
 
 ### Bug Fixes
