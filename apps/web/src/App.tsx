@@ -32,8 +32,9 @@ import { Schedules } from "./Schedules.tsx";
 import { Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
-import { updatesOf } from "@warp/adapter";
-import { HomeLines } from "./HomePage.tsx";
+import { notificationsOf, updatesOf } from "@warp/adapter";
+import { HOME_NEEDS, type HomeNotifications, type HomeUpdate } from "@warp/core";
+import { HomeBoxes, type Loaded } from "./HomePage.tsx";
 import { usePreferences } from "./preferences.ts";
 import { type Source as About, type PlatformMessage, transport as mail } from "./mail.ts";
 import { type AgentTab, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
@@ -160,8 +161,10 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // Until the saved preferences are read, defaults only draw the page: a save
   // sends every field, so nothing is saved over values not read yet.
   const { prefs, prefsRead, setPrefs, pin, mute } = usePreferences();
-  // The reader's own open announcements, for What's new on Home.
-  const [announced, setAnnounced] = useState<PlatformMessage[]>([]);
+  // The reader's own open announcements, for What's new on Home, and the
+  // newest of what needs them with how many do, for Needs you.
+  const [announced, setAnnounced] = useState<Loaded<PlatformMessage[]>>({ state: "loading" });
+  const [needing, setNeeding] = useState<Loaded<{ messages: PlatformMessage[]; open: number }>>({ state: "loading" });
   const [day, setDay] = useState<Summary | null>(null);
   const [live, setLive] = useState(false);
   // Bumped whenever a run starts or ends, so pages that aggregate refetch.
@@ -207,11 +210,16 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const loadInbox = useCallback(() => {
     if (!can("runs:read")) return;
     api.inboxCount().then(setInboxCounts).catch(() => {});
+    // A read that fails after one that worked keeps what was shown.
+    mail
+      .list({ limit: HOME_NEEDS, state: "open", needs: true })
+      .then((page) => setNeeding({ state: "ready", value: { messages: page.messages, open: page.open } }))
+      .catch(() => setNeeding((was) => (was.state === "ready" ? was : { state: "failed" })));
     if (can("projects:read"))
       mail
         .list({ limit: 20, state: "open", news: true })
-        .then((page) => setAnnounced(page.messages))
-        .catch(() => {});
+        .then((page) => setAnnounced({ state: "ready", value: page.messages }))
+        .catch(() => setAnnounced((was) => (was.state === "ready" ? was : { state: "failed" })));
     setInboxTick((t) => t + 1);
     // Settling a message settles its alert, which the Alerts badge counts.
     if (can("alerts:read")) api.alerts().then(setAlerts).catch(() => {});
@@ -343,14 +351,25 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const agentName = route.page === "agent" ? route.name : null;
   const editing = agents.find((a) => a.spec.name === agentName) ?? null;
   const shownName = prefs?.display_name || me.principal.name || "";
-  const updates = useMemo(() => {
+  const updates = useMemo((): Loaded<HomeUpdate[]> | undefined => {
+    if (!can("projects:read")) return undefined;
+    if (announced.state !== "ready") return announced;
     const titles = new Map((projects ?? []).map((p) => [p.name, p.title || p.name]));
-    return updatesOf(
-      announced,
-      (name) => (name === "" ? workspaceName : (titles.get(name) ?? name)),
-      (name, id) => href({ page: "project", name, tab: "inbox", message: id }),
-    );
-  }, [announced, projects, workspaceName]);
+    return {
+      state: "ready",
+      value: updatesOf(
+        announced.value,
+        (name) => (name === "" ? workspaceName : (titles.get(name) ?? name)),
+        (name, id) => href({ page: "project", name, tab: "inbox", message: id }),
+      ),
+    };
+  }, [can, announced, projects, workspaceName]);
+  const notifications = useMemo((): Loaded<HomeNotifications> | undefined => {
+    if (!can("runs:read")) return undefined;
+    if (needing.state !== "ready") return needing;
+    const items = notificationsOf(needing.value.messages, (id) => href({ page: "inbox", message: id }));
+    return { state: "ready", value: { items, inbox: { total: needing.value.open, url: href({ page: "inbox" }) } } };
+  }, [can, needing]);
 
   return (
     <div className="flex h-full text-aui-fg">
@@ -394,11 +413,13 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             canCreateProject={can("projects:write")}
             greeting={greeting(shownName)}
             home={
-              <HomeLines
-                needsYou={inboxCounts.open}
+              <HomeBoxes
+                notifications={notifications}
                 updates={updates}
+                onOpen={(n) => go({ page: "inbox", message: n.id })}
                 onInbox={() => go({ page: "inbox" })}
                 onUpdate={(u) => go({ page: "project", name: u.project, tab: "inbox", message: u.id })}
+                onUpdates={() => go({ page: "inbox", kind: "announcement" })}
               />
             }
             onProjectCreated={(project) => {
