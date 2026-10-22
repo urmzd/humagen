@@ -1030,3 +1030,37 @@ func TestAMessageTooLongToPostIsRefusedAsItArrives(t *testing.T) {
 		t.Fatalf("the thread holds %d turns, %v", len(turns), err)
 	}
 }
+
+// A question for the experts, when the run's chain lists no expert, goes to
+// the owners of the nearest project on that chain that lists any, not to
+// anyone who may resume runs.
+func TestAQuestionForExpertsWithNoExpertGoesToTheNearestOwners(t *testing.T) {
+	c := &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"asker": {asked(map[string]any{"question": "What is the PO number?", "asked_of": "sme:billing"}), say("Filed.")}},
+		tools: map[string][]string{"asker": {"ask_person"}},
+	}
+	p := stage(t, c, platform.Config{})
+	field(t, p)
+	cur, ok := p.ProjectTree(tenant).Get("Renewals")
+	if !ok {
+		t.Fatal("no Renewals")
+	}
+	if _, err := p.Projects.Update(tenant, "Renewals", cur.Version, ada, time.Now(), func(pr *projects.Project) error {
+		pr.Members = []projects.Entry{{Who: projects.Everyone, Role: projects.Viewer}, {Who: olu.Subject, Role: projects.Owner}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Renewals", Actor: envelope.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	q := questionFor(t, p, run.ID)
+	if !sees(p, olu, q.ID) || sees(p, grace, q.ID) {
+		t.Fatal("the question did not reach Renewals' owner alone")
+	}
+	if !strings.HasPrefix(q.Subject, "asker asks the project's owners: ") {
+		t.Fatalf("the question's subject = %q", q.Subject)
+	}
+}

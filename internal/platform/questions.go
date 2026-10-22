@@ -230,6 +230,9 @@ type addressee struct {
 	kind   string
 	topic  string
 	person string
+	// owners is a question for the experts that went to the project's
+	// owners, as there is no expert on the run's chain (nearestOwners).
+	owners bool
 }
 
 // addressOf decides who a question is for: the people who may answer it,
@@ -254,6 +257,18 @@ func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Questi
 			return []string{person}, nil, addressee{kind: ForPerson, person: person}
 		}
 		if experts, topic, asked := p.expertsAsked(run, q); asked {
+			if len(experts) == 0 {
+				// With no expert on the chain, the question goes to the
+				// project's owners, narrowed to the answerers as experts
+				// are.
+				if owners := p.nearestOwners(run.Tenant, run.Project); len(owners) > 0 {
+					audience = expertAudience(rev.Spec.Answerers, owners)
+					if slices.ContainsFunc(audience, func(who string) bool { return slices.Contains(owners, who) }) {
+						return audience, nil, addressee{kind: ForAnswerers, owners: true}
+					}
+					return audience, nil, addresseeOf(audience)
+				}
+			}
 			audience = expertAudience(rev.Spec.Answerers, experts)
 			if slices.ContainsFunc(audience, func(who string) bool { return slices.Contains(experts, who) }) {
 				return audience, nil, addressee{kind: ForExperts, topic: topic}
@@ -300,6 +315,26 @@ func (p *Platform) expertsAsked(run runs.Run, q payload.Question) (experts []str
 	}
 	experts, _ = p.Projects.Tree(run.Tenant).ExpertsFor(run.Project, topic)
 	return experts, topic, true
+}
+
+// nearestOwners is whom a question for the experts goes to when the run's
+// chain lists no expert: the owners of the nearest project on the chain, the
+// run's own first and the workspace last, that names any by its own entries.
+// An entry for everyone names no owner. Nil when no project on the chain
+// names one.
+func (p *Platform) nearestOwners(tenant, project string) []string {
+	for _, pr := range p.Projects.Tree(tenant).Chain(project) {
+		var out []string
+		for _, m := range pr.Members {
+			if m.Role == projects.Owner && m.Who != projects.Everyone && !slices.Contains(out, m.Who) {
+				out = append(out, m.Who)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	return nil
 }
 
 // expertAudience is who a question for experts is addressed to: the experts,
@@ -411,6 +446,9 @@ func (p *Platform) questionMessage(ctx context.Context, run runs.Run, q payload.
 	// The subject says whom the agent asked when that is not the reader
 	// alone, so an expert knows why it reached them.
 	asks := " asks: "
+	if to.owners {
+		asks = " asks the project's owners: "
+	}
 	if to.kind == ForExperts {
 		asks = " asks the experts: "
 		if to.topic != "" {
