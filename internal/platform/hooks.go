@@ -49,10 +49,6 @@ const memoryPrompt = "Below is one exchange between a person and the agent %q. "
 // ended is called exactly once for every run that ends.
 func (p *Platform) ended(ctx context.Context, run runs.Run) {
 	p.settleUsage(ctx, run)
-	// Its place under any concurrency limit is free again.
-	if run.Origin != runs.OriginSystem {
-		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: run.Tenant, RunID: run.ID, At: p.now()})
-	}
 	p.raise(run)
 	// A question nobody answered is not waiting any more.
 	p.settleQuestionsOf(run)
@@ -63,6 +59,26 @@ func (p *Platform) ended(ctx context.Context, run runs.Run) {
 		p.fileHook(run)
 	case run.Origin == runs.OriginAPI && run.Parent == "" && run.Status == runs.Completed:
 		p.afterTurn(ctx, run)
+	}
+}
+
+// over marks a run ended with change and frees its place under any
+// concurrency limit in the one critical section admission takes. A new run
+// is then never refused for a place a run that has already ended still held.
+func (p *Platform) over(change func() (runs.Run, bool)) (runs.Run, bool) {
+	p.admission.Lock()
+	defer p.admission.Unlock()
+	run, ended := change()
+	if ended {
+		p.free(run)
+	}
+	return run, ended
+}
+
+// free gives an ended run's place back. The caller holds p.admission.
+func (p *Platform) free(run runs.Run) {
+	if run.Origin != runs.OriginSystem {
+		p.appendUsage(usage.Entry{Kind: usage.Ended, Tenant: run.Tenant, RunID: run.ID, At: p.now()})
 	}
 }
 

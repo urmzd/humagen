@@ -48,7 +48,21 @@ func streamed(p *platform.Platform, runID, s string) bool {
 
 // endings counts a run's terminal events and its places freed in the usage
 // ledger.
+// endings counts a run's terminal events and the places it freed, once both
+// have landed: the terminal event is folded in a moment after the index
+// shows the run over, so a test that looked at once could see neither yet.
 func endings(p *platform.Platform, runID string) (events, freed int) {
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		events, freed = countEndings(p, runID)
+		if (events > 0 && freed > 0) || time.Now().After(deadline) {
+			return events, freed
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func countEndings(p *platform.Platform, runID string) (events, freed int) {
 	for _, e := range p.Journal.Events(tenant, []string{runID}) {
 		if e.Kind == envelope.KindCompleted || e.Kind == envelope.KindStopped || (e.Kind == envelope.KindFailed && strings.Contains(string(e.Payload), `"terminal":true`)) {
 			events++

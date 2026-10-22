@@ -700,7 +700,7 @@ func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
 			// A stopped run succeeds in the ledger: it ended and did not
 			// fail. Its output says it was stopped, and what it had said.
 			if out.Stopped != nil {
-				if run, ended := p.Runs.Stop(id, out.Text, out.Stopped.Reason, at); ended {
+				if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.Stop(id, out.Text, out.Stopped.Reason, at) }); ended {
 					p.log.Info("platform: run ended stopped in the ledger before its final event was seen", "run", id)
 					p.ended(ctx, run)
 				}
@@ -708,7 +708,7 @@ func (p *Platform) settleFromLedger(ctx context.Context, id string) bool {
 			}
 		}
 	}
-	if run, ended := p.Runs.End(id, status, answer, rec.Error, at); ended {
+	if run, ended := p.over(func() (runs.Run, bool) { return p.Runs.End(id, status, answer, rec.Error, at) }); ended {
 		p.log.Info("platform: run ended in the ledger before its final event was seen", "run", id, "status", status)
 		p.ended(ctx, run)
 	}
@@ -732,6 +732,9 @@ func (p *Platform) observe(ctx context.Context, e envelope.Event) {
 	}
 	p.admission.Lock()
 	run, ended := p.Runs.Observe(e)
+	if ended {
+		p.free(run)
+	}
 	p.admission.Unlock()
 	p.observeQuestion(ctx, e)
 	if ended {
