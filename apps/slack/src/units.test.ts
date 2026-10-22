@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { choose, mayRoute } from "./agents.ts";
-import { readConfig } from "./config.ts";
+import { NEEDED, readConfig, USEFUL } from "./config.ts";
 import { eventKey, runId, sessionOf, tagId, threadKey } from "./keys.ts";
 import {
   type ClientRecord,
@@ -364,7 +364,7 @@ test("a machine token is asked for once, kept, and asked for again when refused"
   await assert.rejects(token(), /did not issue a token|unexpected request/);
 });
 
-test("the README's least privilege covers every route the app calls as its machine", async () => {
+test("the README's least privilege and the app's own lists cover every route it calls as its machine", async () => {
   const { readFileSync } = await import("node:fs");
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   // What each operation needs, from the spec.
@@ -392,5 +392,14 @@ test("the README's least privilege covers every route the app calls as its machi
     assert.ok(permission, `${verb} ${route} is not in the spec`);
     if (permission === "authenticated") continue;
     assert.ok(scopes.has(`warp:${permission}`), `${verb} ${route} needs warp:${permission}`);
+    // At startup the app warns about any permission it does not list as one it uses.
+    assert.ok(USEFUL.includes(permission), `${verb} ${route} needs ${permission}, not in USEFUL`);
+  }
+  for (const scope of scopes) {
+    const permission = (scope ?? "").replace(/^warp:/, "");
+    assert.ok(USEFUL.includes(permission), `the README asks for ${scope}, not in USEFUL`);
+  }
+  for (const permission of NEEDED) {
+    assert.ok(scopes.has(`warp:${permission}`), `${permission} is needed, not in the README`);
   }
 });
