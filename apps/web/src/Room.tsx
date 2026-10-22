@@ -509,7 +509,7 @@ export function ThreadRoom({
             <button
               type="button"
               onClick={() => onOpenChannel(th.project, th.channel)}
-              className="rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+              className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
             >
               {words.sharedIn(projectTitle(projects, th.project, workspaceName), th.channel)}
             </button>
@@ -544,7 +544,7 @@ export function ThreadRoom({
         )}
       </header>
       {shareable && sharing && (
-        <div className="relative z-10 px-4 pb-2">
+        <div data-layer="share" className="relative z-10 px-4 pb-2">
           <ShareDialog
             thread={th}
             hasRuns={hasRuns}
