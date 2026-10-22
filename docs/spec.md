@@ -313,6 +313,7 @@ it:
 |---|---|
 | asked in the console, or through the API with a person's sign-in | that person |
 | asked by the Slack app built on the API for a Slack person its client maps (`act_as`) | the mapped person, never the app |
+| asked about with that app's message shortcut, on someone else's message | nobody: the app asks as itself, since those words are the whole request |
 | raised by a Slack client's own connector | the one person the team's Slack clients map that Slack user to; none, or two different people, is nobody |
 | Run Now on a schedule | whoever pressed it, when they wrote what it runs (its last editor, or its creator while nobody has edited it); anyone else's press acts for nobody |
 | Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person, as themselves, and anyone else, an operator included, is refused. A turn that acted for nobody is retried for nobody: in the inbox by anyone who may start runs, in the Slack app by the person who asked or an operator |

@@ -116,6 +116,12 @@ interface Job {
    * this; null when nobody here is known to have asked.
    */
   requester?: string | null;
+  /**
+   * The words are someone else's, not the person's who sent this: a message
+   * of another's they asked about. Asked through the app, for nobody, so
+   * nobody's words run with their credentials without their typing them.
+   */
+  notTheirs?: boolean;
   /** A mention in a channel thread: what people said there since the app was last asked goes with it. */
   history?: boolean;
 }
@@ -634,8 +640,9 @@ export class App {
       // the route takes none of them. See the README.
       // A person the client maps asks as themselves, so they do not approve
       // their own run's calls. Anyone else asks through the app. A turn asked
-      // again acts for whom again() decided, never for whoever else is known.
-      const asking = job.again ? job.again.as : await this.actAs(job.user);
+      // again acts for whom again() decided, never for whoever else is known,
+      // and someone else's words are asked for nobody.
+      const asking = job.again ? job.again.as : job.notTheirs ? null : await this.actAs(job.user);
       run = await this.warp.createRun(
         {
           agent,
@@ -1383,6 +1390,8 @@ export class App {
         triggerTs: message.ts,
         user: p.user.id,
         key: eventKey(session, message.ts, p.trigger_id),
+        // Someone else's message, or a bot's, is not the presser's to run as them.
+        ...(message.user !== p.user.id ? { notTheirs: true } : {}),
       });
       return;
     }
@@ -1437,7 +1446,7 @@ interface InteractivePayload {
   trigger_id: string;
   user: { id: string };
   channel?: { id: string };
-  message?: { ts: string; thread_ts?: string; text?: string };
+  message?: { ts: string; thread_ts?: string; text?: string; user?: string };
   view?: {
     callback_id: string;
     state?: { values?: Record<string, Record<string, { value?: string }>> };
