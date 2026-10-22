@@ -112,6 +112,31 @@ test("a project's meta line names its lead, the agent that answers what tags no 
   assert.ok(lead.querySelector("[data-accent='agent']"));
 });
 
+test("a project's header is one primary action and a More menu, with Archive and Delete last after a rule", async () => {
+  open(globexDetail, { onMute: async () => {} });
+  const more = await screen.findByRole("button", { name: "More" });
+  // Only New Conversation is a button of its own; the rest wait in the menu.
+  assert.ok(screen.getByRole("button", { name: "New Conversation" }));
+  for (const name of ["Mute Project", "Edit Project", "Move Project", "Archive Project", "Delete Project"]) {
+    assert.ok(!screen.queryByRole("button", { name }), `${name} is not a button in the header`);
+  }
+  assert.equal(more.getAttribute("aria-expanded"), "false");
+  fireEvent.keyDown(more, { key: "ArrowDown" });
+  const menu = screen.getByRole("menu", { name: "More" });
+  assert.equal(more.getAttribute("aria-expanded"), "true");
+  const children = [...menu.children].map((el) => (el.getAttribute("role") === "separator" ? "---" : el.textContent));
+  assert.deepEqual(children, ["Mute Project", "Edit Project", "Move Project", "---", "Archive Project", "Delete Project"]);
+  // Escape closes it and puts focus back on More.
+  fireEvent.keyDown(menu, { key: "Escape" });
+  assert.ok(!screen.queryByRole("menu"));
+  assert.equal(document.activeElement, more);
+  // Each item still does what its button did.
+  fireEvent.click(more);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit Project" }));
+  assert.ok(!screen.queryByRole("menu"));
+  assert.ok(await screen.findByRole("button", { name: "Cancel" }));
+});
+
 test("Mute Project says so beside it when the mute could not be saved", async () => {
   const asked: [string, boolean][] = [];
   open(globexDetail, {
@@ -120,7 +145,8 @@ test("Mute Project says so beside it when the mute could not be saved", async ()
       return Promise.reject(new Error("the preferences could not be read"));
     },
   });
-  fireEvent.click(await screen.findByRole("button", { name: "Mute Project" }));
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Mute Project" }));
   await screen.findByText("Could not mute. Try again.");
   assert.deepEqual(asked, [["Globex", true]]);
 });
@@ -128,7 +154,8 @@ test("Mute Project says so beside it when the mute could not be saved", async ()
 test("Move Project sends the new parent by its name, spaces and all", async () => {
   const platformDetail: ProjectDetail = { project: platform, ancestors: [workspace], children: [], limits: [] };
   open(platformDetail, { routes: { "POST /api/projects/Platform/move": () => platform } });
-  fireEvent.click(await screen.findByRole("button", { name: "Move Project" }));
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Move Project" }));
   fireEvent.click(screen.getByRole("button", { name: /^Move under:/ }));
   fireEvent.click(await screen.findByRole("option", { name: /^Globex renewals/ }));
   fireEvent.click(screen.getByRole("button", { name: "Move" }));
@@ -206,6 +233,7 @@ test("the workspace and company-wide projects are changed only with projects:gov
   assert.ok(screen.getByText("Only those who govern projects change the workspace and company-wide projects."));
   assert.ok(!screen.queryByRole("navigation", { name: "Where this project sits" }), "the workspace sits nowhere");
   assert.ok(!screen.queryByRole("button", { name: "Delete Project" }));
+  assert.ok(!screen.queryByRole("menuitem", { name: "Delete Project" }));
   cleanup();
   net.restore();
 

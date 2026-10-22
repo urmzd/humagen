@@ -153,6 +153,7 @@ export function collect(): Snapshot {
   const height = window.innerHeight;
   const root = document.documentElement;
   const main = document.querySelector("main");
+  const FLOATING = "[role=menu], [role=dialog], [role=listbox], [role=tooltip]";
   const shown = (el: Element) =>
     el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
 
@@ -199,7 +200,11 @@ export function collect(): Snapshot {
       .map((r) => cut(parent, r))
       .filter((b): b is Box => b !== null);
     if (boxes.length === 0) continue;
-    texts.push({ text: value.slice(0, 48), boxes, main: Boolean(main?.contains(parent)) });
+    texts.push({
+      text: value.slice(0, 48),
+      boxes, // A menu, dialog or tooltip floats over the page on purpose, so it is not text covering text.
+      main: Boolean(main?.contains(parent)) && !parent.closest(FLOATING),
+    });
   }
 
   const controls: Control[] = [];

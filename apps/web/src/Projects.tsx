@@ -52,6 +52,7 @@ import {
   Label,
   Menu,
   Page,
+  PageActions,
   Problem,
   primary,
   rows,
@@ -1290,54 +1291,40 @@ export function ProjectPage({
       crumbs={root ? undefined : <Breadcrumb detail={detail} workspaceName={workspaceName} onOpen={onOpen} />}
       lede={root ? words.workspaceHint : p.description}
       actions={
-        <>
-          {!root && onMute && (
-            <span className="relative inline-flex">
-              <button
-                type="button"
-                className={button}
-                onClick={() => {
-                  clearMute();
-                  onMute(p.name, !isMuted).catch(() =>
-                    sayMute(isMuted ? defaultCopy.announcements.unmuteFailed : defaultCopy.announcements.muteFailed, true),
-                  );
-                }}
-              >
-                {isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute}
-              </button>
-              <FlashNote flash={muteFlash} align="left" />
-            </span>
-          )}
-          {canWrite && !root && !editing && (
-            <button type="button" className={button} onClick={() => setEditing(true)}>
-              {words.editProject}
-            </button>
-          )}
-          {may("move") && moving === null && (
-            <button type="button" className={button} onClick={() => setMoving(p.parent ?? "")}>
-              {defaultCopy.roles.moveProject}
-            </button>
-          )}
-          {may("archive") && (
-            <button
-              type="button"
-              className={button}
-              onClick={() => api.updateProject(p.name, { ...updateOf(p), archived: !p.archived }).then(changed).catch(fail(setProblem, words.failed.save))}
-            >
-              {p.archived ? defaultCopy.roles.unarchive : defaultCopy.roles.archive}
-            </button>
-          )}
-          {may("delete") && (
-            <button type="button" className={button} onClick={() => api.deleteProject(p.name).then(onDeleted).catch(fail(setProblem, words.failed.delete))}>
-              {words.deleteProject}
-            </button>
-          )}
-          {can("runs:write") && (
-            <button type="button" className={primary} onClick={onNewChat}>
-              {words.newTask}
-            </button>
-          )}
-        </>
+        <PageActions
+          primary={can("runs:write") ? { label: words.newTask, onSelect: onNewChat } : undefined}
+          actions={[
+            ...(!root && onMute
+              ? [
+                  {
+                    label: isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute,
+                    onSelect: () => {
+                      clearMute();
+                      onMute(p.name, !isMuted).catch(() =>
+                        sayMute(isMuted ? defaultCopy.announcements.unmuteFailed : defaultCopy.announcements.muteFailed, true),
+                      );
+                    },
+                  },
+                ]
+              : []),
+            ...(canWrite && !root && !editing ? [{ label: words.editProject, onSelect: () => setEditing(true) }] : []),
+            ...(may("move") && moving === null ? [{ label: defaultCopy.roles.moveProject, onSelect: () => setMoving(p.parent ?? "") }] : []),
+            ...(may("archive")
+              ? [
+                  {
+                    label: p.archived ? defaultCopy.roles.unarchive : defaultCopy.roles.archive,
+                    // Restoring is not destructive; archiving is.
+                    destructive: !p.archived,
+                    onSelect: () => api.updateProject(p.name, { ...updateOf(p), archived: !p.archived }).then(changed).catch(fail(setProblem, words.failed.save)),
+                  },
+                ]
+              : []),
+            ...(may("delete")
+              ? [{ label: words.deleteProject, destructive: true, onSelect: () => api.deleteProject(p.name).then(onDeleted).catch(fail(setProblem, words.failed.delete)) }]
+              : []),
+          ]}
+          note={<FlashNote flash={muteFlash} align="left" />}
+        />
       }
       tabs={
         <Tabs

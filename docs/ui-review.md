@@ -157,6 +157,7 @@ the model and ordering in `packages/core` (such as `HomeModel`,
 | Pattern | What it is for | Renders it | When not to use it |
 |---|---|---|---|
 | Page | One screen with one title (its only h1), a line on what it is for, its own actions on the right and tabs under it | `Page` | A pane inside another page; there the title is an h2. Home's title is its greeting, drawn by `HomePage` |
+| Page actions | A page's own actions in its header: at most one primary action as a button, and the rest beside it. With more than two in all, the rest are one More menu, a text control reached by Tab and worked with the arrow keys, Escape and Enter, with destructive ones (Archive, Delete) last after a rule. On a phone the header is its title, its meta and at most two controls on one line | `PageActions`, `MoreMenu` | Actions on one row or one item of a list; those sit at the row's end |
 | Section | A titled part of a page: a heading, its count, a hint and its actions | `Section` | A single line or a single control; put it in the page or the section above |
 | Box | A section that stands on its own as a panel, such as Home's Needs you | `Section box` (the `card` panel) | Every part of a long page; boxes inside boxes |
 | Row that opens something | A list item whose whole row is the control: what it is on the first line, who, where or when under it | `RowButton`, or a button in a `rows` list | Rows that hold several controls of their own; put those controls at the row's end |
@@ -216,6 +217,7 @@ the patterns above, with the layout checks below.
 | Search fields, limit fields | The 20px input was the only target inside a 32px frame | The input fills its frame |
 | Switches | The label, which is the target, was 20px tall | 24px at least |
 | Project Overview | Counts written "Sub-projects (0)" and "Scheduled (0)" | `Count` beside the heading, hidden at zero |
+| Project, Schedule | Six and four boxed buttons in the header, three rows of them on a phone, Delete beside the everyday ones | `PageActions`: New Conversation and Run Now are the primary actions, the rest are under More, Archive and Delete last after a rule. Each keeps its permission check and does what its button did |
 | Inbox | The same announcements were "What's new" on Home and "Updates" in the inbox | "What's new" in both; the address is unchanged |
 | Home, Slack Home | An urgent item looked like any other | An item above normal says so in words before when it came ("Urgent · just now"); a normal one says nothing more |
 
@@ -232,7 +234,8 @@ announcements, failed runs and a schedule through the API, and captures every
 page and tab at 390x844 and 1280x800. It uses an installed Chromium or Chrome
 (`CHROMIUM` names one) and downloads none. Screenshots go to `.screens/`, which
 git ignores: `index.html` shows phone and desktop side by side, and a page that
-scrolls also gets `name.full.png`. `SCREENS_ONLY=home,inbox` captures only those.
+scrolls also gets `name.full.png`. A screen may press a button once it is drawn, so `project-more` and
+`schedule-more` show the More menu open, and it is checked like the rest. `SCREENS_ONLY=home,inbox` captures only those.
 
 The run fails when a screen breaks a layout check (`scripts/screens/checks.ts`,
 a pure function of the measured page, tested in `checks.test.ts`):

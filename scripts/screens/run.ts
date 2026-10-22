@@ -44,6 +44,8 @@ const VIEWPORTS: Viewport[] = [
 interface Screen {
   name: string;
   path: string;
+  /** A button to press once the page is drawn, by its accessible name, such as a menu to show open. */
+  press?: string;
 }
 
 /** Every main screen: each page, and each tab of the pages that have them. */
@@ -66,6 +68,8 @@ function screens(ids: { task: string; artifact: string; schedule: string }): Scr
       name: `project-${tab}`,
       path: tab === "inbox" ? "/projects/Launch" : `/projects/Launch/${tab}`,
     })),
+    { name: "project-more", path: "/projects/Launch", press: "More" },
+    { name: "schedule-more", path: `/schedules/${ids.schedule}`, press: "More" },
     { name: "workspace", path: "/projects/~" },
     { name: "inbox", path: "/inbox" },
     { name: "schedules", path: "/schedules" },
@@ -266,6 +270,8 @@ async function shoot(
     )
     .catch(() => {});
   await page.evaluate(() => document.fonts.ready);
+  if (s.press)
+    await page.getByRole("button", { name: s.press, exact: true }).click({ timeout: 5_000 });
   await sleep(300);
   const file = join(out, vp.name, `${s.name}.png`);
   await page.screenshot({ path: file });
