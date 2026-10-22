@@ -57,9 +57,10 @@ that lives in a project is not available in the workspace itself or in any
 project outside its home's subtree. A message that tags no agent goes to the
 default its place inherits, and with none nothing runs: nothing routes on its
 own. Setting the workspace default changes who answers everyone's untagged
-messages, so it needs `projects:govern`; to keep the old split where managers
-set it, add `role:manager` as an owner of the workspace once project roles
-exist, or grant them `govern on projects`.
+messages, so it needs `projects:govern`. Owning the workspace is not enough,
+since the workspace itself is changed only with govern: to keep the old split
+where managers set it, grant them `govern on projects`, or a role that holds it
+such as `steward` in [authorization](authorization.md#example).
 
 The directory (`people:read`, which every built-in role holds) shows each
 person's name, handle, roles and picture to everyone in the workspace. No
