@@ -479,7 +479,9 @@ decided per message:
 | A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to set it aside or to reply in the thread as themselves, which takes seeing the thread's project; a reply that tags anyone takes a member of it, since its tags start the agents and tell the people they name as any message's do |
 
 A message a caller may not see answers 404, not 403, and is left out of their
-count, and a notice about it never reaches their event stream. An
+count, and a notice about it never reaches their event stream. Where a
+client's app posted a message (`deliveries`) is shown only to that client's
+machine, wherever the message is read, a project's inbox included. An
 announcement's audience (`project:<name>`) and a proposed note's
 (`owners:<name>`) are decided from the project tree at each read, so a revoked
 membership hides past announcements at the next one. Announcements are plain

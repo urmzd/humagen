@@ -1496,6 +1496,11 @@ export interface InboxDraftPart {
 export interface InboxDelivery {
   channel: string;
   ts: string;
+  /** When the client last said the post shows the message as it stands:
+when it was posted, or when it recorded the post again after
+bringing it up to date. A message whose `updated_at` is later has
+changed since.
+ */
   at: string;
 }
 

@@ -111,9 +111,13 @@ to; a user two clients map to different people acts for nobody.
 
 The same credential, and no other, records where the app posted an inbox
 message: `PUT /api/inbox/{id}/deliveries/{client}` with `{channel, ts}`. The
-receipt shows in that message's `deliveries`, to that machine only, so after a
-restart, an edit or a withdrawal the app updates its post instead of posting
-again. For anyone else the answer is 404.
+receipt shows in that message's `deliveries`, to that machine only, wherever
+the message is read, a project's inbox included, so after a restart, an edit
+or a withdrawal the app updates its post instead of posting again. Recording
+the same post again after the message changed moves the receipt's `at` on,
+so it says the post shows the message as it stands, and the app catches up
+from its receipts each time its event stream opens (see [Slack](slack.md)).
+For anyone else the answer is 404.
 
 The trust model: the credential named as `machine` holds the vote of every
 person mapped here and can raise runs as them, and so use the tools that act as

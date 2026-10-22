@@ -134,6 +134,55 @@ func TestAnAnnouncementWhereTheAppOnlyViewsKeepsItsReceipt(t *testing.T) {
 	}
 }
 
+// A Slack app catches up on a bound project's announcements from the
+// project's own inbox, newest first and withdrawn ones too. There, as
+// wherever a message is read, a client's machine is shown its own client's
+// receipt, and another client's machine and a person are shown none.
+func TestAProjectsInboxShowsOnlyTheReadersOwnReceipts(t *testing.T) {
+	f, ana, _, _ := acmeNews(t)
+	admin := f.machine(t, "acme", everything...)
+	one, two := f.signedAs(t, "svc-one"), f.signedAs(t, "svc-two")
+	dana := f.person(t, "acme", "dana", "Dana", "warp-admins")
+	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	for _, c := range []string{slackApp("one", "A01ONE", "svc-one"), slackApp("two", "A01TWO", "svc-two")} {
+		want(t, f, admin, "POST", "/api/clients", c, http.StatusCreated)
+	}
+	want(t, f, admin, "PUT", "/api/projects/Globex/channels/general", `{"version":0,"slack":{"client":"one","channel":"C01GLX"}}`, http.StatusOK)
+	id := want(t, f, ana, "POST", "/api/projects/Globex/announcements", `{"subject":"Renewal signed","text":"Three more years."}`, http.StatusCreated)["id"].(string)
+	want(t, f, one, "PUT", "/api/inbox/"+id+"/deliveries/one", `{"channel":"C01GLX","ts":"1700000000.000200"}`, http.StatusNoContent)
+	want(t, f, two, "PUT", "/api/inbox/"+id+"/deliveries/two", `{"channel":"C02GLX","ts":"1700000000.000300"}`, http.StatusNoContent)
+	want(t, f, ana, "DELETE", "/api/projects/Globex/announcements/"+id, "", http.StatusNoContent)
+
+	receipts := func(tok string) map[string]any {
+		t.Helper()
+		page := want(t, f, tok, "GET", "/api/projects/Globex/inbox?kind=announcement&state=all", "", http.StatusOK)["messages"].([]any)
+		if len(page) != 1 || page[0].(map[string]any)["id"] != id {
+			t.Fatalf("Globex's inbox reads %v", page)
+		}
+		d, _ := page[0].(map[string]any)["deliveries"].(map[string]any)
+		return d
+	}
+	if d := receipts(one); len(d) != 1 || d["one"].(map[string]any)["ts"] != "1700000000.000200" {
+		t.Errorf("the first machine reads %v", d)
+	}
+	if d := receipts(two); len(d) != 1 || d["two"].(map[string]any)["ts"] != "1700000000.000300" {
+		t.Errorf("the second machine reads %v", d)
+	}
+	for name, tok := range map[string]string{"its author": ana, "a person": dana} {
+		if d := receipts(tok); d != nil {
+			t.Errorf("%s reads %v", name, d)
+		}
+	}
+	// Once the app has edited its post to say it was withdrawn, it records
+	// the same post again, and the receipt says so from then on.
+	before := receipts(one)["one"].(map[string]any)["at"]
+	want(t, f, one, "PUT", "/api/inbox/"+id+"/deliveries/one", `{"channel":"C01GLX","ts":"1700000000.000200"}`, http.StatusNoContent)
+	after := receipts(one)["one"].(map[string]any)
+	if after["at"] == before || after["ts"] != "1700000000.000200" {
+		t.Errorf("the post recorded again after the withdrawal reads %v, recorded first at %v", after, before)
+	}
+}
+
 // A reply in the Slack thread of an announcement the app posted is a thread
 // whose turns start with the announcement, from the person who posted it,
 // read as the spec says and under the thread's one read rule: in a
