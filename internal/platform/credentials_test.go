@@ -70,6 +70,8 @@ type toolUser struct {
 	// asks makes it ask a person first (ask_person): the question, then any
 	// options. What they answer is what it searches for.
 	asks []string
+	// askOf is whom it asks them of (asked_of), such as sme:billing.
+	askOf string
 }
 
 // found is what the issues search tells a recalling model.
@@ -88,11 +90,13 @@ func (m *toolUser) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 	}
 	m.sent = append(m.sent, fmt.Sprintf("%+v", req.Messages))
 	m.tools = append(m.tools, names)
-	recall, asks := m.recall, m.asks
+	recall, asks, askOf := m.recall, m.asks, m.askOf
 	m.mu.Unlock()
 	reply := agenttest.TextResponse("I have no issue tools.")
 	if len(asks) > 0 && slices.Contains(names, "ask_person") {
 		switch results := toolResults(req.Messages); {
+		case len(results) == 0 && askOf != "":
+			reply = asked(map[string]any{"question": asks[0], "asked_of": askOf})
 		case len(results) == 0:
 			reply = asking(asks[0], asks[1:]...)
 		case len(results) == 1 && slices.Contains(names, searchTool):
@@ -184,7 +188,15 @@ func toolResults(msgs []saigetypes.Message) []string {
 func (m *toolUser) ask(asks ...string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.asks = asks
+	m.asks, m.askOf = asks, ""
+}
+
+// askOfWhom makes it ask a question of someone (asked_of), such as the
+// experts on a topic.
+func (m *toolUser) askOfWhom(who, question string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.asks, m.askOf = []string{question}, who
 }
 
 func (m *toolUser) fail(failing bool) {

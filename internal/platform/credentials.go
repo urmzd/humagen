@@ -38,8 +38,12 @@ import (
 //     that person (PersonActor);
 //   - a run a Slack connector raised acts for the one person the team's
 //     Slack clients map its Slack user to (surface.stamp);
+//   - a run a message in a shared thread starts acts for the person who
+//     posted it, or for whom a surface's credential posted it, and never
+//     for another participant, though it is sent the room (carryOut);
 //   - a retry of a failed turn acts for whoever the turn acted for, and only
-//     that person may ask for one (mayRetry);
+//     that person may ask for one (mayRetry); a turn that answered a message
+//     in a shared thread answers that message again (retryAnswer);
 //   - everything else acts for nobody: a machine asking as itself, a
 //     schedule firing on its own clock, the platform's own housekeeping, an
 //     eval, a run another agent called, and every GitHub actor, since no
@@ -47,7 +51,7 @@ import (
 //
 // What a person answers a run steers what its tools are asked next, so a run
 // that uses the credential of the person it acts for asks that person alone
-// its replies and choices (maySteer).
+// its replies and choices (maySteer), also when it asks the experts.
 //
 // A person gives their credential through ConnectTool, as a reference or, where
 // the workspace allows it, a value (pkg/credentials). A reference is only

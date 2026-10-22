@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -99,13 +100,36 @@ func (p *Platform) afterTurn(ctx context.Context, run runs.Run) {
 // whole branch counts because the next agent is sent the conversation so far,
 // and one with no tools of its own can repeat what an earlier turn found.
 //
+// A turn that answers a person's message in a shared thread, or follows one
+// that did, is sent the room up to that message, and the room holds what
+// every earlier message's agents answered, whoever those runs acted for. So
+// there every turn of the conversation made before it counts as one before
+// it, not only its branch.
+//
 // What cannot be read now counts as such a turn: a branch whose start the
 // index no longer holds, a revision or a granted provider that cannot be
 // found, and a provider changed since the turn, whose scope then is not kept.
 func (p *Platform) mayCarryPersonData(ctx context.Context, run runs.Run) bool {
 	path, err := p.Runs.Path(run.Tenant, run.ID)
-	if err != nil || len(path) == 0 || path[0].Prev != "" {
+	if err != nil || len(path) == 0 {
 		return true
+	}
+	if head := path[0]; head.Prev != "" {
+		if !strings.HasPrefix(head.Prev, "m-") {
+			return true
+		}
+		room, err := p.Runs.Conversation(run.Tenant, head.Thread)
+		if err != nil {
+			return true
+		}
+		for _, r := range room {
+			if r.CreatedAt.Before(run.CreatedAt) {
+				path = append(path, r)
+			}
+		}
+		// Oldest first, as a branch is, so each revision counts from its
+		// earliest turn.
+		slices.SortStableFunc(path, func(a, b runs.Run) int { return a.CreatedAt.Compare(b.CreatedAt) })
 	}
 	checked := map[string]bool{}
 	for _, turn := range path {

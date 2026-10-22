@@ -128,6 +128,14 @@ closed).
 At most 10 mentions per message. A token inside inline code or a code block is
 not a tag.
 
+Every run a message starts acts for the person who posted it, never for
+another participant: a tool that acts as a person uses the poster's own
+credential. The run is sent the room up to the message, what others said
+there with who said it, ahead of the poster's words, as a mention in a Slack
+channel thread is, so another person's request in the thread is acted on
+with the poster's credential only when the poster's own words ask for it. A
+failed answer is retried only by the poster, from their inbox.
+
 ### Experts
 
 A project lists experts: a person (subject) or `role:<name>`, with up to 8
@@ -144,6 +152,12 @@ expert for the topic answers for it, then its ancestors, up to the root.
   the run, the thread or Slack, is `runtime.Answer` and resumes the run.
 - Addressing routes; it does not admit. Who may answer stays fiber's check
   against `answerers` (`mayAnswer`), unchanged.
+- **Except in a run that uses a person's own credential.** A run that acts
+  for a person and is granted a tool that takes each person's own
+  credential asks that person alone its replies and choices (`maySteer`), so
+  a question it asks of the experts goes to that person, and an expert's
+  answer is refused: it would reach that person's tools with their
+  credential.
 - The project layer of every turn lists the topics with experts ("Experts
   here: billing, security. Ask one with ask_person, asked_of sme:<topic>"), at
   most 16 topics.
@@ -1452,7 +1466,8 @@ phase 2 and experts to phase 3, because addressing and threads need them.
 - **Addressing is not confidentiality.** Expert questions are routed to
   experts, but anyone fiber's `answerers` check admits may still answer
   through the run, as today. A project that needs a closed set of answerers
-  names them in the agent's spec.
+  names them in the agent's spec. A run that uses the credential of the
+  person it acts for is answered by that person alone, experts included.
 - **Membership by IdP group** relies on a policy file with empty roles and
   `grant ... to group`. The default policy has only four roles, and a group
   change applies at the next sign-in. Subjects can be listed directly.

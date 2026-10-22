@@ -615,10 +615,30 @@ func (p *Platform) retry(ctx context.Context, who auth.Principal, runID string) 
 		ID:    "api-retry-" + strconv.Itoa(len(who.Subject)) + "-" + who.Subject + "-" + run.ID,
 		Agent: run.Agent, Text: run.Text, After: run.Prev, Actor: actor,
 	}
+	if run.Message != "" {
+		return p.retryAnswer(ctx, who.Tenant, run, t)
+	}
 	if run.Prev == "" {
 		t.Project = run.Project
 	}
 	return p.Converse(ctx, who.Tenant, t)
+}
+
+// retryAnswer asks a failed run that answered a person's message in a
+// shared thread to answer that message again: the same agent, sent the room
+// up to the message, filed under it beside the failed run. The message is
+// the poster's, and the retry acts as t says, for the person the failed run
+// acted for, who posted it.
+func (p *Platform) retryAnswer(ctx context.Context, tenant string, run runs.Run, t Turn) (runs.Run, error) {
+	th, err := p.ThreadRecord(tenant, run.Thread)
+	if err != nil {
+		return runs.Run{}, err
+	}
+	m, err := p.Threads.Message(tenant, th.ID, run.Message)
+	if err != nil {
+		return runs.Run{}, err
+	}
+	return p.answerMessage(ctx, tenant, th, m, t.Agent, t.Actor, t.ID)
 }
 
 // decideMemory keeps the chosen proposals and discards the rest.

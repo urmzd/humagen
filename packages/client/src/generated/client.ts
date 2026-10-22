@@ -1096,7 +1096,9 @@ only by that person: anyone else's edit is 403, and they may approve
 or deny it as asked. A choice or a reply in a run that uses the
 credentials of the person it acts for (its revision is granted a
 person-scoped tool provider) is answered only by that person: anyone
-else is 403. A surface that authenticated a person itself
+else is 403. So is a question such a run asks of the project's
+experts (`asked_of: sme:<topic>`), which is addressed to that person
+and not to the experts. A surface that authenticated a person itself
 answers for them with `act_as`: only the credential its client names,
 and only for a person its client maps.
 
@@ -1225,9 +1227,13 @@ through a client that maps them; no field names an author, and a
 credential acting for nobody is refused (403). What the message
 starts follows the tag rules: the agents it tags answer, at most 3;
 tagging only people or experts notifies them; posted only, nothing
-answers; otherwise the default the thread inherits answers. A
-`private` thread is refused (409) until reads are confined. A
-`default` must be able to answer in the project (400).
+answers; otherwise the default the thread inherits answers. Each run
+it starts acts for the person the message is posted as, never for
+anyone else in the thread, so a tool that acts as a person uses that
+person's own credential; the run is sent the room up to the message,
+what others said there, ahead of it. A `private` thread is refused
+(409) until reads are confined. A `default` must be able to answer
+in the project (400).
 
 A workspace holds at most 10,000 threads and a project 2,000, a
 conversation from before threads counting once its record is written
@@ -1318,7 +1324,8 @@ answers 409. `private` is refused (409) until reads are confined. A
   }
 
   /** Posted as the caller, or as the person `act_as` names through a
-client that maps them, as for `startThread`. `after` is the turn it
+client that maps them, as for `startThread`, and each run it starts
+acts for that person. `after` is the turn it
 follows: a message of the thread, a run answering one, or in a
 conversation from before threads one of its runs; left out, it
 follows the latest. `answers` records the message as a question's
@@ -1752,8 +1759,10 @@ refused by a limit with 429 or 402, and with 409 when the turn's
 project was deleted since. The run acts for whoever the failed turn
 acted for: a turn that acted for a person is retried only by that
 person, signed in as themselves, and anyone else is 403; a turn that
-acted for nobody is retried for nobody. Each person's retry is a run
-of its own, and pressing it again returns the same one.
+acted for nobody is retried for nobody. A failed answer to a message
+in a shared thread is asked again as an answer to the same message,
+for the person who posted it. Each person's retry is a run of its
+own, and pressing it again returns the same one.
  */
   async resolveInboxPart(id: string, part: string, body: Resolution, options?: RequestOptions): Promise<InboxMessage> {
     let path = "/api/inbox/{id}/parts/{part}/resolve";

@@ -552,10 +552,14 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	d := threads.Decide(threads.Input{Mentions: m.Mentions, Reply: reply, PostOnly: postOnly, Default: def, Unavailable: unavailable})
 	out := Posted{Runs: []runs.Run{}, Notified: []string{}, Refused: []threads.Mention{}, Rule: d.Rule, Reason: d.Reason}
 	mentions := d.Mentions
-	actor := envelope.Actor{ID: m.By, Display: m.Name}
+	// The runs a message starts act for the person who posted it, and for
+	// nobody else in the thread: the tools that act as a person use the
+	// poster's own credentials (credentials.go), though each run is sent
+	// what others said in the room ahead of the poster's words.
+	actor := envelope.Actor{ID: m.By, Display: m.Name, User: m.By}
 	var answered []threads.Participant
 	start := func(agent string) (runs.Run, error) {
-		run, err := p.answerMessage(ctx, tenant, th, m, agent, actor)
+		run, err := p.answerMessage(ctx, tenant, th, m, agent, actor, answerTagID(th.ID, m.ID, agent))
 		if err == nil {
 			out.Runs = append(out.Runs, run)
 			answered = append(answered, threads.Participant{Kind: threads.Agent, Name: run.Agent, AddedBy: m.By})
@@ -642,15 +646,14 @@ func answerTagID(thread, message, agent string) string {
 	return "thread-" + thread + "-" + message + "-" + agent
 }
 
-// answerMessage starts an agent answering a person's message: @auto picks
-// the agent first. The agent is sent its context and the room's transcript
-// up to the message, then the message.
-func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, agent string, actor envelope.Actor) (runs.Run, error) {
+// answerMessage starts an agent answering a person's message, as the run
+// tagID names: @auto picks the agent first. The agent is sent its context and
+// the room's transcript up to the message, then the message.
+func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, agent string, actor envelope.Actor, tagID string) (runs.Run, error) {
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
 		runs.MetaChannel: th.Channel, runs.MetaProject: th.Project,
 	}
-	tagID := answerTagID(th.ID, m.ID, agent)
 	if agent == Auto {
 		who, err := p.resolveAgent(ctx, tenant, p.placeOfThread(tenant, th), Auto, m.Text, nil)
 		if err != nil {
