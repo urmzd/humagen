@@ -772,7 +772,7 @@ export const defaultCopy = {
     emptyCreate: "No projects yet. Make one to keep related conversations together.",
     noMatch: "No project matches.",
     allProjects: "All projects",
-    /** Before the agent that answers a project's untagged messages, in its meta line: "Lead globex-helper". */
+    /** Before the agent that answers a project's untagged Slack and GitHub messages, in its meta line: "Lead globex-helper". */
     lead: "Lead",
     missing: (name: string) => `No project named ${name}`,
     missingHint: "It may have been deleted, or you may not be allowed to see it.",
