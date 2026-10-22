@@ -63,6 +63,8 @@ interface WithCopy {
 export interface TurnCapabilities {
   /** Rating the answer (Helpful / Not helpful) and commenting on it. */
   feedback?: boolean;
+  /** Regenerate on an answered turn, where a surface offers it. */
+  regenerate?: boolean;
   /** Report Issue on an internal failure. */
   report?: boolean;
 }

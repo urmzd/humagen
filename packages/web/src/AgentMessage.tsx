@@ -115,7 +115,17 @@ const actionBtn =
   "inline-flex size-7 items-center justify-center rounded-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-accent";
 
 /** Copy, regenerate, rate (then an optional comment), and usage. */
-function MessageActions({ turn, copy, rate }: { turn: Turn; copy: Copy; rate: boolean }) {
+function MessageActions({
+  turn,
+  copy,
+  rate,
+  regenerate,
+}: {
+  turn: Turn;
+  copy: Copy;
+  rate: boolean;
+  regenerate: boolean;
+}) {
   const onAction = useContext(ActionContext);
   const itemActions = useContext(ItemActionsContext);
   const text = turn.text.replace(/\[\[[^\]]+\]\]/g, "").trim();
@@ -124,17 +134,19 @@ function MessageActions({ turn, copy, rate }: { turn: Turn; copy: Copy; rate: bo
     <div role="toolbar" aria-label="Message actions" className="-ml-1.5 flex items-center gap-0.5">
       {/* One copy control, never two: the host's replaces the built-in when it draws one. */}
       {text && (hostCopy ?? <CopyButton text={text} label="Copy answer" note="above" />)}
-      <button
-        type="button"
-        aria-label="Regenerate"
-        title="Regenerate"
-        className={actionBtn}
-        onClick={() =>
-          onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
-        }
-      >
-        <RefreshIcon size={13} />
-      </button>
+      {regenerate && (
+        <button
+          type="button"
+          aria-label="Regenerate"
+          title="Regenerate"
+          className={actionBtn}
+          onClick={() =>
+            onAction({ id: ActionId.retry, payload: { turnId: turn.id, target: "regenerate" } })
+          }
+        >
+          <RefreshIcon size={13} />
+        </button>
+      )}
       {rate && (
         <Rating
           up={{ id: ActionId.feedback, payload: { turnId: turn.id, target: "up" } }}
@@ -179,7 +191,10 @@ export function AgentMessage({
    * always sent on the click; turning this off only skips the question.
    */
   feedbackPrompt?: boolean;
-  /** What the host can act on. `feedback: false` hides the rating; `report: false` Report Issue. */
+  /**
+   * What the host can act on. `feedback: false` hides the rating; `report: false` Report Issue;
+   * `regenerate: false` Regenerate.
+   */
   capabilities?: TurnCapabilities;
 }) {
   const inherited = useContext(ItemActionsContext);
@@ -244,7 +259,12 @@ export function AgentMessage({
           </TurnMetaContext.Provider>
           {final && (
             <FeedbackPromptContext.Provider value={feedbackPrompt}>
-              <MessageActions turn={turn} copy={copy} rate={capabilities?.feedback !== false} />
+              <MessageActions
+                turn={turn}
+                copy={copy}
+                rate={capabilities?.feedback !== false}
+                regenerate={capabilities?.regenerate !== false}
+              />
             </FeedbackPromptContext.Provider>
           )}
         </ItemActionsContext.Provider>

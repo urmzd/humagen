@@ -40,18 +40,32 @@ function pathOf(turns: Run[], chosen: Record<string, string>): Run[] {
 }
 
 /**
- * Why the reader may not ask a failed turn again in the conversation, or ""
- * when they may. A turn asked again here is asked as the reader, so it acts
- * for them, with their own credentials, and is offered only on a turn that
- * acted for them. A turn that acted for someone else is theirs alone to
- * retry, and one that acted for nobody is retried for nobody (from the inbox,
- * or where it was asked), so nobody's words are run with the reader's
- * credentials without their typing them.
+ * The person whose turn it was, to ask again: whom it acted for, as its
+ * record says. A turn recorded before warp said whom a run acts for names no
+ * user, so one a person asked from the console or the API is theirs. A retry
+ * warp asked for nobody names no user either, and names whoever pressed it,
+ * but its words were not theirs, so it is nobody's.
+ */
+function ownerOf(run: Run): string {
+  const person = actedFor(run);
+  if (person || !run.actor || run.actor.bot || run.actor.user) return person;
+  const retry = run.tag_id === undefined || run.tag_id.startsWith("api-retry-");
+  return run.origin === "api" && !retry ? run.actor.id : "";
+}
+
+/**
+ * Why the reader may not ask a turn again in the conversation, with Retry or
+ * Regenerate, or "" when they may. A turn asked again here is asked as the
+ * reader, so it acts for them, and is offered only on a turn that acted for
+ * them. A turn that acted for someone else is theirs alone to retry, and one
+ * that acted for nobody is retried for nobody (from the inbox, or where it
+ * was asked), so nobody's words are run with the reader's credentials
+ * without their typing them.
  */
 export function notAskable(run: Run, me: string): string {
-  const person = actedFor(run);
+  const person = ownerOf(run);
   if (me !== "" && person === me) return "";
-  if (person) return `This turn acted for ${run.actor?.display || person}, with their own credentials, so only they can retry it.`;
+  if (person) return `This turn acted for ${run.actor?.display || person}, so only they can retry it.`;
   return "This turn acted for nobody, so it is not retried here, where it would act for you.";
 }
 
@@ -73,7 +87,7 @@ function TurnView({
   const turn = useRunTurn(live ? run : undefined);
   const index = siblings.findIndex((s) => s.id === run.id);
   const ended = run.status === "completed" || run.status === "failed";
-  const refused = run.status === "failed" ? notAskable(run, me) : "";
+  const refused = notAskable(run, me);
   const drawn = useMemo(
     () =>
       turn ?? {
@@ -92,9 +106,10 @@ function TurnView({
       },
     [turn, run],
   );
-  // Retry is not offered on a turn the reader may not ask again (notAskable).
+  // Neither Retry nor Regenerate is offered on a turn the reader may not ask
+  // again (notAskable). A failure says why instead of offering Retry.
   const shown = useMemo(
-    () => (refused && drawn.failure ? { ...drawn, failure: { ...drawn.failure, retryable: false } } : drawn),
+    () => (refused && drawn.failure ? { ...drawn, failure: { ...drawn.failure, retryNotOffered: refused } } : drawn),
     [drawn, refused],
   );
 
@@ -112,7 +127,7 @@ function TurnView({
       </div>
 
       <AgentTint name={run.agent}>
-        <AgentMessage turn={shown} itemActions={itemActions(run)} />
+        <AgentMessage turn={shown} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} />
       </AgentTint>
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
@@ -143,7 +158,6 @@ function TurnView({
         )}
         {run.calls > 0 && <span>{run.calls} calls to other agents</span>}
         {!ended && run.error && <span>Last attempt failed, retrying: {cause(run.error)}</span>}
-        {refused && <span>{refused}</span>}
       </div>
     </article>
   );
