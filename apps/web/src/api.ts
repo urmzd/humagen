@@ -1047,7 +1047,7 @@ export interface Thread {
 }
 
 export interface ThreadMention {
-  kind: "agent" | "person" | "sme";
+  kind: "agent" | "person" | "sme" | "skill" | "role";
   /** The agent (`auto` for @auto), the person's subject, or the experts' topic. */
   name: string;
   run?: string;

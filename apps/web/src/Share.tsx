@@ -1,5 +1,6 @@
 import { defaultCopy } from "@warp/components";
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import { conflictOf } from "./conflicts.ts";
 import { ApiError, type Channel, coworking, type DirectoryPerson, type ProjectView, type Thread, type ThreadPage } from "./api.ts";
 import { button, field, Label, Problem, primary } from "./ui.tsx";
 
@@ -169,22 +170,22 @@ export function ShareDialog({
   // The server refused a move (409): the project stays where it is.
   const [fixed, setFixed] = useState(hasRuns);
   const [channels, setChannels] = useState<Channel[] | null>(null);
-  const [channel, setChannel] = useState("general");
+  // The channel it is filed in, until another project is picked, where general is.
+  const [channel, setChannel] = useState(thread.channel || "general");
   const [people, setPeople] = useState<DirectoryPerson[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const heading = useId();
-  const first = useRef<HTMLSelectElement>(null);
-  const second = useRef<HTMLSelectElement>(null);
+  const form = useRef<HTMLFormElement>(null);
 
   // The first control that can change takes focus, so Escape closes from it.
   useEffect(() => {
-    (hasRuns ? second.current : first.current)?.focus();
-  }, [hasRuns]);
+    form.current?.querySelector<HTMLElement>("select:not(:disabled), input:not(:disabled)")?.focus();
+  }, []);
 
   useEffect(() => {
     let live = true;
-    setChannel("general");
+    setChannel(project === thread.project ? thread.channel || "general" : "general");
     setChannels(null);
     coworking
       .channels(project)
@@ -210,20 +211,24 @@ export function ShareDialog({
       })
       .catch((e) => {
         setBusy(false);
-        // A 409 on a move is the project fixed by a run; any other says its own reason.
-        if (e instanceof ApiError && e.status === 409 && project !== thread.project) {
-          setProblem(words.shareConflict);
+        // Each refusal in the console's own words: a run fixes the project
+        // and the channel, and someone else may have changed it meanwhile.
+        const why = conflictOf(e);
+        if (why === "project" || why === "channel") {
+          setProblem(why === "project" ? words.shareConflict : words.shareChannelFixed);
           setProject(thread.project);
+          setChannel(thread.channel || "general");
           setFixed(true);
-        }
+        } else if (why === "version") setProblem(words.changedMeanwhile);
         else if (e instanceof ApiError && e.status === 403) setProblem(defaultCopy.noPermission);
-        else setProblem(e instanceof ApiError ? e.message : words.shareFailed);
+        else setProblem(words.shareFailed);
       });
   };
 
   const inThread = thread.participants.filter((p) => p.kind === "person").map((p) => p.name);
   const names = channels?.map((c) => c.name) ?? [];
   if (!names.includes("general")) names.unshift("general");
+  if (project === thread.project && thread.channel && !names.includes(thread.channel)) names.push(thread.channel);
 
   return (
     <section
@@ -242,6 +247,7 @@ export function ShareDialog({
       </h2>
       <p className="text-aui-xs text-aui-muted">{words.shareLede}</p>
       <form
+        ref={form}
         className="flex flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
@@ -250,7 +256,7 @@ export function ShareDialog({
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Label text={words.shareProject} hint={fixed ? words.shareProjectFixed : undefined}>
-            <select ref={first} className={field} value={project} disabled={fixed} onChange={(e) => setProject(e.target.value)}>
+            <select className={field} value={project} disabled={fixed} onChange={(e) => setProject(e.target.value)}>
               <option value="">{workspaceName || defaultCopy.projects.workspace}</option>
               {projects
                 .filter((p) => p.name !== "")
@@ -262,7 +268,7 @@ export function ShareDialog({
             </select>
           </Label>
           <Label text={words.shareChannel}>
-            <select ref={second} className={field} value={channel} onChange={(e) => setChannel(e.target.value)}>
+            <select className={field} value={channel} disabled={fixed} onChange={(e) => setChannel(e.target.value)}>
               {names.map((n) => (
                 <option key={n} value={n}>
                   {words.channel(n)}
