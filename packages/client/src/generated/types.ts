@@ -503,6 +503,30 @@ export interface ThreadTurn {
   kind: "message" | "run";
   message?: ThreadMessage;
   run?: Run;
+  ask?: ThreadAsk;
+}
+
+/** The question a parked run waits on, as the reader stands to it, on a
+run turn whose run is parked on a question a person answers. `yours`
+says the reader may answer it, as answering would check them: it is
+addressed to them, they hold `runs:write`, and nothing else refuses
+them, such as approving a call their own request raised. `for` says
+whom it is for: `anyone` who may resume runs, one `person` (the
+person the run acts for, by handle, when an answer may reach their
+own credential), the `experts` on `topic` in the run's project (every
+expert when `topic` is absent), the `answerers` its agent's rules
+name or it asked, or `nobody`, when the rules cannot be read. It
+names nobody the reader may not see. The runtime still has the last
+word when an answer is given.
+ */
+export interface ThreadAsk {
+  /** The question's id, `question.id` on the run. */
+  question: string;
+  yours: boolean;
+  for: "anyone" | "person" | "experts" | "answerers" | "nobody";
+  topic?: string;
+  /** The handle of the person it is for, with `for` of `person`. */
+  person?: string;
 }
 
 /** Who answers an untagged message in a place, and where that is set:
@@ -1267,6 +1291,8 @@ export interface InboxSource {
   project?: string;
   /** The agent a question's tool call would call, when it calls one. */
   target?: string;
+  /** What the conversation it is about is called, `thread`'s or else `run`'s, its title or else the start of its first message, for a reader who may read it. */
+  thread_title?: string;
 }
 
 export interface InboxOutcome {

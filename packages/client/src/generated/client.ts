@@ -1310,7 +1310,10 @@ the id of the run that started it.
 
 The first page is the newest 200 turns, or `limit`. `next` is the
 cursor for the turns before them, or null at the start: pass it back
-as `before`. `answers` is who answers an untagged message here.
+as `before`. `answers` is who answers an untagged message here. A run
+turn whose run is parked on a question a person answers carries
+`ask`: whether the reader may answer it, and whom it is for, so a
+surface offers the answer only to the people it is for.
  */
   async getThread(id: string, before?: string, limit?: number, options?: RequestOptions): Promise<ThreadPage> {
     let path = "/api/threads/{id}";

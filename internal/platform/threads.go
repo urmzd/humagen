@@ -135,6 +135,9 @@ type ThreadTurn struct {
 	Kind    string           `json:"kind"`
 	Message *threads.Message `json:"message,omitempty"`
 	Run     *runs.Run        `json:"run,omitempty"`
+	// Ask is the question a parked run waits on, as the reader stands to
+	// it (AsksIn).
+	Ask *Ask `json:"ask,omitempty"`
 }
 
 // Turn kinds.

@@ -150,6 +150,10 @@ type Source struct {
 	// Target is the agent a question's tool call would call, when the
 	// question is about calling one: the callee whose queue it is in.
 	Target string `json:"target,omitempty"`
+	// ThreadTitle is what the conversation it is about is called, Thread
+	// or else Run's, for a reader who may read it. It is filled in when the
+	// message is shown, and never stored.
+	ThreadTitle string `json:"thread_title,omitempty"`
 }
 
 // AlertPart is an alert to acknowledge.

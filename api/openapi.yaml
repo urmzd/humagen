@@ -1157,7 +1157,10 @@ paths:
 
         The first page is the newest 200 turns, or `limit`. `next` is the
         cursor for the turns before them, or null at the start: pass it back
-        as `before`. `answers` is who answers an untagged message here.
+        as `before`. `answers` is who answers an untagged message here. A run
+        turn whose run is parked on a question a person answers carries
+        `ask`: whether the reader may answer it, and whom it is for, so a
+        surface offers the answer only to the people it is for.
       x-permission: runs:read
       parameters:
         - {$ref: "#/components/parameters/ThreadID"}
@@ -4849,6 +4852,35 @@ components:
         kind: {type: string, enum: [message, run]}
         message: {$ref: "#/components/schemas/ThreadMessage"}
         run: {$ref: "#/components/schemas/Run"}
+        ask: {$ref: "#/components/schemas/ThreadAsk"}
+    ThreadAsk:
+      description: |
+        The question a parked run waits on, as the reader stands to it, on a
+        run turn whose run is parked on a question a person answers. `yours`
+        says the reader may answer it, as answering would check them: it is
+        addressed to them, they hold `runs:write`, and nothing else refuses
+        them, such as approving a call their own request raised. `for` says
+        whom it is for: `anyone` who may resume runs, one `person` (the
+        person the run acts for, by handle, when an answer may reach their
+        own credential), the `experts` on `topic` in the run's project (every
+        expert when `topic` is absent), the `answerers` its agent's rules
+        name or it asked, or `nobody`, when the rules cannot be read. It
+        names nobody the reader may not see. The runtime still has the last
+        word when an answer is given.
+      type: object
+      required: [question, yours, for]
+      properties:
+        question:
+          description: The question's id, `question.id` on the run.
+          type: string
+        yours: {type: boolean}
+        for:
+          type: string
+          enum: [anyone, person, experts, answerers, nobody]
+        topic: {type: string}
+        person:
+          description: The handle of the person it is for, with `for` of `person`.
+          type: string
     ThreadAnswers:
       description: |
         Who answers an untagged message in a place, and where that is set:
@@ -6024,6 +6056,9 @@ components:
         project: {type: string}
         target:
           description: The agent a question's tool call would call, when it calls one.
+          type: string
+        thread_title:
+          description: What the conversation it is about is called, `thread`'s or else `run`'s, its title or else the start of its first message, for a reader who may read it.
           type: string
     InboxOutcome:
       type: object

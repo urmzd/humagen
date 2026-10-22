@@ -595,7 +595,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"Note": {typ: memory.Note{}}, "Actor": {typ: envelope.Actor{}}, "Run": {typ: runs.Run{}},
 		"ThreadSummary": {typ: platform.ThreadSummary{}},
 		"Thread":        {typ: threads.Thread{}}, "ThreadParticipant": {typ: threads.Participant{}}, "ThreadMention": {typ: threads.Mention{}},
-		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}},
+		"ThreadAnswerRef": {typ: threads.AnswerRef{}}, "ThreadMessage": {typ: threads.Message{}}, "ThreadTurn": {typ: platform.ThreadTurn{}}, "ThreadAsk": {typ: platform.Ask{}},
 		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
@@ -1023,6 +1023,17 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	if question == "" {
 		t.Fatal("the asking run never parked on its question")
+	}
+	// Its thread says, to someone it asks, that the question is theirs.
+	room := c.call(acme, "GET", "/api/threads/{id}", "/api/threads/"+parked.str("thread"), "", http.StatusOK)
+	var ask map[string]any
+	for _, turn := range sliceOf(room.field("turns")) {
+		if a := obj(obj(turn)["ask"]); a != nil {
+			ask = a
+		}
+	}
+	if ask["question"] != question || ask["yours"] != true || ask["for"] != "answerers" {
+		t.Errorf("the parked run's ask = %v in %s", ask, room.raw)
 	}
 	answer := "/api/runs/{id}/questions/{question}/answer"
 	at := "/api/runs/" + parked.str("id") + "/questions/" + question + "/answer"
