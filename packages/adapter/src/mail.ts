@@ -14,6 +14,7 @@ import {
   type ArtifactKind,
   type HomeUpdate,
   type InboxMessage,
+  isAnnouncement,
   type MessagePart,
   messageState,
   orderUpdates,
@@ -492,17 +493,30 @@ export function mailTransport(http: Http): Transport {
 /** A project's address in a route: `~` is the workspace. */
 const projectAt = (project: string) => `/api/projects/${project === "" || project === "~" ? "~" : encodeURIComponent(project)}`;
 
+/** The project a message is filed in, "" for the workspace: where it is announced, and withdrawn. */
+export function projectOf(message: PlatformMessage): string {
+  return message.about.find((s) => s.kind === "project")?.id ?? "";
+}
+
 /**
  * A project's inbox, over the inbox's own calls: it lists what is filed in the
  * project (and, with `children`, in the projects below it), and reads and
  * answers each message as the inbox does. Everyone who can see the project
  * reads it, so its totals are counted from what is loaded, not the reader's
- * whole inbox. Resolved is read as everything, less what is still open.
+ * whole inbox. Resolved is read as everything, less what is still open. A
+ * message read by its id is one filed in this project: any other is not
+ * found here, as a link to a message names the project it is filed in.
  */
 export function projectTransport(http: Http, project: string, children = false): Transport {
   const inbox = mailTransport(http);
+  const name = project === "~" ? "" : project;
   return {
     ...inbox,
+    get: async (id) => {
+      const m = await inbox.get(id);
+      if (projectOf(m) !== name) throw new MailError(404, "That message is not in this project's inbox.");
+      return m;
+    },
     list: async (q) => {
       const params = new URLSearchParams({ limit: String(q.limit), state: q.state === "open" || q.state === undefined ? "open" : "all" });
       if (children) params.set("children", "true");
@@ -519,7 +533,8 @@ export function projectTransport(http: Http, project: string, children = false):
 
 /**
  * What's new on Home, from a page of the reader's own announcements: the open
- * ones, unread first and then newest, at most five. `titles` names a project
+ * ones, unread first and then newest, at most five. An agent's draft, which an
+ * owner reads under the same kind, was never posted, so it is not news. `titles` names a project
  * as people see it ("" is the workspace), and `url` is where one opens.
  */
 export function updatesOf(
@@ -529,9 +544,9 @@ export function updatesOf(
 ): HomeUpdate[] {
   return orderUpdates(
     messages
-      .filter((m) => m.kind === "announcement" && messageState(m) === "open")
+      .filter((m) => m.kind === "announcement" && isAnnouncement(m) && messageState(m) === "open")
       .map((m) => {
-        const project = m.about.find((s) => s.kind === "project")?.id ?? "";
+        const project = projectOf(m);
         const kind = m.from.kind === "person" || m.from.kind === "agent" ? m.from.kind : "system";
         return {
           id: m.id,

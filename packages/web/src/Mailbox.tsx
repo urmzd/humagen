@@ -5,6 +5,7 @@ import {
   filterMessages,
   type InboxItemState,
   type InboxMessage,
+  isAnnouncement,
   isResolvable,
   type MessageFilter,
   type MessagePart,
@@ -137,12 +138,11 @@ const TEMPLATE_LOOK: Record<TemplateId, { icon: Icon; tint: string }> = {
 
 /**
  * What setting a message aside is called. An announcement is everyone's, and
- * putting it away hides only the reader's own copy, so it says so.
+ * putting it away hides only the reader's own copy, so it says so. An agent's
+ * draft is its owners' to decide, and dismissing it does so for all of them.
  */
 function hideLabel(message: InboxMessage): string {
-  return messageTemplate(message) === "announcement"
-    ? defaultCopy.announcements.hideForMe
-    : defaultCopy.dismiss;
+  return isAnnouncement(message) ? defaultCopy.announcements.hideForMe : defaultCopy.dismiss;
 }
 
 /** The template's look, raised to the message's severity: an urgent alert is red. */
@@ -585,7 +585,8 @@ function ReadingPane({
   const state = messageState(message, now);
   const open = state === "open";
   const template = messageTemplate(message);
-  const announcement = template === "announcement";
+  // Posted for everyone, not an agent's draft waiting for an owner.
+  const announcement = isAnnouncement(message);
   // Set aside by this reader alone, so it is theirs to bring back.
   const hidden = Boolean(message.hidden) && (state === "dismissed" || state === "snoozed");
   return (

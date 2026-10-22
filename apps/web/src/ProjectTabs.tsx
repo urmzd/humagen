@@ -1,4 +1,4 @@
-import { ActionId, messageState, type UiAction } from "@warp/core";
+import { ActionId, isAnnouncement, messageState, type UiAction } from "@warp/core";
 import { defaultCopy } from "@warp/components";
 import { BanIcon, buttonClass } from "@warp/render-web";
 import { type MailboxShow } from "@warp/web";
@@ -16,7 +16,7 @@ import {
 import { ScopeLimits } from "./Billing.tsx";
 import { useHeld, useInbox } from "./inbox.ts";
 import { KindChips, MailboxView } from "./InboxPage.tsx";
-import { type PlatformMessage, projectInbox, type Source } from "./mail.ts";
+import { type PlatformMessage, projectInbox, projectOf, type Source } from "./mail.ts";
 import { ago, button, Empty, field, Label, Menu, Problem, primary, SkeletonRows, Switch } from "./ui.tsx";
 import { titleOf, updateOf } from "./projects.ts";
 
@@ -72,15 +72,19 @@ export function ProjectInbox({
   const may = project.actions.includes("announce");
   const owner = project.access.role === "owner";
   // Its author or an owner withdraws an announcement still standing for
-  // everyone: one this reader only hid for themselves still is.
+  // everyone: one this reader only hid for themselves still is. An agent's
+  // draft was never announced; its owners publish or discard it. An owner
+  // here owns every project below, so one filed below is theirs to withdraw
+  // too, in the project it was filed in.
   const withdrawable = (m: PlatformMessage) =>
     m.kind === "announcement" &&
+    isAnnouncement(m) &&
     project.actions.length > 0 &&
     (messageState(m) === "open" || Boolean(m.hidden)) &&
     (owner || (m.from.kind === "person" && m.from.name === me));
   const withdraw = (m: PlatformMessage) =>
     api
-      .withdrawAnnouncement(project.name, m.id)
+      .withdrawAnnouncement(projectOf(m), m.id)
       .then(() => {
         onMessage(null);
         setPosted((n) => n + 1);
@@ -107,6 +111,13 @@ export function ProjectInbox({
       );
   };
 
+  // Leaving out the projects below closes a message filed in one of them.
+  const showChildren = (next: boolean) => {
+    setChildren(next);
+    const reading = messages.find((m) => m.id === message);
+    if (!next && reading && projectOf(reading) !== project.name) onMessage(null);
+  };
+
   const onAction = (action: UiAction) => {
     const m = messages.find((x) => x.id === action.payload.turnId);
     if (!m) return;
@@ -117,7 +128,7 @@ export function ProjectInbox({
   return (
     <div className="flex min-h-[28rem] flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Switch label={copy.announcements.includeSubProjects} checked={children} onChange={setChildren} />
+        <Switch label={copy.announcements.includeSubProjects} checked={children} onChange={showChildren} />
         {may && !writing && (
           <button type="button" className={primary} onClick={() => setWriting(true)}>
             {copy.announcements.post}
@@ -170,7 +181,11 @@ export function ProjectInbox({
           viewer={me}
           show={show}
           onShow={setShow}
-          emptyOpen={{ title: copy.mailbox.emptyOpen, hint: copy.announcements.emptyOpenHint }}
+          // Announcements land here, and what the reader hid of them is under Resolved.
+          // A chosen kind of anything else keeps the mailbox's own words.
+          emptyOpen={
+            kind === "" || kind === "announcement" ? { title: copy.mailbox.emptyOpen, hint: copy.announcements.emptyOpenHint } : undefined
+          }
           messageActions={(m) =>
             withdrawable(m) && (
               <button type="button" className={paneButton} onClick={() => withdraw(m)}>

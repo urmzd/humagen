@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ActionId, messageAsks, messageTemplate, type UiAction } from "@warp/core";
-import { fromServer, kinds, projectTransport, toRequest, updatesOf } from "./mail.ts";
+import { fromServer, kinds, MailError, projectOf, projectTransport, toRequest, updatesOf } from "./mail.ts";
 
 /** An announcement as the platform sends it: a broadcast in a project's inbox, only there to be read. */
 const announcement = {
@@ -81,6 +81,21 @@ test("an announcement the reader hid for themselves is theirs to bring back, and
   assert.equal(back.hidden, undefined);
 });
 
+test("a project's inbox reads by id only what is filed in it, so another project's message is not found there", async () => {
+  const via = (project: string, children = false) =>
+    projectTransport(async <T,>() => ({ message: { ...announcement }, history: [] }) as T, project, children);
+  assert.equal(projectOf(fromServer(announcement)), "Globex");
+  assert.equal((await via("Globex").get("m-9")).id, "m-9");
+  // Read as the reader may, it is still Globex's: Field's inbox does not show it, below Field or not.
+  for (const children of [false, true]) {
+    await assert.rejects(via("Field", children).get("m-9"), (e: unknown) => e instanceof MailError && e.status === 404);
+  }
+  // The workspace's own inbox holds what is filed in no project.
+  const root = projectTransport(async <T,>() => ({ message: { ...announcement, source: {} }, history: [] }) as T, "~");
+  assert.equal((await root.get("m-9")).id, "m-9");
+  await assert.rejects(projectTransport(async <T,>() => ({ message: { ...announcement } }) as T, "").get("m-9"));
+});
+
 /** An agent's post held for a project's owners, as the platform sends it to one. */
 const draft = {
   id: "m-12",
@@ -155,8 +170,10 @@ test("What's new holds the open announcements, unread first, at most five, each 
   const root = { ...announcement, id: "m-root", source: {}, unread: false, at: at(7), updated_at: at(7) };
   const hidden = { ...announcement, id: "m-hidden", state: "dismissed" };
   const alert = { ...announcement, id: "m-alert", kind: "alert" };
+  // An owner's inbox holds an agent's draft under the same kind, unpublished.
+  const unpublished = { ...draft, id: "m-draft", at: at(8), updated_at: at(8) };
   const updates = updatesOf(
-    [...raw, root, hidden, alert].map(fromServer),
+    [...raw, root, hidden, alert, unpublished].map(fromServer),
     (p) => (p === "" ? "Acme" : `${p} Inc`),
     (p, id) => `/projects/${p || "~"}?message=${id}`,
   );

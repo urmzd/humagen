@@ -4,6 +4,7 @@ import * as fx from "./fixtures";
 import {
   filterMessages,
   type InboxMessage,
+  isAnnouncement,
   isResolvable,
   messageAsks,
   messageFromItem,
@@ -289,5 +290,48 @@ describe("mailbox", () => {
     expect(messageTemplate(news)).toBe("announcement");
     expect(messageAsks(news)).toBe(false);
     expect(openMessageCount([news])).toBe(0);
+    expect(isAnnouncement(news)).toBe(true);
+  });
+
+  it("tells an agent's draft apart from an announcement, though both are laid out as one", () => {
+    const draft: InboxMessage = {
+      id: "m-draft",
+      subject: "Weekly recap",
+      from: { kind: "agent", name: "scribe" },
+      at: "2026-10-21T09:00:00Z",
+      template: "announcement",
+      parts: [
+        {
+          type: "draft",
+          id: "d1",
+          draft: { subject: "Weekly recap", agent: "scribe", project: "Field" },
+        },
+      ],
+    };
+    expect(messageTemplate(draft)).toBe("announcement");
+    expect(isAnnouncement(draft)).toBe(false);
+    expect(isAnnouncement(get("m-fyi"))).toBe(false);
+    // Set aside, an announcement is the reader's own to bring back; a draft is set aside for every owner.
+    const news = {
+      ...draft,
+      id: "m-news",
+      from: { kind: "person" as const, name: "Dana" },
+      parts: [{ type: "text" as const, id: "p1", text: "Hi." }],
+    };
+    const dismiss = (m: InboxMessage) =>
+      resolveMessage(m, { id: ActionId.dismiss, payload: { turnId: m.id, target: m.id } }, who);
+    const snooze = (m: InboxMessage) =>
+      resolveMessage(
+        m,
+        {
+          id: ActionId.snooze,
+          payload: { turnId: m.id, target: m.id, option: "2999-01-01T00:00:00Z" },
+        },
+        who,
+      );
+    expect(dismiss(news).hidden).toBe(true);
+    expect(snooze(news).hidden).toBe(true);
+    expect(dismiss(draft).hidden).toBeUndefined();
+    expect(messageState(dismiss(draft))).toBe("dismissed");
   });
 });
