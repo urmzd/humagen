@@ -342,3 +342,31 @@ func TestAHousekeepingRunIsCountedWithTheTurnItServes(t *testing.T) {
 		t.Fatalf("the workspace from Field counted %d runs: %s", got.Total.Runs, out)
 	}
 }
+
+// A recap names an agent only when everyone it reaches may read it. An agent
+// that moved from Field to a members-only project below it is left out of
+// Field's row for the move, as Field's history leaves it out for them.
+func TestARecapNamesOnlyTheAgentsEveryoneItReachesMayRead(t *testing.T) {
+	p := start(t, call.Limits{})
+	project(t, p, "Field")
+	if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: "olu"}, platform.ProjectInput{Name: "Vault", Parent: "Field", Kind: projects.Account}); err != nil {
+		t.Fatal(err)
+	}
+	for _, home := range []string{"Field", "Vault"} {
+		if err := p.SetAgentHome(t.Context(), tenant, "helper", home, govern); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// lead comes to live in Field, which everyone the recap reaches reads.
+	if err := p.SetAgentHome(t.Context(), tenant, "lead", "Field", govern); err != nil {
+		t.Fatal(err)
+	}
+	asking, _ := turn(t, p, "api-f1", "Field")
+	out, err := use(t, p, as(asking, platform.BuiltinAnalyst), platform.ToolProjectChanges, map[string]any{"days": "7"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Field: home by root\n") || !strings.Contains(out, "Field: home by root (lead)") || strings.Contains(out, "helper") {
+		t.Fatalf("Field's recap of helper's move to Vault:\n%s", out)
+	}
+}

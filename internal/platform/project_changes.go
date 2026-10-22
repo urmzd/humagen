@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/runtime"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -86,6 +87,23 @@ func (p *Platform) openFor(tenant, own string) func(project string) bool {
 	return func(project string) bool {
 		pr, ok := tree.Get(project)
 		return ok && (!projects.MembersOnly(pr) || slices.Contains(mine, project))
+	}
+}
+
+// everyoneReads reports, for a recap of own, whether everyone it reaches
+// reads a project: one on own's chain, one of own's subtree as open as own
+// (subtreeOf), or one that no project on its chain keeps to its members. A
+// role in own is a role in every project above it, so each of those is read
+// by whoever reads own.
+func (p *Platform) everyoneReads(tenant, own string) func(project string) bool {
+	tree := p.ProjectTree(tenant)
+	mine, _ := p.subtreeOf(tenant, own)
+	return func(project string) bool {
+		if onChain(tree, own, project) || slices.Contains(mine, project) {
+			return true
+		}
+		chain := tree.Chain(project)
+		return chain != nil && !slices.ContainsFunc(chain, projects.MembersOnly)
 	}
 }
 
@@ -480,8 +498,15 @@ func (p *Platform) announcementChanges(scope changesScope) []changeRow {
 
 // recordChanges is what changed on the projects' own records in the window:
 // created, moved, members, agents, channels and the rest, as their history
-// tells it.
+// tells it. A change of home names its agent only when everyone the recap
+// reaches may read it, as the history route names it only to who may.
 func (p *Platform) recordChanges(scope changesScope) []changeRow {
+	tree := p.ProjectTree(scope.tenant)
+	reads := p.everyoneReads(scope.tenant, scope.project)
+	shown := func(agent string) bool {
+		home, homed := tree.Home(agentspec.NormalizeName(agent))
+		return !homed || reads(home)
+	}
 	var out []changeRow
 	for _, project := range scope.projects {
 		changes, _ := p.Projects.History(scope.tenant, project, MaxChangeRows, 0)
@@ -495,8 +520,10 @@ func (p *Platform) recordChanges(scope changesScope) []changeRow {
 			}
 			text := row("%s %s: %s by %s", day(c.At), where, c.What, c.By)
 			switch {
-			case c.Agent != "":
+			case c.Agent != "" && shown(c.Agent):
 				text = row("%s (%s)", text, c.Agent)
+			case c.Agent != "":
+				// Its agent is left out, as it is from the history.
 			case c.Channel != nil && c.Channel.After != nil:
 				text = row("%s (#%s)", text, c.Channel.After.Name)
 			case c.Channel != nil && c.Channel.Before != nil:

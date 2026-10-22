@@ -737,7 +737,8 @@ the chain, never housekeeping. Its grounding:
   - runs (a `Summarize` filtered by project);
   - threads started and finished;
   - artifacts, approved notes and announcements;
-  - schedule and project record changes.
+  - schedule and project record changes. A change of an agent's home names
+    the agent only when everyone the recap reaches may read it.
 
   It returns at most 50 rows a section and 32 KB in all. A run with no
   project gets an error;
