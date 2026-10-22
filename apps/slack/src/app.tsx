@@ -449,6 +449,12 @@ export class App {
    * the next look records it instead of posting again.
    */
   private readonly unrecorded = new Recent<{ channel: string; ts: string }>(2_000);
+  /**
+   * Announcements whose post could not be checked after its receipt was
+   * recorded, because warp was away: a change made then reads older than
+   * the receipt, so the next look edits the post whatever the receipt says.
+   */
+  private readonly unchecked = new Recent<true>(2_000);
   /** Whether a catch-up is running, and whether another is due once it ends. */
   private catching: { again: boolean } | null = null;
   /** Whether catch-ups are being run until one finishes, and whether another open came meanwhile. */
@@ -644,7 +650,7 @@ export class App {
           const due = catchUpOn(page, client, (this.opts.now ?? Date.now)(), b.bound_at);
           // A post whose receipt warp did not take is looked at whatever became of it.
           for (const m of page)
-            if (this.unrecorded.has(m.id) && !due.includes(m.id)) due.push(m.id);
+            if ((this.unrecorded.has(m.id) || this.unchecked.has(m.id)) && !due.includes(m.id)) due.push(m.id);
           for (const id of due) {
             // One post Slack refuses to edit, such as one deleted there, holds up no other.
             await this.announce(id, "catch-up").catch((e: Error) => {
@@ -1968,7 +1974,7 @@ export class App {
       return this.keepUp(id, client, posted, raw.updated_at);
     }
     if (receipt) {
-      const changed = changedSince(raw, receipt);
+      const changed = changedSince(raw, receipt) || this.unchecked.has(id);
       if (look === "catch-up" ? !changed : raw.updated_at === shown) return shown;
       const where = { channel: receipt.channel, ts: receipt.ts };
       await this.slack.call("chat.update", { ...where, ...this.newsView(raw) });
@@ -2004,8 +2010,17 @@ export class App {
     shown: string | undefined,
   ): Promise<string | undefined> {
     for (let i = 0; i < 3; i++) {
-      const now = await this.warp.getInboxMessage(id).catch(() => null);
-      if (!now || now.updated_at === shown) return shown;
+      // A read warp could not answer leaves the post unchecked: it is thrown,
+      // so the catch-up is tried again, and that look edits the post.
+      const now = await this.warp.getInboxMessage(id).catch((e: unknown) => {
+        if (e instanceof WarpError && (e.status === 403 || e.status === 404)) return null;
+        this.unchecked.set(id, true);
+        throw e;
+      });
+      if (!now || now.updated_at === shown) {
+        this.unchecked.delete(id);
+        return shown;
+      }
       await this.slack.call("chat.update", { ...where, ...this.newsView(now) });
       await this.warp.recordDelivery(id, client, where);
       shown = now.updated_at;
