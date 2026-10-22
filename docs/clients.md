@@ -18,7 +18,7 @@ one per agent are all the same record with different values.
 | `bots` | A Slack bot user id, or a GitHub login, to the agent it stands for. |
 | `slack` | `sessions`, `commands`, and `machine` and `people` (see [People a Slack app answers for](#people-a-slack-app-answers-for)). |
 | `github` | `auto_labels`, `checks`, `guides`, `mutations`, `read_repositories`. |
-| `home` | `{project, channel}`: where the client files the threads it starts outside a channel bound to one, such as direct messages and GitHub issues. `project` is a project's name, or `~` for the workspace, and must exist. `channel` is `general`, the default, until channels are built. Left out, the workspace's `general`. |
+| `home` | `{project, channel}`: where the client files the threads it starts outside a channel bound to one, such as direct messages and GitHub issues. `project` is a project's name, or `~` for the workspace, and must exist. `channel` is one of its channels, not archived; left out, `general`. Left out entirely, the workspace's `general`. A Slack thread outside a bound channel is filed here, private for a direct message (see [Slack coworking](slack.md#coworking-channels-threads-and-mentions)). |
 | `enabled` | A disabled client answers nothing and carries nothing. |
 
 The options under `slack` and `github` are the ones [Slack](slack.md) and
