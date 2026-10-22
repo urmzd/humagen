@@ -285,8 +285,11 @@ func (p *Platform) DefaultFor(tenant, id, project, channel string) (d threads.De
 // ThreadRecord returns a thread's record. A conversation from before
 // threads has none, and reads as shared, in general of its project, with
 // the people who asked in it and the agents who answered as its
-// participants, at version 0. Its record is written the first time anything
-// about it changes.
+// participants, at version 0. The first person who asked in it started it:
+// a credential that is no person (a machine's call to POST /api/runs, or a
+// surface's run for someone it maps to nobody) is never a participant, and
+// never the owner. Its record is written the first time anything about it
+// changes.
 func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 	th, err := p.Threads.Get(tenant, id)
 	if err == nil || !errors.Is(err, threads.ErrNotFound) {
@@ -300,7 +303,13 @@ func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 	th = threads.Thread{
 		ID: id, Project: first.Project, Channel: cmp.Or(first.Channel, projects.General),
 		Visibility: threads.Shared, Participants: []threads.Participant{},
-		CreatedBy: first.Actor.ID, CreatedAt: first.CreatedAt, UpdatedAt: first.UpdatedAt,
+		CreatedAt: first.CreatedAt, UpdatedAt: first.UpdatedAt,
+	}
+	for _, r := range turns {
+		if !r.Actor.Bot && r.Actor.ID != "" {
+			th.CreatedBy = r.Actor.ID
+			break
+		}
 	}
 	add := func(kind, name string) {
 		if name == "" || len(th.Participants) >= threads.MaxParticipants {
@@ -309,7 +318,7 @@ func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 		if slices.ContainsFunc(th.Participants, func(x threads.Participant) bool { return x.Kind == kind && x.Name == name }) {
 			return
 		}
-		th.Participants = append(th.Participants, threads.Participant{Kind: kind, Name: name, Owner: kind == threads.Person && name == first.Actor.ID})
+		th.Participants = append(th.Participants, threads.Participant{Kind: kind, Name: name, Owner: kind == threads.Person && name == th.CreatedBy})
 	}
 	for _, r := range turns {
 		if !r.Actor.Bot {
@@ -325,8 +334,8 @@ func (p *Platform) ThreadRecord(tenant, id string) (threads.Thread, error) {
 
 // recordOf returns a thread's stored record, writing the one a
 // conversation from before threads reads as the first time it is needed.
-// by is who the change is made by, the record's owner when the
-// conversation's first turn names nobody.
+// by is the person the change is made by, the record's owner when no
+// person asked in the conversation.
 func (p *Platform) recordOf(tenant, id, by string) (threads.Thread, error) {
 	th, err := p.ThreadRecord(tenant, id)
 	if err != nil || th.Version > 0 {

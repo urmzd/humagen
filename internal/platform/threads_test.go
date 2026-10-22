@@ -459,6 +459,37 @@ func TestAConversationFromBeforeThreadsGainsItsRecordWhenSomeonePosts(t *testing
 	}
 }
 
+// A conversation a machine started, through POST /api/runs, has no person
+// in it until one posts. The first who does is its owner: the credential is
+// never a participant, and never the owner, so it gains no say over the
+// thread's record.
+func TestAConversationAMachineStartedIsOwnedByThePersonWhoFirstPosts(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	run, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "t-ci", Agent: "lead", Text: "nightly report", Project: "Field", Actor: envelope.Actor{ID: "svc-ci", Bot: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run = await(t, p, run.ID, runs.Completed)
+	rec, err := p.ThreadRecord(tenant, run.Thread)
+	if err != nil || rec.CreatedBy != "" || len(rec.Participants) != 1 || rec.Participants[0].Kind != threads.Agent {
+		t.Fatalf("before anyone posts the record reads %+v, %v", rec, err)
+	}
+	got := post(t, p, admin, run.Thread, platform.MessageInput{Text: "thanks", PostOnly: true})
+	th := got.Thread
+	if th.CreatedBy != admin.Subject {
+		t.Fatalf("the thread is owned by %q, want %q", th.CreatedBy, admin.Subject)
+	}
+	for _, who := range th.Participants {
+		if who.Name == "svc-ci" || who.AddedBy == "svc-ci" {
+			t.Fatalf("the machine is in the record: %+v", th.Participants)
+		}
+		if who.Owner != (who.Kind == threads.Person && who.Name == admin.Subject) {
+			t.Fatalf("the owner is wrong: %+v", th.Participants)
+		}
+	}
+}
+
 // A person posts only as themselves. A credential that acts for nobody
 // cannot post, and one that acts for a mapped person posts as them, with that
 // client's Slack people tagged by their own mentions.
