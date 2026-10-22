@@ -678,6 +678,8 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
+	// A skill named with no agent tagged starts @auto.
+	mentions = threads.WithSkillAgent(mentions)
 	if on != nil && on.ref.Files {
 		first.Attachments, err = p.surfaceFiles(ctx, who, on.ref, in.ActAs)
 		if err != nil {
@@ -756,6 +758,8 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
+	// A skill named with no agent tagged starts @auto.
+	mentions = threads.WithSkillAgent(mentions)
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
 	msg := threads.Message{By: by, Name: name, Text: text, Mentions: mentions, Via: via, Prev: prev, SurfaceID: surfaceID}
 	if on != nil && on.ref.Files {
@@ -922,15 +926,6 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 				continue
 			}
 			mn.Run = run.ID
-		}
-		// A skill named with no agent tagged goes to @auto, which no tag
-		// of the message names.
-		if !slices.ContainsFunc(mentions, func(mn threads.Mention) bool { return mn.Kind == threads.Agent }) {
-			for _, agent := range d.Agents {
-				if _, err := start(agent); err != nil {
-					out.Reason = fmt.Sprintf("@%s could not answer: %s.", agent, refusalOf(err))
-				}
-			}
 		}
 	case d.Default && len(d.Agents) == 1:
 		if _, err := start(d.Agents[0]); err != nil {

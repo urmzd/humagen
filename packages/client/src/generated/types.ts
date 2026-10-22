@@ -955,6 +955,10 @@ in, besides its agent's own. Set with `PUT
 for a caller without `knowledge:read`.
  */
   knowledge?: string[];
+  /** Named instructions a message posted here and below can tell an
+agent to use, by writing `$<name>`. Absent when it declares none.
+ */
+  skills?: ProjectSkill[];
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
   /** The lowest role that may post an announcement here. Absent reads as owner. */
@@ -968,6 +972,14 @@ for a caller without `knowledge:read`.
   updated_by?: string;
   /** When the record last changed. What happened in it is `active_at` on a view. */
   updated_at: string;
+}
+
+/** A skill a project declares, a SKILL.md's frontmatter and body as fields. */
+export interface ProjectSkill {
+  name: string;
+  description: string;
+  argument_hint?: string;
+  instructions: string;
 }
 
 /** One project on the way down to another. */

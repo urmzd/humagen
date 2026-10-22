@@ -5809,6 +5809,13 @@ components:
           type: array
           maxItems: 8
           items: {type: string, maxLength: 63}
+        skills:
+          description: |
+            Named instructions a message posted here and below can tell an
+            agent to use, by writing `$<name>`. Absent when it declares none.
+          type: array
+          maxItems: 32
+          items: {$ref: "#/components/schemas/ProjectSkill"}
         archived:
           description: An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived.
           type: boolean
@@ -5829,6 +5836,15 @@ components:
           description: When the record last changed. What happened in it is `active_at` on a view.
           type: string
           format: date-time
+    ProjectSkill:
+      description: A skill a project declares, a SKILL.md's frontmatter and body as fields.
+      type: object
+      required: [name, description, instructions]
+      properties:
+        name: {type: string, maxLength: 64}
+        description: {type: string, maxLength: 1024}
+        argument_hint: {type: string, maxLength: 100}
+        instructions: {type: string, maxLength: 8000}
     ProjectStep:
       description: One project on the way down to another.
       type: object
