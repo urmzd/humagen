@@ -831,7 +831,7 @@ export interface Resolution {
   action: "acknowledge" | "retry" | "keep" | "discard" | "raise_limit" | "approve" | "deny" | "choose" | "reply";
   /** The proposed notes to keep, with `keep`. */
   ids?: string[];
-  /** At most 500 characters. On a denial the model is shown it. */
+  /** At most 500 characters. On a denial the model is shown it, so where the answer may reach the credentials of the person the run acts for, only that person may add one. */
   note?: string;
   limits?: InboxLimits;
   /** Edited arguments for `approve`, as a JSON object that satisfies the tool's schema. Left out keeps the model's. */
@@ -850,7 +850,7 @@ export interface QuestionAnswer {
   arguments?: unknown;
   choice?: string;
   text?: string;
-  /** At most 500 characters. On a denial the model is shown it. */
+  /** At most 500 characters. On a denial the model is shown it, so where the answer may reach the credentials of the person the run acts for, only that person may add one. */
   note?: string;
   act_as?: ActAs;
 }

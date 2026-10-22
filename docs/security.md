@@ -398,7 +398,7 @@ decided per message:
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
 | Failed run | `runs:read` | `runs:write`, and to retry a turn that acted for a person, being that person ([Tool credentials](#tool-credentials)) |
 | Proposed memory | `agents:read` | `agents:write` for an agent's; `projects:write` for a project's, and `projects:govern` as well for the workspace's and a company project's |
-| A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer; a choice or reply in a run that uses the credentials of the person it acts for, only that person |
+| A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer; where the answer may reach the credentials of the person a run acts for, a choice or reply only by that person, and an approval with a note only by them |
 
 A message a caller may not see answers 404, not 403, and is left out of their
 count. A question is addressed to the people its run's pinned spec lets answer
@@ -433,15 +433,20 @@ console's inbox and on the run, and in the Slack app, and none offers an
 edit of such a call.
 
 A reply or a choice steers what a run does next, unlike approving a call as
-it was asked. So a run that uses the credentials of the person it acts for
-(it acts for a person, and its revision is granted a person-scoped tool
-provider, or one that cannot be found) asks that person alone: its reply and
-choice questions are addressed to them, and anyone else's answer, on the
-run, in the inbox or through a surface's `act_as`, is refused (403) before
-the runtime is asked. Otherwise one person's words, or their pick of the
-options, would reach another person's tools with that person's credential.
-A run that acts for nobody, or reaches only shared credentials, is answered
-by whoever `answerers` allows.
+it was asked, and so does an approval's note, which the model is shown on a
+denial. What a called run is answered steers its caller too: its answer is
+the caller's tool result. So where an answer may reach the credentials of
+the person a run acts for (the run, or a run that called it, acts for a
+person and its revision is granted a person-scoped tool provider, or one
+that cannot be found), that person alone says anything to it: its reply and
+choice questions are addressed to them, anyone else's answer is refused
+(403), and anyone else may approve or deny its calls only as asked, with no
+note (403 with one). Each is checked on the run, in the inbox and through a
+surface's `act_as`, before the runtime is asked. So one person's words, or
+their pick of the options, never reach another person's tools with that
+person's credential. Any other run, one that acts for nobody, or reaches
+only shared credentials, and was called by none that reaches a person's, is
+answered by whoever `answerers` and `approvers` allow.
 
 The right is checked before saying whether a part is still open. A
 change is pushed to the browser as an id only, and only to callers who may see

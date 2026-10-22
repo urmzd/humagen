@@ -213,9 +213,10 @@ func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Questi
 		return []string{nobody}, nil
 	}
 	if q.Kind != payload.QuestionApproval {
-		// A reply or a choice steers the run, so one that uses the
-		// credential of the person it acts for asks them alone (maySteer).
-		if person := p.ownCredentialOf(ctx, run); person != "" {
+		// A reply or a choice steers the run, and its callers, so one whose
+		// answer may reach a person's own credential asks them alone
+		// (maySteer).
+		if person := p.steeredFor(ctx, run); person != "" {
 			return []string{person}, nil
 		}
 		return audienceOf(rev.Spec.Answerers, q), nil
@@ -589,24 +590,34 @@ func (p *Platform) isSelfApproval(ctx context.Context, tenant string, q inbox.Qu
 	return slices.Contains(names, by) || slices.Contains(names, via), nil
 }
 
-// maySteer reports whether the person answering may answer a reply or a
-// choice a run asks, and if not, why. What they answer steers what the run
-// does next, so a run that uses the credential of the person it acts for
-// (ownCredentialOf) is answered by that person alone: anyone else's words,
-// or their pick of its options, would reach the person's tools with the
-// person's credential. A run that acts for nobody, or reaches only shared
-// credentials, is answered by whoever its rules allow. An approval is not
-// steered this way: approving a call as it was asked changes nothing the
-// person asked for, and fiber refuses anyone else's edit of it.
-func (p *Platform) maySteer(ctx context.Context, tenant string, q inbox.QuestionPart, by string) error {
+// maySteer reports whether the person answering may say what they said to a
+// question a run asks, and if not, why. What they say steers what the run
+// does next, and what its callers do, since a called run's answer is its
+// caller's tool result. So where that may reach a person's own credentials
+// (steeredFor), only that person replies or picks an option, and anyone
+// else approves or denies a call only as it was asked, with no note, which
+// the model is shown on a denial (fiber refuses their edit of a call that
+// acts as the person). Otherwise their words, or their pick of its options,
+// would reach the person's tools with the person's credential. Any other
+// run is answered by whoever its rules allow.
+func (p *Platform) maySteer(ctx context.Context, tenant string, q inbox.QuestionPart, a QuestionAnswer, by string) error {
+	if q.Kind == payload.QuestionApproval && strings.TrimSpace(a.Note) == "" {
+		return nil
+	}
 	run, err := p.Runs.Get(tenant, q.Run)
 	if err != nil {
 		return err
 	}
-	if person := p.ownCredentialOf(ctx, run); person != "" && by != person {
+	switch person := p.steeredFor(ctx, run); {
+	case person == "" || by == person:
+		return nil
+	case person == nobody:
+		return fmt.Errorf("%w: the run that called this one cannot be read, so nobody may answer what it asks", ErrForbidden)
+	case q.Kind == payload.QuestionApproval:
+		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may add a note the agent reads; approve or deny it as asked", ErrForbidden, person, person)
+	default:
 		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may answer what it asks", ErrForbidden, person, person)
 	}
-	return nil
 }
 
 // ActsFor returns the principal a surface's credential asks for: the person
@@ -683,13 +694,11 @@ func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Messa
 			return inbox.Message{}, fmt.Errorf("%w: %s asked for this work, so someone else must approve its calls", ErrForbidden, reader.Subject)
 		}
 	}
-	if q.Kind != payload.QuestionApproval {
-		// Checked here, from the run as it stands, as well as by whom the
-		// message was addressed to when it was raised.
-		if err := p.maySteer(ctx, who.Tenant, q, reader.Subject); err != nil {
-			p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "not the person the run acts for")
-			return inbox.Message{}, err
-		}
+	// Checked here, from the run and its callers as they stand, as well as
+	// by whom the message was addressed to when it was raised.
+	if err := p.maySteer(ctx, who.Tenant, q, a, reader.Subject); err != nil {
+		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "not the person the run acts for")
+		return inbox.Message{}, err
 	}
 	if !m.For(reader) {
 		return inbox.Message{}, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)

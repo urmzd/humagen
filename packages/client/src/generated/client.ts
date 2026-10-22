@@ -1019,10 +1019,12 @@ asked to approve, unless the spec sets `self_approval`. Anyone else is
 403 and nothing changes. A call that acts as a person
 (`question.tool.acts_for_person`) is approved with edited `arguments`
 only by that person: anyone else's edit is 403, and they may approve
-or deny it as asked. A choice or a reply in a run that uses the
-credentials of the person it acts for (its revision is granted a
-person-scoped tool provider) is answered only by that person: anyone
-else is 403. A surface that authenticated a person itself
+or deny it as asked. Where an answer may reach the credentials of the
+person a run acts for (the run, or a run that called it, acts for a
+person and its revision is granted a person-scoped tool provider), a
+choice or a reply is answered only by that person, and an approval
+carries a `note` only from them: anyone else is 403. A surface that
+authenticated a person itself
 answers for them with `act_as`: only the credential its client names,
 and only for a person its client maps.
 
