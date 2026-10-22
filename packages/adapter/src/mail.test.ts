@@ -28,6 +28,16 @@ test("an announcement is laid out as one, about its project, from the person who
   assert.deepEqual(m.parts, [{ id: "p1", type: "text", text: "Globex renewed for two years." }]);
 });
 
+test("a person's announcement shows what they are called, and keeps who they are to tell the reader's own apart", () => {
+  const m = fromServer({ ...announcement, from: { kind: "person", name: "tailscale:dana@example.com", display: "Dana Scully" } });
+  assert.deepEqual(m.from, { kind: "person", name: "Dana Scully" });
+  assert.equal(m.sender, "tailscale:dana@example.com");
+  // An agent's is named as it is.
+  const agent = fromServer({ ...announcement, from: { kind: "agent", name: "recap" } });
+  assert.deepEqual(agent.from, { kind: "agent", name: "recap" });
+  assert.equal(agent.sender, "recap");
+});
+
 test("an announcement never asks anything of the reader, so it sits under Updates", () => {
   assert.equal(messageAsks(fromServer(announcement)), false);
 });

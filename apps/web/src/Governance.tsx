@@ -208,7 +208,7 @@ export function CallPolicyEditor({ agent, agents, canWrite }: { agent: string; a
       <Problem message={problem} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-aui-xs text-aui-muted">
-          {saved.version === 0 ? "Not set yet: any agent that lists it may call it." : `Saved ${saved.updated_at ? ago(saved.updated_at) : ""}${saved.updated_by ? ` by ${saved.updated_by}` : ""}. Applies to calls from now on.`}
+          {saved.version === 0 ? "Not set yet: any agent that lists it may call it." : `Saved ${saved.updated_at ? ago(saved.updated_at) : ""}${saved.updated_by ? ` by ${saved.updated_by_name || saved.updated_by}` : ""}. Applies to calls from now on.`}
         </span>
         {canWrite && (
           <span className="flex gap-2">
@@ -253,7 +253,8 @@ export function useReach(agent: string | null, signal?: unknown): Reach[] | null
 /**
  * An agent's approvals waiting on a person. viewer is the signed-in person's
  * subject: a run whose answers may reach someone's own credentials takes a
- * note only from them (`steered_for`), so nobody else is offered one.
+ * note only from them (`steered_for`, by subject), so nobody else is offered
+ * one, and the queue says so by what they are called (`steered_for_name`).
  */
 export function ApprovalQueue({
   agent,
@@ -368,7 +369,7 @@ export function ApprovalQueue({
                 {q?.tool?.acts_for_person && <p className="text-aui-xs text-aui-muted">{defaultCopy.actsForPerson}</p>}
                 {state === "open" && q && !mayNote(q) && (
                   <p className="text-aui-xs text-aui-muted">
-                    Only {q.steered_for} may add a note: this run uses their own credentials. Approve or deny it as asked.
+                    Only {q.steered_for_name || "the person it acts for"} may add a note: this run uses their own credentials. Approve or deny it as asked.
                   </p>
                 )}
               </li>

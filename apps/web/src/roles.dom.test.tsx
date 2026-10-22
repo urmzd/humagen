@@ -3,7 +3,7 @@ import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { stubFetch } from "./dom.ts";
 import { ProjectInbox, ProjectPeople } from "./ProjectTabs.tsx";
-import { projectView } from "./projects.fixtures.ts";
+import { globex, projectView } from "./projects.fixtures.ts";
 
 // A hook at the top of a file runs after every test the loader holds, so it
 // cleans up only after the tests here.
@@ -136,4 +136,57 @@ test("an announcement is hidden for the reader alone, and its author withdraws i
   fireEvent.click(screen.getByText("Withdraw"));
   await waitFor(() => assert.ok(cleared));
   assert.ok(net?.seen.some((s) => s.method === "DELETE" && s.path === "/api/projects/Field/announcements/m-1"));
+});
+
+test("the People tab calls each person by name, never by subject, and the owners above by their project's title", async () => {
+  net = stubFetch({
+    "GET /api/projects/Globex/members": () => ({
+      version: 4,
+      members: [
+        { who: "*", role: "viewer" },
+        { who: "maya.chen", role: "owner", name: "Maya Chen" },
+        { who: "tailscale:pat@example.com", role: "member", name: "pat" },
+      ],
+      inherited: [
+        { who: "maya.chen", from: "Field", name: "Maya Chen" },
+        { who: "role:field-leads", from: "" },
+      ],
+    }),
+    "PUT /api/projects/Globex/members": (body) => ({ ...(body as object), inherited: [] }),
+  });
+  const owner = projectView({ name: "Globex", kind: "account", path: globex.path, access: { role: "owner", from: "Globex", via: "maya.chen" }, actions: ["edit"] });
+  render(<ProjectPeople project={owner} onChanged={() => {}} />);
+  assert.equal((await screen.findAllByText("Maya Chen")).length, 2, "a member, and an owner from above");
+  assert.ok(screen.getByText("pat"));
+  assert.ok(!screen.queryByText("maya.chen"), "a subject is never shown");
+  assert.ok(!screen.queryByText(/example\.com/), "nor one that holds an address");
+  assert.ok(screen.getByText("Owner from Field engineering"), "the project above by its title");
+  assert.ok(screen.getByText("Owner from the workspace"));
+  assert.ok(screen.getByText("Everyone who holds field-leads"));
+  assert.ok(screen.getByLabelText("Role: Maya Chen: Owner"), "a role is changed for a person by name");
+  // A change names who holds a role by subject alone.
+  fireEvent.click(screen.getAllByText("Remove").at(-1) as HTMLElement);
+  fireEvent.click(await screen.findByText("Save Members"));
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "PUT")));
+  assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, {
+    version: 4,
+    members: [
+      { who: "*", role: "viewer" },
+      { who: "maya.chen", role: "owner" },
+    ],
+  });
+});
+
+test("an announcement shows its author by name, and the author, known by subject, still withdraws it", async () => {
+  const named = { ...news, from: { kind: "person", name: "priya.nair", display: "Priya Nair" } };
+  net = stubFetch({
+    "GET /api/projects/Field/inbox": () => ({ messages: [named], next: null }),
+    "DELETE /api/projects/Field/announcements/m-1": () => undefined,
+  });
+  const member = projectView({ name: "Field", access: { role: "member", from: "Field", via: "*" }, actions: ["propose"] });
+  render(<ProjectInbox project={member} me="priya.nair" signal={0} message="m-1" onMessage={() => {}} onOpen={() => {}} onChanged={() => {}} />);
+  await screen.findAllByText("Field offsite");
+  assert.ok(screen.getAllByText("Priya Nair").length > 0);
+  assert.ok(!screen.queryByText("priya.nair"), "the subject is never shown");
+  assert.ok(screen.getByText("Withdraw"), "its author withdraws it");
 });

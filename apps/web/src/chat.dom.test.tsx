@@ -258,6 +258,8 @@ test("Retry of the first turn of a project's conversation files it in that proje
 test("Retry is not offered on another person's turn, nor on one that acted for nobody, and nothing is asked", async () => {
   for (const [actor, tag, says] of [
     [{ id: "ana", display: "Ana", user: "ana" }, "api-t1", "This turn acted for Ana, so only they can retry it."],
+    // A turn recorded with no name for its person never names them by subject.
+    [{ id: "tailscale:pat@example.com", user: "tailscale:pat@example.com" }, "api-t1", "This turn acted for someone else, so only they can retry it."],
     [{ id: "slack-app", bot: true }, "api-t1", "This turn acted for nobody, so it is not retried here, where it would act for you."],
     // A person who pressed Retry on a turn that acted for nobody, such as a machine's.
     [{ id: "ben", display: "Ben" }, NOBODY_RETRY, "This turn acted for nobody, so it is not retried here, where it would act for you."],

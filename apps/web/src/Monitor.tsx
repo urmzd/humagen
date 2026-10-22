@@ -2,6 +2,7 @@ import { AlertTriangleIcon, CheckCircleIcon, SparkleIcon } from "@warp/render-we
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { type Alert, type AlertRule, ApiError, alertRuleEdit, api, type Revision } from "./api.ts";
 import { Analytics } from "./Analytics.tsx";
+import { type ProjectRef, projectOptions, titleIn } from "./projects.ts";
 import type { MonitorTab } from "./route.ts";
 import { agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Tabs } from "./ui.tsx";
 
@@ -27,8 +28,9 @@ export function audience(r: Pick<AlertRule, "notify">): string {
   return n.length === 0 ? "everyone who can see alerts" : n.map((x) => (x.startsWith("role:") ? `the ${x.slice(5)} role` : x)).join(", ");
 }
 
-export function describe(r: AlertRule): string {
-  const scope = `${r.agent ? r.agent : "any agent"}${r.project ? ` in ${r.project}` : ""}`;
+/** What a rule watches, in words. A project is named by its title among projects, else as the rule names it. */
+export function describe(r: AlertRule, projects: readonly ProjectRef[] = []): string {
+  const scope = `${r.agent ? r.agent : "any agent"}${r.project ? ` in ${titleIn(projects, r.project)}` : ""}`;
   switch (r.kind) {
     case "spend":
       return `When runs of ${scope} cost ${usd(r.threshold_micros)} or more over ${span(r.window_seconds)}.`;
@@ -145,8 +147,8 @@ export function Monitor({
   /** Overview: how runs are going. Rules: what is watched. */
   tab?: MonitorTab;
   onTab?: (next: MonitorTab) => void;
-  /** Projects a rule can be scoped to. */
-  projects?: string[];
+  /** Projects a rule can be scoped to, each named by its title. */
+  projects?: ProjectRef[];
   /** May read run statistics, for the Overview tab. */
   canAnalytics?: boolean;
   /** Changes when runs do, so the overview reads again. */
@@ -257,12 +259,12 @@ export function Monitor({
                     <Severity level={r.severity} />
                     {r.paused && <Chip>Paused</Chip>}
                   </div>
-                  <p className="pt-0.5 text-aui-sm text-aui-muted">{describe(r)}</p>
+                  <p className="pt-0.5 text-aui-sm text-aui-muted">{describe(r, projects)}</p>
                   {r.description && <p className="pt-0.5 text-aui-sm text-aui-fg">{r.description}</p>}
                   <p className="pt-1 text-aui-xs text-aui-muted">
-                    Watches {r.agent ? r.agent : "every agent"}{r.project ? ` in ${r.project}` : ""}. Raises a {r.severity === "critical" ? "critical" : "warning"} message for {audience(r)}
+                    Watches {r.agent ? r.agent : "every agent"}{r.project ? ` in ${titleIn(projects, r.project)}` : ""}. Raises a {r.severity === "critical" ? "critical" : "warning"} message for {audience(r)}
                     {r.cooldown_seconds ? `, then stays quiet for ${span(r.cooldown_seconds)}` : ""}
-                    {r.created_by ? `. Made by ${r.created_by}.` : "."}
+                    {r.created_by ? `. Made by ${r.created_by_name || r.created_by}.` : "."}
                   </p>
                 </div>
 
@@ -284,7 +286,7 @@ export function Monitor({
                             <span className="min-w-0 truncate text-aui-fg">{a.title}</span>
                           )}
                           <span className="shrink-0 text-aui-xs text-aui-muted">
-                            {ago(a.at)}, {a.acked_by ? `acknowledged by ${a.acked_by}` : "open"}
+                            {ago(a.at)}, {a.acked_by ? `acknowledged by ${a.acked_by_name || a.acked_by}` : "open"}
                           </span>
                         </li>
                       ))}
@@ -388,7 +390,7 @@ function RuleForm({
 }: {
   editing?: AlertRule;
   agents: Revision[];
-  projects: string[];
+  projects: ProjectRef[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -439,7 +441,7 @@ function RuleForm({
             <Menu
               label="Project"
               value={rule.project ?? ""}
-              options={[{ value: "", label: "Any project, or none" }, ...projects.map((p) => ({ value: p, label: p }))]}
+              options={[{ value: "", label: "Any project, or none" }, ...projectOptions(projects)]}
               onChange={(project) => set({ project: project || undefined })}
             />
           </Label>

@@ -514,7 +514,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
           <Schedules
             schedules={schedules}
             agents={agents}
-            projects={projectNames}
+            projects={projects ?? []}
             selected={route.name ?? null}
             onSelect={(name) => go({ page: "schedules", name: name ?? undefined })}
             canWrite={can("schedules:write")}
@@ -530,7 +530,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             alerts={alerts}
             rules={rules}
             agents={agents}
-            projects={projectNames}
+            projects={projects ?? []}
             canWrite={can("alerts:write")}
             canAnalytics={can("runs:read")}
             tick={tick}

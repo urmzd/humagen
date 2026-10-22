@@ -8,10 +8,11 @@ import { ActivityPanel, ordered, ordinals, trailOf } from "./Activity.tsx";
 import { isEnded } from "./format.ts";
 import { sampleTrees } from "./activity.fixtures.ts";
 import { AskAnalyst, FiredStrip, Monitor } from "./Monitor.tsx";
+import { Schedules } from "./Schedules.tsx";
 import { LimitsPanel } from "./Limits.tsx";
 import { ProjectChoices, ProjectPicker } from "./ProjectPicker.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
-import type { Me, ThreadSummary } from "./api.ts";
+import type { Me, ScheduleView, ThreadSummary } from "./api.ts";
 import { amount, binding, byAgent, byRun, forRun, scopeWords } from "./limits.ts";
 import { overLimit, parentBound, sessionBound, unlimited } from "./limits.fixtures.ts";
 import { bindingWords, SessionGauge } from "./SessionGauge.tsx";
@@ -737,6 +738,23 @@ test("Monitor: each rule says what it watches, how loud it is, and where its mes
   assert.match(out, /Watches oncall\. Raises a warning message for everyone who can see alerts\./);
   assert.match(out, />Critical</);
   assert.match(out, />Warning</);
+});
+
+test("Monitor and Schedules name a project by its title, in a rule's words and in their pickers", () => {
+  const benefits = { name: "Benefits", title: "Benefits and leave" };
+  const scoped: AlertRule = { name: "benefits-fails", kind: "run_failed", severity: "warning", project: "Benefits", created_by: "priya", created_by_name: "Priya Nair" };
+  const out = monitor({ rules: [scoped], alerts: [], projects: [benefits] });
+  assert.match(out, /When a run of any agent in Benefits and leave fails\./);
+  assert.match(out, /Watches every agent in Benefits and leave\. Raises a warning message for everyone who can see alerts\. Made by Priya Nair\./);
+  assert.doesNotMatch(out, /in Benefits\./);
+  // A project the reader does not have is named as the rule names it.
+  assert.match(monitor({ rules: [scoped], alerts: [] }), /Watches every agent in Benefits\./);
+
+  const nightly: ScheduleView = { name: "leave-digest", expression: "0 9 * * 1", agent: "hr", text: "Sum up leave.", project: "Benefits", paused: false, next: [], recent: [] };
+  const list = html(<Schedules schedules={[nightly]} agents={[]} projects={[benefits]} canWrite={false} onChanged={() => {}} onOpenRun={() => {}} />);
+  assert.match(list, />in Benefits and leave</);
+  const detail = html(<Schedules schedules={[nightly]} agents={[]} projects={[benefits]} selected="leave-digest" onSelect={() => {}} canWrite={false} onChanged={() => {}} onOpenRun={() => {}} />);
+  assert.match(detail, /<dd[^>]*>Benefits and leave<\/dd>/);
 });
 
 test("Monitor: a rule's recent firings are listed newest first, as links into the inbox", () => {

@@ -153,7 +153,7 @@ func (s *Server) runEvents(w http.ResponseWriter, r *http.Request, who auth.Prin
 		return
 	}
 	events := s.P.Journal.Events(who.Tenant, []string{run.ID})
-	ok(w, http.StatusOK, map[string]any{"events": orEmpty(events), "complete": complete(events)})
+	ok(w, http.StatusOK, map[string]any{"events": shownEvents(s.P.Names(who.Tenant), events), "complete": complete(events)})
 }
 
 // complete reports whether a run's events are all still held: the first one
@@ -246,11 +246,33 @@ func treeUsage(tree []runs.Run) payload.Usage {
 	return total
 }
 
+// alertView is an alert and what whoever acknowledged it is called. The
+// alert names them by subject; the console shows the name.
+type alertView struct {
+	alerts.Alert
+	AckedByName string `json:"acked_by_name,omitempty"`
+}
+
+// ruleView is a rule and what the person who made it is called.
+type ruleView struct {
+	alerts.Rule
+	CreatedByName string `json:"created_by_name,omitempty"`
+}
+
+func viewRule(names platform.Names, r alerts.Rule) ruleView {
+	return ruleView{Rule: r, CreatedByName: names.Of(r.CreatedBy)}
+}
+
 func (s *Server) listAlerts(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"alerts": orEmpty(slices.DeleteFunc(s.P.Alerts.Alerts(who.Tenant), func(a alerts.Alert) bool {
-		return !seer.Alert(a)
-	}))})
+	names := s.P.Names(who.Tenant)
+	out := []alertView{}
+	for _, a := range s.P.Alerts.Alerts(who.Tenant) {
+		if seer.Alert(a) {
+			out = append(out, alertView{Alert: a, AckedByName: names.Of(a.AckedBy)})
+		}
+	}
+	ok(w, http.StatusOK, map[string]any{"alerts": out})
 }
 
 func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Principal) {
@@ -259,21 +281,29 @@ func (s *Server) ackAlert(w http.ResponseWriter, r *http.Request, who auth.Princ
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, a)
+	ok(w, http.StatusOK, alertView{Alert: a, AckedByName: s.P.NameOf(who.Tenant, a.AckedBy)})
 }
 
 func (s *Server) listRules(w http.ResponseWriter, _ *http.Request, who auth.Principal) {
 	seer := s.P.Seer(who)
-	ok(w, http.StatusOK, map[string]any{"rules": orEmpty(slices.DeleteFunc(s.P.Alerts.Rules(who.Tenant), func(r alerts.Rule) bool {
-		return !seer.Rule(r)
-	}))})
+	names := s.P.Names(who.Tenant)
+	out := []ruleView{}
+	for _, r := range s.P.Alerts.Rules(who.Tenant) {
+		if seer.Rule(r) {
+			out = append(out, viewRule(names, r))
+		}
+	}
+	ok(w, http.StatusOK, map[string]any{"rules": out})
 }
 
 func (s *Server) createRule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	var rule alerts.Rule
-	if !decode(w, r, &rule) {
+	// A rule as it was read can be sent back: what its maker is called is
+	// ignored, as who made it is.
+	var body ruleView
+	if !decode(w, r, &body) {
 		return
 	}
+	rule := body.Rule
 	if !s.ruleScopeExists(w, r, who, &rule) {
 		return
 	}
@@ -288,17 +318,18 @@ func (s *Server) createRule(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusCreated, stored)
+	ok(w, http.StatusCreated, viewRule(s.P.Names(who.Tenant), stored))
 }
 
 // updateRule replaces a rule. Its name cannot change, and who created it is
 // kept. The body is checked exactly as a new rule is.
 func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, who auth.Principal) {
 	name := r.PathValue("name")
-	var rule alerts.Rule
-	if !decode(w, r, &rule) {
+	var body ruleView
+	if !decode(w, r, &body) {
 		return
 	}
+	rule := body.Rule
 	// Another workspace's rule, or one that does not exist, is not found
 	// before what the body names is looked up.
 	if _, err := s.P.Alerts.Rule(who.Tenant, name); err != nil {
@@ -326,7 +357,7 @@ func (s *Server) updateRule(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, stored)
+	ok(w, http.StatusOK, viewRule(s.P.Names(who.Tenant), stored))
 }
 
 // ruleScopeExists checks that the agent and the project a rule is scoped to

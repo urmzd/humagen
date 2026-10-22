@@ -270,7 +270,7 @@ func (p *Platform) mayRaise(c clients.Client, person, project string, bound bool
 	}
 	who := p.byPolicy(c.Tenant, person)
 	if !who.Can(auth.RunsWrite) {
-		return fmt.Errorf("%w: %s may not start runs (asking needs %s)", ErrForbidden, person, auth.RunsWrite)
+		return fmt.Errorf("%w: %s may not start runs (asking needs %s)", ErrForbidden, p.NameOf(c.Tenant, person), auth.RunsWrite)
 	}
 	return p.MayFileIn(who, project)
 }

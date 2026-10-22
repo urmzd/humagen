@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
@@ -12,19 +13,47 @@ import (
 // projectMembersView is who holds a role in a project, the version they were
 // read at, and the owners of the projects above it, who own it too.
 type projectMembersView struct {
-	Version   int                       `json:"version"`
-	Members   []projects.Entry          `json:"members"`
-	Inherited []projects.InheritedOwner `json:"inherited"`
+	Version   int              `json:"version"`
+	Members   []memberView     `json:"members"`
+	Inherited []inheritedOwner `json:"inherited"`
+}
+
+// memberView is a member entry and, for a person, what they are called:
+// the entry names them by subject, which is the key a change sends back,
+// and the console shows the name.
+type memberView struct {
+	projects.Entry
+	Name string `json:"name,omitempty"`
+}
+
+// inheritedOwner is an owner entry of a project above, and what the person
+// it names is called.
+type inheritedOwner struct {
+	projects.InheritedOwner
+	Name string `json:"name,omitempty"`
+}
+
+// entryName is what a member entry's person is called, "" for everyone and
+// for the holders of a role, which name no one person.
+func entryName(names platform.Names, who string) string {
+	if who == projects.Everyone || strings.HasPrefix(who, projects.RolePrefix) {
+		return ""
+	}
+	return names.Of(who)
 }
 
 func (s *Server) membersOf(who auth.Principal, name string) projectMembersView {
 	tree := s.P.ProjectTree(who.Tenant)
 	p, _ := tree.Get(name)
-	members := p.Members
-	if members == nil {
-		members = []projects.Entry{}
+	names := s.P.Names(who.Tenant)
+	out := projectMembersView{Version: p.Version, Members: []memberView{}, Inherited: []inheritedOwner{}}
+	for _, m := range p.Members {
+		out.Members = append(out.Members, memberView{Entry: m, Name: entryName(names, m.Who)})
 	}
-	return projectMembersView{Version: p.Version, Members: members, Inherited: tree.InheritedOwners(name)}
+	for _, o := range tree.InheritedOwners(name) {
+		out.Inherited = append(out.Inherited, inheritedOwner{InheritedOwner: o, Name: entryName(names, o.Who)})
+	}
+	return out
 }
 
 // projectMembers lists who holds a role in a project, and who owns it from
@@ -116,7 +145,7 @@ func (s *Server) putProjectLimit(w http.ResponseWriter, r *http.Request, who aut
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, saved)
+	ok(w, http.StatusOK, viewPolicy(s.P.Names(who.Tenant), saved))
 }
 
 // deleteProjectLimit removes a limit an owner of a project above set.

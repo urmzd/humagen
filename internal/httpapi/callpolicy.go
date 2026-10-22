@@ -17,7 +17,7 @@ func (s *Server) getCallPolicy(w http.ResponseWriter, r *http.Request, who auth.
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, pol)
+	ok(w, http.StatusOK, callPolicyView{Policy: pol, UpdatedByName: s.P.NameOf(who.Tenant, pol.UpdatedBy)})
 }
 
 // callPolicyBody is what a caller writes: a policy without the agent, which
@@ -52,7 +52,7 @@ func (s *Server) putCallPolicy(w http.ResponseWriter, r *http.Request, who auth.
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, pol)
+	ok(w, http.StatusOK, callPolicyView{Policy: pol, UpdatedByName: s.P.NameOf(who.Tenant, pol.UpdatedBy)})
 }
 
 // reachable answers, for the agent in the path as a caller, every other agent
@@ -67,4 +67,11 @@ func (s *Server) reachable(w http.ResponseWriter, r *http.Request, who auth.Prin
 	seer := s.P.Seer(who)
 	agents = slices.DeleteFunc(agents, func(a platform.Reach) bool { return !seer.Agent(a.Agent) })
 	ok(w, http.StatusOK, map[string]any{"agents": agents, "truncated": truncated})
+}
+
+// callPolicyView is an agent's call policy and what whoever last saved it is
+// called. The policy names them by subject; the console shows the name.
+type callPolicyView struct {
+	callpolicy.Policy
+	UpdatedByName string `json:"updated_by_name,omitempty"`
 }

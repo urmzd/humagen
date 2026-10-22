@@ -386,7 +386,7 @@ func (p *Platform) StopRun(ctx context.Context, who auth.Principal, runID string
 	if run.Status.Terminal() {
 		return run, nil
 	}
-	err = p.requestStop(ctx, who.Tenant, runID, "Stopped by "+who.Subject, who.Subject)
+	err = p.requestStop(ctx, who.Tenant, runID, "Stopped by "+p.NameOf(who.Tenant, who.Subject), who.Subject)
 	now, gerr := p.Runs.Get(who.Tenant, runID)
 	if gerr != nil {
 		return runs.Run{}, gerr

@@ -37,6 +37,13 @@ export type PlatformMessage = InboxMessage & {
   about: Source[];
   /** For each part that is a limit that was reached: which limit, on what, by part id. */
   budgets: Record<string, BudgetData>;
+  /**
+   * Who sent it as the platform keeps them: a person's subject, a mention's
+   * poster by handle (a thread's artefact names nobody by subject), or the
+   * agent's, rule's or system part's name. `from.name` is what they are
+   * called, which is what is shown; this tells the reader's own apart.
+   */
+  sender: string;
 };
 
 /** The server's kinds, in the order the inbox offers them as filters. */
@@ -153,6 +160,16 @@ export const unitOf = (which: LimitKind) =>
 const inUnit = (which: LimitKind, value: number) => (which === "spend" ? value / 1_000_000 : value);
 const fromUnit = (which: LimitKind, value: number) => (which === "spend" ? Math.round(value * 1_000_000) : Math.floor(value));
 
+/**
+ * Who decided a part, as a person reads it: what the platform calls them
+ * (`by_name`), never the subject it keeps them by, which can hold an address.
+ * The system keeps its word, which the mailbox reads as nobody.
+ */
+function decidedBy(out: Record<string, unknown>): string {
+  const by = str(out.by);
+  return by === "system" ? by : str(out.by_name) || by;
+}
+
 function partFrom(raw: unknown, at: string): MessagePart | null {
   const p = obj(raw);
   const id = str(p.id);
@@ -162,7 +179,7 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
     .map((a) => actionIds[str(a)])
     .filter((a): a is ActionId => a !== undefined);
   const resolution: { resolution?: Resolution } = out.action
-    ? { resolution: { outcome: str(out.action), by: str(out.by), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
+    ? { resolution: { outcome: str(out.action), by: decidedBy(out), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
     : {};
   switch (p.type) {
     case "text":
@@ -313,7 +330,7 @@ function partFrom(raw: unknown, at: string): MessagePart | null {
         prompt: str(mn.excerpt),
         allowed,
         ...(out.action
-          ? { resolution: { outcome: str(out.action) === "reply" ? "replied" : str(out.action), by: str(out.by), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
+          ? { resolution: { outcome: str(out.action) === "reply" ? "replied" : str(out.action), by: decidedBy(out), at: str(out.at), ...(str(out.note) ? { detail: str(out.note) } : {}) } }
           : {}),
       };
     }
@@ -359,7 +376,9 @@ export function fromServer(raw: unknown): PlatformMessage {
   return {
     id: str(m.id),
     subject: str(m.subject),
-    from: { kind: (str(from.kind) || "system") as InboxMessage["from"]["kind"], name: str(from.name) },
+    // A person is shown by what the platform calls them, never by subject.
+    from: { kind: (str(from.kind) || "system") as InboxMessage["from"]["kind"], name: str(from.display) || str(from.name) },
+    sender: str(from.name),
     at,
     unread: m.unread === true,
     severity: tone[str(m.severity)] ?? "neutral",

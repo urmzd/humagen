@@ -53,6 +53,21 @@ export function titleOf(p: Pick<Project, "name" | "title"> | ProjectStep, worksp
   return p.name === "" ? workspace : p.title || p.name;
 }
 
+/** A project the reader can name, for a picker or a sentence that names one by its title. */
+export type ProjectRef = Pick<Project, "name" | "title">;
+
+/**
+ * A project by what people see for it, its title, found by name among the
+ * projects the reader has. One they do not have is named as it was given.
+ */
+export function titleIn(projects: readonly ProjectRef[], name: string): string {
+  const p = projects.find((x) => x.name === name);
+  return p ? titleOf(p) : name;
+}
+
+/** A picker's options for the projects the reader has, each by its title. */
+export const projectOptions = (projects: readonly ProjectRef[]) => projects.map((p) => ({ value: p.name, label: titleOf(p) }));
+
 /** A kind in words: "Account", or the title the workspace gives its own. */
 export const kindWord = (kind: ProjectKind, kinds: ProjectKindSpec[] = []): string =>
   words.kind[kind] ?? (kinds.find((k) => k.name === kind)?.title || kind);

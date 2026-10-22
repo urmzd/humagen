@@ -750,9 +750,11 @@ func (p *Platform) maySteer(ctx context.Context, tenant string, q inbox.Question
 	case person == nobody:
 		return fmt.Errorf("%w: the run that called this one cannot be read, so nobody may answer what it asks", ErrForbidden)
 	case q.Kind == payload.QuestionApproval:
-		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may edit its calls or add a note the agent reads; approve or deny it as asked", ErrForbidden, person, person)
+		name := p.NameOf(tenant, person)
+		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may edit its calls or add a note the agent reads; approve or deny it as asked", ErrForbidden, name, name)
 	default:
-		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may answer what it asks", ErrForbidden, person, person)
+		name := p.NameOf(tenant, person)
+		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may answer what it asks", ErrForbidden, name, name)
 	}
 }
 
@@ -819,7 +821,7 @@ func (p *Platform) checkAnswer(ctx context.Context, who auth.Principal, reader i
 			return err
 		} else if self {
 			refused("self-approval")
-			return fmt.Errorf("%w: %s asked for this work, so someone else must approve its calls", ErrForbidden, reader.Subject)
+			return fmt.Errorf("%w: %s asked for this work, so someone else must approve its calls", ErrForbidden, p.NameOf(who.Tenant, reader.Subject))
 		}
 	}
 	// Checked here, from the run and its callers as they stand, as well as
@@ -829,7 +831,7 @@ func (p *Platform) checkAnswer(ctx context.Context, who auth.Principal, reader i
 		return err
 	}
 	if !m.For(reader) {
-		return fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)
+		return fmt.Errorf("%w: %s may not answer this question", ErrForbidden, p.NameOf(who.Tenant, reader.Subject))
 	}
 	return nil
 }
@@ -861,7 +863,7 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 	}
 	if a.ActAs != nil && !mayResume(who, reader) {
 		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "no runs:write")
-		return inbox.Message{}, false, fmt.Errorf("%w: %s may not resume runs (answering needs %s)", ErrForbidden, reader.Subject, auth.RunsWrite)
+		return inbox.Message{}, false, fmt.Errorf("%w: %s may not resume runs (answering needs %s)", ErrForbidden, p.NameOf(who.Tenant, reader.Subject), auth.RunsWrite)
 	}
 	if err := p.checkAnswer(ctx, who, reader, m, q, a, true); err != nil {
 		return inbox.Message{}, false, err
@@ -909,7 +911,7 @@ func (p *Platform) answerFirst(ctx context.Context, who auth.Principal, m inbox.
 	switch {
 	case errors.Is(err, runtime.ErrNotAllowed):
 		p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID)
-		return inbox.Message{}, false, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, reader.Subject)
+		return inbox.Message{}, false, fmt.Errorf("%w: %s may not answer this question", ErrForbidden, p.NameOf(who.Tenant, reader.Subject))
 	case errors.Is(err, runtime.ErrInvalid):
 		return inbox.Message{}, false, fmt.Errorf("%w: %s", ErrAction, strings.TrimPrefix(err.Error(), "runtime: invalid: "))
 	case errors.Is(err, runtime.ErrNoQuestion):
