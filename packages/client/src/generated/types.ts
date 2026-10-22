@@ -949,6 +949,13 @@ export interface ProjectSkill {
   instructions: string;
 }
 
+/** A skill a project declares, without its instructions, as a project and its history show it. */
+export interface ProjectSkillBrief {
+  name: string;
+  description: string;
+  argument_hint?: string;
+}
+
 /** A skill a message posted in a project can name, without its instructions, and the project that declares it. */
 export interface ProjectSkillRef {
   name: string;
@@ -1080,10 +1087,12 @@ for a caller without `knowledge:read`.
  */
   knowledge?: string[];
   /** Named instructions a message posted here and below can tell an
-agent to use, by writing `$<name>`. Set with `PUT
-/api/projects/{name}/skills`. Absent when it declares none.
+agent to use, by writing `$<name>`, without their instructions,
+which `GET /api/projects/{name}/skills` reads. Set with `PUT
+/api/projects/{name}/skills`. Absent when it declares none. A
+change in the project's history records them the same way.
  */
-  skills?: ProjectSkill[];
+  skills?: ProjectSkillBrief[];
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
   /** The lowest role that may post an announcement here. Absent reads as owner. */

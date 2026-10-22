@@ -824,7 +824,10 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	if err != nil {
 		return Posted{}, err
 	}
-	if mentions, err = skillTags(mentions, on != nil, on == nil && in.ActAs == nil && !in.PostOnly, slices.ContainsFunc(th.Agents, sees)); err != nil {
+	// An answer or a reply is the poster's response, which starts no run
+	// for a skill it names.
+	console := on == nil && in.ActAs == nil && !in.PostOnly && in.Answers == nil && !in.reply
+	if mentions, err = skillTags(mentions, on != nil, console, slices.ContainsFunc(th.Agents, sees)); err != nil {
 		return Posted{}, err
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)

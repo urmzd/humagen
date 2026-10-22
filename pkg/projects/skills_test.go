@@ -1,6 +1,7 @@
 package projects_test
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -225,5 +226,40 @@ func TestASkillIsOneASkillPackageTakes(t *testing.T) {
 		if err != nil || meta.Name != name || strings.TrimSpace(body) != "Do it." {
 			t.Errorf("%q is a skill here and saige reads %+v, %q, %v", name, meta, body, err)
 		}
+	}
+}
+
+// A change's record keeps each skill's name, description and hint, never its
+// instructions: the project's own record holds them once, and history,
+// which keeps every change, stays small.
+func TestAChangeRecordsSkillsWithoutTheirInstructions(t *testing.T) {
+	s := projects.NewStore()
+	mustCreate(t, s, "acme", team("Field", ""), ada)
+	big := make([]projects.Skill, projects.MaxSkills)
+	for i := range big {
+		big[i] = projects.Skill{Name: fmt.Sprintf("s%d", i), Description: "Does it.", ArgumentHint: "[x]", Instructions: strings.Repeat("i", projects.MaxSkillInstructions)}
+	}
+	p, err := s.SetSkills("acme", "Field", 1, big, ada, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Skills) != projects.MaxSkills || p.Skills[0].Instructions == "" {
+		t.Fatalf("the project's record lost its skills' instructions: %+v", p.Skills[0])
+	}
+	if sk, _, _ := s.Tree("acme").Skill("Field", "s0"); sk.Instructions == "" {
+		t.Fatal("the tree lost the instructions")
+	}
+	h, _ := s.History("acme", "Field", 1, 0)
+	after := h[0].After
+	if h[0].What != projects.SkillsChanged || after == nil || len(after.Skills) != projects.MaxSkills {
+		t.Fatalf("the change = %+v", h[0])
+	}
+	for _, sk := range after.Skills {
+		if sk.Instructions != "" || sk.Name == "" || sk.Description == "" || sk.ArgumentHint != "[x]" {
+			t.Fatalf("a change records %+v", sk)
+		}
+	}
+	if raw, _ := json.Marshal(h[0]); len(raw) > 16<<10 {
+		t.Fatalf("a skills change is %d bytes", len(raw))
 	}
 }

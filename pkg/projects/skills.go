@@ -43,7 +43,25 @@ type Skill struct {
 	Name         string `json:"name"`
 	Description  string `json:"description"`
 	ArgumentHint string `json:"argument_hint,omitempty"`
-	Instructions string `json:"instructions"`
+	// Instructions are kept on the project's own record, and left out of
+	// every copy of it that is not about using the skill: a change's record,
+	// and a project as the API shows it (BriefSkills).
+	Instructions string `json:"instructions,omitempty"`
+}
+
+// BriefSkills is a project's skills without their instructions: what a
+// change records and what a project's view shows, so neither copies up to
+// MaxSkills times MaxSkillInstructions characters. Nil stays nil.
+func BriefSkills(ss []Skill) []Skill {
+	if ss == nil {
+		return nil
+	}
+	out := make([]Skill, len(ss))
+	for i, s := range ss {
+		s.Instructions = ""
+		out[i] = s
+	}
+	return out
 }
 
 // validSkillName is a skill's name: lower case letters and digits in words
