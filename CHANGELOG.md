@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.20.2 (2026-10-22)
+
+### Bug Fixes
+
+- **console**: say who Share did not add in the console's words (#52) ([2553e22](https://github.com/urmzd/warp/commit/2553e227fa98d933de4afc33db7deaf7d50496c4))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.20.1...v0.20.2)
+
+
 ## 0.20.1 (2026-10-22)
 
 ### Bug Fixes
