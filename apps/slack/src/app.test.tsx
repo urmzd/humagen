@@ -1790,7 +1790,7 @@ test("when humagen cannot say whether a channel is bound, nobody is answered aro
   assert.equal(w.humagen.runs.size, 0);
   assert.match(
     textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
-    new RegExp(defaultCopy.failure.unavailable("humagen").slice(0, 20)),
+    new RegExp(defaultCopy.failure.unavailable("Humagen").slice(0, 20)),
   );
   // The failure is not remembered: once humagen answers, the channel reads as bound.
   down = false;
