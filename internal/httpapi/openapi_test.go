@@ -603,9 +603,11 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"Channel":     {typ: projects.Channel{}}, "ClientBinding": {typ: projects.Binding{}}, "ChannelView": {typ: channelView{}},
 		"ChannelInput": {typ: platform.ChannelInput{}, written: true}, "ChannelUpdate": {typ: platform.ChannelUpdate{}, written: true},
 		"ProjectExpert": {typ: projects.Expert{}}, "ProjectExperts": {typ: platform.Experts{}}, "Project": {typ: projects.Project{}}, "ProjectView": {typ: projectView{}},
-		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectSkill": {typ: projects.Skill{}}, "ProjectLimit": {typ: projectLimit{}},
+		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectLimit": {typ: projectLimit{}},
 		"ProjectDetail": {typ: projectDetail{}}, "ProjectChange": {typ: projectChangeView{}},
 		"ProjectKnowledge": {typ: platform.ProjectKnowledge{}}, "ProjectKnowledgeSource": {typ: projects.KnowledgeSource{}}, "ProjectKnowledgeInput": {typ: platform.KnowledgeInput{}, written: true},
+		"ProjectSkill": {typ: projects.Skill{}}, "ProjectSkillRef": {typ: projects.SkillRef{}}, "ProjectSkills": {typ: platform.ProjectSkills{}}, "ProjectSkillsInput": {typ: platform.SkillsInput{}, written: true},
+		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
@@ -1516,6 +1518,38 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":[]}`, knownAt), http.StatusConflict)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":["ghost"]}`, knownAt+1), http.StatusBadRequest)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d}`, knownAt+1), http.StatusBadRequest)
+	// The skills a project declares are what a message posted there and
+	// below can name; GET /api/skills lists them without instructions, and
+	// GET /api/mentions lists the mention kinds and completes one.
+	sk := "/api/projects/{name}/skills"
+	got = c.call(acme, "GET", sk, "/api/projects/Field/skills", "", http.StatusOK)
+	skillsAt := version(got)
+	review := `{"name":"review","description":"Review a renewal.","argument_hint":"[account]","instructions":"Check the terms."}`
+	got = c.call(acme, "PUT", sk, "/api/projects/Field/skills", fmt.Sprintf(`{"version":%d,"skills":[%s]}`, skillsAt, review), http.StatusOK)
+	if o := sliceOf(got.field("offered")); len(o) != 1 || obj(o[0])["name"] != "review" || obj(o[0])["from"] != "Field" {
+		t.Errorf("Field's skills are %s", got.raw)
+	}
+	c.call(acme, "PUT", sk, "/api/projects/Field/skills", fmt.Sprintf(`{"version":%d,"skills":[]}`, skillsAt), http.StatusConflict)
+	c.call(acme, "PUT", sk, "/api/projects/Field/skills", fmt.Sprintf(`{"version":%d,"skills":[%s,%s]}`, skillsAt+1, review, review), http.StatusBadRequest)
+	c.call(acme, "PUT", sk, "/api/projects/Field/skills", fmt.Sprintf(`{"version":%d}`, skillsAt+1), http.StatusBadRequest)
+	got = c.call(acme, "GET", "/api/skills", "/api/skills?project=Field", "", http.StatusOK)
+	if l := sliceOf(got.field("skills")); len(l) != 1 || obj(l[0])["instructions"] != nil {
+		t.Errorf("the skills in Field are %s", got.raw)
+	}
+	c.call(acme, "GET", "/api/skills", "/api/skills", "", http.StatusOK)
+	c.call(acme, "GET", "/api/skills", "/api/skills?project=Nowhere", "", http.StatusNotFound)
+	got = c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field", "", http.StatusOK)
+	if k := sliceOf(got.field("kinds")); len(k) < 2 || obj(k[0])["kind"] != "sme" || obj(k[1])["kind"] != "skill" {
+		t.Errorf("the mention kinds are %s", got.raw)
+	}
+	got = c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field&kind=skill&q=rev", "", http.StatusOK)
+	if i := sliceOf(got.field("items")); len(i) != 1 || obj(i[0])["name"] != "review" {
+		t.Errorf("completing skill:rev is %s", got.raw)
+	}
+	c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field&kind=team", "", http.StatusNotFound)
+	c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field&q=rev", "", http.StatusBadRequest)
+	// A message that names a skill nobody declares is refused.
+	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"private","text":"$ghost please"}`, http.StatusBadRequest)
 
 	c.call(acme, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"shared","text":"hi"}`, http.StatusForbidden)
 	// A conversation the console starts is private, and an untagged
@@ -1732,7 +1766,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
-		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
+		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
 		"/api/threads/{id}/share": {"id": tid},
 	}
@@ -1752,7 +1786,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/schedules/{name}":                      `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 		"/api/me/credentials/{provider}":             `{"ref":"op://People/svc/issues"}`,
 		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
-		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/threads/{id}": `{"version":1}`,
+		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
 		"/api/threads/{id}/share":      `{}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,

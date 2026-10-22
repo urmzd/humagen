@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/warp/pkg/threads"
 )
 
 // platformWith is a Platform document whose workspace is body, indented
@@ -146,6 +148,23 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 		"a source twice":              {tree(`{name: Field, knowledge: [handbook, playbook, handbook]}`), `workspace.projects[0].knowledge[2]: handbook is knowledge[0] again`},
 		"nine sources":                {tree(`{name: Field, knowledge: [a, b, c, d, e, f, g, h, i]}`), `workspace.projects[0].knowledge: a project names at most 8 knowledge sources, not 9`},
 		"a workspace source misnamed": {"    knowledge: [\"the handbook\"]\n", `workspace.knowledge[0]: "the handbook" is not a knowledge source's name`},
+		// Skills: a skill's name, each once, at most 32, with a
+		// description and instructions.
+		"a skill in capitals":          {tree(`{name: Field, skills: [{name: Review, description: d, instructions: i}]}`), `workspace.projects[0].skills[0].name: "Review" is not a skill's name`},
+		"a skill named like a price":   {"    skills: [{name: 5x, description: d, instructions: i}]\n", `workspace.skills[0].name: "5x" is not a skill's name`},
+		"a skill twice":                {tree(`{name: Field, skills: [{name: review, description: d, instructions: i}, {name: review, description: d, instructions: i}]}`), `workspace.projects[0].skills[1].name: review is skills[0] again`},
+		"a skill with no description":  {tree(`{name: Field, skills: [{name: review, instructions: i}]}`), `workspace.projects[0].skills[0].description: say what the skill is for`},
+		"a skill with no instructions": {tree(`{name: Field, skills: [{name: review, description: d}]}`), `workspace.projects[0].skills[0].instructions: a skill has instructions`},
+		"long skill instructions":      {tree(`{name: Field, skills: [{name: review, description: d, instructions: ` + strings.Repeat("i", 8001) + `}]}`), `workspace.projects[0].skills[0].instructions: at most 8000 characters, not 8001`},
+		"a long argument hint":         {tree(`{name: Field, skills: [{name: review, description: d, argument_hint: ` + strings.Repeat("h", 101) + `, instructions: i}]}`), `workspace.projects[0].skills[0].argument_hint: at most 100 characters, not 101`},
+		"33 skills":                    {tree(`{name: Field, skills: [` + skillList(33) + `]}`), `workspace.projects[0].skills: a project declares at most 32 skills, not 33`},
+		// Mention kinds: a kind's name, not a built-in one, each once, with
+		// a title and what it resolves to.
+		"a built-in kind again":    {"    mention_kinds: [{kind: sme, title: Experts, resolves: experts}]\n", `workspace.mention_kinds[0].kind: sme is reserved`},
+		"a kind in capitals":       {"    mention_kinds: [{kind: Team, title: Teams, resolves: role}]\n", `workspace.mention_kinds[0].kind: "Team" is not a kind's name`},
+		"a kind with no title":     {"    mention_kinds: [{kind: team, resolves: role}]\n", `workspace.mention_kinds[0].title: name the kind`},
+		"a kind resolving nothing": {"    mention_kinds: [{kind: team, title: Teams, resolves: teams}]\n", `workspace.mention_kinds[0].resolves: "teams" is experts, skills, role or people`},
+		"a kind twice":             {"    mention_kinds: [{kind: team, title: Teams, resolves: role}, {kind: team, title: T, resolves: people}]\n", `workspace.mention_kinds[1].kind: team is mention_kinds[0] again`},
 	} {
 		_, err := loadBody(t, platformWith(tc.body))
 		if want := `platform "default": ` + tc.want; err == nil || !strings.Contains(err.Error(), want) {
@@ -166,6 +185,29 @@ func channelList(n int) string {
 		names[i] = fmt.Sprintf("{name: c%d}", i)
 	}
 	return strings.Join(names, ", ")
+}
+
+func skillList(n int) string {
+	var out []string
+	for i := range n {
+		out = append(out, fmt.Sprintf("{name: s%d, description: d, instructions: i}", i))
+	}
+	return strings.Join(out, ", ")
+}
+
+// Skills and mention kinds the store and the grammar accept pass, on the
+// workspace and on a project.
+func TestSkillsAndMentionKindsTheStoreTakesPass(t *testing.T) {
+	got, err := loadBody(t, platformWith("    skills: [{name: summarize, description: Summarize a thread., instructions: \"Summarize in five bullets.\"}]\n"+
+		"    mention_kinds: [{kind: team, title: Teams, resolves: role}, {kind: dev, title: Developers, resolves: people}]\n"+
+		tree(`{name: Field, skills: [`+skillList(32)+`]}`, `{name: Globex, parent: Field, skills: []}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := got.Platforms[0].Spec.Workspace
+	if len(w.Skills) != 1 || len(w.MentionKinds) != 2 || w.MentionKinds[0].Resolves != "role" || len(w.Projects[0].Skills) != 32 || w.Projects[1].Skills == nil {
+		t.Fatalf("read %+v", w)
+	}
 }
 
 // Knowledge sources the store accepts pass, on the workspace and on a
@@ -281,6 +323,11 @@ func TestTheLanguagesBoundsAreTheProjectStores(t *testing.T) {
 		"purpose":       {maxPurpose, projects.MaxPurpose},
 		"experts":       {maxExperts, projects.MaxExperts},
 		"knowledge":     {maxKnowledge, projects.MaxKnowledge},
+		"skills":        {maxSkills, projects.MaxSkills},
+		"skill name":    {maxSkillName, projects.MaxSkillName},
+		"skill text":    {maxSkillDescription, projects.MaxSkillDescription},
+		"argument hint": {maxArgumentHint, projects.MaxArgumentHint},
+		"skill body":    {maxSkillInstructions, projects.MaxSkillInstructions},
 		"topics":        {maxExpertTopics, projects.MaxTopics},
 		"expert who":    {maxExpertWho, projects.MaxWho},
 		"members":       {maxMembers, projects.MaxMembers},
@@ -307,6 +354,21 @@ func TestTheLanguagesBoundsAreTheProjectStores(t *testing.T) {
 	for _, topic := range []string{"billing", "a", "q4-renewals", strings.Repeat("a", 32), strings.Repeat("a", 33), "", "4q", "Billing", "a_b"} {
 		if topicName.MatchString(topic) != projects.ValidTopic(topic) {
 			t.Errorf("topic %q: the spec says %v, the store %v", topic, topicName.MatchString(topic), projects.ValidTopic(topic))
+		}
+	}
+	for _, skill := range []string{"review", "a", "q4-report", "a1-b2", strings.Repeat("a", 64), strings.Repeat("a", 65), "", "5x", "-a", "a-", "a--b", "Review", "a_b", "a.b"} {
+		if (len(skill) <= maxSkillName && skillName.MatchString(skill)) != projects.ValidSkill(skill) {
+			t.Errorf("skill %q: the spec says %v, the store %v", skill, skillName.MatchString(skill), projects.ValidSkill(skill))
+		}
+	}
+	for _, r := range append(slices.Clone(mentionResolves), "teams", "") {
+		if slices.Contains(mentionResolves, r) != threads.ValidResolves(r) {
+			t.Errorf("resolves %q: the spec says %v, the grammar %v", r, slices.Contains(mentionResolves, r), threads.ValidResolves(r))
+		}
+	}
+	for kind := range threads.BuiltInKinds {
+		if !slices.Contains(reservedKinds, kind) {
+			t.Errorf("the built-in kind %s is not reserved", kind)
 		}
 	}
 	for _, source := range []string{"handbook", "a", "0-day", "q4-notes", strings.Repeat("a", 63), strings.Repeat("a", 64), "", "-x", "Handbook", "a_b", "a b", "a,b", "ünï"} {

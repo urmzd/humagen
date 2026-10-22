@@ -106,6 +106,15 @@ func SourcesOf(meta map[string]string) []string {
 	return strings.Split(v, ",")
 }
 
+// MetaSkills is the key the platform writes into a tag's Meta when a
+// person's message names skills: the skills the run is told to use, with
+// their instructions, as the platform's own JSON, pinned when the message is
+// accepted so every attempt of the run is told the same whatever the projects
+// declare later. Admission drops it from every tag but a root run started
+// through the platform's API (OriginAPI), which only the platform raises, so
+// no connector, schedule or caller can put instructions in a run.
+const MetaSkills = "warp.skills"
+
 // MetaClient is the key the platform's ingress writes into a tag's Meta to
 // say which external client raised it. Ingress overwrites whatever a
 // connector put there, and only a tag whose origin is a client surface is

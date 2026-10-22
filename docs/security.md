@@ -288,6 +288,22 @@ no permission, grants nothing.
   reader without it is shown no source's name. Naming a source lets the
   runs filed there, and the people they act for, read what it holds through
   their answers, as an agent's own sources do.
+- **A skill's instructions reach only the runs a person asked for.** A
+  message names skills its project's chain declares, and only the runs that
+  message starts are given them, pinned when it is accepted. Admission drops
+  the pinned key from every tag but a root run the platform's API raised,
+  which only the platform does, so no connector, schedule, caller or calling
+  agent puts instructions in a run, and a run an agent calls is not given its
+  caller's. The instructions reach the model ahead of the turn, under a line
+  that ranks them below the agent's own and says the platform enforces
+  limits, approvals and availability whatever they say; the pinned key itself
+  is taken out of what fiber writes into the prompt. A skill is read by
+  whoever reads its project, and a hidden project's skills answer as missing
+  ones in every list and completion.
+- **A mention kind resolves on the server.** `@<kind>:<name>` is resolved
+  as the workspace's Platform document says, which only the file sets;
+  completing people reads the directory and takes `people:read`, as the
+  directory does.
 - **Project memory reaches only that project.** A turn is sent a project's
   shared notes only when its conversation is filed in that project.
 - **Knowledge stays in its tenant.** A turn is grounded only in the sources

@@ -73,7 +73,7 @@ func validSkills(ss []Skill) error {
 			return fmt.Errorf("%w: the skill %s says what it is for on one line of at most %d characters", ErrInvalid, s.Name, MaxSkillDescription)
 		case utf8.RuneCountInString(s.ArgumentHint) > MaxArgumentHint || !oneLine(s.ArgumentHint):
 			return fmt.Errorf("%w: the skill %s's argument hint is one line of at most %d characters", ErrInvalid, s.Name, MaxArgumentHint)
-		case strings.TrimSpace(s.Instructions) == "" || utf8.RuneCountInString(s.Instructions) > MaxSkillInstructions || !utf8.ValidString(s.Instructions):
+		case strings.TrimSpace(s.Instructions) == "" || utf8.RuneCountInString(s.Instructions) > MaxSkillInstructions || !plain(s.Instructions):
 			return fmt.Errorf("%w: the skill %s has instructions of at most %d characters", ErrInvalid, s.Name, MaxSkillInstructions)
 		}
 	}

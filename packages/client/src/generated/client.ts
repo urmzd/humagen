@@ -46,6 +46,7 @@ import type {
   ListInboxResponse,
   ListKnowledgeDocumentsResponse,
   ListKnowledgeSourcesResponse,
+  ListMentionsResponse,
   ListPendingMemoryResponse,
   ListPeopleResponse,
   ListPoliciesResponse,
@@ -56,6 +57,7 @@ import type {
   ListRunEventsResponse,
   ListRunFeedbackResponse,
   ListSchedulesResponse,
+  ListSkillsResponse,
   ListThreadsResponse,
   ListUsageNoticesResponse,
   Manifest,
@@ -79,6 +81,8 @@ import type {
   ProjectMembers,
   ProjectMembersInput,
   ProjectMove,
+  ProjectSkills,
+  ProjectSkillsInput,
   ProjectUpdate,
   ProjectView,
   QueryJournalResponse,
@@ -3374,6 +3378,59 @@ platform file sets.
     });
   }
 
+  /** A skill is named instructions an agent can be told to use: a person
+writes `$<name>`, or `@skill:<name>`, in a message, and the runs the
+message starts are given the skill's instructions as part of the
+turn. A message posted in a project can name the skills its project
+declares, then each project's above it, nearest first: `offered`,
+each name once, from the nearest project that declares it, at most
+128. A sibling's or a sub-project's are never offered. They are fixed
+when a run is accepted, so a later change here does not change a run
+already working.
+ */
+  async getProjectSkills(name: string, options?: RequestOptions): Promise<ProjectSkills> {
+    let path = "/api/projects/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectSkills>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectSkillsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectSkills>> {
+    let path = "/api/projects/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectSkills>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** At most 32, each name once (400). A message posted here and below can
+name them from now on; a run already working keeps what it was
+accepted with. It needs ownership of the project; the workspace and
+company projects need `projects:govern` as well. `version` is the
+project's, as read; a change made since answers 409, as do skills the
+platform file declares.
+ */
+  async setProjectSkills(name: string, body: ProjectSkillsInput, options?: RequestOptions): Promise<ProjectSkills> {
+    let path = "/api/projects/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectSkills>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setProjectSkillsRaw(name: string, body: ProjectSkillsInput, options?: RequestOptions): Promise<ApiResponse<ProjectSkills>> {
+    let path = "/api/projects/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectSkills>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** Read who holds a role in a project, and who owns it from above */
   async getProjectMembers(name: string, options?: RequestOptions): Promise<ProjectMembers> {
     let path = "/api/projects/{name}/members";
@@ -3580,6 +3637,69 @@ an announcement in this project is 404.
     path = path.replace("{name}", encodeURIComponent(String(name)));
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** The project's own skills first, then each project's above it, nearest
+first, each name once, at most 128, without their instructions: what
+the console completes after `$`. A project the caller cannot see
+answers 404, as one that does not exist.
+ */
+  async listSkills(project?: string, options?: RequestOptions): Promise<ListSkillsResponse> {
+    let path = "/api/skills";
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListSkillsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSkillsRaw(project?: string, options?: RequestOptions): Promise<ApiResponse<ListSkillsResponse>> {
+    let path = "/api/skills";
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListSkillsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Without `kind`, the kinds of `@<kind>:<name>` a message can use: the
+built-in `sme` (experts) and `skill` (skills) first, then the ones the
+workspace's Platform document declares. With `kind`, the items it
+completes to where a message is posted in `project`, whose name
+starts with `q`, ignoring case, by name, at most 20: the topics the
+project's chain has experts for, the skills it offers, the roles it
+names, or people in the directory, which takes `people:read` as well
+(without it the list is empty). A kind the workspace does not have,
+or a project the caller cannot see, answers 404.
+ */
+  async listMentions(project?: string, kind?: string, q?: string, options?: RequestOptions): Promise<ListMentionsResponse> {
+    let path = "/api/mentions";
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListMentionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listMentionsRaw(project?: string, kind?: string, q?: string, options?: RequestOptions): Promise<ApiResponse<ListMentionsResponse>> {
+    let path = "/api/mentions";
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListMentionsResponse>("GET", path, {
       ...options,
     });
   }

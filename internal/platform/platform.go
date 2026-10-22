@@ -118,6 +118,11 @@ type Config struct {
 	// inbox.DefaultRetention, and none keeps it less than
 	// inbox.MinRetention.
 	InboxRetention map[string]time.Duration
+	// MentionKinds are the mention kinds each tenant's Platform document
+	// declares besides the built-in ones, by tenant, as
+	// workspace.mention_kinds sets them. The file owns them: nothing in the
+	// API changes them.
+	MentionKinds map[string][]MentionKind
 	// SlackAPI and GitHubAPI build the API a client writes through from its
 	// token. Nil means the real one over HTTP.
 	SlackAPI  func(token string) slack.API
@@ -565,6 +570,11 @@ func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within,
 	delete(meta, runs.MetaSources)
 	if len(sources) > 0 {
 		meta[runs.MetaSources] = strings.Join(sources, ",")
+	}
+	// Only the platform pins skills, on a person's message (answerMessage):
+	// any other tag that carries the key is not believed.
+	if tag.Origin != runs.OriginAPI || edge.Parent != "" {
+		delete(meta, runs.MetaSkills)
 	}
 	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual) && edge.Parent == "" {
 		meta[runs.MetaAsk] = tag.Text
