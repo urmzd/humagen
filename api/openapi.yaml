@@ -6252,6 +6252,32 @@ components:
           description: When they last signed in. Absent for someone who never has.
           type: string
           format: date-time
+        projects:
+          description: |
+            Their own projects, in tree order: each project where an entry
+            naming their subject, or a role they held when last seen, makes
+            them a member or an owner, there or as an owner above. One reached
+            only through everyone is not theirs. Only projects the reader may
+            see are named, and none without `projects:read`. At most 20;
+            absent when there are none.
+          type: array
+          maxItems: 20
+          items: {$ref: "#/components/schemas/PersonProject"}
+        projects_more:
+          description: How many more of their projects the reader may see than are listed. Absent when none.
+          type: integer
+          minimum: 0
+    PersonProject:
+      description: One of a person's own projects.
+      type: object
+      required: [name, role]
+      properties:
+        name: {type: string}
+        title: {type: string}
+        role:
+          description: Their role there.
+          type: string
+          enum: [member, owner]
     Settings:
       description: |
         Workspace settings. The workspace default agent, which answers a

@@ -608,8 +608,9 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
 		"ProjectAgentsInput": {typ: platform.AgentsInput{}, written: true}, "AgentPlace": {typ: platform.AgentPlace{}}, "AgentHome": {typ: agentHome{}},
-		"Person":       {typ: personView{}},
-		"ProjectEntry": {typ: projects.Entry{}}, "ProjectKindSpec": {typ: projects.KindSpec{}}, "ProjectAccess": {typ: projects.Access{}},
+		"Person":        {typ: personView{}},
+		"PersonProject": {typ: personProject{}},
+		"ProjectEntry":  {typ: projects.Entry{}}, "ProjectKindSpec": {typ: projects.KindSpec{}}, "ProjectAccess": {typ: projects.Access{}},
 		"ProjectInheritedOwner": {typ: inheritedOwner{}}, "ProjectMember": {typ: memberView{}}, "ProjectMembers": {typ: projectMembersView{}},
 		"ProjectLimitInput": {typ: projectLimitBody{}, written: true}, "InboxCounts": {typ: inbox.Counts{}},
 		"AnnouncementInput": {typ: struct {

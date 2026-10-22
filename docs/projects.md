@@ -991,7 +991,7 @@ mirror. `{name}` is `~` for the root (a name cannot start with `~`).
 | `POST /api/projects/{name}/move` | `projects:write` | `{version, parent}` → ProjectView. 400 cycle, depth, kind, openness; 403 the limit rule; 409 a default, a homed agent or a schedule below it that would lose its agent |
 | `PUT /api/projects/{name}` | `projects:write` | gains `kind`, `archived`; on the root, `kinds` |
 | `PUT`, `DELETE /api/projects/{name}/limits` | `projects:write` | owner of a strict ancestor; writes a project-scope policy with `Authority: owner`; looser than the effective chain is 400 naming the binding scope; an admin policy is 409 |
-| `GET /api/people` | `projects:read` | `?q=&limit=` (<= 50) → `{people: [{subject, name, handle}]}` |
+| `GET /api/people` | `people:read` | `?q=&limit=` (<= 50)`&before=` → `{people: [{subject?, name?, handle, roles, picture, seen_at?, projects?, projects_more?}], next}`; a subject that holds an address is left out, and so is anyone known only by one. `projects` is the person's own projects the reader may see (none without `projects:read`), at most 20 |
 
 ### Phase 3
 

@@ -8,8 +8,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/people"
+	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/prefs"
 )
 
@@ -36,6 +38,47 @@ type personView struct {
 	// Picture is where their own photo is served, or null without one.
 	Picture *string   `json:"picture"`
 	SeenAt  time.Time `json:"seen_at,omitzero"`
+	// Projects is their own projects the reader may see, in tree order, at
+	// most MaxPersonProjects; ProjectsMore counts the rest the reader may
+	// see. A project the reader cannot see is never named or counted. Both
+	// are left out when there are none.
+	Projects     []personProject `json:"projects,omitempty"`
+	ProjectsMore int             `json:"projects_more,omitempty"`
+}
+
+// personProject is one of a person's own projects.
+type personProject struct {
+	Name  string        `json:"name"`
+	Title string        `json:"title,omitempty"`
+	Role  projects.Role `json:"role"`
+}
+
+// MaxPersonProjects bounds the projects one person in the directory lists.
+const MaxPersonProjects = 20
+
+// projectsOf is a person's own projects (projects.Tree.Named: a member or an
+// owner through an entry naming their subject or a role they held when last
+// seen, never through everyone) that the reader may see. The workspace is no
+// project, and a reader without projects:read is shown none.
+func projectsOf(who auth.Principal, seer *platform.Seer, tree *projects.Tree, p people.Person) ([]personProject, int) {
+	out, more := []personProject{}, 0
+	if !who.Can(auth.ProjectsRead) {
+		return out, 0
+	}
+	r := projects.Reader{Subject: p.Subject, Roles: p.Roles}
+	access := tree.Roles(r)
+	for _, name := range tree.Named(r) {
+		if name == projects.Root || !seer.Project(name) {
+			continue
+		}
+		if len(out) == MaxPersonProjects {
+			more++
+			continue
+		}
+		pr, _ := tree.Get(name)
+		out = append(out, personProject{Name: name, Title: pr.Title, Role: access[name].Role})
+	}
+	return out, more
 }
 
 func (s *Server) personOf(tenant string, p people.Person) personView {
@@ -71,9 +114,11 @@ func (s *Server) listPeople(w http.ResponseWriter, r *http.Request, who auth.Pri
 		s.problem(w, err)
 		return
 	}
+	seer, tree := s.P.Seer(who), s.P.ProjectTree(who.Tenant)
 	out := make([]personView, len(page))
 	for i, p := range page {
 		out[i] = s.personOf(who.Tenant, p)
+		out[i].Projects, out[i].ProjectsMore = projectsOf(who, seer, tree, p)
 	}
 	var cursor *string
 	if next != "" {

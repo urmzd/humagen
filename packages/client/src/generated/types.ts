@@ -1241,6 +1241,24 @@ grants name. Absent when it holds an email address.
   picture: string | null;
   /** When they last signed in. Absent for someone who never has. */
   seen_at?: string;
+  /** Their own projects, in tree order: each project where an entry
+naming their subject, or a role they held when last seen, makes
+them a member or an owner, there or as an owner above. One reached
+only through everyone is not theirs. Only projects the reader may
+see are named, and none without `projects:read`. At most 20;
+absent when there are none.
+ */
+  projects?: PersonProject[];
+  /** How many more of their projects the reader may see than are listed. Absent when none. */
+  projects_more?: number;
+}
+
+/** One of a person's own projects. */
+export interface PersonProject {
+  name: string;
+  title?: string;
+  /** Their role there. */
+  role: "member" | "owner";
 }
 
 /** Workspace settings. The workspace default agent, which answers a
