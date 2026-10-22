@@ -397,7 +397,7 @@ decided per message:
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
 | Failed run | `runs:read` | `runs:write`, and to retry a turn that acted for a person, being that person ([Tool credentials](#tool-credentials)) |
 | Proposed memory | `agents:read` | `agents:write` for an agent's; `projects:write` for a project's, and `projects:govern` as well for the workspace's and a company project's |
-| A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |
+| A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer; a choice or reply in a run that uses the credentials of the person it acts for, only that person |
 
 A message a caller may not see answers 404, not 403, and is left out of their
 count. A question is addressed to the people its run's pinned spec lets answer
@@ -429,7 +429,20 @@ Anyone it is addressed to may approve it as asked or deny it, but only that
 person may approve it with edited arguments, as fiber enforces: anyone
 else's edit is refused (403). Every approval card says this, in the
 console's inbox and on the run, and in the Slack app, and none offers an
-edit of such a call. The right is checked before saying whether a part is still open. A
+edit of such a call.
+
+A reply or a choice steers what a run does next, unlike approving a call as
+it was asked. So a run that uses the credentials of the person it acts for
+(it acts for a person, and its revision is granted a person-scoped tool
+provider, or one that cannot be found) asks that person alone: its reply and
+choice questions are addressed to them, and anyone else's answer, on the
+run, in the inbox or through a surface's `act_as`, is refused (403) before
+the runtime is asked. Otherwise one person's words, or their pick of the
+options, would reach another person's tools with that person's credential.
+A run that acts for nobody, or reaches only shared credentials, is answered
+by whoever `answerers` allows.
+
+The right is checked before saying whether a part is still open. A
 change is pushed to the browser as an id only, and only to callers who may see
 that kind.
 
