@@ -26,15 +26,19 @@ type Config struct {
 	ReadRepositories []string
 	Bots             map[string]string
 	Agents           mention.Set
-	Checks           bool
-	Deliver          []envelope.Route
-	Interval         time.Duration
-	Clock            func() time.Time
-	MaxBody          int64
-	AutoLabels       map[string]map[string]string
-	Guides           bool
-	Mutations        bool
-	MutationSecret   []byte
+	// Login is the app's own login, and DefaultAgent the agent a comment
+	// that mentions it and names no agent is raised for.
+	Login          string
+	DefaultAgent   string
+	Checks         bool
+	Deliver        []envelope.Route
+	Interval       time.Duration
+	Clock          func() time.Time
+	MaxBody        int64
+	AutoLabels     map[string]map[string]string
+	Guides         bool
+	Mutations      bool
+	MutationSecret []byte
 	// Tenant is the workspace whose runs this connector's tags become. A fix
 	// grant names the run it is good for, and the runtime derives a run's id
 	// from the tenant and the tag id together, so the grant cannot be signed
@@ -87,7 +91,7 @@ func New(cfg Config) (*Connector, error) {
 			return nil, fmt.Errorf("github: mutations need the tenant the connector's runs belong to")
 		}
 	}
-	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, Bots: cfg.Bots, Agents: cfg.Agents, Checks: cfg.Checks, Deliver: cfg.Deliver, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
+	base := transport.Config{API: cfg.API, Verifier: cfg.Verifier, Owners: cfg.Owners, ReadRepositories: cfg.ReadRepositories, Bots: cfg.Bots, Agents: cfg.Agents, Login: cfg.Login, DefaultAgent: cfg.DefaultAgent, Checks: cfg.Checks, Deliver: cfg.Deliver, Interval: cfg.Interval, Clock: cfg.Clock, MaxBody: cfg.MaxBody}
 	base.Automation = c.automatic
 	base.Prepare = c.prepare
 	base.Render = presentation.RenderReview

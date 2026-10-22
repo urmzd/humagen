@@ -423,8 +423,12 @@ func (p *Platform) dial(c clients.Client, secrets resolved) (*seat, error) {
 			MutationSecret: []byte(secrets.signing),
 			Tenant:         c.Tenant,
 		}
+		// A comment that mentions the app and names no agent is raised
+		// untagged, and stamp decides who answers it where it is filed.
+		cfg.DefaultAgent = untagged
 		if g := c.GitHub; g != nil {
 			cfg.AutoLabels, cfg.Checks, cfg.Guides, cfg.Mutations, cfg.ReadRepositories = g.AutoLabels, g.Checks, g.Guides, g.Mutations, g.ReadRepositories
+			cfg.Login = g.Login
 		}
 		peer, err := github.New(cfg)
 		if err != nil {

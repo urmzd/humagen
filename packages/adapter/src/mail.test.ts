@@ -237,6 +237,35 @@ test("what needs the reader on Home is every open message but posted announcemen
   );
 });
 
+test("what needs the reader on Home is every open message but published announcements, said from its sender", () => {
+  const mention = {
+    ...announcement,
+    id: "m-mention",
+    kind: "mention",
+    subject: "Ana mentioned you in #renewals",
+    from: { kind: "person", name: "Ana" },
+    parts: [{ id: "p1", type: "mention", state: "open", actions: ["reply", "done"], mention: { thread: "t1", message: "x", excerpt: "can you check?" } }],
+  };
+  const alert = {
+    ...announcement,
+    id: "m-alert",
+    kind: "alert",
+    subject: "6 of 10 runs failed",
+    from: { kind: "rule", name: "failure-rate" },
+    parts: [{ id: "p1", type: "alert", state: "open", actions: ["acknowledge"], alert: { id: "a1", rule: "failure-rate", kind: "run_failed", severity: "warning", title: "6 of 10 runs failed" } }],
+  };
+  const settled = { ...mention, id: "m-done", parts: [{ ...mention.parts[0], state: "resolved", actions: [], outcome: { action: "done", by: "ana", at: announcement.at } }] };
+  const items = notificationsOf([mention, alert, settled, announcement, draft].map(fromServer), (id) => `/inbox?message=${id}`);
+  assert.deepEqual(items, [
+    { kind: "inbox", id: "m-mention", from: "Ana", summary: "mentioned you in #renewals", at: announcement.at, url: "/inbox?message=m-mention" },
+    { kind: "inbox", id: "m-alert", from: "failure-rate", summary: "6 of 10 runs failed", at: announcement.at, url: "/inbox?message=m-alert" },
+    // A draft is kind announcement, but it waits on its owners: it needs them.
+    { kind: "inbox", id: "m-12", from: "warp-analyst", summary: "Field shipped two fixes", at: draft.at, url: "/inbox?message=m-12" },
+  ]);
+  // And it is not news yet.
+  assert.deepEqual(updatesOf([draft].map(fromServer), (p) => p), []);
+});
+
 test("what a question is about names its conversation by what it is called, and never by an id", () => {
   const question = {
     id: "m-4",
