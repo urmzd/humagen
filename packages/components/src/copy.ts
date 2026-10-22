@@ -436,6 +436,8 @@ export const defaultCopy = {
     plusShortcut: (mac: boolean) => (mac ? "Cmd+/" : "Ctrl+/"),
     /** The sidebar's filter of conversations, and how many filters are on. */
     filter: (on: number) => (on > 0 ? `Filter conversations, ${on} on` : "Filter conversations"),
+    /** Why a shared conversation's project can't change from the + menu. */
+    projectShared: "A shared conversation stays in the project it was shared in.",
     /** Why a Slack conversation's project can't change. */
     projectFromSlack: "A conversation started in Slack stays in the project of its Slack channel.",
     menu: "Add to this conversation",
@@ -459,6 +461,13 @@ export const defaultCopy = {
     bestFitHint: "One of them answers each message: the one that fits it best.",
     all: "All of Them",
     allHint: "Each of them answers every message, side by side.",
+    allMax: (n: number) =>
+      `At most ${n} agents answer side by side. Select fewer to use All of Them.`,
+    /** Under the agents once as many are checked as a conversation takes. */
+    maxAgents: (n: number) => `A conversation can have at most ${n} agents.`,
+    /** Agents taken off the conversation because they can't answer in the project picked. */
+    notHere: (agents: string[]) =>
+      `${agents.join(", ")} can't answer in this project, so ${agents.length === 1 ? "it was" : "they were"} taken off. Pick another project, or another agent.`,
     /** The chat bar's prompt with nothing selected, with one agent, and with several. */
     placeholder: "Message, or @ an agent",
     placeholderOne: (agent: string) => `Message ${agent}`,
@@ -948,6 +957,11 @@ export const defaultCopy = {
           ? `This question is for @${handle}.`
           : "This question is for the person this run acts for.",
       answerers: (agent: string) => `This question is for the people who answer for ${agent}.`,
+      /** A question for the experts where there are none goes to the owners of the nearest project that names any. project is absent when the reader may not see it, or it is the workspace. */
+      owners: (project: string) =>
+        project
+          ? `This question is for the owners of ${project}.`
+          : "This question is for the owners who answer for this project.",
       anyone: "You can read this question, but you can't answer it.",
       nobody: "Nobody can answer this question, because the rules of its run can't be read.",
     },

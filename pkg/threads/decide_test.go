@@ -1,6 +1,7 @@
 package threads_test
 
 import (
+	"errors"
 	"reflect"
 	"slices"
 	"testing"
@@ -89,5 +90,59 @@ func TestTheNearerDefaultsAreTheThreadsThenTheClientsThenTheChannels(t *testing.
 	}
 	if got := threads.Nearer(threads.Thread{}, "", projects.Channel{Name: projects.General}); slices.ContainsFunc(got, func(d threads.Default) bool { return d.Agent != "" }) {
 		t.Fatalf("Nearer with none set = %+v", got)
+	}
+}
+
+// A thread's selected agents answer its untagged messages: the best fit
+// among them, through @auto, or each of them. A tag wins over them, and a
+// message to people starts nothing unless it names a skill.
+func TestSelectedAgentsAnswerUntaggedMessages(t *testing.T) {
+	sel := []string{"scribe", "ignite"}
+	for _, c := range []struct {
+		name   string
+		in     threads.Input
+		rule   threads.Rule
+		agents []string
+		among  []string
+	}{
+		{"best fit", threads.Input{TagsOnly: true, Routed: sel, Mode: threads.ModeBestFit}, threads.RuleRouted, []string{"auto"}, sel},
+		{"one selected", threads.Input{TagsOnly: true, Routed: []string{"scribe"}}, threads.RuleRouted, []string{"scribe"}, nil},
+		{"all", threads.Input{TagsOnly: true, Routed: sel, Mode: threads.ModeAll}, threads.RuleRouted, sel, nil},
+		{"a tag wins", threads.Input{TagsOnly: true, Routed: sel, Mode: threads.ModeAll, Mentions: []threads.Mention{agent("lead")}}, threads.RuleTagged, []string{"lead"}, nil},
+		{"people only", threads.Input{TagsOnly: true, Routed: sel, Mentions: []threads.Mention{person("okta|dana")}}, threads.RulePeople, []string{}, nil},
+		{"a skill to people", threads.Input{TagsOnly: true, Routed: sel, Mode: threads.ModeAll, Mentions: []threads.Mention{skillOf("triage"), person("okta|dana")}}, threads.RuleRouted, sel, nil},
+		{"post only", threads.Input{TagsOnly: true, Routed: sel, PostOnly: true}, threads.RulePostOnly, []string{}, nil},
+		{"a reply", threads.Input{TagsOnly: true, Routed: sel, Reply: true}, threads.RuleReply, []string{}, nil},
+		{"none selected", threads.Input{TagsOnly: true}, threads.RuleUntagged, []string{}, nil},
+		{"a surface keeps its default", threads.Input{Routed: sel, Mode: threads.ModeAll, Default: threads.Default{Agent: "lead", From: threads.FromChannel}}, threads.RuleDefault, []string{"lead"}, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			d := threads.Decide(c.in)
+			if d.Rule != c.rule || !reflect.DeepEqual(d.Agents, c.agents) || !reflect.DeepEqual(d.Among, c.among) {
+				t.Fatalf("Decide = %+v; want %s answering %v among %v", d, c.rule, c.agents, c.among)
+			}
+		})
+	}
+}
+
+func TestRoutingIsNormalizedAndBounded(t *testing.T) {
+	if a, m, err := threads.Routing([]string{"a", "b", "a"}, ""); err != nil || !reflect.DeepEqual(a, []string{"a", "b"}) || m != threads.ModeBestFit {
+		t.Fatalf("Routing = %v %q %v", a, m, err)
+	}
+	if a, m, err := threads.Routing([]string{"a"}, threads.ModeAll); err != nil || m != "" || len(a) != 1 {
+		t.Fatalf("one agent = %v %q %v", a, m, err)
+	}
+	for _, c := range []struct {
+		agents []string
+		mode   string
+	}{
+		{[]string{"a", "b", "c", "d", "e", "f"}, ""},
+		{[]string{"a", "b", "c", "d"}, threads.ModeAll},
+		{[]string{"a", "b"}, "every"},
+		{[]string{"auto"}, ""},
+	} {
+		if _, _, err := threads.Routing(c.agents, c.mode); !errors.Is(err, threads.ErrInvalid) {
+			t.Errorf("Routing(%v, %q) = %v", c.agents, c.mode, err)
+		}
 	}
 }

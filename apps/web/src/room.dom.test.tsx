@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { useState } from "react";
 import type { Revision, ThreadPage, ThreadTurn } from "./api.ts";
 import { liveEventSource, stubEventSource, stubFetch } from "./dom.ts";
+import { PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ChannelPage, ChannelsTab, postedLine, ThreadRoom } from "./Room.tsx";
 import { globex, tree } from "./projects.fixtures.ts";
 
@@ -572,6 +573,19 @@ test("a question for the billing experts is not offered to anyone else, who is t
     questionRoom({ question: "q1", yours: false, for: "person", person: "ana" }, "ben");
     assert.ok(await screen.findByText(words.questionFor.person("ana")));
     assert.equal(screen.queryByRole("button", { name: defaultCopy.somethingElse }), null);
+    cleanup();
+    net?.restore();
+    // One for a project's owners names the project when the platform does,
+    // and is not offered to anyone else.
+    questionRoom({ question: "q1", yours: false, for: "owners", owners_of: "Field engineering" }, "ben");
+    assert.ok(await screen.findByText("This question is for the owners of Field engineering."));
+    assert.equal(screen.queryByRole("button", { name: defaultCopy.somethingElse }), null);
+    cleanup();
+    net?.restore();
+    // A project the reader may not see is never named.
+    questionRoom({ question: "q1", yours: false, for: "owners" }, "ben");
+    assert.ok(await screen.findByText(words.questionFor.owners("")));
+    assert.equal(screen.queryByText(/question is for the owners of /), null, "no project is named");
   } finally {
     restore();
   }
@@ -1178,4 +1192,39 @@ test("in a conversation an agent has run in, the arrow keys skip the project, wh
   fireEvent.keyDown(last, { key: "ArrowDown" });
   // Past the last agent, the project is disabled, so focus wraps to the top.
   assert.equal(document.activeElement?.textContent, defaultCopy.chat.attach);
+});
+
+test("All of Them is offered for three agents at most, and a conversation checks five at most, as the platform takes them", async () => {
+  const names = ["a1", "a2", "a3", "a4", "a5", "a6"];
+  let sel: Selection = { agents: ["a1", "a2", "a3"], mode: "all", project: "Globex", channel: "general" };
+  const { rerender } = render(<PlusMenu agents={names.map((name) => ({ name }))} selection={sel} onChange={(n) => (sel = n)} onAttach={() => {}} onClose={() => {}} />);
+  // A fourth agent turns All of Them back to the best fit.
+  fireEvent.click(screen.getByRole("checkbox", { name: /^a4/ }));
+  assert.deepEqual(sel, { agents: ["a1", "a2", "a3", "a4"], mode: "best_fit", project: "Globex", channel: "general" });
+  sel = { ...sel, agents: ["a1", "a2", "a3", "a4", "a5"] };
+  rerender(<PlusMenu agents={names.map((name) => ({ name }))} selection={sel} onChange={(n) => (sel = n)} onAttach={() => {}} onClose={() => {}} />);
+  const before = sel;
+  fireEvent.click(screen.getByRole("checkbox", { name: /^a6/ }));
+  assert.equal(sel, before, "a sixth is not checked");
+  assert.ok(screen.getByText(defaultCopy.chat.maxAgents(5)));
+  cleanup();
+  render(<SelectionChips selection={{ ...sel, agents: ["a1", "a2", "a3", "a4"] }} onChange={() => {}} />);
+  assert.equal((screen.getByRole("button", { name: defaultCopy.chat.all }) as HTMLButtonElement).disabled, true);
+  cleanup();
+  render(<SelectionChips selection={{ ...sel, agents: ["a1", "a2", "a3"] }} onChange={() => {}} />);
+  assert.equal((screen.getByRole("button", { name: defaultCopy.chat.all }) as HTMLButtonElement).disabled, false);
+});
+
+test("a shared conversation's project can't change from the + menu, which says why; a private one's can", async () => {
+  net = stubFetch({
+    "GET /api/threads/th-0123456789abcdef": () => ({ ...page, turns: [page.turns[0]] }),
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+  });
+  const shared: ThreadPage = { ...page, turns: [page.turns[0] as ThreadTurn] };
+  render(<ThreadRoom id={shared.thread.id} me="ana" initial={shared} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
+  assert.ok(within(menu).getByText(defaultCopy.chat.projectShared));
+  assert.equal((within(menu).getByRole("button", { name: /Globex/ }) as HTMLButtonElement).disabled, true);
 });

@@ -313,6 +313,8 @@ export function Chat({
   }));
   const project = selection.project;
   const [draft, setDraft] = useState("");
+  // The agents that can answer in the picked project, once read.
+  const [offered, setOffered] = useState<Set<string> | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   // The drawer of every run in the conversation, open on one of them or on the list.
   const [activity, setActivity] = useState<{ focus: string | null } | null>(null);
@@ -465,7 +467,8 @@ export function Chat({
     branch(run, run.agent);
   };
 
-  const starters = STARTERS.filter((st) => agents.some((a) => a.spec.name === st.agent));
+  // A suggestion is offered only for an agent that can answer where the conversation goes.
+  const starters = STARTERS.filter((st) => agents.some((a) => a.spec.name === st.agent) && (offered === null || offered.has(st.agent)));
 
   const composer = canRun && agents.length > 0 && (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
@@ -486,12 +489,22 @@ export function Chat({
         onAvailable={
           threadId
             ? undefined
-            : (available) =>
+            : (available) => {
+                const names = new Set(available.map((a) => a.name));
+                setOffered(names);
+                // An agent a link named that lives in a project opens that project, the first time.
+                const named = startAgent && !startIn && project === null ? homes[startAgent] : undefined;
+                if (named && !names.has(startAgent ?? "")) {
+                  setSelection((sel) => ({ ...sel, project: named }));
+                  return;
+                }
+                const dropped = selection.agents.filter((a) => !names.has(a));
+                if (dropped.length > 0) setProblem(defaultCopy.chat.notHere(dropped));
                 setSelection((sel) => {
-                  const names = new Set(available.map((a) => a.name));
                   const kept = sel.agents.filter((a) => names.has(a));
                   return kept.length === sel.agents.length ? sel : { ...sel, agents: kept };
-                })
+                });
+              }
         }
         leading={
           threadId ? (

@@ -302,18 +302,20 @@ func TestAMessageNamesAtMostFourSkills(t *testing.T) {
 	if _, err := threads.Parse("$review $q4-report $triage $draft $plan", w); !errors.Is(err, threads.ErrInvalid) {
 		t.Fatalf("five skills = %v, want ErrInvalid", err)
 	}
-	// A skill with no agent keeps room for the @auto it starts.
+	// A skill with no agent leaves room for the @auto it starts, which the
+	// platform checks where it adds one.
 	var nine []string
 	for i := range threads.MaxMentions - 1 {
 		nine = append(nine, fmt.Sprintf("@p%d", i))
 	}
-	if got, err := threads.Parse(strings.Join(nine[1:], " ")+" $review", w); err != nil || len(threads.WithSkillAgent(got)) != threads.MaxMentions {
+	if got, err := threads.Parse(strings.Join(nine[1:], " ")+" $review", w); err != nil || threads.RoomForSkillAgent(got) != nil || len(threads.WithSkillAgent(got)) != threads.MaxMentions {
 		t.Fatalf("eight tags and a skill = %v", err)
 	}
-	if _, err := threads.Parse(strings.Join(nine, " ")+" $review", w); !errors.Is(err, threads.ErrInvalid) {
-		t.Fatalf("nine tags, a skill and no agent = %v, want ErrInvalid", err)
+	got, err := threads.Parse(strings.Join(nine, " ")+" $review", w)
+	if err != nil || !errors.Is(threads.RoomForSkillAgent(got), threads.ErrInvalid) {
+		t.Fatalf("nine tags and a skill = %v, room %v", err, threads.RoomForSkillAgent(got))
 	}
-	if _, err := threads.Parse(strings.Join(nine[1:], " ")+" @ignite $review", w); err != nil {
+	if got, err := threads.Parse(strings.Join(nine[1:], " ")+" @ignite $review", w); err != nil || threads.RoomForSkillAgent(got) != nil {
 		t.Fatalf("ten tags with an agent and a skill = %v", err)
 	}
 }
@@ -390,7 +392,8 @@ func TestARefusedSkillKeepsNoRoomForAuto(t *testing.T) {
 	for i := range threads.MaxMentions - 1 {
 		nine = append(nine, fmt.Sprintf("@p%d", i))
 	}
-	if _, err := threads.Parse(strings.Join(nine, " ")+" $ghost", newWorkspace()); err != nil {
+	got, err := threads.Parse(strings.Join(nine, " ")+" $ghost", newWorkspace())
+	if err != nil || threads.RoomForSkillAgent(got) != nil {
 		t.Fatalf("nine tags and an unknown skill = %v", err)
 	}
 }
