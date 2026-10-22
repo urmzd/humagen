@@ -2,6 +2,7 @@ package platform
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/urmzd/fiber/pkg/agentrt"
@@ -72,9 +73,18 @@ func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error)
 }
 
 // withSources adds the knowledge sources a run's tag was pinned with to its
-// revision's Sources, after the agent's own and each once.
+// revision's Sources, after the agent's own and each once. The list is taken
+// out of the request's copy of the tag's meta, which fiber writes into the
+// prompt: the model is grounded in the sources, not told their names, so it
+// cannot repeat them to someone who may not read knowledge. The run's tag
+// keeps it, so a later attempt reads it again.
 func withSources(req runtime.Request) runtime.Request {
 	pinned := runs.SourcesOf(req.Meta)
+	if _, ok := req.Meta[runs.MetaSources]; ok {
+		meta := maps.Clone(req.Meta)
+		delete(meta, runs.MetaSources)
+		req.Meta = meta
+	}
 	if len(pinned) == 0 {
 		return req
 	}
@@ -133,8 +143,10 @@ func (p *Platform) ProjectKnowledgeAs(who auth.Principal, project string) (Proje
 
 // SetProjectKnowledge replaces the knowledge sources a project names, "~" for
 // the workspace. Naming sources, or changing which are named, takes
-// knowledge:read, which reads them anyway (403), and each must be a source
-// the workspace has (400). The rest is the store's: the version read, the
+// knowledge:read, which reads them anyway (403), and each source newly named
+// must be one the workspace has (400). One the project names already may
+// stay after it is deleted, so an edit is not refused for it; it grounds
+// nothing until a source of that name is made again. The rest is the store's: the version read, the
 // file's fields, and projects:govern for the workspace and company projects.
 // The caller holds ownership of the project.
 func (p *Platform) SetProjectKnowledge(who auth.Principal, project string, w projects.Writer, in KnowledgeInput) (ProjectKnowledge, error) {
@@ -142,9 +154,13 @@ func (p *Platform) SetProjectKnowledge(who auth.Principal, project string, w pro
 		return ProjectKnowledge{}, fmt.Errorf("%w: naming a project's knowledge sources takes %s", ErrForbidden, auth.KnowledgeRead)
 	}
 	have := p.Knowledge.List(who.Tenant)
+	var named []string
+	if pr, err := p.Projects.Get(who.Tenant, projects.NameOf(project)); err == nil {
+		named = pr.Knowledge
+	}
 	for _, n := range in.Knowledge {
-		if !projects.ValidSource(n) {
-			continue // the store says what is wrong with it
+		if !projects.ValidSource(n) || slices.Contains(named, n) {
+			continue // the store says what is wrong with it; one named already may stay
 		}
 		if !slices.ContainsFunc(have, func(s knowledge.Source) bool { return s.Name == n }) {
 			return ProjectKnowledge{}, fmt.Errorf("%w: there is no knowledge source called %q", projects.ErrInvalid, n)
@@ -167,27 +183,11 @@ func knowledgeOf(pr projects.Project, tree *projects.Tree) ProjectKnowledge {
 	if out.Knowledge == nil {
 		out.Knowledge = []string{}
 	}
-	var above []projects.KnowledgeSource
+	chain := []projects.Project{pr}
 	if !pr.IsRoot() {
-		above = tree.Knowledge(pr.Parent)
+		chain = append(chain, tree.Chain(pr.Parent)...)
 	}
-	for _, s := range append(projectSources(pr), above...) {
-		if len(out.Given) == projects.MaxRunKnowledge {
-			break
-		}
-		if !slices.ContainsFunc(out.Given, func(g projects.KnowledgeSource) bool { return g.Name == s.Name }) {
-			out.Given = append(out.Given, s)
-		}
-	}
-	return out
-}
-
-// projectSources is the sources a project names, each credited to it.
-func projectSources(pr projects.Project) []projects.KnowledgeSource {
-	out := make([]projects.KnowledgeSource, 0, len(pr.Knowledge))
-	for _, n := range pr.Knowledge {
-		out = append(out, projects.KnowledgeSource{Name: n, From: pr.Name})
-	}
+	out.Given = append(out.Given, projects.KnowledgeOf(chain)...)
 	return out
 }
 

@@ -1,11 +1,13 @@
 package platform_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -114,6 +116,9 @@ func TestARunIsGroundedInTheKnowledgeOfItsProjectAndThoseAboveIt(t *testing.T) {
 			t.Errorf("a run in %q was pinned %q, want %q", c.project, got, c.pinned)
 		}
 		text := sent(t, model.Calls[i])
+		if strings.Contains(text, runs.MetaSources) {
+			t.Errorf("a run in %q was told the names of its sources: %s", c.project, text)
+		}
 		for _, word := range every {
 			if want := slices.Contains(c.words, word); strings.Contains(text, word) != want {
 				t.Errorf("a run in %q was sent %q: %v, want %v: %s", c.project, word, !want, want, text)
@@ -140,9 +145,10 @@ func TestARunIsGroundedInTheKnowledgeOfItsProjectAndThoseAboveIt(t *testing.T) {
 // when the conversation's first run was accepted, whatever its project names
 // by the time of the call.
 func TestACalledRunIsGivenItsRootsKnowledge(t *testing.T) {
-	held := &holding{called: make(chan struct{})}
+	model := &heldFirst{held: &holding{called: make(chan struct{})}, rest: &agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{say("done")}}}
+	held := model.held
 	p := startWith(t, platform.Config{Limits: call.Limits{MaxDepth: 2, MaxFanOut: 2}, AgentOptions: []agentrt.Option{
-		agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return held, nil }),
+		agentrt.WithProvider(agentrt.ProviderOffline, func(agentrt.Spec) (saigetypes.Provider, error) { return model, nil }),
 	}})
 	ctx := t.Context()
 	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "ada"}, platform.ProjectInput{Name: "Field"}); err != nil {
@@ -160,13 +166,32 @@ func TestACalledRunIsGivenItsRootsKnowledge(t *testing.T) {
 		t.Fatal("the root never called its model")
 	}
 	name(t, p, "Field", "pricing")
-	child, err := p.Call(ctx, tenant, root.ID, call.Request{Key: "k1", Agent: "helper", Text: "help", Mode: call.Delegate})
+	child, err := p.Call(ctx, tenant, root.ID, call.Request{Key: "k1", Agent: "helper", Text: "Who signs renewals?", Mode: call.Delegate})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := child.Tag().Meta[runs.MetaSources]; got != "playbook" || child.Project != "Field" {
 		t.Fatalf("a called run in %q was pinned %q, want its root's", child.Project, got)
 	}
+	await(t, p, child.ID, runs.Completed)
+	if text := sent(t, model.rest.Calls[0]); !strings.Contains(text, "Paula") || strings.Contains(text, "Priya") {
+		t.Fatalf("a called run was not grounded in its root's sources alone: %s", text)
+	}
+}
+
+// heldFirst holds the first model call until its run is stopped and answers
+// the rest from a script.
+type heldFirst struct {
+	held  *holding
+	rest  *agenttest.ScriptedProvider
+	calls atomic.Int32
+}
+
+func (h *heldFirst) Stream(ctx context.Context, req saigetypes.Request) (<-chan saigetypes.Delta, error) {
+	if h.calls.Add(1) == 1 {
+		return h.held.Stream(ctx, req)
+	}
+	return h.rest.Stream(ctx, req)
 }
 
 // A run keeps the sources it was accepted with: a change to what its
@@ -255,6 +280,23 @@ func TestNamingAProjectsKnowledgeTakesKnowledgeRead(t *testing.T) {
 	}
 	if _, err := p.ProjectKnowledgeAs(reader, "Nowhere"); !errors.Is(err, projects.ErrNotFound) {
 		t.Fatalf("a project that does not exist = %v", err)
+	}
+
+	// A source the project names already may stay after it is deleted, so
+	// an edit is not refused for it; one newly named must still exist.
+	shelf(t, p, map[string]string{"pricing": "Priya"})
+	if err := p.Knowledge.Delete(tenant, "playbook"); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := p.SetProjectKnowledge(reader, "Field", w, platform.KnowledgeInput{Version: got.Version, Knowledge: []string{"playbook", "pricing"}})
+	if err != nil || !slices.Equal(kept.Knowledge, []string{"playbook", "pricing"}) {
+		t.Fatalf("an edit keeping a deleted source = %+v, %v", kept, err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, w, platform.ProjectInput{Name: "East"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SetProjectKnowledge(reader, "East", w, platform.KnowledgeInput{Version: 1, Knowledge: []string{"playbook"}}); !errors.Is(err, projects.ErrInvalid) {
+		t.Fatalf("newly naming a deleted source = %v", err)
 	}
 }
 

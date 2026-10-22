@@ -3170,8 +3170,9 @@ here does not change a run already working. A caller without
     });
   }
 
-  /** At most 8, each a knowledge source the workspace has (400), named
-once. Every run filed here and below from now on is grounded in
+  /** At most 8, named once, each newly named a knowledge source the
+workspace has (400); one already named may stay after it is deleted,
+and grounds nothing. Every run filed here and below from now on is grounded in
 them; a run already working keeps what it was accepted with. It
 needs ownership of the project and `knowledge:read`
 (403), which reads the sources anyway; the workspace and company

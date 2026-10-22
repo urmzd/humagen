@@ -682,10 +682,12 @@ ingress overwrites whatever a connector put there (phase 8).
     below it. A source is the workspace's, read with `knowledge:read`
     wherever it is named, so naming one in a project takes an owner and
     `knowledge:read` (403), which reads it anyway, and a source the
-    workspace has (400). A reader without `knowledge:read` is shown no
+    workspace has (400). One a project names already may stay after it is
+    deleted, so an edit is not refused for it. A reader without `knowledge:read` is shown no
     source's name: not in the knowledge route, the project's record or its
-    history. A source the workspace no longer has grounds nothing, as one an
-    agent names does.
+    history, and the model is grounded in the sources without being told
+    their names. A source the workspace no longer has grounds nothing, as
+    one an agent names does.
 - fiber's own thread journal (`pkg/thread`) is per agent by design ("not a
   transcript of the room"), so warp keeps its own room transcript.
 
@@ -1019,7 +1021,7 @@ naming no agent.
 | Route | Permission | Notes |
 |---|---|---|
 | `GET /api/projects/{name}/knowledge` | `projects:read` | `{version, knowledge (<= 8), given: [{name, from}] (<= 16)}`: what the project names, and what a run filed there is given, nearest first. Both empty for a caller without `knowledge:read` |
-| `PUT /api/projects/{name}/knowledge` | `projects:write` | `{version, knowledge}`; owner, and `knowledge:read` (403); each a source the workspace has (400); 409 stale version or a list the file sets |
+| `PUT /api/projects/{name}/knowledge` | `projects:write` | `{version, knowledge}`; owner, and `knowledge:read` (403); each newly named a source the workspace has (400); 409 stale version or a list the file sets |
 
 `Project` gains `knowledge`, left out for a caller without `knowledge:read`,
 and `ProjectChange.what` gains `knowledge`.

@@ -63,8 +63,15 @@ type KnowledgeSource struct {
 // farthest are left out. A sibling's or a child's are never given. It is nil
 // for a name the tree does not hold.
 func (t *Tree) Knowledge(name string) []KnowledgeSource {
+	return KnowledgeOf(t.Chain(name))
+}
+
+// KnowledgeOf is the knowledge sources a chain of projects gives a run, the
+// chain nearest first as Tree.Chain returns it: each source once, from the
+// nearest project that names it, at most MaxRunKnowledge.
+func KnowledgeOf(chain []Project) []KnowledgeSource {
 	var out []KnowledgeSource
-	for _, p := range t.Chain(name) {
+	for _, p := range chain {
 		for _, n := range p.Knowledge {
 			if len(out) == MaxRunKnowledge {
 				return out
