@@ -2,6 +2,7 @@ import { defaultCopy } from "@warp/components";
 import { type FormEvent, useState } from "react";
 import type { Run } from "./adapter.ts";
 import { ApiError, api, type Revision, type Schedule, type ScheduleView } from "./api.ts";
+import { type ProjectRef, projectOptions, titleIn } from "./projects.ts";
 import { deliverFor, deliverOptions } from "./recap.ts";
 import { AgentMark, agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Section } from "./ui.tsx";
 
@@ -104,7 +105,7 @@ function ScheduleForm({
 }: {
   editing?: ScheduleView;
   agents: Revision[];
-  projects: string[];
+  projects: ProjectRef[];
   onClose: () => void;
   onSaved: (name: string) => void;
 }) {
@@ -151,7 +152,7 @@ function ScheduleForm({
           <Menu
             label="Project"
             value={draft.project ?? ""}
-            options={[{ value: "", label: "No project" }, ...projects.map((p) => ({ value: p, label: p }))]}
+            options={[{ value: "", label: "No project" }, ...projectOptions(projects)]}
             onChange={(next) => set({ project: next || undefined, deliver: deliverFor(next || undefined, draft.deliver) })}
           />
         </Label>
@@ -223,7 +224,8 @@ export function Schedules({
 }: {
   schedules: ScheduleView[];
   agents: Revision[];
-  projects?: string[];
+  /** Projects a schedule can file its tasks in, each named by its title. */
+  projects?: ProjectRef[];
   /** The open schedule, by name. null lists them all. */
   selected?: string | null;
   onSelect?: (name: string | null) => void;
@@ -335,7 +337,7 @@ export function Schedules({
               )}
             </dd>
             <dt className="text-aui-xs text-aui-muted">Project</dt>
-            <dd className="text-aui-fg">{s.project || <span className="text-aui-muted">None</span>}</dd>
+            <dd className="text-aui-fg">{s.project ? titleIn(projects, s.project) : <span className="text-aui-muted">None</span>}</dd>
             <dt className="text-aui-xs text-aui-muted">When</dt>
             <dd className="text-aui-fg">
               {inWords(s.expression)} <code className="font-aui-mono text-aui-xs text-aui-muted">{s.expression}</code>
@@ -433,7 +435,7 @@ export function Schedules({
                 <span className="flex min-w-0 items-center gap-2 text-aui-sm text-aui-fg">
                   <AgentMark name={s.agent} size={12} />
                   <span className="truncate">{s.agent}</span>
-                  {s.project && <span className="truncate text-aui-xs text-aui-muted">in {s.project}</span>}
+                  {s.project && <span className="truncate text-aui-xs text-aui-muted">in {titleIn(projects, s.project)}</span>}
                 </span>
                 <span className="min-w-0 text-aui-sm">
                   <span className="block truncate text-aui-fg">{inWords(s.expression)}</span>
