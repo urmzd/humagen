@@ -1113,7 +1113,7 @@ export interface ThreadPage {
   answers: ThreadAnswers;
 }
 
-export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "default";
+export type ThreadRule = "tagged" | "people" | "reply" | "post_only" | "routed" | "untagged" | "default";
 
 /** What posting a message did. */
 export interface ThreadPosted {

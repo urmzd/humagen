@@ -457,6 +457,13 @@ export const defaultCopy = {
     bestFitHint: "One of them answers each message: the one that fits it best.",
     all: "All of Them",
     allHint: "Each of them answers every message, side by side.",
+    allMax: (n: number) =>
+      `At most ${n} agents answer side by side. Select fewer to use All of Them.`,
+    /** Under the agents once as many are checked as a conversation takes. */
+    maxAgents: (n: number) => `A conversation can have at most ${n} agents.`,
+    /** Agents taken off the conversation because they can't answer in the project picked. */
+    notHere: (agents: string[]) =>
+      `${agents.join(", ")} can't answer in this project, so ${agents.length === 1 ? "it was" : "they were"} taken off. Pick another project, or another agent.`,
     /** The chat bar's prompt with nothing selected, with one agent, and with several. */
     placeholder: "Message, or @ an agent",
     placeholderOne: (agent: string) => `Message ${agent}`,

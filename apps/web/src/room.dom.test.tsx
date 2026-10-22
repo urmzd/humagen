@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { useState } from "react";
 import type { Revision, ThreadPage, ThreadTurn } from "./api.ts";
 import { liveEventSource, stubEventSource, stubFetch } from "./dom.ts";
+import { PlusMenu, type Selection, SelectionChips } from "./Plus.tsx";
 import { ChannelPage, ChannelsTab, postedLine, ThreadRoom } from "./Room.tsx";
 import { globex, tree } from "./projects.fixtures.ts";
 
@@ -1178,4 +1179,25 @@ test("in a conversation an agent has run in, the arrow keys skip the project, wh
   fireEvent.keyDown(last, { key: "ArrowDown" });
   // Past the last agent, the project is disabled, so focus wraps to the top.
   assert.equal(document.activeElement?.textContent, defaultCopy.chat.attach);
+});
+
+test("All of Them is offered for three agents at most, and a conversation checks five at most, as the platform takes them", async () => {
+  const names = ["a1", "a2", "a3", "a4", "a5", "a6"];
+  let sel: Selection = { agents: ["a1", "a2", "a3"], mode: "all", project: "Globex", channel: "general" };
+  const { rerender } = render(<PlusMenu agents={names.map((name) => ({ name }))} selection={sel} onChange={(n) => (sel = n)} onAttach={() => {}} onClose={() => {}} />);
+  // A fourth agent turns All of Them back to the best fit.
+  fireEvent.click(screen.getByRole("checkbox", { name: /^a4/ }));
+  assert.deepEqual(sel, { agents: ["a1", "a2", "a3", "a4"], mode: "best_fit", project: "Globex", channel: "general" });
+  sel = { ...sel, agents: ["a1", "a2", "a3", "a4", "a5"] };
+  rerender(<PlusMenu agents={names.map((name) => ({ name }))} selection={sel} onChange={(n) => (sel = n)} onAttach={() => {}} onClose={() => {}} />);
+  const before = sel;
+  fireEvent.click(screen.getByRole("checkbox", { name: /^a6/ }));
+  assert.equal(sel, before, "a sixth is not checked");
+  assert.ok(screen.getByText(defaultCopy.chat.maxAgents(5)));
+  cleanup();
+  render(<SelectionChips selection={{ ...sel, agents: ["a1", "a2", "a3", "a4"] }} onChange={() => {}} />);
+  assert.equal((screen.getByRole("button", { name: defaultCopy.chat.all }) as HTMLButtonElement).disabled, true);
+  cleanup();
+  render(<SelectionChips selection={{ ...sel, agents: ["a1", "a2", "a3"] }} onChange={() => {}} />);
+  assert.equal((screen.getByRole("button", { name: defaultCopy.chat.all }) as HTMLButtonElement).disabled, false);
 });
