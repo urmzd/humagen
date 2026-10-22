@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { KindChips } from "./InboxPage.tsx";
 import { FADE_PX, GUTTER_PX } from "./layout.ts";
 import { kinds as mailKinds } from "./mail.ts";
@@ -87,6 +87,38 @@ test("a strip that fits says nothing more", () => {
   phoneStrips();
   render(<Tabs label="Directory" value="people" tabs={projectTabs.slice(0, 3)} onChange={() => {}} />);
   assert.equal(screen.getByRole("tablist").dataset.more, undefined);
+});
+
+/** An agent's tabs, as AgentDetail lists them: before it loads, only the four that need nothing loaded. */
+const agentTabs = (loaded: boolean) =>
+  [
+    "prompt",
+    "model",
+    "access",
+    ...(loaded ? ["queue"] : []),
+    "context",
+    ...(loaded ? ["memory", "evals", "alerts", "revisions"] : []),
+  ].map((id) => ({ id, label: id }));
+
+test("a tab strip that grows after it shows, as an agent's does once it loads, fades where there is more", async () => {
+  phoneStrips();
+  const { rerender } = render(<Tabs label="lead" value="prompt" tabs={agentTabs(false)} onChange={() => {}} />);
+  const strip = screen.getByRole("tablist");
+  assert.equal(strip.dataset.more, undefined, "four tabs fit");
+  rerender(<Tabs label="lead" value="prompt" tabs={agentTabs(true)} onChange={() => {}} />);
+  await waitFor(() => assert.equal(strip.dataset.more, "end", "the tabs that came in past the edge read as more to scroll to"));
+  assert.equal(strip.scrollLeft, 0);
+});
+
+test("a tab pushed out of view by tabs that come in before it is brought back", async () => {
+  phoneStrips();
+  const { rerender } = render(<Tabs label="lead" value="context" tabs={agentTabs(false)} onChange={() => {}} />);
+  const strip = screen.getByRole("tablist");
+  assert.equal(strip.scrollLeft, 0, "Context, at 240-320, shows whole");
+  rerender(<Tabs label="lead" value="context" tabs={agentTabs(true)} onChange={() => {}} />);
+  // Queue comes in before it, which moves Context to 320-400, past the strip's 350.
+  await waitFor(() => assert.equal(strip.scrollLeft, 400 + FADE_PX - STRIP.width));
+  assert.equal(strip.dataset.more, "both");
 });
 
 test("a segmented choice that does not fit scrolls inside its box, each choice on one line", () => {

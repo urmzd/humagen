@@ -514,11 +514,11 @@ export function Segmented<T extends string>({
 
 /**
  * A row that scrolls sideways inside itself when it does not fit: tabs, chips,
- * a segmented choice. Whenever `chosen` changes, and whenever the row or what
- * is in it changes size, it brings the chosen item (aria-selected,
- * aria-pressed or aria-current) into view. It marks which ends have more as
- * data-more, which warp-strip fades, so an item cut off at the edge reads as
- * more to scroll to.
+ * a segmented choice. Whenever `chosen` changes, whenever items are added to
+ * or taken from the row, and whenever the row or what is in it changes size,
+ * it brings the chosen item (aria-selected, aria-pressed or aria-current) into
+ * view. It marks which ends have more as data-more, which warp-strip fades, so
+ * an item cut off at the edge reads as more to scroll to.
  */
 export function useStrip<E extends HTMLElement>(chosen: unknown): RefObject<E | null> {
   const ref = useRef<E>(null);
@@ -535,9 +535,23 @@ export function useStrip<E extends HTMLElement>(chosen: unknown): RefObject<E | 
     const sized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => fit(strip));
     sized?.observe(strip);
     for (const item of strip.children) sized?.observe(item);
+    // Items come and go after the strip shows, as an agent's tabs do once it loads. The new
+    // ones are watched too, and the place is found again: what fitted may no longer.
+    const changed =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver((records) => {
+            for (const r of records) {
+              for (const node of r.addedNodes) if (node instanceof Element) sized?.observe(node);
+              for (const node of r.removedNodes) if (node instanceof Element) sized?.unobserve(node);
+            }
+            fit(strip);
+          });
+    changed?.observe(strip, { childList: true });
     return () => {
       strip.removeEventListener("scroll", marked);
       sized?.disconnect();
+      changed?.disconnect();
     };
   }, []);
   return ref;
