@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.1 (2026-10-22)
+
+### Bug Fixes
+
+- **auth**: a machine carries the deployment's policy for the people it maps (#40) ([527e553](https://github.com/urmzd/warp/commit/527e55383993fff207987cc566893cf30113222f))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.12.0...v0.12.1)
+
+
 ## 0.12.0 (2026-10-22)
 
 ### Breaking
