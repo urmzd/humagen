@@ -595,13 +595,16 @@ func (p *Platform) isSelfApproval(ctx context.Context, tenant string, q inbox.Qu
 // does next, and what its callers do, since a called run's answer is its
 // caller's tool result. So where that may reach a person's own credentials
 // (steeredFor), only that person replies or picks an option, and anyone
-// else approves or denies a call only as it was asked, with no note, which
-// the model is shown on a denial (fiber refuses their edit of a call that
-// acts as the person). Otherwise their words, or their pick of its options,
-// would reach the person's tools with the person's credential. Any other
-// run is answered by whoever its rules allow.
+// else approves or denies a call only as it was asked: with no note, which
+// the model is shown on a denial, and no edited arguments, which it reads
+// back with what the call found, even of a call that reaches only a shared
+// credential. Otherwise their words, or their pick of its options, would
+// reach the person's tools with the person's credential. Any other run is
+// answered by whoever its rules allow.
 func (p *Platform) maySteer(ctx context.Context, tenant string, q inbox.QuestionPart, a QuestionAnswer, by string) error {
-	if q.Kind == payload.QuestionApproval && strings.TrimSpace(a.Note) == "" {
+	args := bytes.TrimSpace(a.Arguments)
+	edited := len(args) > 0 && string(args) != "null"
+	if q.Kind == payload.QuestionApproval && strings.TrimSpace(a.Note) == "" && !edited {
 		return nil
 	}
 	run, err := p.Runs.Get(tenant, q.Run)
@@ -614,7 +617,7 @@ func (p *Platform) maySteer(ctx context.Context, tenant string, q inbox.Question
 	case person == nobody:
 		return fmt.Errorf("%w: the run that called this one cannot be read, so nobody may answer what it asks", ErrForbidden)
 	case q.Kind == payload.QuestionApproval:
-		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may add a note the agent reads; approve or deny it as asked", ErrForbidden, person, person)
+		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may edit its calls or add a note the agent reads; approve or deny it as asked", ErrForbidden, person, person)
 	default:
 		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may answer what it asks", ErrForbidden, person, person)
 	}

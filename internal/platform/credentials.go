@@ -48,7 +48,7 @@ import (
 // called run's answer is its caller's. So a run that uses the credential of
 // the person it acts for, or one it called, asks that person alone its
 // replies and choices, and anyone else answers its approvals as asked, with
-// no note the model would be shown (maySteer, steeredFor).
+// no edit and no note the model would be shown (maySteer, steeredFor).
 //
 // A person gives their credential through ConnectTool, as a reference or, where
 // the workspace allows it, a value (pkg/credentials). A reference is only

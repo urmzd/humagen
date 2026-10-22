@@ -31,6 +31,7 @@ import (
 //   - "split" searches issues (approval-gated), then searches tracker for
 //     whatever it was told about that call: what a denial said, say;
 //   - "open" searches wiki (approval-gated), then stops;
+//   - "mixed" searches wiki (approval-gated), then issues;
 //   - "boss" asks "aide" what to search for, then searches issues for it;
 //   - "chief" does the same of "gate";
 //   - "aide" asks a person, and answers with what they said;
@@ -70,8 +71,10 @@ func (a *steeredAgent) Stream(ctx context.Context, req saigetypes.Request) (<-ch
 		reply = search(searchTool, "ana's own words")
 	case a.name == "split" && len(results) == 1:
 		reply = search("tracker__search", results[0])
-	case (a.name == "open" || a.name == "gate") && len(results) == 0:
+	case (a.name == "open" || a.name == "gate" || a.name == "mixed") && len(results) == 0:
 		reply = search("wiki__search", "the wiki")
+	case a.name == "mixed" && len(results) == 1:
+		reply = search(searchTool, "what the wiki said")
 	case a.name == "gate":
 		reply = agenttest.TextResponse(results[0])
 	case a.name == "boss" && len(results) == 0:
@@ -121,6 +124,7 @@ func steeredWorld(t *testing.T, cfg platform.Config) (*platform.Platform, *mcpfa
 	for _, spec := range []agentspec.AgentSpec{
 		{Name: "split", Tools: []string{"mcp:issues", "mcp:tracker"}, Approvals: []string{searchTool}},
 		{Name: "open", Tools: []string{"mcp:wiki"}, Approvals: []string{"wiki__search"}},
+		{Name: "mixed", Tools: []string{"mcp:issues", "mcp:wiki"}, Approvals: []string{"wiki__search"}},
 		{Name: "boss", Tools: []string{"mcp:issues"}, Access: agentspec.Access{Spawn: []string{"aide"}}},
 		{Name: "chief", Tools: []string{"mcp:issues"}, Access: agentspec.Access{Spawn: []string{"gate"}}},
 		{Name: "aide", Tools: []string{"ask_person"}},
@@ -180,6 +184,45 @@ func TestAnApprovalCarriesNoOneElsesWordsToAPersonsCredential(t *testing.T) {
 	run = await(t, p, r.ID, runs.Parked)
 	if _, err := p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActDeny, Note: "Not today"}); err != nil {
 		t.Fatalf("ben's note on a run that uses nobody's own credentials: %v", err)
+	}
+	await(t, p, run.ID, runs.Completed)
+}
+
+// Edited arguments are words too, which the model reads back with what the
+// call found. In a run that uses ana's own credentials, ben may not edit even
+// a call that reaches only the shared credential: what it is asked would
+// steer what her tools are asked next. A run that reaches only shared
+// credentials takes his edit as before.
+func TestAnApprovalCarriesNoOneElsesEditToAPersonsCredential(t *testing.T) {
+	p, server, _ := steeredWorld(t, platform.Config{})
+	ctx := t.Context()
+	edit := platform.QuestionAnswer{Action: platform.ActApprove, Arguments: []byte(`{"q":"BEN SAYS: payroll salaries"}`)}
+	r, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-mixed", Agent: "mixed", Text: "Read the wiki, then the issues", Actor: platform.ActorOf(ana)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	if run.Question.Tool == nil || run.Question.Tool.ActsForPerson {
+		t.Fatalf("parked on %+v, want a call that reaches only the shared credential", run.Question)
+	}
+	if _, err := p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, edit); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("ben's edit of a call in ana's run = %v, want forbidden", err)
+	}
+	if got := server.Calls(); len(got) != 0 {
+		t.Fatalf("the server was reached with %q", got)
+	}
+	if _, err := p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove}); err != nil {
+		t.Fatalf("ben approving the call as asked: %v", err)
+	}
+	await(t, p, run.ID, runs.Completed)
+
+	r, err = p.Converse(ctx, tenant, platform.Turn{ID: "api-open-edit", Agent: "open", Text: "Read the wiki", Actor: platform.ActorOf(ana)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run = await(t, p, r.ID, runs.Parked)
+	if _, err := p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, edit); err != nil {
+		t.Fatalf("ben's edit in a run that uses nobody's own credentials: %v", err)
 	}
 	await(t, p, run.ID, runs.Completed)
 }

@@ -1023,10 +1023,10 @@ or deny it as asked. Where an answer may reach the credentials of the
 person a run acts for (the run, or a run that called it, acts for a
 person and its revision is granted a person-scoped tool provider), a
 choice or a reply is answered only by that person, and an approval
-carries a `note` only from them: anyone else is 403. A surface that
-authenticated a person itself
-answers for them with `act_as`: only the credential its client names,
-and only for a person its client maps.
+carries edited `arguments` or a `note` only from them, whatever the
+call: anyone else is 403. A surface that authenticated a person
+itself answers for them with `act_as`: only the credential its client
+names, and only for a person its client maps.
 
 The first answer recorded is the answer. An answer after it, or after
 the question expired or its run was stopped, answers 200 with the

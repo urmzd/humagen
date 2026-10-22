@@ -834,7 +834,7 @@ export interface Resolution {
   /** At most 500 characters. On a denial the model is shown it, so where the answer may reach the credentials of the person the run acts for, only that person may add one. */
   note?: string;
   limits?: InboxLimits;
-  /** Edited arguments for `approve`, as a JSON object that satisfies the tool's schema. Left out keeps the model's. */
+  /** Edited arguments for `approve`, as a JSON object that satisfies the tool's schema. Where the answer may reach the credentials of the person the run acts for, only that person may send them. Left out keeps the model's. */
   arguments?: unknown;
   /** The option chosen, with `choose`. */
   choice?: string;
@@ -846,7 +846,7 @@ export interface Resolution {
 /** An answer to the question a run is waiting on. */
 export interface QuestionAnswer {
   action: "approve" | "deny" | "choose" | "reply";
-  /** Edited arguments for `approve`, as a JSON object that satisfies the tool's schema. */
+  /** Edited arguments for `approve`, as a JSON object that satisfies the tool's schema. Where the answer may reach the credentials of the person the run acts for, only that person may send them. */
   arguments?: unknown;
   choice?: string;
   text?: string;

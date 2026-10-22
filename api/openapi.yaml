@@ -796,10 +796,10 @@ paths:
         person a run acts for (the run, or a run that called it, acts for a
         person and its revision is granted a person-scoped tool provider), a
         choice or a reply is answered only by that person, and an approval
-        carries a `note` only from them: anyone else is 403. A surface that
-        authenticated a person itself
-        answers for them with `act_as`: only the credential its client names,
-        and only for a person its client maps.
+        carries edited `arguments` or a `note` only from them, whatever the
+        call: anyone else is 403. A surface that authenticated a person
+        itself answers for them with `act_as`: only the credential its client
+        names, and only for a person its client maps.
 
         The first answer recorded is the answer. An answer after it, or after
         the question expired or its run was stopped, answers 200 with the
@@ -4260,7 +4260,7 @@ components:
           maxLength: 500
         limits: {$ref: "#/components/schemas/InboxLimits"}
         arguments:
-          description: Edited arguments for `approve`, as a JSON object that satisfies the tool's schema. Left out keeps the model's.
+          description: Edited arguments for `approve`, as a JSON object that satisfies the tool's schema. Where the answer may reach the credentials of the person the run acts for, only that person may send them. Left out keeps the model's.
           type: object
         choice:
           description: The option chosen, with `choose`.
@@ -4280,7 +4280,7 @@ components:
           type: string
           enum: [approve, deny, choose, reply]
         arguments:
-          description: Edited arguments for `approve`, as a JSON object that satisfies the tool's schema.
+          description: Edited arguments for `approve`, as a JSON object that satisfies the tool's schema. Where the answer may reach the credentials of the person the run acts for, only that person may send them.
           type: object
         choice:
           type: string
