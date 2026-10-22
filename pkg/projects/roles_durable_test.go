@@ -165,6 +165,11 @@ func TestOlderRecordsReadAsEveryoneOwns(t *testing.T) {
 	if a := s.Tree("acme").Resolve("Renewals", projects.Reader{Subject: "anyone"}); a.Role != projects.Owner {
 		t.Fatalf("anyone in a new child = %+v", a)
 	}
+	// So is an account, which cannot be members only there: it is made, and
+	// opened to everyone as a viewer.
+	if acct := mustCreate(t, s, "acme", projects.Project{Name: "Initech", Parent: "Launch", Kind: projects.Account}, ada); !slices.Equal(acct.Members, members("*=viewer", "ada=owner")) {
+		t.Fatalf("an account under an older project = %+v", acct.Members)
+	}
 	// The migration writes the same entries, for a name it keeps too.
 	m := projects.NewStore()
 	if err := m.Import("acme", []projects.Project{{Name: "Ops"}}, []projects.Project{{Name: "Dropped"}}, "migration", t0); err != nil {

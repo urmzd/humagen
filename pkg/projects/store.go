@@ -531,6 +531,7 @@ func (s *Store) create(tenantName string, p Project, w Writer, at time.Time, cre
 		p.Members = DefaultMembers(tree.Like(p.Kind), creator)
 		if parent, ok := tree.Get(p.Parent); ok {
 			p.Members = limitOpenness(p.Members, parent)
+			p.Members = openUnderOwned(tree, p.Members, parent)
 		}
 	}
 	if err := p.validate(); err != nil {

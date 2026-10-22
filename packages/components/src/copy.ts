@@ -651,7 +651,7 @@ export const defaultCopy = {
       governed: "Only those who govern projects make company-wide ones.",
       /** Under the kind, for an account: who sees it. */
       accountMembersOnly:
-        "Accounts are members only: you, the people you add and the owners above see it.",
+        "Accounts are members only: you, the people you add and the owners above see it. Under a project everyone owns, everyone sees it.",
     },
     count: {
       running: (n: number) => `${n} running`,

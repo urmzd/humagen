@@ -227,6 +227,22 @@ func limitOpenness(ms []Entry, parent Project) []Entry {
 	return ms
 }
 
+// openUnderOwned keeps a new project with the default members out of being
+// members only where everyone owns a project above it, which owns everything
+// below and so can have nothing members only there: it is opened to everyone
+// as a viewer instead, what the account kind gives where it can.
+func openUnderOwned(tree *Tree, ms []Entry, parent Project) []Entry {
+	if everyoneOf(ms) != None {
+		return ms
+	}
+	for _, q := range tree.Chain(parent.Name) {
+		if everyoneOf(q.Members) == Owner {
+			return append([]Entry{{Who: Everyone, Role: Viewer}}, ms...)
+		}
+	}
+	return ms
+}
+
 // Reader is who is asking: their subject, the policy roles they hold,
 // whether they hold projects:govern, and whether they are a machine. A
 // machine matches only Everyone and its own subject. A reader with no

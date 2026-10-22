@@ -178,6 +178,17 @@ func TestANewProjectGetsDefaultMembers(t *testing.T) {
 	if got := projects.DefaultMembers(projects.Account, "role:ops"); !slices.Equal(got, members("*=viewer")) {
 		t.Fatalf("an account with no creator = %+v", got)
 	}
+	// Under a project everyone owns, nothing is members only, so an account
+	// made with the default members is opened to everyone as a viewer, at
+	// any depth below it.
+	mustCreate(t, s, "acme", with(team("Platform", ""), members("*=owner", "ada=owner")), ada)
+	mustCreate(t, s, "acme", team("Infra", "Platform"), ada)
+	for _, parent := range []string{"Platform", "Infra"} {
+		acct := mustCreate(t, s, "acme", projects.Project{Name: "Initech-" + parent, Parent: parent, Kind: projects.Account}, projects.Writer{By: "bo"})
+		if want := members("*=viewer", "bo=owner"); !slices.Equal(acct.Members, want) {
+			t.Fatalf("an account under %s, which everyone owns = %+v, want %+v", parent, acct.Members, want)
+		}
+	}
 	news := mustCreate(t, s, "acme", projects.Project{Name: "News", Kind: projects.Company}, admin)
 	if want := members("*=member", "root=owner"); !slices.Equal(news.Members, want) {
 		t.Fatalf("a company project = %+v, want %+v", news.Members, want)
