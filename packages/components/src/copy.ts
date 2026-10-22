@@ -289,6 +289,9 @@ export const defaultCopy = {
     visibleToEveryone: (project: string) =>
       `${project} is visible to everyone. Make it members only?`,
     makeMembersOnly: "Make Members Only",
+    /** A project under one everyone owns, which therefore cannot be members only. */
+    everyoneOwnsAbove: (project: string) =>
+      `Everyone owns ${project}, so everyone sees this project too. To make it members only, name owners for ${project} first.`,
     limitFrom: (project: string) => `${project}'s limit also applies here.`,
     workspaceLimit: "The workspace's own limit applies here too.",
     ownerLimit: "A tighter limit, as an owner above",

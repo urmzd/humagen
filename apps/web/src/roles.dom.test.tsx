@@ -78,6 +78,22 @@ test("an owner of an account everyone sees is asked to make it members only, and
   assert.deepEqual(net?.seen.find((s) => s.method === "PUT")?.body, { version: 2, members: [{ who: "ana", role: "owner" }] });
 });
 
+test("an account under a project everyone owns is not offered members only, and says where to name owners", async () => {
+  net = stubFetch({
+    "GET /api/projects/Globex/members": () => ({
+      version: 1,
+      members: [{ who: "*", role: "viewer" }, { who: "ana", role: "owner" }],
+      inherited: [{ who: "*", from: "Field" }],
+    }),
+  });
+  const owner = projectView({ name: "Globex", kind: "account", access: { role: "owner", from: "Globex", via: "ana" }, actions: ["edit"] });
+  render(<ProjectPeople project={owner} onChanged={() => {}} />);
+  assert.ok(await screen.findByText(/^Everyone owns Field, so everyone sees this project too\./));
+  assert.ok(!screen.queryByText("Make Members Only"));
+  assert.ok(!screen.queryByText(/is visible to everyone/));
+  assert.equal(screen.getAllByText("Remove").length, 1, "only ana can be removed, never everyone");
+});
+
 test("a company-wide project keeps everyone, so everyone cannot be removed there", async () => {
   net = stubFetch({
     "GET /api/projects/News/members": () => ({ version: 1, members: [{ who: "*", role: "member" }, { who: "ana", role: "owner" }], inherited: [] }),

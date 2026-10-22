@@ -202,7 +202,9 @@ function whoOf(who: string): string {
  * above it, and, for an owner, a way to change them. Without an entry for
  * everyone it is members only; a company-wide project keeps everyone as at
  * least a member. An owner of an account everyone can see is asked whether
- * to make it members only, and nothing is closed for them.
+ * to make it members only, and nothing is closed for them. Under a project
+ * everyone owns, ownership flows down, so everyone sees it: nothing offers to
+ * close it, and the tab says where to name owners first.
  */
 export function ProjectPeople({ project, onChanged }: { project: ProjectView; onChanged: () => void }) {
   const [members, setMembers] = useState<ProjectMembers | null>(null);
@@ -226,9 +228,12 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
   if (!members) return problem ? <Problem message={problem} /> : <SkeletonRows count={3} />;
   const shown = draft ?? members.members;
   const everyoneOwns = shown.some((m) => m.who === "*" && m.role === "owner");
+  // Everyone owning a project above owns this one too, so it stays open.
+  const ownedAbove = members.inherited.find((o) => o.who === "*");
   const open = shown.some((m) => m.who === "*");
   const company = project.kind === "company" || project.name === "";
-  const nudge = editable && open && !everyoneOwns && project.kind === "account" && !draft;
+  const keepsEveryone = company || ownedAbove !== undefined;
+  const nudge = editable && open && !everyoneOwns && !ownedAbove && project.kind === "account" && !draft;
   const change = (next: ProjectEntry[]) => setDraft(next);
   const save = () =>
     api
@@ -251,6 +256,11 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
         </p>
       )}
       {!open && <p className="max-w-xl text-aui-sm text-aui-muted">{copy.project.membersOnly}</p>}
+      {ownedAbove && !everyoneOwns && (
+        <p className="max-w-xl text-aui-sm text-aui-muted">
+          {copy.project.everyoneOwnsAbove(ownedAbove.from === "" ? "the workspace" : ownedAbove.from)}
+        </p>
+      )}
       {nudge && (
         <p className="flex max-w-xl flex-wrap items-center gap-3 text-aui-sm text-aui-muted">
           {copy.project.visibleToEveryone(titleOf(project))}
@@ -276,7 +286,7 @@ export function ProjectPeople({ project, onChanged }: { project: ProjectView; on
                 ) : (
                   <span className="text-aui-xs text-aui-muted">{copy.roles[m.role]}</span>
                 )}
-                {editable && (m.who !== "*" || !company) && (
+                {editable && (m.who !== "*" || !keepsEveryone) && (
                   <button type="button" className={button} onClick={() => change(shown.filter((x) => x.who !== m.who))}>
                     {copy.project.remove}
                   </button>
