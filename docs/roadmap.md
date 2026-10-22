@@ -17,7 +17,7 @@ This document states direction. The [architecture status](architecture.md#status
 ## Delivery sequence
 
 1. Establish persistent tenant, project and membership records, keeping every query tenant-bound.
-2. Connect project roles and policies to agent hiring, assignments and runs.
+2. Connect project roles and policies to agent hiring, assignments and runs. Agents are enabled in projects or live in one, and a message is answered by the agent it tags or the default its project inherits; project roles and members follow ([projects](projects.md)).
 3. Deliver durable tasks and linked knowledge with attribution and visible outcomes.
 4. Extend connectors and targeted notifications, preserving human approvals and recorded decisions.
 5. Add the reviewed improvement loop across agent definitions, abilities and shared knowledge.
