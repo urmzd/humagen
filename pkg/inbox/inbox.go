@@ -767,7 +767,10 @@ func (t *tenant) issue(c Change) string {
 // the state and the change, so that replaying changes rebuilds the state.
 func (t *tenant) apply(c Change) (*Message, bool) {
 	if c.What == Raised {
-		if prior := t.byKey[c.Raised.Key]; c.Raised == nil || prior != nil && prior.State != Resolved && prior.State != Dismissed {
+		if c.Raised == nil {
+			return nil, false
+		}
+		if prior := t.byKey[c.Raised.Key]; prior != nil && prior.State != Resolved && prior.State != Dismissed {
 			return nil, false
 		}
 		m := c.Raised.clone()
@@ -1375,8 +1378,9 @@ type Counts struct {
 // Count returns what is open for a reader across their whole inbox: the
 // narrowing fields of q are ignored, and who is reading is kept. It is added
 // up from counters kept as changes apply (tally), so it reads no message that
-// is settled, and asks q.Sees once for each set of open messages alike in
-// kind, addressing and what they are about.
+// is settled, and asks q.Sees once for each set of open messages, and of
+// messages snoozed for everyone, alike in kind, addressing and what they are
+// about.
 func (s *Store) Count(tenantName string, q Query) Counts {
 	q.State, q.Kind, q.Kinds, q.Projects, q.Shared, q.Alert, q.Agent, q.Unread = Open, "", nil, nil, false, "", "", false
 	f := q.filter()

@@ -301,3 +301,20 @@ func TestARecordedReleaseIsPostedOnceAfterRetention(t *testing.T) {
 		}
 	})
 }
+
+// A raise kept without its message is skipped on replay, not a panic.
+func TestARaiseKeptWithoutItsMessageIsSkipped(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		if err := st.Write(context.Background(), "inbox", state.Put(acme, state.Seq(0), []byte(`{"what":"`+string(Raised)+`"}`))); err != nil {
+			t.Fatal(err)
+		}
+		s, err := OpenStore(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m := raise(s, "alert:after", t0); m.ID != "m-1" {
+			t.Fatalf("the next message is %s", m.ID)
+		}
+	})
+}

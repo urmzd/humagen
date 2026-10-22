@@ -15,22 +15,33 @@ import (
 // all of it.
 //
 // What opens again by itself, with time and no change, is kept apart: the
-// messages snoozed for everyone, and each reader's own snoozes of
-// broadcasts. A count reads those one by one.
+// messages snoozed for everyone, in groups alike as buckets are, and each
+// reader's own snoozes of broadcasts. A count reads those one by one, and
+// asks who may see a group once.
 type tally struct {
 	buckets map[string]*bucket
 	// in is the bucket each message open for everyone counts in, by id.
 	in map[string]*bucket
-	// snoozed are the messages snoozed for everyone, by id. A broadcast is
-	// never one: each reader snoozes their own copy.
+	// snoozed are the messages snoozed for everyone, by id, and asleep the
+	// same messages in groups alike in what decides who reads them, by
+	// signature. A broadcast is never one: each reader snoozes their own
+	// copy.
 	snoozed map[string]*Message
+	asleep  map[string]*group
 	// snoozedBy are, for each reader, the open broadcasts they snoozed for
 	// themselves, until when: subject -> message id -> until.
 	snoozedBy map[string]map[string]time.Time
 }
 
 func newTally() tally {
-	return tally{buckets: map[string]*bucket{}, in: map[string]*bucket{}, snoozed: map[string]*Message{}, snoozedBy: map[string]map[string]time.Time{}}
+	return tally{buckets: map[string]*bucket{}, in: map[string]*bucket{}, snoozed: map[string]*Message{}, asleep: map[string]*group{}, snoozedBy: map[string]map[string]time.Time{}}
+}
+
+// group is the messages snoozed for everyone alike in what decides who reads
+// them, as a bucket's are.
+type group struct {
+	rep  Message
+	msgs map[string]*Message
 }
 
 // bucket is the open messages alike in everything that decides who reads
@@ -130,12 +141,27 @@ func (t *tenant) join(m *Message) {
 		}
 	case Snoozed:
 		t.tally.snoozed[m.ID] = m
+		sig := signature(m)
+		g := t.tally.asleep[sig]
+		if g == nil {
+			g = &group{rep: representative(m), msgs: map[string]*Message{}}
+			t.tally.asleep[sig] = g
+		}
+		g.msgs[m.ID] = m
 	}
 }
 
 // leave takes a message out of every count, before its state changes.
 func (t *tenant) leave(m *Message) {
-	delete(t.tally.snoozed, m.ID)
+	if _, ok := t.tally.snoozed[m.ID]; ok {
+		delete(t.tally.snoozed, m.ID)
+		sig := signature(m)
+		if g := t.tally.asleep[sig]; g != nil {
+			if delete(g.msgs, m.ID); len(g.msgs) == 0 {
+				delete(t.tally.asleep, sig)
+			}
+		}
+	}
 	b := t.tally.in[m.ID]
 	if b == nil {
 		return
@@ -218,13 +244,22 @@ func (t *tenant) count(f filter) Counts {
 	if f.Now.IsZero() {
 		return c
 	}
-	for _, m := range t.tally.snoozed {
-		if f.Now.Before(m.SnoozedUntil) || !f.admits(m) {
-			continue
-		}
-		c.Open++
-		if !t.read[m.ID][f.Reader] {
-			c.Unread++
+	for _, g := range t.tally.asleep {
+		asked, admitted := false, false
+		for _, m := range g.msgs {
+			if f.Now.Before(m.SnoozedUntil) {
+				continue
+			}
+			if !asked {
+				asked, admitted = true, f.admits(&g.rep)
+			}
+			if !admitted {
+				break
+			}
+			c.Open++
+			if !t.read[m.ID][f.Reader] {
+				c.Unread++
+			}
 		}
 	}
 	for id, until := range t.tally.snoozedBy[f.Reader] {

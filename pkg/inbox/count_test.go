@@ -336,7 +336,14 @@ func tallied(t *tenant) map[string]any {
 		snoozed = append(snoozed, id)
 	}
 	slices.Sort(snoozed)
-	return map[string]any{"buckets": buckets, "in": in, "snoozed": snoozed, "snoozedBy": fmt.Sprint(t.tally.snoozedBy)}
+	asleep := map[string][]string{}
+	for sig, g := range t.tally.asleep {
+		for id := range g.msgs {
+			asleep[sig] = append(asleep[sig], id)
+		}
+		slices.Sort(asleep[sig])
+	}
+	return map[string]any{"buckets": buckets, "in": in, "snoozed": snoozed, "asleep": asleep, "snoozedBy": fmt.Sprint(t.tally.snoozedBy)}
 }
 
 // A count asks who may see a bucket once for all of it, so what it asks
@@ -349,10 +356,19 @@ func TestACountAsksOnceForMessagesAlike(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Messages snoozed for everyone, whose time came, are asked about once
+	// for all of them too.
+	for i := range 20 {
+		m := raise(s, "alert:snoozed:"+strconv.Itoa(i), t0)
+		if _, _, err := s.Snooze(acme, m.ID, "ada", t0.Add(time.Hour), t0); err != nil {
+			t.Fatal(err)
+		}
+	}
 	asked := 0
 	q := readerIn("ada", "Field")
+	q.Now = t0.Add(2 * time.Hour)
 	q.Sees = func(Message) bool { asked++; return true }
-	if c := s.Count(acme, q); c != (Counts{Open: 50, Unread: 50, Updates: 50}) || asked != 2 {
+	if c := s.Count(acme, q); c != (Counts{Open: 70, Unread: 70, Updates: 50}) || asked != 3 {
 		t.Fatalf("counts %+v, asking %d times", c, asked)
 	}
 }

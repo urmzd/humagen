@@ -1441,7 +1441,14 @@ Channels are bound only by a project owner.
 No migration. Retention's first pass runs at the first start after the
 upgrade and drops what was settled more than 90 days before, or the
 workspace's `inbox_retention`. Records written before phase 9 replay as they
-did: their raises already name their ids.
+did: their raises already name their ids, and a broadcast announcement under
+a key its poster named (not `announce:`) replays as posted once, so a
+release posted before phase 9 is not posted again once it is dropped.
+
+No rollback after the first pass. A build from before phase 9 keys its next
+change by how many changes it loaded and numbers its next id by how many
+raises it loaded, so on a record retention has cut it would overwrite kept
+changes and issue ids again. Roll back only to a build with phase 9.
 
 ### Docs in the same PRs
 
