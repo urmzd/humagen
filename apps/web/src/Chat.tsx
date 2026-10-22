@@ -239,8 +239,10 @@ export function Chat({
   const answering = agent || fallback;
   const isAuto = answering === AUTO;
   const named = isAuto ? "" : answering;
-  // What is sent: "" lets the platform's default chain decide, as the person did.
+  // What is sent: "" leaves the agent out, so the platform's default chain decides, as the person did.
   const target = agent;
+  // Who answers the next message, in words under the composer, once it is known.
+  const answersHere = agent || here ? answersLine(answering, isAuto ? preview?.agent : undefined) : "";
 
   // What this conversation's queue is waiting on, so it knows when to go on.
   const waiting = useRef<string | null>(null);
@@ -439,6 +441,7 @@ export function Chat({
           </>
         }
       />
+      {answersHere && <p className="px-3 text-aui-xs text-aui-muted">{answersHere}</p>}
     </div>
   );
 
