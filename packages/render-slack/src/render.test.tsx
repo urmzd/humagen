@@ -213,6 +213,7 @@ describe("feedbackModal", () => {
     const view = feedbackModal({ turnId: "turn-1", rating: "down" });
     expect(JSON.parse(view.private_metadata)).toEqual({ turnId: "turn-1", rating: "down" });
     expect(view.title.text).toBe("What went wrong?");
+    expect(view.blocks.at(-1)).toMatchObject({ element: { max_length: 3000 } });
     expect(view.close.text).toBe("Skip");
     expect(view.blocks.map((b) => [b.block_id, b.optional])).toEqual([
       ["reason", true],

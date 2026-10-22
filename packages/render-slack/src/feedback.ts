@@ -86,7 +86,7 @@ export function feedbackModal(
           type: "plain_text_input",
           action_id: "value",
           multiline: true,
-          max_length: 4000,
+          max_length: 3000,
           placeholder: plain(l.placeholder, 150),
         },
       },
