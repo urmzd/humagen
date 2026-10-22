@@ -599,7 +599,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
 		"ThreadShare": {typ: platform.ThreadShare{}, written: true}, "ThreadNotAdded": {typ: platform.NotAdded{}},
-		"Channel":     {typ: projects.Channel{}}, "ClientBinding": {typ: projects.Binding{}}, "ChannelView": {typ: channelView{}},
+		"Channel": {typ: projects.Channel{}}, "ClientBinding": {typ: projects.Binding{}}, "ChannelView": {typ: channelView{}},
 		"ChannelInput": {typ: platform.ChannelInput{}, written: true}, "ChannelUpdate": {typ: platform.ChannelUpdate{}, written: true},
 		"ProjectExpert": {typ: projects.Expert{}}, "ProjectExperts": {typ: platform.Experts{}}, "Project": {typ: projects.Project{}}, "ProjectView": {typ: projectView{}},
 		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectLimit": {typ: projectLimit{}},
