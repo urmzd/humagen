@@ -530,7 +530,7 @@ func (s *Store) rewrite(tenantName string, th *thread, rec Thread, at time.Time)
 	return rec.clone(), nil
 }
 
-// Update changes a thread's title, visibility or default. fn edits a copy;
+// Update changes a thread's title, visibility, default or routing. fn edits a copy;
 // the id, place, participants and record fields cannot change, and version
 // must be the current one (ErrVersion). A change that changes nothing writes
 // nothing.
@@ -559,7 +559,7 @@ func (s *Store) Update(tenantName, id string, version int, at time.Time, fn func
 	if err := next.validate(); err != nil {
 		return Thread{}, err
 	}
-	if next.Title == cur.Title && next.Visibility == cur.Visibility && next.Default == cur.Default {
+	if next.Title == cur.Title && next.Visibility == cur.Visibility && next.Default == cur.Default && slices.Equal(next.Agents, cur.Agents) && next.Mode == cur.Mode {
 		return cur.clone(), nil
 	}
 	next.Version, next.UpdatedAt = cur.Version+1, at

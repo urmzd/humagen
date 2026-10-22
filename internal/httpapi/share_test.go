@@ -74,3 +74,42 @@ func TestAConversationIsPrivateUntilShared(t *testing.T) {
 	// cy takes no part, so cy does not share it.
 	want(t, f, cy, "POST", "/api/threads/"+id+"/share", `{}`, http.StatusForbidden)
 }
+
+// A conversation's selected agents are in its view, and selecting an agent
+// the caller may not read answers exactly as selecting one that does not
+// exist.
+func TestSelectingAHiddenAgentAnswersAsAnUnknownOne(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, owner, "POST", "/api/agents", spySpec, http.StatusCreated)
+	want(t, f, owner, "POST", "/api/projects", `{"name":"Secret"}`, http.StatusCreated)
+	want(t, f, owner, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
+	want(t, f, owner, "PUT", "/api/agents/spy/home", `{"project":"Secret"}`, http.StatusOK)
+	want(t, f, owner, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
+	want(t, f, owner, "PUT", "/api/projects/Field/members", `{"version":1,"members":[{"who":"*","role":"member"}]}`, http.StatusOK)
+	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
+
+	started := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","agents":["helper"],"text":"hello"}`, http.StatusCreated)
+	th := obj(started["thread"])
+	if started["rule"] != "routed" || len(sliceOf(th["agents"])) != 1 || len(sliceOf(started["runs"])) != 1 {
+		t.Fatalf("a conversation with helper selected started %s", mustJSON(t, started))
+	}
+	id := th["id"].(string)
+	page := want(t, f, ana, "GET", "/api/threads/"+id, "", http.StatusOK)
+	if got := sliceOf(obj(page["thread"])["agents"]); len(got) != 1 || got[0] != "helper" {
+		t.Fatalf("the view's agents are %v", got)
+	}
+	for _, body := range []string{`{"project":"Field","agents":["%s"],"text":"x"}`} {
+		code, out := send(t, f, ana, "POST", "/api/threads", strings.ReplaceAll(body, "%s", "spy"))
+		ghostCode, ghostOut := send(t, f, ana, "POST", "/api/threads", strings.ReplaceAll(body, "%s", "ghost"))
+		if code != http.StatusBadRequest || code != ghostCode || strings.ReplaceAll(out, "spy", "ghost") != ghostOut {
+			t.Fatalf("selecting a hidden agent = %d %s; an unknown one = %d %s", code, out, ghostCode, ghostOut)
+		}
+	}
+	code, out := send(t, f, ana, "PUT", "/api/threads/"+id, `{"version":1,"visibility":"private","agents":["spy"]}`)
+	ghostCode, ghostOut := send(t, f, ana, "PUT", "/api/threads/"+id, `{"version":1,"visibility":"private","agents":["ghost"]}`)
+	if code != http.StatusBadRequest || code != ghostCode || strings.ReplaceAll(out, "spy", "ghost") != ghostOut {
+		t.Fatalf("selecting a hidden agent = %d %s; an unknown one = %d %s", code, out, ghostCode, ghostOut)
+	}
+}

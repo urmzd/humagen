@@ -278,3 +278,38 @@ func TestShareIsKept(t *testing.T) {
 		}
 	})
 }
+
+// A thread's selected agents and mode are kept, and a record that holds an
+// invalid selection is refused.
+func TestRoutingIsKept(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		s, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rec := shared("Globex", "general")
+		rec.Agents, rec.Mode = []string{"scribe", "ignite"}, threads.ModeAll
+		th, _ := start(t, s, "acme", rec, msg("dana", "both of you"))
+		got, err := s.Update("acme", th.ID, th.Version, t0, func(t *threads.Thread) error {
+			t.Agents, t.Mode = []string{"scribe", "ignite", "lead"}, threads.ModeBestFit
+			return nil
+		})
+		if err != nil || got.Version != th.Version+1 {
+			t.Fatalf("changing the selection = %+v, %v", got, err)
+		}
+		again, err := threads.Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kept, _ := everything(t, again, "acme", th.ID); !reflect.DeepEqual(kept.Agents, []string{"scribe", "ignite", "lead"}) || kept.Mode != threads.ModeBestFit {
+			t.Fatalf("read back, the selection is %v %q", kept.Agents, kept.Mode)
+		}
+		if _, err := again.Update("acme", th.ID, got.Version, t0, func(t *threads.Thread) error {
+			t.Agents, t.Mode = []string{"a", "b", "c", "d"}, threads.ModeAll
+			return nil
+		}); !errors.Is(err, threads.ErrInvalid) {
+			t.Fatalf("four agents all at once were kept: %v", err)
+		}
+	})
+}

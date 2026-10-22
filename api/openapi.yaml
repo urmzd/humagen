@@ -1210,9 +1210,13 @@ paths:
         starts follows the tag rules: the agents it tags answer, at most 3,
         and a `$skill` with no agent tagged goes to `@auto`; tagging only
         people or experts notifies them; posted only, nothing answers. A
-        message a person posts as themselves, as the console does, runs only
-        the agents it tags: untagged, it starts nothing (rule `untagged`),
-        whatever the thread's, channel's or project's default. Otherwise,
+        message that tags no agent in a thread with selected agents
+        (`agents`, `mode`) is answered by them (rule `routed`): the best fit
+        among them, or each of them; a `$skill` with no agent goes to them
+        too. Otherwise a message a person posts as themselves, as the
+        console does, runs only the agents it tags: untagged, it starts
+        nothing (rule `untagged`), whatever the thread's, channel's or
+        project's default. Otherwise,
         for a message a client posts, the default the thread inherits
         answers. `visibility` left out, by a person posting as themselves,
         is `private`: the conversation is its starter's alone until they
@@ -5297,6 +5301,16 @@ components:
         default:
           description: Answers an untagged message here, an agent or `auto`. Absent inherits from the channel. One naming an agent that lives in a project the caller may not read reads as absent, and is passed over for them, so `answers` and what their messages do are as if it were not set.
           type: string
+        agents:
+          description: |
+            The agents selected to answer the thread's untagged messages, at
+            most 5. A message that tags an agent is answered by the agents it
+            tags instead. An agent the caller may not read is left out, as if
+            not selected. Absent when none is selected.
+          type: array
+          maxItems: 5
+          items: {type: string}
+        mode: {$ref: "#/components/schemas/ThreadMode"}
         surface: {$ref: "#/components/schemas/ThreadSurface"}
         announcement:
           description: The inbox id of the announcement the thread was started from, a reply to its post on the thread's surface. It never changes, and the thread's turns start with it.
@@ -5507,6 +5521,12 @@ components:
         default:
           description: Answers untagged messages in the thread, an agent available in the project or `auto`.
           type: string
+        agents:
+          description: Agents selected to answer the thread's untagged messages, at most 5, each available in the project (400; one the caller may not read is as one that does not exist). `all` takes at most 3.
+          type: array
+          maxItems: 5
+          items: {type: string}
+        mode: {$ref: "#/components/schemas/ThreadMode"}
         text: {type: string, maxLength: 8000}
         post_only:
           description: Post without any agent answering, unless the message tags one. In the console this is what an untagged message does anyway.
@@ -5545,8 +5565,21 @@ components:
         answers: {$ref: "#/components/schemas/ThreadAnswerRef"}
         act_as: {$ref: "#/components/schemas/ActAs"}
         surface: {$ref: "#/components/schemas/SurfaceRef"}
+    ThreadMode:
+      description: |
+        How a thread's selected agents answer an untagged message:
+        `best_fit`, the one of them that fits it best, picked as `@auto`
+        picks among them alone (the run's `picked` says why), or `all`, each
+        of them side by side, at most 3. Absent with fewer than two agents
+        selected; `best_fit` when two or more are selected and none is named.
+      type: string
+      enum: [best_fit, all]
     ThreadUpdate:
-      description: A thread's title, visibility and default, as a whole.
+      description: |
+        A thread's title, visibility, default and selected agents, as a
+        whole. Changing only `agents` and `mode` takes anyone who may post in
+        the thread; anything else takes whoever started it, while a member,
+        or an owner of its project.
       type: object
       additionalProperties: false
       required: [version]
@@ -5557,6 +5590,12 @@ components:
         default:
           description: Empty keeps a default the caller was not shown, one naming an agent that lives in a project they may not read.
           type: string
+        agents:
+          description: The selected agents, as a whole; a selected agent the caller was not shown is kept. Each must be an agent available in the thread's project (400; one the caller may not read is as one that does not exist).
+          type: array
+          maxItems: 5
+          items: {type: string}
+        mode: {$ref: "#/components/schemas/ThreadMode"}
     ThreadParticipantsUpdate:
       description: People and agents to add to a thread and to remove from it.
       type: object
@@ -5578,11 +5617,13 @@ components:
         The rule that decided what a message starts, the first that applies:
         `tagged` (the agents it tags answer), `people` (it tags only people
         or experts), `reply` (it answers a question or replies to a
-        mention), `post_only`, `untagged` (posted by a person as themselves,
-        as the console does, and it tags no agent, so nothing runs), or
-        `default` (the inherited default answers, if there is one).
+        mention), `post_only`, `routed` (it tags no agent, and the thread's
+        selected agents answer it, see `ThreadMode`), `untagged` (posted by
+        a person as themselves, as the console does, and it tags no agent,
+        so nothing runs), or `default` (the inherited default answers, if
+        there is one).
       type: string
-      enum: [tagged, people, reply, post_only, untagged, default]
+      enum: [tagged, people, reply, post_only, routed, untagged, default]
     ThreadPosted:
       description: What posting a message did.
       type: object
