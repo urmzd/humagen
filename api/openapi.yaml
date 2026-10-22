@@ -4957,7 +4957,7 @@ components:
           description: The person's handle, the agent's name, or `warp` for what warp posted itself.
           type: string
         name:
-          description: What the person is called. Absent for an agent.
+          description: What the person is called. Absent for an agent and for warp itself (`system`).
           type: string
         subject: {type: string, maxLength: 150}
         text: {type: string, maxLength: 4000}

@@ -518,7 +518,7 @@ export interface ThreadAnnouncement {
   kind: "person" | "agent" | "system";
   /** The person's handle, the agent's name, or `warp` for what warp posted itself. */
   by: string;
-  /** What the person is called. Absent for an agent. */
+  /** What the person is called. Absent for an agent and for warp itself (`system`). */
   name?: string;
   subject?: string;
   text?: string;

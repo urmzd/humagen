@@ -43,7 +43,8 @@ type Announcement struct {
 	// By is the person's subject, handed out as their handle, the agent's
 	// name, or for a system one the name warp posted it under.
 	By string `json:"by"`
-	// Name is what the person is called. An agent has none.
+	// Name is what the person is called. An agent and warp itself (System)
+	// have none.
 	Name string `json:"name,omitempty"`
 	// Subject and Text are what it says. A withdrawn one has neither.
 	Subject string `json:"subject,omitempty"`
