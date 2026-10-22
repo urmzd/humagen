@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/alerts"
 	"github.com/urmzd/warp/pkg/people"
 )
 
@@ -45,10 +47,15 @@ const marker = "zqx"
 type hidden struct {
 	project, agent, schedule, rule, source, eval, client, variant string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
-	handle                                                        string
+	handle, alert, channel, announcement                          string
 	// inside is true when the outsider is in the same workspace: what
 	// lives outside the project is theirs to see, and is not hidden.
 	inside bool
+	// private is true when what is hidden lives in a private thread of a
+	// project the outsider is a member of: only the thread's run, its
+	// file, its alert and its inbox message are hidden, and everything
+	// else is theirs to see.
+	private bool
 }
 
 // outsiders are who the sweep reads as: another workspace, and a member of
@@ -117,6 +124,18 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	must("POST", "/api/schedules", `{"name":"`+h.schedule+`","expression":"0 3 * * *","agent":"`+h.agent+`","text":"Schedule `+marker+`.","project":"`+h.project+`","deliver":"inbox"}`, http.StatusCreated)
 	must("POST", "/api/alert-rules", `{"name":"`+h.rule+`","kind":"run_failed","severity":"critical","project":"`+h.project+`","description":"Rule `+marker+`."}`, http.StatusCreated)
 	must("POST", "/api/evals", `{"name":"`+h.eval+`","target":"agent","subject":"`+h.agent+`","cases":[{"id":"c-`+marker+`","input":"hi","checks":[{"kind":"contains","value":"`+marker+`"}]}]}`, http.StatusCreated)
+	// A channel and an announcement of the hidden project.
+	h.channel = "canary-" + marker
+	must("POST", "/api/projects/"+h.project+"/channels", `{"name":"`+h.channel+`","purpose":"Channel `+marker+`."}`, http.StatusCreated)
+	h.announcement = str(must("POST", "/api/projects/"+h.project+"/announcements", `{"subject":"News `+marker+`","text":"Words `+marker+`."}`, http.StatusCreated), "id")
+	// An alert raised by the hidden run, in the hidden project.
+	raised, _, err := f.p.Alerts.Raise("acme", "canary-alert-"+marker, alerts.Alert{
+		Kind: alerts.RunFailed, Severity: alerts.Critical, Project: h.project, RunID: h.run, Title: "Alert " + marker, At: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.alert = raised.ID
 	// What lives outside any project is hidden only from another workspace.
 	if !inside {
 		must("POST", "/api/knowledge", `{"name":"`+h.source+`","description":"Source `+marker+`."}`, http.StatusCreated)
@@ -145,9 +164,103 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	return h
 }
 
+// hidePrivate fills acme with a private thread in Field, a project everyone
+// in acme is a member of, started by Ana with the marker in its words: its
+// run, a file it published, the alert a rule on Field raised for the run and
+// the inbox message about that alert. Only what lives in the thread is
+// hidden; Field, its agent and its rule are everyone's to see.
+func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
+	t.Helper()
+	h := hidden{inside: true, private: true, project: "Field", agent: "helper", rule: "slow", channel: "general"}
+	want(t, f, owner, "POST", "/api/agents", helperSpec, http.StatusCreated)
+	want(t, f, owner, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
+	// Every run in Field is slow enough to raise an alert.
+	want(t, f, owner, "POST", "/api/alert-rules", `{"name":"slow","kind":"slow_run","threshold":1e-9,"severity":"warning","project":"Field"}`, http.StatusCreated)
+	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
+	started := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","visibility":"private","text":"@helper the plan is `+marker+`."}`, http.StatusCreated)
+	h.thread = started["thread"].(map[string]any)["id"].(string)
+	h.run = started["runs"].([]any)[0].(map[string]any)["id"].(string)
+	ended(t, f, ana, h.run)
+
+	if err := f.p.PutFile("acme", h.thread, "plan-"+marker+".txt", "Plan "+marker+"."); err != nil {
+		t.Fatal(err)
+	}
+	published, err := f.p.Publish(t.Context(), platform.Publication{
+		Tenant: "acme", Thread: h.thread, Run: h.run, Agent: h.agent, Project: h.project, By: "agent:" + h.agent, Path: "plan-" + marker + ".txt",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.artifact = published.ID
+
+	deadline := time.Now().Add(10 * time.Second)
+	for h.alert == "" || h.message == "" {
+		if time.Now().After(deadline) {
+			t.Fatalf("the private run raised no alert (%q) or no message about it (%q)", h.alert, h.message)
+		}
+		for _, a := range f.p.Alerts.Alerts("acme") {
+			if a.RunID == h.run {
+				h.alert = a.ID
+			}
+		}
+		_, page := f.do(t, nil, "GET", "/api/inbox?state=all", owner, "")
+		for _, m := range page["messages"].([]any) {
+			if msg := m.(map[string]any); msg["source"].(map[string]any)["run"] == h.run {
+				h.message = msg["id"].(string)
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return h
+}
+
+// visiblePath is, in the private sweep, an operation's path with every
+// parameter naming what the outsider may see: Field, its agent, its rule and
+// its general channel. What it reads must hold nothing of the private thread.
+func (h hidden) visiblePath(path string) (string, bool) {
+	if !h.private {
+		return "", false
+	}
+	out := path
+	for _, param := range pathParams(path) {
+		var v string
+		switch {
+		case param == "name" && strings.HasPrefix(path, "/api/agents/"):
+			v = h.agent
+		case param == "name" && strings.HasPrefix(path, "/api/projects/"):
+			v = h.project
+		case param == "name" && strings.HasPrefix(path, "/api/alert-rules/"):
+			v = h.rule
+		case param == "channel":
+			v = h.channel
+		default:
+			return "", false
+		}
+		out = strings.ReplaceAll(out, "{"+param+"}", url.PathEscape(v))
+	}
+	return out, true
+}
+
+// holds reports whether a body shows anything hidden.
+func (h hidden) holds(body string) bool {
+	return strings.Contains(body, marker) || strings.Contains(body, h.run) || (h.thread != "" && strings.Contains(body, h.thread))
+}
+
 // unplaced are the path parameters that name something outside any project,
 // which a member of the workspace may see.
 func (h hidden) unplaced(path, param string) bool {
+	if h.private {
+		if param == "part" || param == "question" {
+			return h.message == "" && strings.HasPrefix(path, "/api/inbox/")
+		}
+		switch {
+		case param != "id":
+			return true
+		case strings.HasPrefix(path, "/api/inbox/"):
+			return h.message == ""
+		}
+		return !slices.ContainsFunc([]string{"/api/runs/", "/api/threads/", "/api/artifacts/", "/api/alerts/"}, func(p string) bool { return strings.HasPrefix(path, p) })
+	}
 	if !h.inside {
 		return false
 	}
@@ -197,7 +310,13 @@ func (h hidden) value(path, param string) (string, bool) {
 			return h.artifact, true
 		case prefix("/api/clients/"):
 			return h.client, true
+		case prefix("/api/alerts/"):
+			return h.alert, true
+		case prefix("/api/projects/{name}/announcements/"):
+			return h.announcement, true
 		}
+	case "channel":
+		return h.channel, true
 	case "handle":
 		return h.handle, true
 	case "variant":
@@ -215,6 +334,9 @@ func (h hidden) value(path, param string) (string, bool) {
 // probes are the query parameters that name an object, and the hidden one
 // each names.
 func (h hidden) probes() map[string]string {
+	if h.private {
+		return map[string]string{"thread": h.thread, "run": h.run}
+	}
 	out := map[string]string{
 		"project": h.project, "thread": h.thread, "run": h.run, "agent": h.agent, "q": "Canary" + marker,
 	}
@@ -225,10 +347,14 @@ func (h hidden) probes() map[string]string {
 }
 
 // ghost is a value shaped like v that names nothing: its last character
-// changed.
+// changed, or for a counted id such as "al-1" the count 0, which no store
+// issues, so the ghost is never the next one issued.
 func ghost(v string) string {
 	if v == "" {
 		return "ghost"
+	}
+	if i := strings.LastIndexByte(v, '-'); i > 0 && i < len(v)-1 && strings.Trim(v[i+1:], "0123456789") == "" {
+		return v[:i+1] + "0"
 	}
 	last := v[len(v)-1]
 	switch {
@@ -324,8 +450,12 @@ func outsiderToken(t *testing.T, f *fixture, who string) string {
 
 func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 	t.Helper()
+	sweepGetsOf(t, f, outsider, hide(t, f, owner, inside))
+}
+
+func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
+	t.Helper()
 	s := loadSpec(t)
-	h := hide(t, f, owner, inside)
 	defaults := map[string]string{"permission": "runs:read", "q": "hello"}
 
 	var keys []string
@@ -356,6 +486,18 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 			return path + "?" + q.Encode()
 		}
 
+		// In a private sweep, what names Field or what lives openly in it
+		// is the outsider's to read, and holds nothing of the thread.
+		if visible, ok := h.visiblePath(op.path); ok && len(params) > 0 {
+			code, body := get(t, f, outsider, withQuery(visible, query))
+			if code >= 500 {
+				t.Errorf("%s = %d %s", key, code, body)
+			}
+			if h.holds(body) {
+				t.Errorf("%s shows an outsider what is hidden: %s", key, body)
+			}
+			continue
+		}
 		if len(params) > 0 {
 			if _, documents := op.schemas["404"]; !documents {
 				t.Errorf("%s names an object and cannot answer 404 for one the caller may not see", key)
@@ -386,7 +528,7 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 		if code >= 500 {
 			t.Errorf("%s = %d %s", key, code, body)
 		}
-		if strings.Contains(body, marker) || strings.Contains(body, h.run) {
+		if h.holds(body) {
 			t.Errorf("%s shows an outsider what is hidden: %s", key, body)
 		}
 		// And a filter naming something hidden answers as one naming nothing.
@@ -402,6 +544,169 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 			hq.Set(name, v)
 			gq.Set(name, ghost(v))
 			sameAsNothing(t, f, outsider, key+"?"+name, withQuery(op.path, hq), withQuery(op.path, gq), map[string]string{v: ghost(v)})
+		}
+	}
+}
+
+// send makes one request as tok and answers its status and body.
+func send(t *testing.T, f *fixture, tok, method, path, body string) (int, string) {
+	t.Helper()
+	var rd io.Reader
+	if body != "" {
+		rd = strings.NewReader(body)
+	}
+	req, err := http.NewRequest(method, f.srv.URL+path, rd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	raw, _ := io.ReadAll(res.Body)
+	return res.StatusCode, string(raw)
+}
+
+// An outsider changes nothing hidden, and learns nothing by trying: every
+// operation in the contract that names an object and is not a read, sent
+// against a hidden object, answers exactly as it does against one that does
+// not exist, and so does one whose body names the hidden project. Afterwards
+// every hidden object is as it was.
+func TestAnOutsiderChangesNothingHidden(t *testing.T) {
+	f0 := newFixture(t)
+	for who, o := range outsiders(t, f0) {
+		t.Run(who, func(t *testing.T) {
+			f := newFixture(t)
+			owner := f.machine(t, "acme", everything...)
+			h := hide(t, f, owner, o.inside)
+			sweepWrites(t, f, owner, outsiderToken(t, f, who), h)
+		})
+	}
+}
+
+func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
+	t.Helper()
+	s := loadSpec(t)
+	norm := func(swaps map[string]string, v string) string {
+		for real, g := range swaps {
+			v = strings.ReplaceAll(v, real, g)
+		}
+		return timestamps.ReplaceAllString(v, "T")
+	}
+	same := func(what string, code int, body string, ghostCode int, ghostBody string, swaps map[string]string) {
+		t.Helper()
+		if code != ghostCode || norm(swaps, body) != norm(swaps, ghostBody) {
+			t.Errorf("%s: a hidden object answers %d %s, and one that does not exist %d %s", what, code, body, ghostCode, ghostBody)
+		}
+	}
+	var keys []string
+	for key, op := range s.ops {
+		if op.method != http.MethodGet && strings.HasPrefix(op.path, "/api/") && len(pathParams(op.path)) > 0 {
+			keys = append(keys, key)
+		}
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
+		op := s.ops[key]
+		params := pathParams(op.path)
+		if slices.ContainsFunc(params, func(name string) bool { return h.unplaced(op.path, name) }) {
+			continue
+		}
+		hiddenPath, ghostPath, swaps := op.path, op.path, map[string]string{}
+		for _, name := range params {
+			v, ok := h.value(op.path, name)
+			if !ok {
+				t.Errorf("%s: the sweep hides nothing for {%s}; add one to hide", key, name)
+				continue
+			}
+			hiddenPath = strings.ReplaceAll(hiddenPath, "{"+name+"}", url.PathEscape(v))
+			ghostPath = strings.ReplaceAll(ghostPath, "{"+name+"}", url.PathEscape(ghost(v)))
+			swaps[v] = ghost(v)
+		}
+		body := "{}"
+		if op.method == http.MethodDelete {
+			body = ""
+		}
+		code, out := send(t, f, outsider, op.method, hiddenPath, body)
+		ghostCode, ghostOut := send(t, f, outsider, op.method, ghostPath, body)
+		same(key, code, out, ghostCode, ghostOut, swaps)
+		if code >= 200 && code < 300 {
+			t.Errorf("%s changed a hidden object for an outsider: %d %s", key, code, out)
+		}
+	}
+
+	// A turn after the hidden run answers as one after a run that is not
+	// there.
+	{
+		body := `{"agent":"helper","text":"probe","after":%q}`
+		code, out := send(t, f, outsider, "POST", "/api/runs", fmt.Sprintf(body, h.run))
+		ghostCode, ghostOut := send(t, f, outsider, "POST", "/api/runs", fmt.Sprintf(body, ghost(h.run)))
+		same("POST /api/runs after the hidden run", code, out, ghostCode, ghostOut, map[string]string{h.run: ghost(h.run)})
+	}
+	if h.private {
+		for _, path := range []string{"/api/runs/" + h.run, "/api/threads/" + h.thread, "/api/artifacts/" + h.artifact} {
+			if code, out := get(t, f, owner, path); code != http.StatusOK {
+				t.Errorf("after the sweep the owner reads %s as %d %s", path, code, out)
+			}
+		}
+		_, th := get(t, f, owner, "/api/threads/"+h.thread)
+		if !strings.Contains(th, `"visibility":"private"`) || strings.Contains(th, "svc-nonmember") {
+			t.Errorf("after the sweep the private thread is %s", th)
+		}
+		for _, a := range f.p.Alerts.Alerts("acme") {
+			if a.ID == h.alert && !a.Open() {
+				t.Errorf("after the sweep the hidden alert was acknowledged by %s", a.AckedBy)
+			}
+		}
+		return
+	}
+
+	// A body that names the hidden project answers as one naming a project
+	// that is not there.
+	for _, tc := range []struct{ method, path, body string }{
+		{"POST", "/api/alert-rules", `{"name":"probe","kind":"run_failed","severity":"critical","project":%q}`},
+		{"POST", "/api/runs", `{"agent":"helper","text":"probe","project":%q}`},
+		{"POST", "/api/schedules", `{"name":"probe","expression":"0 3 * * *","agent":"helper","text":"probe","project":%q}`},
+		{"POST", "/api/projects", `{"name":"probe","parent":%q}`},
+		{"POST", "/api/threads", `{"project":%q,"visibility":"shared","text":"probe"}`},
+	} {
+		code, out := send(t, f, outsider, tc.method, tc.path, fmt.Sprintf(tc.body, h.project))
+		ghostCode, ghostOut := send(t, f, outsider, tc.method, tc.path, fmt.Sprintf(tc.body, ghost(h.project)))
+		same(tc.method+" "+tc.path+" naming the hidden project", code, out, ghostCode, ghostOut, map[string]string{h.project: ghost(h.project)})
+	}
+
+	// Every hidden object is as it was.
+	for _, path := range []string{
+		"/api/projects/" + h.project, "/api/agents/" + h.agent + "/history", "/api/evals/" + h.eval + "/runs",
+		"/api/runs/" + h.run, "/api/threads/" + h.thread, "/api/artifacts/" + h.artifact,
+		"/api/projects/" + h.project + "/channels",
+	} {
+		if code, out := get(t, f, owner, path); code != http.StatusOK {
+			t.Errorf("after the sweep the owner reads %s as %d %s", path, code, out)
+		}
+	}
+	for path, want := range map[string][]string{
+		"/api/alert-rules":                         {`"name":"` + h.rule + `"`, "Rule " + marker},
+		"/api/schedules":                           {`"name":"` + h.schedule + `"`, "Schedule " + marker},
+		"/api/projects/" + h.project + "/channels": {`"name":"` + h.channel + `"`, "Channel " + marker},
+		"/api/projects/" + h.project + "/members":  {`"who":"svc-acme"`},
+		"/api/projects/" + h.project + "/inbox":    {"News " + marker},
+	} {
+		_, body := get(t, f, owner, path)
+		for _, w := range want {
+			if !strings.Contains(body, w) {
+				t.Errorf("after the sweep %s lacks %s: %s", path, w, body)
+			}
+		}
+	}
+	for _, a := range f.p.Alerts.Alerts("acme") {
+		if a.ID == h.alert && !a.Open() {
+			t.Errorf("after the sweep the hidden alert was acknowledged by %s", a.AckedBy)
 		}
 	}
 }
@@ -423,9 +728,71 @@ func TestAnOutsiderStreamCarriesNothingHidden(t *testing.T) {
 	}
 }
 
+// A private thread is its participants' alone. A member of its project who
+// takes no part in it reads nothing of it (its runs, its file, the alert its
+// run raised and the inbox message about that, by id or in any list,
+// Field's own included), changes nothing of it, and their stream carries no
+// notice of a message posted there and no event of the run it starts.
+func TestAPrivateThreadIsItsParticipantsAlone(t *testing.T) {
+	for _, part := range []string{"reads", "writes", "stream"} {
+		t.Run(part, func(t *testing.T) {
+			f := newFixture(t)
+			owner := f.machine(t, "acme", everything...)
+			h := hidePrivate(t, f, owner)
+			member := outsiderToken(t, f, "a non-member")
+			if code, out := get(t, f, member, "/api/projects/Field"); code != http.StatusOK || !strings.Contains(out, `"role":"member"`) {
+				t.Fatalf("the outsider is not a member of Field: %d %s", code, out)
+			}
+			switch part {
+			case "reads":
+				sweepGetsOf(t, f, member, h)
+			case "writes":
+				sweepWrites(t, f, owner, member, h)
+			case "stream":
+				ana := f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
+				streamOf(t, f, owner, member, "acme", h, func() string {
+					out := want(t, f, ana, "POST", "/api/threads/"+h.thread+"/messages", `{"text":"@helper and the budget is `+marker+`?"}`, http.StatusCreated)
+					runs, _ := out["runs"].([]any)
+					if len(runs) != 1 {
+						t.Fatalf("the post in the private thread started %v", out)
+					}
+					return runs[0].(map[string]any)["id"].(string)
+				})
+			}
+		})
+	}
+}
+
 func sweepStream(t *testing.T, f *fixture, owner, outsider string, inside bool, tenant string) {
 	t.Helper()
 	h := hide(t, f, owner, inside)
+	streamOf(t, f, owner, outsider, tenant, h, func() string {
+		// Hidden: a run of the hidden agent, and a file it published, which
+		// raises an inbox message of its own kind.
+		f.do(t, nil, "DELETE", "/api/policies?kind=agent&name="+h.agent, owner, "")
+		_, run := f.do(t, nil, "POST", "/api/runs", owner, `{"agent":"`+h.agent+`","text":"Again `+marker+`.","project":"`+h.project+`"}`)
+		hiddenRun, _ := run["id"].(string)
+		if hiddenRun == "" {
+			t.Fatalf("the hidden run did not start: %v", run)
+		}
+		if err := f.p.PutFile("acme", h.thread, "more-"+marker+".txt", "More "+marker+"."); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.p.Publish(t.Context(), platform.Publication{
+			Tenant: "acme", Thread: h.thread, Run: h.run, Agent: h.agent, Project: h.project, By: "agent:" + h.agent, Path: "more-" + marker + ".txt",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return hiddenRun
+	})
+}
+
+// streamOf reads the outsider's stream while work does something hidden, and
+// returns the hidden run it started; then the outsider's own run and notice
+// must arrive, and nothing hidden with them.
+func streamOf(t *testing.T, f *fixture, owner, outsider, tenant string, h hidden, work func() string) {
+	t.Helper()
+	inside := h.inside
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -437,22 +804,7 @@ func sweepStream(t *testing.T, f *fixture, owner, outsider string, inside bool, 
 	}
 	defer func() { _ = res.Body.Close() }()
 
-	// Hidden: a run of the hidden agent, and a file it published, which
-	// raises an inbox message of its own kind.
-	f.do(t, nil, "DELETE", "/api/policies?kind=agent&name="+h.agent, owner, "")
-	_, run := f.do(t, nil, "POST", "/api/runs", owner, `{"agent":"`+h.agent+`","text":"Again `+marker+`.","project":"`+h.project+`"}`)
-	hiddenRun, _ := run["id"].(string)
-	if hiddenRun == "" {
-		t.Fatalf("the hidden run did not start: %v", run)
-	}
-	if err := f.p.PutFile("acme", h.thread, "more-"+marker+".txt", "More "+marker+"."); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.p.Publish(t.Context(), platform.Publication{
-		Tenant: "acme", Thread: h.thread, Run: h.run, Agent: h.agent, Project: h.project, By: "agent:" + h.agent, Path: "more-" + marker + ".txt",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	hiddenRun := work()
 	// Visible: the outsider's own run, which sends its answer to their inbox.
 	if !inside {
 		f.do(t, nil, "POST", "/api/agents", outsider, helperSpec)
@@ -498,7 +850,7 @@ func sweepStream(t *testing.T, f *fixture, owner, outsider string, inside bool, 
 			}
 			continue
 		}
-		if strings.Contains(data, marker) || strings.Contains(data, hiddenRun) || strings.Contains(data, h.run) {
+		if h.holds(data) || strings.Contains(data, hiddenRun) {
 			t.Errorf("the outsider's stream carried something hidden: %s", data)
 		}
 		var v map[string]any

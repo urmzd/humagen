@@ -269,6 +269,16 @@ func (s *Server) createAgent(w http.ResponseWriter, r *http.Request, who auth.Pr
 }
 
 func (s *Server) reviseAgent(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	if platform.IsBuiltin(r.PathValue("name")) {
+		fail(w, http.StatusForbidden, "this agent is provided by the platform and cannot be edited")
+		return
+	}
+	// One that is not there is said so before the body is read, as one the
+	// caller may not see is, so neither tells them apart.
+	if _, err := s.P.Agents.Get(r.Context(), who.Tenant, r.PathValue("name"), 0); err != nil {
+		s.problem(w, err)
+		return
+	}
 	var body struct {
 		Spec        agentspec.AgentSpec `json:"spec"`
 		ExpectedRev int                 `json:"expected_rev"`
@@ -476,12 +486,17 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 		asks, actor, client = person, envelope.Actor{ID: person.Subject, Display: person.Subject}, body.ActAs.Client
 	}
 	// Starting work in a project, or adding a turn to work there, takes
-	// being a member of it. A follow-up is filed where its conversation
-	// is. A turn that follows nothing, or names no project there is, is
-	// Converse's to refuse.
-	// A turn after a run the caller may not read answers as one after a
-	// run that is not there, and adding one takes what posting where it
-	// lives takes: a member, and in a private thread a participant.
+	// being a member of it. A project the person may not see answers as
+	// one that is not there. A follow-up is filed where its conversation
+	// is: a turn after a run the caller may not read answers as one after
+	// a run that is not there, and adding one takes what posting where it
+	// lives takes, a member, and in a private thread a participant. A turn
+	// that follows nothing, or names no project there is, is Converse's to
+	// refuse.
+	if body.After == "" && body.Project != "" && s.P.HasProject(who.Tenant, projects.NameOf(body.Project)) && !s.P.Seer(asks).Project(projects.NameOf(body.Project)) {
+		s.problem(w, platform.NoProjectCalled(body.Project))
+		return
+	}
 	project := body.Project
 	if body.After != "" {
 		prev, err := s.P.Runs.Get(who.Tenant, body.After)

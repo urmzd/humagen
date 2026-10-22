@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -456,6 +457,13 @@ func TestSpecListsExactlyTheRegisteredRoutes(t *testing.T) {
 	if !slices.Equal(enum, real) {
 		t.Errorf("the Permission enum is %v, the server's permissions are %v", enum, real)
 	}
+}
+
+// refusesUnknownFields reports an operation that takes a body and documents
+// 400, so a body with a field it does not know must be refused.
+func refusesUnknownFields(op specOp) bool {
+	_, documents := op.schemas["400"]
+	return documents && obj(op.raw["requestBody"]) != nil && !strings.Contains(op.path, "photo")
 }
 
 func pathParams(path string) []string {
@@ -1518,14 +1526,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.sweep(acme)
 
 	for _, op := range c.spec.ops {
-		if _, documents := op.schemas["400"]; !documents || obj(op.raw["requestBody"]) == nil || strings.Contains(op.path, "photo") {
+		// One that names an object is asked below, of an object made here.
+		if !refusesUnknownFields(op) || len(pathParams(op.path)) > 0 {
 			continue
 		}
-		path := op.path
-		for _, name := range pathParams(op.path) {
-			path = strings.ReplaceAll(path, "{"+name+"}", "x")
-		}
-		c.call(acme, op.method, op.path, path, `{"unknown_field":1}`, http.StatusBadRequest)
+		c.call(acme, op.method, op.path, op.path, `{"unknown_field":1}`, http.StatusBadRequest)
 	}
 
 	// The rest, one by one.
@@ -1597,10 +1602,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/projects/{name}": `{"version":1}`, "/api/projects/{name}/memory": `{"text":"x"}`, "/api/projects/{name}/memory/approve": `{"ids":[]}`,
 		"/api/inbox/{id}/deliveries/{client}": `{"channel":"C0123ABC","ts":"1700000000.000100"}`, "/api/inbox/{id}/dismiss": ``,
 		"/api/projects/{name}/agents": `{"version":1}`, "/api/agents/{name}/home": `{"project":""}`,
-		"/api/runs/{id}/calls":          `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
-		"/api/alert-rules/{name}":       `{"kind":"run_failed","severity":"critical"}`,
-		"/api/schedules/{name}":         `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
-		"/api/projects/{name}/channels": `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
+		"/api/runs/{id}/calls":                       `{"key":"k9","agent":"helper","text":"hi","mode":"delegate"}`,
+		"/api/runs/{id}/questions/{question}/answer": `{"action":"choose","choice":"red"}`,
+		"/api/alert-rules/{name}":                    `{"kind":"run_failed","severity":"critical"}`,
+		"/api/schedules/{name}":                      `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
+		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
 		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
@@ -1613,7 +1619,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		path := op.path
 		for _, name := range params {
-			v := ids[name]
+			v := cmp.Or(ids[name], "x")
 			if r, has := real[op.path][name]; has {
 				v = r
 			}
@@ -1621,6 +1627,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		}
 		if _, documents := op.schemas["404"]; documents {
 			c.call(globex, op.method, op.path, path, valid[op.path], http.StatusNotFound)
+		}
+		if refusesUnknownFields(op) {
+			c.call(acme, op.method, op.path, path, `{"unknown_field":1}`, http.StatusBadRequest)
 		}
 	}
 

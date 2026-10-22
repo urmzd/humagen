@@ -507,6 +507,14 @@ func (s *Server) listSuites(w http.ResponseWriter, _ *http.Request, who auth.Pri
 
 func (s *Server) putSuite(replace bool) handler {
 	return func(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+		// A suite that is not there is said so before the body is read, as
+		// one the caller may not see is.
+		if replace {
+			if _, err := s.P.Evals.Get(who.Tenant, r.PathValue("name")); err != nil {
+				s.problem(w, err)
+				return
+			}
+		}
 		var suite evals.Suite
 		if !decode(w, r, &suite) {
 			return
