@@ -15,6 +15,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/connectors/cron"
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 	"github.com/urmzd/saige/agent/agenttest"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
@@ -85,10 +86,16 @@ func (f *faultyIn) Write(ctx context.Context, namespace string, ops ...state.Op)
 // workspace's projects inside.
 func legacySettings(t *testing.T, st state.Store, tenantName string, setupAt time.Time) {
 	t.Helper()
+	oldSettings(t, st, tenantName, setupAt, []map[string]string{{"name": "Launch", "description": "Everything for the Q4 launch"}, {"name": "Ops"}})
+}
+
+// oldSettings writes settings as an earlier version kept them, whose projects
+// array held held: nil writes it as null, as that version did for none.
+func oldSettings(t *testing.T, st state.Store, tenantName string, setupAt time.Time, held any) {
+	t.Helper()
 	raw, err := json.Marshal(map[string]any{
 		"baseline": "", "history": "recent", "history_limit": 12000, "workspace_name": "Acme",
-		"setup_at": setupAt, "setup_by": "ada",
-		"projects": []map[string]string{{"name": "Launch", "description": "Everything for the Q4 launch"}, {"name": "Ops"}},
+		"setup_at": setupAt, "setup_by": "ada", "projects": held,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -208,6 +215,172 @@ func TestAFailedImportFailsTheStartAndChangesNothing(t *testing.T) {
 			t.Fatal("a failed import cleared the settings")
 		}
 	})
+}
+
+// fileOutsideTheTree has a platform on st file a schedule, an alert rule and
+// a limit in projects the tree does not hold, as an earlier version left them
+// when it dropped a project from settings.
+func fileOutsideTheTree(t *testing.T, st state.Store, filed func(p *platform.Platform) error) {
+	t.Helper()
+	p, err := newOn(t, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := filed(p); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A schedule, an alert rule or a limit an earlier version left filed in a
+// project it dropped keeps that project through the upgrade, so a schedule
+// that ran before it still runs after it, and nothing is left pointing at a
+// name the tree does not hold.
+func TestALegacyScheduleFiledInADroppedProjectStillRunsAfterTheUpgrade(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		fileOutsideTheTree(t, st, func(p *platform.Platform) error {
+			return errors.Join(
+				p.Schedules.Add(cron.Schedule{Name: "dropped-recap", Expression: "0 9 * * 1", Agent: "lead", Text: "recap", Tenant: tenant,
+					Meta: map[string]string{runs.MetaProject: "Dropped"}}, platform.About{}),
+				// One name with Launch ignoring case cannot be kept beside it.
+				p.Schedules.Add(cron.Schedule{Name: "clash-recap", Expression: "0 9 * * 1", Agent: "lead", Text: "recap", Tenant: tenant,
+					Meta: map[string]string{runs.MetaProject: "launch"}}, platform.About{}),
+				p.Alerts.AddRule(tenant, alerts.Rule{Name: "gone-fails", Kind: alerts.RunFailed, Severity: alerts.Critical, Project: "Gone", CreatedBy: "ada"}),
+				func() error {
+					_, err := p.Policies.Put(tenant, policy.Policy{Scope: policy.Scope{Kind: policy.Project, Name: "Spent"}, Period: policy.Day, MaxRuns: 5, Action: policy.Block}, "ada", time.Now())
+					return err
+				}(),
+				// A workspace whose settings held no projects at all.
+				p.Schedules.Add(cron.Schedule{Name: "away-recap", Expression: "0 9 * * 1", Agent: "lead", Text: "recap", Tenant: "globex",
+					Meta: map[string]string{runs.MetaProject: "Away"}}, platform.About{}),
+			)
+		})
+		setup := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+		legacySettings(t, st, tenant, setup)
+		oldSettings(t, st, "globex", setup, nil)
+		oldSettings(t, st, "initech", setup, nil)
+
+		p := startWith(t, platform.Config{Backends: platform.Backends{State: st}})
+		var got []string
+		for _, pr := range p.Projects.List(tenant) {
+			got = append(got, pr.Name)
+		}
+		if want := []string{"Dropped", "Gone", "Launch", "Ops", "Spent"}; !slices.Equal(got, want) {
+			t.Fatalf("after the upgrade the tree holds %q, want %q", got, want)
+		}
+		for _, name := range []string{"Dropped", "Gone", "Spent"} {
+			h, _ := p.Projects.History(tenant, name, 0, 0)
+			if len(h) != 1 || h[0].What != projects.Created || h[0].By != "migration" || h[0].Note != projects.KeptNote || h[0].After.Kind != projects.Team {
+				t.Fatalf("%s's history = %+v", name, h)
+			}
+		}
+		if h, _ := p.Projects.History(tenant, "Launch", 0, 0); len(h) != 1 || h[0].Note != "" {
+			t.Fatalf("Launch's history = %+v", h)
+		}
+
+		// The schedule fires and its run-now runs, filed where they were.
+		sc, _, err := p.Schedules.Get(tenant, "dropped-recap")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, origin := range []string{"cron", runs.OriginManual} {
+			r, err := p.Invoke(t.Context(), envelope.Tag{ID: "fire-" + origin, Tenant: tenant, Agent: sc.Agent, Origin: origin, Text: sc.Text, Meta: sc.Meta})
+			if err != nil {
+				t.Fatalf("a %s run of a schedule that ran before the upgrade = %v", origin, err)
+			}
+			if done := await(t, p, r.ID, runs.Completed); done.Project != "Dropped" {
+				t.Fatalf("the %s run is filed in %q", origin, done.Project)
+			}
+		}
+		// A name the tree cannot hold beside another is left, and what
+		// names it fails closed.
+		clash, _, err := p.Schedules.Get(tenant, "clash-recap")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := p.Invoke(t.Context(), envelope.Tag{ID: "fire-clash", Tenant: tenant, Agent: clash.Agent, Origin: "cron", Text: clash.Text, Meta: clash.Meta}); !errors.Is(err, platform.ErrProjectDeleted) {
+			t.Fatalf("a run in a name one with Launch ignoring case = %v, want ErrProjectDeleted", err)
+		}
+
+		// Settings that held null keep only what something still names.
+		if l := p.Projects.List("globex"); len(l) != 1 || l[0].Name != "Away" {
+			t.Fatalf("globex after the upgrade = %+v", l)
+		}
+		// The baseline's migration writes the root of every workspace whose
+		// settings named one, so the root is all initech gains.
+		if l := p.Projects.List("initech"); len(l) != 0 {
+			t.Fatalf("settings that held no projects, with nothing naming one, were given %+v", l)
+		}
+		for _, name := range []string{tenant, "globex", "initech"} {
+			if _, held := storedSettings(t, st, name)["projects"]; held {
+				t.Fatalf("%s's settings still hold projects", name)
+			}
+		}
+	})
+}
+
+// Keeping what something still names never passes the cap: the start fails,
+// naming what it would have kept, and changes nothing.
+func TestKeepingWhatIsStillNamedFailsTheStartPastTheCap(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		fileOutsideTheTree(t, st, func(p *platform.Platform) error {
+			for i := range 99 {
+				if _, err := p.Policies.Put(tenant, policy.Policy{Scope: policy.Scope{Kind: policy.Project, Name: fmt.Sprintf("P%02d", i)}, Period: policy.Day, MaxRuns: 5, Action: policy.Block}, "ada", time.Now()); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		legacySettings(t, st, tenant, time.Time{})
+		_, err := newOn(t, st)
+		if !errors.Is(err, projects.ErrLimit) || !strings.Contains(err.Error(), `"P00"`) || !strings.Contains(err.Error(), `"P98"`) {
+			t.Fatalf("a start that would keep 99 names beside 2 projects = %v", err)
+		}
+		if recs, err := st.Load(t.Context(), "projects"); err != nil || len(recs) != 0 {
+			t.Fatalf("a refused import left %d records (%v)", len(recs), err)
+		}
+		if _, held := storedSettings(t, st, tenant)["projects"]; !held {
+			t.Fatal("a refused import cleared the settings")
+		}
+	})
+}
+
+// However many names are deleted after it, a deleted project whose
+// conversations are still filed under its name keeps its tombstone, so taking
+// the name back needs projects:govern. The project store asks the run index.
+func TestADeletedProjectsConversationsAreNeverAdoptedWithoutGovern(t *testing.T) {
+	p := start(t, call.Limits{})
+	ctx := t.Context()
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Target"}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "in-target", Agent: "lead", Text: "Plan it", Project: "Target"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, first.ID, runs.Completed)
+	if err := p.DeleteProject(ctx, tenant, "Target", ada); err != nil {
+		t.Fatal(err)
+	}
+	for i := range projects.MaxTombstones + 5 {
+		name := fmt.Sprintf("Junk %04d", i)
+		if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: name}); err != nil {
+			t.Fatal(err)
+		}
+		if err := p.DeleteProject(ctx, tenant, name, ada); err != nil {
+			t.Fatalf("delete %d, with empty names to forget = %v", i, err)
+		}
+	}
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Target"}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("taking back a name with conversations after %d later deletes = %v, want ErrForbidden", projects.MaxTombstones+5, err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, govern, platform.ProjectInput{Name: "Target"}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestFortyRacersInTwoChildrenAgainstAParentsLimitAdmitSeven(t *testing.T) {
@@ -687,5 +860,89 @@ func TestProjectLimitsAreTheChain(t *testing.T) {
 	}
 	if root, _ := p.ProjectLimits(tenant, "~"); len(root) != 1 || root[0].Scope.Kind != policy.Tenant {
 		t.Fatalf("the root's limits = %+v", root)
+	}
+}
+
+// A child with no limit of its own can be deleted with projects:write. Its
+// conversations do not then get out from under its parent's limit: their next
+// turns, and a run racing the delete, are refused, and the parent's count
+// stands.
+func TestADeletedChildsConversationsStayUnderItsParentsLimit(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	ctx := t.Context()
+	fieldScope := policy.Scope{Kind: policy.Project, Name: "Field"}
+	if _, err := p.Policies.Put(tenant, policy.Policy{Scope: fieldScope, Period: policy.Day, MaxRuns: 1, Action: policy.Block}, "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-1", Agent: "lead", Text: "Plan the renewal", Project: "Initech"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(first.Within, []string{"Field"}) {
+		t.Fatalf("the first turn is within %q", first.Within)
+	}
+	await(t, p, first.ID, runs.Completed)
+	var denied *platform.Denied
+	if _, err := p.Converse(ctx, tenant, platform.Turn{ID: "api-2", Agent: "lead", Text: "More", After: first.ID}); !errors.As(err, &denied) || denied.Decision.Policy.Scope != fieldScope {
+		t.Fatalf("a second turn under Field's limit of one = %v", err)
+	}
+	if err := p.DeleteProject(ctx, tenant, "Initech", ada); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 5 {
+		_, err := p.Converse(ctx, tenant, platform.Turn{ID: fmt.Sprintf("api-after-%d", i), Agent: "lead", Text: "More", After: first.ID})
+		if !errors.Is(err, platform.ErrProjectDeleted) {
+			t.Fatalf("turn %d in the deleted child's conversation = %v", i, err)
+		}
+	}
+	// A run that read the tree after the delete is refused too.
+	if _, err := p.Invoke(ctx, inProject("late", "lead", "Initech")); !errors.Is(err, platform.ErrProjectDeleted) {
+		t.Fatalf("a run filed in the deleted child = %v", err)
+	}
+	if got := p.Usage.Usage(tenant, fieldScope, policy.PeriodStart(policy.Day, time.Now())); got.Runs != 1 {
+		t.Fatalf("Field counted %d runs, want 1", got.Runs)
+	}
+	if n := len(p.Runs.List(tenant, 0)); n != 1 {
+		t.Fatalf("%d runs were let in, want only the first", n)
+	}
+	// The conversation can still be read.
+	if path, err := p.Runs.Path(tenant, first.ID); err != nil || len(path) != 1 || path[0].Project != "Initech" {
+		t.Fatalf("the deleted child's conversation reads %+v (%v)", path, err)
+	}
+}
+
+// Files published in a child count toward its parent's storage limit after
+// the child is deleted, and nothing more is published in it.
+func TestADeletedChildsFilesStillCountTowardItsParent(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	if _, err := p.Policies.Put(tenant, policy.Policy{Scope: policy.Scope{Kind: policy.Project, Name: "Field"}, Period: policy.Day, MaxStorage: 30, Action: policy.Block}, "test", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	publish := func(req runtime.Request, content string) error {
+		t.Helper()
+		if _, err := use(t, p, req, platform.ToolFileWrite, map[string]any{"path": "f.txt", "content": content}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := use(t, p, req, platform.ToolPublish, map[string]any{"path": "f.txt"})
+		return err
+	}
+	_, inInitech := turn(t, p, "in-initech", "Initech")
+	if err := publish(inInitech, strings.Repeat("a", 20)); err != nil {
+		t.Fatalf("a publish under Field's limit = %v", err)
+	}
+	if err := p.DeleteProject(t.Context(), tenant, "Initech", ada); err != nil {
+		t.Fatal(err)
+	}
+	_, inField := turn(t, p, "in-field", "Field")
+	if err := publish(inField, strings.Repeat("b", 20)); !errors.Is(err, platform.ErrStorage) {
+		t.Fatalf("a publish that takes Field past its limit with the deleted child's files = %v", err)
+	}
+	if err := publish(inField, strings.Repeat("c", 10)); err != nil {
+		t.Fatalf("a publish that fits = %v", err)
+	}
+	if err := publish(inInitech, "d"); !errors.Is(err, platform.ErrProjectDeleted) {
+		t.Fatalf("a publish in the deleted child = %v", err)
 	}
 }

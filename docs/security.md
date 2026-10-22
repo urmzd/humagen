@@ -37,7 +37,12 @@ under them, and because reusing the name of a deleted project adopts the
 conversations still filed under it. `projects:govern` grants nothing on its
 own: every project route checks `projects:read` or `projects:write` first, and
 govern is asked for on top, for the workspace, a company project, its notes, or
-a deleted name. Projects have no roles yet, so anyone holding `projects:write`
+a deleted name. A deleted name's tombstone is never forgotten while
+conversations or files are still filed under it, so later deletes cannot clear
+the way to adopting them. Its notes are asked the same through every route that changes
+them: the project's memory routes and the inbox. The agent memory routes reach
+an agent's own notes only, and answer 404 for a project's memory owner
+(`project:<name>`, and `project:` for the workspace). Projects have no roles yet, so anyone holding `projects:write`
 changes every other project, and every project is visible to everyone holding
 `projects:read`.
 
@@ -174,6 +179,9 @@ no permission, grants nothing.
 - **A proposed memory is not a memory.** What the memory agent writes is held
   as pending and is not sent to any agent until a person approves it, unless
   the workspace turned approval off. This is saige's default for memory writes.
+  What it writes for the workspace or a company project waits for someone
+  holding `projects:govern` even then: the turn that taught it needed only
+  `runs:write`, and turning approval off needs only `agents:write`.
 - **Memory refuses personal data.** Every note, from a person or an agent,
   passes saige's memory policy, which rejects text its detector finds personal
   data in.
@@ -304,7 +312,7 @@ decided per message:
 |------|--------|-----------|
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
 | Failed run | `runs:read` | `runs:write` |
-| Proposed memory | `agents:read` | `agents:write` |
+| Proposed memory | `agents:read` | `agents:write` for an agent's; `projects:write` for a project's, and `projects:govern` as well for the workspace's and a company project's |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |
 | A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to reply in the thread as themselves or set it aside |
 

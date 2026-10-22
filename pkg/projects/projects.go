@@ -110,7 +110,9 @@ const (
 	// MaxHistory is how many changes a tenant keeps. The oldest are
 	// dropped first, in the same write as the newest.
 	MaxHistory = 1000
-	// MaxTombstones is how many deleted names a tenant remembers.
+	// MaxTombstones is how many deleted names a tenant remembers. Past it,
+	// one is forgotten only when nothing is filed under its name, and a
+	// delete that would need to forget one that has something is refused.
 	MaxTombstones = 1000
 	// MaxPage bounds one page of history.
 	MaxPage = 200
@@ -209,6 +211,10 @@ const (
 
 // AdoptsNote is recorded on a project created under a deleted name.
 const AdoptsNote = "adopts its old conversations"
+
+// KeptNote is recorded on a project an Import keeps because something outside
+// the tree still names it.
+const KeptNote = "kept because a schedule, an alert rule or a limit still names it"
 
 // Change is one entry of the record of what changed.
 type Change struct {
