@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.21.1 (2026-10-22)
+
+### Bug Fixes
+
+- keep installs from before the rename working, from the install-safety review (#54) ([f713fa2](https://github.com/urmzd/humagen/commit/f713fa2f380534ca32372a42a26f1990d330d4c2))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.21.0...v0.21.1)
+
+
 ## 0.21.0 (2026-10-22)
 
 ### Breaking
