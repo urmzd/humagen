@@ -1215,10 +1215,13 @@ what needs the reader from the platform's reads (`updatesOf`, `projectsOf`,
   happened most recently first, archived ones left out), read as the mapped
   person through `act_as` (`GET /api/inbox` and `GET /api/projects` with
   `act_as_client` and `act_as_user`), within the 100-block budget. Each opens
-  in the console. Ask a Question and Build an Agent open a form whose words
-  are posted as the person in their messages with the app, Build an Agent
-  tagging `@warp-builder` where the client reaches it; Search Context opens
-  the console. Someone the client maps to nobody keeps the mailbox.
+  in the console when the app has its address. Without it, Review sends what
+  needs the person to their messages with the app, and What's new and Your
+  projects are shown to read. Ask a Question and Build an Agent open a form
+  whose words are posted as the person in their messages with the app, Build
+  an Agent tagging `@warp-builder` where the client reaches it; Search
+  Context opens the console. Someone the client maps to nobody keeps the
+  mailbox.
 - **GitHub.** The same rule: `@agent` in a comment or an `auto_labels` label is
   a tag; otherwise the client's default; otherwise nothing. Threads are filed
   in the client's home.

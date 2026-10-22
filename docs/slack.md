@@ -131,15 +131,17 @@ five messages that need them, with the rest counted; What's new, five
 announcements of their projects, unread first; and Your projects, eight of
 the projects they have a role in, where something happened most recently
 first, archived ones left out and the rest counted. Each opens its page in the
-console when the app has the console's address (`WARP_PUBLIC_URL`); without
-one, Review sends a message to the person's direct messages with the app,
-where it can be answered. A press there is the person's own, done for them
-through the client even where the app may read the message too, and Retry
-asks the run again in its own thread. Ask a Question and Build an Agent open a form, and
-the words are posted as the person in their direct messages with the app,
-as the shortcut's are; Build an Agent tags `@warp-builder`, and is offered
-only where the client may reach it. Search Context opens the console. The tab
-shows no access or connections, which the app cannot know for the person.
+console when the app has the console's address (`WARP_PUBLIC_URL`). Without
+one, what needs them has Review, which sends the message to their direct
+messages with the app, where it can be answered, and What's new and Your
+projects are shown to read. A press on what Review sent is the person's own,
+done for them through the client even where the app may read the message
+too, and Retry asks the run again in its own thread. Ask a Question and Build
+an Agent open a form, and the words are posted as the person in their direct
+messages with the app, as the shortcut's are; Build an Agent tags
+`@warp-builder`, and is offered only where the client may reach it. Search
+Context opens the console. The tab shows no access or connections, which the
+app cannot know for the person.
 Their projects are left out when they cannot be read: the app's machine
 needs `warp:projects:read` for them, and the person `projects:read`. Someone
 the client maps to nobody sees the mailbox, as before: an operator the whole
