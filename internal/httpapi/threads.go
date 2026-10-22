@@ -266,6 +266,8 @@ func threadProblem(w http.ResponseWriter, err error) bool {
 		fail(w, http.StatusBadRequest, "before is not a cursor this server issued")
 	case errors.Is(err, platform.ErrThreadAuthor):
 		fail(w, http.StatusForbidden, detail(err, platform.ErrThreadAuthor))
+	case errors.Is(err, platform.ErrAnswered):
+		fail(w, http.StatusConflict, detail(err, platform.ErrAnswered))
 	case errors.Is(err, threads.ErrLimit):
 		fail(w, http.StatusTooManyRequests, detail(err, threads.ErrLimit))
 	case errors.Is(err, platform.ErrPostRate):

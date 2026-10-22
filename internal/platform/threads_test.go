@@ -490,6 +490,67 @@ func TestAQuestionForExpertsReachesThemAndAnAnswerInTheThreadResumesTheRun(t *te
 	}
 }
 
+// A viewer answers in a thread only what they were asked, once, and tags no
+// one: an answer's tags would start the agents it tags and tell the people
+// it tags, as any message's do, so an answer that tags is refused as a
+// viewer's tagging is, and an answer to a question that no longer waits for
+// one is refused for everyone, since it would answer nothing. Neither posts
+// anything.
+func TestAViewerAnswersOnceAndTagsNoOne(t *testing.T) {
+	c := &cast{continues: true,
+		says:  map[string][][]saigetypes.Delta{"asker": {asked(map[string]any{"question": "What is the PO number?", "asked_of": "sme:billing"}), say("Filed."), say("Again.")}},
+		tools: map[string][]string{"asker": {"ask_person"}},
+	}
+	p := stage(t, c, platform.Config{})
+	field(t, p)
+	cur, err := p.ProjectExperts(tenant, "Field")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SetProjectExperts(tenant, "Field", ada, platform.Experts{Version: cur.Version, Experts: []projects.Expert{{Who: "olu", Topics: []string{"billing"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, access, err := p.ProjectRole(olu, "Globex", projects.Viewer); err != nil || access.Role != projects.Viewer {
+		t.Fatalf("olu is %+v in Globex (%v), want a viewer", access, err)
+	}
+	r, err := p.Converse(t.Context(), tenant, platform.Turn{ID: "api-ask", Agent: "asker", Text: "File it", Project: "Globex", Actor: envelope.Actor{ID: admin.Subject}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, p, r.ID, runs.Parked)
+	ref := &threads.AnswerRef{Run: run.ID, Question: run.Question.ID}
+	for _, text := range []string{"@asker PO-77", "PO-77, ask @grace", "PO-77 <@U0GRACE>", "PO-77 @sme:billing"} {
+		_, err := p.PostMessage(t.Context(), olu, run.Thread, platform.MessageInput{Text: text, Answers: ref})
+		if !errors.Is(err, projects.ErrForbidden) || !strings.Contains(err.Error(), "to tag anyone") {
+			t.Fatalf("a viewer's answer %q = %v, want forbidden", text, err)
+		}
+	}
+	if got, _ := p.Runs.Get(tenant, run.ID); got.Status != runs.Parked {
+		t.Fatalf("a refused answer moved the run to %s", got.Status)
+	}
+	if _, err := p.Threads.Get(tenant, run.Thread); !errors.Is(err, threads.ErrNotFound) {
+		t.Fatal("a refused answer wrote the thread's record")
+	}
+	first := post(t, p, olu, run.Thread, platform.MessageInput{Text: "PO-77, from billing@globex.example", Answers: ref})
+	if first.Rule != threads.RuleReply || len(first.Runs) != 0 {
+		t.Fatalf("the answer started %+v", first)
+	}
+	await(t, p, run.ID, runs.Completed)
+	if _, err := p.PostMessage(t.Context(), olu, run.Thread, platform.MessageInput{Text: "PO-78", Answers: ref}); !errors.Is(err, platform.ErrAnswered) {
+		t.Fatalf("answering an answered question again = %v, want ErrAnswered", err)
+	}
+	if _, err := p.PostMessage(t.Context(), olu, run.Thread, platform.MessageInput{Text: "@asker anything at all", Answers: ref}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("answering it again with a tag = %v, want forbidden", err)
+	}
+	msgs, _, err := p.Threads.Messages(tenant, run.Thread, "", 10)
+	if err != nil || len(msgs) != 1 {
+		t.Fatalf("the thread holds %d messages (%v), want the one answer", len(msgs), err)
+	}
+	if turns, _ := p.Runs.Conversation(tenant, run.Thread); len(turns) != 1 {
+		t.Fatalf("the thread has %d runs, want the asker's alone", len(turns))
+	}
+}
+
 // An answer a surface's credential posts in a thread for a mapped person is
 // checked against that person and recorded as theirs, with the credential as
 // the way it came: an expert answers through Slack as themselves, and the

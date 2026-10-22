@@ -816,12 +816,12 @@ need `projects:govern`.
 | Schedule in P, change, pause, delete or run one filed there | `schedules:write` | member; the agent available in P |
 | Read a shared thread and its runs | `runs:read` | viewer |
 | Read a private thread and its runs (phase 7) | `runs:read` | participant, or `projects:govern` |
-| Start a thread, post a message | `runs:write` | member; in a private thread, participant. A viewer posts only an answer to what they were asked (a question a run put to them, or a reply to a message that tagged them), which starts nothing |
+| Start a thread, post a message | `runs:write` | member; in a private thread, participant. A viewer posts only an answer to what they were asked (a question a run put to them, or a reply to a message that tagged them) that tags no one, which starts nothing and notifies no one: an answer's tags start agents and notify people as any message's do, so tagging in one takes a member. An answer is posted only if it is the one the run was given (409 for a question already answered, or whose run stopped), so a viewer posts once for each question |
 | Tag an agent or `@auto` | `runs:write` | member; the agent available in P |
 | Tag a person or `@sme` | `runs:write` | member; the person must be at least a viewer of P. In a private thread, tagging a person invites them |
 | Add to or remove from a shared thread | `runs:write` | member (removing anyone but oneself: the thread's owner or a project owner) |
 | Invite to or remove from a private thread | `runs:write` | participant (remove: the thread's owner or a project owner) |
-| Change a thread's visibility, title or default | `runs:write` | the thread's owner or a project owner |
+| Change a thread's visibility, title or default | `runs:write` | the thread's owner while a member, or a project owner |
 | Answer an expert's question | `runs:write` (existing answer routes) | fiber's `answerers` check, unchanged |
 
 Machines hold exactly their scopes and match only `*` and their own subject. A
@@ -1468,8 +1468,9 @@ phase 2 and experts to phase 3, because addressing and threads need them.
   - wide audiences default to review;
   - `project_changes` reads only the run's subtree.
 - **Defaults in busy threads.** A shared thread with a default answers every
-  untagged message, which can be noisy. Messages that tag people, replies to
-  mentions and answers start no run, and Post Only is always there. In Slack,
+  untagged message, which can be noisy. Messages that tag people, and replies to
+  mentions and answers that tag no agent, start no run, and Post Only is
+  always there. In Slack,
   only messages that mention the app reach warp.
 - **Homing narrows widely.** Giving an agent a home removes it from `*`
   everywhere else. The route answers 409 while anything outside the new

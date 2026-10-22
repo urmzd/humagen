@@ -1326,9 +1326,12 @@ as `before`. `answers` is who answers an untagged message here.
 before threads, whose record this writes), so a change made since
 answers 409. `private` is refused (409) until reads are confined. A
 `default` must be able to answer in the thread's project (400).
-Whoever started the thread, or an owner of its project, changes it
-(403 for anyone else); a conversation from before threads that no
-person asked in is changed first by a member, who then owns it.
+Whoever started the thread, while a member of its project, or an
+owner of its project, changes it (403 for anyone else, and for a
+starter who is now only a viewer, since its default answers
+everyone's untagged messages there); a conversation from before
+threads that no person asked in is changed first by a member, who
+then owns it.
  */
   async updateThread(id: string, body: ThreadUpdate, options?: RequestOptions): Promise<Thread> {
     let path = "/api/threads/{id}";
@@ -1358,10 +1361,14 @@ conversation from before threads one of its runs; left out, it
 follows the latest. `answers` records the message as a question's
 answer, which resumes the run parked on it; who may answer is
 checked as on every other path, and a refused answer posts nothing.
-An answer, like a reply, starts no run. Posting takes a member of the
-thread's project, as starting a thread does, except an answer: a
-viewer may answer what a run asked them (403 for anything else). A
-thread holds at most 5,000
+An answer, like a reply, is not answered by the thread's default; the
+agents it tags answer it, as for any message. An answer is posted
+only when it is the one the run was given: a question already
+answered, or whose run stopped, is 409 and posts nothing. Posting
+takes a member of the thread's project, as starting a thread does,
+except an answer that tags no one: a viewer may answer what a run
+asked them, but tagging an agent, a person or `@sme` takes a member
+(403 for anything else). A thread holds at most 5,000
 messages: past that, 409 "start a new thread". The rates and caps of
 `startThread` hold here too (429).
  */
@@ -1796,7 +1803,10 @@ inbox, and an action the caller lacks the permission for answers 403:
 | `mention` | `reply` (with `text`), `done` | `runs:write` |
 
 A mention's `reply` posts the words in its thread as the reader,
-which starts no run, and `done` sets it aside.
+which the thread's default does not answer, and `done` sets it
+aside. A reply that tags anyone takes a member of the thread's
+project (403), since its tags still start the agents and tell the
+people they name; a viewer replies without tagging.
 
 Answering a question is `answerQuestion` by another route, with the
 same rules: a person the question is not addressed to does not see

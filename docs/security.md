@@ -460,7 +460,7 @@ decided per message:
 | Proposed memory | `agents:read` | `agents:write` for an agent's, and owning its home for one that lives in a project; `projects:write` and owning the project for a project's, and `projects:govern` as well for the workspace's and a company project's |
 | Announcement | `projects:read`, and a member of its project or one below it (anyone who reads the project's own inbox) | hiding or snoozing it is the reader's own (`projects:read`); withdrawing it is its author's or an owner's (`projects:write`) |
 | A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer; where the answer may reach the credentials of the person a run acts for, a choice or reply only by that person, and an approval with edited arguments or a note only by them (the question names them as `steered_for`) |
-| A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to set it aside, and a member of the thread's project as well to reply in the thread as themselves |
+| A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to set it aside or to reply in the thread as themselves, which takes seeing the thread's project; a reply that tags anyone takes a member of it, since its tags start the agents and tell the people they name as any message's do |
 
 A message a caller may not see answers 404, not 403, and is left out of their
 count, and a notice about it never reaches their event stream. An
