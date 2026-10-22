@@ -111,8 +111,9 @@ type Decision struct {
 //     names a skill in a thread with selected agents;
 //  3. so does one that answers a question or replies to a mention;
 //  4. and one posted only;
-//  5. one in a thread with selected agents is answered by them: the one
-//     that fits it best (Among, through @auto), or each of them (ModeAll);
+//  5. one posted in the console (TagsOnly) in a thread with selected agents
+//     is answered by them: the one that fits it best (Among, through
+//     @auto), or each of them (ModeAll);
 //  6. one posted in the console (TagsOnly) starts no run, whatever the
 //     default;
 //  7. otherwise the inherited default answers. With none, or with one that
@@ -144,6 +145,9 @@ func Decide(in Input) Decision {
 			skill = skill || m.Refused == ""
 		}
 	}
+	// A thread's selected agents answer only in the console: a client's
+	// surface keeps its defaults.
+	routed := in.TagsOnly && len(in.Routed) > 0
 	d := Decision{Agents: []string{}, Mentions: ms}
 	switch {
 	case tagged:
@@ -151,15 +155,15 @@ func Decide(in Input) Decision {
 		if len(agents) == 0 {
 			d.Reason = "No agent it tags can answer here."
 		}
-	case people && !(skill && len(in.Routed) > 0):
+	case people && (!skill || !routed):
 		d.Rule, d.Reason = RulePeople, "It tags only people, so no agent answers."
 	case in.Reply:
 		d.Rule, d.Reason = RuleReply, "A reply to a person starts no run."
 	case in.PostOnly:
 		d.Rule, d.Reason = RulePostOnly, "Posted only, so no agent answers."
-	case len(in.Routed) == 1, len(in.Routed) > 0 && in.Mode == ModeAll:
+	case routed && (len(in.Routed) == 1 || in.Mode == ModeAll):
 		d.Rule, d.Agents = RuleRouted, slices.Clone(in.Routed[:min(len(in.Routed), MaxRuns)])
-	case len(in.Routed) > 0:
+	case routed:
 		d.Rule, d.Agents, d.Among = RuleRouted, []string{AutoName}, slices.Clone(in.Routed)
 	case in.TagsOnly:
 		d.Rule, d.Reason = RuleUntagged, "Nothing runs until you tag an agent."

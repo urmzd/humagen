@@ -2,11 +2,14 @@ package platform_test
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
@@ -116,5 +119,130 @@ func TestASkillGoesToTheSelectedAgents(t *testing.T) {
 		if mn.Kind == threads.Agent {
 			t.Fatalf("a skill with agents selected was written as a tag of %s", mn.Name)
 		}
+	}
+}
+
+// A selected agent the poster may not read is no oracle: naming it answers
+// as naming an agent that does not exist, whether or not the thread selects
+// it, and a default they were not shown is changed only by its owners.
+// Rewriting the selection drops it once it cannot answer there, and a skill
+// goes to the agents the poster may read.
+func TestAHiddenSelectedAgentIsNoOracle(t *testing.T) {
+	p := start(t, call.Limits{})
+	ctx := t.Context()
+	// Vault is read by its members alone. helper is selected in a Field
+	// conversation and then homed in Vault, which bo cannot read.
+	field(t, p)
+	workIn(t, p, "Field", operator, bo)
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Vault"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Projects.Update(tenant, "Vault", 1, ada, time.Now(), func(pr *projects.Project) error {
+		pr.Members = []projects.Entry{{Who: "opal", Role: projects.Member}, {Who: "ada", Role: projects.Owner}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	declare(t, p, "Field", "triage")
+	got, err := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Shared, Agents: []string{"helper", "lead"}, Default: "helper", Text: "x", PostOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := got.Thread
+	if err := p.SetAgentHome(ctx, tenant, "helper", "Vault", govern); err != nil {
+		t.Fatal(err)
+	}
+	if p.Seer(bo).Agent("helper") || !p.Seer(bo).Project("Field") {
+		t.Fatal("the test needs bo to read Field and not helper")
+	}
+	if shown := p.Seer(bo).Thread(th); !slices.Equal(shown.Agents, []string{"lead"}) || shown.Default != "" || shown.Mode != "" {
+		t.Fatalf("bo is shown %+v", shown)
+	}
+	refusal := func(agent string) string {
+		_, err := p.UpdateThread(ctx, bo, th.ID, platform.ThreadUpdate{Version: th.Version, Visibility: threads.Shared, Agents: []string{agent}})
+		if err == nil {
+			return "accepted"
+		}
+		return strings.ReplaceAll(err.Error(), agent, "X")
+	}
+	if selected, ghost := refusal("helper"), refusal("ghost"); selected != ghost {
+		t.Fatalf("naming the hidden selected agent = %q, an unknown one = %q", selected, ghost)
+	}
+	ownerOnly := func(def string) string {
+		_, err := p.UpdateThread(ctx, bo, th.ID, platform.ThreadUpdate{Version: th.Version, Visibility: threads.Shared, Default: def, Agents: []string{"lead"}})
+		return strings.ReplaceAll(fmt.Sprint(err), def, "X")
+	}
+	if hidden, ghost := ownerOnly("helper"), ownerOnly("ghost"); hidden != ghost {
+		t.Fatalf("naming the hidden default = %q, an unknown one = %q", hidden, ghost)
+	}
+	// helper cannot answer in Field now, so bo's rewrite drops it, saying
+	// nothing; the default is the owners' to change.
+	kept, err := p.UpdateThread(ctx, bo, th.ID, platform.ThreadUpdate{Version: th.Version, Visibility: threads.Shared, Agents: []string{"lead"}})
+	if err != nil || !slices.Equal(kept.Agents, []string{"lead"}) || kept.Default != "helper" {
+		t.Fatalf("bo rewriting the selection = %+v, %v", kept, err)
+	}
+	skill := post(t, p, bo, th.ID, platform.MessageInput{Text: "$triage this"})
+	if skill.Rule != threads.RuleRouted || len(skill.Runs) != 1 || skill.Runs[0].Agent != "lead" {
+		t.Fatalf("bo's skill started %+v (%s)", agentsOf(skill.Runs), skill.Rule)
+	}
+}
+
+// In a Slack thread whose client lists the agents it routes to, the best fit
+// is picked among the selected agents it may route to, and the client is held
+// to the agent picked, not to @auto.
+func TestTheBestFitInASlackThreadIsOneTheClientRoutesTo(t *testing.T) {
+	p, machine := slackRoom(t, func(in *platform.ClientInput) { in.Agents = []string{"helper", "lead"} })
+	ana := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	workIn(t, p, "Field", ana)
+	got, err := p.StartThread(t.Context(), machine, fromSlack("C01RENEW", "1700000000.000100", "", "<@UAPP> @lead hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, got.Runs[0].ID, runs.Completed)
+	th, _ := p.Threads.Get(tenant, got.Thread.ID)
+	if _, err := p.UpdateThread(t.Context(), ana, th.ID, platform.ThreadUpdate{Version: th.Version, Visibility: th.Visibility, Agents: []string{"helper", "lead"}}); err != nil {
+		t.Fatal(err)
+	}
+	best := post(t, p, ana, th.ID, platform.MessageInput{Text: "which of you?"})
+	if best.Rule != threads.RuleRouted || len(best.Runs) != 1 {
+		t.Fatalf("the best fit in a Slack thread started %+v (%s: %s)", best.Runs, best.Rule, best.Reason)
+	}
+}
+
+// A private conversation moves to another project or channel through an
+// update, staying private, while no run has been filed in it.
+func TestAPrivateConversationMovesWhileItHasNoRuns(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	workIn(t, p, "Initech", operator, bo)
+	workIn(t, p, "Field", operator)
+	ctx := t.Context()
+	got, err := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Initech", Text: "a draft"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := got.Thread
+	moved, err := p.UpdateThread(ctx, operator, th.ID, platform.ThreadUpdate{Version: th.Version, Project: "Field", Agents: []string{"lead"}})
+	if err != nil || moved.Project != "Field" || moved.Channel != projects.General || moved.Visibility != threads.Private || !slices.Equal(moved.Agents, []string{"lead"}) {
+		t.Fatalf("moving it = %+v, %v", moved, err)
+	}
+	if _, err := p.UpdateThread(ctx, operator, th.ID, platform.ThreadUpdate{Version: moved.Version, Project: "Renewals"}); !errors.Is(err, projects.ErrForbidden) && !errors.Is(err, projects.ErrNotFound) {
+		t.Fatalf("moving it where its starter is not a member = %v", err)
+	}
+	asked := post(t, p, operator, th.ID, platform.MessageInput{Text: "go on"})
+	if len(asked.Runs) != 1 || asked.Runs[0].Project != "Field" {
+		t.Fatalf("the routed message started %+v", asked.Runs)
+	}
+	await(t, p, asked.Runs[0].ID, runs.Completed)
+	cur, _ := p.Threads.Get(tenant, th.ID)
+	if _, err := p.UpdateThread(ctx, operator, th.ID, platform.ThreadUpdate{Version: cur.Version, Project: "Initech", Agents: cur.Agents}); !errors.Is(err, platform.ErrStaysInProject) {
+		t.Fatalf("moving a conversation that has runs = %v", err)
+	}
+	shared, err := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Shared, Text: "open"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.UpdateThread(ctx, operator, shared.Thread.ID, platform.ThreadUpdate{Version: shared.Thread.Version, Visibility: threads.Shared, Project: "Initech"}); !errors.Is(err, threads.ErrInvalid) {
+		t.Fatalf("moving a shared thread through an update = %v", err)
 	}
 }
