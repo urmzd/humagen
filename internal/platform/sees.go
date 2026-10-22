@@ -282,6 +282,25 @@ func (s *Seer) MemoryOwner(owner string) bool {
 	return s.Agent(owner)
 }
 
+// ProjectCounts is what each of the reader's workspace's projects holds that
+// they may read, by name: the run index's counts, leaving out the private
+// threads they take no part in, so a count says nothing of a thread the
+// reader is not shown. A project the reader may not see is the caller's to
+// leave out.
+func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCount {
+	seer := p.Seer(who)
+	hidden := map[string]bool{}
+	for _, th := range p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return th.Visibility == threads.Private }) {
+		if !seer.Place(Place{Project: th.Project, Thread: th.ID}) {
+			hidden[th.ID] = true
+		}
+	}
+	if len(hidden) == 0 {
+		return p.Runs.ProjectCounts(who.Tenant)
+	}
+	return p.Runs.ProjectCountsWhere(who.Tenant, func(thread string) bool { return !hidden[thread] })
+}
+
 // SeesThread reports whether a reader may read a thread: its project, and in
 // a private one taking part. A thread that does not exist is not seen.
 func (p *Platform) SeesThread(who auth.Principal, id string) bool {

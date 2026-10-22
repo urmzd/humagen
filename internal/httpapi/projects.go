@@ -116,7 +116,7 @@ const (
 
 // projectFacts is what a tenant's project views are made of, read once for a
 // whole answer: the tree, the caller's role in every project of it, and the
-// counts.
+// counts of what they may read.
 type projectFacts struct {
 	tenant    string
 	who       auth.Principal
@@ -128,7 +128,7 @@ type projectFacts struct {
 
 func (s *Server) projectFacts(who auth.Principal) projectFacts {
 	tenant := who.Tenant
-	f := projectFacts{tenant: tenant, who: who, tree: s.P.ProjectTree(tenant), counts: s.P.Runs.ProjectCounts(tenant), schedules: map[string]int{}}
+	f := projectFacts{tenant: tenant, who: who, tree: s.P.ProjectTree(tenant), counts: s.P.ProjectCounts(who), schedules: map[string]int{}}
 	f.access = f.tree.Roles(platform.ReaderOf(who))
 	for _, sc := range s.P.Schedules.List(tenant) {
 		f.schedules[sc.Meta[runs.MetaProject]]++
@@ -181,7 +181,14 @@ func actionsOf(f projectFacts, p projects.Project) []string {
 
 func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 	chain := f.tree.Chain(p.Name)
-	v := projectView{Project: p, Depth: max(len(chain)-1, 0), Path: []pathStep{}, Children: len(f.tree.Children(p.Name)), Schedules: f.schedules[p.Name]}
+	v := projectView{Project: p, Depth: max(len(chain)-1, 0), Path: []pathStep{}, Schedules: f.schedules[p.Name]}
+	// A sub-project the caller may not see is not counted, as it is not
+	// listed.
+	for _, c := range f.tree.Children(p.Name) {
+		if f.sees(c.Name) {
+			v.Children++
+		}
+	}
 	v.Access, v.Actions = f.access[p.Name], actionsOf(f, p)
 	// The chain is nearest first and ends at the workspace, which a path
 	// leaves out.

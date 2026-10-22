@@ -17,10 +17,13 @@ import (
 )
 
 // scanned is what the counters replace: every conversation summed by the
-// project it is filed in.
-func scanned(x *Index, tenant string) map[string]ProjectCount {
+// project it is filed in, but those in leave.
+func scanned(x *Index, tenant string, leave []string) map[string]ProjectCount {
 	out := map[string]ProjectCount{}
 	for _, s := range x.Threads(tenant, 0) {
+		if slices.Contains(leave, s.ID) {
+			continue
+		}
 		c := out[s.Project]
 		c.Threads++
 		c.Active += s.Active
@@ -34,14 +37,20 @@ func scanned(x *Index, tenant string) map[string]ProjectCount {
 
 func sameCounts(t *testing.T, x *Index, tenant string) {
 	t.Helper()
-	got, want := x.ProjectCounts(tenant), scanned(x, tenant)
+	want := scanned(x, tenant, nil)
+	equalCounts(t, tenant+" counters", x.ProjectCounts(tenant), want)
+	equalCounts(t, tenant+" each conversation's counts", x.ProjectCountsWhere(tenant, func(string) bool { return true }), want)
+}
+
+func equalCounts(t *testing.T, what string, got, want map[string]ProjectCount) {
+	t.Helper()
 	if len(got) != len(want) {
-		t.Fatalf("%s: counters %v, a scan %v", tenant, got, want)
+		t.Fatalf("%s: %v, a scan %v", what, got, want)
 	}
 	for name, w := range want {
 		g := got[name]
 		if g.Threads != w.Threads || g.Active != w.Active || !g.ActiveAt.Equal(w.ActiveAt) {
-			t.Fatalf("%s %q: counters %+v, a scan %+v", tenant, name, g, w)
+			t.Fatalf("%s %q: %+v, a scan %+v", what, name, g, w)
 		}
 	}
 }
@@ -121,6 +130,23 @@ func TestProjectCountsAgreeWithAScanOfEveryRun(t *testing.T) {
 	}
 	if len(x.ProjectCounts("initech")) != 0 {
 		t.Fatal("a tenant with no runs has counts")
+	}
+}
+
+// A reader's counts leave out the conversations they may not read, as if
+// those were never filed: how many there are, how many of their runs are in
+// flight, and when they were last active.
+func TestProjectCountsLeaveOutWhatAReaderMayNotRead(t *testing.T) {
+	x := NewIndex()
+	busy(t, x, "acme")
+	parked := runtime.RunID("acme", "e")
+	got := x.ProjectCountsWhere("acme", func(thread string) bool { return thread != parked })
+	equalCounts(t, "without the parked conversation", got, scanned(x, "acme", []string{parked}))
+	if got["Field"].Threads != 1 || got["Field"].Active != 0 {
+		t.Fatalf("Field without the parked conversation counts %+v", got["Field"])
+	}
+	if none := x.ProjectCountsWhere("acme", func(string) bool { return false }); len(none) != 0 {
+		t.Fatalf("a reader who may read nothing counts %v", none)
 	}
 }
 

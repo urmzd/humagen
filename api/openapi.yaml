@@ -5314,10 +5314,10 @@ components:
               maxItems: 4
               items: {$ref: "#/components/schemas/ProjectStep"}
             children:
-              description: How many sub-projects it has.
+              description: How many sub-projects it has that the caller may see.
               type: integer
             conversations:
-              description: How many conversations are filed in it, its sub-projects' not counted.
+              description: How many conversations are filed in it that the caller may read, its sub-projects' not counted. A private thread the caller takes no part in is not counted, nor its runs below.
               type: integer
             active:
               description: How many runs in those conversations are in flight.
