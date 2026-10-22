@@ -283,8 +283,9 @@ func (s *Seer) Rule(r alerts.Rule) bool {
 // Artifact reports whether the reader sees a published file.
 func (s *Seer) Artifact(a artifacts.Artifact) bool { return s.Place(placeOfArtifact(a)) }
 
-// Agent reports whether the reader sees an agent: a platform agent always, an
-// agent that lives in a project only where they see the project.
+// Agent reports whether the reader sees an agent, by any spelling of its
+// name: a platform agent always, an agent that lives in a project only where
+// they see the project.
 func (s *Seer) Agent(name string) bool {
 	home, homed := s.tree.Home(name)
 	return !homed || s.Project(home)

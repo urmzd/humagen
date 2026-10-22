@@ -173,10 +173,11 @@ type Availability struct {
 	Names []string `json:"names"`
 }
 
-// Home returns the project an agent lives in. It reports false for a
-// platform agent.
+// Home returns the project an agent lives in, by any spelling of its name,
+// as the registry finds an agent by any. It reports false for a platform
+// agent.
 func (t *Tree) Home(agent string) (string, bool) {
-	p, ok := t.homes[agent]
+	p, ok := t.homes[agentspec.NormalizeName(agent)]
 	return p, ok
 }
 

@@ -146,6 +146,10 @@ func TestStarNeverReachesAnAgentThatLivesInAProject(t *testing.T) {
 	if home, ok := tree.Home("globex-helper"); !ok || home != "Globex" || !slices.Equal(tree.Homes("Globex"), []string{"globex-helper"}) {
 		t.Fatalf("home = %q %v, homes %v", home, ok, tree.Homes("Globex"))
 	}
+	// Another spelling of its name names the same agent, which lives there.
+	if home, ok := tree.Home(" Globex-Helper"); !ok || home != "Globex" {
+		t.Fatalf("the home of Globex-Helper = %q %v", home, ok)
+	}
 	// An allow list above the home still decides inside it.
 	setAgents(t, s, "Field", projects.Agents{Enable: []string{}, Allow: []string{"writer"}}, ada)
 	if s.Tree("acme").IsAvailable("Globex", "globex-helper") {

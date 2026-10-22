@@ -179,7 +179,7 @@ func (s *Server) scheduleMeta(w http.ResponseWriter, r *http.Request, who auth.P
 		s.problem(w, err)
 		return nil, false
 	}
-	if !s.P.Seer(who).AgentNamed(body.Agent) {
+	if !s.P.Seer(who).Agent(body.Agent) {
 		notFound(w)
 		return nil, false
 	}

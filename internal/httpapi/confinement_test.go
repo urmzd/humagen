@@ -813,11 +813,13 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 		same(tc.method+" "+tc.path+" naming the hidden project", code, out, ghostCode, ghostOut, map[string]string{h.project: ghost(h.project)})
 	}
 
-	// In the workspace, a body that names the hidden agent answers as one
-	// naming an agent that is not there: a client's default, list or bot,
-	// a project's lists, the workspace's title agent, the agent a run or a
-	// schedule asks and a channel's default. And saving the open client and the settings as the
-	// outsider reads them keeps it.
+	// In the workspace, a body that names the hidden agent, in its own
+	// spelling or another, answers as one naming an agent that is not there:
+	// a client's default, list or bot, a project's lists, the workspace's
+	// title agent, the agent a run or a schedule asks, a channel's default,
+	// a limit's scope, an alert rule's agent and an eval's subject. And
+	// saving the open client and the settings as the outsider reads them
+	// keeps it.
 	if h.inside {
 		want(t, f, outsider, "POST", "/api/projects", `{"name":"Mine"}`, http.StatusCreated)
 		settings := func(agent string) string {
@@ -854,12 +856,21 @@ func sweepWrites(t *testing.T, f *fixture, owner, outsider string, h hidden) {
 			}},
 			{"POST", "/api/projects/Mine/channels", func(a string) string { return `{"name":"probe","default":"` + a + `"}` }},
 			{"PUT", "/api/projects/Mine/channels/general", func(a string) string { return `{"version":1,"default":"` + a + `"}` }},
+			{"PUT", "/api/policies", func(a string) string { return `{"scope":{"kind":"agent","name":"` + a + `"},"period":"day","max_runs":1}` }},
+			{"POST", "/api/alert-rules", func(a string) string {
+				return `{"name":"probe","kind":"run_failed","severity":"critical","agent":"` + a + `"}`
+			}},
+			{"POST", "/api/evals", func(a string) string {
+				return `{"name":"probe","target":"agent","subject":"` + a + `","cases":[{"id":"c1","input":"hi","checks":[{"kind":"contains","value":"hi"}]}]}`
+			}},
 		} {
-			code, out := send(t, f, outsider, tc.method, tc.path, tc.body(h.agent))
-			ghostCode, ghostOut := send(t, f, outsider, tc.method, tc.path, tc.body(ghost(h.agent)))
-			same(tc.method+" "+tc.path+" naming the hidden agent", code, out, ghostCode, ghostOut, map[string]string{h.agent: ghost(h.agent)})
-			if code >= 200 && code < 300 {
-				t.Errorf("%s %s naming the hidden agent = %d %s", tc.method, tc.path, code, out)
+			for _, a := range []string{h.agent, strings.ToUpper(h.agent)} {
+				code, out := send(t, f, outsider, tc.method, tc.path, tc.body(a))
+				ghostCode, ghostOut := send(t, f, outsider, tc.method, tc.path, tc.body(ghost(a)))
+				same(tc.method+" "+tc.path+" naming the hidden agent as "+a, code, out, ghostCode, ghostOut, map[string]string{a: ghost(a)})
+				if code >= 200 && code < 300 {
+					t.Errorf("%s %s naming the hidden agent as %s = %d %s", tc.method, tc.path, a, code, out)
+				}
 			}
 		}
 		_, read := get(t, f, outsider, "/api/clients/"+h.open)

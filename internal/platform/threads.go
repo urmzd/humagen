@@ -619,7 +619,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 		return Posted{}, err
 	}
 	seer := p.Seer(person)
-	if err := p.checkDefault(ctx, who.Tenant, project, in.Default, seer.AgentNamed); err != nil {
+	if err := p.checkDefault(ctx, who.Tenant, project, in.Default, seer.Agent); err != nil {
 		return Posted{}, err
 	}
 	if err := p.posts.take(who.Tenant, by, project, p.now()); err != nil {
@@ -636,7 +636,7 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 		sf := on.ref.surface(on.client.ID)
 		rec.Surface, first.SurfaceID, slack = &sf, on.ref.message(), nil
 	}
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.AgentNamed})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent})
 	if err != nil {
 		return Posted{}, err
 	}
@@ -707,7 +707,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		text, unmapped = p.surfaceText(who.Tenant, on.client, on.ref, in.Text)
 		surfaceID, slack = on.ref.message(), nil
 	}
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: p.Seer(person).AgentNamed})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: p.Seer(person).Agent})
 	if err != nil {
 		return Posted{}, err
 	}
@@ -1197,7 +1197,7 @@ func (p *Platform) UpdateThread(ctx context.Context, who auth.Principal, id stri
 	if in.Version != th.Version {
 		return threads.Thread{}, fmt.Errorf("%w: %q is at version %d, not %d", threads.ErrVersion, id, th.Version, in.Version)
 	}
-	if err := p.checkDefault(ctx, who.Tenant, th.Project, in.Default, p.Seer(who).AgentNamed); err != nil {
+	if err := p.checkDefault(ctx, who.Tenant, th.Project, in.Default, p.Seer(who).Agent); err != nil {
 		return threads.Thread{}, err
 	}
 	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
@@ -1240,7 +1240,7 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 		switch a.Kind {
 		case threads.Agent:
 			// One the caller may not read is one that does not exist.
-			if _, err := p.Agents.Get(ctx, who.Tenant, a.Name, 0); err != nil || !p.Seer(who).AgentNamed(a.Name) {
+			if _, err := p.Agents.Get(ctx, who.Tenant, a.Name, 0); err != nil || !p.Seer(who).Agent(a.Name) {
 				return threads.Thread{}, fmt.Errorf("%w: there is no agent called %s", threads.ErrInvalid, a.Name)
 			}
 			if reason := p.tagRefusal(who.Tenant, th.Project, a.Name); reason != "" {

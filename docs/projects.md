@@ -950,7 +950,8 @@ One predicate, `p.Sees(who, place)`, filters every read of:
 - the agents a client, a project's lists and the workspace's settings name.
 
 A hidden object answers 404. A hidden agent a record names is left out of it,
-a change keeps it, and naming one answers as naming no agent.
+a change keeps it, and naming one, in any spelling of its name, answers as
+naming no agent.
 
 ### Phase 8
 

@@ -541,7 +541,7 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	run, err := s.P.Converse(r.Context(), who.Tenant, platform.Turn{
 		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor, Client: client, KeepsNotes: keeps,
 		// An agent the person may not read is one that is not there.
-		Sees: s.P.Seer(asks).AgentNamed,
+		Sees: s.P.Seer(asks).Agent,
 	})
 	if err != nil {
 		s.problem(w, err)

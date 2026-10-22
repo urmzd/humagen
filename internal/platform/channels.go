@@ -57,7 +57,7 @@ func (p *Platform) CreateChannel(ctx context.Context, tenant, project string, w 
 // CreateChannelAs is CreateChannel as who writes it: a default naming an agent
 // they may not read is refused as one that does not exist.
 func (p *Platform) CreateChannelAs(ctx context.Context, who auth.Principal, project string, w projects.Writer, in ChannelInput) (projects.Channel, error) {
-	return p.createChannel(ctx, who.Tenant, project, w, in, p.Seer(who).AgentNamed)
+	return p.createChannel(ctx, who.Tenant, project, w, in, p.Seer(who).Agent)
 }
 
 func (p *Platform) createChannel(ctx context.Context, tenant, project string, w projects.Writer, in ChannelInput, sees func(string) bool) (projects.Channel, error) {
@@ -84,7 +84,7 @@ func (p *Platform) UpdateChannel(ctx context.Context, tenant, project, name stri
 // UpdateChannelAs is UpdateChannel as who writes it: a default naming an
 // agent they may not read is refused as one that does not exist.
 func (p *Platform) UpdateChannelAs(ctx context.Context, who auth.Principal, project, name string, w projects.Writer, in ChannelUpdate) (projects.Channel, error) {
-	return p.updateChannel(ctx, who.Tenant, project, name, w, in, p.Seer(who).AgentNamed)
+	return p.updateChannel(ctx, who.Tenant, project, name, w, in, p.Seer(who).Agent)
 }
 
 func (p *Platform) updateChannel(ctx context.Context, tenant, project, name string, w projects.Writer, in ChannelUpdate, sees func(string) bool) (projects.Channel, error) {

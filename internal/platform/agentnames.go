@@ -7,8 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urmzd/fiber/pkg/agentspec"
-
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/projects"
@@ -25,17 +23,13 @@ import (
 // shown, and a name they may not read is refused exactly as one that names
 // no agent, so writing learns nothing either.
 
-// AgentNamed reports whether the reader may read the agent a name in a
-// record stands for, whatever its spelling.
-func (s *Seer) AgentNamed(name string) bool { return s.Agent(agentspec.NormalizeName(name)) }
-
 // shownNames is names, each one the reader may read, in order. "*" is no
 // agent, so it stays.
 func (s *Seer) shownNames(names []string) []string {
 	if names == nil {
 		return nil
 	}
-	return slices.DeleteFunc(slices.Clone(names), func(n string) bool { return n != clients.AnyAgent && !s.AgentNamed(n) })
+	return slices.DeleteFunc(slices.Clone(names), func(n string) bool { return n != clients.AnyAgent && !s.Agent(n) })
 }
 
 // agentsNamed is every agent a client names: its default, its list without
@@ -76,7 +70,7 @@ func (s *Seer) Client(c clients.Client) clients.Client {
 	if machineOf(c, s.who) {
 		return c
 	}
-	if c.DefaultAgent != "" && !s.AgentNamed(c.DefaultAgent) {
+	if c.DefaultAgent != "" && !s.Agent(c.DefaultAgent) {
 		c.DefaultAgent = ""
 	}
 	c.Agents = s.shownNames(c.Agents)
@@ -105,7 +99,7 @@ func (s *Seer) shownMap(m map[string]string) map[string]string {
 	}
 	out := make(map[string]string, len(m))
 	for k, a := range m {
-		if s.AgentNamed(a) {
+		if s.Agent(a) {
 			out[k] = a
 		}
 	}
@@ -132,7 +126,7 @@ func noAgent(kind error, name string) error {
 // routes to, so a bot or a label kept for it still stands.
 func (p *Platform) ClientWrittenBy(ctx context.Context, who auth.Principal, old *clients.Client, c clients.Client) (clients.Client, error) {
 	seer := p.Seer(who)
-	shown := seer.AgentNamed
+	shown := seer.Agent
 	if old != nil && machineOf(*old, who) {
 		shown = func(string) bool { return true }
 	}
@@ -226,7 +220,7 @@ func (s *Seer) ProjectAgents(a projects.Agents) projects.Agents {
 	if a.Allow != nil {
 		out.Allow = s.shownNames(a.Allow)
 	}
-	if out.Default != "" && out.Default != Auto && !s.AgentNamed(out.Default) {
+	if out.Default != "" && out.Default != Auto && !s.Agent(out.Default) {
 		out.Default = ""
 	}
 	return out
@@ -243,7 +237,7 @@ func (s *Seer) AgentsView(v ProjectAgents) ProjectAgents {
 	if v.Enable == nil {
 		v.Enable = []string{}
 	}
-	if d := v.DefaultResolved; d != nil && d.Agent != Auto && !s.AgentNamed(d.Agent) {
+	if d := v.DefaultResolved; d != nil && d.Agent != Auto && !s.Agent(d.Agent) {
 		v.DefaultResolved = nil
 	}
 	return v
@@ -260,7 +254,7 @@ func (s *Seer) Change(c projects.Change) projects.Change {
 			*pr = &shown
 		}
 	}
-	if c.Agent != "" && !s.AgentNamed(c.Agent) {
+	if c.Agent != "" && !s.Agent(c.Agent) {
 		c.Agent = ""
 	}
 	return c
@@ -287,7 +281,7 @@ func (p *Platform) ProjectAgentsWrittenBy(ctx context.Context, who auth.Principa
 		if n == "" || n == projects.Everyone || n == Auto {
 			continue
 		}
-		if _, err := p.Agents.Get(ctx, who.Tenant, n, 0); err != nil || !seer.AgentNamed(n) {
+		if _, err := p.Agents.Get(ctx, who.Tenant, n, 0); err != nil || !seer.Agent(n) {
 			return AgentsInput{}, noAgent(projects.ErrInvalid, n)
 		}
 	}
@@ -297,7 +291,7 @@ func (p *Platform) ProjectAgentsWrittenBy(ctx context.Context, who auth.Principa
 	}
 	in.Allow = slices.Clone(in.Allow)
 	for _, a := range pr.Agents.Allow {
-		if _, err := p.Agents.Get(ctx, who.Tenant, a, 0); err == nil && !seer.AgentNamed(a) {
+		if _, err := p.Agents.Get(ctx, who.Tenant, a, 0); err == nil && !seer.Agent(a) {
 			in.Allow = append(in.Allow, a)
 		}
 	}
@@ -307,10 +301,10 @@ func (p *Platform) ProjectAgentsWrittenBy(ctx context.Context, who auth.Principa
 // Settings is the workspace's settings as the reader is shown them: a title
 // or memory agent they may not read is left out, as if none were set.
 func (s *Seer) Settings(st Settings) Settings {
-	if st.TitleAgent != "" && !s.AgentNamed(st.TitleAgent) {
+	if st.TitleAgent != "" && !s.Agent(st.TitleAgent) {
 		st.TitleAgent = ""
 	}
-	if st.MemoryAgent != "" && !s.AgentNamed(st.MemoryAgent) {
+	if st.MemoryAgent != "" && !s.Agent(st.MemoryAgent) {
 		st.MemoryAgent = ""
 	}
 	return st
@@ -327,16 +321,16 @@ func (p *Platform) SetSettingsBy(ctx context.Context, who auth.Principal, next S
 		if name == "" {
 			continue
 		}
-		if _, err := p.Agents.Get(ctx, who.Tenant, name, 0); err != nil || !seer.AgentNamed(name) {
+		if _, err := p.Agents.Get(ctx, who.Tenant, name, 0); err != nil || !seer.Agent(name) {
 			return fmt.Errorf("%w: %q", ErrNoBaseline, name)
 		}
 	}
 	stored := p.Settings(who.Tenant)
-	if next.TitleAgent == "" && !seer.AgentNamed(stored.TitleAgent) {
+	if next.TitleAgent == "" && !seer.Agent(stored.TitleAgent) {
 		next.TitleAgent = stored.TitleAgent
 	}
-	if next.MemoryAgent == "" && !seer.AgentNamed(stored.MemoryAgent) {
+	if next.MemoryAgent == "" && !seer.Agent(stored.MemoryAgent) {
 		next.MemoryAgent = stored.MemoryAgent
 	}
-	return p.setSettings(ctx, who.Tenant, next, seer.AgentNamed)
+	return p.setSettings(ctx, who.Tenant, next, seer.Agent)
 }
