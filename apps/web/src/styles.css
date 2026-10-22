@@ -298,6 +298,12 @@ button.warp-tick:focus-visible {
  *
  * warp-pop, warp-drawer and warp-note also leave: set data-leaving="true" for as
  * long as the leaving takes, then unmount. `usePresence` in ui.tsx does this.
+ *
+ * What arrives fills backwards and lets go when it is done: it ends on the
+ * element's own style, so there is nothing to hold. One that held its last
+ * frame would keep the element as if it were still fading, and a blur behind
+ * glass inside it, a tooltip or a citation, would be lost. What leaves holds
+ * its last frame until it is unmounted.
  */
 .warp-press {
   transition-property: color, background-color, border-color, opacity, transform;
@@ -309,7 +315,7 @@ button.warp-tick:focus-visible {
 }
 
 .warp-enter {
-  animation: warp-enter var(--warp-dur) var(--warp-ease-out) both;
+  animation: warp-enter var(--warp-dur) var(--warp-ease-out) backwards;
 }
 @keyframes warp-enter {
   from {
@@ -319,7 +325,7 @@ button.warp-tick:focus-visible {
 }
 
 .warp-fade {
-  animation: warp-fade var(--warp-dur) var(--warp-ease-out) both;
+  animation: warp-fade var(--warp-dur) var(--warp-ease-out) backwards;
 }
 @keyframes warp-fade {
   from {
@@ -334,7 +340,7 @@ button.warp-tick:focus-visible {
 
 .warp-pop {
   transform-origin: var(--warp-pop-origin, top left);
-  animation: warp-pop var(--warp-dur) var(--warp-ease-out) both;
+  animation: warp-pop var(--warp-dur) var(--warp-ease-out) backwards;
 }
 @keyframes warp-pop {
   from {
@@ -354,7 +360,7 @@ button.warp-tick:focus-visible {
 }
 
 .warp-drawer {
-  animation: warp-drawer var(--warp-dur-slow) var(--warp-ease-out) both;
+  animation: warp-drawer var(--warp-dur-slow) var(--warp-ease-out) backwards;
 }
 @keyframes warp-drawer {
   from {
@@ -374,7 +380,7 @@ button.warp-tick:focus-visible {
 }
 
 .warp-note {
-  animation: warp-enter var(--warp-dur) var(--warp-ease-out) both;
+  animation: warp-enter var(--warp-dur) var(--warp-ease-out) backwards;
 }
 .warp-note[data-leaving="true"] {
   animation: warp-fade-out var(--warp-dur-fast) var(--warp-ease-in) both;
@@ -389,7 +395,7 @@ button.warp-tick:focus-visible {
   .warp-pop,
   .warp-drawer,
   .warp-note {
-    animation: warp-fade var(--warp-dur-fast) linear both;
+    animation: warp-fade var(--warp-dur-fast) linear backwards;
   }
   .warp-pop[data-leaving="true"],
   .warp-drawer[data-leaving="true"],

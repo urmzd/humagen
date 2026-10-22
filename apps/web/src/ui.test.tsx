@@ -1087,6 +1087,34 @@ test("motion: every class moves only transform and opacity, and reduced motion r
   }
 });
 
+test("motion: what arrives lets go of its last frame, so glass inside it keeps its blur", () => {
+  // A finished animation that still holds its end (fill both or forwards) keeps the element
+  // a backdrop root, as if it were still fading, so a blur behind anything inside it is lost:
+  // a tooltip over a chart in a page that faded in showed the chart's lines through it.
+  // What arrives ends on the element's own style, so it needs to hold nothing.
+  const sheets = {
+    console: readFileSync(new URL("./styles.css", import.meta.url), "utf8"),
+    shared: readFileSync(new URL("../../../packages/render-web/src/theme.css", import.meta.url), "utf8"),
+  };
+  for (const [sheet, css] of Object.entries(sheets)) {
+    const arrives = new Set(
+      [...css.matchAll(/@keyframes ([a-z-]+) \{((?:[^{}]|\{[^{}]*\})*)\}/g)]
+        .filter(([, , body = ""]) => {
+          const stops = [...body.matchAll(/([^{}]+)\{/g)].flatMap((m) => (m[1] ?? "").split(",").map((stop) => stop.trim()));
+          return stops.every((stop) => stop === "from" || stop === "0%");
+        })
+        .map(([, name]) => name),
+    );
+    assert.ok(arrives.size >= 4, `${sheet}: the keyframes for what arrives were found`);
+    const uses = [...css.matchAll(/animation:\s*([^;]+);/g)].map((m) => (m[1] ?? "").trim().split(/\s+/));
+    const arriving = uses.filter((words) => words.some((w) => arrives.has(w)));
+    assert.ok(arriving.length >= 4, `${sheet}: the animations that arrive were found`);
+    for (const words of arriving) {
+      assert.ok(!words.includes("both") && !words.includes("forwards"), `${sheet}: ${words.join(" ")} holds its last frame`);
+    }
+  }
+});
+
 test("motion: a copy control keeps its label, and its confirmation is a live region beside it", () => {
   const out = html(<CopyAs item={{ kind: "answer", run: runOf({}) }} />);
   assert.match(out, />Copy as</);
