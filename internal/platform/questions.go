@@ -219,6 +219,9 @@ const (
 	ForExperts = "experts"
 	// ForAnswerers is the people the agent's rules name, or whom it asked.
 	ForAnswerers = "answerers"
+	// ForOwners is the owners of the nearest project on the run's chain, a
+	// question for the experts where there is no expert (nearestOwners).
+	ForOwners = "owners"
 	// ForNobody is nobody: the rules of the run, or of a run that called
 	// it, cannot be read.
 	ForNobody = "nobody"
@@ -230,9 +233,9 @@ type addressee struct {
 	kind   string
 	topic  string
 	person string
-	// owners is a question for the experts that went to the project's
-	// owners, as there is no expert on the run's chain (nearestOwners).
-	owners bool
+	// project is the project whose owners a question for ForOwners is
+	// for: "" is the workspace.
+	project string
 }
 
 // addressOf decides who a question is for: the people who may answer it,
@@ -261,10 +264,10 @@ func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Questi
 				// With no expert on the chain, the question goes to the
 				// project's owners, narrowed to the answerers as experts
 				// are.
-				if owners := p.nearestOwners(run); len(owners) > 0 {
+				if owners, from := p.nearestOwners(run); len(owners) > 0 {
 					audience = expertAudience(rev.Spec.Answerers, owners)
 					if slices.ContainsFunc(audience, func(who string) bool { return slices.Contains(owners, who) }) {
-						return audience, nil, addressee{kind: ForAnswerers, owners: true}
+						return audience, nil, addressee{kind: ForOwners, project: from}
 					}
 					return audience, nil, addresseeOf(audience)
 				}
@@ -324,11 +327,12 @@ func (p *Platform) expertsAsked(run runs.Run, q payload.Question) (experts []str
 // one that grants nothing, as under a members-only project that does not let
 // its person in, is passed over. A run in a private thread has none: its
 // owners do not take part in it, so the question stays with whoever may
-// answer there. Nil when no project on the chain names one.
-func (p *Platform) nearestOwners(run runs.Run) []string {
+// answer there. from is the project that names them. Nil when no project on
+// the chain names one.
+func (p *Platform) nearestOwners(run runs.Run) (owners []string, from string) {
 	at := placeOfRun(run)
 	if p.privateThread(run.Tenant, at.Thread) {
-		return nil
+		return nil, ""
 	}
 	tree := p.Projects.Tree(run.Tenant)
 	owns := func(who string) bool {
@@ -355,10 +359,10 @@ func (p *Platform) nearestOwners(run runs.Run) []string {
 			}
 		}
 		if len(out) > 0 {
-			return out
+			return out, pr.Name
 		}
 	}
-	return nil
+	return nil, ""
 }
 
 // expertAudience is who a question for experts is addressed to: the experts,
@@ -470,7 +474,7 @@ func (p *Platform) questionMessage(ctx context.Context, run runs.Run, q payload.
 	// The subject says whom the agent asked when that is not the reader
 	// alone, so an expert knows why it reached them.
 	asks := " asks: "
-	if to.owners {
+	if to.kind == ForOwners {
 		asks = " asks the project's owners: "
 	}
 	if to.kind == ForExperts {

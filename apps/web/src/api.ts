@@ -1083,11 +1083,13 @@ export interface ThreadAnnouncement {
 export interface ThreadAsk {
   question: string;
   yours: boolean;
-  for: "anyone" | "person" | "experts" | "answerers" | "nobody";
+  for: "anyone" | "person" | "experts" | "answerers" | "owners" | "nobody";
   /** The experts' topic, for `experts`. Absent is every expert. */
   topic?: string;
   /** The person it is for, by handle, for `person`. */
   person?: string;
+  /** What the project whose owners it is for is called, for `owners`. Absent for the workspace and a project the reader may not see. */
+  owners_of?: string;
 }
 
 export interface ThreadTurn {

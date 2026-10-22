@@ -594,18 +594,26 @@ whom it is for: `anyone` who may resume runs, one `person` (the
 person the run acts for, by handle, when an answer may reach their
 own credential), the `experts` on `topic` in the run's project (every
 expert when `topic` is absent), the `answerers` its agent's rules
-name or it asked, or `nobody`, when the rules cannot be read. It
-names nobody the reader may not see. The runtime still has the last
+name or it asked, the `owners` of the nearest project on the run's
+chain that names any, when it asked the experts and there are none
+(`owners_of` is what that project is called), or `nobody`, when the
+rules cannot be read. It names nobody, and no project, the reader may
+not see. The runtime still has the last
 word when an answer is given.
  */
 export interface ThreadAsk {
   /** The question's id, `question.id` on the run. */
   question: string;
   yours: boolean;
-  for: "anyone" | "person" | "experts" | "answerers" | "nobody";
+  for: "anyone" | "person" | "experts" | "answerers" | "owners" | "nobody";
   topic?: string;
   /** The handle of the person it is for, with `for` of `person`. */
   person?: string;
+  /** With `for` of `owners`, what the project whose owners it is for is
+called: its title, else its name. Absent for the workspace, and
+for a project the reader may not see.
+ */
+  owners_of?: string;
 }
 
 /** Who answers an untagged message in a place, and where that is set:

@@ -5450,8 +5450,11 @@ components:
         person the run acts for, by handle, when an answer may reach their
         own credential), the `experts` on `topic` in the run's project (every
         expert when `topic` is absent), the `answerers` its agent's rules
-        name or it asked, or `nobody`, when the rules cannot be read. It
-        names nobody the reader may not see. The runtime still has the last
+        name or it asked, the `owners` of the nearest project on the run's
+        chain that names any, when it asked the experts and there are none
+        (`owners_of` is what that project is called), or `nobody`, when the
+        rules cannot be read. It names nobody, and no project, the reader may
+        not see. The runtime still has the last
         word when an answer is given.
       type: object
       required: [question, yours, for]
@@ -5462,10 +5465,16 @@ components:
         yours: {type: boolean}
         for:
           type: string
-          enum: [anyone, person, experts, answerers, nobody]
+          enum: [anyone, person, experts, answerers, owners, nobody]
         topic: {type: string}
         person:
           description: The handle of the person it is for, with `for` of `person`.
+          type: string
+        owners_of:
+          description: |
+            With `for` of `owners`, what the project whose owners it is for is
+            called: its title, else its name. Absent for the workspace, and
+            for a project the reader may not see.
           type: string
     ThreadAnswers:
       description: |

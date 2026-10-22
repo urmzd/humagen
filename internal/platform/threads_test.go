@@ -1072,6 +1072,29 @@ func TestAQuestionForExpertsWithNoExpertGoesToTheNearestOwners(t *testing.T) {
 	if !strings.HasPrefix(q.Subject, "asker asks the project's owners: ") {
 		t.Fatalf("the question's subject = %q", q.Subject)
 	}
+	// Whom it is for names the project, to a reader who may see it.
+	if got := askOfRun(t, p, grace, run); got == nil || got.Yours || got.For != platform.ForOwners || got.OwnersOf != "Renewals" {
+		t.Fatalf("someone it is not for: ask = %+v, want it for the owners of Renewals", got)
+	}
+	if got := askOfRun(t, p, olu, run); got == nil || !got.Yours || got.For != platform.ForOwners {
+		t.Fatalf("the owner's ask = %+v", got)
+	}
+}
+
+// askOfRun is the ask a reader is shown on a parked run of a thread.
+func askOfRun(t *testing.T, p *platform.Platform, who auth.Principal, run runs.Run) *platform.Ask {
+	t.Helper()
+	_, turns, _, err := p.ThreadTurns(tenant, run.Thread, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, turn := range p.AsksIn(t.Context(), who, turns) {
+		if turn.Run != nil && turn.Run.ID == run.ID {
+			return turn.Ask
+		}
+	}
+	t.Fatal("the parked run is not in its thread")
+	return nil
 }
 
 // The owners a question for the experts falls back to are those who own the
@@ -1109,6 +1132,14 @@ func TestAQuestionForExpertsSkipsOwnersWhoCannotReadTheRun(t *testing.T) {
 	q := questionFor(t, p, run.ID)
 	if sees(p, olu, q.ID) || sees(p, grace, q.ID) || !slices.Equal(q.Audience, []string{"ada"}) {
 		t.Fatalf("the question went to %v, want Globex's owner, who owns Renewals from above", q.Audience)
+	}
+	// Globex keeps to its members, so a reader outside it is never told
+	// whose owners the question is for: the project is not named.
+	if got := askOfRun(t, p, grace, run); got == nil || got.For != platform.ForOwners || got.OwnersOf != "" {
+		t.Fatalf("a reader who may not see Globex: ask = %+v, want no project named", got)
+	}
+	if got := askOfRun(t, p, admin, run); got == nil || got.OwnersOf != "Globex" {
+		t.Fatalf("Globex's owner: ask = %+v, want the owners of Globex", got)
 	}
 }
 
