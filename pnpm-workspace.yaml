@@ -2,5 +2,6 @@ packages:
   - packages/*
   - apps/*
   - examples/ui/*
+  - scripts/screens
 allowBuilds:
   esbuild: true

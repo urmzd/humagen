@@ -1,0 +1,17 @@
+{
+  "name": "@warp/screens",
+  "version": "0.16.0",
+  "private": true,
+  "type": "module",
+  "description": "Captures every console screen at phone and desktop width and fails on a broken layout.",
+  "scripts": {
+    "screens": "node --experimental-strip-types run.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types *.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "playwright-core": "1.56.1",
+    "typescript": "^6.0.0"
+  }
+}
