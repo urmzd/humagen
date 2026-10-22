@@ -32,7 +32,7 @@ import { DrawerButton, Sidebar } from "./Sidebar.tsx";
 import { updatesOf } from "@warp/adapter";
 import { HomeLines } from "./HomePage.tsx";
 import { type Source as About, type PlatformMessage, transport as mail } from "./mail.ts";
-import { type AgentTab, href, PROJECT_KINDS, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
+import { type AgentTab, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { Page, primary } from "./ui.tsx";
 
 type Session = { state: "loading" } | { state: "signed-out" } | { state: "error"; message: string } | { state: "ready"; me: Me };
@@ -431,7 +431,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             q={route.q ?? ""}
             kind={route.kind}
             onFilter={(q, kind) =>
-              go({ page: "projects", q: q || undefined, kind: PROJECT_KINDS.find((k) => k === kind) }, { replace: true })
+              go({ page: "projects", q: q || undefined, kind: kindParam(kind) }, { replace: true })
             }
             canCreate={can("projects:write")}
             canGovern={can("projects:govern")}

@@ -27,9 +27,15 @@ export const MONITOR_TABS: MonitorTab[] = ["overview", "rules"];
 export type ProjectTab = "inbox" | "overview" | "context" | "agents" | "people" | "limits" | "history";
 export const PROJECT_TABS: ProjectTab[] = ["inbox", "overview", "context", "agents", "people", "limits", "history"];
 
-/** What a project is for, as the Projects page narrows to it with `?kind=`. */
-export type ProjectKindFilter = "company" | "team" | "account";
-export const PROJECT_KINDS: ProjectKindFilter[] = ["company", "team", "account"];
+/**
+ * What a project is for, as the Projects page narrows to it with `?kind=`:
+ * one of warp's kinds, or one the workspace defines, which has the same
+ * shape. A value of any other shape falls back to every kind.
+ */
+export type ProjectKindFilter = string;
+const KIND_SHAPE = /^[a-z][a-z0-9-]{0,31}$/;
+/** A kind as an address names it, or nothing when it is not shaped as one. */
+export const kindParam = (value: string | null | undefined): ProjectKindFilter | undefined => (value && KIND_SHAPE.test(value) ? value : undefined);
 
 /** The Directory: who and what is in the workspace, for everyone in it. */
 export type DirectoryTab = "people" | "agents" | "projects";
@@ -189,7 +195,7 @@ function read(pathname: string, search: string): Route {
     case "tasks":
       return a ? { page: "task", id: a } : { page: "new" };
     case "projects": {
-      if (!a) return { page: "projects", q: q.get("q") || undefined, kind: oneOf(q.get("kind"), PROJECT_KINDS) };
+      if (!a) return { page: "projects", q: q.get("q") || undefined, kind: kindParam(q.get("kind")) };
       const tab = pick(b, PROJECT_TABS, "inbox");
       return { page: "project", name: a === "~" ? "" : a, tab, message: tab === "inbox" ? (q.get("message") ?? undefined) : undefined };
     }

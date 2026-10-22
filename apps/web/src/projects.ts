@@ -3,12 +3,39 @@
  * return, and the tests check the layout without a browser.
  */
 import { defaultCopy } from "@warp/components";
-import type { Project, ProjectAccount, ProjectKind, ProjectStep, ProjectUpdate, ProjectView } from "./api.ts";
+import type { Project, ProjectAccount, ProjectKind, ProjectKindSpec, ProjectStep, ProjectUpdate, ProjectView } from "./api.ts";
 
 const words = defaultCopy.projects;
 
-/** The kinds, in the order the Projects page groups them. */
+/** The kinds warp defines, in the order the Projects page groups them. */
 export const KINDS: ProjectKind[] = ["company", "team", "account"];
+
+/** A built-in kind: what every kind behaves as. */
+export type BuiltIn = "company" | "team" | "account";
+
+/** The shape of a kind's name, built in or the workspace's own. */
+export const KIND_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+
+/**
+ * The built-in kind a kind behaves as, as the platform reads it: itself when
+ * warp defines it, the workspace's `like` for one of its own, and team for a
+ * kind the console has not been told of.
+ */
+export function likeOf(kind: ProjectKind, kinds: ProjectKindSpec[] = []): BuiltIn {
+  if ((KINDS as string[]).includes(kind)) return kind as BuiltIn;
+  return kinds.find((k) => k.name === kind)?.like === "account" ? "account" : "team";
+}
+
+/**
+ * Every kind a workspace has, in the order the Projects page groups them:
+ * warp's, then the workspace's own by title, then any a project has that the
+ * workspace no longer lists, by name.
+ */
+export function kindsOf(kinds: ProjectKindSpec[] = [], projects: Pick<ProjectView, "kind">[] = []): ProjectKind[] {
+  const own = [...kinds].sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name)).map((k) => k.name);
+  const left = [...new Set(projects.map((p) => p.kind))].filter((k) => !(KINDS as string[]).includes(k) && !own.includes(k)).sort();
+  return [...KINDS, ...own, ...left];
+}
 
 /** How far one level of the tree indents. */
 export const INDENT_PX = 16;
@@ -26,8 +53,13 @@ export function titleOf(p: Pick<Project, "name" | "title"> | ProjectStep, worksp
   return p.name === "" ? workspace : p.title || p.name;
 }
 
-/** A kind in words: "Account". */
-export const kindWord = (kind: ProjectKind): string => words.kind[kind] ?? kind;
+/** A kind in words: "Account", or the title the workspace gives its own. */
+export const kindWord = (kind: ProjectKind, kinds: ProjectKindSpec[] = []): string =>
+  words.kind[kind] ?? (kinds.find((k) => k.name === kind)?.title || kind);
+
+/** A kind's group on the Projects page: "Accounts", or the title the workspace gives its own. */
+export const groupWord = (kind: ProjectKind, kinds: ProjectKindSpec[] = []): string =>
+  words.group[kind] ?? (kinds.find((k) => k.name === kind)?.title || kind);
 
 /** The projects above one, top first, by title. Empty at the top level. */
 export function above(p: ProjectView): string[] {
@@ -62,14 +94,15 @@ export interface TreeGroup {
 }
 
 /**
- * The Projects page's groups: Company-wide, Teams, then Accounts, each in tree
- * order. A row nests under its parent when the parent is in the same group
- * and shown; otherwise it starts the group's left edge and prints its path.
- * On a narrow screen nothing nests deeper than one level.
+ * The Projects page's groups: Company-wide, Teams, Accounts, then the
+ * workspace's own kinds by title, each in tree order. A row nests under its
+ * parent when the parent is in the same group and shown; otherwise it starts
+ * the group's left edge and prints its path. On a narrow screen nothing nests
+ * deeper than one level.
  */
-export function treeOf(projects: ProjectView[], opts: { narrow: boolean; q?: string; kind?: ProjectKind }): TreeGroup[] {
+export function treeOf(projects: ProjectView[], opts: { narrow: boolean; q?: string; kind?: ProjectKind; kinds?: ProjectKindSpec[] }): TreeGroup[] {
   const shown = projects.filter((p) => (!opts.kind || p.kind === opts.kind) && matches(p, opts.q ?? ""));
-  return KINDS.map((kind) => {
+  return kindsOf(opts.kinds, projects).map((kind) => {
     const level = new Map<string, number>();
     const rows = shown
       .filter((p) => p.kind === kind)
@@ -82,7 +115,7 @@ export function treeOf(projects: ProjectView[], opts: { narrow: boolean; q?: str
         const placed = depth > 0 && indent === depth;
         return { project: p, indent, path: placed ? [] : above(p) };
       });
-    return { kind, title: words.group[kind] ?? kind, rows };
+    return { kind, title: groupWord(kind, opts.kinds), rows };
   }).filter((g) => g.rows.length > 0);
 }
 
@@ -92,20 +125,22 @@ export type Place = Pick<ProjectView, "name" | "kind" | "depth">;
 export const WORKSPACE: Place = { name: "", kind: "company", depth: 0 };
 
 /**
- * Whether a project of `kind` may sit under `parent`, as the platform rules:
- * room below it, company-wide only under the workspace or another company-wide
- * project, and an account never under an account.
+ * Whether a project of `kind` may sit under `parent`, as the platform rules,
+ * each kind read as the built-in it behaves as: room below it, company-wide
+ * only under the workspace or another company-wide project, and an account
+ * never under an account.
  */
-export function fitsUnder(parent: Place, kind: ProjectKind): boolean {
+export function fitsUnder(parent: Place, kind: ProjectKind, kinds: ProjectKindSpec[] = []): boolean {
   if (parent.depth >= MAX_DEPTH) return false;
-  if (kind === "company") return parent.kind === "company";
-  if (kind === "account") return parent.kind !== "account";
+  const like = likeOf(kind, kinds);
+  if (like === "company") return parent.kind === "company";
+  if (like === "account") return likeOf(parent.kind, kinds) !== "account";
   return true;
 }
 
-/** The kinds a person may make under `parent`. Company-wide needs projects:govern. */
-export function kindsUnder(parent: Place, canGovern: boolean): ProjectKind[] {
-  return KINDS.filter((k) => fitsUnder(parent, k) && (k !== "company" || canGovern));
+/** The kinds a person may make under `parent`, warp's then the workspace's own. Company-wide needs projects:govern. */
+export function kindsUnder(parent: Place, canGovern: boolean, kinds: ProjectKindSpec[] = []): ProjectKind[] {
+  return kindsOf(kinds).filter((k) => fitsUnder(parent, k, kinds) && (k !== "company" || canGovern));
 }
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,62}$/;
