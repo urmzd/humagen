@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.1 (2026-10-22)
+
+### Bug Fixes
+
+- **console**: names not sign-in ids, expert answers in the room, phone layout, refusals and settings (#45) ([60c8818](https://github.com/urmzd/warp/commit/60c8818c92562411720082d9a1f6577d54d8b3bc))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.15.0...v0.15.1)
+
+
 ## 0.15.0 (2026-10-22)
 
 ### Breaking
