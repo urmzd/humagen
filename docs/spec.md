@@ -225,7 +225,7 @@ spec:
         token_url: https://login.example.com/oauth2/v1/token
         client_id: warp-slack
         client_secret: {ref: env:WARP_SLACK_CLIENT_SECRET}
-        scopes: [warp:agents:read, warp:runs:read, warp:runs:write, warp:billing:read]
+        scopes: [warp:agents:read, warp:runs:read, warp:runs:write, warp:billing:read, warp:projects:read]
         audience: ""        # set when the provider needs one named
       # warp_token: {ref: env:WARP_SLACK_API_TOKEN}   # instead: a bearer token that does not expire
     github:

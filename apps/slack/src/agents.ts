@@ -43,8 +43,9 @@ export const BUILDER = "warp-builder";
 
 /**
  * Whether this surface may route to an agent. Without a client, any agent in
- * the workspace. `auto` only where the surface may reach any agent: the
- * platform does not apply a client's list to what @auto picks for the API.
+ * the workspace. `auto` only where the surface may reach any agent, this
+ * app's own choice: the platform picks @auto among a client's agents for a
+ * run that acts for its person (`act_as`).
  */
 export function mayRoute(routing: Routing, name: string): boolean {
   const client = routing.client;

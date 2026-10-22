@@ -20,6 +20,8 @@ export function questionFor(ask: ThreadAsk, agent: string): string {
       return words.person(ask.person ?? "");
     case "answerers":
       return words.answerers(agent);
+    case "owners":
+      return words.owners(ask.owners_of ?? "");
     case "nobody":
       return words.nobody;
     default:

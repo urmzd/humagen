@@ -1,8 +1,14 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/urmzd/warp/pkg/feedback"
+	"github.com/urmzd/warp/pkg/people"
 )
 
 func TestFeedbackReferencesItsContextAndScopesTheRun(t *testing.T) {
@@ -58,5 +64,42 @@ func TestSlackConnectionControlsActOnlyForTheirMappedPerson(t *testing.T) {
 	}
 	if res, _ := f.do(t, nil, "PUT", path, f.machineAs(t, "another-machine", "acme", "warp:runs:write"), `{"ref":"env:WARP_PERSON_ANA_ISSUES"}`); res.StatusCode == http.StatusOK {
 		t.Fatal("another machine changed a connection")
+	}
+}
+
+// Anyone who may read a run reads its feedback, so a rater is named as the
+// platform calls them, never by a subject that holds an address, and a page
+// is found by a cursor that is not a subject.
+func TestFeedbackNamesRatersAndNeverShowsAnAddress(t *testing.T) {
+	f := newFixture(t)
+	admin := f.machine(t, "acme", everything...)
+	if res, out := f.do(t, nil, "POST", "/api/agents", admin, helperSpec); res.StatusCode != http.StatusCreated {
+		t.Fatalf("agent: %d %v", res.StatusCode, out)
+	}
+	run := f.ask(t, admin, `{"agent":"helper","text":"Explain the change"}`)
+	path := "/api/runs/" + run["id"].(string) + "/feedback"
+	const address = "ada@example.com"
+	if _, err := f.p.People.Seen("acme", people.Sighting{Subject: address, Name: "Ada Lovelace", Source: people.SignIn}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.p.Feedback.Save("acme", feedback.Record{Run: run["id"].(string), Subject: address, Rating: "up"}); err != nil {
+		t.Fatal(err)
+	}
+	if res, out := f.do(t, nil, "PUT", path, admin, `{"rating":"down"}`); res.StatusCode != http.StatusOK || out["mine"] != true || out["subject"] != nil {
+		t.Fatalf("own feedback: %d %v", res.StatusCode, out)
+	}
+	res, got := f.do(t, nil, "GET", path, admin, "")
+	raw, _ := json.Marshal(got)
+	out := string(raw)
+	if res.StatusCode != http.StatusOK || strings.Contains(out, address) || strings.Contains(out, `"subject"`) {
+		t.Fatalf("the list shows a subject: %d %s", res.StatusCode, out)
+	}
+	if !strings.Contains(out, `"by_name":"Ada Lovelace"`) || !strings.Contains(out, `"mine":false`) {
+		t.Fatalf("the list does not name the rater: %s", out)
+	}
+	for _, bad := range []string{address, "0", "-1", "x", "007", "+5"} {
+		if res, _ := f.do(t, nil, "GET", path+"?after="+bad, admin, ""); res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("after=%s: %d", bad, res.StatusCode)
+		}
 	}
 }

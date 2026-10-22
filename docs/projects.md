@@ -749,8 +749,10 @@ may not route to is refused, never swapped. A GitHub label in `auto_labels`
 names an agent, so it is a tag. fiber's in-process connectors may set an
 agent of `auto`; `surface.stamp` resolves it with `@auto` before admission,
 among the agents the client may route to. The Slack app built on the API
-cannot have its list applied by the platform (`POST /api/runs` takes no
-client), so it sends `auto` only for a client whose list is `*`: a client that
+names the client it answers for: `POST /api/runs` takes `act_as {client,
+user}`, and `Converse` applies that client's allow-list and default, picking
+`@auto` among the agents the client may route to. The Slack app still sends
+`auto` only for a client whose list is `*`, its own choice: a client that
 lists its agents treats `@auto`, and a default of `auto`, as names outside the
 list.
 `stamp` also writes `warp.project` and `warp.channel` from the binding, and
@@ -1117,7 +1119,7 @@ mirror. `{name}` is `~` for the root (a name cannot start with `~`).
 | `POST /api/projects/{name}/move` | `projects:write` | `{version, parent}` → ProjectView. 400 cycle, depth, kind, openness; 403 the limit rule; 409 a default, a homed agent or a schedule below it that would lose its agent |
 | `PUT /api/projects/{name}` | `projects:write` | gains `kind`, `archived`; on the root, `kinds` |
 | `PUT`, `DELETE /api/projects/{name}/limits` | `projects:write` | owner of a strict ancestor; writes a project-scope policy with `Authority: owner`; looser than the effective chain is 400 naming the binding scope; an admin policy is 409 |
-| `GET /api/people` | `projects:read` | `?q=&limit=` (<= 50) → `{people: [{subject, name, handle}]}` |
+| `GET /api/people` | `people:read` | `?q=&limit=` (<= 50)`&before=` → `{people: [{subject?, name?, handle, roles, picture, seen_at?, projects?, projects_more?}], next}`; a subject that holds an address is left out, and so is anyone known only by one. `projects` is the person's own projects the reader may see (none without `projects:read`), at most 20 |
 
 ### Phase 3
 
@@ -1630,7 +1632,10 @@ and its total, What's new and Your projects to the same on both renderers.
   wakes no agent. Threads are filed in the client's home.
 
 Every Slack change passes `pnpm validate:slack`, and
-`TestTheSlackManifestIsWhatWarpGenerates` stays green with no new scope.
+`TestTheSlackManifestIsWhatWarpGenerates` stays green. The projects work
+added no Slack scope, but the uploads and canvases that landed alongside it (#47)
+added `files:read` and `canvases:write`, so an app installed before then is
+reinstalled from the generated manifest to grant them.
 
 ## Migration
 
@@ -1679,7 +1684,8 @@ Every Slack change passes `pnpm validate:slack`, and
    `projects:read` to list projects. `warp config check` warns when a
    configured machine has `runs:read` but not `projects:read`. People are
    unaffected under `default.authz`. A custom policy file adds `projects` to
-   its write rules; the release notes give the one-line diff.
+   its write rules; [docs/authorization.md](authorization.md#upgrading-from-before-projects-had-their-own-permissions)
+   gives the one-line diff.
 
 ### Phase 2: members
 
@@ -1705,8 +1711,8 @@ everyone. Make it members only?"). Nothing is closed automatically.
   - a workspace with no baseline gets `auto`, which keeps the picker for API
     and Slack callers that name no agent.
 
-  Settings shows "Workspace Default: @auto, set by the upgrade". An admin can
-  clear it.
+  The migration records it in the workspace's history, which the History
+  tab shows as a change made by the upgrade. An admin can clear it.
 - Setting the workspace default moves from `agents:write` (managers) to
   `projects:govern` (admins by default), since it changes the workspace
   itself. Owning the root is not enough: to keep the old split, an admin
@@ -1757,12 +1763,17 @@ changes and issue ids again. Roll back only to a build with phase 9.
 
 ### Docs in the same PRs
 
-- docs/architecture.md#status, existing rows:
-  - conversations (404), `pkg/pick` (407), Projects (408), composer selection
-    (409), the rail flyout claim (410), labels (411);
-  - `pkg/policy` (414), owner limits (421), membership (424);
-  - the Slack app (381), Slack questions and the reply modal (382);
-  - schedule delivery (465), the inbox and addressing (470 to 475).
+- docs/architecture.md#status, existing rows, by name (rows move, so they
+  are not cited by line):
+  - "Conversations", "`@auto`, the built-in router", "Projects", "Composer
+    project selection and creation", the console navigation rows' claim
+    about the projects flyout, "Configurable console titles and labels";
+  - "`pkg/policy`", "Limits set by a project's owner", "Project membership
+    and per-project access";
+  - "Slack app (`apps/slack`)", "Questions in Slack";
+  - "Schedule delivery", and the inbox and addressing rows from "`pkg/inbox`"
+    to "Messages addressed to one person, one role, a project's members or
+    its owners".
 - New status rows: project tree, project policies along the tree, layered
   context, agent availability and homes, `@auto`, project inbox and
   announcements, scheduled agents in projects, channels, shared threads and
@@ -1840,8 +1851,8 @@ its parent's limit, and nothing claims privacy.
     level at 390px; the picker shows paths.
   - The commands `make check`, `pnpm typecheck && pnpm test`,
     `make client-check` and `make spec-lint` all pass.
-- **Status.** Row 408 becomes "a tree with kinds, in its own store", and row
-  414 adds the chain. A new row says plainly that every project is visible to
+- **Status.** The "Projects" row becomes "a tree with kinds, in its own
+  store", and the "`pkg/policy`" row adds the chain. A new row says plainly that every project is visible to
   everyone and has no owners yet.
 
 ### Later phases
@@ -1884,8 +1895,9 @@ phase 2 and experts to phase 3, because addressing and threads need them.
     `projects:govern`.
   - An untagged API run with no default is 409.
 
-  All of it is flagged as breaking, with release notes and a `config check`
-  warning, and the migration writes explicit defaults.
+  All of it is flagged as breaking in its commit, which the generated
+  release notes carry, with the policy diff in docs/authorization.md and a
+  `config check` warning, and the migration writes explicit defaults.
 - **Moves and usage.** `Within` is pinned when a run is admitted. After a
   move, later spend counts toward the new chain, so a parent's period total
   shifts. That is deterministic for `Rebuild` but surprising to read. Leaving

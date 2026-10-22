@@ -17,6 +17,7 @@ import (
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/warp/pkg/people"
 	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/threads"
@@ -391,5 +392,60 @@ func TestARecapNamesOnlyTheAgentsEveryoneItReachesMayRead(t *testing.T) {
 	if !strings.Contains(out, "Field: home by root\n") || !strings.Contains(out, "Field: home by root (lead)") || strings.Contains(out, "(helper)") ||
 		!strings.Contains(out, "- helper: 1 run") || !strings.Contains(out, "1 turn, agent helper") || !strings.Contains(out, "Plan, version 1, by helper") {
 		t.Fatalf("Field's recap of helper's move to Vault:\n%s", out)
+	}
+}
+
+// A recap reaches every member, so it names a person as the rest of the
+// platform does: by the name they go by, and never by a subject that holds
+// an address (a Tailscale login, an email).
+func TestARecapNamesPeopleAndNeverAnAddress(t *testing.T) {
+	p := start(t, call.Limits{})
+	const ada, bob = "ada@example.com", "bob@corp.example"
+	if _, err := p.People.Seen(tenant, people.Sighting{Subject: ada, Name: "Ada Lovelace", Source: people.SignIn}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: ada}, platform.ProjectInput{Name: "Field"}); err != nil {
+		t.Fatal(err)
+	}
+	asking, _ := turn(t, p, "api-f1", "Field")
+	now := time.Now().UTC()
+	if _, err := p.Inbox.Post(tenant, inbox.Message{
+		Subject: "Field moved", From: inbox.From{Kind: "person", Name: ada}, Source: inbox.Source{Project: "Field"},
+		Parts: []inbox.Part{{Type: inbox.PartText, Text: "x"}},
+	}, now, inbox.PostCaps{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Artifacts.Publish(tenant, artifacts.Artifact{
+		ID: p.Artifacts.NextID(tenant), Key: "k-plan", Thread: "th-Field", Title: "plan.md", Kind: artifacts.Document,
+		Project: "Field", CreatedBy: bob, CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for name, about := range map[string]platform.About{"made": {CreatedAt: now}, "edited": {CreatedAt: now, UpdatedAt: now, UpdatedBy: bob}} {
+		sc := cron.Schedule{
+			Name: name, Expression: "41 8 * * 1", Agent: "lead", Text: "What changed?", Tenant: tenant,
+			Meta: map[string]string{runs.MetaProject: "Field", "created_by": ada},
+		}
+		if err := p.Schedules.Add(sc, about); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	out, err := use(t, p, as(asking, platform.BuiltinAnalyst), platform.ToolProjectChanges, map[string]any{"days": "7"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"Field: created by Ada Lovelace", "from person Ada Lovelace", "made created by Ada Lovelace",
+		"edited changed by someone", "plan.md, version 1, by someone",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the recap leaves out %q:\n%s", want, out)
+		}
+	}
+	for _, never := range []string{ada, bob, "@"} {
+		if strings.Contains(out, never) {
+			t.Errorf("the recap shows the address %q:\n%s", never, out)
+		}
 	}
 }
