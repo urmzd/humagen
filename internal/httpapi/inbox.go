@@ -49,19 +49,10 @@ func (s *Server) deliverInbox(w http.ResponseWriter, r *http.Request, who auth.P
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// listInbox pages the caller's inbox, newest first.
-//
-// state is open (the default), resolved, dismissed, snoozed or all. kind,
-// unread, alert, agent, project, limit and before are optional. alert finds
-// the message about one alert, in any state. agent keeps the messages an agent
-// raised or whose call would reach it: with kind=approval, that agent's
-// approval queue. project keeps what is filed in one project, "~" for the
-// workspace, of what the caller's own inbox holds. The answer carries next,
-// the cursor for the page after this one, or null at the end.
-// actingFor is who an inbox read is for: the caller, or the person a
-// client's machine reads for (act_as_client and act_as_user), who must hold
-// runs:read themselves.
-func (s *Server) actingFor(w http.ResponseWriter, r *http.Request, who auth.Principal) (auth.Principal, bool) {
+// actingFor is who a read is for: the caller, or the person a client's
+// machine reads for (act_as_client and act_as_user), who must hold the
+// route's permission themselves. what names the read in the refusal.
+func (s *Server) actingFor(w http.ResponseWriter, r *http.Request, who auth.Principal, need auth.Permission, what string) (auth.Principal, bool) {
 	q := r.URL.Query()
 	client, user := q.Get("act_as_client"), q.Get("act_as_user")
 	if client == "" && user == "" {
@@ -76,15 +67,30 @@ func (s *Server) actingFor(w http.ResponseWriter, r *http.Request, who auth.Prin
 		s.problem(w, err)
 		return auth.Principal{}, false
 	}
-	if !person.Can(auth.RunsRead) {
-		fail(w, http.StatusForbidden, "that person cannot read an inbox")
+	if !person.Can(need) {
+		fail(w, http.StatusForbidden, "that person cannot read "+what)
 		return auth.Principal{}, false
 	}
 	return person, true
 }
 
+// readingInbox is who an inbox read is for: the caller, or a person of a
+// client, who must hold runs:read.
+func (s *Server) readingInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) (auth.Principal, bool) {
+	return s.actingFor(w, r, who, auth.RunsRead, "an inbox")
+}
+
+// listInbox pages the caller's inbox, newest first.
+//
+// state is open (the default), resolved, dismissed, snoozed or all. kind,
+// unread, alert, agent, project, limit and before are optional. alert finds
+// the message about one alert, in any state. agent keeps the messages an agent
+// raised or whose call would reach it: with kind=approval, that agent's
+// approval queue. project keeps what is filed in one project, "~" for the
+// workspace, of what the caller's own inbox holds. The answer carries next,
+// the cursor for the page after this one, or null at the end.
 func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	who, acting := s.actingFor(w, r, who)
+	who, acting := s.readingInbox(w, r, who)
 	if !acting {
 		return
 	}
@@ -133,7 +139,7 @@ func (s *Server) listInbox(w http.ResponseWriter, r *http.Request, who auth.Prin
 // them; updates are the announcements they have not read, which never grow
 // the badge.
 func (s *Server) countInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	who, acting := s.actingFor(w, r, who)
+	who, acting := s.readingInbox(w, r, who)
 	if !acting {
 		return
 	}
@@ -141,7 +147,7 @@ func (s *Server) countInbox(w http.ResponseWriter, r *http.Request, who auth.Pri
 }
 
 func (s *Server) getInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	who, acting := s.actingFor(w, r, who)
+	who, acting := s.readingInbox(w, r, who)
 	if !acting {
 		return
 	}

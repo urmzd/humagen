@@ -2638,9 +2638,14 @@ projects. Each view says
 the caller's role (`access`) and what they may do (`actions`).
 `next` is the cursor for the page after this one, or null at the
 end; a cursor is where its last row sat in the tree, so a project
-deleted between pages neither breaks nor shifts the paging.
+deleted between pages neither breaks nor shifts the paging. A
+client's machine lists one of its people's projects with
+`act_as_client` and `act_as_user`, as the Slack app's Home does: the
+projects that person has a role in, each with their role, their
+actions and what they may read in it. The person must hold
+`projects:read` themselves.
  */
-  async listProjects(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, options?: RequestOptions): Promise<ListProjectsResponse> {
+  async listProjects(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ListProjectsResponse> {
     let path = "/api/projects";
     const _q = new URLSearchParams();
     if (parent !== undefined && parent !== null) _q.set("parent", String(parent));
@@ -2649,6 +2654,8 @@ deleted between pages neither breaks nor shifts the paging.
     if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.request<ListProjectsResponse>("GET", path, {
@@ -2656,7 +2663,7 @@ deleted between pages neither breaks nor shifts the paging.
     });
   }
 
-  async listProjectsRaw(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, options?: RequestOptions): Promise<ApiResponse<ListProjectsResponse>> {
+  async listProjectsRaw(parent?: string, within?: string, q?: string, kind?: string, limit?: number, before?: string, actAsClient?: string, actAsUser?: string, options?: RequestOptions): Promise<ApiResponse<ListProjectsResponse>> {
     let path = "/api/projects";
     const _q = new URLSearchParams();
     if (parent !== undefined && parent !== null) _q.set("parent", String(parent));
@@ -2665,6 +2672,8 @@ deleted between pages neither breaks nor shifts the paging.
     if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
     if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
     if (before !== undefined && before !== null) _q.set("before", String(before));
+    if (actAsClient !== undefined && actAsClient !== null) _q.set("act_as_client", String(actAsClient));
+    if (actAsUser !== undefined && actAsUser !== null) _q.set("act_as_user", String(actAsUser));
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<ListProjectsResponse>("GET", path, {

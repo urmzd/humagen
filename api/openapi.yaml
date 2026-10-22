@@ -2734,7 +2734,12 @@ paths:
         the caller's role (`access`) and what they may do (`actions`).
         `next` is the cursor for the page after this one, or null at the
         end; a cursor is where its last row sat in the tree, so a project
-        deleted between pages neither breaks nor shifts the paging.
+        deleted between pages neither breaks nor shifts the paging. A
+        client's machine lists one of its people's projects with
+        `act_as_client` and `act_as_user`, as the Slack app's Home does: the
+        projects that person has a role in, each with their role, their
+        actions and what they may read in it. The person must hold
+        `projects:read` themselves.
       x-permission: projects:read
       parameters:
         - name: parent
@@ -2761,6 +2766,8 @@ paths:
           in: query
           description: The `next` cursor of the previous page.
           schema: {type: string}
+        - {$ref: "#/components/parameters/ActAsClient"}
+        - {$ref: "#/components/parameters/ActAsUser"}
       responses:
         "200":
           description: One page of projects.
@@ -3890,8 +3897,9 @@ components:
       description: |
         With `act_as_user`, read for a person of this client: only the
         credential the client names as its `slack.machine` may, and the
-        person, mapped through the client's people, must hold `runs:read`
-        themselves. Another caller is told the client is not found.
+        person, mapped through the client's people, must hold the route's
+        permission themselves (`runs:read` for the inbox, `projects:read`
+        for projects). Another caller is told the client is not found.
       schema: {type: string, pattern: "^[a-z0-9][a-z0-9-]{0,39}$"}
     ActAsUser:
       name: act_as_user

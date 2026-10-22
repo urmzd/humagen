@@ -236,7 +236,14 @@ func (s *Server) named(w http.ResponseWriter, tree *projects.Tree, address strin
 // keeps one project's sub-projects, within keeps a project and everything
 // below it, q searches name, title, description and customer, and kind keeps
 // one kind. limit is at most 200, and before is the next of the page before.
+// A client's machine lists one of its people's projects with act_as_client
+// and act_as_user: the projects that person may see, each as they see it.
+// The person must hold projects:read themselves.
 func (s *Server) listProjects(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	who, acting := s.actingFor(w, r, who, auth.ProjectsRead, "projects")
+	if !acting {
+		return
+	}
 	f := s.projectFacts(who)
 	q := r.URL.Query()
 	page := projects.Query{Q: q.Get("q"), Kind: projects.Kind(q.Get("kind")), After: q.Get("before")}
