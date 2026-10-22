@@ -18,9 +18,11 @@ import (
 
 	"github.com/urmzd/warp/internal/mcpfake"
 	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/call"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/credref"
+	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/runs"
 )
 
@@ -251,4 +253,52 @@ func TestACalledRunIsAnsweredByThePersonWhoseCredentialsItsCallerUses(t *testing
 		t.Fatalf("ben answering a called run under one that acts for nobody: %v", err)
 	}
 	await(t, p, third.ID, runs.Completed)
+}
+
+// A run that uses ana's own credentials asks her alone its replies, and its
+// spec's answerers still decide who may answer at all. When they leave her
+// out, nobody may: the question waits, addressed to her, until it expires or
+// the run is stopped, as here, and nothing reaches the server. It is
+// documented, not changed: taking ana's answer would ignore the spec, and
+// taking ben's would search his words with her token.
+func TestAnswerersThatLeaveOutThePersonLeaveNobodyToAnswer(t *testing.T) {
+	w := newWorld(t, platform.Config{})
+	ctx := t.Context()
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	spec := agentspec.AgentSpec{Name: "asker", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt,
+		Tools: []string{"mcp:issues", "ask_person"}, Answerers: []string{"ben"}}
+	if _, err := w.p.Agents.Create(ctx, tenant, spec, "test"); err != nil {
+		t.Fatal(err)
+	}
+	w.model.ask("What should I search for?")
+	r, err := w.p.Converse(ctx, tenant, platform.Turn{ID: "api-asker", Agent: "asker", Text: "Look something up", Actor: platform.ActorOf(ana)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, w.p, r.ID, runs.Parked)
+	msg := questionFor(t, w.p, run.ID)
+	if !slices.Equal(msg.Audience, []string{"ana"}) {
+		t.Errorf("addressed to %v, want ana", msg.Audience)
+	}
+	// The runtime refuses ana, whom answerers leave out, and warp refuses ben.
+	for _, by := range []auth.Principal{ana, ben} {
+		reply := platform.QuestionAnswer{Action: platform.ActReply, Text: by.Subject + "'s words"}
+		if _, err := w.p.AnswerQuestion(ctx, by, run.ID, run.Question.ID, reply); !errors.Is(err, platform.ErrForbidden) {
+			t.Fatalf("%s answered = %v, want forbidden", by.Subject, err)
+		}
+	}
+	if got, _ := w.p.Runs.Get(tenant, run.ID); got.Status != runs.Parked {
+		t.Fatalf("the run is %s, want still waiting", got.Status)
+	}
+	if got := w.server.Calls(); len(got) != 0 {
+		t.Fatalf("the server was reached with %q", got)
+	}
+	if _, err := w.p.StopRun(ctx, ana, run.ID); err != nil {
+		t.Fatalf("stopping the run: %v", err)
+	}
+	await(t, w.p, run.ID, runs.Stopped)
+	within(t, "the question settled as stopped", func() bool {
+		m, err := w.p.InboxGet(ana, msg.ID)
+		return err == nil && m.Parts[0].State != inbox.PartOpen
+	})
 }
