@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.18.0 (2026-10-22)
+
+### Features
+
+- **projects**: Slack catch-up, Home's Needs you and Your projects, phase 9 knowledge and inbox retention, agent names confined (#48) ([22d1d2a](https://github.com/urmzd/warp/commit/22d1d2acee3a2731fababfb616799c57728150d9))
+
+[Full Changelog](https://github.com/urmzd/warp/compare/v0.17.0...v0.18.0)
+
+
 ## 0.17.0 (2026-10-22)
 
 ### Features

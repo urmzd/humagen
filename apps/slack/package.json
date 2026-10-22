@@ -1,6 +1,6 @@
 {
   "name": "@warp/slack",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "private": true,
   "type": "module",
   "description": "Socket Mode Slack app: Warp runs rendered with shared components, streamed natively, with a stop button and an inbox.",

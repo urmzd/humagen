@@ -1,6 +1,6 @@
 {
   "name": "@warp/web",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "private": true,
   "type": "module",
   "description": "Web-only agent chat: message frame, reasoning, conversation, prompt bar, live turn hooks. Slack has native equivalents.",
