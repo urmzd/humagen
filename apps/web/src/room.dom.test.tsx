@@ -568,6 +568,19 @@ test("a question for the billing experts is not offered to anyone else, who is t
     questionRoom({ question: "q1", yours: false, for: "person", person: "ana" }, "ben");
     assert.ok(await screen.findByText(words.questionFor.person("ana")));
     assert.equal(screen.queryByRole("button", { name: defaultCopy.somethingElse }), null);
+    cleanup();
+    net?.restore();
+    // One for a project's owners names the project when the platform does,
+    // and is not offered to anyone else.
+    questionRoom({ question: "q1", yours: false, for: "owners", owners_of: "Field engineering" }, "ben");
+    assert.ok(await screen.findByText("This question is for the owners of Field engineering."));
+    assert.equal(screen.queryByRole("button", { name: defaultCopy.somethingElse }), null);
+    cleanup();
+    net?.restore();
+    // A project the reader may not see is never named.
+    questionRoom({ question: "q1", yours: false, for: "owners" }, "ben");
+    assert.ok(await screen.findByText(words.questionFor.owners("")));
+    assert.equal(screen.queryByText(/question is for the owners of /), null, "no project is named");
   } finally {
     restore();
   }

@@ -72,7 +72,9 @@ the Slack app after applying the updated manifest to grant file and canvas scope
 and register `/skill`.
 
 Skills use the existing client's `slack.commands` list; the agent receives the
-configured command and its arguments through the normal run path. Changes appear
+configured command and its arguments through the normal run path. A command
+whose name is a skill the project declares (see docs/projects.md, Skills) also
+gives the runs it starts that skill's instructions. Changes appear
 in a code channel on its next message after the client cache refreshes (30 seconds).
 Ordinary Slack channels use `/skill`; Slack's dynamic command API applies only to
 code channels. This does not install new agent skills or grant additional tools.

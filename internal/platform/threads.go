@@ -6,9 +6,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/urmzd/fiber/pkg/envelope"
@@ -334,7 +336,24 @@ type tagLookup struct {
 	tenant string
 	slack  map[string]string
 	sees   func(agent string) bool
+	// tree and project are where the message is posted, for the skills its
+	// chain offers.
+	tree    *projects.Tree
+	project string
 }
+
+// Skill reports whether a skill goes by name on the chain of the project
+// the message is posted in.
+func (l tagLookup) Skill(name string) bool {
+	if l.tree == nil {
+		return false
+	}
+	_, _, ok := l.tree.Skill(l.project, name)
+	return ok
+}
+
+// MentionKind is what a mention kind the workspace declares resolves to.
+func (l tagLookup) MentionKind(kind string) (string, bool) { return l.p.mentionKind(l.tenant, kind) }
 
 func (l tagLookup) Agent(name string) bool {
 	_, err := l.p.Agents.Get(l.ctx, l.tenant, name, 0)
@@ -634,6 +653,12 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err := threads.CheckText(in.Text); err != nil {
 		return Posted{}, err
 	}
+	if in.Visibility == "" && on == nil && in.ActAs == nil {
+		// A conversation a person starts as themselves, as in the console,
+		// starts private, its starter's alone, until they share it
+		// (ShareThread). A client names its visibility.
+		in.Visibility = threads.Private
+	}
 	switch in.Visibility {
 	case threads.Shared, threads.Private:
 	default:
@@ -669,8 +694,11 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 		sf := on.ref.surface(on.client.ID)
 		rec.Surface, rec.Announcement, first.SurfaceID, slack = &sf, on.announcement, on.ref.message(), nil
 	}
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent, tree: tree, project: project})
 	if err != nil {
+		return Posted{}, err
+	}
+	if mentions, err = skillTags(mentions, on != nil, on == nil && in.ActAs == nil && !in.PostOnly); err != nil {
 		return Posted{}, err
 	}
 	if on != nil && on.ref.Files {
@@ -747,8 +775,11 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		surfaceID, slack = on.ref.message(), nil
 	}
 	sees := p.Seer(person).Agent
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees, tree: tree, project: th.Project})
 	if err != nil {
+		return Posted{}, err
+	}
+	if mentions, err = skillTags(mentions, on != nil, on == nil && in.ActAs == nil && !in.PostOnly); err != nil {
 		return Posted{}, err
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
@@ -881,8 +912,20 @@ func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, as 
 // they may not read is passed over for them, as if unset (placeSeen), so
 // what the message did never names it.
 func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, via string, postOnly, reply, keeps bool, sees func(string) bool) (Posted, error) {
+	// No share moves the thread while its runs are being started, and they
+	// are filed where it is now.
+	mu := p.moves.of(tenant, th.ID)
+	mu.RLock()
+	defer mu.RUnlock()
+	if cur, err := p.Threads.Get(tenant, th.ID); err == nil {
+		th = cur
+	}
 	def, unavailable := p.defaultOf(tenant, th, sees)
-	d := threads.Decide(threads.Input{Mentions: m.Mentions, Reply: reply, PostOnly: postOnly, Default: def, Unavailable: unavailable})
+	// A person posting in the console, as themselves, runs only the agents
+	// they tag: no default answers them. A client's surface keeps its
+	// defaults, where mentioning the app is what asks.
+	tagsOnly := m.Via == threads.ViaConsole
+	d := threads.Decide(threads.Input{Mentions: m.Mentions, Reply: reply, PostOnly: postOnly, TagsOnly: tagsOnly, Default: def, Unavailable: unavailable})
 	out := Posted{Runs: []runs.Run{}, Notified: []string{}, Refused: []threads.Mention{}, Rule: d.Rule, Reason: d.Reason}
 	mentions := d.Mentions
 	// The runs a message starts act for the person who posted it, and for
@@ -998,8 +1041,10 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	if keeps && th.Project != "" {
 		meta[metaKeepsNotes] = th.Project
 	}
+	skills := p.skillsOfMessage(tenant, th, m, via)
+	pinSkills(meta, skills)
 	if agent == Auto {
-		who, err := p.resolveAgent(ctx, tenant, placeSeen(p.placeOfThread(tenant, th), sees), Auto, m.Text, sees)
+		who, err := p.resolveAgent(ctx, tenant, placeSeen(p.placeOfThread(tenant, th), sees), Auto, pickText(m.Text, skills), sees)
 		if err != nil {
 			return runs.Run{}, err
 		}
@@ -1159,6 +1204,14 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 			to = []string{mn.Name}
 		case threads.SME:
 			to, _ = tree.ExpertsFor(th.Project, mn.Name)
+		case threads.Role:
+			// Its holders are not invited, so in a private thread they
+			// could not read what they were told of.
+			if th.Visibility == threads.Private {
+				mn.Refused = "a role is not told in a private thread; tag its people, or share the thread"
+				continue
+			}
+			to = []string{projects.RolePrefix + mn.Name}
 		}
 		reached, cut := false, false
 		for _, who := range to {
@@ -1199,11 +1252,14 @@ func (p *Platform) raiseMention(tenant string, th threads.Thread, m threads.Mess
 	shown := s.message(m)
 	where := "#" + th.Channel
 	subject := fmt.Sprintf("%s mentioned you in %s", shown.Name, where)
-	if mn.Kind == threads.SME {
+	switch mn.Kind {
+	case threads.SME:
 		subject = fmt.Sprintf("%s asked the experts in %s", shown.Name, where)
 		if mn.Name != "" {
 			subject = fmt.Sprintf("%s asked the %s experts in %s", shown.Name, mn.Name, where)
 		}
+	case threads.Role:
+		subject = fmt.Sprintf("%s mentioned everyone holding %s in %s", shown.Name, mn.Name, where)
 	}
 	msg := inbox.Message{
 		Kind: inbox.KindMention, Subject: subject, From: inbox.From{Kind: "person", Name: shown.Name}, Severity: inbox.Info,
@@ -1339,6 +1395,116 @@ func (p *Platform) SetParticipants(ctx context.Context, who auth.Principal, id s
 	}
 	counted := func(pt threads.Participant) bool { return pt.Kind != threads.Agent || shown(pt.Name) }
 	return p.Threads.Participants(who.Tenant, id, th.Version, add, remove, counted, who.Subject, p.now())
+}
+
+// ErrStaysInProject reports a share that would move a conversation that has
+// runs to another project, and ErrStaysInChannel one that would move it to
+// another channel: its runs were filed where it is, and they stay read there.
+var (
+	ErrStaysInProject = errors.New("platform: a conversation that has runs stays in its project")
+	ErrStaysInChannel = errors.New("platform: a conversation that has runs stays in its channel")
+)
+
+// ThreadShare shares a conversation: the project and channel it is shared
+// in, and people to add to it by handle.
+type ThreadShare struct {
+	// Project is where it is shared: "" keeps the thread's own, "~" is the
+	// workspace.
+	Project string `json:"project,omitempty"`
+	// Channel is the project's channel. "" keeps the thread's own in its own
+	// project, and is general in another.
+	Channel string `json:"channel,omitempty"`
+	// Add names people by handle, as participants.
+	Add []string `json:"add,omitempty"`
+}
+
+// threadLocks serialize starting a thread's runs (carryOut) with moving the
+// thread (ShareThread), so a run is never filed in the project a thread has
+// just left: a share reads whether the thread has runs, and moves it, while
+// no run of it is being started. A stripe holds many threads.
+type threadLocks [64]sync.RWMutex
+
+func (l *threadLocks) of(tenant, id string) *sync.RWMutex {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(tenant + "\x00" + id))
+	return &l[h.Sum32()%uint32(len(l))]
+}
+
+// ShareThread makes a conversation shared in a project's channel, read by
+// everyone who sees that project, and adds the people it names. Only a
+// participant shares. Making a private thread shared, or moving a thread,
+// also takes what changing it takes (mayChangeThread: whoever started it,
+// while a member, or an owner of its project), so someone tagged into a
+// private conversation does not publish it; and it goes only into a project
+// the sharer is a member of, to a channel that is not archived (placeFor).
+// Sharing a thread that is shared already where it is only adds people, as
+// SetParticipants does. It moves to another project or channel only while no
+// run has been filed in it (ErrStaysInProject, ErrStaysInChannel). A default
+// the thread names that cannot answer where it moves is cleared. Shared stays
+// shared: nothing here makes a thread private again.
+func (p *Platform) ShareThread(ctx context.Context, who auth.Principal, id string, in ThreadShare) (threads.Thread, error) {
+	th, err := p.ThreadRecord(who.Tenant, id)
+	if err != nil {
+		return threads.Thread{}, err
+	}
+	if err := p.changesThread(who, th); err != nil {
+		return threads.Thread{}, err
+	}
+	if !takesPart(th, who.Subject) {
+		return threads.Thread{}, fmt.Errorf("%w: only its participants share a conversation", projects.ErrForbidden)
+	}
+	if len(in.Add) > threads.MaxParticipants {
+		return threads.Thread{}, fmt.Errorf("%w: at most %d people are added at once", threads.ErrInvalid, threads.MaxParticipants)
+	}
+	project, channel := th.Project, cmp.Or(in.Channel, th.Channel)
+	if in.Project != "" && projects.NameOf(in.Project) != th.Project {
+		project, channel = projects.NameOf(in.Project), cmp.Or(in.Channel, projects.General)
+	}
+	moves := project != th.Project || channel != th.Channel
+	if moves || th.Visibility == threads.Private {
+		if err := p.mayChangeThread(who, th); err != nil {
+			return threads.Thread{}, err
+		}
+		got, ch, err := p.placeFor(who, project, channel)
+		if err != nil {
+			return threads.Thread{}, err
+		}
+		project, channel = got, ch.Name
+		moves = project != th.Project || channel != th.Channel
+	} else if err := p.MayPost(who, Place{Project: th.Project, Thread: th.ID}); err != nil {
+		return threads.Thread{}, err
+	}
+	add := make([]threads.Participant, 0, len(in.Add))
+	for _, handle := range in.Add {
+		subject, found := p.byHandle(who.Tenant, handle)
+		if !found {
+			return threads.Thread{}, fmt.Errorf("%w: no one in this workspace goes by @%s", threads.ErrInvalid, handle)
+		}
+		add = append(add, threads.Participant{Kind: threads.Person, Name: subject})
+	}
+	if th, err = p.recordOf(who.Tenant, id, p.claimant(who, th.Project)); err != nil {
+		return threads.Thread{}, err
+	}
+	def := th.Default
+	if project != th.Project && def != "" && def != Auto && p.tagRefusal(who.Tenant, project, def) != "" {
+		// It could not answer there. Clearing it says nothing of an agent
+		// the sharer may not read.
+		def = ""
+	}
+	shown := p.Seer(who).participantShownNow(th)
+	counted := func(pt threads.Participant) bool { return pt.Kind != threads.Agent || shown(pt.Name) }
+	mu := p.moves.of(who.Tenant, id)
+	mu.Lock()
+	defer mu.Unlock()
+	if moves {
+		if _, err := p.Runs.Conversation(who.Tenant, id); err == nil {
+			if project != th.Project {
+				return threads.Thread{}, ErrStaysInProject
+			}
+			return threads.Thread{}, ErrStaysInChannel
+		}
+	}
+	return p.Threads.Share(who.Tenant, id, th.Version, project, channel, def, add, counted, who.Subject, p.now())
 }
 
 // byHandle is the subject of the person who goes by a handle.

@@ -61,15 +61,16 @@ func (p *Platform) sourcesFor(tag envelope.Tag, edge call.Edge, project string) 
 
 // resolveRevision puts in place, on the request's copy of the pinned
 // revision, what the platform decides about it before fiber reads it: the
-// workspace's model policy for the one the agent names (resolveModel), and the
-// knowledge sources the run was pinned with (withSources). The pinned
-// definition itself is never changed.
+// workspace's model policy for the one the agent names (resolveModel), the
+// knowledge sources the run was pinned with (withSources), and the skills it
+// was told to use, ahead of its text (withSkills). The pinned definition
+// itself is never changed.
 func (p *Platform) resolveRevision(req runtime.Request) (runtime.Request, error) {
 	req, err := p.resolveModel(req)
 	if err != nil {
 		return req, err
 	}
-	return withSources(req), nil
+	return withSkills(withSources(req))
 }
 
 // withSources adds the knowledge sources a run's tag was pinned with to its

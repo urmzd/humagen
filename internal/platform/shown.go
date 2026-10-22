@@ -103,6 +103,10 @@ func (n Names) Of(subject string) string {
 	return n.s.name(subject)
 }
 
+// Key is how a person is named outside the platform: their handle, else
+// their subject when it holds no address, else "".
+func (n Names) Key(subject string) string { return n.s.key(subject) }
+
 // NameOf is what a person is called, for one name (see Names).
 func (p *Platform) NameOf(tenant, subject string) string { return p.Names(tenant).Of(subject) }
 

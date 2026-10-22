@@ -57,6 +57,10 @@ func TestTheReferenceExamplesLoad(t *testing.T) {
 	if f := w.Projects[1]; len(w.Knowledge) != 1 || len(f.Knowledge) != 1 || f.Knowledge[0] != "field-playbook" {
 		t.Fatalf("the example's knowledge = %v %v", w.Knowledge, f.Knowledge)
 	}
+	if f := w.Projects[1]; len(w.Skills) != 1 || len(f.Skills) != 1 || f.Skills[0].Name != "review" || f.Skills[0].ArgumentHint != "[account]" ||
+		len(w.MentionKinds) != 1 || w.MentionKinds[0].Resolves != "role" {
+		t.Fatalf("the example's skills and mention kinds = %+v %+v %+v", w.Skills, f.Skills, w.MentionKinds)
+	}
 }
 
 func TestNoFileIsAWorkingDefault(t *testing.T) {

@@ -46,7 +46,6 @@ import (
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/evals"
-	"github.com/urmzd/warp/pkg/feedback"
 	"github.com/urmzd/warp/pkg/inbox"
 	"github.com/urmzd/warp/pkg/journal"
 	"github.com/urmzd/warp/pkg/knowledge"
@@ -599,18 +598,22 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ThreadAnswers": {typ: answers{}}, "ThreadPosted": {typ: platform.Posted{}}, "ThreadNotice": {typ: threads.Notice{}},
 		"ThreadInput": {typ: platform.ThreadInput{}, written: true}, "ThreadMessageInput": {typ: platform.MessageInput{}, written: true},
 		"ThreadUpdate": {typ: platform.ThreadUpdate{}, written: true}, "ThreadParticipantsUpdate": {typ: platform.ParticipantsUpdate{}, written: true},
-		"Channel": {typ: projects.Channel{}}, "ClientBinding": {typ: projects.Binding{}}, "ChannelView": {typ: channelView{}},
+		"ThreadShare": {typ: platform.ThreadShare{}, written: true},
+		"Channel":     {typ: projects.Channel{}}, "ClientBinding": {typ: projects.Binding{}}, "ChannelView": {typ: channelView{}},
 		"ChannelInput": {typ: platform.ChannelInput{}, written: true}, "ChannelUpdate": {typ: platform.ChannelUpdate{}, written: true},
 		"ProjectExpert": {typ: projects.Expert{}}, "ProjectExperts": {typ: platform.Experts{}}, "Project": {typ: projects.Project{}}, "ProjectView": {typ: projectView{}},
 		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectLimit": {typ: projectLimit{}},
 		"ProjectDetail": {typ: projectDetail{}}, "ProjectChange": {typ: projectChangeView{}},
 		"ProjectKnowledge": {typ: platform.ProjectKnowledge{}}, "ProjectKnowledgeSource": {typ: projects.KnowledgeSource{}}, "ProjectKnowledgeInput": {typ: platform.KnowledgeInput{}, written: true},
+		"ProjectSkill": {typ: projects.Skill{}}, "ProjectSkillRef": {typ: projects.SkillRef{}}, "ProjectSkills": {typ: platform.ProjectSkills{}}, "ProjectSkillsInput": {typ: platform.SkillsInput{}, written: true},
+		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
 		"ProjectInput": {typ: platform.ProjectInput{}, written: true}, "ProjectUpdate": {typ: platform.ProjectUpdate{}, written: true},
 		"ProjectAgents": {typ: projects.Agents{}}, "AgentAvailability": {typ: projects.Availability{}}, "AgentOffer": {typ: platform.Offer{}},
 		"DefaultResolved": {typ: platform.Nearer{}}, "ProjectAgentsView": {typ: platform.ProjectAgents{}},
 		"ProjectAgentsInput": {typ: platform.AgentsInput{}, written: true}, "AgentPlace": {typ: platform.AgentPlace{}}, "AgentHome": {typ: agentHome{}},
-		"Person":       {typ: personView{}},
-		"ProjectEntry": {typ: projects.Entry{}}, "ProjectKindSpec": {typ: projects.KindSpec{}}, "ProjectAccess": {typ: projects.Access{}},
+		"Person":        {typ: personView{}},
+		"PersonProject": {typ: personProject{}},
+		"ProjectEntry":  {typ: projects.Entry{}}, "ProjectKindSpec": {typ: projects.KindSpec{}}, "ProjectAccess": {typ: projects.Access{}},
 		"ProjectInheritedOwner": {typ: inheritedOwner{}}, "ProjectMember": {typ: memberView{}}, "ProjectMembers": {typ: projectMembersView{}},
 		"ProjectLimitInput": {typ: projectLimitBody{}, written: true}, "InboxCounts": {typ: inbox.Counts{}},
 		"AnnouncementInput": {typ: struct {
@@ -620,7 +623,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		}{}, written: true},
 		"Settings": {typ: platform.Settings{}}, "Preferences": {typ: prefs.Preferences{}},
 		"ToolCredentials": {typ: platform.ToolCredentials{}}, "ToolCredential": {typ: platform.ToolCredential{}}, "ToolCredentialInput": {typ: credentials.Input{}, written: true},
-		"RunFeedback": {typ: feedback.Record{}}, "Attachment": {typ: attachment.Attachment{}},
+		"RunFeedback": {typ: shownFeedback{}}, "Attachment": {typ: attachment.Attachment{}},
 		"Schedule": {typ: schedule{}}, "ScheduleView": {typ: scheduleView{}},
 		"InboxNotice": {typ: inboxNotice{}}, "InboxFrom": {typ: inbox.From{}}, "InboxSource": {typ: inbox.Source{}},
 		"InboxOutcome": {typ: inbox.Outcome{}}, "InboxLimits": {typ: inbox.Limits{}}, "InboxAlertPart": {typ: inbox.AlertPart{}},
@@ -980,6 +983,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	}
 	c.call(acme, "PUT", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback", `{"rating":"down","reason":"incomplete","comment":"Please add sources"}`, http.StatusOK)
 	c.call(acme, "GET", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback", "", http.StatusOK)
+	c.call(acme, "GET", "/api/runs/{id}/feedback", "/api/runs/"+id+"/feedback?after=ada@example.com", "", http.StatusBadRequest)
 	next := c.call(acme, "POST", "/api/runs", "/api/runs", `{"agent":"helper","text":"And again","after":"`+id+`"}`, http.StatusAccepted)
 	if next.str("thread") != first.str("thread") || next.str("prev") != id {
 		t.Errorf("the follow-up is not in the first turn's conversation: %s", next.raw)
@@ -1268,7 +1272,11 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	mv := version(members)
 	c.call(acme, "GET", "/api/projects/{name}/members", "/api/projects/Ghost/members", "", http.StatusNotFound)
 	mset := c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members",
-		fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"viewer"},{"who":"okta|ana","role":"owner"}]}`, mv), http.StatusOK)
+		fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"viewer"},{"who":"okta|ana","role":"owner"},{"who":"okta|dana","role":"member"}]}`, mv), http.StatusOK)
+	// A person's own projects are listed in the directory, as the schema says.
+	if dir := c.call(acme, "GET", "/api/people", "/api/people", "", http.StatusOK); !strings.Contains(string(dir.raw), `"projects":[{"name":"Globex"`) {
+		t.Errorf("the directory does not list Dana's projects: %s", dir.raw)
+	}
 	c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"*","role":"viewer"}]}`, mv), http.StatusConflict)
 	// Members only: read by its members, and by projects:govern.
 	closed := c.call(acme, "PUT", "/api/projects/{name}/members", "/api/projects/Globex/members", fmt.Sprintf(`{"version":%d,"members":[{"who":"okta|ana","role":"owner"}]}`, version(mset)), http.StatusOK)
@@ -1515,10 +1523,54 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":[]}`, knownAt), http.StatusConflict)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d,"knowledge":["ghost"]}`, knownAt+1), http.StatusBadRequest)
 	c.call(acme, "PUT", know, "/api/projects/Field/knowledge", fmt.Sprintf(`{"version":%d}`, knownAt+1), http.StatusBadRequest)
+	// The skills a project declares are what a message posted there and
+	// below can name; GET /api/skills lists them without instructions, and
+	// GET /api/mentions lists the mention kinds and completes one.
+	sk := "/api/projects/{name}/skills"
+	got = c.call(acme, "GET", sk, "/api/projects/Field/skills", "", http.StatusOK)
+	skillsAt := version(got)
+	review := `{"name":"review","description":"Review a renewal.","argument_hint":"[account]","instructions":"Check the terms."}`
+	got = c.call(acme, "PUT", sk, "/api/projects/Field/skills", fmt.Sprintf(`{"version":%d,"skills":[%s]}`, skillsAt, review), http.StatusOK)
+	if o := sliceOf(got.field("offered")); len(o) != 1 || obj(o[0])["name"] != "review" || obj(o[0])["from"] != "Field" {
+		t.Errorf("Field's skills are %s", got.raw)
+	}
+	c.call(acme, "PUT", sk, "/api/projects/Field/skills", fmt.Sprintf(`{"version":%d,"skills":[]}`, skillsAt), http.StatusConflict)
+	c.call(acme, "PUT", sk, "/api/projects/Field/skills", fmt.Sprintf(`{"version":%d,"skills":[%s,%s]}`, skillsAt+1, review, review), http.StatusBadRequest)
+	c.call(acme, "PUT", sk, "/api/projects/Field/skills", fmt.Sprintf(`{"version":%d}`, skillsAt+1), http.StatusBadRequest)
+	got = c.call(acme, "GET", "/api/skills", "/api/skills?project=Field", "", http.StatusOK)
+	if l := sliceOf(got.field("skills")); len(l) != 1 || obj(l[0])["instructions"] != nil {
+		t.Errorf("the skills in Field are %s", got.raw)
+	}
+	c.call(acme, "GET", "/api/skills", "/api/skills", "", http.StatusOK)
+	c.call(acme, "GET", "/api/skills", "/api/skills?project=Nowhere", "", http.StatusNotFound)
+	got = c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field", "", http.StatusOK)
+	if k := sliceOf(got.field("kinds")); len(k) < 2 || obj(k[0])["kind"] != "sme" || obj(k[1])["kind"] != "skill" {
+		t.Errorf("the mention kinds are %s", got.raw)
+	}
+	got = c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field&kind=skill&q=rev", "", http.StatusOK)
+	if i := sliceOf(got.field("items")); len(i) != 1 || obj(i[0])["name"] != "review" {
+		t.Errorf("completing skill:rev is %s", got.raw)
+	}
+	c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field&kind=team", "", http.StatusNotFound)
+	c.call(acme, "GET", "/api/mentions", "/api/mentions?project=Field&q=rev", "", http.StatusBadRequest)
+	// A message that names a skill nobody declares is refused.
+	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"private","text":"$ghost please"}`, http.StatusBadRequest)
 
 	c.call(acme, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"shared","text":"hi"}`, http.StatusForbidden)
-	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"hi"}`, http.StatusBadRequest)
+	// A conversation the console starts is private, and an untagged
+	// message in it starts nothing.
+	draft := c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","text":"hi"}`, http.StatusCreated)
+	if th := obj(draft.field("thread")); th["visibility"] != "private" || draft.str("rule") != "untagged" || len(sliceOf(draft.field("runs"))) != 0 {
+		t.Errorf("a conversation started with no visibility is %s", draft.raw)
+	}
 	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"private","text":"hi"}`, http.StatusCreated)
+	share, draftPath := "/api/threads/{id}/share", "/api/threads/"+obj(draft.field("thread"))["id"].(string)+"/share"
+	c.call(ana, "POST", share, draftPath, `{"add":["nobody"]}`, http.StatusBadRequest)
+	sharedDraft := c.call(ana, "POST", share, draftPath, `{"channel":"renewals"}`, http.StatusOK)
+	if th := obj(sharedDraft.field("thread")); th["visibility"] != "shared" || th["channel"] != "renewals" || th["project"] != "Field" {
+		t.Errorf("shared, the conversation is %s", sharedDraft.raw)
+	}
+	c.call(acme, "POST", share, draftPath, `{}`, http.StatusForbidden)
 	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Ghost","visibility":"shared","text":"hi"}`, http.StatusNotFound)
 	// The app's machine posts a Slack person's message from a bound channel,
 	// as that person, who must hold runs:write themselves: here the policy
@@ -1540,6 +1592,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		c.settled(acme, obj(rs[0])["id"].(string))
 	}
 	threadPath := "/api/threads/" + tid
+	// A conversation that has runs stays in its project.
+	c.call(ana, "POST", share, threadPath+"/share", `{"project":"~"}`, http.StatusConflict)
 	c.call(acme, "GET", "/api/threads", "/api/threads?project=Field&channel=renewals", "", http.StatusOK)
 	c.call(acme, "GET", "/api/threads", "/api/threads?channel=Not+A+Slug", "", http.StatusBadRequest)
 	turnPage := c.call(acme, "GET", "/api/threads/{id}", threadPath+"?limit=1", "", http.StatusOK)
@@ -1717,8 +1771,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/me/credentials/{provider}":      {"provider": "issues"},
 		"/api/inbox/{id}/deliveries/{client}": {"id": mid, "client": "app"},
 		"/api/projects/{name}/channels":       {"name": "Field"}, "/api/projects/{name}/channels/{channel}": {"name": "Field", "channel": "renewals"},
-		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
+		"/api/projects/{name}/experts": {"name": "Field"}, "/api/projects/{name}/knowledge": {"name": "Field"}, "/api/projects/{name}/skills": {"name": "Field"}, "/api/threads/{id}": {"id": tid},
 		"/api/threads/{id}/messages": {"id": tid}, "/api/threads/{id}/participants": {"id": tid},
+		"/api/threads/{id}/share": {"id": tid},
 	}
 	valid := map[string]string{
 		"/api/runs/{id}/feedback": `{"rating":"up"}`,
@@ -1736,8 +1791,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		"/api/schedules/{name}":                      `{"expression":"0 3 * * *","agent":"helper","text":"Report."}`,
 		"/api/me/credentials/{provider}":             `{"ref":"op://People/svc/issues"}`,
 		"/api/projects/{name}/channels":              `{"name":"x"}`, "/api/projects/{name}/channels/{channel}": `{"version":1}`,
-		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/threads/{id}": `{"version":1}`,
+		"/api/projects/{name}/experts": `{"version":1,"experts":[]}`, "/api/projects/{name}/knowledge": `{"version":1,"knowledge":[]}`, "/api/projects/{name}/skills": `{"version":1,"skills":[]}`, "/api/threads/{id}": `{"version":1}`,
 		"/api/threads/{id}/messages": `{"text":"x"}`, "/api/threads/{id}/participants": `{"version":1}`,
+		"/api/threads/{id}/share":      `{}`,
 		"/api/projects/{name}/members": `{"version":1,"members":[{"who":"*","role":"member"}]}`, "/api/projects/{name}/move": `{"version":1,"parent":""}`,
 		"/api/projects/{name}/limits": `{"period":"day","max_runs":1}`, "/api/projects/{name}/announcements": `{"subject":"Hi","text":"Hi."}`,
 	}
@@ -1863,6 +1919,9 @@ var unexercised = map[string]string{
 	// filling it here would only test a counter, which pkg/threads' tests do.
 	"PUT /api/threads/{id} 429":              "thread cap",
 	"PUT /api/threads/{id}/participants 429": "thread cap",
+	// Sharing into another project counts the thread there, against the
+	// 2,000 a project holds; pkg/threads' tests fill nothing so large.
+	"POST /api/threads/{id}/share 429": "thread cap",
 	// A spend refusal is the same answer through every route that starts a
 	// run. createRun's 402 is exercised; a schedule's run now goes through
 	// the same admission.

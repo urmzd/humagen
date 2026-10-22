@@ -216,6 +216,7 @@ test("every kind of change in a project's history reads as words", () => {
     home: true,
     experts: true,
     knowledge: true,
+    skills: true,
     channel: true,
   };
   for (const what of Object.keys(kinds)) assert.ok(copy.project.what[what], `no words for a ${what} change`);
