@@ -387,8 +387,10 @@ export function ThreadRoom({
   const th = page.thread;
   const tags = useCompletion(th.project, agents, homes, topicsOf(projects, root, th.project), me);
   const posts = canRun && postsIn(projects, th.project);
-  // A private conversation is shared from its header, by someone who posts in it.
-  const shareable = posts && th.visibility === "private" && !th.surface && !!onSharing;
+  // A private conversation is published from its header by its starter, or
+  // an owner of its project, as the server holds them to it.
+  const owner = (th.project === "" ? root : projects.find((p) => p.name === th.project))?.access?.role === "owner";
+  const shareable = posts && th.visibility === "private" && !th.surface && !!onSharing && (th.created_by === me || owner);
   const hasRuns = turns.some((t) => t.run);
   // What the + menu selected for the conversation, shown at once and saved on the thread.
   const saved: Selection = { agents: th.agents ?? [], mode: th.mode ?? "best_fit", project: th.project, channel: th.channel };

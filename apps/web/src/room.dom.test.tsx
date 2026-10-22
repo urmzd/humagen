@@ -1106,3 +1106,23 @@ test("agents checked in a conversation's + menu are saved on the thread, and an 
     restore();
   }
 });
+
+test("someone added to a private conversation is not offered Share: its starter, or an owner of its project, publishes it", async () => {
+  const added: ThreadPage = { ...mine, thread: { ...mine.thread, created_by: "ben" } };
+  const member = tree.map((p) => (p.name === "Globex" ? { ...p, access: { role: "member" as const, from: "Globex", via: "*" } } : p));
+  net = stubFetch({
+    "GET /api/threads/th-00000000000000aa": () => added,
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+  });
+  render(
+    <ThreadRoom id={added.thread.id} me="ana" initial={added} tick={0} agents={[helper]} projects={member} root={null} workspaceName="Acme" canRun sharing={false} onSharing={() => {}} onOpenChannel={() => {}} onChanged={() => {}} />,
+  );
+  assert.ok(await screen.findByText(words.private));
+  assert.equal(screen.queryByRole("button", { name: words.share }), null);
+  cleanup();
+  // An owner of the project may.
+  render(
+    <ThreadRoom id={added.thread.id} me="ana" initial={added} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun sharing={false} onSharing={() => {}} onOpenChannel={() => {}} onChanged={() => {}} />,
+  );
+  assert.ok(await screen.findByRole("button", { name: words.share }));
+});
