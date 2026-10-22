@@ -1008,7 +1008,10 @@ Who may answer is decided from the run's pinned revision: the spec's
 `approvers` or `answerers` when it names them, else anyone in the
 workspace, and never the person whose request raised a call they are
 asked to approve, unless the spec sets `self_approval`. Anyone else is
-403 and nothing changes. A surface that authenticated a person itself
+403 and nothing changes. A call that acts as a person
+(`question.tool.acts_for_person`) is approved with edited `arguments`
+only by that person: anyone else's edit is 403, and they may approve
+or deny it as asked. A surface that authenticated a person itself
 answers for them with `act_as`: only the credential its client names,
 and only for a person its client maps.
 

@@ -1492,6 +1492,8 @@ export interface QuestionTool {
   arguments?: unknown;
   /** The tool's parameter schema. */
   schema?: unknown;
+  /** The call runs with the credential of the person the run acts for, a tool that acts as them. Anyone who may approve it may approve or deny it as asked, but only that person may approve it with edited `arguments`; anyone else's edit is 403. */
+  acts_for_person?: boolean;
 }
 
 /** What a run is waiting on a person for: to approve a tool call, to

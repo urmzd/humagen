@@ -3,6 +3,7 @@ package platform_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -531,6 +532,47 @@ func TestNobodyConnectsAnotherPersonsReference(t *testing.T) {
 	w.ask(t, "api-ana", platform.ActorOf(ana))
 	if calls := w.server.Calls(); len(calls) != 1 || calls[0] != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] {
 		t.Fatalf("ana's run reached the server with %q", calls)
+	}
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
+}
+
+// An approval of a call that acts as the person a run acts for is a second
+// pair of eyes on their own request, never a way to act as them: ben may
+// approve ana's call as she asked it, but not with arguments of his own,
+// which would reach the provider with her token.
+func TestAnApproverCannotEditACallThatActsAsThePerson(t *testing.T) {
+	w := newWorld(t, platform.Config{})
+	ctx := t.Context()
+	spec := agentspec.AgentSpec{Name: "careful", Model: "offline", Provider: "offline", SystemPrompt: workerPrompt,
+		Tools: []string{"mcp:issues"}, Approvals: []string{searchTool}}
+	if _, err := w.p.Agents.Create(ctx, tenant, spec, "test"); err != nil {
+		t.Fatal(err)
+	}
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	r, err := w.p.Converse(ctx, tenant, platform.Turn{ID: "api-careful", Agent: "careful", Text: "Any open bugs?", Actor: platform.ActorOf(ana)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := await(t, w.p, r.ID, runs.Parked)
+	if run.Question == nil || run.Question.Tool == nil || run.Question.Tool.Name != searchTool || !run.Question.Tool.ActsForPerson {
+		t.Fatalf("parked on %+v, want an approval of a call that acts as ana", run.Question)
+	}
+	edited := platform.QuestionAnswer{Action: platform.ActApprove, Arguments: json.RawMessage(`{"q":"payroll"}`)}
+	if _, err := w.p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, edited); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("ben edited ana's call: %v", err)
+	}
+	if got, _ := w.p.Runs.Get(tenant, run.ID); got.Status != runs.Parked {
+		t.Fatalf("a refused edit moved the run to %s", got.Status)
+	}
+	if got := w.server.Calls(); len(got) != 0 {
+		t.Fatalf("the tool was called before the call was approved: %q", got)
+	}
+	if _, err := w.p.AnswerQuestion(ctx, ben, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActApprove}); err != nil {
+		t.Fatalf("ben approving as asked: %v", err)
+	}
+	await(t, w.p, run.ID, runs.Completed)
+	if calls := w.server.Calls(); len(calls) != 1 || calls[0] != "Bearer "+environment["WARP_PERSON_ANA_ISSUES"] {
+		t.Fatalf("the approved call reached the server with %q", calls)
 	}
 	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
 }
