@@ -1371,7 +1371,14 @@ paths:
                 properties:
                   message: {$ref: "#/components/schemas/InboxMessage"}
                   history:
+                    description: |
+                      What changed the message, oldest first: at most 100
+                      changes, the newest kept. What changed it for everyone,
+                      and the caller's own marks; another reader's reads, and
+                      their hiding or snoozing of an announcement, are theirs
+                      alone and left out.
                     type: array
+                    maxItems: 100
                     items: {$ref: "#/components/schemas/InboxChange"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}

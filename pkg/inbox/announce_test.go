@@ -436,3 +436,60 @@ func TestAnOwnersAudienceReachesTheOwnersWhenRead(t *testing.T) {
 		t.Fatalf("a viewer of Globex's inbox sees %q", got)
 	}
 }
+
+// A reader's own marks on a message are theirs alone: another reader is
+// shown what changed the message for everyone, never who read it, or who
+// hid or snoozed their own copy of an announcement. The record keeps every
+// mark, and a snooze to the time already set is not one. The history a
+// reader is shown is bounded, the newest kept.
+func TestAReadersOwnMarksStayOutOfAnotherReadersHistory(t *testing.T) {
+	s := NewStore()
+	m := post(t, s, "Globex", "Renewal signed", t0)
+	until := t0.Add(time.Hour)
+	for range 3 {
+		if _, _, err := s.Snooze(acme, m.ID, "dee", until, t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.Read(acme, m.ID, "dee", true, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Dismiss(acme, m.ID, "dee", t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Read(acme, m.ID, "eve", true, t0); err != nil {
+		t.Fatal(err)
+	}
+	whats := func(cs []Change) []string {
+		var out []string
+		for _, c := range cs {
+			out = append(out, string(c.What)+" "+c.By)
+		}
+		return out
+	}
+	if got := whats(s.HistoryFor(acme, m.ID, "bo")); !slices.Equal(got, []string{"raised dana"}) {
+		t.Fatalf("another reader is shown %q", got)
+	}
+	if got := whats(s.HistoryFor(acme, m.ID, "dee")); !slices.Equal(got, []string{"raised dana", "snoozed dee", "read dee", "dismissed dee"}) {
+		t.Fatalf("dee is shown %q", got)
+	}
+	if n := len(s.History(acme, m.ID)); n != 5 {
+		t.Fatalf("the record holds %d changes, want every mark once", n)
+	}
+
+	// Snoozing to a new time each time is recorded each time, and shown
+	// bounded.
+	other := post(t, s, "Globex", "Kickoff", t0)
+	for i := range MaxHistory + 20 {
+		if _, _, err := s.Snooze(acme, other.ID, "dee", t0.Add(time.Duration(i+1)*time.Minute), t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := s.HistoryFor(acme, other.ID, "dee")
+	if len(got) != MaxHistory || !got[len(got)-1].Until.Equal(t0.Add(time.Duration(MaxHistory+20)*time.Minute)) {
+		t.Fatalf("dee is shown %d changes, the last %+v", len(got), got[len(got)-1])
+	}
+	if got := s.HistoryFor(acme, other.ID, "bo"); len(got) != 1 {
+		t.Fatalf("another reader is shown %d changes", len(got))
+	}
+}
