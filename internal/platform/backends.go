@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/urmzd/anchor/pkg/ledger"
 	dqueue "github.com/urmzd/anchor/pkg/queue"
@@ -61,7 +64,9 @@ type Backends struct {
 // OpenPostgres puts every backend on one Postgres database: warp's state
 // (pkg/state), fiber's agent registry, and anchor's run ledger and queue
 // (fiber's pkg/durable). Each migrates its own tables, idempotently. The
-// caller owns the pool and closes it after calling release.
+// caller owns the pool and closes it after calling release. The run ledger
+// and queue have connections of their own to the same database (see
+// runConnections), which release closes.
 //
 // It is one process's database: pkg/state takes it for this process, and a
 // second process gets state.ErrLocked until release is called or the first
@@ -83,11 +88,55 @@ func OpenPostgres(ctx context.Context, pool *pgxpool.Pool, providerNames ...stri
 	if err := agents.Migrate(ctx); err != nil {
 		return Backends{}, nil, err
 	}
-	l, q, err := durable.Open(ctx, pool)
+	runPool, err := runConnections(ctx, pool)
 	if err != nil {
 		return Backends{}, nil, err
 	}
-	return Backends{State: st, Agents: agents, Ledger: l, Queue: q}, st.Close, nil
+	defer func() {
+		if err != nil {
+			runPool.Close()
+		}
+	}()
+	l, q, err := durable.Open(ctx, runPool)
+	if err != nil {
+		return Backends{}, nil, err
+	}
+	release = func() error {
+		runPool.Close()
+		return st.Close()
+	}
+	return Backends{State: st, Agents: agents, Ledger: l, Queue: q}, release, nil
+}
+
+// runAnswerWithin is how long a statement on the run ledger and queue's
+// connections is given to answer once its context is cancelled. It bounds how
+// long a stopping platform waits on a database that no longer answers.
+const runAnswerWithin = 5 * time.Second
+
+// runConnections returns connections to pool's database for anchor's run
+// ledger and queue. They differ from pool's in one way: a statement already
+// sent when its context is cancelled is read to its answer, for up to
+// runAnswerWithin, instead of being given up on at once.
+//
+// A statement given up on can still be carried out by the database, and a
+// claim on the run queue must not be. A worker stops by cancelling its
+// claims, and anchor's Postgres queue claims on the worker's context. A claim
+// already sent when the worker stops can lease the next run due, often the
+// run the stopping worker has just handed back, to a worker that has stopped
+// listening. Nobody holds that lease: the next process cannot resume the run
+// until the lease runs out, 30 seconds later, and the run is charged a
+// failure. Read to its answer, the claim comes back to the worker, which hands
+// the run back as it stops.
+func runConnections(ctx context.Context, pool *pgxpool.Pool) (*pgxpool.Pool, error) {
+	cfg := pool.Config()
+	cfg.ConnConfig.BuildContextWatcherHandler = func(c *pgconn.PgConn) ctxwatch.Handler {
+		return &pgconn.DeadlineContextWatcherHandler{Conn: c.Conn(), DeadlineDelay: runAnswerWithin}
+	}
+	runPool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("platform: run ledger connections: %w", err)
+	}
+	return runPool, nil
 }
 
 func (b Backends) check() error {

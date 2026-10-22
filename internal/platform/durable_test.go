@@ -55,6 +55,9 @@ func eachBackend(t *testing.T, fn func(t *testing.T, first platform.Backends, ag
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Released here when the test does not restart. Releasing
+			// twice is harmless.
+			t.Cleanup(func() { _ = release() })
 			return b, func() platform.Backends {
 				if err := release(); err != nil {
 					t.Fatal(err)
