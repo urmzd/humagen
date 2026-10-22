@@ -778,22 +778,24 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, who auth.Princip
 			// A notice reaches only a reader the message is for, so an id
 			// from a project they cannot see, or an announcement for
 			// others, never reaches their stream.
-			var sent any = n
+			sent := []any{n}
 			if !s.P.InboxNoticeFor(who, n) {
-				// A client's machine hears of a message addressed to a
-				// person it maps, and for whom, to tell them in Slack.
-				as, mapped := s.P.SurfaceNoticeFor(who, n)
-				if !mapped {
+				// A client's machine hears of a message addressed to
+				// people it maps, once for each of them, to tell them
+				// in Slack.
+				sent = sent[:0]
+				for _, as := range s.P.SurfaceNoticesFor(who, n) {
+					sent = append(sent, inboxNotice{Notice: n, For: &as})
+				}
+			}
+			for _, one := range sent {
+				b, err := json.Marshal(one)
+				if err != nil {
 					continue
 				}
-				sent = inboxNotice{Notice: n, For: &as}
-			}
-			b, err := json.Marshal(sent)
-			if err != nil {
-				continue
-			}
-			if _, err := fmt.Fprintf(w, "event: inbox\ndata: %s\n\n", b); err != nil {
-				return
+				if _, err := fmt.Fprintf(w, "event: inbox\ndata: %s\n\n", b); err != nil {
+					return
+				}
 			}
 		case n := <-posts:
 			if !s.P.SeesThread(who, n.ID) {

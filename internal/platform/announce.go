@@ -2,6 +2,7 @@ package platform
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -135,38 +136,71 @@ func (p *Platform) ProjectInbox(who auth.Principal, project string, children boo
 	return msgs, next, err
 }
 
-// SurfaceNoticeFor reports, for a client's machine, a notice of a message
-// addressed by subject to a person one of its clients maps, and who that
-// person is there: a mention of them, or a question they may answer. The
-// machine reads it for them (act_as) and tells them in a direct message.
-// Nothing reaches the machine about anyone it does not map.
-func (p *Platform) SurfaceNoticeFor(who auth.Principal, n inbox.Notice) (ActAs, bool) {
+// SurfaceNoticesFor reports, for a client's machine, a notice of a message
+// addressed to people its clients map, and who each of them is there: a
+// mention of them, or a question they may answer, named by subject or sent
+// to a role they hold, as experts named by a role are. The machine reads it
+// for each of them (act_as) and tells them in a direct message. Nothing
+// reaches the machine about anyone it does not map, and one notice names at
+// most MaxNotified people, as one message notifies at most that many.
+func (p *Platform) SurfaceNoticesFor(who auth.Principal, n inbox.Notice) []ActAs {
 	switch n.Kind {
 	case inbox.KindMention, inbox.KindClarification, inbox.KindApproval:
 	default:
-		return ActAs{}, false
+		return nil
 	}
 	if who.Kind != auth.Machine {
-		return ActAs{}, false
+		return nil
 	}
-	tree := p.Projects.Tree(who.Tenant)
+	var tree *projects.Tree
+	var out []ActAs
 	for _, c := range p.Clients.List(who.Tenant) {
 		if !machineOf(c, who) || c.Slack == nil {
 			continue
 		}
-		for user, subject := range c.Slack.People {
-			person := personOf(who, p.mapped(who, subject))
+		for _, user := range slices.Sorted(maps.Keys(c.Slack.People)) {
+			// Who the message names is read first, by subject and roles,
+			// so nobody else's projects are walked.
+			named := p.mapped(who, c.Slack.People[user])
+			m, err := p.Inbox.GetAs(who.Tenant, n.ID, named)
+			if err != nil || !addressedTo(m, named) {
+				continue
+			}
+			person := personOf(who, named)
 			if !InboxSees(person, n.Kind) {
 				continue
 			}
-			m, err := p.Inbox.GetAs(who.Tenant, n.ID, p.inboxReader(tree, person))
-			if err != nil || (m.To != subject && !slices.Contains(m.Audience, subject)) || !p.Seer(person).Message(m) {
+			if tree == nil {
+				tree = p.Projects.Tree(who.Tenant)
+			}
+			if m, err = p.Inbox.GetAs(who.Tenant, n.ID, p.inboxReader(tree, person)); err != nil || !p.Seer(person).Message(m) {
 				continue
 			}
-			return ActAs{Client: c.ID, User: user}, true
+			out = append(out, ActAs{Client: c.ID, User: user})
+			if len(out) == MaxNotified {
+				return out
+			}
 		}
 	}
-	return ActAs{}, false
+	return out
+}
+
+// addressedTo reports whether a message names a reader in particular: by
+// subject, or by a role they hold. A message to a project's members or its
+// owners does not; it is read in their inbox, not sent to them.
+func addressedTo(m inbox.Message, r inbox.Reader) bool {
+	if m.To != "" {
+		return m.To == r.Subject
+	}
+	if r.Subject != "" && slices.Contains(m.Audience, r.Subject) {
+		return true
+	}
+	for _, role := range r.Roles {
+		if role != "" && slices.Contains(m.Audience, projects.RolePrefix+role) {
+			return true
+		}
+	}
+	return false
 }
 
 // InboxNoticeFor reports whether a notice about an inbox message may reach a

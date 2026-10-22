@@ -54,6 +54,8 @@ export class FakeSlack implements SlackApi {
   readonly responses: { url: string; body: Record<string, unknown> }[] = [];
   /** Methods that fail, by error code. A function decides per call. */
   failing: Record<string, string | ((args: Record<string, unknown>) => string | undefined)> = {};
+  /** What `conversations.replies` reads of each thread, by `channel/ts`. */
+  readonly replies = new Map<string, { ts: string; user?: string; text?: string }[]>();
   private clock = 1_800_000_000;
 
   async call<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -61,6 +63,9 @@ export class FakeSlack implements SlackApi {
     const fail = this.failing[method];
     const code = typeof fail === "function" ? fail(args) : fail;
     if (code) throw new SlackError(method, code);
+    if (method === "conversations.replies") {
+      return { ok: true, messages: this.replies.get(`${args.channel}/${args.ts}`) ?? [] } as T;
+    }
     if (method === "chat.startStream" || method === "chat.postMessage") {
       this.clock += 1;
       const channel = String(args.channel).startsWith("U") ? DM : args.channel;

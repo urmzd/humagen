@@ -93,13 +93,14 @@ export function withHistory(
 }
 
 /**
- * Read a thread up to the message asking now, a bounded number of pages.
- * The oldest pages come first from Slack, so a very long thread is read from
- * its start and its newest messages are the ones the caps keep.
+ * Read a thread up to the message asking now, or to its end when nothing
+ * asks, a bounded number of pages. The oldest pages come first from Slack,
+ * so a very long thread is read from its start and its newest messages are
+ * the ones the caps keep.
  */
 export async function readThread(
   slack: SlackApi,
-  at: { channel: string; threadTs: string; triggerTs: string },
+  at: { channel: string; threadTs: string; triggerTs?: string },
 ): Promise<SlackMessage[]> {
   const out: SlackMessage[] = [];
   let cursor: string | undefined;
@@ -110,8 +111,7 @@ export async function readThread(
     }>("conversations.replies", {
       channel: at.channel,
       ts: at.threadTs,
-      latest: at.triggerTs,
-      inclusive: false,
+      ...(at.triggerTs ? { latest: at.triggerTs, inclusive: false } : {}),
       limit: 200,
       ...(cursor ? { cursor } : {}),
     });
@@ -162,4 +162,13 @@ export class Names {
       return undefined;
     }
   }
+}
+
+/**
+ * Whether a Slack person is already in a thread: they wrote in it, or were
+ * mentioned in it the Slack way (`<@U…>`), so Slack told them there.
+ */
+export function inThread(messages: SlackMessage[], user: string): boolean {
+  const mentioned = (text: string) => text.includes(`<@${user}>`) || text.includes(`<@${user}|`);
+  return messages.some((m) => m.user === user || mentioned(m.text ?? ""));
 }

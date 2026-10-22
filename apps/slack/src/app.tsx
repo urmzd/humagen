@@ -40,7 +40,7 @@ import {
 } from "@warp/render-slack";
 import { choose, mayRoute, type Routing } from "./agents.ts";
 import { type Branding, brandedCopy, brandedWords, DEFAULT_BRANDING } from "./branding.ts";
-import { Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
+import { inThread, Names, readThread, sinceLastTurn, withHistory } from "./history.ts";
 import { askForm, ENTRY, type words } from "./host.ts";
 import { eventKey, runId, type Session, sessionName, sessionOf, threadKey } from "./keys.ts";
 import { Presenter } from "./present.tsx";
@@ -308,6 +308,9 @@ const sleep = (ms: number, signal: AbortSignal) =>
 
 const short = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 20);
 
+/** What a direct message to one person about one inbox message is kept by. */
+const toldKey = (as: ActAs, message: string) => `${as.user}\u0000${message}`;
+
 export class App {
   private readonly threads = new Map<string, Thread>();
   /** Slack deliveries already taken, so a redelivery in this process does nothing. */
@@ -323,7 +326,11 @@ export class App {
   private bindings: { at: number; list: Binding[] } | null = null;
   /** Announcements being posted right now, so two notices post one. */
   private readonly announcing = new Set<string>();
-  /** Where each mention or question sent to a person's direct messages was posted, to keep it current. */
+  /**
+   * Where each mention or question sent to a person's direct messages was
+   * posted, by person and message, to keep it current. A question to a role
+   * is one message sent to each person who holds it.
+   */
   private readonly told = new Recent<{ channel: string; ts: string }>(2_000);
   private readonly flushMs: number;
   private readonly pollMs: number;
@@ -1363,7 +1370,7 @@ export class App {
           { action: "reply", text },
           as,
         );
-        const told = this.told.get(updated.id);
+        const told = this.told.get(toldKey(as, updated.id));
         if (told)
           await this.slack.call("chat.update", {
             channel: told.channel,
@@ -1511,8 +1518,8 @@ export class App {
   /**
    * A mention or a question addressed to a person the client maps reaches
    * them in a direct message with the app, with Reply, and is kept current
-   * as it is settled. One raised in a Slack thread of this app's is not:
-   * Slack told them there.
+   * as it is settled. One raised in a Slack thread of this app's that the
+   * person is already in is not: Slack told them there.
    */
   private async tell(notice: InboxNotice): Promise<void> {
     const as = notice.for;
@@ -1520,7 +1527,8 @@ export class App {
     const raw = await this.warp.inboxMessageFor(notice.id, as).catch(() => null);
     if (!raw) return;
     const view = this.personalView(raw);
-    const told = this.told.get(raw.id);
+    const key = toldKey(as, raw.id);
+    const told = this.told.get(key);
     if (told) {
       await this.slack.call("chat.update", { channel: told.channel, ts: told.ts, ...view });
       return;
@@ -1528,12 +1536,29 @@ export class App {
     if (raw.state !== "open") return;
     const thread = raw.source?.thread;
     const surface = thread ? await this.warp.threadSurface(thread).catch(() => null) : null;
-    if (surface?.client === this.opts.clientId) return;
+    if (surface?.client === this.opts.clientId && (await this.isIn(surface, as.user))) return;
     const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
       channel: as.user,
       ...view,
     });
-    this.told.set(raw.id, { channel: sent.channel ?? as.user, ts: sent.ts });
+    this.told.set(key, { channel: sent.channel ?? as.user, ts: sent.ts });
+  }
+
+  /**
+   * Whether a Slack person is already in a Slack thread of this app's: they
+   * wrote in it or were mentioned there the Slack way. A tag by handle, an
+   * invitation into someone's private thread or an expert asked by a run
+   * pings nobody in Slack, so they are told in their direct messages. A
+   * thread that cannot be read counts as one they are not in: told twice is
+   * better than never.
+   */
+  private async isIn(at: { channel: string; ts: string }, user: string): Promise<boolean> {
+    try {
+      return inThread(await readThread(this.slack, { channel: at.channel, threadTs: at.ts }), user);
+    } catch (e) {
+      this.log(`thread ${at.channel}/${at.ts} was not read: ${(e as Error).message}`);
+      return false;
+    }
   }
 
   /**

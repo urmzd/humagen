@@ -3,6 +3,7 @@ package platform_test
 import (
 	"errors"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -247,13 +248,14 @@ func TestAMachineHearsOfAMentionOfAPersonItMapsAndSettlesItForThem(t *testing.T)
 	if p.InboxNoticeFor(machine, notice) {
 		t.Fatal("the machine reads ana's mention as its own")
 	}
-	as, mapped := p.SurfaceNoticeFor(machine, notice)
-	if !mapped || as != (platform.ActAs{Client: "app", User: "U0ANA"}) {
-		t.Fatalf("the machine hears of it for %+v, %v", as, mapped)
+	heard := p.SurfaceNoticesFor(machine, notice)
+	if len(heard) != 1 || heard[0] != (platform.ActAs{Client: "app", User: "U0ANA"}) {
+		t.Fatalf("the machine hears of it for %+v", heard)
 	}
+	as := heard[0]
 	other := auth.Principal{Subject: "svc-other", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.RunsRead, auth.RunsWrite}}.WithPolicy(machine.Policy())
-	if _, heard := p.SurfaceNoticeFor(other, notice); heard {
-		t.Fatal("another machine hears of ana's mention")
+	if heard := p.SurfaceNoticesFor(other, notice); len(heard) != 0 {
+		t.Fatalf("another machine hears of ana's mention for %+v", heard)
 	}
 	done, err := p.InboxResolve(t.Context(), machine, m.ID, m.Parts[0].ID, platform.Resolution{Action: platform.ActReply, Text: "On it.", ActAs: &as})
 	if err != nil {
@@ -348,5 +350,44 @@ func TestASlackReplyToAMentionStartsNoRun(t *testing.T) {
 	}
 	if m, _ := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "ana")); m.State != inbox.Resolved {
 		t.Fatalf("after the reply the mention is %s", m.State)
+	}
+}
+
+// Experts named by a role are sent a mention as one message to the role, so
+// a client's machine hears of it for every person it maps who holds the
+// role, to tell each of them in Slack, and for nobody else.
+func TestAMachineHearsOfAnExpertQuestionForEveryoneItMapsInTheRole(t *testing.T) {
+	p, slackMachine := slackRoom(t, func(in *platform.ClientInput) {
+		in.Slack.People["U0OLU"] = "olu"
+	})
+	seePeople(t, p, auth.Principal{Subject: "olu"})
+	pol, err := auth.ParsePolicy("test", `
+role viewer { allow read on * }
+role operator extends viewer { allow write on runs }
+role security {}
+grant operator to subject "ana"
+grant viewer, security to subject "vic"
+grant viewer, security to subject "olu"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine := auth.Principal{Subject: slackMachine.Subject, Tenant: tenant, Kind: auth.Machine, Scopes: slackMachine.Scopes}.WithPolicy(pol)
+	cur, err := p.ProjectExperts(tenant, "Field")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.SetProjectExperts(tenant, "Field", ada, platform.Experts{Version: cur.Version, Experts: []projects.Expert{{Who: "role:security", Topics: []string{"security"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "@sme:security is this safe to ship?"})
+	m, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "role:security"))
+	if !ok {
+		t.Fatalf("the experts were not told: %+v", got)
+	}
+	heard := p.SurfaceNoticesFor(machine, inbox.Notice{ID: m.ID, Kind: inbox.KindMention, State: inbox.Open})
+	want := []platform.ActAs{{Client: "app", User: "U0OLU"}, {Client: "app", User: "U0VIC"}}
+	if !slices.Equal(heard, want) {
+		t.Fatalf("the machine hears of the experts' question for %+v, want %+v", heard, want)
 	}
 }

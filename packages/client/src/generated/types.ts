@@ -1161,8 +1161,10 @@ export interface InboxNotice {
   state: InboxState;
   updated_at: string;
   /** To a client's machine only: the person it maps whom a mention or a
-question is addressed to, so it reads the message for them
-(`act_as_client`, `act_as_user`) and tells them in Slack.
+question is addressed to, by subject or by a role they hold, so it
+reads the message for them (`act_as_client`, `act_as_user`) and
+tells them in Slack. A message to several people it maps, such as
+experts named by a role, is one notice for each, at most 20.
  */
   for?: ActAs;
 }
