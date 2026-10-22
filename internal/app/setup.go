@@ -63,7 +63,7 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 	}
 	sys, plat := &cfg.System, &cfg.Platforms[0]
 	q := asker{r: r, out: out}
-	fmt.Fprintln(out, "Setting up humagen. Press Enter to take the default in brackets. Nothing here asks for a key; you name where each one is kept.")
+	fmt.Fprintln(out, "Setting up Humagen. Press Enter to take the default in brackets. Nothing here asks for a key; you name where each one is kept.")
 
 	sys.Metadata.DisplayName = q.text("What should people see it called?", sys.Metadata.DisplayName, nonEmpty)
 	kind := q.choose("Who may sign in? dev (this machine only, no sign-in), tailscale or oidc", sys.Spec.Auth.Kind, "dev", "tailscale", "oidc")
@@ -147,7 +147,7 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 			b.CredentialAs = q.text("Sent as which variable or header (blank for a bearer token)", def, nil)
 		}
 		plat.Spec.Tools = append(plat.Spec.Tools, spec.Tool{Slot: spec.Slot{Kind: "mcp", Block: spec.MustJSON(b)}, ToolShared: spec.ToolShared{Name: name}})
-		fmt.Fprintln(out, "  Its tools start pending. humagen logs each one with its schema hash; add the ones you accept under accept.")
+		fmt.Fprintln(out, "  Its tools start pending. Humagen logs each one with its schema hash; add the ones you accept under accept.")
 	}
 
 	sl := plat.Spec.Surfaces.Slack
@@ -156,7 +156,7 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 		// The Slack app calls humagen's API, and a process cannot sign in
 		// through Tailscale Serve.
 		if sl != nil && sl.Enabled {
-			fmt.Fprintln(out, "Slack is off: its app cannot sign in to humagen through Tailscale Serve.")
+			fmt.Fprintln(out, "Slack is off: its app cannot sign in to Humagen through Tailscale Serve.")
 			sl.Enabled = false
 		}
 	case q.yes("Answer in Slack too?", sl != nil && sl.Enabled):
@@ -169,7 +169,7 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 		sl.BotToken = &spec.Ref{Ref: q.text("Where is the bot token (xoxb-)?", sl.BotToken.Ref, parseRef)}
 		sl.AppToken = &spec.Ref{Ref: q.text("Where is the app token (xapp-)?", sl.AppToken.Ref, parseRef)}
 		if kind == "oidc" && !sl.HumagenToken.Set() {
-			fmt.Fprintln(out, "  The app signs in to humagen as a machine client of the identity provider, with client credentials.")
+			fmt.Fprintln(out, "  The app signs in to Humagen as a machine client of the identity provider, with client credentials.")
 			c := sl.HumagenClient
 			if c == nil {
 				c = &spec.ClientCredentials{}

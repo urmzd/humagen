@@ -137,9 +137,9 @@ func remotePersonRefs(cfg spec.Config, kind string) (env []string, err error) {
 		}
 	}
 	if len(refused) > 0 {
-		return nil, fmt.Errorf("deploy: %s, which a %s target cannot reach: humagen reads a person's reference where it runs, when a run uses it. "+
+		return nil, fmt.Errorf("deploy: %s, which a %s target cannot reach: Humagen reads a person's reference where it runs, when a run uses it. "+
 			"For a %s target, list an env: start in person_refs instead (env:HUMAGEN_PERSON_{subject}_) and set those variables in the target, "+
-			"let people store their credential with humagen (workspace.person_credentials.values: true), or deploy local",
+			"let people store their credential with Humagen (workspace.person_credentials.values: true), or deploy local",
 			strings.Join(refused, "; "), kind, kind)
 	}
 	return env, nil
@@ -197,14 +197,16 @@ func carry(ctx context.Context, cfg spec.Config, keys credref.Resolver) (carried
 					if err != nil {
 						return err
 					}
-					name = fmt.Sprintf("HUMAGEN_REF_%d", len(seen)+1)
+					// Kept under the old prefix: a Secret written before the rename
+					// holds these keys, and a rollback reads them.
+					name = fmt.Sprintf(legacy.OldPrefix+"REF_%d", len(seen)+1)
 					seen[ref], c.values[name] = name, val
 					c.env = append(c.env, name)
 				}
 				t["ref"] = "env:" + name
 				return nil
 			}
-			// In key order, so each reference gets the same HUMAGEN_REF_n on
+			// In key order, so each reference gets the same WARP_REF_n on
 			// every deploy and a written deployment does not churn.
 			for _, k := range slices.Sorted(maps.Keys(t)) {
 				if err := walk(t[k]); err != nil {
@@ -323,7 +325,7 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 			ctxDir = wd
 		}
 		if _, err := os.Stat(filepath.Join(ctxDir, "Dockerfile")); err != nil {
-			return fmt.Errorf("deploy: compose needs an image, or build pointing at a humagen checkout (no Dockerfile in %s)", ctxDir)
+			return fmt.Errorf("deploy: compose needs an image, or build pointing at a Humagen checkout (no Dockerfile in %s)", ctxDir)
 		}
 		abs, _ := filepath.Abs(ctxDir)
 		svc["build"] = map[string]any{"context": abs}

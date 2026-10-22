@@ -160,7 +160,7 @@ func TestReleaseNotesArePostedOnceAcrossRestartsOnPostgres(t *testing.T) {
 		t.Fatalf("off, posted %+v", got)
 	}
 	first := start("v0.16.0", true)
-	if len(first.Messages) != 1 || first.Messages[0].Subject != "What's new in Humagen 0.16.0" || first.Messages[0].From != (inbox.From{Kind: "system", Name: "humagen"}) {
+	if len(first.Messages) != 1 || first.Messages[0].Subject != "What's new in Humagen 0.16.0" || first.Messages[0].From != (inbox.From{Kind: "system", Name: "humagen", Display: "Humagen"}) {
 		t.Fatalf("the first start = %+v", first)
 	}
 	if again := start("v0.16.0", true); len(again.Messages) != 1 || again.Messages[0].ID != first.Messages[0].ID {

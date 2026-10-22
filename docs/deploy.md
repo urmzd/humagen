@@ -127,7 +127,7 @@ Every request is an admin. Do not use it anywhere but your own machine.
 
 ## Kubernetes with Helm
 
-[`deploy/helm/humagen`](../deploy/helm/humagen) deploys one humagen: a Deployment, a
+[`deploy/helm/humagen`](../deploy/helm/humagen) deploys one Humagen server: a Deployment, a
 Service, an optional Ingress, a ConfigMap, a PersistentVolumeClaim for the
 workspace, and a ServiceAccount with no API token. The pod runs as non-root
 with a read-only root filesystem and no capabilities. Startup, liveness and

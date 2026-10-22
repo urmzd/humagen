@@ -23,13 +23,13 @@ system:
     auth:
       oidc:
         issuer: https://login.example.com
-        client_id: humagen
-        audience: humagen
+        client_id: warp
+        audience: warp
       groups: {claim: groups, roles: {admin: [platform-admins], viewer: [staff]}}
     blobs:
       kind: s3
       s3:
-        bucket: humagen-files
+        bucket: warp-files
         region: us-east-1
         access_key: {ref: env:HUMAGEN_S3_ACCESS_KEY_ID}
         secret_key: {ref: env:HUMAGEN_S3_SECRET_ACCESS_KEY}

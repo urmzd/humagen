@@ -3753,7 +3753,7 @@ end; pass it back as `before`.
     });
   }
 
-  /** Served by humagen, never fetched from elsewhere. 404 for someone with none. */
+  /** Served by Humagen, never fetched from elsewhere. 404 for someone with none. */
   async getPersonPhoto(handle: string, options?: RequestOptions): Promise<Blob> {
     let path = "/api/people/{handle}/photo";
     path = path.replace("{handle}", encodeURIComponent(String(handle)));

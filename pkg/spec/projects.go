@@ -275,7 +275,7 @@ func checkKinds(ks []ProjectKind) (map[string]string, error) {
 		case !kindName.MatchString(k.Name):
 			return nil, fmt.Errorf("%s.name: %q is not a kind's name: lower case letters, digits and dashes, starting with a letter, at most 32", at, k.Name)
 		case k.Name == ProjectCompany || k.Name == ProjectTeam || k.Name == ProjectAccount:
-			return nil, fmt.Errorf("%s.name: %q is a kind humagen defines", at, k.Name)
+			return nil, fmt.Errorf("%s.name: %q is a kind Humagen defines", at, k.Name)
 		case likes[k.Name] != "":
 			return nil, fmt.Errorf("%s.name: %q is defined twice", at, k.Name)
 		case k.Like != ProjectTeam && k.Like != ProjectAccount:

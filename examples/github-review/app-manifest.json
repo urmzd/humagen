@@ -1,7 +1,7 @@
 {
   "name": "humagen-trial",
   "url": "https://github.com/urmzd/humagen",
-  "description": "Evidence-backed PR reviews and issue conversations powered by humagen.",
+  "description": "Evidence-backed PR reviews and issue conversations powered by Humagen.",
   "public": false,
   "hook_attributes": {
     "url": "https://YOUR_FORWARDER/connectors/github",

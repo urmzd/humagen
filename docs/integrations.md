@@ -41,8 +41,9 @@ dev-auth console/API listener. Stop the forwarder and process after the trial.
 ## One credential item
 
 Keep the GitHub, Slack and model credentials together in one 1Password Secure
-Note named `Humagen integrations`, with concealed custom fields. Reuse an
-existing item when one exists. Copy values through 1Password's UI or CLI input,
+Note named `Warp integrations` (its name from before the product was renamed;
+references below name it), with concealed custom fields. Reuse an existing
+item when one exists. Copy values through 1Password's UI or CLI input,
 not command-line arguments, source files, terminal output or chat.
 
 | Field | Runtime use |
@@ -64,11 +65,11 @@ or consolidated by this migration; a live trial needs the actual item and target
 Use 1Password `op run --env-file` with a local reference-only environment file:
 
 ```dotenv
-ANTHROPIC_API_KEY=op://Private/Humagen integrations/anthropic_api_key
-HUMAGEN_GITHUB_TOKEN=op://Private/Humagen integrations/github_token
-HUMAGEN_GITHUB_WEBHOOK_SECRET=op://Private/Humagen integrations/github_webhook_secret
-HUMAGEN_SLACK_TOKEN=op://Private/Humagen integrations/slack_bot_token
-HUMAGEN_SLACK_SIGNING_SECRET=op://Private/Humagen integrations/slack_signing_secret
+ANTHROPIC_API_KEY=op://Private/Warp integrations/anthropic_api_key
+HUMAGEN_GITHUB_TOKEN=op://Private/Warp integrations/github_token
+HUMAGEN_GITHUB_WEBHOOK_SECRET=op://Private/Warp integrations/github_webhook_secret
+HUMAGEN_SLACK_TOKEN=op://Private/Warp integrations/slack_bot_token
+HUMAGEN_SLACK_SIGNING_SECRET=op://Private/Warp integrations/slack_signing_secret
 ```
 
 Then start the command above through `op run --env-file=<local-reference-file> --`.

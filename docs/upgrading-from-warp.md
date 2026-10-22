@@ -52,7 +52,10 @@ variables, never their values.
 
 Only the variables the server reads are copied: the settings
 (`internal/legacy` lists them: `HUMAGEN_HOME`, `HUMAGEN_POSTGRES_URL`,
-`HUMAGEN_OIDC_*`, `HUMAGEN_SLACK_*`, `HUMAGEN_GITHUB_*` and the rest). Other
+`HUMAGEN_OIDC_*`, `HUMAGEN_SLACK_*`, `HUMAGEN_GITHUB_*` and the rest), with a
+note for each; a people's-credential variable (`WARP_PERSON_*`) or a variable
+a `-secret-refs` or `secret_env` grant names is noted when only its old name is
+set. Other
 programs export `WARP_` variables of their own (the Warp terminal sets
 `WARP_IS_LOCAL_SHELL_SESSION`), and those are left alone.
 
@@ -126,12 +129,20 @@ and start a second, empty server beside them, so it refuses to upgrade such a
 release: set `nameOverride: warp` and it keeps every name and the volume.
 
 ```sh
-helm upgrade warp deploy/helm/humagen -n warp --reuse-values --set nameOverride=warp
+helm upgrade warp deploy/helm/humagen -n warp --reuse-values \
+  --set nameOverride=warp --set image.tag=<a tag built from this release> --wait --atomic
 ```
 
-`humagen deploy` does this itself, on every deploy: it asks helm whether the
-release was installed by the warp chart, or was given `nameOverride: warp`, and
-keeps the name. The guard reads the cluster, so `helm template` renders without
+`--reuse-values` keeps the old image tag, which cannot read the spec this
+chart writes, so name the new one; `--atomic` rolls back if the pod does not
+come up. The container keeps the name `warp` too, so patches and
+`kubectl logs -c warp` keep working.
+
+`humagen deploy` does this itself, on every deploy that applies: it asks helm
+whether the release was installed by the warp chart, or was given
+`nameOverride: warp`, and keeps the name. `humagen deploy -o` applies nothing
+and asks nothing, so add `nameOverride: warp` to the kubernetes block's
+values when writing for such a release; the chart refuses it otherwise. The guard reads the cluster, so `helm template` renders without
 it.
 
 Build the image from the same commit as the chart: the chart writes
@@ -161,9 +172,9 @@ stays as it is. The namespace, the `HelmRelease`, the `GitRepository`, the
 `Kustomization` and the `warp-env` Secret keep their names: the example
 `Kustomization` prunes, so renaming any of them would delete it.
 
-A `HelmRelease` on a helm-controller too old to know `chartNameChangeStrategy`
-is refused by its schema, and nothing changes until the controller is
-upgraded.
+`chartNameChangeStrategy` needs helm-controller 1.6.0 or later (Flux 2.7).
+An older controller does not know the field and may drop it, and then
+reinstalls the release: upgrade Flux first.
 
 ## Compose
 
@@ -231,6 +242,7 @@ one. There is no deprecation release on the old path.
 | Image paths `/var/lib/warp`, `/etc/warp`, `/usr/share/warp/web`, uid 10001 | Volumes and specs bind them |
 | Workspace `os.UserCacheDir()/warp/workspace` | Attachments and files stored records point at |
 | Slack journal `warp-slack/` and view callback `warp.connections` | The next start reads the journal; open modals carry the callback |
+| References `humagen deploy` carries into a target, `WARP_REF_n` | A Secret written before the rename holds them, and a rollback reads them |
 | Compose project, service, volumes, Postgres user and database `warp` | Volumes are named for the project, and Postgres creates its user only once |
 | System `metadata.name` default and `humagen deploy`'s namespace default, `warp` | They name existing compose projects, Helm releases and their `<release>-env` Secrets |
 | Flux namespace, `HelmRelease`, `GitRepository`, `Kustomization` and `warp-env` Secret | The example prunes |

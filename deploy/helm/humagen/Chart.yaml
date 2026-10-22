@@ -1,6 +1,6 @@
 apiVersion: v2
 name: humagen
-description: The humagen agent platform, one process serving the API, sign-in, the event stream and the web console.
+description: The Humagen agent platform, one process serving the API, sign-in, the event stream and the web console.
 type: application
 # The chart's own version. Bump it when a template or values.yaml changes.
 version: 0.2.0

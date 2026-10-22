@@ -47,6 +47,7 @@ var keptTokens = regexp.MustCompile(`(?i)` + strings.Join([]string{
 	`\b(?:config|dev)/warp\.yaml\b`,
 	`\bupgrading-from-warp\b`,
 	`nameOverride: warp\b`,
+	`\bWARP_REF_(?:n|\d+)?`,
 }, "|"))
 
 // fileTokens are allowed in one file or tree.
@@ -61,6 +62,7 @@ var fileTokens = []struct {
 	{"internal/app/deploy.go", regexp.MustCompile(`\bwarp chart\b`), "deploy keeps a warp release's names"},
 	{"docs/deploy.md", regexp.MustCompile("`warp`"), "Flux object names the example keeps"},
 	{"Dockerfile", regexp.MustCompile(`\.\.\. warp\b`), "the command's old name still runs it"},
+	{"docs/integrations.md", regexp.MustCompile(`Warp integrations`), "the owner's 1Password item, named before the rename"},
 }
 
 // explains is a line that says why it names warp.

@@ -6,7 +6,7 @@
   },
   "features": {
     "agent_view": {
-      "agent_description": "Answers mentions, direct messages and code channel commands with a humagen agent."
+      "agent_description": "Answers mentions, direct messages and code channel commands with a Humagen agent."
     },
     "bot_user": {
       "display_name": "humagen",

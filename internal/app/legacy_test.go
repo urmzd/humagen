@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/spec"
 )
 
@@ -174,4 +175,25 @@ func (s *syncBuffer) String() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.b.String()
+}
+
+// The shipped compose specs, unchanged since before the rename, start under
+// the environment compose.yaml and a new .env give them.
+func TestTheComposeSpecsReadTheRenamedVariables(t *testing.T) {
+	for _, dir := range []string{"../../deploy/compose/config", "../../deploy/compose/dev"} {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			t.Setenv("HUMAGEN_POSTGRES_URL", "postgres://warp:warp@postgres:5432/warp?sslmode=disable")
+			t.Setenv("HUMAGEN_OIDC_CLIENT_SECRET", "s")
+			for _, old := range []string{"WARP_POSTGRES_URL", "WARP_OIDC_CLIENT_SECRET"} {
+				t.Setenv(old, "")
+			}
+			l, err := loadFiles(t.Context(), Options{}, []string{dir}, credref.Default)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if l.env["HUMAGEN_POSTGRES_URL"] == "" {
+				t.Errorf("the stores' URL did not resolve: %v", l.env)
+			}
+		})
+	}
 }

@@ -284,6 +284,10 @@ func serve(o Options, args []string, d serveDefaults) error {
 	if err != nil {
 		return err
 	}
+	// A variable a grant names that is set only under its old name is noted.
+	for _, names := range refs {
+		legacy.NoteNamed(os.LookupEnv, names, o.notes)
+	}
 	people, err := personRefs(*personRefsFlag)
 	if err != nil {
 		return err

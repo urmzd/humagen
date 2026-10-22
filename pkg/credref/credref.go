@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	goruntime "runtime"
@@ -23,6 +22,8 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/mcptools"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // Errors. A message never carries a resolved value.
@@ -125,9 +126,11 @@ func (r Resolver) Resolve(ctx context.Context, raw string) (string, error) {
 	}
 	switch ref.Scheme {
 	case Env:
+		// A reference under the old WARP_ prefix and one under HUMAGEN_ read
+		// one variable, the new name winning (legacy.LookupEnv).
 		look := r.LookupEnv
 		if look == nil {
-			look = os.LookupEnv
+			look = legacy.LookupEnv
 		}
 		v, ok := look(ref.Name)
 		if !ok || strings.TrimSpace(v) == "" {

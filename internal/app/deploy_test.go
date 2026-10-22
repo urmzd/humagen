@@ -75,7 +75,7 @@ func TestCarryTurnsAKeychainReferenceIntoAnEnvOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	sl := c.cfg.Platforms[0].Spec.Surfaces.Slack
-	if sl.BotToken.Ref != "env:HUMAGEN_REF_1" || c.values["HUMAGEN_REF_1"] != "xoxb-1" || sl.AppToken.Ref != "env:SLACK_APP_TOKEN" {
+	if sl.BotToken.Ref != "env:WARP_REF_1" || c.values["WARP_REF_1"] != "xoxb-1" || sl.AppToken.Ref != "env:SLACK_APP_TOKEN" {
 		t.Fatalf("carried = %+v %+v", sl, c.values)
 	}
 	b, _ := spec.Marshal(c.cfg)
@@ -260,7 +260,7 @@ spec:
 			if !strings.Contains(string(b), "pg-from-the-shell") {
 				t.Errorf("data.%s = %q, want the shell's value", k, b)
 			}
-		case strings.HasPrefix(k, "HUMAGEN_REF_"):
+		case strings.HasPrefix(k, "WARP_REF_"):
 			keychain = append(keychain, string(b))
 		default:
 			t.Errorf("data has %s, which the spec does not reference", k)

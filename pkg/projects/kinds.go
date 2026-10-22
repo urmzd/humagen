@@ -39,7 +39,7 @@ func validKinds(ks []KindSpec) error {
 	for _, k := range ks {
 		switch {
 		case builtIn(k.Name):
-			return fmt.Errorf("%w: %s is a kind humagen defines", ErrInvalid, k.Name)
+			return fmt.Errorf("%w: %s is a kind Humagen defines", ErrInvalid, k.Name)
 		case !validKindName(k.Name):
 			return fmt.Errorf("%w: a kind's name is lower case letters, digits and dashes, starting with a letter, at most 32", ErrInvalid)
 		case utf8.RuneCountInString(k.Title) > MaxKindTitle || !oneLine(k.Title):

@@ -31,10 +31,10 @@ var settings = []string{
 }
 
 // families start the names of variables a reference reads rather than a
-// setting: people's credentials (PERSON_{subject}_...) and the references
-// deploy carries (REF_n). They are read under either prefix by Lookup, so
-// they are noted at start but never copied.
-var families = []string{"PERSON_", "REF_"}
+// setting: people's credentials (PERSON_{subject}_...). They are read under
+// either prefix by Lookup, so they are noted at start but never copied. The
+// references deploy carries keep the name WARP_REF_n and are not noted.
+var families = []string{"PERSON_"}
 
 // Settings are the full names of the variables the server reads.
 func Settings() []string {
