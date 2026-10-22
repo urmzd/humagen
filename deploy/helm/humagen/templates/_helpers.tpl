@@ -84,3 +84,33 @@ upgrade, Flux and humagen deploy; helm template sees nothing and renders.
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+The image must read the spec this chart writes (api_version humagen/v1),
+which no release before 0.21.0 does: with Recreate, such an image would take
+the server down. A tag that is not a release version (a commit) is not dated.
+*/}}
+{{- define "humagen.image" -}}
+{{- $tag := toString (.Values.image.tag | default .Chart.AppVersion) -}}
+{{- if regexMatch "^v?[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$" $tag -}}
+{{- if semverCompare "<0.21.0-0" (trimPrefix "v" $tag) -}}
+{{- fail (printf "image tag %s is a release from before the rename, which cannot read the spec this chart writes; use 0.21.0 or later (docs/upgrading-from-warp.md#kubernetes)" $tag) -}}
+{{- end -}}
+{{- end -}}
+{{- printf "%s:%s" .Values.image.repository $tag -}}
+{{- end -}}
+
+{{/*
+The container's name. The warp chart gave every container the old name,
+whatever its nameOverride, so a release it installed keeps the old name for
+patches and `kubectl logs -c`. Read from the running Deployment; a new
+release, or helm template, takes the chart's name.
+*/}}
+{{- define "humagen.containerName" -}}
+{{- $name := include "humagen.name" . -}}
+{{- $live := lookup "apps/v1" "Deployment" .Release.Namespace (include "humagen.fullname" .) | default dict -}}
+{{- range ((($live.spec | default dict).template | default dict).spec | default dict).containers | default list -}}
+{{- if eq .name "warp" -}}{{- $name = "warp" -}}{{- end -}}
+{{- end -}}
+{{- $name -}}
+{{- end -}}

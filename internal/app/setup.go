@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/spec"
 )
@@ -193,10 +192,10 @@ func runSetup(r *bufio.Reader, out io.Writer, path string) error {
 	if err := cfg.Check(nil); err != nil {
 		return err
 	}
-	// A spec under its old name is written as it was, so the release before
-	// the rename still reads it; start notes where the new place is.
+	// A spec read in the language from before the rename is written back in
+	// it, whatever its name, so that release still reads it.
 	write := spec.Marshal
-	if legacy.IsOldSpecFile(path) {
+	if cfg.Old {
 		write = spec.MarshalOld
 	}
 	b, err := write(cfg)

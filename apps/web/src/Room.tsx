@@ -33,6 +33,7 @@ import { useThreadSelection } from "./selection.ts";
 import { ShareDialog } from "./Share.tsx";
 import { mergeTurns } from "./turns.ts";
 import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
+import { OLD_SYSTEM_SENDER } from "./legacy.ts";
 
 /**
  * Conversations, channels and shared threads: where people and agents work
@@ -219,9 +220,17 @@ function MessageView({ m, focused }: { m: ThreadMessage; focused: boolean }) {
  * for a release's notes, never from whoever replied. A withdrawn one says
  * only that. Humagen needs no mark, as in the inbox, so its column stays empty.
  */
+/** The names the product posts under as itself: now, and in records from before the rename. */
+const PRODUCT_SENDERS = ["humagen", OLD_SYSTEM_SENDER];
+
 function AnnouncementView({ a }: { a: ThreadAnnouncement }) {
   // A release's notes are from the product, whatever name the record keeps.
-  const who = a.kind === "person" ? a.name || a.by : a.kind === "system" ? defaultCopy.product : a.by;
+  const who =
+    a.kind === "person"
+      ? a.name || a.by
+      : a.kind === "system" && PRODUCT_SENDERS.includes(a.by)
+        ? defaultCopy.product
+        : a.by;
   return (
     <article aria-label={`${defaultCopy.template.announcement} from ${who}`} className="flex gap-3">
       {a.kind === "agent" ? (

@@ -4377,8 +4377,8 @@ components:
         `Authorization: Bearer <token>`. A machine uses a client-credentials
         token and is granted exactly the scopes on it that are named
         `humagen:<permission>`, for example `humagen:runs:write`, or
-        `warp:<permission>`, the prefix before the product was renamed,
-        which is still honoured. A person
+        `warp:<permission>`, the old prefix from before the product was
+        renamed, which is still honoured. A person
         using a CLI sends an access token too, and gets roles from its groups
         claim. An ID token is not an API credential and is refused. There is
         no revocation check beyond expiry.
@@ -6948,7 +6948,7 @@ components:
           description: The agent, the rule or the part of the system, and a person's subject. A mention, a thread's artefact, names its poster as threads do, by handle, and never by subject.
           type: string
         display:
-          description: What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's. A mention's poster is called what their message is called now.
+          description: What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's, and to `Humagen` on what the product posted itself (a `system` sender named `humagen`, or `warp` in records written before the rename). A mention's poster is called what their message is called now.
           type: string
         approved_by:
           description: The person who published an agent's draft, by subject. Absent on what an agent posted itself.

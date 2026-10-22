@@ -35,7 +35,7 @@ var wholeFiles = []struct{ pattern, why string }{
 }
 
 // keptTokens are names stored data or deployments depend on, allowed anywhere.
-var keptTokens = regexp.MustCompile(`(?i)` + strings.Join([]string{
+var keptTokens = regexp.MustCompile(strings.Join([]string{
 	`(?:^|[^\w.])_?warp\.(?:thread|prev|ask|picked|project|routed|channel|message|within|sources|skills|client|call_input|deliver|hook|for|keeps_notes|place\.project|place\.thread|root|parent|depth|mode|lease|connections|github\.mutation\.v1)\b`,
 	`(?:^|[^\w.])warp\.\*`,
 	`"warp\."`,
@@ -46,7 +46,7 @@ var keptTokens = regexp.MustCompile(`(?i)` + strings.Join([]string{
 	`\b(?:config|dev)/warp\.yaml\b`,
 	`\bupgrading-from-warp\b`,
 	`nameOverride: warp\b`,
-	`\bWARP_REF_(?:n|\d+)?`,
+	`\bWARP_REF_(?:n|\d+)\b`,
 }, "|"))
 
 // fileTokens are allowed in one file or tree.
@@ -64,10 +64,34 @@ var fileTokens = []struct {
 	{"docs/integrations.md", regexp.MustCompile(`Warp integrations`), "the owner's 1Password item, named before the rename"},
 }
 
-// explains is a line that says why it names warp.
-var explains = regexp.MustCompile(`(?i)before the (?:product was )?renam|\bold (?:name|names|prefix|place|file|language|WARP_)|the old\b|formerly warp|was called warp|renamed from warp|warp, before`)
+// explains is a phrase that says why a name from before the rename is
+// there. It excuses only a mention of the old name near it, within reach,
+// never the rest of its line.
+var explains = regexp.MustCompile(`(?i)before the (?:product was )?renam\w*|\bold\b|\bformerly\b|\bwas called\b|\brenamed from\b|\bwarp chart\b`)
+
+// reach is how far, in bytes, an explanation excuses a mention of the old name.
+const reach = 24
 
 var word = regexp.MustCompile(`(?i)warp`)
+
+// unexplained reports whether line names warp somewhere no explanation
+// reaches.
+func unexplained(line string) bool {
+	why := explains.FindAllStringIndex(line, -1)
+	for _, m := range word.FindAllStringIndex(line, -1) {
+		near := false
+		for _, e := range why {
+			if m[1] >= e[0]-reach && m[0] <= e[1]+reach {
+				near = true
+				break
+			}
+		}
+		if !near {
+			return true
+		}
+	}
+	return false
+}
 
 func TestNoNewOldName(t *testing.T) {
 	root, err := filepath.Abs("../..")
@@ -76,7 +100,7 @@ func TestNoNewOldName(t *testing.T) {
 	}
 	out, err := exec.Command("git", "-C", root, "ls-files", "-z").Output()
 	if err != nil {
-		t.Skipf("no git checkout to read: %v", err)
+		t.Fatalf("git ls-files: %v (the check reads the checkout's files)", err)
 	}
 	var bad []string
 	for _, p := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
@@ -91,7 +115,7 @@ func TestNoNewOldName(t *testing.T) {
 			continue
 		}
 		for i, line := range strings.Split(string(b), "\n") {
-			if !word.MatchString(line) || explains.MatchString(line) {
+			if !word.MatchString(line) {
 				continue
 			}
 			rest := keptTokens.ReplaceAllString(line, "")
@@ -100,7 +124,7 @@ func TestNoNewOldName(t *testing.T) {
 					rest = f.re.ReplaceAllString(rest, "")
 				}
 			}
-			if word.MatchString(rest) {
+			if unexplained(rest) {
 				bad = append(bad, p+":"+itoa(i+1)+": "+strings.TrimSpace(line))
 			}
 		}

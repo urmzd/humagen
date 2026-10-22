@@ -36,6 +36,9 @@ services:
         required: false
     environment:
       HUMAGEN_POSTGRES_URL: ${HUMAGEN_POSTGRES_URL:-${WARP_POSTGRES_URL:-postgres://warp:${POSTGRES_PASSWORD:-warp}@postgres:5432/warp?sslmode=disable}}
+      # The same, under the old name config/warp.yaml and images from before
+      # the rename read, so rolling back to one still finds the database.
+      WARP_POSTGRES_URL: ${HUMAGEN_POSTGRES_URL:-${WARP_POSTGRES_URL:-postgres://warp:${POSTGRES_PASSWORD:-warp}@postgres:5432/warp?sslmode=disable}}
     volumes:
       # The workspace: agents' files and, with blobs.kind=disk, published files.
       - warp-data:/var/lib/warp

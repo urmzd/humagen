@@ -90,3 +90,26 @@ func TestWhatWasStoredBeforeTheRenameSurvivesARestart(t *testing.T) {
 		}
 	})
 }
+
+// Only the product's own sender is shown as Humagen; another part of the
+// system, such as Limits, keeps its name.
+func TestOnlyTheProductsOwnSenderIsShownAsHumagen(t *testing.T) {
+	p, _ := runningWith(t, platform.Config{})
+	for name, want := range map[string]string{"humagen": "Humagen", "warp": "Humagen", "Limits": ""} {
+		m, _, err := p.Inbox.PostOnce(tenant, "k-"+name, inbox.Message{
+			Subject: "from " + name, From: inbox.From{Kind: "system", Name: name}, Severity: inbox.Info,
+			Source: inbox.Source{Project: projects.Root},
+			Parts:  []inbox.Part{{Type: inbox.PartText, Text: "x"}},
+		}, time.Now(), inbox.DefaultPostCaps())
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := p.InboxGet(admin, m.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.From.Name != name || got.From.Display != want {
+			t.Errorf("a message from %s is shown from %+v, want display %q", name, got.From, want)
+		}
+	}
+}

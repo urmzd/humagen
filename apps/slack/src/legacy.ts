@@ -35,6 +35,9 @@ type Env = Record<string, string | undefined>;
 export function adoptEnv(env: Env): { env: Env; notes: string[] } {
   const out: Env = { ...env };
   const notes: string[] = [];
+  // The server that launched this app set both names itself, for an app from
+  // before the rename: the old ones are its copies, not the operator's.
+  const copied = env.HUMAGEN_OLD_NAMES_COPIED === "1";
   for (const s of SETTINGS) {
     const oldName = OLD_PREFIX + s;
     const newName = PREFIX + s;
@@ -45,6 +48,7 @@ export function adoptEnv(env: Env): { env: Env; notes: string[] } {
       out[newName] = old;
       notes.push(`${oldName} is the old name of ${newName}; it still works, rename it`);
     } else if (cur === old) {
+      if (copied) continue;
       notes.push(`${oldName} is set beside ${newName} and is ignored; remove it`);
     } else {
       notes.push(`${newName} and ${oldName} differ; using ${newName}`);

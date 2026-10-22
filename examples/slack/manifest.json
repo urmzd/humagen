@@ -1,7 +1,7 @@
 {
   "_metadata": { "major_version": 2, "minor_version": 1 },
   "display_information": {
-    "name": "humagen",
+    "name": "Humagen",
     "description": "Tag an agent from Slack and get its answer in the thread."
   },
   "features": {

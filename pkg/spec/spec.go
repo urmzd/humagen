@@ -56,6 +56,10 @@ type Config struct {
 	// Notes are what the files said under a name from before the rename,
 	// which still works: one line each, for the person at start.
 	Notes []string `json:"-"`
+	// Old reports a file written in the language from before the rename:
+	// api_version warp/v1, or the old surfaces.slack fields. A tool that
+	// writes the file back keeps it so (MarshalOld).
+	Old bool `json:"-"`
 }
 
 // Metadata names a document's subject.
@@ -282,6 +286,7 @@ func Load(paths ...string) (Config, error) {
 		for _, n := range docs.Notes {
 			cfg.Notes = append(cfg.Notes, f+": "+n)
 		}
+		cfg.Old = cfg.Old || docs.Old
 		if docs.hasSystem {
 			if haveSystem {
 				return cfg, fmt.Errorf("%s: %w: a second System document", f, ErrInvalid)
@@ -331,6 +336,7 @@ func Parse(b []byte) (parsed, error) {
 		switch h.APIVersion {
 		case APIVersion:
 		case legacy.APIVersion:
+			out.Old = true
 			out.Notes = append(out.Notes, fmt.Sprintf("document %d: api_version %s still works; write %s", i, legacy.APIVersion, APIVersion))
 		default:
 			return out, fmt.Errorf("document %d: %w: api_version is %q, want %q", i, ErrInvalid, h.APIVersion, APIVersion)
@@ -356,6 +362,7 @@ func Parse(b []byte) (parsed, error) {
 				return out, fmt.Errorf("%s: spec: %w", where, err)
 			}
 			for _, n := range notes {
+				out.Old = true
 				out.Notes = append(out.Notes, where+": "+n)
 			}
 			out.Platforms = append(out.Platforms, p)

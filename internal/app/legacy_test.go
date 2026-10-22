@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"go.yaml.in/yaml/v3"
+
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/spec"
@@ -197,5 +199,88 @@ func TestTheComposeSpecsReadTheRenamedVariables(t *testing.T) {
 				t.Errorf("the stores' URL did not resolve: %v", l.env)
 			}
 		})
+	}
+}
+
+// setup -o keeps a spec in the language it was read in, whatever its name.
+func TestSetupKeepsAnOldSpecOldUnderAnyName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prod.yaml")
+	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\nspec: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := setupCmd(Options{}, []string{"-o", path}, strings.NewReader(""), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); !strings.Contains(string(b), "api_version: warp/v1") {
+		t.Errorf("setup rewrote an old spec in the new language:\n%s", b)
+	}
+	fresh := filepath.Join(t.TempDir(), "warp.yaml")
+	if err := setupCmd(Options{}, []string{"-o", fresh}, strings.NewReader(""), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(fresh); !strings.Contains(string(b), "api_version: humagen/v1") {
+		t.Errorf("setup wrote a new spec in the old language:\n%s", b)
+	}
+}
+
+// The compose stack passes the database URL under both names: the kept
+// config/warp.yaml and an image from before the rename read the old one.
+func TestTheComposeStackSetsTheDatabaseURLUnderBothNames(t *testing.T) {
+	for _, f := range []string{"../../deploy/compose/compose.yaml", "../../deploy/compose/compose.dev.yaml"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var c struct {
+			Services map[string]struct {
+				Environment map[string]string `yaml:"environment"`
+			} `yaml:"services"`
+		}
+		if err := yaml.Unmarshal(b, &c); err != nil {
+			t.Fatal(err)
+		}
+		env := c.Services["warp"].Environment
+		if env["HUMAGEN_POSTGRES_URL"] == "" || env["HUMAGEN_POSTGRES_URL"] != env["WARP_POSTGRES_URL"] {
+			t.Errorf("%s: environment %v", f, env)
+		}
+	}
+}
+
+// start -f reads only the file named: the default spec is not looked for, so
+// an old one there is not noted, and two there do not stop it.
+func TestStartWithAFileLooksForNoDefaultSpec(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HUMAGEN_HOME", home)
+	t.Setenv(envWebDir, "")
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	for _, f := range []string{"warp.yaml", "humagen.yaml"} {
+		if err := os.WriteFile(filepath.Join(home, f), []byte("not read"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	named := filepath.Join(t.TempDir(), "acme.yaml")
+	if err := os.WriteFile(named, []byte("api_version: humagen/v1\nkind: System\nmetadata: {name: acme}\nspec: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ready := make(chan string, 1)
+	done := make(chan error, 1)
+	var notes bytes.Buffer
+	o := Options{ctx: ctx, ready: func(a string) { ready <- a }, notes: legacy.NewNotes(&notes)}
+	go func() { done <- start(o, []string{"-f", named, "-addr", "127.0.0.1:0"}, failingReader{t}, io.Discard) }()
+	select {
+	case <-ready:
+	case err := <-done:
+		t.Fatalf("start returned: %v", err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("start did not listen")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if notes.Len() != 0 {
+		t.Errorf("start noted %q for a file it did not read", notes.String())
 	}
 }

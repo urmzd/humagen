@@ -1792,6 +1792,11 @@ test("when humagen cannot say whether a channel is bound, nobody is answered aro
     textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
     new RegExp(defaultCopy.failure.unavailable("Humagen").slice(0, 20)),
   );
+  // A turn the app posts as itself is the product's, by name.
+  assert.match(
+    textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
+    /Humagen is AI and can make mistakes/,
+  );
   // The failure is not remembered: once humagen answers, the channel reads as bound.
   down = false;
   await deliver(w, mention("@helper and now?", "1700000300.000100", { user: "U09NOBODY" }));

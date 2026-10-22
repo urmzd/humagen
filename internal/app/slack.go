@@ -11,11 +11,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/spec"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // SlackManifest is a Slack app manifest: what the Slack app asks Slack for.
@@ -248,7 +251,15 @@ func (s *slackApp) env(ctx context.Context, url, publicURL string, lookup func(s
 		}
 		env = append(env, "HUMAGEN_TOKEN="+token)
 	}
-	return env, nil
+	// An app directory from before the rename reads only the old names, so
+	// they are passed too; HUMAGEN_OLD_NAMES_COPIED tells the new app they are
+	// copies the server made, not the operator's, so it notes nothing.
+	for _, kv := range slices.Clone(env) {
+		if rest, ok := strings.CutPrefix(kv, legacy.Prefix); ok {
+			env = append(env, legacy.OldPrefix+rest)
+		}
+	}
+	return append(env, legacy.Prefix+"OLD_NAMES_COPIED=1"), nil
 }
 
 // run keeps the Slack app running until ctx ends, restarting it with a

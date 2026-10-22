@@ -3,6 +3,9 @@
  * read. This is the one file in the console that names them.
  */
 
+/** The name the product posted under as itself before the rename, which old records keep. */
+export const OLD_SYSTEM_SENDER = "warp";
+
 /** Where the sidebar's state was kept before the rename. */
 export const OLD_SIDEBAR_KEY = "warp.sidebar";
 

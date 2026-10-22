@@ -1,9 +1,11 @@
 package legacy_test
 
 import (
+	"path/filepath"
 	"slices"
 	"testing"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/internal/platform"
 	"github.com/urmzd/humagen/pkg/call"
 	"github.com/urmzd/humagen/pkg/runs"
@@ -36,6 +38,10 @@ func TestStoredNamesAreKept(t *testing.T) {
 		if got != want {
 			t.Errorf("kept name is %q, want %q", got, want)
 		}
+	}
+	// Attachments and files stored records point at live here.
+	if got := legacy.WorkspaceDir("/cache"); got != filepath.Join("/cache", "warp", "workspace") {
+		t.Errorf("WorkspaceDir = %q", got)
 	}
 	if !slices.Equal(spec.BuiltinAgents, []string{"warp-writer", "warp-analyst", "warp-builder"}) {
 		t.Errorf("spec.BuiltinAgents = %q", spec.BuiltinAgents)

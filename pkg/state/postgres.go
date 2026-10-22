@@ -10,6 +10,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// table holds every namespace's records. Its name is the one every release
+// has used, so an older binary on the same schema reads the same rows.
+const table = "warp_state"
+
 // schema is the one table every namespace shares. Values are bytes, not
 // jsonb: a store writes JSON, but jsonb refuses a NUL in a string, and an
 // event's text is whatever a model or a person wrote.
@@ -18,7 +22,7 @@ import (
 // and a store that pads a sequence number into its keys reads them back in
 // the order it wrote them.
 const schema = `
-CREATE TABLE IF NOT EXISTS warp_state (
+CREATE TABLE IF NOT EXISTS ` + table + ` (
 	namespace  text        COLLATE "C" NOT NULL,
 	tenant     text        COLLATE "C" NOT NULL,
 	key        text        COLLATE "C" NOT NULL,
@@ -96,7 +100,7 @@ func (p *Postgres) Close() error {
 // Get implements Store.
 func (p *Postgres) Get(ctx context.Context, namespace, tenant, key string) ([]byte, error) {
 	var v []byte
-	err := p.pool.QueryRow(ctx, `SELECT value FROM warp_state WHERE namespace = $1 AND tenant = $2 AND key = $3`, namespace, tenant, key).Scan(&v)
+	err := p.pool.QueryRow(ctx, `SELECT value FROM `+table+` WHERE namespace = $1 AND tenant = $2 AND key = $3`, namespace, tenant, key).Scan(&v)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -108,7 +112,7 @@ func (p *Postgres) Get(ctx context.Context, namespace, tenant, key string) ([]by
 
 // Load implements Store.
 func (p *Postgres) Load(ctx context.Context, namespace string) ([]Record, error) {
-	rows, err := p.pool.Query(ctx, `SELECT tenant, key, value FROM warp_state WHERE namespace = $1 ORDER BY tenant, key`, namespace)
+	rows, err := p.pool.Query(ctx, `SELECT tenant, key, value FROM `+table+` WHERE namespace = $1 ORDER BY tenant, key`, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("state: load: %w", err)
 	}
@@ -135,10 +139,10 @@ func (p *Postgres) Write(ctx context.Context, namespace string, ops ...Op) error
 		b := &pgx.Batch{}
 		for _, op := range ops {
 			if op.Value == nil {
-				b.Queue(`DELETE FROM warp_state WHERE namespace = $1 AND tenant = $2 AND key = $3`, namespace, op.Tenant, op.Key)
+				b.Queue(`DELETE FROM `+table+` WHERE namespace = $1 AND tenant = $2 AND key = $3`, namespace, op.Tenant, op.Key)
 				continue
 			}
-			b.Queue(`INSERT INTO warp_state (namespace, tenant, key, value) VALUES ($1, $2, $3, $4)
+			b.Queue(`INSERT INTO `+table+` (namespace, tenant, key, value) VALUES ($1, $2, $3, $4)
 				ON CONFLICT (namespace, tenant, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
 				namespace, op.Tenant, op.Key, op.Value)
 		}

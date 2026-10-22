@@ -173,3 +173,38 @@ func TestDeployReusesTheOldComposeDirectory(t *testing.T) {
 		t.Errorf("no note naming %s: %q", old, out.String())
 	}
 }
+
+// A compose image from before the rename cannot read the spec deploy writes,
+// so deploy refuses it, naming why; a tag it cannot date is left alone.
+func TestDeployRefusesAComposeImageFromBeforeTheRename(t *testing.T) {
+	for image, refused := range map[string]bool{
+		"humagen:0.20.2": true, "ghcr.io/acme/warp:v0.19.0": true, "warp:0.9.0": true,
+		"humagen:0.21.0": false, "humagen:v0.22.1": false, "humagen:latest": false, "humagen:sha-abc123": false, "humagen": false,
+	} {
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		doc := "api_version: humagen/v1\nkind: System\nmetadata: {name: acme}\nspec:\n  deploy: {kind: compose, compose: {image: \"" + image + "\"}}\n"
+		if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		err := deploy(Options{}, []string{"-f", path, "-o", t.TempDir()}, strings.NewReader(""), io.Discard, credref.Default, (&ran{}).run)
+		if refused && (err == nil || !strings.Contains(err.Error(), "before the rename")) {
+			t.Errorf("%s: err = %v, want a refusal", image, err)
+		}
+		if !refused && err != nil {
+			t.Errorf("%s: %v", image, err)
+		}
+	}
+}
+
+func TestDeployRefusesAKubernetesImageFromBeforeTheRename(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	doc := strings.Replace(kubeSpec, "kubernetes: {namespace: agents}", "kubernetes: {namespace: agents, image: {tag: \"0.20.2\"}}", 1)
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var r ran
+	err := deploy(Options{}, []string{"-f", path}, strings.NewReader(""), io.Discard, credref.Default, r.run)
+	if err == nil || !strings.Contains(err.Error(), "before the rename") || len(r.args) != 0 {
+		t.Fatalf("err = %v, ran %q", err, r.args)
+	}
+}

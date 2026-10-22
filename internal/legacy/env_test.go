@@ -179,3 +179,28 @@ func TestNoteNamed(t *testing.T) {
 		t.Errorf("notes %q", got)
 	}
 }
+
+func TestBeforeTheRename(t *testing.T) {
+	for tag, want := range map[string]bool{
+		"0.20.2": true, "v0.9.0": true, "0.20.2-rc.1": true, "0.21.0": false, "v0.21.0": false, "0.21.0-rc.1": true,
+		"1.0.0": false, "latest": false, "sha-abc": false, "": false, "0.21": false,
+	} {
+		if got := legacy.BeforeRename(tag); got != want {
+			t.Errorf("BeforeRename(%q) = %v", tag, got)
+		}
+	}
+}
+
+// A variable a grant names, set under both names with different values, is
+// noted as AdoptEnv notes a setting: the new name wins.
+func TestNoteNamedWhenBothDiffer(t *testing.T) {
+	look := func(k string) (string, bool) {
+		v, ok := map[string]string{"WARP_GH": "old", "HUMAGEN_GH": "new", "WARP_SAME": "x", "HUMAGEN_SAME": "x"}[k]
+		return v, ok
+	}
+	n := legacy.NewNotes(nil)
+	legacy.NoteNamed(look, []string{"WARP_GH", "HUMAGEN_SAME"}, n)
+	if got := n.All(); len(got) != 1 || got[0] != "HUMAGEN_GH and WARP_GH differ; using HUMAGEN_GH" {
+		t.Errorf("notes %q", got)
+	}
+}

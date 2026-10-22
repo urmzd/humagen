@@ -480,6 +480,8 @@ export class App {
   /** Runs followed slowly right now, and how to make each one look again at once. */
   private readonly slow = new Map<string, () => void>();
   private readonly branding: Branding;
+  /** What a turn the app posts as itself is from: its branded name, else the product's. */
+  private readonly selfName: string;
   /** The shared copy, with this deployment's disclaimer. */
   private readonly copy: Copy;
   /** The host's own words, with this deployment's name. */
@@ -498,6 +500,7 @@ export class App {
     this.slowPollMs = opts.slowPollMs ?? 3 * 60_000;
     this.stopWaitMs = opts.stopWaitMs ?? 30_000;
     this.branding = opts.branding ?? DEFAULT_BRANDING;
+    this.selfName = this.branding.name ?? defaultCopy.product;
     this.copy = brandedCopy(this.branding);
     this.words = brandedWords(this.branding);
     this.names = new Names(slack, (line) => this.log(line));
@@ -922,7 +925,7 @@ export class App {
 
   /** A turn that ended before any run existed: nothing to retry, only something to read. */
   private async refuse(job: Job, presenter: Presenter, agent: string, failure: Failure) {
-    const turn = reduce(emptyTurn(job.key, { name: agent || "humagen" }), {
+    const turn = reduce(emptyTurn(job.key, { name: agent || this.selfName }), {
       type: "turn.failed",
       failure: { ...failure, retryable: false },
     });
@@ -958,7 +961,7 @@ export class App {
       if (asking && !job.again) {
         if (live.stopped) {
           await presenter.finish(
-            reduce(emptyTurn(job.key, { name: "humagen" }), { type: "turn.stopped" }),
+            reduce(emptyTurn(job.key, { name: this.selfName }), { type: "turn.stopped" }),
           );
           return "stopped" as const;
         }
@@ -1008,7 +1011,7 @@ export class App {
         // Stop was pressed before there was a run to stop: say so and settle the session.
         if (live.stopped) {
           await presenter.finish(
-            reduce(emptyTurn(job.key, { name: agent || "humagen" }), { type: "turn.stopped" }),
+            reduce(emptyTurn(job.key, { name: agent || this.selfName }), { type: "turn.stopped" }),
           );
           return "stopped" as const;
         }
@@ -1149,10 +1152,10 @@ export class App {
       posted.notified.length > 0
         ? this.copy.threads.notified(posted.notified)
         : this.copy.threads.postOnlyHint;
-    let turn = reduce(emptyTurn(job.key, { name: "humagen" }), {
+    let turn = reduce(emptyTurn(job.key, { name: this.selfName }), {
       type: "turn.started",
       turnId: job.key,
-      agent: { name: "humagen" },
+      agent: { name: this.selfName },
     });
     turn = reduce(turn, { type: "text.delta", text: said });
     await presenter.finish(reduce(turn, { type: "turn.completed" }));
