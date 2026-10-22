@@ -132,13 +132,16 @@ finds the same thread by its surface. The thread reads the announcement as
 it stands, so once it is withdrawn the thread says only that. Someone the
 client maps to nobody is told to connect their Slack account, as anywhere in
 a bound channel. A thread is seeded only where the Slack channel's binding
-files it in the announcement's own project, whose readers are the
-announcement's. There a reply under an announcement that was withdrawn
+files it in the announcement's own project, so only those who see that
+project read it. There a reply under an announcement that was withdrawn
 before anyone replied starts nothing, and the app says so (warp answers
 410); a draft never reaches a channel. After the Slack channel is bound to
 another project, or unbound, a reply under an old post starts a thread where
 it is now filed, as any other, open or withdrawn: nothing of the
 announcement comes with it, and nobody there is told what became of it.
+Once a thread is seeded, the announcement is part of it and of what its runs
+are sent, so it is read as they are, with `runs:read`, and not as the inbox
+reads it, with `projects:read`.
 
 A mention of a mapped person, or a question addressed to them, reaches the
 app's event stream with `for {client, user}`. The app reads it for them

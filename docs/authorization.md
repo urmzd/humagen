@@ -121,6 +121,7 @@ and then `{who: "role:field-eng", role: member}` on the project.
 | Post an announcement | `projects:write` | the project's `announce` role, owner by default |
 | Withdraw an announcement | `projects:write` | its author, or owner |
 | Hide an announcement for oneself | `projects:read` | |
+| Read the announcement a Slack reply's thread was started from, its first turn and its runs' input | `runs:read` | whoever reads the thread, which is filed in the announcement's project |
 
 Until reads are confined to members, every project keeps an entry for `*` of
 at least viewer, so a role decides what a person may change, not what they
