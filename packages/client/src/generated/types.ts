@@ -773,6 +773,33 @@ export interface ProjectExperts {
   experts: ProjectExpert[];
 }
 
+/** A knowledge source a run filed in a project is grounded in, and the project that names it. */
+export interface ProjectKnowledgeSource {
+  name: string;
+  /** The project that names it, the nearest when more than one does. Empty for the workspace. */
+  from: string;
+}
+
+/** The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in. */
+export interface ProjectKnowledge {
+  version: number;
+  /** The sources the project names itself, in its order. Empty for a caller without `knowledge:read`. */
+  knowledge: string[];
+  /** What a run filed here is grounded in besides its agent's own: the
+project's sources, then each project's above it, nearest first,
+each once. Empty for a caller without `knowledge:read`.
+ */
+  given: ProjectKnowledgeSource[];
+}
+
+/** The knowledge sources a project names, as a whole, from the version read. */
+export interface ProjectKnowledgeInput {
+  /** The version the caller read. */
+  version: number;
+  /** Knowledge sources of the workspace, each once; `[]` for none. */
+  knowledge: string[];
+}
+
 /** What a project is for. `company` is company-wide: it sits under the
 workspace or another company project, and is created and changed only
 with `projects:govern`; a workspace has at most 10. `team` is the
@@ -855,6 +882,12 @@ is members only unless everyone owns a project above it.
   /** Who answers for some topics here and below. Set with `PUT /api/projects/{name}/experts`. */
   experts: ProjectExpert[];
   agents: ProjectAgents;
+  /** The knowledge sources every run filed here and below is grounded
+in, besides its agent's own. Set with `PUT
+/api/projects/{name}/knowledge`. Absent when it names none, and
+for a caller without `knowledge:read`.
+ */
+  knowledge?: string[];
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
   /** The lowest role that may post an announcement here. Absent reads as owner. */
@@ -1024,10 +1057,11 @@ back, and `members` a change to who holds a role and nothing
 else. `agents` is a change to what the project turns on. `home`
 is an agent coming to live in the project, or leaving it: `agent`
 names it and `note` says which. `experts` is a change to who the
-project names as experts, and `channel` to one of its channels,
-which `channel` holds before and after.
+project names as experts, `knowledge` to the knowledge sources it
+names, and `channel` to one of its channels, which `channel`
+holds before and after.
  */
-  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "channel";
+  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "channel";
   /** The agent a `home` change is about. Absent when it lives in a project the caller may not read. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */

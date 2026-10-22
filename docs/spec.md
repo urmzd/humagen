@@ -131,6 +131,7 @@ spec:
     instructions: Acme sells warehouse robots. Answer plainly.   # the workspace's own, sent first
     channels: [{name: announcements, purpose: Company news}]      # the workspace's own; every project has general
     experts: [{who: "role:security", topics: [security]}]         # answer anywhere a nearer project names nobody
+    knowledge: [handbook]   # every run in the workspace is grounded in these sources, besides its agent's own
     members: [{who: "*", role: member}, {who: "role:comms", role: owner}]   # the workspace's own
     project_kinds: [{name: partner, title: Partner, like: account}]          # the workspace's own kinds
     agent_posts: review     # what agents scheduled in the workspace itself post waits for its owners
@@ -141,6 +142,7 @@ spec:
         kind: team          # company | team | account | a project_kinds name. Left out: team
         instructions: Customer accounts. Never promise dates.
         agents: {default: lead}             # answers untagged messages here and below
+        knowledge: [field-playbook]         # runs filed here and below are grounded in it too, nearest first
         members: [{who: "*", role: viewer}, {who: "role:field-eng", role: member}, {who: "role:field-leads", role: owner}]
         agent_posts: publish  # what its scheduled agents post goes out at once
         schedules:            # the file's: filed here, paused and run in the console, changed only here
@@ -251,8 +253,10 @@ builds on:
   console again. A project's **channels** and **experts** are the file's in
   the same way: a channel the file declares is created or taken over, and
   one that leaves it stays, unmanaged; experts the file sets, even as `[]`,
-  are the file's, and experts it leaves out stay the console's. A
-  project's **schedules** are the file's whole: created, or taken over when
+  are the file's, and experts it leaves out stay the console's. The
+  **knowledge** sources a project or the workspace names are the same: the
+  file's when it sets them, even as `[]`, and the console's when it leaves
+  them out. A project's **schedules** are the file's whole: created, or taken over when
   the console made one by that name, filed in the project; the console can
   pause, resume and run one, not change or delete it (409), and one that
   leaves the file stays, the console's again. Schedules are applied last,
@@ -326,6 +330,7 @@ console's addresses. Each entry of `workspace.projects` is one project:
 | `account` | none | `{customer, external_id, url}`, on an account project only. `url` is https |
 | `instructions` | none | at most 4,000 characters, sent to every agent answering here and below |
 | `agent_posts` | the console's | what an agent scheduled here posts: `publish` posts it at once, `review` holds it as a draft until an owner publishes or discards it. A project that leaves both out reviews at the workspace and in company projects, which everyone reads, and publishes in team and account projects. `workspace.agent_posts` is the workspace's own |
+| `knowledge` | the console's | at most 8 knowledge sources, each named once: lower case letters, digits and dashes, starting with a letter or digit, at most 63. Runs filed here and below are grounded in them, see below |
 | `schedules` | none | agents scheduled here, see below |
 | `members` | the console's | at most 100 `{who, role}`: `who` is `*` (everyone who can see the parent), `role:<name>` (the holders of a policy role) or a subject; `role` is `viewer`, `member` or `owner`. An owner owns everything below. Until reads are confined to members, the list has an entry for `*` of at least `viewer`, a company project's of at least `member`, and a project is never more open than its parent. A new project the file leaves them out of has everyone as a member (a viewer of an account) and `projects:govern` as its owner |
 
@@ -342,6 +347,16 @@ projects.
 project's down to the one a conversation is filed in. A later one wins, and a
 turn is sent at most 8,000 characters of them: the farthest are left out
 first, and the turn says which.
+
+`knowledge` names knowledge sources every run filed in the project and below
+it is grounded in, besides its agent's own `sources`. A run is given its
+project's, then each project's above it, `workspace.knowledge` last, nearest
+first, each once, at most 16; never a sibling's or a sub-project's. They are
+fixed when the run is accepted, so a change made while it works, or a restart,
+does not change what it is grounded in. Sources are filled in the console,
+so the file cannot check that the workspace has them: one it does not have
+grounds nothing until it does. Through the API, naming one takes an owner of
+the project who holds `knowledge:read`.
 
 `warp config check` refuses a mistake with its path, such as
 `workspace.projects[2].parent: "Feild" is not a project in this file`. A
@@ -529,7 +544,7 @@ bound to the workspace's general.
 | Agents | Platform | the workspace's own |
 | Slack and GitHub | Platform | its identity on a surface |
 | History | Platform | how it behaves |
-| Project tree, kinds, instructions, channels, experts and which agents are available where | Platform | the workspace's own |
+| Project tree, kinds, instructions, channels, experts, knowledge sources and which agents are available where | Platform | the workspace's own |
 | Spend and run limits | Platform, in the console | versioned, scoped policies (`pkg/policy`) |
 
 ## Deploying it

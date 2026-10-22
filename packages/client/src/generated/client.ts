@@ -72,6 +72,8 @@ import type {
   ProjectDetail,
   ProjectExperts,
   ProjectInput,
+  ProjectKnowledge,
+  ProjectKnowledgeInput,
   ProjectLimitInput,
   ProjectMembers,
   ProjectMembersInput,
@@ -3138,6 +3140,59 @@ need `projects:govern` as well.
     let path = "/api/projects/{name}/experts";
     path = path.replace("{name}", encodeURIComponent(String(name)));
     return this.rawRequest<ProjectExperts>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** A run filed in a project is grounded in the knowledge sources its
+project names, then each project above it, nearest first, besides
+its agent's own: `given`, each source once, from the nearest project
+that names it, at most 16. A sibling's or a sub-project's are never
+given. They are fixed when the run is accepted, so a later change
+here does not change a run already working. A caller without
+`knowledge:read` is shown no source.
+ */
+  async getProjectKnowledge(name: string, options?: RequestOptions): Promise<ProjectKnowledge> {
+    let path = "/api/projects/{name}/knowledge";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectKnowledge>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectKnowledgeRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectKnowledge>> {
+    let path = "/api/projects/{name}/knowledge";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectKnowledge>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** At most 8, each a knowledge source the workspace has (400), named
+once. Every run filed here and below from now on is grounded in
+them; a run already working keeps what it was accepted with. It
+needs ownership of the project and `knowledge:read`
+(403), which reads the sources anyway; the workspace and company
+projects need `projects:govern` as well. `version` is the project's,
+as read; a change made since answers 409, as does a list the
+platform file sets.
+ */
+  async setProjectKnowledge(name: string, body: ProjectKnowledgeInput, options?: RequestOptions): Promise<ProjectKnowledge> {
+    let path = "/api/projects/{name}/knowledge";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectKnowledge>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setProjectKnowledgeRaw(name: string, body: ProjectKnowledgeInput, options?: RequestOptions): Promise<ApiResponse<ProjectKnowledge>> {
+    let path = "/api/projects/{name}/knowledge";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectKnowledge>("PUT", path, {
       body,
       contentType: "application/json",
       ...options,

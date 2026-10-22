@@ -636,6 +636,8 @@ func (s *Store) update(tenantName, name string, version int, w Writer, at time.T
 		return Project{}, fmt.Errorf("%w: only the platform file manages a project", ErrInvalid)
 	case what != ExpertsChanged && !sameExperts(next.Experts, cur.Experts):
 		return Project{}, fmt.Errorf("%w: a project's experts are set on their own", ErrInvalid)
+	case what != KnowledgeChanged && !slices.Equal(next.Knowledge, cur.Knowledge):
+		return Project{}, fmt.Errorf("%w: a project's knowledge sources are set on their own", ErrInvalid)
 	case next.Kind == Company && !w.Govern:
 		return Project{}, fmt.Errorf("%w: company projects need projects:govern", ErrForbidden)
 	}
@@ -739,6 +741,8 @@ func sameField(a, b Project, field string) bool {
 		return slices.Equal(a.Kinds, b.Kinds)
 	case FieldAgents:
 		return sameAgents(a.Agents, b.Agents)
+	case FieldKnowledge:
+		return slices.Equal(a.Knowledge, b.Knowledge)
 	}
 	return false
 }
@@ -865,6 +869,8 @@ func (s *Store) Upsert(tenantName string, p Project, owns []string, by string, a
 			next.AgentPosts = p.AgentPosts
 		case FieldAgents:
 			next.Agents = p.Agents.canonical()
+		case FieldKnowledge:
+			next.Knowledge = slices.Clone(p.Knowledge)
 		}
 	}
 	if next.IsRoot() {

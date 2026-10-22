@@ -230,10 +230,20 @@ no permission, grants nothing.
   tool, is never posted in its project, held for its owners as a draft, or
   sent to someone else who created the schedule: its answer goes to that
   person's inbox alone, saying where it would have gone.
+- **A project's knowledge reaches only that project and below.** A run is
+  grounded in the sources its project and the projects above it name, as
+  they stood when it was accepted, and never in a sibling's or a
+  sub-project's; whatever a caller writes in the tag for them is replaced.
+  A source is the workspace's, read with `knowledge:read`, so naming one in
+  a project takes `knowledge:read` as well as owning the project, and a
+  reader without it is shown no source's name. Naming a source lets the
+  runs filed there, and the people they act for, read what it holds through
+  their answers, as an agent's own sources do.
 - **Project memory reaches only that project.** A turn is sent a project's
   shared notes only when its conversation is filed in that project.
 - **Knowledge stays in its tenant.** A turn is grounded only in the sources
-  its agent's pinned revision names, searched in the run's own tenant, so one
+  its agent's pinned revision names and those its project's chain named when
+  the run was accepted, searched in the run's own tenant, so one
   workspace's agent never reads another's documents. A source the workspace no
   longer has grounds nothing. Passages reach the model labelled as reference
   material, not instructions. `TestAnAgentsSourcesGroundItsTurnsInItsOwnTenant`

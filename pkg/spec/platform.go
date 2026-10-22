@@ -66,6 +66,10 @@ type Workspace struct {
 	// workspace itself posts: publish, or review (the default) by its
 	// owners. Set here, the console cannot change it.
 	AgentPosts *string `json:"agent_posts,omitempty"`
+	// Knowledge is the knowledge sources every run in the workspace is
+	// grounded in, besides its agent's own. Set here, even as [], the
+	// console cannot change them.
+	Knowledge []string `json:"knowledge,omitempty"`
 	// PersonCredentials is what people may give for the tools that take
 	// their own credential.
 	PersonCredentials *PersonCredentials `json:"person_credentials,omitempty"`
@@ -155,6 +159,10 @@ type Project struct {
 	// Experts are who answers for some topics here and below. Set here,
 	// even as [], the console cannot change them.
 	Experts []Expert `json:"experts,omitempty"`
+	// Knowledge is the knowledge sources every run filed here and below is
+	// grounded in, besides its agent's own. Set here, even as [], the
+	// console cannot change them.
+	Knowledge []string `json:"knowledge,omitempty"`
 	// AgentPosts is what becomes of what an agent scheduled here posts:
 	// publish, or review by the project's owners. Left out, it is the
 	// console's, and a new project takes its kind's default.

@@ -436,7 +436,7 @@ func (p *Platform) executor(groups runtime.ToolGroupSource) (runtime.Executor, e
 	if err != nil {
 		return nil, fmt.Errorf("platform: sandbox: %w", err)
 	}
-	return callExecutor{inner: exec, resolve: p.resolveModel}, nil
+	return callExecutor{inner: exec, resolve: p.resolveRevision}, nil
 }
 
 // reroute registers the routes of every run the index holds that has not
@@ -489,7 +489,7 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 	if err != nil {
 		return runs.Run{}, err
 	}
-	tag = p.pin(tag, edge, project, within)
+	tag = p.pin(tag, edge, project, within, p.sourcesFor(tag, edge, project))
 	if err := p.admit(tag, edge, project, within, client); err != nil {
 		return runs.Run{}, err
 	}
@@ -520,18 +520,23 @@ func (p *Platform) Invoke(ctx context.Context, tag envelope.Tag) (runs.Run, erro
 }
 
 // pin writes into a tag what the platform decides at admission, so every
-// attempt of the run replays it: the ancestors its project counts toward,
-// whatever the tag said, what the person it acts for is called (namedActor),
-// and for a scheduled or run-now run its project's context ahead of the
-// schedule's text, which the run's record keeps as what was asked. A called
-// run keeps its explicit input.
-func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within []string) envelope.Tag {
+// attempt of the run replays it: the ancestors its project counts toward and
+// the knowledge sources its project's chain gives it, whatever the tag said,
+// what the person it acts for is called (namedActor), and for a scheduled or
+// run-now run its project's context ahead of the schedule's text, which the
+// run's record keeps as what was asked. A called run keeps its explicit
+// input.
+func (p *Platform) pin(tag envelope.Tag, edge call.Edge, project string, within, sources []string) envelope.Tag {
 	tag.Actor = p.namedActor(tag.Tenant, tag.Actor)
-	meta := make(map[string]string, len(tag.Meta)+2)
+	meta := make(map[string]string, len(tag.Meta)+3)
 	maps.Copy(meta, tag.Meta)
 	delete(meta, runs.MetaWithin)
 	if len(within) > 0 {
 		meta[runs.MetaWithin] = strings.Join(within, ",")
+	}
+	delete(meta, runs.MetaSources)
+	if len(sources) > 0 {
+		meta[runs.MetaSources] = strings.Join(sources, ",")
 	}
 	if (tag.Origin == "cron" || tag.Origin == runs.OriginManual) && edge.Parent == "" {
 		meta[runs.MetaAsk] = tag.Text

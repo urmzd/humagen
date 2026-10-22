@@ -19,7 +19,8 @@ func expertsOf(es []spec.Expert) []projects.Expert {
 }
 
 // fileRoot is the workspace's own record as the file declares it, and the
-// fields the file sets: its instructions, experts, members and own kinds.
+// fields the file sets: its instructions, experts, knowledge sources,
+// members and own kinds.
 // None set leaves the root to the console.
 func fileRoot(w spec.Workspace) (projects.Project, []string) {
 	root := projects.Project{Name: projects.Root}
@@ -31,6 +32,10 @@ func fileRoot(w spec.Workspace) (projects.Project, []string) {
 	if w.Experts != nil {
 		root.Experts = expertsOf(w.Experts)
 		owns = append(owns, projects.FieldExperts)
+	}
+	if w.Knowledge != nil {
+		root.Knowledge = append([]string{}, w.Knowledge...)
+		owns = append(owns, projects.FieldKnowledge)
 	}
 	if w.Members != nil {
 		root.Members = membersOf(w.Members)

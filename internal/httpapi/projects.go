@@ -50,6 +50,8 @@ func (s *Server) projectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/projects/{name}/announcements/{id}", s.authed(auth.ProjectsWrite, s.seenProject(s.withdrawAnnouncement)))
 	mux.HandleFunc("GET /api/projects/{name}/agents", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectAgents)))
 	mux.HandleFunc("PUT /api/projects/{name}/agents", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectAgents)))
+	mux.HandleFunc("GET /api/projects/{name}/knowledge", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectKnowledge)))
+	mux.HandleFunc("PUT /api/projects/{name}/knowledge", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectKnowledge)))
 }
 
 // writer is who a change to the tree is made by, and whether they may change
@@ -181,10 +183,12 @@ func actionsOf(f projectFacts, p projects.Project) []string {
 }
 
 // projectView is a project as the caller reads it. Its lists of agents leave
-// out every agent that lives in a project the caller may not read.
+// out every agent that lives in a project the caller may not read, and its
+// knowledge sources are shown only to a caller who may read knowledge.
 func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 	chain := f.tree.Chain(p.Name)
 	p.Agents = f.seer.ProjectAgents(p.Agents)
+	p.Knowledge = f.seer.Sources(p.Knowledge)
 	v := projectView{Project: p, Depth: max(len(chain)-1, 0), Path: []pathStep{}, Schedules: f.schedules[p.Name]}
 	// A sub-project the caller may not see is not counted, as it is not
 	// listed.
@@ -636,4 +640,45 @@ func (s *Server) projectsWithin(w http.ResponseWriter, who auth.Principal, proje
 		}
 	}
 	return keep, true
+}
+
+// getProjectKnowledge reads the knowledge sources a project names and what a
+// run filed in it is given, its ancestors' included. A caller who may not
+// read knowledge is shown no source.
+func (s *Server) getProjectKnowledge(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Viewer)
+	if !found {
+		return
+	}
+	got, err := s.P.ProjectKnowledgeAs(who, pr.Name)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, got)
+}
+
+// putProjectKnowledge replaces the knowledge sources a project names, as a
+// whole. It needs ownership of the project, and knowledge:read, as naming a
+// source grounds every run here and below in it; the workspace and company
+// projects need projects:govern as well.
+func (s *Server) putProjectKnowledge(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	var in platform.KnowledgeInput
+	if !decode(w, r, &in) {
+		return
+	}
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
+	if !found {
+		return
+	}
+	if in.Knowledge == nil {
+		fail(w, http.StatusBadRequest, "knowledge is a list, [] for none")
+		return
+	}
+	got, err := s.P.SetProjectKnowledge(who, pr.Name, writer(who), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, got)
 }
