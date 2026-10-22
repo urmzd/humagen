@@ -673,9 +673,9 @@ func (sc storedChange) change(tenant string) Change {
 		m := sc.Raised.Message
 		m.Key, m.Audience, m.Excluded, m.Broadcast = sc.Raised.Key, sc.Raised.Audience, sc.Raised.Excluded, sc.Raised.Broadcast
 		// Older writers did not distinguish PostOnce from Post. Post used
-		// announce: keys, and callers could name those too before PostOnce refused
-		// them. Preserve old
-		// broadcast keys conservatively, so none can be posted twice.
+		// announce: keys, and callers could name those too before PostOnce
+		// refused them. Preserve old broadcast keys conservatively, so none
+		// can be posted twice.
 		m.Once = m.Broadcast && m.Key != ""
 		if sc.Raised.Once != nil {
 			m.Once = *sc.Raised.Once
