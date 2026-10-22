@@ -340,3 +340,32 @@ func TestMentionKindsComplete(t *testing.T) {
 		t.Fatalf("%d items", len(items))
 	}
 }
+
+// A role is not told in a private thread, which its holders cannot read:
+// the tag is refused, saying so, rather than reported as sent.
+func TestARoleIsNotToldInAPrivateThread(t *testing.T) {
+	p := startWith(t, platform.Config{MentionKinds: map[string][]platform.MentionKind{tenant: {{Kind: "oncall", Title: "On call", Resolves: threads.ResolvesRole}}}})
+	field(t, p)
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "@oncall:oncall look", PostOnly: true})
+	if len(got.Notified) != 0 || len(got.Refused) != 1 || got.Refused[0].Kind != threads.Role || !strings.Contains(got.Refused[0].Refused, "private") {
+		t.Fatalf("a role in a private thread = notified %v, refused %+v", got.Notified, got.Refused)
+	}
+}
+
+// On a client's surface a skill with no agent tagged is answered as the
+// client always answers, by its default, with the skill: a client that
+// lists its agents may not route to @auto.
+func TestOnASurfaceASkillIsAnsweredByTheDefault(t *testing.T) {
+	p, machine := slackRoom(t, func(in *platform.ClientInput) { in.Agents = []string{"helper"} })
+	declare(t, p, "Field", "review")
+	dm, err := p.StartThread(t.Context(), machine, fromSlack("D0ANA", "1700000000.000100", "", "$review the renewal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dm.Rule != threads.RuleDefault || len(dm.Runs) != 1 || dm.Runs[0].Agent != "helper" {
+		t.Fatalf("a skill on a surface started %+v (%s, %s)", dm.Runs, dm.Rule, dm.Reason)
+	}
+	if got := pinned(t, await(t, p, dm.Runs[0].ID, runs.Completed)); len(got) != 1 {
+		t.Fatalf("the default's run was pinned %v", got)
+	}
+}

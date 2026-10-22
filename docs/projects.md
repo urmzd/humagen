@@ -147,10 +147,12 @@ What a message starts, first rule that applies:
 
 1. It tags agents or `@auto`: each tagged agent answers, side by side, each
    seeing the thread up to this message. At most 3 runs per message. A
-   message that names a skill and tags no agent is answered by `@auto`,
-   which is added to its tags (`startsForSkills` in `internal/platform`,
-   which every path that decides what a message starts calls first), unless
-   it was posted only. An agent tagged and refused still counts as tagged.
+   message a person posts in the console that names a skill and tags no
+   agent is answered by `@auto`, which is added to its tags
+   (`startsForSkills` in `internal/platform`), unless it was posted only. A
+   message a client posts from Slack or GitHub keeps the client's defaults:
+   the default answers it with the skill, as the client's commands are
+   answered, so a client that lists its agents is never sent to `@auto`. An agent tagged and refused still counts as tagged.
 2. It tags only people, experts or a role: no run. It is a message to
    people.
 3. It answers a question or replies to a mention: no run. It is a human
@@ -274,7 +276,7 @@ alone), each resolving to one of:
 |---|---|---|
 | `experts` | `@sme:<name>`: the experts of that topic are notified | the topics the chain has experts for |
 | `skills` | `$<name>` | the skills the chain offers |
-| `role` | everyone holding the policy role `<name>` is notified, in one shared mention, as experts named by a role are | the roles the chain names in its members and experts |
+| `role` | everyone holding the policy role `<name>` is notified, in one shared mention, as experts named by a role are. In a private thread, which its holders cannot read, the tag is refused, saying so | the roles the chain names in its members and experts |
 | `people` | `@<name>`: that person, by handle | the directory, with `people:read` |
 
 A kind declared under an agent's or a person's name takes an item: `@ignite`
@@ -1249,7 +1251,7 @@ from counters.
 | `PUT /api/projects/{name}/skills` | `projects:write` | `{version, skills}`; owner, `projects:govern` for the workspace and company projects (403); a name twice or a field past its bound is 400; 409 stale version or skills the file declares |
 | `GET /api/skills` | `projects:read` | `?project=` (`~` or left out for the workspace) → `{skills: [{name, description, argument_hint, from}]}` (<= 128), what the console completes after `$`, without instructions. A project the caller cannot see is 404 |
 | `GET /api/mentions` | `projects:read` | `?project=` → `{kinds: [{kind, title, resolves}]}`, the built-in `sme` and `skill` first. With `&kind=K&q=prefix` → `{items: [{name, description?}]}` (<= 20) by name, the items whose name starts with `q`, ignoring case. A kind the workspace does not have, or a project the caller cannot see, is 404; `q` without `kind` is 400; people complete only with `people:read` |
-| `POST /api/threads`, `POST /api/threads/{id}/messages` | `runs:write` | a skill nobody on the chain declares is 400 "there is no skill called ..." before anything is posted, in the console; one that names a skill and tags no agent starts `@auto` |
+| `POST /api/threads`, `POST /api/threads/{id}/messages` | `runs:write` | a skill nobody on the chain declares is 400 "there is no skill called ..." before anything is posted, in the console; a console message that names a skill and tags no agent starts `@auto`; a client's message is answered by its default with the skill |
 
 `ThreadMention.kind` gains `skill` and `role`; `Project` gains `skills`;
 `ProjectChange.what` gains `skills`.

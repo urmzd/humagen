@@ -352,6 +352,7 @@ export const defaultCopy = {
       home: "An agent's home changed",
       experts: "Experts changed",
       knowledge: "Knowledge sources changed",
+      skills: "Skills changed",
       channel: "A channel changed",
     } as Record<string, string>,
     noHistory: "Nothing has changed here yet.",
