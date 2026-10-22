@@ -972,3 +972,48 @@ func TestARetryOfAnUntaggedTurnAsksTheAgentThatAnsweredForTheSamePerson(t *testi
 	}
 	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
 }
+
+// A retry of the turn that started a conversation is filed where the
+// conversation is, and is refused there once its agent is no longer
+// available: the part stays open and nothing reaches the provider. Once the
+// agent is available there again, the retry runs in the same project, for
+// the same person.
+func TestARetryIsRefusedWhereTheConversationIsFiledOnceItsAgentIsNotAvailableThere(t *testing.T) {
+	w := newWorld(t, platform.Config{Backoff: func(int) time.Duration { return time.Millisecond }})
+	ctx := t.Context()
+	field(t, w.p)
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+
+	failed, msg := w.failing(t, platform.Turn{ID: "api-ana-globex", Agent: "worker", Text: "Any open bugs?", Project: "Globex", Actor: platform.ActorOf(ana)})
+	if failed.Project != "Globex" || failed.Prev != "" {
+		t.Fatalf("the first turn was filed in %q after %q", failed.Project, failed.Prev)
+	}
+	reached := len(w.server.Requests())
+	if err := w.p.SetAgentHome(ctx, tenant, "worker", "Initech", ada); err != nil {
+		t.Fatal(err)
+	}
+	retry := platform.Resolution{Action: platform.ActRetry}
+	_, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, retry)
+	if !errors.Is(err, platform.ErrNotAvailable) || !strings.Contains(err.Error(), "worker is not available in Globex") {
+		t.Fatalf("a retry in Globex of an agent that lives in Initech = %v, want ErrNotAvailable", err)
+	}
+	if got, _ := w.p.InboxGet(ana, msg.ID); got.Parts[0].State != inbox.PartOpen {
+		t.Fatalf("a refused retry settled the part: %+v", got.Parts[0])
+	}
+	if got := w.server.Requests()[reached:]; len(got) != 0 {
+		t.Fatalf("a refused retry reached the server with %q", got)
+	}
+
+	if err := w.p.SetAgentHome(ctx, tenant, "worker", "", ada); err != nil {
+		t.Fatal(err)
+	}
+	done, err := w.p.InboxResolve(ctx, ana, msg.ID, msg.Parts[0].ID, retry)
+	if err != nil {
+		t.Fatalf("ana retrying once worker is available again: %v", err)
+	}
+	again := retried(t, w, done)
+	if again.Project != "Globex" || again.Prev != "" || again.Agent != "worker" || again.Actor.User != "ana" || again.Answer != "Done." {
+		t.Fatalf("ana's retry = project %q after %q, agent %q, actor %+v, answer %q", again.Project, again.Prev, again.Agent, again.Actor, again.Answer)
+	}
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
+}
