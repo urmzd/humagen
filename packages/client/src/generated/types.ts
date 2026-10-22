@@ -1561,7 +1561,7 @@ export interface InboxFrom {
   kind: string;
   /** The agent, the rule or the part of the system, and a person's subject. A mention, a thread's artefact, names its poster as threads do, by handle, and never by subject. */
   name: string;
-  /** What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's. A mention's poster is called what their message is called now. */
+  /** What a person who sent it is called, their name, else their handle, never a subject that holds an address. Set on a person's, and to `Humagen` on what the product posted itself (a `system` sender named `humagen`, or `warp` in records written before the rename). A mention's poster is called what their message is called now. */
   display?: string;
   /** The person who published an agent's draft, by subject. Absent on what an agent posted itself. */
   approved_by?: string;

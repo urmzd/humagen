@@ -10,6 +10,8 @@ import (
 	"github.com/urmzd/fiber/pkg/runtime"
 
 	"github.com/urmzd/humagen/pkg/runs"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // Turn is one turn of a thread: a person's message, an agent's run, or the
@@ -239,7 +241,12 @@ func agentLabel(name string) string { return flat(name) + " (agent)" }
 // whatever name the record keeps (warp, before the rename). No agent's or
 // person's line can read the same: an agent is marked (agent), and a
 // person's shown name holds no parentheses.
-func systemLabel(string) string { return "Humagen (system)" }
+func systemLabel(name string) string {
+	if name == "humagen" || name == legacy.SystemSender {
+		name = "Humagen"
+	}
+	return flat(name) + " (system)"
+}
 
 // shownName is a name as a transcript shows it: on one line, without the
 // marks a label is made of, so a name cannot pass for a handle or end a

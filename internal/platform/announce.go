@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/auth"
 	"github.com/urmzd/humagen/pkg/inbox"
 	"github.com/urmzd/humagen/pkg/projects"
@@ -280,5 +281,12 @@ func (p *Platform) noticeReader(tree *projects.Tree, who auth.Principal) inbox.R
 // system sender is shown as SystemDisplay.
 const SystemSender = "humagen"
 
-// SystemDisplay is what a system sender is called.
+// SystemDisplay is what the product's own sender is called.
 const SystemDisplay = "Humagen"
+
+// IsProduct reports whether from is the product posting as itself, under
+// its name or the one records kept before the rename. Other parts of the
+// system (Limits, Artifacts) keep their own names.
+func IsProduct(from inbox.From) bool {
+	return from.Kind == "system" && (from.Name == SystemSender || from.Name == legacy.SystemSender)
+}

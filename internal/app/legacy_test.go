@@ -199,3 +199,24 @@ func TestTheComposeSpecsReadTheRenamedVariables(t *testing.T) {
 		})
 	}
 }
+
+// setup -o keeps a spec in the language it was read in, whatever its name.
+func TestSetupKeepsAnOldSpecOldUnderAnyName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "prod.yaml")
+	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\nspec: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := setupCmd(Options{}, []string{"-o", path}, strings.NewReader(""), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); !strings.Contains(string(b), "api_version: warp/v1") {
+		t.Errorf("setup rewrote an old spec in the new language:\n%s", b)
+	}
+	fresh := filepath.Join(t.TempDir(), "warp.yaml")
+	if err := setupCmd(Options{}, []string{"-o", fresh}, strings.NewReader(""), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(fresh); !strings.Contains(string(b), "api_version: humagen/v1") {
+		t.Errorf("setup wrote a new spec in the old language:\n%s", b)
+	}
+}

@@ -38,10 +38,6 @@ func SpecFile(getenv func(string) string, userConfigDir func() (string, error), 
 	return newPath, nil
 }
 
-// IsOldSpecFile reports whether path is a spec file under its old name,
-// which setup writes in the old format so an older binary can still read it.
-func IsOldSpecFile(path string) bool { return filepath.Base(path) == ConfigFile }
-
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil || !errors.Is(err, fs.ErrNotExist)
