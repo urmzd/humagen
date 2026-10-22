@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { Note, Policy, ProjectDetail } from "./api.ts";
+import type { Note, Policy, ProjectDetail, ScheduleView } from "./api.ts";
 import { stubFetch } from "./dom.ts";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
 import { east, field, globex, globexDetail, platform, renewals, retail, stores, tree, workspace } from "./projects.fixtures.ts";
@@ -19,7 +19,7 @@ afterEach(() => {
 
 const everything = ["projects:read", "projects:write", "projects:govern", "runs:read", "runs:write", "billing:read", "schedules:read"];
 
-function open(detail: ProjectDetail, opts: { tab?: ProjectTab; can?: string[]; routes?: Record<string, (body: unknown) => unknown> } = {}) {
+function open(detail: ProjectDetail, opts: { tab?: ProjectTab; can?: string[]; routes?: Record<string, (body: unknown) => unknown>; schedules?: ScheduleView[] } = {}) {
   const address = detail.project.name === "" ? "~" : encodeURIComponent(detail.project.name);
   net = stubFetch({
     [`GET /api/projects/${address}`]: () => detail,
@@ -42,7 +42,7 @@ function open(detail: ProjectDetail, opts: { tab?: ProjectTab; can?: string[]; r
       onTab={noop}
       workspaceName="Acme"
       projects={tree}
-      schedules={[]}
+      schedules={opts.schedules ?? []}
       agents={[]}
       can={(p) => can.includes(p)}
       onOpen={(name) => opened.push(name)}
@@ -229,3 +229,28 @@ test("New Project offers company-wide only to those who govern, and puts the pro
   assert.deepEqual(posts[0], { name: "Hooli", kind: "account", account: { customer: "Hooli Inc" } });
   await waitFor(() => assert.deepEqual(made, ["Globex"]));
 });
+
+test("the Schedules tab: one rule under the tabs, and each schedule's time in words", async () => {
+  const recap: ScheduleView = {
+    name: "globex-recap",
+    expression: "9 8 * * 1",
+    agent: "recap-writer",
+    text: "What changed in Globex since the last recap?",
+    project: "Globex",
+    deliver: "project",
+    paused: false,
+    next: [],
+    recent: [],
+  };
+  open(globexDetail, { tab: "schedules", can: [...everything, "schedules:write"], schedules: [recap] });
+  const heading = await screen.findByRole("heading", { name: "Scheduled (1)" });
+  const section = heading.closest("section");
+  assert.ok(section);
+  // The tab strip draws the rule under the tabs. The section draws its own only after another.
+  assert.equal(section.parentElement?.firstElementChild === section, true, "it opens the tab's column");
+  assert.match(section.className, /first:border-t-0/);
+  assert.ok(screen.getByText("Mondays at 08:09 UTC"));
+  assert.ok(!screen.queryByText(/9 8 \* \* 1/), "not as cron");
+  assert.equal(screen.getByText("Mondays at 08:09 UTC").getAttribute("title"), "9 8 * * 1", "the expression is a hover away");
+});
+
