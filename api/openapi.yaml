@@ -5168,7 +5168,9 @@ components:
         bound_at:
           description: |
             When `slack` was bound as it stands: set when a binding is made
-            or moved, kept while it holds. Absent while unbound.
+            or moved, kept while it holds. Absent while unbound, and on a
+            binding made before warp kept the time, which the client's
+            bindings then read as bound at the channel's last change.
           type: string
           format: date-time
         archived:
@@ -5242,7 +5244,7 @@ components:
     ClientBinding:
       description: One Slack channel a client is bound to, and the channel it is bound to here.
       type: object
-      required: [slack_channel, project, channel, bound_at]
+      required: [slack_channel, project, channel]
       properties:
         slack_channel: {type: string}
         project:
@@ -5255,6 +5257,7 @@ components:
             app catches up on nothing announced before it: what was
             announced before the binding, or while the channel was unbound,
             never reached the Slack channel and is not news there now.
+            Always present for a binding warp keeps.
           type: string
           format: date-time
     SurfaceRef:

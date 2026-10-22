@@ -381,15 +381,25 @@ export function catchUpOn(
   boundAt: string | undefined,
 ): string[] {
   const news = page.filter((m) => m.kind === "announcement" && !isDraft(m));
-  const bound = Date.parse(boundAt ?? "");
-  const since = Number.isNaN(bound) ? Infinity : Math.max(now - CATCH_UP_WINDOW_MS, bound);
   const due: string[] = [];
   for (const m of news.toReversed()) {
     const receipt = m.deliveries?.[client];
-    if (receipt ? changedSince(m, receipt) : m.state === "open" && Date.parse(m.at ?? "") >= since)
-      due.push(m.id);
+    if (receipt ? changedSince(m, receipt) : isNews(m, now, boundAt)) due.push(m.id);
   }
   return due;
+}
+
+/**
+ * Whether an announcement with no post yet is news in a channel bound at
+ * `boundAt`: open, from the last CATCH_UP_WINDOW_MS, and announced no
+ * earlier than the binding. A binding that does not say when it was made,
+ * or says a time before any announcement could be, makes nothing news.
+ */
+export function isNews(m: WireMessage, now: number, boundAt: string | undefined): boolean {
+  const bound = Date.parse(boundAt ?? "");
+  if (Number.isNaN(bound) || bound < Date.parse("2000-01-01T00:00:00Z")) return false;
+  const since = Math.max(now - CATCH_UP_WINDOW_MS, bound);
+  return m.state === "open" && Date.parse(m.at ?? "") >= since;
 }
 
 /** What asking a turn again came to. */
@@ -609,7 +619,7 @@ export class App {
         this.bindings = null;
         if (!(await this.isMachine())) {
           this.log(
-            `catch-up skipped: client ${client} does not name this app's credential as its machine`,
+            `catch-up skipped: client ${client} is disabled or does not name this app's credential as its machine`,
           );
           return done;
         }
@@ -620,7 +630,10 @@ export class App {
             page = await this.warp.announcements(b.project, CATCH_UP_PAGE);
           } catch (e) {
             this.log(`announcements of ${b.project || "~"} were not read: ${(e as Error).message}`);
-            done = false;
+            // A project the machine may not read, or a token without
+            // projects:read, answers the same next time: only warp being
+            // away is tried again.
+            if (!(e instanceof WarpError && (e.status === 403 || e.status === 404))) done = false;
             continue;
           }
           const due = catchUpOn(page, client, (this.opts.now ?? Date.now)(), b.bound_at);
@@ -643,13 +656,18 @@ export class App {
   }
 
   /**
-   * Whether warp names this app's credential as its client's machine. Only
-   * then does warp show it the client's receipts and take new ones, so only
-   * then does it post announcements.
+   * Whether warp names this app's credential as its enabled client's
+   * machine. Only then does warp show it the client's receipts and take new
+   * ones, so only then does it post announcements.
    */
   private async isMachine(): Promise<boolean> {
     const client = (await this.routing()).client;
-    return !!client && client.surface === "slack" && client.slack?.machine === this.opts.subject;
+    return (
+      !!client &&
+      client.enabled &&
+      client.surface === "slack" &&
+      client.slack?.machine === this.opts.subject
+    );
   }
 
   // Routing
@@ -1804,7 +1822,10 @@ export class App {
       // The look asked for is the one under way's to make: its outcome is this one's.
       return busy.done;
     }
-    const turn: { again: Look | null; done: Promise<void> } = { again: why, done: Promise.resolve() };
+    const turn: { again: Look | null; done: Promise<void> } = {
+      again: why,
+      done: Promise.resolve(),
+    };
     this.announcing.set(id, turn);
     turn.done = this.looks(id, client, turn).finally(() => this.announcing.delete(id));
     return turn.done;
@@ -1862,17 +1883,20 @@ export class App {
       await this.warp.recordDelivery(id, client, posted);
       this.unrecorded.delete(id);
       await this.slack.call("chat.update", { ...posted, ...this.newsView(raw) });
-      return raw.updated_at;
+      return this.keepUp(id, client, posted, raw.updated_at);
     }
     if (receipt) {
       const changed = changedSince(raw, receipt);
       if (look === "catch-up" ? !changed : raw.updated_at === shown) return shown;
       const where = { channel: receipt.channel, ts: receipt.ts };
       await this.slack.call("chat.update", { ...where, ...this.newsView(raw) });
-      if (changed) await this.warp.recordDelivery(id, client, where);
-      return raw.updated_at;
+      if (!changed) return raw.updated_at;
+      await this.warp.recordDelivery(id, client, where);
+      return this.keepUp(id, client, where, raw.updated_at);
     }
-    if (raw.state !== "open") return shown;
+    // Only what a catch-up would post is posted: an old announcement a
+    // notice names is not news in the channel now.
+    if (!isNews(raw, (this.opts.now ?? Date.now)(), at.bound_at)) return shown;
     const sent = await this.slack.call<{ ts: string; channel?: string }>("chat.postMessage", {
       channel: at.slack_channel,
       ...this.newsView(raw),
@@ -1881,10 +1905,30 @@ export class App {
     this.unrecorded.set(id, where);
     await this.warp.recordDelivery(id, client, where);
     this.unrecorded.delete(id);
-    const now = await this.warp.getInboxMessage(id).catch(() => null);
-    if (!now || now.updated_at === raw.updated_at) return raw.updated_at;
-    await this.slack.call("chat.update", { ...where, ...this.newsView(now) });
-    return now.updated_at;
+    return this.keepUp(id, client, where, raw.updated_at);
+  }
+
+  /**
+   * After a receipt is recorded, read the announcement once more: warp
+   * dates a receipt when it takes it, so a change between the read the post
+   * shows and the receipt would read as older than the receipt, and no
+   * catch-up would see it. A change found is shown and recorded, at most
+   * three times over.
+   */
+  private async keepUp(
+    id: string,
+    client: string,
+    where: { channel: string; ts: string },
+    shown: string | undefined,
+  ): Promise<string | undefined> {
+    for (let i = 0; i < 3; i++) {
+      const now = await this.warp.getInboxMessage(id).catch(() => null);
+      if (!now || now.updated_at === shown) return shown;
+      await this.slack.call("chat.update", { ...where, ...this.newsView(now) });
+      await this.warp.recordDelivery(id, client, where);
+      shown = now.updated_at;
+    }
+    return shown;
   }
 
   /**

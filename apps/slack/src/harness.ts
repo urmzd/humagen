@@ -365,7 +365,9 @@ export class FakeWarp implements Warp {
   }
 
   async getInboxMessage(id: string) {
-    return (this.mailbox.get(id) as WireMessage | undefined) ?? null;
+    // A copy, as a read over HTTP is: a later change does not reach it.
+    const m = this.mailbox.get(id) as WireMessage | undefined;
+    return m ? structuredClone(m) : null;
   }
 
   /** The surface of each warp thread the fake started from one. */
@@ -444,6 +446,8 @@ export class FakeWarp implements Warp {
 
   /** How many reads of a project's announcements fail next, as when warp is restarting. */
   failNews = 0;
+  /** Projects whose inbox the app's machine may not read: 404, as for a project it cannot see. */
+  readonly unseen = new Set<string>();
 
   /** As the project's inbox pages them for the app's machine: newest first, withdrawn ones too. */
   async announcements(project: string, limit: number) {
@@ -452,6 +456,7 @@ export class FakeWarp implements Warp {
       this.failNews--;
       throw new WarpError(503, "warp is restarting");
     }
+    if (this.unseen.has(project)) throw new WarpError(404, "no such project");
     return [...this.mailbox.values()]
       .filter(
         (m) => m.kind === "announcement" && (m.source as { project?: string })?.project === project,

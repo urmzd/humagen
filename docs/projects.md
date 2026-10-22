@@ -990,7 +990,7 @@ naming no agent.
 | Route | Permission | Notes |
 |---|---|---|
 | `PUT /api/projects/{name}/channels/{channel}` | `projects:write` | gains `slack {client, channel}`; owner; the client must be a Slack client in the tenant; binding a Slack channel, or moving a binding, also takes `clients:write` (403), as every new thread there is filed in the project; keeping or removing one takes only the owner |
-| `GET /api/clients/{id}/bindings` | `clients:read` | `[{slack_channel, project, channel}]`, at most 200 |
+| `GET /api/clients/{id}/bindings` | `clients:read` | `[{slack_channel, project, channel, bound_at}]`, at most 200; `bound_at` is when the binding was made, and the Slack app catches up on nothing announced before it |
 | `PUT /api/clients/{id}` | `clients:write` | gains `home {project, channel}` |
 | `POST /api/threads`, `POST /api/threads/{id}/messages` | `runs:write` | gain `surface {client, channel, ts}`: find or create the thread by surface. The platform files it from the binding, never from a request field, and only for the client's `slack.machine` |
 | `PUT /api/inbox/{id}/deliveries/{client}` | `runs:write` | `{channel, ts}` → 204; only the client's machine. The same post again after the message changed moves the receipt's `at` on, so it says the post shows it; otherwise it changes nothing |

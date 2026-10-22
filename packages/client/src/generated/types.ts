@@ -675,7 +675,9 @@ export interface Channel {
   default?: string;
   slack?: SlackBinding;
   /** When `slack` was bound as it stands: set when a binding is made
-or moved, kept while it holds. Absent while unbound.
+or moved, kept while it holds. Absent while unbound, and on a
+binding made before warp kept the time, which the client's
+bindings then read as bound at the channel's last change.
  */
   bound_at?: string;
   /** It and its threads stay, and it takes no new threads. */
@@ -739,8 +741,9 @@ export interface ClientBinding {
 app catches up on nothing announced before it: what was
 announced before the binding, or while the channel was unbound,
 never reached the Slack channel and is not news there now.
+Always present for a binding warp keeps.
  */
-  bound_at: string;
+  bound_at?: string;
 }
 
 /** Where on a client's surface a message was posted: for Slack, the

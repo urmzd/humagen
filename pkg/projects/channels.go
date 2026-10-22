@@ -79,7 +79,7 @@ type Binding struct {
 	// BoundAt is when the Slack channel was bound to this channel. What was
 	// announced before then never reached it, and a catch-up does not post
 	// it now.
-	BoundAt time.Time `json:"bound_at"`
+	BoundAt time.Time `json:"bound_at,omitzero"`
 }
 
 // boundAt is when next's binding was made, as a write from cur at at

@@ -154,11 +154,17 @@ the client's receipts to that credential alone, so any other would post
 everything again. It logs that it skipped the catch-up and why. A catch-up
 that could not read warp, or could not bring a post up to date for a reason
 other than Slack refusing it, is tried again after 5 seconds, then twice as
-long each time up to 5 minutes, until one finishes. A post Slack refuses to
+long each time up to 5 minutes, until one finishes. A bound project the
+machine may not read (403 or 404), such as a members-only one that does not
+name it, is logged and skipped, not tried again until the next catch-up. A post Slack refuses to
 edit, such as one deleted there, is logged and holds up no other. A notice
 that comes during a catch-up never posts twice: the app
-looks at one announcement at a time, reads it afresh each time, receipt and
-all, and posts only what has none. A post whose receipt warp did not take,
+looks at each announcement one look at a time, reads it afresh each time, receipt and
+all, and posts only what has none. A notice posts an announcement with no receipt only as a catch-up
+would: open, from the last day, and announced after the binding. warp dates
+a receipt when it takes it, so after each receipt the app reads the
+announcement once more and shows a change made meanwhile, which no catch-up
+would see. A post whose receipt warp did not take,
 as when it went away just then, is recorded at the next look rather than
 posted again, while the app keeps running.
 
