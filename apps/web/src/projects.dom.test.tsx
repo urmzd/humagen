@@ -3,8 +3,9 @@ import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Note, Policy, ProjectDetail, ScheduleView } from "./api.ts";
 import { stubFetch } from "./dom.ts";
+import { ProjectKnowledgeSection } from "./ProjectKnowledge.tsx";
 import { ProjectPage, ProjectsPage } from "./Projects.tsx";
-import { east, field, globex, globexDetail, platform, renewals, retail, stores, tree, workspace } from "./projects.fixtures.ts";
+import { east, field, globex, globexDetail, globexKnowledge, knowledgeSources, platform, renewals, retail, stores, tree, workspace } from "./projects.fixtures.ts";
 import type { ProjectTab } from "./route.ts";
 
 const at = "2026-10-01T09:00:00Z";
@@ -112,6 +113,70 @@ test("a project's meta line names its lead, the agent that answers what tags no 
   assert.ok(lead.querySelector("[data-accent='agent']"));
 });
 
+test("a project's header is one primary action and a More menu, with Archive and Delete last after a rule", async () => {
+  open(globexDetail, { onMute: async () => {} });
+  const more = await screen.findByRole("button", { name: "More" });
+  // Only New Conversation is a button of its own; the rest wait in the menu.
+  assert.ok(screen.getByRole("button", { name: "New Conversation" }));
+  for (const name of ["Mute Project", "Edit Project", "Move Project", "Archive Project", "Delete Project"]) {
+    assert.ok(!screen.queryByRole("button", { name }), `${name} is not a button in the header`);
+  }
+  assert.equal(more.getAttribute("aria-expanded"), "false");
+  fireEvent.keyDown(more, { key: "ArrowDown" });
+  const menu = screen.getByRole("menu", { name: "More" });
+  assert.equal(more.getAttribute("aria-expanded"), "true");
+  const children = [...menu.children].map((el) => (el.getAttribute("role") === "separator" ? "---" : el.textContent));
+  assert.deepEqual(children, ["Mute Project", "Edit Project", "Move Project", "---", "Archive Project", "Delete Project"]);
+  // Escape closes it and puts focus back on More.
+  fireEvent.keyDown(menu, { key: "Escape" });
+  assert.ok(!screen.queryByRole("menu"));
+  assert.equal(document.activeElement, more);
+  // Each item still does what its button did.
+  fireEvent.click(more);
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit Project" }));
+  assert.ok(!screen.queryByRole("menu"));
+  assert.ok(await screen.findByRole("button", { name: "Cancel" }));
+});
+
+test("Delete Project cannot be undone, so it asks twice, and Escape or moving away keeps the project", async () => {
+  let deleted = 0;
+  open(globexDetail, {
+    routes: {
+      "DELETE /api/projects/Globex": () => {
+        deleted++;
+        return undefined;
+      },
+    },
+  });
+  const ask = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete Project" }));
+    return screen.getByRole("group", { name: /^Delete .*\? This cannot be undone\.$/ });
+  };
+  // Step one only asks, in words, with focus on keeping it.
+  let step = await ask();
+  assert.equal(document.activeElement?.textContent, "Keep It");
+  fireEvent.keyDown(step, { key: "Escape" });
+  assert.ok(!screen.queryByRole("group", { name: /This cannot be undone/ }));
+  // Moving focus away keeps it too.
+  step = await ask();
+  fireEvent.blur(within(step).getByRole("button", { name: "Keep It" }), { relatedTarget: document.body });
+  assert.ok(!screen.queryByRole("group", { name: /This cannot be undone/ }));
+  assert.equal(deleted, 0);
+  // Step two deletes.
+  step = await ask();
+  fireEvent.click(within(step).getByRole("button", { name: "Delete Project" }));
+  await waitFor(() => assert.equal(deleted, 1));
+});
+
+test("Archive Project can be undone, so it acts at once", async () => {
+  open(globexDetail, { routes: { "PUT /api/projects/Globex": () => globex } });
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Archive Project" }));
+  assert.ok(!screen.queryByRole("group", { name: /This cannot be undone/ }));
+  await waitFor(() => assert.ok(net.seen.some((r) => r.method === "PUT" && r.path === "/api/projects/Globex")));
+});
+
 test("Mute Project says so beside it when the mute could not be saved", async () => {
   const asked: [string, boolean][] = [];
   open(globexDetail, {
@@ -120,7 +185,8 @@ test("Mute Project says so beside it when the mute could not be saved", async ()
       return Promise.reject(new Error("the preferences could not be read"));
     },
   });
-  fireEvent.click(await screen.findByRole("button", { name: "Mute Project" }));
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Mute Project" }));
   await screen.findByText("Could not mute. Try again.");
   assert.deepEqual(asked, [["Globex", true]]);
 });
@@ -128,7 +194,8 @@ test("Mute Project says so beside it when the mute could not be saved", async ()
 test("Move Project sends the new parent by its name, spaces and all", async () => {
   const platformDetail: ProjectDetail = { project: platform, ancestors: [workspace], children: [], limits: [] };
   open(platformDetail, { routes: { "POST /api/projects/Platform/move": () => platform } });
-  fireEvent.click(await screen.findByRole("button", { name: "Move Project" }));
+  fireEvent.click(await screen.findByRole("button", { name: "More" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Move Project" }));
   fireEvent.click(screen.getByRole("button", { name: /^Move under:/ }));
   fireEvent.click(await screen.findByRole("option", { name: /^Globex renewals/ }));
   fireEvent.click(screen.getByRole("button", { name: "Move" }));
@@ -206,6 +273,7 @@ test("the workspace and company-wide projects are changed only with projects:gov
   assert.ok(screen.getByText("Only those who govern projects change the workspace and company-wide projects."));
   assert.ok(!screen.queryByRole("navigation", { name: "Where this project sits" }), "the workspace sits nowhere");
   assert.ok(!screen.queryByRole("button", { name: "Delete Project" }));
+  assert.ok(!screen.queryByRole("menuitem", { name: "Delete Project" }));
   cleanup();
   net.restore();
 
@@ -313,3 +381,119 @@ test("the Schedules tab: one rule under the tabs, and each schedule's time in wo
   assert.equal(screen.getByText("Mondays at 08:09 UTC").getAttribute("title"), "9 8 * * 1", "the expression is a hover away");
 });
 
+
+const knows = [...everything, "knowledge:read"];
+const knowledgeRoutes = (more: Record<string, (body: unknown) => unknown> = {}) => ({
+  "GET /api/projects/Globex/knowledge": () => globexKnowledge,
+  "GET /api/knowledge": () => ({ sources: knowledgeSources }),
+  ...more,
+});
+
+test("the Context tab: an owner who reads knowledge adds a workspace source and saves the list as a whole from the version read", async () => {
+  const puts: unknown[] = [];
+  open(globexDetail, {
+    tab: "context",
+    can: knows,
+    routes: knowledgeRoutes({
+      "PUT /api/projects/Globex/knowledge": (body) => (puts.push(body), { ...globexKnowledge, version: 5, knowledge: ["globex-contracts", "pricing"] }),
+    }),
+  });
+  const section = await screen.findByRole("region", { name: "Knowledge" });
+  await within(section).findByRole("button", { name: "Remove globex-contracts" });
+  const save = within(section).getByRole("button", { name: "Save Knowledge" }) as HTMLButtonElement;
+  assert.ok(save.disabled, "nothing to save yet");
+  fireEvent.click(await within(section).findByRole("button", { name: /^Add Source/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "pricing" }));
+  fireEvent.click(save);
+  await waitFor(() => assert.equal(puts.length, 1));
+  assert.deepEqual(puts[0], { version: 4, knowledge: ["globex-contracts", "pricing"] });
+  await within(section).findByText("Saved");
+});
+
+test("the Context tab: a member who reads knowledge sees what the project names and what runs are grounded in, read only", async () => {
+  const member = { ...globex, access: { role: "member" as const, from: "Globex", via: "*" }, actions: ["propose" as const] };
+  open({ ...globexDetail, project: member }, { tab: "context", can: knows, routes: knowledgeRoutes() });
+  const section = await screen.findByRole("region", { name: "Knowledge" });
+  await within(section).findByText("globex-contracts");
+  assert.ok(!within(section).queryByRole("button", { name: /^Add Source/ }));
+  assert.ok(!within(section).queryByRole("button", { name: "Save Knowledge" }));
+  const given = within(screen.getByRole("list", { name: "What runs here are grounded in" }))
+    .getAllByRole("listitem")
+    .map((li) => li.textContent);
+  assert.deepEqual(given, ["globex-contractsFrom this project", "field-playbookFrom Field engineering", "handbookFrom the workspace"]);
+  assert.ok(!net.seen.some((r) => r.path === "/api/knowledge"), "the workspace's sources are read only to choose from");
+});
+
+test("the Context tab shows nothing about knowledge to a reader without knowledge:read, and asks for none", async () => {
+  open(globexDetail, { tab: "context", routes: knowledgeRoutes() });
+  await screen.findByRole("textbox", { name: "Instructions" });
+  assert.ok(!screen.queryByRole("region", { name: "Knowledge" }));
+  assert.ok(!screen.queryByText(/grounded in/));
+  assert.ok(!net.seen.some((r) => r.path.includes("knowledge")));
+});
+
+test("the Context tab: a knowledge list the platform file sets turns read only once it is refused", async () => {
+  open(globexDetail, {
+    tab: "context",
+    can: knows,
+    routes: knowledgeRoutes({
+      "PUT /api/projects/Globex/knowledge": () =>
+        new Response(JSON.stringify({ error: "managed by the platform file: the platform file sets knowledge on \"Globex\"" }), { status: 409 }),
+    }),
+  });
+  const section = await screen.findByRole("region", { name: "Knowledge" });
+  await within(section).findByRole("button", { name: "Remove globex-contracts" });
+  fireEvent.click(within(section).getByRole("button", { name: "Remove globex-contracts" }));
+  fireEvent.click(within(section).getByRole("button", { name: "Save Knowledge" }));
+  await within(section).findByText("The platform file sets these sources. They can't be changed here.");
+  assert.ok(!within(section).queryByRole("button", { name: "Save Knowledge" }));
+  assert.ok(within(section).getByText("globex-contracts"), "what the file sets is shown again");
+});
+
+test("the Context tab: a knowledge list changed since it was read shows the latest and says so", async () => {
+  let reads = 0;
+  open(globexDetail, {
+    tab: "context",
+    can: knows,
+    routes: knowledgeRoutes({
+      "GET /api/projects/Globex/knowledge": () => (reads++ === 0 ? globexKnowledge : { ...globexKnowledge, version: 6, knowledge: ["handbook"] }),
+      "PUT /api/projects/Globex/knowledge": () => new Response(JSON.stringify({ error: "version conflict" }), { status: 409 }),
+    }),
+  });
+  const section = await screen.findByRole("region", { name: "Knowledge" });
+  fireEvent.click(await within(section).findByRole("button", { name: "Remove globex-contracts" }));
+  fireEvent.click(within(section).getByRole("button", { name: "Save Knowledge" }));
+  await within(section).findByText("Someone changed this project since you opened it. Its latest sources are shown now. Make your change again.");
+  assert.ok(within(section).getByRole("button", { name: "Remove handbook" }));
+});
+
+test("the Context tab: an edit in progress is kept across a change to another field, and never saved over a change to the list", async () => {
+  let current = globexKnowledge;
+  const puts: unknown[] = [];
+  net = stubFetch(
+    knowledgeRoutes({
+      "GET /api/projects/Globex/knowledge": () => current,
+      "PUT /api/projects/Globex/knowledge": (body) => (puts.push(body), current),
+    }),
+  );
+  const section = (version: number) => (
+    <ProjectKnowledgeSection project="Globex" ancestors={[]} workspaceName="Acme" version={version} canRead canWrite />
+  );
+  const { rerender } = render(section(4));
+  fireEvent.click(await screen.findByRole("button", { name: "Remove globex-contracts" }));
+  assert.ok(!screen.queryByRole("button", { name: "Remove globex-contracts" }));
+
+  // Another field changed: the project's version moved, the list did not.
+  current = { ...globexKnowledge, version: 5 };
+  rerender(section(5));
+  await waitFor(() => assert.equal(net.seen.filter((r) => r.path === "/api/projects/Globex/knowledge").length, 2));
+  assert.ok(!screen.queryByRole("button", { name: "Remove globex-contracts" }), "the edit is kept");
+  assert.ok(!screen.queryByText(/Someone changed this project/));
+
+  // Someone changed the list: their list is shown, and the edit goes.
+  current = { ...globexKnowledge, version: 6, knowledge: ["handbook"] };
+  rerender(section(6));
+  await screen.findByText("Someone changed this project since you opened it. Its latest sources are shown now. Make your change again.");
+  assert.ok(screen.getByRole("button", { name: "Remove handbook" }));
+  assert.equal(puts.length, 0);
+});

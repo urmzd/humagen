@@ -439,15 +439,14 @@ export function ThreadRoom({
     if (saving.current.busy) saving.current.next = next;
     else save(latest.current, next);
   };
-  // A run answers because the conversation routes to its agent when its message did not tag it.
-  const messages = new Map(turns.flatMap((t) => (t.message ? [[t.message.id, t.message] as const] : [])));
+  // A run the conversation's selection started says so, as the run recorded
+  // it, so an older answer keeps its line whatever the selection becomes.
   const routedOf = (run: Run): string | undefined => {
-    const m = run.message ? messages.get(run.message) : undefined;
-    if (!m || !(th.agents ?? []).includes(run.agent)) return undefined;
-    if (m.mentions.some((x) => x.run === run.id || (x.kind === "agent" && x.name === run.agent))) return undefined;
     const c = defaultCopy.chat;
-    if ((th.agents ?? []).length < 2) return c.routed(run.agent);
-    return th.mode === "all" ? c.routedAll(run.agent) : c.routedBest(run.agent);
+    if (run.routed === "all") return c.routedAll(run.agent);
+    // The best fit of one agent was not picked from others, and says only where it went.
+    if (run.routed === "best_fit") return run.picked ? c.routedBest(run.agent) : c.routed(run.agent);
+    return undefined;
   };
   const shareButton = useRef<HTMLButtonElement>(null);
   // The Share address of a conversation that can't be shared is the conversation's.
@@ -510,7 +509,7 @@ export function ThreadRoom({
             <button
               type="button"
               onClick={() => onOpenChannel(th.project, th.channel)}
-              className="rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
+              className="min-h-6 rounded-aui hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
             >
               {words.sharedIn(projectTitle(projects, th.project, workspaceName), th.channel)}
             </button>
@@ -545,7 +544,7 @@ export function ThreadRoom({
         )}
       </header>
       {shareable && sharing && (
-        <div className="relative z-10 px-4 pb-2">
+        <div data-layer="share" className="relative z-10 px-4 pb-2">
           <ShareDialog
             thread={th}
             hasRuns={hasRuns}

@@ -18,6 +18,7 @@ import {
 import { ScopeLimits } from "./Billing.tsx";
 import { inWords } from "./cron.ts";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
+import { ProjectKnowledgeSection } from "./ProjectKnowledge.tsx";
 import type { Source } from "./mail.ts";
 import { ProjectHistory, ProjectInbox, ProjectLimits, ProjectPeople } from "./ProjectTabs.tsx";
 import {
@@ -46,12 +47,14 @@ import {
   agentOptions,
   ago,
   button,
+  Confirm,
   Count,
   FlashNote,
   field,
   Label,
   Menu,
   Page,
+  PageActions,
   Problem,
   primary,
   rows,
@@ -973,17 +976,21 @@ function EditProject({ project, onSaved, onCancel }: { project: ProjectView; onS
 /**
  * What a turn here is given from the project tree: this project's
  * instructions, which those who may change the project edit, and, read only,
- * what each project above it sends, the workspace first.
+ * what each project above it sends, the workspace first. Then, to a reader of
+ * knowledge, the sources the project names and what a run here is grounded in.
  */
 export function ContextTab({
   detail,
   workspaceName,
   canWrite,
+  canKnowledge = false,
   onSaved,
 }: {
   detail: ProjectDetail;
   workspaceName: string;
   canWrite: boolean;
+  /** Holds `knowledge:read`: without it, nothing about sources is shown. */
+  canKnowledge?: boolean;
   onSaved: () => void;
 }) {
   const p = detail.project;
@@ -1086,6 +1093,15 @@ export function ContextTab({
           })}
         </section>
       )}
+      <ProjectKnowledgeSection
+        project={p.name}
+        version={p.version}
+        ancestors={detail.ancestors}
+        workspaceName={workspaceName}
+        canRead={canKnowledge}
+        canWrite={canWrite}
+        onSaved={onSaved}
+      />
     </div>
   );
 }
@@ -1200,6 +1216,8 @@ export function ProjectPage({
   const [reads, setReads] = useState(0);
   // The agent that answers what tags no agent here, for the meta line. Left out until read.
   const [lead, setLead] = useState<string | null>(null);
+  // Deleting cannot be undone, so it is asked twice.
+  const [deleting, setDeleting] = useState(false);
   // A mute that did not take says so beside its button.
   const { flash: muteFlash, say: sayMute, clear: clearMute } = useFlash();
 
@@ -1290,54 +1308,40 @@ export function ProjectPage({
       crumbs={root ? undefined : <Breadcrumb detail={detail} workspaceName={workspaceName} onOpen={onOpen} />}
       lede={root ? words.workspaceHint : p.description}
       actions={
-        <>
-          {!root && onMute && (
-            <span className="relative inline-flex">
-              <button
-                type="button"
-                className={button}
-                onClick={() => {
-                  clearMute();
-                  onMute(p.name, !isMuted).catch(() =>
-                    sayMute(isMuted ? defaultCopy.announcements.unmuteFailed : defaultCopy.announcements.muteFailed, true),
-                  );
-                }}
-              >
-                {isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute}
-              </button>
-              <FlashNote flash={muteFlash} align="left" />
-            </span>
-          )}
-          {canWrite && !root && !editing && (
-            <button type="button" className={button} onClick={() => setEditing(true)}>
-              {words.editProject}
-            </button>
-          )}
-          {may("move") && moving === null && (
-            <button type="button" className={button} onClick={() => setMoving(p.parent ?? "")}>
-              {defaultCopy.roles.moveProject}
-            </button>
-          )}
-          {may("archive") && (
-            <button
-              type="button"
-              className={button}
-              onClick={() => api.updateProject(p.name, { ...updateOf(p), archived: !p.archived }).then(changed).catch(fail(setProblem, words.failed.save))}
-            >
-              {p.archived ? defaultCopy.roles.unarchive : defaultCopy.roles.archive}
-            </button>
-          )}
-          {may("delete") && (
-            <button type="button" className={button} onClick={() => api.deleteProject(p.name).then(onDeleted).catch(fail(setProblem, words.failed.delete))}>
-              {words.deleteProject}
-            </button>
-          )}
-          {can("runs:write") && (
-            <button type="button" className={primary} onClick={onNewChat}>
-              {words.newTask}
-            </button>
-          )}
-        </>
+        <PageActions
+          primary={can("runs:write") ? { label: words.newTask, onSelect: onNewChat } : undefined}
+          actions={[
+            ...(!root && onMute
+              ? [
+                  {
+                    label: isMuted ? defaultCopy.announcements.unmute : defaultCopy.announcements.mute,
+                    onSelect: () => {
+                      clearMute();
+                      onMute(p.name, !isMuted).catch(() =>
+                        sayMute(isMuted ? defaultCopy.announcements.unmuteFailed : defaultCopy.announcements.muteFailed, true),
+                      );
+                    },
+                  },
+                ]
+              : []),
+            ...(canWrite && !root && !editing ? [{ label: words.editProject, onSelect: () => setEditing(true) }] : []),
+            ...(may("move") && moving === null ? [{ label: defaultCopy.roles.moveProject, onSelect: () => setMoving(p.parent ?? "") }] : []),
+            ...(may("archive")
+              ? [
+                  {
+                    label: p.archived ? defaultCopy.roles.unarchive : defaultCopy.roles.archive,
+                    // Restoring is not destructive; archiving is.
+                    destructive: !p.archived,
+                    onSelect: () => api.updateProject(p.name, { ...updateOf(p), archived: !p.archived }).then(changed).catch(fail(setProblem, words.failed.save)),
+                  },
+                ]
+              : []),
+            ...(may("delete")
+              ? [{ label: words.deleteProject, destructive: true, onSelect: () => setDeleting(true) }]
+              : []),
+          ]}
+          note={<FlashNote flash={muteFlash} align="left" />}
+        />
       }
       tabs={
         <Tabs
@@ -1349,6 +1353,17 @@ export function ProjectPage({
       }
     >
       <Problem message={problem} />
+      {deleting && (
+        <Confirm
+          question={defaultCopy.confirm.ask(titleOf(p, workspaceName))}
+          action={words.deleteProject}
+          onConfirm={() => {
+            setDeleting(false);
+            api.deleteProject(p.name).then(onDeleted).catch(fail(setProblem, words.failed.delete));
+          }}
+          onKeep={() => setDeleting(false)}
+        />
+      )}
       {isMuted && <p className="text-aui-xs text-aui-muted">{defaultCopy.announcements.muted}</p>}
       {p.archived && <p className="text-aui-xs text-aui-muted">{defaultCopy.roles.archived}</p>}
       {moving !== null && (
@@ -1430,7 +1445,7 @@ export function ProjectPage({
           }}
         />
       ) : tab === "context" ? (
-        <ContextTab key={p.name} detail={detail} workspaceName={workspaceName} canWrite={canWrite} onSaved={changed} />
+        <ContextTab key={p.name} detail={detail} workspaceName={workspaceName} canWrite={canWrite} canKnowledge={can("knowledge:read")} onSaved={changed} />
       ) : tab === "schedules" ? (
         <Scheduled
           key={p.name}

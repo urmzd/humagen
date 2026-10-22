@@ -1082,7 +1082,7 @@ test("the project is fixed once an agent has run, and a project the server will 
 test("agents checked in a conversation's + menu are saved on the thread, and an answer they were routed to says so", async () => {
   const restore = stubEventSource();
   try {
-    const routedRun = { id: "r3", agent: "helper", status: "completed", answer: "Renewal is on track.", text: "how is it going?", message: "m-1", prev: "m-1", thread: "th-00000000000000aa", calls: 0, created_at: at, updated_at: at } as never;
+    const routedRun = { id: "r3", agent: "helper", status: "completed", answer: "Renewal is on track.", text: "how is it going?", message: "m-1", prev: "m-1", thread: "th-00000000000000aa", calls: 0, routed: "all", created_at: at, updated_at: at } as never;
     const saved = { ...mine.thread, agents: ["helper", "lead"], mode: "all" as const, version: 2 };
     const lead = { spec: { ...helper.spec, name: "lead", description: "Coordinates" }, rev: 1 } as unknown as Revision;
     let current = mine;
@@ -1243,4 +1243,33 @@ test("someone added to a private conversation may change its agents but not move
   assert.ok(within(menu).getByText(defaultCopy.chat.projectStarter));
   assert.equal((within(menu).getByRole("button", { name: /Globex/ }) as HTMLButtonElement).disabled, true);
   assert.equal((await within(menu).findByRole("checkbox", { name: /^helper/ }) as HTMLButtonElement).disabled, false);
+});
+
+test("an answer says it was routed as its run recorded it, whatever the conversation's selection is now", async () => {
+  const restore = stubEventSource();
+  try {
+    const run = (id: string, agent: string, extra: object) =>
+      ({ id, agent, status: "completed", answer: `${agent} answered.`, text: "q", message: "m-1", prev: "m-1", thread: "th-00000000000000aa", calls: 0, created_at: at, updated_at: at, ...extra }) as never;
+    // Nothing is selected now; one run was routed as the best fit, one as one of all, and one was tagged.
+    const read: ThreadPage = {
+      ...mine,
+      turns: [
+        ...mine.turns,
+        { kind: "run", run: run("r4", "helper", { routed: "best_fit", picked: "Picked by @auto: matched renewals." }) },
+        { kind: "run", run: run("r5", "lead", { routed: "all" }) },
+        { kind: "run", run: run("r6", "helper", {}) },
+      ],
+    };
+    net = stubFetch({
+      "GET /api/threads/th-00000000000000aa": () => read,
+      "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    });
+    render(<ThreadRoom id={read.thread.id} me="ana" initial={read} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />);
+    assert.ok(await screen.findByText(`${defaultCopy.chat.routedBest("helper")}. Picked by @auto: matched renewals.`));
+    assert.ok(screen.getByText(defaultCopy.chat.routedAll("lead")));
+    assert.equal(screen.getAllByText(/^Routed to /).length, 2, "the tagged answer says nothing of routing");
+    cleanup();
+  } finally {
+    restore();
+  }
 });

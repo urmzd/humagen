@@ -5,7 +5,7 @@ import { inWords, presets } from "./cron.ts";
 import { ApiError, api, type Revision, type Schedule, type ScheduleView } from "./api.ts";
 import { type ProjectRef, projectOptions, titleIn } from "./projects.ts";
 import { deliverFor, deliverOptions } from "./recap.ts";
-import { AgentMark, agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Section, textLink } from "./ui.tsx";
+import { AgentMark, agentOptions, ago, button, card, Chip, Confirm, Empty, field, Label, Menu, Page, PageActions, Problem, primary, rows, Section, textLink } from "./ui.tsx";
 
 /** In UTC, because that is the zone the expression is written in. */
 function when(iso: string): string {
@@ -215,6 +215,8 @@ export function Schedules({
   const [editing, setEditing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [own, setOwn] = useState<string | null>(null);
+  // The schedule whose deletion is being confirmed: it cannot be undone, so it is asked twice.
+  const [deleting, setDeleting] = useState<string | null>(null);
   const open = onSelect ? selected : own;
   const select = (name: string | null) => {
     setEditing(false);
@@ -266,28 +268,40 @@ export function Schedules({
         }
         actions={
           canWrite ? (
-            <>
-              {!s.managed && (
-                <button type="button" className={button} onClick={() => act(api.deleteSchedule(s.name), "The schedule could not be deleted.", () => select(null))}>
-                  Delete
-                </button>
-              )}
-              <button type="button" className={button} onClick={() => act(api.pauseSchedule(s.name, !s.paused), "The schedule could not be changed.")}>
-                {s.paused ? "Resume" : "Pause"}
-              </button>
-              {!editing && !s.managed && (
-                <button type="button" className={button} onClick={() => setEditing(true)}>
-                  Edit
-                </button>
-              )}
-              <button type="button" className={primary} onClick={() => runNow(s)}>
-                Run Now
-              </button>
-            </>
+            <PageActions
+              primary={{ label: "Run Now", onSelect: () => runNow(s) }}
+              actions={[
+                ...(!editing && !s.managed ? [{ label: "Edit", onSelect: () => setEditing(true) }] : []),
+                {
+                  label: s.paused ? "Resume" : "Pause",
+                  onSelect: () => act(api.pauseSchedule(s.name, !s.paused), "The schedule could not be changed."),
+                },
+                ...(!s.managed
+                  ? [
+                      {
+                        label: "Delete",
+                        destructive: true,
+                        onSelect: () => setDeleting(s.name),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           ) : undefined
         }
       >
         <Problem message={problem} />
+        {deleting === s.name && (
+          <Confirm
+            question={defaultCopy.confirm.ask(s.name)}
+            action="Delete Schedule"
+            onConfirm={() => {
+              setDeleting(null);
+              act(api.deleteSchedule(s.name), "The schedule could not be deleted.", () => select(null));
+            }}
+            onKeep={() => setDeleting(null)}
+          />
+        )}
         {s.managed && <p className="text-aui-xs text-aui-muted">{copy.managed}</p>}
         {editing ? (
           <ScheduleForm

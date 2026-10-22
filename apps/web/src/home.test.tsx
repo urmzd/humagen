@@ -66,6 +66,13 @@ test("Needs you is a box of the five newest things waiting on the person, from w
   assert.doesNotMatch(html, /animate|warp-enter|aui-skeleton/);
 });
 
+test("an item above normal says so in words before when it came, and a normal one says nothing more", () => {
+  const urgent = { ...need("m-1", 5, "any-run-fails", "triage failed"), severity: "critical" as const };
+  const html = boxes({ notifications: ready({ items: [urgent, need("m-2", 10)], inbox: { total: 2 } }) });
+  assert.match(html, /triage failed<\/span><span[^>]*>Urgent · [^<]+</);
+  assert.match(html, /report-m-2\.md<\/span><span[^>]*>(?!Urgent|Warning)[^<]+</);
+});
+
 test("What's new lists announcements as rows, unread first and marked in words, with where each was posted and the way to all of them", () => {
   const html = boxes({
     notifications: ready({ items: [need("m-1", 5)], inbox: { total: 1 } }),

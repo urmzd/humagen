@@ -117,6 +117,13 @@ export const defaultCopy = {
   approveAll: (n: number) => `Approve All (${n})`,
   moreOptions: "More options",
   inbox: "Inbox",
+  /** A page's menu of its other actions, beside its one primary action. */
+  more: "More",
+  /** The second step of an action that cannot be undone. */
+  confirm: {
+    ask: (what: string) => `Delete ${what}? This cannot be undone.`,
+    keep: "Keep It",
+  },
   inboxCount: (n: number) => (n === 0 ? "Nothing needs you" : `${n} need${n === 1 ? "s" : ""} you`),
   needsYou: "Needs you",
   alerts: "System alerts",
@@ -156,7 +163,8 @@ export const defaultCopy = {
     pickHint: "Decisions come first, then updates.",
     back: "Back",
     needsYou: "Needs you",
-    updates: "Updates",
+    /** The inbox's announcements, by the name Home gives them. */
+    updates: "What's new",
     snooze: "Snooze",
     snoozeTitle: "Hide until tomorrow morning",
     about: "About",
@@ -207,7 +215,7 @@ export const defaultCopy = {
     mention: "Mention",
     announcement: "Announcement",
   },
-  /** Announcements: news posted in a project's inbox, read under Updates. */
+  /** Announcements: news posted in a project's inbox, read under What's new. */
   announcements: {
     post: "Post Announcement",
     withdraw: "Withdraw",
@@ -681,9 +689,11 @@ export const defaultCopy = {
             : "Alert"
         : "Inbox",
     moreWaiting: (n: number) => `${n} more in the inbox`,
+    /** An inbox item above normal, said in words before when it came. A normal one says nothing. */
+    urgency: { critical: "Urgent", warning: "Warning" } as Partial<Record<string, string>>,
     whatsNew: "What's new",
     nothingNew: "Nothing new from your projects.",
-    moreUpdates: (n: number) => `${n} more under Updates`,
+    moreUpdates: (n: number) => `${n} more under What's new`,
     /** The console's Needs you box: its way to the rest. */
     openInbox: "Open Inbox",
     /** What's new's way to every announcement in the inbox. */
@@ -882,6 +892,32 @@ export const defaultCopy = {
       noNotes: "No notes.",
       order:
         "A turn here is sent the workspace's instructions first, then each project's down to this one, then this project's notes, then the notes above it, nearest first, and then the agent's own.",
+    },
+    /** A project's knowledge sources, on its Context tab. */
+    knowledge: {
+      heading: "Knowledge",
+      hint: "Workspace sources every run filed here or below is grounded in, besides its agent's own. At most 8.",
+      none: "This project names no sources.",
+      /** An owner with nothing to choose: the workspace has no sources yet. */
+      noSources: "The workspace has no sources yet. Add one under Context to name it here.",
+      add: "Add Source",
+      /** Shown once 8 are named. */
+      full: "That's 8, the most a project names. Remove one to add another.",
+      save: "Save Knowledge",
+      saved: "Saved",
+      given: "What runs here are grounded in",
+      givenHint:
+        "This project's sources, then each project's above it, nearest first, each once. Read only. Change a source on the project it comes from.",
+      noneGiven: "No project here or above names a source.",
+      fromHere: "From this project",
+      fromWorkspace: "From the workspace",
+      /** A project above, by its title: "From Field engineering". */
+      from: (title: string) => `From ${title}`,
+      managed: "The platform file sets these sources. They can't be changed here.",
+      stale:
+        "Someone changed this project since you opened it. Its latest sources are shown now. Make your change again.",
+      failed: "The sources could not be saved.",
+      readFailed: "The sources could not be read.",
     },
   },
   /** Channels and shared threads: where people and agents work together in a project. */

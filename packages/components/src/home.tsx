@@ -165,6 +165,8 @@ export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Cop
         const who = `**${n.from}** ${n.summary}`;
         const meta = [
           c.notificationTag(n.kind, n.severity),
+          // An alert's tag already says its severity.
+          n.kind === "inbox" && n.severity ? c.urgency[n.severity] : null,
           n.at ? timeToken(n.at) : null,
           n.detail,
         ]
