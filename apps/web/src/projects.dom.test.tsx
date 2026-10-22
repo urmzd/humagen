@@ -93,6 +93,25 @@ test("a project page shows where it sits, what sits below it, and every limit ab
   );
 });
 
+test("a project's meta line names its lead, the agent that answers what tags no agent there, in its color", async () => {
+  open(globexDetail, {
+    routes: {
+      "GET /api/projects/Globex/agents": () => ({
+        version: 1,
+        available: { all: true, names: [] },
+        homes: [],
+        default_resolved: { agent: "globex-helper", from: "project:Globex" },
+      }),
+    },
+  });
+  const lead = await screen.findByText("globex-helper");
+  const meta = lead.closest("span.inline-flex.flex-wrap");
+  assert.ok(meta);
+  assert.equal(meta.textContent, "Account · Globex Inc · in Field engineering·Leadglobex-helper");
+  // Told apart by color: the agent's mark sits beside its name.
+  assert.ok(lead.querySelector("[data-accent='agent']"));
+});
+
 test("Mute Project says so beside it when the mute could not be saved", async () => {
   const asked: [string, boolean][] = [];
   open(globexDetail, {
@@ -283,7 +302,7 @@ test("the Schedules tab: one rule under the tabs, and each schedule's time in wo
     recent: [],
   };
   open(globexDetail, { tab: "schedules", can: [...everything, "schedules:write"], schedules: [recap] });
-  const heading = await screen.findByRole("heading", { name: "Scheduled (1)" });
+  const heading = await screen.findByRole("heading", { name: /^Scheduled ?, 1$/ });
   const section = heading.closest("section");
   assert.ok(section);
   // The tab strip draws the rule under the tabs. The section draws its own only after another.

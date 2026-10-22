@@ -1,7 +1,7 @@
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import { api, type Bucket, type Entry, type Group, type Revision, type Summary } from "./api.ts";
 import { Burn } from "./Billing.tsx";
-import { agentOptions, button, card, Chip, Empty, field, figures, Menu, Page, SkeletonRows, Stat, took } from "./ui.tsx";
+import { agentOptions, button, card, Chip, Empty, field, figures, Menu, Page, SkeletonRows, Stat, took, textLink } from "./ui.tsx";
 import { money } from "./usage.ts";
 
 const usd = (micros: number) => money({ micros, currency: "USD" });
@@ -197,7 +197,7 @@ function Breakdown({ title, groups, onPick }: { title: string; groups: Group[]; 
                     <button
                       type="button"
                       onClick={() => onPick(g.name)}
-                      className="rounded-aui-sm text-aui-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      className={textLink}
                     >
                       {g.name}
                     </button>
@@ -333,7 +333,7 @@ function Journal({
                     <button
                       type="button"
                       onClick={() => onOpenRun(e.run_id)}
-                      className="whitespace-nowrap rounded-aui-sm text-aui-muted underline-offset-2 hover:text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+                      className={`${textLink} whitespace-nowrap`}
                     >
                       Open run
                     </button>
