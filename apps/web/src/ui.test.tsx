@@ -583,9 +583,9 @@ test("MailboxView: hosts warp's mailbox with every message listed", () => {
   for (const m of sampleMail().filter((x) => messageState(x) === "open")) assert.ok(out.includes(m.subject), m.subject);
   assert.equal(out.match(/data-message="/g)?.length, 8, "one row per open message");
   // Decisions come first, then what is only there to be read.
-  assert.ok(out.indexOf(">Needs you<") < out.indexOf(">Updates<"));
-  assert.ok(out.indexOf('data-message="m-approval"') < out.indexOf(">Updates<"));
-  assert.ok(out.indexOf('data-message="m-artifact"') > out.indexOf(">Updates<"));
+  assert.ok(out.indexOf(">Needs you<") < out.indexOf(">What&#x27;s new<"));
+  assert.ok(out.indexOf('data-message="m-approval"') < out.indexOf(">What&#x27;s new<"));
+  assert.ok(out.indexOf('data-message="m-artifact"') > out.indexOf(">What&#x27;s new<"));
 });
 
 test("MailboxView: an agent's message is framed in that agent's stroke, a rule's is neutral", () => {

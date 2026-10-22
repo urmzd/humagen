@@ -156,7 +156,8 @@ export const defaultCopy = {
     pickHint: "Decisions come first, then updates.",
     back: "Back",
     needsYou: "Needs you",
-    updates: "Updates",
+    /** The inbox's announcements, by the name Home gives them. */
+    updates: "What's new",
     snooze: "Snooze",
     snoozeTitle: "Hide until tomorrow morning",
     about: "About",
@@ -207,7 +208,7 @@ export const defaultCopy = {
     mention: "Mention",
     announcement: "Announcement",
   },
-  /** Announcements: news posted in a project's inbox, read under Updates. */
+  /** Announcements: news posted in a project's inbox, read under What's new. */
   announcements: {
     post: "Post Announcement",
     withdraw: "Withdraw",
@@ -678,9 +679,11 @@ export const defaultCopy = {
             : "Alert"
         : "Inbox",
     moreWaiting: (n: number) => `${n} more in the inbox`,
+    /** An inbox item above normal, said in words before when it came. A normal one says nothing. */
+    urgency: { critical: "Urgent", warning: "Warning" } as Partial<Record<string, string>>,
     whatsNew: "What's new",
     nothingNew: "Nothing new from your projects.",
-    moreUpdates: (n: number) => `${n} more under Updates`,
+    moreUpdates: (n: number) => `${n} more under What's new`,
     /** The console's Needs you box: its way to the rest. */
     openInbox: "Open Inbox",
     /** What's new's way to every announcement in the inbox. */
