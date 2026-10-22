@@ -210,6 +210,83 @@ func TestATombstonedNameNeedsGovern(t *testing.T) {
 	}
 }
 
+// churn creates and deletes n throwaway names, each a second after the last.
+func churn(s *projects.Store, tenant string, n int) error {
+	for i := range n {
+		name, at := fmt.Sprintf("Junk %04d", i), t0.Add(time.Duration(i+1)*time.Second)
+		if _, err := s.Create(tenant, team(name, ""), ada, at); err != nil {
+			return err
+		}
+		if err := s.Delete(tenant, name, ada, at, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// However many names are deleted after it, a deleted name that still has
+// conversations under it keeps its tombstone, so taking it back still needs
+// projects:govern. The oldest names with nothing under them make room.
+func TestADeletedNameWithConversationsIsNeverForgotten(t *testing.T) {
+	filed := func(string) func(string) bool {
+		return func(name string) bool { return strings.EqualFold(name, "Target") }
+	}
+	s := projects.NewStore(projects.WithFiled(filed))
+	mustCreate(t, s, "acme", team("Target", ""), ada)
+	if err := s.Delete("acme", "Target", ada, t0, nil); err != nil {
+		t.Fatal(err)
+	}
+	later := projects.MaxTombstones + 10
+	if err := churn(s, "acme", later); err != nil {
+		t.Fatalf("a delete with an empty name to forget = %v", err)
+	}
+	if _, ok := s.Tombstone("acme", "Target"); !ok {
+		t.Fatal("the tombstone of a name with conversations was forgotten")
+	}
+	if _, err := s.Create("acme", team("target", ""), ada, t0); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("reusing it without govern after %d later deletes = %v, want ErrForbidden", later, err)
+	}
+	if _, ok := s.Tombstone("acme", "Junk 0000"); ok {
+		t.Fatal("the oldest empty name is still remembered")
+	}
+	if _, ok := s.Tombstone("acme", fmt.Sprintf("Junk %04d", later-1)); !ok {
+		t.Fatal("the latest delete left no tombstone")
+	}
+}
+
+// With as many tombstones as a tenant keeps and none it may forget, the next
+// delete is refused and changes nothing. A store told nothing about what is
+// filed forgets none.
+func TestAFullTombstoneTableRefusesTheNextDelete(t *testing.T) {
+	everything := projects.WithFiled(func(string) func(string) bool { return func(string) bool { return true } })
+	for name, opts := range map[string][]projects.Option{"told nothing": nil, "every name still filed": {everything}} {
+		t.Run(name, func(t *testing.T) {
+			s := projects.NewStore(opts...)
+			if err := churn(s, "acme", projects.MaxTombstones); err != nil {
+				t.Fatal(err)
+			}
+			mustCreate(t, s, "acme", team("Last", ""), ada)
+			if err := s.Delete("acme", "Last", ada, t0, nil); !errors.Is(err, projects.ErrLimit) {
+				t.Fatalf("a delete past the cap = %v, want ErrLimit", err)
+			}
+			if !s.Tree("acme").Has("Last") {
+				t.Fatal("a refused delete removed the project")
+			}
+			if _, ok := s.Tombstone("acme", "Junk 0000"); !ok {
+				t.Fatal("a refused delete forgot a tombstone")
+			}
+			if h, _ := s.History("acme", "Last", 0, 0); len(h) != 1 {
+				t.Fatalf("a refused delete recorded a change: %+v", h)
+			}
+			// Taking a deleted name back with govern makes room.
+			mustCreate(t, s, "acme", team("Junk 0000", ""), admin)
+			if err := s.Delete("acme", "Last", ada, t0, nil); err != nil {
+				t.Fatalf("a delete once there is room = %v", err)
+			}
+		})
+	}
+}
+
 func TestDeleteIsRefusedWhileAnythingPointsAtTheProject(t *testing.T) {
 	s := projects.NewStore()
 	mustCreate(t, s, "acme", team("Field", ""), ada)

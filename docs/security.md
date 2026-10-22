@@ -37,7 +37,9 @@ under them, and because reusing the name of a deleted project adopts the
 conversations still filed under it. `projects:govern` grants nothing on its
 own: every project route checks `projects:read` or `projects:write` first, and
 govern is asked for on top, for the workspace, a company project, its notes, or
-a deleted name. Its notes are asked the same through every route that changes
+a deleted name. A deleted name's tombstone is never forgotten while
+conversations or files are still filed under it, so later deletes cannot clear
+the way to adopting them. Its notes are asked the same through every route that changes
 them: the project's memory routes and the inbox. The agent memory routes reach
 an agent's own notes only, and answer 404 for a project's memory owner
 (`project:<name>`, and `project:` for the workspace). Projects have no roles yet, so anyone holding `projects:write`

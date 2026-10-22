@@ -211,6 +211,40 @@ func TestAFailedImportFailsTheStartAndChangesNothing(t *testing.T) {
 	})
 }
 
+// However many names are deleted after it, a deleted project whose
+// conversations are still filed under its name keeps its tombstone, so taking
+// the name back needs projects:govern. The project store asks the run index.
+func TestADeletedProjectsConversationsAreNeverAdoptedWithoutGovern(t *testing.T) {
+	p := start(t, call.Limits{})
+	ctx := t.Context()
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Target"}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := p.Converse(ctx, tenant, platform.Turn{ID: "in-target", Agent: "lead", Text: "Plan it", Project: "Target"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(t, p, first.ID, runs.Completed)
+	if err := p.DeleteProject(ctx, tenant, "Target", ada); err != nil {
+		t.Fatal(err)
+	}
+	for i := range projects.MaxTombstones + 5 {
+		name := fmt.Sprintf("Junk %04d", i)
+		if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: name}); err != nil {
+			t.Fatal(err)
+		}
+		if err := p.DeleteProject(ctx, tenant, name, ada); err != nil {
+			t.Fatalf("delete %d, with empty names to forget = %v", i, err)
+		}
+	}
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Target"}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("taking back a name with conversations after %d later deletes = %v, want ErrForbidden", projects.MaxTombstones+5, err)
+	}
+	if _, err := p.CreateProject(ctx, tenant, govern, platform.ProjectInput{Name: "Target"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFortyRacersInTwoChildrenAgainstAParentsLimitAdmitSeven(t *testing.T) {
 	p := start(t, call.Limits{})
 	field(t, p)

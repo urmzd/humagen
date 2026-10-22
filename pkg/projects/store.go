@@ -88,6 +88,9 @@ type Store struct {
 	trees sync.Map
 	caps  Caps
 	kept  *state.Table[json.RawMessage]
+	// filed is what the store asks before it forgets a deleted name. Nil
+	// forgets none.
+	filed func(tenant string) func(name string) bool
 }
 
 // Option configures a Store.
@@ -103,6 +106,16 @@ func WithCaps(c Caps) Option {
 			Children: cmp.Or(c.Children, d.Children), Company: cmp.Or(c.Company, d.Company),
 		}
 	}
+}
+
+// WithFiled tells the store what is still filed under a name, so a tombstone
+// is forgotten to make room only when reusing its name would adopt nothing:
+// filed(tenant) returns whether one name of that tenant, ignoring case, still
+// has conversations or files under it. It is called with the store's lock
+// held, so it must not call the store. Without it no tombstone is forgotten,
+// and a delete past MaxTombstones is refused.
+func WithFiled(filed func(tenant string) func(name string) bool) Option {
+	return func(s *Store) { s.filed = filed }
 }
 
 // NewStore returns an empty store in memory.
@@ -312,23 +325,50 @@ func (w *write) record(c Change) {
 	}
 }
 
-// bury leaves a tombstone for a deleted name, dropping the oldest past
-// MaxTombstones.
-func (w *write) bury(x Tombstone) {
+// bury leaves a tombstone for a deleted name. With MaxTombstones already
+// kept, it first forgets the oldest whose name has nothing filed under it,
+// since reusing that name adopts nothing. When every one still has something,
+// the delete is refused (ErrLimit): forgetting one would let its name, and
+// what is filed under it, be taken back without projects:govern.
+func (w *write) bury(x Tombstone) error {
 	low := strings.ToLower(x.Name)
-	w.t.tombs[low] = x
-	w.put(keyTombstone+low, x)
-	for len(w.t.tombs) > MaxTombstones {
-		var oldest string
-		var at time.Time
-		for k, t := range w.t.tombs {
-			if oldest == "" || t.At.Before(at) || (t.At.Equal(at) && k < oldest) {
-				oldest, at = k, t.At
+	if _, had := w.t.tombs[low]; !had && len(w.t.tombs) >= MaxTombstones {
+		var filed func(string) bool
+		if w.s.filed != nil {
+			filed = w.s.filed(w.name)
+		}
+		for len(w.t.tombs) >= MaxTombstones {
+			if !w.forget(filed) {
+				return fmt.Errorf("%w: a workspace remembers at most %d deleted names, and each it remembers still has conversations or files under it", ErrLimit, MaxTombstones)
 			}
 		}
-		delete(w.t.tombs, oldest)
-		w.delete(keyTombstone + oldest)
 	}
+	w.t.tombs[low] = x
+	w.put(keyTombstone+low, x)
+	return nil
+}
+
+// forget drops the oldest tombstone whose name has nothing filed under it,
+// and reports whether there was one. A nil filed forgets none.
+func (w *write) forget(filed func(string) bool) bool {
+	if filed == nil {
+		return false
+	}
+	keys := slices.Collect(maps.Keys(w.t.tombs))
+	slices.SortFunc(keys, func(a, b string) int {
+		if c := w.t.tombs[a].At.Compare(w.t.tombs[b].At); c != 0 {
+			return c
+		}
+		return strings.Compare(a, b)
+	})
+	for _, k := range keys {
+		if !filed(w.t.tombs[k].Name) {
+			delete(w.t.tombs, k)
+			w.delete(keyTombstone + k)
+			return true
+		}
+	}
+	return false
 }
 
 // root writes the root the first time a tenant writes anything.
@@ -559,7 +599,8 @@ func sameField(a, b Project, field string) bool {
 // with projects:govern. It is refused while the project has children, or
 // while inUse, called under the lock, names anything that points at it. The
 // root cannot be deleted, a file-managed project cannot be deleted here, and
-// a company project needs projects:govern.
+// a company project needs projects:govern. With MaxTombstones kept it is
+// refused (ErrLimit) unless one of them can be forgotten, as bury says.
 func (s *Store) Delete(tenantName, name string, w Writer, at time.Time, inUse func(Project) []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -589,7 +630,9 @@ func (s *Store) Delete(tenantName, name string, w Writer, at time.Time, inUse fu
 	}
 	delete(tx.t.projects, name)
 	tx.delete(keyProject + name)
-	tx.bury(Tombstone{Name: name, By: w.By, At: at})
+	if err := tx.bury(Tombstone{Name: name, By: w.By, At: at}); err != nil {
+		return err
+	}
 	tx.record(Change{At: at, By: w.By, Project: name, What: Deleted, Before: ptr(cur)})
 	return tx.commit()
 }

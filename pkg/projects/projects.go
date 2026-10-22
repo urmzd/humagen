@@ -110,7 +110,9 @@ const (
 	// MaxHistory is how many changes a tenant keeps. The oldest are
 	// dropped first, in the same write as the newest.
 	MaxHistory = 1000
-	// MaxTombstones is how many deleted names a tenant remembers.
+	// MaxTombstones is how many deleted names a tenant remembers. Past it,
+	// one is forgotten only when nothing is filed under its name, and a
+	// delete that would need to forget one that has something is refused.
 	MaxTombstones = 1000
 	// MaxPage bounds one page of history.
 	MaxPage = 200

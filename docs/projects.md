@@ -339,7 +339,7 @@ one `state.Write` (all or none within a namespace):
 | `p:<name>` (`p:` is the root) | the project, with the fields the file owns |
 | `c:<project>/<channel>` | a channel (names cannot hold `/`) |
 | `h:<seq>` | a `Change`, a ring of 1,000 per tenant pruned in the same write |
-| `x:<lower(name)>` | a tombstone `{name, by, at}`, at most 1,000 |
+| `x:<lower(name)>` | a tombstone `{name, by, at}`, at most 1,000; one is forgotten to make room only when no conversation or file is filed under its name, and a delete that would need to forget one that has something is refused (429) |
 
 `Open(st)` loads everything once and trusts its memory (one writer). A write
 that fails changes nothing. Open refuses a cycle or an orphan (fail closed).
@@ -352,7 +352,8 @@ separate locks: check and insert become one critical section.
 
 1. A name is unique ignoring case, tombstones included, and never changes. A
    tombstoned name is reused only with `projects:govern`, recorded as
-   "adopts its old conversations".
+   "adopts its old conversations". However many deletes follow, a tombstone
+   whose name still has conversations or files under it is never forgotten.
 2. The parent exists in the same tenant and is not archived. Phase 1 fixes
    the parent at creation, so no cycle can form. A move (phase 2) refuses a
    parent inside the moved subtree, and requires

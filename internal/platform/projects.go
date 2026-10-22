@@ -262,6 +262,28 @@ func (p *Platform) migrateProjects() error {
 	return nil
 }
 
+// filedUnder is what the project store asks before it forgets a deleted name:
+// for one tenant, whether a name, ignoring case, still has conversations or
+// files filed under it, which taking the name back would adopt. It reads the
+// run index's and the file index's counts once, and is called with the
+// project store's lock held.
+func (p *Platform) filedUnder(tenant string) func(string) bool {
+	filed := map[string]bool{}
+	if p.Runs != nil {
+		for name, n := range p.Runs.ProjectCounts(tenant) {
+			if n.Threads > 0 {
+				filed[strings.ToLower(name)] = true
+			}
+		}
+	}
+	if p.Artifacts != nil {
+		for _, sh := range p.Artifacts.Usage(tenant).ByProject {
+			filed[strings.ToLower(sh.Name)] = true
+		}
+	}
+	return func(name string) bool { return filed[strings.ToLower(name)] }
+}
+
 // Bounds on what a turn is sent of its project chain, in characters.
 const (
 	// maxChainInstructions is all the chain's instructions together. Each
