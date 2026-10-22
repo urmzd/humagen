@@ -628,7 +628,7 @@ export function ChannelPage({
   }
   if (missing === "channel") {
     return (
-      <Page title={words.missingChannel(channel)} lede={words.missingChannelHint} back={{ label: where, onClick: onOpenProject }}>
+      <Page title={words.missingChannel} lede={words.missingChannelHint(channel)} back={{ label: where, onClick: onOpenProject }}>
         {null}
       </Page>
     );

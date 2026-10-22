@@ -498,8 +498,8 @@ test("a channel its project does not hold says so, and offers no composer", asyn
       onOpenThread={() => {}}
     />,
   );
-  assert.ok(await screen.findByRole("heading", { level: 1, name: words.missingChannel("renewals") }));
-  assert.ok(screen.getByText(words.missingChannelHint));
+  assert.ok(await screen.findByRole("heading", { level: 1, name: words.missingChannel }));
+  assert.ok(screen.getByText("This project has no channel named #renewals. Its Channels tab lists the ones it has."));
   assert.ok(!screen.queryByPlaceholderText(words.startThread));
   fireEvent.click(screen.getByRole("button", { name: "‹ Globex" }));
   assert.equal(back, 1);

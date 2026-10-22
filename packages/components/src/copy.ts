@@ -774,10 +774,10 @@ export const defaultCopy = {
       purposeHint: "Sent to every agent answering here.",
     },
     noChannels: "Only general so far.",
-    /** A channel's page, when the project holds no channel by that name. */
-    missingChannel: (name: string) => `No channel named #${name}`,
-    missingChannelHint:
-      "This project has no channel by that name. Its Channels tab lists the ones it has.",
+    /** A channel's page, when the project holds no channel by that name. The name wraps in the line under the title. */
+    missingChannel: "No such channel",
+    missingChannelHint: (name: string) =>
+      `This project has no channel named #${name}. Its Channels tab lists the ones it has.`,
     /** A task the reader may not read reads as one that does not exist, as a project does. */
     missingTask: "No such task",
     /** A task that could not be read for a reason other than its not being there. */
