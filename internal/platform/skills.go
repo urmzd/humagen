@@ -73,16 +73,19 @@ func startsForSkills(ms []threads.Mention) []threads.Mention {
 // on the chain declares refuses a message typed in the console, which
 // nothing is posted for (threads.UnknownSkill); a message a surface posted,
 // which is there already, keeps it, refused, so its writer is told. Then a
-// message that names a skill and tags no agent starts @auto
-// (startsForSkills), unless it was posted only: the @auto a skill starts is
-// not written, so a person who chose to post only is taken at their word.
-func skillTags(ms []threads.Mention, surfaced, postOnly bool) ([]threads.Mention, error) {
+// message a person posted in the console as themselves (console) that names
+// a skill and tags no agent starts @auto (startsForSkills). A message posted
+// only is not one: the @auto a skill starts is not written, so a person who
+// chose to post only is taken at their word. A message a client posts keeps
+// the client's defaults, as its commands do: the default answers with the
+// skill, and a client that lists its agents is never sent to @auto.
+func skillTags(ms []threads.Mention, surfaced, console bool) ([]threads.Mention, error) {
 	if !surfaced {
 		if err := threads.UnknownSkill(ms); err != nil {
 			return nil, err
 		}
 	}
-	if postOnly {
+	if !console {
 		return ms, nil
 	}
 	return startsForSkills(ms), nil

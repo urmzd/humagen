@@ -33,12 +33,14 @@ func (s *Server) getProjectSkills(w http.ResponseWriter, r *http.Request, who au
 // projects:govern as well, and skills the platform file declares are the
 // file's (409).
 func (s *Server) putProjectSkills(w http.ResponseWriter, r *http.Request, who auth.Principal) {
-	var in platform.SkillsInput
-	if !decode(w, r, &in) {
-		return
-	}
+	// The project is found first, so a body that does not read answers a
+	// hidden project as it answers a missing one.
 	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Owner)
 	if !found {
+		return
+	}
+	var in platform.SkillsInput
+	if !decode(w, r, &in) {
 		return
 	}
 	if in.Skills == nil {

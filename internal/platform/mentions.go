@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/people"
@@ -25,7 +26,7 @@ const MaxMentionItems = 20
 // maxPeoplePages is how many pages of the directory one completion reads.
 const maxPeoplePages = 4
 
-// MaxMentionQuery bounds what a completion is asked for, in bytes.
+// MaxMentionQuery bounds what a completion is asked for, in characters.
 const MaxMentionQuery = 100
 
 // ErrNoMentionKind reports a mention kind the workspace does not have.
@@ -84,7 +85,7 @@ func (p *Platform) MentionItems(who auth.Principal, project, kind, prefix string
 	if !tree.Has(name) {
 		return nil, fmt.Errorf("%w: %q", projects.ErrNotFound, project)
 	}
-	if len(prefix) > MaxMentionQuery {
+	if utf8.RuneCountInString(prefix) > MaxMentionQuery || len(prefix) > 4*MaxMentionQuery {
 		return nil, fmt.Errorf("%w: a completion is asked for at most %d characters", projects.ErrInvalid, MaxMentionQuery)
 	}
 	var resolves string
