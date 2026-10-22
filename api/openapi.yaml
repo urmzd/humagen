@@ -2706,6 +2706,12 @@ paths:
       operationId: deleteKnowledgeSource
       tags: [knowledge]
       summary: Delete a knowledge source and its documents
+      description: |
+        Refused (409) while a project the caller can see names the source,
+        and those projects are named; a caller without `projects:read` is
+        told only that a project names it. A project hidden from the caller does
+        not hold the delete up and is not named; it keeps the name, which
+        grounds nothing until a source of that name is made again.
       x-permission: knowledge:write
       parameters:
         - {$ref: "#/components/parameters/SourceName"}
@@ -2715,6 +2721,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/ServerError"}
   /api/knowledge/{name}/documents:
     get:

@@ -1,5 +1,5 @@
 /** A workspace's project tree, for tests and the gallery. Nothing here is used by the app. */
-import type { ProjectDetail, ProjectKind, ProjectView } from "./api.ts";
+import type { ProjectDetail, ProjectKind, ProjectKnowledge, ProjectView, Source } from "./api.ts";
 
 const at = "2026-10-01T09:00:00Z";
 
@@ -109,3 +109,24 @@ export function projectView(p: Partial<ProjectView> & { name: string }): Project
     ...p,
   };
 }
+
+/** What GET /api/projects/Globex/knowledge answers a reader of knowledge: Globex names one source, and runs there are also grounded in Field's and the workspace's. */
+export const globexKnowledge: ProjectKnowledge = {
+  version: 4,
+  knowledge: ["globex-contracts"],
+  given: [
+    { name: "globex-contracts", from: "Globex" },
+    { name: "field-playbook", from: "Field" },
+    { name: "handbook", from: "" },
+  ],
+};
+
+/** The workspace's knowledge sources, as GET /api/knowledge lists them. */
+export const knowledgeSources: Source[] = ["globex-contracts", "field-playbook", "handbook", "pricing"].map((name) => ({
+  name,
+  documents: 3,
+  passages: 12,
+  excluded: 0,
+  variants: [],
+  updated_at: at,
+}));
