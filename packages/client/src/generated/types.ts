@@ -626,6 +626,11 @@ shared thread here. The client is a Slack client of the workspace,
 whose bot must already be in the channel, so no scope widens. One
 Slack channel is bound to at most one channel of the workspace, and
 a direct message is never bound. Archiving a channel unbinds it.
+Binding one, or binding a channel elsewhere, takes `clients:write`
+besides owning the project (403 without): which of a client's Slack
+channels a project answers in is the client's admins' to decide, as
+every new thread there is filed in the project. Keeping a binding
+as it is, or removing it, takes only the owner.
  */
 export interface SlackBinding {
   /** The Slack client's id. */

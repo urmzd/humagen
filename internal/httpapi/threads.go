@@ -73,6 +73,10 @@ func (s *Server) createChannel(w http.ResponseWriter, r *http.Request, who auth.
 		return
 	}
 	name := pr.Name
+	if err := s.P.MayBind(who, name, "", in.Slack); err != nil {
+		s.problem(w, err)
+		return
+	}
 	c, err := s.P.CreateChannel(r.Context(), who.Tenant, name, writer(who), in)
 	if err != nil {
 		s.problem(w, err)
@@ -91,6 +95,10 @@ func (s *Server) updateChannel(w http.ResponseWriter, r *http.Request, who auth.
 		return
 	}
 	name := pr.Name
+	if err := s.P.MayBind(who, name, r.PathValue("channel"), in.Slack); err != nil {
+		s.problem(w, err)
+		return
+	}
 	c, err := s.P.UpdateChannel(r.Context(), who.Tenant, name, r.PathValue("channel"), writer(who), in)
 	if err != nil {
 		s.problem(w, err)

@@ -67,7 +67,10 @@ take answers.
 A project's owners bind a warp channel to a Slack channel the app's bot is
 already in (`PUT /api/projects/{name}/channels/{channel}` with
 `slack: {client, channel}`, or `slack:` on the channel in the Platform
-document). One Slack channel is bound to one channel, a direct message never,
+document). Binding one, or moving a binding, also takes `clients:write`: a
+binding files every new thread in that Slack channel in the project, so which
+channels a project answers in is the client's admins' to decide. An owner
+keeps or removes a binding an admin made. One Slack channel is bound to one channel, a direct message never,
 and archiving a channel unbinds it. `GET /api/clients/{id}/bindings` lists a
 client's. A client's `home` (a project and one of its channels) is where
 everything else is filed.

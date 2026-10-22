@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/projects"
 )
@@ -81,6 +82,24 @@ func (p *Platform) UpdateChannel(ctx context.Context, tenant, project, name stri
 		c.Title, c.Purpose, c.Default, c.Slack = strings.TrimSpace(in.Title), strings.TrimSpace(in.Purpose), in.Default, in.Slack
 		return nil
 	})
+}
+
+// MayBind holds a change to a channel's Slack binding to the client's side:
+// which of a Slack client's channels a project answers in is decided by
+// those who administer the client (clients:write), as binding one files
+// every new thread there in the project. Keeping a channel's binding as it
+// is, or removing it, takes nothing more than the route does. channel is ""
+// for a new channel.
+func (p *Platform) MayBind(who auth.Principal, project, channel string, b *projects.SlackBinding) error {
+	if b == nil || who.Can(auth.ClientsWrite) {
+		return nil
+	}
+	if channel != "" {
+		if cur, err := p.Projects.Channel(who.Tenant, projects.NameOf(project), channel); err == nil && cur.Slack != nil && *cur.Slack == *b {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: binding a Slack channel takes clients:write, as every new thread there is filed in this project", ErrForbidden)
 }
 
 // checkBinding checks that a binding names a Slack client of the workspace.
