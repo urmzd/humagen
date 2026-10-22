@@ -442,9 +442,16 @@ export class FakeWarp implements Warp {
   /** Every read of a project's announcements, by project. */
   readonly newsReads: string[] = [];
 
+  /** How many reads of a project's announcements fail next, as when warp is restarting. */
+  failNews = 0;
+
   /** As the project's inbox pages them for the app's machine: newest first, withdrawn ones too. */
   async announcements(project: string, limit: number) {
     this.newsReads.push(project);
+    if (this.failNews > 0) {
+      this.failNews--;
+      throw new WarpError(503, "warp is restarting");
+    }
     return [...this.mailbox.values()]
       .filter(
         (m) => m.kind === "announcement" && (m.source as { project?: string })?.project === project,

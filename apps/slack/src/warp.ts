@@ -139,6 +139,8 @@ export interface Binding {
   slack_channel: string;
   project: string;
   channel: string;
+  /** When the Slack channel was bound there. Nothing announced before it is caught up on. */
+  bound_at?: string;
 }
 
 /** Every call takes an optional signal, as the generated client's methods do. */

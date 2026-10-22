@@ -118,6 +118,11 @@ export interface AppOptions {
   stopWaitMs?: number;
   /** What time it is, in milliseconds since the epoch. Left out, the system's clock. */
   now?: () => number;
+  /**
+   * How long to wait before trying a catch-up that did not finish again,
+   * doubled after each failure up to five minutes. 5 seconds by default.
+   */
+  catchUpRetryMs?: number;
   log?: (line: string) => void;
 }
 
@@ -364,19 +369,20 @@ const changedSince = (m: WireMessage, r: Receipt) =>
  * ids, oldest first, so the channel reads in order. One with this client's
  * receipt is edited when it changed since the receipt, as when it was
  * withdrawn. One without is posted when it is open, from the last
- * CATCH_UP_WINDOW_MS, and no older than the oldest one in the page that has
- * a receipt: what came before this app posted there, such as what was
- * announced before the channel was bound, is not news now. A draft never
- * reaches a channel.
+ * CATCH_UP_WINDOW_MS, and announced no earlier than the Slack channel was
+ * bound (`boundAt`): what came before never reached the channel, and is not
+ * news there now. A binding that does not say when it was made posts
+ * nothing new. A draft never reaches a channel.
  */
-export function catchUpOn(page: WireMessage[], client: string, now: number): string[] {
+export function catchUpOn(
+  page: WireMessage[],
+  client: string,
+  now: number,
+  boundAt: string | undefined,
+): string[] {
   const news = page.filter((m) => m.kind === "announcement" && !isDraft(m));
-  const receipted = news
-    .filter((m) => m.deliveries?.[client])
-    .map((m) => Date.parse(m.at ?? ""))
-    .filter((t) => !Number.isNaN(t));
-  const oldest = receipted.length > 0 ? Math.min(...receipted) : -Infinity;
-  const since = Math.max(now - CATCH_UP_WINDOW_MS, oldest);
+  const bound = Date.parse(boundAt ?? "");
+  const since = Number.isNaN(bound) ? Infinity : Math.max(now - CATCH_UP_WINDOW_MS, bound);
   const due: string[] = [];
   for (const m of news.toReversed()) {
     const receipt = m.deliveries?.[client];
@@ -422,7 +428,7 @@ export class App {
    * once that is done: a notice or a catch-up that comes meanwhile waits its
    * turn, so two never post one twice.
    */
-  private readonly announcing = new Map<string, { again: Look | null }>();
+  private readonly announcing = new Map<string, { again: Look | null; done: Promise<void> }>();
   /**
    * Announcements this process posted whose receipt warp did not take, so
    * the next look records it instead of posting again.
@@ -430,6 +436,8 @@ export class App {
   private readonly unrecorded = new Recent<{ channel: string; ts: string }>(2_000);
   /** Whether a catch-up is running, and whether another is due once it ends. */
   private catching: { again: boolean } | null = null;
+  /** Whether catch-ups are being run until one finishes, and whether another open came meanwhile. */
+  private catchingUp: { again: boolean } | null = null;
   /**
    * Where each mention or question sent to a person's direct messages was
    * posted, by person and message, to keep it current. A question to a role
@@ -524,12 +532,48 @@ export class App {
    */
   async watchInbox(signal: AbortSignal): Promise<void> {
     const opened = () => {
-      this.track(this.catchUp().catch((e: Error) => this.log(`catch-up failed: ${e.message}`)));
+      this.track(this.catchUpUntilDone(signal));
     };
     for await (const notice of this.warp.notices({ signal, opened })) {
       await this.track(
         this.onNotice(notice).catch((e: Error) => this.log(`inbox notice failed: ${e.message}`)),
       );
+    }
+  }
+
+  /**
+   * Catch up until a catch-up finishes, waiting longer after each one that
+   * did not: a missed announcement is news for a day, and the next reconnect
+   * may be days away. An open that comes meanwhile is caught up on once the
+   * one under way ends.
+   */
+  private async catchUpUntilDone(signal: AbortSignal): Promise<void> {
+    if (this.catchingUp) {
+      this.catchingUp.again = true;
+      return;
+    }
+    const run = { again: true };
+    this.catchingUp = run;
+    const base = this.opts.catchUpRetryMs ?? 5_000;
+    let wait = base;
+    try {
+      while (run.again && !signal.aborted) {
+        run.again = false;
+        const done = await this.catchUp().catch((e: Error) => {
+          this.log(`catch-up failed: ${e.message}`);
+          return false;
+        });
+        if (done) {
+          wait = base;
+          continue;
+        }
+        this.log(`catch-up did not finish; trying again in ${Math.round(wait / 1000)}s`);
+        await sleep(wait, signal);
+        wait = Math.min(wait * 2, 5 * 60_000);
+        run.again = true;
+      }
+    } finally {
+      this.catchingUp = null;
     }
   }
 
@@ -540,22 +584,35 @@ export class App {
    * as the app's machine reads them, and compared with this client's
    * receipts (catchUpOn). The receipt is the record, so a notice that comes
    * meanwhile changes nothing it does. One catch-up runs at a time, and one
-   * asked for meanwhile runs once it ends.
+   * asked for meanwhile runs once it ends. It answers whether it finished:
+   * false when warp could not be read, or a post was not brought up to date
+   * for a reason other than Slack refusing it, such as a post deleted there.
+   * An app whose client does not name its credential as the client's
+   * machine catches up on nothing: warp shows it no receipts, so it would
+   * post everything again.
    */
-  async catchUp(): Promise<void> {
+  async catchUp(): Promise<boolean> {
     const client = this.opts.clientId;
-    if (!client) return;
+    if (!client) return true;
     if (this.catching) {
       this.catching.again = true;
-      return;
+      return true;
     }
     const run = { again: true };
     this.catching = run;
+    let done = true;
     try {
       while (run.again) {
         run.again = false;
-        // Read afresh: a channel bound while the app was away counts now.
+        // Read afresh: a channel bound while the app was away counts now, and so does a new machine.
+        this.clientRecord = null;
         this.bindings = null;
+        if (!(await this.isMachine())) {
+          this.log(
+            `catch-up skipped: client ${client} does not name this app's credential as its machine`,
+          );
+          return done;
+        }
         const generals = (await this.bound()).filter((b) => b.channel === "general");
         for (const b of generals) {
           let page: WireMessage[];
@@ -563,23 +620,36 @@ export class App {
             page = await this.warp.announcements(b.project, CATCH_UP_PAGE);
           } catch (e) {
             this.log(`announcements of ${b.project || "~"} were not read: ${(e as Error).message}`);
+            done = false;
             continue;
           }
-          const due = catchUpOn(page, client, (this.opts.now ?? Date.now)());
+          const due = catchUpOn(page, client, (this.opts.now ?? Date.now)(), b.bound_at);
           // A post whose receipt warp did not take is looked at whatever became of it.
           for (const m of page)
             if (this.unrecorded.has(m.id) && !due.includes(m.id)) due.push(m.id);
           for (const id of due) {
             // One post Slack refuses to edit, such as one deleted there, holds up no other.
-            await this.announce(id, "catch-up").catch((e: Error) =>
-              this.log(`announcement ${id} was not brought up to date: ${e.message}`),
-            );
+            await this.announce(id, "catch-up").catch((e: Error) => {
+              this.log(`announcement ${id} was not brought up to date: ${e.message}`);
+              if (!(e instanceof SlackError)) done = false;
+            });
           }
         }
       }
+      return done;
     } finally {
       this.catching = null;
     }
+  }
+
+  /**
+   * Whether warp names this app's credential as its client's machine. Only
+   * then does warp show it the client's receipts and take new ones, so only
+   * then does it post announcements.
+   */
+  private async isMachine(): Promise<boolean> {
+    const client = (await this.routing()).client;
+    return !!client && client.surface === "slack" && client.slack?.machine === this.opts.subject;
   }
 
   // Routing
@@ -1725,28 +1795,40 @@ export class App {
    * at a time for each announcement, and each look reads it afresh, receipt
    * and all: a look asked for meanwhile waits for the one under way.
    */
-  private async announce(id: string, why: Look = "notice"): Promise<void> {
+  private announce(id: string, why: Look = "notice"): Promise<void> {
     const client = this.opts.clientId;
-    if (!client) return;
+    if (!client) return Promise.resolve();
     const busy = this.announcing.get(id);
     if (busy) {
       if (busy.again !== "notice") busy.again = why;
-      return;
+      // The look asked for is the one under way's to make: its outcome is this one's.
+      return busy.done;
     }
-    const turn: { again: Look | null } = { again: why };
+    const turn: { again: Look | null; done: Promise<void> } = { again: why, done: Promise.resolve() };
     this.announcing.set(id, turn);
-    try {
-      // What the post shows after each look, so a look asked for meanwhile
-      // leaves alone a post that already shows the announcement as it stands.
-      let shown: string | undefined;
-      while (turn.again) {
-        const look = turn.again;
-        turn.again = null;
+    turn.done = this.looks(id, client, turn).finally(() => this.announcing.delete(id));
+    return turn.done;
+  }
+
+  /** The looks at one announcement, one after another, for as long as another is asked for. */
+  private async looks(id: string, client: string, turn: { again: Look | null }): Promise<void> {
+    // What the post shows after each look, so a look asked for meanwhile
+    // leaves alone a post that already shows the announcement as it stands.
+    let shown: string | undefined;
+    // A look that fails does not drop one asked for meanwhile: that one
+    // reads everything afresh, and only the last look's failure is told.
+    let failed: unknown = null;
+    while (turn.again) {
+      const look = turn.again;
+      turn.again = null;
+      try {
         shown = await this.announceOnce(id, client, look, shown);
+        failed = null;
+      } catch (e) {
+        failed = e;
       }
-    } finally {
-      this.announcing.delete(id);
     }
+    if (failed) throw failed;
   }
 
   /**
@@ -1765,6 +1847,9 @@ export class App {
     look: Look,
     shown: string | undefined,
   ): Promise<string | undefined> {
+    // Only the client's machine is shown the client's receipts: any other
+    // credential would post every announcement again.
+    if (!(await this.isMachine())) return shown;
     const raw = await this.warp.getInboxMessage(id).catch(() => null);
     if (!raw || raw.kind !== "announcement" || isDraft(raw)) return shown;
     const project = raw.source?.project ?? "";

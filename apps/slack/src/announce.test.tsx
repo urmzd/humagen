@@ -13,13 +13,15 @@ import {
   type World,
   world,
 } from "./harness.ts";
+import { SlackError } from "./slack.ts";
 import { WarpError } from "./warp.ts";
 
 const NEWS = "C01NEWS";
+const HOUR = 60 * 60_000;
 
-/** A client app whose general channel of Field is bound to NEWS. */
+/** A client app whose general channel of Field is bound to NEWS, two days ago. */
 function bound(): World {
-  const w = world({ clientId: "app" });
+  const w = world({ clientId: "app", catchUpRetryMs: 1 });
   w.warp.clients.set("app", {
     id: "app",
     surface: "slack",
@@ -27,7 +29,9 @@ function bound(): World {
     identity: { team: TEAM },
     slack: { machine: SUBJECT, people: {} },
   });
-  w.warp.bound.set("app", [{ slack_channel: NEWS, project: "Field", channel: "general" }]);
+  w.warp.bound.set("app", [
+    { slack_channel: NEWS, project: "Field", channel: "general", bound_at: w.warp.ago(48 * HOUR) },
+  ]);
   return w;
 }
 
@@ -148,8 +152,6 @@ test("an announcement an agent wrote pings nobody: every Slack mention in it is 
 // announcements of every project whose general channel is bound here and
 // compares them with its receipts.
 
-const HOUR = 60 * 60_000;
-
 /** An announcement put in warp while the app was not listening: no notice is sent. */
 function missed(w: World, over: Record<string, unknown>) {
   const at = String(over.at ?? w.warp.ago(HOUR));
@@ -237,10 +239,10 @@ test("a withdrawal heard on the stream turns the post into the withdrawn text to
   assert.ok(!JSON.stringify(edits[0]).includes("Lisbon"));
 });
 
-test("a catch-up posts nothing from before the oldest receipt, older than a day, withdrawn, or a draft", async () => {
+test("a catch-up posts nothing older than a day, withdrawn, or a draft, and posts what it missed between its posts", async () => {
   const w = bound();
   missed(w, { id: "m-ancient", subject: "Ancient", at: w.warp.ago(30 * HOUR) });
-  missed(w, { id: "m-before", subject: "Before the binding", at: w.warp.ago(4 * HOUR) });
+  missed(w, { id: "m-early", subject: "Early", at: w.warp.ago(4 * HOUR) });
   const posted = missed(w, { id: "m-posted", subject: "Posted", at: w.warp.ago(3 * HOUR) });
   posted.deliveries = {
     app: { channel: NEWS, ts: "1700000000.000100", at: w.warp.ago(3 * HOUR - 1000) },
@@ -253,17 +255,106 @@ test("a catch-up posts nothing from before the oldest receipt, older than a day,
     parts: [{ id: "p1", type: "draft", state: "open", actions: [] }],
   });
   missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR / 2) });
-  // Posted after the one missed: the oldest receipt, not the newest, bounds it.
-  const later = missed(w, { id: "m-later", subject: "Later", at: w.warp.ago(HOUR / 4) });
-  later.deliveries = {
-    app: { channel: NEWS, ts: "1700000000.000900", at: w.warp.ago(HOUR / 4 - 1000) },
+  await watching(w, async () => {});
+  assert.deepEqual(
+    postsIn(w, NEWS).map((p) => p.text),
+    ["Early", "Missed"],
+  );
+  assert.equal(w.slack.of("chat.update").length, 0, "the post that has a receipt is up to date");
+});
+
+test("a catch-up posts nothing announced before its Slack channel was bound", async () => {
+  // Field's general was bound half an hour ago; X was announced an hour before that.
+  const w = bound();
+  w.warp.bound.set("app", [
+    { slack_channel: NEWS, project: "Field", channel: "general", bound_at: w.warp.ago(HOUR / 2) },
+  ]);
+  missed(w, { id: "m-x", subject: "Before the binding", at: w.warp.ago(HOUR + HOUR / 2) });
+  missed(w, { id: "m-y", subject: "After the binding", at: w.warp.ago(HOUR / 4) });
+  await watching(w, async () => {});
+  assert.deepEqual(
+    postsIn(w, NEWS).map((p) => p.text),
+    ["After the binding"],
+  );
+});
+
+test("a binding that does not say when it was made posts nothing new, and still edits what changed", async () => {
+  const w = bound();
+  w.warp.bound.set("app", [{ slack_channel: NEWS, project: "Field", channel: "general" }]);
+  const gone = missed(w, {
+    id: "m-gone",
+    state: "dismissed",
+    at: w.warp.ago(2 * HOUR),
+    updated_at: w.warp.ago(HOUR),
+  });
+  gone.deliveries = {
+    app: { channel: NEWS, ts: "1700000000.000404", at: w.warp.ago(2 * HOUR - 1000) },
   };
+  missed(w, { id: "m-new", subject: "New", at: w.warp.ago(HOUR / 4) });
+  await watching(w, async () => {});
+  assert.equal(postsIn(w, NEWS).length, 0);
+  assert.deepEqual(
+    w.slack.of("chat.update").map((u) => u.ts),
+    ["1700000000.000404"],
+  );
+});
+
+test("an app whose client names another machine catches up on nothing and posts nothing, and says why", async () => {
+  const w = bound();
+  w.warp.clients.set("app", {
+    id: "app",
+    surface: "slack",
+    enabled: true,
+    identity: { team: TEAM },
+    slack: { machine: "svc:rotated", people: {} },
+  });
+  missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR) });
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+  });
+  assert.equal(w.warp.newsReads.length, 0, "nothing read");
+  assert.equal(w.slack.of("chat.postMessage").length, 0, "nothing posted");
+  assert.ok(w.logs.some((l) => l.includes("does not name this app's credential as its machine")));
+});
+
+test("a catch-up that could not read warp is tried again until it finishes", async () => {
+  const w = bound();
+  w.warp.failNews = 2;
+  missed(w, { id: "m-missed", subject: "Missed", at: w.warp.ago(HOUR) });
   await watching(w, async () => {});
   assert.deepEqual(
     postsIn(w, NEWS).map((p) => p.text),
     ["Missed"],
   );
-  assert.equal(w.slack.of("chat.update").length, 0, "the post that has a receipt is up to date");
+  assert.equal(w.warp.newsReads.length, 3, "read until it could");
+  assert.ok(w.logs.some((l) => l.includes("trying again")));
+});
+
+test("a look that fails does not drop the one a catch-up asked for meanwhile", async () => {
+  const w = bound();
+  await watching(w, async () => {
+    w.warp.raise(announcementMail());
+    await settle();
+    await w.app.idle();
+    // The next edit fails, and while it is under way the announcement is
+    // withdrawn quietly and the stream reconnects.
+    const call = w.slack.call.bind(w.slack);
+    let first = true;
+    w.slack.call = async <T,>(method: string, args: Record<string, unknown> = {}): Promise<T> => {
+      if (method === "chat.update" && first) {
+        first = false;
+        w.warp.quietly("m-news", { state: "dismissed" });
+        w.warp.reopen();
+        await settle();
+        throw new SlackError(method, "ratelimited");
+      }
+      return call<T>(method, args);
+    };
+    w.warp.raise({ ...(w.warp.mailbox.get("m-news") ?? {}), subject: "Field offsite moved" });
+  });
+  const last = w.slack.of("chat.update").at(-1);
+  assert.match(JSON.stringify(last?.blocks), new RegExp(defaultCopy.announcements.seedWithdrawn));
+  assert.ok(!JSON.stringify(last).includes("Lisbon"), "the withdrawn words are gone");
 });
 
 test("a notice that comes during a catch-up never posts twice: the receipt is the record", async () => {
@@ -299,8 +390,13 @@ test("a post whose receipt warp did not take is recorded at the next look, never
 test("a post Slack will not edit holds up nothing else in a catch-up", async () => {
   const w = bound();
   w.warp.bound.set("app", [
-    { slack_channel: NEWS, project: "Field", channel: "general" },
-    { slack_channel: "C01LAUNCH", project: "Launch", channel: "general" },
+    { slack_channel: NEWS, project: "Field", channel: "general", bound_at: w.warp.ago(48 * HOUR) },
+    {
+      slack_channel: "C01LAUNCH",
+      project: "Launch",
+      channel: "general",
+      bound_at: w.warp.ago(48 * HOUR),
+    },
   ]);
   // Withdrawn after it was posted, while the app was away.
   const gone = missed(w, {
@@ -344,7 +440,7 @@ test("an app that is no client, or has no bound general channel, reads nothing t
 /** A client app whose workspace's general channel is bound to ALL, and which maps USER to ana. */
 const ALL = "C01ALL";
 function releaseRoom(): World {
-  const w = world({ clientId: "app" });
+  const w = world({ clientId: "app", catchUpRetryMs: 1 });
   w.warp.clients.set("app", {
     id: "app",
     surface: "slack",
@@ -352,7 +448,9 @@ function releaseRoom(): World {
     identity: { team: TEAM },
     slack: { machine: SUBJECT, people: { [USER]: "ana" } },
   });
-  w.warp.bound.set("app", [{ slack_channel: ALL, project: "", channel: "general" }]);
+  w.warp.bound.set("app", [
+    { slack_channel: ALL, project: "", channel: "general", bound_at: w.warp.ago(48 * HOUR) },
+  ]);
   return w;
 }
 

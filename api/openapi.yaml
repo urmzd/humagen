@@ -5163,6 +5163,12 @@ components:
           description: Answers untagged messages here, an agent or `auto`. Absent inherits from the project.
           type: string
         slack: {$ref: "#/components/schemas/SlackBinding"}
+        bound_at:
+          description: |
+            When `slack` was bound as it stands: set when a binding is made
+            or moved, kept while it holds. Absent while unbound.
+          type: string
+          format: date-time
         archived:
           description: It and its threads stay, and it takes no new threads.
           type: boolean
@@ -5234,13 +5240,21 @@ components:
     ClientBinding:
       description: One Slack channel a client is bound to, and the channel it is bound to here.
       type: object
-      required: [slack_channel, project, channel]
+      required: [slack_channel, project, channel, bound_at]
       properties:
         slack_channel: {type: string}
         project:
           description: The project. Empty is the workspace itself.
           type: string
         channel: {type: string}
+        bound_at:
+          description: |
+            When the Slack channel was bound to this channel. The client's
+            app catches up on nothing announced before it: what was
+            announced before the binding, or while the channel was unbound,
+            never reached the Slack channel and is not news there now.
+          type: string
+          format: date-time
     SurfaceRef:
       description: |
         Where on a client's surface a message was posted: for Slack, the

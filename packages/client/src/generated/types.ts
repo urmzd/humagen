@@ -674,6 +674,10 @@ export interface Channel {
   /** Answers untagged messages here, an agent or `auto`. Absent inherits from the project. */
   default?: string;
   slack?: SlackBinding;
+  /** When `slack` was bound as it stands: set when a binding is made
+or moved, kept while it holds. Absent while unbound.
+ */
+  bound_at?: string;
   /** It and its threads stay, and it takes no new threads. */
   archived?: boolean;
   /** `file` when the platform file declares the channel. */
@@ -731,6 +735,12 @@ export interface ClientBinding {
   /** The project. Empty is the workspace itself. */
   project: string;
   channel: string;
+  /** When the Slack channel was bound to this channel. The client's
+app catches up on nothing announced before it: what was
+announced before the binding, or while the channel was unbound,
+never reached the Slack channel and is not news there now.
+ */
+  bound_at: string;
 }
 
 /** Where on a client's surface a message was posted: for Slack, the
