@@ -106,11 +106,10 @@ and `humagen_token`. A file that sets both names of one field is refused.
 `humagen config print` writes the new names.
 
 The shipped compose specs (`deploy/compose/config/warp.yaml` and
-`deploy/compose/dev/warp.yaml`) keep their file names, `api_version: warp/v1`,
-their `metadata.name`, OIDC client and audience and their `env:WARP_*`
-references, since people edit them in place and an image from before the
-rename must still read them. Only `display_name` changed, to Humagen, which
-names the console and the Slack app.
+`deploy/compose/dev/warp.yaml`) keep their names and their contents, since
+people edit them in place and an image from before the rename must still read
+them. Their `display_name` is still Warp, which names the console and the Slack
+app; set it to Humagen in your copy when you want the new name shown.
 
 ## Sign-in
 

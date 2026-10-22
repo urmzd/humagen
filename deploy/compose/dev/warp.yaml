@@ -5,7 +5,7 @@ api_version: warp/v1
 kind: System
 metadata:
   name: warp-dev
-  display_name: Humagen
+  display_name: Warp
 spec:
   server:
     addr: 127.0.0.1:8080
