@@ -2,6 +2,7 @@ package platform_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -114,5 +115,115 @@ func TestTaggingAPersonInAPrivateThreadInvitesThem(t *testing.T) {
 	}
 	if _, ok := p.Inbox.ByKey(tenant, inbox.MentionKey(got.Thread.ID, "m-1", "vic")); !ok {
 		t.Fatal("the tagged person was not told")
+	}
+}
+
+// Posting is starting work, so it takes a member of the project, and in a
+// private thread a participant: a viewer starts nothing, a project the poster
+// cannot see answers as one that is not there, and reading a private thread
+// with projects:govern is not taking part in it.
+func TestPostingTakesAMemberAndInAPrivateThreadAParticipant(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	ctx := t.Context()
+	runsIn := func(project string) int {
+		n := 0
+		for _, r := range p.Runs.List(tenant, 100) {
+			if r.Project == project {
+				n++
+			}
+		}
+		return n
+	}
+
+	// opal is only a viewer of Globex.
+	if _, err := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Globex", Visibility: threads.Shared, Text: "@helper hi"}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a viewer starting a thread = %v, want forbidden", err)
+	}
+	room := startThread(t, p, admin, platform.ThreadInput{Project: "Globex", Text: "noting this", PostOnly: true})
+	if _, err := p.PostMessage(ctx, operator, room.Thread.ID, platform.MessageInput{Text: "@helper hi"}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a viewer posting = %v, want forbidden", err)
+	}
+	if n := runsIn("Globex"); n != 0 {
+		t.Fatalf("a viewer started %d runs in Globex", n)
+	}
+
+	// Vault is members only, and opal has no role in it.
+	if _, err := p.CreateProject(ctx, tenant, projects.Writer{By: "olu"}, platform.ProjectInput{Name: "Vault", Kind: projects.Account}); err != nil {
+		t.Fatal(err)
+	}
+	_, hidden := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Vault", Visibility: threads.Shared, Text: "@helper hi from outside"})
+	_, missing := p.StartThread(ctx, operator, platform.ThreadInput{Project: "Nowhere", Visibility: threads.Shared, Text: "@helper hi"})
+	if !errors.Is(hidden, projects.ErrNotFound) || !errors.Is(missing, projects.ErrNotFound) || strings.ReplaceAll(hidden.Error(), "Vault", "Nowhere") != missing.Error() {
+		t.Fatalf("a hidden project answers %v, a missing one %v", hidden, missing)
+	}
+	if n := runsIn("Vault"); n != 0 {
+		t.Fatalf("someone with no role started %d runs in Vault", n)
+	}
+
+	// A private thread in Field, which grace is a member of.
+	private := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "just us", PostOnly: true})
+	if _, err := p.PostMessage(ctx, grace, private.Thread.ID, platform.MessageInput{Text: "@helper what was said?"}); !errors.Is(err, threads.ErrNotFound) {
+		t.Fatalf("someone not taking part posting in a private thread = %v, want not found", err)
+	}
+	if _, err := p.PostMessage(ctx, admin, private.Thread.ID, platform.MessageInput{Text: "@helper what was said?"}); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("projects:govern posting in a private thread it takes no part in = %v, want forbidden", err)
+	}
+	if n := runsIn("Field"); n != 0 {
+		t.Fatalf("a refused post started %d runs in Field", n)
+	}
+	post(t, p, operator, private.Thread.ID, platform.MessageInput{Text: "still just us", PostOnly: true})
+}
+
+// A thread's visibility, title and default, and who else takes part, are its
+// owner's or its project's owners' to change: a participant cannot open a
+// private thread to the project, and a viewer cannot hide a shared one or
+// choose who answers in it.
+func TestOnlyAThreadsOwnerOrAProjectOwnerChangesIt(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	seePeople(t, p, operator, grace, vic)
+	ctx := t.Context()
+	got := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Visibility: threads.Private, Text: "@grace a word?", PostOnly: true})
+	th, err := p.SetParticipants(ctx, operator, got.Thread.ID, platform.ParticipantsUpdate{Version: got.Thread.Version, Add: []threads.Participant{{Kind: threads.Person, Name: "vic"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.UpdateThread(ctx, grace, th.ID, platform.ThreadUpdate{Version: th.Version, Visibility: threads.Shared}); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("a participant opening a private thread = %v, want forbidden", err)
+	}
+	if _, err := p.SetParticipants(ctx, grace, th.ID, platform.ParticipantsUpdate{Version: th.Version, Remove: []string{"vic"}}); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("a participant removing someone else = %v, want forbidden", err)
+	}
+	if p.SeesThread(viewer, th.ID) {
+		t.Fatal("a refused change opened the thread")
+	}
+	// Leaving is anyone's own.
+	if th, err = p.SetParticipants(ctx, grace, th.ID, platform.ParticipantsUpdate{Version: th.Version, Remove: []string{"grace"}}); err != nil {
+		t.Fatalf("leaving a thread = %v", err)
+	}
+	machine := auth.Principal{Subject: "svc-bot", Tenant: tenant, Kind: auth.Machine, Scopes: []auth.Permission{auth.RunsRead, auth.RunsWrite}}
+	shared := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "out loud", PostOnly: true})
+	if _, err := p.UpdateThread(ctx, machine, shared.Thread.ID, platform.ThreadUpdate{Version: shared.Thread.Version, Title: "taken"}); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("a credential retitling a thread = %v, want forbidden", err)
+	}
+	// The thread's owner opens it; an owner of the project retitles it.
+	if th, err = p.UpdateThread(ctx, operator, th.ID, platform.ThreadUpdate{Version: th.Version, Visibility: threads.Shared}); err != nil || th.Visibility != threads.Shared {
+		t.Fatalf("the owner opening their thread = %+v, %v", th, err)
+	}
+	if th, err = p.UpdateThread(ctx, admin, th.ID, platform.ThreadUpdate{Version: th.Version, Title: "Pricing", Visibility: threads.Shared}); err != nil || th.Title != "Pricing" {
+		t.Fatalf("a project owner retitling = %+v, %v", th, err)
+	}
+
+	// opal is only a viewer of Globex.
+	room := startThread(t, p, admin, platform.ThreadInput{Project: "Globex", Text: "noting this", PostOnly: true})
+	if _, err := p.UpdateThread(ctx, operator, room.Thread.ID, platform.ThreadUpdate{Version: room.Thread.Version, Visibility: threads.Private, Default: "helper"}); !errors.Is(err, platform.ErrForbidden) {
+		t.Fatalf("a viewer hiding a shared thread = %v, want forbidden", err)
+	}
+	if _, err := p.SetParticipants(ctx, operator, room.Thread.ID, platform.ParticipantsUpdate{Version: room.Thread.Version, Add: []threads.Participant{{Kind: threads.Agent, Name: "helper"}}}); !errors.Is(err, projects.ErrForbidden) {
+		t.Fatalf("a viewer adding to a thread = %v, want forbidden", err)
+	}
+	if cur, _ := p.ThreadRecord(tenant, room.Thread.ID); cur.Visibility != threads.Shared || cur.Default != "" {
+		t.Fatalf("a refused change changed %+v", cur)
 	}
 }

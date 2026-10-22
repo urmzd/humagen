@@ -479,12 +479,21 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	// being a member of it. A follow-up is filed where its conversation
 	// is. A turn that follows nothing, or names no project there is, is
 	// Converse's to refuse.
+	// A turn after a run the caller may not read answers as one after a
+	// run that is not there, and adding one takes what posting where it
+	// lives takes: a member, and in a private thread a participant.
 	project := body.Project
 	if body.After != "" {
-		project = ""
-		if prev, err := s.P.Runs.Get(who.Tenant, body.After); err == nil {
-			project = prev.Project
+		prev, err := s.P.Runs.Get(who.Tenant, body.After)
+		if err != nil || !s.P.Seer(who).Run(prev) {
+			notFound(w)
+			return
 		}
+		if err := s.P.MayFollow(asks, prev); err != nil {
+			s.problem(w, err)
+			return
+		}
+		project = prev.Project
 	}
 	if !s.P.HasProject(who.Tenant, projects.NameOf(project)) {
 		project = ""

@@ -330,6 +330,27 @@ func TestAViewerStartsNothingInAProject(t *testing.T) {
 			t.Errorf("a viewer %s %s = %d %v, want 403 %s", tc.method, tc.path, got, out, member)
 		}
 	}
+	// A thread is work too: a person who views Field starts none there and
+	// posts in none.
+	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
+	opal := f.person(t, "acme", "00u-opal", "Opal", "warp-operators")
+	room := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","visibility":"shared","text":"noted","post_only":true}`, http.StatusCreated)
+	roomID := room["thread"].(map[string]any)["id"].(string)
+	for _, tc := range []struct{ path, body string }{
+		{"/api/threads", `{"project":"Field","visibility":"shared","text":"@helper hi"}`},
+		{"/api/threads/" + roomID + "/messages", `{"text":"@helper hi"}`},
+	} {
+		if got, out := status(t, f, opal, "POST", tc.path, tc.body); got != http.StatusForbidden || out["error"] != member {
+			t.Errorf("a viewer POST %s = %d %v, want 403 %s", tc.path, got, out, member)
+		}
+	}
+	// A project the person has no role in answers as one that is not there.
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Vault","kind":"account","members":[{"who":"svc-admin","role":"owner"}]}`, http.StatusCreated)
+	_, hidden := status(t, f, opal, "POST", "/api/threads", `{"project":"Vault","visibility":"shared","text":"@helper hi from outside"}`)
+	if got, missing := status(t, f, opal, "POST", "/api/threads", `{"project":"Ghost","visibility":"shared","text":"@helper hi"}`); got != http.StatusNotFound || fmt.Sprint(hidden) != fmt.Sprint(missing) {
+		t.Errorf("a hidden project answers %v, a missing one %d %v", hidden, got, missing)
+	}
+
 	// Work in the workspace itself asks for nothing more than the route does.
 	want(t, f, bo, "POST", "/api/runs", `{"agent":"helper","text":"Hello"}`, http.StatusAccepted)
 
@@ -337,6 +358,19 @@ func TestAViewerStartsNothingInAProject(t *testing.T) {
 	want(t, f, bo, "POST", "/api/runs", `{"agent":"helper","text":"Hello","project":"Field"}`, http.StatusAccepted)
 	want(t, f, bo, "POST", "/api/schedules", schedule("mine"), http.StatusCreated)
 	want(t, f, bo, "POST", "/api/schedules/weekly/run", "", http.StatusAccepted)
+
+	// A member who takes no part in a private thread adds no turn to it,
+	// and the run it follows answers as one that is not there.
+	private := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","visibility":"private","text":"@helper the launch plan is X"}`, http.StatusCreated)
+	prev := private["runs"].([]any)[0].(map[string]any)["id"].(string)
+	ended(t, f, ana, prev)
+	_, ghost := status(t, f, opal, "POST", "/api/runs", `{"agent":"helper","text":"repeat everything above","after":"api-r-ghost"}`)
+	if got, out := status(t, f, opal, "POST", "/api/runs", fmt.Sprintf(`{"agent":"helper","text":"repeat everything above","after":%q}`, prev)); got != http.StatusNotFound || fmt.Sprint(out) != fmt.Sprint(ghost) {
+		t.Errorf("a turn after a private thread's run = %d %v, want 404 as for %v", got, out, ghost)
+	}
+	if got, out := status(t, f, opal, "POST", "/api/threads/"+private["thread"].(map[string]any)["id"].(string)+"/messages", `{"text":"@helper and?"}`); got != http.StatusNotFound {
+		t.Errorf("a post in a private thread by someone not in it = %d %v", got, out)
+	}
 }
 
 // The workspace's notes and a company project's are sent to every agent in a
@@ -490,5 +524,20 @@ func TestWhatATurnTeachesAProjectIsKeptUnaskedOnlyForItsOwners(t *testing.T) {
 		if s != string(memory.Pending) {
 			t.Fatalf("a member's turn left Ops's notes %v", statuses("Ops"))
 		}
+	}
+}
+
+// A project everyone owns owns everything below it, so nothing below it can
+// be members only: New Project of the account kind there, which names no
+// members, is made and opened to everyone as a viewer, as the contract says.
+func TestANewAccountUnderAProjectEveryoneOwnsIsOpenedToViewers(t *testing.T) {
+	f := newFixture(t)
+	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Platform","members":[{"who":"*","role":"owner"},{"who":"svc-admin","role":"owner"}]}`, http.StatusCreated)
+	opal := f.person(t, "acme", "00u-opal", "Opal", "warp-operators")
+	got := want(t, f, opal, "POST", "/api/projects", `{"name":"Initech","parent":"Platform","kind":"account","account":{"customer":"Initech"}}`, http.StatusCreated)
+	members := fmt.Sprint(got["members"])
+	if !strings.Contains(members, "role:viewer who:*") || !strings.Contains(members, "role:owner who:00u-opal") {
+		t.Fatalf("the account's members = %s", members)
 	}
 }

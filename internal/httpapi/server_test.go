@@ -53,7 +53,7 @@ func newFixtureWith(t *testing.T, cfg platform.Config) *fixture {
 	iss := authtest.New(t)
 	v, err := auth.NewVerifier(ctx, auth.OIDCConfig{
 		Issuer: iss.URL, ClientID: clientID, Audience: audience, TenantClaim: "org",
-		GroupRoles: map[string]auth.Role{"warp-admins": auth.Admin, "warp-viewers": auth.Viewer},
+		GroupRoles: map[string]auth.Role{"warp-admins": auth.Admin, "warp-operators": auth.Operator, "warp-viewers": auth.Viewer},
 	})
 	if err != nil {
 		t.Fatal(err)
