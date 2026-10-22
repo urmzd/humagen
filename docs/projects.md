@@ -767,7 +767,7 @@ need `projects:govern`.
 | See a project, its inbox, channels, instructions, memory, experts | `projects:read` | viewer |
 | Create a project under P (top level: P is the root) | `projects:write` | member of P. Company kind: `projects:govern` |
 | Edit title, description, instructions, account | `projects:write` | owner |
-| Move | `projects:write` | owner, and member of the new parent. Leaving an ancestor that holds a policy also needs `billing:write`, and so does moving a project that holds, or has below it, an owner's limit the caller could not change before (they do not own the parent it was set from): a move never escapes a limit |
+| Move | `projects:write` | owner, and member of the new parent. Leaving an ancestor that holds a policy also needs `billing:write`, and so does moving a project that holds, or has below it, an owner's limit the caller could not change before (they do not own the parent it was set from): a move never escapes a limit. Leaving an ancestor whose allow list keeps agents out needs owning it, unless the new chain allows no more: a move never widens which agents may run |
 | Archive, delete | `projects:write` | owner |
 | Members, experts, channels, agents (`enable`, `allow`, `default`), `announce`, `agent_posts` | `projects:write` | owner |
 | Make an agent live here | `agents:write` | owner of the new and old home |

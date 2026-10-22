@@ -148,6 +148,42 @@ func TestAMoveNeverEscapesALimit(t *testing.T) {
 	}
 }
 
+// An allow list only tightens, so a move never widens which agents may run:
+// an owner of a project who does not own the ancestor whose allow list holds
+// it cannot move it out from under that list. An owner of that ancestor, or
+// projects:govern, can, since they could change the list themselves.
+func TestAMoveNeverWidensWhichAgentsMayRun(t *testing.T) {
+	f := newFixture(t)
+	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	gina := f.machineAs(t, "gina", "acme", operator...)
+	for _, name := range []string{"okbot", "helper"} {
+		want(t, f, admin, "POST", "/api/agents", fmt.Sprintf(`{"name":%q,"model":"offline","provider":"offline","system_prompt":"x"}`, name), http.StatusCreated)
+	}
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Globex","parent":"Field","members":[{"who":"*","role":"member"},{"who":"gina","role":"owner"}]}`, http.StatusCreated)
+	want(t, f, admin, "PUT", "/api/projects/Field/agents", `{"version":1,"allow":["okbot"]}`, http.StatusOK)
+	available := func() any {
+		return want(t, f, admin, "GET", "/api/projects/Globex/agents", "", http.StatusOK)["available"]
+	}
+	before := fmt.Sprint(available())
+
+	if out := want(t, f, gina, "POST", "/api/projects/Globex/move", `{"version":1,"parent":"~"}`, http.StatusForbidden); !strings.Contains(out["error"].(string), "needs owning Field") {
+		t.Fatalf("moving Globex out from under Field's allow list = %v", out)
+	}
+	if after := fmt.Sprint(available()); after != before {
+		t.Fatalf("a refused move changed what is available in Globex: %s, then %s", before, after)
+	}
+	want(t, f, gina, "POST", "/api/runs", `{"agent":"helper","text":"hi","project":"Globex"}`, http.StatusForbidden)
+
+	// Deeper under the same chain allows no more, so Globex's owner moves
+	// it there.
+	want(t, f, admin, "POST", "/api/projects", `{"name":"North","parent":"Field","members":[{"who":"*","role":"member"}]}`, http.StatusCreated)
+	moved := want(t, f, gina, "POST", "/api/projects/Globex/move", `{"version":1,"parent":"North"}`, http.StatusOK)
+	// And projects:govern, which owns Field, takes it out.
+	want(t, f, admin, "POST", "/api/projects/Globex/move", fmt.Sprintf(`{"version":%v,"parent":"~"}`, moved["version"]), http.StatusOK)
+	want(t, f, gina, "POST", "/api/runs", `{"agent":"helper","text":"hi","project":"Globex"}`, http.StatusAccepted)
+}
+
 // An owner of a project above sets a tighten-only limit; owning the project
 // itself is not enough, since a limit holds what its owner does.
 func TestAnOwnerLimitsOnlyWhatIsBelowWhatTheyOwn(t *testing.T) {

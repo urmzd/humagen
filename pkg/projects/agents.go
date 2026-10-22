@@ -239,6 +239,54 @@ func (t *Tree) Available(project string) Availability {
 	return out
 }
 
+// Allowed returns the agents every allow list on a project's chain permits,
+// the project's own included and sorted, or nil when none of them narrows,
+// so every agent. A name the tree does not hold permits none.
+func (t *Tree) Allowed(project string) []string {
+	var allowed map[string]bool
+	held := t.chain(project, func(q *Project) bool {
+		if q.Agents.Allow != nil {
+			next := map[string]bool{}
+			for _, a := range q.Agents.Allow {
+				if allowed == nil || allowed[a] {
+					next[a] = true
+				}
+			}
+			allowed = next
+		}
+		return true
+	})
+	if !held {
+		return []string{}
+	}
+	if allowed == nil {
+		return nil
+	}
+	out := make([]string, 0, len(allowed))
+	for a := range allowed {
+		out = append(out, a)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// Widens reports whether permitting next instead of was lets an agent run
+// that was did not: nil permits every agent.
+func Widens(was, next []string) bool {
+	if was == nil {
+		return false
+	}
+	if next == nil {
+		return true
+	}
+	for _, a := range next {
+		if !slices.Contains(was, a) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsAvailable reports whether an agent may run in a project: offered there,
 // and permitted by every allow list on the chain. It does not know whether
 // the agent exists; the registry does. Auto is no agent, so it is never
