@@ -1214,3 +1214,17 @@ test("All of Them is offered for three agents at most, and a conversation checks
   render(<SelectionChips selection={{ ...sel, agents: ["a1", "a2", "a3"] }} onChange={() => {}} />);
   assert.equal((screen.getByRole("button", { name: defaultCopy.chat.all }) as HTMLButtonElement).disabled, false);
 });
+
+test("a shared conversation's project can't change from the + menu, which says why; a private one's can", async () => {
+  net = stubFetch({
+    "GET /api/threads/th-0123456789abcdef": () => ({ ...page, turns: [page.turns[0]] }),
+    "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+    "GET /api/projects/Globex/channels": () => ({ channels: [] }),
+  });
+  const shared: ThreadPage = { ...page, turns: [page.turns[0] as ThreadTurn] };
+  render(<ThreadRoom id={shared.thread.id} me="ana" initial={shared} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: defaultCopy.chat.plus }));
+  const menu = await screen.findByRole("dialog", { name: defaultCopy.chat.menu });
+  assert.ok(within(menu).getByText(defaultCopy.chat.projectShared));
+  assert.equal((within(menu).getByRole("button", { name: /Globex/ }) as HTMLButtonElement).disabled, true);
+});

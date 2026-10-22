@@ -397,7 +397,7 @@ export function ThreadRoom({
   const saved: Selection = { agents: th.agents ?? [], mode: th.mode ?? "best_fit", project: th.project, channel: th.channel };
   const [shown, setShown] = useState<Selection | null>(null);
   const selection = shown ?? saved;
-  const fixedWhy = hasRuns ? defaultCopy.threads.shareProjectFixed : th.surface ? defaultCopy.chat.projectFromSlack : undefined;
+  const fixedWhy = hasRuns ? defaultCopy.threads.shareProjectFixed : th.surface ? defaultCopy.chat.projectFromSlack : th.visibility === "shared" ? defaultCopy.chat.projectShared : undefined;
   // One save at a time: a change made while one is in flight waits for it,
   // then is saved from the version it answered, so quick changes never
   // send a version already gone.
