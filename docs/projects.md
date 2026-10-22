@@ -1482,7 +1482,8 @@ Every Slack change passes `pnpm validate:slack`, and
    `projects:read` to list projects. `warp config check` warns when a
    configured machine has `runs:read` but not `projects:read`. People are
    unaffected under `default.authz`. A custom policy file adds `projects` to
-   its write rules; the release notes give the one-line diff.
+   its write rules; [docs/authorization.md](authorization.md#upgrading-from-before-projects-had-their-own-permissions)
+   gives the one-line diff.
 
 ### Phase 2: members
 
@@ -1687,8 +1688,9 @@ phase 2 and experts to phase 3, because addressing and threads need them.
     `projects:govern`.
   - An untagged API run with no default is 409.
 
-  All of it is flagged as breaking, with release notes and a `config check`
-  warning, and the migration writes explicit defaults.
+  All of it is flagged as breaking in its commit, which the generated
+  release notes carry, with the policy diff in docs/authorization.md and a
+  `config check` warning, and the migration writes explicit defaults.
 - **Moves and usage.** `Within` is pinned when a run is admitted. After a
   move, later spend counts toward the new chain, so a parent's period total
   shifts. That is deterministic for `Rebuild` but surprising to read. Leaving
