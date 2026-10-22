@@ -5,7 +5,7 @@ import { nameOfAddress } from "./availability.ts";
 import { factsOf } from "./Projects.tsx";
 import { kindWord, titleOf } from "./projects.ts";
 import { DIRECTORY_TABS, type DirectoryTab, href } from "./route.ts";
-import { AgentMark, button, Page, Problem, rows, SearchField, SkeletonRows, Tabs } from "./ui.tsx";
+import { AgentMark, button, Page, Problem, rows, SearchField, SkeletonRows, Tabs, textLink } from "./ui.tsx";
 
 const words = defaultCopy.directory;
 
@@ -171,7 +171,8 @@ function Agents({
 }) {
   if (agents.length === 0) return <p className="text-aui-sm text-aui-muted">{words.empty.agents}</p>;
   return (
-    <ul className={rows} aria-label={words.tabs.agents}>
+    // The tabs draw the rule above the first row.
+    <ul className={`${rows} border-t-0`} aria-label={words.tabs.agents}>
       {agents.map((a) => {
         const name = a.spec.name;
         const home = homes[name];
@@ -188,7 +189,7 @@ function Agents({
                 {home ? (
                   <>
                     {defaultCopy.agentPlace.livesIn("")}
-                    <a href={href({ page: "project", name: home, tab: "agents" })} onClick={follow(() => onOpenProject(home))} className="inline-block min-h-6 leading-6 hover:underline">
+                    <a href={href({ page: "project", name: home, tab: "agents" })} onClick={follow(() => onOpenProject(home))} className={textLink}>
                       {title(home)}
                     </a>
                   </>

@@ -228,6 +228,17 @@ async function emptied(call: Call): Promise<void> {
   if (quiet < 5) throw new Error("the inbox did not stay empty");
 }
 
+/** Ids the screen list is checked against before anything is seeded. */
+const ids0 = { task: "", artifact: "", schedule: "" };
+
+async function waitFor(ok: () => Promise<boolean>, failure: string): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    if (await ok()) return;
+    await sleep(100);
+  }
+  throw new Error(failure);
+}
+
 async function settled(call: Call, id: string): Promise<void> {
   for (let i = 0; i < 100; i++) {
     const r = await call<{ status: string }>("GET", `/api/runs/${id}`);
@@ -354,11 +365,22 @@ function report(results: Result[]): void {
 }
 
 async function main(): Promise<void> {
+  // A mistyped name would otherwise capture nothing and pass.
+  const unknown = only.filter((n) => n !== "home-new" && !screens(ids0).some((s) => s.name === n));
+  if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
+  // Only a folder this script wrote, or a new one, is cleared.
+  if (existsSync(out) && readdirSync(out).length > 0 && !existsSync(join(out, "report.json"))) {
+    throw new Error(
+      `${out} is not empty and holds no report.json, so it is not cleared. Set SCREENS_OUT to another folder.`,
+    );
+  }
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
+  const executablePath = chromiumPath();
   const { base, proc, dir } = await startWarp(await freePort());
-  const browser = await chromium.launch({ executablePath: chromiumPath(), args: ["--no-sandbox"] });
+  let browser: Browser | undefined;
   try {
+    browser = await chromium.launch({ executablePath, args: ["--no-sandbox"] });
     const call = api(base);
     const results: Result[] = [];
 
@@ -413,6 +435,11 @@ async function main(): Promise<void> {
       const r = await call<{ id: string }>("POST", "/api/runs", { agent: a.name, text: a.text });
       await settled(call, r.id);
     }
+    // Each failure's alert reaches the inbox after its run ends.
+    await waitFor(
+      async () => (await call<{ open: number }>("GET", "/api/inbox/count")).open >= broken.length,
+      "the alerts did not reach the inbox",
+    );
     await call("POST", "/api/schedules", {
       name: "weekly-summary",
       expression: "0 9 * * 1",
@@ -440,7 +467,7 @@ async function main(): Promise<void> {
       process.exitCode = 1;
     }
   } finally {
-    await browser.close();
+    await browser?.close();
     proc.kill();
     rmSync(dir, { recursive: true, force: true });
   }

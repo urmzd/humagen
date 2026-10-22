@@ -160,13 +160,13 @@ the model and ordering in `packages/core` (such as `HomeModel`,
 | Section | A titled part of a page: a heading, its count, a hint and its actions | `Section` | A single line or a single control; put it in the page or the section above |
 | Box | A section that stands on its own as a panel, such as Home's Needs you | `Section box` (the `card` panel) | Every part of a long page; boxes inside boxes |
 | Row that opens something | A list item whose whole row is the control: what it is on the first line, who, where or when under it | `RowButton`, or a button in a `rows` list | Rows that hold several controls of their own; put those controls at the row's end |
-| Text action | A section's way to the rest, in Title Case: Open Inbox, See All | `textAction` | The page's main action, which is a `primary` button |
+| Text action | A section's way to the rest, in Title Case and underlined, so it reads as a control on a phone too: Open Inbox, See All | `textAction` | The page's main action, which is a `primary` button |
 | Text link | A control inside a line of text, a row's details or a table cell: an agent's name, Open the run, Download. Underlined and 24px tall | `textLink` | Anything a person reaches for first; give it a button |
 | Back link | Where the page sits: the list it came from | `Page`'s `back` | Navigation between siblings; use tabs |
 | Tabs | The parts of one thing, each with an address in `route.ts` | `Tabs` | Filters over one list; use chips |
 | Chips | Selections and attachments: a kind filter, a file to send, a tag on a row | `KindChips`, `Chip`, the composer's attachments | Actions, and one choice on its own (a lone pill reads as a stray control) |
 | Text controls under the composer | Project, agent and attachments under the chat bar, as text, never boxes | The composer (`Composer.tsx`) | Anywhere else |
-| Count | How many there are, beside its label in a heading or a tab, never on its own and never a status color. Hidden at zero | `Count`, `Section count`, `Tabs` | A count that is the content, such as a figure on Monitor; use `Stat` |
+| Count | How many there are, beside its label in a heading or a tab, never on its own and never a status color. Hidden at zero. Read as "Needs you, 3" | `Count`, `Section count`, `Tabs` | A count that is the content, such as a figure on Monitor; use `Stat` |
 | Empty | What a list or box says when it has nothing, in words, with what to do next | `Empty` on a page, a quiet line in a box | Hiding the section: an empty box says so, rather than vanishing |
 | Loading | A list being read, at the height it will have | `SkeletonRows`, or a still "Loading" line where something waits on a person | Spinners; anything that moves on Home or in the inbox |
 | Error | What could not be done, and where to look instead | `Problem` for a failed action, a quiet line in a box for a failed read | Toasts that vanish before they are read |
@@ -207,16 +207,20 @@ the patterns above, with the layout checks below.
 | Home | "Needs you · N" was a bare line that read as text; What's new had no box or way to the rest | The two boxes above |
 | Every page on a phone | The sidebar button sat 8px from the edge, inside the gutter | It sits on the 16px gutter |
 | Settings on a phone | The section strip scrolled under both screen edges | The strip scrolls inside the gutter |
-| Inbox | The page had no h1: the mailbox's title was an h2 | The mailbox takes a heading level; the Inbox page's is its h1, including while it loads |
+| Inbox | The page had no h1: the mailbox's title was an h2, and the page was the one top-level screen without `Page` | The Inbox is a `Page`, as docs/projects.md asks: its title and open count are the page's, and the mailbox leaves out its own (`heading={false}`), with Open, Resolved and All at the end of the filters' row |
+| Project | The meta line did not say who answers there | It names the lead, the agent that answers what tags no agent, with its `AgentMark`: "Account · in Field · Lead globex-helper" |
 | Pages with a back link, project crumbs | "‹ All projects" and the crumbs were 18px tall text | 24px tall, still text |
 | Artifacts, Monitor, Limits | Three copies of a "linkish" style, 18px tall | One `textLink`, 24px tall |
 | Monitor, Schedules, Directory, an agent's Access | Agent names, "Open run" and project links were 18 to 20px tall, and some only underlined on hover, so they read as plain text | `textLink`, or a 24px line |
+| Directory | The agents list drew a second rule under the tabs | The tabs' rule is the only one above the first row |
 | Search fields, limit fields | The 20px input was the only target inside a 32px frame | The input fills its frame |
 | Switches | The label, which is the target, was 20px tall | 24px at least |
 | Project Overview | Counts written "Sub-projects (0)" and "Scheduled (0)" | `Count` beside the heading, hidden at zero |
 
-Left as they are: the mailbox's "3 open" and its group counts use the shared
-web package's own styles, and the run history panel beside a conversation
+Left as they are: the mailbox's group counts ("NEEDS YOU 3") and a project
+inbox's "3 open" use the shared web package's own styles, the inbox calls What's
+new's announcements "Updates", Home's Needs you does not say an alert's
+severity (the adapter's `notificationsOf` does not carry it), and the run history panel beside a conversation
 writes its counts as "Running (2)"; both sit next to the conversation work.
 
 ## Checking a UI change
@@ -234,13 +238,14 @@ a pure function of the measured page, tested in `checks.test.ts`):
 
 - No horizontal overflow: the document is exactly as wide as the window.
 - On a phone, no text or control past the 16px gutter.
-- No control under 24 by 24 pixels (WCAG 2.5.8). A link inside a sentence is
-  exempt; a field or checkbox is measured by its label.
+- No control under 24 by 24 pixels (WCAG 2.5.8). A control with words of its
+  own inside a paragraph is exempt; a field or checkbox is measured by its label.
 - Exactly one h1 on every page.
 - No line of text over another in the main column.
 
 The CI job "Console screens" runs it on every pull request that changes
-`apps/web`, `packages` or `scripts/screens`, and uploads `.screens/` as the
+`apps/web`, `packages`, `scripts/screens`, the `Makefile`, the lockfile or the
+workflow, and uploads `.screens/` as the
 `console-screens` artifact.
 
 Every UI change lists the screens it changes, with the before and after

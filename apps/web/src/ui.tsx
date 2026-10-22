@@ -294,16 +294,27 @@ export function Page({
  * never on its own, and never a status color.
  */
 export function Count({ n }: { n: number }) {
+  // Read as "Needs you, 3": a pause, so the number is heard as the heading's count.
+  return (
+    <>
+      <span className="sr-only">, </span>
+      <CountBadge n={n} />
+    </>
+  );
+}
+
+function CountBadge({ n }: { n: number }) {
   return <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-aui-hover px-1.5 text-aui-2xs font-normal tabular-nums text-aui-muted">{n}</span>;
 }
 
 /**
  * A control drawn as text: a section's way to see the rest ("See All"), a link
- * back. Its label is Title Case and its hit area is at least 24px tall, and it
- * underlines on hover, so it reads as something to press, not as a line of text.
+ * back. Its label is Title Case, its hit area at least 24px tall, and it is
+ * underlined, so it reads as something to press, not as a line of text, on a
+ * phone too, where nothing hovers.
  */
 export const textAction =
-  "inline-flex min-h-6 items-center gap-1 rounded-aui text-aui-sm font-medium text-aui-fg underline-offset-4 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent";
+  "inline-flex min-h-6 items-center gap-1 rounded-aui text-aui-sm font-medium text-aui-fg underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-aui-accent";
 
 /**
  * A control inside a line of text, a row's details or a table cell: "Open the
@@ -327,7 +338,7 @@ export function Section({
   children,
 }: {
   title: ReactNode;
-  /** How many there are in all, when that is more than the section shows. */
+  /** How many there are in all, beside the title. Hidden at zero. */
   count?: number;
   hint?: ReactNode;
   actions?: ReactNode;

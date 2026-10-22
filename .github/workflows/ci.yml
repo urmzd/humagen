@@ -90,7 +90,7 @@ jobs:
       - name: Did the pull request change the console?
         id: changed
         run: |
-          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE '^(apps/web|packages|scripts/screens)/'; then
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE '^(apps/web/|packages/|scripts/screens/|Makefile$|pnpm-lock\.yaml$|\.github/workflows/ci\.yml$)'; then
             echo "ui=true" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.changed.outputs.ui == 'true'
