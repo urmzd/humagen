@@ -24,7 +24,7 @@ import { ASK_PERSON, approvable, withApproval, withAsking, withNames } from "./p
 import { ApprovalQueue, CallPolicyEditor, useReach } from "./Governance.tsx";
 import { ModelChain, POLICY, chainProblem, chainWords, defaultModel } from "./ModelChain.tsx";
 import type { AgentTab } from "./route.ts";
-import { AgentMark, ago, button, card, Chip, field, Label, Menu, Page, PickMany, Problem, primary, Section, Switch, Tabs, took } from "./ui.tsx";
+import { AgentMark, ago, button, card, Chip, field, Label, Menu, Page, PickMany, Problem, primary, Section, Switch, Tabs, took, textLink } from "./ui.tsx";
 
 export type Tab = AgentTab;
 
@@ -1112,7 +1112,7 @@ function WhereItAnswers({
           <ul className="flex flex-wrap gap-x-3 gap-y-1">
             {enabled.map((e) => (
               <li key={e}>
-                <button type="button" className="text-aui-sm text-aui-fg hover:underline" onClick={() => onOpenProject?.(e)}>
+                <button type="button" className={`${textLink} text-aui-sm`} onClick={() => onOpenProject?.(e)}>
                   {title(e)}
                 </button>
               </li>

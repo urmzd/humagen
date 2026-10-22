@@ -215,16 +215,27 @@ export function collect(): Snapshot {
     const target = (el.matches("input, select, textarea") && el.closest("label")) || el;
     const whole = target.getBoundingClientRect();
     const st = getComputedStyle(el);
+    // In a sentence (WCAG 2.5.8's inline exception): a control with words of
+    // its own, drawn in the flow of a paragraph that says more than it does.
+    // An icon beside a heading is not in a sentence, and is measured.
     const block = el.parentElement;
+    const own = (el.textContent ?? "").trim();
     const inline =
-      st.display === "inline" &&
+      (st.display === "inline" || st.display === "inline-block") &&
+      own.length > 0 &&
       Boolean(
-        block && (block.textContent ?? "").trim().length > (el.textContent ?? "").trim().length,
+        block &&
+          block.tagName === "P" &&
+          getComputedStyle(block).display === "block" &&
+          (block.textContent ?? "").trim().length > own.length,
       );
     const label = (
-      el.getAttribute("aria-label") ??
-      el.textContent ??
-      el.getAttribute("title") ??
+      el.getAttribute("aria-label") ||
+      el.textContent ||
+      (target !== el ? target.textContent : "") ||
+      el.getAttribute("placeholder") ||
+      el.getAttribute("title") ||
+      el.getAttribute("name") ||
       el.tagName
     )
       .trim()

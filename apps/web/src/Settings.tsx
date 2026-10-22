@@ -146,8 +146,9 @@ export function Settings({
   return (
     <div className="warp-fade flex min-h-0 flex-1 flex-col md:flex-row">
       {/* The rule is drawn on a frame around the sections, so it runs the full width while the row's ends fade. */}
-      <div className="shrink-0 border-aui-border border-b md:w-52 md:border-r md:border-b-0">
-        <nav ref={strip} aria-label="Settings sections" className="warp-strip flex gap-0.5 overflow-x-auto px-4 py-2 md:flex-col md:p-3">
+      {/* On a phone the row scrolls inside the 16px gutter, never under the screen's edge. */}
+      <div className="shrink-0 border-aui-border border-b px-4 md:w-52 md:border-r md:border-b-0 md:px-0">
+        <nav ref={strip} aria-label="Settings sections" className="warp-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3">
           {sections.map((s) => (
             <button
               key={s.id}

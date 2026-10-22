@@ -5,7 +5,7 @@ import { nameOfAddress } from "./availability.ts";
 import { factsOf } from "./Projects.tsx";
 import { kindWord, titleOf } from "./projects.ts";
 import { DIRECTORY_TABS, type DirectoryTab, href } from "./route.ts";
-import { AgentMark, button, Page, Problem, rows, SearchField, SkeletonRows, Tabs } from "./ui.tsx";
+import { AgentMark, button, Page, Problem, rows, SearchField, SkeletonRows, Tabs, textLink } from "./ui.tsx";
 
 const words = defaultCopy.directory;
 
@@ -171,7 +171,8 @@ function Agents({
 }) {
   if (agents.length === 0) return <p className="text-aui-sm text-aui-muted">{words.empty.agents}</p>;
   return (
-    <ul className={rows} aria-label={words.tabs.agents}>
+    // The tabs draw the rule above the first row.
+    <ul className={`${rows} border-t-0`} aria-label={words.tabs.agents}>
       {agents.map((a) => {
         const name = a.spec.name;
         const home = homes[name];
@@ -181,14 +182,14 @@ function Agents({
           <li key={name} className="flex items-center gap-3 py-2.5">
             <AgentMark name={name} size={24} />
             <span className="min-w-0 flex-1">
-              <a href={href({ page: "agent", name, tab: "access" })} onClick={follow(() => onOpen(name))} className="block truncate text-aui-sm text-aui-fg hover:underline">
+              <a href={href({ page: "agent", name, tab: "access" })} onClick={follow(() => onOpen(name))} className="block truncate text-aui-sm leading-6 text-aui-fg hover:underline">
                 {words.handle(name)}
               </a>
               <span className="block truncate text-aui-xs text-aui-muted">
                 {home ? (
                   <>
                     {defaultCopy.agentPlace.livesIn("")}
-                    <a href={href({ page: "project", name: home, tab: "agents" })} onClick={follow(() => onOpenProject(home))} className="hover:underline">
+                    <a href={href({ page: "project", name: home, tab: "agents" })} onClick={follow(() => onOpenProject(home))} className={textLink}>
                       {title(home)}
                     </a>
                   </>
@@ -228,7 +229,7 @@ function Projects({
   return (
     <section className="flex flex-col gap-3" aria-label={words.tabs.projects}>
       <p className="text-aui-sm text-aui-fg">
-        <a href={href({ page: "project", name: "", tab: "inbox" })} onClick={follow(() => onOpen(""))} className="hover:underline">
+        <a href={href({ page: "project", name: "", tab: "inbox" })} onClick={follow(() => onOpen(""))} className="inline-block min-h-6 leading-6 hover:underline">
           {workspaceName}
         </a>
       </p>
@@ -241,7 +242,7 @@ function Projects({
             return (
               <li key={p.name} className="flex items-start gap-3 py-2.5" style={{ paddingLeft: `${Math.min(p.depth - 1, 3) * 16}px` }}>
                 <span className="min-w-0 flex-1">
-                  <a href={href({ page: "project", name: p.name, tab: "inbox" })} onClick={follow(() => onOpen(p.name))} className="block truncate text-aui-sm text-aui-fg hover:underline">
+                  <a href={href({ page: "project", name: p.name, tab: "inbox" })} onClick={follow(() => onOpen(p.name))} className="block truncate text-aui-sm leading-6 text-aui-fg hover:underline">
                     {titleOf(p)}
                   </a>
                   <span className="block truncate text-aui-xs text-aui-muted">
