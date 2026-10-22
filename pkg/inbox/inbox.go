@@ -579,6 +579,8 @@ type tenant struct {
 	// and seq the key the next change is kept under. Retention leaves gaps.
 	seqs []int64
 	seq  int64
+	// garbage are records of messages already cut, awaiting bounded cleanup.
+	garbage []int64
 	// next is the number of the last message id issued.
 	next int
 	// cut is what retention keeps of what it dropped.
@@ -653,13 +655,13 @@ type storedMessage struct {
 	Audience  []string `json:"audience,omitempty"`
 	Excluded  []string `json:"excluded,omitempty"`
 	Broadcast bool     `json:"broadcast,omitempty"`
-	Once      bool     `json:"once,omitempty"`
+	Once      *bool    `json:"once,omitempty"`
 }
 
 func storedOf(c Change) storedChange {
 	out := storedChange{Change: c, Delivery: c.Delivery}
 	if c.Raised != nil {
-		out.Raised = &storedMessage{Message: *c.Raised, Key: c.Raised.Key, Audience: c.Raised.Audience, Excluded: c.Raised.Excluded, Broadcast: c.Raised.Broadcast, Once: c.Raised.Once}
+		out.Raised = &storedMessage{Message: *c.Raised, Key: c.Raised.Key, Audience: c.Raised.Audience, Excluded: c.Raised.Excluded, Broadcast: c.Raised.Broadcast, Once: &c.Raised.Once}
 	}
 	return out
 }
@@ -669,7 +671,13 @@ func (sc storedChange) change(tenant string) Change {
 	c.Tenant, c.Delivery = tenant, sc.Delivery
 	if sc.Raised != nil {
 		m := sc.Raised.Message
-		m.Key, m.Audience, m.Excluded, m.Broadcast, m.Once = sc.Raised.Key, sc.Raised.Audience, sc.Raised.Excluded, sc.Raised.Broadcast, sc.Raised.Once
+		m.Key, m.Audience, m.Excluded, m.Broadcast = sc.Raised.Key, sc.Raised.Audience, sc.Raised.Excluded, sc.Raised.Broadcast
+		// Older writers did not distinguish PostOnce from Post. Preserve
+		// their broadcast keys conservatively, so none can be posted twice.
+		m.Once = m.Broadcast && m.Key != ""
+		if sc.Raised.Once != nil {
+			m.Once = *sc.Raised.Once
+		}
 		c.Raised = &m
 	}
 	return c
@@ -683,6 +691,12 @@ func NewStore() *Store { return &Store{tenants: map[string]*tenant{}} }
 func OpenStore(st state.Store) (*Store, error) {
 	s := NewStore()
 	s.kept = state.NewTable[storedChange](st, "inbox")
+	type entry struct {
+		name string
+		seq  int64
+		c    Change
+	}
+	var entries []entry
 	err := s.kept.Load(func(name, key string, sc storedChange) error {
 		t := s.of(name)
 		if key == cutKey {
@@ -695,11 +709,22 @@ func OpenStore(st state.Store) (*Store, error) {
 		if err != nil {
 			return fmt.Errorf("inbox: %s: a change kept under %q", name, key)
 		}
-		t.applyAt(sc.change(name), seq)
+		entries = append(entries, entry{name, seq, sc.change(name)})
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("inbox: load: %w", err)
+	}
+	// The cut sorts after changes. Read it first so records awaiting cleanup
+	// cannot resurrect a message, even when its raise was already deleted.
+	for _, e := range entries {
+		t := s.of(e.name)
+		if slices.Contains(t.cut.Pending, e.c.Message) {
+			t.garbage = append(t.garbage, e.seq)
+			t.seq = max(t.seq, e.seq+1)
+			continue
+		}
+		t.applyAt(e.c, e.seq)
 	}
 	return s, nil
 }
@@ -722,6 +747,8 @@ func (s *Store) replay(name string, n int) {
 		t.applyAt(c, old.seqs[i])
 	}
 	t.restore(old.cut)
+	t.garbage = slices.Clone(old.garbage)
+	t.seq = max(t.seq, old.seq)
 	t.watchers, t.nextW = old.watchers, old.nextW
 }
 
@@ -808,14 +835,9 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 		// Reading changes nothing anyone else sees.
 		return m, false
 	case Delivered:
-		was, had := m.Deliveries[c.By]
-		if !m.delivered(c) {
+		if !t.deliver(m, c) {
 			return m, false
 		}
-		if had && t.byPost[postKey(c.By, was)] == m {
-			delete(t.byPost, postKey(c.By, was))
-		}
-		t.byPost[postKey(c.By, *c.Delivery)] = m
 		t.record(c)
 		return m, false
 	case DidResolve:
@@ -1503,7 +1525,7 @@ func (s *Store) Tenants() []string {
 	defer s.mu.Unlock()
 	out := make([]string, 0, len(s.tenants))
 	for name, t := range s.tenants {
-		if len(t.messages) > 0 {
+		if len(t.messages) > 0 || len(t.garbage) > 0 {
 			out = append(out, name)
 		}
 	}

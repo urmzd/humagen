@@ -18,7 +18,7 @@ const (
 	MinRetention = 7 * 24 * time.Hour
 )
 
-// maxCut is the most records one step of Retain deletes, in one write. A
+// maxCut is the most operations one step of Retain writes, cut included. A
 // test lowers it to take many steps.
 var maxCut = 5000
 
@@ -32,12 +32,14 @@ const cutKey = "cut"
 type cut struct {
 	Next int      `json:"next"`
 	Gone []string `json:"gone,omitempty"`
+	// Pending messages are already absent. Replay skips their records until
+	// bounded cleanup deletes the last of them and clears Pending.
+	Pending []string `json:"pending,omitempty"`
 }
 
-// restore takes up what a tenant's cut keeps, after its changes are
-// replayed.
+// restore takes up what a tenant's cut keeps.
 func (t *tenant) restore(c cut) {
-	t.cut = cut{Next: c.Next, Gone: slices.Clone(c.Gone)}
+	t.cut = cut{Next: c.Next, Gone: slices.Clone(c.Gone), Pending: slices.Clone(c.Pending)}
 	t.next = max(t.next, c.Next)
 }
 
@@ -62,11 +64,12 @@ func settledBefore(m *Message, before time.Time) bool {
 // again, and the key of an announcement posted once (PostOnce) is never
 // posted again. The receipts and keys of what is kept still find it.
 //
-// It works in steps of at most maxCut records. Each step deletes its records
-// and writes the cut in one write, all or none, and changes the inbox only
-// once that is written, so a replay of what is kept rebuilds what the
+// It works in steps of at most maxCut operations, including the cut. Each
+// step deletes records and writes the cut in one write, all or none, and
+// changes the inbox only once that is written, so replay rebuilds what the
 // inbox holds. A step that cannot be written leaves the inbox as that step
-// found it and returns the error.
+// found it and returns the error. A cut names a message whose remaining
+// records await cleanup, so replay never brings it back between steps.
 func (s *Store) Retain(tenantName string, before time.Time) (int, error) {
 	dropped := 0
 	for {
@@ -86,6 +89,9 @@ func (s *Store) retainStep(name string, before time.Time) (int, bool, error) {
 	t := s.tenants[name]
 	if t == nil {
 		return 0, false, nil
+	}
+	if len(t.garbage) > 0 {
+		return s.cleanStep(name, t)
 	}
 	records := map[string]int{}
 	var order []*Message
@@ -107,7 +113,7 @@ func (s *Store) retainStep(name string, before time.Time) (int, bool, error) {
 	next := cut{Next: t.next, Gone: slices.Clone(t.cut.Gone)}
 	size, more := 0, false
 	for _, m := range order {
-		if size > 0 && size+records[m.ID] > maxCut {
+		if size > 0 && size+records[m.ID] >= maxCut {
 			more = true
 			break
 		}
@@ -119,9 +125,19 @@ func (s *Store) retainStep(name string, before time.Time) (int, bool, error) {
 	}
 	slices.Sort(next.Gone)
 	b := s.kept.Batch()
+	var garbage []int64
+	deletes := 0
 	for i, c := range t.log {
 		if drop[c.Message] {
-			b.Delete(name, state.Seq(t.seqs[i]))
+			if deletes < maxCut-1 {
+				b.Delete(name, state.Seq(t.seqs[i]))
+				deletes++
+			} else {
+				garbage = append(garbage, t.seqs[i])
+				if !slices.Contains(next.Pending, c.Message) {
+					next.Pending = append(next.Pending, c.Message)
+				}
+			}
 		}
 	}
 	b.Put(name, cutKey, storedChange{Cut: &next})
@@ -130,7 +146,29 @@ func (s *Store) retainStep(name string, before time.Time) (int, bool, error) {
 	}
 	t.drop(drop)
 	t.cut = next
-	return len(drop), more, nil
+	t.garbage = garbage
+	return len(drop), more || len(garbage) > 0, nil
+}
+
+// cleanStep deletes another bounded slice of a cut message's history. The
+// durable pending ids make every intermediate state replayable.
+func (s *Store) cleanStep(name string, t *tenant) (int, bool, error) {
+	n := min(len(t.garbage), maxCut-1)
+	next := t.cut
+	if n == len(t.garbage) {
+		next.Pending = nil
+	}
+	b := s.kept.Batch()
+	for _, seq := range t.garbage[:n] {
+		b.Delete(name, state.Seq(seq))
+	}
+	b.Put(name, cutKey, storedChange{Cut: &next})
+	if err := b.Commit(); err != nil {
+		return 0, false, fmt.Errorf("inbox: retain: %w", err)
+	}
+	t.cut = next
+	t.garbage = t.garbage[n:]
+	return 0, true, nil
 }
 
 // drop takes messages out of a tenant, with every change about them. Each
@@ -149,11 +187,6 @@ func (t *tenant) drop(ids map[string]bool) {
 			delete(t.byKey, m.Key)
 			rekey[m.Key] = true
 		}
-		for client, d := range m.Deliveries {
-			if t.byPost[postKey(client, d)] == m {
-				delete(t.byPost, postKey(client, d))
-			}
-		}
 		delete(t.read, m.ID)
 		delete(t.hidden, m.ID)
 	}
@@ -171,4 +204,5 @@ func (t *tenant) drop(ids map[string]bool) {
 		}
 	}
 	t.log, t.seqs = log, seqs
+	t.rebuildPosts()
 }

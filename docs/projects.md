@@ -805,11 +805,13 @@ before then.
   copy.
 - **The record.** Each change is kept under its own key, as before, and a
   retention step deletes the dropped messages' keys and writes the tenant's
-  cut (key `cut`) in one write, all or none, at most 5,000 records a step.
-  The cut holds the number of the last id issued and the keys of
-  announcements posted once. Replay applies what is kept, each raise under
-  the id its record names, then the cut, so it rebuilds exactly what the
-  inbox held, with `-state=postgres` as in memory. The inbox changes only
+  cut (key `cut`) in one write, all or none, at most 5,000 operations a step,
+  including the cut. The cut holds the number of the last id issued and the
+  keys of announcements posted once. If one message has more history than
+  a step can delete, the cut also names it while later steps delete the rest.
+  Replay reads the cut first and skips those records, so an interrupted
+  cleanup never brings a message back. It applies each kept raise under
+  the id its record names, with `-state=postgres` as in memory. The inbox changes only
   once its step is written; a step that cannot be written changes nothing
   and is tried again at the next pass.
 - **What never repeats.** No message id is issued again, and a key posted
@@ -1440,7 +1442,9 @@ Channels are bound only by a project owner.
 No migration. Retention's first pass runs at the first start after the
 upgrade and drops what was settled more than 90 days before, or the
 workspace's `inbox_retention`. Records written before phase 9 replay as they
-did: their raises already name their ids.
+did: their raises already name their ids. Older broadcasts carry no flag
+that distinguishes an ordinary post from `PostOnce`, so their keys are kept
+conservatively after retention. New ordinary posts need no permanent key.
 
 ### Docs in the same PRs
 
