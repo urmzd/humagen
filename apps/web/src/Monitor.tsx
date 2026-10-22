@@ -3,7 +3,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { type Alert, type AlertRule, ApiError, alertRuleEdit, api, type Revision } from "./api.ts";
 import { Analytics } from "./Analytics.tsx";
 import type { MonitorTab } from "./route.ts";
-import { agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Tabs } from "./ui.tsx";
+import { agentOptions, ago, button, card, Chip, Empty, field, Label, Menu, Page, Problem, primary, rows, Tabs, useStrip } from "./ui.tsx";
 
 const kindLabel: Record<AlertRule["kind"], string> = {
   run_failed: "A run fails",
@@ -100,10 +100,12 @@ export function FiredStrip({ alerts, onOpen }: { alerts: Alert[]; onOpen?: () =>
 
 /** A way into the built-in analyst: one tap asks it a question in a new conversation. */
 export function AskAnalyst({ onAsk }: { onAsk: (question: string) => void }) {
+  // Nothing in the row is chosen: the strip only fades the end that has more.
+  const strip = useStrip<HTMLDivElement>(null);
   return (
     <section aria-label="Ask the analyst" className="flex flex-col gap-2">
       <h2 className="text-aui-xs font-medium text-aui-muted">Ask the analyst for a deep dive</h2>
-      <div className="aui-scroll -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      <div ref={strip} className="warp-strip aui-scroll -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
         {ANALYST_STARTERS.map((q) => (
           <button
             key={q}

@@ -6,7 +6,7 @@ import { ApiError, api, type Me, type ModelPolicy, type Preferences, type Revisi
 import { ModelChain, POLICY, chainProblem, starterPolicy } from "./ModelChain.tsx";
 import { BillingSettings } from "./Billing.tsx";
 import { ClientSettings } from "./Clients.tsx";
-import { agentOptions, button, card, field, Label, Menu, Problem, primary, Segmented, Switch, pageLede, pageTitle } from "./ui.tsx";
+import { agentOptions, button, card, field, Label, Menu, Problem, primary, Segmented, Switch, pageLede, pageTitle, useStrip } from "./ui.tsx";
 
 export type Section = SettingsSection;
 
@@ -124,25 +124,30 @@ export function Settings({
     { id: "connections", label: "Connections" },
     { id: "access", label: "Access" },
   ];
+  // On a phone the sections are a row that scrolls inside itself, kept on the open one.
+  const strip = useStrip<HTMLElement>(section);
 
   return (
     <div className="warp-fade flex min-h-0 flex-1 flex-col md:flex-row">
-      <nav aria-label="Settings sections" className="flex shrink-0 gap-0.5 overflow-x-auto border-aui-border border-b p-2 md:w-52 md:flex-col md:border-r md:border-b-0 md:p-3">
-        {sections.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            aria-current={section === s.id ? "page" : undefined}
-            onClick={() => {
-              setSection(s.id);
-              setProblem(null);
-            }}
-            className="h-8 shrink-0 rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
-          >
-            {s.label}
-          </button>
-        ))}
-      </nav>
+      {/* The rule is drawn on a frame around the sections, so it runs the full width while the row's ends fade. */}
+      <div className="shrink-0 border-aui-border border-b md:w-52 md:border-r md:border-b-0">
+        <nav ref={strip} aria-label="Settings sections" className="warp-strip flex gap-0.5 overflow-x-auto px-4 py-2 md:flex-col md:p-3">
+          {sections.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              aria-current={section === s.id ? "page" : undefined}
+              onClick={() => {
+                setSection(s.id);
+                setProblem(null);
+              }}
+              className="h-8 shrink-0 whitespace-nowrap rounded-aui px-2.5 text-left text-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-[current=page]:bg-aui-hover aria-[current=page]:text-aui-fg"
+            >
+              {s.label}
+            </button>
+          ))}
+        </nav>
+      </div>
 
       <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-5 pt-8 pb-12 md:px-10">
