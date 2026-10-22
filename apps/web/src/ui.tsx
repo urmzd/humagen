@@ -733,6 +733,44 @@ function useInsideGutter(panel: RefObject<HTMLElement | null>, root: RefObject<H
   return shift;
 }
 
+/**
+ * The second step of an action that cannot be undone, in place on the page:
+ * what will happen in words, the action itself, and Keep It. It takes focus,
+ * on Keep It, and Escape or moving focus away from it keeps things as they
+ * are. An action that can be undone (Archive, Mute) acts at once instead.
+ */
+export function Confirm({ question, action, onConfirm, onKeep }: { question: string; action: string; onConfirm: () => void; onKeep: () => void }) {
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    root.current?.querySelector<HTMLButtonElement>("[data-keep]")?.focus();
+  }, []);
+  return (
+    <div
+      ref={root}
+      role="group"
+      aria-label={question}
+      className="flex flex-wrap items-center gap-3"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onKeep();
+        }
+      }}
+      onBlur={(e) => {
+        if (!root.current?.contains(e.relatedTarget as Node | null)) onKeep();
+      }}
+    >
+      <span className="text-aui-sm text-aui-fg">{question}</span>
+      <button type="button" className={button} onClick={onConfirm}>
+        {action}
+      </button>
+      <button type="button" data-keep className={button} onClick={onKeep}>
+        {defaultCopy.confirm.keep}
+      </button>
+    </div>
+  );
+}
+
 /** One of a page's own actions, for `PageActions`. */
 export interface PageAction {
   label: string;

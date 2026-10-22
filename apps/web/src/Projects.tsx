@@ -47,6 +47,7 @@ import {
   agentOptions,
   ago,
   button,
+  Confirm,
   Count,
   FlashNote,
   field,
@@ -1215,6 +1216,8 @@ export function ProjectPage({
   const [reads, setReads] = useState(0);
   // The agent that answers what tags no agent here, for the meta line. Left out until read.
   const [lead, setLead] = useState<string | null>(null);
+  // Deleting cannot be undone, so it is asked twice.
+  const [deleting, setDeleting] = useState(false);
   // A mute that did not take says so beside its button.
   const { flash: muteFlash, say: sayMute, clear: clearMute } = useFlash();
 
@@ -1334,7 +1337,7 @@ export function ProjectPage({
                 ]
               : []),
             ...(may("delete")
-              ? [{ label: words.deleteProject, destructive: true, onSelect: () => api.deleteProject(p.name).then(onDeleted).catch(fail(setProblem, words.failed.delete)) }]
+              ? [{ label: words.deleteProject, destructive: true, onSelect: () => setDeleting(true) }]
               : []),
           ]}
           note={<FlashNote flash={muteFlash} align="left" />}
@@ -1350,6 +1353,17 @@ export function ProjectPage({
       }
     >
       <Problem message={problem} />
+      {deleting && (
+        <Confirm
+          question={defaultCopy.confirm.ask(titleOf(p, workspaceName))}
+          action={words.deleteProject}
+          onConfirm={() => {
+            setDeleting(false);
+            api.deleteProject(p.name).then(onDeleted).catch(fail(setProblem, words.failed.delete));
+          }}
+          onKeep={() => setDeleting(false)}
+        />
+      )}
       {isMuted && <p className="text-aui-xs text-aui-muted">{defaultCopy.announcements.muted}</p>}
       {p.archived && <p className="text-aui-xs text-aui-muted">{defaultCopy.roles.archived}</p>}
       {moving !== null && (
