@@ -682,18 +682,20 @@ func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Messa
 	// recorded.
 	approved := ans.Decision == payload.DecisionApprove && p.noteApprovedCall(who.Tenant, q, ans)
 	got, first, err := p.rt.Answer(actx, req)
-	if approved && (err != nil || got.Decision != payload.DecisionApprove) {
-		p.dropApprovedCall(who.Tenant, q)
-	}
 	// A question answered the moment it is announced may not be recorded yet.
-	// It is asked again for a short while, never past the request.
+	// It is asked again for a short while, never past the request. The note
+	// is kept while it is asked again, since a later attempt can still record
+	// the approval and wake the run.
 	for deadline := time.Now().Add(recordWait); errors.Is(err, runtime.ErrNoQuestion) && time.Now().Before(deadline); {
 		select {
 		case <-ctx.Done():
-			return inbox.Message{}, ctx.Err()
+			err = ctx.Err()
 		case <-time.After(20 * time.Millisecond):
+			got, first, err = p.rt.Answer(actx, req)
 		}
-		got, first, err = p.rt.Answer(actx, req)
+	}
+	if approved && (err != nil || got.Decision != payload.DecisionApprove) {
+		p.dropApprovedCall(who.Tenant, q)
 	}
 	switch {
 	case errors.Is(err, runtime.ErrNotAllowed):
