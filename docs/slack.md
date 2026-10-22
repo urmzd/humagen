@@ -140,10 +140,10 @@ the words are posted as the person in their direct messages with the app,
 as the shortcut's are; Build an Agent tags `@warp-builder`, and is offered
 only where the client may reach it. Search Context opens the console. The tab
 shows no access or connections, which the app cannot know for the person.
-Their projects are left out when they cannot be read, as for someone who
-lacks `projects:read`. Someone the client maps to nobody sees the mailbox, as
-before: an operator the whole inbox the app may read, anyone else what they
-may settle.
+Their projects are left out when they cannot be read: the app's machine
+needs `warp:projects:read` for them, and the person `projects:read`. Someone
+the client maps to nobody sees the mailbox, as before: an operator the whole
+inbox the app may read, anyone else what they may settle.
 
 The webhook connector files its runs by the same binding: a run in a bound
 Slack channel is in the channel it is bound to, anything else in the client's

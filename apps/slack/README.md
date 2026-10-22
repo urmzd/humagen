@@ -128,6 +128,7 @@ The app authenticates as a machine. Least privilege:
 | `warp:runs:write` | Start, continue, retry and stop runs |
 | `warp:agents:read` | Know which agents exist; see proposed memories |
 | `warp:clients:read` | Only with `WARP_CLIENT` |
+| `warp:projects:read` | Your projects on the Home tab of a person the client maps. Without it the Home leaves them out |
 
 Every button in Slack acts with the app's rights, so each extra scope lets the
 people in the loop do more: `agents:write` keeps or discards memories,

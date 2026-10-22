@@ -363,3 +363,34 @@ test("a machine token is asked for once, kept, and asked for again when refused"
   clock = 3_600_000;
   await assert.rejects(token(), /did not issue a token|unexpected request/);
 });
+
+test("the README's least privilege covers every route the app calls as its machine", async () => {
+  const { readFileSync } = await import("node:fs");
+  const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+  // What each operation needs, from the spec.
+  const need = new Map<string, string>();
+  let path = "";
+  let method = "";
+  for (const line of read("../../../api/openapi.yaml").split("\n")) {
+    const p = /^ {2}(\/api\/\S*):$/.exec(line);
+    if (p) path = p[1] ?? "";
+    const m = /^ {4}(get|post|put|patch|delete):$/.exec(line);
+    if (m) method = (m[1] ?? "").toUpperCase();
+    const x = /^ {6}x-permission: (\S+)$/.exec(line);
+    if (x && path && method) need.set(`${method} ${path}`, x[1] ?? "");
+  }
+  // The routes the app calls, as httpWarp's table says.
+  const routes = [...read("./warp.ts").matchAll(/`(GET|POST|PUT|PATCH|DELETE) (\/api\/[^\s`?]*)/g)];
+  assert.ok(routes.length > 10, "the table was read");
+  const scopes = new Set(
+    [...read("../README.md").matchAll(/^\| `(warp:[a-z]+:[a-z]+)` \|/gm)].map((m) => m[1]),
+  );
+  const shape = (route: string) => route.replace(/\{[^}]+\}/g, "{}");
+  const byShape = new Map([...need].map(([route, permission]) => [shape(route), permission]));
+  for (const [, verb, route] of routes) {
+    const permission = byShape.get(shape(`${verb} ${route}`));
+    assert.ok(permission, `${verb} ${route} is not in the spec`);
+    if (permission === "authenticated") continue;
+    assert.ok(scopes.has(`warp:${permission}`), `${verb} ${route} needs warp:${permission}`);
+  }
+});
