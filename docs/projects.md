@@ -448,7 +448,12 @@ type Mention struct {
 
 Namespace `threads`: `t:<id>` a thread, `m:<thread>:<seq>` a message,
 `s:<client>:<channel>:<ts>` the surface index. At most 5,000 messages per
-thread (then 409 "start a new thread") and 50 participants.
+thread (then 409 "start a new thread") and 50 participants. A workspace holds
+at most 10,000 threads and a project 2,000 (429), a conversation from before
+threads counting once its record is written. A person's message starts no
+run, so no limit on runs holds it: a person posts at most 30 messages a
+minute and a project takes at most 120 (429), counted in at most 10,000
+windows. One message notifies at most 20 people and roles.
 
 The record keeps a person by subject, the key they sign in with. What a
 thread hands out names them by handle instead (a participant, an author, a

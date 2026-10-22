@@ -1295,6 +1295,14 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"add":[{"kind":"person","name":"vic","at":"2026-01-01T00:00:00Z"}]}`, http.StatusOK)
 	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":2,"remove":["vic"]}`, http.StatusConflict)
 	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":3,"add":[{"kind":"person","name":"nobody","at":"2026-01-01T00:00:00Z"}]}`, http.StatusBadRequest)
+	// A person's messages start no run, so a rate holds them: at most
+	// PostsPerPerson a minute, in any thread, a new one included.
+	quick := f.person(t, "acme", "00u-quick", "Quick", "warp-admins")
+	for range platform.PostsPerPerson {
+		c.call(quick, "POST", messages, threadPath+"/messages", `{"text":"again","post_only":true}`, http.StatusCreated)
+	}
+	c.call(quick, "POST", messages, threadPath+"/messages", `{"text":"once more","post_only":true}`, http.StatusTooManyRequests)
+	c.call(quick, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"shared","text":"a new one"}`, http.StatusTooManyRequests)
 	// A mention, read by the person it tags: replied to, set aside, and
 	// refused to a viewer, who may read it but not act on it.
 	c.call(ana, "POST", messages, threadPath+"/messages", `{"text":"@bo one for you"}`, http.StatusCreated)
@@ -1569,6 +1577,11 @@ var unexercised = map[string]string{
 	// conversation each, and would only test a counter, which pkg/projects'
 	// tests do.
 	"DELETE /api/projects/{name} 429": "tombstone cap",
+	// A workspace holds at most 10,000 threads. Changing a conversation
+	// from before threads writes its record, which that cap can refuse;
+	// filling it here would only test a counter, which pkg/threads' tests do.
+	"PUT /api/threads/{id} 429":              "thread cap",
+	"PUT /api/threads/{id}/participants 429": "thread cap",
 	// A spend refusal is the same answer through every route that starts a
 	// run. createRun's 402 is exercised; a schedule's run now goes through
 	// the same admission.

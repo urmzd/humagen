@@ -1156,6 +1156,13 @@ tagging only people or experts notifies them; posted only, nothing
 answers; otherwise the default the thread inherits answers. A
 `private` thread is refused (409) until reads are confined. A
 `default` must be able to answer in the project (400).
+
+A workspace holds at most 10,000 threads and a project 2,000, a
+conversation from before threads counting once its record is written
+(429). A person posts at most 30 messages a minute, here and in
+`postThreadMessage`, and a project takes at most 120 (429). One
+message notifies at most 20 people and roles; a tag it reaches nobody
+for is in `refused`.
  */
   async startThread(body: ThreadInput, options?: RequestOptions): Promise<ThreadPosted> {
     const path = "/api/threads";
@@ -1246,7 +1253,8 @@ follows the latest. `answers` records the message as a question's
 answer, which resumes the run parked on it; who may answer is
 checked as on every other path, and a refused answer posts nothing.
 An answer, like a reply, starts no run. A thread holds at most 5,000
-messages: past that, 409 "start a new thread".
+messages: past that, 409 "start a new thread". The rates and caps of
+`startThread` hold here too (429).
  */
   async postThreadMessage(id: string, body: ThreadMessageInput, options?: RequestOptions): Promise<ThreadPosted> {
     let path = "/api/threads/{id}/messages";

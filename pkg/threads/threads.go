@@ -51,10 +51,18 @@ var (
 	ErrPrivate = errors.New("threads: private threads need read confinement, not built")
 	// ErrCursor reports a paging cursor this store did not issue.
 	ErrCursor = errors.New("threads: invalid cursor")
+	// ErrLimit reports a workspace, or a project, that holds as many
+	// threads as it may.
+	ErrLimit = errors.New("threads: limit reached")
 )
 
 // Bounds.
 const (
+	// MaxThreads is how many threads a workspace holds records of, and
+	// MaxProjectThreads how many one project does, its root included. A
+	// conversation from before threads counts once its record is written.
+	MaxThreads        = 10_000
+	MaxProjectThreads = 2_000
 	// MaxMessages is how many messages one thread holds.
 	MaxMessages = 5000
 	// MaxParticipants is how many people and agents take part in one thread.

@@ -410,6 +410,9 @@ func (p *Platform) StartThread(ctx context.Context, who auth.Principal, in Threa
 	if err := p.checkDefault(ctx, who.Tenant, project, in.Default); err != nil {
 		return Posted{}, err
 	}
+	if err := p.posts.take(who.Tenant, by, project, p.now()); err != nil {
+		return Posted{}, err
+	}
 	tree := p.Projects.Tree(who.Tenant)
 	mentions, err := threads.Parse(in.Text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack})
 	if err != nil {
@@ -446,6 +449,9 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 	}
 	prev, err := p.prevOf(who.Tenant, th, in.After)
 	if err != nil {
+		return Posted{}, err
+	}
+	if err := p.posts.take(who.Tenant, by, th.Project, p.now()); err != nil {
 		return Posted{}, err
 	}
 	tree := p.Projects.Tree(who.Tenant)
@@ -760,12 +766,19 @@ func (p *Platform) runsBefore(tenant string, th threads.Thread, rm room, path []
 	return out
 }
 
+// MaxNotified is how many people, and roles, one message sends a mention to.
+// The experts of a topic can be many, so a tag of them stops there: a tag
+// none of whose people is reached past it is refused, saying so.
+const MaxNotified = 20
+
 // notifyTagged sends the people and experts a message tags a mention in
-// their inbox, once each, and returns who was sent one. The poster is not
-// sent their own.
+// their inbox, once each and at most MaxNotified in all, and returns who was
+// sent one. The poster is not sent their own. A tag that reaches nobody for
+// the cap is marked refused in mentions.
 func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, mentions []threads.Mention) []string {
 	sent := []string{}
-	for _, mn := range mentions {
+	for i := range mentions {
+		mn := &mentions[i]
 		if mn.Refused != "" {
 			continue
 		}
@@ -776,12 +789,22 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 		case threads.SME:
 			to, _ = tree.ExpertsFor(th.Project, mn.Name)
 		}
+		reached, cut := false, false
 		for _, who := range to {
 			if who == m.By || slices.Contains(sent, who) {
+				reached = true
 				continue
 			}
-			p.raiseMention(tenant, th, m, who, mn)
+			if len(sent) >= MaxNotified {
+				cut = true
+				break
+			}
+			p.raiseMention(tenant, th, m, who, *mn)
 			sent = append(sent, who)
+			reached = true
+		}
+		if cut && !reached {
+			mn.Refused = fmt.Sprintf("a message notifies at most %d people", MaxNotified)
 		}
 	}
 	return sent
@@ -1036,14 +1059,30 @@ func (p *Platform) ThreadPage(tenant string, q runs.ThreadQuery) ([]ThreadSummar
 			return nil, "", err
 		}
 	}
+	// A record says where its conversation is, so only the records the
+	// query keeps are copied, and a conversation whose record is elsewhere
+	// is left out.
+	var in map[string]bool
+	if q.Projects != nil {
+		in = make(map[string]bool, len(q.Projects))
+		for _, name := range q.Projects {
+			in[name] = true
+		}
+	}
+	recs, elsewhere := p.Threads.Summaries(tenant, func(th threads.Thread) bool {
+		return (in == nil || in[th.Project]) && (q.Channel == "" || th.Channel == q.Channel)
+	})
 	byID := map[string]*ThreadSummary{}
 	var order []*ThreadSummary
 	for _, s := range p.Runs.Threads(tenant, 0) {
+		if elsewhere[s.ID] {
+			continue
+		}
 		sum := &ThreadSummary{ThreadSummary: s, Visibility: threads.Shared}
 		byID[s.ID] = sum
 		order = append(order, sum)
 	}
-	for _, rec := range p.Threads.Summaries(tenant) {
+	for _, rec := range recs {
 		sum, ok := byID[rec.ID]
 		if !ok {
 			sum = &ThreadSummary{ThreadSummary: runs.ThreadSummary{
@@ -1071,7 +1110,7 @@ func (p *Platform) ThreadPage(tenant string, q runs.ThreadQuery) ([]ThreadSummar
 	page := []ThreadSummary{}
 	for _, s := range order {
 		switch {
-		case q.Projects != nil && !slices.Contains(q.Projects, s.Project):
+		case in != nil && !in[s.Project]:
 			continue
 		case q.Origin != "" && s.Origin != q.Origin:
 			continue

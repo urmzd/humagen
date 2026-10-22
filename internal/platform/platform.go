@@ -240,6 +240,10 @@ type Platform struct {
 	// answers keeps a recorded decision and its surface provenance together
 	// before resumed or terminal events can settle the inbox question.
 	answers sync.Mutex
+
+	// posts is how fast people post in threads, which starts no run for
+	// admission to count.
+	posts postRate
 }
 
 // New assembles a platform. Nothing runs until Run is called.
