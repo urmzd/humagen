@@ -48,6 +48,10 @@ type hidden struct {
 	project, agent, schedule, rule, source, eval, client, variant string
 	run, thread, message, artifact, agentNote, projectNote, doc   string
 	handle, alert, channel, announcement                          string
+	// open is, in a sweep inside the workspace, a Slack client the outsider
+	// may read, with the hidden channel bound to it: its bindings must not
+	// show that binding.
+	open string
 	// inside is true when the outsider is in the same workspace: what
 	// lives outside the project is theirs to see, and is not hidden.
 	inside bool
@@ -124,9 +128,22 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 	must("POST", "/api/schedules", `{"name":"`+h.schedule+`","expression":"0 3 * * *","agent":"`+h.agent+`","text":"Schedule `+marker+`.","project":"`+h.project+`","deliver":"inbox"}`, http.StatusCreated)
 	must("POST", "/api/alert-rules", `{"name":"`+h.rule+`","kind":"run_failed","severity":"critical","project":"`+h.project+`","description":"Rule `+marker+`."}`, http.StatusCreated)
 	must("POST", "/api/evals", `{"name":"`+h.eval+`","target":"agent","subject":"`+h.agent+`","cases":[{"id":"c-`+marker+`","input":"hi","checks":[{"kind":"contains","value":"`+marker+`"}]}]}`, http.StatusCreated)
-	// A channel and an announcement of the hidden project.
+	// A channel and an announcement of the hidden project. The channel is
+	// bound to a Slack channel of a client: the hidden one for another
+	// workspace, and for a member of acme one they may read.
 	h.channel = "canary-" + marker
-	must("POST", "/api/projects/"+h.project+"/channels", `{"name":"`+h.channel+`","purpose":"Channel `+marker+`."}`, http.StatusCreated)
+	bound := h.client
+	if inside {
+		h.open = "slack-open"
+		bound = h.open
+		must("POST", "/api/clients", slackApp(h.open, "A01OPEN", "svc-acme"), http.StatusCreated)
+	} else {
+		must("POST", "/api/clients", slackApp(h.client, "A01ZQX", "svc-acme"), http.StatusCreated)
+	}
+	must("POST", "/api/projects/"+h.project+"/channels", `{"name":"`+h.channel+`","purpose":"Channel `+marker+`.","slack":{"client":"`+bound+`","channel":"C01CANARY"}}`, http.StatusCreated)
+	if out := must("GET", "/api/clients/"+bound+"/bindings", "", http.StatusOK); !strings.Contains(fmt.Sprint(out), h.channel) {
+		t.Fatalf("the owner does not see the hidden channel's binding: %v", out)
+	}
 	h.announcement = str(must("POST", "/api/projects/"+h.project+"/announcements", `{"subject":"News `+marker+`","text":"Words `+marker+`."}`, http.StatusCreated), "id")
 	// An alert raised by the hidden run, in the hidden project.
 	raised, _, err := f.p.Alerts.Raise("acme", "canary-alert-"+marker, alerts.Alert{
@@ -141,7 +158,6 @@ func hide(t *testing.T, f *fixture, owner string, inside bool) hidden {
 		must("POST", "/api/knowledge", `{"name":"`+h.source+`","description":"Source `+marker+`."}`, http.StatusCreated)
 		h.doc = str(must("POST", "/api/knowledge/"+h.source+"/documents", `{"title":"Doc `+marker+`","text":"Words `+marker+` here."}`, http.StatusCreated), "id")
 		must("POST", "/api/knowledge/"+h.source+"/variants", `{"name":"`+h.variant+`"}`, http.StatusCreated)
-		must("POST", "/api/clients", slackApp(h.client, "A01ZQX", "svc-acme"), http.StatusCreated)
 		person, err := f.p.People.Seen("acme", people.Sighting{Subject: "okta|canary-" + marker, Name: "Canary " + marker, Source: people.SignIn}, time.Now())
 		if err != nil {
 			t.Fatal(err)
@@ -214,10 +230,15 @@ func hidePrivate(t *testing.T, f *fixture, owner string) hidden {
 	return h
 }
 
-// visiblePath is, in the private sweep, an operation's path with every
-// parameter naming what the outsider may see: Field, its agent, its rule and
-// its general channel. What it reads must hold nothing of the private thread.
+// visiblePath is an operation's path with every parameter naming what the
+// outsider may see. In the private sweep that is Field, its agent, its rule
+// and its general channel; in the sweep of a member of the workspace, the
+// open Slack client the hidden channel is bound to. What it reads must hold
+// nothing hidden.
 func (h hidden) visiblePath(path string) (string, bool) {
+	if h.inside && !h.private && h.open != "" && strings.HasPrefix(path, "/api/clients/{id}") {
+		return strings.ReplaceAll(path, "{id}", url.PathEscape(h.open)), true
+	}
 	if !h.private {
 		return "", false
 	}
