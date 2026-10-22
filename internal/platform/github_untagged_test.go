@@ -3,7 +3,12 @@ package platform_test
 import (
 	"cmp"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +16,7 @@ import (
 	"github.com/urmzd/fiber/pkg/address"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/runtime"
+	"github.com/urmzd/fiber/pkg/signature"
 	saigetypes "github.com/urmzd/saige/agent/types"
 
 	"github.com/urmzd/warp/internal/platform"
@@ -214,5 +220,53 @@ func TestAnUntaggedGitHubCommentNobodyMayAnswerStartsNothing(t *testing.T) {
 				t.Fatalf("the runs are %+v, want only the named one", got)
 			}
 		})
+	}
+}
+
+// Through fiber's own GitHub connector: a signed comment that mentions the
+// app's login and names no agent is the client's default's, answered on the
+// issue, and one that mentions neither the app nor an agent starts nothing.
+func TestASignedCommentToTheAppIsAnsweredByTheClientsDefault(t *testing.T) {
+	f := &fakes{}
+	c := &cast{says: map[string][][]saigetypes.Delta{"docs": {say("Docs here.")}, "ops": {say("Ops here.")}}}
+	p := stage(t, c, f.config())
+	setAgents(t, p, "~", platform.AgentsInput{Enable: []string{"*"}})
+	create(t, p, tenant, platform.ClientInput{
+		Client: clients.Client{
+			ID: "gh", Name: "gh", Surface: clients.GitHub, Enabled: true,
+			Identity: clients.Identity{Owners: []string{"acme"}}, DefaultAgent: "docs",
+			GitHub: &clients.GitHubOptions{Login: "warp[bot]"},
+		},
+		Token: clients.SecretInput{Value: "token-gh"}, SigningSecret: clients.SecretInput{Value: "secret-gh"},
+	})
+	ingress := p.IngressHandler()
+	post := func(delivery, text string) {
+		t.Helper()
+		body := `{"action":"created","repository":{"name":"handbook","owner":{"login":"acme"}},` +
+			`"sender":{"login":"octocat","type":"User"},"issue":{"number":7},"comment":{"id":91,"body":"` + text + `"}}`
+		mac := hmac.New(sha256.New, []byte("secret-gh"))
+		mac.Write([]byte(body))
+		r := httptest.NewRequest(http.MethodPost, "/connectors/github", strings.NewReader(body))
+		r.Header.Set(signature.HeaderGitHubSignature, "sha256="+hex.EncodeToString(mac.Sum(nil)))
+		r.Header.Set("X-GitHub-Event", "issue_comment")
+		r.Header.Set("X-GitHub-Delivery", delivery)
+		w := httptest.NewRecorder()
+		ingress.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("the comment answered %d", w.Code)
+		}
+	}
+	post("to-nobody", "@octocat can you look?")
+	post("to-the-app", "@warp what changed?")
+	run := await(t, p, runtime.RunID(tenant, "to-the-app"), runs.Completed)
+	if run.Agent != "docs" || run.Text != "what changed?" || run.Actor.User != "" {
+		t.Fatalf("the comment to the app is %s's, %q, for %q", run.Agent, run.Text, run.Actor.User)
+	}
+	eventually(t, "the answer is on the issue", func() bool {
+		cs := f.githubFor("token-gh").Comments()
+		return len(cs) == 1 && strings.Contains(cs[0].Body, "Docs here.")
+	})
+	if got := p.Runs.List(tenant, 10); len(got) != 1 {
+		t.Fatalf("%d runs, want one", len(got))
 	}
 }

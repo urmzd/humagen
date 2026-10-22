@@ -607,7 +607,9 @@ export function updatesOf(
  */
 export function notificationsOf(messages: PlatformMessage[], url?: (id: string) => string | undefined): HomeNotification[] {
   return messages
-    .filter((m) => m.kind !== "announcement" && messageState(m) === "open")
+    // A published announcement is news, not something to do. A draft is
+    // kind announcement too, but waits on its owners, so it stays here.
+    .filter((m) => !isAnnouncement(m) && messageState(m) === "open")
     .map((m) => {
       const name = m.from.name;
       const summary = name && m.subject.startsWith(`${name} `) ? m.subject.slice(name.length + 1) : m.subject;

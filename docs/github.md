@@ -33,13 +33,6 @@ names any other agent is refused when the client is saved.
 
 ## Who a comment asks
 
-`github.login` is not live yet. It is kept, and it is read once warp is built
-with a fiber whose GitHub connector takes the app's login (`github.Config` with
-`Login` and `DefaultAgent`). Until then the client's GitHub connector is not
-given it, so a comment that names no agent starts nothing, and a comment that
-names an agent keeps the app's mention in the text the agent reads. The rest
-of this section is what warp does once it is built with that fiber.
-
 The rule is Slack's: an `@agent` in a comment, or an `auto_labels` label, is a
 tag; otherwise the client's default; otherwise nothing. Slack delivers a
 message only when it mentions the app, so on GitHub a comment that names no
