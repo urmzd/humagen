@@ -306,11 +306,18 @@ func (s *Seer) MemoryOwner(owner string) bool {
 // that serve a turn they may not read, so a count says nothing of a
 // conversation the reader is not shown. A project the reader may not see is
 // the caller's to leave out.
+//
+// What the reader may read is decided as of a mark taken first. Every
+// conversation opened by then is decided: a private thread's record is
+// written before its first run is recorded, and a housekeeping run's
+// conversation is among SystemThreads from when its run is recorded. One
+// opened after the mark is counted from a later read.
 func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCount {
 	seer := p.Seer(who)
 	if seer.govern {
 		return p.Runs.ProjectCounts(who.Tenant)
 	}
+	mark := p.Runs.Opened(who.Tenant)
 	hidden := map[string]bool{}
 	for _, th := range p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return th.Visibility == threads.Private }) {
 		if !seer.Place(Place{Project: th.Project, Thread: th.ID}) {
@@ -325,10 +332,11 @@ func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCoun
 			hidden[id] = true
 		}
 	}
-	if len(hidden) == 0 {
-		return p.Runs.ProjectCounts(who.Tenant)
+	var keep func(string) bool
+	if len(hidden) > 0 {
+		keep = func(thread string) bool { return !hidden[thread] }
 	}
-	return p.Runs.ProjectCountsWhere(who.Tenant, func(thread string) bool { return !hidden[thread] })
+	return p.Runs.ProjectCountsWhere(who.Tenant, mark, keep)
 }
 
 // SeesThread reports whether a reader may read a thread: its project, and in

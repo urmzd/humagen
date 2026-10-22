@@ -3,12 +3,16 @@ package platform_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/urmzd/fiber/pkg/agentspec"
+	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/runtime"
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
@@ -255,5 +259,68 @@ func TestOnlyAThreadsOwnerOrAProjectOwnerChangesIt(t *testing.T) {
 	}
 	if cur, _ := p.ThreadRecord(tenant, room.Thread.ID); cur.Visibility != threads.Shared || cur.Default != "" {
 		t.Fatalf("a refused change changed %+v", cur)
+	}
+}
+
+// A reader's counts are decided as of one moment. A conversation opened
+// while they are read, a housekeeping run's or a private thread's, is not
+// counted until a later read has decided who reads it, so no count ever
+// tells a reader of a conversation they may not read.
+func TestCountsNeverTellOfAConversationOpenedWhileTheyAreRead(t *testing.T) {
+	p := start(t, call.Limits{})
+	field(t, p)
+	if _, err := p.CreateProject(t.Context(), tenant, projects.Writer{By: operator.Subject}, platform.ProjectInput{Name: "Vault", Kind: projects.Account}); err != nil {
+		t.Fatal(err)
+	}
+	outsider := auth.Principal{Subject: "vi", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	if seer := p.Seer(outsider); !seer.Project("Field") || seer.Project("Vault") {
+		t.Fatalf("the outsider reads Field %v and Vault %v", seer.Project("Field"), seer.Project("Vault"))
+	}
+	const each = 150
+	var wg sync.WaitGroup
+	// Housekeeping for a turn in Vault, which opens a conversation of its
+	// own at the workspace.
+	wg.Go(func() {
+		for i := range each {
+			id := fmt.Sprintf("sys-title-%d", i)
+			if err := p.Runs.Record(runtime.RunID(tenant, id), platform.HousekeepingTag(tenant, id, "helper", platform.Place{Project: "Vault", Thread: "th-0123456789abcdef"}), 1); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	})
+	// Private threads in Field the outsider takes no part in.
+	wg.Go(func() {
+		for i := range each {
+			th, _, err := p.Threads.Start(tenant, threads.Thread{Project: "Field", Channel: projects.General, Visibility: threads.Private}, threads.Message{By: operator.Subject, Text: "plan the launch"}, time.Now())
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			id := fmt.Sprintf("api-private-%d", i)
+			tg := envelope.Tag{ID: id, Tenant: tenant, Agent: "helper", Origin: runs.OriginAPI, Text: "plan the launch", At: time.Now(), Meta: map[string]string{runs.MetaThread: th.ID, runs.MetaProject: "Field"}}
+			if err := p.Runs.Record(runtime.RunID(tenant, id), tg, 1); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	})
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	for reading := true; reading; {
+		select {
+		case <-done:
+			reading = false
+		default:
+		}
+		counts := p.ProjectCounts(outsider)
+		if n := counts[projects.Root].Threads + counts["Field"].Threads; n != 0 {
+			t.Fatalf("the outsider is counted %d conversations they may not read: the workspace %+v, Field %+v", n, counts[projects.Root], counts["Field"])
+		}
+	}
+	// A later read counts each conversation for those who read it.
+	counts := p.ProjectCounts(operator)
+	if counts[projects.Root].Threads != each || counts["Field"].Threads != each {
+		t.Fatalf("the operator is counted %d conversations at the workspace and %d in Field, not %d each", counts[projects.Root].Threads, counts["Field"].Threads, each)
 	}
 }

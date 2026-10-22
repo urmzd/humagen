@@ -35,12 +35,15 @@ type counters struct {
 	// system is each tenant's conversations that a run of origin system
 	// opened, in the order they were recorded.
 	system map[string][]string
+	// opened is each tenant's conversations in the order they were opened,
+	// so a reader's counts can be decided as of a moment (Opened).
+	opened map[string][]string
 }
 
 func newCounters() counters {
 	return counters{
 		by: map[string]map[string]*ProjectCount{}, filed: map[string]string{}, each: map[string]map[string]*ProjectCount{},
-		system: map[string][]string{},
+		system: map[string][]string{}, opened: map[string][]string{},
 	}
 }
 
@@ -107,6 +110,7 @@ func (x *Index) count(r *Run) {
 	n := x.counts.of(r.Tenant, project)
 	if !known {
 		n.Threads++
+		x.counts.opened[r.Tenant] = append(x.counts.opened[r.Tenant], r.Thread)
 		if r.Origin == OriginSystem {
 			x.counts.system[r.Tenant] = append(x.counts.system[r.Tenant], r.Thread)
 		}
@@ -130,6 +134,11 @@ func (x *Index) recount(r *Run) {
 func (x *Index) ProjectCounts(tenant string) map[string]ProjectCount {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
+	return x.projectCounts(tenant)
+}
+
+// projectCounts is ProjectCounts. The caller holds the lock.
+func (x *Index) projectCounts(tenant string) map[string]ProjectCount {
 	out := make(map[string]ProjectCount, len(x.counts.by[tenant]))
 	for name, n := range x.counts.by[tenant] {
 		out[name] = *n
@@ -137,17 +146,37 @@ func (x *Index) ProjectCounts(tenant string) map[string]ProjectCount {
 	return out
 }
 
-// ProjectCountsWhere is ProjectCounts over the conversations keep holds,
-// by thread id: those a reader may read. It reads every conversation of
-// the tenant once, so a caller with nothing to leave out asks ProjectCounts.
-// keep is called under the index's read lock, so it must not call the
-// index.
-func (x *Index) ProjectCountsWhere(tenant string, keep func(thread string) bool) map[string]ProjectCount {
+// Opened is how many conversations a tenant's runs have opened. It marks a
+// moment for ProjectCountsWhere.
+func (x *Index) Opened(tenant string) int {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
+	return len(x.counts.opened[tenant])
+}
+
+// ProjectCountsWhere is ProjectCounts for one reader, as of a mark from
+// Opened: over the conversations opened before it that keep holds, by
+// thread id, which are those the reader may read. The caller decides that
+// after taking the mark, so a conversation opened since is one it has not
+// decided, and it is left out until a later read. A nil keep holds every
+// conversation, and with none opened since the mark that is ProjectCounts,
+// with no scan. keep is called under the index's read lock, so it must not
+// call the index.
+func (x *Index) ProjectCountsWhere(tenant string, mark int, keep func(thread string) bool) map[string]ProjectCount {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	opened := x.counts.opened[tenant]
+	since := opened[min(max(mark, 0), len(opened)):]
+	if keep == nil && len(since) == 0 {
+		return x.projectCounts(tenant)
+	}
+	late := make(map[string]bool, len(since))
+	for _, thread := range since {
+		late[thread] = true
+	}
 	out := map[string]ProjectCount{}
 	for thread, n := range x.counts.each[tenant] {
-		if !keep(thread) {
+		if late[thread] || keep != nil && !keep(thread) {
 			continue
 		}
 		project := x.counts.filed[tenant+"\x00"+thread]

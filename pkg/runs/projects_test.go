@@ -39,7 +39,9 @@ func sameCounts(t *testing.T, x *Index, tenant string) {
 	t.Helper()
 	want := scanned(x, tenant, nil)
 	equalCounts(t, tenant+" counters", x.ProjectCounts(tenant), want)
-	equalCounts(t, tenant+" each conversation's counts", x.ProjectCountsWhere(tenant, func(string) bool { return true }), want)
+	mark := x.Opened(tenant)
+	equalCounts(t, tenant+" each conversation's counts", x.ProjectCountsWhere(tenant, mark, func(string) bool { return true }), want)
+	equalCounts(t, tenant+" counters as of now", x.ProjectCountsWhere(tenant, mark, nil), want)
 }
 
 func equalCounts(t *testing.T, what string, got, want map[string]ProjectCount) {
@@ -140,12 +142,12 @@ func TestProjectCountsLeaveOutWhatAReaderMayNotRead(t *testing.T) {
 	x := NewIndex()
 	busy(t, x, "acme")
 	parked := runtime.RunID("acme", "e")
-	got := x.ProjectCountsWhere("acme", func(thread string) bool { return thread != parked })
+	got := x.ProjectCountsWhere("acme", x.Opened("acme"), func(thread string) bool { return thread != parked })
 	equalCounts(t, "without the parked conversation", got, scanned(x, "acme", []string{parked}))
 	if got["Field"].Threads != 1 || got["Field"].Active != 0 {
 		t.Fatalf("Field without the parked conversation counts %+v", got["Field"])
 	}
-	if none := x.ProjectCountsWhere("acme", func(string) bool { return false }); len(none) != 0 {
+	if none := x.ProjectCountsWhere("acme", x.Opened("acme"), func(string) bool { return false }); len(none) != 0 {
 		t.Fatalf("a reader who may read nothing counts %v", none)
 	}
 }
@@ -218,6 +220,84 @@ func TestSystemThreadsAreTheConversationsSystemRunsOpened(t *testing.T) {
 		if got := again.SystemThreads("acme"); !slices.Equal(got, []string{title, memory}) {
 			t.Fatalf("after a restart acme's system threads = %v", got)
 		}
+	})
+}
+
+// A reader's counts are read as of a mark. A conversation opened since is
+// left out, with or without a keep, while a run that joins a conversation
+// opened before the mark is counted in it. A later mark counts the new one,
+// and a mark taken after a restart counts what was read back.
+func TestProjectCountsAreReadAsOfAMark(t *testing.T) {
+	statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+		st := open(t)
+		x, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := x.Opened("acme"); got != 0 {
+			t.Fatalf("a tenant with no runs has opened %d conversations", got)
+		}
+		busy(t, x, "acme")
+		busy(t, x, "globex")
+		mark := x.Opened("acme")
+		if mark != 4 || x.Opened("globex") != 4 {
+			t.Fatalf("acme opened %d conversations and globex %d, not the 4 each busy opens", mark, x.Opened("globex"))
+		}
+		before := scanned(x, "acme", nil)
+		record := func(id string, meta map[string]string, s int) string {
+			t.Helper()
+			runID := runtime.RunID("acme", id)
+			if err := x.Record(runID, envelope.Tag{ID: id, Tenant: "acme", Agent: "scribe", Origin: OriginSystem, Text: "title it", Meta: meta, At: t0.Add(time.Duration(s) * time.Minute)}, 1); err != nil {
+				t.Fatal(err)
+			}
+			return runID
+		}
+		// Opened after the mark: a housekeeping conversation at the root and
+		// another in Field, and one more conversation in Launch.
+		title := record("sys-title-late", nil, 1)
+		record("sys-memory-late", map[string]string{MetaProject: "Field"}, 2)
+		if err := x.Record(runtime.RunID("acme", "late"), envelope.Tag{ID: "late", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "go", Meta: map[string]string{MetaProject: "Launch"}, At: t0.Add(3 * time.Minute)}, 1); err != nil {
+			t.Fatal(err)
+		}
+		equalCounts(t, "as of the mark", x.ProjectCountsWhere("acme", mark, nil), before)
+		equalCounts(t, "as of the mark, keeping all", x.ProjectCountsWhere("acme", mark, func(string) bool { return true }), before)
+		if got := x.ProjectCountsWhere("acme", mark, func(thread string) bool { return thread != title }); got[""].Threads != 1 || got["Field"].Threads != 2 || got["Launch"].Threads != 1 {
+			t.Fatalf("as of the mark, keeping all but one late conversation, the counts are %+v", got)
+		}
+		// A mark from before any run counts nothing, and one past the end
+		// counts everything.
+		if got := x.ProjectCountsWhere("acme", 0, nil); len(got) != 0 {
+			t.Fatalf("as of no conversations the counts are %+v", got)
+		}
+		equalCounts(t, "past the end", x.ProjectCountsWhere("acme", 1_000, nil), scanned(x, "acme", nil))
+		// Another tenant's mark is its own.
+		equalCounts(t, "globex as of its mark", x.ProjectCountsWhere("globex", x.Opened("globex"), nil), scanned(x, "globex", nil))
+		// A run that joins a conversation opened before the mark is counted
+		// in it.
+		joined := runtime.RunID("acme", "a")
+		if err := x.Record(runtime.RunID("acme", "again"), envelope.Tag{ID: "again", Tenant: "acme", Agent: "lead", Origin: OriginAPI, Text: "and", Meta: map[string]string{MetaThread: joined, MetaPrev: joined}, At: t0.Add(4 * time.Minute)}, 1); err != nil {
+			t.Fatal(err)
+		}
+		if got := x.ProjectCountsWhere("acme", mark, nil)[""]; got.Threads != 1 || got.Active != 1 || !got.ActiveAt.Equal(t0.Add(4*time.Minute)) {
+			t.Fatalf("the root as of the mark, after a run joined its conversation, counts %+v", got)
+		}
+		later := x.Opened("acme")
+		if later != mark+3 {
+			t.Fatalf("acme opened %d conversations, not %d", later, mark+3)
+		}
+		equalCounts(t, "as of a later mark", x.ProjectCountsWhere("acme", later, nil), scanned(x, "acme", nil))
+
+		if err := x.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		again, err := Open(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := again.Opened("acme"); got != later {
+			t.Fatalf("after a restart acme opened %d conversations, not %d", got, later)
+		}
+		sameCounts(t, again, "acme")
 	})
 }
 
