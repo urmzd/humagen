@@ -517,3 +517,32 @@ func TestARaiseKeptWithoutItsMessageIsSkipped(t *testing.T) {
 		}
 	})
 }
+
+// Retention finishes however small a step is.
+func TestRetentionFinishesInTheSmallestSteps(t *testing.T) {
+	was := maxCut
+	maxCut = 1
+	defer func() { maxCut = was }()
+	s := NewStore()
+	s.kept = state.NewTable[storedChange](state.NewMemory(), "inbox")
+	m := post(t, s, "Field", "Offsite", t0)
+	if _, err := s.Read(acme, m.ID, "bo", true, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Withdraw(acme, m.ID, "dana", "", t0); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan int, 1)
+	go func() {
+		n, _ := s.Retain(acme, t0.Add(time.Hour))
+		done <- n
+	}()
+	select {
+	case n := <-done:
+		if n != 1 {
+			t.Fatalf("Retain dropped %d", n)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Retain did not finish")
+	}
+}

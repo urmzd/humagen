@@ -22,6 +22,9 @@ const (
 // test lowers it to take many steps.
 var maxCut = 5000
 
+// stepSize is maxCut, and at least two: one delete and the cut.
+func stepSize() int { return max(maxCut, 2) }
+
 // cutKey is the key a tenant's cut is kept under, beside its changes, whose
 // keys are all digits and sort before it.
 const cutKey = "cut"
@@ -113,7 +116,7 @@ func (s *Store) retainStep(name string, before time.Time) (int, bool, error) {
 	next := cut{Next: t.next, Gone: slices.Clone(t.cut.Gone)}
 	size, more := 0, false
 	for _, m := range order {
-		if size > 0 && size+records[m.ID] >= maxCut {
+		if size > 0 && size+records[m.ID] >= stepSize() {
 			more = true
 			break
 		}
@@ -129,7 +132,7 @@ func (s *Store) retainStep(name string, before time.Time) (int, bool, error) {
 	deletes := 0
 	for i, c := range t.log {
 		if drop[c.Message] {
-			if deletes < maxCut-1 {
+			if deletes < stepSize()-1 {
 				b.Delete(name, state.Seq(t.seqs[i]))
 				deletes++
 			} else {
@@ -153,7 +156,7 @@ func (s *Store) retainStep(name string, before time.Time) (int, bool, error) {
 // cleanStep deletes another bounded slice of a cut message's history. The
 // durable pending ids make every intermediate state replayable.
 func (s *Store) cleanStep(name string, t *tenant) (int, bool, error) {
-	n := min(len(t.garbage), maxCut-1)
+	n := min(len(t.garbage), stepSize()-1)
 	next := t.cut
 	if n == len(t.garbage) {
 		next.Pending = nil
