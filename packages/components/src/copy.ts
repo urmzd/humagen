@@ -630,6 +630,8 @@ export const defaultCopy = {
     refused: (tag: string, why: string) => `${tag}: ${why}`,
     /** A question an agent asked of a person, shown still in the thread. */
     asks: (agent: string) => `${agent} asks`,
+    /** A failed answer to the reader's own message: it is asked again for them from their inbox. */
+    retryFromInbox: "Retry it from your inbox, where it answers your message again.",
     answer: "Answer",
     answered: "Answered",
     typeahead: "People and agents to tag",

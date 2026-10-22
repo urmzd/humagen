@@ -548,6 +548,7 @@ export function Chat({
       <ThreadRoom
         key={threadId}
         id={threadId}
+        me={me}
         initial={room}
         tick={tick}
         agents={agents}

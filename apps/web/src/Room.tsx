@@ -4,7 +4,7 @@ import { ActionId, type UiAction } from "@warp/core";
 import { WebSurface } from "@warp/render-web";
 import { AgentMessage, Thread as ThreadList, useQueue } from "@warp/web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Run } from "./adapter.ts";
+import { actedFor, type Run } from "./adapter.ts";
 import {
   ApiError,
   api,
@@ -238,10 +238,22 @@ function MessageView({ m, focused }: { m: ThreadMessage; focused: boolean }) {
   );
 }
 
+/**
+ * Why the reader is not offered Retry on a failed answer in the room. A run
+ * answering a message acts for the person who posted it, so only they ask it
+ * again, from the failure in their inbox, where it answers the same message
+ * for them. Nobody asks it again here, and nobody regenerates an answer: a
+ * message posted in the room is how anyone else asks.
+ */
+function retryInRoom(run: Run, me: string): string {
+  const person = actedFor(run);
+  return person && person === me ? words.retryFromInbox : defaultCopy.retryOnlyTheirs;
+}
+
 /** An agent's turn: what it answered, as the conversation view shows it. */
-function AnswerView({ run, live }: { run: Run; live: boolean }) {
+function AnswerView({ run, me, live }: { run: Run; me: string; live: boolean }) {
   const turn = useRunTurn(live ? run : undefined);
-  const shown = useMemo(
+  const drawn = useMemo(
     () =>
       turn ?? {
         id: run.id,
@@ -256,6 +268,10 @@ function AnswerView({ run, live }: { run: Run; live: boolean }) {
       },
     [turn, run],
   );
+  const shown = useMemo(
+    () => (drawn.failure ? { ...drawn, failure: { ...drawn.failure, retryNotOffered: retryInRoom(run, me) } } : drawn),
+    [drawn, run, me],
+  );
   return (
     <article id={`turn-${run.id}`} className="flex flex-col gap-2" aria-label={`Answered by ${run.agent}`}>
       {/* A run from before threads carries what was asked; one that answers a message does not repeat it. */}
@@ -265,7 +281,7 @@ function AnswerView({ run, live }: { run: Run; live: boolean }) {
       {/* The answer names its agent; why @auto chose it is said above it. */}
       {run.picked && <p className="pl-11 text-aui-xs text-aui-muted">{run.picked}</p>}
       <AgentTint name={run.agent}>
-        <AgentMessage turn={shown} itemActions={itemActions(run)} />
+        <AgentMessage turn={shown} itemActions={itemActions(run)} capabilities={{ regenerate: false }} />
       </AgentTint>
     </article>
   );
@@ -280,6 +296,7 @@ const noHomes: Record<string, string> = {};
  */
 export function ThreadRoom({
   id,
+  me,
   initial,
   tick,
   agents,
@@ -293,6 +310,8 @@ export function ThreadRoom({
   onChanged,
 }: {
   id: string;
+  /** The reader's subject: a failed answer is theirs to retry when it acted for them. */
+  me: string;
   /** The page already read, so the room shows at once. */
   initial: ThreadPage;
   tick: number;
@@ -409,7 +428,7 @@ export function ThreadRoom({
             t.message ? (
               <MessageView key={t.message.id} m={t.message} focused={focus === t.message.id} />
             ) : t.run ? (
-              <AnswerView key={t.run.id} run={t.run} live={t === last || (t.run.status !== "completed" && t.run.status !== "failed")} />
+              <AnswerView key={t.run.id} run={t.run} me={me} live={t === last || (t.run.status !== "completed" && t.run.status !== "failed")} />
             ) : null,
           )}
         </ThreadList>

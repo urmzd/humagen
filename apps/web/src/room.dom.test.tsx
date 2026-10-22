@@ -61,6 +61,7 @@ function room(routes: Record<string, (body: unknown) => unknown> = {}) {
   render(
     <ThreadRoom
       id="th-0123456789abcdef"
+      me="ana"
       initial={page}
       tick={0}
       agents={[helper]}
@@ -105,6 +106,7 @@ test("under *, the typeahead never offers an agent that lives in another project
   render(
     <ThreadRoom
       id="th-0123456789abcdef"
+      me="ana"
       initial={page}
       tick={0}
       agents={[helper, initechBot, globexBot]}
@@ -228,10 +230,43 @@ test("a run waiting on a person, such as an expert's answer, is shown still", as
         "GET /api/runs/r1/events": () => ({ events: [] }),
       });
       render(
-        <ThreadRoom id="th-0123456789abcdef" initial={waiting} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+        <ThreadRoom id="th-0123456789abcdef" me="ana" initial={waiting} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
       );
       await screen.findByText("Ana");
       assert.equal(document.querySelectorAll(".aui-busy-bar").length, bars, `a ${status} run`);
+      cleanup();
+      net.restore();
+      net = undefined;
+    }
+  } finally {
+    restore();
+  }
+});
+
+test("a room offers no Retry or Regenerate: a failed answer is retried from the inbox, by the person it acted for", async () => {
+  const restore = stubEventSource();
+  try {
+    const ana = { id: "ana", display: "Ana", user: "ana" };
+    const failed = { ...page.turns[1]?.run, status: "failed", answer: "", error: "provider: 529 overloaded", actor: ana } as never;
+    const done = { ...page.turns[1]?.run, actor: ana } as never;
+    for (const [me, run, says] of [
+      ["ana", failed, words.retryFromInbox],
+      ["ben", failed, defaultCopy.retryOnlyTheirs],
+      ["ana", done, "It renews on May 3."],
+    ] as const) {
+      const shown: ThreadPage = { ...page, turns: [page.turns[0] as ThreadTurn, { kind: "run", run }] };
+      net = stubFetch({
+        "GET /api/threads/th-0123456789abcdef": () => shown,
+        "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
+        "GET /api/runs/r1/events": () => ({ events: [] }),
+      });
+      render(
+        <ThreadRoom id="th-0123456789abcdef" me={me} initial={shown} tick={0} agents={[helper]} projects={tree} root={null} workspaceName="Acme" canRun onOpenChannel={() => {}} onChanged={() => {}} />,
+      );
+      await screen.findByText(says);
+      assert.ok(!screen.queryByRole("button", { name: "Retry" }), `Retry for ${me}`);
+      assert.ok(!screen.queryByRole("button", { name: "Regenerate" }), `Regenerate for ${me}`);
+      assert.ok(!screen.queryByText(/can't be retried/));
       cleanup();
       net.restore();
       net = undefined;
@@ -256,7 +291,7 @@ test("turns read earlier stay when the newest page moves on", async () => {
     },
     "GET /api/projects/Globex/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: null }),
   });
-  const props = { id: "th-0123456789abcdef", initial: newest, agents: [helper], projects: tree, root: null, workspaceName: "Acme", canRun: true, onOpenChannel: () => {}, onChanged: () => {} };
+  const props = { id: "th-0123456789abcdef", me: "ana", initial: newest, agents: [helper], projects: tree, root: null, workspaceName: "Acme", canRun: true, onOpenChannel: () => {}, onChanged: () => {} };
   const { rerender } = render(<ThreadRoom {...props} tick={0} />);
   await waitFor(() => assert.equal(reads, 1));
   fireEvent.click(await screen.findByText(words.olderTurns));
