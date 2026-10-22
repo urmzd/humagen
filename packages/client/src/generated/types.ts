@@ -492,8 +492,14 @@ export interface Thread {
 
 /** One tag in a message, and what it came to. */
 export interface ThreadMention {
-  kind: "agent" | "person" | "sme";
-  /** The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent. */
+  /** `agent`, `person` and `sme` as tagged; `skill` for `$<name>` and
+`@skill:<name>`, which the runs the message starts are told to
+use; `role` for the people holding a role, through a mention kind
+that resolves roles. A mention kind the workspace declares is
+recorded as what it resolves to.
+ */
+  kind: "agent" | "person" | "sme" | "skill" | "role";
+  /** The agent (`auto` for @auto, which a message that names a skill and tags no agent starts), the person's handle (as written, when nobody goes by it), the experts' topic (empty for every expert), the skill, or the role. A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent. */
   name: string;
   /** The run an agent's tag started. */
   run?: string;
@@ -856,6 +862,58 @@ export interface ProjectKnowledgeInput {
   knowledge: string[];
 }
 
+/** Named instructions an agent can be told to use, as a project declares them. Its name and description are ones a SKILL.md takes. */
+export interface ProjectSkill {
+  /** Lower case letters and digits in words joined by single dashes, starting with a letter. */
+  name: string;
+  description: string;
+  /** What the skill takes after its name, as the console shows it. */
+  argument_hint?: string;
+  instructions: string;
+}
+
+/** A skill a message posted in a project can name, without its instructions, and the project that declares it. */
+export interface ProjectSkillRef {
+  name: string;
+  description: string;
+  argument_hint: string;
+  /** The project that declares it, the nearest when more than one does. Empty for the workspace. */
+  from: string;
+}
+
+/** The skills a project declares, at the project's version, and what a message posted in it can name. */
+export interface ProjectSkills {
+  version: number;
+  /** The skills the project declares itself, in its order, with their instructions. */
+  skills: ProjectSkill[];
+  /** What a message posted here can name, the project's own first, then each project's above it, nearest first, each name once. */
+  offered: ProjectSkillRef[];
+}
+
+/** The skills a project declares, as a whole, from the version read. */
+export interface ProjectSkillsInput {
+  /** The version the caller read. */
+  version: number;
+  /** The skills, each name once; `[]` for none. */
+  skills: ProjectSkill[];
+}
+
+/** A kind of `@<kind>:<name>`, and what its items resolve to. */
+export interface MentionKind {
+  kind: string;
+  title: string;
+  /** `experts` (as `@sme:<topic>`), `skills` (as `$<name>`), `role` (the people holding the role) or `people` (a person, by handle). */
+  resolves: "experts" | "skills" | "role" | "people";
+}
+
+/** An item a mention kind completes to. */
+export interface MentionItem {
+  /** What follows the colon. */
+  name: string;
+  /** A line about it, such as a skill's description or a person's name. */
+  description?: string;
+}
+
 /** What a project is for. `company` is company-wide: it sits under the
 workspace or another company project, and is created and changed only
 with `projects:govern`; a workspace has at most 10. `team` is the
@@ -944,6 +1002,10 @@ in, besides its agent's own. Set with `PUT
 for a caller without `knowledge:read`.
  */
   knowledge?: string[];
+  /** The skills a message posted here and below can name. Set with
+`PUT /api/projects/{name}/skills`. Absent when it declares none.
+ */
+  skills?: ProjectSkill[];
   /** An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived. */
   archived?: boolean;
   /** The lowest role that may post an announcement here. Absent reads as owner. */
@@ -1117,7 +1179,7 @@ project names as experts, `knowledge` to the knowledge sources it
 names, and `channel` to one of its channels, which `channel`
 holds before and after.
  */
-  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "channel";
+  what: "created" | "updated" | "deleted" | "managed" | "moved" | "archived" | "members" | "agents" | "home" | "experts" | "knowledge" | "skills" | "channel";
   /** The agent a `home` change is about. Absent when it lives in a project the caller may not read. */
   agent?: string;
   /** Says more, such as that a project created under a deleted name adopts its old conversations. */
@@ -2898,6 +2960,15 @@ export interface ListChannelsResponse {
 export interface GetProjectInboxResponse {
   messages: InboxMessage[];
   next: string | null;
+}
+
+export interface ListSkillsResponse {
+  skills: ProjectSkillRef[];
+}
+
+export interface ListMentionsResponse {
+  kinds?: MentionKind[];
+  items?: MentionItem[];
 }
 
 export interface ListPeopleResponse {

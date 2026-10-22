@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -36,6 +37,15 @@ const (
 
 	maxKnowledge = 8
 
+	maxSkills            = 32
+	maxSkillName         = 64
+	maxSkillDescription  = 1024
+	maxArgumentHint      = 100
+	maxSkillInstructions = 8000
+
+	maxMentionKinds     = 16
+	maxMentionKindTitle = 40
+
 	maxMembers    = 100
 	maxKinds      = 16
 	maxKindTitle  = 40
@@ -65,7 +75,20 @@ var (
 	// sourceName is a knowledge source's name, as the knowledge store
 	// takes it.
 	sourceName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	// skillName is a skill's name, as the project store takes it.
+	skillName = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+	// mentionKindName is a mention kind's name, as the tag grammar reads it
+	// before the colon.
+	mentionKindName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 )
+
+// mentionResolves is what a mention kind can resolve its items to, as the
+// tag grammar (pkg/threads) takes it.
+var mentionResolves = []string{"experts", "skills", "role", "people"}
+
+// reservedKinds are the names no declared mention kind takes: the built-in
+// kinds and @auto.
+var reservedKinds = []string{"sme", "skill", "auto"}
 
 // checkProjects holds the workspace's instructions and project tree to what
 // the project store accepts, each mistake with its path:
@@ -101,6 +124,12 @@ func checkProjects(w Workspace) error {
 		return fmt.Errorf("workspace.%w", err)
 	}
 	if err := checkKnowledge(w.Knowledge); err != nil {
+		return fmt.Errorf("workspace.%w", err)
+	}
+	if err := checkSkills(w.Skills); err != nil {
+		return fmt.Errorf("workspace.%w", err)
+	}
+	if err := checkMentionKinds(w.MentionKinds); err != nil {
 		return fmt.Errorf("workspace.%w", err)
 	}
 	likes, err := checkKinds(w.ProjectKinds)
@@ -338,6 +367,9 @@ func checkProjectFields(p Project, like string) error {
 	if err := checkKnowledge(p.Knowledge); err != nil {
 		return err
 	}
+	if err := checkSkills(p.Skills); err != nil {
+		return err
+	}
 	a := p.Account
 	if a == nil {
 		return nil
@@ -491,6 +523,75 @@ func checkKnowledge(names []string) error {
 		for j := range i {
 			if names[j] == n {
 				return fmt.Errorf("knowledge[%d]: %s is knowledge[%d] again", i, n, j)
+			}
+		}
+	}
+	return nil
+}
+
+// checkSkills checks the skills a project declares: at most 32, each named
+// once with a skill's name, a description on one line of at most 1,024
+// characters, an argument hint of at most 100, and instructions of at most
+// 8,000. Its error starts with "skills".
+func checkSkills(ss []Skill) error {
+	if len(ss) > maxSkills {
+		return fmt.Errorf("skills: a project declares at most %d skills, not %d", maxSkills, len(ss))
+	}
+	for i, s := range ss {
+		at := fmt.Sprintf("skills[%d]", i)
+		if len(s.Name) > maxSkillName || !skillName.MatchString(s.Name) {
+			return fmt.Errorf("%s.name: %q is not a skill's name: lower case letters and digits in words joined by single dashes, starting with a letter, at most %d", at, s.Name, maxSkillName)
+		}
+		for j := range i {
+			if ss[j].Name == s.Name {
+				return fmt.Errorf("%s.name: %s is skills[%d] again", at, s.Name, j)
+			}
+		}
+		if strings.TrimSpace(s.Description) == "" {
+			return fmt.Errorf("%s.description: say what the skill is for", at)
+		}
+		if err := checkText(s.Description, maxSkillDescription, false); err != nil {
+			return fmt.Errorf("%s.description: %w", at, err)
+		}
+		if err := checkText(s.ArgumentHint, maxArgumentHint, false); err != nil {
+			return fmt.Errorf("%s.argument_hint: %w", at, err)
+		}
+		if strings.TrimSpace(s.Instructions) == "" {
+			return fmt.Errorf("%s.instructions: a skill has instructions", at)
+		}
+		if err := checkText(s.Instructions, maxSkillInstructions, true); err != nil {
+			return fmt.Errorf("%s.instructions: %w", at, err)
+		}
+	}
+	return nil
+}
+
+// checkMentionKinds checks the mention kinds a workspace declares: at most
+// 16, each a name the tag grammar reads before a colon, none a built-in
+// kind's or another reserved name, each once, with a title of at most 40 and
+// what it resolves to. Its error starts with "mention_kinds".
+func checkMentionKinds(ks []MentionKind) error {
+	if len(ks) > maxMentionKinds {
+		return fmt.Errorf("mention_kinds: a workspace declares at most %d mention kinds, not %d", maxMentionKinds, len(ks))
+	}
+	for i, k := range ks {
+		at := fmt.Sprintf("mention_kinds[%d]", i)
+		switch {
+		case !mentionKindName.MatchString(k.Kind):
+			return fmt.Errorf("%s.kind: %q is not a kind's name: lower case letters, digits and dashes, starting with a letter, at most 32", at, k.Kind)
+		case slices.Contains(reservedKinds, k.Kind):
+			return fmt.Errorf("%s.kind: %s is reserved", at, k.Kind)
+		case strings.TrimSpace(k.Title) == "":
+			return fmt.Errorf("%s.title: name the kind as the console shows it", at)
+		case !slices.Contains(mentionResolves, k.Resolves):
+			return fmt.Errorf("%s.resolves: %q is experts, skills, role or people", at, k.Resolves)
+		}
+		if err := checkText(k.Title, maxMentionKindTitle, false); err != nil {
+			return fmt.Errorf("%s.title: %w", at, err)
+		}
+		for j := range i {
+			if ks[j].Kind == k.Kind {
+				return fmt.Errorf("%s.kind: %s is mention_kinds[%d] again", at, k.Kind, j)
 			}
 		}
 	}

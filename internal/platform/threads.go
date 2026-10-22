@@ -334,7 +334,24 @@ type tagLookup struct {
 	tenant string
 	slack  map[string]string
 	sees   func(agent string) bool
+	// tree and project are where the message is posted, for the skills its
+	// chain offers.
+	tree    *projects.Tree
+	project string
 }
+
+// Skill reports whether a skill goes by name on the chain of the project
+// the message is posted in.
+func (l tagLookup) Skill(name string) bool {
+	if l.tree == nil {
+		return false
+	}
+	_, _, ok := l.tree.Skill(l.project, name)
+	return ok
+}
+
+// MentionKind is what a mention kind the workspace declares resolves to.
+func (l tagLookup) MentionKind(kind string) (string, bool) { return l.p.mentionKind(l.tenant, kind) }
 
 func (l tagLookup) Agent(name string) bool {
 	_, err := l.p.Agents.Get(l.ctx, l.tenant, name, 0)
@@ -669,8 +686,11 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 		sf := on.ref.surface(on.client.ID)
 		rec.Surface, rec.Announcement, first.SurfaceID, slack = &sf, on.announcement, on.ref.message(), nil
 	}
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: seer.Agent, tree: tree, project: project})
 	if err != nil {
+		return Posted{}, err
+	}
+	if mentions, err = skillTags(mentions, on != nil, in.PostOnly); err != nil {
 		return Posted{}, err
 	}
 	if on != nil && on.ref.Files {
@@ -747,8 +767,11 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		surfaceID, slack = on.ref.message(), nil
 	}
 	sees := p.Seer(person).Agent
-	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees})
+	mentions, err := threads.Parse(text, tagLookup{ctx: ctx, p: p, tenant: who.Tenant, slack: slack, sees: sees, tree: tree, project: th.Project})
 	if err != nil {
+		return Posted{}, err
+	}
+	if mentions, err = skillTags(mentions, on != nil, in.PostOnly); err != nil {
 		return Posted{}, err
 	}
 	mentions = p.checkTags(who.Tenant, tree, th.Project, mentions)
@@ -998,8 +1021,10 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 	if keeps && th.Project != "" {
 		meta[metaKeepsNotes] = th.Project
 	}
+	skills := p.skillsOfMessage(tenant, th, m, via)
+	pinSkills(meta, skills)
 	if agent == Auto {
-		who, err := p.resolveAgent(ctx, tenant, placeSeen(p.placeOfThread(tenant, th), sees), Auto, m.Text, sees)
+		who, err := p.resolveAgent(ctx, tenant, placeSeen(p.placeOfThread(tenant, th), sees), Auto, pickText(m.Text, skills), sees)
 		if err != nil {
 			return runs.Run{}, err
 		}
@@ -1159,6 +1184,8 @@ func (p *Platform) notifyTagged(tenant string, tree *projects.Tree, th threads.T
 			to = []string{mn.Name}
 		case threads.SME:
 			to, _ = tree.ExpertsFor(th.Project, mn.Name)
+		case threads.Role:
+			to = []string{projects.RolePrefix + mn.Name}
 		}
 		reached, cut := false, false
 		for _, who := range to {
@@ -1199,11 +1226,14 @@ func (p *Platform) raiseMention(tenant string, th threads.Thread, m threads.Mess
 	shown := s.message(m)
 	where := "#" + th.Channel
 	subject := fmt.Sprintf("%s mentioned you in %s", shown.Name, where)
-	if mn.Kind == threads.SME {
+	switch mn.Kind {
+	case threads.SME:
 		subject = fmt.Sprintf("%s asked the experts in %s", shown.Name, where)
 		if mn.Name != "" {
 			subject = fmt.Sprintf("%s asked the %s experts in %s", shown.Name, mn.Name, where)
 		}
+	case threads.Role:
+		subject = fmt.Sprintf("%s mentioned everyone holding %s in %s", shown.Name, mn.Name, where)
 	}
 	msg := inbox.Message{
 		Kind: inbox.KindMention, Subject: subject, From: inbox.From{Kind: "person", Name: shown.Name}, Severity: inbox.Info,

@@ -18,9 +18,21 @@ func expertsOf(es []spec.Expert) []projects.Expert {
 	return out
 }
 
+// skillsOf is the skills a file declares, as the project store keeps them.
+func skillsOf(ss []spec.Skill) []projects.Skill {
+	if ss == nil {
+		return nil
+	}
+	out := make([]projects.Skill, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, projects.Skill{Name: s.Name, Description: s.Description, ArgumentHint: s.ArgumentHint, Instructions: s.Instructions})
+	}
+	return out
+}
+
 // fileRoot is the workspace's own record as the file declares it, and the
 // fields the file sets: its instructions, experts, knowledge sources,
-// members and own kinds.
+// skills, members and own kinds.
 // None set leaves the root to the console.
 func fileRoot(w spec.Workspace) (projects.Project, []string) {
 	root := projects.Project{Name: projects.Root}
@@ -36,6 +48,10 @@ func fileRoot(w spec.Workspace) (projects.Project, []string) {
 	if w.Knowledge != nil {
 		root.Knowledge = append([]string{}, w.Knowledge...)
 		owns = append(owns, projects.FieldKnowledge)
+	}
+	if w.Skills != nil {
+		root.Skills = skillsOf(w.Skills)
+		owns = append(owns, projects.FieldSkills)
 	}
 	if w.Members != nil {
 		root.Members = membersOf(w.Members)

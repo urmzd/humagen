@@ -923,7 +923,7 @@ func (s *Server) problem(w http.ResponseWriter, err error) {
 		errors.Is(err, alerts.ErrNotFound), errors.Is(err, knowledge.ErrNotFound), errors.Is(err, evals.ErrNotFound),
 		errors.Is(err, memory.ErrNotFound), errors.Is(err, policy.ErrNotFound), errors.Is(err, inbox.ErrNotFound),
 		errors.Is(err, artifacts.ErrNotFound), errors.Is(err, clients.ErrNotFound),
-		errors.Is(err, platform.ErrProviderNotFound), errors.Is(err, credentials.ErrNotFound):
+		errors.Is(err, platform.ErrProviderNotFound), errors.Is(err, credentials.ErrNotFound), errors.Is(err, platform.ErrNoMentionKind):
 		fail(w, http.StatusNotFound, "not found")
 	case errors.Is(err, platform.ErrNotPersonScoped):
 		fail(w, http.StatusBadRequest, detail(err, platform.ErrNotPersonScoped))

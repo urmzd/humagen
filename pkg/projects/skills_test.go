@@ -133,6 +133,7 @@ func TestSkillRules(t *testing.T) {
 		{"a long argument hint", with(func(s *projects.Skill) { s.ArgumentHint = strings.Repeat("a", projects.MaxArgumentHint+1) })},
 		{"no instructions", with(func(s *projects.Skill) { s.Instructions = "" })},
 		{"long instructions", with(func(s *projects.Skill) { s.Instructions = strings.Repeat("a", projects.MaxSkillInstructions+1) })},
+		{"instructions with a control character", with(func(s *projects.Skill) { s.Instructions = "ring\a" })},
 		{"a skill twice", []projects.Skill{skill("review"), skill("review")}},
 	} {
 		t.Run(c.name, func(t *testing.T) {

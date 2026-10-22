@@ -319,6 +319,8 @@ func serve(o Options, args []string, d serveDefaults) error {
 		Policy: pol,
 		// How long each workspace's inbox keeps what was settled.
 		InboxRetention: inboxRetention(file.cfg),
+		// The mention kinds each workspace declares.
+		MentionKinds: mentionKinds(file.cfg),
 	}
 	if len(o.Connections) > 0 {
 		conns := o.Connections

@@ -538,7 +538,7 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 	pr := projects.Project{
 		Name: d.Name, Title: d.Title, Description: d.Description, Kind: projects.Kind(d.Kind),
 		Parent: spec.ParentOf(d), Instructions: d.Instructions, Experts: expertsOf(d.Experts), AgentPosts: d.AgentPosts,
-		Knowledge: append([]string(nil), d.Knowledge...),
+		Knowledge: append([]string(nil), d.Knowledge...), Skills: skillsOf(d.Skills),
 	}
 	if a := d.Account; a != nil {
 		pr.Account = &projects.AccountInfo{Customer: a.Customer, ExternalID: a.ExternalID, URL: a.URL}
@@ -560,6 +560,7 @@ func fileProject(d spec.Project) (projects.Project, []string) {
 		projects.FieldAgentPosts:   d.AgentPosts != "",
 		projects.FieldExperts:      d.Experts != nil,
 		projects.FieldKnowledge:    d.Knowledge != nil,
+		projects.FieldSkills:       d.Skills != nil,
 		projects.FieldAgents:       d.Agents != nil,
 		projects.FieldMembers:      d.Members != nil,
 	} {

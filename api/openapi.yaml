@@ -3522,6 +3522,66 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/skills:
+    get:
+      operationId: getProjectSkills
+      tags: [projects]
+      summary: Read the skills a project declares, and what a message posted in it can name
+      description: |
+        A skill is named instructions an agent can be told to use: a person
+        writes `$<name>`, or `@skill:<name>`, in a message, and the runs the
+        message starts are given the skill's instructions as part of the
+        turn. A message posted in a project can name the skills its project
+        declares, then each project's above it, nearest first: `offered`,
+        each name once, from the nearest project that declares it, at most
+        128. A sibling's or a sub-project's are never offered. They are fixed
+        when a run is accepted, so a later change here does not change a run
+        already working.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      responses:
+        "200":
+          description: The project's skills.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectSkills"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+    put:
+      operationId: setProjectSkills
+      tags: [projects]
+      summary: Replace the skills a project declares
+      description: |
+        At most 32, each name once (400). A message posted here and below can
+        name them from now on; a run already working keeps what it was
+        accepted with. It needs ownership of the project; the workspace and
+        company projects need `projects:govern` as well. `version` is the
+        project's, as read; a change made since answers 409, as do skills the
+        platform file declares.
+      x-permission: projects:write
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectSkillsInput"}
+      responses:
+        "200":
+          description: The project's skills as they now stand.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectSkills"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "413": {$ref: "#/components/responses/TooLarge"}
+        "500": {$ref: "#/components/responses/ServerError"}
   /api/projects/{name}/members:
     get:
       operationId: getProjectMembers
@@ -3769,6 +3829,93 @@ paths:
       responses:
         "204":
           description: Withdrawn.
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/skills:
+    get:
+      operationId: listSkills
+      tags: [projects]
+      summary: List the skills a message posted in a project can name
+      description: |
+        The project's own skills first, then each project's above it, nearest
+        first, each name once, at most 128, without their instructions: what
+        the console completes after `$`. A project the caller cannot see
+        answers 404, as one that does not exist.
+      x-permission: projects:read
+      parameters:
+        - name: project
+          in: query
+          description: The project a message is posted in; `~`, or left out, for the workspace.
+          schema: {type: string, maxLength: 63}
+      responses:
+        "200":
+          description: The skills.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [skills]
+                properties:
+                  skills:
+                    type: array
+                    maxItems: 128
+                    items: {$ref: "#/components/schemas/ProjectSkillRef"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+  /api/mentions:
+    get:
+      operationId: listMentions
+      tags: [projects]
+      summary: List the mention kinds, or complete one kind's items
+      description: |
+        Without `kind`, the kinds of `@<kind>:<name>` a message can use: the
+        built-in `sme` (experts) and `skill` (skills) first, then the ones the
+        workspace's Platform document declares. With `kind`, the items it
+        completes to where a message is posted in `project`, whose name
+        starts with `q`, ignoring case, by name, at most 20: the topics the
+        project's chain has experts for, the skills it offers, the roles it
+        names, or people in the directory, which takes `people:read` as well
+        (without it the list is empty). A kind the workspace does not have,
+        or a project the caller cannot see, answers 404.
+      x-permission: projects:read
+      parameters:
+        - name: project
+          in: query
+          description: The project a message is posted in; `~`, or left out, for the workspace.
+          schema: {type: string, maxLength: 63}
+        - name: kind
+          in: query
+          description: The kind to complete.
+          schema: {type: string, maxLength: 32}
+        - name: q
+          in: query
+          description: What the item's name starts with. Needs `kind`.
+          schema: {type: string, maxLength: 100}
+      responses:
+        "200":
+          description: The kinds, or one kind's items.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  kinds:
+                    description: The mention kinds, when no kind was asked for.
+                    type: array
+                    maxItems: 18
+                    items: {$ref: "#/components/schemas/MentionKind"}
+                  items:
+                    description: The kind's items, when a kind was asked for.
+                    type: array
+                    maxItems: 20
+                    items: {$ref: "#/components/schemas/MentionItem"}
+        "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthorized"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -5107,9 +5254,17 @@ components:
       type: object
       required: [kind, name]
       properties:
-        kind: {type: string, enum: [agent, person, sme]}
+        kind:
+          description: |
+            `agent`, `person` and `sme` as tagged; `skill` for `$<name>` and
+            `@skill:<name>`, which the runs the message starts are told to
+            use; `role` for the people holding a role, through a mention kind
+            that resolves roles. A mention kind the workspace declares is
+            recorded as what it resolves to.
+          type: string
+          enum: [agent, person, sme, skill, role]
         name:
-          description: The agent (`auto` for @auto), the person's handle (as written, when nobody goes by it), or the experts' topic (empty for every expert). A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent.
+          description: The agent (`auto` for @auto, which a message that names a skill and tags no agent starts), the person's handle (as written, when nobody goes by it), the experts' topic (empty for every expert), the skill, or the role. A tag of an agent that lives in a project the reader may not read and that started no run reads as one of a person nobody goes by, as a tag of an agent that does not exist does. One that started a run is kept, as the run names its agent.
           type: string
         run:
           description: The run an agent's tag started.
@@ -5610,6 +5765,92 @@ components:
           maxItems: 8
           items: {type: string, maxLength: 63}
 
+    ProjectSkill:
+      description: Named instructions an agent can be told to use, as a project declares them. Its name and description are ones a SKILL.md takes.
+      type: object
+      additionalProperties: false
+      required: [name, description, instructions]
+      properties:
+        name:
+          description: Lower case letters and digits in words joined by single dashes, starting with a letter.
+          type: string
+          pattern: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+          maxLength: 64
+        description: {type: string, maxLength: 1024}
+        argument_hint:
+          description: What the skill takes after its name, as the console shows it.
+          type: string
+          maxLength: 100
+        instructions: {type: string, maxLength: 8000}
+    ProjectSkillRef:
+      description: A skill a message posted in a project can name, without its instructions, and the project that declares it.
+      type: object
+      additionalProperties: false
+      required: [name, description, argument_hint, from]
+      properties:
+        name: {type: string, maxLength: 64}
+        description: {type: string, maxLength: 1024}
+        argument_hint: {type: string, maxLength: 100}
+        from:
+          description: The project that declares it, the nearest when more than one does. Empty for the workspace.
+          type: string
+          maxLength: 63
+    ProjectSkills:
+      description: The skills a project declares, at the project's version, and what a message posted in it can name.
+      type: object
+      additionalProperties: false
+      required: [version, skills, offered]
+      properties:
+        version: {type: integer}
+        skills:
+          description: The skills the project declares itself, in its order, with their instructions.
+          type: array
+          maxItems: 32
+          items: {$ref: "#/components/schemas/ProjectSkill"}
+        offered:
+          description: What a message posted here can name, the project's own first, then each project's above it, nearest first, each name once.
+          type: array
+          maxItems: 128
+          items: {$ref: "#/components/schemas/ProjectSkillRef"}
+    ProjectSkillsInput:
+      description: The skills a project declares, as a whole, from the version read.
+      type: object
+      additionalProperties: false
+      required: [version, skills]
+      properties:
+        version:
+          description: The version the caller read.
+          type: integer
+        skills:
+          description: The skills, each name once; `[]` for none.
+          type: array
+          maxItems: 32
+          items: {$ref: "#/components/schemas/ProjectSkill"}
+    MentionKind:
+      description: A kind of `@<kind>:<name>`, and what its items resolve to.
+      type: object
+      additionalProperties: false
+      required: [kind, title, resolves]
+      properties:
+        kind: {type: string, pattern: "^[a-z][a-z0-9-]{0,31}$"}
+        title: {type: string, maxLength: 40}
+        resolves:
+          description: "`experts` (as `@sme:<topic>`), `skills` (as `$<name>`), `role` (the people holding the role) or `people` (a person, by handle)."
+          type: string
+          enum: [experts, skills, role, people]
+    MentionItem:
+      description: An item a mention kind completes to.
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          description: What follows the colon.
+          type: string
+        description:
+          description: A line about it, such as a skill's description or a person's name.
+          type: string
+
     ProjectKind:
       description: |
         What a project is for. `company` is company-wide: it sits under the
@@ -5737,6 +5978,13 @@ components:
           type: array
           maxItems: 8
           items: {type: string, maxLength: 63}
+        skills:
+          description: |
+            The skills a message posted here and below can name. Set with
+            `PUT /api/projects/{name}/skills`. Absent when it declares none.
+          type: array
+          maxItems: 32
+          items: {$ref: "#/components/schemas/ProjectSkill"}
         archived:
           description: An archived project takes no new sub-projects and nothing moves under it. The workspace is never archived.
           type: boolean
@@ -6057,7 +6305,7 @@ components:
             names, and `channel` to one of its channels, which `channel`
             holds before and after.
           type: string
-          enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, knowledge, channel]
+          enum: [created, updated, deleted, managed, moved, archived, members, agents, home, experts, knowledge, skills, channel]
         agent:
           description: The agent a `home` change is about. Absent when it lives in a project the caller may not read.
           type: string
