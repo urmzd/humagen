@@ -243,7 +243,9 @@ kinds, and they are kept differently:
   nothing else, and in a store that tells names apart by case. A reference
   is not read when it is given, so connecting one says nothing about whether
   it names anything, and a refused reference gets one message whatever the
-  reason.
+  reason. In a container the server's access is its environment alone, so
+  `warp deploy` refuses a `keychain:` or `op://` start for a compose or
+  kubernetes target ([Deploying it](spec.md#deploying-it)).
 - **A value is stored.** Only where the Platform document sets
   `workspace.person_credentials.values: true`, which is off by default. It is
   kept with the same protections a client's secret has: in the same secrets
