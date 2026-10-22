@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/inbox"
@@ -277,5 +278,46 @@ func TestReleaseNotesReachEveryoneWhoReadsTheWorkspace(t *testing.T) {
 	}
 	if got := subjects(want(t, f, cy, "GET", "/api/projects/~/inbox", "", http.StatusOK)); len(got) != 0 {
 		t.Fatalf("after its withdrawal = %q", got)
+	}
+}
+
+// needs=true pages what needs the caller, what `open` counts: posted
+// announcements are left out before the page is cut, however many are newer,
+// and an agent's draft waiting on the project's owners stays, for its owners
+// alone. The Slack app's Home reads what needs a person this way.
+func TestNeedsPagesWhatTheBadgeCounts(t *testing.T) {
+	f, ana, bo, _ := acmeNews(t)
+	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
+	draft, _, err := f.p.Inbox.Raise("acme", "draft:r-recap", inbox.Message{
+		Kind: inbox.KindAnnouncement, Subject: "Field shipped two fixes", Severity: inbox.Info,
+		From:     inbox.From{Kind: "agent", Name: "recap"},
+		Audience: []string{inbox.OwnersAudience("Field")},
+		Source:   inbox.Source{Project: "Field"},
+		Parts: []inbox.Part{{Type: inbox.PartDraft, Draft: &inbox.DraftPart{
+			Project: "Field", Agent: "recap", Subject: "Field shipped two fixes", Text: "The export is faster.",
+		}}},
+	}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		want(t, f, ana, "POST", "/api/projects/Field/announcements", fmt.Sprintf(`{"subject":"News %d","text":"More news."}`, i), http.StatusCreated)
+	}
+	if got := subjects(c.call(ana, "GET", "/api/inbox", "/api/inbox?limit=1", "", http.StatusOK).body.(map[string]any)); !slices.Equal(got, []string{"News 2"}) {
+		t.Fatalf("ana's newest = %q", got)
+	}
+	needs := c.call(ana, "GET", "/api/inbox", "/api/inbox?needs=true&limit=1", "", http.StatusOK)
+	if got := subjects(needs.body.(map[string]any)); !slices.Equal(got, []string{draft.Subject}) {
+		t.Fatalf("what needs ana = %q, want the draft", got)
+	}
+	if needs.field("next") != nil || fmt.Sprint(needs.field("open")) != "1" {
+		t.Fatalf("what needs ana: next %v, open %v", needs.field("next"), needs.field("open"))
+	}
+	// Bo is a member of Field, not an owner: the news is his, the draft is not.
+	if got := subjects(c.call(bo, "GET", "/api/inbox", "/api/inbox?needs=true", "", http.StatusOK).body.(map[string]any)); len(got) != 0 {
+		t.Fatalf("what needs bo = %q", got)
+	}
+	if got := subjects(want(t, f, bo, "GET", "/api/inbox", "", http.StatusOK)); len(got) != 3 {
+		t.Fatalf("bo's inbox = %q", got)
 	}
 }
