@@ -49,9 +49,11 @@ export type Route =
   | { page: "new"; project?: string; channel?: string; agent?: string; ask?: string }
   /**
    * A conversation, at one of its people's messages when `message` is set,
-   * or with its Share dialog open (`/tasks/{id}/share`) when `share` is.
+   * or with its Share dialog open (`/conversations/{id}/share`) when
+   * `share` is. Links from when they were called tasks, `/tasks/{id}`,
+   * open the same conversation.
    */
-  | { page: "task"; id: string; message?: string; share?: boolean }
+  | { page: "conversation"; id: string; message?: string; share?: boolean }
   /** Every project, searched with `q` and narrowed to one kind. */
   | { page: "projects"; q?: string; kind?: ProjectKindFilter }
   /** One project at a tab, and in its inbox, at a message. The workspace itself is the project named "", written `~`. */
@@ -97,9 +99,9 @@ export function href(r: Route): string {
       const query = q.toString();
       return query ? `/?${query}` : "/";
     }
-    case "task":
-      if (r.share) return `/tasks/${enc(r.id)}/share`;
-      return r.message ? `/tasks/${enc(r.id)}?${new URLSearchParams({ message: r.message })}` : `/tasks/${enc(r.id)}`;
+    case "conversation":
+      if (r.share) return `/conversations/${enc(r.id)}/share`;
+      return r.message ? `/conversations/${enc(r.id)}?${new URLSearchParams({ message: r.message })}` : `/conversations/${enc(r.id)}`;
     case "projects": {
       const q = new URLSearchParams();
       if (r.q) q.set("q", r.q);
@@ -214,10 +216,12 @@ function read(pathname: string, search: string): Route {
           ask: q.get("ask") ?? undefined,
         }
       );
+    // Conversations were called tasks; their old addresses open them.
+    case "conversations":
     case "tasks":
       if (!a) return { page: "new" };
-      if (b === "share") return { page: "task", id: a, share: true };
-      return { page: "task", id: a, message: q.get("message") || undefined };
+      if (b === "share") return { page: "conversation", id: a, share: true };
+      return { page: "conversation", id: a, message: q.get("message") || undefined };
     case "projects": {
       if (!a) return { page: "projects", q: q.get("q") || undefined, kind: kindParam(q.get("kind")) };
       // A channel is a page of its own, under the project's Channels tab.

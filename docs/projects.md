@@ -1254,7 +1254,7 @@ docs/spec.md gains:
 | `{page: "projects"; q?; kind?}` | `/projects`, `?q=`, `?kind=account` |
 | `{page: "project"; name; tab; message?}` | `/projects/{name}` (default tab), `/projects/{name}/{tab}`, `?message=<id>` |
 | `{page: "channel"; project; channel}` | `/projects/{name}/channels/{channel}` |
-| `{page: "task"; id; message?; share?}` | `/tasks/{id}` (unchanged), `?message=<id>`, `/tasks/{id}/share` (the Share dialog open) |
+| `{page: "conversation"; id; message?; share?}` | `/conversations/{id}`, `?message=<id>`, `/conversations/{id}/share` (the Share dialog open); `/tasks/{id}`, its address when conversations were called tasks, opens it and is rewritten |
 | `{page: "new"; project?; channel?; agent?; ask?}` | `/?project=&channel=&agent=&ask=` |
 
 `PROJECT_TABS` grow by phase:
@@ -1345,7 +1345,7 @@ An unknown tab falls back to the default through `pick`. Names never hold
     which goes to `@auto` when no agent is tagged), with the conversation so
     far as its context. An untagged message shows as posted;
   - a private conversation's header says "Private" and offers "Share", which
-    opens a dialog at `/tasks/{id}/share`: the project (only while no agent
+    opens a dialog at `/conversations/{id}/share`: the project (only while no agent
     has run in it; the server's 409 is said in words), the channel (general
     by default) and people to add, completed as they are typed. It calls
     `POST /api/threads/{id}/share` and then reads as shared there, with no
@@ -1356,7 +1356,7 @@ An unknown tab falls back to the default through `pick`. Names never hold
   run is live.
 - **Home.** The prompt-first chat bar, which starts a private conversation
   (`POST /api/threads`, `visibility: private`, in the picked project's
-  general) and opens it at `/tasks/{id}`; there is no menu of who answers.
+  general) and opens it at `/conversations/{id}`; there is no menu of who answers.
   Suggestions sit under the bar as quiet text until the person types; a
   pick writes its words and adds its agent as a chip, as a link with
   `?agent=` does. Then

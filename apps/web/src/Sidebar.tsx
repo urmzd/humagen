@@ -165,7 +165,7 @@ function Choices<T extends string>({
 }
 
 /**
- * One conversation in the Pinned or Tasks list. The pin sits beside it, shown
+ * One conversation in the Pinned or Conversations list. The pin sits beside it, shown
  * on hover or focus, and a pin that did not take says so above it.
  */
 function TaskRow({
@@ -183,7 +183,7 @@ function TaskRow({
   onPin?: () => void;
   flash?: Flash | null;
 }) {
-  const title = task.title || "Untitled task";
+  const title = task.title || "Untitled conversation";
   const state = task.active > 0 ? "In progress" : task.failed > 0 ? "Needs attention" : "Finished";
   return (
     // A row that is saying something sits over its neighbours and over the
@@ -259,7 +259,7 @@ export function Sidebar({
   prefs: Preferences | null;
   can: (permission: string) => boolean;
   threads: ThreadSummary[];
-  /** Pinned task ids, most recently pinned first. */
+  /** Pinned conversation ids, most recently pinned first. */
   pinned: string[];
   /** Resolves once the pin is saved, and rejects when it could not be. */
   onPin: (id: string, pin: boolean) => Promise<void>;
@@ -280,8 +280,8 @@ export function Sidebar({
   // ends, which is the signal to fetch the first page again.
   const { threads: recents, hasMore, loading, failed, stalled, retry, more } = useRecents(agent, standing, threads);
   const filters = (agent ? 1 : 0) + (standing ? 1 : 0);
-  // A pin that did not take is said beside the task it was for, in whichever
-  // list the task is in by then.
+  // A pin that did not take is said beside the conversation it was for, in whichever
+  // list the conversation is in by then.
   const { flash, say, clear: unsay } = useFlash();
   const [flashed, setFlashed] = useState<string | null>(null);
   const togglePin = (id: string, on: boolean) => {
@@ -296,7 +296,7 @@ export function Sidebar({
   // menu answers with a refusal. Work comes first, then what watches it, then
   // what it is built from. A task keeps its own runs, evals live on what they
   // test, and trends live with alerts, so none of those needs a page here.
-  const selected = route.page === "task" ? route.id : null;
+  const selected = route.page === "conversation" ? route.id : null;
   const here = (...pages: RoutePage[]) => pages.includes(route.page);
   const entries: { to: Route; label: string; icon: ReactNode; show: boolean; active: boolean; badge?: number }[] = [
     { to: { page: "new" }, label: "New", icon: <ComposeIcon />, show: can("runs:write"), active: here("new") },
@@ -384,7 +384,7 @@ export function Sidebar({
                 task={t}
                 current={isCurrent(t)}
                 pinned
-                onSelect={() => go({ page: "task", id: t.id })}
+                onSelect={() => go({ page: "conversation", id: t.id })}
                 onPin={() => togglePin(t.id, false)}
                 flash={flashed === t.id ? flash : null}
               />
@@ -394,7 +394,7 @@ export function Sidebar({
       )}
 
       {open && can("runs:read") && (
-        <section aria-label="Tasks" className="flex shrink-0 flex-col pt-4">
+        <section aria-label="Conversations" className="flex shrink-0 flex-col pt-4">
           {/* The label stays in reach while the list scrolls under it. */}
           <Label
             action={
@@ -416,7 +416,7 @@ export function Sidebar({
                       title="Show"
                       value={standing}
                       options={[
-                        { value: "", label: "Every task" },
+                        { value: "", label: "Every conversation" },
                         { value: "running", label: "Running now" },
                         { value: "failed", label: "Needs attention" },
                       ]}
@@ -447,9 +447,9 @@ export function Sidebar({
               </Popover>
             }
           >
-            Tasks
+            Conversations
           </Label>
-          <ul className="px-2 pb-3" aria-label="Tasks" aria-busy={loading !== null}>
+          <ul className="px-2 pb-3" aria-label="Conversations" aria-busy={loading !== null}>
             {recents.length === 0 && loading === "first" && (
               <li className="px-2.5">
                 <SkeletonRows count={5} height="1.25rem" />
@@ -457,7 +457,7 @@ export function Sidebar({
             )}
             {recents.length === 0 && loading !== "first" && stalled && (
               <li className="flex flex-col items-start gap-1.5 px-2.5 py-1.5 text-aui-xs text-aui-muted">
-                Your tasks could not be loaded.
+                Your conversations could not be loaded.
                 <button
                   type="button"
                   onClick={retry}
@@ -469,7 +469,7 @@ export function Sidebar({
             )}
             {recents.length === 0 && loading !== "first" && !stalled && (
               <li className="px-2.5 py-1.5 text-aui-xs text-aui-muted">
-                {filters > 0 ? "No task matches these filters." : "Your tasks appear here. Start with New."}
+                {filters > 0 ? "No conversation matches these filters." : "Your conversations appear here. Start with New."}
               </li>
             )}
             {unpinned.map((t) => (
@@ -478,7 +478,7 @@ export function Sidebar({
                 task={t}
                 current={isCurrent(t)}
                 pinned={false}
-                onSelect={() => go({ page: "task", id: t.id })}
+                onSelect={() => go({ page: "conversation", id: t.id })}
                 onPin={canPin ? () => togglePin(t.id, true) : undefined}
                 flash={flashed === t.id ? flash : null}
               />

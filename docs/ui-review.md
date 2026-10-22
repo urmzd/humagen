@@ -107,7 +107,7 @@ Warp now follows the same shape:
 - **Pinned** holds conversations a person pins from the pin beside each task.
   Pins are saved with their preferences (`pinned` on `PUT /api/preferences`), so
   they follow the person to another browser.
-- **Tasks** rows are one line: the agent's orb and the title, with the state and
+- **Conversations** rows (once called Tasks) are one line: the agent's orb and the title, with the state and
   project in the row's tooltip and read out to screen readers.
 
 Verified in the local browser with `make dev`: pinning, a pin surviving a
@@ -120,7 +120,7 @@ project by project, so the navigation follows the work rather than the
 platform's parts.
 
 - **Sidebar order:** New, Projects, Schedules, Alerts, Inbox, Knowledge,
-  Agents, Artifacts, then Pinned and Tasks. There is no More menu.
+  Agents, Artifacts, then Pinned and Conversations. There is no More menu.
   - Execution history leaves the sidebar: each task already holds the history
     of every run in it, and a run anywhere opens its task.
   - Evals live on the agent or knowledge source they test.

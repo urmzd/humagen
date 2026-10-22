@@ -339,7 +339,7 @@ export function ThreadRoom({
   canRun: boolean;
   /** A message to open at, as `?message=` names it. */
   focus?: string;
-  /** Whether the Share dialog is open, as `/tasks/{id}/share` says. */
+  /** Whether the Share dialog is open, as `/conversations/{id}/share` says. */
   sharing?: boolean;
   /** Opens or closes the Share dialog, at its address. */
   onSharing?: (open: boolean) => void;
