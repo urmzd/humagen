@@ -120,7 +120,7 @@ export function ApprovalCard({
         <Actions blockId={`approval:${approval.id}:r${approval.revision ?? 0}`}>
           <Button label={copy.ask} action={{ id: ActionId.ask, payload }} />
         </Actions>
-        <Context items={[copy.notYours]} />
+        <Context items={[copy.notYours, ...(approval.actsForPerson ? [copy.actsForPerson] : [])]} />
       </>
     );
   }
@@ -128,6 +128,7 @@ export function ApprovalCard({
   if (decision.kind === "pending") {
     const meta = [
       approval.actingAs ? copy.actingAs(approval.actingAs) : null,
+      approval.actsForPerson ? copy.actsForPerson : null,
       approval.expiresAt ? copy.expires(timeToken(approval.expiresAt)) : null,
     ].filter((x): x is string => x !== null);
     return (
@@ -143,7 +144,7 @@ export function ApprovalCard({
             accessibilityLabel={`${approval.approveLabel ?? copy.approve}: ${approval.summary}`}
             confirm={approval.destructive ? copy.confirmDestructive : undefined}
           />
-          {approval.editable && (
+          {approval.editable && !approval.actsForPerson && (
             <Button label={copy.edit} action={{ id: ActionId.edit, payload }} />
           )}
           <Button label={copy.ask} action={{ id: ActionId.ask, payload }} />
@@ -209,6 +210,7 @@ export function ApprovalBatch({
   copy = defaultCopy,
 }: { turnId: string; approvals: ApprovalT[] } & WithCopy) {
   const name = `batch:${turnId}`;
+  const acting = approvals.filter((a) => a.actsForPerson).map((a) => a.summary);
   return (
     <>
       <Summary text={copy.approvalNeeded(copy.batchTitle(approvals.length))} />
@@ -251,6 +253,7 @@ export function ApprovalBatch({
           action={{ id: ActionId.deny, payload: { turnId, target: name } }}
         />
       </Actions>
+      {acting.length > 0 && <Context items={[copy.actsForPersonIn(acting)]} />}
     </>
   );
 }

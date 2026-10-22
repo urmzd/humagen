@@ -1525,6 +1525,26 @@ test("an answer warp refuses is shown in warp's words, and the card keeps its bu
   await w.app.idle();
 });
 
+test("an approval of a call that acts as the person says so on its Slack card, and offers no edit", async () => {
+  const w = mapped();
+  await deliver(w, mention("file the flaky test", TS));
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.started", { attempt: 1 });
+  const tool = { ...QUESTIONS.approval.tool, acts_for_person: true };
+  await emit(w, "lifecycle.parked", {
+    reason: "waiting on a person",
+    question: { ...QUESTIONS.approval, tool },
+  });
+  await settle();
+  const shown = textIn(blocksOf(w.slack.of("chat.stopStream").at(-1)));
+  assert.ok(shown.includes(defaultCopy.actsForPerson), shown);
+  assert.match(shown, new RegExp(`"${defaultCopy.approve}"`));
+  assert.doesNotMatch(shown, new RegExp(`"${defaultCopy.edit}"`));
+  collect("approval that acts as the person", w.slack);
+  await deliver(w, stopPressed(TS));
+  await w.app.idle();
+});
+
 test("a question in the inbox is not posted again in the thread: the run already shows it", async () => {
   const w = mapped();
   const watching = new AbortController();

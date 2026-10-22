@@ -25,6 +25,10 @@ export const defaultCopy = {
     deny: "Go Back",
   },
   actingAs: (who: string) => `Will run as ${who}`,
+  actsForPerson:
+    "Uses the credentials of the person this run acts for. Only they may change its arguments.",
+  actsForPersonIn: (calls: string[]) =>
+    `${calls.join("; ")}: ${calls.length === 1 ? "uses" : "use"} the credentials of the person this run acts for. Only they may change ${calls.length === 1 ? "its" : "their"} arguments.`,
   expires: (time: string) => `Expires ${time}`,
   approvedBy: (by: string, time: string) => `Approved by ${by} · ${time}`,
   rejected: "Rejected, I won't run it.",

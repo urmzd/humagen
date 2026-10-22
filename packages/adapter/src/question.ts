@@ -129,9 +129,11 @@ export function interruptOf(q: WireQuestion, settled?: Settled): Interrupt | nul
         tool: q.tool?.name ?? "",
         ...(args ? { args } : {}),
         ...(q.expires_at ? { expiresAt: q.expires_at } : {}),
+        // Every surface says a call that acts as the person does, and none offers an edit of it.
+        ...(q.tool?.acts_for_person === true ? { actsForPerson: true } : {}),
         // warp: an editor for a tool's arguments from its schema, on web and in a Slack modal,
         // before `editable` can be offered. The API takes edited arguments already. Even then,
-        // a call that acts as the person (`tool.acts_for_person`) is never editable: only that
+        // a call that acts as the person (`actsForPerson`) is never editable: only that
         // person may change it, and a card cannot tell who is reading it.
         decision: decisionOf(settled),
       };

@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Run } from "./adapter.ts";
+import { type Run, turnOf } from "./adapter.ts";
 import { ActivityPanel, ordered, ordinals, trailOf } from "./Activity.tsx";
 import { isEnded } from "./format.ts";
 import { sampleTrees } from "./activity.fixtures.ts";
@@ -25,7 +25,7 @@ import { AgentMessage } from "@warp/web";
 import { WebSurface } from "@warp/render-web";
 import { replay } from "./Runs.tsx";
 import { formats } from "./copyas.ts";
-import { emptyTurn } from "@warp/core";
+import { emptyTurn, type Turn } from "@warp/core";
 
 const sidebarMe: Me = {
   principal: { subject: "ada", tenant: "acme", name: "Ada", roles: ["member"] },
@@ -398,23 +398,58 @@ test("an approval of a call that acts as the person says only they may change it
     return { ...part, question: { ...question, tool: { ...(question.tool as object), acts_for_person: true } } };
   };
   const mail = fromServer({ ...raw, parts: (raw.parts as unknown[]).map(own) });
-  assert.deepEqual(mail.actsForPerson, ["p1"]);
+  const asked = mail.parts.find((p) => p.type === "approval");
+  assert.ok(asked?.type === "approval" && asked.id === "p1" && asked.approval.actsForPerson === true);
   const plain = mailOf("m-approval");
-  assert.deepEqual(plain.actsForPerson, []);
+  const unmarked = plain.parts.find((p) => p.type === "approval");
+  assert.ok(unmarked?.type === "approval" && unmarked.approval.actsForPerson === undefined);
 
-  // Were an approval ever offered with an edit, the console would still offer
-  // none on a call that acts as the person.
+  // Were an approval ever offered with an edit, no card would offer one on a
+  // call that acts as the person.
   const editable = (m: PlatformMessage): PlatformMessage => ({
     ...m,
     parts: m.parts.map((p) => (p.type === "approval" ? { ...p, approval: { ...p.approval, editable: true } } : p)),
   });
   const drawn = html(<MailboxView messages={[editable(mail)]} selectedId={mail.id} onSelect={() => {}} onAction={() => {}} onOpen={() => {}} viewer="Ada" />);
-  assert.match(drawn, /Only they may change its arguments/);
+  assert.match(drawn, /Uses the credentials of the person this run acts for\. Only they may change its arguments\./);
   assert.match(drawn, />Approve</);
   assert.doesNotMatch(drawn, />Edit</);
   const other = html(<MailboxView messages={[editable(plain)]} selectedId={plain.id} onSelect={() => {}} onAction={() => {}} onOpen={() => {}} viewer="Ada" />);
   assert.doesNotMatch(other, /Only they may change its arguments/);
   assert.match(other, />Edit</, "an approval that does not act as the person is drawn as it was");
+});
+
+test("the run's own approval of a call that acts as the person says so too, from its events and from its record", () => {
+  const question = (acts: boolean) => ({
+    id: "q1",
+    kind: "approval",
+    agent: "lead",
+    prompt: "Create the issue?",
+    tool: { name: "issues.create", call_id: "c1", arguments: { title: "Flaky test" }, ...(acts ? { acts_for_person: true } : {}) },
+  });
+  const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64");
+  const draw = (turn: Turn) =>
+    html(
+      <WebSurface onAction={() => {}}>
+        <AgentMessage turn={turn} />
+      </WebSurface>,
+    );
+  for (const acts of [true, false]) {
+    const run = runOf({ status: "parked", question: question(acts) as Run["question"] });
+    const parked = { seq: 1, kind: "lifecycle.parked", run_id: run.id, agent: run.agent, at: run.created_at, payload: b64({ reason: "waiting on a person", question: question(acts) }) } as never;
+    const streamed = replay(run, [parked]);
+    assert.ok(streamed);
+    for (const turn of [streamed, turnOf(run)]) {
+      const [card] = turn.interrupts;
+      assert.ok(card?.type === "approval");
+      assert.equal(card.actsForPerson, acts ? true : undefined);
+      const drawn = draw(turn);
+      assert.match(drawn, />Approve</);
+      assert.doesNotMatch(drawn, />Edit</);
+      if (acts) assert.match(drawn, /Uses the credentials of the person this run acts for\. Only they may change its arguments\./);
+      else assert.doesNotMatch(drawn, /credentials of the person this run acts for/);
+    }
+  }
 });
 
 test("fromServer: dismissed and snoozed states, and parts it does not know", () => {
