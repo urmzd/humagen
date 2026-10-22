@@ -7,9 +7,10 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Activity } from "./Activity.tsx";
 import { actedFor, type Run } from "./adapter.ts";
 import { Composer } from "./Composer.tsx";
-import { ApiError, api, coworking, type ProjectView, type Revision, type ThreadAsk, type ThreadPage, type ThreadSummary } from "./api.ts";
+import { ApiError, api, coworking, type ProjectView, type Revision, type Thread as ThreadRecord, type ThreadAsk, type ThreadPage, type ThreadSummary } from "./api.ts";
 import { askedOf, copyFor } from "./asks.ts";
 import { useCompletion } from "./completion.ts";
+import { useThreadSelection } from "./selection.ts";
 import { HomePage } from "./HomePage.tsx";
 import { emptySelection, MAX_SELECTED, PlusMenu, withAgent, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
 import { postedLine, ThreadRoom, topicsOf } from "./Room.tsx";
@@ -21,6 +22,9 @@ import { readFromStart } from "./turns.ts";
 import { AgentMark, AgentTint, cause, isWorking, Page, Presence, Problem, SkeletonRows } from "./ui.tsx";
 
 const words = defaultCopy.threads;
+
+/** The thread a page holds before one is read: nothing selected, nowhere. */
+const noThread: ThreadRecord = { id: "", project: "", channel: "general", visibility: "private", participants: [], version: 0, created_by: "", created_at: "", updated_at: "" };
 /** The answers to one point in the conversation, oldest first. */
 function siblingsOf(turns: Run[], run: Run): Run[] {
   return turns.filter((t) => (t.prev ?? "") === (run.prev ?? ""));
@@ -308,6 +312,15 @@ export function Chat({
   const [turns, setTurns] = useState<Run[]>([]);
   // The thread as the platform reads it: its record, and its people's messages besides its runs.
   const [room, setRoom] = useState<ThreadPage | null>(null);
+  // The + selection of a conversation of runs, saved on its thread as a room's is.
+  const runs = useThreadSelection(threadId ?? "", room?.thread ?? noThread, {
+    saved: (t) => {
+      setRoom((r) => (r ? { ...r, thread: t } : r));
+      onChanged();
+    },
+    reread: (p) => setRoom((r) => (r ? { ...r, thread: p.thread } : r)),
+    problem: (why) => setProblem(why),
+  });
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [seed, setSeed] = useState<{ text: string } | undefined>(() => (startAsk ? { text: startAsk } : undefined));
   // What the + menu selected for a new conversation: an agent a link named, and where it lives.
@@ -489,7 +502,7 @@ export function Chat({
         root={root ?? null}
         me={me}
         handle={handle}
-        placeholder={!threadId ? (startChannel ? words.startThread : placeholderFor(selection)) : words.message}
+        placeholder={!threadId ? (startChannel ? words.startThread : placeholderFor(selection)) : runs.selection.agents.length > 0 ? placeholderFor(runs.selection) : words.message}
         queue={queue}
         autoFocus={!threadId}
         seed={seed}
@@ -515,16 +528,26 @@ export function Chat({
                 });
               }
         }
-        leading={
-          threadId ? (
-            <span className="max-w-40 truncate px-1.5 text-aui-sm text-aui-muted" title={tail?.project || "Projectless"}>
-              {tail?.project || "Projectless"}
-            </span>
-          ) : undefined
-        }
         plus={
           threadId
-            ? undefined
+            ? // A conversation of runs selects its agents as a room does, so a
+              // follow-up goes to them; its project is fixed by its runs.
+              (available) => ({
+                menu: (close, attach, leave) => (
+                  <PlusMenu
+                    onLeave={leave}
+                    agents={available}
+                    selection={runs.selection}
+                    onChange={runs.select}
+                    onAttach={attach}
+                    onClose={close}
+                    projects={projects}
+                    kinds={root?.kinds}
+                    projectFixed={defaultCopy.threads.shareProjectFixed}
+                  />
+                ),
+                chips: <SelectionChips selection={runs.selection} projects={projects} workspace={workspaceName} onChange={runs.select} projectFixed />,
+              })
             : (available) => ({
                 menu: (close, attach, leave) => (
                   <PlusMenu

@@ -11,7 +11,6 @@ import {
   type Channel,
   coworking,
   type ProjectView,
-  type Thread,
   type Revision,
   type ThreadAnnouncement,
   type ThreadAnswers,
@@ -25,11 +24,12 @@ import {
 } from "./api.ts";
 import { askedOf, copyFor, type Refusal, stillAsks } from "./asks.ts";
 import { type Completion, useCompletion } from "./completion.ts";
-import { conflictOf, rememberSaid, saidFor } from "./conflicts.ts";
+import { rememberSaid, saidFor } from "./conflicts.ts";
 import { Composer } from "./Composer.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { emptySelection, PlusMenu, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
+import { useThreadSelection } from "./selection.ts";
 import { ShareDialog } from "./Share.tsx";
 import { mergeTurns } from "./turns.ts";
 import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
@@ -425,67 +425,18 @@ export function ThreadRoom({
   const shareable = posts && th.visibility === "private" && !th.surface && !!onSharing && (started || owner);
   const hasRuns = turns.some((t) => t.run);
   // What the + menu selected for the conversation, shown at once and saved on the thread.
-  const saved: Selection = { agents: th.agents ?? [], mode: th.mode ?? "best_fit", project: th.project, channel: th.channel };
-  const [shown, setShown] = useState<Selection | null>(null);
-  const selection = shown ?? saved;
+  const { selection, select } = useThreadSelection(id, th, {
+    saved: (t) => {
+      setPage((p) => ({ ...p, thread: t }));
+      onChanged();
+    },
+    reread: (p) => {
+      setPage(p);
+      setTurns((t) => mergeTurns(t, p.turns));
+    },
+    problem: setProblem,
+  });
   const fixedWhy = hasRuns ? defaultCopy.threads.shareProjectFixed : th.surface ? defaultCopy.chat.projectFromSlack : th.visibility === "shared" ? defaultCopy.chat.projectShared : !started && !owner ? defaultCopy.chat.projectStarter : undefined;
-  // One save at a time: a change made while one is in flight waits for it,
-  // then is saved from the version it answered, so quick changes never
-  // send a version already gone.
-  const saving = useRef<{ busy: boolean; next: Selection | null }>({ busy: false, next: null });
-  // The newest thread a save answered, which a render may not show yet.
-  const latest = useRef<Thread>(th);
-  if (th.version > latest.current.version || th.id !== latest.current.id) latest.current = th;
-  const save = (from: Thread, next: Selection) => {
-    saving.current = { busy: true, next: null };
-    const moved = next.project !== from.project || next.channel !== from.channel;
-    coworking
-      .update(id, {
-        version: from.version,
-        title: from.title ?? "",
-        visibility: from.visibility,
-        default: from.default ?? "",
-        agents: next.agents,
-        mode: next.mode,
-        ...(moved && next.project !== null ? { project: next.project === "" ? "~" : next.project, channel: next.channel } : {}),
-      })
-      .then((t) => {
-        latest.current = t;
-        setPage((p) => ({ ...p, thread: t }));
-        onChanged();
-        const later = saving.current.next;
-        if (later) return save(t, later);
-        saving.current = { busy: false, next: null };
-        setShown(null);
-      })
-      .catch((e) => {
-        saving.current = { busy: false, next: null };
-        setShown(null);
-        // Each refusal in the console's own words, never the server's, which
-        // names ids and versions. Changed by someone else, it is read again.
-        const why = conflictOf(e);
-        if (why === "version") {
-          setProblem(words.changedMeanwhile);
-          coworking
-            .thread(id)
-            .then((p) => {
-              latest.current = p.thread;
-              setPage(p);
-              setTurns((t) => mergeTurns(t, p.turns));
-            })
-            .catch(() => {});
-        } else if (why === "project") setProblem(words.shareConflict);
-        else if (why === "channel") setProblem(words.shareChannelFixed);
-        else if (e instanceof ApiError && e.status === 403) setProblem(defaultCopy.noPermission);
-        else setProblem(defaultCopy.chat.saveFailed);
-      });
-  };
-  const select = (next: Selection) => {
-    setShown(next);
-    setProblem(null);
-    if (saving.current.busy) saving.current.next = next;
-    else save(latest.current, next);
-  };
   // A run the conversation's selection started says so, as the run recorded
   // it, so an older answer keeps its line whatever the selection becomes.
   const routedOf = (run: Run): string | undefined => {
