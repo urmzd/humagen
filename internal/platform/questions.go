@@ -215,6 +215,13 @@ func (p *Platform) addressOf(ctx context.Context, run runs.Run, q payload.Questi
 		return []string{nobody}, nil
 	}
 	if q.Kind != payload.QuestionApproval {
+		// A reply or a choice steers the run, so one that uses the
+		// credential of the person it acts for asks them alone (maySteer),
+		// even when it asks the experts: an expert's words would reach the
+		// person's tools with the person's credential.
+		if person := p.ownCredentialOf(ctx, run); person != "" {
+			return []string{person}, nil
+		}
 		if experts, asked := p.expertsAsked(run, q); asked {
 			return expertAudience(rev.Spec.Answerers, experts), nil
 		}
@@ -627,6 +634,26 @@ func (p *Platform) isSelfApproval(ctx context.Context, tenant string, q inbox.Qu
 	return slices.Contains(names, by) || slices.Contains(names, via), nil
 }
 
+// maySteer reports whether the person answering may answer a reply or a
+// choice a run asks, and if not, why. What they answer steers what the run
+// does next, so a run that uses the credential of the person it acts for
+// (ownCredentialOf) is answered by that person alone: anyone else's words,
+// or their pick of its options, would reach the person's tools with the
+// person's credential. A run that acts for nobody, or reaches only shared
+// credentials, is answered by whoever its rules allow. An approval is not
+// steered this way: approving a call as it was asked changes nothing the
+// person asked for, and fiber refuses anyone else's edit of it.
+func (p *Platform) maySteer(ctx context.Context, tenant string, q inbox.QuestionPart, by string) error {
+	run, err := p.Runs.Get(tenant, q.Run)
+	if err != nil {
+		return err
+	}
+	if person := p.ownCredentialOf(ctx, run); person != "" && by != person {
+		return fmt.Errorf("%w: this run uses %s's own credentials, so only %s may answer what it asks", ErrForbidden, person, person)
+	}
+	return nil
+}
+
 // ActsFor returns the principal a surface's credential asks for: the person
 // its client maps the surface's user to. Anyone it does not map is refused.
 func (p *Platform) ActsFor(who auth.Principal, as ActAs) (string, error) {
@@ -699,6 +726,14 @@ func (p *Platform) answer(ctx context.Context, who auth.Principal, m inbox.Messa
 		} else if self {
 			p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "self-approval")
 			return inbox.Message{}, fmt.Errorf("%w: %s asked for this work, so someone else must approve its calls", ErrForbidden, reader.Subject)
+		}
+	}
+	if q.Kind != payload.QuestionApproval {
+		// Checked here, from the run as it stands, as well as by whom the
+		// message was addressed to when it was raised.
+		if err := p.maySteer(ctx, who.Tenant, q, reader.Subject); err != nil {
+			p.log.Info("platform: an answer was refused", "tenant", who.Tenant, "by", reader.Subject, "via", who.Subject, "run", q.Run, "question", q.ID, "why", "not the person the run acts for")
+			return inbox.Message{}, err
 		}
 	}
 	if !m.For(reader) {

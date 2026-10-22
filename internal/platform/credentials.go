@@ -16,6 +16,7 @@ import (
 	"github.com/urmzd/warp/pkg/clients"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/credref"
+	"github.com/urmzd/warp/pkg/runs"
 )
 
 // Whose credential a tool uses.
@@ -29,8 +30,10 @@ import (
 // once, when the run is accepted, by setting the actor's User to the person's
 // subject:
 //
-//   - a run from the console or the API, Run Now on a schedule included,
-//     acts for the person signed in (ActorOf);
+//   - a run from the console or the API acts for the person signed in
+//     (ActorOf), and so does Run Now on a schedule when they wrote what it
+//     runs, its last editor or its creator, and otherwise it acts for nobody
+//     (Schedules.Authored);
 //   - a run a surface asks for a person its client maps (act_as) acts for
 //     that person (PersonActor);
 //   - a run a Slack connector raised acts for the one person the team's
@@ -41,6 +44,10 @@ import (
 //     schedule firing on its own clock, the platform's own housekeeping, an
 //     eval, a run another agent called, and every GitHub actor, since no
 //     client maps GitHub logins.
+//
+// What a person answers a run steers what its tools are asked next, so a run
+// that uses the credential of the person it acts for asks that person alone
+// its replies and choices (maySteer).
 //
 // A person gives their credential through ConnectTool, as a reference or, where
 // the workspace allows it, a value (pkg/credentials). A reference is only
@@ -74,6 +81,23 @@ func personOf(a envelope.Actor) string {
 		return ""
 	}
 	return a.User
+}
+
+// ownCredentialOf is the person whose own credentials a run's tools use: the
+// person it acts for, when its agent's revision grants a provider that takes
+// each person's own credential. "" when it acts for nobody, or reaches only
+// shared credentials. A revision that cannot be read counts as one that
+// does, and so does a granted provider that cannot be found.
+func (p *Platform) ownCredentialOf(ctx context.Context, run runs.Run) string {
+	person := personOf(run.Actor)
+	if person == "" {
+		return ""
+	}
+	rev, err := p.Agents.Get(ctx, run.Tenant, run.Agent, run.Rev)
+	if err != nil || p.grantsPersonScoped(ctx, run.Tenant, rev.Spec.Tools, time.Time{}) {
+		return person
+	}
+	return ""
 }
 
 // PersonActor is the actor of a run a surface asks for a person its client

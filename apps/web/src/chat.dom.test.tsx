@@ -148,10 +148,10 @@ test("@auto chosen in the menu is sent as auto, not left to the default", async 
   assert.equal(body.agent, "auto");
 });
 
-/** A turn in conversation t1 that failed, raised by actor. */
-const failed = (actor: Run["actor"]): Run => ({
+/** A turn in conversation t1 that failed, raised by actor, asked under tag. */
+const failed = (actor: Run["actor"], tag = "api-t1"): Run => ({
   id: "t1",
-  tag_id: "api-t1",
+  tag_id: tag,
   tenant: "acme",
   agent: "lead",
   rev: 1,
@@ -169,6 +169,22 @@ const failed = (actor: Run["actor"]): Run => ({
   created_at: at,
   updated_at: at,
 });
+
+/** Takes down what open set up, so the next open starts afresh. */
+function close() {
+  cleanup();
+  net?.restore();
+  net = undefined;
+}
+
+/** The same turn, answered. */
+const answered = (actor: Run["actor"], tag = "api-t1"): Run => {
+  const { error: _, ...turn } = failed(actor, tag);
+  return { ...turn, status: "completed", answer: "Filed." };
+};
+
+/** A retry warp asked for nobody: it names whoever pressed it, and none of its words were theirs. */
+const NOBODY_RETRY = "api-retry-3-ben-t0";
 
 function open(turn: Run, me: string, turns: Run[] = [turn]) {
   // A stream that never says anything: the retried run is followed, and nothing here needs its events.
@@ -224,13 +240,12 @@ test("Retry of the first turn of a project's conversation files it in that proje
     text: "file the flaky test",
     project: "Globex",
   });
-  cleanup();
-  net?.restore();
+  close();
 
   // A later turn joins the conversation after the one before it, which carries the project.
-  const answered: Run = { ...first, status: "completed", error: undefined };
+  const done: Run = { ...first, status: "completed", error: undefined };
   const second: Run = { ...first, id: "t2", tag_id: "api-t2", text: "and the other one", prev: "t1" };
-  open(second, "ana", [answered, second]);
+  open(second, "ana", [done, second]);
   fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
   await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
   assert.deepEqual(net?.seen.find((r) => r.method === "POST" && r.path === "/api/runs")?.body, {
@@ -241,20 +256,54 @@ test("Retry of the first turn of a project's conversation files it in that proje
 });
 
 test("Retry is not offered on another person's turn, nor on one that acted for nobody, and nothing is asked", async () => {
-  for (const [actor, says] of [
-    [{ id: "ana", display: "Ana", user: "ana" }, "This turn acted for Ana, with their own credentials, so only they can retry it."],
-    [{ id: "slack-app", bot: true }, "This turn acted for nobody, so it is not retried here, where it would act for you."],
-    // A person who raised a run that acted for nobody, such as a retry of a machine's turn.
-    [{ id: "ben" }, "This turn acted for nobody, so it is not retried here, where it would act for you."],
+  for (const [actor, tag, says] of [
+    [{ id: "ana", display: "Ana", user: "ana" }, "api-t1", "This turn acted for Ana, so only they can retry it."],
+    [{ id: "slack-app", bot: true }, "api-t1", "This turn acted for nobody, so it is not retried here, where it would act for you."],
+    // A person who pressed Retry on a turn that acted for nobody, such as a machine's.
+    [{ id: "ben", display: "Ben" }, NOBODY_RETRY, "This turn acted for nobody, so it is not retried here, where it would act for you."],
   ] as const) {
-    open(failed(actor), "ben");
+    open(failed(actor, tag), "ben");
     await screen.findByText(says);
-    assert.equal(screen.queryByRole("button", { name: "Retry" }), null);
+    assert.ok(!screen.queryByRole("button", { name: "Retry" }));
+    // It can be retried, by someone else, so it does not say it cannot.
+    assert.ok(!screen.queryByText(/can't be retried/));
+    assert.ok(!screen.queryByText(/credentials/), "a turn's actor does not say whose credentials it used");
     assert.ok(!net?.seen.some((r) => r.method === "POST"));
-    cleanup();
-    net?.restore();
-    net = undefined;
+    close();
   }
+});
+
+test("Regenerate is offered only on an answered turn that acted for the reader", async () => {
+  for (const [actor, tag] of [
+    [{ id: "ana", display: "Ana", user: "ana" }, "api-t1"],
+    [{ id: "slack-app", bot: true }, "api-t1"],
+    [{ id: "ben", display: "Ben" }, NOBODY_RETRY],
+  ] as const) {
+    open(answered(actor, tag), "ben");
+    await screen.findByText("Filed.");
+    assert.ok(!screen.queryByRole("button", { name: "Regenerate" }), JSON.stringify(actor));
+    close();
+  }
+  open(answered({ id: "ben", display: "Ben", user: "ben" }), "ben");
+  fireEvent.click(await screen.findByRole("button", { name: "Regenerate" }));
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+});
+
+test("a reader's own turn from before warp said whom a run acts for may be asked again", async () => {
+  // Recorded before actor.user existed: the person who asked, and no more.
+  const before = { id: "ben", display: "Ben" };
+  open(failed(before, "api-r-0123456789abcdefghijkl"), "ben");
+  fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+  close();
+  open(answered(before, "api-3-ben-k1"), "ben");
+  fireEvent.click(await screen.findByRole("button", { name: "Regenerate" }));
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+  close();
+  // Someone else's is still not the reader's.
+  open(failed(before, "api-r-0123456789abcdefghijkl"), "ana");
+  await screen.findByText("This turn acted for Ben, so only they can retry it.");
+  assert.ok(!screen.queryByRole("button", { name: "Retry" }));
 });
 
 const id = "api-r-conversation";

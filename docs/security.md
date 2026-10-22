@@ -243,10 +243,11 @@ from answers, run events, what the model was sent and the server log.
 |---|---|
 | asked in the console, or through the API with a person's sign-in | that person |
 | asked by a machine for a person its client maps (`act_as`) | the mapped person |
+| asked about with the Slack app's message shortcut | the person who pressed it, when the message is theirs. On anyone else's message, or a bot's, nobody: the app asks as itself, since the message's words are the whole request and were not the presser's. A mention in a channel thread differs: the thread's messages go ahead of the asker's own words, each with who wrote it, and the run acts for the asker, who asked there |
 | raised by a Slack client's connector | the one person the team's enabled Slack clients map the Slack user to; none, or two different people, is nobody |
-| Run Now on a schedule | whoever pressed it |
-| Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person: in the inbox signed in as themselves, where anyone else is not offered Retry and is refused (403), and in the Slack app by a Slack person its client maps to them, asked for with `act_as`, where anyone else, an operator included, is refused. So one person's words never run with another's credential, nor a person's credential on someone else's choice. A turn that acted for nobody is retried for nobody: in the inbox by anyone with `runs:write`, in the Slack app by the person who asked or an operator, and only an operator once a restart has made the app forget who asked. Each person's retry is a run of its own, and pressing again joins it |
-| Retry in a console conversation | the person pressing it, as anything they send there, so it is offered only on a turn that acted for them: on anyone else's, or one that acted for nobody, the console says why instead |
+| Run Now on a schedule | whoever pressed it, when they wrote what it runs: the schedule's last editor, or its creator while nobody has edited it. Anyone with `schedules:write` may change a schedule's words, so anyone else's press acts for nobody, as the schedule's own clock does: one person's words never run with another's credential |
+| Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person: in the inbox signed in as themselves, where anyone else is not offered Retry (the card says only that person can retry it) and is refused (403), and in the Slack app by a Slack person its client maps to them, asked for with `act_as`, where anyone else, an operator included, is refused. So one person's words never run with another's credential, nor a person's credential on someone else's choice. A turn that acted for nobody is retried for nobody: in the inbox by anyone with `runs:write`, in the Slack app by the person who asked or an operator, and only an operator once a restart has made the app forget who asked. Each person's retry is a run of its own, and pressing again joins it |
+| Retry or Regenerate in a console conversation | the person pressing it, as anything they send there, so each is offered only on a turn that acted for them: on anyone else's, or one that acted for nobody, neither is offered, and a failed turn says why instead. A turn recorded before warp said whom a run acts for counts as the person's who asked it from the console or the API, though not a retry warp asked for nobody |
 | asked by a machine as itself, a schedule on its own clock, an eval, housekeeping, a call from another agent, GitHub | nobody |
 
 A person connects their own credential at `PUT /api/me/credentials/{tool}`
@@ -430,7 +431,7 @@ decided per message:
 | Alert, reached limit | `alerts:read` | `alerts:write` to acknowledge, `billing:write` to raise a limit |
 | Failed run | `runs:read` | `runs:write`, and to retry a turn that acted for a person, being that person ([Tool credentials](#tool-credentials)) |
 | Proposed memory | `agents:read` | `agents:write` for an agent's; `projects:write` for a project's, and `projects:govern` as well for the workspace's and a company project's |
-| A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer |
+| A question a run waits on (approval, choice, reply) | `runs:read`, and addressed to them | `runs:write`, and the runtime agrees they may answer; a choice or reply in a run that uses the credentials of the person it acts for, only that person |
 | A mention (a thread's message that tags them) | `runs:read`, and only the person tagged, or the role an expert entry names | `runs:write`, to reply in the thread as themselves or set it aside |
 
 A message a caller may not see answers 404, not 403, and is left out of their
@@ -465,7 +466,20 @@ Anyone it is addressed to may approve it as asked or deny it, but only that
 person may approve it with edited arguments, as fiber enforces: anyone
 else's edit is refused (403). Every approval card says this, in the
 console's inbox and on the run, and in the Slack app, and none offers an
-edit of such a call. The right is checked before saying whether a part is still open. A
+edit of such a call.
+
+A reply or a choice steers what a run does next, unlike approving a call as
+it was asked. So a run that uses the credentials of the person it acts for
+(it acts for a person, and its revision is granted a person-scoped tool
+provider, or one that cannot be found) asks that person alone: its reply and
+choice questions are addressed to them, and anyone else's answer, on the
+run, in the inbox or through a surface's `act_as`, is refused (403) before
+the runtime is asked. Otherwise one person's words, or their pick of the
+options, would reach another person's tools with that person's credential.
+A run that acts for nobody, or reaches only shared credentials, is answered
+by whoever `answerers` allows.
+
+The right is checked before saying whether a part is still open. A
 change is pushed to the browser as an id only, and only to callers who may see
 that kind.
 

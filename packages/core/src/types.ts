@@ -227,6 +227,12 @@ export interface Failure {
   reference?: string;
   /** Whether re-running the turn can work. Retry is only offered when true. Default by kind. */
   retryable?: boolean;
+  /**
+   * Why this reader is not offered Retry on a turn that can be retried, by
+   * someone else. Said in place of Retry, and in place of saying the turn
+   * can't be retried.
+   */
+  retryNotOffered?: string;
   /** HTTP status from the failing call, when there was one. */
   httpStatus?: number;
 }

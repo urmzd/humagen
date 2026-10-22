@@ -63,6 +63,8 @@ interface WithCopy {
 export interface TurnCapabilities {
   /** Rating the answer (Helpful / Not helpful) and commenting on it. */
   feedback?: boolean;
+  /** Regenerate on an answered turn, where a surface offers it. */
+  regenerate?: boolean;
   /** Report Issue on an internal failure. */
   report?: boolean;
 }
@@ -409,9 +411,12 @@ export function FailureAlert({
               { label: copy.report, id: ActionId.report },
             ]
           : [{ label: copy.retry, id: ActionId.retry }];
+  // Someone else may retry it: the reader is told why they are not offered it.
+  const notOffered = isRetryable(failure) ? failure.retryNotOffered : undefined;
   const offered = actions.filter(
     (a) =>
-      (a.id !== ActionId.retry || isRetryable(failure)) && (a.id !== ActionId.report || report),
+      (a.id !== ActionId.retry || (isRetryable(failure) && !notOffered)) &&
+      (a.id !== ActionId.report || report),
   );
   return (
     <>
@@ -430,6 +435,7 @@ export function FailureAlert({
       {!isRetryable(failure) && failure.kind !== "auth_required" && (
         <Context items={[copy.cantRetry]} />
       )}
+      {notOffered && <Context items={[notOffered]} />}
       {failure.reference && <Context items={[copy.reference(failure.reference)]} />}
     </>
   );

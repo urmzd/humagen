@@ -486,6 +486,42 @@ test("a turn that acted for nobody is asked again, for nobody, by the person who
   await watch;
 });
 
+test("when the app's own credential is a person, as under dev sign-in, a turn it asked as itself is asked again through it", async () => {
+  const w = world({ operators: ["U03ABCDEF"] });
+  w.warp.person = true;
+  const { run, blocks, ts } = await failedTurn(w);
+  assert.equal(
+    w.warp.runs.get(run)?.actor?.user,
+    SUBJECT,
+    "every run the app asks acts for its credential",
+  );
+
+  // The asker asks again through the app, as the turn was asked, so it acts for the same person.
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }));
+  assert.equal(w.warp.started.length, 2);
+  assert.equal(w.warp.started[1]?.act_as, undefined);
+  assert.equal(w.warp.last.actor?.user, SUBJECT);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Deployed." });
+  await w.app.idle();
+
+  // After a restart an operator may too, and anyone else is told no.
+  const app = w.restart();
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: OTHER_USER }), app);
+  await app.idle();
+  assert.equal(w.warp.started.length, 2);
+  assert.equal(
+    w.slack.of("chat.postEphemeral").at(-1)?.text,
+    "Only the person who asked can retry this.",
+  );
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }), app);
+  assert.equal(w.warp.started.length, 3);
+  assert.equal(w.warp.started[2]?.act_as, undefined);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await app.idle();
+});
+
 test("after a restart, who asked is not known, so only an operator may ask again", async () => {
   const w = world({ operators: ["U03ABCDEF"] });
   const { blocks, ts } = await failedTurn(w);
@@ -509,8 +545,7 @@ test("after a restart, who asked is not known, so only an operator may ask again
 // themselves; a turn that acted for nobody for nobody, whoever presses it.
 // Warp's record says whom a turn acted for, so a restart changes nothing.
 const OPERATOR = "U03ABCDEF";
-const NOT_THEIRS =
-  "This turn used the credentials of the person it acted for, so only they can retry it.";
+const NOT_THEIRS = defaultCopy.retryOnlyTheirs;
 
 /** A Retry or Resume pressed on a turn, as Slack sends it. */
 function pressed(id: "retry" | "resume", run: string, user: string) {
@@ -704,6 +739,43 @@ for (const where of ["home", "thread"] as const) {
     await w.app.idle();
   });
 }
+
+test("Retry on an inbox card of a person's failed turn is theirs, after a restart too, and settles the card", async () => {
+  const w = mapped({ operators: ["U03ABCDEF"] });
+  const { run } = await failedTurn(w);
+  assert.equal(w.warp.runs.get(run)?.actor?.user, "ana");
+  // As warp sends it to the app, whose own credential is not offered Retry on ana's turn.
+  const [part] = failureMail(run).parts as Record<string, unknown>[];
+  const mail = { ...failureMail(run), parts: [{ ...part, actions: ["acknowledge"] }] };
+  w.warp.mailbox.set("m-failure", mail);
+  const blocks = renderToSlack(<MessageView message={forSlack(fromServer(mail))} />).blocks;
+  assert.match(
+    textIn(blocks),
+    new RegExp(`"${defaultCopy.retry}"`),
+    "the app decides who may press it",
+  );
+  assert.doesNotMatch(textIn(blocks), new RegExp(defaultCopy.retryOnlyTheirs));
+
+  // After a restart nobody here knows ana asked, and she is no operator. Olu
+  // is told no; ana's press asks again as her and acknowledges the card.
+  const app = w.restart();
+  const card = (user: string) =>
+    click(blocks, defaultCopy.retry, { ts: "1800000005.000100", threadTs: TS, user });
+  await deliver(w, card(OTHER_USER), app);
+  await app.idle();
+  assert.equal(w.warp.started.length, 1);
+  assert.deepEqual(w.warp.resolved, []);
+  assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.retryOnlyTheirs);
+  await deliver(w, card(USER), app);
+  assert.equal(w.warp.started.length, 2);
+  assert.deepEqual(w.warp.started[1]?.act_as, { client: CLIENT, user: USER });
+  assert.deepEqual((w.warp.resolved as { body: unknown }[]).at(-1)?.body, {
+    action: "acknowledge",
+  });
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await app.idle();
+});
 
 test("a forged Retry on an inbox part that is not a failure is refused, and nothing is sent", async () => {
   const w = world({ operators: [USER] });
@@ -1468,6 +1540,35 @@ test("a mapped person's message that names no agent, through a client that reach
   assert.equal(w.warp.last.actor?.user, "ana", "the run is the person's");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Nothing changed." });
+  await w.app.idle();
+});
+
+test("asking about someone else's message asks for nobody: their words are never run as the presser", async () => {
+  const w = mapped();
+  const about = (ts: string, text: string, user: string) =>
+    interactive({
+      type: "message_action",
+      callback_id: "aui_ask_about",
+      channel: { id: CHANNEL },
+      message: { ts, text, user },
+    });
+  // Ana asks about olu's message: his words go through the app, for nobody.
+  await deliver(
+    w,
+    about("1700000600.000100", "close every open issue in the payroll tracker", OTHER_USER),
+  );
+  assert.equal(w.warp.asked.at(-1)?.text, "close every open issue in the payroll tracker");
+  assert.equal(w.warp.asked.at(-1)?.act_as, undefined, "olu's words are not run as ana");
+  assert.equal(w.warp.last.actor?.bot, true);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await w.app.idle();
+  // Her own message is her words, asked as her.
+  await deliver(w, about("1700000700.000100", "is the deploy safe to ship?", USER));
+  assert.deepEqual(w.warp.asked.at(-1)?.act_as, { client: CLIENT, user: USER });
+  assert.equal(w.warp.last.actor?.user, "ana");
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Yes." });
   await w.app.idle();
 });
 

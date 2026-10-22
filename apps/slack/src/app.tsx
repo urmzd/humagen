@@ -116,6 +116,12 @@ interface Job {
    * this; null when nobody here is known to have asked.
    */
   requester?: string | null;
+  /**
+   * The words are someone else's, not the person's who sent this: a message
+   * of another's they asked about. Asked through the app, for nobody, so
+   * nobody's words run with their credentials without their typing them.
+   */
+  notTheirs?: boolean;
   /** A mention in a channel thread: what people said there since the app was last asked goes with it. */
   history?: boolean;
 }
@@ -222,7 +228,15 @@ export function echoed(text: string): string {
 export function forSlack(message: PlatformMessage): PlatformMessage {
   return {
     ...message,
-    parts: message.parts.map((p) => (p.type === "budget" ? { ...p, allowed: [] } : p)),
+    parts: message.parts.map((p) =>
+      p.type === "budget"
+        ? { ...p, allowed: [] }
+        : // Retry on a failure is the app's own here (again()), decided for whoever
+          // presses it, not by what warp offers the app's credential.
+          p.type === "failure" && p.allowed?.length && !p.allowed.includes(ActionId.retry)
+          ? { ...p, allowed: [...p.allowed, ActionId.retry] }
+          : p,
+    ),
   };
 }
 
@@ -268,11 +282,6 @@ const NO_AGENT: Failure = {
 /** A retry of a turn that acted for nobody, by someone who did not ask, and is not an operator. */
 // warp: needs copy for this, such as copy.notYoursRetry; copy.notYours speaks of approving.
 const RETRY_NOT_YOURS = "Only the person who asked can retry this.";
-
-/** A retry of a turn that acted for a person, by anyone this app's client does not map to them. */
-// warp: needs copy for this, such as copy.notTheirsRetry.
-const RETRY_NOT_THEIRS =
-  "This turn used the credentials of the person it acted for, so only they can retry it.";
 
 /** Wait, or stop waiting when the signal aborts. */
 const sleep = (ms: number, signal: AbortSignal) =>
@@ -645,8 +654,9 @@ export class App {
       // the route takes none of them. See the README.
       // A person the client maps asks as themselves, so they do not approve
       // their own run's calls. Anyone else asks through the app. A turn asked
-      // again acts for whom again() decided, never for whoever else is known.
-      const asking = job.again ? job.again.as : await this.actAs(job.user);
+      // again acts for whom again() decided, never for whoever else is known,
+      // and someone else's words are asked for nobody.
+      const asking = job.again ? job.again.as : job.notTheirs ? null : await this.actAs(job.user);
       run = await this.warp.createRun(
         {
           agent,
@@ -1042,7 +1052,7 @@ export class App {
   private refuseRetry(p: ActionPayload, outcome: Exclude<Again, "started">) {
     const text =
       outcome === "not-theirs"
-        ? RETRY_NOT_THEIRS
+        ? defaultCopy.retryOnlyTheirs
         : outcome === "not-yours"
           ? RETRY_NOT_YOURS
           : defaultCopy.cantRetry;
@@ -1053,16 +1063,22 @@ export class App {
    * Ask a turn again, in the thread it was asked in, for whoever the turn
    * acted for, as Retry in warp's inbox does. Retry and Resume both come here.
    *
-   * A turn that acted for a person used their own credentials, so only a
-   * Slack person this app's client maps to that same person may ask it again,
-   * and the new run is asked as them. Anyone else, an operator included, is
-   * refused: they would either run that person's words with their own
-   * credentials, or that person's credentials on a choice the person never
-   * made. A turn that acted for nobody is asked again for nobody, through the
-   * app, by the person who asked for it or an operator, so nobody's
-   * credentials are put behind words that were not theirs. Warp's record
-   * says whom a turn acted for, so a restart, which forgets who asked, changes
-   * none of this, except that only an operator may then ask again for nobody.
+   * A turn that acted for a person is theirs to ask again, so only a Slack
+   * person this app's client maps to that same person may, and the new run is
+   * asked as them. Anyone else, an operator included, is refused: they would
+   * either run that person's words with their own credentials, or that
+   * person's credentials on a choice the person never made. A turn that acted
+   * for nobody is asked again for nobody, through the app, by the person who
+   * asked for it or an operator, so nobody's credentials are put behind words
+   * that were not theirs. Warp's record says whom a turn acted for, so a
+   * restart, which forgets who asked, changes none of this, except that only
+   * an operator may then ask again for nobody.
+   *
+   * A turn this app asked as itself acted for its own credential: nobody when
+   * that is a machine, and the person it is when it is one, as under dev
+   * sign-in, where every request is that person's. Either way it is asked
+   * again as it was asked, through the app, so it acts for the same one, and
+   * whoever may ask again for nobody may ask it.
    *
    * The key names who pressed, so two people's presses are two runs and one
    * person pressing twice joins their first. The routing rules are checked
@@ -1072,7 +1088,9 @@ export class App {
     const session = await this.sessionOfRun(run);
     if (!session || session.team !== this.opts.team) return "elsewhere";
     const owner = this.requesters.get(run.id);
-    const person = actedFor(run);
+    const acted = actedFor(run);
+    // Asked through the app again, a turn the app asked as itself acts for the same one.
+    const person = acted === this.opts.subject ? "" : acted;
     let as: ActAs | null = null;
     if (person) {
       const mapped = await this.mapped(user);
@@ -1397,6 +1415,8 @@ export class App {
         triggerTs: message.ts,
         user: p.user.id,
         key: eventKey(session, message.ts, p.trigger_id),
+        // Someone else's message, or a bot's, is not the presser's to run as them.
+        ...(message.user !== p.user.id ? { notTheirs: true } : {}),
       });
       return;
     }
@@ -1451,7 +1471,7 @@ interface InteractivePayload {
   trigger_id: string;
   user: { id: string };
   channel?: { id: string };
-  message?: { ts: string; thread_ts?: string; text?: string };
+  message?: { ts: string; thread_ts?: string; text?: string; user?: string };
   view?: {
     callback_id: string;
     state?: { values?: Record<string, Record<string, { value?: string }>> };
