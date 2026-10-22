@@ -38,6 +38,9 @@ storybook-static/
 # Agent worktrees
 .claude/worktrees/
 
+# Console screenshots from `make screens`
+.screens*/
+
 # Local compose settings
 deploy/compose/.env
 

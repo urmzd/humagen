@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { Run } from "./adapter.ts";
 import type { ProjectAgentsView, Revision, ThreadPage } from "./api.ts";
 import { Chat } from "./Chat.tsx";
+import { globex } from "./projects.fixtures.ts";
 import { stubEventSource, stubFetch } from "./dom.ts";
 
 const at = "2026-10-01T09:00:00Z";
@@ -42,25 +43,21 @@ afterEach(() => {
   net = undefined;
 });
 
-function openChat(view: ProjectAgentsView) {
+function openChat(view: ProjectAgentsView, props: Partial<Parameters<typeof Chat>[0]> = {}) {
+  const opened: string[] = [];
   net = stubFetch({
     "GET /api/projects/~/agents": () => view,
-    "GET /api/pick": () => ({ agent: "lead", reason: "matched work" }),
-    "POST /api/runs": (body) => ({
-      id: "r1",
-      tag_id: "api-r-1",
-      tenant: "acme",
-      agent: (body as { agent?: string }).agent ?? "lead",
-      rev: 1,
-      origin: "api",
-      text: (body as { text: string }).text,
-      root: "r1",
-      depth: 0,
-      thread: "r1",
-      status: "accepted",
-      calls: 0,
-      created_at: at,
-      updated_at: at,
+    "GET /api/projects/Globex/agents": () => ({ ...view, homes: ["globex-helper"], available: { all: true, names: ["globex-helper"] } }),
+    "GET /api/people": () => ({ people: [{ subject: "ada", name: "Ada", handle: "ada", picture: null }, { subject: "00u-ben", name: "Ben Ito", handle: "ben", picture: null }] }),
+    "GET /api/skills": () => ({ skills: [{ name: "review", description: "Reviews a change", argument_hint: "", from: "" }] }),
+    "GET /api/mentions": () => ({ kinds: [{ kind: "sme", title: "Experts", resolves: "experts" }] }),
+    "POST /api/threads": (body) => ({
+      thread: { id: "th-00000000000000ab", project: (body as { project: string }).project, channel: "general", visibility: "private", participants: [], version: 1, created_by: "ada", created_at: at, updated_at: at },
+      message: { id: "m-1", thread: "th-00000000000000ab", by: "ada", name: "Ada", text: (body as { text: string }).text, mentions: [], via: "console", at },
+      runs: [],
+      notified: [],
+      refused: [],
+      rule: "default",
     }),
   });
   const noop = () => {};
@@ -76,77 +73,163 @@ function openChat(view: ProjectAgentsView) {
       canRun
       canCreateProject={false}
       greeting="Good morning"
-      onThread={noop}
+      onThread={(id) => opened.push(id)}
       onChanged={noop}
       onProjectCreated={noop}
+      {...props}
     />,
   );
-  return net;
+  return { opened };
 }
 
-/** The rows of the composer's menu, by what each says first. */
-async function menuRows(): Promise<string[]> {
-  fireEvent.click(screen.getByRole("button", { name: /^Choose who answers/ }));
-  const list = await screen.findByRole("list", { name: "Agents" });
-  return within(list)
-    .getAllByRole("button")
-    .map((b) => b.textContent ?? "");
-}
+const box = () => screen.getByLabelText("Message", { selector: "textarea" }) as HTMLTextAreaElement;
 
-async function send(text: string) {
-  fireEvent.change(screen.getByLabelText("Message", { selector: "textarea" }), { target: { value: text } });
-  fireEvent.submit(screen.getByRole("form", { name: "Message" }));
-  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
-  return net?.seen.find((r) => r.method === "POST" && r.path === "/api/runs")?.body as Record<string, unknown>;
-}
-
-test("the composer's menu offers only the agents available where the message goes, with @auto first when it is the default there", async () => {
-  openChat(workspace("auto"));
-  // Under the composer, in words, who answers a message that tags nobody.
-  await screen.findByText("@auto picks who answers");
-  const rows = await menuRows();
-  assert.equal(rows.length, 3);
-  assert.match(rows[0] ?? "", /^@autoDefault/);
-  assert.match(rows[1] ?? "", /^lead/);
-  assert.match(rows[2] ?? "", /^helper/);
-  assert.ok(!rows.some((r) => r.includes("globex-helper")));
-});
-
-test("with no default where the message goes, the composer says nobody answers and @auto comes last", async () => {
-  openChat(workspace());
-  await screen.findByText("Nobody answers; tag an agent");
-  const rows = await menuRows();
-  assert.match(rows[0] ?? "", /^lead/);
-  assert.match(rows[rows.length - 1] ?? "", /^@auto/);
-  assert.ok(!rows.some((r) => r.includes("Default")));
-});
-
-test("a message the person leaves untagged is sent with no agent, so the default where it goes answers", async () => {
+test("Home's chat bar has no menu of who answers and no line saying who does", async () => {
   openChat(workspace("lead"));
-  await screen.findByText("@lead answers");
-  const body = await send("What changed this week?");
-  assert.ok(!("agent" in body), `the untagged message named an agent: ${JSON.stringify(body)}`);
-  assert.equal(body.text, "What changed this week?");
+  assert.ok(await screen.findByPlaceholderText(defaultCopy.chat.placeholder));
+  assert.equal(screen.queryByRole("button", { name: /Choose who answers/ }), null);
+  assert.equal(screen.queryByText("@lead answers"), null);
+  assert.equal(screen.queryByText(/answers untagged messages/), null);
+  assert.equal(screen.queryByText("Nobody answers; tag an agent"), null);
+  assert.equal(screen.queryByRole("list", { name: "Agents" }), null);
 });
 
-test("an agent the person chooses is sent by name, and the composer says it answers", async () => {
+test("@ completes @auto, the agents available here and people, never the person typing, and Tab picks", async () => {
   openChat(workspace("lead"));
-  await screen.findByText("@lead answers");
-  await menuRows();
-  fireEvent.click(screen.getByRole("button", { name: /^helper/ }));
-  await screen.findByText("@helper answers");
-  const body = await send("Help with the launch.");
-  assert.equal(body.agent, "helper");
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/~/agents")));
+  fireEvent.change(box(), { target: { value: "@" } });
+  const list = await screen.findByRole("listbox");
+  await waitFor(() => assert.ok(list.textContent?.includes("@ben"), list.textContent ?? ""));
+  const text = list.textContent ?? "";
+  for (const want of ["@auto", "@lead", "@helper", "@sme:"]) assert.ok(text.includes(want), `${want} in ${text}`);
+  assert.ok(!text.includes("globex-helper"), "an agent that lives in Globex is not offered at the workspace");
+  assert.ok(!text.includes("@ada"), "the person typing is not offered");
+  fireEvent.change(box(), { target: { value: "ask @he" } });
+  fireEvent.keyDown(box(), { key: "Tab" });
+  await waitFor(() => assert.equal(box().value, "ask @helper "));
+  // $ completes skills.
+  fireEvent.change(box(), { target: { value: "ask @helper $r" } });
+  const skills = await screen.findByRole("listbox");
+  await waitFor(() => assert.ok(skills.textContent?.includes("$review"), skills.textContent ?? ""));
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.equal(box().value, "ask @helper $review "));
+  assert.ok(!net?.seen.some((s) => s.method === "POST"), "picking with Enter does not send");
 });
 
-test("@auto chosen in the menu is sent as auto, not left to the default", async () => {
-  openChat(workspace("lead"));
-  await screen.findByText("@lead answers");
-  await menuRows();
-  fireEvent.click(screen.getByRole("button", { name: /^@auto/ }));
-  await screen.findByText("@auto picks who answers");
-  const body = await send("Who knows billing?");
-  assert.equal(body.agent, "auto");
+test("Home's chat bar starts a private conversation in the picked project and opens it; nothing runs from an untagged message", async () => {
+  const { opened } = openChat(workspace("lead"), { startIn: "Globex" });
+  fireEvent.change(box(), { target: { value: "What changed this week?" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["th-00000000000000ab"]));
+  const started = net?.seen.find((s) => s.method === "POST");
+  assert.equal(started?.path, "/api/threads");
+  assert.deepEqual(started?.body, { visibility: "private", project: "Globex", channel: "general", text: "What changed this week?" });
+  assert.ok(!net?.seen.some((s) => s.path.startsWith("/api/runs")), "no run is asked for");
+});
+
+const chat = defaultCopy.chat;
+/** The names on the chips row, in order. */
+const chips = () =>
+  (screen.queryByRole("list", { name: chat.selected })?.querySelectorAll("li") ?? []).length === 0
+    ? []
+    : [...(screen.getByRole("list", { name: chat.selected }).querySelectorAll("li"))].map((li) => li.textContent ?? "");
+
+test("a link that names an agent, or a suggestion, adds the agent as a chip, not an @mention, and suggestions go once the person types", async () => {
+  openChat(workspace("lead"), { startAgent: "helper", startAsk: "Help with the launch." });
+  await waitFor(() => assert.equal(box().value, "Help with the launch."));
+  assert.deepEqual(chips(), ["helper"]);
+  assert.ok(screen.getByPlaceholderText(chat.placeholderOne("helper")));
+  close();
+  const writer = [...agents, agent("warp-writer", "Writes reports.")];
+  openChat(workspace("lead"), { agents: writer });
+  const suggestions = await screen.findByRole("list", { name: chat.suggestions });
+  fireEvent.click(within(suggestions).getByRole("button", { name: /Write a report/ }));
+  await waitFor(() => assert.equal(box().value, "Write a one-page report on "));
+  assert.deepEqual(chips(), ["warp-writer"]);
+  // Typed in, the suggestions step aside.
+  assert.equal(screen.queryByRole("list", { name: chat.suggestions }), null);
+  fireEvent.change(box(), { target: { value: "" } });
+  assert.ok(screen.getByRole("list", { name: chat.suggestions }));
+});
+
+test("+ opens a menu where agents are checked with Space and the project with its channel is picked; the chips row routes Best Fit or All of Them", async () => {
+  openChat(workspace("lead"), {
+    projects: [{ ...globex, access: { role: "owner", from: "", via: "*" } }] as never,
+  });
+  net?.restore();
+  const opened: string[] = [];
+  net = stubFetch({
+    "GET /api/projects/~/agents": () => workspace("lead"),
+    "GET /api/projects/Globex/agents": () => ({ ...workspace(), available: { all: true, names: [] } }),
+    "GET /api/projects/Globex/channels": () => ({
+      channels: ["general", "deals"].map((name) => ({ project: "Globex", name, version: 1, created_at: at, updated_at: at, answers: { agent: "", from: "" } })),
+    }),
+    "POST /api/threads": (body) => {
+      opened.push("started");
+      return { thread: { id: "th-00000000000000ac", project: "Globex", channel: "deals", visibility: "private", participants: [], version: 1, created_by: "ada", created_at: at, updated_at: at }, message: { id: "m-1", thread: "th-00000000000000ac", by: "ada", name: "Ada", text: (body as { text: string }).text, mentions: [], via: "console", at }, runs: [], notified: [], refused: [], rule: "default" };
+    },
+  });
+  // The shortcut opens it from the box.
+  fireEvent.keyDown(box(), { key: "/", ctrlKey: true });
+  let menu = await screen.findByRole("dialog", { name: chat.menu });
+  assert.ok(within(menu).getByRole("button", { name: chat.attach }));
+  const lead = await within(menu).findByRole("checkbox", { name: /^lead/ });
+  // The arrows move between items; Space checks the one focused.
+  lead.focus();
+  fireEvent.keyDown(lead, { key: "ArrowDown" });
+  const helperRow = within(menu).getByRole("checkbox", { name: /^helper/ });
+  assert.equal(document.activeElement, helperRow);
+  fireEvent.click(lead);
+  fireEvent.click(helperRow);
+  assert.equal(lead.getAttribute("aria-checked"), "true");
+  assert.ok(!within(menu).queryByRole("checkbox", { name: /globex-helper/ }), "an agent homed elsewhere is not offered at the workspace");
+  // Search narrows the list.
+  fireEvent.change(within(menu).getByRole("searchbox", { name: chat.findAgent }), { target: { value: "zzz" } });
+  assert.ok(within(menu).getByText(chat.noAgentMatch));
+  fireEvent.change(within(menu).getByRole("searchbox", { name: chat.findAgent }), { target: { value: "" } });
+  // Enter closes it.
+  fireEvent.keyDown(within(menu).getByRole("checkbox", { name: /^lead/ }), { key: "Enter" });
+  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
+  assert.deepEqual(chips().slice(0, 2), ["lead", "helper"]);
+
+  // Two agents: the routing is chosen with text on the chips row.
+  const all = screen.getByRole("button", { name: chat.all });
+  assert.equal(screen.getByRole("button", { name: chat.bestFit }).getAttribute("aria-pressed"), "true");
+  fireEvent.click(all);
+  assert.equal(all.getAttribute("aria-pressed"), "true");
+  assert.ok(screen.getByPlaceholderText(chat.placeholderAll(2)));
+
+  // The project, then one of its channels, general first.
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  menu = await screen.findByRole("dialog", { name: chat.menu });
+  fireEvent.click(within(menu).getByRole("button", { name: new RegExp(chat.chooseProject) }));
+  fireEvent.click(await within(menu).findByRole("button", { name: /Globex/ }));
+  const channels = await within(menu).findByRole("radiogroup", { name: chat.channel });
+  await waitFor(() => assert.deepEqual(within(channels).getAllByRole("radio").map((r) => r.textContent), ["#general", "#deals"]));
+  fireEvent.click(within(channels).getByRole("radio", { name: "#deals" }));
+  fireEvent.keyDown(menu, { key: "Escape" });
+  assert.equal(screen.queryByRole("dialog", { name: chat.menu }), null);
+  assert.equal(document.activeElement, box(), "closing gives the box its focus back");
+  assert.ok(chips().includes("Globex / #deals"), JSON.stringify(chips()));
+
+  // A chip is removed with its x.
+  fireEvent.click(screen.getByRole("button", { name: chat.removeAgent("helper") }));
+  assert.equal(screen.queryByRole("button", { name: chat.all }), null, "one agent has nothing to route between");
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+  fireEvent.click(within(await screen.findByRole("dialog", { name: chat.menu })).getByRole("checkbox", { name: /^helper/ }));
+  fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+
+  fireEvent.change(box(), { target: { value: "Plan the renewal" } });
+  fireEvent.keyDown(box(), { key: "Enter" });
+  await waitFor(() => assert.deepEqual(opened, ["started"]));
+  assert.deepEqual(net?.seen.find((s) => s.method === "POST")?.body, {
+    visibility: "private",
+    project: "Globex",
+    channel: "deals",
+    text: "Plan the renewal",
+    agents: ["lead", "helper"],
+    mode: "all",
+  });
 });
 
 /** A turn in conversation t1 that failed, raised by actor, asked under tag. */
@@ -199,6 +282,14 @@ function open(turn: Run, me: string, turns: Run[] = [turn]) {
     "GET /api/projects/~/agents": () => workspace("lead"),
     "GET /api/projects/Globex/agents": () => ({ ...workspace(), homes: ["globex-helper"] }),
     "POST /api/runs": (body) => ({ ...turn, id: "t9", text: (body as { text: string }).text, status: "accepted", actor: { id: me, user: me } }),
+    "POST /api/threads/t1/messages": (body) => ({
+      thread: { id: "t1", project: "", channel: "general", visibility: "shared", participants: [], version: 0, created_by: me, created_at: at, updated_at: at },
+      message: { id: "m-1", thread: "t1", by: me, name: me, text: (body as { text: string }).text, mentions: [], via: "console", at },
+      runs: [],
+      notified: [],
+      refused: [],
+      rule: "tagged",
+    }),
   });
   const noop = () => {};
   render(
@@ -339,7 +430,14 @@ test("a conversation longer than one page is read from its start, and the next m
     [`GET /api/threads/${id}`]: (_, q) => (q.get("before") === "c1" ? pageOf(all.slice(0, 1), null) : pageOf(all.slice(1), "c1")),
     "GET /api/projects/~/agents": () => ({ version: 1, available: { all: true, names: [] }, homes: [], default_resolved: { agent: "helper", from: "project:~" } }),
     "GET /api/runs/r200/events": () => ({ events: [] }),
-    "POST /api/runs": () => ({ ...run(201), prev: "r200" }),
+    "POST /api/threads/api-r-conversation/messages": (body) => ({
+      thread: record,
+      message: { id: "m-1", thread: id, by: "ana", name: "Ana", text: (body as { text: string }).text, mentions: [], via: "console", at },
+      runs: [],
+      notified: [],
+      refused: [],
+      rule: "default",
+    }),
   });
   render(
     <Chat
@@ -360,13 +458,16 @@ test("a conversation longer than one page is read from its start, and the next m
   assert.ok(await screen.findByText("question 200"));
   assert.ok(screen.getAllByText("question 0").length > 0, "the first turn is shown");
   assert.equal(screen.queryByText("Hello"), null, "the conversation is not taken for a new one");
-  const box = screen.getByPlaceholderText("Ask helper") as HTMLTextAreaElement;
-  fireEvent.change(box, { target: { value: "and then?" } });
-  fireEvent.keyDown(box, { key: "Enter" });
+  const input = screen.getByPlaceholderText(defaultCopy.threads.message) as HTMLTextAreaElement;
+  fireEvent.change(input, { target: { value: "and then?" } });
+  fireEvent.keyDown(input, { key: "Enter" });
   await waitFor(() => assert.ok(net?.seen.some((s) => s.method === "POST")));
   const sent = net?.seen.find((s) => s.method === "POST");
-  // Untagged, it names no agent, so the default the conversation inherits answers.
+  // Posted to the conversation after the turn on screen. Untagged, it starts nothing.
+  assert.equal(sent?.path, `/api/threads/${id}/messages`);
   assert.deepEqual(sent?.body, { text: "and then?", after: "r200" });
+  // Posted, the conversation is a room: the message shows, as posted.
+  assert.ok(await screen.findByRole("article", { name: "Message from Ana" }));
 });
 
 test("a turn from before warp said whom a run acts for is not the reader's when its words were someone else's", async () => {
@@ -400,19 +501,19 @@ test("a turn from before warp said whom a run acts for is not the reader's when 
   await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
 });
 
-test("a follow-up on a run's page goes to the agent that ran it, not the place's default, unless the person picks another", async () => {
-  // lead answers untagged messages here, and helper took the last turn.
+test("a follow-up on a run's page is posted to the conversation, and runs only the agent it tags", async () => {
   const ana = { id: "ana", display: "Ana", user: "ana" };
   open({ ...answered(ana), agent: "helper" }, "ana");
-  const box = (await screen.findByPlaceholderText("Ask helper")) as HTMLTextAreaElement;
-  fireEvent.change(box, { target: { value: "and the week before?" } });
-  fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
-  assert.deepEqual(net?.seen.find((r) => r.method === "POST" && r.path === "/api/runs")?.body, { agent: "helper", text: "and the week before?", after: "t1" });
-  close();
-  // An agent that may no longer answer here is not asked: the default is.
-  open({ ...answered(ana), agent: "globex-helper" }, "ana");
-  assert.ok(await screen.findByPlaceholderText("Ask lead"));
+  // No menu of who answers, and no line saying who does.
+  const input = (await screen.findByPlaceholderText(defaultCopy.threads.message)) as HTMLTextAreaElement;
+  assert.equal(screen.queryByRole("button", { name: /Choose who answers/ }), null);
+  fireEvent.change(input, { target: { value: "@helper and the week before?" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST")));
+  const sent = net?.seen.find((r) => r.method === "POST");
+  assert.equal(sent?.path, "/api/threads/t1/messages");
+  assert.deepEqual(sent?.body, { text: "@helper and the week before?", after: "t1" });
+  assert.ok(!net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs"));
 });
 
 test("a task the reader may not read reads as one that does not exist, never as Home with a composer", async () => {
@@ -445,3 +546,43 @@ test("a task the reader may not read reads as one that does not exist, never as 
   assert.ok(!screen.queryByRole("textbox"));
   assert.ok(!net?.seen.some((r) => r.method === "POST"));
 });
+
+test("completion and the + menu open toward the side of the chat bar with room, so on a phone neither runs off the screen", async () => {
+  const real = HTMLFormElement.prototype.getBoundingClientRect;
+  const height = window.innerHeight;
+  // A phone's Home: the chat bar near the top of a tall screen.
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: 844 });
+  HTMLFormElement.prototype.getBoundingClientRect = () => ({ top: 220, bottom: 330, left: 16, right: 374, width: 358, height: 110, x: 16, y: 220, toJSON() {} }) as DOMRect;
+  try {
+    openChat(workspace("lead"));
+    fireEvent.change(box(), { target: { value: "@" } });
+    const list = await screen.findByRole("listbox");
+    assert.match(list.className, /(^|\s)top-full(\s|$)/, list.className);
+    assert.ok(Number.parseInt(list.style.maxHeight, 10) <= 844 - 330 - 8, list.style.maxHeight);
+    fireEvent.keyDown(box(), { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: chat.plus }));
+    const menu = await screen.findByRole("dialog", { name: chat.menu });
+    assert.match(menu.className, /(^|\s)top-full(\s|$)/, menu.className);
+    assert.ok(Number.parseInt(menu.style.maxHeight, 10) <= 844 - 330 - 8, menu.style.maxHeight);
+  } finally {
+    HTMLFormElement.prototype.getBoundingClientRect = real;
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
+  }
+});
+
+test("an agent the project picked does not offer is not kept as a chip, so it is never sent", async () => {
+  // globex-helper lives in Globex, so it can't answer at the workspace.
+  openChat(workspace("lead"), { startAgent: "globex-helper" });
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/~/agents")));
+  await waitFor(() => assert.deepEqual(chips(), []));
+  openChatClose();
+  openChat(workspace("lead"), { startAgent: "helper" });
+  await waitFor(() => assert.ok(net?.seen.some((s) => s.path === "/api/projects/~/agents")));
+  assert.deepEqual(chips(), ["helper"]);
+});
+
+function openChatClose() {
+  cleanup();
+  net?.restore();
+  net = undefined;
+}

@@ -485,6 +485,12 @@ export interface Query {
    * person's own inbox (`mailTransport`) takes it; a project's inbox does not.
    */
   news?: boolean;
+  /**
+   * Only what may need the person, which `open` counts (`needs=true`): never a
+   * posted announcement, but an agent's draft waiting on its owners. Only the
+   * person's own inbox (`mailTransport`) takes it; a project's inbox does not.
+   */
+  needs?: boolean;
 }
 
 /** Everything the inbox asks of the platform. Tests and the gallery pass their own. */
@@ -515,6 +521,7 @@ export function mailTransport(http: Http): Transport {
       if (q.before) params.set("before", q.before);
       if (q.kind) params.set("kind", q.kind);
       if (q.news) params.set("news", "true");
+      if (q.needs) params.set("needs", "true");
       const page = await http<{ messages: unknown[]; next: string | null; open: number; unread: number }>("GET", `/api/inbox?${params}`);
       return { messages: (page.messages ?? []).map(fromServer), next: page.next ?? null, open: page.open ?? 0, unread: page.unread ?? 0 };
     },

@@ -1,27 +1,25 @@
 import { answerOfAction, answers } from "@warp/adapter/question";
 import { defaultCopy } from "@warp/components";
 import { ActionId, type UiAction } from "@warp/core";
-import { CheckIcon, ChevronDownIcon, WebSurface } from "@warp/render-web";
+import { WebSurface } from "@warp/render-web";
 import { AgentMessage, Thread, useQueue } from "@warp/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import { actedFor, type Run } from "./adapter.ts";
 import { Composer } from "./Composer.tsx";
-import { ApiError, api, type Choice, coworking, type ProjectAgentsView, type ProjectView, type Revision, type ThreadAsk, type ThreadPage, type ThreadSummary } from "./api.ts";
+import { ApiError, api, coworking, type ProjectView, type Revision, type ThreadAsk, type ThreadPage, type ThreadSummary } from "./api.ts";
 import { askedOf, copyFor } from "./asks.ts";
-import { answersLine, AUTO, availableOf } from "./availability.ts";
+import { useCompletion } from "./completion.ts";
 import { HomePage } from "./HomePage.tsx";
-import { ProjectPicker } from "./ProjectPicker.tsx";
-import { ThreadRoom } from "./Room.tsx";
+import { emptySelection, PlusMenu, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
+import { ThreadRoom, topicsOf } from "./Room.tsx";
 import { useRunTurn } from "./Runs.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { SessionGaugeFor } from "./SessionGauge.tsx";
 import { readFromStart } from "./turns.ts";
-import { AgentMark, AgentTint, cause, isWorking, Page, Popover, Presence, Problem, SkeletonRows } from "./ui.tsx";
+import { AgentMark, AgentTint, cause, isWorking, Page, Presence, Problem, SkeletonRows } from "./ui.tsx";
 
-const auto = defaultCopy.auto;
-// Controls in the dock are text, not boxes: they sit under the composer and
-// should not compete with it.
+const words = defaultCopy.threads;
 /** The answers to one point in the conversation, oldest first. */
 function siblingsOf(turns: Run[], run: Run): Run[] {
   return turns.filter((t) => (t.prev ?? "") === (run.prev ?? ""));
@@ -185,16 +183,58 @@ function TurnView({
 }
 
 /**
- * One conversation: its turns along the branch on screen, and the box that
- * adds the next one. `threadId` null is a conversation not yet started.
+ * Ways into the platform's own agents, shown on an empty conversation when
+ * the workspace has them. A pick writes the agent's tag and the start of a
+ * message in the chat bar.
  */
-/** Ways into the platform's own agents, shown on an empty conversation when the workspace has them. */
 export const STARTERS: { agent: string; label: string; text: string }[] = [
   { agent: "warp-analyst", label: "How did my agents do today?", text: "How did my agents do today?" },
   { agent: "warp-builder", label: "Build a new agent", text: "Help me build an agent that " },
   { agent: "warp-writer", label: "Write a report", text: "Write a one-page report on " },
 ];
 
+/**
+ * The chat bar with completion for a project: its lookups live here, so
+ * they are made only while the bar is on screen. `plus` builds the + menu
+ * from the agents that may answer in the project.
+ */
+function ChatBar({
+  project,
+  agents,
+  homes,
+  projects,
+  root,
+  me,
+  plus,
+  onAvailable,
+  ...rest
+}: Omit<Parameters<typeof Composer>[0], "tags" | "plus"> & {
+  /** Called with the agents that may answer in the project, once they are read. */
+  onAvailable?: (available: { name: string }[]) => void;
+  project: string;
+  agents: Revision[];
+  homes: Record<string, string>;
+  projects: ProjectView[] | null;
+  root: ProjectView | null;
+  me: string;
+  plus?: (available: { name: string; description?: string }[] | null) => NonNullable<Parameters<typeof Composer>[0]["plus"]>;
+}) {
+  const tags = useCompletion(project, agents, homes, topicsOf(projects ?? [], root, project), me);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per list read
+  useEffect(() => {
+    if (tags.agents) onAvailable?.(tags.agents);
+  }, [tags.agents]);
+  return <Composer {...rest} tags={tags} plus={plus?.(tags.agents)} />;
+}
+
+/**
+ * Home's chat bar and a conversation of runs. Home's bar starts a private
+ * conversation (`POST /api/threads`) in the picked project and opens it at
+ * its address; a message there runs an agent only when it tags one. A
+ * conversation people have posted in is a room (ThreadRoom); one of runs
+ * alone, from before threads, shows its turns along the branch on screen,
+ * and a message posted to it makes it a room. `threadId` null is Home.
+ */
 export function Chat({
   threadId,
   me,
@@ -203,6 +243,8 @@ export function Chat({
   startAsk,
   startChannel,
   focus,
+  sharing,
+  onSharing,
   root,
   workspaceName,
   onOpenChannel,
@@ -233,6 +275,9 @@ export function Chat({
   startChannel?: string;
   /** A message of a shared thread to open at. */
   focus?: string;
+  /** Whether the conversation's Share dialog is open, and a way to open or close it at its address. */
+  sharing?: boolean;
+  onSharing?: (open: boolean) => void;
   /** The workspace's own project, which heads the tree, and its name. */
   root?: ProjectView | null;
   workspaceName?: string;
@@ -242,7 +287,7 @@ export function Chat({
   /** Changes whenever any run starts or ends. */
   tick: number;
   agents: Revision[];
-  /** Where each agent that lives in a project lives, so the menu offers only what may answer here. */
+  /** Where each agent that lives in a project lives, so completion offers only what may answer here. */
   homes?: Record<string, string>;
   /** The project tree a new conversation can be filed in, or null while it loads. */
   projects: ProjectView[] | null;
@@ -258,11 +303,16 @@ export function Chat({
   // The thread as the platform reads it: its record, and its people's messages besides its runs.
   const [room, setRoom] = useState<ThreadPage | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
-  // Who the person chose: an agent, AUTO for @auto, or "" for whoever answers untagged messages here.
-  const [agent, setAgent] = useState(startAgent ?? "");
   const [seed, setSeed] = useState<{ text: string } | undefined>(() => (startAsk ? { text: startAsk } : undefined));
-  const [project, setProject] = useState<string | null>(startIn ?? null);
-  const [preview, setPreview] = useState<Choice | null>(null);
+  // What the + menu selected for a new conversation: an agent a link named, and where it lives.
+  const [selection, setSelection] = useState<Selection>(() => ({
+    ...emptySelection,
+    agents: startAgent ? [startAgent] : [],
+    project: startIn ?? null,
+    channel: startChannel || "general",
+  }));
+  const project = selection.project;
+  const [draft, setDraft] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   // The drawer of every run in the conversation, open on one of them or on the list.
   const [activity, setActivity] = useState<{ focus: string | null } | null>(null);
@@ -320,48 +370,11 @@ export function Chat({
   const tail = path[path.length - 1];
   // A run waiting on a person is still, like one that has ended.
   const tailWorking = !!tail && isWorking(tail.status);
-  // What may answer where the next message goes, and who answers it untagged.
+  // Where the next message goes, for completion: the conversation's project, or the one picked for a new one.
   const where = threadId ? (tail?.project ?? "") : (project ?? "");
-  const [here, setHere] = useState<ProjectAgentsView | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
-  useEffect(() => {
-    let live = true;
-    api
-      .projectAgents(where)
-      .then((v) => live && setHere(v))
-      .catch(() => live && setHere(null));
-    return () => {
-      live = false;
-    };
-  }, [where, tick]);
-  const offered = useMemo(() => {
-    const names = availableOf(
-      agents.map((a) => a.spec.name),
-      here,
-      homes,
-    );
-    return agents.filter((a) => names.includes(a.spec.name));
-  }, [agents, here, homes]);
-  const fallback = here?.default_resolved?.agent ?? "";
-  // A follow-up goes to the agent that took the last turn, unless the person
-  // picks another, while it may still answer here. It is named only when it
-  // is not who answers untagged anyway.
-  const ran = threadId && tail && offered.some((a) => a.spec.name === tail.agent) && tail.agent !== fallback ? tail.agent : "";
-  // The agent that answers: the one chosen, the one that ran, or the place's default.
-  const answering = agent || ran || fallback;
-  const isAuto = answering === AUTO;
-  const named = isAuto ? "" : answering;
-  // What is sent: "" leaves the agent out, so the platform's default chain decides, as the person did.
-  const target = agent || ran;
-  // Who answers the next message, in words under the composer, once it is known.
-  const answersHere = agent || here ? answersLine(answering, isAuto ? preview?.agent : undefined) : "";
 
-  // What this conversation's queue is waiting on, so it knows when to go on.
-  const waiting = useRef<string | null>(null);
-
-  // A turn that follows another joins its conversation, filed where that is.
-  // One that starts a conversation is filed in `filed`: by default the project
-  // picked for a new one.
+  // Retry and Regenerate ask a turn again: one that follows another joins its
+  // conversation, and the first is filed in `filed`, where the turn was.
   const post = useCallback(
     async (text: string, to: string, after: string | undefined, filed: string | null = project) => {
       setProblem(null);
@@ -377,45 +390,49 @@ export function Chat({
 
   const queue = useQueue({
     onStart: (m) => {
-      // Started in a channel, a conversation is a shared thread: the message
-      // is the person's, and its tags say who answers.
-      if (!threadId && startChannel) {
-        setProblem(null);
+      setProblem(null);
+      const done = () => {
+        onChanged();
+        queue.turnEnded("done");
+      };
+      const failed = (e: unknown) => {
+        setProblem(e instanceof ApiError ? e.message : words.failed.post);
+        queue.turnEnded("failed");
+      };
+      // Home starts a private conversation in the picked project, or a
+      // shared thread when it was opened from a channel. Either opens at
+      // its address, where the next message goes.
+      if (!threadId) {
         coworking
-          .start({ project: project ?? "", channel: startChannel, text: m.text })
-          .then((p) => {
-            onChanged();
-            onThread(p.thread.id);
-            queue.turnEnded("done");
+          .start({
+            project: project ?? "",
+            channel: selection.channel,
+            text: m.text,
+            visibility: startChannel ? "shared" : "private",
+            ...(selection.agents.length > 0 ? { agents: selection.agents, mode: selection.mode } : {}),
           })
-          .catch((e) => {
-            setProblem(e instanceof ApiError ? e.message : "The message could not be sent.");
-            queue.turnEnded("failed");
-          });
+          .then((p) => {
+            onThread(p.thread.id);
+            done();
+          })
+          .catch(failed);
         return;
       }
-      post(m.text, target, tail?.id)
-        .then((run) => {
-          waiting.current = run.id;
+      // A conversation of runs takes the message after the turn on screen.
+      // Posted, it is a room: the message, and any run its tags started.
+      coworking
+        .post(threadId, { text: m.text, ...(tail ? { after: tail.id } : {}) })
+        .then((p) => {
+          setRoom((r) =>
+            r ? { ...r, turns: [...r.turns, { kind: "message", message: p.message }, ...p.runs.map((run) => ({ kind: "run" as const, run }))] } : r,
+          );
+          done();
         })
-        .catch((e) => {
-          setProblem(e instanceof ApiError ? e.message : "The message could not be sent.");
-          queue.turnEnded("failed");
-        });
+        .catch(failed);
     },
     // Stopping a run in flight is not built: the queue waits for it to end.
     onInterrupt: () => {},
   });
-
-  // When the run the queue started settles, the queue may send the next one.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: react to the watched run's status only
-  useEffect(() => {
-    const id = waiting.current;
-    const run = id ? turns.find((t) => t.id === id) : undefined;
-    if (!run || (run.status !== "completed" && run.status !== "failed")) return;
-    waiting.current = null;
-    queue.turnEnded(run.status === "completed" ? "done" : "failed");
-  }, [turns]);
 
   // A branch of the first turn starts the conversation again, so it is filed
   // where the turn was: the picker's project is only for a new conversation.
@@ -448,139 +465,63 @@ export function Chat({
     branch(run, run.agent);
   };
 
-  // Show who @auto would send the next message to, before it is sent.
-  const [draft, setDraft] = useState("");
-  useEffect(() => {
-    if (!isAuto || draft.trim().length < 3) return setPreview(null);
-    const timer = window.setTimeout(() => {
-      api
-        .pick(draft, where)
-        .then(setPreview)
-        .catch(() => setPreview(null));
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [isAuto, draft, where]);
-
   const starters = STARTERS.filter((st) => agents.some((a) => a.spec.name === st.agent));
 
   const composer = canRun && agents.length > 0 && (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-2 px-4 pb-4">
       <Problem message={problem} />
-      <Composer
-        placeholder={isAuto ? "Ask anything" : named ? `Ask ${named}` : auto.tagToAsk}
+      <ChatBar
+        project={where}
+        agents={agents}
+        homes={homes}
+        projects={projects}
+        root={root ?? null}
+        me={me}
+        placeholder={!threadId ? (startChannel ? words.startThread : placeholderFor(selection)) : words.message}
         queue={queue}
         autoFocus={!threadId}
-        onDraft={setDraft}
         seed={seed}
-        leading={
-          <>
-        {threadId ? (
-          <span className="max-w-40 truncate px-1.5 text-aui-sm text-aui-muted" title={tail?.project || "Projectless"}>{tail?.project || "Projectless"}</span>
-        ) : (
-          <ProjectPicker
-            value={project}
-            projects={projects}
-            kinds={root?.kinds}
-            canCreate={canCreateProject}
-            onChange={setProject}
-            onCreated={onProjectCreated}
-          />
-        )}
-          </>
+        onDraft={setDraft}
+        // An agent the project picked does not offer is not kept for it.
+        onAvailable={
+          threadId
+            ? undefined
+            : (available) =>
+                setSelection((sel) => {
+                  const names = new Set(available.map((a) => a.name));
+                  const kept = sel.agents.filter((a) => names.has(a));
+                  return kept.length === sel.agents.length ? sel : { ...sel, agents: kept };
+                })
         }
-        trailing={
-          <>
-        {/* The reason for a pick is one hover away, and announced, without taking a line. */}
-        <span className="sr-only" aria-live="polite">
-          {isAuto && preview ? `${preview.agent}. ${preview.reason}` : ""}
-        </span>
-        <Popover
-          label={isAuto && preview ? `${auto.choose}. ${preview.reason}` : `${auto.choose}. ${answersLine(answering, preview?.agent)}`}
-          align="right"
-          up
-          className="inline-flex h-7 items-center gap-1.5 rounded-aui px-1.5 text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
-          button={
-            <>
-              {(named || preview) && <AgentMark name={isAuto ? (preview?.agent ?? "?") : named} size={16} />}
-              <span className="max-w-16 truncate sm:max-w-32">
-                {isAuto ? (preview?.agent ?? auto.handle) : named || auto.choose}
-              </span>
-              {isAuto && preview && <span className="hidden text-aui-xs text-aui-muted sm:inline">{auto.handle}</span>}
-              <ChevronDownIcon size={14} className="text-aui-muted" />
-            </>
-          }
-        >
-          {(close) => {
-            // @auto is first when it is the default here, last otherwise.
-            const autoRow = (
-              <li key={AUTO}>
-                <button
-                  type="button"
-                  aria-pressed={agent === AUTO}
-                  onClick={() => {
-                    setAgent(AUTO);
-                    close();
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-aui px-2.5 py-2 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover"
-                >
-                  <span className="w-[18px]" aria-hidden />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2 text-aui-sm text-aui-fg">
-                      {auto.handle}
-                      {fallback === AUTO && (
-                        <span className="rounded-full border border-aui-border px-1.5 text-aui-2xs text-aui-muted">{auto.defaultChip}</span>
-                      )}
-                    </span>
-                    <span className="block truncate text-aui-xs text-aui-muted">{auto.description}</span>
-                  </span>
-                  {agent === AUTO && <CheckIcon size={14} className="text-aui-fg" />}
-                </button>
-              </li>
-            );
-            return (
-              <div className="flex flex-col">
-                <p className="px-2.5 py-2 text-aui-xs text-aui-muted">{answersLine(fallback)}</p>
-                <div className="my-1 h-px bg-aui-border" />
-                <ul className="aui-scroll max-h-72 overflow-y-auto" aria-label="Agents">
-                  {fallback === AUTO && autoRow}
-                  {offered.map((a) => {
-                    const on = (agent || ran) === a.spec.name;
-                    return (
-                      <li key={a.spec.name}>
-                        <button
-                          type="button"
-                          aria-pressed={on}
-                          onClick={() => {
-                            setAgent(a.spec.name);
-                            close();
-                          }}
-                          className="flex w-full items-center gap-2.5 rounded-aui px-2.5 py-2 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:bg-aui-hover"
-                        >
-                          <AgentMark name={a.spec.name} size={18} />
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-center gap-2 text-aui-sm text-aui-fg">
-                              {a.spec.name}
-                              {a.spec.name === fallback && (
-                                <span className="rounded-full border border-aui-border px-1.5 text-aui-2xs text-aui-muted">{auto.defaultChip}</span>
-                              )}
-                            </span>
-                            <span className="block truncate text-aui-xs text-aui-muted">{a.spec.description || "No description"}</span>
-                          </span>
-                          {on && <CheckIcon size={14} className="text-aui-fg" />}
-                        </button>
-                      </li>
-                    );
-                  })}
-                  {fallback !== AUTO && autoRow}
-                </ul>
-              </div>
-            );
-          }}
-        </Popover>
-          </>
+        leading={
+          threadId ? (
+            <span className="max-w-40 truncate px-1.5 text-aui-sm text-aui-muted" title={tail?.project || "Projectless"}>
+              {tail?.project || "Projectless"}
+            </span>
+          ) : undefined
+        }
+        plus={
+          threadId
+            ? undefined
+            : (available) => ({
+                menu: (close, attach, leave) => (
+                  <PlusMenu
+                    onLeave={leave}
+                    agents={available}
+                    selection={selection}
+                    onChange={setSelection}
+                    onAttach={attach}
+                    onClose={close}
+                    projects={projects}
+                    kinds={root?.kinds}
+                    canCreateProject={canCreateProject}
+                    onProjectCreated={onProjectCreated}
+                  />
+                ),
+                chips: <SelectionChips selection={selection} projects={projects} workspace={workspaceName} onChange={setSelection} />,
+              })
         }
       />
-      {answersHere && <p className="px-3 text-aui-xs text-aui-muted">{answersHere}</p>}
     </div>
   );
 
@@ -600,6 +541,8 @@ export function Chat({
         workspaceName={workspaceName ?? ""}
         canRun={canRun}
         focus={focus}
+        sharing={sharing}
+        onSharing={onSharing}
         onOpenChannel={(p, c) => onOpenChannel?.(p, c)}
         onChanged={onChanged}
       />
@@ -625,20 +568,25 @@ export function Chat({
     return (
       <HomePage greeting={greeting} canRun={canRun} hasAgents={agents.length > 0} below={home}>
         {composer}
-        {canRun && starters.length > 0 && (
-          <ul aria-label="Start with" className="mx-auto flex w-full max-w-4xl flex-wrap justify-center gap-2 px-4">
+        {/*
+          Suggestions sit with the chat bar, as quiet text under it, until
+          the person types. A pick writes its words and adds its agent to
+          the conversation, as a chip, not an @mention.
+        */}
+        {canRun && starters.length > 0 && draft.trim() === "" && (
+          <ul aria-label={defaultCopy.chat.suggestions} className="mx-auto -mt-1 flex w-full max-w-4xl flex-wrap gap-x-4 gap-y-1 px-7">
             {starters.map((st) => (
-              <li key={st.agent}>
+              <li key={st.agent} className="min-w-0">
                 <button
                   type="button"
                   onClick={() => {
-                    setAgent(st.agent);
+                    setSelection((sel) => (sel.agents.includes(st.agent) ? sel : { ...sel, agents: [...sel.agents, st.agent] }));
                     setSeed({ text: st.text });
                   }}
-                  className="inline-flex h-9 items-center gap-2 rounded-full border border-aui-border px-3.5 text-aui-sm text-aui-fg transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent motion-reduce:transition-none"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-aui py-1 text-aui-sm text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
                 >
-                  <AgentMark name={st.agent} size={14} />
-                  {st.label}
+                  <AgentMark name={st.agent} size={12} />
+                  <span className="truncate">{st.label}</span>
                 </button>
               </li>
             ))}

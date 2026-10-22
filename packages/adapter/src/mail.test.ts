@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ActionId, messageAsks, messageTemplate, type UiAction } from "@warp/core";
-import { fromServer, kinds, MailError, notificationsOf, projectOf, projectTransport, shownAbout, toRequest, updatesOf } from "./mail.ts";
+import { fromServer, kinds, MailError, mailTransport, notificationsOf, projectOf, projectTransport, shownAbout, toRequest, updatesOf } from "./mail.ts";
 
 /** An announcement as the platform sends it: a broadcast in a project's inbox, only there to be read. */
 const announcement = {
@@ -151,6 +151,19 @@ test("publishing and discarding a draft are the platform's publish and discard",
   // A reader who may not decide is offered nothing.
   const viewer = fromServer({ ...draft, parts: [{ ...draft.parts[0], actions: [] }] });
   assert.deepEqual((viewer.parts[0] as { allowed?: string[] }).allowed, []);
+});
+
+test("the person's inbox reads What's new with news=true and what needs them with needs=true, as Home does", async () => {
+  const calls: string[] = [];
+  const http = async <T>(_method: string, path: string): Promise<T> => {
+    calls.push(path);
+    return { messages: [], next: null, open: 3, unread: 1 } as T;
+  };
+  const via = mailTransport(http);
+  await via.list({ limit: 20, state: "open", news: true });
+  const needs = await via.list({ limit: 5, state: "open", needs: true });
+  assert.deepEqual(calls, ["/api/inbox?limit=20&state=open&news=true", "/api/inbox?limit=5&state=open&needs=true"]);
+  assert.equal(needs.open, 3);
 });
 
 test("a project's inbox lists through the project's own route, and answers through the inbox's", async () => {

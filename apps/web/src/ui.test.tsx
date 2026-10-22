@@ -92,7 +92,7 @@ test("the sidebar hides pages from someone who may not read them", () => {
   for (const label of ["Projects", "Inbox", "Schedules", "Context", "Agents", "Artifacts"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
 });
 
-test("pinned tasks sit in their own section, ahead of the rest", () => {
+test("pinned conversations sit in their own section, ahead of the rest", () => {
   const none = sidebar();
   assert.doesNotMatch(none, /aria-label="Pinned"/);
   const out = sidebar({ pinned: ["t2", "gone"] });
@@ -100,7 +100,7 @@ test("pinned tasks sit in their own section, ahead of the rest", () => {
   assert.match(out, /aria-label="Unpin Fix the build"/);
   // An id that is not loaded is not drawn, and nothing is listed twice.
   assert.equal(out.match(/Fix the build</g)?.length, 1);
-  assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Tasks<"));
+  assert.ok(out.indexOf(">Pinned<") < out.indexOf(">Conversations<"));
 });
 
 test("project selection: an empty workspace still offers projectless work and creation inside the composer", () => {
