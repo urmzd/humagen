@@ -268,17 +268,17 @@ func (p *Platform) mayRaise(c clients.Client, person, project string, bound bool
 		}
 		return nil
 	}
-	who := p.personOf(c.Tenant, person)
+	who := p.byPolicy(c.Tenant, person)
 	if !who.Can(auth.RunsWrite) {
 		return fmt.Errorf("%w: %s may not start runs (asking needs %s)", ErrForbidden, person, auth.RunsWrite)
 	}
 	return p.MayFileIn(who, project)
 }
 
-// personOf is a person known only by their subject, such as the one a
+// byPolicy is a person known only by their subject, such as the one a
 // client's own connector maps a Slack user to: the roles the workspace's
 // policy grants that subject, and nothing a sign-in would add.
-func (p *Platform) personOf(tenant, subject string) auth.Principal {
+func (p *Platform) byPolicy(tenant, subject string) auth.Principal {
 	pol := p.cfg.Policy
 	if pol == nil {
 		pol = auth.DefaultPolicy()
