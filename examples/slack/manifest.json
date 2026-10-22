@@ -1,15 +1,15 @@
 {
   "_metadata": { "major_version": 2, "minor_version": 1 },
   "display_information": {
-    "name": "warp",
+    "name": "humagen",
     "description": "Tag an agent from Slack and get its answer in the thread."
   },
   "features": {
     "agent_view": {
-      "agent_description": "Answers mentions, direct messages and code channel commands with a warp agent."
+      "agent_description": "Answers mentions, direct messages and code channel commands with a Humagen agent."
     },
     "bot_user": {
-      "display_name": "warp",
+      "display_name": "humagen",
       "always_online": true
     },
     "code_channels": {

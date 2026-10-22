@@ -1,6 +1,6 @@
+import type { PromptConfig } from "@humagen/core";
+import { type PromptAttachment, PromptInput } from "@humagen/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { PromptConfig } from "@warp/core";
-import { type PromptAttachment, PromptInput } from "@warp/web";
 import { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { SLACK_COMPOSER, webOnly } from "../../support";

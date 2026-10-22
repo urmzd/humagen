@@ -12,7 +12,7 @@ import (
 	"github.com/urmzd/fiber/pkg/address"
 	"github.com/urmzd/fiber/pkg/connectors/mention"
 	"github.com/urmzd/fiber/pkg/envelope"
-	"github.com/urmzd/warp/pkg/integrations/github"
+	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
 var commitSHA = strings.Repeat("a", 40)
@@ -51,8 +51,8 @@ func TestChecksStreamAndKeepTheirPinnedCommit(t *testing.T) {
 
 func TestCheckConclusionReflectsReviewErrorsAndMalformedReports(t *testing.T) {
 	for _, tc := range []struct{ text, conclusion string }{
-		{`{"format":"warp.github.review.v1","summary":"Found a bug","findings":[{"severity":"error","title":"Bug","suggestion":"Fix it","evidence":[{"observation":"Failure","source":"test.go:1"}],"prompt":"Add a regression test"}]}`, "failure"},
-		{`{"format":"warp.github.review.v1","summary":"Missing evidence","findings":[{"severity":"error"}]}`, "action_required"},
+		{`{"format":"humagen.github.review.v1","summary":"Found a bug","findings":[{"severity":"error","title":"Bug","suggestion":"Fix it","evidence":[{"observation":"Failure","source":"test.go:1"}],"prompt":"Add a regression test"}]}`, "failure"},
+		{`{"format":"humagen.github.review.v1","summary":"Missing evidence","findings":[{"severity":"error"}]}`, "action_required"},
 	} {
 		fake := github.NewFake()
 		c, _ := github.New(github.Config{API: fake, Checks: true})

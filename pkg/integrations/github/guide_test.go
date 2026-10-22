@@ -11,7 +11,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/topic"
 
-	"github.com/urmzd/warp/pkg/integrations/github"
+	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
 func TestPRGuideUpdatesAcrossCommitsWithoutDuplicateActivationComments(t *testing.T) {
@@ -129,7 +129,7 @@ func TestACommentWhoseAgentIsResolvedLaterPostsNoGuide(t *testing.T) {
 	if err := fake.SeedContext(ref, evidence); err != nil {
 		t.Fatal(err)
 	}
-	c, tags := start(t, github.Config{API: fake, Guides: true, Bots: map[string]string{"reviewer[bot]": "reviewer", "warp": topic.ControlName}})
+	c, tags := start(t, github.Config{API: fake, Guides: true, Bots: map[string]string{"reviewer[bot]": "reviewer", "humagen": topic.ControlName}})
 	comment := func(delivery, body string) {
 		t.Helper()
 		raw := fmt.Sprintf(`{"action":"created","repository":{"name":"repo","owner":{"login":"acme"}},"sender":{"login":"octocat","type":"User"},"issue":{"number":42,"pull_request":{"url":"x"}},"comment":{"id":7,"body":%q}}`, body)
@@ -139,7 +139,7 @@ func TestACommentWhoseAgentIsResolvedLaterPostsNoGuide(t *testing.T) {
 			t.Fatalf("status %d: %s", w.Code, w.Body.String())
 		}
 	}
-	comment("to-the-app", "@warp what changed?")
+	comment("to-the-app", "@humagen what changed?")
 	select {
 	case tag := <-tags:
 		if tag.Agent != topic.ControlName {

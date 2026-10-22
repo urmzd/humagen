@@ -1,4 +1,4 @@
-import type { Citation } from "@warp/core";
+import type { Citation } from "@humagen/core";
 import {
   createContext,
   type ReactNode,

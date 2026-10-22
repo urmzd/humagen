@@ -7,7 +7,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
 
-	"github.com/urmzd/warp/pkg/usage"
+	"github.com/urmzd/humagen/pkg/usage"
 )
 
 // Bucket is the runs that started in one interval, by how they ended.

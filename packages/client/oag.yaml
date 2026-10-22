@@ -1,4 +1,4 @@
-# How @warp/client is generated. Run `make client` from the repository
+# How @humagen/client is generated. Run `make client` from the repository
 # root, which runs `oag generate` here with the pinned oag version.
 #
 # The node-client pack is committed under .oag/packs/, copied unchanged from

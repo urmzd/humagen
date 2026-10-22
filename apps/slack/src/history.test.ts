@@ -111,9 +111,9 @@ function withThread(w: World, messages: SlackMessage[], users: Record<string, st
 }
 
 async function finish(w: World) {
-  w.warp.emit(w.warp.last.id, "lifecycle.accepted");
+  w.humagen.emit(w.humagen.last.id, "lifecycle.accepted");
   await settle();
-  w.warp.emit(w.warp.last.id, "lifecycle.completed", { text: "ok" });
+  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "ok" });
   await settle();
   await w.app.idle();
 }
@@ -131,7 +131,7 @@ test("history: a mention in a thread carries what people said there, with who sa
     inclusive: false,
     limit: 200,
   });
-  const asked = w.warp.started[0]?.text ?? "";
+  const asked = w.humagen.started[0]?.text ?? "";
   assert.match(asked, new RegExp(`Dana \\(<@${OTHER_USER}>\\): who holds it\\?`));
   assert.match(asked, new RegExp(`Sam \\(<@${USER}>\\): the nightly backfill, I think`));
   assert.ok(!asked.includes("CI: build"), "a bot's message is left out");
@@ -145,7 +145,7 @@ test("history: without users:read people are named by mention, and Slack is aske
   withThread(w, THREAD, "refused");
   await w.app.handle(mention("can we stop it safely?", ASK, { thread_ts: ROOT }));
   await settle();
-  const asked = w.warp.started[0]?.text ?? "";
+  const asked = w.humagen.started[0]?.text ?? "";
   assert.match(asked, new RegExp(`^<@${OTHER_USER}>: who holds it\\?`, "m"));
   assert.equal(w.slack.of("users.info").length, 1);
   assert.ok(w.logs.some((l) => /users:read/.test(l)));
@@ -157,7 +157,7 @@ test("history: a thread Slack will not give still answers the question alone", a
   w.slack.failing["conversations.replies"] = "missing_scope";
   await w.app.handle(mention("can we stop it safely?", ASK, { thread_ts: ROOT }));
   await settle();
-  assert.equal(w.warp.started[0]?.text, "can we stop it safely?");
+  assert.equal(w.humagen.started[0]?.text, "can we stop it safely?");
   assert.ok(
     w.logs.some((l) => /thread history skipped: conversations.replies: missing_scope/.test(l)),
   );
@@ -221,7 +221,7 @@ test("manifest: the app asks for what it uses, thread history included", async (
 /** A world whose app is a client that maps USER to sam and OTHER_USER to dana. */
 function coworking(): World {
   const w = world({ clientId: "app" });
-  w.warp.clients.set("app", {
+  w.humagen.clients.set("app", {
     id: "app",
     surface: "slack",
     enabled: true,
@@ -232,24 +232,24 @@ function coworking(): World {
   return w;
 }
 
-test("coworking: a mapped person's mention is their message in the warp thread its Slack thread is", async () => {
+test("coworking: a mapped person's mention is their message in the humagen thread its Slack thread is", async () => {
   const w = coworking();
   await w.app.handle(mention("@helper what changed?", ROOT));
   await settle();
-  assert.deepEqual(w.warp.posts, [
+  assert.deepEqual(w.humagen.posts, [
     {
       text: "@helper what changed?",
       act_as: { client: "app", user: USER },
       surface: { client: "app", channel: CHANNEL, ts: ROOT, message: ROOT, app_user: BOT },
     },
   ]);
-  assert.equal(w.warp.last.agent, "helper", "the platform read the tag");
+  assert.equal(w.humagen.last.agent, "helper", "the platform read the tag");
   await finish(w);
-  // Slack delivers the event again after a restart: warp has the message, and nothing starts again.
+  // Slack delivers the event again after a restart: humagen has the message, and nothing starts again.
   const again = w.restart();
   await again.handle(mention("@helper what changed?", ROOT));
   await settle();
-  assert.equal(w.warp.started.length, 1);
+  assert.equal(w.humagen.started.length, 1);
 });
 
 test("coworking: what people said since the app was last asked goes first, each as its person, posted only", async () => {
@@ -257,7 +257,7 @@ test("coworking: what people said since the app was last asked goes first, each 
   withThread(w, THREAD, { [OTHER_USER]: "Dana", [USER]: "Sam" });
   await w.app.handle(mention("can we stop it safely?", ASK, { thread_ts: ROOT }));
   await settle();
-  const said = w.warp.posts.filter((p) => p.post_only);
+  const said = w.humagen.posts.filter((p) => p.post_only);
   assert.ok(said.length > 0, "the room was posted");
   for (const p of said) {
     assert.equal(p.surface.ts, ROOT);
@@ -267,13 +267,13 @@ test("coworking: what people said since the app was last asked goes first, each 
       "no bot's message, nor the app's",
     );
   }
-  const asked = w.warp.posts.at(-1);
+  const asked = w.humagen.posts.at(-1);
   assert.equal(asked?.surface.message, ASK);
   assert.equal(asked?.post_only, undefined);
   assert.equal(
     asked?.text,
     "can we stop it safely?",
-    "the question goes alone: the room is in warp",
+    "the question goes alone: the room is in humagen",
   );
   await finish(w);
 });
@@ -282,7 +282,7 @@ test("coworking: tagging only a person starts nothing and says who was told", as
   const w = coworking();
   await w.app.handle(mention("@dana can you check?", ROOT));
   await settle();
-  assert.equal(w.warp.started.length, 0);
+  assert.equal(w.humagen.started.length, 0);
   await w.app.idle();
   const said = JSON.stringify(
     w.slack.calls.filter((c) =>
@@ -294,11 +294,11 @@ test("coworking: tagging only a person starts nothing and says who was told", as
 
 test("coworking: where nothing answers by default, the app says to tag an agent", async () => {
   const w = coworking();
-  w.warp.noDefault = true;
+  w.humagen.noDefault = true;
   await w.app.handle(mention("what changed?", ROOT));
   await settle();
   await w.app.idle();
-  assert.equal(w.warp.started.length, 0);
+  assert.equal(w.humagen.started.length, 0);
   const said = JSON.stringify(w.slack.calls);
   assert.match(said, /Tag an agent with @/);
 });

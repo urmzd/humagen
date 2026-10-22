@@ -188,7 +188,12 @@ test("socket: failures back off and recover; too many in a row give up so a supe
 });
 
 test("socket: liveness settings are read from the environment and checked", () => {
-  const env = { SLACK_BOT_TOKEN: "b", SLACK_APP_TOKEN: "a", SLACK_TEAM_ID: "T1", WARP_TENANT: "t" };
+  const env = {
+    SLACK_BOT_TOKEN: "b",
+    SLACK_APP_TOKEN: "a",
+    SLACK_TEAM_ID: "T1",
+    HUMAGEN_TENANT: "t",
+  };
   assert.deepEqual(readConfig(env).slack.socket, {});
   assert.deepEqual(
     readConfig({ ...env, SLACK_SOCKET_IDLE_MS: "60000", SLACK_SOCKET_MAX_ATTEMPTS: "3" }).slack

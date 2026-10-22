@@ -1,4 +1,4 @@
-import { CopyIcon } from "@warp/render-web";
+import { CopyIcon } from "@humagen/render-web";
 import { useEffect, useState } from "react";
 import { COPY_LIMIT, type Format, fileName, formats, type Item } from "./copyas.ts";
 import { FlashNote, Menu, type Option, useFlash } from "./ui.tsx";

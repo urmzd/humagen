@@ -20,12 +20,12 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 func TestStartWorksWithNothingConfigured(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("WARP_HOME", home)
+	t.Setenv("HUMAGEN_HOME", home)
 	t.Setenv(envWebDir, "")
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -73,7 +73,7 @@ func TestStartWorksWithNothingConfigured(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("start did not stop")
 	}
-	if _, err := os.Stat(filepath.Join(home, "warp.yaml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, "humagen.yaml")); !os.IsNotExist(err) {
 		t.Errorf("-yes wrote choices nobody made: %v", err)
 	}
 }
@@ -82,7 +82,7 @@ func TestStartWorksWithNothingConfigured(t *testing.T) {
 // whatever stdin is, and /dev/null is not a terminal to ask on.
 func TestStartHelpAsksNothingAndWritesNothing(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("WARP_HOME", home)
+	t.Setenv("HUMAGEN_HOME", home)
 	devnull, err := os.Open(os.DevNull)
 	if err != nil {
 		t.Fatal(err)
@@ -100,8 +100,8 @@ func TestStartHelpAsksNothingAndWritesNothing(t *testing.T) {
 		if err := start(Options{}, args, devnull, &out); err == nil {
 			t.Errorf("start %v ran", args)
 		}
-		if _, err := os.Stat(filepath.Join(home, "warp.yaml")); !os.IsNotExist(err) {
-			t.Fatalf("start %v wrote warp.yaml: %v", args, err)
+		if _, err := os.Stat(filepath.Join(home, "humagen.yaml")); !os.IsNotExist(err) {
+			t.Fatalf("start %v wrote humagen.yaml: %v", args, err)
 		}
 		if out.Len() != 0 {
 			t.Errorf("start %v said %q", args, out.String())
@@ -109,11 +109,11 @@ func TestStartHelpAsksNothingAndWritesNothing(t *testing.T) {
 	}
 	// Help asked for is not a failure.
 	if code := Execute(Options{}, []string{"start", "-h"}); code != 0 {
-		t.Errorf("warp start -h exited %d", code)
+		t.Errorf("humagen start -h exited %d", code)
 	}
 }
 
-// Ctrl-C at a first-run question stops warp start there and then, as it
+// Ctrl-C at a first-run question stops humagen start there and then, as it
 // would anywhere else, and writes nothing: the person asked to stop, not to
 // take the defaults.
 func TestStartCtrlCAtAQuestionStopsAndWritesNothing(t *testing.T) {
@@ -122,7 +122,7 @@ func TestStartCtrlCAtAQuestionStopsAndWritesNothing(t *testing.T) {
 	cmd := exec.Command(os.Args[0])
 	cmd.Env = append(os.Environ(),
 		testCommand+"=start -setup -addr 127.0.0.1:0",
-		"WARP_HOME="+home, envWebDir+"=", "XDG_CACHE_HOME="+t.TempDir())
+		"HUMAGEN_HOME="+home, envWebDir+"=", "XDG_CACHE_HOME="+t.TempDir())
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -148,9 +148,9 @@ func TestStartCtrlCAtAQuestionStopsAndWritesNothing(t *testing.T) {
 	select {
 	case <-out.seen:
 	case <-exited:
-		t.Fatalf("warp start ended before asking: %v\n%s", waited, out)
+		t.Fatalf("humagen start ended before asking: %v\n%s", waited, out)
 	case <-time.After(30 * time.Second):
-		t.Fatalf("warp start did not ask %q:\n%s", question, out)
+		t.Fatalf("humagen start did not ask %q:\n%s", question, out)
 	}
 	if err := cmd.Process.Signal(os.Interrupt); err != nil {
 		t.Fatal(err)
@@ -158,16 +158,16 @@ func TestStartCtrlCAtAQuestionStopsAndWritesNothing(t *testing.T) {
 	select {
 	case <-exited:
 		if waited == nil {
-			t.Errorf("warp start exited 0 after Ctrl-C:\n%s", out)
+			t.Errorf("humagen start exited 0 after Ctrl-C:\n%s", out)
 		}
 	case <-time.After(10 * time.Second):
-		t.Errorf("warp start was still asking 10s after Ctrl-C:\n%s", out)
+		t.Errorf("humagen start was still asking 10s after Ctrl-C:\n%s", out)
 		// Enter through the rest, as the person might, to see what it does.
 		_, _ = io.WriteString(stdin, strings.Repeat("\n", 40))
 		time.Sleep(time.Second)
 	}
-	if _, err := os.Stat(filepath.Join(home, "warp.yaml")); !os.IsNotExist(err) {
-		t.Errorf("warp start wrote warp.yaml after Ctrl-C: %v", err)
+	if _, err := os.Stat(filepath.Join(home, "humagen.yaml")); !os.IsNotExist(err) {
+		t.Errorf("humagen start wrote humagen.yaml after Ctrl-C: %v", err)
 	}
 }
 
@@ -199,7 +199,7 @@ func (w *watched) String() string {
 // start says it found no console only when it serves none: a console -web
 // names is served, and one turned off was turned off on purpose.
 func TestStartSaysThereIsNoConsoleOnlyWhenNoneIsServed(t *testing.T) {
-	t.Setenv("WARP_HOME", t.TempDir())
+	t.Setenv("HUMAGEN_HOME", t.TempDir())
 	t.Setenv(envWebDir, "")
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	web := t.TempDir()
@@ -248,7 +248,7 @@ func TestStartSaysThereIsNoConsoleOnlyWhenNoneIsServed(t *testing.T) {
 }
 
 func TestSetupWithNoAnswersWritesAWorkingSpec(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "warp.yaml")
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
 	// Every answer is the default except "y" to a model provider, which
 	// takes the first preset with its usual key reference.
 	if err := runSetup(bufio.NewReader(strings.NewReader("\n\ny\n\n\n\nn\nn\n")), io.Discard, path); err != nil {
@@ -279,7 +279,7 @@ func TestSetupWithNoAnswersWritesAWorkingSpec(t *testing.T) {
 }
 
 func TestSetupNeverTakesAKeyForAReference(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "warp.yaml")
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
 	in := "\ndev\ny\n2\n\nsk-live-abc\n\nn\nn\nn\n"
 	var out bytes.Buffer
 	if err := runSetup(bufio.NewReader(strings.NewReader(in)), &out, path); err != nil {
@@ -293,11 +293,11 @@ func TestSetupNeverTakesAKeyForAReference(t *testing.T) {
 	}
 }
 
-// Under OIDC the Slack app calls warp's API as a machine, so setup asks
+// Under OIDC the Slack app calls humagen's API as a machine, so setup asks
 // where that machine's credentials are, and the spec it writes is one a
 // check takes.
 func TestSetupGivesTheSlackAppACredentialUnderOIDC(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "warp.yaml")
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
 	in := strings.Join([]string{
 		"", "oidc", "https://login.example.com", "", "", "", // name, sign-in, issuer, client id, secret, audience
 		"n", "n", // no model, no tool
@@ -312,11 +312,11 @@ func TestSetupGivesTheSlackAppACredentialUnderOIDC(t *testing.T) {
 		t.Fatal(err)
 	}
 	sl := cfg.Platforms[0].Spec.Surfaces.Slack
-	if sl == nil || !sl.Enabled || sl.WarpClient == nil {
+	if sl == nil || !sl.Enabled || sl.HumagenClient == nil {
 		t.Fatalf("slack = %+v", sl)
 	}
-	if c := sl.WarpClient; c.TokenURL != "https://login.example.com/oauth2/v1/token" || c.ClientID != "warp-slack" || c.ClientSecret.Ref != "env:WARP_SLACK_CLIENT_SECRET" {
-		t.Errorf("warp_client = %+v", c)
+	if c := sl.HumagenClient; c.TokenURL != "https://login.example.com/oauth2/v1/token" || c.ClientID != "humagen-slack" || c.ClientSecret.Ref != "env:HUMAGEN_SLACK_CLIENT_SECRET" {
+		t.Errorf("humagen_client = %+v", c)
 	}
 }
 
@@ -364,8 +364,8 @@ func get(t *testing.T, url string) string {
 
 func TestASpecFileRunsThePlatform(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "warp.yaml")
-	if err := os.WriteFile(path, []byte(`api_version: warp/v1
+	path := filepath.Join(dir, "humagen.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: humagen/v1
 kind: System
 metadata: {name: acme-agents, display_name: Acme Agents}
 spec:
@@ -373,7 +373,7 @@ spec:
   blobs: {kind: memory}
   execution: {max_depth: 2}
 ---
-api_version: warp/v1
+api_version: humagen/v1
 kind: Platform
 metadata: {name: default, display_name: Acme}
 spec:
@@ -409,8 +409,8 @@ spec:
 }
 
 func TestAnUnregisteredKindStopsStartup(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "warp.yaml")
-	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600); err != nil {
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	if err := os.WriteFile(path, []byte("api_version: humagen/v1\nkind: System\nspec:\n  blobs: {kind: gcs, gcs: {bucket: b}}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	err := serve(Options{}, []string{"-f", path, "-addr", "127.0.0.1:0"}, serveDefaults{})
@@ -420,8 +420,8 @@ func TestAnUnregisteredKindStopsStartup(t *testing.T) {
 }
 
 func TestConfigPrintFillsTheDefaults(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "warp.yaml")
-	if err := os.WriteFile(path, []byte("api_version: warp/v1\nkind: System\nmetadata: {name: acme}\n"), 0o600); err != nil {
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	if err := os.WriteFile(path, []byte("api_version: humagen/v1\nkind: System\nmetadata: {name: acme}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
@@ -435,7 +435,7 @@ func TestConfigPrintFillsTheDefaults(t *testing.T) {
 	}
 }
 
-func TestTheSlackManifestIsWhatWarpGenerates(t *testing.T) {
+func TestTheSlackManifestIsWhatHumagenGenerates(t *testing.T) {
 	var got bytes.Buffer
 	if err := slackCmd([]string{"manifest"}, &got); err != nil {
 		t.Fatal(err)
@@ -448,13 +448,13 @@ func TestTheSlackManifestIsWhatWarpGenerates(t *testing.T) {
 	_ = json.Unmarshal(got.Bytes(), &a)
 	_ = json.Unmarshal(want, &b)
 	if !reflect.DeepEqual(a, b) {
-		t.Errorf("apps/slack/manifest.json is out of date: run `go run ./cmd/warp slack manifest > apps/slack/manifest.json`\n%s", got.String())
+		t.Errorf("apps/slack/manifest.json is out of date: run `go run ./cmd/humagen slack manifest > apps/slack/manifest.json`\n%s", got.String())
 	}
 }
 
 func TestTheSlackManifestTakesItsNameFromTheSpec(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "warp.yaml")
-	if err := os.WriteFile(path, []byte(`api_version: warp/v1
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
+	if err := os.WriteFile(path, []byte(`api_version: humagen/v1
 kind: Platform
 metadata: {name: default, display_name: Acme}
 spec:
@@ -475,15 +475,15 @@ spec:
 // Projects moved from runs:* to projects:*, so config check warns about a
 // configured machine that reads runs but not projects.
 func TestConfigCheckWarnsOfAMachineThatReadsRunsButNotProjects(t *testing.T) {
-	t.Setenv("WARP_TEST_B", "x")
-	t.Setenv("WARP_TEST_A", "x")
-	t.Setenv("WARP_TEST_C", "x")
+	t.Setenv("HUMAGEN_TEST_B", "x")
+	t.Setenv("HUMAGEN_TEST_A", "x")
+	t.Setenv("HUMAGEN_TEST_C", "x")
 	check := func(scopes string) string {
 		t.Helper()
-		path := filepath.Join(t.TempDir(), "warp.yaml")
-		doc := "api_version: warp/v1\nkind: System\nspec:\n  auth: {kind: oidc, oidc: {issuer: 'https://login.example.com', client_id: warp, audience: warp}}\n---\n" +
-			"api_version: warp/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n  surfaces:\n    slack: {enabled: true, team: T1, bot_token: {ref: env:WARP_TEST_B}, app_token: {ref: env:WARP_TEST_A}," +
-			" warp_client: {token_url: 'https://login.example.com/token', client_id: warp-slack, client_secret: {ref: env:WARP_TEST_C}, scopes: [" + scopes + "]}}\n"
+		path := filepath.Join(t.TempDir(), "humagen.yaml")
+		doc := "api_version: humagen/v1\nkind: System\nspec:\n  auth: {kind: oidc, oidc: {issuer: 'https://login.example.com', client_id: humagen, audience: humagen}}\n---\n" +
+			"api_version: humagen/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n  surfaces:\n    slack: {enabled: true, team: T1, bot_token: {ref: env:HUMAGEN_TEST_B}, app_token: {ref: env:HUMAGEN_TEST_A}," +
+			" humagen_client: {token_url: 'https://login.example.com/token', client_id: humagen-slack, client_secret: {ref: env:HUMAGEN_TEST_C}, scopes: [" + scopes + "]}}\n"
 		if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -493,12 +493,22 @@ func TestConfigCheckWarnsOfAMachineThatReadsRunsButNotProjects(t *testing.T) {
 		}
 		return out.String()
 	}
-	if got := check("warp:runs:read, warp:runs:write"); !strings.Contains(got, `warning: platform "default": the Slack app's warp_client has warp:runs:read but not warp:projects:read`) || !strings.Contains(got, "ok: ") {
+	if got := check("humagen:runs:read, humagen:runs:write"); !strings.Contains(got, `warning: platform "default": the Slack app's humagen_client has humagen:runs:read but not humagen:projects:read`) || !strings.Contains(got, "ok: ") {
 		t.Fatalf("check said:\n%s", got)
 	}
-	for _, scopes := range []string{"warp:runs:read, warp:projects:read", "warp:agents:read"} {
+	for _, scopes := range []string{"humagen:runs:read, humagen:projects:read", "humagen:agents:read"} {
 		if got := check(scopes); strings.Contains(got, "warning") {
 			t.Fatalf("scopes %s: check said:\n%s", scopes, got)
 		}
+	}
+	// Scopes under the old prefix still count, and are noted, without
+	// telling the operator to rename them before the identity provider does.
+	got := check("warp:runs:read, warp:projects:read")
+	if !strings.Contains(got, "asks for scopes under warp:, the old prefix, which still works; change them to humagen: once your identity provider defines those") ||
+		strings.Contains(got, "lists no projects") {
+		t.Fatalf("check said:\n%s", got)
+	}
+	if got := check("warp:runs:read"); !strings.Contains(got, "lists no projects") {
+		t.Fatalf("check said:\n%s", got)
 	}
 }

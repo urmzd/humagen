@@ -10,9 +10,9 @@ import (
 
 	"github.com/urmzd/saige/agent/skills"
 
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 func skill(name string) projects.Skill {

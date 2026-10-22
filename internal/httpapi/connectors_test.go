@@ -15,16 +15,16 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/registry"
 	"github.com/urmzd/fiber/pkg/signature"
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	githubflow "github.com/urmzd/warp/pkg/integrations/github"
-	slackflow "github.com/urmzd/warp/pkg/integrations/slack"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	githubflow "github.com/urmzd/humagen/pkg/integrations/github"
+	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
 )
 
 func TestSignedIntegrationsRunThroughThePlatformAndAppearInItsConsoleAPI(t *testing.T) {
 	for _, surface := range []string{"github", "slack"} {
 		t.Run(surface, func(t *testing.T) {
-			const secret = "warp-integration-secret"
+			const secret = "humagen-integration-secret"
 			var peer platform.Peer
 			var replies func() int
 			var body, path string

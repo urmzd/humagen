@@ -1,4 +1,4 @@
-import type { PrimitiveImpls, PrimitiveName, PrimitiveProps } from "@warp/primitives";
+import type { PrimitiveImpls, PrimitiveName, PrimitiveProps } from "@humagen/primitives";
 import { createElement } from "react";
 
 /** Host element type for a primitive. The serializer switches on these. */

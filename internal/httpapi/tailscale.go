@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/urmzd/warp/pkg/auth"
+	"github.com/urmzd/humagen/pkg/auth"
 )
 
 // tailscaleAuth trusts Serve on this host. Local processes must be trusted:
@@ -69,7 +69,7 @@ func identityHeader(r *http.Request, key string) (string, error) {
 
 func (a *Authn) tailscaleLogin(w http.ResponseWriter, r *http.Request) {
 	if _, err := a.Authenticate(r); err != nil {
-		http.Error(w, "open Warp through its Tailscale Serve URL from a user-owned tailnet device", http.StatusUnauthorized)
+		http.Error(w, "open Humagen through its Tailscale Serve URL from a user-owned tailnet device", http.StatusUnauthorized)
 		return
 	}
 	http.Redirect(w, r, safeReturn(r.URL.Query().Get("return_to")), http.StatusFound)

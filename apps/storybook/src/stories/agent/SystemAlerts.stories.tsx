@@ -1,8 +1,8 @@
+import { SystemAlertView } from "@humagen/components";
+import type { SystemAlert } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { SystemStatusBanner } from "@humagen/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { SystemAlertView } from "@warp/components";
-import type { SystemAlert } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { SystemStatusBanner } from "@warp/web";
 import { useEffect, useState } from "react";
 import { fn } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";

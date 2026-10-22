@@ -1,7 +1,7 @@
-import { TurnView } from "@warp/components";
-import { ActionId, decodeAction, type Turn } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { Callout, Markdown, Only, Text, useSurface } from "@warp/primitives";
+import { TurnView } from "@humagen/components";
+import { ActionId, decodeAction, type Turn } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { Callout, Markdown, Only, Text, useSurface } from "@humagen/primitives";
 import { describe, expect, it } from "vitest";
 import {
   actionIdBase,

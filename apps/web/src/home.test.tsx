@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { HomeNotification, HomeUpdate } from "@warp/core";
+import type { HomeNotification, HomeUpdate } from "@humagen/core";
 import { HomeBoxes, HomePage } from "./HomePage.tsx";
 
 const prompt = <form aria-label="Message"><textarea placeholder="Ask anything" /><button type="submit">Send message</button></form>;
@@ -63,7 +63,7 @@ test("Needs you is a box of the five newest things waiting on the person, from w
   // Each row is one control that opens it.
   assert.equal([...html.matchAll(/<li><button type="button"/g)].length, 6);
   // Nothing waiting on a person moves.
-  assert.doesNotMatch(html, /animate|warp-enter|aui-skeleton/);
+  assert.doesNotMatch(html, /animate|humagen-enter|aui-skeleton/);
 });
 
 test("an item above normal says so in words before when it came, and a normal one says nothing more", () => {

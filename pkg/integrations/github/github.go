@@ -1,5 +1,5 @@
 // Package github composes transport capabilities with review and fix policy.
-// API calls stay in fiber; presentation is supplied by warp.
+// API calls stay in fiber; presentation is supplied by humagen.
 package github
 
 import (
@@ -11,7 +11,7 @@ import (
 	"github.com/urmzd/fiber/pkg/connectors/mention"
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/topic"
-	presentation "github.com/urmzd/warp/internal/presentation/github"
+	presentation "github.com/urmzd/humagen/internal/presentation/github"
 	"sort"
 	"strings"
 	"sync"
@@ -122,7 +122,7 @@ func (c *Connector) Actions() []connector.Action {
 	return actions
 }
 
-// prepare applies warp's policy to a tag before it is handed over. A tag for
+// prepare applies humagen's policy to a tag before it is handed over. A tag for
 // fiber's control name is one whose agent the host has yet to choose, such as
 // a comment addressed to the app that names no agent: no agent can take that
 // name, and the guide names the agent that answers, so such a tag posts none.
@@ -184,7 +184,7 @@ func (c *Connector) automatic(h transport.Hook) (string, string, bool) {
 
 func conclusion(v transport.View) string {
 	var r presentation.ReviewReport
-	if json.Unmarshal([]byte(v.Text), &r) == nil && r.Format == presentation.ReviewFormat {
+	if json.Unmarshal([]byte(v.Text), &r) == nil && presentation.IsReviewFormat(r.Format) {
 		if _, err := presentation.FormatReview(r); err != nil {
 			return "action_required"
 		}
@@ -193,7 +193,7 @@ func conclusion(v transport.View) string {
 				return "failure"
 			}
 		}
-	} else if strings.Contains(v.Text, presentation.ReviewFormat) {
+	} else if presentation.NamesReviewFormat(v.Text) {
 		return "action_required"
 	}
 	return "neutral"

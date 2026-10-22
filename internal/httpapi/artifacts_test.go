@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/policy"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/policy"
 )
 
 func (f *fixture) raw(t *testing.T, path, bearer string) (*http.Response, string) {
@@ -34,8 +34,8 @@ func (f *fixture) raw(t *testing.T, path, bearer string) (*http.Response, string
 func TestArtifactsAreServedSafely(t *testing.T) {
 	f := newFixture(t)
 	admin := f.machine(t, "acme", everything...)
-	reader := f.machine(t, "acme", "warp:artifacts:read")
-	none := f.machine(t, "acme", "warp:runs:read")
+	reader := f.machine(t, "acme", "humagen:artifacts:read")
+	none := f.machine(t, "acme", "humagen:runs:read")
 	globex := f.machine(t, "globex", everything...)
 	// What is published is read where it lives: Launch, which everyone sees.
 	if res, _ := f.do(t, nil, "POST", "/api/projects", admin, `{"name":"Launch"}`); res.StatusCode != http.StatusCreated {

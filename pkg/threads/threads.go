@@ -1,7 +1,7 @@
 // Package threads keeps shared threads: the conversations people and agents
 // have together in a project's channel.
 //
-// A thread is a warp conversation with a record: the channel it is in, who
+// A thread is a humagen conversation with a record: the channel it is in, who
 // takes part, its visibility and an optional default agent. Its turns are of
 // two kinds. A message is a person's turn, kept here, and starts no run of
 // its own. An agent's turn exists only as a run, kept in the run index and
@@ -35,7 +35,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/attachment"
 
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // Errors a caller can match.

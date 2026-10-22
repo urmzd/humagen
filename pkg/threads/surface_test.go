@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 var slackThread = threads.Surface{Client: "slack-acme", Channel: "C0123", TS: "1730000000.000100"}

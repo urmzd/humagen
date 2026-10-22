@@ -32,11 +32,12 @@ import { Schedules } from "./Schedules.tsx";
 import { Settings } from "./Settings.tsx";
 import { Storage } from "./Storage.tsx";
 import { DrawerButton, Sidebar } from "./Sidebar.tsx";
-import { notificationsOf, updatesOf } from "@warp/adapter";
-import { HOME_NEEDS, type HomeNotifications, type HomeUpdate } from "@warp/core";
+import { notificationsOf, updatesOf } from "@humagen/adapter";
+import { HOME_NEEDS, type HomeNotifications, type HomeUpdate } from "@humagen/core";
 import { HomeBoxes, type Loaded } from "./HomePage.tsx";
 import { usePreferences } from "./preferences.ts";
 import { type Source as About, type PlatformMessage, transport as mail } from "./mail.ts";
+import { SIDEBAR_KEY, sidebarStartsOpen } from "./sidebarState.ts";
 import { type AgentTab, href, kindParam, type ProjectTab, type Route, type SettingsSection, useRoute } from "./route.ts";
 import { Page, primary } from "./ui.tsx";
 
@@ -72,7 +73,7 @@ export function App() {
   if (session.state === "signed-out") {
     return (
       <Centered>
-        <h1 className="text-aui-lg font-medium text-aui-fg">Warp</h1>
+        <h1 className="text-aui-lg font-medium text-aui-fg">Humagen</h1>
         <p className="text-aui-sm text-aui-muted">You are signed out.</p>
         <a className={primary} href={signInUrl()}>
           Sign In
@@ -91,21 +92,10 @@ function Centered({ children }: { children: React.ReactNode }) {
   );
 }
 
-const SIDEBAR_KEY = "warp.sidebar";
-
 /** The platform's own agents the console offers ways into. */
 export const BUILTIN_ANALYST = "warp-analyst";
 export const BUILTIN_BUILDER = "warp-builder";
 
-/** A per-viewer convenience, so it lives in the browser and must never throw. */
-function stored(key: string, fallback: boolean): boolean {
-  try {
-    const v = window.localStorage.getItem(key);
-    return v === null ? fallback : v === "1";
-  } catch {
-    return fallback;
-  }
-}
 
 function greeting(name: string): string {
   const h = new Date().getHours();
@@ -141,7 +131,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   // The project tree, null until it is read, and the workspace's own view, which heads it.
   const [projects, setProjects] = useState<ProjectView[] | null>(null);
   const [root, setRoot] = useState<ProjectView | null>(null);
-  const [open, setOpen] = useState(() => stored(SIDEBAR_KEY, window.innerWidth >= 768));
+  const [open, setOpen] = useState(() => sidebarStartsOpen(window.innerWidth));
   const [runs, setRuns] = useState<Run[]>([]);
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [agents, setAgents] = useState<Revision[]>([]);

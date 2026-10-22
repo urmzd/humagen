@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 func expert(who string, topics ...string) projects.Expert {

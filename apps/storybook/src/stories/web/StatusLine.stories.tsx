@@ -1,8 +1,8 @@
+import { SessionNotices } from "@humagen/components";
+import type { ApprovalMode, SessionState } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { PromptInput, StatusLine } from "@humagen/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { SessionNotices } from "@warp/components";
-import type { ApprovalMode, SessionState } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { PromptInput, StatusLine } from "@warp/web";
 import { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { Canvas, webOnly } from "../../support";

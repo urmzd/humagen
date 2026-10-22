@@ -11,7 +11,7 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 
-	"github.com/urmzd/warp/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/knowledge"
 )
 
 // passagesPerTurn is how many passages one turn is grounded in.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 var t0 = time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)

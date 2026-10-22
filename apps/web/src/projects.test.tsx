@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { defaultCopy as copy } from "@warp/components";
+import { defaultCopy as copy } from "@humagen/components";
 import type { Me, Preferences, ProjectChange, Settings as Workspace } from "./api.ts";
 import { ProjectChoices, ProjectPicker, placeOf } from "./ProjectPicker.tsx";
 import { KnowledgeLists, MAX_KNOWLEDGE } from "./ProjectKnowledge.tsx";
@@ -27,7 +27,7 @@ test("projects are grouped by kind, Company-wide, Teams, then Accounts, each in 
   );
 });
 
-test("a project of the workspace's own kind is listed after warp's kinds, in a group by its title", () => {
+test("a project of the workspace's own kind is listed after humagen's kinds, in a group by its title", () => {
   const partner = view("Reseller", { kind: "partner", parent: field });
   const kinds = [{ name: "partner", title: "Partners", like: "account" as const }];
   assert.deepEqual(

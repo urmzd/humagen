@@ -6,8 +6,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 func TestTheFirstRuleThatAppliesDecides(t *testing.T) {

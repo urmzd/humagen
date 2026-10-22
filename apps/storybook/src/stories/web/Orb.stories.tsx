@@ -1,5 +1,5 @@
+import { AgentOrb, type OrbSize, type OrbState, type OrbVariant, orbLabel } from "@humagen/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { AgentOrb, type OrbSize, type OrbState, type OrbVariant, orbLabel } from "@warp/web";
 import { expect } from "storybook/test";
 import { webOnly } from "../../support";
 

@@ -19,8 +19,8 @@ export function ways(t: Pick<ToolCredentials, "values" | "references">): Way[] {
 /** How you stand with one tool, in words. A value is never shown, because it never comes back. */
 export function standing(c: ToolCredential): string {
   if (!c.connected) return "Not connected. An agent cannot use these tools for you.";
-  if (c.kind === "value") return "Connected. Your credential is stored with warp.";
-  return `Connected. warp reads ${c.ref ?? "your reference"} each time a run uses it, and stores only the reference.`;
+  if (c.kind === "value") return "Connected. Your credential is stored with Humagen.";
+  return `Connected. Humagen reads ${c.ref ?? "your reference"} each time a run uses it, and stores only the reference.`;
 }
 
 /** Where your credential goes when a run uses it. */

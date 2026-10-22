@@ -1,6 +1,6 @@
-import type { ActionHandler, Turn, TurnEvent } from "@warp/core";
-import { NowContext, WebSurface } from "@warp/render-web";
-import { ArtifactPreviewProvider } from "@warp/web";
+import type { ActionHandler, Turn, TurnEvent } from "@humagen/core";
+import { NowContext, WebSurface } from "@humagen/render-web";
+import { ArtifactPreviewProvider } from "@humagen/web";
 import type { ReactNode } from "react";
 
 /** Story args shared by everything that emits UiActions; `fn()` logs them in the Actions panel. */

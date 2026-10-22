@@ -8,14 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 func TestSigningInPutsAPersonInTheDirectoryWithNoEmail(t *testing.T) {
 	f := newFixture(t)
-	c := f.signIn(t, "warp-viewers")
+	c := f.signIn(t, "humagen-viewers")
 	res, out := f.do(t, c, "GET", "/api/people", "", "")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("a viewer reading the directory = %d %v", res.StatusCode, out)
@@ -41,7 +41,7 @@ func TestASubjectThatIsAnAddressNeverReachesTheDirectory(t *testing.T) {
 	f := newFixture(t)
 	f.p.SeePerson(auth.Principal{Kind: auth.User, Tenant: "acme", Subject: "tailscale:grace@acme.test", Name: "Grace"})
 	f.p.SeePerson(auth.Principal{Kind: auth.User, Tenant: "acme", Subject: "okta|00u-ada", Name: "Ada"})
-	tok := f.machine(t, "acme", "warp:people:read")
+	tok := f.machine(t, "acme", "humagen:people:read")
 	out := want(t, f, tok, "GET", "/api/people", "", http.StatusOK)
 	raw, _ := json.Marshal(out)
 	if strings.Contains(string(raw), "@") || strings.Contains(string(raw), "acme.test") {
@@ -67,7 +67,7 @@ func TestASubjectThatIsAnAddressNeverReachesTheDirectory(t *testing.T) {
 
 func TestAMachineIsNotAPerson(t *testing.T) {
 	f := newFixture(t)
-	tok := f.machine(t, "acme", "warp:people:read")
+	tok := f.machine(t, "acme", "humagen:people:read")
 	want(t, f, tok, "GET", "/api/people", "", http.StatusOK)
 	if n := f.p.People.Len("acme"); n != 0 {
 		t.Fatalf("a machine's request recorded %d people", n)
@@ -76,7 +76,7 @@ func TestAMachineIsNotAPerson(t *testing.T) {
 
 func TestTheDirectoryIsReadWithPeopleRead(t *testing.T) {
 	f := newFixture(t)
-	if code, _ := status(t, f, f.machine(t, "acme", "warp:projects:read"), "GET", "/api/people", ""); code != http.StatusForbidden {
+	if code, _ := status(t, f, f.machine(t, "acme", "humagen:projects:read"), "GET", "/api/people", ""); code != http.StatusForbidden {
 		t.Fatalf("the directory without people:read = %d", code)
 	}
 }
@@ -113,7 +113,7 @@ func TestAgentsSayWhereEachLivesAndIsEnabled(t *testing.T) {
 
 func TestAPersonsPhotoIsTheirOwn(t *testing.T) {
 	f := newFixture(t)
-	c := f.signIn(t, "warp-viewers")
+	c := f.signIn(t, "humagen-viewers")
 	png := "\x89PNG\r\n\x1a\n" + strings.Repeat("\x00", 32)
 	req, _ := http.NewRequest("PUT", f.srv.URL+"/api/preferences/photo", strings.NewReader(png))
 	req.Header.Set("Origin", f.srv.URL)
@@ -170,7 +170,7 @@ func TestTheDirectoryListsAPersonsProjectsTheReaderMaySee(t *testing.T) {
 		t.Fatalf("Ada is not in the directory: %v", out)
 		return nil
 	}
-	reader := f.machine(t, "acme", "warp:people:read", "warp:projects:read")
+	reader := f.machine(t, "acme", "humagen:people:read", "humagen:projects:read")
 	got := projectsOf(reader)
 	if out := want(t, f, reader, "GET", "/api/people", "", http.StatusOK); strings.Contains(fmt.Sprint(out), "projects_more") {
 		t.Fatalf("a hidden project is counted: %v", out)
@@ -178,11 +178,11 @@ func TestTheDirectoryListsAPersonsProjectsTheReaderMaySee(t *testing.T) {
 	if len(got) != 1 || got[0].(map[string]any)["name"] != "Field" || got[0].(map[string]any)["title"] != "Field engineering" || got[0].(map[string]any)["role"] != "member" {
 		t.Fatalf("a reader outside Globex reads Ada's projects as %v, want Field alone", got)
 	}
-	governs := f.machine(t, "acme", "warp:people:read", "warp:projects:read", "warp:projects:govern")
+	governs := f.machine(t, "acme", "humagen:people:read", "humagen:projects:read", "humagen:projects:govern")
 	if got := projectsOf(governs); len(got) != 2 || got[1].(map[string]any)["name"] != "Globex" || got[1].(map[string]any)["role"] != "owner" {
 		t.Fatalf("projects:govern reads Ada's projects as %v", got)
 	}
-	if got := projectsOf(f.machine(t, "acme", "warp:people:read")); len(got) != 0 {
+	if got := projectsOf(f.machine(t, "acme", "humagen:people:read")); len(got) != 0 {
 		t.Fatalf("a reader without projects:read reads Ada's projects as %v", got)
 	}
 }
@@ -199,7 +199,7 @@ func TestADirectoryPersonsProjectsAreBounded(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	out := want(t, f, f.machine(t, "acme", "warp:people:read", "warp:projects:read"), "GET", "/api/people", "", http.StatusOK)
+	out := want(t, f, f.machine(t, "acme", "humagen:people:read", "humagen:projects:read"), "GET", "/api/people", "", http.StatusOK)
 	ada := out["people"].([]any)[0].(map[string]any)
 	if n := len(ada["projects"].([]any)); n != MaxPersonProjects || ada["projects_more"] != float64(3) {
 		t.Fatalf("Ada lists %d projects and %v more", n, ada["projects_more"])

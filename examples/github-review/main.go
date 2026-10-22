@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/urmzd/warp/internal/presentation/github"
+	"github.com/urmzd/humagen/internal/presentation/github"
 )
 
 func main() {

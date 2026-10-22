@@ -3,9 +3,9 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // Skills and mention kinds: what a message posted in a project can name with

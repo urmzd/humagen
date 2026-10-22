@@ -1,4 +1,4 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { type FormEvent, type MouseEvent, useRef, useState } from "react";
 import { AccessExplain } from "./AccessExplain.tsx";
 import { href, type SettingsSection } from "./route.ts";
@@ -144,11 +144,11 @@ export function Settings({
   const strip = useStrip<HTMLElement>(section);
 
   return (
-    <div className="warp-fade flex min-h-0 flex-1 flex-col md:flex-row">
+    <div className="humagen-fade flex min-h-0 flex-1 flex-col md:flex-row">
       {/* The rule is drawn on a frame around the sections, so it runs the full width while the row's ends fade. */}
       {/* On a phone the row scrolls inside the 16px gutter, never under the screen's edge. */}
       <div className="shrink-0 border-aui-border border-b px-4 md:w-52 md:border-r md:border-b-0 md:px-0">
-        <nav ref={strip} aria-label="Settings sections" className="warp-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3">
+        <nav ref={strip} aria-label="Settings sections" className="humagen-strip flex gap-0.5 overflow-x-auto py-2 md:flex-col md:p-3">
           {sections.map((s) => (
             <button
               key={s.id}

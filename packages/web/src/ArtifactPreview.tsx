@@ -1,5 +1,5 @@
-import { formatBytes } from "@warp/core";
-import { type FileProps, Markdown } from "@warp/primitives";
+import { formatBytes } from "@humagen/core";
+import { type FileProps, Markdown } from "@humagen/primitives";
 import {
   ArtifactIcon,
   ArtifactOpenContext,
@@ -8,7 +8,7 @@ import {
   ExternalLinkIcon,
   phaseLabel,
   XIcon,
-} from "@warp/render-web";
+} from "@humagen/render-web";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
 function Body({ file }: { file: FileProps }) {

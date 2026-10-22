@@ -1,5 +1,5 @@
 {
-  "name": "@warp/console",
+  "name": "@humagen/console",
   "version": "0.20.2",
   "private": true,
   "type": "module",
@@ -12,12 +12,12 @@
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
     "@fontsource-variable/figtree": "^5.3.0",
-    "@warp/adapter": "workspace:*",
-    "@warp/components": "workspace:*",
-    "@warp/core": "workspace:*",
-    "@warp/primitives": "workspace:*",
-    "@warp/render-web": "workspace:*",
-    "@warp/web": "workspace:*",
+    "@humagen/adapter": "workspace:*",
+    "@humagen/components": "workspace:*",
+    "@humagen/core": "workspace:*",
+    "@humagen/primitives": "workspace:*",
+    "@humagen/render-web": "workspace:*",
+    "@humagen/web": "workspace:*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

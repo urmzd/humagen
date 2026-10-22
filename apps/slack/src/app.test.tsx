@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fromServer } from "@warp/adapter";
-import { defaultCopy, MessageView } from "@warp/components";
-import { renderToSlack } from "@warp/render-slack";
+import { fromServer } from "@humagen/adapter";
+import { defaultCopy, MessageView } from "@humagen/components";
+import { renderToSlack } from "@humagen/render-slack";
 import { echoed, forSlack } from "./app.tsx";
 import {
   alertMail,
@@ -33,9 +33,9 @@ import {
   world,
 } from "./harness.ts";
 import { words } from "./host.ts";
+import { type ClientRecord, HumagenError } from "./humagen.ts";
 import { runId, tagId } from "./keys.ts";
 import { validateBlocks } from "./validate.ts";
-import { type ClientRecord, WarpError } from "./warp.ts";
 
 const TS = "1700000000.000100";
 const KEY = `slack-${TEAM}-${CHANNEL}-1700000000-000100`;
@@ -58,8 +58,8 @@ async function deliver(w: World, envelope: Parameters<World["app"]["handle"]>[0]
 }
 
 /** Run one event of a run through and let Slack catch up. */
-async function emit(w: World, kind: string, payload?: unknown, run = w.warp.last.id) {
-  w.warp.emit(run, kind, payload);
+async function emit(w: World, kind: string, payload?: unknown, run = w.humagen.last.id) {
+  w.humagen.emit(run, kind, payload);
   await settle();
 }
 
@@ -71,14 +71,14 @@ test("a mention becomes one run, streamed natively, with the session kept in ste
   await deliver(w, mention("what changed in the last deploy?", TS));
 
   // The run: a new conversation named by the thread, the default agent, the Slack person as actor.
-  assert.equal(w.warp.started.length, 1);
-  const asked = w.warp.started[0];
+  assert.equal(w.humagen.started.length, 1);
+  const asked = w.humagen.started[0];
   assert.equal(asked?.idempotencyKey, KEY);
   assert.equal(asked?.agent, "lead");
   assert.equal(asked?.text, "what changed in the last deploy?");
   assert.equal(asked?.after, undefined);
-  assert.equal(w.warp.last.id, runId("acme", SUBJECT, KEY));
-  assert.equal(w.warp.last.tag_id, tagId(SUBJECT, KEY));
+  assert.equal(w.humagen.last.id, runId("acme", SUBJECT, KEY));
+  assert.equal(w.humagen.last.tag_id, tagId(SUBJECT, KEY));
 
   // Before any event: seen, processing, and a stream opened in the mention's thread.
   assert.deepEqual(w.slack.methods, [
@@ -160,14 +160,14 @@ test("a redelivery of the same Slack event starts no second run, before or after
 
   await deliver(w, mention("ping", TS, { retry: 1 }));
   await w.app.idle();
-  assert.equal(w.warp.asked.length, 1, "the same process remembers the event");
+  assert.equal(w.humagen.asked.length, 1, "the same process remembers the event");
 
-  // A new process remembers nothing, so it asks warp, which has the run.
+  // A new process remembers nothing, so it asks humagen, which has the run.
   const again = w.restart();
   await deliver(w, mention("ping", TS), again);
   await again.idle();
-  assert.equal(w.warp.asked.length, 1, "warp is not asked to start it again");
-  assert.equal(w.warp.runs.size, 1);
+  assert.equal(w.humagen.asked.length, 1, "humagen is not asked to start it again");
+  assert.equal(w.humagen.runs.size, 1);
   assert.equal(w.slack.calls.length, calls, "and nothing more is written to Slack");
 });
 
@@ -177,14 +177,14 @@ test("a reply in the thread continues the conversation, also after a restart", a
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "one" });
   await w.app.idle();
-  const first = w.warp.last.id;
+  const first = w.humagen.last.id;
 
   const app = w.restart();
   await deliver(w, mention("second", "1700000050.000200", { thread_ts: TS }), app);
-  const second = w.warp.started[1];
+  const second = w.humagen.started[1];
   assert.equal(second?.after, first);
   assert.equal(second?.idempotencyKey, `slack-${TEAM}-${CHANNEL}-1700000050-000200`);
-  assert.equal(w.warp.last.thread, first, "one Slack thread is one conversation");
+  assert.equal(w.humagen.last.thread, first, "one Slack thread is one conversation");
   assert.equal(w.slack.of("chat.startStream").at(-1)?.thread_ts, TS);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "two" });
@@ -194,7 +194,7 @@ test("a reply in the thread continues the conversation, also after a restart", a
 test("a direct message is a conversation per thread", async () => {
   const w = world();
   await deliver(w, direct("hello", "1700000100.000100"));
-  assert.equal(w.warp.started[0]?.idempotencyKey, `slack-${TEAM}-${DM}-1700000100-000100`);
+  assert.equal(w.humagen.started[0]?.idempotencyKey, `slack-${TEAM}-${DM}-1700000100-000100`);
   assert.equal(w.slack.of("chat.startStream")[0]?.thread_ts, "1700000100.000100");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "hi" });
@@ -202,7 +202,7 @@ test("a direct message is a conversation per thread", async () => {
 
   // A new top-level message is a new conversation.
   await deliver(w, direct("something else", "1700000200.000100"));
-  assert.equal(w.warp.started[1]?.after, undefined);
+  assert.equal(w.humagen.started[1]?.after, undefined);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await w.app.idle();
@@ -222,7 +222,7 @@ test("an event from another team is ignored", async () => {
   });
   await deliver(w, command("hello", { team_id: OTHER_TEAM }));
   await w.app.idle();
-  assert.equal(w.warp.asked.length, 0);
+  assert.equal(w.humagen.asked.length, 0);
   assert.equal(w.slack.calls.length, 0);
   assert.equal(w.logs.filter((l) => /another team/.test(l)).length, 3);
 });
@@ -235,20 +235,20 @@ test("a bot's message, the app's own and an edit never start a run", async () =>
   await deliver(w, direct("loop", "1700000003.000100", { subtype: "message_changed" }));
   await deliver(w, direct("loop", "1700000004.000100", { subtype: "bot_message" }));
   await w.app.idle();
-  assert.equal(w.warp.asked.length, 0);
+  assert.equal(w.humagen.asked.length, 0);
   assert.equal(w.slack.calls.length, 0);
 });
 
 test("stop mid-run stops the run, confirms in the thread, settles the session and renders nothing more", async () => {
   const w = world();
   await deliver(w, mention("write a long report", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "delta.text", { text: "Part one. " });
 
   await deliver(w, stopPressed(TS));
   await w.app.idle();
-  assert.deepEqual(w.warp.stops, [run]);
+  assert.deepEqual(w.humagen.stops, [run]);
   const stopped = w.slack.of("chat.stopStream")[0];
   assert.match(textIn(blocksOf(stopped)), new RegExp(defaultCopy.stopped));
   assert.match(textIn(blocksOf(stopped)), new RegExp(defaultCopy.stopPhase.confirmed));
@@ -260,8 +260,8 @@ test("stop mid-run stops the run, confirms in the thread, settles the session an
 
   // The run ended stopped with what it had said. Nothing it publishes later moves the turn.
   const before = w.slack.calls.length;
-  w.warp.emit(run, "delta.text", { text: "Part two." });
-  w.warp.emit(run, "lifecycle.completed", { text: "Part one. Part two." });
+  w.humagen.emit(run, "delta.text", { text: "Part two." });
+  w.humagen.emit(run, "lifecycle.completed", { text: "Part one. Part two." });
   await settle();
   assert.equal(w.slack.calls.length, before);
   assert.equal(w.slack.streamed, "Part one.");
@@ -273,21 +273,21 @@ test("a stop that loses the race to the answer shows the answer, and is not call
   await deliver(w, mention("quick question", TS));
   await emit(w, "lifecycle.accepted");
   await emit(w, "delta.text", { text: "The whole answer." });
-  w.warp.stopsFinishFirst = true;
+  w.humagen.stopsFinishFirst = true;
   await deliver(w, stopPressed(TS));
   await w.app.idle();
   await settle();
   const ended = w.slack.of("chat.stopStream").at(-1);
   assert.doesNotMatch(textIn(blocksOf(ended)), new RegExp(defaultCopy.stopPhase.failed));
-  assert.equal((await w.warp.getRun(w.warp.last.id))?.status, "completed");
+  assert.equal((await w.humagen.getRun(w.humagen.last.id))?.status, "completed");
   assert.equal(w.slack.statuses.at(-1), "active");
 });
 
 test("a stopped run this process does not follow is confirmed with what it had said", async () => {
   const w = world();
-  const run = (await w.warp.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
-  w.warp.emit(run, "lifecycle.started");
-  w.warp.emit(run, "delta.text", { text: "Half an answer" });
+  const run = (await w.humagen.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
+  w.humagen.emit(run, "lifecycle.started");
+  w.humagen.emit(run, "delta.text", { text: "Half an answer" });
   await deliver(w, stopPressed(TS), w.app);
   await w.app.idle();
   const posted = w.slack.of("chat.postMessage").at(-1);
@@ -295,18 +295,18 @@ test("a stopped run this process does not follow is confirmed with what it had s
   assert.match(textIn(blocksOf(posted)), new RegExp(defaultCopy.stopped));
 });
 
-test("stop after a restart still finds the run, through warp", async () => {
+test("stop after a restart still finds the run, through humagen", async () => {
   const w = world();
   // A run an earlier process started and is no longer there to follow.
-  const run = (await w.warp.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
-  w.warp.emit(run, "lifecycle.started");
+  const run = (await w.humagen.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
+  w.humagen.emit(run, "lifecycle.started");
 
   // This process follows nothing. The session still names the conversation.
   const app = w.app;
   const before = w.slack.calls.length;
   await deliver(w, stopPressed(TS), app);
   await app.idle();
-  assert.deepEqual(w.warp.stops, [run]);
+  assert.deepEqual(w.humagen.stops, [run]);
   const after = w.slack.calls.slice(before);
   assert.deepEqual(
     after.map((c) => c.method),
@@ -317,23 +317,23 @@ test("stop after a restart still finds the run, through warp", async () => {
   assert.equal(after[1]?.args.status, "active");
   collect("stopped after restart", w.slack);
 
-  // The confirmation carries what the run had said when warp stopped it.
-  assert.equal((await w.warp.getRun(run))?.status, "stopped");
+  // The confirmation carries what the run had said when humagen stopped it.
+  assert.equal((await w.humagen.getRun(run))?.status, "stopped");
 
   // With nothing left to stop, the button still settles the session.
   const idle = w.restart();
   await deliver(w, stopPressed(TS), idle);
   await idle.idle();
-  assert.deepEqual(w.warp.stops, [run], "an ended run is not stopped again");
+  assert.deepEqual(w.humagen.stops, [run], "an ended run is not stopped again");
   assert.equal(w.slack.calls.at(-1)?.method, "agents.sessions.setStatus");
   await w.app.idle();
 });
 
-test("a stop warp does not confirm says so, and still renders nothing more", async () => {
+test("a stop humagen does not confirm says so, and still renders nothing more", async () => {
   const w = world();
   await deliver(w, mention("question", TS));
   await emit(w, "lifecycle.accepted");
-  w.warp.stopFails = true;
+  w.humagen.stopFails = true;
   await deliver(w, stopPressed(TS));
   await w.app.idle();
   assert.match(
@@ -346,9 +346,9 @@ test("a stop warp does not confirm says so, and still renders nothing more", asy
 test("a run stopped from the console ends in Slack, though it publishes no final event", async () => {
   const w = world();
   await deliver(w, mention("question", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
-  w.warp.set(run, { status: "stopped", cause: "Stopped by dana" });
+  w.humagen.set(run, { status: "stopped", cause: "Stopped by dana" });
   await w.app.idle();
   assert.match(textIn(blocksOf(w.slack.of("chat.stopStream")[0])), new RegExp(defaultCopy.stopped));
   assert.deepEqual(w.slack.statuses, ["processing", "active"]);
@@ -370,7 +370,7 @@ test("a stopped event on the stream ends the turn, once the platform publishes o
 test("a failed run shows why, and Retry asks again in the same conversation", async () => {
   const w = world();
   await deliver(w, mention("deploy it", TS));
-  const failedRun = w.warp.last.id;
+  const failedRun = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   // An attempt the engine will retry is not the end of the turn.
   await emit(w, "lifecycle.failed", { error: "timeout", terminal: false });
@@ -388,12 +388,12 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
 
   const ts = String(w.slack.calls.find((c) => c.method === "chat.stopStream")?.args.ts);
   await deliver(w, click(blocksOf(final), defaultCopy.retry, { ts, threadTs: TS }));
-  assert.equal(w.warp.started.length, 2);
-  const retry = w.warp.started[1];
+  assert.equal(w.humagen.started.length, 2);
+  const retry = w.humagen.started[1];
   assert.equal(retry?.text, "deploy it");
   assert.equal(retry?.agent, "lead");
   assert.equal(retry?.after, failedRun, "the retry stays in the thread's conversation");
-  assert.equal(w.warp.last.thread, failedRun);
+  assert.equal(w.humagen.last.thread, failedRun);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Deployed." });
   await w.app.idle();
@@ -401,20 +401,20 @@ test("a failed run shows why, and Retry asks again in the same conversation", as
   // A second click joins the first retry.
   await deliver(w, click(blocksOf(final), defaultCopy.retry, { ts, threadTs: TS }));
   await w.app.idle();
-  assert.equal(w.warp.started.length, 2);
+  assert.equal(w.humagen.started.length, 2);
 });
 
 test("a run whose retries ran out is ended by its record, as the ledger decides", async () => {
   const w = world();
   await deliver(w, mention("deploy it", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   // Each attempt reports a failure, and none says it was the last.
   await emit(w, "lifecycle.failed", { error: "connection refused", attempt: 1 });
   await emit(w, "lifecycle.resumed", { attempt: 2 });
   await emit(w, "lifecycle.failed", { error: "connection refused", attempt: 2 });
   assert.ok(!w.slack.methods.includes("chat.stopStream"));
-  w.warp.set(run, {
+  w.humagen.set(run, {
     status: "failed",
     error: "anchor: max attempts exhausted\nconnection refused",
   });
@@ -428,7 +428,7 @@ test("a run whose retries ran out is ended by its record, as the ledger decides"
 /** A failed turn in the thread, and the message holding its Retry button. */
 async function failedTurn(w: World) {
   await deliver(w, mention("deploy it", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
   await w.app.idle();
@@ -439,12 +439,12 @@ async function failedTurn(w: World) {
 test("a turn that acted for nobody is asked again, for nobody, by the person who asked or an operator", async () => {
   const w = world({ operators: ["U03ABCDEF"] });
   const { run, blocks, ts } = await failedTurn(w);
-  assert.equal(w.warp.runs.get(run)?.actor?.bot, true, "the app asked as itself, for nobody");
+  assert.equal(w.humagen.runs.get(run)?.actor?.bot, true, "the app asked as itself, for nobody");
 
   // Someone else in the channel is told no, and nothing starts.
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: OTHER_USER }));
   await w.app.idle();
-  assert.equal(w.warp.started.length, 1);
+  assert.equal(w.humagen.started.length, 1);
   assert.equal(
     w.slack.of("chat.postEphemeral").at(-1)?.text,
     "Only the person who asked can retry this.",
@@ -453,10 +453,10 @@ test("a turn that acted for nobody is asked again, for nobody, by the person who
 
   // An operator may. The new run acts for nobody, as the turn did, and stays the first asker's to settle.
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }));
-  assert.equal(w.warp.started.length, 2);
-  assert.equal(w.warp.started[1]?.act_as, undefined);
-  const retried = w.warp.last.id;
-  assert.equal(w.warp.last.prev ?? w.warp.last.thread, run);
+  assert.equal(w.humagen.started.length, 2);
+  assert.equal(w.humagen.started[1]?.act_as, undefined);
+  const retried = w.humagen.last.id;
+  assert.equal(w.humagen.last.prev ?? w.humagen.last.thread, run);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Deployed." });
   await w.app.idle();
@@ -464,7 +464,7 @@ test("a turn that acted for nobody is asked again, for nobody, by the person who
   // So the person who asked can settle what the retried run raises, and the clicker who is not an operator cannot.
   const watching = new AbortController();
   const watch = w.app.watchInbox(watching.signal);
-  w.warp.raise(memoryMail(retried));
+  w.humagen.raise(memoryMail(retried));
   await settle();
   await w.app.idle();
   const posted = w.slack.of("chat.postMessage").at(-1);
@@ -476,32 +476,32 @@ test("a turn that acted for nobody is asked again, for nobody, by the person who
       user: OTHER_USER,
     }),
   );
-  assert.equal(w.warp.resolved.length, 0);
+  assert.equal(w.humagen.resolved.length, 0);
   await deliver(
     w,
     click(blocksOf(posted), defaultCopy.discardAll, { ts: "1800000009.000100", threadTs: TS }),
   );
   await w.app.idle();
-  assert.equal(w.warp.resolved.length, 1);
+  assert.equal(w.humagen.resolved.length, 1);
   watching.abort();
   await watch;
 });
 
 test("when the app's own credential is a person, as under dev sign-in, a turn it asked as itself is asked again through it", async () => {
   const w = world({ operators: ["U03ABCDEF"] });
-  w.warp.person = true;
+  w.humagen.person = true;
   const { run, blocks, ts } = await failedTurn(w);
   assert.equal(
-    w.warp.runs.get(run)?.actor?.user,
+    w.humagen.runs.get(run)?.actor?.user,
     SUBJECT,
     "every run the app asks acts for its credential",
   );
 
   // The asker asks again through the app, as the turn was asked, so it acts for the same person.
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }));
-  assert.equal(w.warp.started.length, 2);
-  assert.equal(w.warp.started[1]?.act_as, undefined);
-  assert.equal(w.warp.last.actor?.user, SUBJECT);
+  assert.equal(w.humagen.started.length, 2);
+  assert.equal(w.humagen.started[1]?.act_as, undefined);
+  assert.equal(w.humagen.last.actor?.user, SUBJECT);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Deployed." });
   await w.app.idle();
@@ -510,14 +510,14 @@ test("when the app's own credential is a person, as under dev sign-in, a turn it
   const app = w.restart();
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: OTHER_USER }), app);
   await app.idle();
-  assert.equal(w.warp.started.length, 2);
+  assert.equal(w.humagen.started.length, 2);
   assert.equal(
     w.slack.of("chat.postEphemeral").at(-1)?.text,
     "Only the person who asked can retry this.",
   );
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }), app);
-  assert.equal(w.warp.started.length, 3);
-  assert.equal(w.warp.started[2]?.act_as, undefined);
+  assert.equal(w.humagen.started.length, 3);
+  assert.equal(w.humagen.started[2]?.act_as, undefined);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await app.idle();
@@ -529,22 +529,22 @@ test("after a restart, who asked is not known, so only an operator may ask again
   const app = w.restart();
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }), app);
   await app.idle();
-  assert.equal(w.warp.started.length, 1, "fails closed for the person who asked, too");
+  assert.equal(w.humagen.started.length, 1, "fails closed for the person who asked, too");
   assert.equal(
     w.slack.of("chat.postEphemeral").at(-1)?.text,
     "Only the person who asked can retry this.",
   );
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }), app);
-  assert.equal(w.warp.started.length, 2);
+  assert.equal(w.humagen.started.length, 2);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await app.idle();
 });
 
-// Retry and Resume ask a turn again for whom it acted for, as Retry in warp's
+// Retry and Resume ask a turn again for whom it acted for, as Retry in humagen's
 // inbox does: a turn that acted for a person only by that person, as
 // themselves; a turn that acted for nobody for nobody, whoever presses it.
-// Warp's record says whom a turn acted for, so a restart changes nothing.
+// Humagen's record says whom a turn acted for, so a restart changes nothing.
 const OPERATOR = "U03ABCDEF";
 const NOT_THEIRS = defaultCopy.retryOnlyTheirs;
 
@@ -563,23 +563,23 @@ function pressed(id: "retry" | "resume", run: string, user: string) {
 test("a turn that acted for a person is asked again only by them, as themselves, after a restart too", async () => {
   const w = mapped({ operators: [OPERATOR] });
   const { run, blocks, ts } = await failedTurn(w);
-  assert.equal(w.warp.runs.get(run)?.actor?.user, "ana");
+  assert.equal(w.humagen.runs.get(run)?.actor?.user, "ana");
 
   // Olu, whom the client maps to someone else, and an operator: refused, nothing starts.
   for (const user of [OTHER_USER, OPERATOR]) {
     await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user }));
     await deliver(w, pressed("resume", run, user));
     await w.app.idle();
-    assert.equal(w.warp.started.length, 1, user);
+    assert.equal(w.humagen.started.length, 1, user);
     assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, NOT_THEIRS);
     assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.user, user);
   }
 
   // Ana asks it again, as herself.
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }));
-  assert.equal(w.warp.started.length, 2);
-  assert.deepEqual(w.warp.started[1]?.act_as, { client: CLIENT, user: USER });
-  assert.equal(w.warp.last.actor?.user, "ana");
+  assert.equal(w.humagen.started.length, 2);
+  assert.deepEqual(w.humagen.started[1]?.act_as, { client: CLIENT, user: USER });
+  assert.equal(w.humagen.last.actor?.user, "ana");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Deployed." });
   await w.app.idle();
@@ -589,19 +589,19 @@ test("a turn that acted for a person is asked again only by them, as themselves,
   const app = w.restart();
   await deliver(w, pressed("retry", run, OPERATOR), app);
   await app.idle();
-  assert.equal(w.warp.started.length, 2);
+  assert.equal(w.humagen.started.length, 2);
   assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, NOT_THEIRS);
   await deliver(w, pressed("retry", run, USER), app);
   await app.idle();
-  assert.equal(w.warp.started.length, 2, "her second press joins her first retry");
+  assert.equal(w.humagen.started.length, 2, "her second press joins her first retry");
 });
 
 test("a turn that acted for nobody is asked again for nobody, and each person's press is its own run", async () => {
   // Olu is an operator the client maps. The person who asks is not mapped.
   const w = mapped({ operators: [OTHER_USER, OPERATOR] });
   await deliver(w, mention("deploy it", TS, { user: "U05UNMAPPED" }));
-  const run = w.warp.last.id;
-  assert.equal(w.warp.asked[0]?.act_as, undefined);
+  const run = w.humagen.last.id;
+  assert.equal(w.humagen.asked[0]?.act_as, undefined);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
   await w.app.idle();
@@ -610,21 +610,25 @@ test("a turn that acted for nobody is asked again for nobody, and each person's 
   // run of its own, and each acts for nobody, never for whoever pressed.
   const app = w.restart();
   await deliver(w, pressed("retry", run, OTHER_USER), app);
-  assert.equal(w.warp.started.length, 2);
+  assert.equal(w.humagen.started.length, 2);
   assert.equal(
-    w.warp.started[1]?.act_as,
+    w.humagen.started[1]?.act_as,
     undefined,
     "olu's credential is not put behind the words",
   );
-  assert.equal(w.warp.last.actor?.bot, true);
-  const first = w.warp.last.id;
+  assert.equal(w.humagen.last.actor?.bot, true);
+  const first = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await app.idle();
   await deliver(w, pressed("resume", run, OPERATOR), app);
-  assert.equal(w.warp.started.length, 3, "a second person's press does not join the first's run");
-  assert.notEqual(w.warp.last.id, first);
-  assert.equal(w.warp.started[2]?.act_as, undefined);
+  assert.equal(
+    w.humagen.started.length,
+    3,
+    "a second person's press does not join the first's run",
+  );
+  assert.notEqual(w.humagen.last.id, first);
+  assert.equal(w.humagen.started[2]?.act_as, undefined);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await app.idle();
@@ -639,11 +643,11 @@ test("asking again is refused once the agent may no longer be reached", async ()
     default_agent: "lead",
     identity: { team: TEAM },
   };
-  w.warp.clients.set("docs-bot", client);
+  w.humagen.clients.set("docs-bot", client);
   const { blocks, ts } = await failedTurn(w);
   // The client is changed: lead is no longer its agent. Its record is read again after 30s.
-  w.warp.clients.set("docs-bot", { ...client, default_agent: "helper" });
-  const app = new (w.app.constructor as typeof import("./app.tsx").App)(w.slack, w.warp, {
+  w.humagen.clients.set("docs-bot", { ...client, default_agent: "helper" });
+  const app = new (w.app.constructor as typeof import("./app.tsx").App)(w.slack, w.humagen, {
     team: TEAM,
     botUser: BOT,
     subject: SUBJECT,
@@ -655,7 +659,7 @@ test("asking again is refused once the agent may no longer be reached", async ()
   });
   await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }), app);
   await app.idle();
-  assert.equal(w.warp.started.length, 1);
+  assert.equal(w.humagen.started.length, 1);
   assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.cantRetry);
 });
 
@@ -675,25 +679,25 @@ function failureCard(run: string, where: "home" | "thread", user: string) {
 }
 
 for (const where of ["home", "thread"] as const) {
-  test(`Retry on an inbox failure card from ${where} never asks warp to retry on its own`, async () => {
+  test(`Retry on an inbox failure card from ${where} never asks humagen to retry on its own`, async () => {
     const w = world({ operators: ["U03ABCDEF"] });
     const { run } = await failedTurn(w);
-    w.warp.mailbox.set("m-failure", failureMail(run));
+    w.humagen.mailbox.set("m-failure", failureMail(run));
 
     // Someone who did not ask: told no, nothing sent.
     await deliver(w, failureCard(run, where, OTHER_USER));
     await w.app.idle();
-    assert.equal(w.warp.started.length, 1);
-    assert.deepEqual(w.warp.resolved, []);
+    assert.equal(w.humagen.started.length, 1);
+    assert.deepEqual(w.humagen.resolved, []);
     assert.ok(w.slack.of("chat.postEphemeral").at(-1));
 
     // A run that is not in one of this app's threads: an operator is told it cannot be retried here.
-    w.warp.mailbox.set("m-console", {
+    w.humagen.mailbox.set("m-console", {
       ...failureMail("api-dana-console-run"),
       id: "m-console",
     });
-    w.warp.runs.set("api-dana-console-run", {
-      ...w.warp.last,
+    w.humagen.runs.set("api-dana-console-run", {
+      ...w.humagen.last,
       id: "api-dana-console-run",
       tag_id: "api-dana-console-run",
       thread: "api-dana-console-run",
@@ -708,15 +712,15 @@ for (const where of ["home", "thread"] as const) {
     } as { action_id: string; value: string };
     await deliver(w, elsewhere);
     await w.app.idle();
-    assert.deepEqual(w.warp.resolved, []);
+    assert.deepEqual(w.humagen.resolved, []);
     assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.cantRetry);
 
     // The agent is no longer one the app may reach: told no, nothing sent.
     const gated = world(
       { operators: ["U03ABCDEF"], clientId: "docs-bot", defaultAgent: undefined },
-      { slack: w.slack, warp: w.warp },
+      { slack: w.slack, humagen: w.humagen },
     );
-    w.warp.clients.set("docs-bot", {
+    w.humagen.clients.set("docs-bot", {
       id: "docs-bot",
       surface: "slack",
       enabled: true,
@@ -725,14 +729,14 @@ for (const where of ["home", "thread"] as const) {
     });
     await deliver(w, failureCard(run, where, "U03ABCDEF"), gated.app);
     await gated.app.idle();
-    assert.equal(w.warp.started.length, 1);
-    assert.deepEqual(w.warp.resolved, []);
+    assert.equal(w.humagen.started.length, 1);
+    assert.deepEqual(w.humagen.resolved, []);
     assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.cantRetry);
 
     // The person who asked: the app asks again in the thread and only acknowledges the card.
     await deliver(w, failureCard(run, where, USER));
-    assert.equal(w.warp.started.length, 2);
-    assert.deepEqual((w.warp.resolved as { body: unknown }[]).at(-1)?.body, {
+    assert.equal(w.humagen.started.length, 2);
+    assert.deepEqual((w.humagen.resolved as { body: unknown }[]).at(-1)?.body, {
       action: "acknowledge",
     });
     await emit(w, "lifecycle.accepted");
@@ -744,11 +748,11 @@ for (const where of ["home", "thread"] as const) {
 test("Retry on an inbox card of a person's failed turn is theirs, after a restart too, and settles the card", async () => {
   const w = mapped({ operators: ["U03ABCDEF"] });
   const { run } = await failedTurn(w);
-  assert.equal(w.warp.runs.get(run)?.actor?.user, "ana");
-  // As warp sends it to the app, whose own credential is not offered Retry on ana's turn.
+  assert.equal(w.humagen.runs.get(run)?.actor?.user, "ana");
+  // As humagen sends it to the app, whose own credential is not offered Retry on ana's turn.
   const [part] = failureMail(run).parts as Record<string, unknown>[];
   const mail = { ...failureMail(run), parts: [{ ...part, actions: ["acknowledge"] }] };
-  w.warp.mailbox.set("m-failure", mail);
+  w.humagen.mailbox.set("m-failure", mail);
   const blocks = renderToSlack(<MessageView message={forSlack(fromServer(mail))} />).blocks;
   assert.match(
     textIn(blocks),
@@ -764,13 +768,13 @@ test("Retry on an inbox card of a person's failed turn is theirs, after a restar
     click(blocks, defaultCopy.retry, { ts: "1800000005.000100", threadTs: TS, user });
   await deliver(w, card(OTHER_USER), app);
   await app.idle();
-  assert.equal(w.warp.started.length, 1);
-  assert.deepEqual(w.warp.resolved, []);
+  assert.equal(w.humagen.started.length, 1);
+  assert.deepEqual(w.humagen.resolved, []);
   assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.retryOnlyTheirs);
   await deliver(w, card(USER), app);
-  assert.equal(w.warp.started.length, 2);
-  assert.deepEqual(w.warp.started[1]?.act_as, { client: CLIENT, user: USER });
-  assert.deepEqual((w.warp.resolved as { body: unknown }[]).at(-1)?.body, {
+  assert.equal(w.humagen.started.length, 2);
+  assert.deepEqual(w.humagen.started[1]?.act_as, { client: CLIENT, user: USER });
+  assert.deepEqual((w.humagen.resolved as { body: unknown }[]).at(-1)?.body, {
     action: "acknowledge",
   });
   await emit(w, "lifecycle.accepted");
@@ -780,8 +784,8 @@ test("Retry on an inbox card of a person's failed turn is theirs, after a restar
 
 test("a forged Retry on an inbox part that is not a failure is refused, and nothing is sent", async () => {
   const w = world({ operators: [USER] });
-  w.warp.mailbox.set("m-memory", memoryMail("api-svc-slack-any"));
-  w.warp.mailbox.set("m-alert", alertMail());
+  w.humagen.mailbox.set("m-memory", memoryMail("api-svc-slack-any"));
+  w.humagen.mailbox.set("m-alert", alertMail());
   for (const [id, target] of [
     ["m-memory", "p1"],
     ["m-alert", "p1"],
@@ -796,10 +800,10 @@ test("a forged Retry on an inbox part that is not a failure is refused, and noth
     });
     await deliver(w, env);
     await w.app.idle();
-    assert.deepEqual(w.warp.resolved, [], `${id}/${target}`);
+    assert.deepEqual(w.humagen.resolved, [], `${id}/${target}`);
     assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.cantRetry);
   }
-  assert.equal(w.warp.started.length, 0);
+  assert.equal(w.humagen.started.length, 0);
 });
 
 test("a Slack write that fails mid-turn still ends the turn: whole, and off processing", async () => {
@@ -870,7 +874,7 @@ const finals = (w: World, text: string) =>
 test("a long, silent tool call is not a failure: the stream closes and the answer follows once", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("rebuild the index", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "delta.tool.call", { id: "t1", name: "index.rebuild", phase: "requested" });
   await pause(120);
@@ -880,9 +884,9 @@ test("a long, silent tool call is not a failure: the stream closes and the answe
   assert.ok(!textIn(blocksOf(closed)).includes(defaultCopy.failedTitle));
   assert.ok(!textIn(blocksOf(closed)).includes(defaultCopy.failure.timeout()));
   assert.deepEqual(w.slack.statuses, ["processing"]);
-  assert.deepEqual(w.warp.stops, []);
+  assert.deepEqual(w.humagen.stops, []);
 
-  w.warp.set(run, { status: "completed", answer: "The index is rebuilt." });
+  w.humagen.set(run, { status: "completed", answer: "The index is rebuilt." });
   await w.app.idle();
   await pause(100);
   assert.equal(finals(w, "The index is rebuilt.").length, 1, "the answer is posted once");
@@ -895,33 +899,33 @@ test("a long, silent tool call is not a failure: the stream closes and the answe
 test("a parked run is only waiting, and its end is posted when it comes", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("ask the helper", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.parked", { reason: "waiting on helper" });
   await pause(120);
   assert.equal(w.slack.of("chat.stopStream").length, 1);
   assert.deepEqual(w.slack.statuses, ["processing"]);
-  w.warp.set(run, { status: "completed", answer: "The helper found it." });
+  w.humagen.set(run, { status: "completed", answer: "The helper found it." });
   await w.app.idle();
   assert.equal(finals(w, "The helper found it.").length, 1);
   assert.deepEqual(w.slack.statuses, ["processing", "active"]);
 });
 
-test("a quiet run does not hold the thread, and the next message follows it as warp orders turns", async () => {
+test("a quiet run does not hold the thread, and the next message follows it as humagen orders turns", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
-  const first = w.warp.last.id;
+  const first = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await pause(120);
 
   await deliver(w, mention("meanwhile, a quick one", "1700000070.000100", { thread_ts: TS }));
-  assert.equal(w.warp.started.length, 2, "the queue was released");
-  // Warp takes a turn after one that is still running; its transcript says so.
-  assert.equal(w.warp.started[1]?.after, first);
+  assert.equal(w.humagen.started.length, 2, "the queue was released");
+  // Humagen takes a turn after one that is still running; its transcript says so.
+  assert.equal(w.humagen.started[1]?.after, first);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Quick answer." });
 
-  w.warp.set(first, { status: "completed", answer: "Long job done." });
+  w.humagen.set(first, { status: "completed", answer: "Long job done." });
   await w.app.idle();
   assert.equal(finals(w, "Long job done.").length, 1);
 });
@@ -929,12 +933,12 @@ test("a quiet run does not hold the thread, and the next message follows it as w
 test("stop on a quiet run confirms it once, and its end is not posted again", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await pause(120);
   await deliver(w, stopPressed(TS));
   await w.app.idle();
-  assert.deepEqual(w.warp.stops, [run]);
+  assert.deepEqual(w.humagen.stops, [run]);
   const confirmations = w.slack
     .of("chat.postMessage")
     .filter((a) => textIn(blocksOf(a)).includes(defaultCopy.stopped));
@@ -945,16 +949,16 @@ test("stop on a quiet run confirms it once, and its end is not posted again", as
 test("a quiet run whose stop loses the race posts its answer, once", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "delta.text", { text: "Long job done." });
   await pause(120);
-  w.warp.stopsFinishFirst = true;
+  w.humagen.stopsFinishFirst = true;
   await deliver(w, stopPressed(TS));
   await w.app.idle();
   await pause(100);
-  assert.deepEqual(w.warp.stops, [run]);
-  assert.equal((await w.warp.getRun(run))?.status, "completed");
+  assert.deepEqual(w.humagen.stops, [run]);
+  assert.equal((await w.humagen.getRun(run))?.status, "completed");
   assert.equal(finals(w, "Long job done.").length, 1, "the answer is posted once");
   assert.ok(
     !w.slack.of("chat.postMessage").some((a) => textIn(blocksOf(a)).includes(defaultCopy.stopped)),
@@ -964,17 +968,17 @@ test("a quiet run whose stop loses the race posts its answer, once", async () =>
 
 test("a stop slower than the wait is confirmed when it lands, and the session waits for it", async () => {
   const w = world({ stopWaitMs: 100 });
-  const run = (await w.warp.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
-  w.warp.emit(run, "lifecycle.started");
-  w.warp.emit(run, "delta.text", { text: "Half an answer" });
-  w.warp.stopDelayMs = 400;
+  const run = (await w.humagen.createRun({ agent: "lead", text: "slow question" }, KEY)).id;
+  w.humagen.emit(run, "lifecycle.started");
+  w.humagen.emit(run, "delta.text", { text: "Half an answer" });
+  w.humagen.stopDelayMs = 400;
   await deliver(w, stopPressed(TS), w.app);
   await pause(200);
   // The wait is over and the run has not ended: nothing is posted, and the session is not settled yet.
   assert.equal(finals(w, "Half an answer").length, 0);
   assert.ok(!w.slack.statuses.includes("active"), "the session is not settled before the run ends");
   await w.app.idle();
-  assert.equal((await w.warp.getRun(run))?.status, "stopped");
+  assert.equal((await w.humagen.getRun(run))?.status, "stopped");
   const posted = finals(w, "Half an answer");
   assert.equal(posted.length, 1, "the stopped run is confirmed with what it had said, once");
   assert.match(textIn(blocksOf(posted[0])), new RegExp(defaultCopy.stopped));
@@ -984,7 +988,7 @@ test("a stop slower than the wait is confirmed when it lands, and the session wa
 test("a slow follow and a late lifecycle.stopped post a quiet run's stopped end once", async () => {
   const w = world({ stallMs: 30, slowPollMs: 40 });
   await deliver(w, mention("long job", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "delta.text", { text: "Partway there" });
   await pause(120);
@@ -993,10 +997,10 @@ test("a slow follow and a late lifecycle.stopped post a quiet run's stopped end 
   await pause(150);
   // A second press, and the event again: nothing more is posted.
   await deliver(w, stopPressed(TS));
-  w.warp.emit(run, "lifecycle.stopped", { text: "Partway there", reason: "again" });
+  w.humagen.emit(run, "lifecycle.stopped", { text: "Partway there", reason: "again" });
   await w.app.idle();
   await pause(150);
-  assert.equal((await w.warp.getRun(run))?.status, "stopped");
+  assert.equal((await w.humagen.getRun(run))?.status, "stopped");
   const ends = w.slack
     .of("chat.postMessage")
     .filter((a) => textIn(blocksOf(a)).includes("Partway there"));
@@ -1011,24 +1015,24 @@ test("on shutdown a quiet run stops being followed", async () => {
   await pause(120);
   w.app.close();
   await w.app.idle();
-  assert.deepEqual(w.warp.stops, [], "the run is left running");
+  assert.deepEqual(w.humagen.stops, [], "the run is left running");
 });
 
-test("an inbox decision warp refuses is explained in warp's words, not the platform's", async () => {
+test("an inbox decision humagen refuses is explained in humagen's words, not the platform's", async () => {
   const w = world();
   const watching = new AbortController();
   const watch = w.app.watchInbox(watching.signal);
   await deliver(w, mention("remember this", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Noted." });
   await w.app.idle();
-  w.warp.raise(memoryMail(run));
+  w.humagen.raise(memoryMail(run));
   await settle();
   await w.app.idle();
   const posted = w.slack.of("chat.postMessage").at(-1);
-  w.warp.inbox.send = async () => {
-    throw new WarpError(403, "platform: forbidden: keep needs agents:write");
+  w.humagen.inbox.send = async () => {
+    throw new HumagenError(403, "platform: forbidden: keep needs agents:write");
   };
   await deliver(
     w,
@@ -1082,16 +1086,16 @@ test("where native streaming is refused, the turn is posted once and edited", as
 test("an agent named in the message answers, when it exists and may be reached", async () => {
   const w = world();
   await deliver(w, mention("@helper summarize this", TS));
-  assert.equal(w.warp.started[0]?.agent, "helper");
-  assert.equal(w.warp.started[0]?.text, "summarize this");
+  assert.equal(w.humagen.started[0]?.agent, "helper");
+  assert.equal(w.humagen.started[0]?.text, "summarize this");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await w.app.idle();
 
   // A name that is not an agent is only a word.
   await deliver(w, mention("@nobody summarize this", "1700000400.000100"));
-  assert.equal(w.warp.started[1]?.agent, "lead");
-  assert.equal(w.warp.started[1]?.text, "@nobody summarize this");
+  assert.equal(w.humagen.started[1]?.agent, "lead");
+  assert.equal(w.humagen.started[1]?.text, "@nobody summarize this");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await w.app.idle();
@@ -1099,7 +1103,7 @@ test("an agent named in the message answers, when it exists and may be reached",
 
 test("as a client, the app routes only to its default agent and its list", async () => {
   const w = world({ clientId: "docs-bot", defaultAgent: undefined });
-  w.warp.clients.set("docs-bot", {
+  w.humagen.clients.set("docs-bot", {
     id: "docs-bot",
     surface: "slack",
     enabled: true,
@@ -1109,7 +1113,7 @@ test("as a client, the app routes only to its default agent and its list", async
   });
   await deliver(w, mention("@lead take this", TS));
   assert.equal(
-    w.warp.started[0]?.agent,
+    w.humagen.started[0]?.agent,
     "helper",
     "a name outside the list is not read as an agent",
   );
@@ -1120,7 +1124,7 @@ test("as a client, the app routes only to its default agent and its list", async
 
 test("a client for another team, or one that is gone, routes to nothing", async () => {
   const w = world({ clientId: "docs-bot", defaultAgent: undefined });
-  w.warp.clients.set("docs-bot", {
+  w.humagen.clients.set("docs-bot", {
     id: "docs-bot",
     surface: "slack",
     enabled: true,
@@ -1129,7 +1133,7 @@ test("a client for another team, or one that is gone, routes to nothing", async 
   });
   await deliver(w, mention("hello", TS));
   await w.app.idle();
-  assert.equal(w.warp.asked.length, 0);
+  assert.equal(w.humagen.asked.length, 0);
   const said = w.slack.of("chat.postMessage")[0];
   assert.match(textIn(blocksOf(said)), /No agent answers here yet/);
   assert.deepEqual(w.slack.statuses, ["active"]);
@@ -1137,7 +1141,7 @@ test("a client for another team, or one that is gone, routes to nothing", async 
 
   // A client that does not say which team it serves is not taken for this one.
   const v = world({ clientId: "docs-bot", defaultAgent: undefined });
-  v.warp.clients.set("docs-bot", {
+  v.humagen.clients.set("docs-bot", {
     id: "docs-bot",
     surface: "slack",
     enabled: true,
@@ -1145,13 +1149,13 @@ test("a client for another team, or one that is gone, routes to nothing", async 
   });
   await deliver(v, mention("hello", TS));
   await v.app.idle();
-  assert.equal(v.warp.asked.length, 0);
+  assert.equal(v.humagen.asked.length, 0);
 });
 
 test("a message that names no agent leaves the choice to the platform's default", async () => {
   const w = world({ defaultAgent: undefined });
   await deliver(w, mention("what changed?", TS));
-  assert.equal(w.warp.asked[0]?.agent, "", "the app picks nobody itself");
+  assert.equal(w.humagen.asked[0]?.agent, "", "the app picks nobody itself");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await w.app.idle();
@@ -1159,10 +1163,13 @@ test("a message that names no agent leaves the choice to the platform's default"
 
 test("with no default anywhere, the person is asked to tag an agent, for example one this app may reach", async () => {
   const w = world({ defaultAgent: undefined });
-  w.warp.refuse = new WarpError(409, "tag an agent: nothing answers in the workspace by default");
+  w.humagen.refuse = new HumagenError(
+    409,
+    "tag an agent: nothing answers in the workspace by default",
+  );
   await deliver(w, mention("what changed?", TS));
   await w.app.idle();
-  assert.equal(w.warp.runs.size, 0);
+  assert.equal(w.humagen.runs.size, 0);
   const said = textIn(blocksOf(w.slack.of("chat.postMessage")[0]));
   assert.match(said, new RegExp(defaultCopy.auto.tagOne("helper")));
   assert.ok(
@@ -1173,21 +1180,21 @@ test("with no default anywhere, the person is asked to tag an agent, for example
 
   // A named agent that is refused for another reason is not told to tag one.
   const v = world();
-  v.warp.refuse = new WarpError(409, "conflict");
+  v.humagen.refuse = new HumagenError(409, "conflict");
   await deliver(v, mention("@helper hi", TS));
   await v.app.idle();
   assert.ok(!textIn(blocksOf(v.slack.of("chat.postMessage")[0])).includes("Tag an agent"));
 });
 
-test("a run a limit refuses is shown in warp's words, and warp's are kept in the log", async () => {
+test("a run a limit refuses is shown in humagen's words, and humagen's are kept in the log", async () => {
   const w = world();
-  w.warp.refuse = new WarpError(429, "the workspace reached 200 runs today", {
+  w.humagen.refuse = new HumagenError(429, "the workspace reached 200 runs today", {
     limit: "runs",
     resets_at: new Date(Date.now() + 3_600_000).toISOString(),
   });
   await deliver(w, mention("one more", TS));
   await w.app.idle();
-  assert.equal(w.warp.runs.size, 0);
+  assert.equal(w.humagen.runs.size, 0);
   const said = w.slack.of("chat.postMessage")[0];
   assert.equal(said?.thread_ts, TS);
   assert.match(textIn(blocksOf(said)), new RegExp(defaultCopy.budgetTitle));
@@ -1204,16 +1211,16 @@ test("a run a limit refuses is shown in warp's words, and warp's are kept in the
 test("a message sent while a turn is running waits its turn", async () => {
   const w = world();
   await deliver(w, mention("first", TS));
-  const first = w.warp.last.id;
+  const first = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await deliver(w, mention("second", "1700000060.000100", { thread_ts: TS }));
-  assert.equal(w.warp.started.length, 1, "one turn at a time per thread");
+  assert.equal(w.humagen.started.length, 1, "one turn at a time per thread");
   assert.equal(w.slack.of("reactions.add").at(-1)?.timestamp, "1700000060.000100");
 
   await emit(w, "lifecycle.completed", { text: "one" }, first);
   await settle();
-  assert.equal(w.warp.started.length, 2);
-  assert.equal(w.warp.started[1]?.after, first);
+  assert.equal(w.humagen.started.length, 2);
+  assert.equal(w.humagen.started[1]?.after, first);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "two" });
   await w.app.idle();
@@ -1226,7 +1233,7 @@ test("stop also drops what was waiting behind the stopped turn", async () => {
   await deliver(w, mention("second", "1700000060.000100", { thread_ts: TS }));
   await deliver(w, stopPressed(TS));
   await w.app.idle();
-  assert.equal(w.warp.started.length, 1);
+  assert.equal(w.humagen.started.length, 1);
   const marks = w.slack.of("reactions.add").filter((a) => a.timestamp === "1700000060.000100");
   assert.deepEqual(
     marks.map((a) => a.name),
@@ -1241,14 +1248,14 @@ test("/agent asks in a new thread, and /agent help lists who can be asked", asyn
   assert.equal(root?.channel, CHANNEL);
   assert.equal(root?.text, `<@${USER}>: what is on call this week?`);
   const rootTs = "1800000001.000100";
-  assert.equal(w.warp.started[0]?.idempotencyKey, `slack-${TEAM}-${CHANNEL}-1800000001-000100`);
+  assert.equal(w.humagen.started[0]?.idempotencyKey, `slack-${TEAM}-${CHANNEL}-1800000001-000100`);
   assert.equal(w.slack.of("chat.startStream")[0]?.thread_ts, rootTs);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Dana." });
   await w.app.idle();
 
   await deliver(w, command("help"));
-  assert.equal(w.warp.started.length, 1);
+  assert.equal(w.humagen.started.length, 1);
   assert.match(String(w.slack.responses[0]?.body.text), /`@lead`: Takes a request/);
   assert.equal(w.slack.responses[0]?.body.response_type, "ephemeral");
 
@@ -1256,7 +1263,7 @@ test("/agent asks in a new thread, and /agent help lists who can be asked", asyn
   w.slack.failing["chat.postMessage"] = "not_in_channel";
   await deliver(w, command("hello"));
   await w.app.idle();
-  assert.equal(w.warp.started.length, 1);
+  assert.equal(w.humagen.started.length, 1);
   assert.match(String(w.slack.responses[1]?.body.text), /not in this channel/);
 });
 
@@ -1280,8 +1287,8 @@ test("the shortcuts: a form for asking from anywhere, and a message as the quest
   );
   // No channel: the answer goes to the app's messages with this person.
   assert.equal(w.slack.of("chat.postMessage")[0]?.channel, USER);
-  assert.equal(w.warp.started[0]?.text, "summarize my week");
-  assert.match(String(w.warp.started[0]?.idempotencyKey), new RegExp(`^slack-${TEAM}-${DM}-`));
+  assert.equal(w.humagen.started[0]?.text, "summarize my week");
+  assert.match(String(w.humagen.started[0]?.idempotencyKey), new RegExp(`^slack-${TEAM}-${DM}-`));
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Busy." });
   await w.app.idle();
@@ -1295,24 +1302,24 @@ test("the shortcuts: a form for asking from anywhere, and a message as the quest
       message: { ts: "1700000500.000100", text: "is the deploy safe to ship?" },
     }),
   );
-  assert.equal(w.warp.started[1]?.text, "is the deploy safe to ship?");
+  assert.equal(w.humagen.started[1]?.text, "is the deploy safe to ship?");
   assert.equal(w.slack.of("chat.startStream").at(-1)?.thread_ts, "1700000500.000100");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Yes." });
   await w.app.idle();
 });
 
-test("an inbox item about a run lands in its thread, and the button resolves it in warp", async () => {
+test("an inbox item about a run lands in its thread, and the button resolves it in humagen", async () => {
   const w = world();
   const watching = new AbortController();
   const watch = w.app.watchInbox(watching.signal);
   await deliver(w, mention("remember how we deploy", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Noted." });
   await w.app.idle();
 
-  w.warp.raise(memoryMail(run));
+  w.humagen.raise(memoryMail(run));
   await settle();
   await w.app.idle();
   const posted = w.slack.of("chat.postMessage").at(-1);
@@ -1335,7 +1342,7 @@ test("an inbox item about a run lands in its thread, and the button resolves it 
       state: picked,
     }),
   );
-  assert.equal(w.warp.resolved.length, 0);
+  assert.equal(w.humagen.resolved.length, 0);
   assert.equal(w.slack.of("chat.postEphemeral")[0]?.text, defaultCopy.notYours);
 
   // The person who asked can: the ticked note is kept, the rest are not.
@@ -1344,7 +1351,7 @@ test("an inbox item about a run lands in its thread, and the button resolves it 
     click(blocksOf(posted), defaultCopy.keepSelected, { ts, threadTs: TS, state: picked }),
   );
   await w.app.idle();
-  assert.deepEqual(w.warp.resolved, [
+  assert.deepEqual(w.humagen.resolved, [
     { id: "m-memory", path: "parts/p1/resolve", body: { action: "keep", ids: ["n1"] } },
   ]);
   const updated = w.slack.of("chat.update").at(-1);
@@ -1362,18 +1369,18 @@ test("an inbox item about a run lands in its thread, and the button resolves it 
 
 // The platform sends a run's thread beside the run on a result, an artifact,
 // a recap and a draft: the message still lands where the run was asked for.
-test("an inbox item about a run in a warp thread lands in the run's Slack thread", async () => {
+test("an inbox item about a run in a humagen thread lands in the run's Slack thread", async () => {
   const w = world();
   const watching = new AbortController();
   const watch = w.app.watchInbox(watching.signal);
   await deliver(w, mention("check the deploy", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "On it." });
   await w.app.idle();
   const before = w.slack.of("chat.postMessage").length;
 
-  w.warp.raise(resultMail(run));
+  w.humagen.raise(resultMail(run));
   await settle();
   await w.app.idle();
   const posted = w.slack.of("chat.postMessage");
@@ -1388,12 +1395,12 @@ test("an inbox item about a run in a warp thread lands in the run's Slack thread
 test("the Home tab shows a person what waits on them, and an operator the whole inbox", async () => {
   const w = world({ operators: [OTHER_USER] });
   await deliver(w, mention("deploy it", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.failed", { error: "provider: 529 overloaded", terminal: true });
   await w.app.idle();
-  w.warp.mailbox.set("m-failure", failureMail(run));
-  w.warp.mailbox.set("m-other", {
+  w.humagen.mailbox.set("m-failure", failureMail(run));
+  w.humagen.mailbox.set("m-other", {
     ...failureMail("api-someone-else"),
     id: "m-other",
     subject: "releaser failed",
@@ -1408,8 +1415,8 @@ test("the Home tab shows a person what waits on them, and an operator the whole 
   assert.ok(!/releaser failed/.test(textIn(view.blocks)), "another person's run is not shown");
 
   // An operator sees everything the app may read, and can settle it there.
-  w.warp.mailbox.set("m-alert", alertMail());
-  w.warp.mailbox.set("m-budget", budgetMail());
+  w.humagen.mailbox.set("m-alert", alertMail());
+  w.humagen.mailbox.set("m-budget", budgetMail());
   await deliver(w, homeOpened(OTHER_USER));
   const all = w.slack.of("views.publish")[1]?.view as { blocks: unknown[] };
   assert.match(textIn(all.blocks), /releaser failed/);
@@ -1422,7 +1429,7 @@ test("the Home tab shows a person what waits on them, and an operator the whole 
   delete (home.payload as Record<string, unknown>).message;
   await deliver(w, home);
   await w.app.idle();
-  assert.deepEqual(w.warp.resolved.at(-1), {
+  assert.deepEqual(w.humagen.resolved.at(-1), {
     id: "m-alert",
     path: "parts/p1/resolve",
     body: { action: "acknowledge" },
@@ -1450,8 +1457,8 @@ test("a rating opens a comment modal and is saved even when skipped", async () =
     click(blocksOf(final), defaultCopy.notHelpful, { ts: String(final?.ts), threadTs: TS }),
   );
   await w.app.idle();
-  assert.equal(w.warp.feedback.length, 1);
-  assert.equal(w.warp.feedback[0]?.body.rating, "down");
+  assert.equal(w.humagen.feedback.length, 1);
+  assert.equal(w.humagen.feedback[0]?.body.rating, "down");
   const modal = w.slack.of("views.open").at(-1)?.view as {
     callback_id: string;
     private_metadata: string;
@@ -1474,8 +1481,8 @@ test("a rating opens a comment modal and is saved even when skipped", async () =
       },
     }),
   );
-  assert.equal(w.warp.feedback.at(-1)?.body.comment, "Needs sources");
-  assert.equal(w.warp.feedback.at(-1)?.body.reason, "incomplete");
+  assert.equal(w.humagen.feedback.at(-1)?.body.comment, "Needs sources");
+  assert.equal(w.humagen.feedback.at(-1)?.body.reason, "incomplete");
   collect("feedback", w.slack);
 });
 
@@ -1490,7 +1497,7 @@ test("like also opens the comment modal and saves the positive rating", async ()
     w,
     click(blocksOf(final), defaultCopy.helpful, { ts: String(final?.ts), threadTs: TS }),
   );
-  assert.equal(w.warp.feedback[0]?.body.rating, "up");
+  assert.equal(w.humagen.feedback[0]?.body.rating, "up");
   assert.equal(w.slack.of("views.open").length, 1);
   collect("positive feedback", w.slack);
 });
@@ -1498,9 +1505,9 @@ test("like also opens the comment modal and saves the positive rating", async ()
 test("a file-only DM is ingested through its verified surface message", async () => {
   const w = mapped();
   await deliver(w, direct("", TS, { subtype: "file_share", files: [{ id: "F01" }] }));
-  assert.equal(w.warp.posts.length, 1);
-  assert.equal(w.warp.posts[0]?.surface.files, true);
-  assert.match(w.warp.posts[0]?.text ?? "", /attached files/);
+  assert.equal(w.humagen.posts.length, 1);
+  assert.equal(w.humagen.posts[0]?.surface.files, true);
+  assert.match(w.humagen.posts[0]?.text ?? "", /attached files/);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Read the file." });
   await w.app.idle();
@@ -1508,20 +1515,20 @@ test("a file-only DM is ingested through its verified surface message", async ()
 
 test("configured skills are registered, listed and invoked; unknown skills start nothing", async () => {
   const w = mapped();
-  const client = w.warp.clients.get(CLIENT);
+  const client = w.humagen.clients.get(CLIENT);
   assert.ok(client?.slack);
   client.slack.commands = [{ name: "summarize", description: "Summarize a topic" }];
   await deliver(w, command("", { command: "/skill" }));
   assert.match(String(w.slack.responses.at(-1)?.body.text), /summarize/);
   await deliver(w, command("missing task", { command: "/skill" }));
-  assert.equal(w.warp.started.length, 0);
+  assert.equal(w.humagen.started.length, 0);
   await deliver(w, mention("hello", TS));
   assert.equal(w.slack.of("agents.conversations.setCommands").length, 1);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Done." });
   await w.app.idle();
   await deliver(w, command("summarize this topic", { command: "/skill" }));
-  assert.match(w.warp.last.text, /summarize this topic/);
+  assert.match(w.humagen.last.text, /summarize this topic/);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Summary." });
   await w.app.idle();
@@ -1543,7 +1550,7 @@ test("account controls load privately and submit as the mapped person", async ()
           state: {
             values: {
               provider: { value: { value: "github" } },
-              reference: { value: { value: "env:WARP_PERSON_ANA_GITHUB" } },
+              reference: { value: { value: "env:HUMAGEN_PERSON_ANA_GITHUB" } },
               operation: { value: { selected_option: { value: operation } } },
             },
           },
@@ -1551,8 +1558,8 @@ test("account controls load privately and submit as the mapped person", async ()
       }),
     );
   }
-  assert.equal(w.warp.connectionCalls.length, 2);
-  assert.deepEqual(w.warp.connectionCalls[0]?.as, { client: CLIENT, user: USER });
+  assert.equal(w.humagen.connectionCalls.length, 2);
+  assert.deepEqual(w.humagen.connectionCalls[0]?.as, { client: CLIENT, user: USER });
   collect("connections", w.slack);
 });
 
@@ -1562,9 +1569,9 @@ test("a finished answer publishes as a canvas only in its own channel", async ()
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "The answer." });
   await w.app.idle();
-  await deliver(w, command(`canvas ${w.warp.last.id}`, { channel_id: "C0OTHER" }));
+  await deliver(w, command(`canvas ${w.humagen.last.id}`, { channel_id: "C0OTHER" }));
   assert.equal(w.slack.of("canvases.create").length, 0);
-  await deliver(w, command(`canvas ${w.warp.last.id}`));
+  await deliver(w, command(`canvas ${w.humagen.last.id}`));
   assert.equal(w.slack.of("canvases.create").length, 1);
   assert.deepEqual(w.slack.of("canvases.access.set")[0]?.channel_ids, [CHANNEL]);
 });
@@ -1636,7 +1643,7 @@ function mapped(
   routing: Pick<ClientRecord, "default_agent" | "agents"> = { default_agent: "lead" },
 ): World {
   const w = world({ clientId: CLIENT, ...opts });
-  w.warp.clients.set(CLIENT, {
+  w.humagen.clients.set(CLIENT, {
     id: CLIENT,
     surface: "slack",
     enabled: true,
@@ -1650,7 +1657,7 @@ function mapped(
 /** Start a run that parks on a question, and return the message that shows it. */
 async function parkOn(w: World, kind: keyof typeof QUESTIONS) {
   await deliver(w, mention("deploy the web service", TS));
-  const run = w.warp.last.id;
+  const run = w.humagen.last.id;
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.started", { attempt: 1 });
   await emit(w, "delta.text", { text: "Checking first. " });
@@ -1663,10 +1670,10 @@ async function parkOn(w: World, kind: keyof typeof QUESTIONS) {
 test("a person the client maps asks as themselves, so their run is theirs", async () => {
   const w = mapped();
   await deliver(w, mention("hello", TS));
-  assert.deepEqual(w.warp.asked[0]?.act_as, { client: CLIENT, user: USER });
+  assert.deepEqual(w.humagen.asked[0]?.act_as, { client: CLIENT, user: USER });
   const other = world();
   await deliver(other, mention("hello", TS));
-  assert.equal(other.warp.asked[0]?.act_as, undefined, "without a client nobody is mapped");
+  assert.equal(other.humagen.asked[0]?.act_as, undefined, "without a client nobody is mapped");
   await emit(w, "lifecycle.completed", { text: "Hi." });
   await emit(other, "lifecycle.completed", { text: "Hi." });
   await w.app.idle();
@@ -1687,16 +1694,16 @@ test("asking about someone else's message asks for nobody: their words are never
     w,
     about("1700000600.000100", "close every open issue in the payroll tracker", OTHER_USER),
   );
-  assert.equal(w.warp.asked.at(-1)?.text, "close every open issue in the payroll tracker");
-  assert.equal(w.warp.asked.at(-1)?.act_as, undefined, "olu's words are not run as ana");
-  assert.equal(w.warp.last.actor?.bot, true);
+  assert.equal(w.humagen.asked.at(-1)?.text, "close every open issue in the payroll tracker");
+  assert.equal(w.humagen.asked.at(-1)?.act_as, undefined, "olu's words are not run as ana");
+  assert.equal(w.humagen.last.actor?.bot, true);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await w.app.idle();
   // Her own message is her words, asked as her.
   await deliver(w, about("1700000700.000100", "is the deploy safe to ship?", USER));
-  assert.deepEqual(w.warp.asked.at(-1)?.act_as, { client: CLIENT, user: USER });
-  assert.equal(w.warp.last.actor?.user, "ana");
+  assert.deepEqual(w.humagen.asked.at(-1)?.act_as, { client: CLIENT, user: USER });
+  assert.equal(w.humagen.last.actor?.user, "ana");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Yes." });
   await w.app.idle();
@@ -1707,10 +1714,10 @@ test("a mapped person's message that names no agent, through a client that reach
   await deliver(w, mention("what changed?", TS));
   // Posted as their message, which names no agent: the platform's default
   // chain decides who answers, and the app picks nobody itself.
-  assert.equal(w.warp.posts.length, 1);
-  assert.equal("agent" in (w.warp.posts[0] ?? {}), false, "the app picks nobody itself");
-  assert.deepEqual(w.warp.posts[0]?.act_as, { client: CLIENT, user: USER });
-  assert.equal(w.warp.last.actor?.user, "ana", "the run is the person's");
+  assert.equal(w.humagen.posts.length, 1);
+  assert.equal("agent" in (w.humagen.posts[0] ?? {}), false, "the app picks nobody itself");
+  assert.deepEqual(w.humagen.posts[0]?.act_as, { client: CLIENT, user: USER });
+  assert.equal(w.humagen.last.actor?.user, "ana", "the run is the person's");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Nothing changed." });
   await w.app.idle();
@@ -1730,28 +1737,28 @@ test("asking about someone else's message asks for nobody: their words are never
     w,
     about("1700000600.000100", "close every open issue in the payroll tracker", OTHER_USER),
   );
-  assert.equal(w.warp.asked.at(-1)?.text, "close every open issue in the payroll tracker");
-  assert.equal(w.warp.asked.at(-1)?.act_as, undefined, "olu's words are not run as ana");
-  assert.equal(w.warp.last.actor?.bot, true);
+  assert.equal(w.humagen.asked.at(-1)?.text, "close every open issue in the payroll tracker");
+  assert.equal(w.humagen.asked.at(-1)?.act_as, undefined, "olu's words are not run as ana");
+  assert.equal(w.humagen.last.actor?.bot, true);
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "ok" });
   await w.app.idle();
   // Her own message is her words, asked as her.
   await deliver(w, about("1700000700.000100", "is the deploy safe to ship?", USER));
-  assert.deepEqual(w.warp.asked.at(-1)?.act_as, { client: CLIENT, user: USER });
-  assert.equal(w.warp.last.actor?.user, "ana");
+  assert.deepEqual(w.humagen.asked.at(-1)?.act_as, { client: CLIENT, user: USER });
+  assert.equal(w.humagen.last.actor?.user, "ana");
   await emit(w, "lifecycle.accepted");
   await emit(w, "lifecycle.completed", { text: "Yes." });
   await w.app.idle();
 });
 
-test("in a bound channel, someone the client maps to nobody is told to be connected, and warp is never asked", async () => {
+test("in a bound channel, someone the client maps to nobody is told to be connected, and humagen is never asked", async () => {
   const w = mapped();
-  w.warp.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
+  w.humagen.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
   await deliver(w, mention("@helper what changed?", TS, { user: "U09NOBODY" }));
   await w.app.idle();
-  assert.equal(w.warp.asked.length, 0, "no run is asked for around the channel's own rules");
-  assert.equal(w.warp.runs.size, 0);
+  assert.equal(w.humagen.asked.length, 0, "no run is asked for around the channel's own rules");
+  assert.equal(w.humagen.runs.size, 0);
   assert.match(
     textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
     new RegExp(defaultCopy.threads.unmappedInBound.slice(0, 40)),
@@ -1760,36 +1767,36 @@ test("in a bound channel, someone the client maps to nobody is told to be connec
   // The same person in a channel that is not bound asks through the app, as before.
   const v = mapped();
   await deliver(v, mention("@helper what changed?", TS, { user: "U09NOBODY" }));
-  assert.equal(v.warp.asked.length, 1);
+  assert.equal(v.humagen.asked.length, 1);
   await emit(v, "lifecycle.completed", { text: "ok" });
   await v.app.idle();
 });
 
-test("when warp cannot say whether a channel is bound, nobody is answered around it, and the next mention asks again", async () => {
+test("when humagen cannot say whether a channel is bound, nobody is answered around it, and the next mention asks again", async () => {
   const w = mapped();
-  w.warp.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
-  const bindings = w.warp.bindings.bind(w.warp);
+  w.humagen.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
+  const bindings = w.humagen.bindings.bind(w.humagen);
   let down = true;
-  w.warp.bindings = async (client: string) => {
-    if (down) throw new WarpError(503, "warp is restarting");
+  w.humagen.bindings = async (client: string) => {
+    if (down) throw new HumagenError(503, "humagen is restarting");
     return bindings(client);
   };
   await deliver(w, mention("@helper what changed?", TS, { user: "U09NOBODY" }));
-  const asked = w.warp.asked.length;
+  const asked = w.humagen.asked.length;
   // A run asked for in error is ended, so the test fails rather than waits.
   if (asked) await emit(w, "lifecycle.completed", { text: "answered around the channel" });
   await w.app.idle();
   assert.equal(asked, 0, "a channel that may be bound is not answered as the app");
-  assert.equal(w.warp.runs.size, 0);
+  assert.equal(w.humagen.runs.size, 0);
   assert.match(
     textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
-    new RegExp(defaultCopy.failure.unavailable("warp").slice(0, 20)),
+    new RegExp(defaultCopy.failure.unavailable("Humagen").slice(0, 20)),
   );
-  // The failure is not remembered: once warp answers, the channel reads as bound.
+  // The failure is not remembered: once humagen answers, the channel reads as bound.
   down = false;
   await deliver(w, mention("@helper and now?", "1700000300.000100", { user: "U09NOBODY" }));
   await w.app.idle();
-  assert.equal(w.warp.asked.length, 0);
+  assert.equal(w.humagen.asked.length, 0);
   assert.match(
     textIn(blocksOf(w.slack.of("chat.postMessage").at(-1))),
     new RegExp(defaultCopy.threads.unmappedInBound.slice(0, 40)),
@@ -1798,7 +1805,7 @@ test("when warp cannot say whether a channel is bound, nobody is answered around
 
 test("in a bound channel, asking about someone else's message is refused, and nothing of it is posted", async () => {
   const w = mapped();
-  w.warp.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
+  w.humagen.bound.set(CLIENT, [{ slack_channel: CHANNEL, project: "Field", channel: "general" }]);
   await deliver(
     w,
     interactive({
@@ -1813,8 +1820,8 @@ test("in a bound channel, asking about someone else's message is refused, and no
     }),
   );
   await w.app.idle();
-  assert.equal(w.warp.asked.length, 0, "no run is asked for around the channel's own rules");
-  assert.equal(w.warp.posts.length, 0, "olu's words are not posted as ana's");
+  assert.equal(w.humagen.asked.length, 0, "no run is asked for around the channel's own rules");
+  assert.equal(w.humagen.posts.length, 0, "olu's words are not posted as ana's");
   assert.match(
     textIn(blocksOf(w.slack.of("chat.postMessage")[0])),
     new RegExp(defaultCopy.threads.notTheirsInBound.slice(0, 40)),
@@ -1833,7 +1840,7 @@ test("an approval waits in the run's thread with live buttons, and a mapped pers
     w,
     click(blocksOf(shown), defaultCopy.approve, { ts, threadTs: TS, user: OTHER_USER }),
   );
-  assert.deepEqual(w.warp.answered, [
+  assert.deepEqual(w.humagen.answered, [
     {
       answer: { run, question: "q-approve", body: { action: "approve" } },
       as: { client: CLIENT, user: OTHER_USER },
@@ -1859,7 +1866,7 @@ test("a choice is answered with the option clicked, and a reply is sent to the c
   const w = mapped();
   const { run, shown, ts } = await parkOn(w, "choice");
   await deliver(w, click(blocksOf(shown), "eu-west", { ts, threadTs: TS, user: OTHER_USER }));
-  assert.deepEqual(w.warp.answered.at(-1)?.answer, {
+  assert.deepEqual(w.humagen.answered.at(-1)?.answer, {
     run,
     question: "q-choose",
     body: { action: "choose", choice: "eu-west" },
@@ -1882,37 +1889,40 @@ test("a choice is answered with the option clicked, and a reply is sent to the c
       user: OTHER_USER,
     }),
   );
-  assert.equal(r.warp.answered.length, 0);
+  assert.equal(r.humagen.answered.length, 0);
   assert.equal(r.slack.of("chat.postEphemeral").at(-1)?.text, words.replyInConsole);
   await deliver(r, stopPressed(TS));
   await r.app.idle();
 });
 
-test("a Slack person the client does not map cannot answer, and warp is never asked", async () => {
+test("a Slack person the client does not map cannot answer, and humagen is never asked", async () => {
   const w = mapped();
   const { shown, ts } = await parkOn(w, "approval");
   await deliver(
     w,
     click(blocksOf(shown), defaultCopy.approve, { ts, threadTs: TS, user: "U0NOBODY1" }),
   );
-  assert.equal(w.warp.answered.length, 0);
+  assert.equal(w.humagen.answered.length, 0);
   assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.noPermission);
   // Without a client, nobody is mapped, so nobody answers from Slack.
   const bare = world();
   const b = await parkOn(bare, "approval");
   await deliver(bare, click(blocksOf(b.shown), defaultCopy.approve, { ts: b.ts, threadTs: TS }));
-  assert.equal(bare.warp.answered.length, 0);
+  assert.equal(bare.humagen.answered.length, 0);
   for (const x of [w, bare]) {
     await deliver(x, stopPressed(TS));
     await x.app.idle();
   }
 });
 
-test("an answer warp refuses is shown in warp's words, and the card keeps its buttons", async () => {
+test("an answer humagen refuses is shown in humagen's words, and the card keeps its buttons", async () => {
   const w = mapped();
   const { shown, ts } = await parkOn(w, "approval");
   // ana asked for the run, so she may not approve its call.
-  w.warp.refuseAnswer = new WarpError(403, "platform: forbidden: ana may not answer this question");
+  w.humagen.refuseAnswer = new HumagenError(
+    403,
+    "platform: forbidden: ana may not answer this question",
+  );
   await deliver(w, click(blocksOf(shown), defaultCopy.approve, { ts, threadTs: TS, user: USER }));
   assert.equal(w.slack.of("chat.postEphemeral").at(-1)?.text, defaultCopy.noPermission);
   assert.ok(w.logs.some((l) => l.includes("may not answer")));
@@ -1947,7 +1957,7 @@ test("a question in the inbox is not posted again in the thread: the run already
   const watch = w.app.watchInbox(watching.signal);
   const { run } = await parkOn(w, "approval");
   const posts = w.slack.of("chat.postMessage").length;
-  w.warp.raise(questionMail(run, "approval"));
+  w.humagen.raise(questionMail(run, "approval"));
   await settle();
   assert.equal(w.slack.of("chat.postMessage").length, posts);
   await deliver(w, stopPressed(TS));

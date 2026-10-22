@@ -1,8 +1,8 @@
+import type { Turn } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { WebSurface } from "@humagen/render-web";
+import { AgentMessage, railEntry, Thread, UserMessage } from "@humagen/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { Turn } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { WebSurface } from "@warp/render-web";
-import { AgentMessage, railEntry, Thread, UserMessage } from "@warp/web";
 import { expect, userEvent, within } from "storybook/test";
 import { webOnly } from "../../support";
 

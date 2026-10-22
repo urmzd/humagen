@@ -1,4 +1,4 @@
-import { emptyTurn, reduce, type Turn, type TurnEvent } from "@warp/core";
+import { emptyTurn, reduce, type Turn, type TurnEvent } from "@humagen/core";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 type Input = TurnEvent | { type: "@reset"; seed: Turn };

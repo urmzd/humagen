@@ -3,7 +3,7 @@
 ## Reporting a Vulnerability
 
 Report security issues privately through
-[GitHub Security Advisories](https://github.com/urmzd/warp/security/advisories/new)
+[GitHub Security Advisories](https://github.com/urmzd/humagen/security/advisories/new)
 rather than in an issue. Please include a description, the affected commit, and
 a reproduction if you have one.
 

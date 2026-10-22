@@ -21,7 +21,7 @@ import {
   type SystemAlert,
   type Turn,
   timeToken,
-} from "@warp/core";
+} from "@humagen/core";
 import {
   type ActionRef,
   Actions,
@@ -48,7 +48,7 @@ import {
   Terminal,
   Text,
   useSurface,
-} from "@warp/primitives";
+} from "@humagen/primitives";
 import type { ReactNode } from "react";
 import { type Copy, defaultCopy } from "./copy";
 

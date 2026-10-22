@@ -1,6 +1,6 @@
+import { AgentList, RequestView } from "@humagen/components";
+import * as fx from "@humagen/core/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { AgentList, RequestView } from "@warp/components";
-import * as fx from "@warp/core/fixtures";
 import { expect, fn, within } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";
 

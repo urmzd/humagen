@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // Record is one person's latest feedback on a run. The run owns its content.

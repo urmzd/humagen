@@ -1,9 +1,9 @@
 {
-  "name": "@warp/render-web",
+  "name": "@humagen/render-web",
   "version": "0.20.2",
   "private": true,
   "type": "module",
-  "description": "DOM implementations of the warp primitives, plus theme tokens.",
+  "description": "DOM implementations of the humagen primitives, plus theme tokens.",
   "exports": {
     ".": "./src/index.tsx",
     "./theme.css": "./src/theme.css"
@@ -12,8 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@warp/core": "workspace:*",
-    "@warp/primitives": "workspace:*",
+    "@humagen/core": "workspace:*",
+    "@humagen/primitives": "workspace:*",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"
   },

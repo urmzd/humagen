@@ -1,9 +1,9 @@
 {
-  "name": "@warp/primitives",
+  "name": "@humagen/primitives",
   "version": "0.20.2",
   "private": true,
   "type": "module",
-  "description": "The primitive contract every warp renderer implements, plus surface context.",
+  "description": "The primitive contract every humagen renderer implements, plus surface context.",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@warp/core": "workspace:*"
+    "@humagen/core": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19"

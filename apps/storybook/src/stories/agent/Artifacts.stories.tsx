@@ -1,8 +1,8 @@
+import { AttachmentView } from "@humagen/components";
+import type { Artifact } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
+import { AgentMessage } from "@humagen/web";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { AttachmentView } from "@warp/components";
-import type { Artifact } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
-import { AgentMessage } from "@warp/web";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";
 

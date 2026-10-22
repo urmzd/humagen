@@ -20,9 +20,9 @@ func TestAConversationIsPrivateUntilShared(t *testing.T) {
 	want(t, f, owner, "PUT", "/api/projects/Secret/members", `{"version":1,"members":[{"who":"svc-acme","role":"owner"}]}`, http.StatusOK)
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
 	want(t, f, owner, "PUT", "/api/projects/Field/members", `{"version":1,"members":[{"who":"*","role":"member"}]}`, http.StatusOK)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
-	bo := f.person(t, "acme", "00u-bo", "Bo", "warp-operators")
-	cy := f.person(t, "acme", "00u-cy", "Cy", "warp-operators")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
+	bo := f.person(t, "acme", "00u-bo", "Bo", "humagen-operators")
+	cy := f.person(t, "acme", "00u-cy", "Cy", "humagen-operators")
 
 	started := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","text":"FIRST-THOUGHT"}`, http.StatusCreated)
 	th := obj(started["thread"])
@@ -94,7 +94,7 @@ func TestSelectingAHiddenAgentAnswersAsAnUnknownOne(t *testing.T) {
 	want(t, f, owner, "PUT", "/api/agents/spy/home", `{"project":"Secret"}`, http.StatusOK)
 	want(t, f, owner, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
 	want(t, f, owner, "PUT", "/api/projects/Field/members", `{"version":1,"members":[{"who":"*","role":"member"}]}`, http.StatusOK)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
 
 	started := want(t, f, ana, "POST", "/api/threads", `{"project":"Field","agents":["helper"],"text":"hello"}`, http.StatusCreated)
 	th := obj(started["thread"])

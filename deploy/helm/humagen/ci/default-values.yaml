@@ -1,0 +1,8 @@
+# The chart's defaults with only the values it requires.
+system:
+  spec:
+    auth:
+      oidc:
+        issuer: https://idp.example.com
+        client_id: humagen
+        audience: humagen

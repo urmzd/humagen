@@ -1,0 +1,16 @@
+{{- if hasKey .Values.files "humagen.yaml" }}
+{{- fail "files: humagen.yaml is the rendered spec; give the file another name" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "humagen.fullname" . }}
+  labels:
+    {{- include "humagen.labels" . | nindent 4 }}
+data:
+  humagen.yaml: |
+    {{- include "humagen.spec" . | trimSuffix "\n" | nindent 4 }}
+  {{- range $name, $body := .Values.files }}
+  {{ $name }}: |
+    {{- $body | trimSuffix "\n" | nindent 4 }}
+  {{- end }}

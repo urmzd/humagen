@@ -1,8 +1,8 @@
 {
-  "name": "@warp/client",
+  "name": "@humagen/client",
   "version": "0.20.2",
   "private": true,
-  "description": "TypeScript client for the warp HTTP API, generated from api/openapi.yaml by oag.",
+  "description": "TypeScript client for the humagen HTTP API, generated from api/openapi.yaml by oag.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,

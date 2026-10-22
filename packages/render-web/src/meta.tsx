@@ -1,5 +1,5 @@
-import type { Task, Turn } from "@warp/core";
-import type { FileProps } from "@warp/primitives";
+import type { Task, Turn } from "@humagen/core";
+import type { FileProps } from "@humagen/primitives";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 
 /**

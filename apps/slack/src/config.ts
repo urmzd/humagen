@@ -1,6 +1,7 @@
 import { type Branding, DEFAULT_BRANDING, readBranding } from "./branding.ts";
+import { clientCredentials, staticToken, type TokenSource } from "./humagen.ts";
 import { defaultJournalPath } from "./journal.ts";
-import { clientCredentials, staticToken, type TokenSource } from "./warp.ts";
+import { adoptEnv } from "./legacy.ts";
 
 /** The permissions the app cannot work without. Others unlock more of the inbox, see the README. */
 export const NEEDED = ["runs:read", "runs:write", "agents:read"];
@@ -29,7 +30,9 @@ export interface Config {
     /** Socket Mode liveness: replace a silent connection, and how many failures in a row end the app. */
     socket: { idleMs?: number; maxAttempts?: number };
   };
-  warp: {
+  /** What to tell the operator at start: each old setting name in use. */
+  notes: string[];
+  humagen: {
     url: string;
     /** The one workspace this instance serves. Startup fails if the credential is for another. */
     tenant: string;
@@ -49,7 +52,9 @@ const list = (v: string | undefined) =>
     .filter(Boolean);
 
 /** Read the environment. Every missing name is reported at once, and no value is ever echoed. */
-export function readConfig(env: Record<string, string | undefined> = process.env): Config {
+export function readConfig(given: Record<string, string | undefined> = process.env): Config {
+  // A setting under its old WARP_ name is read as its HUMAGEN_ one, with a note.
+  const { env, notes } = adoptEnv(given);
   const missing: string[] = [];
   const need = (name: string) => {
     const v = env[name]?.trim();
@@ -64,16 +69,16 @@ export function readConfig(env: Record<string, string | undefined> = process.env
   };
   // A branding file that is named but cannot be used stops the app here, before it connects.
   const brandingPath = env.SLACK_BRANDING?.trim();
-  const tenant = need("WARP_TENANT");
-  const tokenUrl = env.WARP_OIDC_TOKEN_URL?.trim();
-  let token: TokenSource = staticToken(env.WARP_TOKEN?.trim());
+  const tenant = need("HUMAGEN_TENANT");
+  const tokenUrl = env.HUMAGEN_OIDC_TOKEN_URL?.trim();
+  let token: TokenSource = staticToken(env.HUMAGEN_TOKEN?.trim());
   if (tokenUrl) {
     token = clientCredentials({
       tokenUrl,
-      clientId: need("WARP_OIDC_CLIENT_ID"),
-      clientSecret: need("WARP_OIDC_CLIENT_SECRET"),
-      scopes: list(env.WARP_OIDC_SCOPES),
-      audience: env.WARP_OIDC_AUDIENCE?.trim() || undefined,
+      clientId: need("HUMAGEN_OIDC_CLIENT_ID"),
+      clientSecret: need("HUMAGEN_OIDC_CLIENT_SECRET"),
+      scopes: list(env.HUMAGEN_OIDC_SCOPES),
+      audience: env.HUMAGEN_OIDC_AUDIENCE?.trim() || undefined,
     });
   }
   const bad: string[] = [];
@@ -94,6 +99,7 @@ export function readConfig(env: Record<string, string | undefined> = process.env
     );
   }
   return {
+    notes,
     slack: {
       ...slack,
       branding: brandingPath ? readBranding(brandingPath) : DEFAULT_BRANDING,
@@ -103,13 +109,13 @@ export function readConfig(env: Record<string, string | undefined> = process.env
         ...(maxAttempts !== undefined ? { maxAttempts } : {}),
       },
     },
-    warp: {
-      url: env.WARP_URL?.trim() || "http://127.0.0.1:8080",
+    humagen: {
+      url: env.HUMAGEN_URL?.trim() || "http://127.0.0.1:8080",
       tenant,
       token,
-      client: env.WARP_CLIENT?.trim() || undefined,
-      defaultAgent: env.WARP_DEFAULT_AGENT?.trim() || undefined,
-      publicUrl: env.WARP_PUBLIC_URL?.trim().replace(/\/+$/, "") || undefined,
+      client: env.HUMAGEN_CLIENT?.trim() || undefined,
+      defaultAgent: env.HUMAGEN_DEFAULT_AGENT?.trim() || undefined,
+      publicUrl: env.HUMAGEN_PUBLIC_URL?.trim().replace(/\/+$/, "") || undefined,
     },
   };
 }

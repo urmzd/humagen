@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 func channel(project, name string) projects.Channel {

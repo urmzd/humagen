@@ -11,11 +11,11 @@ import (
 	"github.com/urmzd/fiber/pkg/envelope"
 	"github.com/urmzd/fiber/pkg/registry"
 
-	"github.com/urmzd/warp/pkg/alerts"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/pick"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/pick"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // Agents in projects: which agents may run where, who answers a message that

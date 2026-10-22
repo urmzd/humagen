@@ -1,4 +1,4 @@
-// Package state is where warp's own stores keep what must outlive the
+// Package state is where humagen's own stores keep what must outlive the
 // process: small documents, each named by a namespace, a tenant and a key.
 //
 // It holds no domain logic. Each store (the inbox, the alert engine, the run
@@ -12,7 +12,7 @@
 //
 // A store reads the database once, when it is built, and from then on trusts
 // its memory. Two processes writing one database would each be blind to the
-// other's writes, so the model is one warp process per database. Postgres
+// other's writes, so the model is one humagen process per database. Postgres
 // enforces it: it holds an advisory lock for as long as it is open, and a
 // second process opening the same schema is refused with ErrLocked rather
 // than allowed to diverge quietly.

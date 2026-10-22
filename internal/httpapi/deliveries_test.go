@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/humagen/internal/platform"
 )
 
 // slackApp is a Slack client whose machine is the credential named.
@@ -58,7 +58,7 @@ func TestOnlyAClientsMachineRecordsAndSeesItsDeliveries(t *testing.T) {
 		"another's machine":   {two, "one", http.StatusNotFound},
 		"a client not there":  {one, "ghost", http.StatusNotFound},
 		"another workspace":   {f.machine(t, "globex", everything...), "one", http.StatusNotFound},
-		"no permission to":    {f.iss.Sign(t, "svc-one", audience, map[string]any{"org": "acme", "scp": []string{"warp:runs:read"}}), "one", http.StatusForbidden},
+		"no permission to":    {f.iss.Sign(t, "svc-one", audience, map[string]any{"org": "acme", "scp": []string{"humagen:runs:read"}}), "one", http.StatusForbidden},
 		"a message not there": {one, "one", 0},
 	} {
 		if c.want == 0 {
@@ -164,7 +164,7 @@ func TestAProjectsInboxShowsOnlyTheReadersOwnReceipts(t *testing.T) {
 	f, ana, _, _ := acmeNews(t)
 	admin := f.machine(t, "acme", everything...)
 	one, two := f.signedAs(t, "svc-one"), f.signedAs(t, "svc-two")
-	dana := f.person(t, "acme", "dana", "Dana", "warp-admins")
+	dana := f.person(t, "acme", "dana", "Dana", "humagen-admins")
 	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	for _, c := range []string{slackApp("one", "A01ONE", "svc-one"), slackApp("two", "A01TWO", "svc-two")} {
 		want(t, f, admin, "POST", "/api/clients", c, http.StatusCreated)
@@ -215,7 +215,7 @@ func TestAnAnnouncementsSlackThreadIsReadAsTheSpecSays(t *testing.T) {
 	f := newFixtureGranting(t, platform.Config{}, `grant operator to subject "ana"`)
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	admin, app := f.machine(t, "acme", everything...), f.signedAs(t, "svc-one")
-	ana, bo := f.person(t, "acme", "ana", "Ana", "warp-operators"), f.person(t, "acme", "bo", "Bo", "warp-operators")
+	ana, bo := f.person(t, "acme", "ana", "Ana", "humagen-operators"), f.person(t, "acme", "bo", "Bo", "humagen-operators")
 	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	client := strings.Replace(slackApp("one", "A01ONE", "svc-one"), `"machine":"svc-one"`, `"machine":"svc-one","people":{"U01ANA":"ana"}`, 1)
 	want(t, f, admin, "POST", "/api/clients", client, http.StatusCreated)
@@ -259,19 +259,19 @@ func TestAnAnnouncementsSlackThreadIsReadAsTheSpecSays(t *testing.T) {
 	c.call(app, "POST", "/api/threads", "/api/threads", reply("1700000000.000500", "1700000000.000600"), http.StatusGone)
 }
 
-// A reply under the post of warp's own release notes, in the workspace's
-// bound general channel, starts a thread whose first turn is from warp
-// itself, as the spec says: kind system, by warp.
+// A reply under the post of humagen's own release notes, in the workspace's
+// bound general channel, starts a thread whose first turn is from humagen
+// itself, as the spec says: kind system, by humagen.
 func TestReleaseNotesSeedAThreadAsTheSpecSays(t *testing.T) {
 	f := newFixtureGranting(t, platform.Config{}, `grant operator to subject "ana"`)
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	admin, app := f.machine(t, "acme", everything...), f.signedAs(t, "svc-one")
-	ana := f.person(t, "acme", "ana", "Ana", "warp-operators")
+	ana := f.person(t, "acme", "ana", "Ana", "humagen-operators")
 	want(t, f, admin, "POST", "/api/agents", helperSpec, http.StatusCreated)
 	client := strings.Replace(slackApp("one", "A01ONE", "svc-one"), `"machine":"svc-one"`, `"machine":"svc-one","people":{"U01ANA":"ana"}`, 1)
 	want(t, f, admin, "POST", "/api/clients", client, http.StatusCreated)
 	want(t, f, admin, "PUT", "/api/projects/~/channels/general", `{"version":0,"slack":{"client":"one","channel":"C01ALL"}}`, http.StatusOK)
-	notes, _, err := f.p.PostReleaseNotes("acme", "0.16.0", platform.Announcement{Subject: "What's new in warp 0.16.0", Text: "- Slack catch-up"})
+	notes, _, err := f.p.PostReleaseNotes("acme", "0.16.0", platform.Announcement{Subject: "What's new in Humagen 0.16.0", Text: "- Slack catch-up"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ func TestReleaseNotesSeedAThreadAsTheSpecSays(t *testing.T) {
 	if len(turns) < 2 || obj(turns[0])["kind"] != "announcement" {
 		t.Fatalf("the thread reads %s", page.raw)
 	}
-	if a := obj(obj(turns[0])["announcement"]); a["kind"] != "system" || a["by"] != "warp" || a["name"] != nil || a["subject"] != "What's new in warp 0.16.0" {
+	if a := obj(obj(turns[0])["announcement"]); a["kind"] != "system" || a["by"] != "humagen" || a["name"] != nil || a["subject"] != "What's new in Humagen 0.16.0" {
 		t.Fatalf("its first turn is %v", a)
 	}
 }

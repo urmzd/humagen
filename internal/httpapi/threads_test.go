@@ -23,7 +23,7 @@ func (f *fixture) person(t *testing.T, org, subject, name string, groups ...stri
 // speak as, and what is posted is the caller's.
 func TestNoRouteLetsAnyonePostAsSomeoneElse(t *testing.T) {
 	f := newFixture(t)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
 	for _, body := range []string{
 		`{"visibility":"shared","text":"hi","by":"00u-vic"}`,
 		`{"visibility":"shared","text":"hi","agent":"helper"}`,
@@ -54,8 +54,8 @@ func TestNoRouteLetsAnyonePostAsSomeoneElse(t *testing.T) {
 // reply is a message by them in the thread, and starts no run.
 func TestAMentionIsRepliedToFromTheInbox(t *testing.T) {
 	f := newFixture(t)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
-	bo := f.person(t, "acme", "00u-bo", "Bo", "warp-admins")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
+	bo := f.person(t, "acme", "00u-bo", "Bo", "humagen-admins")
 	res, out := f.do(t, nil, "POST", "/api/threads", ana, `{"visibility":"shared","text":"@bo can you check the renewal?"}`)
 	if res.StatusCode != http.StatusCreated || out["rule"] != "people" {
 		t.Fatalf("tagging bo = %d %v", res.StatusCode, out)
@@ -95,8 +95,8 @@ func TestAMentionIsRepliedToFromTheInbox(t *testing.T) {
 // in the thread, in the list of threads and in the mention the tag raises.
 func TestAThreadNeverShowsASubjectThatHoldsAnAddress(t *testing.T) {
 	f := newFixture(t)
-	pat := f.person(t, "acme", "tailscale:pat@example.com", "", "warp-admins")
-	ada := f.person(t, "acme", "tailscale:ada@example.com", "Ada", "warp-admins")
+	pat := f.person(t, "acme", "tailscale:pat@example.com", "", "humagen-admins")
+	ada := f.person(t, "acme", "tailscale:ada@example.com", "Ada", "humagen-admins")
 	res, posted := f.do(t, nil, "POST", "/api/threads", pat, `{"visibility":"shared","text":"@ada can you check the renewal?"}`)
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("tagging ada = %d %v", res.StatusCode, posted)

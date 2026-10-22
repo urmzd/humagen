@@ -5,7 +5,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 func TestAnExcerptIsAtMostThreeHundredCharacters(t *testing.T) {

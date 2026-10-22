@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/feedback"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/feedback"
 )
 
 func (s *Server) putFeedback(w http.ResponseWriter, r *http.Request, who auth.Principal) {

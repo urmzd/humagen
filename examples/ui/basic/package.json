@@ -1,5 +1,5 @@
 {
-  "name": "@warp/example-basic",
+  "name": "@humagen/example-basic",
   "version": "0.20.2",
   "private": true,
   "type": "module",
@@ -7,10 +7,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@warp/components": "workspace:*",
-    "@warp/core": "workspace:*",
-    "@warp/render-slack": "workspace:*",
-    "@warp/render-web": "workspace:*",
+    "@humagen/components": "workspace:*",
+    "@humagen/core": "workspace:*",
+    "@humagen/render-slack": "workspace:*",
+    "@humagen/render-web": "workspace:*",
     "react": "^19.3.0"
   }
 }

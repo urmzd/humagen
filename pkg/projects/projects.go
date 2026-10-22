@@ -313,7 +313,7 @@ var validName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 _-]{0,62}$`)
 // one: the root is never created.
 func ValidName(name string) bool { return validName.MatchString(name) }
 
-// builtIn reports whether a kind is one warp defines.
+// builtIn reports whether a kind is one humagen defines.
 func builtIn(k Kind) bool { return k == Company || k == Team || k == Account }
 
 var validField = map[string]bool{

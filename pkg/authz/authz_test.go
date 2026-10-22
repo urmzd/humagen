@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/authz"
+	"github.com/urmzd/humagen/pkg/authz"
 )
 
 // perms stands in for the platform's list. The tests in pkg/auth run the

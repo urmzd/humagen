@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS warp_state (
 // lockClass is the first half of the advisory locks this package takes. The
 // second half is the schema's hash, so two schemas in one database are two
 // deployments and do not block each other.
-const lockClass = 0x77617270 // "warp"
+// It is the value every release has used, so an older process and this one
+// on one schema still exclude each other during an upgrade.
+const lockClass = 0x77617270
 
 // Postgres is a Store in a Postgres database. It does not own the pool: the
 // caller opened it and closes it, after Close.

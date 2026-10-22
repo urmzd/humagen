@@ -1,5 +1,5 @@
-import { defaultCopy } from "@warp/components";
-import { FolderIcon, FolderPlusIcon } from "@warp/render-web";
+import { defaultCopy } from "@humagen/components";
+import { FolderIcon, FolderPlusIcon } from "@humagen/render-web";
 import { type FormEvent, type MouseEvent, type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   ApiError,
@@ -287,7 +287,7 @@ export function NewProject({
 }: {
   /** The projects it could sit under. */
   places: ProjectView[];
-  /** The workspace's own kinds, offered after warp's where they may sit. */
+  /** The workspace's own kinds, offered after humagen's where they may sit. */
   kinds?: ProjectKindSpec[];
   /** Where it goes, when that is decided: a sub-project's parent. */
   parent?: Place & { title?: string };
@@ -539,7 +539,7 @@ function SharedMemory({
       ) : (
         <ul>
           {kept.map((n) => (
-            <li key={n.id} className="warp-enter flex items-start justify-between gap-3 border-aui-border border-t py-2 first:border-t-0">
+            <li key={n.id} className="humagen-enter flex items-start justify-between gap-3 border-aui-border border-t py-2 first:border-t-0">
               <span className="min-w-0">
                 <span className="block text-aui-sm text-aui-fg">{n.text}</span>
                 <span className="block text-aui-xs text-aui-muted">
@@ -651,7 +651,7 @@ function ProjectTasks({
       ) : (
         <ul>
           {page.threads.map((t) => (
-            <li key={t.id} className="warp-enter border-aui-border border-t first:border-t-0">
+            <li key={t.id} className="humagen-enter border-aui-border border-t first:border-t-0">
               <button
                 type="button"
                 onClick={() => onOpenThread(t.id)}

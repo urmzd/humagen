@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/urmzd/warp/pkg/evals"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // Errors.

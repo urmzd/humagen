@@ -1,4 +1,4 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { useEffect, useState } from "react";
 import { bytes, contentUrl, deleteProblem, type Filter, kindWord, type Stored, type StorageTransport, type StorageUse, OVER_LIMIT, overLimit, showsInline, transport as platform, useStorage } from "./storage.ts";
 import { AgentMark, agentOptions, Confirm, ago, button, Chip, Empty, Menu, Page, Problem, primary, rows, SearchField, SkeletonRows, UsageMeter, textLink } from "./ui.tsx";
@@ -7,7 +7,7 @@ import { AgentMark, agentOptions, Confirm, ago, button, Chip, Empty, Menu, Page,
 export function StorageUsed({ use }: { use: StorageUse }) {
   const top = [...use.by_project].sort((a, b) => b.bytes - a.bytes).slice(0, 4);
   return (
-    <section data-testid="storage-use" className="grid grid-cols-1 gap-x-10 gap-y-5 border-[var(--warp-rule)] border-y py-5 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <section data-testid="storage-use" className="grid grid-cols-1 gap-x-10 gap-y-5 border-[var(--humagen-rule)] border-y py-5 @3xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <UsageMeter
         size="header"
         label={`Stored, ${use.count} ${use.count === 1 ? "artifact" : "artifacts"}`}
@@ -47,7 +47,7 @@ export function DeleteVersion({
   onKeep: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 border-[var(--warp-rule)] border-t pt-3">
+    <div className="flex flex-wrap items-center gap-3 border-[var(--humagen-rule)] border-t pt-3">
       {confirming ? (
         <Confirm question={defaultCopy.confirm.ask(`version ${version} of this artifact`)} action="Delete Version" onConfirm={onDelete} onKeep={onKeep} />
       ) : (
@@ -83,10 +83,10 @@ export function StoredDetail({
   useEffect(() => setConfirming(false), [file.id]);
 
   return (
-    <section data-testid="stored-detail" aria-label={file.title} className="warp-enter warp-glass flex flex-col gap-4 rounded-aui-lg p-4">
+    <section data-testid="stored-detail" aria-label={file.title} className="humagen-enter humagen-glass flex flex-col gap-4 rounded-aui-lg p-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="warp-display truncate text-aui-lg font-semibold text-aui-fg">{file.title}</h2>
+          <h2 className="humagen-display truncate text-aui-lg font-semibold text-aui-fg">{file.title}</h2>
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-0.5 text-aui-xs text-aui-muted">
             <span>{kindWord[file.kind]}</span>
             <span>{bytes(file.size)}</span>
@@ -115,7 +115,7 @@ export function StoredDetail({
         <img
           src={contentUrl(file.id, true)}
           alt={file.description || file.title}
-          className="max-h-96 w-auto max-w-full self-start rounded-aui border border-[var(--warp-rule)] object-contain"
+          className="max-h-96 w-auto max-w-full self-start rounded-aui border border-[var(--humagen-rule)] object-contain"
         />
       ) : file.preview ? (
         <pre data-testid="stored-preview" className="aui-scroll max-h-72 overflow-auto rounded-aui bg-aui-code p-3 font-aui-mono text-aui-xs text-aui-fg">
@@ -176,7 +176,7 @@ export function StorageMore({ hasMore, loading, failed, onMore }: { hasMore: boo
         type="button"
         onClick={onMore}
         disabled={loading}
-        className="inline-flex h-6 items-center rounded-full border border-[var(--warp-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
+        className="inline-flex h-6 items-center rounded-full border border-[var(--humagen-rule)] px-2.5 text-aui-xs text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:cursor-default"
       >
         {loading ? "Loading" : failed ? "Could not load. Try again" : "See more"}
       </button>
@@ -211,7 +211,7 @@ export function StoredList({
   return (
     <ul className={rows} aria-label="Artifacts">
       {files.map((f) => (
-        <li key={f.id} className="warp-enter">
+        <li key={f.id} className="humagen-enter">
           <button
             type="button"
             data-testid="stored-row"

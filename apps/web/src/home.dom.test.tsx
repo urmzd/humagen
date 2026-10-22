@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import type { HomeNotification, HomeUpdate } from "@warp/core";
+import type { HomeNotification, HomeUpdate } from "@humagen/core";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { HomeBoxes } from "./HomePage.tsx";
 

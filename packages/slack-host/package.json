@@ -1,9 +1,9 @@
 {
-  "name": "@warp/slack-host",
+  "name": "@humagen/slack-host",
   "version": "0.20.2",
   "private": true,
   "type": "module",
-  "description": "The Slack host loop: a Web API client and one turn kept in step with Slack (reactions, session status, native streaming, overflow), shared by every Slack app built on warp.",
+  "description": "The Slack host loop: a Web API client and one turn kept in step with Slack (reactions, session status, native streaming, overflow), shared by every Slack app built on humagen.",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -12,9 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@warp/components": "workspace:*",
-    "@warp/core": "workspace:*",
-    "@warp/render-slack": "workspace:*"
+    "@humagen/components": "workspace:*",
+    "@humagen/core": "workspace:*",
+    "@humagen/render-slack": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19"

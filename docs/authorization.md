@@ -94,9 +94,9 @@ before then takes this one-line change, or only admins make projects:
 
 People are unaffected under the built-in policy, whose viewer reads `*`. A
 machine gets exactly the scopes on its token, so one with explicit scopes
-(the Slack app, CI) needs `warp:projects:read` to list projects.
-`warp config check` warns of a Slack app whose `warp_client` holds
-`warp:runs:read` but not `warp:projects:read`, the one machine a spec
+(the Slack app, CI) needs `humagen:projects:read` to list projects.
+`humagen config check` warns of a Slack app whose `humagen_client` holds
+`humagen:runs:read` but not `humagen:projects:read`, the one machine a spec
 configures; a CI token's scopes are the identity provider's to check.
 
 ## Project roles
@@ -168,8 +168,8 @@ gives it back to them.
 ## Configure
 
 ```sh
-export WARP_AUTHZ_POLICY=/etc/warp/policy.authz
-warp serve ...
+export HUMAGEN_AUTHZ_POLICY=/etc/warp/policy.authz
+humagen serve ...
 ```
 
 Without it, the built-in policy (`pkg/auth/default.authz`) declares `viewer`,
@@ -199,9 +199,9 @@ this?" on the home page.
 From the command line, with the same environment and flags as `serve`:
 
 ```sh
-warp authz check policy.authz
-WARP_AUTHZ_POLICY=policy.authz \
-  warp authz explain -claims id-token-claims.json billing:read
+humagen authz check policy.authz
+HUMAGEN_AUTHZ_POLICY=policy.authz \
+  humagen authz explain -claims id-token-claims.json billing:read
 ```
 
 ```
@@ -223,7 +223,7 @@ provider on `127.0.0.1:8081` with a page of personas and no passwords. Sign-in
 goes through the same flow, verifier and policy as a real provider. The
 built-in personas are a viewer, an operator, a manager, an admin and someone in no
 mapped group, and a machine `mock-ci` (secret `mock-ci-secret`) with
-`warp:runs:read` and `warp:runs:write`:
+`humagen:runs:read` and `humagen:runs:write`:
 
 ```sh
 curl -s -u mock-ci:mock-ci-secret -d grant_type=client_credentials http://127.0.0.1:8081/token

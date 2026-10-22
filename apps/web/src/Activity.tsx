@@ -1,8 +1,8 @@
-import { answerOfAction } from "@warp/adapter/question";
-import { defaultCopy } from "@warp/components";
-import type { UiAction } from "@warp/core";
-import { ChevronRightIcon, WebSurface, XIcon } from "@warp/render-web";
-import { AgentMessage } from "@warp/web";
+import { answerOfAction } from "@humagen/adapter/question";
+import { defaultCopy } from "@humagen/components";
+import type { UiAction } from "@humagen/core";
+import { ChevronRightIcon, WebSurface, XIcon } from "@humagen/render-web";
+import { AgentMessage } from "@humagen/web";
 import { useEffect, useMemo, useState } from "react";
 import { type Run, turnOf } from "./adapter.ts";
 import { ApiError, api, type Span } from "./api.ts";
@@ -95,7 +95,7 @@ function Name({ run, nth }: { run: Run; nth: number }) {
 /** One run in the list: who, what it was asked, how it stands, and how long it took. */
 function Row({ run, nth, tools, base, onOpen }: { run: Run; nth: number; tools: number; base: number; onOpen: () => void }) {
   return (
-    <li className="warp-enter" style={{ paddingLeft: Math.max(run.depth - base, 0) * 16 }}>
+    <li className="humagen-enter" style={{ paddingLeft: Math.max(run.depth - base, 0) * 16 }}>
       <Stroke agent={run.agent} state={strokeOf(run.status)}>
         <button
           type="button"
@@ -155,13 +155,13 @@ function Conversation({ run }: { run: Run }) {
           <div className="flex w-full flex-col gap-3" aria-label="Helper input">
             <p className="text-aui-xs text-aui-muted">Return format: {run.input.input.response_format.type.replaceAll("_", " ")}</p>
             {run.input.messages.map((message, index) => (
-              <div key={index} className="warp-glass whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
+              <div key={index} className="humagen-glass whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">
                 <p className="mb-1 text-aui-xs text-aui-muted">{message.role === "assistant" ? "Example response" : "Input message"}</p>
                 {message.text}
               </div>
             ))}
           </div>
-        ) : <p className="warp-glass max-w-[90%] whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text || "No request text"}</p>}
+        ) : <p className="humagen-glass max-w-[90%] whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text || "No request text"}</p>}
       </div>
       <AgentTint name={run.agent}>
         <WebSurface onAction={onAction}>
@@ -223,7 +223,7 @@ export function ActivityPanel({
         <h3 className="px-3 pt-3 pb-1 text-aui-xs text-aui-muted">
           {title} ({group.reduce((n, t) => n + t.runs.length, 0)})
         </h3>
-        <ul className="flex flex-col divide-y divide-[var(--warp-rule)]">
+        <ul className="flex flex-col divide-y divide-[var(--humagen-rule)]">
           {group.map((t) => {
             const rows = ordered(t);
             const base = Math.min(...rows.map((r) => r.depth));
@@ -245,11 +245,11 @@ export function ActivityPanel({
       data-testid="activity"
       aria-label="Activity"
       data-leaving={leaving}
-      className="warp-drawer fixed inset-0 z-30 flex min-h-0 flex-col bg-aui-bg lg:static lg:z-auto lg:w-[27rem] lg:shrink-0 lg:border-[var(--warp-rule)] lg:border-l"
+      className="humagen-drawer fixed inset-0 z-30 flex min-h-0 flex-col bg-aui-bg lg:static lg:z-auto lg:w-[27rem] lg:shrink-0 lg:border-[var(--humagen-rule)] lg:border-l"
     >
-      <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-[var(--warp-rule)] border-b pr-2 pl-4">
+      <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-[var(--humagen-rule)] border-b pr-2 pl-4">
         <div className="min-w-0">
-          <h2 className="warp-display text-aui-base font-semibold text-aui-fg">Activity</h2>
+          <h2 className="humagen-display text-aui-base font-semibold text-aui-fg">Activity</h2>
         </div>
         <p className="min-w-0 flex-1 truncate text-right text-aui-xs text-aui-muted" aria-live="polite">
           {all.length === 0
@@ -269,7 +269,7 @@ export function ActivityPanel({
       </header>
 
       {run ? (
-        <div key={run.id} className="warp-fade aui-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
+        <div key={run.id} className="humagen-fade aui-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
           <nav aria-label="Called by" className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-aui-xs text-aui-muted">
             <button
               type="button"
@@ -301,7 +301,7 @@ export function ActivityPanel({
           <Stroke agent={run.agent} state={strokeOf(run.status)} testId="activity-detail" className="flex flex-col gap-1 pl-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <AgentMark name={run.agent} size={18} />
-              <h3 className="warp-display text-aui-lg font-semibold text-aui-fg">
+              <h3 className="humagen-display text-aui-lg font-semibold text-aui-fg">
                 {run.agent}
                 {(nth.get(run.id) ?? 1) > 1 && <span className="font-normal text-aui-muted"> {nth.get(run.id)}</span>}
               </h3>
@@ -332,7 +332,7 @@ export function ActivityPanel({
           {tools.length > 0 && (
             <section className="flex flex-col gap-1" data-testid="activity-tools">
               <h4 className="text-aui-xs text-aui-muted">Tools it used</h4>
-              <ul className="divide-y divide-[var(--warp-rule)] border-[var(--warp-rule)] border-y">
+              <ul className="divide-y divide-[var(--humagen-rule)] border-[var(--humagen-rule)] border-y">
                 {tools.map((s, i) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: spans have no id and the list is rebuilt whole
                   <li key={i} className="flex items-center justify-between gap-3 py-1 text-aui-sm">
@@ -348,7 +348,7 @@ export function ActivityPanel({
           )}
 
           {limits && (
-            <details data-testid="activity-limits" className="border-[var(--warp-rule)] border-y py-1">
+            <details data-testid="activity-limits" className="border-[var(--humagen-rule)] border-y py-1">
               <summary className="cursor-pointer list-none rounded-aui-sm py-1 text-aui-xs text-aui-muted hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent">
                 Limits it draws on
               </summary>
@@ -359,7 +359,7 @@ export function ActivityPanel({
           {called.length > 0 && (
             <section className="flex flex-col gap-1" data-testid="activity-called">
               <h4 className="text-aui-xs text-aui-muted">Agents it called</h4>
-              <ul className="flex flex-col divide-y divide-[var(--warp-rule)] border-[var(--warp-rule)] border-y">
+              <ul className="flex flex-col divide-y divide-[var(--humagen-rule)] border-[var(--humagen-rule)] border-y">
                 {called.map((r) => (
                   <Row key={r.id} run={r} nth={nth.get(r.id) ?? 1} tools={toolsBy.get(r.id)?.length ?? 0} base={r.depth} onOpen={() => onSelect(r.id)} />
                 ))}

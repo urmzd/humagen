@@ -1,4 +1,4 @@
-// Package credentials keeps the credentials people give warp for themselves:
+// Package credentials keeps the credentials people give humagen for themselves:
 // at most one per person for each person-scoped tool provider (an MCP server
 // whose credential scope is person, docs/spec.md), so a run that acts for
 // someone reaches that provider as them and as nobody else.
@@ -34,8 +34,8 @@ import (
 
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
-	"github.com/urmzd/warp/pkg/credref"
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // Errors. A message never carries a value.

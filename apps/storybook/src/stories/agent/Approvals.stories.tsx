@@ -1,7 +1,7 @@
+import { ApprovalCard } from "@humagen/components";
+import { ActionId, type Approval, type UiAction } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { ApprovalCard } from "@warp/components";
-import { ActionId, type Approval, type UiAction } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
 import { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 import { type ActionArgs, Canvas, slack } from "../../support";

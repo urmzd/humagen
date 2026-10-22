@@ -1,4 +1,4 @@
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useState } from "react";
 import type { Run } from "./adapter.ts";
 import { inWords, presets } from "./cron.ts";
@@ -410,7 +410,7 @@ export function Schedules({
       ) : (
         <ul className={rows} aria-label="Schedules">
           {schedules.map((s) => (
-            <li key={s.name} className="warp-enter">
+            <li key={s.name} className="humagen-enter">
               <button
                 type="button"
                 onClick={() => select(s.name)}

@@ -72,7 +72,7 @@ func TestValidateRefusesWhatASurfaceCannotBe(t *testing.T) {
 		}
 	}
 	gh := githubOf("gh", "acme")
-	gh.GitHub = &GitHubOptions{AutoLabels: map[string]map[string]string{"acme/handbook": {"agent:auto": "lead"}}, Login: "warp-app[bot]"}
+	gh.GitHub = &GitHubOptions{AutoLabels: map[string]map[string]string{"acme/handbook": {"agent:auto": "lead"}}, Login: "humagen-app[bot]"}
 	if err := gh.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -88,8 +88,8 @@ func TestValidateRefusesWhatASurfaceCannotBe(t *testing.T) {
 		"slack options on github":       func(c *Client) { c.Slack = &SlackOptions{} },
 		"more accounts than are kept":   func(c *Client) { c.Identity.Owners = strings.Split(strings.Repeat("a,", 33), ",")[:33] },
 		"an account that is not a name": func(c *Client) { c.Identity.Owners = []string{"acme corp"} },
-		"a login that is not a login":   func(c *Client) { c.GitHub.Login = "@warp" },
-		"a login with a space":          func(c *Client) { c.GitHub.Login = "warp bot" },
+		"a login that is not a login":   func(c *Client) { c.GitHub.Login = "@humagen" },
+		"a login with a space":          func(c *Client) { c.GitHub.Login = "humagen bot" },
 		"a bare bot suffix":             func(c *Client) { c.GitHub.Login = "[bot]" },
 	} {
 		c := gh.clone()
@@ -250,7 +250,7 @@ func TestOnListsOnlyEnabledClientsOldestFirst(t *testing.T) {
 func TestSecretsHaveNowhereToLeak(t *testing.T) {
 	c := slackOf("docs", "A0DOCS", "T01ABCDEF")
 	c.Tenant = "acme"
-	c.Credentials = Credentials{Token: SecretRef{Set: true}, SigningSecret: SecretRef{Set: true, Ref: "env:WARP_SLACK_SIGNING_SECRET"}}
+	c.Credentials = Credentials{Token: SecretRef{Set: true}, SigningSecret: SecretRef{Set: true, Ref: "env:HUMAGEN_SLACK_SIGNING_SECRET"}}
 	raw, err := json.Marshal(c)
 	if err != nil {
 		t.Fatal(err)
@@ -278,13 +278,13 @@ func TestSecretsHaveNowhereToLeak(t *testing.T) {
 	}
 }
 
-// A reference may name only a variable set aside for warp, so a client
+// A reference may name only a variable set aside for humagen, so a client
 // cannot be pointed at the server's other secrets.
-func TestAnEnvReferenceNamesOnlyWarpVariables(t *testing.T) {
-	if name, err := EnvRef("env:WARP_SLACK_TOKEN_DOCS"); err != nil || name != "WARP_SLACK_TOKEN_DOCS" {
+func TestAnEnvReferenceNamesOnlyHumagenVariables(t *testing.T) {
+	if name, err := EnvRef("env:HUMAGEN_SLACK_TOKEN_DOCS"); err != nil || name != "HUMAGEN_SLACK_TOKEN_DOCS" {
 		t.Fatalf("%q, %v", name, err)
 	}
-	for _, ref := range []string{"env:ANTHROPIC_API_KEY", "env:PATH", "env:", "WARP_SLACK_TOKEN", "file:/etc/passwd", "env:warp_x", "env:WARP_A B"} {
+	for _, ref := range []string{"env:ANTHROPIC_API_KEY", "env:PATH", "env:", "HUMAGEN_SLACK_TOKEN", "file:/etc/passwd", "env:humagen_x", "env:HUMAGEN_A B"} {
 		if _, err := EnvRef(ref); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%q was accepted: %v", ref, err)
 		}
@@ -359,6 +359,19 @@ func TestASlackClientActsOnlyForThePeopleItMaps(t *testing.T) {
 		c.Slack = opts
 		if err := c.Validate(); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s = %v, want invalid", name, err)
+		}
+	}
+}
+
+// A client record stored before the rename names a WARP_ variable, and keeps
+// working; any other prefix is still refused.
+func TestAnEnvReferenceNamesEitherPrefix(t *testing.T) {
+	for ref, ok := range map[string]bool{
+		"env:HUMAGEN_SLACK_TOKEN_DOCS": true, "env:WARP_SLACK_TOKEN_DOCS": true,
+		"env:ANTHROPIC_API_KEY": false, "env:WARP_": false, "env:HUMAGEN_": false, "env:warp_x": false,
+	} {
+		if _, err := EnvRef(ref); (err == nil) != ok {
+			t.Errorf("EnvRef(%s) = %v", ref, err)
 		}
 	}
 }

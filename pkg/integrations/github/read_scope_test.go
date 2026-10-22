@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/urmzd/fiber/pkg/address"
-	"github.com/urmzd/warp/pkg/integrations/github"
+	"github.com/urmzd/humagen/pkg/integrations/github"
 )
 
 func TestCrossSourceReadsRequireAnExactRepositoryGrant(t *testing.T) {

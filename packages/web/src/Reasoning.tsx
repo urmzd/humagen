@@ -1,4 +1,4 @@
-import { Markdown } from "@warp/primitives";
+import { Markdown } from "@humagen/primitives";
 import {
   BrainIcon,
   Collapse,
@@ -6,7 +6,7 @@ import {
   Spinner,
   useDisclosure,
   useVerbSequence,
-} from "@warp/render-web";
+} from "@humagen/render-web";
 import { useEffect, useId, useRef, useState } from "react";
 
 const REASONING_VERBS = ["Thinking…", "Weighing options…", "Planning next steps…"] as const;

@@ -1,8 +1,8 @@
 // Package credref resolves credential references: names for where a key is
 // kept, never the key itself. A deployment writes "env:OPENAI_API_KEY",
-// "keychain:warp/openai" or "op://Private/OpenAI/credential" into its
+// "keychain:humagen/openai" or "op://Private/OpenAI/credential" into its
 // providers file, and the value is read when it is needed, on every call,
-// and never written anywhere by warp. Rotating a key is changing it where it
+// and never written anywhere by humagen. Rotating a key is changing it where it
 // lives; nothing here caches it.
 //
 // It is the one place a reference is parsed, so the providers file, the
@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	goruntime "runtime"
@@ -23,6 +22,8 @@ import (
 	"time"
 
 	"github.com/urmzd/fiber/pkg/mcptools"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // Errors. A message never carries a resolved value.
@@ -102,7 +103,8 @@ func Parse(raw string) (Ref, error) {
 // Resolver reads references. The zero value reads the real environment and
 // runs the real tools; tests replace the fields.
 type Resolver struct {
-	// LookupEnv reads a variable. Nil means os.LookupEnv.
+	// LookupEnv reads a variable. Nil means legacy.LookupEnv: a name under
+	// HUMAGEN_ or the old WARP_ reads either, the new one winning.
 	LookupEnv func(string) (string, bool)
 	// Run runs a command and returns its standard output. Nil runs it.
 	Run func(ctx context.Context, name string, args ...string) ([]byte, error)
@@ -125,9 +127,11 @@ func (r Resolver) Resolve(ctx context.Context, raw string) (string, error) {
 	}
 	switch ref.Scheme {
 	case Env:
+		// A reference under the old WARP_ prefix and one under HUMAGEN_ read
+		// one variable, the new name winning (legacy.LookupEnv).
 		look := r.LookupEnv
 		if look == nil {
-			look = os.LookupEnv
+			look = legacy.LookupEnv
 		}
 		v, ok := look(ref.Name)
 		if !ok || strings.TrimSpace(v) == "" {

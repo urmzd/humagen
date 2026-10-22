@@ -1,11 +1,12 @@
-package warp
+package humagen
 
 import (
 	"regexp"
 	"slices"
 	"testing"
 
-	"github.com/urmzd/warp/internal/release"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/internal/release"
 )
 
 // The embedded changelog is the one the release tool writes, and reads as
@@ -22,7 +23,7 @@ func TestTheEmbeddedChangelogReadsAsReleaseNotes(t *testing.T) {
 	n, ok := release.Find(changelog, "0.12.0")
 	if !ok || !slices.Equal(n.Breaking, []string{"projects: explicit addressing, @auto, agents in projects, and the directory (#39)"}) ||
 		!slices.Equal(n.Features, []string{"credentials: each person's own credential for the tools that act as them (#38)"}) ||
-		n.Compare != "https://github.com/urmzd/warp/compare/v0.11.0...v0.12.0" {
+		n.Compare != legacy.RepoURL+"/compare/v0.11.0...v0.12.0" {
 		t.Fatalf("0.12.0 = %+v, %v", n, ok)
 	}
 	// A release whose one entry is a breaking feat is news.

@@ -1,7 +1,7 @@
+import { linkCitations } from "@humagen/components";
+import * as fx from "@humagen/core/fixtures";
+import { Markdown, Sources } from "@humagen/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { linkCitations } from "@warp/components";
-import * as fx from "@warp/core/fixtures";
-import { Markdown, Sources } from "@warp/primitives";
 import { expect, userEvent, within } from "storybook/test";
 import { Canvas, slackPrimitive } from "../../support";
 

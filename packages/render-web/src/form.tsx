@@ -1,4 +1,4 @@
-import type { PrimitiveProps } from "@warp/primitives";
+import type { PrimitiveProps } from "@humagen/primitives";
 import { createContext, useContext, useId, useState, useSyncExternalStore } from "react";
 
 interface Group {

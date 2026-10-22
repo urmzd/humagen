@@ -12,15 +12,15 @@ import (
 
 	"github.com/urmzd/fiber/pkg/registry"
 
-	"github.com/urmzd/warp/pkg/alerts"
-	"github.com/urmzd/warp/pkg/artifacts"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/memory"
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/alerts"
+	"github.com/urmzd/humagen/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/memory"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // The inbox is one state seen from two sides. An alert and the message about
@@ -275,6 +275,9 @@ func named(names Names, m inbox.Message) inbox.Message {
 		m = names.mention(m)
 	case m.From.Kind == "person":
 		m.From.Display = names.Of(m.From.Name)
+	case m.From.Kind == "system":
+		// The product, whatever name the record keeps: warp, before the rename.
+		m.From.Display = SystemDisplay
 	}
 	for i := range m.Parts {
 		if o := m.Parts[i].Outcome; o != nil {

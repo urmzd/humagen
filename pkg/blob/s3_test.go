@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,8 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/pkg/blob"
-	"github.com/urmzd/warp/pkg/blob/blobtest"
+	"github.com/urmzd/humagen/pkg/blob"
+	"github.com/urmzd/humagen/pkg/blob/blobtest"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // fakeS3 is the part of the S3 API the store uses, path style, in memory. It
@@ -179,7 +180,7 @@ func TestS3(t *testing.T) {
 				t.Errorf("%d requests were not signed", f.unsigned)
 			}
 		})
-		return openFake(t, srv, "warp")
+		return openFake(t, srv, "humagen")
 	})
 }
 
@@ -282,25 +283,25 @@ func TestS3Config(t *testing.T) {
 }
 
 // TestS3Live runs the conformance suite against a real bucket when one is
-// named: WARP_TEST_S3_BUCKET, and optionally WARP_TEST_S3_ENDPOINT,
-// WARP_TEST_S3_REGION and WARP_TEST_S3_PATH_STYLE=1. Credentials come from
+// named: HUMAGEN_TEST_S3_BUCKET, and optionally HUMAGEN_TEST_S3_ENDPOINT,
+// HUMAGEN_TEST_S3_REGION and HUMAGEN_TEST_S3_PATH_STYLE=1. Credentials come from
 // the AWS environment variables or the default chain. Each store it opens
 // writes under a fresh prefix and removes what it wrote.
 //
-//	WARP_TEST_S3_BUCKET=warp WARP_TEST_S3_ENDPOINT=http://127.0.0.1:9000 \
-//	WARP_TEST_S3_PATH_STYLE=1 AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
+//	HUMAGEN_TEST_S3_BUCKET=humagen HUMAGEN_TEST_S3_ENDPOINT=http://127.0.0.1:9000 \
+//	HUMAGEN_TEST_S3_PATH_STYLE=1 AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
 //	go test ./pkg/blob -run TestS3Live
 func TestS3Live(t *testing.T) {
-	bucket := os.Getenv("WARP_TEST_S3_BUCKET")
+	bucket := legacy.Getenv("HUMAGEN_TEST_S3_BUCKET")
 	if bucket == "" {
-		t.Skip("WARP_TEST_S3_BUCKET is not set")
+		t.Skip("HUMAGEN_TEST_S3_BUCKET is not set")
 	}
 	blobtest.Run(t, func(t *testing.T) blob.Store {
 		var id [6]byte
 		_, _ = rand.Read(id[:])
 		s, err := blob.NewS3(t.Context(), blob.S3Config{
-			Bucket: bucket, Region: os.Getenv("WARP_TEST_S3_REGION"), Endpoint: os.Getenv("WARP_TEST_S3_ENDPOINT"),
-			PathStyle: os.Getenv("WARP_TEST_S3_PATH_STYLE") == "1", Prefix: "warp-test/" + hex.EncodeToString(id[:]),
+			Bucket: bucket, Region: legacy.Getenv("HUMAGEN_TEST_S3_REGION"), Endpoint: legacy.Getenv("HUMAGEN_TEST_S3_ENDPOINT"),
+			PathStyle: legacy.Getenv("HUMAGEN_TEST_S3_PATH_STYLE") == "1", Prefix: "humagen-test/" + hex.EncodeToString(id[:]),
 		})
 		if err != nil {
 			t.Fatal(err)

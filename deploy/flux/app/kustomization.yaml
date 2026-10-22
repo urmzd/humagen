@@ -1,5 +1,6 @@
-# warp in its own namespace, its chart from the GitRepository in
-# ../clusters/example/warp.yaml and its values from values.yaml here.
+# Humagen in its own namespace, its chart from the GitRepository in
+# ../clusters/example/humagen.yaml and its values from values.yaml here. The
+# namespace keeps the name warp it had before the product was renamed.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: warp
@@ -8,7 +9,7 @@ resources:
   - helmrelease.yaml
 configMapGenerator:
   # The hash suffix changes with the values, so an edit upgrades the release.
-  - name: warp-values
+  - name: humagen-values
     files:
       - values.yaml
 configurations:

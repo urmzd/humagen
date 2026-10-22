@@ -5,13 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // The Slack channel Field's general is bound to, and where the app posted
@@ -158,9 +158,9 @@ func TestARecapsThreadStartsWithTheAgentThatWroteIt(t *testing.T) {
 	}
 }
 
-// warp's own release notes are an announcement like any other in the
+// humagen's own release notes are an announcement like any other in the
 // workspace's inbox: where the workspace's general channel is bound, a reply
-// under their post starts a thread seeded with them, from warp marked as
+// under their post starts a thread seeded with them, from humagen marked as
 // the system, never from whoever replied or from an agent, and once they
 // are withdrawn the thread says only that.
 func TestAReplyToReleaseNotesStartsAThreadSeededWithThem(t *testing.T) {
@@ -169,7 +169,7 @@ func TestAReplyToReleaseNotesStartsAThreadSeededWithThem(t *testing.T) {
 	if _, err := p.UpdateChannel(t.Context(), tenant, projects.Root, projects.General, govern, platform.ChannelUpdate{Slack: &projects.SlackBinding{Client: "app", Channel: newsChannel}}); err != nil {
 		t.Fatal(err)
 	}
-	notes, fresh, err := p.PostReleaseNotes(tenant, "0.16.0", platform.Announcement{Subject: "What's new in warp 0.16.0", Text: "- Projects\n- Slack catch-up"})
+	notes, fresh, err := p.PostReleaseNotes(tenant, "0.16.0", platform.Announcement{Subject: "What's new in Humagen 0.16.0", Text: "- Projects\n- Slack catch-up"})
 	if err != nil || !fresh {
 		t.Fatalf("release notes = %+v, %v, %v", notes, fresh, err)
 	}
@@ -187,7 +187,7 @@ func TestAReplyToReleaseNotesStartsAThreadSeededWithThem(t *testing.T) {
 	if th.Project != projects.Root || th.Channel != projects.General || th.Announcement != notes.ID || len(got.Runs) != 1 {
 		t.Fatalf("the reply started %+v with %+v", th, got.Runs)
 	}
-	if text := got.Runs[0].Tag().Text; !strings.Contains(text, "\nwarp (system): (announcement: What's new in warp 0.16.0) - Projects - Slack catch-up\n") || strings.Contains(text, "warp (agent)") {
+	if text := got.Runs[0].Tag().Text; !strings.Contains(text, "\nHumagen (system): (announcement: What's new in Humagen 0.16.0) - Projects - Slack catch-up\n") || strings.Contains(text, "humagen (agent)") {
 		t.Fatalf("the run was sent:\n%s", text)
 	}
 	await(t, p, got.Runs[0].ID, runs.Completed)
@@ -199,7 +199,7 @@ func TestAReplyToReleaseNotesStartsAThreadSeededWithThem(t *testing.T) {
 	if len(shown) != 3 || shown[0].Kind != platform.TurnAnnouncement {
 		t.Fatalf("the thread's turns are %+v", shown)
 	}
-	if a := shown[0].Announcement; a.ID != notes.ID || a.Kind != threads.System || a.By != "warp" || a.Name != "" || a.Subject != "What's new in warp 0.16.0" || a.Withdrawn {
+	if a := shown[0].Announcement; a.ID != notes.ID || a.Kind != threads.System || a.By != "humagen" || a.Name != "" || a.Subject != "What's new in Humagen 0.16.0" || a.Withdrawn {
 		t.Fatalf("the first turn is %+v", a)
 	}
 

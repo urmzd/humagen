@@ -1,7 +1,7 @@
 // Package statetest holds every state.Store to one contract, and gives the
 // stores built on one a way to run their own tests on every backend.
 //
-// The Postgres backend runs when WARP_POSTGRES_TEST_URL names a database.
+// The Postgres backend runs when HUMAGEN_POSTGRES_TEST_URL names a database.
 // Each test gets its own schema, dropped when it ends.
 package statetest
 
@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,11 +18,13 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/state"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // URLEnv names the database the Postgres backend is tested against.
-const URLEnv = "WARP_POSTGRES_TEST_URL"
+const URLEnv = "HUMAGEN_POSTGRES_TEST_URL"
 
 // Backend opens a fresh, empty store.
 type Backend struct {
@@ -57,12 +58,12 @@ var schemas atomic.Uint64
 // end of the test, or skips the test when URLEnv is unset.
 func Pool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	url := os.Getenv(URLEnv)
+	url := legacy.Getenv(URLEnv) // or its old name, WARP_POSTGRES_TEST_URL
 	if url == "" {
 		t.Skip("set " + URLEnv + " to run against Postgres")
 	}
 	ctx := context.Background()
-	schema := fmt.Sprintf("warptest_%d_%d", time.Now().UnixNano(), schemas.Add(1))
+	schema := fmt.Sprintf("humagentest_%d_%d", time.Now().UnixNano(), schemas.Add(1))
 	cfg, err := pgxpool.ParseConfig(url)
 	if err != nil {
 		t.Fatal(err)

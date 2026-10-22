@@ -12,13 +12,13 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/registry"
 
-	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/humagen/internal/platform"
 )
 
 // postgresURLEnv names the database everything is kept in with
 // -state=postgres. It is read from the environment, never from a flag: the
 // URL usually carries a password.
-const postgresURLEnv = "WARP_POSTGRES_URL"
+const postgresURLEnv = "HUMAGEN_POSTGRES_URL"
 
 // stateFlags say where the platform keeps what must outlive the process.
 type stateFlags struct {

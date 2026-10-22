@@ -1,6 +1,6 @@
+import type { Tone } from "@humagen/core";
+import { Callout } from "@humagen/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { Tone } from "@warp/core";
-import { Callout } from "@warp/primitives";
 import { Canvas, slackPrimitive } from "../../support";
 
 const meta = {

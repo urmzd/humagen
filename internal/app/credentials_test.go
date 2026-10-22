@@ -8,18 +8,18 @@ import (
 
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
-	"github.com/urmzd/warp/pkg/credref"
+	"github.com/urmzd/humagen/pkg/credref"
 )
 
-const personFile = `api_version: warp/v1
+const personFile = `api_version: humagen/v1
 kind: System
 spec:
   auth: {kind: dev, tenant: {claim: org}}
   person_refs:
-    default: ["op://People/{subject}/", "env:WARP_PERSON_{subject}_"]
+    default: ["op://People/{subject}/", "env:HUMAGEN_PERSON_{subject}_"]
     globex: ["keychain:globex-people-{subject}/"]
 ---
-api_version: warp/v1
+api_version: humagen/v1
 kind: Platform
 metadata: {name: default}
 spec:
@@ -39,7 +39,7 @@ spec:
             schema_hash: 21877437383c4aa0e8fc28bbe3abc1d801bac704010bcdd62a93e30dafd20ab6
             class: read
 ---
-api_version: warp/v1
+api_version: humagen/v1
 kind: Platform
 metadata: {name: globex}
 spec:
@@ -51,7 +51,7 @@ spec:
 // tool's whole form; where people may keep their credentials becomes the
 // operator's flag; whether they may store values is each workspace's.
 func TestTheFilesPersonScopedToolsAndWhatPeopleMayGive(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "warp.yaml")
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
 	if err := os.WriteFile(path, []byte(personFile), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestTheFilesPersonScopedToolsAndWhatPeopleMayGive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const flag = "-person-refs=default=op://People/{subject}/,env:WARP_PERSON_{subject}_;globex=keychain:globex-people-{subject}/"
+	const flag = "-person-refs=default=op://People/{subject}/,env:HUMAGEN_PERSON_{subject}_;globex=keychain:globex-people-{subject}/"
 	if !slices.Contains(l.args, flag) {
 		t.Fatalf("the System's person_refs became %q", l.args)
 	}
@@ -104,9 +104,9 @@ func TestPersonReferencesAreGivenToTenantsByTheOperator(t *testing.T) {
 		t.Fatalf("with nothing configured, nobody may reference anything: %v, %v", got, err)
 	}
 	for _, raw := range []string{
-		"acme", "=op://People/{subject}/", "acme=", "acme=env:ANTHROPIC_API_KEY", "acme=env:WARP_OIDC_CLIENT_SECRET", "acme=vault:x", "acme=op://",
+		"acme", "=op://People/{subject}/", "acme=", "acme=env:ANTHROPIC_API_KEY", "acme=env:HUMAGEN_OIDC_CLIENT_SECRET", "acme=vault:x", "acme=op://",
 		// A start that names nobody is everyone's.
-		"acme=op://People/", "acme=env:WARP_PERSON_",
+		"acme=op://People/", "acme=env:HUMAGEN_PERSON_",
 		// Two workspaces in one place.
 		"acme=op://People/{subject}/;globex=op://People/{subject}/",
 	} {

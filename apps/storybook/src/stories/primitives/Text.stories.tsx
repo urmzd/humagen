@@ -1,5 +1,5 @@
+import { Context, Divider, Header, Text } from "@humagen/primitives";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { Context, Divider, Header, Text } from "@warp/primitives";
 import { expect, within } from "storybook/test";
 import { Canvas, slackPrimitive } from "../../support";
 
@@ -38,7 +38,7 @@ export const Playground: Story = {};
 export const HeaderLevels: Story = {
   render: () => (
     <Canvas>
-      <Header text="Hi Ada, I'm Warp." level={1} />
+      <Header text="Hi Ada, I'm Humagen." level={1} />
       <Header text="Notifications" level={2} />
       <Header text="Inside a card" />
     </Canvas>

@@ -1,4 +1,4 @@
-import { AlertTriangleIcon, CheckCircleIcon, SparkleIcon } from "@warp/render-web";
+import { AlertTriangleIcon, CheckCircleIcon, SparkleIcon } from "@humagen/render-web";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { type Alert, type AlertRule, ApiError, alertRuleEdit, api, type Revision } from "./api.ts";
 import { Analytics } from "./Analytics.tsx";
@@ -104,7 +104,7 @@ export function AskAnalyst({ onAsk }: { onAsk: (question: string) => void }) {
   return (
     <section aria-label="Ask the analyst" className="flex flex-col gap-2">
       <h2 className="text-aui-xs font-medium text-aui-muted">Ask the analyst for a deep dive</h2>
-      <div ref={strip} className="warp-strip aui-scroll -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      <div ref={strip} className="humagen-strip aui-scroll -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
         {ANALYST_STARTERS.map((q) => (
           <button
             key={q}
@@ -254,7 +254,7 @@ export function Monitor({
               <li key={r.name} data-testid="alert-rule" className="grid grid-cols-1 gap-x-8 gap-y-3 py-4 @3xl:grid-cols-[minmax(0,5fr)_minmax(0,6fr)_auto]">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <h2 className="warp-display text-aui-lg font-semibold text-aui-fg">{r.name}</h2>
+                    <h2 className="humagen-display text-aui-lg font-semibold text-aui-fg">{r.name}</h2>
                     <Severity level={r.severity} />
                     {r.paused && <Chip>Paused</Chip>}
                   </div>

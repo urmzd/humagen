@@ -108,7 +108,7 @@ export function decodeAction(value: string): ActionPayload {
     typeof (parsed as ActionPayload).turnId !== "string" ||
     typeof (parsed as ActionPayload).target !== "string"
   ) {
-    throw new TypeError("not an warp action payload");
+    throw new TypeError("not a Humagen action payload");
   }
   return parsed as ActionPayload;
 }

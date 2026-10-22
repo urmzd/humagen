@@ -1,5 +1,5 @@
-import { parseAmount } from "@warp/core";
-import type { PrimitiveProps } from "@warp/primitives";
+import { parseAmount } from "@humagen/core";
+import type { PrimitiveProps } from "@humagen/primitives";
 import { useContext, useId, useState } from "react";
 import { ActionContext, buttonClass } from "./buttons";
 

@@ -1,5 +1,5 @@
-import type { TaskStatus } from "@warp/core";
-import type { PrimitiveProps } from "@warp/primitives";
+import type { TaskStatus } from "@humagen/core";
+import type { PrimitiveProps } from "@humagen/primitives";
 import { useEffect, useRef, useState } from "react";
 import {
   BanIcon,

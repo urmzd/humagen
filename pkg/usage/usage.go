@@ -59,8 +59,8 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt/payload"
 
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // Kind is what a ledger entry records.

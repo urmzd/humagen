@@ -16,11 +16,11 @@ import (
 	"github.com/urmzd/fiber/pkg/agentrt"
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
-	"github.com/urmzd/warp/internal/mcpfake"
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/credref"
-	slackflow "github.com/urmzd/warp/pkg/integrations/slack"
+	"github.com/urmzd/humagen/internal/mcpfake"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/credref"
+	slackflow "github.com/urmzd/humagen/pkg/integrations/slack"
 )
 
 // searcher is a model that calls issues__search whenever it is offered, and
@@ -52,7 +52,7 @@ func (m *searcher) Stream(ctx context.Context, req saigetypes.Request) (<-chan s
 func toolFixture(t *testing.T) (*fixture, *mcpfake.Server, *searcher) {
 	t.Helper()
 	server, model := mcpfake.New(t), &searcher{}
-	tokens := map[string]string{"WARP_PERSON_ANA_ISSUES": "tok-ana-httpapi", "WARP_PERSON_BEN_ISSUES": "tok-ben-httpapi"}
+	tokens := map[string]string{"HUMAGEN_PERSON_ANA_ISSUES": "tok-ana-httpapi", "HUMAGEN_PERSON_BEN_ISSUES": "tok-ben-httpapi"}
 	// The Slack app asks for people by their subject alone, so the policy
 	// grants each subject what they may do: ana runs agents, ben reads.
 	f := newFixtureGranting(t, platform.Config{
@@ -63,7 +63,7 @@ func toolFixture(t *testing.T) (*fixture, *mcpfake.Server, *searcher) {
 			}, Accept: server.Tools(t)}},
 			Resolver: credref.Resolver{LookupEnv: func(name string) (string, bool) { v, ok := tokens[name]; return v, ok }}.MCP(),
 		},
-		CredentialRefs: map[string][]string{"acme": {"env:WARP_PERSON_{subject}_"}},
+		CredentialRefs: map[string][]string{"acme": {"env:HUMAGEN_PERSON_{subject}_"}},
 		SlackAPI:       func(string) slackflow.API { return slackflow.NewFake() },
 		ClientInterval: -1,
 	}, `grant operator to subject "ana"
@@ -89,7 +89,7 @@ grant viewer to subject "ben"`)
 // personNamed signs an access token for a person in acme who administers it.
 func (f *fixture) personNamed(t *testing.T, subject string) string {
 	t.Helper()
-	return f.iss.Sign(t, subject, audience, map[string]any{"org": "acme", "groups": []any{"warp-admins"}, "name": subject})
+	return f.iss.Sign(t, subject, audience, map[string]any{"org": "acme", "groups": []any{"humagen-admins"}, "name": subject})
 }
 
 // ask starts worker with a body and waits for the run to end.
@@ -118,15 +118,15 @@ func (f *fixture) ask(t *testing.T, tok, body string) map[string]any {
 func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 	f, server, _ := toolFixture(t)
 	ana, ben := f.personNamed(t, "ana"), f.personNamed(t, "ben")
-	app := f.machine(t, "acme", "warp:runs:read", "warp:runs:write")
+	app := f.machine(t, "acme", "humagen:runs:read", "humagen:runs:write")
 
-	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ana, `{"ref":"env:WARP_PERSON_ANA_ISSUES"}`); res.StatusCode != http.StatusOK || out["connected"] != true {
+	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ana, `{"ref":"env:HUMAGEN_PERSON_ANA_ISSUES"}`); res.StatusCode != http.StatusOK || out["connected"] != true {
 		t.Fatalf("ana connecting = %d %v", res.StatusCode, out)
 	}
-	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", app, `{"ref":"env:WARP_PERSON_BEN_ISSUES"}`); res.StatusCode != http.StatusForbidden {
+	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", app, `{"ref":"env:HUMAGEN_PERSON_BEN_ISSUES"}`); res.StatusCode != http.StatusForbidden {
 		t.Fatalf("the app connected a credential of its own: %d %v", res.StatusCode, out)
 	}
-	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ben, `{"ref":"env:WARP_PERSON_ANA_ISSUES"}`); res.StatusCode != http.StatusBadRequest {
+	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ben, `{"ref":"env:HUMAGEN_PERSON_ANA_ISSUES"}`); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("ben connected ana's reference: %d %v", res.StatusCode, out)
 	}
 
@@ -186,7 +186,7 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 		}
 		return list[0].(map[string]any)
 	}
-	if c := first(mine); c["connected"] != true || c["ref"] != "env:WARP_PERSON_ANA_ISSUES" || c["endpoint"] != server.URL {
+	if c := first(mine); c["connected"] != true || c["ref"] != "env:HUMAGEN_PERSON_ANA_ISSUES" || c["endpoint"] != server.URL {
 		t.Fatalf("ana's issues = %v", c)
 	}
 	if c := first(his); c["connected"] != false || c["ref"] != nil {
@@ -200,7 +200,7 @@ func TestTheSlackAppsRunsActAsTheMappedPerson(t *testing.T) {
 // nothing reaches a tool with their credential.
 func TestTheSlackAppAsksOnlyForPeopleWhoMayStartRuns(t *testing.T) {
 	f, server, _ := toolFixture(t)
-	app := f.machine(t, "acme", "warp:runs:read", "warp:runs:write")
+	app := f.machine(t, "acme", "humagen:runs:read", "humagen:runs:write")
 	res, out := f.do(t, nil, "POST", "/api/runs", app, `{"agent":"worker","text":"Open bugs?","act_as":{"client":"slack-app","user":"U0BEN"}}`)
 	if res.StatusCode != http.StatusForbidden || out["error"] != "platform: forbidden: ben may not start runs (asking needs runs:write)" {
 		t.Fatalf("a run for a mapped viewer = %d %v", res.StatusCode, out)
@@ -219,9 +219,9 @@ func TestTheSlackAppAsksOnlyForPeopleWhoMayStartRuns(t *testing.T) {
 func TestTheSlackAppsUntaggedRunForAMappedPersonIsAnsweredByTheDefaultAsThem(t *testing.T) {
 	f, server, _ := toolFixture(t)
 	ana := f.personNamed(t, "ana")
-	app := f.machine(t, "acme", "warp:runs:read", "warp:runs:write")
+	app := f.machine(t, "acme", "humagen:runs:read", "humagen:runs:write")
 	admin := f.machine(t, "acme", everything...)
-	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ana, `{"ref":"env:WARP_PERSON_ANA_ISSUES"}`); res.StatusCode != http.StatusOK || out["connected"] != true {
+	if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", ana, `{"ref":"env:HUMAGEN_PERSON_ANA_ISSUES"}`); res.StatusCode != http.StatusOK || out["connected"] != true {
 		t.Fatalf("ana connecting = %d %v", res.StatusCode, out)
 	}
 	_, cur := f.do(t, nil, "GET", "/api/projects/~/agents", admin, "")
@@ -249,7 +249,7 @@ func TestTheSlackAppsUntaggedRunForAMappedPersonIsAnsweredByTheDefaultAsThem(t *
 func TestRunNowActsForThePresserOnlyOnWordsTheyWrote(t *testing.T) {
 	f, server, _ := toolFixture(t)
 	ana, ben := f.personNamed(t, "ana"), f.personNamed(t, "ben")
-	for tok, ref := range map[string]string{ana: "env:WARP_PERSON_ANA_ISSUES", ben: "env:WARP_PERSON_BEN_ISSUES"} {
+	for tok, ref := range map[string]string{ana: "env:HUMAGEN_PERSON_ANA_ISSUES", ben: "env:HUMAGEN_PERSON_BEN_ISSUES"} {
 		if res, out := f.do(t, nil, "PUT", "/api/me/credentials/issues", tok, `{"ref":"`+ref+`"}`); res.StatusCode != http.StatusOK {
 			t.Fatalf("connecting %s = %d %v", ref, res.StatusCode, out)
 		}

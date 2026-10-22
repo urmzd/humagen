@@ -1,10 +1,10 @@
 # One model, two surfaces
 
-warp defines each agent concept once, in `@warp/core`, and draws it on the web and in Slack. This page maps every concept to both surfaces and lists the gaps that are still open.
+Humagen defines each agent concept once, in `@humagen/core`, and draws it on the web and in Slack. This page maps every concept to both surfaces and lists the gaps that are still open.
 
-- **Web**: `@warp/render-web` (primitives), `@warp/web` (web-only: composer, orb, status line, rail, preview)
-- **Slack**: `@warp/render-slack` (Block Kit, streaming, lifecycle), tested in a real workspace with `apps/slack-sandbox`
-- **Check either one**: Storybook for the web; `pnpm sandbox post <fixture>` for Slack, where fixture names match `@warp/core/fixtures`
+- **Web**: `@humagen/render-web` (primitives), `@humagen/web` (web-only: composer, orb, status line, rail, preview)
+- **Slack**: `@humagen/render-slack` (Block Kit, streaming, lifecycle), tested in a real workspace with `apps/slack-sandbox`
+- **Check either one**: Storybook for the web; `pnpm sandbox post <fixture>` for Slack, where fixture names match `@humagen/core/fixtures`
 
 ## How a concept reaches each surface
 

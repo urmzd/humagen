@@ -1,5 +1,5 @@
-import { TIME_TOKEN, type Tone } from "@warp/core";
-import type { PrimitiveImpls, PrimitiveProps } from "@warp/primitives";
+import { TIME_TOKEN, type Tone } from "@humagen/core";
+import type { PrimitiveImpls, PrimitiveProps } from "@humagen/primitives";
 import {
   Children,
   isValidElement,

@@ -44,5 +44,7 @@ storybook-static/
 # Local compose settings
 deploy/compose/.env
 
-# What `warp deploy` writes beside a spec
+# What `humagen deploy` writes beside a spec, and where it wrote before the
+# rename (.warp/)
+.humagen/
 .warp/

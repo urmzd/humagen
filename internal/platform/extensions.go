@@ -17,9 +17,9 @@ import (
 	"github.com/urmzd/fiber/pkg/toolprovider"
 )
 
-// Extensions is what a program built on warp adds to the platform without
+// Extensions is what a program built on humagen adds to the platform without
 // forking it: model providers, tool sources and MCP tool providers. The zero
-// value adds nothing. The warp package fills it from options and a spec file.
+// value adds nothing. The humagen package fills it from options and a spec file.
 type Extensions struct {
 	// Providers are model providers by name. A spec whose provider is the
 	// name runs on what the function builds, and a built-in of the same name

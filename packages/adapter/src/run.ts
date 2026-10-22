@@ -1,8 +1,8 @@
-import type { ArtifactKind, Interrupt, Task, Turn, TurnEvent } from "@warp/core";
+import type { ArtifactKind, Interrupt, Task, Turn, TurnEvent } from "@humagen/core";
 import { interruptOf, settledOf, type WireQuestion } from "./question.ts";
 
 /**
- * The one place fiber's wire format meets warp's event model, for every
+ * The one place fiber's wire format meets humagen's event model, for every
  * surface: the console and the Slack app both read runs through this file, so
  * the same run is the same turn in both. Everything above it speaks TurnEvent,
  * and everything below it speaks envelopes.
@@ -299,16 +299,16 @@ export function adapter(
         return out;
       }
       case "lifecycle.parked": {
-        // Blocked on a person. warp does not animate waiting.
+        // Blocked on a person. humagen does not animate waiting.
         const q = body<Lifecycle>(e).question;
         const interrupt = q?.id ? interruptOf(q, undefined) : null;
         if (!q || !interrupt) return [{ type: "activity", activity: "waiting" }];
         asked.set(q.id, { question: q, interrupt });
         const out: TurnEvent[] = [{ type: "interrupt.raised", interrupt }];
         // The call an approval holds reads "waiting", not "running". It is not
-        // tied to the approval (`interruptId`): warp then gives the web inline
+        // tied to the approval (`interruptId`): humagen then gives the web inline
         // row controls and Slack the card, and the two surfaces would differ.
-        // warp: one rendering of a task-owned approval on both surfaces.
+        // humagen: one rendering of a task-owned approval on both surfaces.
         const call = q.tool?.call_id;
         if (call && q.kind === "approval") {
           tools.set(call, q.tool?.name ?? "tool");
@@ -510,7 +510,7 @@ function title(name?: string): string {
 
 /**
  * The person a run acted for, by subject, or "" for nobody: what decides
- * whose credentials its tools used, as warp reads the run's actor. A bot acts
+ * whose credentials its tools used, as humagen reads the run's actor. A bot acts
  * for nobody, whatever it names.
  */
 export function actedFor(run: Pick<Run, "actor">): string {

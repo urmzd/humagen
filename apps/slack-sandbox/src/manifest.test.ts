@@ -53,9 +53,9 @@ describe("buildManifest", () => {
 describe("app identity", () => {
   const manifest = buildManifest({ capabilities: capabilitiesExcept("workflowStep") });
 
-  it("is Warp, within Slack's limits", () => {
+  it("is Humagen, within Slack's limits", () => {
     const info = manifest.display_information;
-    expect(info.name).toBe("Warp");
+    expect(info.name).toBe("Humagen");
     expect(info.name.length).toBeLessThanOrEqual(35);
     expect(info.description.length).toBeLessThanOrEqual(140);
     // App Settings rejects an About text under 175 characters.
@@ -72,12 +72,12 @@ describe("app identity", () => {
   it("renames the shortcuts without changing what they call", () => {
     const shortcuts = manifest.features.shortcuts ?? [];
     expect(shortcuts.map((s) => [s.name, s.callback_id])).toEqual([
-      ["Ask Warp", ENTRY.ask],
-      ["Ask Warp about this", ENTRY.askAbout],
+      ["Ask Humagen", ENTRY.ask],
+      ["Ask Humagen about this", ENTRY.askAbout],
     ]);
     expect(manifest.features.slash_commands?.[0]).toMatchObject({
       command: "/agent",
-      description: "Ask Warp in this channel",
+      description: "Ask Humagen in this channel",
     });
   });
 

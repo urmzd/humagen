@@ -5,7 +5,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/urmzd/warp/pkg/state"
+	"github.com/urmzd/humagen/pkg/state"
 )
 
 // Retention bounds.

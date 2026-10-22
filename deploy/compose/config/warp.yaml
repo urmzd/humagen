@@ -1,7 +1,7 @@
 # The spec the compose stack's warp reads (docs/spec.md). Mounted at
-# /etc/warp, read with `warp serve -f /etc/warp`. Edit the names and URLs here;
+# /etc/warp, read with `humagen serve -f /etc/warp`. Edit the names and URLs here;
 # credentials are references to variables set in .env, never values.
-# Check it with: go run ./cmd/warp config check -f deploy/compose/config
+# Check it with: go run ./cmd/humagen config check -f deploy/compose/config
 api_version: warp/v1
 kind: System
 metadata:

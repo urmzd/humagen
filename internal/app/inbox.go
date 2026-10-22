@@ -3,8 +3,8 @@ package app
 import (
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 // inboxRetention is how long each workspace's inbox keeps what was settled,

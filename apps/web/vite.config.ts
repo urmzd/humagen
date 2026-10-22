@@ -1,11 +1,12 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { apiTarget } from "./src/legacy.ts";
 
 // The server from `make dev`. The console never talks to it cross-origin: the
 // dev server proxies, so the session cookie and the cross-origin check behave
 // exactly as they do when the server serves the built console itself.
-const api = process.env.WARP_API ?? "http://127.0.0.1:8080";
+const api = apiTarget(process.env);
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

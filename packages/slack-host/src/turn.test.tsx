@@ -1,6 +1,6 @@
-import { defaultCopy } from "@warp/components";
-import type { TurnEvent } from "@warp/core";
-import * as fx from "@warp/core/fixtures";
+import { defaultCopy } from "@humagen/components";
+import type { TurnEvent } from "@humagen/core";
+import * as fx from "@humagen/core/fixtures";
 import { describe, expect, it } from "vitest";
 import { SlackError, slackClient, slackCode } from "./client";
 import { type StreamTarget, streamTurn, TurnStream } from "./turn";

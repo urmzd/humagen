@@ -40,22 +40,22 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/urmzd/fiber/pkg/attachment"
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/artifacts"
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/credentials"
-	"github.com/urmzd/warp/pkg/evals"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/journal"
-	"github.com/urmzd/warp/pkg/knowledge"
-	"github.com/urmzd/warp/pkg/pick"
-	"github.com/urmzd/warp/pkg/policy"
-	"github.com/urmzd/warp/pkg/prefs"
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/runs"
-	"github.com/urmzd/warp/pkg/threads"
-	"github.com/urmzd/warp/pkg/usage"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/artifacts"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/evals"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/journal"
+	"github.com/urmzd/humagen/pkg/knowledge"
+	"github.com/urmzd/humagen/pkg/pick"
+	"github.com/urmzd/humagen/pkg/policy"
+	"github.com/urmzd/humagen/pkg/prefs"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/runs"
+	"github.com/urmzd/humagen/pkg/threads"
+	"github.com/urmzd/humagen/pkg/usage"
 )
 
 // The API contract is api/openapi.yaml. These tests are what keep it true:
@@ -253,7 +253,7 @@ func registeredRoutes(t *testing.T) []route {
 	}
 	info := &types.Info{Types: map[ast.Expr]types.TypeAndValue{}, Uses: map[*ast.Ident]types.Object{}, Selections: map[*ast.SelectorExpr]*types.Selection{}}
 	conf := types.Config{Importer: exportImporter(t, fset)}
-	if _, err := conf.Check("github.com/urmzd/warp/internal/httpapi", fset, files, info); err != nil {
+	if _, err := conf.Check("github.com/urmzd/humagen/internal/httpapi", fset, files, info); err != nil {
 		t.Fatalf("type-checking the package: %v", err)
 	}
 
@@ -262,7 +262,7 @@ func registeredRoutes(t *testing.T) []route {
 		return ok && slices.Contains(names, fn.FullName())
 	}
 	register := []string{"(*net/http.ServeMux).Handle", "(*net/http.ServeMux).HandleFunc", "net/http.Handle", "net/http.HandleFunc"}
-	authed := "(*github.com/urmzd/warp/internal/httpapi.Server).authed"
+	authed := "(*github.com/urmzd/humagen/internal/httpapi.Server).authed"
 	constant := func(e ast.Expr) (string, bool) {
 		tv := info.Types[e]
 		if tv.Value == nil || tv.Value.Kind() != gotypesconst.String {
@@ -908,7 +908,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	// A person's own credentials for the tools that act as them. A value
 	// goes in and never comes back out.
-	ana := f.iss.Sign(t, "ana", audience, map[string]any{"org": "acme", "groups": []any{"warp-admins"}})
+	ana := f.iss.Sign(t, "ana", audience, map[string]any{"org": "acme", "groups": []any{"humagen-admins"}})
 	const mine = "/api/me/credentials/{provider}"
 	if list := c.call(ana, "GET", "/api/me/credentials", "/api/me/credentials", "", http.StatusOK); len(sliceOf(list.field("providers"))) != 1 || list.field("values") != true {
 		t.Errorf("the tools that act as ana = %s", list.raw)
@@ -1140,7 +1140,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/inbox/{id}/read", inboxPath+"/read", ``, http.StatusBadRequest)
 	c.call(acme, "POST", "/api/inbox/{id}/snooze", inboxPath+"/snooze", `{"until":"2999-01-01T00:00:00Z"}`, http.StatusOK)
 	resolve := "/api/inbox/{id}/parts/{part}/resolve"
-	reader := f.machine(t, "acme", "warp:runs:read", "warp:alerts:read")
+	reader := f.machine(t, "acme", "humagen:runs:read", "humagen:alerts:read")
 	c.call(reader, "POST", resolve, inboxPath+"/parts/"+parts["alert"]+"/resolve", `{"action":"acknowledge"}`, http.StatusForbidden)
 	c.call(acme, "POST", resolve, inboxPath+"/parts/"+parts["budget"]+"/resolve", `{"action":"approve"}`, http.StatusBadRequest)
 	c.call(acme, "POST", resolve, inboxPath+"/parts/p99/resolve", `{"action":"acknowledge"}`, http.StatusNotFound)
@@ -1228,7 +1228,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", agentsAt, "/api/projects/Field/agents", fmt.Sprintf(`{"version":%d,"enable":["ghost"]}`, v+1), http.StatusBadRequest)
 	c.call(acme, "PUT", agentsAt, "/api/projects/Ghost/agents", `{"version":1}`, http.StatusNotFound)
 	// The workspace's own lists hold the workspace default: projects:govern.
-	c.call(f.machine(t, "acme", "warp:projects:write"), "PUT", agentsAt, "/api/projects/~/agents", `{"version":1,"enable":["*"]}`, http.StatusForbidden)
+	c.call(f.machine(t, "acme", "humagen:projects:write"), "PUT", agentsAt, "/api/projects/~/agents", `{"version":1,"enable":["*"]}`, http.StatusForbidden)
 	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"fieldbot","model":"offline","provider":"offline","system_prompt":"Field work."}`, http.StatusCreated)
 	home := "/api/agents/{name}/home"
 	if lives := c.call(acme, "PUT", home, "/api/agents/fieldbot/home", `{"project":"Field"}`, http.StatusOK); lives.str("home") != "Field" {
@@ -1431,12 +1431,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "POST", "/api/clients", "/api/clients", slackBody("support", "A01CONTRACT", "helper"), http.StatusConflict)
 	c.call(acme, "POST", "/api/clients", "/api/clients", `{"id":"odd","surface":"fax"}`, http.StatusBadRequest)
 	// A GitHub installation names the login its app is mentioned by.
-	gh := `{"id":"gh","name":"GitHub","surface":"github","identity":{"owners":["acme"]},"default_agent":"helper","github":{"login":"warp[bot]"},` +
+	gh := `{"id":"gh","name":"GitHub","surface":"github","identity":{"owners":["acme"]},"default_agent":"helper","github":{"login":"humagen[bot]"},` +
 		`"credentials":{"token":{"value":"` + botToken + `"},"signing_secret":{"value":"` + signingSecret + `"}}}`
-	if got := c.call(acme, "POST", "/api/clients", "/api/clients", gh, http.StatusCreated); obj(got.field("github"))["login"] != "warp[bot]" {
+	if got := c.call(acme, "POST", "/api/clients", "/api/clients", gh, http.StatusCreated); obj(got.field("github"))["login"] != "humagen[bot]" {
 		t.Errorf("the GitHub client's login is %s", got.raw)
 	}
-	c.call(acme, "POST", "/api/clients", "/api/clients", strings.Replace(strings.Replace(gh, `"id":"gh"`, `"id":"gh-two"`, 1), "warp[bot]", "@warp", 1), http.StatusBadRequest)
+	c.call(acme, "POST", "/api/clients", "/api/clients", strings.Replace(strings.Replace(gh, `"id":"gh"`, `"id":"gh-two"`, 1), "humagen[bot]", "@humagen", 1), http.StatusBadRequest)
 	c.call(acme, "PUT", "/api/policies", "/api/policies", `{"scope":{"kind":"client","name":"support"},"period":"day","max_runs":3}`, http.StatusOK)
 	c.call(acme, "GET", "/api/clients/{id}", "/api/clients/support", "", http.StatusOK)
 	c.call(globex, "GET", "/api/clients/{id}", "/api/clients/support", "", http.StatusNotFound)
@@ -1474,9 +1474,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	// Channels, experts and shared threads. A person posts; a credential
 	// posts only for a person it acts for. From here Ana signs in as a
 	// person the directory knows by her handle.
-	ana = f.person(t, "acme", "00u-ana", "Ana", "warp-admins")
-	vic := f.person(t, "acme", "00u-vic", "Vic", "warp-viewers")
-	bo := f.person(t, "acme", "00u-bo", "Bo", "warp-admins")
+	ana = f.person(t, "acme", "00u-ana", "Ana", "humagen-admins")
+	vic := f.person(t, "acme", "00u-vic", "Vic", "humagen-viewers")
+	bo := f.person(t, "acme", "00u-bo", "Bo", "humagen-admins")
 	channels := "/api/projects/{name}/channels"
 	c.call(acme, "GET", channels, "/api/projects/Field/channels", "", http.StatusOK)
 	c.call(acme, "GET", channels, "/api/projects/~/channels", "", http.StatusOK)
@@ -1617,7 +1617,7 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "PUT", participants, threadPath+"/participants", `{"version":3,"add":[{"kind":"person","name":"nobody","at":"2026-01-01T00:00:00Z"}]}`, http.StatusBadRequest)
 	// A person's messages start no run, so a rate holds them: at most
 	// PostsPerPerson a minute, in any thread, a new one included.
-	quick := f.person(t, "acme", "00u-quick", "Quick", "warp-admins")
+	quick := f.person(t, "acme", "00u-quick", "Quick", "humagen-admins")
 	for range platform.PostsPerPerson {
 		c.call(quick, "POST", messages, threadPath+"/messages", `{"text":"again","post_only":true}`, http.StatusCreated)
 	}
@@ -1904,7 +1904,7 @@ var unexercised = map[string]string{
 	// answers 503 from a server whose runtime cannot.
 	"POST /api/runs/{id}/stop 503": "stop unavailable",
 	// A client the server's configuration owns cannot be changed through the
-	// API. Making one needs WARP_SLACK_* in the environment, which
+	// API. Making one needs HUMAGEN_SLACK_* in the environment, which
 	// pkg/clients and internal/platform test.
 	"PUT /api/clients/{id} 409":    "managed client",
 	"DELETE /api/clients/{id} 409": "managed client",
@@ -1973,7 +1973,7 @@ func TestEventStreamMatchesTheSpec(t *testing.T) {
 	}
 
 	// A person's message in a thread is a notice on the stream too.
-	if res, out := f.do(t, nil, "POST", "/api/threads", f.person(t, "acme", "00u-ana", "Ana", "warp-admins"), `{"visibility":"shared","text":"hello room","post_only":true}`); res.StatusCode != http.StatusCreated {
+	if res, out := f.do(t, nil, "POST", "/api/threads", f.person(t, "acme", "00u-ana", "Ana", "humagen-admins"), `{"visibility":"shared","text":"hello room","post_only":true}`); res.StatusCode != http.StatusCreated {
 		t.Fatalf("starting a thread = %d %v", res.StatusCode, out)
 	}
 

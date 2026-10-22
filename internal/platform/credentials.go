@@ -13,11 +13,12 @@ import (
 	"github.com/urmzd/fiber/pkg/mcptools"
 	"github.com/urmzd/fiber/pkg/toolprovider"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/credentials"
-	"github.com/urmzd/warp/pkg/credref"
-	"github.com/urmzd/warp/pkg/runs"
+	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/credentials"
+	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/runs"
 )
 
 // Whose credential a tool uses.
@@ -27,7 +28,7 @@ import (
 // none: it names no shared credential, so there is none to fall back to.
 // fiber decides when to ask. On every turn that expands a grant of such a
 // provider it reads the actor on the run's record, never anything the turn
-// says, and asks personCredential for theirs. warp decides who that actor is,
+// says, and asks personCredential for theirs. humagen decides who that actor is,
 // once, when the run is accepted, by setting the actor's User to the person's
 // subject:
 //
@@ -189,7 +190,7 @@ func (p *Platform) surfacePerson(c clients.Client, tag envelope.Tag) string {
 // refAllowed reports whether subject, one of tenant's people, may give ref:
 // it is a reference, it is theirs under one of the starts the operator
 // listed for the tenant (credentials.Owns: the start with their subject in
-// it), and an env: one names a WARP_ variable that is not a sign-in secret,
+// it), and an env: one names a HUMAGEN_ variable that is not a sign-in secret,
 // as a client's must. Nobody else's subject makes it theirs, so a person
 // cannot give a reference to somebody else's credential.
 func (p *Platform) refAllowed(tenant, subject, ref string) bool {
@@ -198,7 +199,7 @@ func (p *Platform) refAllowed(tenant, subject, ref string) bool {
 		return false
 	}
 	if parsed.Scheme == credref.Env {
-		if _, err := clients.EnvRef(parsed.Raw); err != nil || strings.HasPrefix(parsed.Name, "WARP_OIDC_") {
+		if _, err := clients.EnvRef(parsed.Raw); err != nil || legacy.SignInSecret(parsed.Name) {
 			return false
 		}
 	}

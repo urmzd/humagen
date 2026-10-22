@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/memory"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/memory"
 )
 
 // A project's role holds in its channels, experts and threads, after the
@@ -19,9 +19,9 @@ func TestAProjectsRolesHoldInItsChannelsExpertsAndThreads(t *testing.T) {
 	f := newFixture(t)
 	admin := f.machineAs(t, "svc-admin", "acme", everything...)
 	want(t, f, admin, "POST", "/api/agents", `{"name":"lead","model":"offline","provider":"offline","system_prompt":"x"}`, http.StatusCreated)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
-	bo := f.person(t, "acme", "00u-bo", "Bo", "warp-operators")
-	cy := f.person(t, "acme", "00u-cy", "Cy", "warp-operators")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
+	bo := f.person(t, "acme", "00u-bo", "Bo", "humagen-operators")
+	cy := f.person(t, "acme", "00u-cy", "Cy", "humagen-operators")
 	want(t, f, admin, "POST", "/api/projects", `{"name":"Globex","members":[{"who":"*","role":"viewer"},{"who":"00u-ana","role":"owner"},{"who":"00u-bo","role":"member"}]}`, http.StatusCreated)
 
 	experts := want(t, f, cy, "GET", "/api/projects/Globex/experts", "", http.StatusOK)
@@ -100,7 +100,7 @@ func TestAProjectsRolesHoldInItsChannelsExpertsAndThreads(t *testing.T) {
 	want(t, f, ana, "PUT", "/api/threads/"+id, fmt.Sprintf(`{"version":%v,"title":"Globex renewal, May"}`, version()), http.StatusOK)
 	want(t, f, cy, "PUT", "/api/threads/"+id+"/participants", fmt.Sprintf(`{"version":%v,"add":[{"kind":"person","name":"cy","at":"2026-01-01T00:00:00Z"}]}`, version()), http.StatusForbidden)
 	want(t, f, bo, "PUT", "/api/threads/"+id+"/participants", fmt.Sprintf(`{"version":%v,"add":[{"kind":"person","name":"cy","at":"2026-01-01T00:00:00Z"}]}`, version()), http.StatusOK)
-	dee := f.person(t, "acme", "00u-dee", "Dee", "warp-operators")
+	dee := f.person(t, "acme", "00u-dee", "Dee", "humagen-operators")
 	want(t, f, admin, "PUT", "/api/projects/Globex/members", `{"version":2,"members":[{"who":"*","role":"viewer"},{"who":"00u-ana","role":"owner"},{"who":"00u-bo","role":"member"},{"who":"00u-dee","role":"member"}]}`, http.StatusOK)
 	if out := want(t, f, dee, "PUT", "/api/threads/"+id+"/participants", fmt.Sprintf(`{"version":%v,"remove":["cy"]}`, version()), http.StatusForbidden); out["error"] != "only whoever started this thread, or an owner of its project, changes it" {
 		t.Fatalf("another member removing someone = %v", out)
@@ -124,8 +124,8 @@ func TestAProjectsRolesHoldInItsChannelsExpertsAndThreads(t *testing.T) {
 func TestWhatAThreadTeachesAProjectIsKeptUnaskedOnlyForItsOwners(t *testing.T) {
 	f := newFixtureWith(t, platform.Config{OfflineHooks: true})
 	admin := f.machineAs(t, "svc-admin", "acme", everything...)
-	ana := f.person(t, "acme", "00u-ana", "Ana", "warp-operators")
-	bo := f.person(t, "acme", "00u-bo", "Bo", "warp-operators")
+	ana := f.person(t, "acme", "00u-ana", "Ana", "humagen-operators")
+	bo := f.person(t, "acme", "00u-bo", "Bo", "humagen-operators")
 	for _, name := range []string{"lead", "scribe"} {
 		want(t, f, admin, "POST", "/api/agents", fmt.Sprintf(`{"name":%q,"model":"offline","provider":"offline","system_prompt":"x"}`, name), http.StatusCreated)
 	}

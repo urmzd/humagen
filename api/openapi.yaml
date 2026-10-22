@@ -1,8 +1,8 @@
 openapi: 3.2.0
 info:
-  title: Warp API
+  title: Humagen API
   version: 0.1.0
-  summary: The HTTP contract of the warp agent platform.
+  summary: The HTTP contract of the Humagen agent platform.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -120,7 +120,7 @@ paths:
       summary: Start a browser sign-in
       description: |
         Redirects to the identity provider (authorization code flow with
-        PKCE) and sets a short-lived `warp_login` cookie. Under
+        PKCE) and sets a short-lived `humagen_login` cookie. Under
         development auth it redirects straight to `/`. A browser navigates
         here; a script has no use for it.
       x-permission: public
@@ -140,7 +140,7 @@ paths:
       summary: Finish a browser sign-in
       description: |
         The identity provider redirects here. On success it sets the
-        `warp_session` cookie (`__Host-warp_session` over https),
+        `humagen_session` cookie (`__Host-humagen_session` over https),
         HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
         `return_to` path. Errors are plain text, not JSON.
       x-permission: public
@@ -4050,13 +4050,13 @@ paths:
       operationId: getPersonPhoto
       tags: [people]
       summary: The photo a person uploaded for themselves
-      description: Served by warp, never fetched from elsewhere. 404 for someone with none.
+      description: Served by Humagen, never fetched from elsewhere. 404 for someone with none.
       x-permission: people:read
       parameters:
         - {$ref: "#/components/parameters/PersonHandle"}
       responses:
         "200":
-          description: The picture, as the type warp found its bytes to be.
+          description: The picture, as the type Humagen found its bytes to be.
           content:
             image/png: {schema: {type: string, format: binary}}
             image/jpeg: {schema: {type: string, format: binary}}
@@ -4376,17 +4376,19 @@ components:
         An OIDC access token issued for the API audience, sent as
         `Authorization: Bearer <token>`. A machine uses a client-credentials
         token and is granted exactly the scopes on it that are named
-        `warp:<permission>`, for example `warp:runs:write`. A person
+        `humagen:<permission>`, for example `humagen:runs:write`, or
+        `warp:<permission>`, the prefix before the product was renamed,
+        which is still honoured. A person
         using a CLI sends an access token too, and gets roles from its groups
         claim. An ID token is not an API credential and is refused. There is
         no revocation check beyond expiry.
     sessionCookie:
       type: apiKey
       in: cookie
-      name: warp_session
+      name: humagen_session
       description: |
         The opaque, HttpOnly cookie a browser is given by `/auth/callback`. It
-        is named `__Host-warp_session` when the server is reached over
+        is named `__Host-humagen_session` when the server is reached over
         https. A browser never holds a token. Under development auth
         (`-auth=dev`, loopback only) every request is the same admin and no
         credential is needed.
@@ -4903,7 +4905,7 @@ components:
           maxItems: 64
           items: {$ref: "#/components/schemas/ToolCredential"}
         values:
-          description: Whether this workspace lets people store a credential's value with warp. Off, people give only a reference to where it is kept.
+          description: Whether this workspace lets people store a credential's value with Humagen. Off, people give only a reference to where it is kept.
           type: boolean
         references:
           description: How the references the caller may give start, their own under each start the operator listed, with the caller's subject in place of `{subject}`. A start the caller's subject cannot be written in is left out, and a machine gets none. Empty means no reference can be given.
@@ -5449,7 +5451,7 @@ components:
         The announcement a thread was started from, as it stands when the
         thread is read: who posted it and what it says. It is the inbox's,
         never a message of the thread, so it is from whoever posted it, a
-        person, the agent a schedule ran, or warp itself for a release's
+        person, the agent a schedule ran, or Humagen itself for a release's
         notes, and never from the person whose reply started the thread. A
         withdrawn one says nothing more.
       type: object
@@ -5459,14 +5461,14 @@ components:
           description: The announcement's inbox id.
           type: string
         kind:
-          description: Who posted it. `system` is warp itself, as for a release's notes.
+          description: Who posted it. `system` is Humagen itself, as for a release's notes.
           type: string
           enum: [person, agent, system]
         by:
-          description: The person's handle, the agent's name, or `warp` for what warp posted itself.
+          description: The person's handle, the agent's name, or `humagen` for what Humagen posted itself (`warp` in records written before the rename).
           type: string
         name:
-          description: What the person is called. Absent for an agent and for warp itself (`system`).
+          description: What the person is called. Absent for an agent and for Humagen itself (`system`).
           type: string
         subject: {type: string, maxLength: 150}
         text: {type: string, maxLength: 4000}
@@ -5777,7 +5779,7 @@ components:
           description: |
             When `slack` was bound as it stands: set when a binding is made
             or moved, kept while it holds. Absent while unbound, and on a
-            binding made before warp kept the time, which the client's
+            binding made before Humagen kept the time, which the client's
             bindings then read as bound at the channel's last change.
           type: string
           format: date-time
@@ -5865,7 +5867,7 @@ components:
             app catches up on nothing announced before it: what was
             announced before the binding, or while the channel was unbound,
             never reached the Slack channel and is not news there now.
-            Present for every binding; a binding made before warp kept the
+            Present for every binding; a binding made before Humagen kept the
             time reads as bound at its channel's last change.
           type: string
           format: date-time
@@ -8054,7 +8056,7 @@ components:
           description: "`env:NAME` when the secret lives in the server's environment."
           type: string
     SecretInput:
-      description: A secret as a caller writes it, as a value or as an `env:WARP_*` reference. Leave both out to keep the one held.
+      description: A secret as a caller writes it, as a value or as an `env:HUMAGEN_*` reference (`env:WARP_*`, the prefix before the rename, still works). Leave both out to keep the one held.
       type: object
       properties:
         value: {type: string}
@@ -8098,7 +8100,7 @@ components:
           type: array
           items: {type: string}
         login:
-          description: The app's own GitHub login, such as `warp[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/github.md).
+          description: The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/github.md).
           type: string
     ClientInput:
       description: A client as a caller writes it. The tenant, who manages it and its version are the server's to say.

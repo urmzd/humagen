@@ -1,6 +1,6 @@
-import { ActionId, canAct, type Resolution } from "@warp/core";
-import { DownloadIcon, FileIcon } from "@warp/render-web";
-import type { PartRenderer } from "@warp/web";
+import { ActionId, canAct, type Resolution } from "@humagen/core";
+import { DownloadIcon, FileIcon } from "@humagen/render-web";
+import type { PartRenderer } from "@humagen/web";
 import { useState } from "react";
 import { limitWord, type PlatformMessage, reached, type Source, scopeName } from "./mail.ts";
 import { bytes, contentUrl, inlineType, kindWord } from "./storage.ts";
@@ -8,7 +8,7 @@ import { ago, button, counted, field, LimitField, type Period, primary, UsageMet
 
 /**
  * The parts the platform draws itself. Everything else in a message (text,
- * failures, memory to review, replies) is drawn by warp's mailbox.
+ * failures, memory to review, replies) is drawn by humagen's mailbox.
  *
  * - An alert, so it can name its rule and link to it.
  * - An artifact, so it can show the file, preview an image, and open it on
@@ -111,7 +111,7 @@ export function platformParts(onOpen: (source: Source) => void): Record<string, 
             <img
               src={contentUrl(a.id, true)}
               alt={a.description || a.title}
-              className="max-h-64 w-auto max-w-full self-start rounded-aui border border-[var(--warp-rule)] object-contain"
+              className="max-h-64 w-auto max-w-full self-start rounded-aui border border-[var(--humagen-rule)] object-contain"
             />
           )}
           <div className="flex flex-wrap gap-2">

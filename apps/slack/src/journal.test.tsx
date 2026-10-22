@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { App } from "./app.tsx";
-import { BOT, CHANNEL, FakeSlack, FakeWarp, mention, SUBJECT, settle, TEAM } from "./harness.ts";
+import { BOT, CHANNEL, FakeHumagen, FakeSlack, mention, SUBJECT, settle, TEAM } from "./harness.ts";
 import { words } from "./host.ts";
 import {
   defaultJournalPath,
@@ -18,9 +18,9 @@ const TS = "1700000000.000100";
 
 const path = () => join(mkdtempSync(join(tmpdir(), "journal-")), "streams.json");
 
-function appOver(slack: FakeSlack, journalPath: string, warp = new FakeWarp()) {
+function appOver(slack: FakeSlack, journalPath: string, humagen = new FakeHumagen()) {
   const journal = fileJournal(journalPath);
-  const app = new App(journaled(slack, journal), warp, {
+  const app = new App(journaled(slack, journal), humagen, {
     team: TEAM,
     botUser: BOT,
     subject: SUBJECT,
@@ -29,13 +29,13 @@ function appOver(slack: FakeSlack, journalPath: string, warp = new FakeWarp()) {
     flushMs: 0,
     pollMs: 20,
   });
-  return { app, warp, journal };
+  return { app, humagen, journal };
 }
 
 test("journal: a stream is recorded while it is open and forgotten once it is stopped", async () => {
   const slack = new FakeSlack();
   const file = path();
-  const { app, warp, journal } = appOver(slack, file);
+  const { app, humagen, journal } = appOver(slack, file);
   await app.handle(mention("ping", TS));
   await settle();
   const [open] = journal.list();
@@ -44,9 +44,9 @@ test("journal: a stream is recorded while it is open and forgotten once it is st
   assert.ok(open?.ts, "the streamed message is named");
   assert.equal(JSON.parse(readFileSync(file, "utf8")).streams.length, 1, "it is on disk");
 
-  warp.emit(warp.last.id, "lifecycle.accepted");
+  humagen.emit(humagen.last.id, "lifecycle.accepted");
   await settle();
-  warp.emit(warp.last.id, "lifecycle.completed", { text: "pong" });
+  humagen.emit(humagen.last.id, "lifecycle.completed", { text: "pong" });
   await settle();
   await app.idle();
   assert.equal(journal.list().length, 0);

@@ -8,14 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/projects"
-	"github.com/urmzd/warp/pkg/threads"
+	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/threads"
 )
 
 // platformWith is a Platform document whose workspace is body, indented
 // under it.
 func platformWith(body string) string {
-	return "api_version: warp/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n  workspace:\n" + body
+	return "api_version: humagen/v1\nkind: Platform\nmetadata: {name: default}\nspec:\n  workspace:\n" + body
 }
 
 // tree is a workspace.projects list, one flow mapping per entry.
@@ -30,12 +30,12 @@ func tree(entries ...string) string {
 
 func loadBody(t *testing.T, body string) (Config, error) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "warp.yaml")
+	path := filepath.Join(t.TempDir(), "humagen.yaml")
 	writeFile(t, path, body)
 	return Load(path)
 }
 
-// Each of the tree's checks refuses the file at start and in warp config
+// Each of the tree's checks refuses the file at start and in humagen config
 // check, naming the document and the path of the entry that breaks it.
 func TestEachProjectCheckNamesItsPath(t *testing.T) {
 	companies := make([]string, 11)
@@ -91,7 +91,7 @@ func TestEachProjectCheckNamesItsPath(t *testing.T) {
 		"a kind like company": {
 			"    project_kinds: [{name: division, like: company}]\n", `workspace.project_kinds[0].like: "company" is not team or account`,
 		},
-		"a built-in kind defined again": {"    project_kinds: [{name: team, like: team}]\n", `workspace.project_kinds[0].name: "team" is a kind warp defines`},
+		"a built-in kind defined again": {"    project_kinds: [{name: team, like: team}]\n", `workspace.project_kinds[0].name: "team" is a kind Humagen defines`},
 		"a kind defined twice": {
 			"    project_kinds: [{name: partner, like: account}, {name: partner, like: team}]\n", `workspace.project_kinds[1].name: "partner" is defined twice`,
 		},
@@ -275,8 +275,8 @@ func TestATreeTheStoreTakesPasses(t *testing.T) {
 	}
 }
 
-// The tree a file declares round-trips through what warp writes.
-func TestWhatWarpWritesOfATreeItReads(t *testing.T) {
+// The tree a file declares round-trips through what humagen writes.
+func TestWhatHumagenWritesOfATreeItReads(t *testing.T) {
 	instr := "Answer plainly."
 	cfg := Config{Platforms: []Platform{{Metadata: Metadata{Name: "default"}, Spec: PlatformSpec{Workspace: Workspace{
 		Instructions: &instr,
@@ -304,7 +304,7 @@ func TestWhatWarpWritesOfATreeItReads(t *testing.T) {
 	}
 }
 
-// The language's bounds are the store's, so a file warp config check passes
+// The language's bounds are the store's, so a file humagen config check passes
 // is one the store takes, and one it refuses the store would refuse too.
 func TestTheLanguagesBoundsAreTheProjectStores(t *testing.T) {
 	caps := projects.DefaultCaps()
@@ -376,7 +376,7 @@ func TestTheLanguagesBoundsAreTheProjectStores(t *testing.T) {
 			t.Errorf("source %q: the spec says %v, the store %v", source, sourceName.MatchString(source), projects.ValidSource(source))
 		}
 	}
-	for _, agent := range []string{"auto", "globex-helper", "warp_writer", "Ignite", "@x", "a.b", strings.Repeat("a", 64), strings.Repeat("a", 65)} {
+	for _, agent := range []string{"auto", "globex-helper", "humagen_writer", "Ignite", "@x", "a.b", strings.Repeat("a", 64), strings.Repeat("a", 65)} {
 		if defaultName.MatchString(agent) != projects.ValidDefault(agent) {
 			t.Errorf("default %q: the spec says %v, the store %v", agent, defaultName.MatchString(agent), projects.ValidDefault(agent))
 		}

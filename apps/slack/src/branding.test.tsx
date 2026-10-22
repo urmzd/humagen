@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { defaultCopy } from "@warp/components";
+import { defaultCopy } from "@humagen/components";
 import { DEFAULT_BRANDING, parseBranding } from "./branding.ts";
 import { readConfig } from "./config.ts";
 import { DM, interactive, mention, settle, TEAM, USER, type World, world } from "./harness.ts";
@@ -23,7 +23,7 @@ const ENV = {
   SLACK_BOT_TOKEN: "b",
   SLACK_APP_TOKEN: "a",
   SLACK_TEAM_ID: TEAM,
-  WARP_TENANT: "acme",
+  HUMAGEN_TENANT: "acme",
 };
 
 function file(content: string): string {
@@ -127,9 +127,9 @@ test("branding: the ask form and every answer carry the brand", async () => {
   assert.equal(view.title.text, "Ask Acme Help");
 
   await deliver(w, mention("ping", "1700000000.000100"));
-  w.warp.emit(w.warp.last.id, "lifecycle.accepted");
+  w.humagen.emit(w.humagen.last.id, "lifecycle.accepted");
   await settle();
-  w.warp.emit(w.warp.last.id, "lifecycle.completed", { text: "pong" });
+  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "pong" });
   await settle();
   await w.app.idle();
   const final = JSON.stringify(w.slack.of("chat.stopStream").at(-1)?.blocks ?? []);
@@ -140,9 +140,9 @@ test("branding: the ask form and every answer carry the brand", async () => {
 test("branding: a name alone puts the brand in the default disclaimer", async () => {
   const w = world({ branding: parseBranding({ name: "Acme Help" }) });
   await deliver(w, mention("ping", "1700000000.000200"));
-  w.warp.emit(w.warp.last.id, "lifecycle.accepted");
+  w.humagen.emit(w.humagen.last.id, "lifecycle.accepted");
   await settle();
-  w.warp.emit(w.warp.last.id, "lifecycle.completed", { text: "pong" });
+  w.humagen.emit(w.humagen.last.id, "lifecycle.completed", { text: "pong" });
   await settle();
   await w.app.idle();
   const final = JSON.stringify(w.slack.of("chat.stopStream").at(-1)?.blocks ?? []);

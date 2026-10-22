@@ -159,7 +159,7 @@ export function SessionGauge({
         {(close) => (
           <div className="aui-scroll flex max-h-[70vh] flex-col overflow-y-auto">
             {limits && (
-              <div className="border-[var(--warp-rule)] border-b pb-1">
+              <div className="border-[var(--humagen-rule)] border-b pb-1">
                 <LimitsPanel
                   data={limits}
                   onRaise={onRaise}

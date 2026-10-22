@@ -54,9 +54,9 @@ differs from what is committed.
 
 ## The generated client
 
-`packages/client` is `@warp/client`: private, ESM, typed, no runtime
+`packages/client` is `@humagen/client`: private, ESM, typed, no runtime
 dependencies, for Node 22.12 or later and browsers. Consumers in this repository
-depend on it with `"@warp/client": "link:../../packages/client"` and run
+depend on it with `"@humagen/client": "link:../../packages/client"` and run
 `pnpm build` in `packages/client` first, because the package exports its built
 `dist/`.
 
@@ -65,7 +65,7 @@ depend on it with `"@warp/client": "link:../../packages/client"` and run
 | `packages/client/oag.yaml` | The generator's configuration. |
 | `packages/client/.oag/packs/node-client` | oag's `node-client` template pack, copied unchanged from oag v0.20.6. Without it oag fetches the pack from oag's main branch. |
 | `packages/client/src/generated/` | oag's output. Committed, never edited. |
-| `packages/client/src/warp.ts` | The hand-written layer over it. |
+| `packages/client/src/humagen.ts` | The hand-written layer over it. |
 
 The generated output is committed, as fiber commits `gen/`: a change to the
 contract shows up as a reviewable diff in the client, consumers need no
@@ -76,7 +76,7 @@ first, then the body, then query and header parameters in the order the spec
 lists them, then `RequestOptions` (`signal`, `headers`, `timeout`, `retry`).
 Each also has a `...Raw` form that returns the status and headers.
 
-The layer in `warp.ts` adds what the generator does not do:
+The layer in `humagen.ts` adds what the generator does not do:
 
 - `createClient({ baseUrl, token, credentials })`: `token` is a string or a
   function that returns one, sent as a bearer. `credentials: "include"` uses a
@@ -101,16 +101,16 @@ The layer in `warp.ts` adds what the generator does not do:
 
 A machine sends an OIDC access token issued for the API audience by
 client credentials: `Authorization: Bearer <token>`. It has no role. It may do
-exactly what the `warp:<permission>` scopes on its token allow, and its
+exactly what the `humagen:<permission>` scopes on its token allow, and its
 workspace comes from the token's tenant claim. Each operation's `x-permission`
 names the scope it needs. A Slack surface needs at least
-`warp:agents:read`, `warp:runs:read`, `warp:runs:write` and
-`warp:billing:read`, plus the write scope for each inbox action it offers.
+`humagen:agents:read`, `humagen:runs:read`, `humagen:runs:write` and
+`humagen:billing:read`, plus the write scope for each inbox action it offers.
 The Slack app's Home lists a mapped person's projects, which takes
-`warp:projects:read` too. An app run as a client (`WARP_CLIENT`) reads its
-client and its bindings, which takes `warp:clients:read`, and catches up on
+`humagen:projects:read` too. An app run as a client (`HUMAGEN_CLIENT`) reads its
+client and its bindings, which takes `humagen:clients:read`, and catches up on
 each bound project's announcements in the project's inbox, which takes
-`warp:projects:read`: without it, release notes, and announcements made
+`humagen:projects:read`: without it, release notes, and announcements made
 while the app was away, never reach Slack.
 See [security](security.md) for setting up the identity provider.
 
@@ -123,9 +123,9 @@ Start a run under the caller's own idempotency key, stream its answer, and
 stop it if it takes longer than a minute:
 
 ```ts
-import { createClient, failureOf, StreamEndedError } from "@warp/client";
+import { createClient, failureOf, StreamEndedError } from "@humagen/client";
 
-const client = createClient({ baseUrl: "http://127.0.0.1:8080", token: process.env.WARP_TOKEN });
+const client = createClient({ baseUrl: "http://127.0.0.1:8080", token: process.env.HUMAGEN_TOKEN });
 const run = await client.createRun({ agent: "helper", text: "Say hello" }, "slack-event-Ev01");
 const giveUp = AbortSignal.timeout(60_000);
 try {

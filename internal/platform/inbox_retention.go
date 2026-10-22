@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/urmzd/warp/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/inbox"
 )
 
 // retainEvery is how often each workspace's inbox drops what was settled

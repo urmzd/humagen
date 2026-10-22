@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // Rule 7: each of a schedule's checks refuses the file, naming the document

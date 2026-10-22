@@ -13,7 +13,7 @@ import {
   orderUpdates,
   PERSONAL_ACCOUNT,
   timeToken,
-} from "@warp/core";
+} from "@humagen/core";
 import {
   Actions,
   Button,
@@ -28,7 +28,7 @@ import {
   Text,
   Tiles,
   useSurface,
-} from "@warp/primitives";
+} from "@humagen/primitives";
 import { type Copy, defaultCopy } from "./copy";
 
 function link(label: string, url?: string) {
@@ -53,7 +53,7 @@ const escapeLabel = (text: string) => text.replace(/[[\]\\]/g, (ch) => `\\${ch}`
  * link to the console. An announcement or a project links its title on the
  * web; on Slack an Open button beside it does. Publish it on Slack with
  * `renderToSlack(..., { placement: "home" })` or `homeView` from
- * `@warp/render-slack`.
+ * `@humagen/render-slack`.
  */
 export function Home({ home, copy = defaultCopy }: { home: HomeModel; copy?: Copy }) {
   const slack = useSurface().surface === "slack";

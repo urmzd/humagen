@@ -36,7 +36,7 @@ func TestAProjectsSkillsAreDeclaredByOwnersAndListedWhereTheyAreSeen(t *testing.
 	put("Secret", "canary")
 
 	// A member reads them; only an owner declares them.
-	member := f.person(t, "acme", "00u-bo", "Bo", "warp-operators")
+	member := f.person(t, "acme", "00u-bo", "Bo", "humagen-operators")
 	if listed := want(t, f, member, "GET", "/api/skills?project=Globex", "", http.StatusOK); fmt.Sprint(listed["skills"]) != fmt.Sprint(got["offered"]) {
 		t.Fatalf("a member lists %v", listed["skills"])
 	}

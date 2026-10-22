@@ -6,14 +6,14 @@ import (
 	"slices"
 	"time"
 
-	"github.com/urmzd/warp/pkg/auth"
-	"github.com/urmzd/warp/pkg/inbox"
-	"github.com/urmzd/warp/pkg/projects"
+	"github.com/urmzd/humagen/pkg/auth"
+	"github.com/urmzd/humagen/pkg/inbox"
+	"github.com/urmzd/humagen/pkg/projects"
 )
 
 // Every project has an inbox: the inbox messages whose Source.Project is the
 // project, read by everyone who can see it. An announcement is a message in
-// it, posted by a person, by an agent scheduled in the project, or by warp
+// it, posted by a person, by an agent scheduled in the project, or by humagen
 // in the workspace's own inbox for a release. It reaches the members of the
 // project and of every project below it, decided when it is read: one
 // message, never a copy per person. Each reader keeps their own copy hidden
@@ -30,7 +30,7 @@ type Announcement struct {
 
 // Announce posts an announcement in a project's inbox, "~" for the
 // workspace's, from a person or an agent. It is the platform's one way in, for
-// people (PostAnnouncement), for agents scheduled in a project and for warp's
+// people (PostAnnouncement), for agents scheduled in a project and for humagen's
 // own release notes (PostReleaseNotes). A project may post 20 a day and a
 // workspace 200 (inbox.ErrLimit), and the text is plain: surfaces escape any
 // mention syntax in it before rendering.
@@ -61,8 +61,8 @@ func (p *Platform) announce(tenant, project, key string, from inbox.From, a Anno
 	return m, err == nil, err
 }
 
-// PostReleaseNotes posts what a release of warp brings in the workspace's
-// own inbox, from warp, so it reaches everyone who reads the workspace as any
+// PostReleaseNotes posts what a release of humagen brings in the workspace's
+// own inbox, from humagen, so it reaches everyone who reads the workspace as any
 // announcement there does. It is keyed release:<version> and posted once: a
 // restart, a later process on the same state or a withdrawal never posts it
 // again, and posted reports whether this call posted it.
@@ -71,7 +71,7 @@ func (p *Platform) PostReleaseNotes(tenant, version string, a Announcement) (m i
 		return inbox.Message{}, false, fmt.Errorf("%w: release notes name their version", inbox.ErrInvalid)
 	}
 	a.Severity, a.Run = inbox.Info, ""
-	return p.announce(tenant, projects.Root, "release:"+version, inbox.From{Kind: "system", Name: "warp"}, a, p.now())
+	return p.announce(tenant, projects.Root, "release:"+version, inbox.From{Kind: "system", Name: SystemSender}, a, p.now())
 }
 
 // Announcer is the lowest role that may post in a project: its Announce, or
@@ -274,3 +274,11 @@ func (p *Platform) noticeReader(tree *projects.Tree, who auth.Principal) inbox.R
 	}
 	return r
 }
+
+// SystemSender is the name the platform posts under as itself. Records
+// written before the rename keep the old one (legacy.SystemSender); every
+// system sender is shown as SystemDisplay.
+const SystemSender = "humagen"
+
+// SystemDisplay is what a system sender is called.
+const SystemDisplay = "Humagen"

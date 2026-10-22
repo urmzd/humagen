@@ -1,6 +1,6 @@
-import { type ActionHandler, ActionId, type ActionPayload } from "@warp/core";
-import type { ButtonProps, ConfirmSpec, PrimitiveProps } from "@warp/primitives";
-import { Button as ButtonPrimitive, Menu as MenuPrimitive } from "@warp/primitives";
+import { type ActionHandler, ActionId, type ActionPayload } from "@humagen/core";
+import type { ButtonProps, ConfirmSpec, PrimitiveProps } from "@humagen/primitives";
+import { Button as ButtonPrimitive, Menu as MenuPrimitive } from "@humagen/primitives";
 import {
   Children,
   createContext,

@@ -17,13 +17,13 @@ import (
 	"github.com/urmzd/fiber/pkg/agentspec"
 	"github.com/urmzd/fiber/pkg/signature"
 
-	"github.com/urmzd/warp/internal/platform"
-	"github.com/urmzd/warp/pkg/clients"
-	"github.com/urmzd/warp/pkg/integrations/github"
-	"github.com/urmzd/warp/pkg/integrations/slack"
-	"github.com/urmzd/warp/pkg/spec"
-	"github.com/urmzd/warp/pkg/state"
-	"github.com/urmzd/warp/pkg/state/statetest"
+	"github.com/urmzd/humagen/internal/platform"
+	"github.com/urmzd/humagen/pkg/clients"
+	"github.com/urmzd/humagen/pkg/integrations/github"
+	"github.com/urmzd/humagen/pkg/integrations/slack"
+	"github.com/urmzd/humagen/pkg/spec"
+	"github.com/urmzd/humagen/pkg/state"
+	"github.com/urmzd/humagen/pkg/state/statetest"
 )
 
 func envOf(vars map[string]string) func(string) string {
@@ -81,7 +81,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 		EnvSlackCommands: `[{"name":"create-pr","description":"Open a pull request","argument_hint":"[title]"}]`,
 		EnvGitHubToken:   "ghs-legacy", EnvGitHubSecret: "legacy-github-secret-of-16-bytes", EnvGitHubOwners: "acme, acme-labs",
 		EnvGitHubBots: "helper[bot]=helper", EnvGitHubChecks: "false", EnvGitHubReadRepositories: "acme/handbook",
-		EnvGitHubAutoLabels: `{"acme/handbook":{"agent:auto":"helper"}}`, EnvGitHubLogin: "warp[bot]", EnvGitHubDefault: "helper",
+		EnvGitHubAutoLabels: `{"acme/handbook":{"agent:auto":"helper"}}`, EnvGitHubLogin: "humagen[bot]", EnvGitHubDefault: "helper",
 	}
 	defaults, err := defaultClients(envOf(vars))
 	if err != nil {
@@ -135,7 +135,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 			t.Errorf("%s = %+v, want an enabled, env-managed client for any agent", c.ID, c)
 		}
 		// The record names where the secret is and holds none.
-		if !strings.HasPrefix(c.Credentials.Token.Ref, "env:WARP_") || !strings.HasPrefix(c.Credentials.SigningSecret.Ref, "env:WARP_") {
+		if !strings.HasPrefix(c.Credentials.Token.Ref, "env:HUMAGEN_") || !strings.HasPrefix(c.Credentials.SigningSecret.Ref, "env:HUMAGEN_") {
 			t.Errorf("%s credentials = %+v", c.ID, c.Credentials)
 		}
 	}
@@ -145,7 +145,7 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 	}
 	gh, _ := p.Clients.Get("trial", defaultGitHubClient)
 	if len(gh.Identity.Owners) != 2 || gh.GitHub.AutoLabels["acme/handbook"]["agent:auto"] != "helper" || gh.GitHub.ReadRepositories[0] != "acme/handbook" ||
-		gh.GitHub.Login != "warp[bot]" || gh.DefaultAgent != "helper" {
+		gh.GitHub.Login != "humagen[bot]" || gh.DefaultAgent != "helper" {
 		t.Fatalf("github client = %+v", gh)
 	}
 
@@ -215,11 +215,11 @@ func TestTheLegacyEnvironmentYieldsOneWorkingDefaultClientPerSurface(t *testing.
 // its default clients, and no other tenant is.
 func TestSecretReferencesAreGivenToTenantsByTheOperator(t *testing.T) {
 	env := envOf(map[string]string{EnvSlackToken: "t", EnvSlackSecret: "s"})
-	got, err := secretRefs("acme=WARP_SLACK_TOKEN_DOCS, WARP_SLACK_SECRET_DOCS; globex=WARP_GH_GLOBEX;", "trial", env)
+	got, err := secretRefs("acme=HUMAGEN_SLACK_TOKEN_DOCS, HUMAGEN_SLACK_SECRET_DOCS; globex=HUMAGEN_GH_GLOBEX;", "trial", env)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 || len(got["acme"]) != 2 || got["globex"][0] != "WARP_GH_GLOBEX" {
+	if len(got) != 3 || len(got["acme"]) != 2 || got["globex"][0] != "HUMAGEN_GH_GLOBEX" {
 		t.Fatalf("refs = %v", got)
 	}
 	if len(got["trial"]) != 2 || got["trial"][0] != EnvSlackToken || got["trial"][1] != EnvSlackSecret {
@@ -236,7 +236,7 @@ func TestSecretReferencesAreGivenToTenantsByTheOperator(t *testing.T) {
 	if got, err := secretRefs("", "trial", envOf(nil)); err != nil || len(got) != 0 {
 		t.Fatalf("refs with nothing set = %v, %v", got, err)
 	}
-	for _, raw := range []string{"acme", "=WARP_X", "acme=", "acme=ANTHROPIC_API_KEY", "acme=WARP_OIDC_CLIENT_SECRET", "acme=warp_x"} {
+	for _, raw := range []string{"acme", "=HUMAGEN_X", "acme=", "acme=ANTHROPIC_API_KEY", "acme=HUMAGEN_OIDC_CLIENT_SECRET", "acme=humagen_x"} {
 		if _, err := secretRefs(raw, "trial", envOf(nil)); err == nil {
 			t.Errorf("-secret-refs %q was accepted", raw)
 		}
@@ -265,15 +265,15 @@ func TestTheFilesGitHubClientCarriesTheAppsLogin(t *testing.T) {
 		}
 		return p, applyGitHub(t.Context(), p, "acme", g, slog.Default())
 	}
-	p, err := apply("warp[bot]")
+	p, err := apply("humagen[bot]")
 	if err != nil {
 		t.Fatal(err)
 	}
 	c, err := p.Clients.Get("acme", "file-github")
-	if err != nil || c.GitHub == nil || c.GitHub.Login != "warp[bot]" || c.Managed != clients.ManagedFile {
+	if err != nil || c.GitHub == nil || c.GitHub.Login != "humagen[bot]" || c.Managed != clients.ManagedFile {
 		t.Fatalf("the file's client = %+v, %v", c, err)
 	}
-	if _, err := apply("@warp"); err == nil {
+	if _, err := apply("@humagen"); err == nil {
 		t.Fatal("a login that is no GitHub login was accepted")
 	}
 }
@@ -323,14 +323,14 @@ func TestTheFilesGitHubClientFollowsTheFileAtEveryStart(t *testing.T) {
 			t.Fatalf("the first start kept %+v", c)
 		}
 		p := start(st)
-		c := apply(p, file("warp[bot]"))
-		if c.Version != 2 || c.GitHub == nil || c.GitHub.Login != "warp[bot]" || c.Managed != clients.ManagedFile || !c.Enabled {
+		c := apply(p, file("humagen[bot]"))
+		if c.Version != 2 || c.GitHub == nil || c.GitHub.Login != "humagen[bot]" || c.Managed != clients.ManagedFile || !c.Enabled {
 			t.Fatalf("after the login was added, the client is %+v", c)
 		}
 		if c.Credentials.Token.Ref != "env:"+EnvGitHubToken || c.Credentials.SigningSecret.Ref != "env:"+EnvGitHubSecret {
 			t.Fatalf("the client's secrets are %+v", c.Credentials)
 		}
-		if again := apply(start(st), file("warp[bot]")); again.Version != 2 || again.GitHub.Login != "warp[bot]" {
+		if again := apply(start(st), file("humagen[bot]")); again.Version != 2 || again.GitHub.Login != "humagen[bot]" {
 			t.Fatalf("an unchanged file made %+v", again)
 		}
 		if _, err := p.UpdateClient(t.Context(), "acme", "file-github", "admin", platform.ClientInput{Client: c}); !errors.Is(err, clients.ErrManaged) {
@@ -350,7 +350,7 @@ func TestTheFilesGitHubClientFollowsTheFileAtEveryStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if kept := apply(console, file("warp[bot]")); kept.Managed != "" || kept.Version != made.Version || kept.GitHub != nil {
+	if kept := apply(console, file("humagen[bot]")); kept.Managed != "" || kept.Version != made.Version || kept.GitHub != nil {
 		t.Fatalf("the file took over the console's client: %+v", kept)
 	}
 }

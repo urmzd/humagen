@@ -12,8 +12,8 @@ import (
 
 	"github.com/urmzd/fiber/pkg/agentrt"
 
-	"github.com/urmzd/warp/pkg/credref"
-	"github.com/urmzd/warp/pkg/spec"
+	"github.com/urmzd/humagen/pkg/credref"
+	"github.com/urmzd/humagen/pkg/spec"
 )
 
 // The model kinds are built on saige's adapters, as fiber's built-in
