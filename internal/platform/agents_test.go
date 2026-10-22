@@ -1,6 +1,7 @@
 package platform_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -460,9 +461,14 @@ func TestTheBaselineBecomesTheWorkspaceDefault(t *testing.T) {
 			if _, held := storedSettings(t, st, tenantName)["baseline"]; held {
 				t.Fatalf("the settings of %s still name a baseline", tenantName)
 			}
-			if h, _ := p.Projects.History(tenantName, projects.Root, 0, 0); len(h) == 0 || h[0].By != "migration" {
-				t.Fatalf("the root of %s does not say the upgrade set it: %+v", tenantName, h)
-			}
+		}
+		if h, _ := p.Projects.History("named", projects.Root, 0, 0); len(h) == 0 || h[0].By != "migration" {
+			t.Fatalf("the root of named does not say the upgrade set it: %+v", h)
+		}
+		// An empty baseline was the picker, which auto still is: the
+		// workspace reads as it did, and is given no tree.
+		if p.Projects.Stored("unnamed") {
+			t.Fatal("settings that named no baseline, with no tree, were given one")
 		}
 		// A second start finds nothing to do.
 		if err := p.Close(); err != nil {
@@ -501,6 +507,88 @@ func TestTheBaselineMigrationIsRepairedAfterAStopBetweenItsWrites(t *testing.T) 
 			t.Fatal("the repair did not clear the baseline")
 		}
 	})
+}
+
+// passing lets the next n writes to one namespace through and fails the
+// rest, so a test can stop a start between two writes to the same store.
+type passing struct {
+	state.Store
+	mu        sync.Mutex
+	namespace string
+	left      int
+}
+
+func (f *passing) Write(ctx context.Context, namespace string, ops ...state.Op) error {
+	f.mu.Lock()
+	failing := f.namespace == namespace && f.left == 0
+	if f.namespace == namespace && f.left > 0 {
+		f.left--
+	}
+	f.mu.Unlock()
+	if failing {
+		return statetest.ErrInjected
+	}
+	return f.Store.Write(ctx, namespace, ops...)
+}
+
+func TestOneStartMovesTheProjectsAndTheBaselineWhereverItStops(t *testing.T) {
+	// Each stop leaves a record both migrations must finish from.
+	stops := map[string]func(st state.Store) state.Store{
+		// The import fails: nothing is written.
+		"before the import": func(st state.Store) state.Store { return &passing{Store: st, namespace: "projects"} },
+		// The import is written, and the settings without the projects are not.
+		"after the import": func(st state.Store) state.Store { return &passing{Store: st, namespace: "settings"} },
+		// The settings are written without the projects, still naming the
+		// baseline, and the root's default is not.
+		"after the projects leave the settings": func(st state.Store) state.Store {
+			return &passing{Store: st, namespace: "projects", left: 1}
+		},
+		// The root's default is written, and the settings without the
+		// baseline are not.
+		"after the default is set": func(st state.Store) state.Store {
+			return &passing{Store: st, namespace: "settings", left: 1}
+		},
+	}
+	for name, stop := range stops {
+		t.Run(name, func(t *testing.T) {
+			statetest.Each(t, func(t *testing.T, open func(*testing.T) state.Store) {
+				st := open(t)
+				raw, _ := json.Marshal(map[string]any{
+					"baseline": "lead", "history": "recent", "history_limit": 12000, "workspace_name": "Acme",
+					"projects": []map[string]string{{"name": "Launch"}, {"name": "Ops"}},
+				})
+				if err := st.Write(t.Context(), "settings", state.Put(tenant, "settings", raw)); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := newOn(t, stop(st)); !errors.Is(err, statetest.ErrInjected) {
+					t.Fatalf("a start that stopped %s = %v", name, err)
+				}
+				if b, held := storedSettings(t, st, tenant)["baseline"]; !held || b != "lead" {
+					t.Fatalf("stopped %s, the settings lost the baseline: %v", name, b)
+				}
+				p, err := newOn(t, st)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var got []string
+				for _, pr := range p.Projects.List(tenant) {
+					got = append(got, pr.Name)
+				}
+				if !slices.Equal(got, []string{"Launch", "Ops"}) {
+					t.Fatalf("after a stop %s the tree holds %q", name, got)
+				}
+				if d, _ := p.ProjectTree(tenant).DefaultOf(projects.Root); d != "lead" {
+					t.Fatalf("after a stop %s the default is %q", name, d)
+				}
+				held := storedSettings(t, st, tenant)
+				for _, key := range []string{"projects", "baseline"} {
+					if _, ok := held[key]; ok {
+						t.Fatalf("after a stop %s the settings still hold %s", name, key)
+					}
+				}
+			})
+		})
+	}
 }
 
 func TestARootWrittenBeforeProjectsHadAgentsEnablesEveryAgent(t *testing.T) {

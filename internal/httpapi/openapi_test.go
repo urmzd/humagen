@@ -1449,6 +1449,11 @@ var unexercised = map[string]string{
 	"POST /api/inbox/{id}/parts/{part}/resolve 429": "retry refused by a limit",
 	"POST /api/inbox/{id}/parts/{part}/resolve 402": "retry refused by a limit",
 	"POST /api/inbox/{id}/parts/{part}/resolve 409": "retry of a turn whose project was deleted",
+	// A workspace remembers at most 1,000 deleted names. Filling that with
+	// names that all still hold conversations takes 2,000 calls and a
+	// conversation each, and would only test a counter, which pkg/projects'
+	// tests do.
+	"DELETE /api/projects/{name} 429": "tombstone cap",
 	// A spend refusal is the same answer through every route that starts a
 	// run. createRun's 402 is exercised; a schedule's run now goes through
 	// the same admission.

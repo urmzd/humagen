@@ -339,7 +339,7 @@ one `state.Write` (all or none within a namespace):
 | `p:<name>` (`p:` is the root) | the project, with the fields the file owns |
 | `c:<project>/<channel>` | a channel (names cannot hold `/`) |
 | `h:<seq>` | a `Change`, a ring of 1,000 per tenant pruned in the same write |
-| `x:<lower(name)>` | a tombstone `{name, by, at}`, at most 1,000 |
+| `x:<lower(name)>` | a tombstone `{name, by, at}`, at most 1,000; one is forgotten to make room only when no conversation or file is filed under its name, and a delete that would need to forget one that has something is refused (429) |
 
 `Open(st)` loads everything once and trusts its memory (one writer). A write
 that fails changes nothing. Open refuses a cycle or an orphan (fail closed).
@@ -352,7 +352,8 @@ separate locks: check and insert become one critical section.
 
 1. A name is unique ignoring case, tombstones included, and never changes. A
    tombstoned name is reused only with `projects:govern`, recorded as
-   "adopts its old conversations".
+   "adopts its old conversations". However many deletes follow, a tombstone
+   whose name still has conversations or files under it is never forgotten.
 2. The parent exists in the same tenant and is not archived. Phase 1 fixes
    the parent at creation, so no cycle can form. A move (phase 2) refuses a
    parent inside the moved subtree, and requires
@@ -604,7 +605,10 @@ ingress overwrites whatever a connector put there (phase 8).
   project's owner: a project's notes are changed only through its own
   routes and the inbox, each asking what the project asks. The memory agent
   writes as today: to the run's own project, or to the agent for a run at
-  the root. It never writes from a private thread (phase 7).
+  the root. It never writes from a private thread (phase 7). With
+  `memory_auto_approve` on, what it writes for the workspace or a company
+  project still waits for someone holding `projects:govern`, since the turn
+  that taught it needed only `runs:write`.
 - Knowledge sources inherited down the tree (phase 9) use warp's executor
   seam, `callExecutor.resolve`, which already rewrites the revision for model
   policies. The chain's sources are pinned at accept as `warp.sources` and
@@ -1177,6 +1181,18 @@ Every Slack change passes `pnpm validate:slack`, and
    - One write imports every entry as `{kind: team, parent: "", title: "",
      created_by: "migration", created_at: SetupAt or now}` with one `h:`
      entry each, and creates the root.
+   - The same write imports, the same way, every name a stored schedule
+     (`warp.project`), alert rule or project-scope policy still points at
+     that the array lacks: a project an earlier version dropped by a delete
+     or at start while things stayed filed in it. Each one's `h:` entry says
+     "kept because a schedule, an alert rule or a limit still names it". So
+     a schedule that ran before the upgrade is not refused after it, and
+     nothing is left pointing at a name the tree does not hold (invariant
+     5). A record whose array was null imports only such names. A name the
+     tree cannot hold (not a project's name, or one name ignoring case with
+     an imported one) is logged and left, and what points at it is refused
+     until it is changed. Past the 100-project cap the start fails, naming
+     what it would have kept.
    - Then settings are rewritten without the array.
    - If the platform stops between the two writes, the next start repairs it:
      the store has records, so the import is skipped and only the array is
@@ -1327,7 +1343,8 @@ its parent's limit, and nothing claims privacy.
     - `TestRestart`, a failed write through `statetest.NewFaulty`, and Open
       refusing a cycle.
   - `internal/platform`:
-    - the migration, including a stop between its two writes;
+    - the migration, including a stop between its two writes, and a legacy
+      schedule filed in a dropped project still running after it;
     - 40 racers in two children against a parent `max_runs` of 7 admit 7,
       and spend stops at the parent's limit to the micro-dollar;
     - storage over the subtree;

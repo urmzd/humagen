@@ -135,7 +135,7 @@ func TestFailedWriteChangesNothing(t *testing.T) {
 	if _, err := s.Upsert("acme", projects.Project{Name: "Field", Title: "y"}, []string{projects.FieldTitle}, "file", t0); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Upsert = %v", err)
 	}
-	if err := s.Import("globex", []projects.Project{{Name: "A"}}, "migration", t0); !errors.Is(err, statetest.ErrInjected) {
+	if err := s.Import("globex", []projects.Project{{Name: "A"}}, nil, "migration", t0); !errors.Is(err, statetest.ErrInjected) {
 		t.Fatalf("Import = %v", err)
 	}
 	if s.Tree("acme") != before || !reflect.DeepEqual(s.List("acme"), before.Projects()) || s.Stored("globex") {

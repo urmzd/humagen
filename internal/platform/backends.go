@@ -121,7 +121,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("prefs", err)
 	p.Memory, err = memory.Open(st)
 	keep("memory", err)
-	p.Projects, err = projects.Open(st)
+	// A deleted name is forgotten only once nothing is filed under it.
+	p.Projects, err = projects.Open(st, projects.WithFiled(p.filedUnder))
 	keep("projects", err)
 	// An agent's name is a handle no person is given.
 	p.People, err = people.Open(st, people.WithTaken(p.agentTaken))
