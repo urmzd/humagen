@@ -650,7 +650,8 @@ export class App {
           const due = catchUpOn(page, client, (this.opts.now ?? Date.now)(), b.bound_at);
           // A post whose receipt warp did not take is looked at whatever became of it.
           for (const m of page)
-            if ((this.unrecorded.has(m.id) || this.unchecked.has(m.id)) && !due.includes(m.id)) due.push(m.id);
+            if ((this.unrecorded.has(m.id) || this.unchecked.has(m.id)) && !due.includes(m.id))
+              due.push(m.id);
           for (const id of due) {
             // One post Slack refuses to edit, such as one deleted there, holds up no other.
             await this.announce(id, "catch-up").catch((e: Error) => {
