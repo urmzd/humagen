@@ -26,6 +26,7 @@ import { type Completion, useCompletion } from "./completion.ts";
 import { Composer } from "./Composer.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { useRunTurn } from "./Runs.tsx";
+import { emptySelection, PlusMenu, placeholderFor, type Selection, SelectionChips } from "./Plus.tsx";
 import { ShareDialog } from "./Share.tsx";
 import { mergeTurns } from "./turns.ts";
 import { AgentMark, AgentTint, ago, button, cause, field, isWorking, Label, Page, Problem, primary } from "./ui.tsx";
@@ -118,11 +119,13 @@ function RoomComposer({
   placeholder,
   tags,
   autoFocus,
+  plus,
   onPost,
 }: {
   placeholder: string;
   tags: Completion;
   autoFocus?: boolean;
+  plus?: Parameters<typeof Composer>[0]["plus"];
   onPost: (text: string) => Promise<ThreadPosted>;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
@@ -146,7 +149,7 @@ function RoomComposer({
   return (
     <div className="flex flex-col gap-2">
       <Problem message={problem} />
-      <Composer placeholder={placeholder} queue={queue} autoFocus={autoFocus} tags={tags} />
+      <Composer placeholder={placeholder} queue={queue} autoFocus={autoFocus} tags={tags} plus={plus} />
       {said && (
         <p role="status" className="px-3 text-aui-xs text-aui-muted">
           {said}
@@ -241,7 +244,22 @@ function retryInRoom(run: Run, me: string): string {
  * (ask), and an answer the platform refused says why under it, where it was
  * given.
  */
-function AnswerView({ run, me, live, ask, refused }: { run: Run; me: string; live: boolean; ask?: ThreadAsk; refused?: Refusal }) {
+function AnswerView({
+  run,
+  me,
+  live,
+  ask,
+  refused,
+  routed,
+}: {
+  run: Run;
+  me: string;
+  live: boolean;
+  ask?: ThreadAsk;
+  refused?: Refusal;
+  /** That it answers because the conversation routes to it, not because it was tagged. */
+  routed?: string;
+}) {
   const turn = useRunTurn(live ? run : undefined);
   const drawn = useMemo(
     () =>
@@ -269,7 +287,7 @@ function AnswerView({ run, me, live, ask, refused }: { run: Run; me: string; liv
         <p className="warp-glass max-w-[80%] self-end whitespace-pre-wrap rounded-aui-lg px-3.5 py-2 text-aui-sm text-aui-fg">{run.text}</p>
       )}
       {/* The answer names its agent; why @auto chose it is said above it. */}
-      {run.picked && <p className="pl-11 text-aui-xs text-aui-muted">{run.picked}</p>}
+      {(routed || run.picked) && <p className="pl-11 text-aui-xs text-aui-muted">{[routed, run.picked].filter(Boolean).join(". ")}</p>}
       <AgentTint name={run.agent}>
         <AgentMessage turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: false }} />
       </AgentTint>
@@ -321,7 +339,7 @@ export function ThreadRoom({
   canRun: boolean;
   /** A message to open at, as `?message=` names it. */
   focus?: string;
-  /** Whether the Share dialog is open, as `/tasks/{id}/share` says. */
+  /** Whether the Share dialog is open, as `/conversations/{id}/share` says. */
   sharing?: boolean;
   /** Opens or closes the Share dialog, at its address. */
   onSharing?: (open: boolean) => void;
@@ -369,9 +387,50 @@ export function ThreadRoom({
   const th = page.thread;
   const tags = useCompletion(th.project, agents, homes, topicsOf(projects, root, th.project), me);
   const posts = canRun && postsIn(projects, th.project);
-  // A private conversation is shared from its header, by someone who posts in it.
-  const shareable = posts && th.visibility === "private" && !th.surface && !!onSharing;
+  // A private conversation is published from its header by its starter, or
+  // an owner of its project, as the server holds them to it.
+  const owner = (th.project === "" ? root : projects.find((p) => p.name === th.project))?.access?.role === "owner";
+  const shareable = posts && th.visibility === "private" && !th.surface && !!onSharing && (th.created_by === me || owner);
   const hasRuns = turns.some((t) => t.run);
+  // What the + menu selected for the conversation, shown at once and saved on the thread.
+  const saved: Selection = { agents: th.agents ?? [], mode: th.mode ?? "best_fit", project: th.project, channel: th.channel };
+  const [shown, setShown] = useState<Selection | null>(null);
+  const selection = shown ?? saved;
+  const fixedWhy = hasRuns ? defaultCopy.threads.shareProjectFixed : th.surface ? words.inSlack : undefined;
+  const select = (next: Selection) => {
+    setShown(next);
+    setProblem(null);
+    const moved = next.project !== th.project || next.channel !== th.channel;
+    coworking
+      .update(id, {
+        version: th.version,
+        title: th.title ?? "",
+        visibility: th.visibility,
+        default: th.default ?? "",
+        agents: next.agents,
+        mode: next.mode,
+        ...(moved && next.project !== null ? { project: next.project === "" ? "~" : next.project, channel: next.channel } : {}),
+      })
+      .then((t) => {
+        setPage((p) => ({ ...p, thread: t }));
+        setShown(null);
+        onChanged();
+      })
+      .catch((e) => {
+        setShown(null);
+        setProblem(e instanceof ApiError && e.status === 409 && moved ? words.shareConflict : e instanceof ApiError ? e.message : defaultCopy.chat.saveFailed);
+      });
+  };
+  // A run answers because the conversation routes to its agent when its message did not tag it.
+  const messages = new Map(turns.flatMap((t) => (t.message ? [[t.message.id, t.message] as const] : [])));
+  const routedOf = (run: Run): string | undefined => {
+    const m = run.message ? messages.get(run.message) : undefined;
+    if (!m || !(th.agents ?? []).includes(run.agent)) return undefined;
+    if (m.mentions.some((x) => x.run === run.id || (x.kind === "agent" && x.name === run.agent))) return undefined;
+    const c = defaultCopy.chat;
+    if ((th.agents ?? []).length < 2) return c.routed(run.agent);
+    return th.mode === "all" ? c.routedAll(run.agent) : c.routedBest(run.agent);
+  };
   const shareButton = useRef<HTMLButtonElement>(null);
   // The Share address of a conversation that can't be shared is the conversation's.
   useEffect(() => {
@@ -504,6 +563,7 @@ export function ThreadRoom({
               <AnswerView
                 key={t.run.id}
                 run={t.run}
+                routed={routedOf(t.run)}
                 me={me}
                 ask={t.ask}
                 refused={refusals[t.run.id]}
@@ -518,8 +578,23 @@ export function ThreadRoom({
         {canRun && !posts && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
         {posts && (
           <RoomComposer
-            placeholder={th.visibility === "private" ? words.message : words.channel(th.channel)}
+            placeholder={selection.agents.length > 0 ? placeholderFor(selection) : th.visibility === "private" ? words.message : words.channel(th.channel)}
             tags={tags}
+            plus={{
+              menu: (close, attach) => (
+                <PlusMenu
+                  agents={tags.agents}
+                  selection={selection}
+                  onChange={select}
+                  onAttach={attach}
+                  onClose={close}
+                  projects={projects.filter((p) => postsIn(projects, p.name))}
+                  kinds={root?.kinds}
+                  projectFixed={fixedWhy}
+                />
+              ),
+              chips: <SelectionChips selection={selection} projects={projects} workspace={workspaceName} onChange={select} projectFixed />,
+            }}
             autoFocus={sharing ? false : undefined}
             onPost={(text) =>
               // It follows the newest message, so a run it starts reads the conversation so far.
@@ -611,6 +686,8 @@ export function ChannelPage({
   // see answers as one that does not exist), or the channel in it.
   const [missing, setMissing] = useState<"project" | "channel" | null>(null);
   const tags = useCompletion(project, agents, homes, topicsOf(projects, root, project), me);
+  // The agents the + menu picked for the thread this channel's chat bar starts.
+  const [picked, setPicked] = useState<Selection>(emptySelection);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {
@@ -699,11 +776,17 @@ export function ChannelPage({
       {canRun && info && !info.archived && !postsIn(projects, project) && <p className="text-aui-xs text-aui-muted">{words.viewerOnly}</p>}
       {canRun && info && !info.archived && postsIn(projects, project) && (
         <RoomComposer
-          placeholder={words.startThread}
+          placeholder={picked.agents.length > 0 ? placeholderFor(picked) : words.startThread}
           tags={tags}
+          plus={{
+            menu: (close, attach) => <PlusMenu agents={tags.agents} selection={picked} onChange={setPicked} onAttach={attach} onClose={close} />,
+            chips: <SelectionChips selection={picked} onChange={setPicked} />,
+          }}
           onPost={(text) =>
             // Started in a channel, a thread is shared there: the channel is where it was posted.
-            coworking.start({ project, channel, text, visibility: "shared" }).then((p) => {
+            coworking
+              .start({ project, channel, text, visibility: "shared", ...(picked.agents.length > 0 ? { agents: picked.agents, mode: picked.mode } : {}) })
+              .then((p) => {
               onOpenThread(p.thread.id);
               return p;
             })

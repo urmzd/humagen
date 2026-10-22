@@ -46,6 +46,7 @@ import type {
   ListInboxResponse,
   ListKnowledgeDocumentsResponse,
   ListKnowledgeSourcesResponse,
+  ListMentionsResponse,
   ListPendingMemoryResponse,
   ListPeopleResponse,
   ListPoliciesResponse,
@@ -56,6 +57,7 @@ import type {
   ListRunEventsResponse,
   ListRunFeedbackResponse,
   ListSchedulesResponse,
+  ListSkillsResponse,
   ListThreadsResponse,
   ListUsageNoticesResponse,
   Manifest,
@@ -79,6 +81,8 @@ import type {
   ProjectMembers,
   ProjectMembersInput,
   ProjectMove,
+  ProjectSkills,
+  ProjectSkillsInput,
   ProjectUpdate,
   ProjectView,
   QueryJournalResponse,
@@ -107,6 +111,7 @@ import type {
   ThreadPage,
   ThreadParticipantsUpdate,
   ThreadPosted,
+  ThreadShare,
   ThreadUpdate,
   ToolCredential,
   ToolCredentialInput,
@@ -1362,9 +1367,17 @@ that issued it.
   /** The message is posted as the caller, or as the person `act_as` names
 through a client that maps them; no field names an author, and a
 credential acting for nobody is refused (403). What the message
-starts follows the tag rules: the agents it tags answer, at most 3;
-tagging only people or experts notifies them; posted only, nothing
-answers; otherwise the default the thread inherits answers. Each run
+starts follows the tag rules: the agents it tags answer, at most 3,
+and a `$skill` with no agent tagged goes to `@auto`; tagging only
+people or experts notifies them; posted only, nothing answers. A
+message a person posts as themselves, as the console does, runs only
+the agents it tags: untagged, it starts nothing (rule `untagged`),
+whatever the thread's, channel's or project's default. Otherwise,
+for a message a client posts, the default the thread inherits
+answers. `visibility` left out, by a person posting as themselves,
+is `private`: the conversation is its starter's alone until they
+share it (`shareThread`). A client posting with `act_as` and no
+`surface` names it (400). Each run
 it starts acts for the person the message is posted as, never for
 anyone else in the thread, so a tool that acts as a person uses that
 person's own credential; the run is sent the room up to the message,
@@ -1427,7 +1440,9 @@ version 0, and its id is the id of the run that started it.
 
 The first page is the newest 200 turns, or `limit`. `next` is the
 cursor for the turns before them, or null at the start: pass it back
-as `before`. `answers` is who answers an untagged message here. A run
+as `before`. `answers` is who answers an untagged message a client
+posts here, from Slack or GitHub; a message a person posts as
+themselves, as the console does, runs only the agents it tags. A run
 turn whose run is parked on a question a person answers carries
 `ask`: whether the reader may answer it, and whom it is for, so a
 surface offers the answer only to the people it is for.
@@ -1492,7 +1507,11 @@ then owns it.
 
   /** Posted as the caller, or as the person `act_as` names through a
 client that maps them, as for `startThread`, and each run it starts
-acts for that person. `after` is the turn it follows: a message of
+acts for that person. What it starts follows the tag rules of
+`startThread`: posted as the caller themselves, as the console
+does, it runs only the agents it tags, and untagged it starts
+nothing; each run is sent the conversation up to it. `after` is the
+turn it follows: a message of
 the thread, a run answering one, or in a conversation from before
 threads one of its runs; left out, it follows the latest. `answers`
 records the message as a question's answer, which resumes the run
@@ -1562,6 +1581,47 @@ whoever started the thread or an owner of its project (403).
     });
   }
 
+  /** Makes the conversation shared in `channel` of `project`, read by
+everyone who can see that project, and adds the people `add` names,
+by handle, as participants (400 for a handle nobody goes by). `project`
+left out keeps the thread's own, `~` is the workspace; `channel` left
+out keeps the thread's own in its own project and is `general` in
+another. Only a participant shares (403). Making a private
+conversation shared, or moving one, also takes whoever started it,
+while a member of its project, or an owner of its project (403), so
+someone tagged into a private conversation does not publish it; it
+goes only into a project the caller is a member of (403; one they
+cannot see is 404), to a channel it has (404) that is not archived
+(400). On a
+thread shared already where it is, any participant who may post
+there adds people. The thread moves only while no run has been filed
+in it: a conversation that has runs stays in its project and its
+channel (409). A default it names that cannot answer where it moves
+is cleared. A thread on a Slack or GitHub surface stays where and as
+it was started (400). `version` is not taken: a change made to the
+thread while this one is decided is 409. Shared to private again is
+not offered. Answers the thread as `getThread` reads it.
+ */
+  async shareThread(id: string, body: ThreadShare, options?: RequestOptions): Promise<ThreadPage> {
+    let path = "/api/threads/{id}/share";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.request<ThreadPage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async shareThreadRaw(id: string, body: ThreadShare, options?: RequestOptions): Promise<ApiResponse<ThreadPage>> {
+    let path = "/api/threads/{id}/share";
+    path = path.replace("{id}", encodeURIComponent(String(id)));
+    return this.rawRequest<ThreadPage>("POST", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** A long-lived `text/event-stream`. Two kinds of message arrive on it:
 
 - A message with no `event:` field carries one `RunEvent` as JSON.
@@ -1570,8 +1630,8 @@ whoever started the thread or an owner of its project (403).
   caller is only sent notices for kinds of message they may read.
 - A message with `event: thread` carries one `ThreadNotice` as JSON:
   a message was posted or settled in a thread, or its record changed.
-  Fetch the thread to see it. Every thread is shared, so a caller who
-  may read conversations is sent each.
+  Fetch the thread to see it. A caller is sent the notices of the
+  threads they may read.
 
 A comment line (`: keep-alive`) is sent every 15 seconds. Messages
 carry no `id:` field, so `Last-Event-ID` is not used: to resume, pass
@@ -3318,6 +3378,59 @@ platform file sets.
     });
   }
 
+  /** A skill is named instructions an agent can be told to use: a person
+writes `$<name>`, or `@skill:<name>`, in a message, and the runs the
+message starts are given the skill's instructions as part of the
+turn. A message posted in a project can name the skills its project
+declares, then each project's above it, nearest first: `offered`,
+each name once, from the nearest project that declares it, at most
+128. A sibling's or a sub-project's are never offered. They are fixed
+when a run is accepted, so a later change here does not change a run
+already working.
+ */
+  async getProjectSkills(name: string, options?: RequestOptions): Promise<ProjectSkills> {
+    let path = "/api/projects/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectSkills>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectSkillsRaw(name: string, options?: RequestOptions): Promise<ApiResponse<ProjectSkills>> {
+    let path = "/api/projects/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectSkills>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** At most 32, each name once (400). A message posted here and below can
+name them from now on; a run already working keeps what it was
+accepted with. It needs ownership of the project; the workspace and
+company projects need `projects:govern` as well. `version` is the
+project's, as read; a change made since answers 409, as do skills the
+platform file declares.
+ */
+  async setProjectSkills(name: string, body: ProjectSkillsInput, options?: RequestOptions): Promise<ProjectSkills> {
+    let path = "/api/projects/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.request<ProjectSkills>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
+  async setProjectSkillsRaw(name: string, body: ProjectSkillsInput, options?: RequestOptions): Promise<ApiResponse<ProjectSkills>> {
+    let path = "/api/projects/{name}/skills";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    return this.rawRequest<ProjectSkills>("PUT", path, {
+      body,
+      contentType: "application/json",
+      ...options,
+    });
+  }
+
   /** Read who holds a role in a project, and who owns it from above */
   async getProjectMembers(name: string, options?: RequestOptions): Promise<ProjectMembers> {
     let path = "/api/projects/{name}/members";
@@ -3524,6 +3637,69 @@ an announcement in this project is 404.
     path = path.replace("{name}", encodeURIComponent(String(name)));
     path = path.replace("{id}", encodeURIComponent(String(id)));
     return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** The project's own skills first, then each project's above it, nearest
+first, each name once, at most 128, without their instructions: what
+the console completes after `$`. A project the caller cannot see
+answers 404, as one that does not exist.
+ */
+  async listSkills(project?: string, options?: RequestOptions): Promise<ListSkillsResponse> {
+    let path = "/api/skills";
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListSkillsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listSkillsRaw(project?: string, options?: RequestOptions): Promise<ApiResponse<ListSkillsResponse>> {
+    let path = "/api/skills";
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListSkillsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Without `kind`, the kinds of `@<kind>:<name>` a message can use: the
+built-in `sme` (experts) and `skill` (skills) first, then the ones the
+workspace's Platform document declares. With `kind`, the items it
+completes to where a message is posted in `project`, whose name
+starts with `q`, ignoring case, by name, at most 20: the topics the
+project's chain has experts for, the skills it offers, the roles it
+names, or people in the directory, which takes `people:read` as well
+(without it the list is empty). A kind the workspace does not have,
+or a project the caller cannot see, answers 404.
+ */
+  async listMentions(project?: string, kind?: string, q?: string, options?: RequestOptions): Promise<ListMentionsResponse> {
+    let path = "/api/mentions";
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListMentionsResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listMentionsRaw(project?: string, kind?: string, q?: string, options?: RequestOptions): Promise<ApiResponse<ListMentionsResponse>> {
+    let path = "/api/mentions";
+    const _q = new URLSearchParams();
+    if (project !== undefined && project !== null) _q.set("project", String(project));
+    if (kind !== undefined && kind !== null) _q.set("kind", String(kind));
+    if (q !== undefined && q !== null) _q.set("q", String(q));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListMentionsResponse>("GET", path, {
       ...options,
     });
   }

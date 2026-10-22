@@ -123,8 +123,9 @@ type callExecutor struct {
 	inner runtime.Executor
 	// resolve puts in place what the platform decides about the pinned
 	// revision before fiber reads it: a workspace's model policy for the one
-	// an agent names, and the knowledge sources the run's project chain was
-	// pinned with (resolveRevision). Nil leaves the revision as it is.
+	// an agent names, the knowledge sources the run's project chain was
+	// pinned with, and the skills the run was told to use (resolveRevision).
+	// Nil leaves the revision as it is.
 	resolve func(runtime.Request) (runtime.Request, error)
 }
 

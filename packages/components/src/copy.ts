@@ -240,7 +240,7 @@ export const defaultCopy = {
     /** In Slack, to someone replying under an announcement that was withdrawn. */
     replyGone: "This announcement was withdrawn, so a reply to it starts nothing.",
   },
-  /** A task pinned to the top of the sidebar. Said beside its pin when the change could not be saved, or the preferences it is saved with could not be read. */
+  /** A conversation pinned to the top of the sidebar. Said beside its pin when the change could not be saved, or the preferences it is saved with could not be read. */
   pins: {
     pinFailed: "Could not pin. Try again.",
     unpinFailed: "Could not unpin. Try again.",
@@ -293,7 +293,7 @@ export const defaultCopy = {
             : "",
     allProjects: "All projects",
     newSubProject: "New Sub-project",
-    newTask: "New Task",
+    newTask: "New Conversation",
     deleteProject: "Delete Project",
     move: "Move",
     moveUnder: "Move under",
@@ -352,6 +352,7 @@ export const defaultCopy = {
       home: "An agent's home changed",
       experts: "Experts changed",
       knowledge: "Knowledge sources changed",
+      skills: "Skills changed",
       channel: "A channel changed",
     } as Record<string, string>,
     noHistory: "Nothing has changed here yet.",
@@ -425,6 +426,47 @@ export const defaultCopy = {
     handle: (name: string) => `@${name}`,
   },
   /** @auto, the built-in router, and who answers a message that tags no agent. */
+  /** The chat bar's + menu and what it selects for a conversation. */
+  chat: {
+    /** The + button, which opens the menu. */
+    plus: "Add files, agents or a project",
+    /** The shortcut that opens it, said in its tooltip. */
+    plusShortcut: "Ctrl+/",
+    menu: "Add to this conversation",
+    attach: "Attach Files",
+    agents: "Agents",
+    findAgent: "Find an agent",
+    agentsLoading: "Loading agents…",
+    noAgents: "No agents can answer in this project.",
+    noAgentMatch: "No agent matches.",
+    project: "Project",
+    chooseProject: "Choose a project",
+    projectless: "Projectless",
+    channel: "Channel",
+    /** The chips row, as a list. */
+    selected: "Selected for this conversation",
+    removeAgent: (agent: string) => `Remove ${agent}`,
+    removeProject: (where: string) => `Remove ${where}`,
+    /** How an untagged message goes to two agents or more. */
+    routing: "How messages are routed",
+    bestFit: "Best Fit",
+    bestFitHint: "One of them answers each message: the one that fits it best.",
+    all: "All of Them",
+    allHint: "Each of them answers every message, side by side.",
+    /** The chat bar's prompt with nothing selected, with one agent, and with several. */
+    placeholder: "Message, or @ an agent",
+    placeholderOne: (agent: string) => `Message ${agent}`,
+    placeholderBest: (n: number) => `Message, and the best fit of ${n} agents answers`,
+    placeholderAll: (n: number) => `Message, and all ${n} agents answer`,
+    /** Under an answer that went to an agent because it was selected, not tagged. */
+    routedBest: (agent: string) => `Routed to ${agent}, the best fit`,
+    routedAll: (agent: string) => `Routed to ${agent}, with every agent selected`,
+    routed: (agent: string) => `Routed to ${agent}`,
+    /** Home's suggestions, as a list. */
+    suggestions: "Suggestions",
+    /** The selection could not be saved on the conversation. */
+    saveFailed: "The conversation's agents could not be saved. Try again.",
+  },
   auto: {
     handle: "@auto",
     description: "Picks the agent that fits, from the agents available here.",
@@ -524,7 +566,7 @@ export const defaultCopy = {
   schedules: {
     deliver: "Answer",
     deliverHint: "Where each run's answer goes. A recap that finds nothing to say sends nothing.",
-    deliverNone: "Keep on the task",
+    deliverNone: "Keep in the conversation",
     /** A new schedule is the reader's own; an existing one goes to whoever created it. */
     deliverInbox: (mine: boolean) => (mine ? "Send to my inbox" : "Send to its creator's inbox"),
     deliverProject: "Post to the project",
@@ -696,7 +738,7 @@ export const defaultCopy = {
     /** Where a row sits when the row above it is not its parent: "in Field › Globex". */
     within: (path: string[]) => `in ${path.join(" › ")}`,
     empty: "No projects yet.",
-    emptyCreate: "No projects yet. Make one to keep related tasks together.",
+    emptyCreate: "No projects yet. Make one to keep related conversations together.",
     noMatch: "No project matches.",
     allProjects: "All projects",
     missing: (name: string) => `No project named ${name}`,
@@ -711,7 +753,7 @@ export const defaultCopy = {
     saveChanges: "Save Changes",
     saving: "Saving…",
     cancel: "Cancel",
-    newTask: "New Task",
+    newTask: "New Conversation",
     form: {
       heading: "New project",
       title: "Title",
@@ -733,7 +775,7 @@ export const defaultCopy = {
     count: {
       running: (n: number) => `${n} running`,
       review: (n: number) => `${n} to review`,
-      tasks: (n: number) => `${n} ${n === 1 ? "task" : "tasks"}`,
+      tasks: (n: number) => `${n} ${n === 1 ? "conversation" : "conversations"}`,
       below: (n: number) => `${n} ${n === 1 ? "sub-project" : "sub-projects"}`,
       active: (when: string) => `active ${when}`,
     },
@@ -779,11 +821,11 @@ export const defaultCopy = {
       noneLive: "No agent lives here.",
       failed: "The agents could not be saved.",
     },
-    tasks: "Tasks",
+    tasks: "Conversations",
     noTasks:
-      "Start a task here to keep its conversation, execution history and shared context in this project.",
+      "Start a conversation here to keep its execution history and shared context in this project.",
     includeBelow: "Include sub-projects",
-    includeBelowHint: "Also list the tasks filed in the projects below this one.",
+    includeBelowHint: "Also list the conversations filed in the projects below this one.",
     moreTasks: "See More",
     subProjects: "Sub-projects",
     noSubProjects: "Nothing sits below this project yet.",
@@ -844,10 +886,10 @@ export const defaultCopy = {
     missingChannel: "No such channel",
     missingChannelHint: (name: string) =>
       `This project has no channel named #${name}. Its Channels tab lists the ones it has.`,
-    /** A task the reader may not read reads as one that does not exist, as a project does. */
-    missingTask: "No such task",
-    /** A task that could not be read for a reason other than its not being there. */
-    readFailed: "This task could not be read. Reload to try again.",
+    /** A conversation the reader may not read reads as one that does not exist, as a project does. */
+    missingTask: "No such conversation",
+    /** A conversation that could not be read for a reason other than its not being there. */
+    readFailed: "This conversation could not be read. Reload to try again.",
     /** A channel bound to Slack, in its row: which app, and which Slack channel. */
     boundTo: (client: string, slackChannel: string) =>
       `In Slack through ${client}, channel ${slackChannel}`,
@@ -914,8 +956,6 @@ export const defaultCopy = {
     mentionKind: (kind: string, title?: string) => title || `Mention by ${kind}`,
     /** The chat bar's prompt in a conversation. Nothing runs until a message tags an agent. */
     message: "Message. Tag an agent with @ to ask it",
-    /** Home's chat bar: it starts a private conversation. */
-    newMessage: "Start a private conversation. Tag an agent with @, a skill with $",
     /** The control at the top of a private conversation that shares it in a project's channel. */
     share: "Share",
     shareTitle: "Share this conversation",

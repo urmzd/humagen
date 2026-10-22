@@ -133,7 +133,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
   const can = useCallback((p: string) => me.permissions.includes(p), [me]);
   const [route, go] = useRoute();
   const page = route.page;
-  const thread = route.page === "task" ? route.id : null;
+  const thread = route.page === "conversation" ? route.id : null;
   // The inbox is the server's. This holds only its totals for the badge, a
   // counter that tells the page to look again, and a message to open first.
   const [inboxCounts, setInboxCounts] = useState({ open: 0, unread: 0 });
@@ -305,7 +305,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     return () => window.clearInterval(timer);
   }, [evalRunning, loadSuites]);
 
-  const openThread = (id: string) => go({ page: "task", id });
+  const openThread = (id: string) => go({ page: "conversation", id });
   // Whether the Share dialog on screen was opened in this tab, so closing it can go back.
   const sharedHere = useRef(false);
   // A built-in can be asked when the workspace has it and the reader may start runs.
@@ -393,7 +393,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       <DrawerButton open={open} inboxCount={inboxCounts.open} onOpen={() => setOpen(true)} />
       {/* On a phone the drawer button sits in the corner, so the page starts below it. */}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col max-md:pt-[calc(2.5rem+env(safe-area-inset-top))]">
-        {(page === "new" || page === "task") && (
+        {(page === "new" || page === "conversation") && (
           <Chat
             key={thread ?? `new:${route.page === "new" ? `${route.project ?? ""}:${route.channel ?? ""}:${route.agent ?? ""}:${route.ask ?? ""}` : ""}`}
             threadId={thread}
@@ -402,8 +402,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             startAgent={route.page === "new" ? route.agent : undefined}
             startAsk={route.page === "new" ? route.ask : undefined}
             startChannel={route.page === "new" ? route.channel : undefined}
-            focus={route.page === "task" ? route.message : undefined}
-            sharing={route.page === "task" && !!route.share}
+            focus={route.page === "conversation" ? route.message : undefined}
+            sharing={route.page === "conversation" && !!route.share}
             onSharing={(open) => {
               if (!thread) return;
               // Closing a dialog opened here goes back, so Back does not open it again.
@@ -413,7 +413,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
                 return;
               }
               sharedHere.current = open;
-              go({ page: "task", id: thread, ...(open ? { share: true } : {}) }, { replace: !open });
+              go({ page: "conversation", id: thread, ...(open ? { share: true } : {}) }, { replace: !open });
             }}
             root={root}
             workspaceName={workspaceName}
@@ -440,7 +440,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
               setProjects((current) => [...(current ?? []).filter((p) => p.name !== project.name), project]);
               loadProjects();
             }}
-            onThread={(id) => go({ page: "task", id }, { replace: route.page === "new" })}
+            onThread={(id) => go({ page: "conversation", id }, { replace: route.page === "new" })}
             onChanged={loadRuns}
           />
         )}

@@ -32,9 +32,11 @@ Decisions:
 3. **Policies walk the chain.** A run counts toward its project, every ancestor
    and the tenant, and is refused by the strictest. This lands in phase 1, with
    the first child project.
-4. **No implicit routing.** An agent answers when it is tagged (`@ignite`). An
-   untagged message goes to the default the thread inherits, if one is set,
-   else it is a human message and starts no run. `@auto` is a built-in agent:
+4. **No implicit routing.** An agent answers when it is tagged (`@ignite`). In
+   the console that is the only way: an untagged message is a human message
+   and starts no run, whatever default is set. On Slack and GitHub, where
+   mentioning the app is what asks, an untagged message goes to the default
+   the thread inherits, if one is set, else it starts no run. `@auto` is a built-in agent:
    today's `pkg/pick` and baseline behind an explicit name. The workspace
    baseline setting is replaced by the root's default.
 5. **Context is layered and explicit**: the project chain's instructions and
@@ -92,6 +94,20 @@ parent.
   - **shared**: everyone who can see the project reads it, like a thread in a
     Slack channel;
   - **private**: its participants only (phase 7).
+
+  A conversation the console starts is private: its starter's alone, the
+  first participant, until they share it. **Share** moves it into a channel
+  of a project (`general` by default, the project the person picked, else the
+  workspace) and makes it shared there, so everyone who can see that project
+  reads it and can join it; people named in the same step become
+  participants. Only a participant shares, into a project they are a member
+  of; making a private conversation shared, or moving one, also takes whoever
+  started it or an owner of its project, so someone tagged into a private
+  conversation does not publish it. It moves to another project or channel
+  only while no run has been filed in it ("a conversation that has runs stays
+  in its project"), and a thread on a Slack or GitHub surface stays where and
+  as its binding filed it. A mention raised in it is read where it is now.
+  Shared is not made private again.
 - A turn is either a **human message** (a person posted; no run) or an
   **agent's run** answering a message. A person posts only as themselves; no
   route lets anyone post as an agent, and agent turns exist only as runs.
@@ -106,17 +122,37 @@ One grammar, parsed by the platform for every surface (`pkg/threads`):
 | `@auto` | the built-in router picks the agent (see [Agents in projects](#agents-in-projects)) |
 | `@<handle>` | that person is notified: their inbox, and Slack when a client maps them |
 | `@sme` or `@sme:<topic>` | the project's experts (for that topic) are notified |
+| `$<skill>` or `@skill:<skill>` | the agents the message starts are told to use that skill (see [Skills](#skills)) |
+| `@<kind>:<name>` | an item of a mention kind the workspace declares, resolved as the kind says (see [Mention kinds](#mention-kinds)) |
 | `<@U…>` (Slack only) | the Slack person, mapped to a subject through the client's `slack.people` |
+
+A `$` is a skill only when a skill's whole name follows it, so `$5`, `$PATH`
+and `$my_var` stay text. A skill nobody on the project's chain declares
+refuses a message typed in the console with 400 "there is no skill called
+...", before anything is posted; a message Slack or GitHub posted is there
+already, so it is kept and the skill is refused, saying why. At most 4 skills
+a message, and they count toward its 10 tags.
 
 What a message starts, first rule that applies:
 
 1. It tags agents or `@auto`: each tagged agent answers, side by side, each
-   seeing the thread up to this message. At most 3 runs per message.
-2. It tags only people or experts: no run. It is a message to people.
+   seeing the thread up to this message. At most 3 runs per message. A
+   message that names a skill and tags no agent is answered by `@auto`,
+   which is added to its tags (`startsForSkills` in `internal/platform`,
+   which every path that decides what a message starts calls first), unless
+   it was posted only. An agent tagged and refused still counts as tagged.
+2. It tags only people, experts or a role: no run. It is a message to
+   people.
 3. It answers a question or replies to a mention: no run. It is a human
    response.
 4. The poster chose **Post Only**: no run.
-5. Otherwise the inherited default answers. With none, no run.
+5. It was posted in the console, by a person as themselves: no run (rule
+   `untagged`). Console messages run only when they tag an agent, so a
+   person can write several messages and nothing runs until they name one;
+   the agent they name is then sent the conversation so far. `post_only` is
+   still accepted there and means the same.
+6. Otherwise, for a message a client posts from Slack or GitHub, the
+   inherited default answers. With none, no run.
 
 The default is the first set of: the thread's, the client's (for a thread a
 Slack or GitHub client files outside a bound channel), the channel's, the
@@ -166,12 +202,76 @@ expert for the topic answers for it, then its ancestors, up to the root.
   here: billing, security. Ask one with ask_person, asked_of sme:<topic>"), at
   most 16 topics.
 
+### Skills
+
+A skill is named instructions an agent can be told to use: a name, a
+description, an optional argument hint, and instructions of at most 8,000
+characters. Its name and description are ones a SKILL.md takes (lower case
+words joined by single dashes, starting with a letter, at most 64; a
+description of at most 1,024), so a skill declared here can be written out as
+a skill package, and the tests hold the two to saige's parser.
+
+- **A project declares skills**, at most 32, in the Platform document
+  (`workspace.skills`, `projects[].skills`, the file's when set, even as
+  `[]`) or through `PUT /api/projects/{name}/skills` by an owner (the
+  workspace and company projects need `projects:govern`). A change is
+  recorded as a `skills` change.
+- **They are inherited down the tree**, as knowledge sources are: a message
+  posted in a project can name the skills its project declares, then each
+  ancestor's, nearest first, each name once from the nearest project that
+  declares it, at most 128. A sibling's or a child's are never offered.
+- **A person names one** with `$<name>` or `@skill:<name>`. Every run the
+  message starts is told to use it: when the message is accepted,
+  `answerMessage` pins each skill's instructions into the run's tag as
+  `warp.skills`, so every attempt, after a restart too, is told the same
+  whatever the projects declare later. Admission drops the key from every
+  tag but a root run the platform's API raised, which only the platform
+  does, so no connector, schedule, caller or calling agent can put
+  instructions in a run, and a run an agent calls is not told its caller's
+  skills.
+- **The executor seam** (`callExecutor.resolve`) takes the pinned skills out
+  of the request's copy of the meta, which fiber writes into the prompt as
+  it is, and puts their instructions ahead of the turn under a line that
+  ranks them below the agent's own instructions and says the platform
+  enforces limits whatever they say. The run's record keeps what was asked.
+- **`@auto` picks** with the message and each skill's description, so a
+  skill helps it choose.
+- **A Slack client's commands stay as they are.** A command whose name is a
+  skill on the chain uses that skill: the client posts `/<name> ...` as the
+  message, and the runs it starts are told to use the skill. It is answered
+  as the client's commands always were, by the default, not `@auto`.
+
+A skill is read by whoever reads its project, with its instructions, as the
+project's own instructions are.
+
+### Mention kinds
+
+`@<kind>:<name>` generalizes `@sme:<topic>`: each kind completes from its own
+list and resolves on the server. Two are built in, `sme` (experts) and
+`skill` (skills, so `@skill:review` is `$review`); a workspace declares more
+in its Platform document (`workspace.mention_kinds`, at most 16, the file's
+alone), each resolving to one of:
+
+| `resolves` | `@<kind>:<name>` is | Completes from |
+|---|---|---|
+| `experts` | `@sme:<name>`: the experts of that topic are notified | the topics the chain has experts for |
+| `skills` | `$<name>` | the skills the chain offers |
+| `role` | everyone holding the policy role `<name>` is notified, in one shared mention, as experts named by a role are | the roles the chain names in its members and experts |
+| `people` | `@<name>`: that person, by handle | the directory, with `people:read` |
+
+A kind declared under an agent's or a person's name takes an item: `@ignite`
+is still the agent, `@ignite:sre` the kind. A kind nobody declared reads as
+before kinds: the name before the colon. A kind's tag is recorded as what it
+resolves to (`sme`, `skill`, `role` or `person`), and a role tag counts as
+tagging people.
+
 ### Context layers
 
 An agent's turn is given, in this order:
 
 | # | Layer | Source | Bound |
 |---|---|---|---|
+| 0 | The skills the message names, each under its name, after a line that ranks them below the agent's instructions | the pinned `warp.skills` | 8,000 characters each, at most 4 named and a client's command |
 | 1 | Project instructions, root first, then each project down to the thread's, then the channel's purpose and the experts line | `Project.Instructions`, `Channel.Purpose` | 4,000 characters per project, 8,000 in all; the farthest ancestors are dropped first, with "(instructions of Acme not sent)" |
 | 2 | Project memory, the thread's project first, then its ancestors | `pkg/memory` owners `project:<name>`, and `project:` for the root | own notes as today (at most 15,000 characters); ancestors share 6,000, nearest first, with "(n more notes from Field not sent)" |
 | 3 | The agent's instructions | the pinned revision's `AgentSpec.SystemPrompt`, which fiber sends as the system message | fiber's |
@@ -180,8 +280,9 @@ An agent's turn is given, in this order:
 | 6 | The message | as posted | 8,000 characters |
 
 Which wins on conflict: the later instruction layer. The agent's
-instructions win over a project's, and a child project's over its
-ancestors'. Memory is facts, not instructions, and nothing in the thread
+instructions win over a project's, a child project's over its ancestors',
+and a project's over a skill the message names, which says how to do a task
+and not what holds here. Memory is facts, not instructions, and nothing in the thread
 changes instructions: a message directs the work within them. Anything that
 must hold whatever the prompt says is a policy, enforced by the platform and
 never written into the prompt: limits, availability, tool approvals, call
@@ -461,8 +562,8 @@ type Message struct {
 }
 
 type Mention struct {
-	Kind    string `json:"kind"`              // agent | person | sme
-	Name    string `json:"name"`              // agent, subject or topic
+	Kind    string `json:"kind"`              // agent | person | sme | skill | role
+	Name    string `json:"name"`              // agent, subject, topic, skill or role
 	Run     string `json:"run,omitempty"`     // the run an agent tag started
 	Refused string `json:"refused,omitempty"` // why a tag started nothing
 }
@@ -1105,6 +1206,30 @@ no route and change no shape: they are `workspace.release_notes` and
 `GET /api/inbox/count` answers the same `{open, unread, updates}`, added up
 from counters.
 
+### Conversations in the console
+
+| Route | Permission | Notes |
+|---|---|---|
+| `POST /api/threads` | `runs:write` | `visibility` left out (with no `surface`) is `private`: the starter is the first participant. A message a person posts as themselves runs only the agents it tags; untagged it starts nothing, `rule: untagged` |
+| `POST /api/threads/{id}/messages` | `runs:write` | the same rule: posted as the caller themselves, only tags start runs, and a tagged agent is sent the conversation so far. A client posting with `act_as` keeps the defaults |
+| `POST /api/threads/{id}/share` | `runs:write` | `ThreadShare{project?, channel?, add?: [handle] (<= 50)}` → 200 `ThreadPage`, the thread as `getThread` reads it. Only a participant shares (403); making a private thread shared or moving one also takes its starter, while a member, or an owner of its project (403), and a member of the target project (403, 404 for one the caller cannot see); `project` left out keeps the thread's own, `channel` left out keeps the thread's own in its own project and is `general` in another; an archived channel or a handle nobody goes by is 400; moving a thread that has runs is 409 "a conversation that has runs stays in its project" (or "in its channel"); a default that cannot answer where it moves is cleared; a surface's thread does not move or change visibility (400); a change made meanwhile is 409 |
+| `GET /api/threads/{id}` | `runs:read` | `answers` stays on the wire: who answers an untagged message a client posts. The console no longer shows it |
+
+`ThreadRule` gains `untagged`.
+
+### Skills and mention kinds
+
+| Route | Permission | Notes |
+|---|---|---|
+| `GET /api/projects/{name}/skills` | `projects:read` | `{version, skills: [{name, description, argument_hint?, instructions}] (<= 32), offered: [{name, description, argument_hint, from}] (<= 128)}`: what the project declares, and what a message posted there can name, nearest first |
+| `PUT /api/projects/{name}/skills` | `projects:write` | `{version, skills}`; owner, `projects:govern` for the workspace and company projects (403); a name twice or a field past its bound is 400; 409 stale version or skills the file declares |
+| `GET /api/skills` | `projects:read` | `?project=` (`~` or left out for the workspace) → `{skills: [{name, description, argument_hint, from}]}` (<= 128), what the console completes after `$`, without instructions. A project the caller cannot see is 404 |
+| `GET /api/mentions` | `projects:read` | `?project=` → `{kinds: [{kind, title, resolves}]}`, the built-in `sme` and `skill` first. With `&kind=K&q=prefix` → `{items: [{name, description?}]}` (<= 20) by name, the items whose name starts with `q`, ignoring case. A kind the workspace does not have, or a project the caller cannot see, is 404; `q` without `kind` is 400; people complete only with `people:read` |
+| `POST /api/threads`, `POST /api/threads/{id}/messages` | `runs:write` | a skill nobody on the chain declares is 400 "there is no skill called ..." before anything is posted, in the console; one that names a skill and tags no agent starts `@auto` |
+
+`ThreadMention.kind` gains `skill` and `role`; `Project` gains `skills`;
+`ProjectChange.what` gains `skills`.
+
 ### Contract upkeep, every phase
 
 - New schemas go in the `shapes` map of
@@ -1129,6 +1254,10 @@ spec:
   workspace:
     instructions: Acme sells warehouse robots. Answer plainly.  # the root's (phase 1)
     knowledge: [handbook]                   # the root's (phase 9): every run is grounded in it
+    skills:                                 # the root's: $summarize anywhere
+      - {name: summarize, description: Summarize a thread in five bullets., instructions: "Summarize the conversation so far in five bullets, newest last."}
+    mention_kinds:                          # besides the built-in sme and skill
+      - {kind: oncall, title: On call, resolves: role}
     agents: {enable: [warp-writer, warp-analyst], default: auto}  # the root's (phase 3); replaces baseline
     members: [{who: "*", role: member}, {who: "role:comms", role: owner}]  # phase 2
     experts: [{who: "role:security", topics: [security]}]                # phase 2
@@ -1143,6 +1272,8 @@ spec:
         kind: team                         # phase 1: company | team | account | a project_kinds name
         instructions: Customer accounts. Never promise dates.            # phase 1
         knowledge: [field-playbook]        # phase 9: runs here and below are grounded in it too
+        skills:                            # $review here and below
+          - {name: review, description: Review a renewal., argument_hint: "[account]", instructions: Check the renewal terms against the contract and list what changed.}
         members: [{who: "*", role: viewer}, {who: "role:field-eng", role: member}, {who: "role:field-leads", role: owner}]
         agents: {enable: [field-helper], default: field-helper}  # phase 3: adds to what the root enables
         schedules:                         # phase 5: file-managed, filed here
@@ -1189,6 +1320,12 @@ error with its path, such as `workspace.projects[2].parent`:
    (phase 9). Whether the workspace has them is not checked: sources are
    filled in the console, and one the workspace does not have grounds
    nothing.
+9. `skills` declares at most 32 skills a project, each a skill's name once,
+   with a description on one line of at most 1,024 characters, an argument
+   hint of at most 100 and instructions of at most 8,000.
+   `workspace.mention_kinds` declares at most 16 kinds, each a kind's name
+   that is not `sme`, `skill` or `auto`, once, with a title of at most 40 and
+   `resolves` one of `experts`, `skills`, `role` or `people`.
 
 **Applying** (`internal/app/config.go` `applyWorkspace` becomes
 `applyProjects`) is a merge, never a replace. This fixes today's
@@ -1220,7 +1357,7 @@ docs/spec.md gains:
 | `{page: "projects"; q?; kind?}` | `/projects`, `?q=`, `?kind=account` |
 | `{page: "project"; name; tab; message?}` | `/projects/{name}` (default tab), `/projects/{name}/{tab}`, `?message=<id>` |
 | `{page: "channel"; project; channel}` | `/projects/{name}/channels/{channel}` |
-| `{page: "task"; id; message?; share?}` | `/tasks/{id}` (unchanged), `?message=<id>`, `/tasks/{id}/share` (the Share dialog open) |
+| `{page: "conversation"; id; message?; share?}` | `/conversations/{id}`, `?message=<id>`, `/conversations/{id}/share` (the Share dialog open); `/tasks/{id}`, its address when conversations were called tasks, opens it and is rewritten |
 | `{page: "new"; project?; channel?; agent?; ask?}` | `/?project=&channel=&agent=&ask=` |
 
 `PROJECT_TABS` grow by phase:
@@ -1290,12 +1427,28 @@ An unknown tab falls back to the default through `pick`. Names never hold
     over the project's skills (`GET /api/skills`). Tab or Enter picks the
     highlighted item, the arrow keys move, Escape closes. Each kind keeps a
     place in the list's eight;
+  - the + button (or Ctrl+/) opens a menu: Attach Files; Agents, a
+    searchable list with AgentMark colors of the agents available in the
+    project, several of which can be checked (arrows move, Space checks,
+    Enter or Escape closes); and Project, where the conversation lives,
+    then one of its channels, general first, changeable only while no agent
+    has run in it. What is selected shows as chips in the bottom row: an
+    agent with its color and name, the project with its path (`Globex /
+    #deals` when the channel is not general), each removable with ×. With
+    two agents or more, text on that row chooses Best Fit (one of them, the
+    one that fits each message) or All of Them (each answers, side by
+    side). The selection is the conversation's: sent with `POST
+    /api/threads` as `agents` and `mode` (`best_fit` or `all`) and saved
+    with `PUT /api/threads/{id}`, so it shows for everyone in it after a
+    reload. An answer an agent gave because it was selected, not tagged,
+    says "Routed to helper, the best fit". With nothing selected the prompt
+    reads "Message, or @ an agent";
   - no Post Only, no Private and no line saying who answers: a message
     starts a run only for the agents it tags (`@agent`, `@auto`, or `$skill`,
     which goes to `@auto` when no agent is tagged), with the conversation so
     far as its context. An untagged message shows as posted;
   - a private conversation's header says "Private" and offers "Share", which
-    opens a dialog at `/tasks/{id}/share`: the project (only while no agent
+    opens a dialog at `/conversations/{id}/share`: the project (only while no agent
     has run in it; the server's 409 is said in words), the channel (general
     by default) and people to add, completed as they are typed. It calls
     `POST /api/threads/{id}/share` and then reads as shared there, with no
@@ -1306,8 +1459,10 @@ An unknown tab falls back to the default through `pick`. Names never hold
   run is live.
 - **Home.** The prompt-first chat bar, which starts a private conversation
   (`POST /api/threads`, `visibility: private`, in the picked project's
-  general) and opens it at `/tasks/{id}`; there is no menu of who answers.
-  A starter or a link with `?agent=` writes the agent's tag in the bar. Then
+  general) and opens it at `/conversations/{id}`; there is no menu of who answers.
+  Suggestions sit under the bar as quiet text until the person types; a
+  pick writes its words and adds its agent as a chip, as a link with
+  `?agent=` does. Then
   two quiet lines from the shared
   `HomeModel`: "Needs you · 2" (the inbox's `open`, which counts an agent's
   draft waiting on its owners and never a posted announcement) and "What's
@@ -1721,11 +1876,12 @@ phase 2 and experts to phase 3, because addressing and threads need them.
   - posts are plain text with Slack mentions escaped;
   - wide audiences default to review;
   - `project_changes` reads only the run's subtree.
-- **Defaults in busy threads.** A shared thread with a default answers every
-  untagged message, which can be noisy. Messages that tag people, and replies to
-  mentions and answers that tag no agent, start no run, and Post Only is
-  always there. In Slack,
-  only messages that mention the app reach warp.
+- **Defaults in busy threads.** A default no longer answers a message posted
+  in the console: there an agent runs only when it is tagged. On a surface a
+  shared thread with a default answers every untagged message, which can be
+  noisy. Messages that tag people, and replies to mentions and answers that
+  tag no agent, start no run, and Post Only is always there. In Slack, only
+  messages that mention the app reach warp.
 - **Homing narrows widely.** Giving an agent a home removes it from `*`
   everywhere else. The route answers 409 while anything outside the new
   subtree uses the agent, and the console counts the projects that lose it.

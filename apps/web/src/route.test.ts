@@ -11,8 +11,8 @@ test("every route survives a round trip through its address", () => {
   const routes: Route[] = [
     { page: "new" },
     { page: "new", project: "launch" },
-    { page: "task", id: "t-1" },
-    { page: "task", id: "t-1", share: true },
+    { page: "conversation", id: "t-1" },
+    { page: "conversation", id: "t-1", share: true },
     { page: "projects" },
     { page: "projects", q: "globex" },
     { page: "projects", kind: "account" },
@@ -60,7 +60,7 @@ test("every route survives a round trip through its address", () => {
 
 test("deep links name pages by path", () => {
   assert.equal(href({ page: "agent", name: "lead", tab: "access" }), "/agents/lead/access");
-  assert.equal(href({ page: "task", id: "abc" }), "/tasks/abc");
+  assert.equal(href({ page: "conversation", id: "abc" }), "/conversations/abc");
   assert.equal(href({ page: "artifacts", artifact: "art-2" }), "/artifacts/art-2");
   assert.equal(href({ page: "context", source: "a b", tab: "search" }), "/context/a%20b/search");
   assert.equal(href({ page: "monitor", tab: "rules" }), "/monitor/rules");
@@ -140,19 +140,30 @@ test("a channel is a page under its project's Channels tab, and ~ is the workspa
 });
 
 test("a task opens at one of its messages, and a new task starts in a channel", () => {
-  assert.equal(href({ page: "task", id: "th-0123456789abcdef", message: "m-3" }), "/tasks/th-0123456789abcdef?message=m-3");
-  assert.deepEqual(at("/tasks/th-0123456789abcdef?message=m-3"), { page: "task", id: "th-0123456789abcdef", message: "m-3" });
-  assert.deepEqual(at("/tasks/th-0123456789abcdef?message="), { page: "task", id: "th-0123456789abcdef" });
+  assert.equal(href({ page: "conversation", id: "th-0123456789abcdef", message: "m-3" }), "/conversations/th-0123456789abcdef?message=m-3");
+  assert.deepEqual(at("/conversations/th-0123456789abcdef?message=m-3"), { page: "conversation", id: "th-0123456789abcdef", message: "m-3" });
+  assert.deepEqual(at("/tasks/th-0123456789abcdef?message="), { page: "conversation", id: "th-0123456789abcdef" });
   assert.equal(href({ page: "new", project: "Globex", channel: "renewals" }), "/?project=Globex&channel=renewals");
   assert.deepEqual(at("/?project=Globex&channel=renewals"), { page: "new", project: "Globex", channel: "renewals" });
 });
 
 test("a conversation's Share dialog has an address of its own, and closing it goes back to the conversation", () => {
-  assert.equal(href({ page: "task", id: "th-0123456789abcdef", share: true }), "/tasks/th-0123456789abcdef/share");
-  assert.deepEqual(at("/tasks/th-0123456789abcdef/share"), { page: "task", id: "th-0123456789abcdef", share: true });
-  assert.deepEqual(at(href({ page: "task", id: "a b", share: true })), { page: "task", id: "a b", share: true });
+  assert.equal(href({ page: "conversation", id: "th-0123456789abcdef", share: true }), "/conversations/th-0123456789abcdef/share");
+  assert.deepEqual(at("/conversations/th-0123456789abcdef/share"), { page: "conversation", id: "th-0123456789abcdef", share: true });
+  assert.deepEqual(at(href({ page: "conversation", id: "a b", share: true })), { page: "conversation", id: "a b", share: true });
   // Another word after the task is the task itself.
-  assert.deepEqual(at("/tasks/th-0123456789abcdef/other"), { page: "task", id: "th-0123456789abcdef" });
+  assert.deepEqual(at("/conversations/th-0123456789abcdef/other"), { page: "conversation", id: "th-0123456789abcdef" });
+});
+
+test("a conversation's old address, from when it was called a task, opens it and is rewritten to its own", () => {
+  for (const [old, now] of [
+    ["/tasks/th-0123456789abcdef", { page: "conversation", id: "th-0123456789abcdef" }],
+    ["/tasks/th-0123456789abcdef?message=m-3", { page: "conversation", id: "th-0123456789abcdef", message: "m-3" }],
+    ["/tasks/th-0123456789abcdef/share", { page: "conversation", id: "th-0123456789abcdef", share: true }],
+  ] as const) {
+    assert.deepEqual(at(old), now);
+    assert.equal(href(at(old)), old.replace("/tasks/", "/conversations/"));
+  }
 });
 
 test("old ?view= links open the page they named", () => {
