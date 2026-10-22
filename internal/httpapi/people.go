@@ -11,8 +11,8 @@ import (
 	"github.com/urmzd/warp/internal/platform"
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/people"
-	"github.com/urmzd/warp/pkg/projects"
 	"github.com/urmzd/warp/pkg/prefs"
+	"github.com/urmzd/warp/pkg/projects"
 )
 
 // The directory: who is in the workspace, readable by everyone in it with
