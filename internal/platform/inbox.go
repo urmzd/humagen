@@ -646,6 +646,9 @@ func (p *Platform) retry(ctx context.Context, who auth.Principal, runID string) 
 	if run.Prev == "" {
 		t.Project = run.Project
 	}
+	// The retry is the person retrying's turn, so what it teaches the
+	// project is kept unasked only if they could keep it themselves.
+	t.KeepsNotes = run.Project != "" && p.MayChangeNotes(who, run.Project) == nil
 	return p.Converse(ctx, who.Tenant, t)
 }
 

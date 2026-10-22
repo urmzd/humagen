@@ -250,17 +250,21 @@ func (p *Platform) mayChangeNotes(tree *projects.Tree, who auth.Principal, name 
 func governedNotes(pr projects.Project) bool { return pr.IsRoot() || pr.Kind == projects.Company }
 
 // mayKeepUnasked reports whether what the memory agent writes for an owner may
-// be kept without a person approving it, when the workspace chose that. A
+// be kept without a person approving it, when the workspace chose that. An
+// agent's own notes may. A project's may only when the person the turn was
+// for could have kept them themselves, as Converse pinned on the turn
+// (keptBy names that project): a member's turn teaches only proposals, which
+// reach its owners, since filing a turn needs no more than a member. A
 // project whose notes need projects:govern waits for someone holding it
 // whatever the workspace chose, since the turn that taught it needed only
 // runs:write. So does a project the tree no longer holds.
-func (p *Platform) mayKeepUnasked(tenant, owner string) bool {
+func (p *Platform) mayKeepUnasked(tenant, owner, keptBy string) bool {
 	name, isProject := memory.OwnerProject(owner)
 	if !isProject {
 		return true
 	}
 	pr, ok := p.Projects.Tree(tenant).Get(name)
-	return ok && !governedNotes(pr)
+	return ok && !governedNotes(pr) && keptBy != "" && strings.EqualFold(keptBy, pr.Name)
 }
 
 // migration is who the projects moved out of settings were created by.

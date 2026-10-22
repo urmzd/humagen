@@ -6,6 +6,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/memory"
 )
 
 func viewActions(v map[string]any) []string {
@@ -395,5 +399,55 @@ func TestAHomedAgentIsItsHomesUnderEverySpellingOfItsName(t *testing.T) {
 	// The canonical name still asks the home's owners.
 	if out := want(t, f, bo, "PUT", "/api/agents/fieldbot", `{"spec":{"name":"fieldbot","model":"offline","provider":"offline","system_prompt":"pwned"},"expected_rev":1}`, http.StatusForbidden); out["error"] != "you need to own Field" {
 		t.Fatalf("bo revising fieldbot = %v", out)
+	}
+}
+
+// With the workspace keeping what the memory agent learns without asking,
+// what a turn teaches a team project is kept unasked only when the turn is
+// one of its owners'. A member may file a turn, but their notes are only
+// proposals, so their turn teaches the project only proposals, which reach
+// its owners.
+func TestWhatATurnTeachesAProjectIsKeptUnaskedOnlyForItsOwners(t *testing.T) {
+	f := newFixtureWith(t, platform.Config{OfflineHooks: true})
+	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	ana := f.machineAs(t, "ana", "acme", operator...)
+	bo := f.machineAs(t, "bo", "acme", operator...)
+	for _, name := range []string{"lead", "scribe"} {
+		want(t, f, admin, "POST", "/api/agents", fmt.Sprintf(`{"name":%q,"model":"offline","provider":"offline","system_prompt":"x"}`, name), http.StatusCreated)
+	}
+	want(t, f, admin, "PUT", "/api/settings", `{"memory_agent":"scribe","memory_auto_approve":true}`, http.StatusOK)
+	for _, name := range []string{"Field", "Ops"} {
+		want(t, f, admin, "POST", "/api/projects", fmt.Sprintf(`{"name":%q,"members":[{"who":"*","role":"member"},{"who":"ana","role":"owner"}]}`, name), http.StatusCreated)
+	}
+	statuses := func(project string) []string {
+		t.Helper()
+		var out []string
+		for _, n := range f.p.Memory.List("acme", memory.ProjectOwner(project)) {
+			out = append(out, string(n.Status))
+		}
+		return out
+	}
+	taught := func(project string) []string {
+		t.Helper()
+		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			if got := statuses(project); len(got) > 0 {
+				return got
+			}
+		}
+		t.Fatalf("the memory agent wrote nothing for %s", project)
+		return nil
+	}
+
+	want(t, f, ana, "POST", "/api/runs", `{"agent":"lead","text":"Plan the launch","project":"Field"}`, http.StatusAccepted)
+	for _, s := range taught("Field") {
+		if s != string(memory.Approved) {
+			t.Fatalf("an owner's turn left Field's notes %v", statuses("Field"))
+		}
+	}
+	want(t, f, bo, "POST", "/api/runs", `{"agent":"lead","text":"Plan the launch","project":"Ops"}`, http.StatusAccepted)
+	for _, s := range taught("Ops") {
+		if s != string(memory.Pending) {
+			t.Fatalf("a member's turn left Ops's notes %v", statuses("Ops"))
+		}
 	}
 }

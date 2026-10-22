@@ -43,8 +43,10 @@ the way to adopting them. Then the caller's role on the project decides, and
 only narrows: a viewer reads, a member creates projects under it and proposes
 notes, an owner changes it (see [Project roles](authorization.md#project-roles)).
 A project the caller has no role in answers 404. A project's notes are asked
-the same through every route that changes them: the project's memory routes
-and the inbox. The agent memory routes reach an agent's own
+the same through every route that changes them: the project's memory routes,
+the inbox, and the memory agent, which keeps what it learns from a turn
+unasked only when the workspace chose that and the person the turn was for may
+change those notes themselves. The agent memory routes reach an agent's own
 notes only, and answer 404 for a project's memory owner (`project:<name>`, and
 `project:` for the workspace). Reads are not confined to members yet: every
 project keeps an entry for everyone of at least viewer, and a members-only

@@ -483,8 +483,11 @@ func (s *Server) createRun(w http.ResponseWriter, r *http.Request, who auth.Prin
 	if key := r.Header.Get("Idempotency-Key"); key != "" {
 		id = APITagID(who.Subject, key)
 	}
+	// What the memory agent learns from the turn is kept unasked, when the
+	// workspace chose that, only if the person could keep it themselves.
+	keeps := project != "" && s.P.MayChangeNotes(asks, project) == nil
 	run, err := s.P.Converse(r.Context(), who.Tenant, platform.Turn{
-		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor,
+		ID: id, Agent: body.Agent, Text: body.Text, After: body.After, Project: body.Project, Actor: actor, KeepsNotes: keeps,
 	})
 	if err != nil {
 		s.problem(w, err)

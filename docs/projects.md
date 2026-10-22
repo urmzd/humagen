@@ -609,7 +609,11 @@ ingress overwrites whatever a connector put there (phase 8).
   the root. It never writes from a private thread (phase 7). With
   `memory_auto_approve` on, what it writes for the workspace or a company
   project still waits for someone holding `projects:govern`, since the turn
-  that taught it needed only `runs:write`.
+  that taught it needed only `runs:write`. What it writes for any other
+  project is kept unasked only when the person the turn was for may change
+  the project's notes themselves (phase 4: an owner): a member's turn
+  teaches only proposals, which reach the project's owners, as a member's
+  own note does. Filing the turn decides it, and the turn carries it.
 - Knowledge sources inherited down the tree (phase 9) use warp's executor
   seam, `callExecutor.resolve`, which already rewrites the revision for model
   policies. The chain's sources are pinned at accept as `warp.sources` and

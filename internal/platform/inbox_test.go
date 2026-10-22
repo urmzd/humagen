@@ -255,9 +255,11 @@ func TestProposalsForAProjectsNotesNeedWhatItsRoutesNeed(t *testing.T) {
 }
 
 // With the workspace keeping what the memory agent writes without asking, an
-// agent's notes and a team project's are kept as they come, and a company
-// project's still wait for someone holding projects:govern: the turn that
-// taught them needed only runs:write, and agents:write turns the setting on.
+// agent's notes are kept as they come, and a team project's when the turn
+// was one of its owners' (KeepsNotes, which the API sets from
+// MayChangeNotes). A member's turn only proposes, and a company project's
+// notes still wait for someone holding projects:govern: the turn that taught
+// them needed only runs:write, and agents:write turns the setting on.
 func TestAutoApproveStillAsksGovernForACompanyProjectsNotes(t *testing.T) {
 	p := withMemoryAgent(t)
 	ctx := t.Context()
@@ -272,11 +274,14 @@ func TestAutoApproveStillAsksGovernForACompanyProjectsNotes(t *testing.T) {
 	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Launch"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range []struct{ id, project, owner string }{
-		{"api-launch", "Launch", memory.ProjectOwner("Launch")},
-		{"api-root", "", "lead"},
+	for _, c := range []struct {
+		id, project, owner string
+		keeps              bool
+	}{
+		{"api-launch", "Launch", memory.ProjectOwner("Launch"), true},
+		{"api-root", "", "lead", false},
 	} {
-		first, err := p.Converse(ctx, tenant, platform.Turn{ID: c.id, Agent: "lead", Text: "Plan the launch", Project: c.project})
+		first, err := p.Converse(ctx, tenant, platform.Turn{ID: c.id, Agent: "lead", Text: "Plan the launch", Project: c.project, KeepsNotes: c.keeps})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -286,6 +291,21 @@ func TestAutoApproveStillAsksGovernForACompanyProjectsNotes(t *testing.T) {
 			if n.Status != memory.Approved {
 				t.Fatalf("with approval off, %s's note waits: %+v", c.owner, n)
 			}
+		}
+	}
+
+	// A member's turn in a team project teaches it only proposals, for its
+	// owners.
+	if _, err := p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Ops"}); err != nil {
+		t.Fatal(err)
+	}
+	ops := proposed(t, p, "api-ops", "Ops")
+	if !slices.Equal(ops.Audience, []string{inbox.OwnersAudience("Ops")}) {
+		t.Fatalf("a member's proposals for Ops are addressed to %v", ops.Audience)
+	}
+	for _, n := range p.Memory.List(tenant, memory.ProjectOwner("Ops")) {
+		if n.Status != memory.Pending {
+			t.Fatalf("a member's turn kept a note of Ops unasked: %+v", n)
 		}
 	}
 

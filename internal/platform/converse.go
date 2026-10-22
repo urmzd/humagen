@@ -250,6 +250,12 @@ type Turn struct {
 	// project, whatever is passed here.
 	Project string
 	Actor   envelope.Actor
+	// KeepsNotes says the person the turn is for may change the notes of the
+	// project it is filed in (MayChangeNotes), so what the memory agent
+	// learns from it may be kept without asking, when the workspace chose
+	// that. Anyone else's turn teaches the project only proposals for its
+	// owners. Only a caller that asked MayChangeNotes for that person sets it.
+	KeepsNotes bool
 }
 
 // Converse sends a message into a conversation and starts the run that answers.
@@ -283,6 +289,10 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 			return runs.Run{}, fmt.Errorf("%w: no project called %q", ErrSettings, project)
 		}
 		meta[runs.MetaProject] = project
+	}
+
+	if t.KeepsNotes && meta[runs.MetaProject] != "" {
+		meta[metaKeepsNotes] = meta[runs.MetaProject]
 	}
 
 	who, err := p.resolveAgent(ctx, tenant, Place{Project: meta[runs.MetaProject]}, strings.TrimSpace(t.Agent), t.Text)
