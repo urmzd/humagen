@@ -315,7 +315,8 @@ it:
 | asked by the Slack app built on the API for a Slack person its client maps (`act_as`) | the mapped person, never the app |
 | raised by a Slack client's own connector | the one person the team's Slack clients map that Slack user to; none, or two different people, is nobody |
 | Run Now on a schedule | whoever pressed it |
-| Retry on a failed turn in the inbox | whoever the turn acted for: only that person may press it, and a turn that acted for nobody is retried for nobody, whoever presses it |
+| Retry on a failed turn in the inbox, and Retry or Resume in the Slack app | whoever the turn acted for. A turn that acted for a person is retried only by that person, as themselves, and anyone else, an operator included, is refused. A turn that acted for nobody is retried for nobody: in the inbox by anyone who may start runs, in the Slack app by the person who asked or an operator |
+| Retry in a console conversation | the person pressing it, as anything they send there, so it is offered only on a turn that acted for them |
 | asked by a machine as itself, a schedule on its own clock, an eval, housekeeping, or another agent's call | nobody |
 | raised by GitHub | nobody: no client maps GitHub logins to people yet |
 
