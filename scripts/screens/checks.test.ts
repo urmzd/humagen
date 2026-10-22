@@ -126,3 +126,22 @@ test("text covering other text in the main column fails; lines that only touch, 
   const outside = { ...good, texts: covered.texts.map((t) => ({ ...t, main: false })) };
   assert.deepEqual(checks(outside), []);
 });
+
+test("a menu or a list that opens over the page covers it by design, but its own lines must not cover each other", () => {
+  const over = {
+    ...good,
+    texts: [
+      { text: "Needs you", boxes: [box(20, 100, 200, 18)], main: true },
+      { text: "@helper", boxes: [box(20, 102, 120, 18)], main: true, layer: "completion" },
+    ],
+  };
+  assert.deepEqual(checks(over), []);
+  const within = {
+    ...good,
+    texts: [
+      { text: "@helper", boxes: [box(20, 100, 200, 18)], main: true, layer: "completion" },
+      { text: "@lead", boxes: [box(40, 104, 120, 16)], main: true, layer: "completion" },
+    ],
+  };
+  assert.deepEqual(checks(within), ["overlap"]);
+});
