@@ -108,6 +108,9 @@ func (p *Platform) MoveProject(_ context.Context, who auth.Principal, name strin
 	}
 	reader := ReaderOf(who)
 	leaving := func(before *projects.Tree, left []string) error {
+		if err := p.keepsAllowLists(before, reader, name, parent, left); err != nil {
+			return err
+		}
 		if who.Can(auth.BillingWrite) {
 			return nil
 		}
@@ -127,6 +130,27 @@ func (p *Platform) MoveProject(_ context.Context, who auth.Principal, name strin
 		return nil
 	}
 	return p.Projects.Move(who.Tenant, name, version, parent, WriterOf(who), p.now(), leaving)
+}
+
+// keepsAllowLists refuses a move that would let an agent run in the moved
+// project, or below it, that an allow list it leaves kept out: an allow list
+// only tightens, and the ancestor that set it never agreed to less. Whoever
+// owns every ancestor left behind that sets one could widen those lists
+// themselves, and so may move out from under them; projects:govern owns
+// every project. A move under a chain that allows no more is never refused.
+func (p *Platform) keepsAllowLists(before *projects.Tree, reader projects.Reader, name, parent string, left []string) error {
+	cur, _ := before.Get(name)
+	if !projects.Widens(before.Allowed(cur.Parent), before.Allowed(parent)) {
+		return nil
+	}
+	for _, a := range left {
+		above, _ := before.Get(a)
+		if above.Agents.Allow != nil && before.Resolve(a, reader).Role != projects.Owner {
+			return fmt.Errorf("%w: %s lets only some agents run under it, so moving %s out from under it needs owning %s: a move never widens which agents may run",
+				projects.ErrForbidden, display(above), display(cur), display(above))
+		}
+	}
+	return nil
 }
 
 // hasProjectLimit reports whether a project has a limit of its own.

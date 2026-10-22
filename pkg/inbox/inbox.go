@@ -741,7 +741,8 @@ func (t *tenant) apply(c Change) (*Message, bool) {
 // hideFor records one reader dismissing or snoozing a broadcast for
 // themselves. It changes nothing anyone else sees, so it reports no change
 // to tell watchers about. A broadcast already closed for everyone, one the
-// reader dismissed, or a change with no reader, is not recorded.
+// reader dismissed, a snooze to the time it is already snoozed until, or a
+// change with no reader, is not recorded.
 func (t *tenant) hideFor(m *Message, c Change) bool {
 	if c.By == "" || m.State == Resolved || m.State == Dismissed || t.hidden[m.ID][c.By].state == Dismissed {
 		return false
@@ -749,6 +750,9 @@ func (t *tenant) hideFor(m *Message, c Change) bool {
 	h := hide{state: Dismissed}
 	if c.What == DidSnooze {
 		h = hide{state: Snoozed, until: c.Until}
+	}
+	if was, ok := t.hidden[m.ID][c.By]; ok && was.state == h.state && was.until.Equal(h.until) {
+		return false
 	}
 	if t.hidden[m.ID] == nil {
 		t.hidden[m.ID] = map[string]hide{}
@@ -906,7 +910,8 @@ func (s *Store) Snooze(tenantName, id, by string, until, at time.Time) (Message,
 	return s.do(Change{Tenant: tenantName, Message: id, What: DidSnooze, By: by, Until: until, At: at})
 }
 
-// History returns what happened to one message, oldest first.
+// History returns everything that happened to one message, oldest first:
+// the record, every reader's own marks included.
 func (s *Store) History(tenantName, id string) []Change {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -917,6 +922,45 @@ func (s *Store) History(tenantName, id string) []Change {
 		}
 	}
 	return out
+}
+
+// MaxHistory is the most changes HistoryFor returns.
+const MaxHistory = 100
+
+// HistoryFor returns what happened to one message as one reader is shown it,
+// oldest first: at most MaxHistory changes, the newest kept. A reader's own
+// marks are theirs alone, so another reader's reads and unreads, and on a
+// broadcast another reader's hiding or snoozing of their own copy, are left
+// out; the record keeps them for replay. What changed the message for
+// everyone is shown to everyone.
+func (s *Store) HistoryFor(tenantName, id, subject string) []Change {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.of(tenantName)
+	broadcast := t.byID[id] != nil && t.byID[id].Broadcast
+	out := []Change{}
+	for _, c := range t.log {
+		if c.Message != id || (c.By != subject && ownMark(c.What, broadcast)) {
+			continue
+		}
+		out = append(out, c)
+	}
+	if len(out) > MaxHistory {
+		out = slices.Clone(out[len(out)-MaxHistory:])
+	}
+	return out
+}
+
+// ownMark reports whether a change is one reader's mark on their own copy of
+// a message: a read or an unread, and on a broadcast a hide or a snooze.
+func ownMark(what What, broadcast bool) bool {
+	switch what {
+	case MarkRead, MarkUnread:
+		return true
+	case DidDismiss, DidSnooze:
+		return broadcast
+	}
+	return false
 }
 
 // Changes returns a tenant's whole record, oldest first.

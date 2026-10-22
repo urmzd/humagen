@@ -6,6 +6,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/urmzd/warp/internal/platform"
+	"github.com/urmzd/warp/pkg/memory"
 )
 
 func viewActions(v map[string]any) []string {
@@ -147,6 +151,42 @@ func TestAMoveNeverEscapesALimit(t *testing.T) {
 	if latest := changes[0].(map[string]any); latest["what"] != "moved" || latest["by"] != "svc-admin" {
 		t.Fatalf("the newest change = %v", latest)
 	}
+}
+
+// An allow list only tightens, so a move never widens which agents may run:
+// an owner of a project who does not own the ancestor whose allow list holds
+// it cannot move it out from under that list. An owner of that ancestor, or
+// projects:govern, can, since they could change the list themselves.
+func TestAMoveNeverWidensWhichAgentsMayRun(t *testing.T) {
+	f := newFixture(t)
+	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	gina := f.machineAs(t, "gina", "acme", operator...)
+	for _, name := range []string{"okbot", "helper"} {
+		want(t, f, admin, "POST", "/api/agents", fmt.Sprintf(`{"name":%q,"model":"offline","provider":"offline","system_prompt":"x"}`, name), http.StatusCreated)
+	}
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Field"}`, http.StatusCreated)
+	want(t, f, admin, "POST", "/api/projects", `{"name":"Globex","parent":"Field","members":[{"who":"*","role":"member"},{"who":"gina","role":"owner"}]}`, http.StatusCreated)
+	want(t, f, admin, "PUT", "/api/projects/Field/agents", `{"version":1,"allow":["okbot"]}`, http.StatusOK)
+	available := func() any {
+		return want(t, f, admin, "GET", "/api/projects/Globex/agents", "", http.StatusOK)["available"]
+	}
+	before := fmt.Sprint(available())
+
+	if out := want(t, f, gina, "POST", "/api/projects/Globex/move", `{"version":1,"parent":"~"}`, http.StatusForbidden); !strings.Contains(out["error"].(string), "needs owning Field") {
+		t.Fatalf("moving Globex out from under Field's allow list = %v", out)
+	}
+	if after := fmt.Sprint(available()); after != before {
+		t.Fatalf("a refused move changed what is available in Globex: %s, then %s", before, after)
+	}
+	want(t, f, gina, "POST", "/api/runs", `{"agent":"helper","text":"hi","project":"Globex"}`, http.StatusForbidden)
+
+	// Deeper under the same chain allows no more, so Globex's owner moves
+	// it there.
+	want(t, f, admin, "POST", "/api/projects", `{"name":"North","parent":"Field","members":[{"who":"*","role":"member"}]}`, http.StatusCreated)
+	moved := want(t, f, gina, "POST", "/api/projects/Globex/move", `{"version":1,"parent":"North"}`, http.StatusOK)
+	// And projects:govern, which owns Field, takes it out.
+	want(t, f, admin, "POST", "/api/projects/Globex/move", fmt.Sprintf(`{"version":%v,"parent":"~"}`, moved["version"]), http.StatusOK)
+	want(t, f, gina, "POST", "/api/runs", `{"agent":"helper","text":"hi","project":"Globex"}`, http.StatusAccepted)
 }
 
 // An owner of a project above sets a tighten-only limit; owning the project
@@ -400,5 +440,55 @@ func TestAHomedAgentIsItsHomesUnderEverySpellingOfItsName(t *testing.T) {
 	// The canonical name still asks the home's owners.
 	if out := want(t, f, bo, "PUT", "/api/agents/fieldbot", `{"spec":{"name":"fieldbot","model":"offline","provider":"offline","system_prompt":"pwned"},"expected_rev":1}`, http.StatusForbidden); out["error"] != "you need to own Field" {
 		t.Fatalf("bo revising fieldbot = %v", out)
+	}
+}
+
+// With the workspace keeping what the memory agent learns without asking,
+// what a turn teaches a team project is kept unasked only when the turn is
+// one of its owners'. A member may file a turn, but their notes are only
+// proposals, so their turn teaches the project only proposals, which reach
+// its owners.
+func TestWhatATurnTeachesAProjectIsKeptUnaskedOnlyForItsOwners(t *testing.T) {
+	f := newFixtureWith(t, platform.Config{OfflineHooks: true})
+	admin := f.machineAs(t, "svc-admin", "acme", everything...)
+	ana := f.machineAs(t, "ana", "acme", operator...)
+	bo := f.machineAs(t, "bo", "acme", operator...)
+	for _, name := range []string{"lead", "scribe"} {
+		want(t, f, admin, "POST", "/api/agents", fmt.Sprintf(`{"name":%q,"model":"offline","provider":"offline","system_prompt":"x"}`, name), http.StatusCreated)
+	}
+	want(t, f, admin, "PUT", "/api/settings", `{"memory_agent":"scribe","memory_auto_approve":true}`, http.StatusOK)
+	for _, name := range []string{"Field", "Ops"} {
+		want(t, f, admin, "POST", "/api/projects", fmt.Sprintf(`{"name":%q,"members":[{"who":"*","role":"member"},{"who":"ana","role":"owner"}]}`, name), http.StatusCreated)
+	}
+	statuses := func(project string) []string {
+		t.Helper()
+		var out []string
+		for _, n := range f.p.Memory.List("acme", memory.ProjectOwner(project)) {
+			out = append(out, string(n.Status))
+		}
+		return out
+	}
+	taught := func(project string) []string {
+		t.Helper()
+		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			if got := statuses(project); len(got) > 0 {
+				return got
+			}
+		}
+		t.Fatalf("the memory agent wrote nothing for %s", project)
+		return nil
+	}
+
+	want(t, f, ana, "POST", "/api/runs", `{"agent":"lead","text":"Plan the launch","project":"Field"}`, http.StatusAccepted)
+	for _, s := range taught("Field") {
+		if s != string(memory.Approved) {
+			t.Fatalf("an owner's turn left Field's notes %v", statuses("Field"))
+		}
+	}
+	want(t, f, bo, "POST", "/api/runs", `{"agent":"lead","text":"Plan the launch","project":"Ops"}`, http.StatusAccepted)
+	for _, s := range taught("Ops") {
+		if s != string(memory.Pending) {
+			t.Fatalf("a member's turn left Ops's notes %v", statuses("Ops"))
+		}
 	}
 }

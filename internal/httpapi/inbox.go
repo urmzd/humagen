@@ -150,7 +150,9 @@ func (s *Server) getInbox(w http.ResponseWriter, r *http.Request, who auth.Princ
 		s.problem(w, err)
 		return
 	}
-	ok(w, http.StatusOK, map[string]any{"message": m, "history": orEmpty(s.P.Inbox.History(who.Tenant, m.ID))})
+	// Each reader is shown what changed the message for everyone and their
+	// own marks, never another reader's.
+	ok(w, http.StatusOK, map[string]any{"message": m, "history": s.P.Inbox.HistoryFor(who.Tenant, m.ID, who.Subject)})
 }
 
 func (s *Server) readInbox(w http.ResponseWriter, r *http.Request, who auth.Principal) {

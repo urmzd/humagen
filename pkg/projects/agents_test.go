@@ -107,6 +107,25 @@ func TestAllowOnlyTightensDownTheChain(t *testing.T) {
 	if got := tree.Available("Launch"); !got.All {
 		t.Fatalf("a sibling was narrowed: %+v", got)
 	}
+	// Allowed is what the lists permit, whatever is offered: what a move
+	// compares, so it never widens.
+	for p, names := range map[string][]string{"Field": {"lead", "writer"}, "Renewals": {"writer"}, "Launch": nil, projects.Root: nil} {
+		if got := tree.Allowed(p); !slices.Equal(got, names) || (names == nil) != (got == nil) {
+			t.Errorf("Allowed(%s) = %v, want %v", p, got, names)
+		}
+	}
+	for _, c := range []struct {
+		was, next []string
+		widens    bool
+	}{
+		{nil, nil, false}, {nil, []string{"lead"}, false}, {[]string{"lead"}, nil, true},
+		{[]string{"lead", "writer"}, []string{"writer"}, false}, {[]string{"writer"}, []string{"writer", "wide"}, true},
+		{[]string{"writer"}, []string{}, false},
+	} {
+		if got := projects.Widens(c.was, c.next); got != c.widens {
+			t.Errorf("Widens(%v, %v) = %v", c.was, c.next, got)
+		}
+	}
 }
 
 func TestStarNeverReachesAnAgentThatLivesInAProject(t *testing.T) {

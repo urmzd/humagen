@@ -255,6 +255,12 @@ type Turn struct {
 	// when it acts for a person (act_as): its default is nearer than the
 	// channel's, and @auto picks only among the agents it may route to.
 	Client string
+	// KeepsNotes says the person the turn is for may change the notes of the
+	// project it is filed in (MayChangeNotes), so what the memory agent
+	// learns from it may be kept without asking, when the workspace chose
+	// that. Anyone else's turn teaches the project only proposals for its
+	// owners. Only a caller that asked MayChangeNotes for that person sets it.
+	KeepsNotes bool
 }
 
 // Converse sends a message into a conversation and starts the run that answers.
@@ -299,6 +305,9 @@ func (p *Platform) Converse(ctx context.Context, tenant string, t Turn) (runs.Ru
 	}
 	th.Project = meta[runs.MetaProject]
 
+	if t.KeepsNotes && meta[runs.MetaProject] != "" {
+		meta[metaKeepsNotes] = meta[runs.MetaProject]
+	}
 	var routes func(string) bool
 	clientDefault := ""
 	if t.Client != "" {

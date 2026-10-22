@@ -114,7 +114,7 @@ and then `{who: "role:field-eng", role: member}` on the project.
 | Change it: title, description, instructions, account, kind, archiving, members, the agents it turns on, who may announce; add, keep or remove notes; delete it | `projects:write` | owner (the workspace and company projects: `projects:govern` too) |
 | Make an agent live in it, or move one out | `agents:write` | owner of the project it comes to and of the one it leaves |
 | Edit an agent that lives in it: its spec, call policy and notes, keeping or discarding its proposals in the inbox too | `agents:write` | owner (the agent's routes take its canonical name, in lower case, and answer 404 for another spelling) |
-| Move it | `projects:write` | owner, and member of the new parent; leaving a project that holds a limit needs `billing:write`, and so does moving one that holds, or has below it, an owner's limit set from a parent the caller does not own |
+| Move it | `projects:write` | owner, and member of the new parent; leaving a project that holds a limit needs `billing:write`, and so does moving one that holds, or has below it, an owner's limit set from a parent the caller does not own; leaving an ancestor whose allow list keeps agents out needs owning it, unless the new chain allows no more |
 | Set a tighten-only limit on it | `projects:write` | owner of a project above it |
 | Post an announcement | `projects:write` | the project's `announce` role, owner by default |
 | Withdraw an announcement | `projects:write` | its author, or owner |

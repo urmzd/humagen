@@ -40,7 +40,9 @@ govern is asked for on top, for the workspace, a company project, its notes, or
 a deleted name. A deleted name's tombstone is never forgotten while
 conversations or files are still filed under it, so later deletes cannot clear
 the way to adopting them. Its notes are asked the same through every route that changes
-them: the project's memory routes and the inbox. The agent memory routes reach
+them: the project's memory routes, the inbox, and the memory agent, which
+keeps what it learns from a turn unasked only when the workspace chose that
+and the person the turn was for may change those notes themselves. The agent memory routes reach
 an agent's own notes only, and answer 404 for a project's memory owner
 (`project:<name>`, and `project:` for the workspace). Then the caller's role on
 the project decides, and only narrows: a viewer reads, a member creates

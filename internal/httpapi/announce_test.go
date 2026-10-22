@@ -95,6 +95,20 @@ func TestHidingAnAnnouncementHidesOnlyTheReadersCopy(t *testing.T) {
 			t.Errorf("another reader sees %q", got)
 		}
 	}
+	// Nor is another reader told who hid their copy, or who read it.
+	id := m["id"].(string)
+	want(t, f, reader, "POST", "/api/inbox/"+id+"/read", `{}`, http.StatusOK)
+	for _, who := range []string{ana, bo} {
+		for _, c := range want(t, f, who, "GET", "/api/inbox/"+id, "", http.StatusOK)["history"].([]any) {
+			if by := c.(map[string]any)["by"]; by == "dee" {
+				t.Errorf("another reader is shown %v", c)
+			}
+		}
+	}
+	mine := want(t, f, reader, "GET", "/api/inbox/"+id, "", http.StatusOK)["history"].([]any)
+	if last := mine[len(mine)-1].(map[string]any); last["what"] != "read" || last["by"] != "dee" {
+		t.Fatalf("the reader's own history ends %v", last)
+	}
 }
 
 // A muted project's news stays out of the person's own inbox, never out of
