@@ -72,7 +72,7 @@ func TestValidateRefusesWhatASurfaceCannotBe(t *testing.T) {
 		}
 	}
 	gh := githubOf("gh", "acme")
-	gh.GitHub = &GitHubOptions{AutoLabels: map[string]map[string]string{"acme/handbook": {"agent:auto": "lead"}}}
+	gh.GitHub = &GitHubOptions{AutoLabels: map[string]map[string]string{"acme/handbook": {"agent:auto": "lead"}}, Login: "warp-app[bot]"}
 	if err := gh.Validate(); err != nil {
 		t.Fatal(err)
 	}
@@ -88,6 +88,9 @@ func TestValidateRefusesWhatASurfaceCannotBe(t *testing.T) {
 		"slack options on github":       func(c *Client) { c.Slack = &SlackOptions{} },
 		"more accounts than are kept":   func(c *Client) { c.Identity.Owners = strings.Split(strings.Repeat("a,", 33), ",")[:33] },
 		"an account that is not a name": func(c *Client) { c.Identity.Owners = []string{"acme corp"} },
+		"a login that is not a login":   func(c *Client) { c.GitHub.Login = "@warp" },
+		"a login with a space":          func(c *Client) { c.GitHub.Login = "warp bot" },
+		"a bare bot suffix":             func(c *Client) { c.GitHub.Login = "[bot]" },
 	} {
 		c := gh.clone()
 		change(&c)

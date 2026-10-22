@@ -416,6 +416,11 @@ type GitHub struct {
 	Checks        bool     `json:"checks,omitempty"`
 	Guides        bool     `json:"guides,omitempty"`
 	Mutations     bool     `json:"mutations,omitempty"`
+	// Login is the app's own login, such as "warp[bot]". Once warp is built
+	// with a fiber whose GitHub connector reads it, a comment that mentions
+	// it and names no agent is answered by the default chain of the client's
+	// home. Until then it is kept and changes nothing.
+	Login string `json:"login,omitempty"`
 }
 
 var providerName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)

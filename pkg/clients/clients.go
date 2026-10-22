@@ -211,6 +211,14 @@ type GitHubOptions struct {
 	// ReadRepositories are "owner/repo" names a run from another surface may
 	// read through this client.
 	ReadRepositories []string `json:"read_repositories,omitempty"`
+	// Login is the app's own GitHub login, such as "warp[bot]", mentioned as
+	// @warp. It is kept and not yet given to the GitHub connector: it takes
+	// effect once warp is built with a fiber whose connector reads it. From
+	// then, a comment that mentions it and names no agent is addressed to the
+	// client and answered by its default, as an untagged Slack message is
+	// (see docs/github.md). Until then, and while it is empty, a comment that
+	// names no agent starts nothing.
+	Login string `json:"login,omitempty"`
 }
 
 // Client is one installation of the platform on a surface.
@@ -317,6 +325,8 @@ var (
 	digits       = regexp.MustCompile(`^[0-9]{1,20}$`)
 	slackID      = regexp.MustCompile(`^[A-Z][A-Z0-9]{2,31}$`)
 	commandName  = regexp.MustCompile(`^[^\s/][^\s]{0,30}$`)
+	// githubLogin is a GitHub account's login, or an app's with "[bot]".
+	githubLogin = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\[bot\])?$`)
 )
 
 // Slug makes an id out of a name: "Docs Bot" becomes "docs-bot".
@@ -478,6 +488,9 @@ func (c Client) validateGitHub() error {
 		if !repoPattern.MatchString(repo) {
 			return bad("%q is not an owner/repo name", repo)
 		}
+	}
+	if g.Login != "" && !githubLogin.MatchString(g.Login) {
+		return bad("%q is not a GitHub login", g.Login)
 	}
 	for repo, labels := range g.AutoLabels {
 		if !repoPattern.MatchString(repo) {

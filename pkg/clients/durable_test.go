@@ -60,11 +60,13 @@ func TestRestart(t *testing.T) {
 			t.Fatalf("another tenant's client = %v", err)
 		}
 		// A client created after the restart goes after those before it.
-		if _, err := again.Create("acme", githubOf("later", "acme"), caps, t0); err != nil {
+		later := githubOf("later", "acme")
+		later.GitHub = &GitHubOptions{Login: "warp[bot]"}
+		if _, err := again.Create("acme", later, caps, t0); err != nil {
 			t.Fatal(err)
 		}
 		third, _ := Open(st)
-		if l := third.List("acme"); len(l) != 3 || l[2].ID != "later" {
+		if l := third.List("acme"); len(l) != 3 || l[2].ID != "later" || l[2].GitHub == nil || l[2].GitHub.Login != "warp[bot]" {
 			t.Fatalf("order after a second restart = %+v", l)
 		}
 	})

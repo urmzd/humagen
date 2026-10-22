@@ -105,3 +105,19 @@ func (p *Platform) AutoFor(ctx context.Context, c clients.Client, text string) (
 func (p *Platform) DelayRecord(d time.Duration) {
 	p.afterAccept = func(envelope.Tag) { time.Sleep(d) }
 }
+
+// Untagged is the agent a client's in-process connector raises a message
+// that names no agent for, which stamp resolves where the run is filed.
+const Untagged = untagged
+
+// SeatPeer puts a connector of the test's own in place of the one a
+// client's record built, as the platform runs a connector in process.
+// What it raises is stamped as that client's.
+func (p *Platform) SeatPeer(tenant, id string, peer Peer) error {
+	c, err := p.Clients.Get(tenant, id)
+	if err != nil {
+		return err
+	}
+	p.seat(c, &seat{client: c, peer: peer})
+	return nil
+}

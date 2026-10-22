@@ -10,6 +10,7 @@ import (
 	transport "github.com/urmzd/fiber/pkg/connectors/github"
 	"github.com/urmzd/fiber/pkg/connectors/mention"
 	"github.com/urmzd/fiber/pkg/envelope"
+	"github.com/urmzd/fiber/pkg/topic"
 	presentation "github.com/urmzd/warp/internal/presentation/github"
 	"sort"
 	"strings"
@@ -117,9 +118,13 @@ func (c *Connector) Actions() []connector.Action {
 	return actions
 }
 
+// prepare applies warp's policy to a tag before it is handed over. A tag for
+// fiber's control name is one whose agent the host has yet to choose, such as
+// a comment addressed to the app that names no agent: no agent can take that
+// name, and the guide names the agent that answers, so such a tag posts none.
 func (c *Connector) prepare(ctx context.Context, tag *envelope.Tag) error {
 	if tag.Source.Path[1] == "pull" {
-		if c.cfg.Guides {
+		if c.cfg.Guides && tag.Agent != topic.ControlName {
 			if err := c.prepareGuide(ctx, tag); err != nil {
 				return err
 			}
