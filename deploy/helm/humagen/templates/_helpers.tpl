@@ -65,3 +65,22 @@ kind: Platform
 {{ omit $p "api_version" "kind" | toYaml }}
 {{- end }}
 {{- end -}}
+
+{{/*
+A release the warp chart installed, before the product was renamed, names its
+Deployment, Service and volume "warp". This chart would name them otherwise
+and so start a second, empty one beside them, so it refuses to, unless
+nameOverride keeps the old name. lookup sees the cluster on helm install and
+upgrade, Flux and humagen deploy; helm template sees nothing and renders.
+*/}}
+{{- define "humagen.keepOldNames" -}}
+{{- if ne (include "humagen.name" .) "warp" -}}
+{{- $found := lookup "apps/v1" "Deployment" .Release.Namespace "" | default dict -}}
+{{- range $d := ($found.items | default list) -}}
+{{- $sel := (($d.spec | default dict).selector | default dict).matchLabels | default dict -}}
+{{- if and (eq (index $sel "app.kubernetes.io/instance" | default "") $.Release.Name) (eq (index $sel "app.kubernetes.io/name" | default "") "warp") -}}
+{{- fail (printf "release %s was installed by the warp chart: set nameOverride: warp to keep its Deployment, Service and volume (docs/upgrading-from-warp.md#kubernetes)" $.Release.Name) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

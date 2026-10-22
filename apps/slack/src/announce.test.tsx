@@ -618,7 +618,7 @@ test("release notes posted before the app connects reach the workspace's channel
   const w = releaseRoom();
   missed(w, {
     id: "m-release",
-    subject: "What's new in humagen 0.16.0",
+    subject: "What's new in Humagen 0.16.0",
     from: { kind: "system", name: "humagen" },
     source: { project: "" },
     at: w.humagen.ago(60_000),

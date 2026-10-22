@@ -538,7 +538,7 @@ the project and the projects below it.
 
 `workspace.release_notes: true` (off by default) posts what the release of
 humagen this process runs brings in the workspace's own inbox, as an
-announcement from humagen: "What's new in humagen 0.16.0", then the release's
+announcement from humagen: "What's new in Humagen 0.16.0", then the release's
 breaking changes and its features, its Breaking and Features groups in the
 changelog the binary carries (`CHANGELOG.md`), and the link to the full
 changelog. The release tool files every breaking change under Breaking, a

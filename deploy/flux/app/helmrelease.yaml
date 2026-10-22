@@ -1,12 +1,15 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
+# The HelmRelease, its namespace and the GitRepository keep the name warp they
+# had before the product was renamed: the example Kustomization prunes, so a
+# new name would delete the release with its volume and Secret.
 metadata:
   name: warp
 spec:
   interval: 10m
   chart:
     spec:
-      chart: ./deploy/helm/warp
+      chart: ./deploy/helm/humagen
       # Rebuild the chart on every commit to the source, not only when its
       # version in Chart.yaml changes.
       reconcileStrategy: Revision
@@ -18,12 +21,17 @@ spec:
     remediation:
       retries: 3
   upgrade:
+    # The chart was renamed from warp to humagen. Flux's default on a new
+    # chart name is to uninstall the release and install it again, which
+    # takes it down and leaves the guard nothing to check; upgrade it in
+    # place instead, keeping its names (nameOverride in values.yaml).
+    chartNameChangeStrategy: InPlaceUpdate
     # The release is one replica with Recreate: a failed upgrade rolls back
-    # rather than leaving warp down.
+    # rather than leaving the server down.
     remediation:
       retries: 3
       remediateLastFailure: true
   valuesFrom:
     - kind: ConfigMap
-      name: warp-values
+      name: humagen-values
       valuesKey: values.yaml

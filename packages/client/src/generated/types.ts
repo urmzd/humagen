@@ -211,7 +211,7 @@ export interface Actor {
 /** The workspace's tools that act as the caller, how the caller stands with each, and what the workspace lets people give. */
 export interface ToolCredentials {
   providers: ToolCredential[];
-  /** Whether this workspace lets people store a credential's value with warp. Off, people give only a reference to where it is kept. */
+  /** Whether this workspace lets people store a credential's value with humagen. Off, people give only a reference to where it is kept. */
   values: boolean;
   /** How the references the caller may give start, their own under each start the operator listed, with the caller's subject in place of `{subject}`. A start the caller's subject cannot be written in is left out, and a machine gets none. Empty means no reference can be given. */
   references: string[];
@@ -571,18 +571,18 @@ export interface ThreadMessage {
 /** The announcement a thread was started from, as it stands when the
 thread is read: who posted it and what it says. It is the inbox's,
 never a message of the thread, so it is from whoever posted it, a
-person, the agent a schedule ran, or warp itself for a release's
+person, the agent a schedule ran, or humagen itself for a release's
 notes, and never from the person whose reply started the thread. A
 withdrawn one says nothing more.
  */
 export interface ThreadAnnouncement {
   /** The announcement's inbox id. */
   id: string;
-  /** Who posted it. `system` is warp itself, as for a release's notes. */
+  /** Who posted it. `system` is humagen itself, as for a release's notes. */
   kind: "person" | "agent" | "system";
-  /** The person's handle, the agent's name, or `warp` for what warp posted itself. */
+  /** The person's handle, the agent's name, or `humagen` for what Humagen posted itself (`warp` in records written before the rename). */
   by: string;
-  /** What the person is called. Absent for an agent and for warp itself (`system`). */
+  /** What the person is called. Absent for an agent and for humagen itself (`system`). */
   name?: string;
   subject?: string;
   text?: string;
@@ -800,7 +800,7 @@ export interface Channel {
   slack?: SlackBinding;
   /** When `slack` was bound as it stands: set when a binding is made
 or moved, kept while it holds. Absent while unbound, and on a
-binding made before warp kept the time, which the client's
+binding made before humagen kept the time, which the client's
 bindings then read as bound at the channel's last change.
  */
   bound_at?: string;
@@ -865,7 +865,7 @@ export interface ClientBinding {
 app catches up on nothing announced before it: what was
 announced before the binding, or while the channel was unbound,
 never reached the Slack channel and is not news there now.
-Present for every binding; a binding made before warp kept the
+Present for every binding; a binding made before humagen kept the
 time reads as bound at its channel's last change.
  */
   bound_at?: string;
@@ -2364,7 +2364,7 @@ export interface SecretRef {
   ref?: string;
 }
 
-/** A secret as a caller writes it, as a value or as an `env:WARP_*` reference. Leave both out to keep the one held. */
+/** A secret as a caller writes it, as a value or as an `env:HUMAGEN_*` reference (`env:WARP_*`, the prefix before the rename, still works). Leave both out to keep the one held. */
 export interface SecretInput {
   value?: string;
   ref?: string;
@@ -2394,7 +2394,7 @@ export interface GitHubOptions {
   guides?: boolean;
   mutations?: boolean;
   read_repositories?: string[];
-  /** The app's own GitHub login, such as `warp[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/github.md). */
+  /** The app's own GitHub login, such as `humagen[bot]`. A comment that mentions it and names no agent is addressed to the client and answered by its default (see docs/github.md). */
   login?: string;
 }
 

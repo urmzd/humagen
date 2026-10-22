@@ -59,4 +59,25 @@ refuse --set replicaCount=2
 refuse --set system.spec.auth.kind=dev
 refuse --set system.spec.auth.kind=tailscale
 refuse --set system.spec.auth.oidc.issuer=
+# A release the warp chart installed keeps its names with nameOverride: warp:
+# the same Deployment, Service, PVC and selector as before the rename.
+"$helm" template warp "$chart" -f "$chart/ci/default-values.yaml" --set nameOverride=warp >"$work/upgrade.yaml"
+python3 -I - "$work/upgrade.yaml" <<'EOF'
+import sys, yaml
+seen = {}
+for doc in yaml.safe_load_all(open(sys.argv[1])):
+    if doc and doc["kind"] in ("Deployment", "Service", "PersistentVolumeClaim", "ConfigMap"):
+        seen[doc["kind"]] = doc
+for kind in ("Deployment", "Service", "PersistentVolumeClaim", "ConfigMap"):
+    if seen.get(kind, {}).get("metadata", {}).get("name") != "warp":
+        sys.exit("upgrade render: %s is not named warp" % kind)
+for kind, sel in (("Deployment", seen["Deployment"]["spec"]["selector"]["matchLabels"]), ("Service", seen["Service"]["spec"]["selector"])):
+    if sel.get("app.kubernetes.io/name") != "warp":
+        sys.exit("upgrade render: the %s's selector changed" % kind)
+EOF
+# A new install is named for humagen.
+"$helm" template humagen "$chart" -f "$chart/ci/default-values.yaml" | grep -q '^  name: humagen$' || {
+	echo "a new install is not named humagen"
+	exit 1
+}
 echo "chart ok"

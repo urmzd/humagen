@@ -4,6 +4,10 @@
 #
 # To change the values, copy deploy/flux/app into your fleet repository, edit
 # values.yaml there, and point the second Kustomization at that copy.
+#
+# The objects keep the name warp they had before the product was renamed: the
+# HelmRelease names this GitRepository, and the Kustomization prunes what it
+# no longer applies. Only the url changed.
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
@@ -11,7 +15,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  url: https://github.com/urmzd/warp
+  url: https://github.com/urmzd/humagen
   # Pin a release tag in production rather than following main.
   ref:
     branch: main

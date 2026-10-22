@@ -76,7 +76,7 @@ func TestAReleaseIsItsBreakingChangesAndFeatures(t *testing.T) {
 		n.Compare != "https://github.com/urmzd/humagen/compare/v0.13.1...v0.14.0" {
 		t.Fatalf("0.14.0 = %+v, %v", n, ok)
 	}
-	if n.Subject() != "What's new in humagen 0.14.0" {
+	if n.Subject() != "What's new in Humagen 0.14.0" {
 		t.Errorf("subject = %q", n.Subject())
 	}
 	wantText := "Breaking changes:\n" +

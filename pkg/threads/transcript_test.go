@@ -163,14 +163,17 @@ func TestAnAnnouncementIsTheLineOfWhoeverPostedIt(t *testing.T) {
 	byDana := threads.AnnouncementTurn(threads.Announcement{Kind: threads.Person, By: "okta|dana", Name: "Dana", Subject: "Field offsite", Text: "Lisbon,\nin May."})
 	byRecap := threads.AnnouncementTurn(threads.Announcement{Kind: threads.Agent, By: "recap", Subject: "Weekly recap", Text: "Two renewals closed."})
 	withdrawn := threads.AnnouncementTurn(threads.Announcement{Kind: threads.Person, By: "okta|dana", Name: "Dana", Withdrawn: true})
-	release := threads.AnnouncementTurn(threads.Announcement{Kind: threads.System, By: "humagen", Subject: "What's new in humagen 0.16.0", Text: "- Projects\n- Slack catch-up"})
+	release := threads.AnnouncementTurn(threads.Announcement{Kind: threads.System, By: "humagen", Subject: "What's new in Humagen 0.16.0", Text: "- Projects\n- Slack catch-up"})
+	// A release's notes posted before the rename keep the old sender's name.
+	before := threads.AnnouncementTurn(threads.Announcement{Kind: threads.System, By: "warp", Subject: "What's new in warp 0.15.0", Text: "- Inbox"})
 	for name, c := range map[string]struct {
 		seed threads.Turn
 		line string
 	}{
 		"a person's":  {byDana, "Dana (@dana): (announcement: Field offsite) Lisbon, in May."},
 		"an agent's":  {byRecap, "recap (agent): (announcement: Weekly recap) Two renewals closed."},
-		"a release's": {release, "humagen (system): (announcement: What's new in humagen 0.16.0) - Projects - Slack catch-up"},
+		"a release's": {release, "Humagen (system): (announcement: What's new in Humagen 0.16.0) - Projects - Slack catch-up"},
+		"an old one":  {before, "Humagen (system): (announcement: What's new in warp 0.15.0) - Inbox"},
 		"a withdrawn": {withdrawn, "Dana (@dana): (announcement, since withdrawn)"},
 	} {
 		got := threads.Ask([]threads.Turn{c.seed, reply}, 10_000, people, threads.Asker{Person: "okta|ana", Name: "Ana"}, "and the dates?")

@@ -71,7 +71,7 @@ func (p *Platform) PostReleaseNotes(tenant, version string, a Announcement) (m i
 		return inbox.Message{}, false, fmt.Errorf("%w: release notes name their version", inbox.ErrInvalid)
 	}
 	a.Severity, a.Run = inbox.Info, ""
-	return p.announce(tenant, projects.Root, "release:"+version, inbox.From{Kind: "system", Name: "humagen"}, a, p.now())
+	return p.announce(tenant, projects.Root, "release:"+version, inbox.From{Kind: "system", Name: SystemSender}, a, p.now())
 }
 
 // Announcer is the lowest role that may post in a project: its Announce, or
@@ -274,3 +274,11 @@ func (p *Platform) noticeReader(tree *projects.Tree, who auth.Principal) inbox.R
 	}
 	return r
 }
+
+// SystemSender is the name the platform posts under as itself. Records
+// written before the rename keep the old one (legacy.SystemSender); every
+// system sender is shown as SystemDisplay.
+const SystemSender = "humagen"
+
+// SystemDisplay is what a system sender is called.
+const SystemDisplay = "Humagen"

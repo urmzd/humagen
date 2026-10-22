@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,6 +18,8 @@ import (
 
 	"github.com/urmzd/humagen/pkg/blob"
 	"github.com/urmzd/humagen/pkg/blob/blobtest"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // fakeS3 is the part of the S3 API the store uses, path style, in memory. It
@@ -291,7 +292,7 @@ func TestS3Config(t *testing.T) {
 //	HUMAGEN_TEST_S3_PATH_STYLE=1 AWS_ACCESS_KEY_ID=minioadmin AWS_SECRET_ACCESS_KEY=minioadmin \
 //	go test ./pkg/blob -run TestS3Live
 func TestS3Live(t *testing.T) {
-	bucket := os.Getenv("HUMAGEN_TEST_S3_BUCKET")
+	bucket := legacy.Getenv("HUMAGEN_TEST_S3_BUCKET")
 	if bucket == "" {
 		t.Skip("HUMAGEN_TEST_S3_BUCKET is not set")
 	}
@@ -299,8 +300,8 @@ func TestS3Live(t *testing.T) {
 		var id [6]byte
 		_, _ = rand.Read(id[:])
 		s, err := blob.NewS3(t.Context(), blob.S3Config{
-			Bucket: bucket, Region: os.Getenv("HUMAGEN_TEST_S3_REGION"), Endpoint: os.Getenv("HUMAGEN_TEST_S3_ENDPOINT"),
-			PathStyle: os.Getenv("HUMAGEN_TEST_S3_PATH_STYLE") == "1", Prefix: "humagen-test/" + hex.EncodeToString(id[:]),
+			Bucket: bucket, Region: legacy.Getenv("HUMAGEN_TEST_S3_REGION"), Endpoint: legacy.Getenv("HUMAGEN_TEST_S3_ENDPOINT"),
+			PathStyle: legacy.Getenv("HUMAGEN_TEST_S3_PATH_STYLE") == "1", Prefix: "humagen-test/" + hex.EncodeToString(id[:]),
 		})
 		if err != nil {
 			t.Fatal(err)

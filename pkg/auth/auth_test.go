@@ -142,6 +142,22 @@ func TestMachineScopeString(t *testing.T) {
 	}
 }
 
+// A token whose scopes use the prefix from before the rename keeps its
+// permissions: the identity provider mints them, and its operator renames
+// them on their own time. Another prefix still grants nothing.
+func TestMachineScopesUnderTheOldPrefix(t *testing.T) {
+	iss := authtest.New(t)
+	v := verifier(t, iss, nil)
+	raw := iss.Sign(t, "svc", audience, map[string]any{"scope": "warp:runs:read humagen:agents:read other:runs:write warp:everything"})
+	p, err := v.Bearer(context.Background(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.Granted(); !slices.Equal(got, []auth.Permission{auth.AgentsRead, auth.RunsRead}) {
+		t.Fatalf("granted %v, want runs:read and agents:read", got)
+	}
+}
+
 // An ID token is issued to the web client, not to the API. Accepting one as a
 // bearer token would let a page's token call the API as that person.
 func TestBearerRejectsAnIDToken(t *testing.T) {

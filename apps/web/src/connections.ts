@@ -20,7 +20,7 @@ export function ways(t: Pick<ToolCredentials, "values" | "references">): Way[] {
 export function standing(c: ToolCredential): string {
   if (!c.connected) return "Not connected. An agent cannot use these tools for you.";
   if (c.kind === "value") return "Connected. Your credential is stored with humagen.";
-  return `Connected. humagen reads ${c.ref ?? "your reference"} each time a run uses it, and stores only the reference.`;
+  return `Connected. Humagen reads ${c.ref ?? "your reference"} each time a run uses it, and stores only the reference.`;
 }
 
 /** Where your credential goes when a run uses it. */

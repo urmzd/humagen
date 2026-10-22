@@ -362,3 +362,16 @@ func TestASlackClientActsOnlyForThePeopleItMaps(t *testing.T) {
 		}
 	}
 }
+
+// A client record stored before the rename names a WARP_ variable, and keeps
+// working; any other prefix is still refused.
+func TestAnEnvReferenceNamesEitherPrefix(t *testing.T) {
+	for ref, ok := range map[string]bool{
+		"env:HUMAGEN_SLACK_TOKEN_DOCS": true, "env:WARP_SLACK_TOKEN_DOCS": true,
+		"env:ANTHROPIC_API_KEY": false, "env:WARP_": false, "env:HUMAGEN_": false, "env:warp_x": false,
+	} {
+		if _, err := EnvRef(ref); (err == nil) != ok {
+			t.Errorf("EnvRef(%s) = %v", ref, err)
+		}
+	}
+}

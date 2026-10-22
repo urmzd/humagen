@@ -24,6 +24,9 @@ image:
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
+# -- Set to warp for a release installed by the warp chart, before the
+# product was renamed, so the upgrade keeps its Deployment, Service, ConfigMap
+# and volume. The chart refuses to upgrade such a release without it.
 nameOverride: ""
 fullnameOverride: ""
 

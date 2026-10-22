@@ -166,7 +166,7 @@ func EnvRef(ref string) (string, error) {
 	}
 	// The old prefix is accepted for good: client records stored before the
 	// rename name WARP_ variables.
-	if !envName.MatchString(name) || legacy.EnvPrefixOf(name) == "" || legacy.Canonical(name) == EnvPrefix {
+	if !envName.MatchString(name) || legacy.OldName(name) == "" {
 		return "", fmt.Errorf("%w: a secret reference names a variable starting with %s", ErrInvalid, EnvPrefix)
 	}
 	return name, nil

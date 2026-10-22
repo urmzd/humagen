@@ -257,7 +257,7 @@ function buildFormData(body: Record<string, unknown>): FormData {
   return formData;
 }
 
-/** API client for Warp API. */
+/** API client for Humagen API. */
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly headers: Record<string, string>;
@@ -462,7 +462,7 @@ export class ApiClient {
   }
 
   /** Redirects to the identity provider (authorization code flow with
-PKCE) and sets a short-lived `warp_login` cookie. Under
+PKCE) and sets a short-lived `humagen_login` cookie. Under
 development auth it redirects straight to `/`. A browser navigates
 here; a script has no use for it.
  */
@@ -489,7 +489,7 @@ here; a script has no use for it.
   }
 
   /** The identity provider redirects here. On success it sets the
-`warp_session` cookie (`__Host-warp_session` over https),
+`humagen_session` cookie (`__Host-humagen_session` over https),
 HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
 `return_to` path. Errors are plain text, not JSON.
  */
@@ -3746,7 +3746,7 @@ end; pass it back as `before`.
     });
   }
 
-  /** Served by warp, never fetched from elsewhere. 404 for someone with none. */
+  /** Served by humagen, never fetched from elsewhere. 404 for someone with none. */
   async getPersonPhoto(handle: string, options?: RequestOptions): Promise<Blob> {
     let path = "/api/people/{handle}/photo";
     path = path.replace("{handle}", encodeURIComponent(String(handle)));

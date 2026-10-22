@@ -15,20 +15,20 @@ async function main() {
   const { principal: me, permissions } = await humagen.getMe();
   if (me.tenant !== config.humagen.tenant) {
     throw new Error(
-      "The humagen credential is for another workspace than HUMAGEN_TENANT. Refusing to start.",
+      "The Humagen credential is for another workspace than HUMAGEN_TENANT. Refusing to start.",
     );
   }
   const lacking = [...NEEDED, ...(config.humagen.client ? ["clients:read"] : [])].filter(
     (p) => !permissions.includes(p),
   );
   if (lacking.length > 0) {
-    throw new Error(`The humagen credential lacks ${lacking.join(", ")}.`);
+    throw new Error(`The Humagen credential lacks ${lacking.join(", ")}.`);
   }
   // More than the app can use is allowed, but every button in Slack acts with it.
   const extra = permissions.filter((p) => !USEFUL.includes(p));
   if (extra.length > 0) {
     log(
-      `warning: the humagen credential also grants ${extra.join(", ")}, which this app never uses`,
+      `warning: the Humagen credential also grants ${extra.join(", ")}, which this app never uses`,
     );
   }
 

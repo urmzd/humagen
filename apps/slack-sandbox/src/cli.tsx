@@ -10,7 +10,7 @@ import { buildManifest, CAPABILITIES, capabilitiesExcept, createAppUrl } from ".
 import { serve } from "./serve";
 import { readEnv, slackClient, uploadFile, validateBlocks } from "./slack";
 
-const USAGE = `humagen Slack sandbox
+const USAGE = `Humagen Slack sandbox
 
   pnpm sandbox manifest [out.json]   Generate the app manifest and a "create app" link
   pnpm sandbox list                  List postable fixtures
@@ -61,7 +61,7 @@ async function main() {
         for (const [i, blocks] of pages.entries()) {
           const view =
             p.placement === "modal"
-              ? { type: "modal", title: { type: "plain_text", text: "humagen" }, blocks }
+              ? { type: "modal", title: { type: "plain_text", text: "Humagen" }, blocks }
               : p.placement === "home"
                 ? { type: "home", blocks }
                 : undefined;
@@ -91,7 +91,7 @@ async function main() {
       if (wanted.length === 0) throw new Error(`No fixture "${arg}". Try: pnpm sandbox list`);
       const header = await slack.call<{ ts: string }>("chat.postMessage", {
         channel: env.channel,
-        text: `humagen sandbox · ${wanted.length} fixture${wanted.length > 1 ? "s" : ""} · ${new Date().toISOString()}`,
+        text: `Humagen sandbox · ${wanted.length} fixture${wanted.length > 1 ? "s" : ""} · ${new Date().toISOString()}`,
       });
       for (const p of wanted) {
         if (p.placement === "modal") {
@@ -169,7 +169,7 @@ async function main() {
       ].join("\n");
       const root = await slack.call<{ ts: string }>("chat.postMessage", {
         channel: env.channel,
-        text: "humagen sandbox · artifact upload",
+        text: "Humagen sandbox · artifact upload",
       });
       const uploaded = await uploadFile(
         slack,

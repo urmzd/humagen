@@ -235,10 +235,11 @@ const someone = "someone"
 
 func agentLabel(name string) string { return flat(name) + " (agent)" }
 
-// systemLabel is how a transcript names humagen, posting as itself. No agent's
-// or person's line can read the same: an agent is marked (agent), and a
+// systemLabel is how a transcript names the product, posting as itself,
+// whatever name the record keeps (warp, before the rename). No agent's or
+// person's line can read the same: an agent is marked (agent), and a
 // person's shown name holds no parentheses.
-func systemLabel(name string) string { return flat(name) + " (system)" }
+func systemLabel(string) string { return "Humagen (system)" }
 
 // shownName is a name as a transcript shows it: on one line, without the
 // marks a label is made of, so a name cannot pass for a handle or end a

@@ -79,3 +79,26 @@ func TestStructuredReviewStreamsProgressThenRendersTheFinalReport(t *testing.T) 
 		t.Fatal(body)
 	}
 }
+
+// An agent told before the rename to answer in warp.github.review.v1 still
+// gets a review: complete, held back while it streams, or incomplete.
+func TestAReviewUnderTheOldFormatIDStillRenders(t *testing.T) {
+	report := testReport()
+	report.Format = "warp.github.review.v1"
+	if _, err := FormatReview(report); err != nil {
+		t.Fatal(err)
+	}
+	encoded, _ := json.Marshal(report)
+	v := render.View{Agent: "reviewer", Status: render.StatusRunning, Text: string(encoded[:80])}
+	if body := RenderReview(v); strings.Contains(body, "warp.github.review.v1") || !strings.Contains(body, "Preparing") {
+		t.Fatal(body)
+	}
+	v.Status, v.Text = render.StatusDone, string(encoded)
+	if body := RenderReview(v); !strings.Contains(body, "🔴 **1 error**") {
+		t.Fatal(body)
+	}
+	report.Format = "other.github.review.v1"
+	if _, err := FormatReview(report); err == nil {
+		t.Fatal("another format id rendered as a review")
+	}
+}

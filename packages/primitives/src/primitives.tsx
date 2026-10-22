@@ -17,7 +17,7 @@ export function useRenderer(): Renderer {
   const renderer = useContext(RendererContext);
   if (!renderer) {
     throw new Error(
-      "humagen primitives need a renderer: wrap in <WebSurface> or use renderToSlack",
+      "Humagen primitives need a renderer: wrap in <WebSurface> or use renderToSlack",
     );
   }
   return renderer;

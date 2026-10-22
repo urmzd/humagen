@@ -271,7 +271,7 @@ func TestReleaseNotesSeedAThreadAsTheSpecSays(t *testing.T) {
 	client := strings.Replace(slackApp("one", "A01ONE", "svc-one"), `"machine":"svc-one"`, `"machine":"svc-one","people":{"U01ANA":"ana"}`, 1)
 	want(t, f, admin, "POST", "/api/clients", client, http.StatusCreated)
 	want(t, f, admin, "PUT", "/api/projects/~/channels/general", `{"version":0,"slack":{"client":"one","channel":"C01ALL"}}`, http.StatusOK)
-	notes, _, err := f.p.PostReleaseNotes("acme", "0.16.0", platform.Announcement{Subject: "What's new in humagen 0.16.0", Text: "- Slack catch-up"})
+	notes, _, err := f.p.PostReleaseNotes("acme", "0.16.0", platform.Announcement{Subject: "What's new in Humagen 0.16.0", Text: "- Slack catch-up"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ func TestReleaseNotesSeedAThreadAsTheSpecSays(t *testing.T) {
 	if len(turns) < 2 || obj(turns[0])["kind"] != "announcement" {
 		t.Fatalf("the thread reads %s", page.raw)
 	}
-	if a := obj(obj(turns[0])["announcement"]); a["kind"] != "system" || a["by"] != "humagen" || a["name"] != nil || a["subject"] != "What's new in humagen 0.16.0" {
+	if a := obj(obj(turns[0])["announcement"]); a["kind"] != "system" || a["by"] != "humagen" || a["name"] != nil || a["subject"] != "What's new in Humagen 0.16.0" {
 		t.Fatalf("its first turn is %v", a)
 	}
 }

@@ -117,7 +117,7 @@ func Find(changelog, version string) (Notes, bool) {
 func (n Notes) News() bool { return len(n.Breaking)+len(n.Features) > 0 }
 
 // Subject is the announcement's subject line.
-func (n Notes) Subject() string { return "What's new in humagen " + n.Version }
+func (n Notes) Subject() string { return "What's new in Humagen " + n.Version }
 
 // Text is the announcement's text: the breaking changes under "Breaking
 // changes:", then the features, under "Features:" when there are breaking

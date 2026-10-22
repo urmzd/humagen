@@ -78,7 +78,7 @@ func TestReleaseNotesArePostedWhereTurnedOn(t *testing.T) {
 		t.Fatalf("posted %d times", len(got))
 	}
 	m := got[0]
-	if m.Key != "release:0.16.0" || m.Subject != "What's new in humagen 0.16.0" || m.From != (inbox.From{Kind: "system", Name: "humagen"}) ||
+	if m.Key != "release:0.16.0" || m.Subject != "What's new in Humagen 0.16.0" || m.From != (inbox.From{Kind: "system", Name: "humagen"}) ||
 		m.Source.Project != "" || len(m.Parts) != 1 || m.Parts[0].Text != releaseText {
 		t.Fatalf("posted = %+v", m)
 	}
@@ -90,7 +90,7 @@ func TestReleaseNotesArePostedWhereTurnedOn(t *testing.T) {
 	postReleaseNotes(p, cfg, "v0.17.0", releaseChangelog, quiet)
 	got = p.Inbox.OpenOf("acme", inbox.KindAnnouncement)
 	i := slices.IndexFunc(got, func(m inbox.Message) bool { return m.Key == "release:0.17.0" })
-	if len(got) != 2 || i < 0 || got[i].Subject != "What's new in humagen 0.17.0" || len(got[i].Parts) != 1 ||
+	if len(got) != 2 || i < 0 || got[i].Subject != "What's new in Humagen 0.17.0" || len(got[i].Parts) != 1 ||
 		got[i].Parts[0].Text != "Breaking changes:\n- inbox: a breaking change (#48)\n\n"+
 			"Full changelog: https://github.com/urmzd/humagen/compare/v0.16.0...v0.17.0" {
 		t.Fatalf("0.17.0 posted %+v", got)
@@ -160,7 +160,7 @@ func TestReleaseNotesArePostedOnceAcrossRestartsOnPostgres(t *testing.T) {
 		t.Fatalf("off, posted %+v", got)
 	}
 	first := start("v0.16.0", true)
-	if len(first.Messages) != 1 || first.Messages[0].Subject != "What's new in humagen 0.16.0" || first.Messages[0].From != (inbox.From{Kind: "system", Name: "humagen"}) {
+	if len(first.Messages) != 1 || first.Messages[0].Subject != "What's new in Humagen 0.16.0" || first.Messages[0].From != (inbox.From{Kind: "system", Name: "humagen"}) {
 		t.Fatalf("the first start = %+v", first)
 	}
 	if again := start("v0.16.0", true); len(again.Messages) != 1 || again.Messages[0].ID != first.Messages[0].ID {

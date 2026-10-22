@@ -275,6 +275,9 @@ func named(names Names, m inbox.Message) inbox.Message {
 		m = names.mention(m)
 	case m.From.Kind == "person":
 		m.From.Display = names.Of(m.From.Name)
+	case m.From.Kind == "system":
+		// The product, whatever name the record keeps: warp, before the rename.
+		m.From.Display = SystemDisplay
 	}
 	for i := range m.Parts {
 		if o := m.Parts[i].Outcome; o != nil {

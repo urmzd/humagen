@@ -315,8 +315,8 @@ function publicFailure(e: unknown): Failure {
   if (status === 0 || status >= 500) {
     return {
       kind: "unavailable",
-      service: "humagen",
-      message: defaultCopy.failure.unavailable("humagen"),
+      service: "Humagen",
+      message: defaultCopy.failure.unavailable("Humagen"),
       ...(status ? { httpStatus: status } : {}),
     };
   }
@@ -1027,7 +1027,7 @@ export class App {
         );
       }
     } catch (e) {
-      this.log(`humagen refused the turn: ${(e as Error).message}`);
+      this.log(`Humagen refused the turn: ${(e as Error).message}`);
       // A reply under an announcement that was withdrawn starts nothing.
       if (e instanceof HumagenError && e.status === 410)
         return this.refuse(job, presenter, "", {

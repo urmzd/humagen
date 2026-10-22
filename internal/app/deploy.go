@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -330,7 +331,7 @@ func deployCompose(ctx context.Context, cfg spec.Config, b spec.Compose, paths [
 	}
 	env := map[string]string{}
 	for _, v := range c.env {
-		env[v] = "${" + v + ":-}"
+		env[v] = interpolate(v)
 	}
 	services := map[string]any{legacy.DeployName: svc}
 	if hostNet {
@@ -432,6 +433,23 @@ func deployKubernetes(ctx context.Context, cfg spec.Config, b spec.Kubernetes, o
 	values, err := chartValues(c, b, release)
 	if err != nil {
 		return err
+	}
+	helmScope := []string{"-n", ns}
+	if b.Context != "" {
+		helmScope = append(helmScope, "--kube-context", b.Context)
+	}
+	// A release the warp chart installed keeps its Deployment, Service and
+	// volume only under the old name. Asked on every deploy, since after the
+	// first upgrade the release's chart is this one.
+	if _, set := values["nameOverride"]; !set && outDir == "" {
+		old, err := installedAsWarp(ctx, release, helmScope, run)
+		if err != nil {
+			return err
+		}
+		if old {
+			values["nameOverride"] = legacy.ChartName
+			fmt.Fprintf(out, "humagen: release %s was installed by the %s chart; it keeps its names with nameOverride: %s\n", release, legacy.ChartName, legacy.ChartName)
+		}
 	}
 	dir := outDir
 	if dir == "" {
@@ -631,4 +649,61 @@ func composeDir(base string, out io.Writer) string {
 		return old
 	}
 	return filepath.Join(base, ".humagen", "compose")
+}
+
+// interpolate is how generated compose passes a variable the spec names to
+// the container: by its own name, from the deploying shell, where it may be
+// set under either prefix (the new one wins, as legacy.Lookup reads it).
+func interpolate(v string) string {
+	if old := legacy.OldName(v); old != "" {
+		return "${" + legacy.Canonical(v) + ":-${" + old + ":-}}"
+	}
+	return "${" + v + ":-}"
+}
+
+// helmRelease is a release as helm list -o json writes it.
+type helmRelease struct {
+	Name  string `json:"name"`
+	Chart string `json:"chart"`
+}
+
+// installedAsWarp reports whether release was installed by the chart before
+// the rename and so keeps its names: its chart is the warp chart, or, once
+// upgraded to this one, it was given nameOverride: warp. scope is helm's
+// namespace and context flags. No release is not an error.
+func installedAsWarp(ctx context.Context, release string, scope []string, run func(*exec.Cmd) error) (bool, error) {
+	var listed bytes.Buffer
+	list := exec.CommandContext(ctx, "helm", append([]string{"list", "--filter", "^" + regexp.QuoteMeta(release) + "$", "-o", "json"}, scope...)...)
+	list.Stdout, list.Stderr = &listed, os.Stderr
+	if err := run(list); err != nil {
+		return false, fmt.Errorf("deploy: helm list: %w", err)
+	}
+	var releases []helmRelease
+	if b := bytes.TrimSpace(listed.Bytes()); len(b) > 0 {
+		if err := json.Unmarshal(b, &releases); err != nil {
+			return false, fmt.Errorf("deploy: helm list: %w", err)
+		}
+	}
+	i := slices.IndexFunc(releases, func(r helmRelease) bool { return r.Name == release })
+	if i < 0 {
+		return false, nil
+	}
+	if strings.HasPrefix(releases[i].Chart, legacy.ChartName+"-") {
+		return true, nil
+	}
+	var got bytes.Buffer
+	get := exec.CommandContext(ctx, "helm", append([]string{"get", "values", release, "-o", "json"}, scope...)...)
+	get.Stdout, get.Stderr = &got, os.Stderr
+	if err := run(get); err != nil {
+		return false, fmt.Errorf("deploy: helm get values: %w", err)
+	}
+	var v struct {
+		NameOverride string `json:"nameOverride"`
+	}
+	if b := bytes.TrimSpace(got.Bytes()); len(b) > 0 && !bytes.Equal(b, []byte("null")) {
+		if err := json.Unmarshal(b, &v); err != nil {
+			return false, fmt.Errorf("deploy: helm get values: %w", err)
+		}
+	}
+	return v.NameOverride == legacy.ChartName, nil
 }

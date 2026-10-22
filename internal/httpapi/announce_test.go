@@ -234,7 +234,7 @@ func TestWithdrawingAnAnnouncementOneHidWithdrawsItForEveryone(t *testing.T) {
 // the workspace withdraws it for everyone, and it is posted once.
 func TestReleaseNotesReachEveryoneWhoReadsTheWorkspace(t *testing.T) {
 	f, ana, bo, cy := acmeNews(t)
-	notes := platform.Announcement{Subject: "What's new in humagen 0.16.0", Text: "- projects: release notes in the inbox"}
+	notes := platform.Announcement{Subject: "What's new in Humagen 0.16.0", Text: "- projects: release notes in the inbox"}
 	m, posted, err := f.p.PostReleaseNotes("acme", "0.16.0", notes)
 	if err != nil || !posted || m.Source.Project != "" || m.From != (inbox.From{Kind: "system", Name: "humagen"}) || m.Key != "release:0.16.0" {
 		t.Fatalf("posted = %+v, %v, %v", m, posted, err)

@@ -163,10 +163,17 @@ func TestDeployRefusesLoopbackSignInForACluster(t *testing.T) {
 type ran struct {
 	args  [][]string
 	stdin []string
+	// reply, when set, is what a command writes to its standard output.
+	reply func(args []string) string
 }
 
 func (r *ran) run(cmd *exec.Cmd) error {
 	r.args = append(r.args, cmd.Args)
+	if r.reply != nil && cmd.Stdout != nil {
+		if _, err := io.WriteString(cmd.Stdout, r.reply(cmd.Args)); err != nil {
+			return err
+		}
+	}
 	in := ""
 	if cmd.Stdin != nil {
 		b, err := io.ReadAll(cmd.Stdin)
@@ -223,11 +230,11 @@ spec:
 			}
 		}
 	}
-	if len(r.args) != 2 || r.args[0][0] != "kubectl" || r.args[1][0] != "helm" {
-		t.Fatalf("ran %q, want kubectl apply then helm", r.args)
+	if len(r.args) != 3 || r.args[0][1] != "list" || r.args[1][0] != "kubectl" || r.args[2][0] != "helm" {
+		t.Fatalf("ran %q, want helm list, kubectl apply then helm", r.args)
 	}
-	if want := []string{"kubectl", "apply", "-f", "-", "-n", "agents", "--context", "prod"}; !slices.Equal(r.args[0], want) {
-		t.Errorf("kubectl args = %q, want %q", r.args[0], want)
+	if want := []string{"kubectl", "apply", "-f", "-", "-n", "agents", "--context", "prod"}; !slices.Equal(r.args[1], want) {
+		t.Errorf("kubectl args = %q, want %q", r.args[1], want)
 	}
 	var got struct {
 		APIVersion string            `json:"apiVersion"`
@@ -236,8 +243,8 @@ spec:
 		Metadata   map[string]string `json:"metadata"`
 		Data       map[string]string `json:"data"`
 	}
-	if err := json.Unmarshal([]byte(r.stdin[0]), &got); err != nil {
-		t.Fatalf("kubectl's stdin is not a manifest: %v\n%s", err, r.stdin[0])
+	if err := json.Unmarshal([]byte(r.stdin[1]), &got); err != nil {
+		t.Fatalf("kubectl's stdin is not a manifest: %v\n%s", err, r.stdin[1])
 	}
 	if got.APIVersion != "v1" || got.Kind != "Secret" || got.Type != "Opaque" || got.Metadata["name"] != "acme-env" || got.Metadata["namespace"] != "agents" {
 		t.Errorf("manifest = %+v", got)

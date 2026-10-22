@@ -220,7 +220,8 @@ function MessageView({ m, focused }: { m: ThreadMessage; focused: boolean }) {
  * only that. Humagen needs no mark, as in the inbox, so its column stays empty.
  */
 function AnnouncementView({ a }: { a: ThreadAnnouncement }) {
-  const who = a.kind === "person" ? a.name || a.by : a.by;
+  // A release's notes are from the product, whatever name the record keeps.
+  const who = a.kind === "person" ? a.name || a.by : a.kind === "system" ? defaultCopy.product : a.by;
   return (
     <article aria-label={`${defaultCopy.template.announcement} from ${who}`} className="flex gap-3">
       {a.kind === "agent" ? (

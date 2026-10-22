@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -20,6 +19,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/urmzd/humagen/pkg/state"
+
+	"github.com/urmzd/humagen/internal/legacy"
 )
 
 // URLEnv names the database the Postgres backend is tested against.
@@ -57,7 +58,7 @@ var schemas atomic.Uint64
 // end of the test, or skips the test when URLEnv is unset.
 func Pool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	url := os.Getenv(URLEnv)
+	url := legacy.Getenv(URLEnv) // or its old name, WARP_POSTGRES_TEST_URL
 	if url == "" {
 		t.Skip("set " + URLEnv + " to run against Postgres")
 	}

@@ -1,6 +1,7 @@
 {{- if ne (int .Values.replicaCount) 1 }}
 {{- fail "replicaCount must be 1: humagen's stores are single-writer. See values.yaml." }}
 {{- end }}
+{{- include "humagen.keepOldNames" . -}}
 {{- $fullname := include "humagen.fullname" . -}}
 apiVersion: apps/v1
 kind: Deployment

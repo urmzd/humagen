@@ -509,11 +509,11 @@ test("a recap's announcement is the agent's, and a withdrawn one says only that"
 });
 
 test("release notes seed a thread from humagen itself, with no person's or agent's mark", async () => {
-  seededRoom(seeded({ id: "m-10", kind: "system", by: "humagen", subject: "What's new in humagen 0.16.0", text: "- Slack catch-up", at }));
+  seededRoom(seeded({ id: "m-10", kind: "system", by: "humagen", subject: "What's new in Humagen 0.16.0", text: "- Slack catch-up", at }));
   const notes = await screen.findByRole("article", { name: `${defaultCopy.template.announcement} from humagen` });
   assert.ok(notes.textContent?.includes("Slack catch-up"));
   assert.equal(notes.querySelector("[aria-hidden]")?.textContent, "", "no letter in a circle reads as a person called W");
-  assert.ok(screen.getByRole("heading", { name: "What's new in humagen 0.16.0" }));
+  assert.ok(screen.getByRole("heading", { name: "What's new in Humagen 0.16.0" }));
 });
 
 /** The room with ledger parked on a question for the billing experts, as the platform says it to `ask`. */

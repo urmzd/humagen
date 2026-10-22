@@ -26,7 +26,7 @@ func TestEachInboxKeepsWhatWasSettledForItsRetention(t *testing.T) {
 			}
 		}
 		p, stop := runningWith(t, cfg(first))
-		notes := platform.Announcement{Subject: "What's new in humagen 0.16.0", Text: "Inbox retention."}
+		notes := platform.Announcement{Subject: "What's new in Humagen 0.16.0", Text: "Inbox retention."}
 		release, ok, err := p.PostReleaseNotes(tenant, "0.16.0", notes)
 		if err != nil || !ok {
 			t.Fatalf("release notes = %v, %v", ok, err)

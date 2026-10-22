@@ -2,7 +2,7 @@ openapi: 3.2.0
 info:
   title: Humagen API
   version: 0.1.0
-  summary: The HTTP contract of the humagen agent platform.
+  summary: The HTTP contract of the Humagen agent platform.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -4370,7 +4370,9 @@ components:
         An OIDC access token issued for the API audience, sent as
         `Authorization: Bearer <token>`. A machine uses a client-credentials
         token and is granted exactly the scopes on it that are named
-        `humagen:<permission>`, for example `humagen:runs:write`. A person
+        `humagen:<permission>`, for example `humagen:runs:write`, or
+        `warp:<permission>`, the prefix before the product was renamed,
+        which is still honoured. A person
         using a CLI sends an access token too, and gets roles from its groups
         claim. An ID token is not an API credential and is refused. There is
         no revocation check beyond expiry.
@@ -5450,7 +5452,7 @@ components:
           type: string
           enum: [person, agent, system]
         by:
-          description: The person's handle, the agent's name, or `humagen` for what humagen posted itself.
+          description: The person's handle, the agent's name, or `humagen` for what Humagen posted itself (`warp` in records written before the rename).
           type: string
         name:
           description: What the person is called. Absent for an agent and for humagen itself (`system`).
@@ -8023,7 +8025,7 @@ components:
           description: "`env:NAME` when the secret lives in the server's environment."
           type: string
     SecretInput:
-      description: A secret as a caller writes it, as a value or as an `env:HUMAGEN_*` reference. Leave both out to keep the one held.
+      description: A secret as a caller writes it, as a value or as an `env:HUMAGEN_*` reference (`env:WARP_*`, the prefix before the rename, still works). Leave both out to keep the one held.
       type: object
       properties:
         value: {type: string}
