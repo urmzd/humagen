@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { defaultCopy } from "@warp/components";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Run } from "./adapter.ts";
 import type { ProjectAgentsView, Revision, ThreadPage } from "./api.ts";
@@ -395,4 +396,35 @@ test("a turn from before warp said whom a run acts for is not the reader's when 
   open(again, "ben", [{ ...anas, actor: bens, tag_id: "api-r-cccccccccccccccccccccc" }, again]);
   fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
   await waitFor(() => assert.ok(net?.seen.some((r) => r.method === "POST" && r.path === "/api/runs")));
+});
+
+test("a task the reader may not read reads as one that does not exist, never as Home with a composer", async () => {
+  // The server answers a private thread the reader is not in as it does one
+  // that is not there: 404, which stubFetch gives a route it was not told.
+  net = stubFetch({ "GET /api/projects/~/agents": () => workspace("lead") });
+  const noop = () => {};
+  render(
+    <Chat
+      threadId="th-private"
+      me="lee"
+      summary={undefined}
+      tick={0}
+      agents={agents}
+      homes={homes}
+      projects={[]}
+      canRun
+      canCreateProject={false}
+      greeting="Good morning, Lee"
+      onThread={noop}
+      onChanged={noop}
+      onProjectCreated={noop}
+    />,
+  );
+  // While it is read it is not Home either.
+  assert.ok(!screen.queryByText("Good morning, Lee"));
+  assert.ok(await screen.findByRole("heading", { level: 1, name: defaultCopy.threads.missingTask }));
+  assert.ok(screen.getByText(defaultCopy.projects.missingHint));
+  assert.ok(!screen.queryByText("Good morning, Lee"));
+  assert.ok(!screen.queryByRole("textbox"));
+  assert.ok(!net?.seen.some((r) => r.method === "POST"));
 });

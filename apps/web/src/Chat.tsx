@@ -16,7 +16,7 @@ import { useRunTurn } from "./Runs.tsx";
 import { itemActions } from "./itemActions.tsx";
 import { SessionGaugeFor } from "./SessionGauge.tsx";
 import { readFromStart } from "./turns.ts";
-import { AgentMark, AgentTint, cause, isWorking, Popover, Presence, Problem } from "./ui.tsx";
+import { AgentMark, AgentTint, cause, isWorking, Page, Popover, Presence, Problem, SkeletonRows } from "./ui.tsx";
 
 const auto = defaultCopy.auto;
 // Controls in the dock are text, not boxes: they sit under the composer and
@@ -264,10 +264,15 @@ export function Chat({
   const lastActivity = useRef(activity);
   if (activity) lastActivity.current = activity;
 
+  // What reading the conversation came to. One not read yet is not a new
+  // conversation, and one the reader may not see is not there: the server
+  // answers both alike (404), and so does the page.
+  const [read, setRead] = useState<"reading" | "read" | "missing" | "failed">(threadId ? "reading" : "read");
   // biome-ignore lint/correctness/useExhaustiveDependencies: tick is the refresh signal
   useEffect(() => {
     if (!threadId) {
       setRoom(null);
+      setRead("read");
       return setTurns([]);
     }
     let live = true;
@@ -278,8 +283,19 @@ export function Chat({
         if (!live) return;
         setRoom(p);
         setTurns(p.turns.flatMap((t) => (t.run ? [t.run] : [])));
+        setRead("read");
       })
-      .catch(() => live && setTurns([]));
+      .catch((e) => {
+        if (!live) return;
+        if (e instanceof ApiError && e.status === 404) {
+          setRoom(null);
+          setTurns([]);
+          setRead("missing");
+          return;
+        }
+        // A refresh that fails keeps what was read.
+        setRead((was) => (was === "reading" ? "failed" : was));
+      });
     return () => {
       live = false;
     };
@@ -574,6 +590,21 @@ export function Chat({
         onOpenChannel={(p, c) => onOpenChannel?.(p, c)}
         onChanged={onChanged}
       />
+    );
+  }
+
+  if (threadId && read === "missing") {
+    return (
+      <Page title={defaultCopy.threads.missingTask} lede={defaultCopy.projects.missingHint}>
+        {null}
+      </Page>
+    );
+  }
+  if (threadId && path.length === 0 && (read === "reading" || read === "failed")) {
+    return (
+      <section aria-label="Conversation" aria-busy={read === "reading"} className="mx-auto flex w-full max-w-4xl flex-col gap-3 px-4 pt-4">
+        {read === "failed" ? <Problem message={defaultCopy.threads.readFailed} /> : <SkeletonRows count={3} height="2.5rem" />}
+      </section>
     );
   }
 

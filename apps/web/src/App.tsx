@@ -506,6 +506,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             workspaceName={workspaceName}
             canRun={can("runs:write")}
             onOpenProject={() => go({ page: "project", name: route.project, tab: "channels" })}
+            onOpenProjects={() => go({ page: "projects" })}
             onOpenThread={openThread}
           />
         )}
