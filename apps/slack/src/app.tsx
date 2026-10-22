@@ -1046,16 +1046,22 @@ export class App {
    * Ask a turn again, in the thread it was asked in, for whoever the turn
    * acted for, as Retry in warp's inbox does. Retry and Resume both come here.
    *
-   * A turn that acted for a person used their own credentials, so only a
-   * Slack person this app's client maps to that same person may ask it again,
-   * and the new run is asked as them. Anyone else, an operator included, is
-   * refused: they would either run that person's words with their own
-   * credentials, or that person's credentials on a choice the person never
-   * made. A turn that acted for nobody is asked again for nobody, through the
-   * app, by the person who asked for it or an operator, so nobody's
-   * credentials are put behind words that were not theirs. Warp's record
-   * says whom a turn acted for, so a restart, which forgets who asked, changes
-   * none of this, except that only an operator may then ask again for nobody.
+   * A turn that acted for a person is theirs to ask again, so only a Slack
+   * person this app's client maps to that same person may, and the new run is
+   * asked as them. Anyone else, an operator included, is refused: they would
+   * either run that person's words with their own credentials, or that
+   * person's credentials on a choice the person never made. A turn that acted
+   * for nobody is asked again for nobody, through the app, by the person who
+   * asked for it or an operator, so nobody's credentials are put behind words
+   * that were not theirs. Warp's record says whom a turn acted for, so a
+   * restart, which forgets who asked, changes none of this, except that only
+   * an operator may then ask again for nobody.
+   *
+   * A turn this app asked as itself acted for its own credential: nobody when
+   * that is a machine, and the person it is when it is one, as under dev
+   * sign-in, where every request is that person's. Either way it is asked
+   * again as it was asked, through the app, so it acts for the same one, and
+   * whoever may ask again for nobody may ask it.
    *
    * The key names who pressed, so two people's presses are two runs and one
    * person pressing twice joins their first. The routing rules are checked
@@ -1065,7 +1071,9 @@ export class App {
     const session = await this.sessionOfRun(run);
     if (!session || session.team !== this.opts.team) return "elsewhere";
     const owner = this.requesters.get(run.id);
-    const person = actedFor(run);
+    const acted = actedFor(run);
+    // Asked through the app again, a turn the app asked as itself acts for the same one.
+    const person = acted === this.opts.subject ? "" : acted;
     let as: ActAs | null = null;
     if (person) {
       const mapped = await this.mapped(user);

@@ -135,8 +135,12 @@ that acted for a person used that person's own tool credentials, so only a
 Slack person the client maps to them may ask it again, and it is asked as
 them (`act_as`); anyone else, an operator included, is told so and nothing
 starts. A turn that acted for nobody is asked again for nobody, by the person
-who asked or an operator, and after a restart by an operator only. Each
-person's press is a run of its own, and pressing again joins it.
+who asked or an operator, and after a restart by an operator only. A turn the
+app asked as itself is asked again the same way, through the app, even when
+the app's own credential is a person (an empty `WARP_TOKEN` against a dev
+sign-in server, where every run acts for `dev`): asked as it was asked, it
+acts for the same one. Each person's press is a run of its own, and pressing
+again joins it.
 
 A question a run waits on is shown in its thread with warp's card and
 buttons. A click is answered through warp as the Slack person, only when

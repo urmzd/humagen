@@ -486,6 +486,42 @@ test("a turn that acted for nobody is asked again, for nobody, by the person who
   await watch;
 });
 
+test("when the app's own credential is a person, as under dev sign-in, a turn it asked as itself is asked again through it", async () => {
+  const w = world({ operators: ["U03ABCDEF"] });
+  w.warp.person = true;
+  const { run, blocks, ts } = await failedTurn(w);
+  assert.equal(
+    w.warp.runs.get(run)?.actor?.user,
+    SUBJECT,
+    "every run the app asks acts for its credential",
+  );
+
+  // The asker asks again through the app, as the turn was asked, so it acts for the same person.
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS }));
+  assert.equal(w.warp.started.length, 2);
+  assert.equal(w.warp.started[1]?.act_as, undefined);
+  assert.equal(w.warp.last.actor?.user, SUBJECT);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "Deployed." });
+  await w.app.idle();
+
+  // After a restart an operator may too, and anyone else is told no.
+  const app = w.restart();
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: OTHER_USER }), app);
+  await app.idle();
+  assert.equal(w.warp.started.length, 2);
+  assert.equal(
+    w.slack.of("chat.postEphemeral").at(-1)?.text,
+    "Only the person who asked can retry this.",
+  );
+  await deliver(w, click(blocks, defaultCopy.retry, { ts, threadTs: TS, user: "U03ABCDEF" }), app);
+  assert.equal(w.warp.started.length, 3);
+  assert.equal(w.warp.started[2]?.act_as, undefined);
+  await emit(w, "lifecycle.accepted");
+  await emit(w, "lifecycle.completed", { text: "ok" });
+  await app.idle();
+});
+
 test("after a restart, who asked is not known, so only an operator may ask again", async () => {
   const w = world({ operators: ["U03ABCDEF"] });
   const { blocks, ts } = await failedTurn(w);
