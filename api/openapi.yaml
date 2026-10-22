@@ -4377,8 +4377,8 @@ components:
         `Authorization: Bearer <token>`. A machine uses a client-credentials
         token and is granted exactly the scopes on it that are named
         `humagen:<permission>`, for example `humagen:runs:write`, or
-        `warp:<permission>`, the prefix before the product was renamed,
-        which is still honoured. A person
+        `warp:<permission>`, the old prefix from before the product was
+        renamed, which is still honoured. A person
         using a CLI sends an access token too, and gets roles from its groups
         claim. An ID token is not an API credential and is refused. There is
         no revocation check beyond expiry.

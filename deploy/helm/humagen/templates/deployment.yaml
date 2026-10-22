@@ -42,9 +42,9 @@ spec:
       # Long enough for runs in flight to settle on SIGTERM.
       terminationGracePeriodSeconds: 30
       containers:
-        # The old name for a release the warp chart installed (nameOverride), so
-        # patches and `kubectl logs -c` keep working.
-        - name: {{ include "humagen.name" . }}
+        # The old name for a release the warp chart installed, so patches
+        # and `kubectl logs -c` keep working (humagen.containerName).
+        - name: {{ include "humagen.containerName" . }}
           image: {{ include "humagen.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # The spec is the file; the chart forces only the listener and the

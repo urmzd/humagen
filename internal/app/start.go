@@ -99,7 +99,7 @@ func searchRoots() []string {
 		roots = append(roots, wd)
 	}
 	if exe, err := os.Executable(); err == nil {
-		// share/warp is where an install made before the rename keeps them.
+		// share/warp is the old install directory, from before the rename.
 		roots = append(roots, filepath.Dir(exe), filepath.Join(filepath.Dir(exe), "share", "humagen"), filepath.Join(filepath.Dir(exe), "share", legacy.ShareDir))
 	}
 	return roots

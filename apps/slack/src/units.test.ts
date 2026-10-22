@@ -196,7 +196,12 @@ test("config: a setting under its old WARP_ name is read, noted and loses to the
   assert.deepEqual(readConfig({ ...slack, HUMAGEN_TENANT: "acme" }).notes, []);
   // Launched by the server, which passes both names: nothing to note.
   assert.deepEqual(
-    readConfig({ ...slack, HUMAGEN_TENANT: "acme", WARP_TENANT: "acme", HUMAGEN_OLD_NAMES_COPIED: "1" }).notes,
+    readConfig({
+      ...slack,
+      HUMAGEN_TENANT: "acme",
+      WARP_TENANT: "acme",
+      HUMAGEN_OLD_NAMES_COPIED: "1",
+    }).notes,
     [],
   );
   assert.throws(

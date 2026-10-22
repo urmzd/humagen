@@ -99,3 +99,18 @@ the server down. A tag that is not a release version (a commit) is not dated.
 {{- end -}}
 {{- printf "%s:%s" .Values.image.repository $tag -}}
 {{- end -}}
+
+{{/*
+The container's name. The warp chart gave every container the old name,
+whatever its nameOverride, so a release it installed keeps the old name for
+patches and `kubectl logs -c`. Read from the running Deployment; a new
+release, or helm template, takes the chart's name.
+*/}}
+{{- define "humagen.containerName" -}}
+{{- $name := include "humagen.name" . -}}
+{{- $live := lookup "apps/v1" "Deployment" .Release.Namespace (include "humagen.fullname" .) | default dict -}}
+{{- range ((($live.spec | default dict).template | default dict).spec | default dict).containers | default list -}}
+{{- if eq .name "warp" -}}{{- $name = "warp" -}}{{- end -}}
+{{- end -}}
+{{- $name -}}
+{{- end -}}
