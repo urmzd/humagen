@@ -772,7 +772,7 @@ func (p *Platform) retryAnswer(ctx context.Context, tenant string, run runs.Run,
 	if err != nil {
 		return runs.Run{}, err
 	}
-	return p.answerMessage(ctx, tenant, th, m, t.Agent, t.Actor, t.ID, t.KeepsNotes)
+	return p.answerMessage(ctx, tenant, th, m, "", t.Agent, t.Actor, t.ID, t.KeepsNotes)
 }
 
 // decideMemory keeps the chosen proposals and discards the rest.

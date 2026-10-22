@@ -33,7 +33,12 @@ in the workspace, and has to be written.
 The list is applied three times: a bot or an auto-label that names an agent
 outside it is refused when the client is saved, a name in a message that is
 outside it is not read as an agent, and a tag for an agent outside it is
-dropped before it reaches the platform.
+dropped before it reaches the platform. In warp's threads it holds for every
+message the client's machine posts for a person, on the client's own surface
+or in any other thread, such as one started in the console: an agent outside
+it, a default outside it, and `@auto` for a client that lists its agents are
+refused there, never swapped. The person posting as themselves is held to no
+client's list.
 
 A client lends its actions (posting a message, reading a pull request) under the
 same rule. A run gets the actions of the client that raised it. On another

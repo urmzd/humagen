@@ -160,6 +160,47 @@ func TestAClientsListHoldsOnItsSurface(t *testing.T) {
 	}
 }
 
+// A client's allow-list holds wherever its credential posts for a person,
+// on its surface or not: a thread it starts for them with no surface, and a
+// message it posts for them in a thread started in the console. The person
+// posting as themselves is held to no client's list.
+func TestAClientsListHoldsWhereverItPostsForAPerson(t *testing.T) {
+	p, machine := slackRoom(t, func(in *platform.ClientInput) { in.Agents = []string{"helper"} })
+	ana := &platform.ActAs{Client: "app", User: "U0ANA"}
+	agents := func(got platform.Posted) []string {
+		out := []string{}
+		for _, r := range got.Runs {
+			out = append(out, r.Agent)
+		}
+		return out
+	}
+	started, err := p.StartThread(t.Context(), machine, platform.ThreadInput{
+		Project: "Field", Channel: "renewals", Visibility: threads.Shared, Text: "@lead and @auto look", ActAs: ana,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(started.Runs) != 0 || len(started.Refused) != 2 {
+		t.Fatalf("a thread the client started for ana with no surface started %v, refusing %+v", agents(started), started.Refused)
+	}
+	room := startThread(t, p, operator, platform.ThreadInput{Project: "Field", Text: "A room in the console.", PostOnly: true})
+	posted, err := p.PostMessage(t.Context(), machine, room.Thread.ID, platform.MessageInput{Text: "@lead and @helper look", ActAs: ana})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := agents(posted); !slices.Equal(got, []string{"helper"}) || len(posted.Refused) != 1 || posted.Refused[0].Name != "lead" {
+		t.Fatalf("a message the client posted for ana in a console thread started %v, refusing %+v", got, posted.Refused)
+	}
+	herself := auth.Principal{Subject: "ana", Tenant: tenant, Kind: auth.User, Roles: []auth.Role{auth.Operator}}
+	own, err := p.PostMessage(t.Context(), herself, room.Thread.ID, platform.MessageInput{Text: "@lead look"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := agents(own); !slices.Equal(got, []string{"lead"}) {
+		t.Fatalf("ana posting as herself started %v, refusing %+v", got, own.Refused)
+	}
+}
+
 // A client's machine reads the inbox of a person it maps, as them, and
 // nobody else reads through it.
 func TestAMachineReadsAMappedPersonsInbox(t *testing.T) {

@@ -619,9 +619,18 @@ func (p *Platform) startThread(ctx context.Context, who auth.Principal, in Threa
 	if err != nil {
 		return Posted{}, err
 	}
-	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, false, keeps)
+	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, false, keeps)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
+}
+
+// clientOf is the client whose credential posts for a person, "" for a
+// person who posts as themselves.
+func clientOf(as *ActAs) string {
+	if as == nil {
+		return ""
+	}
+	return as.Client
 }
 
 // PostMessage posts a person's message into a thread, and starts what it
@@ -701,7 +710,7 @@ func (p *Platform) PostMessage(ctx context.Context, who auth.Principal, id strin
 		return again, nil
 	}
 	p.repliedTo(who.Tenant, th.ID, m)
-	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, in.PostOnly, in.Answers != nil || in.reply, keeps)
+	out, err := p.carryOut(ctx, who.Tenant, tree, th, m, clientOf(in.ActAs), in.PostOnly, in.Answers != nil || in.reply, keeps)
 	out.Refused = append(out.Refused, unmapped...)
 	return out, err
 }
@@ -793,9 +802,11 @@ func (p *Platform) answerFromThread(ctx context.Context, who auth.Principal, as 
 }
 
 // carryOut starts what a posted message calls for, records what each of
-// its tags came to, and notifies the people and experts it tags. keeps says
-// the poster may change the project's notes (mayPost).
-func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, postOnly, reply, keeps bool) (Posted, error) {
+// its tags came to, and notifies the people and experts it tags. via is the
+// client whose credential posted it for its poster, "" for a person who
+// posted as themselves. keeps says the poster may change the project's notes
+// (mayPost).
+func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.Tree, th threads.Thread, m threads.Message, via string, postOnly, reply, keeps bool) (Posted, error) {
 	def, unavailable := p.defaultOf(tenant, th)
 	d := threads.Decide(threads.Input{Mentions: m.Mentions, Reply: reply, PostOnly: postOnly, Default: def, Unavailable: unavailable})
 	out := Posted{Runs: []runs.Run{}, Notified: []string{}, Refused: []threads.Mention{}, Rule: d.Rule, Reason: d.Reason}
@@ -808,7 +819,7 @@ func (p *Platform) carryOut(ctx context.Context, tenant string, tree *projects.T
 	actor := envelope.Actor{ID: m.By, Display: m.Name, User: m.By}
 	var answered []threads.Participant
 	start := func(agent string) (runs.Run, error) {
-		run, err := p.answerMessage(ctx, tenant, th, m, agent, actor, answerTagID(th.ID, m.ID, agent), keeps)
+		run, err := p.answerMessage(ctx, tenant, th, m, via, agent, actor, answerTagID(th.ID, m.ID, agent), keeps)
 		if err == nil {
 			out.Runs = append(out.Runs, run)
 			answered = append(answered, threads.Participant{Kind: threads.Agent, Name: run.Agent, AddedBy: m.By})
@@ -897,17 +908,13 @@ func answerTagID(thread, message, agent string) string {
 
 // answerMessage starts an agent answering a person's message, as the run
 // tagID names: @auto picks the agent first. The agent is sent its context and
-// the room's transcript up to the message, then the message. keeps pins that
-// the person it acts for may change the project's notes, as a turn does
-// (Turn.KeepsNotes).
-func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, agent string, actor envelope.Actor, tagID string, keeps bool) (runs.Run, error) {
-	// A client's allow-list holds what is answered on its surface: an
-	// agent it may not route to is refused, never swapped, and a client
-	// that lists its agents treats @auto as a name outside the list.
-	if th.Surface != nil {
-		if c, err := p.Clients.Get(tenant, th.Surface.Client); err == nil && !c.Routes(agent) {
-			return runs.Run{}, fmt.Errorf("%w: %s may not route to @%s", ErrNotAvailable, c.ID, agent)
-		}
+// the room's transcript up to the message, then the message. via is the
+// client whose credential posted the message for its poster, if one did.
+// keeps pins that the person it acts for may change the project's notes, as
+// a turn does (Turn.KeepsNotes).
+func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.Thread, m threads.Message, via, agent string, actor envelope.Actor, tagID string, keeps bool) (runs.Run, error) {
+	if err := p.mayRoute(tenant, th, via, agent); err != nil {
+		return runs.Run{}, err
 	}
 	meta := map[string]string{
 		runs.MetaAsk: m.Text, runs.MetaThread: th.ID, runs.MetaPrev: m.ID, runs.MetaMessage: m.ID,
@@ -933,6 +940,32 @@ func (p *Platform) answerMessage(ctx context.Context, tenant string, th threads.
 		ID: tagID, Tenant: tenant, Agent: agent, Origin: runs.OriginAPI,
 		Text: p.contextIn(tenant, th.Project, th.Channel, agent, body), Actor: actor, Meta: meta,
 	})
+}
+
+// mayRoute holds an agent answering a message to the allow-lists of the
+// clients it reaches the thread through: the client whose surface the
+// thread is on, and the client whose credential posted the message for a
+// person, wherever the thread is. An agent either may not route to is
+// refused, never swapped, and a client that lists its agents treats @auto
+// as a name outside the list. A client that posted the message and is gone
+// now routes to nothing.
+func (p *Platform) mayRoute(tenant string, th threads.Thread, via, agent string) error {
+	if th.Surface != nil {
+		if c, err := p.Clients.Get(tenant, th.Surface.Client); err == nil && !c.Routes(agent) {
+			return fmt.Errorf("%w: %s may not route to @%s", ErrNotAvailable, c.ID, agent)
+		}
+	}
+	if via == "" || th.Surface != nil && th.Surface.Client == via {
+		return nil
+	}
+	c, err := p.Clients.Get(tenant, via)
+	if err != nil {
+		return fmt.Errorf("%w: the client this was posted through is gone", ErrNotAvailable)
+	}
+	if !c.Routes(agent) {
+		return fmt.Errorf("%w: %s may not route to @%s", ErrNotAvailable, c.ID, agent)
+	}
+	return nil
 }
 
 // maxRoomDepth bounds how many times a transcript follows a branch back from
