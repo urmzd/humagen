@@ -45,7 +45,7 @@ spec:
         # The old name for a release the warp chart installed (nameOverride), so
         # patches and `kubectl logs -c` keep working.
         - name: {{ include "humagen.name" . }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "humagen.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # The spec is the file; the chart forces only the listener and the
           # console's directory, which are the image's, as flags that win.

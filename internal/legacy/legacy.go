@@ -2,7 +2,10 @@ package legacy
 
 import (
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
+	"strings"
 )
 
 // Names the product had as warp that are still read, each with a note.
@@ -81,4 +84,38 @@ const (
 // CacheDir/workspace under the user cache directory.
 func WorkspaceDir(userCacheDir string) string {
 	return filepath.Join(userCacheDir, CacheDir, "workspace")
+}
+
+// FirstRelease is the first release under the new name, the oldest whose
+// image reads the specs written now (api_version humagen/v1).
+const FirstRelease = "0.21.0"
+
+var releaseTag = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?$`)
+
+// BeforeRename reports whether an image tag names a release before
+// FirstRelease, which cannot read the spec this release writes. A tag that
+// is not a release version (latest, a commit) cannot be dated and is not.
+func BeforeRename(tag string) bool {
+	m := releaseTag.FindStringSubmatch(tag)
+	if m == nil {
+		return false
+	}
+	first := releaseTag.FindStringSubmatch(FirstRelease)
+	for i := 1; i <= 3; i++ {
+		a, _ := strconv.Atoi(m[i])
+		b, _ := strconv.Atoi(first[i])
+		if a != b {
+			return a < b
+		}
+	}
+	// A pre-release of the first release came before it.
+	return m[4] != ""
+}
+
+// ImageTag is the tag of an image reference, or "" when it has none.
+func ImageTag(image string) string {
+	if i := strings.LastIndexAny(image, ":/@"); i >= 0 && image[i] == ':' {
+		return image[i+1:]
+	}
+	return ""
 }

@@ -179,3 +179,14 @@ func TestNoteNamed(t *testing.T) {
 		t.Errorf("notes %q", got)
 	}
 }
+
+func TestBeforeTheRename(t *testing.T) {
+	for tag, want := range map[string]bool{
+		"0.20.2": true, "v0.9.0": true, "0.20.2-rc.1": true, "0.21.0": false, "v0.21.0": false, "0.21.0-rc.1": true,
+		"1.0.0": false, "latest": false, "sha-abc": false, "": false, "0.21": false,
+	} {
+		if got := legacy.BeforeRename(tag); got != want {
+			t.Errorf("BeforeRename(%q) = %v", tag, got)
+		}
+	}
+}

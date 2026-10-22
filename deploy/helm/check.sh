@@ -59,6 +59,10 @@ refuse --set replicaCount=2
 refuse --set system.spec.auth.kind=dev
 refuse --set system.spec.auth.kind=tailscale
 refuse --set system.spec.auth.oidc.issuer=
+refuse --set image.tag=0.20.2
+refuse --set image.tag=v0.9.0
+"$helm" template humagen "$chart" -f "$chart/ci/default-values.yaml" --set image.tag=sha-abc123 >/dev/null
+"$helm" template humagen "$chart" -f "$chart/ci/default-values.yaml" --set image.tag=v0.21.0 >/dev/null
 # A release the warp chart installed keeps its names with nameOverride: warp:
 # the same Deployment, Service, PVC and selector as before the rename.
 "$helm" template warp "$chart" -f "$chart/ci/default-values.yaml" --set nameOverride=warp >"$work/upgrade.yaml"

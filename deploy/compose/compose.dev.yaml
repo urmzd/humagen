@@ -17,6 +17,7 @@ services:
     command: serve -f /etc/warp -addr 127.0.0.1:${HUMAGEN_PORT:-${WARP_PORT:-8080}} -web /usr/share/warp/web -seed ${HUMAGEN_EXTRA_ARGS:-${WARP_EXTRA_ARGS:-}}
     environment:
       HUMAGEN_POSTGRES_URL: postgres://warp:${POSTGRES_PASSWORD:-warp}@127.0.0.1:5432/warp?sslmode=disable
+      WARP_POSTGRES_URL: postgres://warp:${POSTGRES_PASSWORD:-warp}@127.0.0.1:5432/warp?sslmode=disable
     volumes:
       - ./dev:/etc/warp:ro
     healthcheck:

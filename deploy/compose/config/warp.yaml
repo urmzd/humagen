@@ -6,7 +6,7 @@ api_version: warp/v1
 kind: System
 metadata:
   name: warp
-  display_name: Warp
+  display_name: Humagen
 spec:
   server:
     # Where browsers reach warp. The OIDC redirect URI is this plus

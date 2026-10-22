@@ -84,3 +84,18 @@ upgrade, Flux and humagen deploy; helm template sees nothing and renders.
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+The image must read the spec this chart writes (api_version humagen/v1),
+which no release before 0.21.0 does: with Recreate, such an image would take
+the server down. A tag that is not a release version (a commit) is not dated.
+*/}}
+{{- define "humagen.image" -}}
+{{- $tag := toString (.Values.image.tag | default .Chart.AppVersion) -}}
+{{- if regexMatch "^v?[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$" $tag -}}
+{{- if semverCompare "<0.21.0-0" (trimPrefix "v" $tag) -}}
+{{- fail (printf "image tag %s is a release from before the rename, which cannot read the spec this chart writes; use 0.21.0 or later (docs/upgrading-from-warp.md#kubernetes)" $tag) -}}
+{{- end -}}
+{{- end -}}
+{{- printf "%s:%s" .Values.image.repository $tag -}}
+{{- end -}}

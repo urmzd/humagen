@@ -104,8 +104,11 @@ and `humagen_token`. A file that sets both names of one field is refused.
 `humagen config print` writes the new names.
 
 The shipped compose specs (`deploy/compose/config/warp.yaml` and
-`deploy/compose/dev/warp.yaml`) keep their names and their contents, since
-people edit them in place.
+`deploy/compose/dev/warp.yaml`) keep their file names, `api_version: warp/v1`,
+their `metadata.name`, OIDC client and audience and their `env:WARP_*`
+references, since people edit them in place and an image from before the
+rename must still read them. Only `display_name` changed, to Humagen, which
+names the console and the Slack app.
 
 ## Sign-in
 
@@ -130,7 +133,7 @@ release: set `nameOverride: warp` and it keeps every name and the volume.
 
 ```sh
 helm upgrade warp deploy/helm/humagen -n warp --reuse-values \
-  --set nameOverride=warp --set image.tag=<a tag built from this release> --wait --atomic
+  --set nameOverride=warp --set image.tag=<0.21.0 or later> --wait --atomic
 ```
 
 `--reuse-values` keeps the old image tag, which cannot read the spec this
@@ -145,8 +148,12 @@ and asks nothing, so add `nameOverride: warp` to the kubernetes block's
 values when writing for such a release; the chart refuses it otherwise. The guard reads the cluster, so `helm template` renders without
 it.
 
-Build the image from the same commit as the chart: the chart writes
-`api_version: humagen/v1`, which images from before the rename refuse. The
+The image must be 0.21.0 or later, the first release under the new name: the
+chart writes `api_version: humagen/v1`, which images from before the rename
+refuse. The chart's default tag is 0.21.0, and the chart, and `humagen deploy`,
+refuse a release tag older than that rather than roll an image that would
+crash. A tag that is not a release version (a commit, `latest`) is not
+checked: build it from this release or later. The
 chart's defaults reference `HUMAGEN_OIDC_CLIENT_SECRET` and
 `HUMAGEN_POSTGRES_URL`; a Secret that holds `WARP_OIDC_CLIENT_SECRET` and
 `WARP_POSTGRES_URL` keeps working with the new image. The paths in the pod
@@ -159,12 +166,14 @@ Flux uninstalls and reinstalls a release whose chart changes name, unless the
 Deployment and Service, and leaves the guard above nothing to check. The
 example's `HelmRelease` therefore sets
 `spec.upgrade.chartNameChangeStrategy: InPlaceUpdate`, and its values set
-`nameOverride: warp`. A cluster that copied `deploy/flux/app` changes three
+`nameOverride: warp`. A cluster that copied `deploy/flux/app` changes four
 things in its copy, in one commit:
 
 - `spec.chart.spec.chart: ./deploy/helm/humagen`
 - `spec.upgrade.chartNameChangeStrategy: InPlaceUpdate`
 - `nameOverride: warp` in its values
+- `image.tag` in its values: 0.21.0 or later (a copy of the old example pins
+  `0.9.0`, which cannot read the spec; the chart refuses it)
 
 and points its `GitRepository`'s `url` at `https://github.com/urmzd/humagen`.
 Until the chart path changes, the chart fetch fails and the running release
@@ -172,9 +181,13 @@ stays as it is. The namespace, the `HelmRelease`, the `GitRepository`, the
 `Kustomization` and the `warp-env` Secret keep their names: the example
 `Kustomization` prunes, so renaming any of them would delete it.
 
-`chartNameChangeStrategy` needs helm-controller 1.6.0 or later (Flux 2.7).
-An older controller does not know the field and may drop it, and then
-reinstalls the release: upgrade Flux first.
+`chartNameChangeStrategy` needs helm-controller 1.6.0 or later, which first
+ships with Flux 2.9 (Flux 2.7 ships 1.4.0, and 2.8 ships 1.5.0). An older
+controller drops the field and uninstalls and reinstalls the release when the
+chart's name changes. On Flux before 2.9, upgrade Flux first. Until then, keep
+the cluster on the warp chart: pin the `GitRepository` to the tag `v0.20.2`
+(`ref: {tag: v0.20.2}`) and leave the chart path `./deploy/helm/warp`, so
+nothing changes until Flux can upgrade the release in place.
 
 ## Compose
 
@@ -182,12 +195,16 @@ reinstalls the release: upgrade Flux first.
 (`warp_warp-data`, `warp_postgres-data`) and its Postgres user, database and
 default password, so an existing stack keeps its data. A `.env` with `WARP_`
 names keeps working: each `HUMAGEN_` variable in `compose.yaml` falls back to
-its `WARP_` name. The default image tag is `humagen:local`, built on the next
-`docker compose up --build`.
+its `WARP_` name, and the stack sets the database URL under both names, so a
+rollback to an image from before the rename still finds it. The default image
+tag is `humagen:local`, built on the next `docker compose up --build`.
 
 A compose project `humagen deploy` wrote keeps its identity too, and is
 written again to `.warp/compose` when an earlier deploy wrote there. Its file
-passes each variable a spec names from the shell under either name.
+passes each variable a spec names from the shell under either name. Its
+`compose.image` must be 0.21.0 or later: deploy refuses an older release tag,
+whose image cannot read the spec it writes, and does not check a tag that is
+not a release version.
 
 ## Image
 

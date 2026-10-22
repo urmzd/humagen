@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"go.yaml.in/yaml/v3"
+
 	"github.com/urmzd/humagen/internal/legacy"
 	"github.com/urmzd/humagen/pkg/credref"
 	"github.com/urmzd/humagen/pkg/spec"
@@ -218,5 +220,28 @@ func TestSetupKeepsAnOldSpecOldUnderAnyName(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(fresh); !strings.Contains(string(b), "api_version: humagen/v1") {
 		t.Errorf("setup wrote a new spec in the old language:\n%s", b)
+	}
+}
+
+// The compose stack passes the database URL under both names: the kept
+// config/warp.yaml and an image from before the rename read the old one.
+func TestTheComposeStackSetsTheDatabaseURLUnderBothNames(t *testing.T) {
+	for _, f := range []string{"../../deploy/compose/compose.yaml", "../../deploy/compose/compose.dev.yaml"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var c struct {
+			Services map[string]struct {
+				Environment map[string]string `yaml:"environment"`
+			} `yaml:"services"`
+		}
+		if err := yaml.Unmarshal(b, &c); err != nil {
+			t.Fatal(err)
+		}
+		env := c.Services["warp"].Environment
+		if env["HUMAGEN_POSTGRES_URL"] == "" || env["HUMAGEN_POSTGRES_URL"] != env["WARP_POSTGRES_URL"] {
+			t.Errorf("%s: environment %v", f, env)
+		}
 	}
 }
