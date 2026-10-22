@@ -596,7 +596,9 @@ ingress overwrites whatever a connector put there (phase 8).
   project's owner: a project's notes are changed only through its own
   routes and the inbox, each asking what the project asks. The memory agent
   writes as today: to the run's own project, or to the agent for a run at
-  the root. It never writes from a private thread (phase 7). With
+  the root. It never writes from a private thread (phase 7), nor from a
+  conversation that acted for a person with a person-scoped tool, whose
+  answers may carry what that person's own credential reached. With
   `memory_auto_approve` on, what it writes for the workspace or a company
   project still waits for someone holding `projects:govern`, since the turn
   that taught it needed only `runs:write`.

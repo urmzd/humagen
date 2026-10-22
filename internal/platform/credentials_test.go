@@ -27,6 +27,7 @@ import (
 	"github.com/urmzd/warp/pkg/auth"
 	"github.com/urmzd/warp/pkg/credentials"
 	"github.com/urmzd/warp/pkg/credref"
+	"github.com/urmzd/warp/pkg/memory"
 	"github.com/urmzd/warp/pkg/runs"
 	"github.com/urmzd/warp/pkg/state/statetest"
 )
@@ -54,29 +55,63 @@ const (
 // toolUser is a model that calls issues__search whenever it is offered,
 // answers once it has the result, and says it has no tools when it is
 // offered none. It keeps every request it is sent.
+//
+// Recalling, it answers with what the search found, repeats it whenever it
+// is in what it was sent, and as the memory agent proposes the answer of the
+// exchange it is shown as a note.
 type toolUser struct {
-	mu    sync.Mutex
-	sent  []string
-	tools [][]string
+	mu     sync.Mutex
+	sent   []string
+	tools  [][]string
+	recall bool
 }
+
+// found is what the issues search tells a recalling model.
+const found = "The tracker holds PRIV-7, a payroll export bug."
 
 func (m *toolUser) Stream(ctx context.Context, req saigetypes.Request) (<-chan saigetypes.Delta, error) {
 	var names []string
 	for _, t := range req.Tools {
 		names = append(names, t.Name)
 	}
+	text := userText(req.Messages)
 	m.mu.Lock()
 	m.sent = append(m.sent, fmt.Sprintf("%+v", req.Messages))
 	m.tools = append(m.tools, names)
+	recall := m.recall
 	m.mu.Unlock()
 	reply := agenttest.TextResponse("I have no issue tools.")
 	switch {
+	case recall && strings.Contains(text, "should remember for later conversations"):
+		lines := strings.Split(strings.TrimSpace(text), "\n")
+		_, answer, _ := strings.Cut(lines[len(lines)-1], ": ")
+		reply = agenttest.TextResponse(answer)
+	case hasToolResult(req.Messages) && recall:
+		reply = agenttest.TextResponse(found)
 	case hasToolResult(req.Messages):
 		reply = agenttest.TextResponse("Done.")
 	case slices.Contains(names, searchTool):
 		reply = agenttest.ToolCallResponse("call-search", searchTool, map[string]any{"q": "bugs"})
+	case recall && strings.Contains(text, found):
+		reply = agenttest.TextResponse(found)
 	}
 	return (&agenttest.ScriptedProvider{Responses: [][]saigetypes.Delta{reply}}).Stream(ctx, req)
+}
+
+// userText is the text of every user message, in order.
+func userText(msgs []saigetypes.Message) string {
+	var b strings.Builder
+	for _, msg := range msgs {
+		if m, ok := msg.(saigetypes.UserMessage); ok {
+			for _, p := range m.Parts {
+				if t, ok := p.(saigetypes.TextPart); ok {
+					b.WriteString(t.Text)
+					b.WriteString("\n")
+				}
+			}
+		}
+	}
+	return b.String()
 }
 
 func hasToolResult(msgs []saigetypes.Message) bool {
@@ -625,4 +660,109 @@ func TestWhoARunActsFor(t *testing.T) {
 	if a := platform.PersonActor("okta|00u1ana"); a.User != "okta|00u1ana" || a.Bot {
 		t.Errorf("a mapped person's actor = %+v", a)
 	}
+}
+
+// What a person's own credential reached is theirs, and every note the memory
+// agent writes is sent to other people's runs: a project's to every run in it
+// and below it, an agent's to every run of that agent. So a turn whose
+// conversation acted for a person with an agent granted a person-scoped
+// provider teaches no memory, even with approval turned off, while turns that
+// could not carry it are taught as before.
+func TestWhatAPersonsCredentialReachedIsNotTaughtToMemory(t *testing.T) {
+	w := newWorld(t, platform.Config{OfflineHooks: true})
+	w.model.mu.Lock()
+	w.model.recall = true
+	w.model.mu.Unlock()
+	ctx := t.Context()
+	// lead, which every world has, is granted no tools.
+	if _, err := w.p.Agents.Create(ctx, tenant, agentspec.AgentSpec{Name: "scribe", Model: "offline", Provider: "offline", SystemPrompt: "x"}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.p.SetSettings(ctx, tenant, platform.Settings{MemoryAgent: "scribe", MemoryAutoApprove: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.p.CreateProject(ctx, tenant, ada, platform.ProjectInput{Name: "Launch"}); err != nil {
+		t.Fatal(err)
+	}
+	w.connect(t, ana, credentials.Input{Ref: "env:WARP_PERSON_ANA_ISSUES"})
+	turn := func(id, agent, project, after, text string, actor envelope.Actor) runs.Run {
+		t.Helper()
+		r, err := w.p.Converse(ctx, tenant, platform.Turn{ID: id, Agent: agent, Text: text, Project: project, After: after, Actor: actor})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return await(t, w.p, r.ID, runs.Completed)
+	}
+
+	// Ana's turn in Launch reads her issues with her own token.
+	first := turn("api-ana-1", "worker", "Launch", "", "Any open bugs?", platform.ActorOf(ana))
+	if first.Answer != found {
+		t.Fatalf("ana's turn answered %q", first.Answer)
+	}
+	// An agent with no tools of its own answering her next turn is sent
+	// what the first found, and repeats it.
+	second := turn("api-ana-2", "lead", "", first.ID, "Say that again", platform.ActorOf(ana))
+	if second.Answer != found {
+		t.Fatalf("ana's follow-up answered %q", second.Answer)
+	}
+	// At the root, what is learned would be the agent's own.
+	third := turn("api-ana-3", "worker", "", "", "Any open bugs?", platform.ActorOf(ana))
+
+	// A turn that reached nobody's credential is taught as before: an agent
+	// with no person's tools, and the agent that has them acting for nobody.
+	turn("api-ben-1", "lead", "Launch", "", "Plan the launch", platform.ActorOf(ben))
+	turn("api-app-1", "worker", "", "", "Any open bugs?", platform.ActorOf(slackApp))
+	launch := memory.ProjectOwner("Launch")
+	within(t, "the turns that reached no credential are taught", func() bool {
+		return len(w.p.Memory.List(tenant, launch)) > 0 && len(w.p.Memory.List(tenant, "worker")) > 0
+	})
+	untaught := func(turns ...runs.Run) {
+		t.Helper()
+		for _, owner := range []string{launch, "worker", "lead"} {
+			for _, n := range w.p.Memory.List(tenant, owner) {
+				if strings.Contains(n.Text, "PRIV-7") {
+					t.Fatalf("what ana's credential reached was kept in %s's notes: %+v", owner, n)
+				}
+			}
+		}
+		for _, r := range w.p.Runs.List(tenant, 200) {
+			for _, taught := range turns {
+				if r.Origin == runs.OriginSystem && r.TagID == "sys-memory-"+taught.ID {
+					t.Fatalf("the memory agent was asked about %s", taught.TagID)
+				}
+			}
+		}
+	}
+	untaught(first, second, third)
+
+	// So ben's next turn in Launch is not sent it.
+	bens := turn("api-ben-2", "lead", "Launch", "", "What do we know?", platform.ActorOf(ben))
+	if strings.Contains(bens.Answer, "PRIV-7") {
+		t.Fatalf("ben's turn answered with ana's issue: %q", bens.Answer)
+	}
+	sent, _ := w.model.requests()
+	for _, s := range sent {
+		if strings.Contains(s, "What do we know?") && strings.Contains(s, "PRIV-7") {
+			t.Fatalf("ben's turn was sent ana's issue: %.400s", s)
+		}
+	}
+
+	// A provider made shared since still counts for the turns before the
+	// change: what they found was found with ana's token.
+	rec, err := w.p.ToolProviders.GetProvider(ctx, tenant, "issues")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.CredentialScope, rec.CredentialRef = toolprovider.ScopeShared, "env:WARP_SHARED_TOKEN"
+	if _, err := w.p.ToolProviders.PutProvider(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	later := turn("api-ana-4", "lead", "", first.ID, "Say that again", platform.ActorOf(ana))
+	if later.Answer != found {
+		t.Fatalf("ana's later follow-up answered %q", later.Answer)
+	}
+	turn("api-ben-3", "lead", "", "", "Plan the week", platform.ActorOf(ben))
+	within(t, "lead's turn at the root is taught", func() bool { return len(w.p.Memory.List(tenant, "lead")) > 0 })
+	untaught(later)
+	w.leaks(t, environment["WARP_PERSON_ANA_ISSUES"])
 }

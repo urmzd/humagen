@@ -352,6 +352,13 @@ Both are checked again on every run, so a value is not used once values are
 turned off, and a reference is not used once it is no longer the person's
 own under a listed start.
 
+What a person's tools found is not remembered. Memory is shared: an agent's
+notes are sent to every run of that agent, and a project's to every run in
+it and below it, whoever the run acts for. So the memory agent is not asked
+about a turn whose conversation, up to and including it, has a turn that
+acted for a person and was answered by an agent granted a person-scoped
+tool, whichever agent answers the turn and whether or not approval is on.
+
 ## Which level a knob lives at
 
 | Concern | Level | Why |

@@ -168,6 +168,9 @@ no permission, grants nothing.
 - **Memory refuses personal data.** Every note, from a person or an agent,
   passes saige's memory policy, which rejects text its detector finds personal
   data in.
+- **Memory is never drawn from a person's own credential.** The memory agent
+  is not asked about a turn whose conversation acted for a person with a
+  person-scoped tool ([Tool credentials](#tool-credentials)).
 - **Project memory reaches only that project.** A turn is sent a project's
   shared notes only when its conversation is filed in that project.
 - **Knowledge stays in its tenant.** A turn is grounded only in the sources
@@ -252,6 +255,25 @@ Both are checked again each time a run uses them: a stored value is not used
 once the workspace turns values off, and a reference is not used once it
 is no longer the person's own under a listed start. A person sees where their credential is sent (the
 endpoint of an http provider) before they connect it.
+
+What a person's credential reached is not written into memory. No memory is
+read by one person alone: an agent's notes are sent to every run of that
+agent, and a project's to every run in it and, as an ancestor's notes, to
+every run below it, including runs for other people and runs for nobody. A
+turn's answer is built from its tool results and from the conversation so
+far, so the memory agent is not asked about a turn when it, or any turn
+before it on its branch, acted for a person and was answered by an agent
+revision granted a person-scoped provider. This holds whichever agent
+answers the later turn, whoever it acts for, and with `memory_auto_approve`
+on or off: a proposal waiting in the inbox would show the data to whoever
+reviews it. Where that cannot be told, it is assumed: a branch whose
+earlier turns the run index no longer holds, a revision or a provider that
+cannot be found, and a provider changed since the turn.
+`TestWhatAPersonsCredentialReachedIsNotTaughtToMemory` has Ana's turn in a
+team project read her issues with her token, with approval off, and checks
+that neither her turn nor a tool-less agent's follow-up to it is taught,
+that a turn that reached no credential still is, and that Ben's next turn
+in the project is not sent her issue.
 
 ## Dev auth
 
@@ -415,7 +437,9 @@ that kind.
   no value. Values for people are off unless a workspace turns them on.
 - Memory written by the memory agent can carry whatever a conversation
   persuaded it to write, into later conversations. It is visible and removable,
-  and off by default, but nothing reviews a note before it is used.
+  and off by default, but nothing reviews a note before it is used. It is
+  never drawn from a conversation that acted for a person with a
+  person-scoped tool.
 - Dictation uses the browser's speech recognition. In Chrome that sends audio
   to the browser vendor's service, not to this server.
 - No OAuth to third parties: nobody signs in to a third party through warp.
