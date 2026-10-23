@@ -210,6 +210,21 @@ function screens(ids: Ids): Screen[] {
     { name: "monitor-rules", path: "/monitor/rules" },
     { name: "context", path: "/context" },
     { name: "agents", path: "/agents" },
+    {
+      name: "agent-colors",
+      path: "/agents",
+      act: async (page) => {
+        await page.getByRole("searchbox", { name: "Find an agent" }).fill("z-color");
+        await page.getByText("z-color-0", { exact: true }).first().waitFor();
+        const hues = await page
+          .locator("main ul > li span[data-accent='agent']")
+          .evaluateAll((marks) =>
+            marks.map((mark) => (mark as HTMLElement).style.getPropertyValue("--aui-accent-h")),
+          );
+        if (hues.length < 13 || new Set(hues).size !== hues.length)
+          throw new Error(`Agent hues collide: ${hues.join(",")}`);
+      },
+    },
     ...[
       "prompt",
       "model",
@@ -653,6 +668,16 @@ async function main(): Promise<void> {
         model: "unavailable",
         provider: "anthropic",
         system_prompt: a.description,
+      });
+    }
+    // More than twelve agents exercises the palette beyond the original hash.
+    for (let i = 0; i < 13; i++) {
+      await call("POST", "/api/agents", {
+        name: `z-color-${i}`,
+        description: "Color reservation example.",
+        model: "offline",
+        provider: "offline",
+        system_prompt: "Help.",
       });
     }
     const ran = await call<{ id: string; thread?: string }>("POST", "/api/runs", {

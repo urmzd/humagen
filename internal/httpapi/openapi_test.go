@@ -931,6 +931,13 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(ana, "DELETE", mine, "/api/me/credentials/issues", "", http.StatusNotFound)
 
 	// Agents, revisions and what they remember.
+	c.call(acme, "GET", "/api/agent-hues", "/api/agent-hues?names=missing", "", http.StatusOK)
+	c.call(acme, "GET", "/api/project-agent-hues", "/api/project-agent-hues?names=missing", "", http.StatusOK)
+	c.call(acme, "GET", "/api/project-agent-hues", "/api/project-agent-hues?names="+strings.Repeat("x,", 100)+"x", "", http.StatusBadRequest)
+	c.call(f.machine(t, "acme"), "GET", "/api/project-agent-hues", "/api/project-agent-hues?names=missing", "", http.StatusForbidden)
+	c.call(acme, "GET", "/api/agent-hues", "/api/agent-hues?names="+strings.Repeat("x,", 100)+"x", "", http.StatusBadRequest)
+	c.call(f.machine(t, "acme"), "GET", "/api/agent-hues", "/api/agent-hues?names=missing", "", http.StatusForbidden)
+
 	c.call(acme, "POST", "/api/agents", "/api/agents", helperSpec, http.StatusCreated)
 	c.call(acme, "POST", "/api/agents", "/api/agents", helperSpec, http.StatusConflict)
 	c.call(acme, "POST", "/api/agents", "/api/agents", `{"name":"helper","metadata":{}}`, http.StatusBadRequest)
