@@ -46,6 +46,7 @@ import (
 	"github.com/urmzd/playscape/pkg/workspace"
 
 	"github.com/urmzd/humagen/internal/legacy"
+	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/auth"
@@ -201,6 +202,8 @@ type Platform struct {
 	Feedback  *feedback.Store
 	Prefs     *prefs.Store
 	Memory    *memory.Store
+	// AgentColors reserves each workspace's stable agent hues.
+	AgentColors *agentcolors.Store
 	// Projects is each tenant's tree of projects.
 	Projects *projects.Store
 	// People is each tenant's directory of people.

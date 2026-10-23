@@ -2927,9 +2927,18 @@ export interface ListReadAuditResponse {
   records: ListReadAuditResponseRecordsItem[];
 }
 
+export interface GetAgentHuesResponse {
+  hues: Record<string, number>;
+}
+
+export interface GetProjectAgentHuesResponse {
+  hues: Record<string, number>;
+}
+
 export interface ListAgentsResponse {
   agents: Revision[];
   builtin: string[];
+  hues: Record<string, number>;
   homes: Record<string, string>;
   enabled_in: Record<string, string[]>;
 }

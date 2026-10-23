@@ -1,7 +1,8 @@
+import { agentHue, requestAgentHue, subscribeHues } from "./agentHues.ts";
 import { BanIcon, CheckIcon, ChevronDownIcon, ShieldIcon, Tooltip, XIcon } from "@humagen/render-web";
 import { defaultCopy } from "@humagen/components";
 import { AgentOrb, type OrbState } from "@humagen/web";
-import { type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Run } from "./adapter.ts";
 import { cause, dollars, elapsed, took } from "./format.ts";
 import { moreOf, nudgeInto, revealAt } from "./layout.ts";
@@ -498,16 +499,20 @@ export function Tape({
   );
 }
 
-/** How many hues agents are drawn from: twelve, 30 degrees apart, so two that differ are told apart. */
+/** The original palette, retained as the fallback before the agent list arrives. */
 export const AGENT_HUES = 12;
+export { setAgentHues } from "./agentHues.ts";
 
-/**
- * A stable hue for a name, so an agent keeps its color everywhere it
- * appears. Names fall on one of AGENT_HUES evenly spaced hues, never on one
- * a few degrees from another's, and the hash is seeded so humagen's own agents
- * and the seeded ones each take a hue of their own (ui.test.tsx).
- */
+function useAgentHue(name: string): number | undefined {
+  const hue = useSyncExternalStore(subscribeHues, () => agentHue(name), () => agentHue(name));
+  useEffect(() => { requestAgentHue(name); }, [name]);
+  return hue;
+}
+
+/** A server-reserved hue, with the original mapping while loading. */
 export function hueOf(name: string): number {
+  const assigned = agentHue(name);
+  if (assigned !== undefined) return assigned;
   let h = 186;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 1000003;
   return (h % AGENT_HUES) * (360 / AGENT_HUES);
@@ -519,6 +524,7 @@ export function hueOf(name: string): number {
  * agent alone.
  */
 export function AgentTint({ name, className, children }: { name: string; className?: string; children: ReactNode }) {
+  useAgentHue(name);
   return (
     <div data-accent="agent" className={className} style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}>
       {children}
@@ -532,6 +538,8 @@ export function AgentTint({ name, className, children }: { name: string; classNa
  * and the presence in a conversation are one thing. At rest it is still.
  */
 export function AgentMark({ name, size = 18, state = "idle" }: { name: string; size?: number; state?: OrbState }) {
+  const hue = useAgentHue(name);
+  if (hue === undefined) return <span aria-hidden className="inline-block shrink-0" style={{ width: size, height: size }} />;
   return (
     <span data-accent="agent" className="inline-flex shrink-0 items-center align-middle" style={{ "--aui-accent-h": hueOf(name) } as CSSProperties}>
       <AgentOrb state={state} size={size} label="" />

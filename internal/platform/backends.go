@@ -11,6 +11,7 @@ import (
 	"github.com/urmzd/fiber/pkg/durable"
 	"github.com/urmzd/fiber/pkg/registry"
 
+	"github.com/urmzd/humagen/pkg/agentcolors"
 	"github.com/urmzd/humagen/pkg/alerts"
 	"github.com/urmzd/humagen/pkg/artifacts"
 	"github.com/urmzd/humagen/pkg/callpolicy"
@@ -111,6 +112,8 @@ func (p *Platform) openStores(cfg Config) error {
 		}
 	}
 	var err error
+	p.AgentColors, err = agentcolors.Open(st)
+	keep("agent colors", err)
 	p.Runs, err = runs.Open(st)
 	keep("runs", err)
 	p.Schedules, err = OpenSchedules(st)
