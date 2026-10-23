@@ -41,3 +41,16 @@ func TestAgentHueLookupIsBoundedAndDoesNotEnumerateHiddenNames(t *testing.T) {
 	want(t, f, reader, "GET", "/api/agent-hues?names="+strings.Repeat("helper,", 100)+"helper", "", http.StatusBadRequest)
 	want(t, f, f.machine(t, "acme"), "GET", "/api/agent-hues?names=helper", "", http.StatusForbidden)
 }
+
+func TestProjectOnlyReadersResolveAgentHuesWithoutRunOrAgentRead(t *testing.T) {
+	f := newFixture(t)
+	owner := f.machine(t, "acme", everything...)
+	secretAgent(t, f, owner)
+	reader := f.machineAs(t, "project-reader", "acme", "humagen:projects:read")
+	want(t, f, reader, "GET", "/api/agent-hues?names=helper", "", http.StatusForbidden)
+	out := want(t, f, reader, "GET", "/api/project-agent-hues?names=helper,spy,missing", "", http.StatusOK)["hues"].(map[string]any)
+	if len(out) != 1 || out["helper"] == nil {
+		t.Fatalf("project-only hues = %v", out)
+	}
+	want(t, f, f.machine(t, "acme"), "GET", "/api/project-agent-hues?names=helper", "", http.StatusForbidden)
+}

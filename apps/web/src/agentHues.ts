@@ -1,3 +1,10 @@
+/** Each lookup route checks exactly one permission without enumerating names. */
+export function agentHuePath(permissions: readonly string[]): "/api/agent-hues" | "/api/project-agent-hues" | undefined {
+  if (permissions.includes("runs:read")) return "/api/agent-hues";
+  if (permissions.includes("projects:read")) return "/api/project-agent-hues";
+  return undefined;
+}
+
 /** Server reservations are shared by every agent mark in the current workspace. */
 let hues: Readonly<Record<string, number>> = {};
 const listeners = new Set<() => void>();

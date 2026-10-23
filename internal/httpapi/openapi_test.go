@@ -932,6 +932,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 
 	// Agents, revisions and what they remember.
 	c.call(acme, "GET", "/api/agent-hues", "/api/agent-hues?names=missing", "", http.StatusOK)
+	c.call(acme, "GET", "/api/project-agent-hues", "/api/project-agent-hues?names=missing", "", http.StatusOK)
+	c.call(acme, "GET", "/api/project-agent-hues", "/api/project-agent-hues?names="+strings.Repeat("x,", 100)+"x", "", http.StatusBadRequest)
+	c.call(f.machine(t, "acme"), "GET", "/api/project-agent-hues", "/api/project-agent-hues?names=missing", "", http.StatusForbidden)
 	c.call(acme, "GET", "/api/agent-hues", "/api/agent-hues?names="+strings.Repeat("x,", 100)+"x", "", http.StatusBadRequest)
 	c.call(f.machine(t, "acme"), "GET", "/api/agent-hues", "/api/agent-hues?names=missing", "", http.StatusForbidden)
 

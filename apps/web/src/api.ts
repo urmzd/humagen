@@ -648,7 +648,7 @@ export const api = {
    * Every agent, the platform's own by name, where each that lives in a
    * project lives, and which projects enable each ("~" is the workspace).
    */
-  agentHues: (names: string[]) => call<{ hues: Record<string, number> }>("GET", `/api/agent-hues?names=${encodeURIComponent(names.join(","))}`),
+  agentHues: (names: string[], path = "/api/agent-hues") => call<{ hues: Record<string, number> }>("GET", `${path}?names=${encodeURIComponent(names.join(","))}`),
   agentList: () =>
     call<{ agents: Revision[]; builtin?: string[]; homes?: Record<string, string>; enabled_in?: Record<string, string[]>; hues?: Record<string, number> }>("GET", "/api/agents"),
   /** Make an agent live in a project, "" for none: available there and below, and nowhere else. */

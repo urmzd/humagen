@@ -2919,6 +2919,10 @@ export interface GetAgentHuesResponse {
   hues: Record<string, number>;
 }
 
+export interface GetProjectAgentHuesResponse {
+  hues: Record<string, number>;
+}
+
 export interface ListAgentsResponse {
   agents: Revision[];
   builtin: string[];

@@ -280,7 +280,10 @@ assignments. A mark reserves its space without drawing an orb until its server
 hue arrives.
 A bounded `GET /api/agent-hues` lookup, behind `runs:read`, batches at most
 100 explicitly named readable agents for readers without `agents:read`.
-Hidden and missing names are both omitted. No names are enumerated.
+A second route, `GET /api/project-agent-hues`, uses the same bounded handler
+behind `projects:read`, for project readers without run or agent permissions.
+The host selects the route the reader may call. Hidden and missing names are
+both omitted. No names are enumerated.
 The host clears the palette on identity changes and retries failed lookups at
 most twice. Tints and non-mark accents retain the original hue while loading.
 Distinct hue values do not guarantee perceptually distinct colors for thousands

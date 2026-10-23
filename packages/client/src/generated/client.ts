@@ -24,6 +24,7 @@ import type {
   EvalSuite,
   GetAgentHuesResponse,
   GetInboxMessageResponse,
+  GetProjectAgentHuesResponse,
   GetProjectInboxResponse,
   GetRunTraceResponse,
   GetUsageResponse,
@@ -676,6 +677,29 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<GetAgentHuesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  /** Requires projects:read. Hidden and missing agents are both omitted. Never enumerates names. */
+  async getProjectAgentHues(names: string, options?: RequestOptions): Promise<GetProjectAgentHuesResponse> {
+    let path = "/api/project-agent-hues";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GetProjectAgentHuesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectAgentHuesRaw(names: string, options?: RequestOptions): Promise<ApiResponse<GetProjectAgentHuesResponse>> {
+    let path = "/api/project-agent-hues";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GetProjectAgentHuesResponse>("GET", path, {
       ...options,
     });
   }

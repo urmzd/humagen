@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentHue, configureAgentHues, requestAgentHue, setAgentHues, subscribeHues } from "./agentHues.ts";
+import { agentHuePath, agentHue, configureAgentHues, requestAgentHue, setAgentHues, subscribeHues } from "./agentHues.ts";
 
 test("unknown marks wait for a bounded lookup, then share server reservations", async () => {
   const batches: string[][] = [];
@@ -52,5 +52,18 @@ test("a transient failure retries without needing to remount the mark", async ()
   await new Promise((resolve) => setTimeout(resolve, 600));
   assert.equal(calls, 2);
   assert.equal(agentHue("retried"), 135);
+  configureAgentHues(undefined);
+});
+
+
+test("a project-only reader resolves marks without run or agent permissions", async () => {
+  assert.equal(agentHuePath(["projects:read"]), "/api/project-agent-hues");
+  assert.equal(agentHuePath(["runs:read"]), "/api/agent-hues");
+  assert.equal(agentHuePath(["agents:read"]), undefined);
+  assert.equal(agentHuePath([]), undefined);
+  configureAgentHues(async () => ({ projectLead: 45 }));
+  requestAgentHue("projectLead");
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(agentHue("projectLead"), 45);
   configureAgentHues(undefined);
 });

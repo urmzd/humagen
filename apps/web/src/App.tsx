@@ -1,4 +1,4 @@
-import { configureAgentHues } from "./agentHues.ts";
+import { agentHuePath, configureAgentHues } from "./agentHues.ts";
 import { setAgentHues } from "./ui.tsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentDetail } from "./AgentDetail.tsx";
@@ -58,7 +58,8 @@ export function App() {
       .me()
       // A caller with no permission at all is sent null, not an empty list.
       .then((me) => {
- configureAgentHues(me.permissions?.includes("runs:read") ? (names) => api.agentHues(names).then((r) => r.hues) : undefined);
+ const huePath = agentHuePath(me.permissions ?? []);
+ configureAgentHues(huePath ? (names) => api.agentHues(names, huePath).then((r) => r.hues) : undefined);
  setSession({ state: "ready", me: { ...me, permissions: me.permissions ?? [] } });
  })
       .catch((e) => {

@@ -89,6 +89,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.putToolCredential))
 	mux.HandleFunc("DELETE /api/me/credentials/{provider}", s.authed(auth.RunsWrite, s.deleteToolCredential))
 	mux.HandleFunc("GET /api/agent-hues", s.authed(auth.RunsRead, s.agentHues))
+	mux.HandleFunc("GET /api/project-agent-hues", s.authed(auth.ProjectsRead, s.agentHues))
 	mux.HandleFunc("GET /api/agents", s.authed(auth.AgentsRead, s.listAgents))
 	mux.HandleFunc("POST /api/agents", s.authed(auth.AgentsWrite, s.createAgent))
 	mux.HandleFunc("PUT /api/agents/{name}", s.authed(auth.AgentsWrite, agentNamed(s.seenAgent(s.reviseAgent))))
