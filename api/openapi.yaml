@@ -6246,8 +6246,17 @@ components:
       allOf:
         - {$ref: "#/components/schemas/Project"}
         - type: object
-          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine]
+          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine, unread, row_agents]
           properties:
+            unread:
+              description: Unread open messages and announcements in the caller's own inbox filed directly in this project, excluding every message the reader cannot see.
+              type: integer
+              minimum: 0
+            row_agents:
+              description: Up to eight agents that live directly in this project and that the caller may read, sorted by name.
+              type: array
+              maxItems: 8
+              items: {type: string}
             depth:
               description: How many levels below the workspace it sits, 1 to 4. The workspace itself is 0.
               type: integer

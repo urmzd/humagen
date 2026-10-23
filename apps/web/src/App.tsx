@@ -268,7 +268,10 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     const close = subscribe("agent", {
       onOpen: loadRuns,
       onState: setLive,
-      onInbox: loadInbox,
+      onInbox: () => {
+        loadInbox();
+        loadProjects();
+      },
       // A person's message starts no run, so the stream says so by name.
       onThread: () => {
         window.clearTimeout(pending.current);
@@ -285,7 +288,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       window.clearTimeout(pending.current);
       close();
     };
-  }, [can, loadRuns, loadAgents, loadInbox]);
+  }, [can, loadRuns, loadAgents, loadInbox, loadProjects]);
 
   // An eval in flight reports progress on its own record, not on the bus.
   const evalRunning = suites.some((s) => s.runs[0]?.status === "running");

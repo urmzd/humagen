@@ -202,6 +202,7 @@ function screens(ids: Ids): Screen[] {
       },
     },
     { name: "workspace", path: "/projects/~" },
+    { name: "workspace-overview", path: "/projects/~/overview" },
     { name: "workspace-context", path: "/projects/~/context" },
     { name: "inbox", path: "/inbox" },
     { name: "schedules", path: "/schedules" },
@@ -676,6 +677,23 @@ async function main(): Promise<void> {
       text: "Summarize the week",
       description: "A summary every Monday morning",
     });
+    // Project rows cover empty and populated agent marks, plus read and unread inboxes.
+    for (const name of ["triage", "intake"]) {
+      await call("PUT", `/api/agents/${name}/home`, { project: "Support" });
+    }
+    const supportRun = await call<{ id: string }>("POST", "/api/runs", {
+      agent: "triage",
+      project: "Support",
+      text: "Check new tickets",
+    });
+    await settled(call, supportRun.id);
+    await waitFor(async () => {
+      const p = await call<{ project: { unread: number; row_agents: string[] } }>(
+        "GET",
+        "/api/projects/Support",
+      );
+      return p.project.unread > 0 && p.project.row_agents.length === 2;
+    }, "Support's project row has no agents or unread update");
     const files = await call<{ artifacts?: { id: string }[] }>("GET", "/api/artifacts");
     const ids: Ids = {
       task: ran.thread ?? ran.id,
