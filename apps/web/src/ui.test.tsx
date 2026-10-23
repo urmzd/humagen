@@ -74,7 +74,7 @@ function sidebar(over: Partial<Parameters<typeof Sidebar>[0]> = {}) {
 test("the sidebar is one flat list in working order, with New as home", () => {
   const out = sidebar();
   // Inbox comes right after New: what fired and what waits on a person land there.
-  const order = ["New", "Inbox", "Projects", "Schedules", "Monitor", "Context", "Agents", "Artifacts"];
+  const order = ["New", "Inbox", "Projects", "Schedules", "Monitor", "Context", "Agents", "Deliverables"];
   const at = order.map((label) => out.indexOf(`>${label}<`));
   assert.ok(at.every((i) => i >= 0), `every page is listed: ${at}`);
   assert.deepEqual([...at].sort((x, y) => x - y), at, "in this order");
@@ -89,7 +89,7 @@ test("the sidebar is one flat list in working order, with New as home", () => {
 test("the sidebar hides pages from someone who may not read them", () => {
   const out = sidebar({ can: (p) => p === "runs:write" });
   assert.match(out, />New</);
-  for (const label of ["Projects", "Inbox", "Schedules", "Context", "Agents", "Artifacts"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
+  for (const label of ["Projects", "Inbox", "Schedules", "Context", "Agents", "Deliverables"]) assert.doesNotMatch(out, new RegExp(`>${label}<`));
 });
 
 test("pinned conversations sit in their own section, ahead of the rest", () => {

@@ -1,4 +1,5 @@
 import { defaultCopy } from "@humagen/components";
+import { Inspector } from "@humagen/web";
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { conflictOf } from "./conflicts.ts";
 import { ApiError, type Channel, coworking, type DirectoryPerson, type ProjectView, type Thread, type ThreadShared } from "./api.ts";
@@ -235,20 +236,10 @@ export function ShareDialog({
   if (project === thread.project && thread.channel && !names.includes(thread.channel)) names.push(thread.channel);
 
   return (
-    <section
-      role="dialog"
-      aria-labelledby={heading}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          onClose();
-        }
-      }}
-      className="humagen-glass mx-auto flex w-full max-w-4xl flex-col gap-3 rounded-aui-lg p-4"
-    >
-      <h2 id={heading} className="text-aui-base font-semibold text-aui-fg">
-        {words.shareTitle}
-      </h2>
+    <Inspector open title={words.shareTitle} onClose={onClose} footer={<>
+      <button type="button" className={button} onClick={onClose}>{defaultCopy.projects.cancel}</button>
+      <button type="button" className={primary} disabled={busy} onClick={() => form.current?.requestSubmit()}>{words.share}</button>
+    </>}>
       <p className="text-aui-xs text-aui-muted">{words.shareLede}</p>
       <form
         ref={form}
@@ -286,15 +277,7 @@ export function ShareDialog({
           <PeopleToAdd value={people} leaveOut={[me, ...(handle ? [handle] : []), ...inThread]} onChange={setPeople} />
         </div>
         <Problem message={problem} />
-        <div className="flex flex-wrap gap-2">
-          <button type="submit" className={primary} disabled={busy}>
-            {words.share}
-          </button>
-          <button type="button" className={button} onClick={onClose}>
-            {defaultCopy.projects.cancel}
-          </button>
-        </div>
       </form>
-    </section>
+    </Inspector>
   );
 }

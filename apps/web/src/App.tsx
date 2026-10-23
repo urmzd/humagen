@@ -385,6 +385,8 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
         prefs={prefs}
         can={can}
         threads={threads}
+        projects={projects ?? []}
+        workspaceName={workspaceName}
         pinned={prefs.pinned}
         onPin={pin}
         inboxCount={inboxCounts.open}
@@ -406,6 +408,12 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             startChannel={route.page === "new" ? route.channel : undefined}
             focus={route.page === "conversation" ? route.message : undefined}
             sharing={route.page === "conversation" && !!route.share}
+            view={route.page === "conversation" ? route : undefined}
+            onView={(view) => {
+              if (thread) go({ page: "conversation", id: thread, ...view }, {
+                replace: route.page === "conversation" && route.panel === view.panel && route.artifact === view.artifact,
+              });
+            }}
             onSharing={(open) => {
               if (!thread) return;
               // Closing a dialog opened here goes back, so Back does not open it again.
@@ -663,6 +671,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
             onOpenRun={openRun}
             onOpenThread={openThread}
             selectedId={route.artifact ?? null}
+            onOpenArtifact={(file) => go({ page: "conversation", id: file.thread, panel: "deliverables", artifact: file.id })}
             onSelect={(artifact) => go({ page: "artifacts", artifact: artifact ?? undefined })}
           />
         )}

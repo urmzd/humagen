@@ -198,6 +198,17 @@ export const FolderIcon = icon(
   <path d="M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z" />,
   "FolderIcon",
 );
+export const LayersIcon = icon(
+  <path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" />,
+  "LayersIcon",
+);
+export const UsersIcon = icon(
+  <>
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    <circle cx="9" cy="7" r="4" />
+  </>,
+  "UsersIcon",
+);
 export const FolderOpenIcon = icon(
   <path d="M6 20h14l3-10H9L6 20Zm0 0H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v1" />,
   "FolderOpenIcon",

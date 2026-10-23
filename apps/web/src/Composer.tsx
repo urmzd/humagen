@@ -90,6 +90,8 @@ const action =
 const tool =
   "inline-flex size-9 items-center justify-center rounded-full text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent disabled:opacity-40";
 
+export type ComposerSeed = { text: string; mode?: "prepend" };
+
 /**
  * The message box. Type, attach text files, or dictate. Enter sends and
  * Shift+Enter adds a line. While a reply is in flight, sending queues the
@@ -107,7 +109,7 @@ export function Composer({
   plus,
 }: {
   /** Text to start from, such as a question picked from a list. Each new object replaces what is typed. */
-  seed?: { text: string };
+  seed?: ComposerSeed;
   placeholder: string;
   queue: QueueControls;
   autoFocus?: boolean;
@@ -207,11 +209,12 @@ export function Composer({
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per seed
   useEffect(() => {
     if (!seed) return;
-    change(seed.text);
+    const next = seed.mode === "prepend" ? seed.text + value : seed.text;
+    change(next);
     const el = input.current;
     if (el) {
       el.focus();
-      el.setSelectionRange(seed.text.length, seed.text.length);
+      el.setSelectionRange(next.length, next.length);
     }
   }, [seed]);
 

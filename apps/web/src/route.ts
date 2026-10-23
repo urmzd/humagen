@@ -44,6 +44,19 @@ export const kindParam = (value: string | null | undefined): ProjectKindFilter |
 export type SettingsSection = "profile" | "appearance" | "workspace" | "routing" | "models" | "limits" | "connections" | "access" | "read-audit";
 export const SETTINGS_SECTIONS: SettingsSection[] = ["profile", "appearance", "workspace", "routing", "models", "limits", "connections", "access", "read-audit"];
 
+export type ConversationPanel = "activity" | "context" | "people" | "deliverables";
+const CONVERSATION_PANELS: ConversationPanel[] = ["activity", "context", "people", "deliverables"];
+export type ArtifactTab = "preview" | "versions" | "provenance";
+const ARTIFACT_TABS: ArtifactTab[] = ["preview", "versions", "provenance"];
+export interface ConversationView {
+  panel?: ConversationPanel;
+  run?: string;
+  artifact?: string;
+  artifactTab?: ArtifactTab;
+  /** One-based slide selection. */
+  slide?: number;
+}
+
 export type Route =
   /** A new conversation, optionally with an agent picked and a first message written for it. */
   | { page: "new"; project?: string; channel?: string; agent?: string; ask?: string }
@@ -53,7 +66,7 @@ export type Route =
    * `share` is. Links from when they were called tasks, `/tasks/{id}`,
    * open the same conversation.
    */
-  | { page: "conversation"; id: string; message?: string; share?: boolean }
+  | ({ page: "conversation"; id: string; message?: string; share?: boolean } & ConversationView)
   /** Every project, searched with `q` and narrowed to one kind. */
   | { page: "projects"; q?: string; kind?: ProjectKindFilter }
   /** One project at a tab, and in its inbox, at a message. The workspace itself is the project named "", written `~`. */
@@ -101,6 +114,12 @@ export function href(r: Route): string {
     }
     case "conversation":
       if (r.share) return `/conversations/${enc(r.id)}/share`;
+      if (r.panel) {
+        const base = `/conversations/${enc(r.id)}/${r.panel}`;
+        if (r.panel === "activity" && r.run) return `${base}/${enc(r.run)}`;
+        if (r.panel === "deliverables" && r.artifact) return `${base}/${enc(r.artifact)}${r.artifactTab ? `/${r.artifactTab}` : ""}${r.slide ? `?slide=${r.slide}` : ""}`;
+        return base;
+      }
       return r.message ? `/conversations/${enc(r.id)}?${new URLSearchParams({ message: r.message })}` : `/conversations/${enc(r.id)}`;
     case "projects": {
       const q = new URLSearchParams();
@@ -221,6 +240,10 @@ function read(pathname: string, search: string): Route {
     case "tasks":
       if (!a) return { page: "new" };
       if (b === "share") return { page: "conversation", id: a, share: true };
+      if (oneOf(b, CONVERSATION_PANELS)) {
+        const slide = Number(q.get("slide"));
+        return { page: "conversation", id: a, panel: b as ConversationPanel, ...(b === "activity" && parts[3] ? { run: parts[3] } : {}), ...(b === "deliverables" && parts[3] ? { artifact: parts[3], artifactTab: oneOf(parts[4], ARTIFACT_TABS), slide: Number.isInteger(slide) && slide >= 1 && slide <= 80 ? slide : undefined } : {}) };
+      }
       return { page: "conversation", id: a, message: q.get("message") || undefined };
     case "projects": {
       if (!a) return { page: "projects", q: q.get("q") || undefined, kind: kindParam(q.get("kind")) };

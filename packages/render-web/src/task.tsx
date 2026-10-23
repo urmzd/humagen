@@ -15,6 +15,7 @@ import {
   useContext,
   useEffect,
   useRef,
+  useState,
 } from "react";
 import { ActionContext, Actions, Button, DenseContext, Menu } from "./buttons";
 import { Favicon, hostOf } from "./citations";
@@ -41,6 +42,26 @@ export const statusLabel: Record<TaskStatus, string> = {
   denied: "Not run",
   error: "Error",
 };
+
+/** Prefer the tool's own explanation; keep structured data behind technical details. */
+export function readableToolResult(output: string): string {
+  try {
+    const value: unknown = JSON.parse(output);
+    if (typeof value === "string") return value.slice(0, 600);
+    if (Array.isArray(value))
+      return `${value.length} ${value.length === 1 ? "result" : "results"} returned`;
+    if (value && typeof value === "object") {
+      for (const key of ["summary", "message", "text", "result"]) {
+        const line = (value as Record<string, unknown>)[key];
+        if (typeof line === "string" && line.trim()) return line.slice(0, 600);
+      }
+      return `Returned structured data with ${Object.keys(value).length} fields`;
+    }
+  } catch {
+    /* Plain text already reads as a result. */
+  }
+  return output.slice(0, 600);
+}
 
 /**
  * Task state in a fixed 16px square. Running is an SVG ring rotating about the
@@ -336,13 +357,14 @@ export function TaskRow({
 }: PrimitiveProps["Task"]) {
   const turn = useTurnMeta();
   const task = turn?.tasks.find((t) => t.id === id);
+  const [technicalTab, setTechnicalTab] = useState<"input" | "output">("output");
   const subagent = task?.subagent;
   const hasSlot = useContext(ItemActionsContext) !== null && Boolean(turn && task);
   const item: TurnItem | null =
     turn && task ? { kind: subagent ? "subagent" : "task", turn, task } : null;
   const li = `relative list-none ${hasSlot ? SLOT_ROOM : ""}`;
   const shownDetails = details;
-  const hasBody = Boolean(shownDetails || output || (sources && sources.length > 0));
+  const hasBody = Boolean(shownDetails || output || task?.input || (sources && sources.length > 0));
   const { open, toggle } = useDisclosure({ auto: status === "error" });
   const titleNode =
     status === "in_progress" ? (
@@ -366,7 +388,9 @@ export function TaskRow({
       : status === "waiting"
         ? "Waiting for approval"
         : !open
-          ? (output ?? shownDetails)
+          ? output
+            ? readableToolResult(output)
+            : shownDetails
           : undefined;
 
   const head = (
@@ -385,6 +409,11 @@ export function TaskRow({
           </span>
         )}
       </span>
+      {task?.durationMs !== undefined && (
+        <span className="shrink-0 text-aui-2xs text-aui-muted tabular-nums">
+          {(task.durationMs / 1000).toFixed(1)}s
+        </span>
+      )}
     </>
   );
 
@@ -436,10 +465,40 @@ export function TaskRow({
               {shownDetails && <p className="text-aui-muted">{shownDetails}</p>}
               {output && (
                 <p
-                  className={`whitespace-pre-wrap font-aui-mono text-aui-2xs ${status === "error" ? "text-aui-bad" : "text-aui-fg"}`}
+                  className={`whitespace-pre-wrap break-words text-aui-xs ${status === "error" ? "text-aui-bad" : "text-aui-fg"}`}
                 >
-                  {output}
+                  {readableToolResult(output)}
                 </p>
+              )}
+              {(task?.input || output) && (
+                <details className="mt-2 min-w-0 rounded-aui border border-aui-border p-2">
+                  <summary className="min-h-6 cursor-pointer text-aui-2xs text-aui-muted">
+                    Technical details
+                  </summary>
+                  <div className="mt-2 flex gap-3">
+                    <button
+                      type="button"
+                      aria-pressed={technicalTab === "input"}
+                      onClick={() => setTechnicalTab("input")}
+                      className="min-h-6 rounded-aui px-1 py-0.5 text-aui-2xs aria-pressed:bg-aui-hover"
+                    >
+                      Input
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={technicalTab === "output"}
+                      onClick={() => setTechnicalTab("output")}
+                      className="min-h-6 rounded-aui px-1 py-0.5 text-aui-2xs aria-pressed:bg-aui-hover"
+                    >
+                      Output
+                    </button>
+                  </div>
+                  <pre className="aui-scroll mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all font-aui-mono text-aui-2xs">
+                    {technicalTab === "input"
+                      ? (task?.input ?? "Input was not recorded for this step.")
+                      : (output ?? "No output recorded.")}
+                  </pre>
+                </details>
               )}
               {sources && sources.length > 0 && <SourceChips sources={sources} />}
             </div>

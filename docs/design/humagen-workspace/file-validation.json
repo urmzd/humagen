@@ -1,0 +1,17 @@
+{
+  "checks": [
+    "Valid Launch-briefing-leadership.pdf",
+    "Valid Launch-briefing-leadership.pptx",
+    "Valid Launch-briefing-project-team.pdf",
+    "Valid Launch-briefing-project-team.pptx",
+    "Valid Launch-dependencies.csv",
+    "Valid Launch-plan-v4.docx",
+    "Valid Launch-plan-v4.pdf",
+    "Browser download matches export: Launch-briefing-leadership.pdf",
+    "Browser download matches export: Launch-briefing-leadership.pptx",
+    "Browser download matches export: Launch-dependencies.csv",
+    "Browser download matches export: Launch-plan-v4.docx",
+    "Browser download matches export: Launch-plan-v4.pdf",
+    "All seven exports embedded in the standalone HTML match their files"
+  ]
+}
