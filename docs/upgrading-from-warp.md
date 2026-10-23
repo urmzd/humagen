@@ -300,7 +300,7 @@ These are the defaults this release takes. Each can change in a later release.
    and add the old one to `HUMAGEN_GITHUB_BOTS`.
 5. In each Flux cluster, point the `GitRepository`'s `url` at
    `https://github.com/urmzd/humagen` (whether Flux follows GitHub's redirect
-   is not verified), and in a copied `deploy/flux/app`, make the three changes
+   is not verified), and in a copied `deploy/flux/app`, make the four changes
    under [Flux](#flux).
 6. Merge the library documentation follow-ups (fiber, anchor, saige,
    playscape), which link here.

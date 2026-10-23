@@ -27,6 +27,8 @@ var wholeFiles = []struct{ pattern, why string }{
 	{"deploy/flux/*/*", "Flux objects the example prunes by name"},
 	{"deploy/flux/*/*/*", "Flux objects the example prunes by name"},
 	{"deploy/helm/check.sh", "checks that a warp release keeps its names"},
+	{"scripts/verify-upgrade.sh", "live upgrade tests exercise the old chart, settings and resource names"},
+	{"docs/rename-verification.md", "verification commands deliberately exercise the old binary name"},
 	{".gitignore", "where deploy wrote before the rename"},
 	{".dockerignore", "where deploy wrote before the rename"},
 	{"*_test.go", "tests exercise the old names"},
