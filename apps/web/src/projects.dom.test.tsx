@@ -1,3 +1,4 @@
+import { setAgentHues } from "./agentHues.ts";
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -95,6 +96,7 @@ test("a project page shows where it sits, what sits below it, and every limit ab
 });
 
 test("a project's meta line names its lead, the agent that answers what tags no agent there, in its color", async () => {
+  setAgentHues({ "globex-helper": 210 });
   open(globexDetail, {
     routes: {
       "GET /api/projects/Globex/agents": () => ({
