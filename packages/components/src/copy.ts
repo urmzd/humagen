@@ -888,6 +888,35 @@ export const defaultCopy = {
       delete: "The project could not be deleted.",
     },
     context: {
+      preview: {
+        title: "Turn preview",
+        hint: "Saved context for the selected agent and optional channel. Instruction and inherited-note budgets are shared across the chain. Conversation history, retrieval and model limits depend on the turn.",
+        agent: "Preview agent",
+        channel: "Preview channel",
+        submit: "Preview Turn",
+        loading: "Loading",
+        failed: "The turn preview could not be loaded.",
+        available: "Available when named in the message",
+        notSent: "Not sent",
+        omitted: (n: number) => `${n} omitted`,
+        previewOmitted: (n: number) => `${n} shortened in this preview only`,
+        usage: (used: number, budget: number, unit: string) =>
+          budget > 0
+            ? `${used.toLocaleString()} / ${budget.toLocaleString()} ${unit}`
+            : `${used.toLocaleString()} ${unit} · no additional cap`,
+        kinds: {
+          instructions: "Instructions",
+          agent_instructions: "Agent instructions",
+          channel: "Channel purpose",
+          experts: "Experts",
+          project_notes: "Project notes",
+          ancestor_notes: "Notes from above",
+          agent_notes: "Agent notes",
+          knowledge: "Project knowledge source names",
+          agent_knowledge: "Agent knowledge source names",
+          skills: "Skill names",
+        },
+      },
       instructions: "Instructions",
       instructionsHint:
         "Sent to every agent answering here and below, after the instructions of the projects above. An agent's own instructions win over these.",

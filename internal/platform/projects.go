@@ -437,37 +437,22 @@ func (p *Platform) contextIn(tenant, project, channel, agent, body string) strin
 	if chain == nil {
 		chain = []projects.Project{{Name: project}, tree.Root()}
 	}
-	workspace := p.Settings(tenant).WorkspaceName
-	var parts []string
-	if s := instructionsOf(chain, workspace); s != "" {
-		parts = append(parts, s)
-	}
-	if s := p.roomLayer(tenant, tree, project, channel); s != "" {
-		parts = append(parts, s)
-	}
-	parts = append(parts, p.notesOf(tenant, chain, workspace)...)
-	if s := p.Memory.Prompt(tenant, agent); s != "" {
-		parts = append(parts, s)
+	layers := p.turnLayers(tenant, tree, chain, project, channel, agent)
+	parts := make([]string, 0, len(layers)+1)
+	for i, l := range layers {
+		if l.Text == "" {
+			continue
+		}
+		if i > 0 && l.Kind == "experts" && layers[i-1].Kind == "channel" {
+			parts[len(parts)-1] += "\n" + l.Text
+		} else {
+			parts = append(parts, l.Text)
+		}
 	}
 	if len(parts) == 0 {
 		return body
 	}
 	return strings.Join(append(parts, body), "\n\n")
-}
-
-// roomLayer is what the project layer says last: the channel's purpose, and
-// which topics someone on the chain answers for.
-func (p *Platform) roomLayer(tenant string, tree *projects.Tree, project, channel string) string {
-	var lines []string
-	if channel != "" {
-		if c, err := p.Projects.Channel(tenant, project, channel); err == nil && strings.TrimSpace(c.Purpose) != "" {
-			lines = append(lines, fmt.Sprintf("This conversation is in #%s. Its purpose: %s", c.Name, strings.TrimSpace(c.Purpose)))
-		}
-	}
-	if s := projects.ExpertsLine(tree.ExpertTopics(project)); s != "" {
-		lines = append(lines, s)
-	}
-	return strings.Join(lines, "\n")
 }
 
 // titleOf is how a project is named to an agent.
@@ -483,58 +468,48 @@ func titleOf(pr projects.Project, workspace string) string {
 	return pr.Name
 }
 
-// instructionsOf renders the chain's instructions, root first. When they pass
+// instructionLayers renders the chain's instructions, root first. When they pass
 // the budget the farthest ancestors are dropped first, and the text says so.
-func instructionsOf(chain []projects.Project, workspace string) string {
-	type kept struct {
-		pr   projects.Project
-		sent bool
-	}
-	var levels []kept
+func instructionLayers(chain []projects.Project, workspace string) []ContextLayer {
+	var levels []ContextLayer
 	used, full := 0, false
-	// Nearest first, so the farthest are the ones left out.
 	for _, pr := range chain {
 		if strings.TrimSpace(pr.Instructions) == "" {
 			continue
 		}
 		n := utf8.RuneCountInString(pr.Instructions)
-		sent := !full && used+n <= maxChainInstructions
-		if sent {
+		l := ContextLayer{Kind: "instructions", From: pr.Name, Budget: maxChainInstructions, Unit: "characters"}
+		l.Sent = !full && used+n <= maxChainInstructions
+		if l.Sent {
 			used += n
+			l.Used = n
+			l.Text = fmt.Sprintf("Instructions of %s:\n%s", titleOf(pr, workspace), strings.TrimSpace(pr.Instructions))
 		} else {
 			full = true
+			l.Omitted = n
+			l.Text = fmt.Sprintf("(instructions of %s not sent)", titleOf(pr, workspace))
 		}
-		levels = append(levels, kept{pr: pr, sent: sent})
+		levels = append(levels, l)
 	}
-	if len(levels) == 0 {
-		return ""
+	slices.Reverse(levels)
+	if len(levels) > 0 {
+		levels[0].Text = precedence + "\n\n" + levels[0].Text
 	}
-	var b strings.Builder
-	b.WriteString(precedence)
-	for i := len(levels) - 1; i >= 0; i-- {
-		l := levels[i]
-		name := titleOf(l.pr, workspace)
-		if !l.sent {
-			fmt.Fprintf(&b, "\n\n(instructions of %s not sent)", name)
-			continue
-		}
-		fmt.Fprintf(&b, "\n\nInstructions of %s:\n%s", name, strings.TrimSpace(l.pr.Instructions))
-	}
-	return b.String()
+	return levels
 }
 
-// notesOf renders the project's own approved notes, then its ancestors',
+// noteLayers renders the project's own approved notes, then its ancestors',
 // nearest first, within maxAncestorNotes. The notes that do not fit are
 // counted, so the agent knows something was left out.
-func (p *Platform) notesOf(tenant string, chain []projects.Project, workspace string) []string {
-	var parts []string
+func (p *Platform) noteLayers(tenant string, chain []projects.Project, workspace string) []ContextLayer {
+	var parts []ContextLayer
 	own := chain[0]
 	heading := fmt.Sprintf("What everyone working on the project %q knows:", own.Name)
 	if own.IsRoot() {
 		heading = fmt.Sprintf("What everyone in %s knows:", titleOf(own, workspace))
 	}
 	if s := p.Memory.PromptAs(tenant, memory.ProjectOwner(own.Name), heading); s != "" {
-		parts = append(parts, s)
+		parts = append(parts, ContextLayer{Kind: "project_notes", From: own.Name, Text: s, Budget: memory.MaxNotes * memory.MaxChars, Used: p.noteCharacters(tenant, memory.ProjectOwner(own.Name)), Sent: true, Unit: "characters"})
 	}
 	used, full := 0, false
 	for _, pr := range chain[1:] {
@@ -549,7 +524,11 @@ func (p *Platform) notesOf(tenant string, chain []projects.Project, workspace st
 		}
 		name := titleOf(pr, workspace)
 		var b strings.Builder
-		sent := 0
+		sent, chars := 0, 0
+		total := 0
+		for _, text := range notes {
+			total += utf8.RuneCountInString(text)
+		}
 		for _, text := range notes {
 			n := utf8.RuneCountInString(text)
 			if full || used+n > maxAncestorNotes {
@@ -560,6 +539,7 @@ func (p *Platform) notesOf(tenant string, chain []projects.Project, workspace st
 				fmt.Fprintf(&b, "What everyone in %s knows:", name)
 			}
 			used += n
+			chars += n
 			sent++
 			b.WriteString("\n- ")
 			b.WriteString(text)
@@ -574,7 +554,7 @@ func (p *Platform) notesOf(tenant string, chain []projects.Project, workspace st
 			}
 			fmt.Fprintf(&b, "(%d more %s from %s not sent)", left, noun, name)
 		}
-		parts = append(parts, b.String())
+		parts = append(parts, ContextLayer{Kind: "ancestor_notes", From: pr.Name, Text: b.String(), Budget: maxAncestorNotes, Used: chars, Omitted: total - chars, Sent: sent > 0, Unit: "characters"})
 	}
 	return parts
 }
