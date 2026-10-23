@@ -40,3 +40,10 @@ checks passed. No server contract changed, so no generated client update was
 needed. See [the implementation notes](../../conversation-workspace.md) for
 the remaining placement, accounting and ingestion work and for the limits
 of Office text previews.
+
+Before merge, GitHub Actions also confirmed the public Slack Block Kit
+validation that was blocked locally. Its screen job exposed a false overlap
+from messages already scrolled out of view. The collector now clips both
+axes to scrolling regions, and the routed conversation case explicitly
+scrolls to its end. CI retains the hidden `.screens` directory as an artifact
+so a failed capture can be inspected.

@@ -266,6 +266,10 @@ function chats(ids: Ids): Screen[] {
           .getByText(/^Routed to /)
           .first()
           .waitFor();
+        // Reproduce a long conversation whose earlier messages are clipped above the log.
+        await page.getByRole("log", { name: "Thread", exact: true }).evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
       },
     },
   ];
