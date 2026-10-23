@@ -27,6 +27,7 @@ import (
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/state"
 	"github.com/urmzd/humagen/pkg/threads"
@@ -145,6 +146,8 @@ func (p *Platform) openStores(cfg Config) error {
 	keep("call policies", err)
 	p.Usage, err = usage.Open(st)
 	keep("usage", err)
+	p.ReadAudit, err = readaudit.Open(st)
+	keep("read audit", err)
 	p.Inbox, err = inbox.OpenStore(st)
 	keep("inbox", err)
 	p.Artifacts, err = artifacts.Open(st)

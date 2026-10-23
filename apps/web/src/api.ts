@@ -642,6 +642,7 @@ export function alertRuleEdit(rule: AlertRuleConfig): AlertRuleEdit {
 }
 
 export const api = {
+ readAudit: () => call<{records:ReadAuditRecord[]}>("GET","/api/read-audit").then(r=>r.records),
   me: () => call<Me>("GET", "/api/me"),
   explain: (permission: string) =>
     call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
@@ -1275,3 +1276,5 @@ export const coworking = {
   /** Which agents may answer in a project, for the @ typeahead. */
   available: (project: string) => call<ProjectAvailability>("GET", `${projectAt(project)}/agents`),
 };
+
+export type ReadAuditRecord = { subject: string; project: string; thread?: string; route: string; at: string };
