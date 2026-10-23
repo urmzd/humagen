@@ -99,6 +99,41 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/read-audit:
+    get:
+      operationId: listReadAudit
+      tags: [projects]
+      summary: List recorded break-glass reads
+      description: Workspace administrators read at most 500 records from a window of at most 31 days. The end defaults to now and the start to 24 hours before the end.
+      x-permission: projects:govern
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      responses:
+        '200':
+          description: Newest reads first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [records]
+                properties:
+                  records:
+                    type: array
+                    maxItems: 500
+                    items:
+                      type: object
+                      required: [subject, project, route, at]
+                      properties:
+                        subject: {type: string}
+                        project: {type: string}
+                        thread: {type: string}
+                        route: {type: string}
+                        at: {type: string, format: date-time}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /healthz:
     get:
       operationId: getHealth
@@ -3607,6 +3642,44 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/context:
+    get:
+      operationId: getProjectContext
+      tags: [projects]
+      summary: Preview the layers composed for a turn
+      description: |
+        Uses the live turn composer. Hidden project layers are omitted.
+        Source names require knowledge:read. Skills are available choices,
+        sent only when a message names them. Budgets are character caps on
+        layer content, or item caps for knowledge and skills, not token estimates.
+        The agent system prompt is the current revision, sent separately
+        by the runtime. A zero budget means no extra composer cap. The
+        conversation, retrieved documents and runtime compaction depend on the turn.
+        System prompt previews show at most 32,000 characters; source name
+        previews show at most 128 names and 16,000 name characters.
+        preview_omitted distinguishes display truncation from runtime omissions.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+        - in: query
+          name: agent
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 63}
+        - in: query
+          name: channel
+          schema: {type: string, maxLength: 63}
+      responses:
+        "200":
+          description: Ordered layers for the selected agent and channel.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectContext"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/projects/{name}/knowledge:
     get:
       operationId: getProjectKnowledge
@@ -6010,6 +6083,33 @@ components:
           description: The project that names it, the nearest when more than one does. Empty for the workspace.
           type: string
           maxLength: 63
+    ProjectContext:
+      type: object
+      additionalProperties: false
+      required: [layers]
+      properties:
+        layers:
+          type: array
+          maxItems: 32
+          items: {$ref: "#/components/schemas/ContextLayer"}
+    ContextLayer:
+      type: object
+      additionalProperties: false
+      required: [kind, from, text, budget, used, omitted, preview_omitted, sent, unit]
+      properties:
+        kind: {type: string}
+        from: {type: string}
+        text: {type: string}
+        budget: {type: integer, minimum: 0}
+        used: {type: integer, minimum: 0}
+        omitted: {type: integer, minimum: 0}
+        preview_omitted:
+          description: Content shortened only in this preview, using the layer's unit. Runtime composition is unchanged.
+          type: integer
+          minimum: 0
+        sent: {type: boolean}
+        unit: {type: string, enum: [characters, items]}
+
     ProjectKnowledge:
       description: The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in.
       type: object
@@ -6310,8 +6410,17 @@ components:
       allOf:
         - {$ref: "#/components/schemas/Project"}
         - type: object
-          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine]
+          required: [depth, path, children, conversations, active, schedules, notes, proposed, access, actions, mine, unread, row_agents]
           properties:
+            unread:
+              description: Unread open messages and announcements in the caller's own inbox filed directly in this project, excluding every message the reader cannot see.
+              type: integer
+              minimum: 0
+            row_agents:
+              description: Up to eight agents that live directly in this project and that the caller may read, sorted by name.
+              type: array
+              maxItems: 8
+              items: {type: string}
             depth:
               description: How many levels below the workspace it sits, 1 to 4. The workspace itself is 0.
               type: integer

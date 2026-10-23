@@ -56,6 +56,7 @@ import type {
   ListProjectHistoryResponse,
   ListProjectsResponse,
   ListReachableAgentsResponse,
+  ListReadAuditResponse,
   ListRunEventsResponse,
   ListRunFeedbackResponse,
   ListSchedulesResponse,
@@ -74,6 +75,7 @@ import type {
   Preferences,
   ProjectAgentsInput,
   ProjectAgentsView,
+  ProjectContext,
   ProjectDetail,
   ProjectExperts,
   ProjectInput,
@@ -447,6 +449,33 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** Workspace administrators read at most 500 records from a window of at most 31 days. The end defaults to now and the start to 24 hours before the end. */
+  async listReadAudit(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ListReadAuditResponse> {
+    let path = "/api/read-audit";
+    const _q = new URLSearchParams();
+    if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (to !== undefined && to !== null) _q.set("to", String(to));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListReadAuditResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listReadAuditRaw(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListReadAuditResponse>> {
+    let path = "/api/read-audit";
+    const _q = new URLSearchParams();
+    if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (to !== undefined && to !== null) _q.set("to", String(to));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListReadAuditResponse>("GET", path, {
+      ...options,
+    });
   }
 
   /** Liveness probe */
@@ -3385,6 +3414,43 @@ need `projects:govern` as well.
     return this.rawRequest<ProjectExperts>("PUT", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Uses the live turn composer. Hidden project layers are omitted.
+Source names require knowledge:read. Skills are available choices,
+sent only when a message names them. Budgets are character caps on
+layer content, or item caps for knowledge and skills, not token estimates.
+The agent system prompt is the current revision, sent separately
+by the runtime. A zero budget means no extra composer cap. The
+conversation, retrieved documents and runtime compaction depend on the turn.
+System prompt previews show at most 32,000 characters; source name
+previews show at most 128 names and 16,000 name characters.
+preview_omitted distinguishes display truncation from runtime omissions.
+ */
+  async getProjectContext(name: string, agent: string, channel?: string, options?: RequestOptions): Promise<ProjectContext> {
+    let path = "/api/projects/{name}/context";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ProjectContext>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectContextRaw(name: string, agent: string, channel?: string, options?: RequestOptions): Promise<ApiResponse<ProjectContext>> {
+    let path = "/api/projects/{name}/context";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ProjectContext>("GET", path, {
       ...options,
     });
   }

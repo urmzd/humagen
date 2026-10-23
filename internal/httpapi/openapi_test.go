@@ -604,6 +604,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectExpert": {typ: projects.Expert{}}, "ProjectExperts": {typ: platform.Experts{}}, "Project": {typ: projects.Project{}}, "ProjectView": {typ: projectView{}},
 		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectLimit": {typ: projectLimit{}},
 		"ProjectDetail": {typ: projectDetail{}}, "ProjectChange": {typ: projectChangeView{}},
+		"ProjectContext": {typ: platform.ProjectContext{}}, "ContextLayer": {typ: platform.ContextLayer{}},
 		"ProjectKnowledge": {typ: platform.ProjectKnowledge{}}, "ProjectKnowledgeSource": {typ: projects.KnowledgeSource{}}, "ProjectKnowledgeInput": {typ: platform.KnowledgeInput{}, written: true},
 		"ProjectSkill": {typ: platform.SkillDetail{}}, "ProjectSkillRef": {typ: projects.SkillRef{}}, "ProjectSkills": {typ: platform.ProjectSkills{}}, "ProjectSkillsInput": {typ: platform.SkillsInput{}, written: true},
 		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
@@ -857,6 +858,10 @@ func (c *contract) sweep(tok string) {
 		if op.path == "/api/events" || needsQuery(op) {
 			continue
 		}
+		if op.path == "/api/read-audit" {
+			c.call(tok, "GET", op.path, op.path, "", http.StatusForbidden)
+			continue
+		}
 		c.call(tok, "GET", op.path, op.path, "", http.StatusOK)
 	}
 }
@@ -896,6 +901,9 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	})
 	c := &contract{t: t, f: f, spec: loadSpec(t), seen: map[string]bool{}}
 	acme, globex := f.machine(t, "acme", everything...), f.machine(t, "globex", everything...)
+	auditAdmin := f.person(t, "acme", "audit-admin", "Audit admin", "humagen-admins")
+	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit", "", http.StatusOK)
+	c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit?limit=501", "", http.StatusBadRequest)
 
 	// A workspace with nothing in it, then every refusal that needs no setup.
 	c.sweep(globex)
@@ -1520,6 +1528,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[{"who":"00u-vic","topics":["Not a topic"]}]}`, expertsAt+1), http.StatusBadRequest)
 	// The knowledge sources a project names ground every run filed there
 	// and below; each must be one the workspace has.
+	c.call(acme, "GET", "/api/projects/{name}/context", "/api/projects/Field/context?agent=helper", "", http.StatusOK)
+	c.call(acme, "GET", "/api/projects/{name}/context", "/api/projects/Field/context", "", http.StatusBadRequest)
 	know := "/api/projects/{name}/knowledge"
 	got = c.call(acme, "GET", know, "/api/projects/Field/knowledge", "", http.StatusOK)
 	knownAt := version(got)
@@ -1571,6 +1581,12 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 		t.Errorf("a conversation started with no visibility is %s", draft.raw)
 	}
 	c.call(ana, "POST", "/api/threads", "/api/threads", `{"project":"Field","visibility":"private","text":"hi"}`, http.StatusCreated)
+	c.call(auditAdmin, "GET", "/api/threads/{id}", "/api/threads/"+obj(draft.field("thread"))["id"].(string), "", http.StatusOK)
+	auditRows := c.call(auditAdmin, "GET", "/api/read-audit", "/api/read-audit", "", http.StatusOK)
+	if len(sliceOf(auditRows.field("records"))) == 0 {
+		t.Fatal("governance-only private read was not in the audit")
+	}
+
 	share, draftPath := "/api/threads/{id}/share", "/api/threads/"+obj(draft.field("thread"))["id"].(string)+"/share"
 	c.call(ana, "POST", share, draftPath, `{"add":["nobody"]}`, http.StatusBadRequest)
 	sharedDraft := c.call(ana, "POST", share, draftPath, `{"channel":"renewals"}`, http.StatusOK)

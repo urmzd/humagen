@@ -50,6 +50,7 @@ func (s *Server) projectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/projects/{name}/announcements/{id}", s.authed(auth.ProjectsWrite, s.seenProject(s.withdrawAnnouncement)))
 	mux.HandleFunc("GET /api/projects/{name}/agents", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectAgents)))
 	mux.HandleFunc("PUT /api/projects/{name}/agents", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectAgents)))
+	mux.HandleFunc("GET /api/projects/{name}/context", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectContext)))
 	mux.HandleFunc("GET /api/projects/{name}/knowledge", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectKnowledge)))
 	mux.HandleFunc("PUT /api/projects/{name}/knowledge", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectKnowledge)))
 	mux.HandleFunc("GET /api/projects/{name}/skills", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectSkills)))
@@ -75,6 +76,10 @@ type projectView struct {
 	// Depth is how many levels below the workspace it sits: 0 for the
 	// workspace itself.
 	Depth int `json:"depth"`
+	// Unread is the reader's own inbox updates filed directly here.
+	Unread int `json:"unread"`
+	// RowAgents names at most eight agents that live here, for tree rows.
+	RowAgents []string `json:"row_agents"`
 	// Path is the projects from the top level down to this one, the
 	// workspace left out, so it is as long as Depth.
 	Path []pathStep `json:"path"`
@@ -152,7 +157,7 @@ func (s *Server) projectFacts(who auth.Principal) projectFacts {
 }
 
 // sees reports whether the caller has any role in a project.
-func (f projectFacts) sees(name string) bool { return f.access[name].Role != projects.None }
+func (f projectFacts) sees(name string) bool { return f.seer.Project(name) }
 
 // actionsOf is what the caller may do on a project: projects:write and the
 // role each action needs, and projects:govern for the workspace and company
@@ -209,6 +214,16 @@ func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 	for _, c := range f.tree.Children(p.Name) {
 		if f.sees(c.Name) {
 			v.Children++
+		}
+	}
+	v.Unread = s.P.ProjectUnread(f.who, p.Name)
+	v.RowAgents = []string{}
+	for _, name := range f.tree.Homes(p.Name) {
+		if f.seer.Agent(name) {
+			v.RowAgents = append(v.RowAgents, name)
+			if len(v.RowAgents) == 8 {
+				break
+			}
 		}
 	}
 	v.Access, v.Actions, v.Mine = f.access[p.Name], actionsOf(f, p), f.named[p.Name]
@@ -305,7 +320,7 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request, who auth.P
 		}
 	}
 	page.Keep = func(p projects.Project) bool {
-		return f.sees(p.Name) && (!byParent || p.Parent == parent) && (within == nil || within[p.Name])
+		return (!byParent || p.Parent == parent) && (within == nil || within[p.Name]) && f.sees(p.Name)
 	}
 	rows, next, err := f.tree.Page(page)
 	if err != nil {
@@ -691,6 +706,20 @@ func (s *Server) putProjectKnowledge(w http.ResponseWriter, r *http.Request, who
 		return
 	}
 	got, err := s.P.SetProjectKnowledge(who, pr.Name, writer(who), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, got)
+}
+
+// getProjectContext previews the same bounded composition used for real turns.
+func (s *Server) getProjectContext(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Viewer)
+	if !found {
+		return
+	}
+	got, err := s.P.ProjectContextAs(r.Context(), who, pr.Name, r.URL.Query().Get("channel"), r.URL.Query().Get("agent"))
 	if err != nil {
 		s.problem(w, err)
 		return

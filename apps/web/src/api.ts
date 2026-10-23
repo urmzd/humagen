@@ -1,5 +1,6 @@
 import { type AnswerRequest, answerPath } from "@humagen/adapter/question";
 import type {
+  ProjectContext,
   AgentHome,
   Person,
   ProjectAgentsInput,
@@ -23,6 +24,8 @@ import type { BusEvent, Run } from "./adapter.ts";
 // The project tree's shapes are the generated client's own, from
 // api/openapi.yaml, so this file cannot drift from the contract on them.
 export type {
+  ProjectContext,
+  ContextLayer,
   AgentHome,
   AgentOffer,
   AgentPlace,
@@ -639,6 +642,7 @@ export function alertRuleEdit(rule: AlertRuleConfig): AlertRuleEdit {
 }
 
 export const api = {
+ readAudit: () => call<{records:ReadAuditRecord[]}>("GET","/api/read-audit").then(r=>r.records),
   me: () => call<Me>("GET", "/api/me"),
   explain: (permission: string) =>
     call<AccessDecision>("GET", `/api/access/explain?${new URLSearchParams({ permission })}`),
@@ -768,6 +772,11 @@ export const api = {
   /** Replace a project's title, description, account and instructions, as a whole, from the version read. */
   updateProject: (name: string, u: ProjectUpdate) => call<ProjectView>("PUT", `/api/projects/${projectPath(name)}`, u),
   /** What a project turns on, what is available there, and who answers untagged messages. "" is the workspace. */
+  projectContext: (name: string, agent: string, channel: string) => {
+    const query = new URLSearchParams({ agent });
+    if (channel) query.set("channel", channel);
+    return call<ProjectContext>("GET", `/api/projects/${projectPath(name)}/context?${query}`);
+  },
   projectAgents: (name: string) => call<ProjectAgentsView>("GET", `/api/projects/${projectPath(name)}/agents`),
   setProjectAgents: (name: string, input: ProjectAgentsInput) =>
     call<ProjectAgentsView>("PUT", `/api/projects/${projectPath(name)}/agents`, input),
@@ -1267,3 +1276,5 @@ export const coworking = {
   /** Which agents may answer in a project, for the @ typeahead. */
   available: (project: string) => call<ProjectAvailability>("GET", `${projectAt(project)}/agents`),
 };
+
+export type ReadAuditRecord = { subject: string; project: string; thread?: string; route: string; at: string };

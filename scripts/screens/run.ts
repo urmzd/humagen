@@ -213,7 +213,18 @@ function screens(ids: Ids): Screen[] {
       },
     },
     { name: "workspace", path: "/projects/~" },
+    { name: "workspace-overview", path: "/projects/~/overview" },
     { name: "workspace-context", path: "/projects/~/context" },
+    {
+      name: "project-context-preview",
+      path: "/projects/Launch/context",
+      act: async (page) => {
+        await page.getByRole("textbox", { name: "Preview agent" }).fill("lead");
+        await page.getByRole("textbox", { name: "Preview channel" }).fill("general");
+        await page.getByRole("button", { name: "Preview Turn" }).click();
+        await page.getByRole("heading", { name: "Skill names" }).waitFor();
+      },
+    },
     { name: "inbox", path: "/inbox" },
     { name: "schedules", path: "/schedules" },
     { name: "schedule", path: `/schedules/${ids.schedule}` },
@@ -258,6 +269,29 @@ function screens(ids: Ids): Screen[] {
       name: `directory-${tab}`,
       path: tab === "people" ? "/directory" : `/directory/${tab}`,
     })),
+    {
+      name: "settings-read-audit-records",
+      path: "/settings/read-audit",
+      act: async (page) => {
+        await page.route("**/api/read-audit", (route) =>
+          route.fulfill({
+            json: {
+              records: [
+                {
+                  subject: "mock-admin",
+                  project: "Customer renewal",
+                  thread: "private-renewal",
+                  route: "GET /api/threads/{id}",
+                  at: "2026-10-22T10:00:00Z",
+                },
+              ],
+            },
+          }),
+        );
+        await page.reload();
+        await page.getByText("Customer renewal / private-renewal").waitFor();
+      },
+    },
     ...[
       "profile",
       "appearance",
@@ -267,6 +301,7 @@ function screens(ids: Ids): Screen[] {
       "limits",
       "connections",
       "access",
+      "read-audit",
     ].map((s) => ({
       name: `settings-${s}`,
       path: `/settings/${s}`,
@@ -791,6 +826,23 @@ async function main(): Promise<void> {
       text: "Summarize the week",
       description: "A summary every Monday morning",
     });
+    // Project rows cover empty and populated agent marks, plus read and unread inboxes.
+    for (const name of ["triage", "intake"]) {
+      await call("PUT", `/api/agents/${name}/home`, { project: "Support" });
+    }
+    const supportRun = await call<{ id: string }>("POST", "/api/runs", {
+      agent: "triage",
+      project: "Support",
+      text: "Check new tickets",
+    });
+    await settled(call, supportRun.id);
+    await waitFor(async () => {
+      const p = await call<{ project: { unread: number; row_agents: string[] } }>(
+        "GET",
+        "/api/projects/Support",
+      );
+      return p.project.unread > 0 && p.project.row_agents.length === 2;
+    }, "Support's project row has no agents or unread update");
     const files = await call<{ artifacts?: { id: string }[] }>("GET", "/api/artifacts");
     const ids: Ids = {
       task: ran.thread ?? ran.id,

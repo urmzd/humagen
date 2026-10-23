@@ -936,6 +936,23 @@ export interface ProjectKnowledgeSource {
   from: string;
 }
 
+export interface ProjectContext {
+  layers: ContextLayer[];
+}
+
+export interface ContextLayer {
+  kind: string;
+  from: string;
+  text: string;
+  budget: number;
+  used: number;
+  omitted: number;
+  /** Content shortened only in this preview, using the layer's unit. Runtime composition is unchanged. */
+  preview_omitted: number;
+  sent: boolean;
+  unit: "characters" | "items";
+}
+
 /** The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in. */
 export interface ProjectKnowledge {
   version: number;
@@ -1133,7 +1150,7 @@ export interface ProjectStep {
 }
 
 /** A project, where it sits, and what is in it. */
-export type ProjectView = Project & { depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[]; mine: boolean };
+export type ProjectView = Project & { unread: number; row_agents: string[]; depth: number; path: ProjectStep[]; children: number; conversations: number; active: number; active_at?: string; schedules: number; notes: number; proposed: number; access: ProjectAccess; actions: ("create" | "propose" | "notes" | "edit" | "move" | "archive" | "delete" | "limits" | "announce")[]; mine: boolean };
 
 /** A limit a run filed in the project falls under for being there, and
 the project it is set on. What the limit allows is read from
@@ -2913,6 +2930,18 @@ export interface ClientViewCredentials {
 export interface ManifestUsage {
   metered: boolean;
   total: Usage;
+}
+
+export interface ListReadAuditResponseRecordsItem {
+  subject: string;
+  project: string;
+  thread?: string;
+  route: string;
+  at: string;
+}
+
+export interface ListReadAuditResponse {
+  records: ListReadAuditResponseRecordsItem[];
 }
 
 export interface GetAgentHuesResponse {

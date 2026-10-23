@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.23.0 (2026-10-23)
+
+### Features
+
+- record break-glass reads ([b904b1c](https://github.com/urmzd/humagen/commit/b904b1c296f9488adebd7f44ea6de261aac5e97a))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.22.0...v0.23.0)
+
+
+## 0.22.0 (2026-10-23)
+
+### Features
+
+- show project agents and unread updates ([9e5e661](https://github.com/urmzd/humagen/commit/9e5e661c8300305346e72682027656e8d0d0e5e8))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.21.2...v0.22.0)
+
+
 ## 0.21.2 (2026-10-23)
 
 ### Bug Fixes

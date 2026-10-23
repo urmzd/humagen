@@ -18,6 +18,15 @@ const OUTCOMES: Record<string, string> = {
 export const defaultCopy = {
   /** The product, as a sender: what every system message is shown from, whatever name its record keeps. */
   product: "Humagen",
+  readAudit: {
+    label: "Read Audit",
+    denied: "Only workspace administrators may read this audit.",
+    title: "Break-glass reads",
+    description:
+      "Reads allowed only by project governance in the last 24 hours. Showing at most 100 records, newest first.",
+    empty: "No break-glass reads in the last 24 hours.",
+    failed: "The read audit could not be loaded.",
+  },
   approve: "Approve",
   cancel: "Cancel",
   edit: "Edit",
@@ -753,6 +762,7 @@ export const defaultCopy = {
   },
   /** The project tree: its kinds, where a project sits, and what a person does with one. */
   projects: {
+    unreadUpdates: "Unread updates",
     title: "Projects",
     lede: "Where work belongs. A project's instructions, notes and limits reach everything below it.",
     /** A kind in words, on a row and in a project's meta line. */
@@ -878,6 +888,35 @@ export const defaultCopy = {
       delete: "The project could not be deleted.",
     },
     context: {
+      preview: {
+        title: "Turn preview",
+        hint: "Saved context for the selected agent and optional channel. Instruction and inherited-note budgets are shared across the chain. Conversation history, retrieval and model limits depend on the turn.",
+        agent: "Preview agent",
+        channel: "Preview channel",
+        submit: "Preview Turn",
+        loading: "Loading",
+        failed: "The turn preview could not be loaded.",
+        available: "Available when named in the message",
+        notSent: "Not sent",
+        omitted: (n: number) => `${n} omitted`,
+        previewOmitted: (n: number) => `${n} shortened in this preview only`,
+        usage: (used: number, budget: number, unit: string) =>
+          budget > 0
+            ? `${used.toLocaleString()} / ${budget.toLocaleString()} ${unit}`
+            : `${used.toLocaleString()} ${unit} · no additional cap`,
+        kinds: {
+          instructions: "Instructions",
+          agent_instructions: "Agent instructions",
+          channel: "Channel purpose",
+          experts: "Experts",
+          project_notes: "Project notes",
+          ancestor_notes: "Notes from above",
+          agent_notes: "Agent notes",
+          knowledge: "Project knowledge source names",
+          agent_knowledge: "Agent knowledge source names",
+          skills: "Skill names",
+        },
+      },
       instructions: "Instructions",
       instructionsHint:
         "Sent to every agent answering here and below, after the instructions of the projects above. An agent's own instructions win over these.",

@@ -54,6 +54,7 @@ func TestProjectRoutesCheckProjectsPermissionsNotRuns(t *testing.T) {
 		{"POST", "/api/projects", "projects:write"},
 		{"GET", "/api/projects/~", "projects:read"},
 		{"GET", "/api/projects/~/memory", "projects:read"},
+		{"GET", "/api/projects/~/context?agent=helper", "projects:read"},
 		{"POST", "/api/projects/~/memory", "projects:write"},
 		{"GET", "/api/projects/~/history", "projects:read"},
 	} {
