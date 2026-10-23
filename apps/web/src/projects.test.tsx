@@ -294,3 +294,14 @@ test("knowledge: a list the platform file sets is read only, and says so", () =>
   assert.doesNotMatch(out, /Add Source|Save Knowledge/);
   assert.match(out, /<li[^>]*>globex-contracts<\/li>/);
 });
+
+
+test("project rows show named agents and a still unread indicator only for unread updates", () => {
+ const unread = {...view("Unread"), unread: 2, row_agents: ["lead", "helper"]};
+ const read = {...view("Read"), unread: 0, row_agents: []};
+ const markup = html(<ProjectsPage projects={[unread, read]} root={null} workspaceName="Acme" canCreate={false} canGovern={false} narrow={false} onFilter={noop} onOpen={noop} onCreated={noop} />);
+ assert.match(markup, /title="lead"/);
+ assert.match(markup, /title="helper"/);
+ assert.equal((markup.match(/aria-label="Unread updates"/g) ?? []).length, 1);
+ assert.doesNotMatch(markup, /animate-/);
+});

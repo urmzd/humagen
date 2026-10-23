@@ -762,6 +762,7 @@ export const defaultCopy = {
   },
   /** The project tree: its kinds, where a project sits, and what a person does with one. */
   projects: {
+    unreadUpdates: "Unread updates",
     title: "Projects",
     lede: "Where work belongs. A project's instructions, notes and limits reach everything below it.",
     /** A kind in words, on a row and in a project's meta line. */
