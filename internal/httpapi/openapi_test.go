@@ -604,6 +604,7 @@ func TestSpecSchemasHaveTheFieldsTheGoTypesMarshal(t *testing.T) {
 		"ProjectExpert": {typ: projects.Expert{}}, "ProjectExperts": {typ: platform.Experts{}}, "Project": {typ: projects.Project{}}, "ProjectView": {typ: projectView{}},
 		"ProjectAccount": {typ: projects.AccountInfo{}}, "ProjectStep": {typ: pathStep{}}, "ProjectLimit": {typ: projectLimit{}},
 		"ProjectDetail": {typ: projectDetail{}}, "ProjectChange": {typ: projectChangeView{}},
+		"ProjectContext": {typ: platform.ProjectContext{}}, "ContextLayer": {typ: platform.ContextLayer{}},
 		"ProjectKnowledge": {typ: platform.ProjectKnowledge{}}, "ProjectKnowledgeSource": {typ: projects.KnowledgeSource{}}, "ProjectKnowledgeInput": {typ: platform.KnowledgeInput{}, written: true},
 		"ProjectSkill": {typ: platform.SkillDetail{}}, "ProjectSkillRef": {typ: projects.SkillRef{}}, "ProjectSkills": {typ: platform.ProjectSkills{}}, "ProjectSkillsInput": {typ: platform.SkillsInput{}, written: true},
 		"MentionKind": {typ: platform.MentionKind{}}, "MentionItem": {typ: platform.MentionItem{}},
@@ -1513,6 +1514,8 @@ func TestResponsesMatchTheSpec(t *testing.T) {
 	c.call(acme, "PUT", experts, "/api/projects/Field/experts", fmt.Sprintf(`{"version":%d,"experts":[{"who":"00u-vic","topics":["Not a topic"]}]}`, expertsAt+1), http.StatusBadRequest)
 	// The knowledge sources a project names ground every run filed there
 	// and below; each must be one the workspace has.
+	c.call(acme, "GET", "/api/projects/{name}/context", "/api/projects/Field/context?agent=helper", "", http.StatusOK)
+	c.call(acme, "GET", "/api/projects/{name}/context", "/api/projects/Field/context", "", http.StatusBadRequest)
 	know := "/api/projects/{name}/knowledge"
 	got = c.call(acme, "GET", know, "/api/projects/Field/knowledge", "", http.StatusOK)
 	knownAt := version(got)

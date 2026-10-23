@@ -203,6 +203,16 @@ function screens(ids: Ids): Screen[] {
     },
     { name: "workspace", path: "/projects/~" },
     { name: "workspace-context", path: "/projects/~/context" },
+    {
+      name: "project-context-preview",
+      path: "/projects/Launch/context",
+      act: async (page) => {
+        await page.getByRole("textbox", { name: "Preview agent" }).fill("lead");
+        await page.getByRole("textbox", { name: "Preview channel" }).fill("general");
+        await page.getByRole("button", { name: "Preview Turn" }).click();
+        await page.getByRole("heading", { name: "Skill names" }).waitFor();
+      },
+    },
     { name: "inbox", path: "/inbox" },
     { name: "schedules", path: "/schedules" },
     { name: "schedule", path: `/schedules/${ids.schedule}` },

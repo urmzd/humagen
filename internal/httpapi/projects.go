@@ -50,6 +50,7 @@ func (s *Server) projectRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/projects/{name}/announcements/{id}", s.authed(auth.ProjectsWrite, s.seenProject(s.withdrawAnnouncement)))
 	mux.HandleFunc("GET /api/projects/{name}/agents", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectAgents)))
 	mux.HandleFunc("PUT /api/projects/{name}/agents", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectAgents)))
+	mux.HandleFunc("GET /api/projects/{name}/context", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectContext)))
 	mux.HandleFunc("GET /api/projects/{name}/knowledge", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectKnowledge)))
 	mux.HandleFunc("PUT /api/projects/{name}/knowledge", s.authed(auth.ProjectsWrite, s.seenProject(s.putProjectKnowledge)))
 	mux.HandleFunc("GET /api/projects/{name}/skills", s.authed(auth.ProjectsRead, s.seenProject(s.getProjectSkills)))
@@ -691,6 +692,20 @@ func (s *Server) putProjectKnowledge(w http.ResponseWriter, r *http.Request, who
 		return
 	}
 	got, err := s.P.SetProjectKnowledge(who, pr.Name, writer(who), in)
+	if err != nil {
+		s.problem(w, err)
+		return
+	}
+	ok(w, http.StatusOK, got)
+}
+
+// getProjectContext previews the same bounded composition used for real turns.
+func (s *Server) getProjectContext(w http.ResponseWriter, r *http.Request, who auth.Principal) {
+	pr, _, found := s.visible(w, who, r.PathValue("name"), projects.Viewer)
+	if !found {
+		return
+	}
+	got, err := s.P.ProjectContextAs(r.Context(), who, pr.Name, r.URL.Query().Get("channel"), r.URL.Query().Get("agent"))
 	if err != nil {
 		s.problem(w, err)
 		return

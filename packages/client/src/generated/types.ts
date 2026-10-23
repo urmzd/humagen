@@ -936,6 +936,23 @@ export interface ProjectKnowledgeSource {
   from: string;
 }
 
+export interface ProjectContext {
+  layers: ContextLayer[];
+}
+
+export interface ContextLayer {
+  kind: string;
+  from: string;
+  text: string;
+  budget: number;
+  used: number;
+  omitted: number;
+  /** Content shortened only in this preview, using the layer's unit. Runtime composition is unchanged. */
+  preview_omitted: number;
+  sent: boolean;
+  unit: "characters" | "items";
+}
+
 /** The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in. */
 export interface ProjectKnowledge {
   version: number;

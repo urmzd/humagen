@@ -3543,6 +3543,44 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "500": {$ref: "#/components/responses/ServerError"}
+  /api/projects/{name}/context:
+    get:
+      operationId: getProjectContext
+      tags: [projects]
+      summary: Preview the layers composed for a turn
+      description: |
+        Uses the live turn composer. Hidden project layers are omitted.
+        Source names require knowledge:read. Skills are available choices,
+        sent only when a message names them. Budgets are character caps on
+        layer content, or item caps for knowledge and skills, not token estimates.
+        The agent system prompt is the current revision, sent separately
+        by the runtime. A zero budget means no extra composer cap. The
+        conversation, retrieved documents and runtime compaction depend on the turn.
+        System prompt previews show at most 32,000 characters; source name
+        previews show at most 128 names and 16,000 name characters.
+        preview_omitted distinguishes display truncation from runtime omissions.
+      x-permission: projects:read
+      parameters:
+        - {$ref: "#/components/parameters/ProjectName"}
+        - in: query
+          name: agent
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 63}
+        - in: query
+          name: channel
+          schema: {type: string, maxLength: 63}
+      responses:
+        "200":
+          description: Ordered layers for the selected agent and channel.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ProjectContext"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/projects/{name}/knowledge:
     get:
       operationId: getProjectKnowledge
@@ -5946,6 +5984,33 @@ components:
           description: The project that names it, the nearest when more than one does. Empty for the workspace.
           type: string
           maxLength: 63
+    ProjectContext:
+      type: object
+      additionalProperties: false
+      required: [layers]
+      properties:
+        layers:
+          type: array
+          maxItems: 32
+          items: {$ref: "#/components/schemas/ContextLayer"}
+    ContextLayer:
+      type: object
+      additionalProperties: false
+      required: [kind, from, text, budget, used, omitted, preview_omitted, sent, unit]
+      properties:
+        kind: {type: string}
+        from: {type: string}
+        text: {type: string}
+        budget: {type: integer, minimum: 0}
+        used: {type: integer, minimum: 0}
+        omitted: {type: integer, minimum: 0}
+        preview_omitted:
+          description: Content shortened only in this preview, using the layer's unit. Runtime composition is unchanged.
+          type: integer
+          minimum: 0
+        sent: {type: boolean}
+        unit: {type: string, enum: [characters, items]}
+
     ProjectKnowledge:
       description: The knowledge sources a project names, at the project's version, and what a run filed in it is grounded in.
       type: object

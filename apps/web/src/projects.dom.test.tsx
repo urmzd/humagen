@@ -25,7 +25,7 @@ function open(
   opts: {
     tab?: ProjectTab;
     can?: string[];
-    routes?: Record<string, (body: unknown) => unknown>;
+    routes?: Record<string, (body: unknown, query: URLSearchParams) => unknown>;
     schedules?: ScheduleView[];
     onMute?: (project: string, muted: boolean) => Promise<void>;
   } = {},
@@ -496,4 +496,21 @@ test("the Context tab: an edit in progress is kept across a change to another fi
   await screen.findByText("Someone changed this project since you opened it. Its latest sources are shown now. Make your change again.");
   assert.ok(screen.getByRole("button", { name: "Remove handbook" }));
   assert.equal(puts.length, 0);
+});
+
+test("the Context tab previews a selected agent and channel, including omitted layers", async () => {
+  open(globexDetail, { tab: "context", routes: {
+    "GET /api/projects/Globex/context": (_body, query) => {
+      assert.equal(query.get("agent"), "helper");
+      assert.equal(query.get("channel"), "general");
+      return {layers: [{kind:"instructions",from:"Globex",text:"FOLLOW-GLOBEX",budget:8000,used:13,omitted:0,sent:true,unit:"characters"},
+        {kind:"ancestor_notes",from:"Field",text:"(2 more notes not sent)",budget:6000,used:0,omitted:2,sent:false,unit:"characters"}]};
+    },
+  }});
+  fireEvent.change(await screen.findByRole("textbox", {name:"Preview agent"}), {target:{value:"helper"}});
+  fireEvent.change(screen.getByRole("textbox", {name:"Preview channel"}), {target:{value:"general"}});
+  fireEvent.click(screen.getByRole("button", {name:"Preview Turn"}));
+  assert.ok(await screen.findByText("FOLLOW-GLOBEX"));
+  assert.ok(screen.getByText("(2 more notes not sent)"));
+  assert.ok(screen.getByText("13 / 8,000 characters"));
 });
