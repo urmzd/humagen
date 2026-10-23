@@ -202,6 +202,7 @@ function screens(ids: Ids): Screen[] {
       },
     },
     { name: "workspace", path: "/projects/~" },
+    { name: "workspace-overview", path: "/projects/~/overview" },
     { name: "workspace-context", path: "/projects/~/context" },
     { name: "inbox", path: "/inbox" },
     { name: "schedules", path: "/schedules" },
@@ -210,6 +211,21 @@ function screens(ids: Ids): Screen[] {
     { name: "monitor-rules", path: "/monitor/rules" },
     { name: "context", path: "/context" },
     { name: "agents", path: "/agents" },
+    {
+      name: "agent-colors",
+      path: "/agents",
+      act: async (page) => {
+        await page.getByRole("searchbox", { name: "Find an agent" }).fill("z-color");
+        await page.getByText("z-color-0", { exact: true }).first().waitFor();
+        const hues = await page
+          .locator("main ul > li span[data-accent='agent']")
+          .evaluateAll((marks) =>
+            marks.map((mark) => (mark as HTMLElement).style.getPropertyValue("--aui-accent-h")),
+          );
+        if (hues.length < 13 || new Set(hues).size !== hues.length)
+          throw new Error(`Agent hues collide: ${hues.join(",")}`);
+      },
+    },
     ...[
       "prompt",
       "model",
@@ -655,6 +671,16 @@ async function main(): Promise<void> {
         system_prompt: a.description,
       });
     }
+    // More than twelve agents exercises the palette beyond the original hash.
+    for (let i = 0; i < 13; i++) {
+      await call("POST", "/api/agents", {
+        name: `z-color-${i}`,
+        description: "Color reservation example.",
+        model: "offline",
+        provider: "offline",
+        system_prompt: "Help.",
+      });
+    }
     const ran = await call<{ id: string; thread?: string }>("POST", "/api/runs", {
       agent: "lead",
       text: "Summarize the launch plan",
@@ -676,6 +702,23 @@ async function main(): Promise<void> {
       text: "Summarize the week",
       description: "A summary every Monday morning",
     });
+    // Project rows cover empty and populated agent marks, plus read and unread inboxes.
+    for (const name of ["triage", "intake"]) {
+      await call("PUT", `/api/agents/${name}/home`, { project: "Support" });
+    }
+    const supportRun = await call<{ id: string }>("POST", "/api/runs", {
+      agent: "triage",
+      project: "Support",
+      text: "Check new tickets",
+    });
+    await settled(call, supportRun.id);
+    await waitFor(async () => {
+      const p = await call<{ project: { unread: number; row_agents: string[] } }>(
+        "GET",
+        "/api/projects/Support",
+      );
+      return p.project.unread > 0 && p.project.row_agents.length === 2;
+    }, "Support's project row has no agents or unread update");
     const files = await call<{ artifacts?: { id: string }[] }>("GET", "/api/artifacts");
     const ids: Ids = {
       task: ran.thread ?? ran.id,

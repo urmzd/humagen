@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.21.2 (2026-10-23)
+
+### Bug Fixes
+
+- **console**: reserve stable AgentMark colors ([91c05b3](https://github.com/urmzd/humagen/commit/91c05b3c1d3fc101be2d26fbc65b06f435729055))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.21.1...v0.21.2)
+
+
 ## 0.21.1 (2026-10-22)
 
 ### Bug Fixes

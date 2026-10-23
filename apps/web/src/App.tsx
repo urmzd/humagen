@@ -1,3 +1,5 @@
+import { agentHuePath, configureAgentHues } from "./agentHues.ts";
+import { setAgentHues } from "./ui.tsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentDetail } from "./AgentDetail.tsx";
 import { Agents } from "./Agents.tsx";
@@ -55,7 +57,11 @@ export function App() {
     api
       .me()
       // A caller with no permission at all is sent null, not an empty list.
-      .then((me) => setSession({ state: "ready", me: { ...me, permissions: me.permissions ?? [] } }))
+      .then((me) => {
+ const huePath = agentHuePath(me.permissions ?? []);
+ configureAgentHues(huePath ? (names) => api.agentHues(names, huePath).then((r) => r.hues) : undefined);
+ setSession({ state: "ready", me: { ...me, permissions: me.permissions ?? [] } });
+ })
       .catch((e) => {
         if (e instanceof ApiError && e.status === 401) {
           // Arriving signed out goes straight to sign-in. Signing out, below,
@@ -81,7 +87,7 @@ export function App() {
       </Centered>
     );
   }
-  return <Console me={session.me} onSignedOut={() => setSession({ state: "signed-out" })} />;
+  return <Console me={session.me} onSignedOut={() => { configureAgentHues(undefined); setSession({ state: "signed-out" }); }} />;
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -183,6 +189,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     api
       .agentList()
       .then((r) => {
+        setAgentHues(r.hues ?? {});
         setAgents(r.agents);
         setBuiltin(r.builtin ?? []);
         setHomes(r.homes ?? {});
@@ -268,7 +275,10 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
     const close = subscribe("agent", {
       onOpen: loadRuns,
       onState: setLive,
-      onInbox: loadInbox,
+      onInbox: () => {
+        loadInbox();
+        loadProjects();
+      },
       // A person's message starts no run, so the stream says so by name.
       onThread: () => {
         window.clearTimeout(pending.current);
@@ -285,7 +295,7 @@ function Console({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
       window.clearTimeout(pending.current);
       close();
     };
-  }, [can, loadRuns, loadAgents, loadInbox]);
+  }, [can, loadRuns, loadAgents, loadInbox, loadProjects]);
 
   // An eval in flight reports progress on its own record, not on the bus.
   const evalRunning = suites.some((s) => s.runs[0]?.status === "running");

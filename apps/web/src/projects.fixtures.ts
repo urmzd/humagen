@@ -51,6 +51,8 @@ export function view(
     schedules: 0,
     notes: 0,
     proposed: 0,
+    unread: 0,
+    row_agents: [],
   };
 }
 
