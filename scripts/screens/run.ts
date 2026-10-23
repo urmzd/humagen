@@ -700,7 +700,25 @@ async function exportShowcase(browser: Browser, base: string): Promise<void> {
       }
     }, "the gallery did not start");
     const page = await context.newPage();
+    // The standalone gallery has no signed-in host to load reservations.
+    // Give its finite fixture roster explicit hues, without a runtime fallback.
+    const fixtureHues = async () => {
+      await page.evaluate(async () => {
+        const modulePath = "/src/agentHues.ts";
+        const { setAgentHues } = await import(modulePath);
+        setAgentHues({
+          lead: 240,
+          oncall: 330,
+          releaser: 180,
+          helper: 120,
+          billing: 30,
+          triage: 0,
+        });
+      });
+      await page.locator("[data-accent='agent']").first().waitFor();
+    };
     await page.goto(`${gallery}/gallery.html`, { waitUntil: "networkidle" });
+    await fixtureHues();
     await page.evaluate(() => document.fonts.ready);
     await page.getByRole("heading", { name: "Console primitives" }).waitFor();
     await page.screenshot({
@@ -709,6 +727,7 @@ async function exportShowcase(browser: Browser, base: string): Promise<void> {
       animations: "disabled",
     });
     await page.goto(`${gallery}/gallery.html?message=m-approval`, { waitUntil: "networkidle" });
+    await fixtureHues();
     const inbox = page.getByTestId("gallery-inbox");
     await inbox.getByRole("button", { name: /^Approve:/ }).waitFor();
     await inbox.screenshot({ path: join(target, "ui-approval.png"), animations: "disabled" });
