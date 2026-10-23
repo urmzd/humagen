@@ -89,7 +89,8 @@ parent.
 - Every project, the root included, has channels, like Slack channels.
   `general` always exists and cannot be removed. A channel has an immutable
   slug, a title, a purpose and an optional default agent. A channel has the
-  project's visibility; per-channel membership is a follow-up.
+  project's visibility today. The [per-channel membership proposal](#per-channel-membership-proposed)
+  narrows it further and requires approval before implementation.
 - Every thread is in exactly one channel of one project. A thread is a Humagen
   conversation: turns, branches, any agent on any turn. It gains participants
   (people and agents), an optional default agent and a visibility:
@@ -136,6 +137,189 @@ parent.
 - A turn is either a **human message** (a person posted; no run) or an
   **agent's run** answering a message. A person posts only as themselves; no
   route lets anyone post as an agent, and agent turns exist only as runs.
+
+### Per-channel membership (proposed)
+
+**Design for review, not implemented.** Approval of this proposal is required
+before changing stores, API contracts, the Platform document or the console.
+The existing channel routes and records still inherit project visibility.
+
+#### Channel record and writes
+
+Add optional `members: []string` to `projects.Channel`, `ChannelInput` and
+`ChannelUpdate`. Entries are subjects or `role:<name>`, using the project's
+existing identity grammar and role matching. At most 100 distinct entries;
+blank, duplicate, unknown-form and `*` entries are invalid. Machines match
+only their own subject, never a role. There are no channel roles: this is an
+additional audience restriction, and project roles still decide actions.
+
+| Stored value | Ordinary readers |
+|---|---|
+| Field absent (`nil`) | Inherit the project's audience, as today |
+| Nonempty list | Project viewers matching at least one entry |
+| Explicit `[]` | Nobody; recovery requires `projects:govern` or the managed file |
+
+The JSON representation must preserve absence versus `[]`; `omitempty` on a
+slice cannot express the contract. A PUT omitting `members` preserves the
+stored value, `null` restores inheritance, and `[]` closes the channel.
+Creation with the field absent inherits. `general` always inherits, so every
+project retains its existing landing channel. No new channel or permission
+kind is introduced.
+
+Creation and changes use the existing `projects:write` route guard and
+project-owner check. The creator must match a restricted audience, and a
+writer must see the existing channel before changing it. An ordinary owner
+cannot remove their own last matching entry; a governor may do so, including
+writing `[]`. Owners are not automatically channel members. A governor's
+read remains break-glass, subject to the recorded-read design when it lands.
+Membership changes use the channel's expected version, validate and persist
+under the store lock, and append bounded project history in the same write.
+File-managed membership follows the existing `ErrManaged` rule.
+
+#### One read rule, including private threads
+
+Extend `Place` with an optional channel and extend `Seer` with a channel
+snapshot from the same project-tree revision. All thread records, shared as
+well as private, supply their channel. A run, called run, housekeeping run,
+artifact or inbox item belonging to a thread resolves its channel from that
+thread, never from a caller's field. A direct channel read supplies its
+channel explicitly. An unknown or malformed channel or inconsistent thread
+placement fails closed. Existing conversations without a thread record use
+`general`, with their existing private-thread rules unchanged.
+
+For an ordinary reader the rule is:
+
+```
+project role >= viewer
+AND (channel inherits OR reader matches channel.members)
+AND (thread is shared OR reader participates in the private thread)
+```
+
+Project-owner inheritance cannot skip the channel term. Private participation
+cannot skip it either: removing a channel member hides their old private
+threads there too, without removing their participant record. A subject or
+role in `members` grants nothing outside the project chain or beyond the
+route's permission. `projects:govern` keeps its existing read override; the
+surface-machine exception is constrained as described below.
+
+Use this rule in `p.Sees`/`Seer`, not a second filter in channel handlers.
+Apply it to channel lists and direct reads, threads, runs, events, manifests,
+traces, journal, analytics, artifacts/downloads, inbox pages and counters,
+project counts, context previews and client bindings. Hidden channels have
+no name, purpose, membership, default, count or history in the response.
+Project history must omit hidden channel changes, including their old and
+new snapshots. No total or pagination hint may count omitted objects.
+A direct request naming a hidden channel or thread answers exactly like a
+missing one. Bound queries on the server, filter before pagination and
+aggregation, and cache membership resolution once per channel per request.
+
+Starting or posting in a channel needs the current project member role plus
+the channel read rule; invitation, Share and moves also check the destination
+channel. Existing private-thread authorization still applies. Adding a
+participant never adds them to channel membership. Check admission and
+message writes against the current audience under the existing admission
+coordination; a revocation stops subsequent reads, events and starts. A
+request already authorized or a running turn may have received content;
+revocation cannot retract it. After a membership change or move, refuse a queued turn whose asker no longer
+has access, and recheck before execution.
+
+Restricted-channel content must not become project-wide notes, titles,
+recaps or notifications. Apply the private-thread prohibition on project
+memory proposals to restricted channels too. Project recaps include only
+threads every recipient may read; a project announcement remains project
+content, not a new way to publish channel content.
+
+#### Slack bindings
+
+Slack membership is not Humagen membership and is not synchronized. A bot
+post is visible to Slack's audience, which this API cannot confine. The first
+implementation therefore refuses a restricted channel's Slack binding and
+refuses to restrict a channel that has a binding or any retained
+surface-backed thread, even after unbinding. A client's home must also stay
+in an inherited channel. These checks run for API writes, managed files and
+replay validation; they return 409 for conflicting existing state and a
+path-specific configuration error for a file.
+
+The existing surface-machine read exception remains only for inherited
+channels. A historical surface thread cannot become a route around a newly
+restricted audience. Binding lists and machine reads still apply the one
+read rule. A mapped person's posts and answers always check that person's
+project, channel and private-thread access. Later support for restricted
+Slack bindings requires its own audience and delivery design; it is outside
+this proposal.
+
+#### Inbox and mentions
+
+Thread-backed messages keep their thread identity, so both inbox pages and
+per-reader counter buckets evaluate the channel where the thread lives now.
+Do not cache an old audience in a notification or keep counters keyed only
+by project: distinguish channel/thread visibility where needed. Revocation
+hides old messages and updates counts on the next read, including project
+unread dots, search, snoozed items and SSE notices. Retention and per-reader
+read/hide state keep their current rules.
+
+A direct mention, expert or role recipient is notified only when they can
+read both channel and thread. Private-thread invitations first require
+channel access, then add the participant atomically with the message.
+A rejected recipient receives nothing, and the poster gets the existing
+unreachable-recipient result without disclosing hidden channel or agent
+names. Role mentions in private threads keep their current restriction.
+Project announcements retain their project audience and never include
+restricted channel names or excerpts.
+
+#### Platform document
+
+Propose the same `members` field under both `workspace.channels[]` and
+`workspace.projects[].channels[]`:
+
+```yaml
+channels:
+  - name: general
+  - name: renewals
+    members: ["okta|00u1ana", "role:renewals"]
+```
+
+An omitted field inherits; `members: []` closes. Explicit YAML `null` is
+invalid in a declaration, so a mistyped list cannot silently broaden reads.
+To restore inheritance, remove a previously managed `members` field; the
+file's application clears its previous ownership and value together. A file
+that never owned the field preserves an API-managed value. A file owns the
+whole declared list, as for other managed fields. `Platform.check` validates
+identity forms, duplicates, the 100-entry bound, `general` and Slack/home
+conflicts, then startup validates retained surface threads before admitting
+traffic. Roles may have no current holders, and subjects need not have
+signed in; neither widens access. The implementation must update
+docs/spec.md, reference examples and their loader tests in its own PR.
+
+#### Migration and implementation acceptance
+
+Existing channel records and Platform documents lack `members` and therefore
+inherit exactly as before. Do not rewrite thread ids, run tags, binding ids
+or private participants. Keep `nil` and `[]` distinct through memory writes,
+state serialization, Postgres and replay; reject malformed present values
+rather than treating them as inherited. Archived restricted channels retain
+their audience. Deleting a project must preserve channel audiences beside
+its project tombstone while conversations or artifacts still reference them,
+so deleted-project reads cannot fall back to project visibility.
+
+A binary predating channel confinement ignores the new field and would expose
+restricted content. Once membership is configured, downgrade requires a
+snapshot restored from before the restriction, or a binary that implements
+this rule. Document that limit before shipping; changing field names alone
+cannot make old binaries enforce it.
+
+The implementation PR must change `api/openapi.yaml` before `make client`,
+keep one route permission in `Server.Handler`, and add tests that fail on the
+current implementation. Required cases: project-only outsiders; owners not
+listed; matching subjects and roles; machines; empty audiences; participants
+removed from a channel; malformed replay; deleted projects; moves, Share and
+mentions; surface binding/home conflicts; hidden history; count/pagination
+parity; queued-turn revocation; and notes/recaps. Extend the GET, 404, empty
+list, write and event-stream confinement sweeps with a restricted shared
+thread and a private thread in the same visible project. Exercise restart,
+replay and failed writes on memory and Postgres with no skips. Add console
+membership states to `scripts/screens` and run phone and desktop checks.
+Run every CI check listed in the task before opening that implementation PR.
 
 ### Tagging and defaults
 
