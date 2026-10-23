@@ -18,6 +18,7 @@ import {
 import { ScopeLimits } from "./Billing.tsx";
 import { inWords } from "./cron.ts";
 import { ProjectAgentsTab } from "./ProjectAgents.tsx";
+import { ProjectContextPreview } from "./ProjectContextPreview.tsx";
 import { ProjectKnowledgeSection } from "./ProjectKnowledge.tsx";
 import type { Source } from "./mail.ts";
 import { ProjectHistory, ProjectInbox, ProjectLimits, ProjectPeople } from "./ProjectTabs.tsx";
@@ -1051,6 +1052,7 @@ export function ContextTab({
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
+      <ProjectContextPreview project={p.name} version={p.version} />
       <p className="text-aui-sm text-aui-muted">{words.context.order}</p>
       <section className="flex flex-col gap-2" aria-label={words.context.instructions}>
         <h2 className={heading}>{words.context.instructions}</h2>

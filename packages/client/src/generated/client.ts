@@ -75,6 +75,7 @@ import type {
   Preferences,
   ProjectAgentsInput,
   ProjectAgentsView,
+  ProjectContext,
   ProjectDetail,
   ProjectExperts,
   ProjectInput,
@@ -3413,6 +3414,43 @@ need `projects:govern` as well.
     return this.rawRequest<ProjectExperts>("PUT", path, {
       body,
       contentType: "application/json",
+      ...options,
+    });
+  }
+
+  /** Uses the live turn composer. Hidden project layers are omitted.
+Source names require knowledge:read. Skills are available choices,
+sent only when a message names them. Budgets are character caps on
+layer content, or item caps for knowledge and skills, not token estimates.
+The agent system prompt is the current revision, sent separately
+by the runtime. A zero budget means no extra composer cap. The
+conversation, retrieved documents and runtime compaction depend on the turn.
+System prompt previews show at most 32,000 characters; source name
+previews show at most 128 names and 16,000 name characters.
+preview_omitted distinguishes display truncation from runtime omissions.
+ */
+  async getProjectContext(name: string, agent: string, channel?: string, options?: RequestOptions): Promise<ProjectContext> {
+    let path = "/api/projects/{name}/context";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ProjectContext>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getProjectContextRaw(name: string, agent: string, channel?: string, options?: RequestOptions): Promise<ApiResponse<ProjectContext>> {
+    let path = "/api/projects/{name}/context";
+    path = path.replace("{name}", encodeURIComponent(String(name)));
+    const _q = new URLSearchParams();
+    if (agent !== undefined && agent !== null) _q.set("agent", String(agent));
+    if (channel !== undefined && channel !== null) _q.set("channel", String(channel));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ProjectContext>("GET", path, {
       ...options,
     });
   }
