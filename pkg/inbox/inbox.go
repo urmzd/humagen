@@ -1425,6 +1425,14 @@ func (s *Store) Count(tenantName string, q Query) Counts {
 	return s.of(tenantName).count(f)
 }
 
+// CountProject counts one project's open inbox messages with the same reader
+// counters and confinement as Count. It never includes descendant projects.
+func (s *Store) CountProject(tenantName, project string, q Query) Counts {
+	sees := q.Sees
+	q.Sees = func(m Message) bool { return m.Source.Project == project && (sees == nil || sees(m)) }
+	return s.Count(tenantName, q)
+}
+
 // Bounds of an announcement.
 const (
 	// MaxSubject is an announcement's subject, in characters.

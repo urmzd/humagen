@@ -75,6 +75,10 @@ type projectView struct {
 	// Depth is how many levels below the workspace it sits: 0 for the
 	// workspace itself.
 	Depth int `json:"depth"`
+	// Unread is the reader's own inbox updates filed directly here.
+	Unread int `json:"unread"`
+	// RowAgents names at most eight agents that live here, for tree rows.
+	RowAgents []string `json:"row_agents"`
 	// Path is the projects from the top level down to this one, the
 	// workspace left out, so it is as long as Depth.
 	Path []pathStep `json:"path"`
@@ -209,6 +213,16 @@ func (s *Server) projectView(f projectFacts, p projects.Project) projectView {
 	for _, c := range f.tree.Children(p.Name) {
 		if f.sees(c.Name) {
 			v.Children++
+		}
+	}
+	v.Unread = s.P.ProjectUnread(f.who, p.Name)
+	v.RowAgents = []string{}
+	for _, name := range f.tree.Homes(p.Name) {
+		if f.seer.Agent(name) {
+			v.RowAgents = append(v.RowAgents, name)
+			if len(v.RowAgents) == 8 {
+				break
+			}
 		}
 	}
 	v.Access, v.Actions, v.Mine = f.access[p.Name], actionsOf(f, p), f.named[p.Name]
