@@ -86,3 +86,10 @@ test("the theme and accent are not offered, so not saved, before the saved ones 
   assert.ok(screen.getByText("Your preferences could not be read. Reload to try again."));
   assert.ok(!screen.queryByRole("button", { name: "Dark" }));
 });
+
+test("the audit address refuses a reader without governance", async () => {
+ net = stubFetch({});
+ render(page(saved,"read","read-audit"));
+ await screen.findByText("Only workspace administrators may read this audit.");
+ assert.ok(!net.seen.some(r=>r.path==="/api/read-audit"));
+});

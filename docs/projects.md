@@ -2163,9 +2163,7 @@ phase 2 and experts to phase 3, because addressing and threads need them.
 - **Membership by IdP group** relies on a policy file with empty roles and
   `grant ... to group`. The default policy has only four roles, and a group
   change applies at the next sign-in. Subjects can be listed directly.
-- **`projects:govern` sees everything**, customer accounts included. Reads
-  are not audited; writes are, through the `httpapi: change` log. Some
-  customers may need recorded break-glass reads; that is a follow-up row.
+- **`projects:govern` sees everything**, customer accounts included. Reads allowed only by governance are written before access is granted, with the reader, project, thread, time and server route. Ordinary project roles and private-thread participation are checked first. Audit write failure or the 100,000-record tenant cap refuses the exceptional read. Records share the inbox retention duration, are removed at start and hourly, and survive restart. Workspace admins list at most 500 records from a window of at most 31 days at `GET /api/read-audit`; Settings shows the last day. Writes remain in the `httpapi: change` log.
 - **Phase 1 is broad**: store, migration, permissions, the policy chain,
   context and the console tree. If review finds it too big, the safe split is
   1a (store, migration, permissions, routes, spec merge) and 1b (the chain

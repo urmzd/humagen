@@ -2915,6 +2915,18 @@ export interface ManifestUsage {
   total: Usage;
 }
 
+export interface ListReadAuditResponseRecordsItem {
+  subject: string;
+  project: string;
+  thread?: string;
+  route: string;
+  at: string;
+}
+
+export interface ListReadAuditResponse {
+  records: ListReadAuditResponseRecordsItem[];
+}
+
 export interface GetAgentHuesResponse {
   hues: Record<string, number>;
 }
