@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="showcase/agents.png" alt="Humagen agent console with the two seeded offline example agents" width="80%">
+  <img src="showcase/agents.png" alt="Humagen agent console with seeded example agents" width="80%">
 </p>
 <p align="center"><em>Local development preview with seeded example data, captured with teasr. No model calls.</em></p>
 
@@ -119,10 +119,10 @@ With a fresh `make dev` process and `make web` running:
 teasr run
 ```
 
-[`teasr.toml`](teasr.toml) captures the console pages and writes images to [`showcase/`](showcase/). The console opens directly after sign-in. Personal preferences are optional in Profile and Appearance settings.
+`SCREENS_SHOWCASE=1 make screens` starts an isolated Humagen server, seeds the console and checks every screen at phone and desktop widths before refreshing [`showcase/`](showcase/). Primitives and the approval card use the console's existing gallery fixtures; `onboarding.png` shows the current welcome screen and `runs.png` shows a seeded conversation. The console opens directly after sign-in. Personal preferences are optional in Profile and Appearance settings.
 
 <p align="center">
-  <img src="showcase/runs.png" alt="Seeded offline run history" width="30%"> &nbsp;
+  <img src="showcase/runs.png" alt="Seeded offline conversation" width="30%"> &nbsp;
   <img src="showcase/analytics.png" alt="Analytics for the seeded offline runs" width="30%">
 </p>
 <p align="center"><em>Runs &middot; Analytics</em></p>
