@@ -99,6 +99,41 @@ security:
   - bearerToken: []
   - sessionCookie: []
 paths:
+  /api/read-audit:
+    get:
+      operationId: listReadAudit
+      tags: [projects]
+      summary: List recorded break-glass reads
+      description: Workspace administrators read at most 500 records from a window of at most 31 days. The end defaults to now and the start to 24 hours before the end.
+      x-permission: projects:govern
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      responses:
+        '200':
+          description: Newest reads first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [records]
+                properties:
+                  records:
+                    type: array
+                    maxItems: 500
+                    items:
+                      type: object
+                      required: [subject, project, route, at]
+                      properties:
+                        subject: {type: string}
+                        project: {type: string}
+                        thread: {type: string}
+                        route: {type: string}
+                        at: {type: string, format: date-time}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /healthz:
     get:
       operationId: getHealth
