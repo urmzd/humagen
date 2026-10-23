@@ -1,7 +1,7 @@
 import { defaultCopy } from "@humagen/components";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, api, type ProjectContext } from "./api.ts";
-import { field, Label, primary, Problem } from "./ui.tsx";
+import { AgentMark, field, Label, primary, Problem } from "./ui.tsx";
 
 const words = defaultCopy.projects.context.preview;
 
@@ -84,9 +84,15 @@ export function ProjectContextPreview({ project, version }: { project: string; v
         <ol className="flex flex-col gap-3">
           {preview.layers.map((layer, index) => (
             <li key={`${layer.kind}:${layer.from}:${index}`} className="min-w-0 border-aui-border border-t pt-3">
-              <h3 className="text-aui-sm font-medium text-aui-fg">
+              <h3 className="flex flex-wrap items-center gap-1 text-aui-sm font-medium text-aui-fg">
                 {words.kinds[layer.kind as keyof typeof words.kinds] ?? layer.kind}
-                {layer.from ? ` · ${layer.from}` : ""}
+                {layer.from && (
+                  <span className="inline-flex items-center gap-1">
+                    <span aria-hidden>·</span>
+                    {layer.kind.startsWith("agent_") && <AgentMark name={layer.from} size={12} />}
+                    {layer.from}
+                  </span>
+                )}
               </h3>
               <p className="text-aui-xs text-aui-muted">
                 {words.usage(layer.used, layer.budget, layer.unit)}
