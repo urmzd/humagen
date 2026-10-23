@@ -106,6 +106,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/threads", s.authed(auth.RunsRead, s.listThreads))
 	mux.HandleFunc("GET /api/threads/{id}", s.authed(auth.RunsRead, s.seenThread(s.getThread)))
 	mux.HandleFunc("GET /api/pick", s.authed(auth.AgentsRead, s.pickAgent))
+	mux.HandleFunc("GET /api/read-audit", s.authed(auth.ProjectsGovern, s.listReadAudit))
 	mux.HandleFunc("GET /api/settings", s.authed(auth.AgentsRead, s.getSettings))
 	mux.HandleFunc("PUT /api/settings", s.authed(auth.AgentsWrite, s.putSettings))
 	mux.HandleFunc("GET /api/runs/{id}", s.authed(auth.RunsRead, s.seenRun(s.getRun)))
@@ -200,6 +201,7 @@ func (s *Server) authed(perm auth.Permission, h handler) http.HandlerFunc {
 			s.Log.Info("httpapi: change", "subject", who.Subject, "kind", who.Kind, "tenant", who.Tenant,
 				"method", r.Method, "path", r.URL.Path)
 		}
+		who = s.P.AuditedReader(who, r.Pattern)
 		h(w, r.WithContext(auth.With(r.Context(), who)), who)
 	}
 }

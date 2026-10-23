@@ -66,6 +66,7 @@ import (
 	"github.com/urmzd/humagen/pkg/policy"
 	"github.com/urmzd/humagen/pkg/prefs"
 	"github.com/urmzd/humagen/pkg/projects"
+	"github.com/urmzd/humagen/pkg/readaudit"
 	"github.com/urmzd/humagen/pkg/runs"
 	"github.com/urmzd/humagen/pkg/threads"
 	"github.com/urmzd/humagen/pkg/usage"
@@ -212,6 +213,7 @@ type Platform struct {
 	CallPolicies *callpolicy.Store
 	Usage        *usage.Ledger
 	Inbox        *inbox.Store
+	ReadAudit    *readaudit.Store
 	Artifacts    *artifacts.Index
 	// Clients is the external clients each tenant answers through.
 	Clients clients.Store

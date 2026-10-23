@@ -110,6 +110,7 @@ type Seer struct {
 	tree    *projects.Tree
 	roles   map[string]projects.Access
 	govern  bool
+	own     map[string]projects.Access
 	threads map[string]*threadAccess
 	// gone is the reader's role in each deleted project asked about, read
 	// from its tombstone once.
@@ -123,7 +124,9 @@ type Seer struct {
 func (p *Platform) Seer(who auth.Principal) *Seer {
 	tree := p.Projects.Tree(who.Tenant)
 	r := ReaderOf(who)
-	return &Seer{p: p, who: who, tree: tree, roles: tree.Roles(r), govern: r.Govern && r.Subject != "", threads: map[string]*threadAccess{}, gone: map[string]projects.Access{}, hosts: map[string]bool{}}
+	ordinary := r
+	ordinary.Govern = false
+	return &Seer{own: tree.Roles(ordinary), p: p, who: who, tree: tree, roles: tree.Roles(r), govern: r.Govern && r.Subject != "", threads: map[string]*threadAccess{}, gone: map[string]projects.Access{}, hosts: map[string]bool{}}
 }
 
 // Sees reports whether a reader may read what lives in a place: a role of at
@@ -139,7 +142,16 @@ func (p *Platform) Sees(who auth.Principal, at Place) bool { return p.Seer(who).
 // that surface, wherever they are filed: the Slack thread is already its own.
 func (s *Seer) Place(at Place) bool {
 	if s.govern {
-		return true
+		ordinary := *s
+		ordinary.govern = false
+		ordinary.roles = s.own
+		if ordinary.Place(at) {
+			return true
+		}
+		if s.who.AuditRead != nil {
+			return s.who.AuditRead(s.who.Subject, at.Project, at.Thread)
+		}
+		return s.p.recordRead(s.who, at, "platform")
 	}
 	if th := s.thread(at.Thread); th != nil && th.Client != "" && s.hosting(th.Client) {
 		return true
@@ -161,7 +173,9 @@ func (s *Seer) deleted(name string) (projects.Access, bool) {
 	if !ok {
 		return projects.Access{}, false
 	}
-	a := s.tree.DeletedRole(x, ReaderOf(s.who), func(n string) (projects.Tombstone, bool) { return s.p.Projects.Tombstone(s.who.Tenant, n) })
+	reader := ReaderOf(s.who)
+	reader.Govern = s.govern
+	a := s.tree.DeletedRole(x, reader, func(n string) (projects.Tombstone, bool) { return s.p.Projects.Tombstone(s.who.Tenant, n) })
 	s.gone[name] = a
 	return a, true
 }
@@ -322,9 +336,6 @@ func (s *Seer) MemoryOwner(owner string) bool {
 // opened after the mark is counted from a later read.
 func (p *Platform) ProjectCounts(who auth.Principal) map[string]runs.ProjectCount {
 	seer := p.Seer(who)
-	if seer.govern {
-		return p.Runs.ProjectCounts(who.Tenant)
-	}
 	mark := p.Runs.Opened(who.Tenant)
 	hidden := map[string]bool{}
 	for _, th := range p.Threads.Records(who.Tenant, func(th threads.Thread) bool { return th.Visibility == threads.Private }) {

@@ -232,6 +232,29 @@ function screens(ids: Ids): Screen[] {
       name: `directory-${tab}`,
       path: tab === "people" ? "/directory" : `/directory/${tab}`,
     })),
+    {
+      name: "settings-read-audit-records",
+      path: "/settings/read-audit",
+      act: async (page) => {
+        await page.route("**/api/read-audit", (route) =>
+          route.fulfill({
+            json: {
+              records: [
+                {
+                  subject: "mock-admin",
+                  project: "Customer renewal",
+                  thread: "private-renewal",
+                  route: "GET /api/threads/{id}",
+                  at: "2026-10-22T10:00:00Z",
+                },
+              ],
+            },
+          }),
+        );
+        await page.reload();
+        await page.getByText("Customer renewal / private-renewal").waitFor();
+      },
+    },
     ...[
       "profile",
       "appearance",
@@ -241,6 +264,7 @@ function screens(ids: Ids): Screen[] {
       "limits",
       "connections",
       "access",
+      "read-audit",
     ].map((s) => ({
       name: `settings-${s}`,
       path: `/settings/${s}`,

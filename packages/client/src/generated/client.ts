@@ -54,6 +54,7 @@ import type {
   ListProjectHistoryResponse,
   ListProjectsResponse,
   ListReachableAgentsResponse,
+  ListReadAuditResponse,
   ListRunEventsResponse,
   ListRunFeedbackResponse,
   ListSchedulesResponse,
@@ -445,6 +446,33 @@ export class ApiClient {
       );
     }
     return response.data;
+  }
+
+  /** Workspace administrators read at most 500 records from a window of at most 31 days. The end defaults to now and the start to 24 hours before the end. */
+  async listReadAudit(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ListReadAuditResponse> {
+    let path = "/api/read-audit";
+    const _q = new URLSearchParams();
+    if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (to !== undefined && to !== null) _q.set("to", String(to));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<ListReadAuditResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async listReadAuditRaw(from?: string, to?: string, limit?: number, options?: RequestOptions): Promise<ApiResponse<ListReadAuditResponse>> {
+    let path = "/api/read-audit";
+    const _q = new URLSearchParams();
+    if (from !== undefined && from !== null) _q.set("from", String(from));
+    if (to !== undefined && to !== null) _q.set("to", String(to));
+    if (limit !== undefined && limit !== null) _q.set("limit", String(limit));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<ListReadAuditResponse>("GET", path, {
+      ...options,
+    });
   }
 
   /** Liveness probe */

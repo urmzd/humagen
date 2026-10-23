@@ -152,7 +152,7 @@ func (s *Server) projectFacts(who auth.Principal) projectFacts {
 }
 
 // sees reports whether the caller has any role in a project.
-func (f projectFacts) sees(name string) bool { return f.access[name].Role != projects.None }
+func (f projectFacts) sees(name string) bool { return f.seer.Project(name) }
 
 // actionsOf is what the caller may do on a project: projects:write and the
 // role each action needs, and projects:govern for the workspace and company
@@ -305,7 +305,7 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request, who auth.P
 		}
 	}
 	page.Keep = func(p projects.Project) bool {
-		return f.sees(p.Name) && (!byParent || p.Parent == parent) && (within == nil || within[p.Name])
+		return (!byParent || p.Parent == parent) && (within == nil || within[p.Name]) && f.sees(p.Name)
 	}
 	rows, next, err := f.tree.Page(page)
 	if err != nil {

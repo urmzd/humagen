@@ -18,6 +18,15 @@ const OUTCOMES: Record<string, string> = {
 export const defaultCopy = {
   /** The product, as a sender: what every system message is shown from, whatever name its record keeps. */
   product: "Humagen",
+  readAudit: {
+    label: "Read Audit",
+    denied: "Only workspace administrators may read this audit.",
+    title: "Break-glass reads",
+    description:
+      "Reads allowed only by project governance in the last 24 hours. Showing at most 100 records, newest first.",
+    empty: "No break-glass reads in the last 24 hours.",
+    failed: "The read audit could not be loaded.",
+  },
   approve: "Approve",
   cancel: "Cancel",
   edit: "Edit",

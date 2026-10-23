@@ -194,3 +194,8 @@ test("Alerts became Monitor and Knowledge became Context, and old paths still la
   assert.deepEqual(at("/knowledge/handbook/search"), { page: "context", source: "handbook", tab: "search" });
   assert.deepEqual(at("/agents/lead/knowledge"), { page: "agent", name: "lead", tab: "context" });
 });
+
+test("the read audit has a Settings address", () => {
+  assert.equal(href({ page: "settings", section: "read-audit" }), "/settings/read-audit");
+  assert.deepEqual(at("/settings/read-audit"), { page: "settings", section: "read-audit" });
+});
