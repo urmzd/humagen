@@ -11,10 +11,20 @@
  * Settings, all optional: HUMAGEN_BIN (the humagen binary), HUMAGEN_WEB (the built
  * console), SCREENS_OUT (where screenshots go, .screens at the root),
  * CHROMIUM (a Chromium or Chrome to use instead of the first one found),
- * SCREENS_ONLY (a comma-separated list of screen names).
+ * SCREENS_ONLY (a comma-separated list of screen names), SCREENS_SHOWCASE=1
+ * (also refresh the eight committed showcase images, using the gallery fixtures
+ * for primitives and approval; requires all screens).
  */
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -27,6 +37,7 @@ const repo = resolve(here, "../..");
 const bin = resolve(process.env.HUMAGEN_BIN ?? join(repo, "bin/humagen"));
 const web = resolve(process.env.HUMAGEN_WEB ?? join(repo, "apps/web/dist"));
 const out = resolve(process.env.SCREENS_OUT ?? join(repo, ".screens"));
+const showcase = process.env.SCREENS_SHOWCASE === "1";
 const only = (process.env.SCREENS_ONLY ?? "").split(",").filter(Boolean);
 
 interface Viewport {
@@ -581,7 +592,86 @@ function report(results: Result[]): void {
   );
 }
 
+/** Export seeded console screens and the console's existing component gallery. */
+async function exportShowcase(browser: Browser, base: string): Promise<void> {
+  const target = join(repo, "showcase");
+  mkdirSync(target, { recursive: true });
+  for (const [name, screen] of Object.entries({
+    agents: "agents",
+    analytics: "monitor",
+    home: "home",
+    onboarding: "home-new",
+    runs: "task",
+    "ui-agent-turn": "chat-private",
+  })) {
+    copyFileSync(join(out, "desktop", `${screen}.png`), join(target, `${name}.png`));
+  }
+  // The gallery is deliberately outside the production build. Serve its
+  // existing fixtures with Vite, alongside the same isolated seeded server.
+  const port = await freePort();
+  const gallery = `http://127.0.0.1:${port}`;
+  const vite = spawn(
+    process.execPath,
+    [
+      join(repo, "apps/web/node_modules/vite/bin/vite.js"),
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(port),
+      "--strictPort",
+    ],
+    {
+      cwd: join(repo, "apps/web"),
+      env: { ...process.env, HUMAGEN_API: base },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  let log = "";
+  vite.stdout?.on("data", (d: Buffer) => {
+    log += d;
+  });
+  vite.stderr?.on("data", (d: Buffer) => {
+    log += d;
+  });
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    reducedMotion: "reduce",
+    colorScheme: "light",
+    locale: "en-US",
+    timezoneId: "UTC",
+  });
+  try {
+    await waitFor(async () => {
+      if (vite.exitCode !== null) throw new Error(`gallery exited: ${log}`);
+      try {
+        return (await fetch(`${gallery}/gallery.html`)).ok;
+      } catch {
+        return false;
+      }
+    }, "the gallery did not start");
+    const page = await context.newPage();
+    await page.goto(`${gallery}/gallery.html`, { waitUntil: "networkidle" });
+    await page.evaluate(() => document.fonts.ready);
+    await page.getByRole("heading", { name: "Console primitives" }).waitFor();
+    await page.screenshot({
+      path: join(target, "primitives.png"),
+      fullPage: true,
+      animations: "disabled",
+    });
+    await page.goto(`${gallery}/gallery.html?message=m-approval`, { waitUntil: "networkidle" });
+    const inbox = page.getByTestId("gallery-inbox");
+    await inbox.getByRole("button", { name: /^Approve:/ }).waitFor();
+    await inbox.screenshot({ path: join(target, "ui-approval.png"), animations: "disabled" });
+    console.log(`Showcase images refreshed in ${target}`);
+  } finally {
+    await context.close();
+    vite.kill();
+  }
+}
+
 async function main(): Promise<void> {
+  if (showcase && only.length)
+    throw new Error("SCREENS_SHOWCASE requires every screen; unset SCREENS_ONLY.");
   // A mistyped name would otherwise capture nothing and pass.
   const unknown = only.filter((n) => n !== "home-new" && !screens(ids0).some((s) => s.name === n));
   if (unknown.length) throw new Error(`SCREENS_ONLY names no screen: ${unknown.join(", ")}`);
@@ -686,6 +776,9 @@ async function main(): Promise<void> {
     results.push(...(await capture(browser, base, screens(ids))));
 
     report(results);
+    if (showcase && results.every((r) => r.problems.length === 0)) {
+      await exportShowcase(browser, base);
+    }
     const failing = results.filter((r) => r.problems.length > 0);
     console.log(`\n${results.length} screenshots in ${out}, index.html shows them side by side.`);
     if (failing.length) {
