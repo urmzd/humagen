@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.0 (2026-10-23)
+
+### Features
+
+- **projects**: preview composed turn context layers ([b3eda7a](https://github.com/urmzd/humagen/commit/b3eda7a12a3a2a970cebb97e30c2ce3473a45b1e))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.23.0...v0.24.0)
+
+
 ## 0.23.0 (2026-10-23)
 
 ### Features
