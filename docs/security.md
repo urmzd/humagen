@@ -705,3 +705,9 @@ that kind.
 - The audit trail is the server log, not a store.
 - A call cannot yet narrow the callee's access to the caller's grant.
 - Sign-in has been tested against in-process issuers, not a live Okta org.
+
+## Recorded break-glass reads
+
+The ordinary project role and private-thread participation rule is evaluated before `projects:govern` bypasses it. Every exceptional read writes who read which project or thread, when, and by which server route. A failed audit write refuses access. Internal reads carry route `platform`. HTTP writes do not create read records.
+
+The state store keeps records across restart on memory and Postgres backends. Records follow `workspace.inbox_retention` and are removed at startup and hourly. Each tenant holds at most 100,000 records; saturation refuses exceptional reads until retention makes room. Workspace administrators alone list the records through `GET /api/read-audit`, bounded to 500 rows and a 31-day window. Settings shows at most 100 of the last day's records. Audit records deliberately disclose confidential project and thread identifiers to administrators.
