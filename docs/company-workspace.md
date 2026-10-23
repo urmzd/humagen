@@ -51,6 +51,14 @@ through `projects.step`. Personal project confinement must explicitly limit
 ordinary reads to its owner, while `projects:govern` remains an exceptional,
 recorded read. Route permissions continue to apply separately.
 
+Apply the same boundary to writes: inherited Company ownership alone permits
+no changes to a personal project's records, settings or conversations.
+Administrative changes require explicit governance authority and the normal
+write audit. A thread invitation cannot grant access outside the personal
+project's owner boundary; refuse such invitations without notifying anyone.
+Collaboration begins by publishing or moving the conversation into a shared
+project, rather than changing the personal project's audience.
+
 Use the same rule through `p.Sees` on every read path, including tombstones,
 inherited context and aggregate counts. A personal project cannot acquire
 wildcard membership, be reparented into a more open audience, be Slack-bound,
@@ -95,6 +103,12 @@ personal project's settings, memories or knowledge declarations. Recheck
 notifications and deliveries after the move so an old address grants no
 new access. Surface-bound conversations keep their binding's placement.
 Replay must preserve both the new audience and the original accounting.
+
+Immutable attribution is internal accounting data, not permission to reveal
+the former personal project's identity. Run JSON, manifests, tag metadata,
+history and artifact provenance must omit its name and ID for destination
+readers who cannot see it. Return a neutral indication that the conversation
+was moved; an authorized auditor can still inspect the full attribution.
 
 ## An announcement above the greeting
 
