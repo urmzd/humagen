@@ -214,6 +214,7 @@ function screens(ids: Ids): Screen[] {
       name: "agent-colors",
       path: "/agents",
       act: async (page) => {
+        await page.getByRole("searchbox", { name: "Find an agent" }).fill("z-color");
         await page.getByText("z-color-0", { exact: true }).first().waitFor();
         const hues = await page
           .locator("main ul > li span[data-accent='agent']")
