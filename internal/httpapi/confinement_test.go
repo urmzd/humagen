@@ -520,7 +520,7 @@ func (h hidden) probes() map[string]string {
 		return map[string]string{"thread": h.thread, "run": h.run}
 	}
 	out := map[string]string{
-		"project": h.project, "thread": h.thread, "run": h.run, "agent": h.agent, "q": "Canary" + marker,
+		"project": h.project, "thread": h.thread, "run": h.run, "agent": h.agent, "names": h.agent, "q": "Canary" + marker,
 	}
 	if !h.inside {
 		out["source"], out["variant"] = h.source, h.variant
@@ -638,7 +638,7 @@ func sweepGets(t *testing.T, f *fixture, owner, outsider string, inside bool) {
 func sweepGetsOf(t *testing.T, f *fixture, outsider string, h hidden) {
 	t.Helper()
 	s := loadSpec(t)
-	defaults := map[string]string{"permission": "runs:read", "q": "hello", "agent": h.agent}
+	defaults := map[string]string{"permission": "runs:read", "q": "hello", "agent": h.agent, "names": "missing"}
 
 	var keys []string
 	for key := range s.ops {

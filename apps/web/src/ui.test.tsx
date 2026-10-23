@@ -124,7 +124,7 @@ import { after, merge } from "./inbox.ts";
 import { edgeOf, KindChips, MailboxView } from "./InboxPage.tsx";
 import { fromServer, type PlatformMessage, reached, toRequest } from "./mail.ts";
 import { memoryTransport, sampleMail, wireMail } from "./mail.fixtures.ts";
-import { AGENT_HUES, button, counted, hueOf, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf, PageActions } from "./ui.tsx";
+import { AgentMark, AgentTint, setAgentHues, AGENT_HUES, button, counted, hueOf, dollars, LimitField, Page, PolicyBadge, parseDollars, primary, Section, Stroke, strokeOf, UsageMeter, usageOf, PageActions } from "./ui.tsx";
 
 const M = 1_000_000;
 const html = (el: ReactElement) => renderToStaticMarkup(el);
@@ -1426,4 +1426,19 @@ test("agents shown together are told apart by color: humagen's own and the seede
   for (const [i, a] of builtin.entries()) for (const b of builtin.slice(i + 1)) assert.ok(apart(hueOf(a), hueOf(b)) >= 90, `${a} and ${b}`);
   // A name keeps its hue.
   assert.equal(hueOf("helper"), hueOf("helper"));
+});
+
+
+test("server hue reservations color marks, tints and strokes consistently", () => {
+  assert.doesNotMatch(html(<AgentMark name="never-loaded" />), /aui-orb|--aui-accent-h/);
+  setAgentHues({ custom: 15, second: 45 });
+  try {
+    assert.match(html(<AgentMark name="custom" />), /--aui-accent-h:15/);
+    assert.match(html(<AgentTint name="custom">Content</AgentTint>), /--aui-accent-h:15/);
+    assert.equal(hueOf("custom"), 15);
+    assert.equal(hueOf("second"), 45);
+    assert.notEqual(hueOf("custom"), hueOf("second"));
+    setAgentHues({ custom: 15, second: 45, third: 75 });
+    assert.equal(hueOf("custom"), 15);
+  } finally { setAgentHues({ custom: hueOf("custom"), second: hueOf("second") }); }
 });
