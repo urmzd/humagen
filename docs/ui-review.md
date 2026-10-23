@@ -260,3 +260,31 @@ workflow, and uploads `.screens/` as the
 
 Every UI change lists the screens it changes, with the before and after
 screenshots from `make screens`, in its pull request.
+
+## Stable agent colors
+
+AgentMark, agent tints, run strokes and usage bars use a workspace-wide hue
+reservation returned by `GET /api/agents`. Reservations are written through
+`pkg/state` before use, so every reader gets the same color after a restart
+and adding, removing or renaming other agents never recolors a name. A deleted
+name keeps its reservation, including when it is created again.
+
+The first twelve hues keep the old hash's preferred color where available.
+A collision takes an unused hue; after twelve reservations the allocator fills
+successive gaps between hues. This is the smallest change that guarantees
+unique hue values without changing agent specs or adding a configuration choice.
+A larger hash palette alone would still collide. The server returns assignments
+only for readable agents. Each workspace has at most 10,000 reserved names;
+exhaustion or a failed write refuses the list rather than returning colliding
+assignments. A mark reserves its space without drawing an orb until its server
+hue arrives.
+A bounded `GET /api/agent-hues` lookup, behind `runs:read`, batches at most
+100 explicitly named readable agents for readers without `agents:read`.
+Hidden and missing names are both omitted. No names are enumerated.
+The host clears the palette on identity changes and retries failed lookups at
+most twice. Tints and non-mark accents retain the original hue while loading.
+Distinct hue values do not guarantee perceptually distinct colors for thousands
+of agents. Names remain beside marks wherever people choose an agent.
+
+The `agent-colors` screenshot state includes more than twelve custom agents,
+checked at phone and desktop widths by `make screens`.

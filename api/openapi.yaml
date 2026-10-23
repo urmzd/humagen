@@ -307,6 +307,36 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/ServerError"}
 
+  /api/agent-hues:
+    get:
+      operationId: getAgentHues
+      x-permission: runs:read
+      tags: [agents]
+      summary: Resolve hues for explicitly named readable agents
+      description: Requires runs:read. Hidden and missing agents are both omitted. Never enumerates names.
+      parameters:
+        - name: names
+          in: query
+          required: true
+          description: At most 100 comma-separated names, each at most 200 characters.
+          schema: {type: string, maxLength: 20099}
+      responses:
+        "200":
+          description: Stable reservations for the readable agents requested.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hues]
+                properties:
+                  hues:
+                    type: object
+                    additionalProperties: {type: number, minimum: 0, exclusiveMaximum: 360}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "500": {$ref: "#/components/responses/ServerError"}
+
   /api/agents:
     get:
       operationId: listAgents
@@ -324,7 +354,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [agents, builtin, homes, enabled_in]
+                required: [agents, builtin, homes, enabled_in, hues]
                 properties:
                   agents:
                     type: array
@@ -333,6 +363,10 @@ paths:
                     description: Names of the agents the platform provides, which cannot be edited.
                     type: array
                     items: {type: string}
+                  hues:
+                    description: Permanently reserved hues for readable agents in this workspace.
+                    type: object
+                    additionalProperties: {type: number, minimum: 0, exclusiveMaximum: 360}
                   homes:
                     description: |
                       Where each agent that lives in a project lives, by agent.

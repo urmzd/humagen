@@ -22,6 +22,7 @@ import type {
   CreateRunRequest,
   EvalRun,
   EvalSuite,
+  GetAgentHuesResponse,
   GetInboxMessageResponse,
   GetProjectInboxResponse,
   GetRunTraceResponse,
@@ -652,6 +653,29 @@ HttpOnly, SameSite=Lax, valid for 8 hours, and redirects to the
     const _qs = _q.toString();
     if (_qs) path += `?${_qs}`;
     return this.rawRequest<void>("DELETE", path, {
+      ...options,
+    });
+  }
+
+  /** Requires runs:read. Hidden and missing agents are both omitted. Never enumerates names. */
+  async getAgentHues(names: string, options?: RequestOptions): Promise<GetAgentHuesResponse> {
+    let path = "/api/agent-hues";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.request<GetAgentHuesResponse>("GET", path, {
+      ...options,
+    });
+  }
+
+  async getAgentHuesRaw(names: string, options?: RequestOptions): Promise<ApiResponse<GetAgentHuesResponse>> {
+    let path = "/api/agent-hues";
+    const _q = new URLSearchParams();
+    if (names !== undefined && names !== null) _q.set("names", String(names));
+    const _qs = _q.toString();
+    if (_qs) path += `?${_qs}`;
+    return this.rawRequest<GetAgentHuesResponse>("GET", path, {
       ...options,
     });
   }
