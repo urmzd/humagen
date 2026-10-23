@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -33,6 +34,21 @@ func TestContextPreviewUsesTurnLayersAndConfinesReads(t *testing.T) {
 	raw, _ = json.Marshal(withKnowledge)
 	if !strings.Contains(string(raw), "source-canary") {
 		t.Fatal("source name missing for knowledge reader")
+	}
+	governor := f.machineAs(t, "context-governor", "acme", everything...)
+	before := time.Now().Add(-time.Second)
+	want(t, f, governor, "GET", "/api/projects/Field/context?agent=helper", "", http.StatusOK)
+	count := 0
+	for _, row := range f.p.ReadAudit.List("acme", before, time.Now().Add(time.Second), 500) {
+		if row.Subject == "context-governor" && row.Project == "Field" {
+			count++
+			if row.Route != "GET /api/projects/{name}/context" {
+				t.Fatalf("context preview lost its audit route: %s", row.Route)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("context preview recorded %d break-glass reads, want one per request", count)
 	}
 	stranger := f.machineAs(t, "outsider", "acme", "humagen:projects:read")
 	want(t, f, stranger, "GET", "/api/projects/Field/context?agent=helper", "", http.StatusNotFound)
