@@ -68,6 +68,7 @@ export function StoredDetail({
   onDelete,
   onOpenRun,
   onOpenThread,
+  onOpenArtifact,
 }: {
   file: Stored;
   /** Every version, newest first. Null while they are being fetched. */
@@ -77,6 +78,7 @@ export function StoredDetail({
   onDelete: (file: Stored) => void;
   onOpenRun: (id: string) => void;
   onOpenThread: (id: string) => void;
+  onOpenArtifact?: (file: Stored) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a different file starts unconfirmed
@@ -100,6 +102,7 @@ export function StoredDetail({
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {onOpenArtifact && <button type="button" className={button} onClick={() => onOpenArtifact(file)}>Open in Workspace</button>}
           <a className={primary} href={contentUrl(file.id)} download={file.title}>
             Download
           </a>
@@ -251,6 +254,7 @@ export function Storage({
   canDelete,
   onOpenRun,
   onOpenThread,
+  onOpenArtifact,
   selectedId,
   onSelect,
   via = platform,
@@ -265,6 +269,7 @@ export function Storage({
   canDelete: boolean;
   onOpenRun: (id: string) => void;
   onOpenThread: (id: string) => void;
+  onOpenArtifact?: (file: Stored) => void;
   via?: StorageTransport;
 }) {
   const [filter, setFilter] = useState<Filter>({ project: "", agent: "", kind: "", q: "" });
@@ -315,7 +320,7 @@ export function Storage({
   };
 
   return (
-    <Page title="Artifacts" lede="Files agents have published from their sandboxes. Each keeps its versions, and what made it.">
+    <Page title={defaultCopy.conversation.deliverables} lede="Documents, presentations and data from your projects, with their versions and the conversations that produced them.">
       {store.use && <StorageUsed use={store.use} />}
       {over && <Problem message={OVER_LIMIT} />}
       <Problem message={problem} />
@@ -348,6 +353,7 @@ export function Storage({
           onDelete={remove}
           onOpenRun={onOpenRun}
           onOpenThread={onOpenThread}
+          onOpenArtifact={onOpenArtifact}
         />
       )}
 

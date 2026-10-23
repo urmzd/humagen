@@ -15,6 +15,8 @@
  * (also refresh the eight committed showcase images, using the gallery fixtures
  * for primitives and approval; requires all screens).
  */
+
+import assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
 import {
   copyFileSync,
@@ -22,6 +24,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -94,6 +97,93 @@ async function twoAgents(page: Page): Promise<void> {
  */
 function chats(ids: Ids): Screen[] {
   return [
+    {
+      name: "conversation-context",
+      path: `/conversations/${ids.privateChat}/context`,
+      act: async (page) => {
+        await page.locator("summary").filter({ hasText: "launch-context" }).click();
+        await page.getByText("Origin: drive://launch/supplier-eta", { exact: true }).waitFor();
+      },
+    },
+    { name: "conversation-people", path: `/conversations/${ids.privateChat}/people` },
+    {
+      name: "conversation-activity",
+      path: `/conversations/${ids.privateChat}/activity`,
+      act: async (page) => {
+        await page.getByTestId("activity-row").first().click();
+        await page.getByTestId("activity-detail").waitFor();
+        assert.match(new URL(page.url()).pathname, /\/activity\/.+$/);
+        await page.keyboard.press("Escape");
+        await page.getByTestId("activity-row").first().waitFor();
+        assert.equal(new URL(page.url()).pathname.endsWith("/activity"), true);
+      },
+    },
+    {
+      name: "conversation-settings",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        await page.getByRole("button", { name: "Conversation Settings", exact: true }).click();
+        await page.getByRole("button", { name: "Activity", exact: true }).waitFor();
+      },
+    },
+    {
+      name: "conversation-presentation",
+      path: `/conversations/${ids.privateChat}/deliverables/sample-deck-v2`,
+      act: async (page) => {
+        await artifactFixtures(page, ids.privateChat);
+        await page.reload();
+        await page.getByRole("button", { name: /^Slide 3:/ }).click();
+        assert.equal(new URL(page.url()).searchParams.get("slide"), "3");
+        await page.getByRole("button", { name: "Present", exact: true }).click();
+        await page.keyboard.press("ArrowRight");
+        await page.getByText("Slide 4 of 6 · ← →", { exact: true }).waitFor();
+        await page.keyboard.press("Escape");
+        await page.getByRole("button", { name: "Request Changes", exact: true }).waitFor();
+        assert.equal(
+          await page.getByRole("button", { name: "Exit Presentation", exact: true }).isVisible(),
+          false,
+        );
+      },
+    },
+    {
+      name: "conversation-document",
+      path: `/conversations/${ids.privateChat}/deliverables/sample-plan`,
+      act: async (page) => {
+        await artifactFixtures(page, ids.privateChat);
+        await page.reload();
+        await page.getByRole("heading", { name: "Launch plan", exact: true }).waitFor();
+      },
+    },
+    {
+      name: "conversation-table",
+      path: `/conversations/${ids.privateChat}/deliverables/sample-dependencies`,
+      act: async (page) => {
+        await artifactFixtures(page, ids.privateChat);
+        await page.reload();
+        await page.getByRole("table").waitFor();
+        assert.equal(await page.getByRole("row").count(), 6);
+      },
+    },
+    {
+      name: "conversation-revision",
+      path: `/conversations/${ids.privateChat}`,
+      act: async (page) => {
+        await artifactFixtures(page, ids.privateChat);
+        await bar(page).fill("Make the owner clear.");
+        await page.getByRole("button", { name: "Conversation Settings", exact: true }).click();
+        await page.getByRole("button", { name: "Deliverables", exact: true }).click();
+        await page.getByRole("button", { name: /^Launch briefing.pptx/ }).click();
+        await page.getByRole("button", { name: /^Slide 3:/ }).click();
+        await page.getByRole("button", { name: "Request Changes", exact: true }).click();
+        await page.waitForFunction(() =>
+          document
+            .querySelector<HTMLTextAreaElement>("form[aria-label='Message'] textarea")
+            ?.value.includes("v2, slide 3"),
+        );
+        assert.match(await bar(page).inputValue(), /Make the owner clear/);
+        assert.equal(new URL(page.url()).pathname.includes("deliverables"), false);
+      },
+    },
     {
       name: "chat-kind-items",
       path: "/",
@@ -176,6 +266,10 @@ function chats(ids: Ids): Screen[] {
           .getByText(/^Routed to /)
           .first()
           .waitFor();
+        // Reproduce a long conversation whose earlier messages are clipped above the log.
+        await page.getByRole("log", { name: "Thread", exact: true }).evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
       },
     },
   ];
@@ -412,6 +506,85 @@ function api(base: string) {
 }
 
 type Call = ReturnType<typeof api>;
+
+/** Office files are visual fixtures; the surrounding conversation runs on the seeded platform. */
+async function artifactFixtures(page: Page, thread: string): Promise<void> {
+  const exports = join(repo, "docs/design/humagen-workspace/exports");
+  const source = [
+    {
+      id: "sample-deck-v2",
+      title: "Launch briefing.pptx",
+      kind: "presentation",
+      version: 2,
+      mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      file: "Launch-briefing-project-team.pptx",
+    },
+    {
+      id: "sample-deck-v1",
+      title: "Launch briefing.pptx",
+      kind: "presentation",
+      version: 1,
+      mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      file: "Launch-briefing-leadership.pptx",
+    },
+    {
+      id: "sample-plan",
+      title: "Launch plan.docx",
+      kind: "document",
+      version: 4,
+      mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      file: "Launch-plan-v4.docx",
+    },
+    {
+      id: "sample-dependencies",
+      title: "Launch dependencies.csv",
+      kind: "spreadsheet",
+      version: 1,
+      mime: "text/csv",
+      file: "Launch-dependencies.csv",
+    },
+  ].map((item) => ({ ...item, bytes: readFileSync(join(exports, item.file)) }));
+  const metadata = (item: (typeof source)[number]) => ({
+    id: item.id,
+    title: item.title,
+    kind: item.kind,
+    version: item.version,
+    mime: item.mime,
+    size: item.bytes.length,
+    thread,
+    run: "sample-run",
+    agent: "lead",
+    project: "Launch",
+    created_by: "dev",
+    created_at: "2026-10-23T10:00:00Z",
+    sha256: "a".repeat(64),
+  });
+  await page.route("**/api/artifacts**", async (route) => {
+    const url = new URL(route.request().url());
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (parts.length === 2)
+      return route.fulfill({
+        json: {
+          artifacts: source.filter((item) => item.id !== "sample-deck-v1").map(metadata),
+          next: null,
+        },
+      });
+    const item = source.find((item) => item.id === parts[2]);
+    if (!item) return route.continue();
+    if (parts[3] === "versions")
+      return route.fulfill({
+        json: { versions: source.filter((other) => other.title === item.title).map(metadata) },
+      });
+    if (parts[3] === "content")
+      return route.fulfill({
+        body: item.bytes,
+        contentType: "application/octet-stream",
+        headers: { "content-disposition": `attachment; filename="${item.title}"` },
+      });
+    return route.fulfill({ json: metadata(item) });
+  });
+}
+
 interface Inbox {
   messages: { id: string }[];
 }
@@ -450,6 +623,20 @@ interface Posted {
 async function seedChats(
   call: Call,
 ): Promise<Pick<Ids, "privateChat" | "sharedChat" | "routedChat">> {
+  await call("POST", "/api/knowledge", {
+    name: "launch-context",
+    description: "Imported supplier updates for the launch",
+  });
+  await call("POST", "/api/knowledge/launch-context/documents", {
+    title: "Supplier ETA",
+    uri: "drive://launch/supplier-eta",
+    text: "Packaging arrives on November 8. Keep the November 12 press embargo and review November 19 retail availability.",
+  });
+  const knowledge = await call<{ version: number }>("GET", "/api/projects/Launch/knowledge");
+  await call("PUT", "/api/projects/Launch/knowledge", {
+    version: knowledge.version,
+    knowledge: ["launch-context"],
+  });
   const skills = await call<{ version: number }>("GET", "/api/projects/~/skills");
   await call("PUT", "/api/projects/~/skills", {
     version: skills.version,
@@ -532,6 +719,10 @@ async function shoot(
   vp: Viewport,
   s: Screen,
 ): Promise<{ problems: Problem[]; full: boolean }> {
+  const errors: string[] = [];
+  const onError = (error: Error) => errors.push(error.message);
+  page.on("pageerror", onError);
+  await page.unrouteAll({ behavior: "wait" });
   await page.goto(`${base}${s.path}`, { waitUntil: "domcontentloaded" });
   // Ready when the page has drawn its title and the loading placeholders are gone.
   await page.waitForSelector("h1", { timeout: 15_000 }).catch(() => {});
@@ -543,7 +734,32 @@ async function shoot(
     )
     .catch(() => {});
   await page.evaluate(() => document.fonts.ready);
-  if (s.act) await s.act(page);
+  if (s.act) {
+    try {
+      await s.act(page);
+    } catch (error) {
+      await page.screenshot({ path: join(out, vp.name, `${s.name}.failure.png`) });
+      writeFileSync(
+        join(out, `${vp.name}-${s.name}.failure.json`),
+        JSON.stringify(
+          { url: page.url(), errors, text: await page.locator("body").innerText() },
+          null,
+          2,
+        ),
+      );
+      page.off("pageerror", onError);
+      throw new Error(
+        `${vp.name} ${s.name}: ${error instanceof Error ? error.message : String(error)}${errors.length ? `\nRuntime errors: ${errors.join("; ")}` : ""}`,
+      );
+    }
+  }
+  if (errors.length) {
+    page.off("pageerror", onError);
+    throw new Error(`${vp.name} ${s.name}: ${errors.join("; ")}`);
+  }
+  // Inspectors must sit above page controls, including the conversation header.
+  const inspectorClose = page.locator("dialog[data-layer='inspector'][open] > header button");
+  if (await inspectorClose.count()) await inspectorClose.click({ trial: true, timeout: 5_000 });
   await sleep(300);
   const file = join(out, vp.name, `${s.name}.png`);
   await page.screenshot({ path: file });
@@ -566,6 +782,7 @@ async function shoot(
     await page.screenshot({ path: join(out, vp.name, `${s.name}.full.png`) });
     await page.setViewportSize({ width: vp.width, height: vp.height });
   }
+  page.off("pageerror", onError);
   return { problems, full: extra > 8 };
 }
 
@@ -752,6 +969,7 @@ async function main(): Promise<void> {
   }
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
+  writeFileSync(join(out, "report.json"), "[]\n");
   const executablePath = chromiumPath();
   const { base, proc, dir } = await startHumagen(await freePort());
   let browser: Browser | undefined;

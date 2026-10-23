@@ -1,8 +1,8 @@
 import { answerOfAction } from "@humagen/adapter/question";
 import { defaultCopy } from "@humagen/components";
 import type { UiAction } from "@humagen/core";
-import { ChevronRightIcon, WebSurface, XIcon } from "@humagen/render-web";
-import { AgentMessage } from "@humagen/web";
+import { ChevronRightIcon, WebSurface } from "@humagen/render-web";
+import { AgentMessage, Inspector } from "@humagen/web";
 import { useEffect, useMemo, useState } from "react";
 import { type Run, turnOf } from "./adapter.ts";
 import { ApiError, api, type Span } from "./api.ts";
@@ -241,32 +241,15 @@ export function ActivityPanel({
   const tools = run ? (toolsBy.get(run.id) ?? []) : [];
 
   return (
-    <aside
-      data-testid="activity"
-      aria-label="Activity"
-      data-leaving={leaving}
-      className="humagen-drawer fixed inset-0 z-30 flex min-h-0 flex-col bg-aui-bg lg:static lg:z-auto lg:w-[27rem] lg:shrink-0 lg:border-[var(--humagen-rule)] lg:border-l"
-    >
-      <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-[var(--humagen-rule)] border-b pr-2 pl-4">
-        <div className="min-w-0">
-          <h2 className="humagen-display text-aui-base font-semibold text-aui-fg">Activity</h2>
-        </div>
-        <p className="min-w-0 flex-1 truncate text-right text-aui-xs text-aui-muted" aria-live="polite">
+    <Inspector open={!leaving} title={defaultCopy.conversation.activity} onClose={onClose} onEscape={() => selected ? onSelect(null) : onClose()}>
+      <div data-testid="activity" className="flex min-h-0 flex-col">
+        <p className="min-w-0 truncate text-aui-xs text-aui-muted" aria-live="polite">
           {all.length === 0
             ? ""
             : [`${all.length} ${all.length === 1 ? "run" : "runs"}`, running > 0 ? `${running} running` : "", failed > 0 ? `${failed} failed` : ""]
                 .filter(Boolean)
                 .join(", ")}
         </p>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close activity"
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-aui text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent"
-        >
-          <XIcon size={16} />
-        </button>
-      </header>
 
       {run ? (
         <div key={run.id} className="humagen-fade aui-scroll flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
@@ -385,7 +368,8 @@ export function ActivityPanel({
           )}
         </div>
       )}
-    </aside>
+      </div>
+    </Inspector>
   );
 }
 
@@ -402,6 +386,7 @@ export function Activity({
   limits,
   onClose,
   onJump,
+  onFocus,
 }: {
   limits?: Limits;
   leaving?: boolean;
@@ -411,10 +396,12 @@ export function Activity({
   focus?: string | null;
   onClose: () => void;
   onJump?: (turnId: string) => void;
+  onFocus?: (id: string | null) => void;
 }) {
   const [trees, setTrees] = useState<Tree[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(focus ?? null);
+  const select = (id: string | null) => { setSelected(id); onFocus?.(id); };
   const ids = turns.map((t) => t.id).join(",");
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: the turns are named by ids, and stamp says when they changed
@@ -439,19 +426,20 @@ export function Activity({
   }, [ids, stamp]);
 
   useEffect(() => {
-    if (focus) setSelected(focus);
+    setSelected(focus ?? null);
   }, [focus]);
 
   // Escape steps back out: from a run to the list, from the list to the conversation.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
-      if (selected) setSelected(null);
+      e.preventDefault();
+      if (selected) select(null);
       else onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, onClose]);
+  }, [selected, onClose, onFocus]);
 
-  return <ActivityPanel trees={trees} selected={selected} loading={loading} leaving={leaving} limits={limits} onSelect={setSelected} onClose={onClose} onJump={onJump} />;
+  return <ActivityPanel trees={trees} selected={selected} loading={loading} leaving={leaving} limits={limits} onSelect={select} onClose={onClose} onJump={onJump} />;
 }

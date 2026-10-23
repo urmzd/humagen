@@ -165,9 +165,8 @@ export function collect(): Snapshot {
   const shown = (el: Element) =>
     el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
 
-  // A box cut to what its parents let through: anything that scrolls or
-  // clips sideways, and anything that clips downward. A column that scrolls
-  // down shows the rest of its content when scrolled, so it does not cut.
+  // Measure only the part of a box that its scrolling or clipping parents show.
+  // Scrolled-out messages must not count as covering the conversation header.
   function cut(from: Element, r: DOMRect | Box): Box | null {
     let { left, right, top, bottom } = r;
     for (
@@ -181,7 +180,7 @@ export function collect(): Snapshot {
         left = Math.max(left, b.left);
         right = Math.min(right, b.right);
       }
-      if (st.overflowY === "hidden" || st.overflowY === "clip") {
+      if (st.overflowY !== "visible") {
         top = Math.max(top, b.top);
         bottom = Math.min(bottom, b.bottom);
       }

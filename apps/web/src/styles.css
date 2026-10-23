@@ -488,6 +488,25 @@ button.humagen-tick:focus-visible {
   cursor: not-allowed;
   opacity: 0.5;
 }
+
+.humagen-conversation-header {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+}
+.humagen-conversation-start { grid-column: 1; grid-row: 1; }
+.humagen-conversation-title { grid-column: 2; grid-row: 1; }
+.humagen-conversation-actions { grid-column: 3; grid-row: 1; }
+.humagen-slide-frame { container-type: inline-size; width: 100%; }
+.humagen-native-slide { position: relative; display: flex; flex-direction: column; gap: 2cqw; aspect-ratio: 16 / 9; overflow: auto; border: 1px solid var(--aui-border); border-radius: 8px; background: var(--aui-surface); padding: 5cqw; color: var(--aui-fg); }
+.humagen-native-slide > div:first-child { font-size: 1.8cqw; }
+.humagen-native-slide h3 { font-size: 4.2cqw; font-weight: 600; line-height: 1.2; }
+.humagen-slide-copy { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 1.4cqw; overflow: auto; font-size: 2.1cqw; line-height: 1.5; overflow-wrap: anywhere; }
+.humagen-native-slide footer { font-size: 1.6cqw; text-align: right; color: var(--aui-muted); }
+@media (max-width: 700px) {
+  .humagen-conversation-header { grid-template-columns: minmax(0, 1fr) auto; }
+  .humagen-conversation-start { grid-column: 1; grid-row: 1; }
+  .humagen-conversation-actions { grid-column: 2; grid-row: 1; }
+  .humagen-conversation-title { grid-column: 1 / -1; grid-row: 2; padding-block: 2px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .humagen-switch,
   .humagen-switch::after {

@@ -80,11 +80,12 @@ export function Thread({
       {!atBottom && (
         <button
           type="button"
+          data-layer="thread-jump"
           onClick={() => {
             stuck.current = true;
             toBottom(true);
           }}
-          className="aui-pop-in aui-glass absolute bottom-3 left-1/2 inline-flex h-7 -translate-x-1/2 items-center gap-1.5 rounded-full px-3 text-aui-fg text-aui-xs transition-colors hover:bg-aui-surface focus-visible:outline-2 focus-visible:outline-aui-accent"
+          className="aui-pop-in absolute bottom-3 left-1/2 z-10 inline-flex h-7 -translate-x-1/2 items-center gap-1.5 rounded-full border border-aui-border bg-aui-bg px-3 text-aui-fg text-aui-xs shadow-md transition-colors hover:bg-aui-surface focus-visible:outline-2 focus-visible:outline-aui-accent"
         >
           <ArrowDownIcon size={13} />
           Jump to latest

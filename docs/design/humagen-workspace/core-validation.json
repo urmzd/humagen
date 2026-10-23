@@ -1,0 +1,32 @@
+{
+  "checks": [
+    "Desktop conversation has one title and no horizontal overflow",
+    "Conversation title is centered",
+    "Activity is in conversation settings",
+    "Activity includes structured handoff criteria",
+    "Desktop activity has one title and no horizontal overflow",
+    "Live search shows principal and query lifecycle",
+    "Live source detail has one title and no horizontal overflow",
+    "Date approval does not authorize delivery",
+    "Separate approval completes the simulated assignment",
+    "Summary review shows exact content and audience",
+    "Sharing a summary preserves the private original",
+    "Conversation list has one title and no horizontal overflow",
+    "Phone conversation has one title and no horizontal overflow",
+    "Phone inspector traps focus and makes background inert",
+    "Phone context has one title and no horizontal overflow",
+    "Phone source detail has one title and no horizontal overflow",
+    "Closing phone inspector restores interaction",
+    "Phone move choices has one title and no horizontal overflow",
+    "Phone summary review has one title and no horizontal overflow",
+    "Dialog footer never covers the scrollable body",
+    "Full move changes audience and placement",
+    "320px conversation has one title and no horizontal overflow",
+    "320px inspector has one title and no horizontal overflow",
+    "Tablet conversation has one title and no horizontal overflow",
+    "Tablet inspector has one title and no horizontal overflow",
+    "Dark conversation has one title and no horizontal overflow",
+    "No runtime errors"
+  ],
+  "errors": []
+}

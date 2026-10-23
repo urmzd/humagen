@@ -169,6 +169,7 @@ interface Tool {
   phase: string;
   result: string;
   error: string;
+  arguments?: unknown;
 }
 /** What the platform reports when an agent publishes a file. */
 interface Published {
@@ -245,6 +246,7 @@ export function adapter(
   // approval holds.
   const asked = new Map<string, { question: WireQuestion; interrupt: Interrupt }>();
 
+  const toolStarted = new Map<string, number>();
   const task = (id: string, name: string | undefined, rest: Partial<Task>): Task => {
     const all = { ...shown.get(id), ...rest };
     shown.set(id, all);
@@ -260,8 +262,8 @@ export function adapter(
           subagent: {
             name: to,
             runId: run?.run,
-            summary: all.status === "error" ? "Helper failed. Open execution history for details."
-              : run?.lifecycle === "delegated" ? "Background work. Open execution history."
+            summary: all.status === "error" ? "Helper failed. Open Activity for details."
+              : run?.lifecycle === "delegated" ? "Background work. Open Activity."
               : all.status === "complete" ? "Result returned to caller" : undefined,
             hue: opts.hue?.(to),
           },
@@ -274,6 +276,7 @@ export function adapter(
       case "lifecycle.accepted":
         streamed = false;
         tools.clear();
+        toolStarted.clear();
         started.clear();
         calling.clear();
         shown.clear();
@@ -349,9 +352,10 @@ export function adapter(
         const t = body<Tool>(e);
         if (!t.id) return [];
         tools.set(t.id, t.name ?? "tool");
+        if (t.phase === "executing" && Number.isFinite(Date.parse(e.at))) toolStarted.set(t.id, Date.parse(e.at));
         const out: TurnEvent[] = [
           { type: "activity", activity: doing(t.name) },
-          { type: "task.upserted", task: task(t.id, t.name, {}) },
+          { type: "task.upserted", task: task(t.id, t.name, t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }) },
         ];
         if (t.name && (delegateOf(t.name) || t.name === HAND_ON || t.name === CALL_AGENT)) {
           const pending = calling.get(t.name) ?? [];
@@ -370,9 +374,11 @@ export function adapter(
         const t = body<Tool>(e);
         if (!t.id) return [];
         const name = t.name ?? tools.get(t.id);
+        const start = toolStarted.get(t.id);
+        const duration = start !== undefined ? Date.parse(e.at) - start : undefined;
         return [
           { type: "activity", activity: "thinking" },
-          { type: "task.upserted", task: task(t.id, name, { status: t.error ? "error" : "complete", output: t.error || t.result }) },
+          { type: "task.upserted", task: task(t.id, name, { status: t.error ? "error" : "complete", output: t.error || t.result, ...(t.arguments === undefined ? {} : { input: JSON.stringify(t.arguments, null, 2).slice(0, 32_000) }), ...(duration !== undefined && Number.isFinite(duration) && duration >= 0 ? { durationMs: duration } : {}) }) },
         ];
       }
       case "action.taken": {
@@ -416,6 +422,7 @@ export function adapter(
               type: "artifact",
               id,
               title: a.title,
+              artifactId: a.id,
               kind: a.kind,
               phase: "ready",
               mimeType: a.mime,

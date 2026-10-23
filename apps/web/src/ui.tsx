@@ -227,6 +227,8 @@ export function Page({
   back,
   actions,
   tabs,
+  layout,
+  start,
   narrow,
   children,
 }: {
@@ -245,12 +247,31 @@ export function Page({
   actions?: ReactNode;
   /** Tabs under the header, sticking to the top while the page scrolls. What the page shows under them is a column of its own. */
   tabs?: ReactNode;
+  /** Conversation controls surround its one centered page title. */
+  layout?: "conversation";
+  /** The project control, at the leading edge of a conversation. */
+  start?: ReactNode;
   /** A reading width, for forms and settings. */
   narrow?: boolean;
   /** Kept for callers. Pages share one width now. */
   wide?: boolean;
   children: ReactNode;
 }) {
+  if (layout === "conversation") {
+    return (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="humagen-conversation-header relative z-10 grid shrink-0 items-center gap-x-3 gap-y-2 border-aui-border border-b px-4 py-3">
+          <div className="humagen-conversation-start flex min-w-0 items-center gap-2">{start}</div>
+          <div className="humagen-conversation-title min-w-0 text-center">
+            <h1 className="truncate text-aui-sm font-semibold text-aui-fg" title={typeof title === "string" ? title : undefined}>{title}</h1>
+            {meta && <div className="truncate pt-1 text-aui-2xs text-aui-muted">{meta}</div>}
+          </div>
+          <div className="humagen-conversation-actions flex min-w-0 items-center justify-end gap-1">{actions}</div>
+        </header>
+        {children}
+      </div>
+    );
+  }
   const width = narrow ? "max-w-3xl" : "max-w-[68rem]";
   return (
     <div className="aui-scroll min-h-0 flex-1 overflow-y-auto">

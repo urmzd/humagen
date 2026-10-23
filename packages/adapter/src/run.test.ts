@@ -72,6 +72,20 @@ test("a tool call keeps its name when the done event omits it", () => {
   }
 });
 
+test("tool detail keeps bounded arguments and measures execution rather than approval time", () => {
+  const to = adapter();
+  to(ev("delta.tool.call", { id: "t1", name: "search", phase: "requested" }));
+  to({ ...ev("delta.tool.call", { id: "t1", name: "search", phase: "executing", arguments: { q: "launch" } }), at: "2026-10-09T00:01:00Z" });
+  const done = to({ ...ev("delta.tool.done", { id: "t1", result: "No conflicts found" }), at: "2026-10-09T00:01:01.500Z" }).find((e) => e.type === "task.upserted");
+  assert.equal(done?.type, "task.upserted");
+  if (done?.type === "task.upserted") {
+    assert.equal(done.task.input, '{\n  "q": "launch"\n}');
+    assert.equal(done.task.durationMs, 1500);
+  }
+  const big = to(ev("delta.tool.call", { id: "t2", name: "read", arguments: { text: "a".repeat(50_000) } })).find((e) => e.type === "task.upserted");
+  if (big?.type === "task.upserted") assert.equal(big.task.input?.length, 32_000);
+});
+
 test("parked means waiting, which must not animate", () => {
   assert.deepEqual(adapter()(ev("lifecycle.parked", { reason: "approval" })), [
     { type: "activity", activity: "waiting" },
@@ -127,6 +141,7 @@ test("a published file is one card that goes from generating to ready", () => {
       type: "artifact",
       id: "t1",
       title: "report.md",
+      artifactId: "art-7",
       kind: "document",
       phase: "ready",
       mimeType: "text/markdown",
@@ -180,7 +195,7 @@ test("work handed on without waiting is drawn as the agent it went to", () => {
   const [named] = to(ev("action.taken", { name: "delegate_task", data: { run: "run-4", agent: "worker", lifecycle: "delegated" } }));
   if (named?.type === "task.upserted") {
     assert.equal(named.task.title, "worker");
-    assert.deepEqual(named.task.subagent, { name: "worker", runId: "run-4", summary: "Background work. Open execution history.", hue: undefined });
+    assert.deepEqual(named.task.subagent, { name: "worker", runId: "run-4", summary: "Background work. Open Activity.", hue: undefined });
   } else {
     assert.fail("no task for the run that was started");
   }

@@ -776,9 +776,7 @@ test("a thread started in Slack says so, and so does each message posted there; 
     assert.equal(screen.getAllByText(words.fromSlack).length, 1, "only the message posted in Slack says it came from there");
     const fromAna = screen.getByRole("article", { name: "Message from Ana" });
     assert.ok(within(fromAna).getByText(words.fromSlack));
-    // Below the small breakpoint the title takes the whole first line.
-    const title = screen.getByRole("heading", { level: 1 });
-    assert.ok(/(^|\s)w-full(\s|$)/.test(title.className) && /(^|\s)sm:flex-1(\s|$)/.test(title.className), title.className);
+    assert.equal(screen.getAllByRole("heading", { level: 1 }).length, 1, "the conversation has one page title");
   } finally {
     restore();
   }

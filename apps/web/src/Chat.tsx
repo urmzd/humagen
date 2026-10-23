@@ -6,7 +6,10 @@ import { AgentMessage, Thread, useQueue } from "@humagen/web";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity } from "./Activity.tsx";
 import { actedFor, type Run } from "./adapter.ts";
-import { Composer } from "./Composer.tsx";
+import { Composer, type ComposerSeed } from "./Composer.tsx";
+import { ConversationInfo, ConversationPage } from "./ConversationShell.tsx";
+import { Deliverables, revisionPrompt } from "./Deliverables.tsx";
+import { href, type ConversationPanel, type ConversationView } from "./route.ts";
 import { ApiError, api, coworking, type ProjectView, type Revision, type Thread as ThreadRecord, type ThreadAsk, type ThreadPage, type ThreadSummary } from "./api.ts";
 import { askedOf, copyFor } from "./asks.ts";
 import { useCompletion } from "./completion.ts";
@@ -17,7 +20,6 @@ import { postedLine, ThreadRoom, topicsOf } from "./Room.tsx";
 import { rememberSaid } from "./conflicts.ts";
 import { useRunTurn } from "./Runs.tsx";
 import { itemActions } from "./itemActions.tsx";
-import { SessionGaugeFor } from "./SessionGauge.tsx";
 import { readFromStart } from "./turns.ts";
 import { AgentMark, AgentTint, cause, isWorking, Page, Presence, Problem, SkeletonRows } from "./ui.tsx";
 
@@ -97,6 +99,8 @@ function TurnView({
   live,
   ask,
   onSwitch,
+  onAsk,
+  onReply,
 }: {
   run: Run;
   /** The reader's subject. */
@@ -107,6 +111,8 @@ function TurnView({
   /** Follow the run's events. Off for settled turns, whose record is enough. */
   live: boolean;
   onSwitch: (id: string) => void;
+  onAsk?: () => void;
+  onReply?: () => void;
 }) {
   const turn = useRunTurn(live ? run : undefined);
   const index = siblings.findIndex((s) => s.id === run.id);
@@ -151,7 +157,7 @@ function TurnView({
       </div>
 
       <AgentTint name={run.agent}>
-        <AgentMessage turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} />
+        <AgentMessage turn={shown} copy={copyFor(ask)} itemActions={itemActions(run)} capabilities={{ regenerate: !refused }} onAskAgent={onAsk} onReply={onReply} />
       </AgentTint>
 
       <div className="flex flex-wrap items-center gap-2 pl-11 text-aui-xs text-aui-muted">
@@ -253,6 +259,8 @@ export function Chat({
   focus,
   sharing,
   onSharing,
+  view,
+  onView,
   root,
   workspaceName,
   onOpenChannel,
@@ -288,6 +296,8 @@ export function Chat({
   /** Whether the conversation's Share dialog is open, and a way to open or close it at its address. */
   sharing?: boolean;
   onSharing?: (open: boolean) => void;
+  view?: ConversationView;
+  onView?: (view: ConversationView) => void;
   /** The workspace's own project, which heads the tree, and its name. */
   root?: ProjectView | null;
   workspaceName?: string;
@@ -322,7 +332,7 @@ export function Chat({
     problem: (why) => setProblem(why),
   });
   const [chosen, setChosen] = useState<Record<string, string>>({});
-  const [seed, setSeed] = useState<{ text: string } | undefined>(() => (startAsk ? { text: startAsk } : undefined));
+  const [seed, setSeed] = useState<ComposerSeed | undefined>(() => (startAsk ? { text: startAsk } : undefined));
   // What the + menu selected for a new conversation: an agent a link named, and where it lives.
   const [selection, setSelection] = useState<Selection>(() => ({
     ...emptySelection,
@@ -337,6 +347,16 @@ export function Chat({
   const [problem, setProblem] = useState<string | null>(null);
   // The drawer of every run in the conversation, open on one of them or on the list.
   const [activity, setActivity] = useState<{ focus: string | null } | null>(null);
+  const [localView, setLocalView] = useState<ConversationView>({});
+  const shownView = onView ? view ?? {} : localView;
+  const openPanel = (panel?: ConversationPanel, selection: Omit<ConversationView, "panel"> = {}) => {
+    const next = { ...selection, panel };
+    if (onView) onView(next);
+    else setLocalView(next);
+  };
+  useEffect(() => {
+    setActivity(shownView.panel === "activity" ? { focus: shownView.run ?? null } : null);
+  }, [shownView.panel, shownView.run]);
   // What the drawer was showing, kept for the moment it takes to leave.
   const lastActivity = useRef(activity);
   if (activity) lastActivity.current = activity;
@@ -467,7 +487,7 @@ export function Chat({
 
   const onAction = (a: UiAction) => {
     // An agent drawn inside a turn opens the drawer on its run.
-    if (a.id === ActionId.openRun) return setActivity({ focus: a.payload.target });
+    if (a.id === ActionId.openRun) return openPanel("activity", { run: a.payload.target });
     // A question the run waits on is answered in place. The run's own events
     // settle the card once the answer is recorded, whoever's it was.
     if (answers(a)) {
@@ -589,6 +609,8 @@ export function Chat({
         focus={focus}
         sharing={sharing}
         onSharing={onSharing}
+        view={view}
+        onView={onView}
         onOpenChannel={(p, c) => onOpenChannel?.(p, c)}
         onChanged={onChanged}
       />
@@ -648,39 +670,17 @@ export function Chat({
     );
   }
 
-  const running = turns.filter((t) => t.status !== "completed" && t.status !== "failed").length;
 
   return (
     <section className="flex min-h-0 flex-1">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {/* Arrives with the conversation: its name, then who has answered in it. */}
-      {/*
-        Above the thread, so a panel opened from it is not painted over by the first message.
-        The arrival animation is on the title and the agents, not the header: an animated
-        ancestor stops a glass panel from blurring the page behind it.
-      */}
-      {/* On a narrow screen the title has a line of its own, and the rest wraps under it. */}
-      <header className="relative z-10 mx-auto flex w-full max-w-4xl flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-4 pb-2">
-        <h1 className="aui-fade-up w-full min-w-0 truncate text-aui-lg font-semibold text-aui-fg sm:w-auto sm:flex-1">{summary?.title ?? path[0]?.text}</h1>
-        <ul className="aui-fade-up flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-aui-xs text-aui-muted sm:shrink-0" aria-label="Agents in this conversation">
-          {(summary?.agents ?? []).map((a) => (
-            <li key={a} className="inline-flex items-center gap-1">
-              <AgentMark name={a} size={14} />
-              {a}
-            </li>
-          ))}
-          {tail?.project && <li>{tail.project}</li>}
-        </ul>
-        <SessionGaugeFor tail={tail} />
-        <button
-          type="button"
-          aria-expanded={activity !== null}
-          onClick={() => setActivity(activity ? null : { focus: null })}
-          className="shrink-0 whitespace-nowrap rounded-aui px-2 py-1 text-aui-xs text-aui-muted hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-expanded:text-aui-fg"
-        >
-          Execution history{running > 0 ? ` ${running}` : ""}
-        </button>
-      </header>
+      <ConversationPage
+        title={summary?.title ?? path[0]?.text ?? "Conversation"}
+        project={projects?.find((p) => p.name === where)?.title || where || workspaceName || defaultCopy.projects.workspace}
+        private={room?.thread.visibility === "private"}
+        agents={summary?.agents ?? [...new Set(turns.map((t) => t.agent))]}
+        onPanel={(next) => openPanel(next)}
+        onArtifact={(id) => openPanel("deliverables", { artifact: id })}
+      >
       <WebSurface onAction={onAction} className="flex min-h-0 flex-1 flex-col">
         <Thread className="mx-auto w-full max-w-4xl flex-1 px-4" busy={tailWorking} label="Conversation">
           {path.map((run, i) => (
@@ -692,12 +692,16 @@ export function Chat({
               siblings={siblingsOf(turns, run)}
               live={i === path.length - 1 || (run.status !== "completed" && run.status !== "failed")}
               onSwitch={(id) => setChosen((c) => ({ ...c, [run.prev ?? ""]: id }))}
+              onAsk={canRun ? () => setSeed({ text: `@${run.agent} `, mode: "prepend" }) : undefined}
+              onReply={canRun ? () => setSeed({ text: `@${run.agent} following up on [this answer](${href({ page: "conversation", id: threadId, panel: "activity", run: run.id })}): `, mode: "prepend" }) : undefined}
             />
           ))}
         </Thread>
       </WebSurface>
       {composer}
-      </div>
+      </ConversationPage>
+      {room && <ConversationInfo panel={shownView.panel} thread={room.thread} project={where || workspaceName || defaultCopy.projects.workspace} onClose={() => openPanel()} />}
+      {shownView.panel === "deliverables" && <Deliverables thread={threadId} view={shownView} onView={(next) => openPanel("deliverables", next)} onClose={() => openPanel()} onRevise={canRun ? (file, slide) => { setSeed({ text: revisionPrompt(file, slide), mode: "prepend" }); openPanel(); } : undefined} />}
       <Presence when={activity !== null} ms={180}>
         {(leaving) => (
           <Activity
@@ -705,7 +709,8 @@ export function Chat({
             turns={path}
             stamp={turns.map((t) => `${t.id}:${t.calls}:${t.status}`).join("|")}
             focus={(activity ?? lastActivity.current)?.focus ?? null}
-            onClose={() => setActivity(null)}
+            onClose={() => openPanel()}
+            onFocus={(run) => openPanel("activity", run ? { run } : {})}
             onJump={(id) => document.getElementById(`turn-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" })}
           />
         )}

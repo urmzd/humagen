@@ -18,6 +18,7 @@
     "@humagen/primitives": "workspace:*",
     "@humagen/render-web": "workspace:*",
     "@humagen/web": "workspace:*",
+    "fflate": "0.8.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
@@ -30,6 +31,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "@xmldom/xmldom": "^0.9.12",
     "happy-dom": "^21.0.3",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.0",

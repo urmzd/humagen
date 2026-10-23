@@ -110,6 +110,7 @@ export interface CheckboxesProps {
 /** A file the agent produced, in any phase. Renderers own icons, previews, and download affordances. */
 export interface FileProps {
   id: string;
+  artifactId?: string;
   title: string;
   kind: ArtifactKind;
   phase: ArtifactPhase;
@@ -134,6 +135,8 @@ export interface MenuProps {
 }
 
 export interface ActionsProps {
+  /** A web choice is selected first and sent only by its explicit submit control. */
+  confirmChoice?: { label: string; hint?: string };
   children: ReactNode;
   /** Change it when the proposal changes so clicks on an older copy can be told apart. */
   blockId?: string;

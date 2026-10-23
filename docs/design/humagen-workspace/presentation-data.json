@@ -1,0 +1,168 @@
+{
+  "leadership": {
+    "audience": "Leadership",
+    "slides": [
+      {
+        "kind": "cover",
+        "kicker": "Internal launch briefing",
+        "title": "A controlled shift to November 19.",
+        "subtitle": "Protect the retail launch buffer. Keep the November 12 press embargo.",
+        "items": [],
+        "notes": "This is an internal draft for review. The recommendation does not authorize changing dates or sending external notices."
+      },
+      {
+        "kind": "timeline",
+        "kicker": "The sequence",
+        "title": "Three dates. One clear sequence.",
+        "subtitle": "Packaging arrives before the press embargo and retail availability.",
+        "timeline": [
+          {
+            "date": "Nov 8",
+            "label": "Packaging arrives"
+          },
+          {
+            "date": "Nov 12",
+            "label": "Press embargo"
+          },
+          {
+            "date": "Nov 19",
+            "label": "Retail availability"
+          }
+        ],
+        "items": [],
+        "notes": "Packaging moved from November 4 to November 8. The extra week protects fulfilment. The press announcement should state the retail availability date clearly."
+      },
+      {
+        "kind": "list",
+        "kicker": "Impact",
+        "title": "What changes, what holds.",
+        "subtitle": "Keep the recommendation separate from actions that still need approval.",
+        "items": [
+          "Retail availability moves seven days to November 19.",
+          "The press embargo remains November 12.",
+          "Paid media requires its own review after source access is restored."
+        ],
+        "notes": "The media buy tracker was excluded from this recommendation because its access expired. The dates use the permitted supplier ETA, retail calendar, and plan snapshot."
+      },
+      {
+        "kind": "list",
+        "kicker": "Decisions",
+        "title": "Two approvals. Two boundaries.",
+        "subtitle": "A date decision never silently authorizes external delivery.",
+        "items": [
+          "Jamie Davis approves or redirects the proposed retail date.",
+          "Four vendor notices are reviewed separately before sending.",
+          "Ops holds delivery until that specific action is approved."
+        ],
+        "notes": "These are proposed actions in a sample design. No notices were sent. Each approval should identify its actor, target, and exact content or change."
+      },
+      {
+        "kind": "list",
+        "kicker": "Ownership",
+        "title": "The next step has an owner.",
+        "subtitle": "Keep progress visible without asking people to supervise every tool call.",
+        "items": [
+          "Launch Planner maintains the plan and completion criteria.",
+          "Ops prepares vendor notices and holds delivery.",
+          "Jon T. restores and verifies access to the media source."
+        ],
+        "notes": "A question about presentation audience blocks only the briefing assignment. Date approval, source restoration, and message approval remain separate work."
+      },
+      {
+        "kind": "list",
+        "kicker": "Evidence and follow-through",
+        "title": "Grounded, versioned, and ready to review.",
+        "subtitle": "Every output points back to the work and the evidence that produced it.",
+        "items": [
+          "Supplier ETA: indexed October 23 at 09:42 UTC.",
+          "Retail calendar: live search as Jamie at 09:47 UTC.",
+          "Launch plan v3: snapshot imported October 18."
+        ],
+        "notes": "This briefing is version 1, a draft. Review the outcome, request slide-specific changes, and retain prior versions when new outputs are produced."
+      }
+    ]
+  },
+  "project-team": {
+    "audience": "Project team",
+    "slides": [
+      {
+        "kind": "cover",
+        "kicker": "Internal launch briefing",
+        "title": "The launch plan, with a clear next step.",
+        "subtitle": "A project-team briefing for the November 19 retail launch.",
+        "items": [],
+        "notes": "This is an internal draft for review. The recommendation does not authorize changing dates or sending external notices."
+      },
+      {
+        "kind": "timeline",
+        "kicker": "The sequence",
+        "title": "Three dates. One clear sequence.",
+        "subtitle": "Packaging arrives before the press embargo and retail availability.",
+        "timeline": [
+          {
+            "date": "Nov 8",
+            "label": "Packaging arrives"
+          },
+          {
+            "date": "Nov 12",
+            "label": "Press embargo"
+          },
+          {
+            "date": "Nov 19",
+            "label": "Retail availability"
+          }
+        ],
+        "items": [],
+        "notes": "Packaging moved from November 4 to November 8. The extra week protects fulfilment. The press announcement should state the retail availability date clearly."
+      },
+      {
+        "kind": "list",
+        "kicker": "Impact",
+        "title": "What the team needs to adjust.",
+        "subtitle": "Keep the recommendation separate from actions that still need approval.",
+        "items": [
+          "Retail availability moves seven days to November 19.",
+          "The press embargo remains November 12.",
+          "Paid media requires its own review after source access is restored."
+        ],
+        "notes": "The media buy tracker was excluded from this recommendation because its access expired. The dates use the permitted supplier ETA, retail calendar, and plan snapshot."
+      },
+      {
+        "kind": "list",
+        "kicker": "Decisions",
+        "title": "Two approvals. Two boundaries.",
+        "subtitle": "A date decision never silently authorizes external delivery.",
+        "items": [
+          "Jamie Davis approves or redirects the proposed retail date.",
+          "Four vendor notices are reviewed separately before sending.",
+          "Ops holds delivery until that specific action is approved."
+        ],
+        "notes": "These are proposed actions in a sample design. No notices were sent. Each approval should identify its actor, target, and exact content or change."
+      },
+      {
+        "kind": "list",
+        "kicker": "Ownership",
+        "title": "Owners, blockers, and next actions.",
+        "subtitle": "Keep progress visible without asking people to supervise every tool call.",
+        "items": [
+          "Launch Planner maintains the plan and completion criteria.",
+          "Ops prepares vendor notices and holds delivery.",
+          "Jon T. restores and verifies access to the media source."
+        ],
+        "notes": "A question about presentation audience blocks only the briefing assignment. Date approval, source restoration, and message approval remain separate work."
+      },
+      {
+        "kind": "list",
+        "kicker": "Evidence and follow-through",
+        "title": "Grounded, versioned, and ready to review.",
+        "subtitle": "Every output points back to the work and the evidence that produced it.",
+        "items": [
+          "Supplier ETA: indexed October 23 at 09:42 UTC.",
+          "Retail calendar: live search as Jamie at 09:47 UTC.",
+          "Launch plan v3: snapshot imported October 18."
+        ],
+        "notes": "This briefing is version 1, a draft. Review the outcome, request slide-specific changes, and retain prior versions when new outputs are produced."
+      }
+    ]
+  }
+}

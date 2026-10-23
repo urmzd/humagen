@@ -1,4 +1,10 @@
-import { type Copy, defaultCopy, type TurnCapabilities, TurnView } from "@humagen/components";
+import {
+  type Copy,
+  defaultCopy,
+  TaskList,
+  type TurnCapabilities,
+  TurnView,
+} from "@humagen/components";
 import { ActionId, formatTokens, formatUsd, type Turn, type Usage } from "@humagen/core";
 import {
   ActionContext,
@@ -7,6 +13,7 @@ import {
   GaugeIcon,
   type ItemActions,
   ItemActionsContext,
+  MessageIcon,
   Rating,
   RefreshIcon,
   RequestBubble,
@@ -16,7 +23,7 @@ import {
   TurnMetaContext,
   useVerbSequence,
 } from "@humagen/render-web";
-import { useContext, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { AgentOrb, type OrbState, turnOrbState } from "./AgentOrb";
 import { StopBanner } from "./Alerts";
 import { Reasoning } from "./Reasoning";
@@ -114,17 +121,52 @@ function UsageChip({ usage }: { usage: Usage }) {
 const actionBtn =
   "inline-flex size-7 items-center justify-center rounded-aui-sm text-aui-muted transition-colors hover:bg-aui-hover hover:text-aui-fg focus-visible:outline-2 focus-visible:outline-aui-accent aria-pressed:text-aui-accent";
 
+function WorkSummary({ turn, copy }: { turn: Turn; copy: Copy }) {
+  const attention = turn.tasks.some((task) => task.status === "waiting" || task.status === "error");
+  const [open, setOpen] = useState(attention);
+  useEffect(() => {
+    if (attention) setOpen(true);
+  }, [attention]);
+  const completed = turn.tasks.filter((task) => task.status === "complete").length;
+  const blocked = turn.tasks.filter(
+    (task) => task.status === "waiting" || task.status === "error",
+  ).length;
+  if (turn.tasks.length === 0) return null;
+  return (
+    <details
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      className="min-w-0 rounded-aui border border-aui-border px-3 py-2"
+    >
+      <summary className="min-h-6 cursor-pointer text-aui-xs text-aui-muted">
+        {[
+          copy.conversation.tools(turn.tasks.length),
+          completed ? copy.conversation.complete(completed) : "",
+          blocked ? copy.conversation.blocked(blocked) : "",
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      </summary>
+      <div className="mt-3 flex min-w-0 flex-col gap-1">
+        <TaskList turn={turn} copy={copy} />
+      </div>
+    </details>
+  );
+}
+
 /** Copy, regenerate, rate (then an optional comment), and usage. */
 function MessageActions({
   turn,
   copy,
   rate,
   regenerate,
+  onReply,
 }: {
   turn: Turn;
   copy: Copy;
   rate: boolean;
   regenerate: boolean;
+  onReply?: () => void;
 }) {
   const onAction = useContext(ActionContext);
   const itemActions = useContext(ItemActionsContext);
@@ -134,6 +176,17 @@ function MessageActions({
     <div role="toolbar" aria-label="Message actions" className="-ml-1.5 flex items-center gap-0.5">
       {/* One copy control, never two: the host's replaces the built-in when it draws one. */}
       {text && (hostCopy ?? <CopyButton text={text} label="Copy answer" note="above" />)}
+      {onReply && (
+        <button
+          type="button"
+          className={actionBtn}
+          aria-label={copy.conversation.reply}
+          title={copy.conversation.reply}
+          onClick={onReply}
+        >
+          <MessageIcon size={13} />
+        </button>
+      )}
       {regenerate && (
         <button
           type="button"
@@ -175,6 +228,8 @@ export function AgentMessage({
   itemActions,
   feedbackPrompt = true,
   capabilities,
+  onAskAgent,
+  onReply,
 }: {
   turn: Turn;
   copy?: Copy;
@@ -196,6 +251,8 @@ export function AgentMessage({
    * `regenerate: false` Regenerate.
    */
   capabilities?: TurnCapabilities;
+  onAskAgent?: () => void;
+  onReply?: () => void;
 }) {
   const inherited = useContext(ItemActionsContext);
   const statusLine = `**${turn.agent.name}** · ${copy.status[turn.status]}`;
@@ -231,7 +288,18 @@ export function AgentMessage({
       <AgentAvatar agent={turn.agent} state={turn.detached ? "idle" : turnOrbState(turn)} />
       <div className="flex min-w-0 flex-col gap-2">
         <header className="flex h-7 min-w-0 items-center gap-2 text-aui-sm">
-          <span className="font-semibold text-aui-fg">{turn.agent.name}</span>
+          {onAskAgent ? (
+            <button
+              type="button"
+              className="min-h-6 rounded-aui font-semibold text-aui-fg hover:underline focus-visible:outline-2 focus-visible:outline-aui-accent"
+              aria-label={copy.conversation.askAgent(turn.agent.name)}
+              onClick={onAskAgent}
+            >
+              {turn.agent.name}
+            </button>
+          ) : (
+            <span className="font-semibold text-aui-fg">{turn.agent.name}</span>
+          )}
           <span className="flex min-w-0 items-center gap-1.5 text-aui-2xs text-aui-muted">
             {activity ? (
               <ShimmerVerb className="truncate">{activity}</ShimmerVerb>
@@ -250,7 +318,8 @@ export function AgentMessage({
           <TurnMetaContext.Provider value={turn}>
             <SuppressContext.Provider value={suppressed}>
               <div className="aui-stack">
-                <TurnView turn={turn} copy={copy} capabilities={capabilities} />
+                <WorkSummary turn={turn} copy={copy} />
+                <TurnView turn={turn} copy={copy} capabilities={capabilities} hideTasks />
                 {turn.status === "stopped" && turn.stop && (
                   <StopBanner turnId={turn.id} stop={turn.stop} label={copy.stopPhase[turn.stop]} />
                 )}
@@ -264,6 +333,7 @@ export function AgentMessage({
                 copy={copy}
                 rate={capabilities?.feedback !== false}
                 regenerate={capabilities?.regenerate !== false}
+                onReply={onReply}
               />
             </FeedbackPromptContext.Provider>
           )}
