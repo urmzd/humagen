@@ -131,6 +131,7 @@ function ProjectRow({
   about,
   facts,
   indent,
+  project,
   onOpen,
 }: {
   to: string;
@@ -138,6 +139,7 @@ function ProjectRow({
   about: string;
   facts: string;
   indent: number;
+  project: ProjectView;
   onOpen: () => void;
 }) {
   return (
@@ -147,11 +149,19 @@ function ProjectRow({
         onGo={onOpen}
         className="flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-0.5 rounded-aui px-2 py-2 text-left transition-colors hover:bg-aui-hover focus-visible:outline-2 focus-visible:outline-aui-accent"
       >
-        <FolderIcon size={18} className="shrink-0 text-aui-muted" />
+        <span className="relative shrink-0">
+          <FolderIcon size={18} className="text-aui-muted" />
+          {project.unread > 0 && <span role="img" aria-label={words.unreadUpdates} className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-aui-accent" />}
+        </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-aui-sm font-medium text-aui-fg">{title}</span>
           <span className="block truncate text-aui-xs text-aui-muted">{about}</span>
         </span>
+        {project.row_agents.length > 0 && (
+          <span className="flex max-w-28 flex-wrap items-center gap-1.5">
+            {project.row_agents.map((name) => <span key={name} role="img" aria-label={name} title={name}><AgentMark name={name} size={14} /></span>)}
+          </span>
+        )}
         <span className="shrink-0 text-aui-2xs text-aui-muted tabular-nums max-sm:w-full max-sm:pl-[30px]">{facts}</span>
       </Go>
     </li>
@@ -250,6 +260,7 @@ export function ProjectsPage({
                   to={projectHref("")}
                   title={workspaceName}
                   about={`${words.workspace} · ${words.workspaceHint}`}
+                  project={root}
                   facts={factsOf(root)}
                   indent={0}
                   onOpen={() => onOpen("")}
@@ -261,6 +272,7 @@ export function ProjectsPage({
                   to={projectHref(r.project.name)}
                   title={titleOf(r.project)}
                   about={aboutOf(r.project, r.path, kinds)}
+                  project={r.project}
                   facts={factsOf(r.project)}
                   indent={r.indent}
                   onOpen={() => onOpen(r.project.name)}
@@ -735,6 +747,7 @@ function SubProjects({
               to={projectHref(c.name)}
               title={titleOf(c)}
               about={[aboutOf(c, [], kinds), c.children > 0 ? words.count.below(c.children) : null].filter(Boolean).join(" · ")}
+              project={c}
               facts={factsOf(c)}
               indent={0}
               onOpen={() => onOpen(c.name)}
@@ -1223,7 +1236,7 @@ export function ProjectPage({
   // A mute that did not take says so beside its button.
   const { flash: muteFlash, say: sayMute, clear: clearMute } = useFlash();
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tick and reads are signals to read again
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick, inboxTick and reads are signals to read again
   useEffect(() => {
     let live = true;
     api
@@ -1243,7 +1256,7 @@ export function ProjectPage({
     return () => {
       live = false;
     };
-  }, [name, tick, reads]);
+  }, [name, tick, inboxTick, reads]);
 
   const changed = () => {
     setReads((n) => n + 1);
