@@ -149,3 +149,7 @@ func (p *Platform) SkillNamesOf(tenant string, th threads.Thread, m threads.Mess
 // BeforeCarryOut runs fn after each message is posted and before what it
 // starts is decided, as a share landing then would.
 func (p *Platform) BeforeCarryOut(fn func()) { p.beforeCarryOut = fn }
+
+// BeforeQuestionKept runs fn after a question's message is found missing
+// and built, and before it is kept, as a slow raise would.
+func (p *Platform) BeforeQuestionKept(fn func()) { p.beforeQuestionKept = fn }

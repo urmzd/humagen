@@ -268,6 +268,10 @@ type Platform struct {
 	// beforeCarryOut, when set, runs after a message is posted and before
 	// what it starts is decided. Only tests set it, to move a thread then.
 	beforeCarryOut func()
+	// beforeQuestionKept, when set, runs after a question's message is
+	// found missing and built, and before it is kept. Only tests set it, to
+	// answer in that moment.
+	beforeQuestionKept func()
 	// halting holds runs being stopped at a limit, by run id, so a run is
 	// asked once however many of its calls cross it.
 	halting sync.Map

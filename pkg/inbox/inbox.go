@@ -1005,13 +1005,29 @@ func (s *Store) commitLocked(name string, n int) error {
 
 // Raise puts a message in the inbox. key names what it is about: while a
 // message with that key is open, a second is not raised and the first is
-// returned.
+// returned. The check and the raise hold one lock, so a raise that loses a
+// race returns the message that won it, never an empty one.
 func (s *Store) Raise(tenantName, key string, m Message, at time.Time) (Message, bool, error) {
-	if existing, ok := s.ByKey(tenantName, key); ok && existing.State != Resolved && existing.State != Dismissed {
-		return existing, false, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing := s.of(tenantName).byKey[key]; existing != nil && existing.State != Resolved && existing.State != Dismissed {
+		return existing.clone(), false, nil
 	}
 	m.Key = key
-	return s.do(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
+	return s.doLocked(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
+}
+
+// RaiseOnce is Raise for a message about something that happens once, such
+// as a question a run asked: while any message with that key is kept, open
+// or not, it is returned and nothing is raised.
+func (s *Store) RaiseOnce(tenantName, key string, m Message, at time.Time) (Message, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing := s.of(tenantName).byKey[key]; existing != nil {
+		return existing.clone(), false, nil
+	}
+	m.Key = key
+	return s.doLocked(Change{Tenant: tenantName, What: Raised, At: at, By: m.From.Name, Raised: &m})
 }
 
 // ByID returns one message as it is, for the platform's own use: who may
