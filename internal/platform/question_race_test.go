@@ -43,6 +43,11 @@ func askingOlu(t *testing.T, cfg platform.Config) (*platform.Platform, runs.Run,
 		t.Fatal(err)
 	}
 	held, hold := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	release := func() { once.Do(func() { close(hold) }) }
+	// Let go before the platform is shut down, even when the test stops
+	// early, so the shutdown does not wait on the hold.
+	t.Cleanup(release)
 	var taken atomic.Bool
 	p.BeforeQuestionKept(func() {
 		if !taken.CompareAndSwap(false, true) {
@@ -67,8 +72,7 @@ func askingOlu(t *testing.T, cfg platform.Config) (*platform.Platform, runs.Run,
 	case <-time.After(20 * time.Second):
 		t.Fatal("the run's own raise of its question never came")
 	}
-	var release sync.Once
-	return p, run, func() { release.Do(func() { close(hold) }) }
+	return p, run, release
 }
 
 // questionMessages is every message kept under a question's key.

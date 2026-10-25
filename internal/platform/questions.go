@@ -452,9 +452,9 @@ func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Qu
 
 // askedMessage is the inbox message of the question questionID that run
 // asked. The run shows the question a moment before its event raises the
-// message, so a question the runtime says is waiting is raised here, from
-// the runtime's record of it. A question the run is not waiting on and that
-// has no message is inbox.ErrNotFound.
+// message, so a question the run reports it is waiting on, or failing that
+// the runtime's record of it, is raised here. A question the run is not
+// waiting on and that has no message is inbox.ErrNotFound.
 func (p *Platform) askedMessage(ctx context.Context, run runs.Run, questionID string) (inbox.Message, error) {
 	if m, ok := p.Inbox.ByKey(run.Tenant, questionKey(run.ID, questionID)); ok {
 		return m, nil
