@@ -11,7 +11,8 @@ This is a prepared design. Nothing here is implemented beyond what
 - [Product and design spec](spec.md)
 - [Gap analysis against the code](gap-analysis.md)
 - [Design rules: tokens, identity, icons, navigation](design-rules.md)
-- [Boards](boards/index.html): 25 clickable screens as plain HTML, CSS and JavaScript
+- [Boards](boards/index.html): 25 clickable screens as plain HTML, CSS and JavaScript,
+  published at https://urmzd.github.io/humagen/
 
 ## Opening the boards
 
@@ -29,8 +30,11 @@ Open `boards/index.html` in a browser, or serve the folder:
 python3 -m http.server 8000 --directory docs/design/humagen-control-plane/boards
 ```
 
-GitHub shows HTML files as source, so use a local checkout (or GitHub Pages) to
-click through them. The screenshots below are captured from these pages.
+GitHub shows HTML files as source. The `Design boards` workflow
+(`.github/workflows/pages.yml`) publishes this folder to GitHub Pages at
+https://urmzd.github.io/humagen/ whenever it changes on `main`; it needs
+Settings, Pages, Source set to GitHub Actions. The screenshots below are
+captured from these pages.
 
 ## Where the boards differ from the repo's rules
 
