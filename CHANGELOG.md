@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.25.1 (2026-10-25)
+
+### Bug Fixes
+
+- answer a question in the moment it is asked (#68) ([3968fc8](https://github.com/urmzd/humagen/commit/3968fc81b9f08d71d89613f9a93220bf1b4fbf8f))
+
+### Misc
+
+- publish the design boards to GitHub Pages (#67) ([d62b043](https://github.com/urmzd/humagen/commit/d62b0436371f252e5b76dc977d11a6458edb84b8))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.25.0...v0.25.1)
+
+
 ## 0.25.0 (2026-10-25)
 
 ### Features
