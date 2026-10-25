@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent - Launch Planner</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2E5B88}a:hover{color:#1F4166}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 600px; min-height: 1240px; box-sizing: border-box; font-family: Inter, system-ui, sans-serif; color: #1B1C1E; background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 16px; display: flex; flex-direction: column; font-size: 14px; line-height: 1.45; overflow: hidden">
+
+  <!-- Header -->
+  <div style="padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; border-bottom: 1px solid #E2E2DE">
+    <a href="OpsAgents.dc.html" style="font-size: 13px; text-decoration: none">← Agents</a>
+    <div style="display: flex; align-items: center; gap: 12px">
+      <div style="flex: 0 0 auto; width: 44px; height: 44px; border-radius: 11px; background: #E3E8EE; color: #2E5B88; font-size: 15px; font-weight: 700; display: flex; align-items: center; justify-content: center">LP</div>
+      <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column">
+        <h1 style="margin: 0; font-size: 19px; font-weight: 600">Launch Planner</h1>
+        <span style="font-size: 13px; color: #5F6168">Plan owner · Spring Launch · managed by Mira K.</span>
+      </div>
+      <button type="button" onClick="{{ togglePause }}" style="height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid #D5D5D0; background: #FFFFFF; color: #1B1C1E; font-weight: 500; cursor: pointer">{{ pauseLabel }}</button>
+    </div>
+    <div style="{{ statusStyle }}">
+      <span style="{{ dotStyle }}"></span>
+      <span style="flex: 1 1 auto">{{ statusText }}</span>
+    </div>
+  </div>
+
+  <div style="padding: 20px 24px 28px; display: flex; flex-direction: column; gap: 26px">
+
+    <!-- Role -->
+    <section style="display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Role</h2>
+      <div style="padding: 12px 14px; border: 1px solid #E2E2DE; border-radius: 10px; color: #3A3C41">Own the launch plan. Keep dates and dependencies current, flag risks early, and bring the team a recommendation - not a list of steps.</div>
+    </section>
+
+    <!-- Standing assignments -->
+    <section style="display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; align-items: center"><h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168; flex: 1 1 auto">Standing assignments</h2><a href="#" style="font-size: 13px; font-weight: 600; text-decoration: none">Add</a></div>
+      <div style="border: 1px solid #E2E2DE; border-radius: 10px; display: flex; flex-direction: column">
+        <div style="display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; padding: 12px 14px; border-bottom: 1px solid #E2E2DE; font-size: 13px">
+          <span style="color: #5F6168">When</span><span>Monitor Agent hands off a change to a launch dependency</span>
+          <span style="color: #5F6168">Do</span><span>Assess impact, update the plan draft, post a recommendation in # launch-ops</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; padding: 12px 14px; font-size: 13px">
+          <span style="color: #5F6168">Every</span><span>Monday 9:00</span>
+          <span style="color: #5F6168">Do</span><span>Post a launch status: what changed, what’s at risk, what needs a decision</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Autonomy -->
+    <section style="display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">What it may do without asking</h2>
+      <div style="border: 1px solid #E2E2DE; border-radius: 10px; display: flex; flex-direction: column">
+        <sc-for list="{{ perms }}" as="p" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #F0F0ED; flex-wrap: wrap">
+            <span style="flex: 1 1 200px; font-size: 13px">{{ p.label }}</span>
+            <div role="radiogroup" aria-label="{{ p.label }}" style="display: flex; border: 1px solid #D5D5D0; border-radius: 8px; overflow: hidden">
+              <sc-for list="{{ p.opts }}" as="o" hint-placeholder-count="3">
+                <button type="button" role="radio" aria-checked="{{ o.checked }}" onClick="{{ o.pick }}" style="{{ o.style }}">{{ o.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <!-- Context & handoffs -->
+    <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Context it can use</h2>
+        <ul style="margin: 0; padding: 12px 14px; list-style: none; border: 1px solid #E2E2DE; border-radius: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+          <li style="display: flex; gap: 6px; align-items: center"><span style="width: 6px; height: 6px; border-radius: 50%; background: #1F7A4D"></span>Supplier ETA <span style="color: #5F6168; margin-left: auto">live</span></li>
+          <li style="display: flex; gap: 6px; align-items: center"><span style="width: 6px; height: 6px; border-radius: 50%; background: #1F7A4D"></span>Retail calendar <span style="color: #5F6168; margin-left: auto">live</span></li>
+          <li style="display: flex; gap: 6px; align-items: center"><span style="width: 6px; height: 6px; border-radius: 50%; background: #8A8C92"></span>Launch plan v3 <span style="color: #5F6168; margin-left: auto">snapshot</span></li>
+          <li style="display: flex; gap: 6px; align-items: center"><span style="width: 6px; height: 6px; border-radius: 50%; background: #B86E00"></span>Media buy tracker <span style="color: #6B4100; margin-left: auto">stale</span></li>
+        </ul>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Can hand off to</h2>
+        <ul style="margin: 0; padding: 12px 14px; list-style: none; border: 1px solid #E2E2DE; border-radius: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+          <li>Ops Agent <span style="color: #5F6168">· vendor work</span></li>
+          <li>Media Analyst <span style="color: #5F6168">· paid media</span></li>
+          <li>Research Analyst <span style="color: #5F6168">· ask first</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Escalation & limits -->
+    <section style="display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Escalation and limits</h2>
+      <div style="display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 10px 12px; padding: 12px 14px; border: 1px solid #E2E2DE; border-radius: 10px; font-size: 13px">
+        <span style="color: #5F6168">Ask</span><span>Mira K., then # launch-ops</span>
+        <span style="color: #5F6168">If no answer</span><span>Remind after 4 h · never act on its own</span>
+        <span style="color: #5F6168">Stop if</span><span>A source it relies on is stale for more than 24 h</span>
+        <span style="color: #5F6168">Run budget</span><span>Up to 40 runs a day · 31 left</span>
+      </div>
+    </section>
+
+    <!-- Recent runs -->
+    <section style="display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Recent runs</h2>
+      <div style="border: 1px solid #E2E2DE; border-radius: 10px; display: flex; flex-direction: column; font-size: 13px">
+        <a href="Activity.dc.html" style="display: flex; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #F0F0ED; text-decoration: none; color: #1B1C1E"><span style="color: #5F6168; width: 64px">Today 9:43</span><span style="flex: 1 1 auto">Supplier delay → recommended Nov 19</span><span style="color: #6B4100">awaiting decision</span></a>
+        <a href="#" style="display: flex; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #F0F0ED; text-decoration: none; color: #1B1C1E"><span style="color: #5F6168; width: 64px">Oct 20</span><span style="flex: 1 1 auto">Weekly launch status</span><span style="color: #1F6B45">done</span></a>
+        <a href="#" style="display: flex; gap: 10px; padding: 10px 14px; text-decoration: none; color: #1B1C1E"><span style="color: #5F6168; width: 64px">Oct 18</span><span style="flex: 1 1 auto">Plan v3 written from kickoff notes</span><span style="color: #1F6B45">done</span></a>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":600,"height":1240}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { paused: false, perms: { read: 'auto', draft: 'auto', dates: 'ask', msgs: 'ask', spend: 'never' } };
+  }
+  renderVals() {
+    const s = this.state;
+    const rows = [
+      ['read', 'Read project context'],
+      ['draft', 'Draft and edit plan documents'],
+      ['dates', 'Change launch dates or owners'],
+      ['msgs', 'Message people outside the project'],
+      ['spend', 'Commit budget or spend']
+    ];
+    const optDefs = [['auto', 'Allow'], ['ask', 'Ask'], ['never', 'Never']];
+    const perms = rows.map(([key, label]) => ({
+      label,
+      opts: optDefs.map(([v, l]) => {
+        const on = s.perms[key] === v;
+        return {
+          label: l,
+          checked: on ? 'true' : 'false',
+          pick: () => this.setState({ perms: { ...s.perms, [key]: v } }),
+          style: 'height: 32px; min-width: 60px; padding: 0 10px; border: 0; font-size: 12px; cursor: pointer; background: ' + (on ? '#1B1C1E' : '#FFFFFF') + '; color: ' + (on ? '#FFFFFF' : '#3A3C41') + '; font-weight: ' + (on ? '600' : '400')
+        };
+      })
+    }));
+    const p = s.paused;
+    return {
+      perms,
+      pauseLabel: p ? 'Resume' : 'Pause',
+      togglePause: () => this.setState({ paused: !p }),
+      statusText: p ? 'Paused by you · assignments queue until resumed' : 'Waiting on you · approve Nov 19 in # launch-ops',
+      statusStyle: 'display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; font-size: 13px; background: ' + (p ? '#EEEEEB' : '#FBF3E4') + '; color: ' + (p ? '#3A3C41' : '#4A3A20'),
+      dotStyle: 'width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: ' + (p ? '#8A8C92' : '#B86E00')
+    };
+  }
+}
+</script>
+</body>
+</html>

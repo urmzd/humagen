@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Conversation settings - Activity</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2E5B88}a:hover{color:#1F4166}
+button{font-family:inherit}
+</style>
+</helmet>
+<aside aria-label="Conversation settings" style="width: 440px; height: 980px; box-sizing: border-box; font-family: Inter, system-ui, sans-serif; color: #1B1C1E; background: #FFFFFF; border-left: 1px solid #E2E2DE; display: flex; flex-direction: column; font-size: 14px; line-height: 1.45">
+
+  <div style="padding: 16px 20px 0; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #E2E2DE">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <h2 style="margin: 0; font-size: 15px; font-weight: 600; flex: 1 1 auto">Conversation settings</h2>
+      <a href="Main.dc.html" aria-label="Close" style="width: 36px; height: 36px; border-radius: 8px; color: #5F6168; display: inline-flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+      </a>
+    </div>
+    <div role="tablist" style="display: flex; gap: 18px; font-size: 13px">
+      <button type="button" role="tab" aria-selected="false" style="border: 0; background: transparent; padding: 0 0 10px; color: #5F6168; cursor: pointer; font-size: 13px">General</button>
+      <button type="button" role="tab" aria-selected="true" style="border: 0; background: transparent; padding: 0 0 10px; color: #1B1C1E; font-weight: 600; border-bottom: 2px solid #1B1C1E; cursor: pointer; font-size: 13px">Activity</button>
+      <button type="button" role="tab" aria-selected="false" style="border: 0; background: transparent; padding: 0 0 10px; color: #5F6168; cursor: pointer; font-size: 13px">Members</button>
+      <button type="button" role="tab" aria-selected="false" style="border: 0; background: transparent; padding: 0 0 10px; color: #5F6168; cursor: pointer; font-size: 13px">Notifications</button>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div style="padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid #E2E2DE">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 10px; background: #F3F6FA; border: 1px solid #D6E0EB">
+      <span style="width: 8px; height: 8px; border-radius: 50%; background: #2E5B88; flex: 0 0 auto"></span>
+      <span style="flex: 1 1 auto; font-size: 13px"><strong>Waiting on you</strong> · approve Nov 19 so Ops Agent can send notices</span>
+    </div>
+    <div style="display: flex; gap: 6px; flex-wrap: wrap" role="group" aria-label="Filter">
+      <button type="button" aria-pressed="true" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #1B1C1E; background: #1B1C1E; color: #FFFFFF; font-size: 12px; cursor: pointer">All</button>
+      <button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #D5D5D0; background: #FFFFFF; color: #1B1C1E; font-size: 12px; cursor: pointer">Handoffs</button>
+      <button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #D5D5D0; background: #FFFFFF; color: #1B1C1E; font-size: 12px; cursor: pointer">Tool calls</button>
+      <button type="button" aria-pressed="false" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #D5D5D0; background: #FFFFFF; color: #1B1C1E; font-size: 12px; cursor: pointer">Decisions</button>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <ol style="flex: 1 1 auto; overflow: auto; margin: 0; padding: 16px 20px; list-style: none; display: flex; flex-direction: column; gap: 0">
+
+    <li style="display: flex; gap: 12px">
+      <div style="display: flex; flex-direction: column; align-items: center">
+        <span style="width: 26px; height: 26px; border-radius: 7px; background: #E3E8EE; color: #2E5B88; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center">MA</span>
+        <span style="flex: 1 1 auto; width: 1px; background: #E2E2DE; min-height: 16px"></span>
+      </div>
+      <div style="padding-bottom: 18px; display: flex; flex-direction: column; gap: 2px; min-width: 0">
+        <div style="display: flex; gap: 8px; align-items: baseline"><strong style="font-weight: 600">Monitor Agent</strong><span style="font-size: 12px; color: #5F6168">9:42</span></div>
+        <div style="color: #3A3C41">Detected change in Supplier ETA · packaging Nov 4 → Nov 8</div>
+      </div>
+    </li>
+
+    <li style="display: flex; gap: 12px">
+      <div style="display: flex; flex-direction: column; align-items: center">
+        <span style="width: 26px; height: 26px; border-radius: 50%; background: #F1ECE4; color: #6B4E2E; display: flex; align-items: center; justify-content: center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+        </span>
+        <span style="flex: 1 1 auto; width: 1px; background: #E2E2DE; min-height: 16px"></span>
+      </div>
+      <div style="padding-bottom: 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0">
+        <div style="display: flex; gap: 8px; align-items: baseline"><strong style="font-weight: 600">Handoff</strong><span style="font-size: 12px; color: #5F6168">9:43</span></div>
+        <div style="color: #3A3C41">Monitor Agent → <strong style="color: #1B1C1E">Launch Planner</strong></div>
+        <div style="font-size: 13px; color: #3A3C41; background: #FAFAF8; border: 1px solid #E2E2DE; border-radius: 8px; padding: 8px 10px">“Assess launch impact. Attached: ETA diff, 3 affected SKUs.”</div>
+      </div>
+    </li>
+
+    <li style="display: flex; gap: 12px">
+      <div style="display: flex; flex-direction: column; align-items: center">
+        <span style="width: 26px; height: 26px; border-radius: 7px; background: #E3E8EE; color: #2E5B88; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center">LP</span>
+        <span style="flex: 1 1 auto; width: 1px; background: #E2E2DE; min-height: 16px"></span>
+      </div>
+      <div style="padding-bottom: 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 auto">
+        <div style="display: flex; gap: 8px; align-items: baseline"><strong style="font-weight: 600">Launch Planner</strong><span style="font-size: 12px; color: #5F6168">9:43–9:50</span></div>
+        <div style="color: #3A3C41">Checked 5 dependencies · compared 2 options</div>
+        <button type="button" onClick="{{ toggleTools }}" aria-expanded="{{ toolsOpenStr }}" style="align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px; margin-left: -8px; border: 0; background: transparent; color: #2E5B88; font-size: 12px; font-weight: 600; cursor: pointer">
+          {{ toolsLabel }}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+        </button>
+        <sc-if value="{{ toolsOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; border: 1px solid #E2E2DE; border-radius: 8px; font-size: 12px">
+            <div style="display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #E2E2DE"><code style="font-family: ui-monospace, Menlo, monospace; color: #1B1C1E">read_plan</code><span style="color: #5F6168; flex: 1 1 auto">Launch plan v3 · snapshot</span><span style="color: #1F6B45">ok</span></div>
+            <div style="display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #E2E2DE"><code style="font-family: ui-monospace, Menlo, monospace; color: #1B1C1E">query_tasks</code><span style="color: #5F6168; flex: 1 1 auto">5 tasks depend on packaging</span><span style="color: #1F6B45">ok</span></div>
+            <div style="display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #E2E2DE"><code style="font-family: ui-monospace, Menlo, monospace; color: #1B1C1E">read_calendar</code><span style="color: #5F6168; flex: 1 1 auto">Retail calendar · live 9:30</span><span style="color: #1F6B45">ok</span></div>
+            <div style="display: flex; gap: 8px; padding: 8px 10px"><code style="font-family: ui-monospace, Menlo, monospace; color: #1B1C1E">write_doc</code><span style="color: #5F6168; flex: 1 1 auto">Launch plan v4 (draft)</span><span style="color: #1F6B45">ok</span></div>
+          </div>
+        </sc-if>
+      </div>
+    </li>
+
+    <li style="display: flex; gap: 12px">
+      <div style="display: flex; flex-direction: column; align-items: center">
+        <span style="width: 26px; height: 26px; border-radius: 50%; background: #F1ECE4; color: #6B4E2E; display: flex; align-items: center; justify-content: center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+        </span>
+        <span style="flex: 1 1 auto; width: 1px; background: #E2E2DE; min-height: 16px"></span>
+      </div>
+      <div style="padding-bottom: 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0">
+        <div style="display: flex; gap: 8px; align-items: baseline"><strong style="font-weight: 600">Handoff</strong><span style="font-size: 12px; color: #5F6168">9:50</span></div>
+        <div style="color: #3A3C41">Launch Planner → <strong style="color: #1B1C1E">Ops Agent</strong></div>
+        <div style="font-size: 13px; color: #3A3C41; background: #FAFAF8; border: 1px solid #E2E2DE; border-radius: 8px; padding: 8px 10px">“Draft vendor notices for Nov 19. Hold until approved.”</div>
+      </div>
+    </li>
+
+    <li style="display: flex; gap: 12px">
+      <div style="display: flex; flex-direction: column; align-items: center">
+        <span style="width: 26px; height: 26px; border-radius: 7px; background: #E3E8EE; color: #2E5B88; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center">OA</span>
+        <span style="flex: 1 1 auto; width: 1px; background: #E2E2DE; min-height: 16px"></span>
+      </div>
+      <div style="padding-bottom: 18px; display: flex; flex-direction: column; gap: 4px; min-width: 0">
+        <div style="display: flex; gap: 8px; align-items: baseline"><strong style="font-weight: 600">Ops Agent</strong><span style="font-size: 12px; color: #5F6168">9:51</span></div>
+        <div style="color: #3A3C41">Drafted 4 vendor notices</div>
+        <span style="align-self: flex-start; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #EEEEEB; color: #3A3C41">Paused · needs approval</span>
+      </div>
+    </li>
+
+    <li style="display: flex; gap: 12px">
+      <div style="display: flex; flex-direction: column; align-items: center">
+        <span style="width: 26px; height: 26px; border-radius: 50%; border: 2px dashed #2E5B88; box-sizing: border-box"></span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+        <div style="display: flex; gap: 8px; align-items: baseline"><strong style="font-weight: 600">Decision · you</strong><span style="font-size: 12px; color: #5F6168">pending</span></div>
+        <div style="color: #3A3C41">Approve Nov 19, or redirect Launch Planner</div>
+      </div>
+    </li>
+  </ol>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":440,"height":980}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { toolsOpen: true };
+  }
+  renderVals() {
+    const open = this.state.toolsOpen;
+    return {
+      toolsOpen: open,
+      toolsOpenStr: open ? 'true' : 'false',
+      toolsLabel: open ? 'Hide 4 tool calls' : 'Show 4 tool calls',
+      toggleTools: () => this.setState({ toolsOpen: !open })
+    };
+  }
+}
+</script>
+</body>
+</html>
