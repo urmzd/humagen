@@ -427,6 +427,9 @@ func (p *Platform) raiseQuestion(ctx context.Context, run runs.Run, q payload.Qu
 		return m, nil
 	}
 	msg, _ := p.questionMessage(ctx, run, q, via)
+	if p.beforeQuestionKept != nil {
+		p.beforeQuestionKept()
+	}
 	at := q.At
 	if at.IsZero() {
 		at = p.now()
@@ -467,7 +470,10 @@ func (p *Platform) askedMessage(ctx context.Context, run runs.Run, questionID st
 	if !pending || q.ID != questionID {
 		return inbox.Message{}, fmt.Errorf("%w: run %q has no question %q", inbox.ErrNotFound, run.ID, questionID)
 	}
-	return p.raiseQuestion(ctx, run, q, "")
+	// Raised as the run's event would raise it, whatever becomes of the
+	// request that got here first: a message is addressed once, and one
+	// addressed while the request was being given up would reach nobody.
+	return p.raiseQuestion(context.WithoutCancel(ctx), run, q, "")
 }
 
 // questionMessage is the inbox message a question is raised as, addressed
@@ -622,9 +628,6 @@ func (p *Platform) observeQuestion(ctx context.Context, e envelope.Event) {
 			return
 		}
 		if run, err := p.Runs.Get(e.Tenant, e.RunID); err == nil {
-			if p.beforeQuestionRaised != nil {
-				p.beforeQuestionRaised()
-			}
 			// What could not be kept is logged where it was tried.
 			_, _ = p.raiseQuestion(ctx, run, *body.Question, "")
 		}

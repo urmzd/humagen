@@ -1,8 +1,12 @@
 package platform_test
 
 import (
+	"context"
 	"errors"
+	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,9 +23,10 @@ import (
 )
 
 // askingOlu starts a run that asks the billing expert, olu, for a PO number,
-// with the fold that raises the question's message held until the returned
-// func is called. The run shows it is parked on the question while the
-// message is not raised yet.
+// and holds the run's own raise of the question's message after it found the
+// message missing and built it, until the returned func is called. The run
+// shows it is parked on the question while the message is not kept yet.
+// Only that first raise is held: one an answer makes goes through.
 func askingOlu(t *testing.T, cfg platform.Config) (*platform.Platform, runs.Run, func()) {
 	t.Helper()
 	c := &cast{continues: true,
@@ -37,8 +42,13 @@ func askingOlu(t *testing.T, cfg platform.Config) (*platform.Platform, runs.Run,
 	if _, err := p.SetProjectExperts(tenant, "Field", ada, platform.Experts{Version: cur.Version, Experts: []projects.Expert{{Who: "olu", Topics: []string{"billing"}}}}); err != nil {
 		t.Fatal(err)
 	}
-	hold := make(chan struct{})
-	p.BeforeQuestionRaised(func() {
+	held, hold := make(chan struct{}), make(chan struct{})
+	var taken atomic.Bool
+	p.BeforeQuestionKept(func() {
+		if !taken.CompareAndSwap(false, true) {
+			return
+		}
+		close(held)
 		select {
 		case <-hold:
 		case <-time.After(20 * time.Second):
@@ -52,18 +62,13 @@ func askingOlu(t *testing.T, cfg platform.Config) (*platform.Platform, runs.Run,
 	if run.Question == nil {
 		t.Fatal("the run is parked on no question")
 	}
-	return p, run, sync1(func() { close(hold) })
-}
-
-// sync1 runs fn at most once, however often it is called.
-func sync1(fn func()) func() {
-	done := false
-	return func() {
-		if !done {
-			done = true
-			fn()
-		}
+	select {
+	case <-held:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the run's own raise of its question never came")
 	}
+	var release sync.Once
+	return p, run, func() { release.Do(func() { close(hold) }) }
 }
 
 // questionMessages is every message kept under a question's key.
@@ -80,7 +85,8 @@ func questionMessages(p *platform.Platform, run runs.Run) []inbox.Message {
 
 // A reply posted in the thread in the moment between the run showing its
 // question and the question's message being raised answers it, as an
-// answer through the inbox does, and the question has one message.
+// answer through the inbox does. The question has one message: the run's
+// own raise, let go after the answer, does not raise a second.
 func TestAReplyPostedBeforeTheQuestionIsRaisedAnswersIt(t *testing.T) {
 	p, run, release := askingOlu(t, platform.Config{})
 	defer release()
@@ -111,8 +117,8 @@ func TestAnAnswerWhoseQuestionCannotBeKeptSaysSo(t *testing.T) {
 	if !errors.Is(err, statetest.ErrInjected) || errors.Is(err, platform.ErrAction) || strings.Contains(err.Error(), "asks no question") {
 		t.Fatalf("an answer whose message could not be kept = %v, want the store's error", err)
 	}
-	if got, _ := p.Runs.Get(tenant, run.ID); got.Status != runs.Parked {
-		t.Fatalf("the refused answer moved the run to %s", got.Status)
+	if got := questionMessages(p, run); len(got) != 0 {
+		t.Fatalf("a message that could not be kept is kept: %+v", got)
 	}
 	// Once the store keeps it again, the same answer is taken.
 	if _, err := p.AnswerQuestion(t.Context(), olu, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActReply, Text: "PO-77"}); err != nil {
@@ -123,4 +129,27 @@ func TestAnAnswerWhoseQuestionCannotBeKeptSaysSo(t *testing.T) {
 	if got := questionMessages(p, run); len(got) != 1 {
 		t.Fatalf("the question has %d messages, want 1", len(got))
 	}
+}
+
+// A message raised for an answer is addressed as the run's own raise would
+// address it, even when the request that answered was given up: one
+// addressed then would reach nobody, and nobody could answer it.
+func TestAnAnswerGivenUpMidwayLeavesTheQuestionForItsExpert(t *testing.T) {
+	p, run, release := askingOlu(t, platform.Config{})
+	defer release()
+	gone, cancel := context.WithCancel(t.Context())
+	cancel()
+	ref := &threads.AnswerRef{Run: run.ID, Question: run.Question.ID}
+	if _, err := p.PostMessage(gone, pat, run.Thread, platform.MessageInput{Text: "PO-1", Answers: ref}); err == nil {
+		t.Fatal("pat answered a question for the billing expert")
+	}
+	release()
+	got := questionMessages(p, run)
+	if len(got) != 1 || !slices.Contains(got[0].Audience, "olu") {
+		t.Fatalf("the question's messages are %+v, want one for olu", got)
+	}
+	if _, err := p.AnswerQuestion(t.Context(), olu, run.ID, run.Question.ID, platform.QuestionAnswer{Action: platform.ActReply, Text: "PO-77"}); err != nil {
+		t.Fatalf("the expert's answer = %v", err)
+	}
+	await(t, p, run.ID, runs.Completed)
 }
