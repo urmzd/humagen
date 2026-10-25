@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.25.0 (2026-10-25)
+
+### Features
+
+- **web**: add the Humagen project conversation workspace (#64) ([8cd34d5](https://github.com/urmzd/humagen/commit/8cd34d5715f0f3e8091feb99e99a154cdbd5e2ee))
+
+### Misc
+
+- verify installs and Helm/Flux rename upgrades ([cbb95fc](https://github.com/urmzd/humagen/commit/cbb95fcc4e16253abe933e66f573eb6b36b4daec))
+
+[Full Changelog](https://github.com/urmzd/humagen/compare/v0.24.0...v0.25.0)
+
+
 ## 0.24.0 (2026-10-23)
 
 ### Features

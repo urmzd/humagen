@@ -1,14 +1,14 @@
-# Humagen - shared design rules for every artboard
+# Humagen design rules for every board
 
-Reference artboards (read them, match them exactly): project/Main.dc.html, project/OpsAgents.dc.html, project/AgentDetail.dc.html, project/OpsContext.dc.html.
+Reference boards: boards/Main.html, boards/OpsAgents.html, boards/AgentDetail.html, boards/OpsContext.html.
 
 ## Format
-- Each artboard = one `.dc.html` file following the existing files' skeleton exactly: `<script src="./support.js"></script>` head line, `<x-dc>`, `<helmet>` with the Inter Google Fonts link + `body{margin:0}` + a/a:hover colors, one `<script type="text/x-dc" data-dc-script data-props='{...,"$preview":{"width":W,"height":H}}'>` with `class Component extends DCLogic` and `renderVals()`.
+- Each board = one `.html` file in `boards/`: `assets/boards.css` and `assets/boards.js` in the head, the markup in `<template data-board>` (with a `<helmet>` for fonts and page basics), and one `<script type="text/x-dc" data-props='{...}'>` holding `class Component extends DCLogic` with `renderVals()`. `boards.js` renders the template and re-renders on `setState`.
 - Holes `{{x}}` are dotted lookups only. Computed styles/labels come from renderVals. Lists via `<sc-for list="{{ items }}" as="it" hint-placeholder-count="N">`, branches via `<sc-if value="{{ flag }}" hint-placeholder-val="{{ true }}">`. Events: `onClick="{{ fn }}"`.
 - Close every element, quote every attribute. No emoji, no gradients-as-decoration, no left-border cards, no iframes, no innerHTML.
 - Real `<button>`, `<a href>`, `<input>`+`<label>`. `aria-label` on icon-only buttons. Decorative svg `aria-hidden="true"`.
 - PAGE artboards (app screens): fluid root `width: 100%; min-height: <H>px; display:flex; flex-wrap:wrap`, nav `flex: 1 1 220px`, main `flex: 999 1 640px; min-width:0`. Wide tables in `overflow-x:auto` box. Must work at phone width.
-- Links between artboards: `<a href="Other.dc.html">`.
+- Links between artboards: `<a href="Other.html">`.
 - Write copy as literal markup unless it is genuinely data. No lorem ipsum. Use the Spring Launch story: Supplier ETA changed (packaging Nov 4 → Nov 8), Launch Planner recommends moving launch Nov 12 → Nov 19, Ops Agent holds 4 vendor notices pending approval, Media Analyst failed because Media buy tracker access expired, Research Analyst works on a private Pricing memo draft.
 - People: Avery Park (AP, the viewer, "You"), Mira K. (MK, launch lead), Jon T. (JT, ops), Sam R. (SR, marketing). Agents: Launch Planner (LP), Ops Agent (OA), Monitor Agent (MA), Research Analyst (RA), Media Analyst (MD), Onboarding Guide (OB).
 
@@ -76,15 +76,15 @@ Inheritance order: Workspace → Project → Agent → Personal (narrower wins o
 - at (mention): <circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/>
 - send: <path d="M12 19V5M5 12l7-7 7 7"/>
 - more: <circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>
-(Note: in .dc.html write every svg child with an explicit close tag, e.g. <path d="..."></path>, never self-closing.)
+(Note: in board markup write every svg child with an explicit close tag, e.g. <path d="..."></path>, never self-closing.)
 
 ## Canonical workspace nav (used by every non-conversation page)
 Left nav `flex: 1 1 220px; background:#EFEFEC; border-right:1px solid #E2E2DE; padding:16px 12px; gap:18px; flex column`:
 1. Workspace row: 28px black rounded "H" mark + "Humagen" 15px 600.
-2. Group "Projects" (folder icons): Spring Launch (→ Main.dc.html), Q4 Research, Onboarding Revamp.
-3. Group "Library": Skills (wrench, → Skills.dc.html), Memory (bookmark, → Memory.dc.html).
-4. Group "Operations": Needs you (inbox, blue count pill 3), Agents (bot, → OpsAgents.dc.html), Agent network (arrow-right, → AgentComms.dc.html), Context health (database, amber dot, → OpsContext.dc.html), Policies (shield, → Policies.dc.html), Usage (bar-chart, → Usage.dc.html), Audit log (list, → AuditLog.dc.html).
-5. Bottom (margin-top:auto): user row link → UserSettings.dc.html: 28px circle avatar "AP" (#C9C3DD) + "Avery Park" + muted "Your settings".
+2. Group "Projects" (folder icons): Spring Launch (→ Main.html), Q4 Research, Onboarding Revamp.
+3. Group "Library": Skills (wrench, → Skills.html), Memory (bookmark, → Memory.html).
+4. Group "Operations": Needs you (inbox, blue count pill 3), Agents (bot, → OpsAgents.html), Agent network (arrow-right, → AgentComms.html), Context health (database, amber dot, → OpsContext.html), Policies (shield, → Policies.html), Usage (bar-chart, → Usage.html), Audit log (list, → AuditLog.html).
+5. Bottom (margin-top:auto): user row link → UserSettings.html: 28px circle avatar "AP" (#C9C3DD) + "Avery Park" + muted "Your settings".
 Nav items: `display:flex;align-items:center;gap:10px;padding:8px;border-radius:6px;color:#1B1C1E;text-decoration:none`, icon 18px color #5F6168; current item: background #FFFFFF, font-weight 600, aria-current="page".
 
 ## Added: hierarchy, integrations, forking
@@ -103,4 +103,4 @@ Extra icons (same stroke rules):
 - plug (integration): <path d="M9 3v5M15 3v5"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v4"/>
 - tree (hierarchy): <rect x="3" y="3" width="6" height="5" rx="1"/><rect x="15" y="10" width="6" height="5" rx="1"/><rect x="15" y="17" width="6" height="5" rx="1"/><path d="M6 8v11h9M6 12.5h9"/>
 - sparkle-free "rule" (auto-link rule): <path d="M4 7h10M4 12h16M4 17h7"/><circle cx="18" cy="7" r="2"/><circle cx="15" cy="17" r="2"/>
-Workspace nav addition: under Operations add "Integrations" (plug, → Integrations.dc.html) after Context health; under Projects add a first item "All projects" (tree, → Projects.dc.html) and show "Spring 2027 GTM" initiative (flag, → Initiative.dc.html) with Spring Launch and Q4 Research nested under it.
+Workspace nav addition: under Operations add "Integrations" (plug, → Integrations.html) after Context health; under Projects add a first item "All projects" (tree, → Projects.html) and show "Spring 2027 GTM" initiative (flag, → Initiative.html) with Spring Launch and Q4 Research nested under it.

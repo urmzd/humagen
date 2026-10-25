@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Humagen design boards</title>
+<link rel="stylesheet" href="assets/boards.css">
+<style>
+body{background:var(--hg-ground)}
+main{max-width:1200px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:24px;margin:0 0 8px} h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--hg-muted);margin:32px 0 12px}
+p{color:var(--hg-ink-2);margin:0;max-width:720px;line-height:1.5}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.card{display:flex;flex-direction:column;gap:8px;background:var(--hg-surface);border:1px solid var(--hg-line);border-radius:var(--hg-radius-card);padding:10px;text-decoration:none;color:var(--hg-ink);font-size:14px;font-weight:500}
+.card:hover{border-color:var(--hg-accent)}
+.card img{width:100%;aspect-ratio:16/10;object-fit:cover;object-position:top left;border-radius:8px;border:1px solid var(--hg-line-inner)}
+</style>
+</head>
+<body>
+<main>
+<h1>Humagen design boards</h1>
+<p>25 clickable screens for the agentic workspace and control plane. Each opens as plain HTML with <code>assets/boards.js</code> and <code>assets/boards.css</code>; no build step or server. The spec is in <a href="https://github.com/urmzd/humagen/blob/main/docs/design/humagen-control-plane/spec.md">spec.md</a> and the gap analysis in <a href="https://github.com/urmzd/humagen/blob/main/docs/design/humagen-control-plane/gap-analysis.md">gap-analysis.md</a>.</p>
+<h2>Work</h2><div class="grid"><a class="card" href="Main.html"><img src="screens/01-Main.png" alt="" loading="lazy"><span>Project conversation: outcome first</span></a><a class="card" href="MoveConversation.html"><img src="screens/02-MoveConversation.png" alt="" loading="lazy"><span>Add a private conversation to a project</span></a><a class="card" href="Activity.html"><img src="screens/03-Activity.png" alt="" loading="lazy"><span>Settings › Activity</span></a><a class="card" href="Context.html"><img src="screens/04-Context.png" alt="" loading="lazy"><span>Context with provenance</span></a><a class="card" href="ForkConversation.html"><img src="screens/21-ForkConversation.png" alt="" loading="lazy"><span>Fork a conversation</span></a></div><h2>Control plane</h2><div class="grid"><a class="card" href="OpsAgents.html"><img src="screens/05-OpsAgents.png" alt="" loading="lazy"><span>Operations › Agents (control plane)</span></a><a class="card" href="AgentDetail.html"><img src="screens/06-AgentDetail.png" alt="" loading="lazy"><span>Agent › Launch Planner</span></a><a class="card" href="OpsContext.html"><img src="screens/07-OpsContext.png" alt="" loading="lazy"><span>Operations › Context health</span></a><a class="card" href="AgentComms.html"><img src="screens/10-AgentComms.png" alt="" loading="lazy"><span>Operations › Agent network</span></a><a class="card" href="CreateAgent.html"><img src="screens/11-CreateAgent.png" alt="" loading="lazy"><span>Create an agent</span></a><a class="card" href="Policies.html"><img src="screens/14-Policies.png" alt="" loading="lazy"><span>Operations › Policies</span></a><a class="card" href="Usage.html"><img src="screens/15-Usage.png" alt="" loading="lazy"><span>Operations › Usage</span></a><a class="card" href="AuditLog.html"><img src="screens/16-AuditLog.png" alt="" loading="lazy"><span>Operations › Audit log</span></a><a class="card" href="Integrations.html"><img src="screens/22-Integrations.png" alt="" loading="lazy"><span>Operations › Integrations</span></a><a class="card" href="LinkRules.html"><img src="screens/23-LinkRules.png" alt="" loading="lazy"><span>Auto-link rules · GitHub</span></a><a class="card" href="SlackBridge.html"><img src="screens/24-SlackBridge.png" alt="" loading="lazy"><span>Slack bridge</span></a><a class="card" href="AddSource.html"><img src="screens/25-AddSource.png" alt="" loading="lazy"><span>Add context · indexed, live, hybrid</span></a></div><h2>Structure</h2><div class="grid"><a class="card" href="Projects.html"><img src="screens/18-Projects.png" alt="" loading="lazy"><span>All projects · hierarchy</span></a><a class="card" href="Initiative.html"><img src="screens/19-Initiative.png" alt="" loading="lazy"><span>Initiative · Spring 2027 GTM</span></a><a class="card" href="ForkProject.html"><img src="screens/20-ForkProject.png" alt="" loading="lazy"><span>Fork a project</span></a></div><h2>Library and You</h2><div class="grid"><a class="card" href="Skills.html"><img src="screens/12-Skills.png" alt="" loading="lazy"><span>Library › Skills</span></a><a class="card" href="Memory.html"><img src="screens/13-Memory.png" alt="" loading="lazy"><span>Library › Memory</span></a><a class="card" href="UserSettings.html"><img src="screens/17-UserSettings.png" alt="" loading="lazy"><span>You · settings</span></a></div><h2>Foundations</h2><div class="grid"><a class="card" href="Icons.html"><img src="screens/08-Icons.png" alt="" loading="lazy"><span>Identity &amp; icons</span></a><a class="card" href="FlowMap.html"><img src="screens/09-FlowMap.png" alt="" loading="lazy"><span>How it fits together</span></a></div>
+</main>
+</body>
+</html>
