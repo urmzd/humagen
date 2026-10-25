@@ -97,6 +97,54 @@ test("a shared thread shows people by name and agents by theirs and where it is 
   assert.deepEqual(opened, ["Globex/renewals"]);
 });
 
+test("message dates reveal the exact local date, time and timezone on hover, focus and tap", async () => {
+  room();
+  const message = await screen.findByRole("article", { name: "Message from Ana" });
+  const exact = new Date(at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
+  const trigger = within(message).getByRole("button", { name: `Posted ${exact}` });
+  assert.equal(trigger.querySelector("time")?.getAttribute("datetime"), at);
+  assert.ok(!within(message).queryByRole("tooltip"));
+
+  fireEvent.mouseEnter(trigger.parentElement!);
+  assert.equal(within(message).getByRole("tooltip").textContent, exact);
+  fireEvent.mouseLeave(trigger.parentElement!);
+  assert.ok(!within(message).queryByRole("tooltip"));
+
+  fireEvent.focus(trigger);
+  const tooltip = within(message).getByRole("tooltip");
+  assert.equal(trigger.getAttribute("aria-describedby"), tooltip.id);
+  fireEvent.keyDown(trigger, { key: "Escape" });
+  assert.ok(!within(message).queryByRole("tooltip"));
+
+  fireEvent.click(trigger);
+  assert.equal(within(message).getByRole("tooltip").textContent, exact);
+  fireEvent.blur(trigger);
+  assert.ok(!within(message).queryByRole("tooltip"));
+});
+
+test("message date details stay visible while focused after the pointer leaves and Escape keeps them dismissed", async () => {
+  room();
+  const message = await screen.findByRole("article", { name: "Message from Ana" });
+  const exact = new Date(at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
+  const trigger = within(message).getByRole("button", { name: `Posted ${exact}` });
+
+  fireEvent.mouseEnter(trigger.parentElement!);
+  fireEvent.focus(trigger);
+  fireEvent.mouseLeave(trigger.parentElement!);
+  assert.equal(within(message).getByRole("tooltip").textContent, exact);
+
+  fireEvent.mouseEnter(trigger.parentElement!);
+  fireEvent.keyDown(trigger, { key: "Escape" });
+  assert.ok(!within(message).queryByRole("tooltip"));
+  fireEvent.mouseLeave(trigger.parentElement!);
+  assert.ok(!within(message).queryByRole("tooltip"));
+  assert.equal(trigger.getAttribute("aria-describedby"), null);
+
+  fireEvent.blur(trigger);
+  fireEvent.focus(trigger);
+  assert.equal(within(message).getByRole("tooltip").textContent, exact);
+});
+
 test("what a post did names people by handle and experts a role names by the role, never by a subject", () => {
   const posted = { ...page, message: page.turns[0]?.message, runs: [], notified: ["ada", "role:finance"], refused: [], rule: "people" } as never;
   assert.equal(postedLine(posted), "Sent to @ada, role:finance.");
@@ -295,7 +343,7 @@ test("a channel's chat bar offers no Private and no Post Only, and a private thr
       onOpenThread={() => {}}
     />,
   );
-  assert.ok(await screen.findByText(new RegExp(`^${words.private} · `)));
+  assert.ok(await screen.findByText(words.private));
   assert.ok(screen.getByPlaceholderText(words.startThread));
   assert.ok(!screen.queryByText(words.startPrivate, { selector: "button" }));
   assert.ok(!screen.queryByText(words.postOnly, { selector: "button" }));

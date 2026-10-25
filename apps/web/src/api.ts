@@ -462,6 +462,12 @@ export interface ClientCaps {
   max_per_surface: number;
 }
 
+/** A new workspace client. Credential values are written once and never returned. */
+export type ClientCreateInput = Pick<Client, "id" | "name" | "surface" | "identity" | "default_agent" | "agents" | "enabled"> & {
+  github?: Client["github"];
+  credentials: { token: ToolCredentialInput; signing_secret: ToolCredentialInput };
+};
+
 export interface Measure {
   used: number;
   limit: number;
@@ -724,6 +730,7 @@ export const api = {
   inboxFor: (alert: string) =>
     call<{ messages: { id: string }[] }>("GET", `/api/inbox?alert=${encodeURIComponent(alert)}`).then((r) => r.messages[0]?.id ?? null),
   clients: () => call<{ clients: Client[]; caps: ClientCaps }>("GET", "/api/clients"),
+  createClient: (input: ClientCreateInput) => call<Client>("POST", "/api/clients", input),
   /** Replace a client's record. Secrets are not sent, so the server keeps the ones it has. */
   saveClient: (c: Client, enabled: boolean) =>
     call<Client>("PUT", `/api/clients/${encodeURIComponent(c.id)}`, {

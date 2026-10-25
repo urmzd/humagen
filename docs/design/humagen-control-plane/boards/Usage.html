@@ -96,7 +96,7 @@ button{font-family:inherit}
       </div>
 
       <!-- Readout (hover / focus a day) -->
-      <div aria-live="polite" style="font-size: 13px; color: #1B1C1E; min-height: 20px"><strong style="font-weight: 600">{{ readout.date }}</strong><span style="color: #3A3C41"> · {{ readout.total }} runs · {{ readout.done }} completed without help · {{ readout.need }} needed a person</span></div>
+      <div aria-live="polite" style="font-size: 13px; color: #1B1C1E; min-height: 20px"><strong style="font-weight: 600">{{ readout.date }}</strong><span style="color: #3A3C41"> {{ readout.total }} runs {{ readout.done }} completed without help {{ readout.need }} needed a person</span></div>
 
       <sc-if value="{{ showChart }}" hint-placeholder-val="{{ true }}">
         <div style="display: flex; gap: 8px">
@@ -129,7 +129,7 @@ button{font-family:inherit}
                 <span style="{{ d.labelStyle }}">{{ d.short }}</span>
               </sc-for>
             </div>
-            <div style="font-size: 11px; color: #5F6168; text-align: center">October · weekends shaded lighter</div>
+            <div style="font-size: 11px; color: #5F6168; text-align: center">October weekends shaded lighter</div>
           </div>
         </div>
       </sc-if>
@@ -151,29 +151,29 @@ button{font-family:inherit}
 
     <!-- Budgets by project -->
     <section style="display: flex; flex-direction: column; gap: 10px">
-      <h2 style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5F6168">Run budgets · October to date</h2>
+      <h2 style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5F6168">Run budgets October to date</h2>
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px">
         <div style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
           <div style="display: flex; align-items: center; gap: 8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5F6168" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg><span style="font-weight: 600; flex: 1 1 auto">Spring Launch</span><span style="font-size: 13px; color: #3A3C41">412 of 600</span></div>
           <div role="meter" aria-label="Spring Launch runs used" aria-valuemin="0" aria-valuemax="600" aria-valuenow="412" style="height: 8px; border-radius: 4px; background: #EEEEEB; overflow: hidden"><div style="width: 69%; height: 100%; border-radius: 4px; background: #2A62A8"></div></div>
-          <span style="font-size: 12px; color: #6B4100">69% used with 8 days left · on pace to reach 100% Oct 29</span>
+          <span style="font-size: 12px; color: #6B4100">69% used with 8 days left on pace to reach 100% Oct 29</span>
         </div>
         <div style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
           <div style="display: flex; align-items: center; gap: 8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5F6168" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg><span style="font-weight: 600; flex: 1 1 auto">Q4 Research</span><span style="font-size: 13px; color: #3A3C41">138 of 300</span></div>
           <div role="meter" aria-label="Q4 Research runs used" aria-valuemin="0" aria-valuemax="300" aria-valuenow="138" style="height: 8px; border-radius: 4px; background: #EEEEEB; overflow: hidden"><div style="width: 46%; height: 100%; border-radius: 4px; background: #2A62A8"></div></div>
-          <span style="font-size: 12px; color: #5F6168">46% used · on track</span>
+          <span style="font-size: 12px; color: #5F6168">46% used on track</span>
         </div>
         <div style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
           <div style="display: flex; align-items: center; gap: 8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5F6168" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg><span style="font-weight: 600; flex: 1 1 auto">Onboarding Revamp</span><span style="font-size: 13px; color: #3A3C41">51 of 200</span></div>
           <div role="meter" aria-label="Onboarding Revamp runs used" aria-valuemin="0" aria-valuemax="200" aria-valuenow="51" style="height: 8px; border-radius: 4px; background: #EEEEEB; overflow: hidden"><div style="width: 26%; height: 100%; border-radius: 4px; background: #2A62A8"></div></div>
-          <span style="font-size: 12px; color: #5F6168">26% used · agent paused until Oct 28</span>
+          <span style="font-size: 12px; color: #5F6168">26% used agent paused until Oct 28</span>
         </div>
       </div>
     </section>
 
     <!-- By agent -->
     <section style="display: flex; flex-direction: column; gap: 10px">
-      <h2 style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5F6168">By agent · last 14 days</h2>
+      <h2 style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5F6168">By agent last 14 days</h2>
       <div role="table" aria-label="Usage by agent" style="background: #FFFFFF; border: 1px solid #E2E2DE; border-radius: 12px; overflow-x: auto; font-size: 13px">
         <div role="row" style="display: grid; grid-template-columns: minmax(200px, 2fr) repeat(5, minmax(100px, 1fr)); min-width: 820px; color: #5F6168; font-size: 12px; border-bottom: 1px solid #E2E2DE">
           <span role="columnheader" style="padding: 10px 16px">Agent</span>
@@ -236,9 +236,9 @@ class Component extends DCLogic {
     const agents = [
       { initials: 'MA', name: 'Monitor Agent', runs: 128, alone: '98%', avg: '12 s', handoffs: 9, fail: 'None', bad: false },
       { initials: 'LP', name: 'Launch Planner', runs: 62, alone: '69%', avg: '3 m 40 s', handoffs: 6, fail: 'None', bad: false },
-      { initials: 'RA', name: 'Research Analyst', runs: 47, alone: '89%', avg: '6 m 10 s', handoffs: 1, fail: 'Oct 16 · page timed out', bad: false },
+      { initials: 'RA', name: 'Research Analyst', runs: 47, alone: '89%', avg: '6 m 10 s', handoffs: 1, fail: 'Oct 16 page timed out', bad: false },
       { initials: 'OA', name: 'Ops Agent', runs: 41, alone: '61%', avg: '1 m 55 s', handoffs: 0, fail: 'None', bad: false },
-      { initials: 'MD', name: 'Media Analyst', runs: 22, alone: '73%', avg: '2 m 05 s', handoffs: 0, fail: 'Today 8:10 · source access expired (3)', bad: true },
+      { initials: 'MD', name: 'Media Analyst', runs: 22, alone: '73%', avg: '2 m 05 s', handoffs: 0, fail: 'Today 8:10 source access expired (3)', bad: true },
       { initials: 'OB', name: 'Onboarding Guide', runs: 14, alone: '86%', avg: '4 m 30 s', handoffs: 0, fail: 'None', bad: false }
     ].map((a) => ({ ...a, failStyle: 'padding: 10px 16px 10px 12px; font-size: 12px; color: ' + (a.bad ? '#8C2F22' : '#5F6168') + '; font-weight: ' + (a.bad ? '600' : '400') }));
     const t = this.state.table;

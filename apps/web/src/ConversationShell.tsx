@@ -69,10 +69,10 @@ export function ConversationPage({
           </button>
         }
         meta={
-          <>
+          <span className="inline-flex flex-wrap items-center gap-x-3">
             <span>{location ?? (personal ? words.private : words.shared)}</span>
-            {agents.length > 0 && <span> · {words.agents(new Set(agents).size)}</span>}
-          </>
+            {agents.length > 0 && <span>{words.agents(new Set(agents).size)}</span>}
+          </span>
         }
         actions={
           <>
@@ -179,9 +179,9 @@ function SourceCard({ name, source }: { name: string; source?: Source }) {
     >
       <summary className="cursor-pointer text-aui-sm font-medium">
         {name}
-        <span className="mt-1 block text-aui-xs font-normal text-aui-muted">
-          {words.sourceMode} · {words.sourceUpdates}
-          {source ? ` · ${words.sourceDocs(source.documents)}` : ""}
+        <span className="mt-1 flex flex-wrap gap-x-3 text-aui-xs font-normal text-aui-muted">
+          <span>{words.sourceMode}</span><span>{words.sourceUpdates}</span>
+          {source && <span>{words.sourceDocs(source.documents)}</span>}
         </span>
       </summary>
       {source?.description && (
@@ -204,13 +204,13 @@ function SourceCard({ name, source }: { name: string; source?: Source }) {
               <time className="mt-1 block text-aui-muted" dateTime={doc.added_at}>
                 {words.sourceImported}: {new Date(doc.added_at).toLocaleString()}
               </time>
-              <span className="text-aui-muted">
-                {words.sourcePassages(doc.passages)} ·{" "}
-                {doc.excluded
+              <span className="flex flex-wrap gap-x-3 text-aui-muted">
+                <span>{words.sourcePassages(doc.passages)}</span>
+                <span>{doc.excluded
                   ? words.sourceExcluded
                   : doc.passages > 0
                     ? words.sourceHealth
-                    : words.sourceEmpty}
+                    : words.sourceEmpty}</span>
               </span>
             </li>
           ))}
@@ -250,7 +250,7 @@ export function ConversationInfo({
       ) : (
         <div className="flex flex-col gap-4">
           <p className="text-aui-xs text-aui-muted">
-            {thread.visibility === "private" ? words.private : `${words.shared} · ${project}`}
+            {thread.visibility === "private" ? words.private : `${words.shared} in ${project}`}
           </p>
           <ul className="flex flex-col divide-aui-border divide-y">
             {thread.participants.map((person) => (
@@ -260,9 +260,9 @@ export function ConversationInfo({
               >
                 {person.kind === "agent" && <AgentMark name={person.name} size={15} />}
                 <span className="min-w-0 flex-1 truncate">{person.name}</span>
-                <span className="text-aui-2xs text-aui-muted">
-                  {person.kind}
-                  {person.owner ? " · owner" : ""}
+                <span className="inline-flex gap-x-2 text-aui-2xs text-aui-muted">
+                  <span>{person.kind}</span>
+                  {person.owner && <span>owner</span>}
                 </span>
               </li>
             ))}

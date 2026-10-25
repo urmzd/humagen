@@ -83,8 +83,8 @@ button{font-family:inherit}
               <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: #5F6168">
                 <span style="width: 18px; height: 18px; border-radius: 5px; background: #E3E8EE; color: #2E5B88; font-size: 9px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">{{ q.agent }}</span>
                 <span>{{ q.source }}</span>
-                <span>·</span>
-                <span>{{ q.kind }} · {{ q.scopeLabel }}</span>
+                <span></span>
+                <span>{{ q.kind }} {{ q.scopeLabel }}</span>
               </div>
             </div>
             <div style="display: flex; gap: 6px">
@@ -171,26 +171,26 @@ class Component extends DCLogic {
       Suggested: 'background: #E3E8EE; color: #2E5B88',
       expiring: 'background: #F4E6CC; color: #6B4100'
     };
-    const SL = { project: 'Project · Spring Launch', workspace: 'Workspace', personal: 'Personal · Only you' };
+    const SL = { project: 'Project Spring Launch', workspace: 'Workspace', personal: 'Personal Only you' };
     const suggestions = [
       { id: 'q1', group: 'facts', text: 'Retail partners need final dates 3 weeks before launch.', agent: 'LP', source: 'from Supplier delay - launch impact, 9:51', kind: 'Fact', scope: 'project' },
       { id: 'q2', group: 'prefs', text: 'Jon reviews vendor emails before they go out.', agent: 'OA', source: 'from Vendor notice templates, yesterday', kind: 'Preference', scope: 'project' },
       { id: 'q3', group: 'decisions', text: 'Press embargo stays Nov 12; announcement says “available Nov 19”.', agent: 'LP', source: 'from Supplier delay - launch impact, 9:59', kind: 'Decision', scope: 'project' }
     ];
     const base = [
-      { id: 'm1', group: 'decisions', text: 'Launch moved to Nov 19 - approved by Avery, Oct 23.', scope: 'project', status: 'Confirmed', provenance: 'From Supplier delay - launch impact · confirmed by Avery Park, Oct 23', used: 'Used 4 times', hasLink: true },
-      { id: 'm2', group: 'decisions', text: 'Paid media shifts with the launch date, not the press date.', scope: 'project', status: 'Confirmed', provenance: 'From # planning · confirmed by Sam R., Oct 14', used: 'Used 2 times', hasLink: false },
-      { id: 'm3', group: 'facts', text: 'Packaging supplier needs 10 business days notice for any change.', scope: 'project', status: 'Confirmed', provenance: 'From Supplier ETA (live source) · confirmed by Jon T., Oct 9', used: 'Used 6 times', hasLink: false },
+      { id: 'm1', group: 'decisions', text: 'Launch moved to Nov 19 - approved by Avery, Oct 23.', scope: 'project', status: 'Confirmed', provenance: 'From Supplier delay - launch impact confirmed by Avery Park, Oct 23', used: 'Used 4 times', hasLink: true },
+      { id: 'm2', group: 'decisions', text: 'Paid media shifts with the launch date, not the press date.', scope: 'project', status: 'Confirmed', provenance: 'From # planning confirmed by Sam R., Oct 14', used: 'Used 2 times', hasLink: false },
+      { id: 'm3', group: 'facts', text: 'Packaging supplier needs 10 business days notice for any change.', scope: 'project', status: 'Confirmed', provenance: 'From Supplier ETA (live source) confirmed by Jon T., Oct 9', used: 'Used 6 times', hasLink: false },
       { id: 'm4', group: 'facts', text: 'Holiday freeze: no retail changes after Dec 1.', scope: 'workspace', status: 'Expires Dec 1', provenance: 'Added by Mira K., Oct 1', used: 'Used 3 times', hasLink: false },
-      { id: 'm5', group: 'prefs', text: 'Mira wants recommendations, not option lists.', scope: 'project', status: 'Confirmed', provenance: 'Learned from 3 conversations · confirmed by Mira K., Oct 18', used: 'Used 9 times', hasLink: false },
-      { id: 'm6', group: 'prefs', text: 'Status posts stay under 120 words.', scope: 'workspace', status: 'Confirmed', provenance: 'From the Weekly status post skill · Sam R., Oct 6', used: 'Used 22 times', hasLink: false },
-      { id: 'm7', group: 'people', text: 'Mira K. owns the launch date; Jon T. owns vendors; Sam R. owns paid media.', scope: 'project', status: 'Confirmed', provenance: 'From project members · updated by Mira K., Oct 3', used: 'Used 11 times', hasLink: false },
+      { id: 'm5', group: 'prefs', text: 'Mira wants recommendations, not option lists.', scope: 'project', status: 'Confirmed', provenance: 'Learned from 3 conversations confirmed by Mira K., Oct 18', used: 'Used 9 times', hasLink: false },
+      { id: 'm6', group: 'prefs', text: 'Status posts stay under 120 words.', scope: 'workspace', status: 'Confirmed', provenance: 'From the Weekly status post skill Sam R., Oct 6', used: 'Used 22 times', hasLink: false },
+      { id: 'm7', group: 'people', text: 'Mira K. owns the launch date; Jon T. owns vendors; Sam R. owns paid media.', scope: 'project', status: 'Confirmed', provenance: 'From project members updated by Mira K., Oct 3', used: 'Used 11 times', hasLink: false },
       { id: 'm8', group: 'personal', text: 'Send me decisions as one line with a deadline.', scope: 'personal', status: 'Confirmed', provenance: 'You added this, Oct 12', used: 'Used 5 times', hasLink: false },
-      { id: 'm9', group: 'personal', text: 'Competitor A changes prices on the first Monday of the month.', scope: 'personal', status: 'Confirmed', provenance: 'From Pricing memo draft (private) · you confirmed, Oct 21', used: 'Used 1 time', hasLink: false }
+      { id: 'm9', group: 'personal', text: 'Competitor A changes prices on the first Monday of the month.', scope: 'personal', status: 'Confirmed', provenance: 'From Pricing memo draft (private) you confirmed, Oct 21', used: 'Used 1 time', hasLink: false }
     ];
     const kept = suggestions.filter((q) => st.queue[q.id] === 'kept').map((q) => ({
       id: q.id, group: q.group, text: q.text, scope: q.scope, status: 'Confirmed',
-      provenance: 'Suggested by ' + (q.agent === 'LP' ? 'Launch Planner' : 'Ops Agent') + ' · kept by Avery Park, just now', used: 'Not used yet', hasLink: true }));
+      provenance: 'Suggested by ' + (q.agent === 'LP' ? 'Launch Planner' : 'Ops Agent') + ' kept by Avery Park, just now', used: 'Not used yet', hasLink: true }));
     const items = kept.concat(base).filter((m) => !st.forgotten[m.id]);
     const sc = st.scope;
     const shown = items.filter((m) => sc === 'all' || m.scope === sc).map((m) => ({
@@ -205,7 +205,7 @@ class Component extends DCLogic {
       ['facts', 'Facts', 'Things that stay true until changed'],
       ['prefs', 'Preferences', 'How people like work done'],
       ['people', 'People & owners', 'Who owns what'],
-      ['personal', 'Personal', 'Only you · not visible to agents in projects unless you allow']
+      ['personal', 'Personal', 'Only you not visible to agents in projects unless you allow']
     ];
     const groups = groupDefs.map(([id, title, note]) => ({ title, note, items: shown.filter((m) => m.group === id) })).filter((g) => g.items.length > 0);
     const queue = suggestions.filter((q) => !st.queue[q.id]).map((q) => ({

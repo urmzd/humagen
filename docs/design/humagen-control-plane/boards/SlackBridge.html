@@ -28,7 +28,7 @@ button{font-family:inherit}
       </div>
       <div style="color: #3A3C41">One conversation, two places. People keep working in Slack; Humagen keeps the outcome, the decisions and the agents.</div>
     </div>
-    <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #E6F2EC; color: #1F6B45"><span style="width: 6px; height: 6px; border-radius: 50%; background: #1F7A4D"></span>Bridge active · {{ dirShort }}</span>
+    <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #E6F2EC; color: #1F6B45"><span style="width: 6px; height: 6px; border-radius: 50%; background: #1F7A4D"></span>Bridge active {{ dirShort }}</span>
   </div>
 
   <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start">
@@ -50,7 +50,7 @@ button{font-family:inherit}
           <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px">
             <span><strong>Humagen</strong> <span style="font-size: 11px; font-weight: 600; padding: 1px 5px; border-radius: 4px; background: #EEEEEB; color: #3A3C41">APP</span> <span style="font-size: 12px; color: #5F6168">9:51</span></span>
             <div style="border: 1px solid #E2E2DE; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px">
-              <span style="font-size: 12px; color: #5F6168">Launch Planner · recommendation</span>
+              <span style="font-size: 12px; color: #5F6168">Launch Planner recommendation</span>
               <span style="font-weight: 600">Move the launch from Nov 12 to Nov 19.</span>
               <span style="font-size: 13px; color: #3A3C41">Packaging arrives Nov 8, four days late. Plan v4 drafted; Ops Agent is holding 4 vendor notices.</span>
               <span style="font-size: 12px; color: #5F6168">Decision needed: Avery Park</span>
@@ -69,7 +69,7 @@ button{font-family:inherit}
 
         <div style="display: flex; gap: 10px">
           <span style="flex: 0 0 auto; width: 32px; height: 32px; border-radius: 6px; background: #E2CFC0; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center">DL</span>
-          <div style="display: flex; flex-direction: column; gap: 2px"><span><strong>Dana L.</strong> <span style="font-size: 12px; color: #5F6168">10:04 · external</span></span><span>We can do Nov 19 on our side.</span></div>
+          <div style="display: flex; flex-direction: column; gap: 2px"><span><strong>Dana L.</strong> <span style="font-size: 12px; color: #5F6168">10:04 external</span></span><span>We can do Nov 19 on our side.</span></div>
         </div>
       </div>
     </section>
@@ -99,11 +99,11 @@ button{font-family:inherit}
             <div style="border: 1px solid #E2E2DE; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 6px">
               <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5F6168">Recommendation</span>
               <span style="font-weight: 600; font-size: 15px">Move the launch from Nov 12 to Nov 19.</span>
-              <span style="font-size: 12px; color: #5F6168">Outcome only crosses to Slack · 6 steps stay in Activity</span>
+              <span style="font-size: 12px; color: #5F6168">Outcome only crosses to Slack 6 steps stay in Activity</span>
               <sc-if value="{{ approved }}" hint-placeholder-val="{{ false }}">
                 <span style="display: flex; align-items: center; gap: 6px; color: #1F6B45; font-weight: 500; font-size: 13px">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12.5l2.5 2.5L16 9.5"></path></svg>
-                  Avery approved from Slack · logged here
+                  Avery approved from Slack logged here
                 </span>
               </sc-if>
             </div>
@@ -117,7 +117,7 @@ button{font-family:inherit}
 
         <div style="display: flex; gap: 10px">
           <span style="flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%; background: #FFFFFF; border: 1.5px dashed #8A8C92; box-sizing: border-box; font-size: 12px; font-weight: 600; color: #3A3C41; display: inline-flex; align-items: center; justify-content: center">DL</span>
-          <div style="display: flex; flex-direction: column; gap: 2px"><span style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap"><strong>Dana L.</strong><span style="font-size: 12px; color: #5F6168">10:04</span><span style="font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 6px; background: #EEEEEB; color: #3A3C41">Guest · from Slack</span></span><span>We can do Nov 19 on our side.</span></div>
+          <div style="display: flex; flex-direction: column; gap: 2px"><span style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap"><strong>Dana L.</strong><span style="font-size: 12px; color: #5F6168">10:04</span><span style="font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 6px; background: #EEEEEB; color: #3A3C41">Guest from Slack</span></span><span>We can do Nov 19 on our side.</span></div>
         </div>
       </div>
     </section>
@@ -155,8 +155,8 @@ button{font-family:inherit}
       <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px 12px; font-size: 13px">
         <span style="color: #5F6168">Threads</span><span>Each Slack thread ↔ one Humagen conversation</span>
         <span style="color: #5F6168">New top-level</span><span>Starts a conversation in # launch-ops</span>
-        <span style="color: #5F6168">Agents may @</span><span>Members of Spring Launch only · never guests</span>
-        <span style="color: #5F6168">Decisions</span><span>Approve in either place · logged once</span>
+        <span style="color: #5F6168">Agents may @</span><span>Members of Spring Launch only never guests</span>
+        <span style="color: #5F6168">Decisions</span><span>Approve in either place logged once</span>
       </div>
       <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; background: #FAFAF8; border: 1px solid #E2E2DE; font-size: 13px; flex-wrap: wrap">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3A3C41" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M4 12h16M4 17h7"></path><circle cx="18" cy="7" r="2"></circle><circle cx="15" cy="17" r="2"></circle></svg>
@@ -218,7 +218,7 @@ class Component extends DCLogic {
       { slack: '@mira', hg: 'Mira K.', tag: 'Matched', tagStyle: ok },
       { slack: '@avery', hg: 'Avery Park', tag: 'Matched', tagStyle: ok },
       { slack: '@jon.t', hg: 'Jon T.', tag: 'Matched', tagStyle: ok },
-      { slack: '@dana (vendor)', hg: 'Dana L.', tag: 'Guest · from Slack', tagStyle: guest }
+      { slack: '@dana (vendor)', hg: 'Dana L.', tag: 'Guest from Slack', tagStyle: guest }
     ];
     return {
       dirs, crosses, people,
