@@ -146,7 +146,9 @@ function WorkSummary({ turn, copy }: { turn: Turn; copy: Copy }) {
             blocked ? copy.conversation.blocked(blocked) : "",
           ]
             .filter(Boolean)
-            .map((label) => <span key={label}>{label}{" "}</span>)}
+            .map((label) => (
+              <span key={label}>{label} </span>
+            ))}
         </span>
       </summary>
       <div className="mt-3 flex min-w-0 flex-col gap-1">
